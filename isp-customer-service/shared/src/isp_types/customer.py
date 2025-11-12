@@ -1,7 +1,7 @@
 """
 Customer-related Pydantic models.
 """
-print('bando importuoti')
+
 from datetime import datetime, date
 from typing import Optional, Literal
 from pydantic import BaseModel, Field, field_validator
