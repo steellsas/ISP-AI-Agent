@@ -1,30 +1,24 @@
 [project]
 name = "chatbot-core"
 version = "0.1.0"
-description = "ISP Customer Service Chatbot - Core conversational engine"
+description = "ISP Customer Service Chatbot - Main application with LangGraph"
 requires-python = ">=3.12"
 
 dependencies = [
-    "langgraph>=0.2.0",
-    "langchain>=0.3.0",
-    "langchain-anthropic>=0.2.0",
-    "langchain-openai>=0.2.0",
-    "langsmith>=0.1.0",
-    "streamlit>=1.39.0",
-    "faiss-cpu>=1.8.0",
-    "sentence-transformers>=3.0.0",
-    "pyyaml>=6.0",
-    "python-dotenv>=1.0.0",
-    "pydantic>=2.0.0",
-    "mcp>=1.0.0",
+    "isp-shared",
+    "langchain>=0.1.0",
+    "langgraph>=0.0.20",
+    "langsmith>=0.0.87",
+    "openai>=1.0.0",
+    "streamlit>=1.30.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-]
+[tool.uv.sources]
+isp-shared = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

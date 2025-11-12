@@ -1,23 +1,27 @@
 [project]
 name = "crm-service"
 version = "0.1.0"
-description = "ISP CRM Service - Customer data and ticket management via MCP"
+description = "ISP CRM Service - MCP Server for customer data"
 requires-python = ">=3.12"
 
 dependencies = [
+    "isp-shared",
     "mcp>=1.0.0",
-    "sqlalchemy>=2.0.0",
-    "python-levenshtein>=0.25.0",
-    "pydantic>=2.0.0",
-    "python-dotenv>=1.0.0",
+    "python-levenshtein>=0.25.0",  # For fuzzy matching
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-]
+[tool.uv.sources]
+isp-shared = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+
+
+
+
+
