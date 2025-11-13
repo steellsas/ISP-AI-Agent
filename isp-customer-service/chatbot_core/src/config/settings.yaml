@@ -1,0 +1,98 @@
+# ISP Customer Service Chatbot - General Settings
+
+# Application settings
+app:
+  name: "ISP Customer Service Chatbot"
+  version: "1.0.0"
+  environment: "development"  # development, staging, production
+  debug: true
+
+# LLM settings
+llm:
+  model: "gpt-4o"
+  temperature: 0.7
+  max_tokens: 1500
+  system_prompt_mode: "detailed"  # minimal, standard, detailed
+  
+# Conversation settings
+conversation:
+  default_language: "lt"
+  supported_languages: ["lt", "en"]
+  max_message_length: 2000
+  session_timeout_minutes: 30
+  max_messages_per_conversation: 100
+  
+# State management
+state:
+  storage_dir: "./state_storage"
+  checkpoint_frequency: 5  # Create checkpoint every N messages
+  archive_after_days: 7
+  cleanup_after_days: 30
+  
+# MCP settings
+mcp:
+  crm_server:
+    enabled: true
+    url: "stdio://crm-service"
+    timeout_seconds: 30
+    retry_attempts: 3
+    
+  network_server:
+    enabled: true
+    url: "stdio://network-diagnostic-service"
+    timeout_seconds: 30
+    retry_attempts: 3
+
+# RAG settings
+rag:
+  enabled: true
+  embedding_model: "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+  vector_store: "faiss"  # faiss, chroma
+  chunk_size: 500
+  chunk_overlap: 50
+  top_k: 3
+  similarity_threshold: 0.7
+
+# Troubleshooting settings
+troubleshooting:
+  max_steps: 5
+  require_customer_feedback: true
+  auto_escalate_after_steps: 5
+  
+# Ticket settings
+ticket:
+  auto_create_on_failure: true
+  default_priority: "medium"
+  priority_rules:
+    no_connection: "high"
+    slow_speed: "medium"
+    intermittent: "medium"
+    
+# Contact information
+contact:
+  phone: "+370 000 0000"
+  email_lt: "pagalba@isp.lt"
+  email_en: "support@isp.lt"
+  working_hours:
+    weekdays: "8:00-20:00"
+    saturday: "9:00-17:00"
+    sunday: "closed"
+    
+# Response time SLA (hours)
+sla:
+  high_priority: 4
+  medium_priority: 24
+  low_priority: 48
+  
+# Logging
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "detailed"
+  log_to_file: true
+  log_dir: "./logs"
+  
+# Analytics
+analytics:
+  enabled: true
+  track_metrics: true
+  anonymize_data: true

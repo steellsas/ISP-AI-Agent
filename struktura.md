@@ -213,3 +213,55 @@ isp-customer-service/  (monorepo)
     │ Schema: crm     │
     │ Schema: network │
     └─────────────────┘
+
+
+
+
+    chatbot_core/
+├── src/
+│   ├── graph/
+│   │   ├── __init__.py
+│   │   ├── state.py
+│   │   ├── state_manager.py      # ➕ NEW
+│   │   ├── nodes/
+│   │   │   ├── __init__.py
+│   │   │   ├── greeting.py
+│   │   │   ├── customer_identification.py
+│   │   │   ├── problem_identification.py
+│   │   │   ├── diagnostics.py
+│   │   │   ├── troubleshooting.py
+│   │   │   ├── ticket_registration.py
+│   │   │   └── resolution.py
+│   │   └── workflow.py           # Main graph
+│   │
+│   ├── services/                 # ➕ NEW
+│   │   ├── llm_service.py
+│   │   └── mcp_service.py
+│   │
+│   ├── rag/
+│   │   ├── knowledge_base/
+│   │   │   ├── troubleshooting/  # ➕ Organized
+│   │   │   ├── procedures/
+│   │   │   └── faq/
+│   │   ├── embeddings.py
+│   │   ├── vector_store.py
+│   │   └── retriever.py
+│   │
+│   ├── mcp_client/
+│   │   ├── __init__.py
+│   │   ├── client.py
+│   │   └── registry.py
+│   │
+│   ├── ui/
+│   │   ├── app.py
+│   │   └── components/
+│   │
+│   ├── config/
+│   │   ├── problems.yaml
+│   │   ├── prompts_lt.yaml
+│   │   ├── prompts_en.yaml
+│   │   └── settings.yaml
+│   │
+│   └── utils/
+│       ├── logging.py
+│       └── helpers.py
