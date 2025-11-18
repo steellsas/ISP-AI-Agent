@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 GREETINGS = {
     "lt": """Sveiki! 👋
 
-Aš esu ISP pagalbos asistentas. Padėsiu išspręsti Jūsų interneto ar televizijos problemas.
+Aš esu ISP pagalbos asistentas. Padėsiu išspręsti Jūsų interneto ar televizijos problemas 22.
 
 Norėdamas pradėti, man reikės kelių dalykų:
 • Jūsų adreso (miestas, gatvė, namo numeris)
@@ -67,7 +67,8 @@ def greeting_node(state: ConversationState) -> ConversationState:
         state = add_message(state, "assistant", greeting_message)
         
         # Update current node
-        state["current_node"] = "greeting"
+        # state["current_node"] = "greeting"
+        state["current_node"] = "customer_identification"
         
         # Log metadata
         state["metadata"]["greeting_sent"] = True

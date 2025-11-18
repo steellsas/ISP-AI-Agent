@@ -85,8 +85,10 @@ def diagnostics_node(state: ConversationState) -> ConversationState:
         else:
             logger.info("[Diagnostics] No issues detected in diagnostics")
         
-        state["current_node"] = "diagnostics"
-        return state
+        # state["current_node"] = "diagnostics"
+        # return state
+        state["current_node"] = "troubleshooting"
+        return state            
         
     except Exception as e:
         logger.error(f"[Diagnostics] Error: {e}", exc_info=True)

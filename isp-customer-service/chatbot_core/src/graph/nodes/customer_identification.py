@@ -81,7 +81,17 @@ def customer_identification_node(state: ConversationState) -> ConversationState:
             state = _handle_customer_not_found(state, error_type, customer_result)
             logger.warning(f"[CustomerID] Customer not found: {error_type}")
         
-        state["current_node"] = "customer_identification"
+        # state["current_node"] = "customer_identification"
+        # return state
+        # Nustatome SEKANTĮ node pagal rezultatą
+        if state["customer_identified"]:
+            state["current_node"] = "problem_identification"  # ← Eina į problemą
+        elif state["conversation_ended"]:
+            state["current_node"] = "resolution"  # ← Baigia
+        else:
+            # Jei nepavyko rasti, bet tęsiame
+            state["current_node"] = "problem_identification"  # ← Vis tiek tęsia
+
         return state
         
     except Exception as e:

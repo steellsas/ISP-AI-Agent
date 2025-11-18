@@ -121,11 +121,26 @@ def problem_identification_node(state: ConversationState) -> ConversationState:
             clarifying_question = _create_clarifying_question(problem_analysis, language)
             state = add_message(state, "assistant", clarifying_question)
         
-        state["current_node"] = "problem_identification"
-        logger.info(f"[ProblemID] Problem identified: {problem_data['problem_type']} - {problem_data['category']}")
+        # state["current_node"] = "problem_identification"
+        # logger.info(f"[ProblemID] Problem identified: {problem_data['problem_type']} - {problem_data['category']}")
         
+        # return state
+        if state["conversation_ended"]:
+            state["current_node"] = "resolution"
+        elif state["problem_identified"]:
+            problem_type = state["problem"].get("problem_type")
+            
+            # Internet/TV problemos - į diagnostiką
+            if problem_type in ["internet", "tv"]:
+                state["current_node"] = "diagnostics"
+            else:
+                # Kitos problemos - tiesiai į troubleshooting
+                state["current_node"] = "troubleshooting"
+        else:
+            # Jei neidentifikavo, vis tiek eina į troubleshooting
+            state["current_node"] = "troubleshooting"
+
         return state
-        
     except Exception as e:
         logger.error(f"[ProblemID] Error: {e}", exc_info=True)
         state = _handle_identification_error(state)

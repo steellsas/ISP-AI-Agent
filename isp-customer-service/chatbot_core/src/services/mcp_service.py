@@ -1,19 +1,24 @@
 """
 MCP Service
 Orchestrates calls to CRM and Network Diagnostic MCP servers
+Uses CustomMCPClient instead of MCP SDK (Windows compatibility)
 """
 
-import sys
+import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
-# Add shared to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
-if str(shared_path) not in sys.path:
-    sys.path.insert(0, str(shared_path))
+try:
+    from isp_shared.utils.logger import get_logger
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    def get_logger(name):
+        return logging.getLogger(name)
 
-from utils import get_logger
+# Use custom MCP client (fixes Windows stdio issues)
+from src.services.custom_mcp_client import CustomMCPClient
 
 logger = get_logger(__name__)
 
@@ -31,36 +36,115 @@ class MCPService:
     Features:
     - Call CRM MCP tools
     - Call Network Diagnostic MCP tools
+    - Custom MCP client (Windows compatible)
     - Tool call logging and monitoring
     - Error handling and retries
     """
     
     def __init__(
         self,
-        crm_server_url: Optional[str] = None,
-        network_server_url: Optional[str] = None
+        crm_server_path: Optional[str] = None,
+        network_server_path: Optional[str] = None
     ):
         """
         Initialize MCP service.
         
         Args:
-            crm_server_url: CRM MCP server URL
-            network_server_url: Network MCP server URL
+            crm_server_path: Path to CRM service directory (relative or absolute)
+            network_server_path: Path to Network service directory (relative or absolute)
         """
-        self.crm_server_url = crm_server_url or "stdio://crm-service"
-        self.network_server_url = network_server_url or "stdio://network-diagnostic-service"
+        # Default paths (relative to chatbot_core)
+        if crm_server_path:
+            self.crm_server_path = Path(crm_server_path)
+        else:
+            # Default: ../crm_service from chatbot_core root
+            self.crm_server_path = Path(__file__).parent.parent.parent.parent / "crm_service"
         
-        # TODO: Initialize actual MCP clients
-        # For now, we'll simulate the calls
+        if network_server_path:
+            self.network_server_path = Path(network_server_path)
+        else:
+            # Default: ../network_diagnostic_service from chatbot_core root
+            self.network_server_path = Path(__file__).parent.parent.parent.parent / "network_diagnostic_service"
+        
+        # MCP clients
         self.crm_client = None
         self.network_client = None
+        
+        # Connection state
+        self.is_initialized = False
         
         # Statistics
         self.tool_calls = []
         self.total_calls = 0
         self.failed_calls = 0
         
-        logger.info("MCPService initialized")
+        logger.info("MCPService created (not connected yet)")
+    
+    async def initialize(self):
+        """
+        Initialize MCP connections to servers.
+        
+        This must be called before using any tool methods.
+        Establishes connections to CRM and Network MCP servers.
+        """
+        if self.is_initialized:
+            logger.warning("MCPService already initialized")
+            return
+        
+        try:
+            logger.info("Initializing MCP connections...")
+            
+            # Initialize CRM client
+            logger.info(f"Connecting to CRM service at {self.crm_server_path}")
+            self.crm_client = CustomMCPClient(self.crm_server_path, "CRM")
+            await self.crm_client.initialize()
+            logger.info("SUCCESS: CRM service connected")
+            
+            # Initialize Network client
+            logger.info(f"Connecting to Network service at {self.network_server_path}")
+            self.network_client = CustomMCPClient(self.network_server_path, "Network")
+            await self.network_client.initialize()
+            logger.info("SUCCESS: Network service connected")
+            
+            self.is_initialized = True
+            logger.info("SUCCESS: MCPService fully initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize MCP connections: {e}", exc_info=True)
+            # Cleanup on failure
+            await self._cleanup_connections()
+            raise RuntimeError(f"MCP initialization failed: {e}")
+    
+    async def close(self):
+        """Close MCP connections gracefully."""
+        logger.info("Closing MCP connections...")
+        await self._cleanup_connections()
+        logger.info("SUCCESS: MCP connections closed")
+    
+    async def _cleanup_connections(self):
+        """Internal cleanup of MCP connections."""
+        if self.crm_client:
+            try:
+                await self.crm_client.close()
+            except Exception as e:
+                logger.warning(f"Error closing CRM connection: {e}")
+            finally:
+                self.crm_client = None
+        
+        if self.network_client:
+            try:
+                await self.network_client.close()
+            except Exception as e:
+                logger.warning(f"Error closing Network connection: {e}")
+            finally:
+                self.network_client = None
+        
+        self.is_initialized = False
+    
+    def _check_initialized(self):
+        """Check if service is initialized."""
+        if not self.is_initialized:
+            raise RuntimeError("MCPService not initialized. Call await mcp_service.initialize() first.")
     
     async def call_crm_tool(
         self,
@@ -84,18 +168,17 @@ class MCPService:
         Returns:
             Tool result dictionary
         """
+        self._check_initialized()
+        
         logger.info(f"Calling CRM tool: {tool_name} with args: {arguments}")
         
         try:
-            # TODO: Replace with actual MCP client call
-            # result = await self.crm_client.call_tool(tool_name, arguments)
-            
-            # For now, simulate the call
-            result = self._simulate_crm_tool(tool_name, arguments)
+            result = await self.crm_client.call_tool(tool_name, arguments)
             
             # Log the call
             self._log_tool_call(MCPServerType.CRM, tool_name, arguments, result, success=True)
             
+            logger.info(f"CRM tool {tool_name} completed successfully")
             return result
             
         except Exception as e:
@@ -136,18 +219,17 @@ class MCPService:
         Returns:
             Tool result dictionary
         """
+        self._check_initialized()
+        
         logger.info(f"Calling Network tool: {tool_name} with args: {arguments}")
         
         try:
-            # TODO: Replace with actual MCP client call
-            # result = await self.network_client.call_tool(tool_name, arguments)
-            
-            # For now, simulate the call
-            result = self._simulate_network_tool(tool_name, arguments)
+            result = await self.network_client.call_tool(tool_name, arguments)
             
             # Log the call
             self._log_tool_call(MCPServerType.NETWORK, tool_name, arguments, result, success=True)
             
+            logger.info(f"Network tool {tool_name} completed successfully")
             return result
             
         except Exception as e:
@@ -163,118 +245,6 @@ class MCPService:
             self._log_tool_call(MCPServerType.NETWORK, tool_name, arguments, error_result, success=False)
             
             return error_result
-    
-    def _simulate_crm_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Simulate CRM tool calls (temporary)."""
-        
-        if tool_name == "lookup_customer_by_address":
-            # Simulate customer lookup
-            city = arguments.get("city")
-            house_number = arguments.get("house_number")
-            
-            if city == "Šiauliai" and house_number == "60":
-                return {
-                    "success": True,
-                    "customer": {
-                        "customer_id": "CUST001",
-                        "first_name": "Jonas",
-                        "last_name": "Jonaitis",
-                        "phone": "+37060012345",
-                        "email": "jonas@example.com",
-                        "address": {
-                            "city": city,
-                            "street": arguments.get("street", "Tilžės g."),
-                            "house_number": house_number,
-                            "apartment_number": arguments.get("apartment_number"),
-                            "full_address": f"{city}, Tilžės g. {house_number}"
-                        }
-                    }
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": "customer_not_found",
-                    "message": "Klientas nerastas"
-                }
-        
-        elif tool_name == "get_customer_details":
-            return {
-                "success": True,
-                "customer": {
-                    "customer_id": arguments.get("customer_id"),
-                    "first_name": "Jonas",
-                    "last_name": "Jonaitis"
-                },
-                "services": [
-                    {"service_type": "internet", "plan_name": "300 Mbps"}
-                ],
-                "equipment": [
-                    {"equipment_type": "router", "model": "TP-Link"}
-                ]
-            }
-        
-        elif tool_name == "create_ticket":
-            import uuid
-            ticket_id = f"TKT{uuid.uuid4().hex[:8].upper()}"
-            
-            return {
-                "success": True,
-                "ticket": {
-                    "ticket_id": ticket_id,
-                    "customer_id": arguments.get("customer_id"),
-                    "ticket_type": arguments.get("ticket_type"),
-                    "priority": arguments.get("priority", "medium"),
-                    "summary": arguments.get("summary")
-                }
-            }
-        
-        else:
-            return {"success": False, "error": "unknown_tool"}
-    
-    def _simulate_network_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Simulate Network tool calls (temporary)."""
-        
-        if tool_name == "check_port_status":
-            return {
-                "success": True,
-                "diagnostics": {
-                    "total_ports": 1,
-                    "ports_up": 1,
-                    "ports_down": 0,
-                    "all_ports_healthy": True
-                }
-            }
-        
-        elif tool_name == "check_ip_assignment":
-            return {
-                "success": True,
-                "active_count": 1,
-                "ip_assignments": [{
-                    "ip_address": "192.168.1.100",
-                    "assignment_type": "dhcp",
-                    "status": "active"
-                }]
-            }
-        
-        elif tool_name == "ping_test":
-            return {
-                "success": True,
-                "status": "healthy",
-                "statistics": {
-                    "packet_loss_percent": 0.0,
-                    "avg_latency_ms": 22.5
-                }
-            }
-        
-        elif tool_name == "check_area_outages":
-            return {
-                "success": True,
-                "outages": [],
-                "message": "Nėra gedimų rajone"
-            }
-        
-        else:
-            return {"success": False, "error": "unknown_tool"}
     
     def _log_tool_call(
         self,
@@ -322,7 +292,8 @@ class MCPService:
             "success_rate": (self.total_calls - self.failed_calls) / self.total_calls if self.total_calls > 0 else 0,
             "crm_calls": crm_calls,
             "network_calls": network_calls,
-            "recent_calls": len(self.tool_calls)
+            "recent_calls": len(self.tool_calls),
+            "is_initialized": self.is_initialized
         }
     
     def get_recent_calls(self, limit: int = 10) -> List[Dict[str, Any]]:
@@ -350,25 +321,27 @@ _mcp_service: Optional[MCPService] = None
 
 
 def get_mcp_service(
-    crm_server_url: Optional[str] = None,
-    network_server_url: Optional[str] = None
+    crm_server_path: Optional[str] = None,
+    network_server_path: Optional[str] = None
 ) -> MCPService:
     """
     Get or create MCPService singleton instance.
     
+    Note: You must call await mcp_service.initialize() before using.
+    
     Args:
-        crm_server_url: CRM server URL (only used on first call)
-        network_server_url: Network server URL (only used on first call)
+        crm_server_path: CRM server path (only used on first call)
+        network_server_path: Network server path (only used on first call)
         
     Returns:
-        MCPService instance
+        MCPService instance (not yet initialized)
     """
     global _mcp_service
     
     if _mcp_service is None:
         _mcp_service = MCPService(
-            crm_server_url=crm_server_url,
-            network_server_url=network_server_url
+            crm_server_path=crm_server_path,
+            network_server_path=network_server_path
         )
     
     return _mcp_service
@@ -380,34 +353,49 @@ if __name__ == "__main__":
     
     async def test_mcp():
         """Test MCP service."""
+        print("Creating MCP service...")
         mcp = MCPService()
         
-        # Test CRM tool
-        print("Testing CRM tool...")
-        result = await mcp.call_crm_tool("lookup_customer_by_address", {
-            "city": "Šiauliai",
-            "street": "Tilžės g.",
-            "house_number": "60"
-        })
-        print(f"Result: {result}")
-        
-        # Test Network tool
-        print("\nTesting Network tool...")
-        result = await mcp.call_network_tool("check_port_status", {
-            "customer_id": "CUST001"
-        })
-        print(f"Result: {result}")
-        
-        # Statistics
-        print("\nStatistics:")
-        stats = mcp.get_statistics()
-        for key, value in stats.items():
-            print(f"  {key}: {value}")
-        
-        # Recent calls
-        print("\nRecent calls:")
-        recent = mcp.get_recent_calls(limit=5)
-        for call in recent:
-            print(f"  {call['tool_name']} - Success: {call['success']}")
+        try:
+            print("Initializing connections...")
+            await mcp.initialize()
+            
+            print("\n" + "="*60)
+            print("Testing CRM tool: lookup_customer_by_address")
+            print("="*60)
+            result = await mcp.call_crm_tool("lookup_customer_by_address", {
+                "city": "Šiauliai",
+                "street": "Tilžės g.",
+                "house_number": "60"
+            })
+            print(f"Result: {json.dumps(result, indent=2, ensure_ascii=False)}")
+            
+            print("\n" + "="*60)
+            print("Testing Network tool: check_port_status")
+            print("="*60)
+            result = await mcp.call_network_tool("check_port_status", {
+                "customer_id": "1"
+            })
+            print(f"Result: {json.dumps(result, indent=2, ensure_ascii=False)}")
+            
+            print("\n" + "="*60)
+            print("Statistics")
+            print("="*60)
+            stats = mcp.get_statistics()
+            for key, value in stats.items():
+                print(f"  {key}: {value}")
+            
+            print("\n" + "="*60)
+            print("Recent calls")
+            print("="*60)
+            recent = mcp.get_recent_calls(limit=5)
+            for call in recent:
+                print(f"  {call['timestamp']} - {call['tool_name']} - Success: {call['success']}")
+            
+        finally:
+            # Always close connections
+            print("\nClosing connections...")
+            await mcp.close()
+            print("SUCCESS: Test completed")
     
     asyncio.run(test_mcp())

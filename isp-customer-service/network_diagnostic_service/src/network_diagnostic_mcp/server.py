@@ -18,11 +18,17 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 from database import init_database
-from utils import setup_logger
+from utils.logger import setup_mcp_server_logger
 
-# Setup logger
-logger = setup_logger("network_diagnostic_service", level="INFO")
+# Setup logger with absolute path
+log_dir = Path(__file__).parent.parent.parent / "logs"
+log_dir.mkdir(exist_ok=True)
 
+logger = setup_mcp_server_logger(
+    "network_service",
+    level="INFO",
+    log_file=log_dir / "network_service.log"
+)
 
 class NetworkDiagnosticServer:
     """Network Diagnostic Service MCP Server."""
@@ -35,7 +41,7 @@ class NetworkDiagnosticServer:
             db_path: Path to SQLite database
         """
         self.db = init_database(db_path)
-        self.server = Server("network-diagnostic-service")
+        self.server = Server("network-diagnostic-service")  # ← Correct name!
         
         # Register tools
         self._register_tools()
@@ -298,6 +304,7 @@ async def main():
     
     # Create and run server
     server = create_server(db_path)
+    
     await server.run()
 
 

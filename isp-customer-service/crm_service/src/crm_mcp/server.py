@@ -18,10 +18,33 @@ from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
 from database import init_database
-from utils import setup_logger
+
+
+
 
 # Setup logger
-logger = setup_logger("crm_service", level="INFO")
+
+
+
+from utils.logger import setup_mcp_server_logger
+
+# logger = setup_mcp_server_logger(
+#     "crm_service",
+#     level="INFO",
+#     log_file=Path("logs/crm_service.log")
+# )
+
+# Setup logger with absolute path
+log_dir = Path(__file__).parent.parent.parent / "logs"  # crm_service/logs/
+log_dir.mkdir(exist_ok=True)  # Ensure directory exists
+
+logger = setup_mcp_server_logger(
+    "crm_service",
+    level="INFO",
+    log_file=log_dir / "crm_service.log"
+)
+
+
 
 
 class CRMServer:
@@ -239,14 +262,36 @@ class CRMServer:
     
     async def run(self) -> None:
         """Run the MCP server."""
-        logger.info("Starting CRM Service MCP Server...")
+        logger.info("Starting CRM Service MCP Server... Run ")
+        logger.info("Waiting for stdio streams...")
+    
+     
         
+        # async with stdio_server() as (read_stream, write_stream):
+        #     await self.server.run(
+        #         read_stream,
+        #         write_stream,
+        #         self.server.create_initialization_options()
+        #     )
+        logger.info("Waiting for stdio streams...")
+    
         async with stdio_server() as (read_stream, write_stream):
+            logger.info("Got stdio streams")
+            logger.info("Calling server.run()...")
+
+            original_run = self.server.run
+        
+            logger.info("Server ready to receive requests")
+         
+            
             await self.server.run(
                 read_stream,
                 write_stream,
                 self.server.create_initialization_options()
             )
+            
+            # ADD THIS (won't reach if blocking):
+            logger.info("Server.run() completed")
 
 
 def create_server(db_path: str | Path) -> CRMServer:
