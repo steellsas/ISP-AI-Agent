@@ -196,7 +196,109 @@ def lookup_customer_by_address(db: DatabaseConnection, args: Dict[str, Any]) -> 
             "error": "database_error",
             "message": f"Klaida: {str(e)}"
         }
-
+    
+def lookup_customer_by_phone(db: DatabaseConnection, args: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Lookup customer by phone number using repository pattern.
+    
+    Args:
+        db: Database connection
+        args: Phone number parameter
+        
+    Returns:
+        Customer data or error
+    """
+    from repository.customer_repo import CustomerRepository
+    
+    phone = args.get("phone_number", "").strip()
+    
+    logger.info(f"tools :Looking up customer by phone: {phone}")
+    
+    if not phone:
+        return {
+            "success": False,
+            "error": "missing_phone",
+            "message": "Telefono numeris nebuvo pateiktas",
+            "found": False
+        }
+    
+    try:
+        # Initialize repository
+        repo = CustomerRepository(db)
+        
+        # Find customer by phone
+        customer = repo.find_by_phone(phone)
+        
+        if not customer:
+            return {
+                "success": False,
+                "error": "customer_not_found",
+                "message": f"Klientas su telefonu {phone} nerastas",
+                "found": False
+            }
+        
+        # Get customer details using repository methods
+        customer_id = customer.customer_id
+        addresses = repo.get_addresses(customer_id)
+        services = repo.get_service_plans(customer_id, active_only=True)
+        equipment = repo.get_equipment(customer_id, active_only=True)
+        
+        logger.info(f"Found customer: {customer_id} - {customer.first_name} {customer.last_name}")
+        
+        # Convert to dicts
+        return {
+            "success": True,
+            "found": True,
+            "customer": {
+                "customer_id": customer.customer_id,
+                "first_name": customer.first_name,
+                "last_name": customer.last_name,
+                "phone": customer.phone,
+                "email": customer.email,
+                "status": customer.status
+            },
+            "addresses": [
+                {
+                    "address_id": addr.address_id,
+                    "city": addr.city,
+                    "street": addr.street,
+                    "house_number": addr.house_number,
+                    "apartment_number": addr.apartment_number,
+                    "full_address": addr.full_address,
+                    "is_primary": addr.is_primary
+                }
+                for addr in addresses
+            ],
+            "services": [
+                {
+                    "service_plan_id": svc.plan_id,
+                    "plan_name": svc.plan_name,
+                    "plan_type": svc.service_type,
+                    "speed_mbps": svc.speed_mbps,
+                    "monthly_fee": float(svc.price) if svc.price else None,
+                    "status": svc.status
+                }
+                for svc in services
+            ],
+            "equipment": [
+                {
+                    "equipment_id": eq.equipment_id,
+                    "equipment_type": eq.equipment_type,
+                    "model": eq.model,
+                    "serial_number": eq.serial_number,
+                    "status": eq.status
+                }
+                for eq in equipment
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in lookup_customer_by_phone: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "database_error",
+            "message": f"Klaida ieškant kliento: {str(e)}"
+        }
 
 def get_customer_details(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
     """

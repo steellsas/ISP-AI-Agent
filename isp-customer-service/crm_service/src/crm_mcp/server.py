@@ -28,11 +28,6 @@ from database import init_database
 
 from utils.logger import setup_mcp_server_logger
 
-# logger = setup_mcp_server_logger(
-#     "crm_service",
-#     level="INFO",
-#     log_file=Path("logs/crm_service.log")
-# )
 
 # Setup logger with absolute path
 log_dir = Path(__file__).parent.parent.parent / "logs"  # crm_service/logs/
@@ -72,6 +67,26 @@ class CRMServer:
         @self.server.list_tools()
         async def list_tools() -> List[Tool]:
             return [
+                Tool(
+                    name="lookup_customer_by_phone",
+                    description=(
+                        "Find customer by phone number. "
+                        "Use this when phone number is available from telephony system or user provides it. "
+                        "Returns customer info, addresses, services, and equipment."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "phone_number": {
+                                "type": "string",
+                                "description": "Phone number (e.g., '+37060000000', '860000000')"
+                            }
+                        },
+                        "required": ["phone_number"]
+                    }
+                ),
+
+
                 Tool(
                     name="lookup_customer_by_address",
                     description=(
@@ -204,9 +219,11 @@ class CRMServer:
             """Handle tool calls."""
             
             logger.info(f"Tool called: {name} with args: {arguments}")
-            
+    
             try:
-                if name == "lookup_customer_by_address":
+                if name == "lookup_customer_by_phone":
+                    result = await self._lookup_customer_by_phone(arguments)
+                elif name == "lookup_customer_by_address":  # ← PATAISYTA!
                     result = await self._lookup_customer_by_address(arguments)
                 elif name == "get_customer_details":
                     result = await self._get_customer_details(arguments)
@@ -236,6 +253,11 @@ class CRMServer:
         from .tools.customer_lookup import lookup_customer_by_address
         return lookup_customer_by_address(self.db, args)
     
+    async def _lookup_customer_by_phone(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        """Lookup customer by phone number."""
+        from .tools.customer_lookup import lookup_customer_by_phone
+        return lookup_customer_by_phone(self.db, args)
+        
     async def _get_customer_details(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get detailed customer information."""
         from .tools.customer_lookup import get_customer_details
@@ -265,14 +287,6 @@ class CRMServer:
         logger.info("Starting CRM Service MCP Server... Run ")
         logger.info("Waiting for stdio streams...")
     
-     
-        
-        # async with stdio_server() as (read_stream, write_stream):
-        #     await self.server.run(
-        #         read_stream,
-        #         write_stream,
-        #         self.server.create_initialization_options()
-        #     )
         logger.info("Waiting for stdio streams...")
     
         async with stdio_server() as (read_stream, write_stream):

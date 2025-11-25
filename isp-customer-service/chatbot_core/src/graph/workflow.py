@@ -1,301 +1,173 @@
 """
-LangGraph Workflow Definition
-Main graph structure with nodes and edges for ISP customer service chatbot
+LangGraph Workflow
+Main graph definition with nodes and edges
 """
 
-import sys
-from pathlib import Path
-from typing import Dict, Any
-
-# Add shared to path
-shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
-if str(shared_path) not in sys.path:
-    sys.path.insert(0, str(shared_path))
-
 from langgraph.graph import StateGraph, END
-from utils import get_logger
+from langgraph.checkpoint.memory import MemorySaver
+from typing import Optional
+import logging
 
-from .state import ConversationState
+from .state import ConversationState, create_initial_state
 
-logger = get_logger(__name__)
+# Import nodes
+from .nodes import (
+    greeting_node,
+    problem_capture_node,
+    phone_lookup_background_node,
+    address_confirmation_node,
+    address_selection_node,
+    address_search_node,
+    diagnostics_node,
+    inform_provider_issue_node,
+    closing_node
+)
+
+# Import routers
+from .edges import (
+    problem_capture_router,
+    customer_identification_router,
+    address_confirmation_router,
+    address_search_router,
+    diagnostics_router,
+    closing_router
+)
+
+logger = logging.getLogger(__name__)
 
 
-class ISPSupportWorkflow:
+# ========== GLOBAL MEMORY SAVER ==========
+# CRITICAL: Must be at module level, not inside function!
+# This ensures the same MemorySaver instance is used across all calls
+_memory_saver = MemorySaver()
+
+
+def create_workflow() -> StateGraph:
     """
-    ISP Customer Support Workflow using LangGraph.
-    
-    Workflow steps:
-    1. Greeting - Welcome customer
-    2. Customer Identification - Find customer by address
-    3. Problem Identification - Understand the issue
-    4. Diagnostics - Run network diagnostics
-    5. Troubleshooting - Guide customer through fixes
-    6. Ticket Registration - Create ticket if needed
-    7. Resolution - End conversation
-    """
-    
-    def __init__(self):
-        """Initialize workflow."""
-        self.graph = None
-        self._build_graph()
-        logger.info("ISP Support Workflow initialized")
-    
-    def _build_graph(self) -> None:
-        """Build the LangGraph workflow."""
-        
-        # Create state graph
-        workflow = StateGraph(ConversationState)
-        
-        # Import nodes (will create these next)
-        from .nodes.greeting import greeting_node
-        from .nodes.customer_identification import customer_identification_node
-        from .nodes.problem_identification import problem_identification_node
-        from .nodes.diagnostics import diagnostics_node
-        from .nodes.troubleshooting import troubleshooting_node
-        from .nodes.ticket_registration import ticket_registration_node
-        from .nodes.resolution import resolution_node
-        
-        # Add nodes
-        workflow.add_node("greeting", greeting_node)
-        workflow.add_node("customer_identification", customer_identification_node)
-        workflow.add_node("problem_identification", problem_identification_node)
-        workflow.add_node("diagnostics", diagnostics_node)
-        workflow.add_node("troubleshooting", troubleshooting_node)
-        workflow.add_node("ticket_registration", ticket_registration_node)
-        workflow.add_node("resolution", resolution_node)
-        
-        # Set entry point
-        workflow.set_entry_point("greeting")
-        
-        # Add edges with conditional routing
-        
-        # From greeting -> customer_identification
-        workflow.add_edge("greeting", "customer_identification")
-        
-        # From customer_identification -> problem_identification or END
-        workflow.add_conditional_edges(
-            "customer_identification",
-            self._route_after_customer_identification,
-            {
-                "problem_identification": "problem_identification",
-                "end": END
-            }
-        )
-        
-        # From problem_identification -> diagnostics
-        workflow.add_conditional_edges(
-            "problem_identification",
-            self._route_after_problem_identification,
-            {
-                "diagnostics": "diagnostics",
-                "troubleshooting": "troubleshooting",
-                "end": END
-            }
-        )
-        
-        # From diagnostics -> troubleshooting
-        workflow.add_edge("diagnostics", "troubleshooting")
-        
-        # From troubleshooting -> ticket_registration or resolution
-        workflow.add_conditional_edges(
-            "troubleshooting",
-            self._route_after_troubleshooting,
-            {
-                "ticket_registration": "ticket_registration",
-                "resolution": "resolution",
-                "diagnostics": "diagnostics",  # Re-run diagnostics if needed
-            }
-        )
-        
-        # From ticket_registration -> resolution
-        workflow.add_edge("ticket_registration", "resolution")
-        
-        # From resolution -> END
-        workflow.add_edge("resolution", END)
-        
-        # Compile graph
-        self.graph = workflow.compile()
-        logger.info("Workflow graph compiled successfully")
-    
-    def _route_after_customer_identification(
-        self,
-        state: ConversationState
-    ) -> str:
-        """
-        Route after customer identification.
-        
-        Args:
-            state: Current state
-            
-        Returns:
-            Next node name
-        """
-        if state["customer_identified"]:
-            return "problem_identification"
-        elif state["conversation_ended"]:
-            return "end"
-        else:
-            # Stay in customer_identification if not found
-            return "problem_identification"  # Still proceed but mark as unidentified
-    
-    def _route_after_problem_identification(
-        self,
-        state: ConversationState
-    ) -> str:
-        """
-        Route after problem identification.
-        
-        Args:
-            state: Current state
-            
-        Returns:
-            Next node name
-        """
-        if state["conversation_ended"]:
-            return "end"
-        
-        if state["problem_identified"]:
-            problem_type = state["problem"].get("problem_type")
-            
-            # For network issues, run diagnostics
-            if problem_type in ["internet", "tv"]:
-                return "diagnostics"
-            else:
-                # For other issues, go straight to troubleshooting
-                return "troubleshooting"
-        
-        return "troubleshooting"
-    
-    def _route_after_troubleshooting(
-        self,
-        state: ConversationState
-    ) -> str:
-        """
-        Route after troubleshooting.
-        
-        Args:
-            state: Current state
-            
-        Returns:
-            Next node name
-        """
-        # If problem resolved, go to resolution
-        if state["troubleshooting"].get("resolved", False):
-            return "resolution"
-        
-        # If requires escalation or max attempts reached, create ticket
-        if state["requires_escalation"]:
-            return "ticket_registration"
-        
-        # If customer wants to try more troubleshooting
-        next_action = state.get("next_action")
-        if next_action == "retry_diagnostics":
-            return "diagnostics"
-        elif next_action == "create_ticket":
-            return "ticket_registration"
-        
-        # Default: create ticket if not resolved
-        return "ticket_registration"
-    
-    async def run(
-        self,
-        initial_state: ConversationState,
-        config: Dict[str, Any] = None
-    ) -> ConversationState:
-        """
-        Run the workflow.
-        
-        Args:
-            initial_state: Initial conversation state
-            config: Optional configuration
-            
-        Returns:
-            Final state
-        """
-        logger.info(f"Starting workflow for conversation {initial_state['conversation_id']}")
-        
-        try:
-            # Run graph
-            final_state = await self.graph.ainvoke(
-                initial_state,
-                config=config or {}
-            )
-            
-            logger.info(f"Workflow completed for conversation {initial_state['conversation_id']}")
-            return final_state
-            
-        except Exception as e:
-            logger.error(f"Error in workflow: {e}", exc_info=True)
-            raise
-    
-    def stream(
-        self,
-        initial_state: ConversationState,
-        config: Dict[str, Any] = None
-    ):
-        """
-        Stream workflow execution (for real-time UI updates).
-        
-        Args:
-            initial_state: Initial conversation state
-            config: Optional configuration
-            
-        Yields:
-            State updates
-        """
-        logger.info(f"Streaming workflow for conversation {initial_state['conversation_id']}")
-        
-        try:
-            for state_update in self.graph.stream(
-                initial_state,
-                config=config or {}
-            ):
-                yield state_update
-                
-        except Exception as e:
-            logger.error(f"Error in workflow stream: {e}", exc_info=True)
-            raise
-    
-    def get_graph_visualization(self) -> str:
-        """
-        Get Mermaid diagram of the workflow.
-        
-        Returns:
-            Mermaid diagram string
-        """
-        return self.graph.get_graph().draw_mermaid()
-
-
-def create_workflow() -> ISPSupportWorkflow:
-    """
-    Create and return ISP Support Workflow instance.
+    Create the ISP customer service chatbot workflow graph.
     
     Returns:
-        ISPSupportWorkflow instance
+        Compiled StateGraph with checkpointing
     """
-    return ISPSupportWorkflow()
+    logger.info("Creating workflow graph...")
+    
+    # Initialize graph with state schema
+    workflow = StateGraph(ConversationState)
+    
+    # ========== ADD NODES ==========
+    logger.info("Adding nodes...")
+    
+    workflow.add_node("greeting", greeting_node)
+    workflow.add_node("problem_capture", problem_capture_node)
+    workflow.add_node("phone_lookup_background", phone_lookup_background_node)
+    workflow.add_node("address_confirmation", address_confirmation_node)
+    workflow.add_node("address_selection", address_selection_node)
+    workflow.add_node("address_search", address_search_node)
+    workflow.add_node("diagnostics", diagnostics_node)
+    workflow.add_node("inform_provider_issue", inform_provider_issue_node)
+    workflow.add_node("closing", closing_node)
+    
+    logger.info("Added 9 nodes")
+    
+    # ========== SET ENTRY POINT ==========
+    workflow.set_entry_point("greeting")
+    logger.info("Entry point set: greeting")
+    
+    # ========== ADD EDGES ==========
+    logger.info("Adding edges...")
+
+    # Simple edges
+    workflow.add_edge("greeting", "problem_capture")
+    workflow.add_edge("inform_provider_issue", "closing")
+    workflow.add_edge("address_selection", "diagnostics")
+
+    # Conditional edges
+    workflow.add_conditional_edges(
+        "problem_capture",
+        problem_capture_router,
+        {
+            "phone_lookup_background": "phone_lookup_background",
+            END: END
+        }
+    )
+
+    workflow.add_conditional_edges(
+        "phone_lookup_background",
+        customer_identification_router,
+        {
+            "address_confirmation": "address_confirmation",
+            "address_selection": "address_selection",
+            "address_search": "address_search"
+        }
+    )
+
+    workflow.add_conditional_edges(
+        "address_confirmation",
+        address_confirmation_router,
+        {
+            "diagnostics": "diagnostics",
+            "address_search": "address_search"
+        }
+    )
+
+    workflow.add_conditional_edges(
+        "address_search",
+        address_search_router,
+        {
+            "diagnostics": "diagnostics",
+            "closing": "closing"
+        }
+    )
+
+    workflow.add_conditional_edges(
+        "diagnostics",
+        diagnostics_router,
+        {
+            "inform_provider_issue": "inform_provider_issue",
+            "troubleshooting": "closing",
+            "closing": "closing"
+        }
+    )
+
+    workflow.add_conditional_edges(
+        "closing",
+        closing_router,
+        {
+            "problem_capture": "problem_capture",
+            "__end__": END
+        }
+    )
+
+    logger.info("Added all edges")
+    
+    # ========== COMPILE WITH GLOBAL CHECKPOINTER ==========
+    logger.info("Compiling graph with global checkpointer...")
+    
+    # Use GLOBAL memory saver (defined at module level)
+    compiled = workflow.compile(checkpointer=_memory_saver)
+    
+    logger.info("✅ Workflow compiled successfully with MemorySaver")
+    
+    return compiled
 
 
-# Example usage
-if __name__ == "__main__":
-    import asyncio
-    from .state import create_initial_state
-    
-    async def test_workflow():
-        """Test workflow creation."""
-        workflow = create_workflow()
-        print("✅ Workflow created successfully")
-        
-        # Print graph structure
-        print("\nWorkflow Graph Structure:")
-        print(workflow.get_graph_visualization())
-        
-        # Create test state
-        test_state = create_initial_state(
-            conversation_id="test-123",
-            language="lt"
-        )
-        
-        print(f"\n✅ Initial state created: {test_state['conversation_id']}")
-    
-    asyncio.run(test_workflow())
+# ========== GLOBAL APP INSTANCE ==========
+# Create compiled app once at module load (singleton pattern)
+try:
+    app = create_workflow()
+    logger.info("Global workflow app created")
+except Exception as e:
+    logger.error(f"Failed to create workflow: {e}", exc_info=True)
+    app = None
+
+
+def get_workflow() -> StateGraph:
+    """Get the compiled workflow app."""
+    if app is None:
+        raise RuntimeError("Workflow not initialized. Check logs for errors.")
+    return app
+
+
+def get_memory_saver() -> MemorySaver:
+    """Get the global memory saver for debugging."""
+    return _memory_saver

@@ -1,167 +1,99 @@
+# """
+# Greeting Node
+# First interaction - welcomes the customer (no wait)
+# """
+
+# from typing import Dict, Any
+# from ..state import ConversationState, add_message
+# from ...services.llm_service import get_llm_service
+# from ...config.old.prompts import GREETING_PROMPT, format_prompt
+
+
+# async def greeting_node_async(state: ConversationState) -> Dict[str, Any]:
+#     """
+#     Welcome the customer and initiate conversation.
+    
+#     This node generates greeting and immediately proceeds to next node.
+#     Does NOT wait for user input.
+    
+#     Args:
+#         state: Current conversation state
+        
+#     Returns:
+#         Updated state with greeting message
+#     """
+    
+#     # Initialize LLM service (use singleton getter)
+#     llm = get_llm_service()
+    
+#     # Prepare system prompt
+#     system_prompt = format_prompt(
+#         GREETING_PROMPT,
+#         language=state["language"]
+#     )
+    
+#     # Generate greeting
+#     greeting_message = await llm.generate(
+#         system_prompt=system_prompt,
+#         messages=[],  # Empty for greeting
+#         temperature=0.7,
+#         max_tokens=150
+#     )
+    
+#     # Update state
+#     state = add_message(
+#         state=state,
+#         role="assistant",
+#         content=greeting_message,
+#         node="greeting"
+#     )
+    
+#     # Set current node but DO NOT WAIT
+#     state["current_node"] = "greeting"
+#     state["waiting_for_user_input"] = False  # ← CHANGED: Ne-pause
+    
+#     return {
+#         "messages": state["messages"],
+#         "current_node": state["current_node"],
+#         "waiting_for_user_input": False  # ← CRITICAL: Proceed immediately
+#     }
+
+
 """
-Greeting Node
-Welcome the customer and set up the conversation
+Greeting Node - First contact with customer
+
+Returns static greeting from config. No LLM call needed.
 """
 
-import sys
-from pathlib import Path
-
-# Add shared to path
-shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
-if str(shared_path) not in sys.path:
-    sys.path.insert(0, str(shared_path))
-
-from utils import get_logger
-from ..state import ConversationState, add_message
-
-logger = get_logger(__name__)
+from src.config.config import load_config, get_greeting
+from src.graph.state import add_message
 
 
-# Greeting messages by language
-GREETINGS = {
-    "lt": """Sveiki! 👋
-
-Aš esu ISP pagalbos asistentas. Padėsiu išspręsti Jūsų interneto ar televizijos problemas 22.
-
-Norėdamas pradėti, man reikės kelių dalykų:
-• Jūsų adreso (miestas, gatvė, namo numeris)
-• Trumpo problemos aprašymo
-
-Kaip galiu Jums padėti šiandien?""",
-    
-    "en": """Hello! 👋
-
-I'm the ISP support assistant. I'll help you resolve your internet or TV issues.
-
-To get started, I'll need:
-• Your address (city, street, house number)
-• A brief description of the problem
-
-How can I help you today?"""
-}
-
-
-def greeting_node(state: ConversationState) -> ConversationState:
+def greeting_node(state) -> dict:
     """
-    Greeting node - Welcome customer and explain what information is needed.
+    Greeting node - pasisveikina su klientu.
     
-    This is the entry point of the workflow. It:
-    1. Greets the customer in their language
-    2. Explains what information is needed
-    3. Sets up the initial conversation state
+    Tai pirmas node workflow'e. Grąžina statinį tekstą iš config.
+    Jokio LLM call - minimali latency.
     
     Args:
-        state: Current conversation state
+        state: Current conversation state (Pydantic object)
         
     Returns:
-        Updated state with greeting message
+        State update with greeting message
     """
-    logger.info(f"[Greeting] Starting conversation {state['conversation_id']}")
+    # Load config and get greeting
+    config = load_config()
+    greeting_text = get_greeting(config)
     
-    try:
-        # Get greeting message in appropriate language
-        language = state.get("language", "lt")
-        greeting_message = GREETINGS.get(language, GREETINGS["lt"])
-        
-        # Add greeting to conversation
-        state = add_message(state, "assistant", greeting_message)
-        
-        # Update current node
-        # state["current_node"] = "greeting"
-        state["current_node"] = "customer_identification"
-        
-        # Log metadata
-        state["metadata"]["greeting_sent"] = True
-        state["metadata"]["greeting_timestamp"] = state["session_start"]
-        
-        logger.info(f"[Greeting] Greeting sent in {language}")
-        
-        return state
-        
-    except Exception as e:
-        logger.error(f"[Greeting] Error: {e}", exc_info=True)
-        
-        # Fallback greeting in case of error
-        fallback_message = "Sveiki! Kaip galiu Jums padėti?"
-        state = add_message(state, "assistant", fallback_message)
-        state["current_node"] = "greeting"
-        
-        return state
-
-
-def create_personalized_greeting(
-    state: ConversationState,
-    customer_name: str = None
-) -> str:
-    """
-    Create personalized greeting if customer is returning.
+    # Create message
+    message = add_message(
+        role="assistant",
+        content=greeting_text,
+        node="greeting"
+    )
     
-    Args:
-        state: Current conversation state
-        customer_name: Customer's first name (optional)
-        
-    Returns:
-        Personalized greeting message
-    """
-    language = state.get("language", "lt")
-    
-    if customer_name:
-        if language == "lt":
-            return f"""Sveiki, {customer_name}! 👋
-
-Smagu Jus vėl matyti. Kaip galiu padėti šiandien?"""
-        else:
-            return f"""Hello, {customer_name}! 👋
-
-Good to see you again. How can I help you today?"""
-    else:
-        return GREETINGS.get(language, GREETINGS["lt"])
-
-
-def get_greeting_with_context(
-    state: ConversationState,
-    time_of_day: str = None
-) -> str:
-    """
-    Get greeting with time-of-day context.
-    
-    Args:
-        state: Current conversation state
-        time_of_day: "morning", "afternoon", "evening" (optional)
-        
-    Returns:
-        Contextual greeting
-    """
-    language = state.get("language", "lt")
-    
-    # Time-based greetings
-    time_greetings = {
-        "lt": {
-            "morning": "Labas rytas! ☀️",
-            "afternoon": "Laba diena! 👋",
-            "evening": "Labas vakaras! 🌙"
-        },
-        "en": {
-            "morning": "Good morning! ☀️",
-            "afternoon": "Good afternoon! 👋",
-            "evening": "Good evening! 🌙"
-        }
+    return {
+        "messages": [message],
+        "current_node": "greeting"
     }
-    
-    if time_of_day and time_of_day in time_greetings.get(language, {}):
-        greeting_start = time_greetings[language][time_of_day]
-    else:
-        greeting_start = "Sveiki! 👋" if language == "lt" else "Hello! 👋"
-    
-    if language == "lt":
-        return f"""{greeting_start}
-
-Aš esu ISP pagalbos asistentas. Padėsiu išspręsti Jūsų interneto ar televizijos problemas.
-
-Kaip galiu Jums padėti?"""
-    else:
-        return f"""{greeting_start}
-
-I'm the ISP support assistant. I'll help you resolve your internet or TV issues.
-
-How can I help you today?"""

@@ -1,418 +1,305 @@
+# """
+# Diagnostics Node
+# Runs network diagnostics using MCP network diagnostic service
+# """
+
+# from typing import Dict, Any
+# from ..state import ConversationState, add_tool_call, add_message, add_error
+# from ...services.mcp_service import get_mcp_service
+
+
+# async def diagnostics_node_async(state: ConversationState) -> Dict[str, Any]:
+#     """
+#     Run network diagnostics.
+    
+#     Args:
+#         state: Current conversation state
+        
+#     Returns:
+#         Updated state with diagnostic results
+#     """
+    
+#     customer = state.get("customer", {})
+#     customer_id = customer.get("customer_id")
+#     address = customer.get("address", {})
+    
+#     if not customer_id:
+#         return {
+#             "diagnostics_completed": False,
+#             "last_error": "No customer ID for diagnostics",
+#             "current_node": "diagnostics"
+#         }
+    
+#     # Get MCP service (singleton)
+#     mcp = get_mcp_service()
+    
+#     # Inform user diagnostics starting
+#     state = add_message(
+#         state=state,
+#         role="assistant",
+#         content="Atlieku tinklo diagnostiką...",
+#         node="diagnostics"
+#     )
+    
+#     try:
+#         # Call multiple diagnostic tools
+#         # (Since run_diagnostics doesn't exist yet, we use existing tools)
+        
+#         # 1. Check port status
+#         port_status = await mcp.call_tool(
+#             server_name="network_diagnostic_service",
+#             tool_name="check_port_status",
+#             arguments={"customer_id": customer_id}
+#         )
+        
+#         # 2. Check area outages
+#         area_outages = await mcp.call_tool(
+#             server_name="network_diagnostic_service",
+#             tool_name="check_area_outages",
+#             arguments={
+#                 "city": address.get("city", ""),
+#                 "street": address.get("street", "")
+#             }
+#         )
+        
+#         # 3. Check signal quality
+#         signal_quality = await mcp.call_tool(
+#             server_name="network_diagnostic_service",
+#             tool_name="check_signal_quality",
+#             arguments={"customer_id": customer_id}
+#         )
+        
+#         # Aggregate results
+#         diagnostic_results = {
+#             "port_status": port_status,
+#             "area_outages": area_outages,
+#             "signal_quality": signal_quality,
+#             "success": True
+#         }
+        
+#         # Record tool calls
+#         state = add_tool_call(
+#             state=state,
+#             tool_name="check_port_status",
+#             tool_input={"customer_id": customer_id},
+#             tool_output=port_status,
+#             node="diagnostics"
+#         )
+        
+#         state = add_tool_call(
+#             state=state,
+#             tool_name="check_area_outages",
+#             tool_input={"city": address.get("city"), "street": address.get("street")},
+#             tool_output=area_outages,
+#             node="diagnostics"
+#         )
+        
+#         state = add_tool_call(
+#             state=state,
+#             tool_name="check_signal_quality",
+#             tool_input={"customer_id": customer_id},
+#             tool_output=signal_quality,
+#             node="diagnostics"
+#         )
+        
+#         # Parse and store results
+#         state["diagnostics"]["port_status"] = port_status
+#         state["diagnostics"]["signal_quality"] = signal_quality
+#         state["diagnostics"]["area_outages"] = area_outages
+        
+#         # Determine if provider issue
+#         provider_issue = False
+#         issue_type = None
+#         estimated_fix = None
+        
+#         # Check for area outage
+#         if area_outages.get("success") and area_outages.get("outage_detected"):
+#             provider_issue = True
+#             issue_type = "area_outage"
+#             estimated_fix = area_outages.get("estimated_fix_time", "2 valandos")
+        
+#         # Check for port issues
+#         elif port_status.get("success") and port_status.get("status") == "down":
+#             provider_issue = True
+#             issue_type = "port_down"
+#             estimated_fix = "2 valandos"
+        
+#         # Check for signal issues
+#         elif signal_quality.get("success") and signal_quality.get("quality") == "poor":
+#             provider_issue = True
+#             issue_type = "signal_degradation"
+#             estimated_fix = "1 valanda"
+        
+#         state["diagnostics"]["provider_issue"] = provider_issue
+#         state["diagnostics"]["issue_type"] = issue_type if provider_issue else None
+#         state["diagnostics"]["estimated_fix_time"] = estimated_fix if provider_issue else None
+        
+#         state["diagnostics_completed"] = True
+#         state["current_node"] = "diagnostics"
+        
+#         return {
+#             "diagnostics": state["diagnostics"],
+#             "diagnostics_completed": True,
+#             "tool_calls": state["tool_calls"],
+#             "messages": state["messages"],
+#             "current_node": state["current_node"]
+#         }
+        
+#     except Exception as e:
+#         state = add_error(
+#             state=state,
+#             error_message=f"Diagnostics failed: {str(e)}",
+#             node="diagnostics",
+#             error_type="mcp_tool_error"
+#         )
+        
+#         return {
+#             "diagnostics_completed": False,
+#             "errors": state["errors"],
+#             "last_error": state["last_error"],
+#             "current_node": "diagnostics"
+#         }
+
 """
-Diagnostics Node
-Run network diagnostics using Network Diagnostic MCP service
+Diagnostics Node - Check provider-side issues
 """
 
 import sys
+import logging
 from pathlib import Path
-from typing import Dict, Any, List, Optional
 
-# Add shared to path
-shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
-if str(shared_path) not in sys.path:
-    sys.path.insert(0, str(shared_path))
+# Try shared logger
+try:
+    shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
+    if str(shared_path) not in sys.path:
+        sys.path.insert(0, str(shared_path))
+    from utils import get_logger
+except ImportError:
+    logging.basicConfig(level=logging.INFO)
+    def get_logger(name):
+        return logging.getLogger(name)
 
-from utils import get_logger
-from ..state import ConversationState, add_message, add_diagnostic_result, add_tool_call
+from src.services.network import check_provider_issues
+from src.graph.state import add_message, _get_attr
 
 logger = get_logger(__name__)
 
 
-def diagnostics_node(state: ConversationState) -> ConversationState:
+def diagnostics_node(state) -> dict:
     """
-    Diagnostics node - Run network diagnostics tests.
+    Diagnostics node - checks provider-side issues.
     
-    This node:
-    1. Determines which diagnostics to run based on problem type
-    2. Calls Network Diagnostic MCP service
-    3. Analyzes diagnostic results
-    4. Reports findings to customer
+    Performs:
+    - Area outage check (critical provider issue)
+    - Port status check (informational)
+    - IP assignment check (informational)
     
     Args:
         state: Current conversation state
         
     Returns:
-        Updated state with diagnostic results
+        State update with diagnostic results
     """
-    logger.info(f"[Diagnostics] Starting for conversation {state['conversation_id']}")
+    logger.info("=== Diagnostics Node ===")
+    
+    customer_id = _get_attr(state, "customer_id")
+    
+    if not customer_id:
+        logger.error("No customer_id in state")
+        return {
+            "current_node": "diagnostics",
+            "last_error": "No customer ID"
+        }
+    
+    logger.info(f"Running diagnostics for customer: {customer_id}")
+    
+    # Inform customer
+    checking_message = add_message(
+        role="assistant",
+        content="Vienu momentu, tikrinu ar nėra gedimų jūsų rajone ir jūsų ryšio parametrus...",
+        node="diagnostics"
+    )
     
     try:
-        # Get customer and problem info
-        customer_id = state["customer"].get("customer_id")
-        problem_type = state["problem"].get("problem_type")
-        problem_category = state["problem"].get("category")
+        # Run provider diagnostics
+        results = check_provider_issues(customer_id)
         
-        if not customer_id:
-            logger.warning("[Diagnostics] No customer ID, skipping diagnostics")
-            state = _skip_diagnostics(state)
-            return state
+        logger.info(f"Diagnostics: provider_issue={results['provider_issue']}, "
+                   f"needs_troubleshooting={results['needs_troubleshooting']}")
         
-        # Inform customer diagnostics are starting
-        language = state["language"]
-        state = add_message(state, "assistant", _get_diagnostics_start_message(language))
+        # Build informative message about what was found
+        info_parts = []
         
-        # Run appropriate diagnostics based on problem type
-        diagnostic_tests = _determine_diagnostic_tests(problem_type, problem_category)
-        logger.info(f"[Diagnostics] Running tests: {diagnostic_tests}")
+        for issue in results.get("issues_found", []):
+            if issue["type"] == "area_outage":
+                info_parts.append("• Aptiktas gedimas jūsų rajone")
+            elif issue["type"] == "port_down":
+                info_parts.append("• Tinklo portas neaktyvus")
+            elif issue["type"] == "no_ip":
+                info_parts.append("• Nėra aktyvaus IP priskyrimo")
         
-        # TODO: Call Network Diagnostic MCP service
-        # For now, simulate the diagnostics
-        # This will be replaced with actual MCP client calls:
-        # from ...mcp_client import call_network_tool
-        # results = await call_network_tool(test_name, {"customer_id": customer_id})
-        
-        diagnostic_results = _simulate_diagnostics(customer_id, diagnostic_tests)
-        
-        # Store results in state
-        for test_name, result in diagnostic_results.items():
-            state = add_diagnostic_result(state, test_name, result)
-            # Log tool call
-            state = add_tool_call(state, test_name, {"customer_id": customer_id}, result)
-        
-        # Analyze results
-        analysis = _analyze_diagnostic_results(diagnostic_results, problem_category)
-        state["diagnostics"]["analysis"] = analysis
-        state["diagnostics_completed"] = True
-        
-        # Report findings to customer
-        report = _create_diagnostic_report(diagnostic_results, analysis, language)
-        state = add_message(state, "assistant", report)
-        
-        # Determine if issue is found
-        if analysis["issue_found"]:
-            logger.info(f"[Diagnostics] Issue detected: {analysis['issues']}")
-            state["requires_escalation"] = analysis.get("requires_escalation", False)
+        if info_parts:
+            info_message = add_message(
+                role="assistant",
+                content="Diagnostikos rezultatai:\n" + "\n".join(info_parts),
+                node="diagnostics"
+            )
+            messages = [checking_message, info_message]
         else:
-            logger.info("[Diagnostics] No issues detected in diagnostics")
+            # No issues found
+            ok_message = add_message(
+                role="assistant",
+                content="Tiekėjo pusėje gedimų neaptikta. Bandykime patikrinti jūsų įrangą.",
+                node="diagnostics"
+            )
+            messages = [checking_message, ok_message]
         
-        # state["current_node"] = "diagnostics"
-        # return state
-        state["current_node"] = "troubleshooting"
-        return state            
+        return {
+            "messages": messages,
+            "current_node": "diagnostics",
+            "diagnostics_completed": True,
+            "provider_issue_detected": results["provider_issue"],
+            "needs_troubleshooting": results.get("needs_troubleshooting", False),
+            "diagnostic_results": results,
+        }
         
     except Exception as e:
-        logger.error(f"[Diagnostics] Error: {e}", exc_info=True)
-        state = _handle_diagnostics_error(state)
-        return state
-
-
-def _determine_diagnostic_tests(
-    problem_type: str,
-    problem_category: str
-) -> List[str]:
-    """
-    Determine which diagnostic tests to run.
-    
-    Args:
-        problem_type: Type of problem (internet, tv, etc.)
-        problem_category: Specific category
+        logger.error(f"Diagnostics error: {e}", exc_info=True)
         
+        error_message = add_message(
+            role="assistant",
+            content="Atsiprašau, įvyko klaida tikrinant sistemą. Bandykime spręsti problemą kitais būdais.",
+            node="diagnostics"
+        )
+        
+        return {
+            "messages": [checking_message, error_message],
+            "current_node": "diagnostics",
+            "diagnostics_completed": True,
+            "provider_issue_detected": False,
+            "needs_troubleshooting": True,  # Assume needs troubleshooting
+            "last_error": str(e)
+        }
+
+
+def diagnostics_router(state) -> str:
+    """
+    Route after diagnostics.
+    
+    Logic:
+    - Area outage detected → inform customer (provider issue)
+    - Other issues or unclear → try troubleshooting
+    
     Returns:
-        List of test names to run
+        - "inform_provider_issue" → critical provider problem (area outage)
+        - "troubleshooting" → needs customer-side troubleshooting
     """
-    tests = []
+    provider_issue = _get_attr(state, "provider_issue_detected", False)
     
-    # Common tests for all internet issues
-    if problem_type == "internet":
-        tests.extend([
-            "check_port_status",
-            "check_ip_assignment",
-            "ping_test"
-        ])
-        
-        # Additional tests based on category
-        if problem_category in ["internet_slow", "internet_intermittent"]:
-            tests.append("check_bandwidth_history")
-        
-        # Check for area outages
-        tests.append("check_area_outages")
+    if provider_issue:
+        logger.info("Critical provider issue (area outage) → inform_provider_issue")
+        return "inform_provider_issue"
     
-    # TV-specific tests
-    elif problem_type == "tv":
-        tests.extend([
-            "check_signal_quality",
-            "check_port_status",
-            "check_area_outages"
-        ])
-    
-    # General diagnostics
-    else:
-        tests.extend([
-            "check_port_status",
-            "check_area_outages"
-        ])
-    
-    return tests
-
-
-def _simulate_diagnostics(
-    customer_id: str,
-    tests: List[str]
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Simulate diagnostic tests (temporary until MCP client is integrated).
-    
-    Args:
-        customer_id: Customer ID
-        tests: List of tests to run
-        
-    Returns:
-        Dictionary of test results
-    """
-    results = {}
-    
-    for test in tests:
-        if test == "check_port_status":
-            results[test] = {
-                "success": True,
-                "diagnostics": {
-                    "total_ports": 1,
-                    "ports_up": 1,
-                    "ports_down": 0,
-                    "all_ports_healthy": True
-                },
-                "message": "Visi portai veikia teisingai"
-            }
-        
-        elif test == "check_ip_assignment":
-            results[test] = {
-                "success": True,
-                "active_count": 1,
-                "ip_assignments": [{
-                    "ip_address": "192.168.1.100",
-                    "assignment_type": "dhcp",
-                    "status": "active"
-                }],
-                "message": "IP priskirimas aktyvus"
-            }
-        
-        elif test == "ping_test":
-            results[test] = {
-                "success": True,
-                "status": "healthy",
-                "statistics": {
-                    "packet_loss_percent": 0.0,
-                    "avg_latency_ms": 22.5
-                },
-                "message": "Ryšys normalus"
-            }
-        
-        elif test == "check_bandwidth_history":
-            results[test] = {
-                "success": True,
-                "statistics": {
-                    "download": {"avg_mbps": 285.5, "min_mbps": 250, "max_mbps": 300},
-                    "upload": {"avg_mbps": 95.2, "min_mbps": 90, "max_mbps": 100}
-                },
-                "message": "Greičiai normalūs"
-            }
-        
-        elif test == "check_signal_quality":
-            results[test] = {
-                "success": True,
-                "latest": {
-                    "status": "good",
-                    "signal_strength_dbm": -10,
-                    "snr_db": 35
-                },
-                "message": "Signalas normalus"
-            }
-        
-        elif test == "check_area_outages":
-            results[test] = {
-                "success": True,
-                "outages": [],
-                "message": "Nėra žinomų gedimų rajone"
-            }
-    
-    return results
-
-
-def _analyze_diagnostic_results(
-    results: Dict[str, Dict[str, Any]],
-    problem_category: str
-) -> Dict[str, Any]:
-    """
-    Analyze diagnostic results to identify issues.
-    
-    Args:
-        results: Diagnostic test results
-        problem_category: Problem category
-        
-    Returns:
-        Analysis summary
-    """
-    analysis = {
-        "issue_found": False,
-        "issues": [],
-        "healthy_components": [],
-        "requires_escalation": False,
-        "recommended_actions": []
-    }
-    
-    # Check each diagnostic result
-    for test_name, result in results.items():
-        if not result.get("success"):
-            analysis["issues"].append(f"{test_name}: Test failed")
-            analysis["issue_found"] = True
-            continue
-        
-        # Port status analysis
-        if test_name == "check_port_status":
-            diag = result.get("diagnostics", {})
-            if diag.get("ports_down", 0) > 0:
-                analysis["issues"].append("Port down - tinklo jungtis neaktyvi")
-                analysis["issue_found"] = True
-                analysis["requires_escalation"] = True
-            else:
-                analysis["healthy_components"].append("Tinklo portas")
-        
-        # IP assignment analysis
-        elif test_name == "check_ip_assignment":
-            if result.get("active_count", 0) == 0:
-                analysis["issues"].append("Nėra aktyvaus IP adreso")
-                analysis["issue_found"] = True
-                analysis["recommended_actions"].append("Perkrauti maršrutizatorių")
-            else:
-                analysis["healthy_components"].append("IP priskyrimas")
-        
-        # Ping test analysis
-        elif test_name == "ping_test":
-            stats = result.get("statistics", {})
-            loss = stats.get("packet_loss_percent", 0)
-            latency = stats.get("avg_latency_ms", 0)
-            
-            if loss > 5:
-                analysis["issues"].append(f"Paketų praradimas: {loss}%")
-                analysis["issue_found"] = True
-            if latency > 100:
-                analysis["issues"].append(f"Aukštas ping: {latency}ms")
-                analysis["issue_found"] = True
-            
-            if loss <= 5 and latency <= 100:
-                analysis["healthy_components"].append("Ping testas")
-        
-        # Bandwidth analysis
-        elif test_name == "check_bandwidth_history":
-            stats = result.get("statistics", {})
-            download = stats.get("download", {})
-            avg_download = download.get("avg_mbps", 0)
-            
-            if avg_download < 100:  # Assuming plan is 300 Mbps
-                analysis["issues"].append(f"Žemas greitis: {avg_download} Mbps")
-                analysis["issue_found"] = True
-            else:
-                analysis["healthy_components"].append("Greičio matavimas")
-        
-        # Area outages
-        elif test_name == "check_area_outages":
-            outages = result.get("outages", [])
-            if outages:
-                analysis["issues"].append(f"Gedimas rajone: {len(outages)} gedimų")
-                analysis["issue_found"] = True
-                analysis["requires_escalation"] = True
-            else:
-                analysis["healthy_components"].append("Nėra gedimų rajone")
-    
-    return analysis
-
-
-def _create_diagnostic_report(
-    results: Dict[str, Dict[str, Any]],
-    analysis: Dict[str, Any],
-    language: str
-) -> str:
-    """
-    Create human-readable diagnostic report.
-    
-    Args:
-        results: Diagnostic results
-        analysis: Analysis summary
-        language: Language
-        
-    Returns:
-        Report message
-    """
-    if language == "lt":
-        report = "📊 **Diagnostikos rezultatai:**\n\n"
-        
-        # Healthy components
-        if analysis["healthy_components"]:
-            report += "✅ **Veikia gerai:**\n"
-            for component in analysis["healthy_components"]:
-                report += f"  • {component}\n"
-            report += "\n"
-        
-        # Issues found
-        if analysis["issues"]:
-            report += "⚠️ **Rastos problemos:**\n"
-            for issue in analysis["issues"]:
-                report += f"  • {issue}\n"
-            report += "\n"
-        else:
-            report += "✅ Techniškai viskas atrodo gerai.\n\n"
-        
-        # Recommendations
-        if analysis["recommended_actions"]:
-            report += "💡 **Rekomenduojami veiksmai:**\n"
-            for action in analysis["recommended_actions"]:
-                report += f"  • {action}\n"
-    else:
-        report = "📊 **Diagnostic Results:**\n\n"
-        
-        if analysis["healthy_components"]:
-            report += "✅ **Working properly:**\n"
-            for component in analysis["healthy_components"]:
-                report += f"  • {component}\n"
-            report += "\n"
-        
-        if analysis["issues"]:
-            report += "⚠️ **Issues found:**\n"
-            for issue in analysis["issues"]:
-                report += f"  • {issue}\n"
-            report += "\n"
-        else:
-            report += "✅ Technically everything looks good.\n\n"
-        
-        if analysis["recommended_actions"]:
-            report += "💡 **Recommended actions:**\n"
-            for action in analysis["recommended_actions"]:
-                report += f"  • {action}\n"
-    
-    return report
-
-
-def _get_diagnostics_start_message(language: str) -> str:
-    """Get diagnostics start message."""
-    if language == "lt":
-        return "🔍 Vykdau tinklo diagnostiką... Tai gali užtrukti kelias sekundes."
-    else:
-        return "🔍 Running network diagnostics... This may take a few seconds."
-
-
-def _skip_diagnostics(state: ConversationState) -> ConversationState:
-    """Skip diagnostics when customer not identified."""
-    language = state["language"]
-    
-    if language == "lt":
-        message = "Kadangi neturiu Jūsų kliento duomenų, negaliu atlikti tinklo diagnostikos. Bet galiu pabandyti padėti bendrais patarimais."
-    else:
-        message = "Since I don't have your customer information, I cannot run network diagnostics. But I can try to help with general advice."
-    
-    state = add_message(state, "assistant", message)
-    state["diagnostics_completed"] = True
-    return state
-
-
-def _handle_diagnostics_error(state: ConversationState) -> ConversationState:
-    """Handle diagnostics errors."""
-    language = state["language"]
-    
-    if language == "lt":
-        message = "Atsiprašau, nepavyko atlikti pilnos diagnostikos dėl techninės klaidos. Pabandysiu padėti kitais būdais."
-    else:
-        message = "Sorry, couldn't complete full diagnostics due to a technical error. I'll try to help in other ways."
-    
-    state = add_message(state, "assistant", message)
-    state["diagnostics_completed"] = True
-    return state
+    # No critical provider issue - try troubleshooting
+    logger.info("No critical provider issue → troubleshooting")
+    return "troubleshooting"

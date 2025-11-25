@@ -116,7 +116,7 @@ class CustomMCPClient:
         if not self.initialized:
             raise RuntimeError(f"{self.server_name} client not initialized")
         
-        logger.info(f"Calling {self.server_name} tool: {tool_name}")
+        logger.info(f"Calling {self.server_name} tool 1: {tool_name}")
         
         request = {
             "jsonrpc": "2.0",
@@ -127,9 +127,9 @@ class CustomMCPClient:
                 "arguments": arguments
             }
         }
-        
+    
         response = await self._send_request(request)
-        
+        # logger.info(f"respone {response} ")
         if response and "result" in response:
             # Parse result content
             result = response["result"]
@@ -138,8 +138,10 @@ class CustomMCPClient:
                 if "text" in content:
                     text = content["text"]
                     # Try to parse as JSON
+                    # logger.info(f"respone text {text} ")
                     try:
                         parsed = json.loads(text)
+                        logger.info(f" parsed json 1 {parsed} ")
                         return parsed
                     except json.JSONDecodeError:
                         # Try eval for Python dict strings (fallback)
@@ -201,17 +203,74 @@ class CustomMCPClient:
         self.next_id += 1
         return request_id
     
-    async def close(self):
-        """Close connection and terminate server."""
-        if self.process and self.process.returncode is None:
-            logger.info(f"Closing {self.server_name} server...")
-            self.process.terminate()
-            await self.process.wait()
+    # async def close(self):
+    #     """Close connection and terminate server."""
+    #     if self.process and self.process.returncode is None:
+    #         logger.info(f"Closing {self.server_name} server...")
+    #         self.process.terminate()
+    #         await self.process.wait()
         
-        self.process = None
-        self.initialized = False
-        logger.info(f"✓ {self.server_name} server closed")
+    #     self.process = None
+    #     self.initialized = False
+    #     logger.info(f"✓ {self.server_name} server closed")
 
+    async def close(self):
+        """Close MCP server connection with timeout."""
+        logger.info(f"Closing {self.server_type} server...")
+        
+        try:
+            if self.session:
+                # Close session with timeout
+                import asyncio
+                await asyncio.wait_for(self.session.__aexit__(None, None, None), timeout=2.0)
+                self.session = None
+            
+            if self.read_stream or self.write_stream:
+                # Close streams with timeout
+                if self.write_stream:
+                    try:
+                        await asyncio.wait_for(self.write_stream.aclose(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"{self.server_type}: Write stream close timeout")
+                    except Exception as e:
+                        logger.debug(f"{self.server_type}: Write stream error: {e}")
+                
+                if self.read_stream:
+                    try:
+                        await asyncio.wait_for(self.read_stream.aclose(), timeout=1.0)
+                    except asyncio.TimeoutError:
+                        logger.warning(f"{self.server_type}: Read stream close timeout")
+                    except Exception as e:
+                        logger.debug(f"{self.server_type}: Read stream error: {e}")
+                
+                self.read_stream = None
+                self.write_stream = None
+            
+            if self.process:
+                # Terminate process forcefully if still running
+                if self.process.poll() is None:  # Still running
+                    logger.warning(f"{self.server_type}: Force terminating process...")
+                    self.process.terminate()
+                    
+                    # Wait briefly for graceful shutdown
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.to_thread(self.process.wait),
+                            timeout=1.0
+                        )
+                    except asyncio.TimeoutError:
+                        # Force kill if terminate didn't work
+                        logger.warning(f"{self.server_type}: Force killing process...")
+                        self.process.kill()
+                
+                self.process = None
+            
+            logger.info(f"{self.server_type} server closed successfully")
+            
+        except asyncio.TimeoutError:
+            logger.warning(f"{self.server_type}: Close operation timeout")
+        except Exception as e:
+            logger.error(f"Error closing {self.server_type} server: {e}")
 
 # Example usage
 if __name__ == "__main__":

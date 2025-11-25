@@ -29,12 +29,14 @@ class LLMService:
     - Token counting and cost tracking
     - Retry logic
     - Temperature and parameter control
+    - Structured output generation
+    - Intent classification
     """
     
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-4o-mini",
         temperature: float = 0.7,
         max_tokens: int = 1000
     ):
@@ -260,6 +262,179 @@ class LLMService:
             logger.error(f"Error in async streaming: {e}", exc_info=True)
             raise
     
+    # ========== NEW METHODS FOR GRAPH NODES ==========
+    
+    async def generate(
+        self,
+        system_prompt: str,
+        messages: Optional[List[Dict[str, str]]] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None
+    ) -> str:
+        """
+        Simple generation wrapper (async).
+        
+        This is a convenience method for nodes that need simple text generation.
+        
+        Args:
+            system_prompt: System prompt to guide generation
+            messages: Optional conversation history
+            temperature: Temperature override
+            max_tokens: Max tokens override
+            
+        Returns:
+            Generated text
+        """
+        if messages is None:
+            messages = []
+        
+        return await self.chat_completion_async(
+            messages=messages,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+    
+    async def generate_structured(
+        self,
+        system_prompt: str,
+        user_message: str,
+        response_format: Dict[str, str],
+        temperature: Optional[float] = 0.3
+    ) -> str:
+        """
+        Generate structured JSON response.
+        
+        Forces the LLM to respond with valid JSON matching the specified format.
+        
+        Args:
+            system_prompt: System prompt describing the task
+            user_message: User's message to process
+            response_format: Dictionary describing expected JSON format
+                Example: {"problem_type": "string", "confidence": "float"}
+            temperature: Temperature (lower for more consistent structured output)
+            
+        Returns:
+            JSON string (needs to be parsed with json.loads())
+            
+        Example:
+            >>> response = await llm.generate_structured(
+            ...     system_prompt="Classify the problem",
+            ...     user_message="My internet is down",
+            ...     response_format={
+            ...         "problem_type": "internet|tv|phone",
+            ...         "confidence": "float 0-1"
+            ...     }
+            ... )
+            >>> data = json.loads(response)
+        """
+        # Build format description
+        format_desc = "\n".join([f"- {k}: {v}" for k, v in response_format.items()])
+        
+        full_system_prompt = f"""{system_prompt}
+
+You MUST respond with ONLY valid JSON in this exact format:
+{format_desc}
+
+Rules:
+- Do not include any explanatory text
+- Do not include markdown code blocks
+- Return only the raw JSON object
+- Ensure all JSON is properly formatted"""
+        
+        messages = [{"role": "user", "content": user_message}]
+        
+        response = await self.chat_completion_async(
+            messages=messages,
+            system_prompt=full_system_prompt,
+            temperature=temperature,
+            max_tokens=500
+        )
+        
+        # Clean markdown code blocks if present
+        response = response.strip()
+        if response.startswith("```json"):
+            response = response[7:]
+        elif response.startswith("```"):
+            response = response[3:]
+        if response.endswith("```"):
+            response = response[:-3]
+        
+        return response.strip()
+    
+    async def classify_intent(
+        self,
+        user_message: str,
+        intents: List[str],
+        temperature: Optional[float] = 0.2
+    ) -> str:
+        """
+        Classify user message into one of the given intents.
+        
+        Uses LLM to determine which intent best matches the user's message.
+        
+        Args:
+            user_message: User's message to classify
+            intents: List of possible intent names
+            temperature: Temperature (lower for more deterministic classification)
+            
+        Returns:
+            The most likely intent from the provided list
+            
+        Example:
+            >>> intent = await llm.classify_intent(
+            ...     user_message="Yes, that's correct",
+            ...     intents=["yes", "no", "unclear"]
+            ... )
+            >>> print(intent)  # "yes"
+        """
+        if not intents:
+            logger.warning("No intents provided for classification")
+            return "unclear"
+        
+        intents_str = ", ".join(intents)
+        
+        system_prompt = f"""You are classifying user messages into intents.
+
+Available intents: {intents_str}
+
+Rules:
+- Respond with ONLY the intent name
+- Choose the single best matching intent
+- Do not add any explanation or punctuation
+- If unclear, respond with the first intent in the list"""
+        
+        messages = [{"role": "user", "content": user_message}]
+        
+        try:
+            response = await self.chat_completion_async(
+                messages=messages,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                max_tokens=20
+            )
+            
+            # Clean and normalize
+            response = response.strip().lower()
+            
+            # Find exact or partial match
+            for intent in intents:
+                intent_lower = intent.lower()
+                if intent_lower == response or intent_lower in response or response in intent_lower:
+                    logger.info(f"Classified intent: {intent} (from: {user_message[:50]}...)")
+                    return intent
+            
+            # No match found - default to first intent
+            logger.warning(f"No intent match found for: {user_message[:50]}... Defaulting to: {intents[0]}")
+            return intents[0]
+            
+        except Exception as e:
+            logger.error(f"Error in intent classification: {e}", exc_info=True)
+            # Return first intent as fallback
+            return intents[0]
+    
+    # ========== EXISTING HELPER METHODS ==========
+    
     def analyze_sentiment(self, text: str) -> Dict[str, Any]:
         """
         Analyze sentiment of text.
@@ -349,7 +524,7 @@ _llm_service: Optional[LLMService] = None
 
 def get_llm_service(
     api_key: Optional[str] = None,
-    model: str = "gpt-4o",
+    model: str = "gpt-4o-mini",
     temperature: float = 0.7,
     max_tokens: int = 1000
 ) -> LLMService:
@@ -376,39 +551,3 @@ def get_llm_service(
         )
     
     return _llm_service
-
-
-# Example usage
-if __name__ == "__main__":
-    import asyncio
-    
-    # Test LLM service
-    llm = LLMService(api_key=os.getenv("OPENAI_API_KEY"))
-    
-    # Test sync completion
-    print("Testing sync completion...")
-    messages = [
-        {"role": "user", "content": "Sveiki! Kaip sekasi?"}
-    ]
-    response = llm.chat_completion(messages)
-    print(f"Response: {response}")
-    
-    # Test async completion
-    async def test_async():
-        print("\nTesting async completion...")
-        response = await llm.chat_completion_async(messages)
-        print(f"Async response: {response}")
-    
-    asyncio.run(test_async())
-    
-    # Test streaming
-    print("\nTesting streaming...")
-    for chunk in llm.chat_completion_stream(messages):
-        print(chunk, end="", flush=True)
-    print()
-    
-    # Statistics
-    print("\nStatistics:")
-    stats = llm.get_statistics()
-    for key, value in stats.items():
-        print(f"  {key}: {value}")

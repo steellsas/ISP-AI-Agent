@@ -55,13 +55,14 @@ class Config:
         )
         
         # OpenAI API
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
-        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "nera")
+        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         
         # LangSmith (optional)
         self.langsmith_api_key = os.getenv("LANGCHAIN_API_KEY", "")
         self.langsmith_tracing = os.getenv("LANGCHAIN_TRACING_V2", "false").lower() == "true"
         self.langsmith_project = os.getenv("LANGCHAIN_PROJECT", "isp-customer-service")
+        self.langsmith_endpoint = os.getenv("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
         
         # Logging
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
@@ -123,6 +124,82 @@ class Config:
             return False
         
         return True
+    
+    def apply_to_environment(self) -> None:
+        """
+        Apply configuration to os.environ for LangSmith auto-detection.
+        
+        LangSmith automatically reads from os.environ, so we set them here.
+        """
+        # Set LangSmith env vars
+        if self.langsmith_tracing:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        else:
+            os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        
+        if self.langsmith_api_key:
+            os.environ["LANGCHAIN_API_KEY"] = self.langsmith_api_key
+        
+        if self.langsmith_project:
+            os.environ["LANGCHAIN_PROJECT"] = self.langsmith_project
+        
+        if self.langsmith_endpoint:
+            os.environ["LANGCHAIN_ENDPOINT"] = self.langsmith_endpoint
+    
+    def print_status(self, verbose: bool = False) -> None:
+        """
+        Print configuration status.
+        
+        Args:
+            verbose: Show detailed configuration
+        """
+        print("\n" + "=" * 60)
+        print("📋 CONFIGURATION STATUS")
+        print("=" * 60)
+        
+        # OpenAI
+        if self.openai_api_key:
+            key_preview = self.openai_api_key[:12] + "..." if len(self.openai_api_key) > 12 else "***"
+            print(f"✅ OpenAI API Key: {key_preview}")
+            print(f"   Model: {self.openai_model}")
+        else:
+            print("❌ OpenAI API Key: Not set")
+        
+        # LangSmith
+        print(f"\n{'✅' if self.langsmith_tracing else '⚠️ '} LangSmith Tracing: {self.langsmith_tracing}")
+        if self.langsmith_api_key:
+            key_preview = self.langsmith_api_key[:12] + "..." if len(self.langsmith_api_key) > 12 else "***"
+            print(f"✅ LangSmith API Key: {key_preview}")
+            print(f"   Project: {self.langsmith_project}")
+            print(f"   Endpoint: {self.langsmith_endpoint}")
+        else:
+            if self.langsmith_tracing:
+                print("⚠️  LangSmith API Key: Not set (tracing enabled but no key)")
+            else:
+                print("ℹ️  LangSmith API Key: Not set (tracing disabled)")
+        
+        # Database
+        db_path = Path(self.database_path)
+        if db_path.exists():
+            print(f"\n✅ Database: {self.database_path}")
+        else:
+            print(f"\n❌ Database: {self.database_path} (not found)")
+        
+        # Verbose details
+        if verbose:
+            print("\n📊 Full Configuration:")
+            for key, value in self.to_dict().items():
+                # Mask sensitive data
+                if "key" in key.lower() or "api" in key.lower():
+                    if value and len(str(value)) > 12:
+                        display_value = str(value)[:12] + "..."
+                    else:
+                        display_value = "***" if value else "Not set"
+                else:
+                    display_value = value
+                print(f"   {key}: {display_value}")
+        
+        print("=" * 60 + "\n")
 
 
 # Global configuration instance
@@ -144,5 +221,6 @@ def get_config(reload: bool = False) -> Config:
     if _config is None or reload:
         load_env()
         _config = Config()
+        _config.apply_to_environment()  # Apply to os.environ for LangSmith
     
     return _config

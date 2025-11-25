@@ -1,349 +1,210 @@
 """
-Conversation State Schema
-Defines the structure of conversation state used throughout the LangGraph workflow
+Conversation State - Pydantic schema for LangGraph workflow
+
+Flat structure, minimal fields, easy to debug.
 """
 
-from typing import TypedDict, Optional, List, Dict, Any, Literal
+from typing import Annotated, Literal
+from pydantic import BaseModel, Field
 from datetime import datetime
+import operator
 
 
-class CustomerInfo(TypedDict, total=False):
-    """Customer identification information."""
-    customer_id: Optional[str]
-    first_name: Optional[str]
-    last_name: Optional[str]
-    phone: Optional[str]
-    email: Optional[str]
-    address: Optional[Dict[str, Any]]
-    services: Optional[List[Dict[str, Any]]]
-    equipment: Optional[List[Dict[str, Any]]]
-
-
-class ProblemInfo(TypedDict, total=False):
-    """Problem identification information."""
-    problem_type: Optional[Literal["internet", "tv", "phone", "other"]]
-    category: Optional[str]  # e.g., "no_connection", "slow_speed", "intermittent"
-    description: Optional[str]
-    symptoms: Optional[List[str]]
-    duration: Optional[str]
-    affected_devices: Optional[List[str]]
-
-
-class DiagnosticResults(TypedDict, total=False):
-    """Network diagnostic results."""
-    port_status: Optional[Dict[str, Any]]
-    ip_assignment: Optional[Dict[str, Any]]
-    bandwidth_history: Optional[Dict[str, Any]]
-    signal_quality: Optional[Dict[str, Any]]
-    ping_test: Optional[Dict[str, Any]]
-    area_outages: Optional[Dict[str, Any]]
-    switch_info: Optional[Dict[str, Any]]
-
-
-class TroubleshootingInfo(TypedDict, total=False):
-    """Troubleshooting steps and results."""
-    steps_taken: List[str]
-    current_step: Optional[str]
-    instructions_given: List[str]
-    customer_actions: List[str]
-    resolved: bool
-
-
-class TicketInfo(TypedDict, total=False):
-    """Support ticket information."""
-    ticket_id: Optional[str]
-    ticket_type: Optional[str]
-    priority: Optional[str]
-    summary: Optional[str]
-    details: Optional[str]
-    created: bool
-
-
-class ConversationState(TypedDict):
+class State(BaseModel):
     """
-    Main conversation state that flows through the LangGraph workflow.
+    Flat conversation state for ISP support agent.
     
-    This state is updated by each node and contains all information
-    needed to handle the customer support interaction.
+    Design principles:
+    - Flat structure (no deep nesting)
+    - Minimal fields (add when needed)
+    - Pydantic validation
+    - Compatible with LangGraph
     """
     
-    # Conversation metadata
+    # === Conversation ===
     conversation_id: str
-    session_start: str  # ISO timestamp
-    language: Literal["lt", "en"]
-    current_node: str
+    started_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     
-    # Messages history
-    messages: List[Dict[str, str]]  # role, content pairs
+    # Messages - simple dicts with reducer for LangGraph
+    messages: Annotated[list[dict], operator.add] = Field(default_factory=list)
     
-    # Customer information
-    customer: CustomerInfo
-    customer_identified: bool
+    # Current position in workflow
+    current_node: str = "start"
     
-    # Problem information
-    problem: ProblemInfo
-    problem_identified: bool
+    # === Customer (from phone lookup) ===
+    phone_number: str  # Ateina su skambučiu - privalomas
     
-    # Diagnostic results
-    diagnostics: DiagnosticResults
-    diagnostics_completed: bool
+    # DB lookup rezultatai
+    customer_id: str | None = None
+    customer_name: str | None = None
+    customer_addresses: list[dict] = Field(default_factory=list)  # Gali būti keli
     
+    # Po adreso patvirtinimo
+    confirmed_address_id: str | None = None
+    confirmed_address: str | None = None  # Žmogui skaitomas adresas
+    
+    # === Problem ===
+    problem_type: Literal["internet", "tv", "phone", "other"] | None = None
+    problem_description: str | None = None
+    
+    # === Workflow control ===
+    needs_address_confirmation: bool = False
+    needs_address_selection: bool = False  # Kai keli adresai
+    address_confirmed: bool | None = None
+    address_search_successful: bool | None = None
+
+    # Diagnostics
+    diagnostics_completed: bool = False
+    provider_issue_detected: bool = False  # Only CRITICAL issues (outages)
+    needs_troubleshooting: bool = False
+    provider_issue_informed: bool = False
+    diagnostic_results: dict = Field(default_factory=dict)
+
     # Troubleshooting
-    troubleshooting: TroubleshootingInfo
-    troubleshooting_attempted: bool
+    troubleshooting_scenario_id: str | None = None
+    troubleshooting_current_step: int = 1
+    troubleshooting_completed_steps: list = Field(default_factory=list)
+    troubleshooting_needs_escalation: bool = False
+    troubleshooting_escalation_reason: str | None = None
+    troubleshooting_failed: bool = False
+            
+ 
+    
+    # # Troubleshooting tracking
+    # troubleshooting_attempts: int = 0
+    # max_troubleshooting_attempts: int = 3
+    # problem_resolved: bool = False
     
     # Ticket
-    ticket: TicketInfo
-    ticket_created: bool
+    ticket_created: bool = False
+    ticket_id: str | None = None
     
-    # Workflow control
-    next_action: Optional[str]  # What to do next
-    requires_escalation: bool
-    conversation_ended: bool
+    # End state
+    conversation_ended: bool = False
     
-    # RAG context
-    retrieved_documents: List[Dict[str, Any]]
+    # Error tracking
+    last_error: str | None = None
+    llm_error_count: int = 0  # Track LLM failures to prevent infinite loops
     
-    # MCP tool calls history
-    tool_calls: List[Dict[str, Any]]
-    
-    # Additional context
-    metadata: Dict[str, Any]
+    class Config:
+        """Pydantic config."""
+        extra = "allow"  # Leidžia pridėti papildomus laukus jei reikia
 
 
-def create_initial_state(
-    conversation_id: str,
-    language: str = "lt"
-) -> ConversationState:
+def create_initial_state(conversation_id: str, phone_number: str) -> dict:
     """
-    Create initial conversation state.
+    Create initial state dict for LangGraph.
     
     Args:
         conversation_id: Unique conversation ID
-        language: Conversation language (lt or en)
-        
+        phone_number: Customer phone (from caller ID)
+    
     Returns:
-        Initial ConversationState
+        State as dict (LangGraph requirement)
     """
-    return ConversationState(
+    state = State(
         conversation_id=conversation_id,
-        session_start=datetime.now().isoformat(),
-        language=language,
-        current_node="greeting",
-        messages=[],
-        customer=CustomerInfo(),
-        customer_identified=False,
-        problem=ProblemInfo(),
-        problem_identified=False,
-        diagnostics=DiagnosticResults(),
-        diagnostics_completed=False,
-        troubleshooting=TroubleshootingInfo(
-            steps_taken=[],
-            instructions_given=[],
-            customer_actions=[],
-            resolved=False
-        ),
-        troubleshooting_attempted=False,
-        ticket=TicketInfo(created=False),
-        ticket_created=False,
-        next_action=None,
-        requires_escalation=False,
-        conversation_ended=False,
-        retrieved_documents=[],
-        tool_calls=[],
-        metadata={}
+        phone_number=phone_number
     )
+    return state.model_dump()
 
+
+# === Message Helpers ===
 
 def add_message(
-    state: ConversationState,
-    role: str,
-    content: str
-) -> ConversationState:
+    role: Literal["user", "assistant", "system"], 
+    content: str, 
+    node: str | None = None
+) -> dict:
     """
-    Add a message to conversation history.
+    Create a message dict.
     
     Args:
-        state: Current state
-        role: Message role (user, assistant, system)
-        content: Message content
-        
+        role: user, assistant, or system
+        content: Message text
+        node: Which node created this message
+    
     Returns:
-        Updated state
+        Message dict ready to append to state.messages
     """
-    state["messages"].append({
+    return {
         "role": role,
         "content": content,
+        "node": node,
         "timestamp": datetime.now().isoformat()
-    })
-    return state
+    }
 
 
-def get_last_user_message(state: ConversationState) -> Optional[str]:
+def _get_messages(state) -> list[dict]:
+    """Get messages from state (handles both Pydantic and dict)."""
+    if hasattr(state, "messages"):
+        return state.messages
+    return state.get("messages", [])
+
+
+# def _get_attr(state, key: str, default=None):
+#     """Get attribute from state (handles both Pydantic and dict)."""
+#     if hasattr(state, key):
+#         return getattr(state, key, default)
+#     return state.get(key, default)
+def _get_attr(state, key: str, default=None):
+    """Universal state attribute accessor (works with both Pydantic and dict)."""
+    if hasattr(state, key):
+        return getattr(state, key, default)
+    elif isinstance(state, dict):
+        return state.get(key, default)
+    else:
+        return default
+
+
+def get_last_user_message(state) -> str | None:
+    """Get last user message content."""
+    messages = _get_messages(state)
+    user_msgs = [m for m in messages if m["role"] == "user"]
+    return user_msgs[-1]["content"] if user_msgs else None
+
+
+def get_last_assistant_message(state) -> str | None:
+    """Get last assistant message content."""
+    messages = _get_messages(state)
+    assistant_msgs = [m for m in messages if m["role"] == "assistant"]
+    return assistant_msgs[-1]["content"] if assistant_msgs else None
+
+
+def get_conversation_for_llm(state) -> list[dict]:
     """
-    Get the last user message.
+    Get messages formatted for LLM API call.
     
-    Args:
-        state: Current state
-        
     Returns:
-        Last user message content or None
+        List of {"role": ..., "content": ...} dicts
     """
-    user_messages = [msg for msg in state["messages"] if msg["role"] == "user"]
-    if user_messages:
-        return user_messages[-1]["content"]
-    return None
+    messages = _get_messages(state)
+    return [
+        {"role": m["role"], "content": m["content"]} 
+        for m in messages
+    ]
 
 
-def get_conversation_history(
-    state: ConversationState,
-    limit: Optional[int] = None
-) -> List[Dict[str, str]]:
-    """
-    Get conversation history.
-    
-    Args:
-        state: Current state
-        limit: Maximum number of recent messages (None for all)
-        
-    Returns:
-        List of messages
-    """
-    messages = state["messages"]
-    if limit:
-        return messages[-limit:]
-    return messages
+# === State Check Helpers ===
+
+def is_customer_identified(state) -> bool:
+    """Check if customer was found in DB."""
+    return _get_attr(state, "customer_id") is not None
 
 
-def update_customer_info(
-    state: ConversationState,
-    customer_data: Dict[str, Any]
-) -> ConversationState:
-    """
-    Update customer information in state.
-    
-    Args:
-        state: Current state
-        customer_data: Customer data from CRM
-        
-    Returns:
-        Updated state
-    """
-    state["customer"].update(customer_data)
-    state["customer_identified"] = True
-    return state
+def is_address_confirmed(state) -> bool:
+    """Check if address is confirmed."""
+    return _get_attr(state, "address_confirmed", False)
 
 
-def update_problem_info(
-    state: ConversationState,
-    problem_data: Dict[str, Any]
-) -> ConversationState:
-    """
-    Update problem information in state.
-    
-    Args:
-        state: Current state
-        problem_data: Problem details
-        
-    Returns:
-        Updated state
-    """
-    state["problem"].update(problem_data)
-    state["problem_identified"] = True
-    return state
+def has_multiple_addresses(state) -> bool:
+    """Check if customer has multiple addresses."""
+    addresses = _get_attr(state, "customer_addresses", [])
+    return len(addresses) > 1
 
 
-def add_diagnostic_result(
-    state: ConversationState,
-    diagnostic_type: str,
-    result: Dict[str, Any]
-) -> ConversationState:
-    """
-    Add diagnostic result to state.
-    
-    Args:
-        state: Current state
-        diagnostic_type: Type of diagnostic
-        result: Diagnostic result data
-        
-    Returns:
-        Updated state
-    """
-    state["diagnostics"][diagnostic_type] = result
-    return state
-
-
-def add_tool_call(
-    state: ConversationState,
-    tool_name: str,
-    tool_args: Dict[str, Any],
-    tool_result: Dict[str, Any]
-) -> ConversationState:
-    """
-    Record MCP tool call in state.
-    
-    Args:
-        state: Current state
-        tool_name: Name of the tool called
-        tool_args: Tool arguments
-        tool_result: Tool result
-        
-    Returns:
-        Updated state
-    """
-    state["tool_calls"].append({
-        "tool": tool_name,
-        "arguments": tool_args,
-        "result": tool_result,
-        "timestamp": datetime.now().isoformat()
-    })
-    return state
-
-
-def should_create_ticket(state: ConversationState) -> bool:
-    """
-    Determine if a ticket should be created.
-    
-    Args:
-        state: Current state
-        
-    Returns:
-        True if ticket should be created
-    """
-    # Create ticket if:
-    # 1. Customer identified
-    # 2. Problem identified
-    # 3. Troubleshooting attempted but not resolved
-    # 4. OR requires escalation
-    
-    return (
-        state["customer_identified"] and
-        state["problem_identified"] and
-        (
-            (state["troubleshooting_attempted"] and not state["troubleshooting"]["resolved"]) or
-            state["requires_escalation"]
-        ) and
-        not state["ticket_created"]
-    )
-
-
-def is_conversation_complete(state: ConversationState) -> bool:
-    """
-    Check if conversation can be ended.
-    
-    Args:
-        state: Current state
-        
-    Returns:
-        True if conversation is complete
-    """
-    # Conversation complete if:
-    # 1. Problem resolved, OR
-    # 2. Ticket created, OR
-    # 3. Explicitly ended
-    
-    return (
-        state["troubleshooting"].get("resolved", False) or
-        state["ticket_created"] or
-        state["conversation_ended"]
-    )
+def can_retry_troubleshooting(state) -> bool:
+    """Check if we can try another troubleshooting step."""
+    attempts = _get_attr(state, "troubleshooting_attempts", 0)
+    max_attempts = _get_attr(state, "max_troubleshooting_attempts", 3)
+    return attempts < max_attempts

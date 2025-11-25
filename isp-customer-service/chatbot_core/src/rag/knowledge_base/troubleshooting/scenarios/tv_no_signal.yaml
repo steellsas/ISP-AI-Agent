@@ -1,0 +1,180 @@
+scenario:
+  id: "tv_no_signal"
+  title: "TV signalo nebuvimas"
+  problem_type: "tv"
+  keywords:
+    - "neveikia televizija"
+    - "nėra signalo"
+    - "juodas ekranas"
+    - "no signal"
+    - "neveikia tv"
+  
+  description: |
+    Scenarijus kai klientas negauna TV signalo.
+    Tikrinami: dekoderis, HDMI kabeliai, TV įvesties šaltinis.
+  
+  steps:
+    - step_id: 1
+      title: "Dekoderio lempučių tikrinimas"
+      instruction: |
+        Prašome patikrinti TV dekoderio lemputes:
+        
+        1. Ar dega POWER lempute?
+        2. Kokia spalva? (žalia, raudona, oranžinė)
+        3. Ar mirkčioja ar dega pastoviai?
+        
+        Kokias lemputes matote ant dekoderio?
+      
+      expected_answer: "description of lights"
+      
+      branches:
+        no_lights:
+          condition: "nedega jokios"
+          next_step: 2
+          message: "Dekoderis neįjungtas arba nėra maitinimo."
+        
+        standby:
+          condition: "raudona arba oranžinė"
+          next_step: 3
+          message: "Dekoderis budėjimo režime. Reikia jį įjungti."
+        
+        green_on:
+          condition: "žalia dega"
+          next_step: 4
+          message: "Dekoderis veikia. Patikrinsime HDMI ryšį."
+
+    - step_id: 2
+      title: "Dekoderio maitinimo tikrinimas"
+      instruction: |
+        Patikrinkime dekoderio maitinimą:
+        
+        1. Ar dekoderis įjungtas į elektros lizdą?
+        2. Ar maitinimo adapteris gerai prijungtas prie dekoderio?
+        3. Pabandykite išjungti ir įjungti dekoderį
+        4. Palaukite 30 sekundžių
+        
+        Ar dabar dega lemputes ant dekoderio?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        lights_on:
+          condition: "taip"
+          next_step: 1
+          message: "Puiku! Grįžkime prie lempučių tikrinimo."
+        
+        still_off:
+          condition: "ne"
+          action: "escalate"
+          reason: "faulty_decoder_power"
+          message: "Dekoderio maitinimo problema. Reikalingas techniko vizitas."
+
+    - step_id: 3
+      title: "Dekoderio įjungimas"
+      instruction: |
+        Dekoderis yra budėjimo režime. Įjunkime jį:
+        
+        1. Paimkite dekoderio nuotolinio valdymo pultą
+        2. Paspauskite POWER arba TV mygtuką
+        3. Palaukite 10-20 sekundžių
+        4. Lempute turėtų pakeisti spalvą į žalią
+        
+        Ar dabar ekrane matote vaizdą?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        working:
+          condition: "taip"
+          action: "resolved"
+          message: "Puiku! Dekoderis buvo tiesiog išjungtas."
+        
+        no_image:
+          condition: "ne"
+          next_step: 4
+          message: "Patikrinsime HDMI ryšį."
+
+    - step_id: 4
+      title: "HDMI kabelio tikrinimas"
+      instruction: |
+        Patikrinkime HDMI kabelį tarp dekoderio ir TV:
+        
+        1. Raskite HDMI kabelį (juodas, plokščias kabelis)
+        2. Patikrinkite ar jis tvirtai įkištas į dekoderį
+        3. Patikrinkite ar jis tvirtai įkištas į TV
+        4. Pabandykite ištraukti ir vėl įkišti abu galus
+        5. Jei turite kitą HDMI lizdą TV, pabandykite įkišti ten
+        
+        Ar dabar matote vaizdą?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        working:
+          condition: "taip"
+          next_step: 5
+          message: "Gerai! Dabar reikia patikrinti TV įvesties šaltinį."
+        
+        not_working:
+          condition: "ne"
+          next_step: 5
+          message: "Patikrinsime TV įvesties šaltinį."
+
+    - step_id: 5
+      title: "TV įvesties (Input/Source) tikrinimas"
+      instruction: |
+        Labai svarbu, kad TV būtų nustatytas teisingas įvesties šaltinis:
+        
+        1. Paimkite TV nuotolinio valdymo pultą (ne dekoderio!)
+        2. Ieškokite mygtuko: INPUT, SOURCE, arba rodyklės su stačiakampiu
+        3. Spauskite šį mygtuką kelis kartus
+        4. Ekrane turėtų rodyti įvesties pasirinkimus: HDMI1, HDMI2, HDMI3, AV, kt.
+        5. Pasirinkite HDMI įvestį, prie kurios prijungtas dekoderis
+        
+        Į kurį HDMI lizdą įkištas dekoderio kabelis? (pasižiūrėkite ant TV nugaros)
+      
+      expected_answer: "HDMI number"
+      
+      branches:
+        found_input:
+          condition: "matau vaizdą"
+          action: "resolved"
+          message: "Puiku! Problema buvo neteisingas TV įvesties šaltinis. Išsaugokite teisingą kanalą."
+        
+        still_no_signal:
+          condition: "vis dar no signal"
+          next_step: 6
+          message: "Perkrausime dekoderį."
+
+    - step_id: 6
+      title: "Dekoderio perkrovimas"
+      instruction: |
+        Atlikime dekoderio perkrovimą:
+        
+        1. Išjunkite dekoderį iš elektros lizdo
+        2. Palaukite 30 sekundžių
+        3. Įjunkite dekoderį atgal
+        4. Palaukite 2-3 minutes, kol dekoderis pilnai pakraus
+        5. Turėtumėte matyti įkrovimo ekraną arba logotipą
+        6. Patikrinkite ar TV nustatytas teisingas HDMI šaltinis
+        
+        Ar dabar matote TV kanalus?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        working:
+          condition: "taip"
+          action: "resolved"
+          message: "Puiku! Dekoderio perkrovimas išsprendė problemą."
+        
+        not_working:
+          condition: "ne"
+          action: "escalate"
+          reason: "decoder_or_signal_issue"
+          message: "Problema gali būti su dekoderiu arba signalu. Sukursiu techninės pagalbos užklausą."
+
+  escalation:
+    create_ticket: true
+    priority: "medium"
+    include_steps: true
