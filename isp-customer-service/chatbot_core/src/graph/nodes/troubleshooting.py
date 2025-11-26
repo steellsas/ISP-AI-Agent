@@ -1,416 +1,3 @@
-# """
-# Troubleshooting Node
-# Guide customer through troubleshooting steps with RAG-powered instructions
-# """
-
-# import sys
-# from pathlib import Path
-# from typing import Dict, Any, List, Optional
-
-# # Add shared to path
-# shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
-# if str(shared_path) not in sys.path:
-#     sys.path.insert(0, str(shared_path))
-
-# from utils import get_logger
-# from ..state import ConversationState, add_message, get_last_user_message
-
-# logger = get_logger(__name__)
-
-
-# # Basic troubleshooting steps by problem category
-# TROUBLESHOOTING_STEPS = {
-#     "internet_no_connection": [
-#         {
-#             "step": 1,
-#             "lt": "Patikrinkite, ar maršrutizatorius įjungtas ir ar šviečia indikatoriai",
-#             "en": "Check if the router is powered on and lights are on"
-#         },
-#         {
-#             "step": 2,
-#             "lt": "Pabandykite atjungti maršrutizatorių nuo maitinimo 30 sekundžių, tada vėl įjungti",
-#             "en": "Try unplugging the router for 30 seconds, then plug it back in"
-#         },
-#         {
-#             "step": 3,
-#             "lt": "Patikrinkite, ar tinklo kabelis tvirtai prijungtas prie maršrutizatoriaus ir kompiuterio",
-#             "en": "Check if network cable is firmly connected to router and computer"
-#         },
-#         {
-#             "step": 4,
-#             "lt": "Jei naudojate Wi-Fi, pabandykite prisijungti per tinklo kabelį",
-#             "en": "If using Wi-Fi, try connecting via network cable"
-#         }
-#     ],
-#     "internet_slow": [
-#         {
-#             "step": 1,
-#             "lt": "Uždarykite nereikalingas programas ir naršyklės korteles",
-#             "en": "Close unnecessary programs and browser tabs"
-#         },
-#         {
-#             "step": 2,
-#             "lt": "Patikrinkite, kiek įrenginių prisijungę prie tinklo - per daug įrenginių gali sulėtinti greitį",
-#             "en": "Check how many devices are connected - too many devices can slow down speed"
-#         },
-#         {
-#             "step": 3,
-#             "lt": "Perkraukite maršrutizatorių (atjunkite 30 sek., vėl įjunkite)",
-#             "en": "Restart the router (unplug 30 sec., plug back in)"
-#         },
-#         {
-#             "step": 4,
-#             "lt": "Jei naudojate Wi-Fi, pabandykite prisijungti per kabelį - tai turėtų būti greičiau",
-#             "en": "If using Wi-Fi, try connecting via cable - it should be faster"
-#         }
-#     ],
-#     "internet_intermittent": [
-#         {
-#             "step": 1,
-#             "lt": "Patikrinkite tinklo kabelių jungtis - galbūt kabelis atsilaisvinęs",
-#             "en": "Check network cable connections - cable might be loose"
-#         },
-#         {
-#             "step": 2,
-#             "lt": "Perkraukite maršrutizatorių",
-#             "en": "Restart the router"
-#         },
-#         {
-#             "step": 3,
-#             "lt": "Jei naudojate Wi-Fi, pabandykite priartėti prie maršrutizatoriaus",
-#             "en": "If using Wi-Fi, try moving closer to the router"
-#         }
-#     ],
-#     "tv_no_signal": [
-#         {
-#             "step": 1,
-#             "lt": "Patikrinkite, ar dekoderis įjungtas ir prijungtas prie elektros",
-#             "en": "Check if decoder is powered on and connected to electricity"
-#         },
-#         {
-#             "step": 2,
-#             "lt": "Patikrinkite HDMI ar scart kabelio jungtis tarp dekoderio ir televizoriaus",
-#             "en": "Check HDMI or scart cable connections between decoder and TV"
-#         },
-#         {
-#             "step": 3,
-#             "lt": "Perkraukite dekoderį (atjunkite nuo maitinimo 30 sek.)",
-#             "en": "Restart the decoder (unplug from power for 30 sec.)"
-#         },
-#         {
-#             "step": 4,
-#             "lt": "Patikrinkite, ar televizoriuje pasirinktas teisingas įvesties šaltinis (HDMI1, HDMI2 ir t.t.)",
-#             "en": "Check if correct input source is selected on TV (HDMI1, HDMI2, etc.)"
-#         }
-#     ],
-#     "tv_poor_quality": [
-#         {
-#             "step": 1,
-#             "lt": "Patikrinkite HDMI kabelio jungtis - ar tvirtai prijungta",
-#             "en": "Check HDMI cable connections - ensure firmly connected"
-#         },
-#         {
-#             "step": 2,
-#             "lt": "Perkraukite dekoderį",
-#             "en": "Restart the decoder"
-#         },
-#         {
-#             "step": 3,
-#             "lt": "Pabandykite kitus kanalus - ar problema yra visuose kanaluose",
-#             "en": "Try other channels - is the problem on all channels"
-#         }
-#     ]
-# }
-
-
-# def troubleshooting_node(state: ConversationState) -> ConversationState:
-#     """
-#     Troubleshooting node - Guide customer through problem-solving steps.
-    
-#     This node:
-#     1. Retrieves appropriate troubleshooting steps from RAG
-#     2. Guides customer step-by-step
-#     3. Checks if problem is resolved after each step
-#     4. Determines if escalation is needed
-    
-#     Args:
-#         state: Current conversation state
-        
-#     Returns:
-#         Updated state with troubleshooting progress
-#     """
-#     logger.info(f"[Troubleshooting] Starting for conversation {state['conversation_id']}")
-    
-#     try:
-#         language = state["language"]
-#         problem_category = state["problem"].get("category")
-#         troubleshooting = state["troubleshooting"]
-        
-#         # Check if this is first troubleshooting attempt
-#         if not troubleshooting.get("steps_taken"):
-#             # Start new troubleshooting session
-#             state = _start_troubleshooting(state, problem_category, language)
-#         else:
-#             # Continue troubleshooting - check customer response
-#             user_message = get_last_user_message(state)
-#             state = _process_troubleshooting_response(state, user_message, language)
-        
-#         state["current_node"] = "troubleshooting"
-#         state["troubleshooting_attempted"] = True
-        
-#         return state
-        
-#     except Exception as e:
-#         logger.error(f"[Troubleshooting] Error: {e}", exc_info=True)
-#         state = _handle_troubleshooting_error(state)
-#         return state
-
-
-# def _start_troubleshooting(
-#     state: ConversationState,
-#     problem_category: str,
-#     language: str
-# ) -> ConversationState:
-#     """Start troubleshooting session with first step."""
-#     logger.info(f"[Troubleshooting] Starting session for {problem_category}")
-    
-#     # Get troubleshooting steps
-#     steps = TROUBLESHOOTING_STEPS.get(problem_category, [])
-    
-#     if not steps:
-#         # No specific steps for this problem
-#         state = _provide_general_troubleshooting(state, language)
-#         return state
-    
-#     # TODO: Retrieve more detailed steps from RAG
-#     # rag_steps = retrieve_troubleshooting_steps(problem_category, language)
-    
-#     # Start with first step
-#     first_step = steps[0]
-#     state["troubleshooting"]["steps_taken"] = []
-#     state["troubleshooting"]["current_step"] = 1
-#     state["troubleshooting"]["total_steps"] = len(steps)
-    
-#     # Create instruction message
-#     if language == "lt":
-#         intro = f"""Gerai, pabandykime išspręsti problemą žingsnis po žingsnio.
-
-# **Žingsnis 1 iš {len(steps)}:**
-# {first_step['lt']}
-
-# Ar tai padėjo? Pasakykite "taip" jei problema išsisprendė, arba "ne" jei reikia toliau bandyti."""
-#     else:
-#         intro = f"""Okay, let's try to solve the problem step by step.
-
-# **Step 1 of {len(steps)}:**
-# {first_step['en']}
-
-# Did this help? Say "yes" if problem is solved, or "no" to continue trying."""
-    
-#     state = add_message(state, "assistant", intro)
-#     state["troubleshooting"]["instructions_given"].append(first_step[language])
-    
-#     return state
-
-
-# def _process_troubleshooting_response(
-#     state: ConversationState,
-#     user_message: str,
-#     language: str
-# ) -> ConversationState:
-#     """Process customer's response to troubleshooting step."""
-    
-#     if not user_message:
-#         return state
-    
-#     message_lower = user_message.lower()
-    
-#     # Check if problem is resolved
-#     positive_words = ["taip", "yes", "veikia", "works", "išspręsta", "solved", "padėjo", "helped"]
-#     negative_words = ["ne", "no", "neveikia", "not working", "nepadėjo", "didn't help"]
-    
-#     is_resolved = any(word in message_lower for word in positive_words)
-#     needs_more_help = any(word in message_lower for word in negative_words)
-    
-#     if is_resolved:
-#         state["troubleshooting"]["resolved"] = True
-#         state = _handle_problem_resolved(state, language)
-#         return state
-    
-#     if needs_more_help or not is_resolved:
-#         # Continue to next step
-#         state["troubleshooting"]["customer_actions"].append(user_message)
-#         state = _continue_to_next_step(state, language)
-#         return state
-    
-#     # Unclear response - ask for clarification
-#     state = _request_clarification(state, language)
-#     return state
-
-
-# def _continue_to_next_step(
-#     state: ConversationState,
-#     language: str
-# ) -> ConversationState:
-#     """Continue to next troubleshooting step."""
-    
-#     current_step = state["troubleshooting"].get("current_step", 1)
-#     total_steps = state["troubleshooting"].get("total_steps", 0)
-#     problem_category = state["problem"].get("category")
-    
-#     steps = TROUBLESHOOTING_STEPS.get(problem_category, [])
-    
-#     # Check if we've exhausted all steps
-#     if current_step >= total_steps or current_step >= len(steps):
-#         state = _handle_steps_exhausted(state, language)
-#         return state
-    
-#     # Move to next step
-#     next_step_num = current_step + 1
-#     next_step = steps[next_step_num - 1]  # 0-indexed
-    
-#     state["troubleshooting"]["current_step"] = next_step_num
-#     state["troubleshooting"]["steps_taken"].append(current_step)
-    
-#     if language == "lt":
-#         message = f"""Suprantu. Pabandykime kitą sprendimą.
-
-# **Žingsnis {next_step_num} iš {total_steps}:**
-# {next_step['lt']}
-
-# Ar tai padėjo?"""
-#     else:
-#         message = f"""I understand. Let's try another solution.
-
-# **Step {next_step_num} of {total_steps}:**
-# {next_step['en']}
-
-# Did this help?"""
-    
-#     state = add_message(state, "assistant", message)
-#     state["troubleshooting"]["instructions_given"].append(next_step[language])
-    
-#     logger.info(f"[Troubleshooting] Moved to step {next_step_num}/{total_steps}")
-    
-#     return state
-
-
-# def _handle_problem_resolved(
-#     state: ConversationState,
-#     language: str
-# ) -> ConversationState:
-#     """Handle successful problem resolution."""
-#     logger.info("[Troubleshooting] Problem resolved!")
-    
-#     if language == "lt":
-#         message = """Puiku! 🎉 Džiaugiuosi, kad problema išsisprendė!
-
-# Ar yra dar kažkas, kuo galėčiau padėti?"""
-#     else:
-#         message = """Great! 🎉 I'm glad the problem is resolved!
-
-# Is there anything else I can help you with?"""
-    
-#     state = add_message(state, "assistant", message)
-#     state["troubleshooting"]["resolved"] = True
-    
-#     return state
-
-
-# def _handle_steps_exhausted(
-#     state: ConversationState,
-#     language: str
-# ) -> ConversationState:
-#     """Handle case when all troubleshooting steps are exhausted."""
-#     logger.info("[Troubleshooting] All steps exhausted, escalating")
-    
-#     state["requires_escalation"] = True
-#     state["next_action"] = "create_ticket"
-    
-#     if language == "lt":
-#         message = """Išbandėme visus standartinius sprendimus, bet problema neišsisprendė.
-
-# Sukursiu gedimo pranešimą, ir mūsų technikas susisieks su Jumis artimiausiu metu.
-
-# Ar norite pridėti dar kokią nors informaciją į pranešimą?"""
-#     else:
-#         message = """We've tried all standard solutions, but the problem persists.
-
-# I'll create a support ticket, and our technician will contact you soon.
-
-# Would you like to add any additional information to the ticket?"""
-    
-#     state = add_message(state, "assistant", message)
-    
-#     return state
-
-
-# def _provide_general_troubleshooting(
-#     state: ConversationState,
-#     language: str
-# ) -> ConversationState:
-#     """Provide general troubleshooting when no specific steps available."""
-    
-#     if language == "lt":
-#         message = """Pabandykime keletą bendrų sprendimų:
-
-# 1. **Perkraukite įrangą** - atjunkite maršrutizatorių/dekoderių nuo maitinimo 30 sekundžių
-# 2. **Patikrinkite kabelius** - ar visi kabeliai tvirtai prijungti
-# 3. **Patikrinkite indikatorius** - ar šviečia lemputės ant įrangos
-
-# Ar kuris nors iš šių veiksmų padėjo?"""
-#     else:
-#         message = """Let's try some general solutions:
-
-# 1. **Restart equipment** - unplug router/decoder for 30 seconds
-# 2. **Check cables** - ensure all cables are firmly connected
-# 3. **Check indicators** - are lights on the equipment lit
-
-# Did any of these actions help?"""
-    
-#     state = add_message(state, "assistant", message)
-#     state["troubleshooting"]["instructions_given"].append("General troubleshooting steps")
-    
-#     return state
-
-
-# def _request_clarification(
-#     state: ConversationState,
-#     language: str
-# ) -> ConversationState:
-#     """Request clarification when response is unclear."""
-    
-#     if language == "lt":
-#         message = """Atsiprašau, nevisiškai supratau.
-
-# Ar problema išsisprendė po šio žingsnio? Atsakykite "taip" arba "ne"."""
-#     else:
-#         message = """Sorry, I didn't fully understand.
-
-# Did the problem get resolved after this step? Please answer "yes" or "no"."""
-    
-#     state = add_message(state, "assistant", message)
-#     return state
-
-
-# def _handle_troubleshooting_error(state: ConversationState) -> ConversationState:
-#     """Handle troubleshooting errors."""
-#     language = state["language"]
-    
-#     if language == "lt":
-#         message = """Atsiprašau, įvyko klaida troubleshooting procese.
-
-# Geriausias sprendimas būtų sukurti gedimo pranešimą, kad technikas galėtų Jums padėti. Ar tinka?"""
-#     else:
-#         message = """Sorry, an error occurred in the troubleshooting process.
-
-# The best solution would be to create a support ticket so a technician can help you. Is that okay?"""
-    
-#     state = add_message(state, "assistant", message)
-#     state["requires_escalation"] = True
-#     state["next_action"] = "create_ticket"
-    
-#     return state
 """
 Troubleshooting Node - Guided customer troubleshooting with scenarios
 """
@@ -459,9 +46,11 @@ class StepResponse(BaseModel):
     """LLM response for analyzing user answer to troubleshooting step."""
     understood: bool
     user_answer_summary: str
-    selected_branch: str | None = None  # e.g., "no_lights", "working"
+    selected_branch: str | None = None
     needs_clarification: bool = False
     clarification_question: str | None = None
+    needs_next_substep: bool = False  # ← NAUJAS
+    next_substep_instruction: str | None = None  # ← NAUJAS
 
 
 # === Helper Functions ===
@@ -524,8 +113,12 @@ def select_scenario(problem_description: str, problem_type: str) -> str:
     return f"{problem_type}_no_connection"
 
 
-def format_step_instruction(step: dict, customer_name: str = "") -> str:
-    """Format step instruction for customer."""
+def format_step_instruction(step: dict, customer_name: str = "", is_first_time: bool = True) -> str:
+    """
+    Format step instruction for customer - ONE SUB-TASK AT A TIME.
+    
+    For phone conversations, we only give the FIRST action to do.
+    """
     title = step.get("title", "")
     instruction = step.get("instruction", "")
     
@@ -536,13 +129,47 @@ def format_step_instruction(step: dict, customer_name: str = "") -> str:
     else:
         greeting = ""
     
-    message = f"{greeting}{instruction}"
-    return message
+    if not is_first_time:
+        return instruction
+    
+    # For first time - use LLM to extract only first action
+    system_prompt = """Tu esi ISP klientų aptarnavimo asistentas telefono pokalbyje.
 
+LABAI SVARBU:
+- Tai telefoninis pokalbis - klientas negali matyti teksto
+- Duok tik VIENĄ veiksmą per kartą
+- Paprašyk padaryti vieną dalyką ir pasakyti rezultatą
 
-def analyze_user_response(step: dict, user_response: str) -> StepResponse:
+Iš šios instrukcijos ištrauk tik PIRMĄ veiksmą kurį klientas turi padaryti:
+
+{instruction}
+
+Atsakyk trumpai ir aiškiai - tik pirmas veiksmas, vienas sakinys."""
+
+    try:
+        from src.services.llm import llm_completion
+        
+        messages = [
+            {"role": "system", "content": system_prompt.format(instruction=instruction)},
+            {"role": "user", "content": "Koks pirmas veiksmas?"}
+        ]
+        
+        first_action = llm_completion(messages, temperature=0.2, max_tokens=150)
+        return f"{greeting}{first_action}"
+        
+    except Exception as e:
+        logger.warning(f"Could not simplify instruction: {e}")
+        # Fallback - just return first 2 sentences
+        sentences = instruction.split('. ')
+        first_part = '. '.join(sentences[:2]) + '.' if len(sentences) > 1 else instruction
+        return f"{greeting}{first_part}"
+
+def analyze_user_response(step: dict, user_response: str, recent_messages: list = None) -> StepResponse:
     """
-    Use LLM to analyze user's response and determine which branch to take.
+    Use LLM to analyze user's response and guide step-by-step.
+    
+    For phone conversations - determines if we need more substeps
+    or can move to next main step.
     
     Args:
         step: Current step data
@@ -552,29 +179,80 @@ def analyze_user_response(step: dict, user_response: str) -> StepResponse:
         StepResponse with analysis
     """
     branches = step.get("branches", {})
+    instruction = step.get("instruction", "")
+    title = step.get("title", "")
+    #Build conversation context
+    conversation_context = ""
+    if recent_messages:
+        conversation_context = "ANKSTESNĖ POKALBIO DALIS (šiame žingsnyje):\n"
+        for msg in recent_messages[-10:]:  # Last 10 messages
+            role = "Agentas" if msg.get("role") == "assistant" else "Klientas"
+            conversation_context += f"{role}: {msg.get('content', '')}\n"
+        conversation_context += "\n---\n"
     
-    # Build prompt for LLM
-    system_prompt = f"""Tu esi ISP klientų aptarnavimo asistentas.
-Klientas atlieka troubleshooting žingsnį: {step.get('title')}
+     # Build prompt for LLM
+    system_prompt = f"""Tu esi ISP klientų aptarnavimo asistentas TELEFONO pokalbyje.
 
-Instrukcija buvo: {step.get('instruction')}
+KONTEKSTAS:
+- Tai telefoninis pokalbis - klientas NEGALI matyti ankstesnių žinučių
+- Vesk klientą PO VIENĄ veiksmą - vienas veiksmas, vienas atsakymas
+- Būk kantrus, aiškus, draugiškas
+- SVARBU: Atsimink ką klientas JAU patikrino ir NEKARTOK tų pačių klausimų!
 
-Galimi atsakymo variantai (branches):
+{conversation_context}
+
+DABARTINIS ŽINGSNIS: {title}
+
+PILNA INSTRUKCIJA (ką reikia patikrinti šiame žingsnyje):
+{instruction}
+
+GALIMI REZULTATAI kai žingsnis BAIGTAS:
 {chr(10).join([f"- {branch_id}: {branch_data.get('condition')}" for branch_id, branch_data in branches.items()])}
 
-Analizuok kliento atsakymą ir nuspręsk:
-1. Ar supratai ką klientas atsakė?
-2. Kuris branch geriausiai atitinka?
-3. Ar reikia patikslinti?
+DABAR KLIENTAS ATSAKĖ: "{user_response}"
+
+TAVO UŽDUOTIS:
+1. Peržiūrėk pokalbio istoriją - KAS JAU PATIKRINTA?
+2. Ar klientas jau patikrino VISUS reikalingus dalykus šiam žingsniui?
+3. Jei NE - paprašyk patikrinti TIK tai, kas DAR NEPATIKRINTA
+4. Jei TAIP - pasirink tinkamą branch pagal rezultatus
+
+SVARBU:
+- Jei klientas jau sakė kad visos lemputes žalios - NEBEKLAUSINĖK apie lemputes!
+- Jei klientas patikrino POWER, INTERNET, WiFi - žingsnis BAIGTAS
+- Pasirink branch pagal VISUS gautus atsakymus
 
 Atsakyk JSON formatu:
 {{
-    "understood": true | false,
-    "user_answer_summary": "trumpas kliento atsakymo aprašymas",
-    "selected_branch": "branch_id arba null",
-    "needs_clarification": true | false,
-    "clarification_question": "klausimas jei reikia patikslinti, arba null"
-}}"""
+    "understood": true,
+    "user_answer_summary": "trumpai ką klientas pasakė/padarė",
+    "selected_branch": "branch_id JEI žingsnis baigtas, ARBA null",
+    "needs_clarification": false,
+    "clarification_question": null,
+    "needs_next_substep": true/false,
+    "next_substep_instruction": "JEI reikia dar vieno veiksmo - trumpa instrukcija, ARBA null"
+}}
+
+PAVYZDŽIAI:
+
+Jei pokalbio istorijoje jau yra: POWER=žalia, INTERNET=žalia, ir dabar WiFi=žalia:
+{{
+    "understood": true,
+    "user_answer_summary": "WiFi lempute žalia. Visos lemputes žalios.",
+    "selected_branch": "all_green",
+    "needs_next_substep": false,
+    "next_substep_instruction": null
+}}
+
+Jei POWER=žalia, bet INTERNET dar nepatikrintas:
+{{
+    "understood": true,
+    "user_answer_summary": "POWER lempute žalia",
+    "selected_branch": null,
+    "needs_next_substep": true,
+    "next_substep_instruction": "Puiku! Dabar patikrinkite INTERNET lempute - kokios ji spalvos?"
+}}
+"""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -582,29 +260,25 @@ Atsakyk JSON formatu:
     ]
     
     try:
-        response = llm_json_completion(messages, temperature=0.2, max_tokens=300)
+        response = llm_json_completion(messages, temperature=0.3, max_tokens=400)
         return StepResponse(**response)
     except Exception as e:
         logger.error(f"Error analyzing response: {e}")
-        # Fallback
         return StepResponse(
             understood=False,
             user_answer_summary=user_response,
             needs_clarification=True,
-            clarification_question="Atsiprašau, ar galėtumėte pakartoti savo atsakymą?"
+            clarification_question="Atsiprašau, ar galėtumėte pakartoti ką matote?"
         )
-
-
 # === Node Functions ===
 
 def troubleshooting_node(state) -> dict:
-    """
+    """ 
     Troubleshooting node - guides customer through troubleshooting steps.
-    
     Flow:
-    1. First time: Select scenario and start step 1
-    2. Subsequent: Analyze user response, move to next step or resolve
-    
+        1. First time: Select scenario and start step 1
+        2. Subsequent: Analyze user response, move to next step or resolve
+        
     Args:
         state: Current conversation state
         
@@ -612,6 +286,20 @@ def troubleshooting_node(state) -> dict:
         State update dict
     """
     logger.info("=== Troubleshooting Node ===")
+    
+    # Check if problem already resolved - skip processing
+    if _get_attr(state, "problem_resolved", False):
+        logger.info("Problem already resolved - passing through to router")
+        return {
+            "current_node": "troubleshooting",
+        }
+    
+    # Check if already needs escalation - skip processing
+    if _get_attr(state, "troubleshooting_needs_escalation", False):
+        logger.info("Already needs escalation - passing through to router")
+        return {
+            "current_node": "troubleshooting",
+        }
     
     ts_state = _get_troubleshooting_state(state)
     problem_description = _get_attr(state, "problem_description", "")
@@ -639,7 +327,8 @@ def troubleshooting_node(state) -> dict:
             return {
                 "messages": [error_msg],
                 "current_node": "troubleshooting",
-                "troubleshooting_failed": True,
+                "troubleshooting_needs_escalation": True,
+                "troubleshooting_escalation_reason": "scenario_not_found",
             }
         
         # Get first step
@@ -662,23 +351,83 @@ def troubleshooting_node(state) -> dict:
             "troubleshooting_completed_steps": [],
         }
     
-    # Analyze user response to current step
+    # Get user response
     user_response = get_last_user_message(state)
     logger.info(f"Analyzing user response: {user_response}")
+    
+    # Check for goodbye/confirmation phrases BEFORE LLM analysis
+    goodbye_phrases = [
+        "ačiū", "aciu", "viso gero", "iki", "sudie",
+        "viskas gerai", "nieko daugiau", "nereikia",
+        "ne ačiū", "ne aciu", "ne, ačiū", "ne, aciu",
+        "viskas", "pakanka", "užtenka"
+    ]
+    
+    user_lower = user_response.lower()
+    is_goodbye = any(phrase in user_lower for phrase in goodbye_phrases)
+    
+    # Check if problem was just resolved in previous turn
+    # (user confirming everything is OK)
+    messages = _get_messages(state)
+    recent_assistant_msgs = [m for m in messages if m.get("role") == "assistant"][-3:]
+    problem_just_resolved = any(
+        "išspręsta" in m.get("content", "").lower() or
+        "pavyko" in m.get("content", "").lower() or
+        "veikia" in m.get("content", "").lower()
+        for m in recent_assistant_msgs
+    )
+    
+    if is_goodbye and problem_just_resolved:
+        logger.info("User confirming goodbye after resolution → create_ticket (silent)")
+        
+        completed = ts_state.get("completed_steps", [])
+        
+        return {
+            "current_node": "troubleshooting",
+            "problem_resolved": True,
+            "troubleshooting_completed_steps": completed,
+        }
     
     # Load current scenario and step
     scenario_loader = get_scenario_loader()
     scenario = scenario_loader.get_scenario(ts_state["scenario_id"])
     current_step = scenario.get_step(ts_state["current_step"])
     
-    # Analyze response
-    analysis = analyze_user_response(current_step, user_response)
+    if not current_step:
+        logger.error(f"Current step not found: {ts_state['current_step']}")
+        return {
+            "current_node": "troubleshooting",
+            "troubleshooting_needs_escalation": True,
+            "troubleshooting_escalation_reason": "step_not_found",
+        }
+    
+    # Get recent messages for context
+    recent_ts_messages = [m for m in messages if m.get("node") == "troubleshooting"][-10:]
+    
+    # Analyze response with conversation context
+    analysis = analyze_user_response(current_step, user_response, recent_ts_messages)
+    
+    logger.info(f"Analysis: branch={analysis.selected_branch}, needs_substep={analysis.needs_next_substep}, clarify={analysis.needs_clarification}")
     
     if analysis.needs_clarification:
         # Ask for clarification
         message = add_message(
             role="assistant",
             content=analysis.clarification_question,
+            node="troubleshooting"
+        )
+        return {
+            "messages": [message],
+            "current_node": "troubleshooting",
+        }
+    
+    # Check if need to guide to next substep (step not yet complete)
+    if analysis.needs_next_substep and analysis.next_substep_instruction:
+        logger.info(f"Guiding to next substep within step {ts_state['current_step']}")
+        
+        message = add_message(
+            role="assistant",
+            content=analysis.next_substep_instruction,
             node="troubleshooting"
         )
         return {
@@ -695,15 +444,15 @@ def troubleshooting_node(state) -> dict:
     branch_message = selected_branch_data.get("message", "")
     
     # Update completed steps
-    completed = ts_state["completed_steps"] + [ts_state["current_step"]]
+    completed = ts_state.get("completed_steps", []) + [ts_state["current_step"]]
     
     if action == "resolved":
         # Problem resolved!
-        logger.info("Problem resolved!")
+        logger.info("Problem resolved! → create_ticket (silent)")
         
         message = add_message(
             role="assistant",
-            content=f"{branch_message}\n\nDžiaugiuosi, kad pavyko išspręsti problemą! Ar yra dar kažkas, kuo galėčiau padėti?",
+            content=f"{branch_message}\n\nDžiaugiuosi, kad pavyko išspręsti problemą!",
             node="troubleshooting"
         )
         
@@ -716,11 +465,11 @@ def troubleshooting_node(state) -> dict:
     
     elif action == "escalate":
         # Need technician
-        logger.info(f"Escalating: {selected_branch_data.get('reason')}")
+        logger.info(f"Escalating: {selected_branch_data.get('reason')} → create_ticket")
         
         message = add_message(
             role="assistant",
-            content=f"{branch_message}\n\nSukursiu techninės pagalbos užklausą su visais mūsų atliktais žingsniais.",
+            content=f"{branch_message}\n\nSukursiu techninės pagalbos užklausą.",
             node="troubleshooting"
         )
         
@@ -738,7 +487,6 @@ def troubleshooting_node(state) -> dict:
         
         if not next_step:
             logger.error(f"Next step not found: {next_step_id}")
-            # Fallback to escalation
             message = add_message(
                 role="assistant",
                 content="Įvyko klaida scenarijuje. Sukursiu techninės pagalbos užklausą.",
@@ -748,6 +496,7 @@ def troubleshooting_node(state) -> dict:
                 "messages": [message],
                 "current_node": "troubleshooting",
                 "troubleshooting_needs_escalation": True,
+                "troubleshooting_escalation_reason": "next_step_not_found",
                 "troubleshooting_completed_steps": completed,
             }
         
@@ -768,19 +517,45 @@ def troubleshooting_node(state) -> dict:
         }
     
     else:
-        # Unexpected - escalate
-        logger.warning("No action or next_step defined")
+        # No branch matched - need to escalate
+        logger.warning(f"No action or next_step for branch: {analysis.selected_branch}")
+        
         message = add_message(
             role="assistant",
-            content="Sukursiu techninės pagalbos užklausą.",
+            content="Nepavyko automatiškai išspręsti problemos. Sukursiu techninės pagalbos užklausą.",
             node="troubleshooting"
         )
+        
         return {
             "messages": [message],
             "current_node": "troubleshooting",
             "troubleshooting_needs_escalation": True,
+            "troubleshooting_escalation_reason": "no_matching_branch",
             "troubleshooting_completed_steps": completed,
         }
+
+
+# def troubleshooting_router(state) -> str:
+#     """
+#     Route after troubleshooting.
+    
+#     Returns:
+#         - "create_ticket" → create ticket (both resolved and escalation)
+#         - "end" → wait for user response
+#     """
+#     problem_resolved = _get_attr(state, "problem_resolved", False)
+#     needs_escalation = _get_attr(state, "troubleshooting_needs_escalation", False)
+    
+#     if problem_resolved:
+#         logger.info("Problem resolved → create_ticket (silent)")
+#         return "create_ticket"
+    
+#     if needs_escalation:
+#         logger.info("Needs escalation → create_ticket (technician)")
+#         return "create_ticket"
+    
+#     logger.info("Waiting for user response → end")
+#     return "end"
 
 
 def troubleshooting_router(state) -> str:
@@ -788,22 +563,21 @@ def troubleshooting_router(state) -> str:
     Route after troubleshooting.
     
     Returns:
-        - "troubleshooting" → continue troubleshooting (loop)
-        - "create_ticket" → escalate to technician
-        - "closing" → problem resolved, end conversation
+        - "create_ticket" → create ticket (both resolved and escalation)
         - "end" → wait for user response
     """
-    problem_resolved = _get_attr(state, "problem_resolved", False)
+    problem_resolved = _get_attr(state, "problem_resolved", False) 
     needs_escalation = _get_attr(state, "troubleshooting_needs_escalation", False)
     
-    if problem_resolved:
-        logger.info("Problem resolved → closing")
-        return "closing"
+    logger.info(f"Router: resolved={problem_resolved}, escalation={needs_escalation}")
     
-    if needs_escalation:
-        logger.info("Needs escalation → create_ticket")
+    if problem_resolved:
+        logger.info("→ create_ticket (resolved)")
         return "create_ticket"
     
-    # Continue troubleshooting - wait for user response
-    logger.info("Waiting for user response → end")
+    if needs_escalation:
+        logger.info("→ create_ticket (escalation)")
+        return "create_ticket"
+    
+    logger.info("→ end (waiting for user)")
     return "end"

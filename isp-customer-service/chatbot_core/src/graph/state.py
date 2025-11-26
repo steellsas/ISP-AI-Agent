@@ -67,18 +67,15 @@ class State(BaseModel):
     troubleshooting_needs_escalation: bool = False
     troubleshooting_escalation_reason: str | None = None
     troubleshooting_failed: bool = False
-            
+    
+    # Resolution - PRIDĖTA!
+    problem_resolved: bool = False
  
-    
-    # # Troubleshooting tracking
-    # troubleshooting_attempts: int = 0
-    # max_troubleshooting_attempts: int = 3
-    # problem_resolved: bool = False
-    
+
     # Ticket
     ticket_created: bool = False
     ticket_id: str | None = None
-    
+    ticket_type: str | None = None
     # End state
     conversation_ended: bool = False
     
@@ -141,12 +138,6 @@ def _get_messages(state) -> list[dict]:
         return state.messages
     return state.get("messages", [])
 
-
-# def _get_attr(state, key: str, default=None):
-#     """Get attribute from state (handles both Pydantic and dict)."""
-#     if hasattr(state, key):
-#         return getattr(state, key, default)
-#     return state.get(key, default)
 def _get_attr(state, key: str, default=None):
     """Universal state attribute accessor (works with both Pydantic and dict)."""
     if hasattr(state, key):

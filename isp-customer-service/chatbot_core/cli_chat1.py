@@ -154,6 +154,13 @@ def run_chat(phone_number: str = "+37061234567"):
             if result.get("address_search_successful") is False:
                 print("\n[Customer not found by address - conversation ended]")
                 break
+
+             # Check if conversation ended
+            if result.get("conversation_ended"):
+                print("\n[Conversation ended]")
+                if result.get("ticket_id"):
+                    print(f"  Ticket: {result.get('ticket_id')} ({result.get('ticket_type')})")
+                break
             # # Check if provider issue informed
             # if result.get("provider_issue_informed"):
             #     print("\n[Provider issue informed!]")

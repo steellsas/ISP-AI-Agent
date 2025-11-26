@@ -1,115 +1,74 @@
 """
-Closing Node
-Ends the conversation gracefully
+Closing Node - End conversation gracefully
 """
 
-from typing import Dict, Any
-from ..state import ConversationState, add_message, get_last_user_message
-from ...services.llm_service import get_llm_service
-from ...config.old.prompts import CLOSING_PROMPT, GOODBYE_PROMPT
+import sys
+import logging
+from pathlib import Path
+
+# Try shared logger
+try:
+    shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
+    if str(shared_path) not in sys.path:
+        sys.path.insert(0, str(shared_path))
+    from utils import get_logger
+except ImportError:
+    logging.basicConfig(level=logging.INFO)
+    def get_logger(name):
+        return logging.getLogger(name)
+
+from src.graph.state import add_message, _get_attr
+
+logger = get_logger(__name__)
 
 
-async def closing_node_async(state: ConversationState) -> Dict[str, Any]:
+def closing_node(state) -> dict:
     """
-    Close the conversation.
+    Closing node - ends conversation with appropriate message.
+    
+    Behavior:
+    - If problem_resolved: Thank and say goodbye
+    - If escalation: Confirm technician will contact, say goodbye
     
     Args:
         state: Current conversation state
         
     Returns:
-        Updated state
+        State update with closing message
     """
+    logger.info("=== Closing Node ===")
     
-    # Check if already asked
-    if state.get("last_question") == "anything_else":
-        user_response = get_last_user_message(state)
+    customer_name = _get_attr(state, "customer_name", "")
+    problem_resolved = _get_attr(state, "problem_resolved", False)
+    ticket_created = _get_attr(state, "ticket_created", False)
+    ticket_id = _get_attr(state, "ticket_id")
+    
+    first_name = customer_name.split()[0] if customer_name else ""
+    
+    if problem_resolved:
+        # Happy path - problem solved
+        closing_text = f"Džiaugiuosi, kad pavyko išspręsti problemą, {first_name}! " if first_name else "Džiaugiuosi, kad pavyko išspręsti problemą! "
+        closing_text += "Jei ateityje kiltų klausimų, drąsiai kreipkitės. Geros dienos!"
         
-        if user_response:
-            # Use LLM to understand intent (singleton getter)
-            llm = get_llm_service()
-            intent = await llm.classify_intent(
-                user_message=user_response,
-                intents=["yes_more_help", "no_thanks", "unclear"]
-            )
-            
-            if intent == "yes_more_help":
-                # Loop back - user has another problem
-                state["conversation_ended"] = False
-                state["next_action"] = "restart"
-                state["waiting_for_user_input"] = False
-                
-                # Reset some state for new issue
-                state["problem_identified"] = False
-                state["problem"] = {}
-                
-                return {
-                    "conversation_ended": False,
-                    "next_action": "restart",
-                    "waiting_for_user_input": False,
-                    "problem_identified": False,
-                    "problem": {},
-                    "current_node": "closing"
-                }
-            else:
-                # Really ending (no_thanks or unclear treated as ending)
-                goodbye = await llm.generate(
-                    system_prompt=GOODBYE_PROMPT,
-                    messages=[],
-                    temperature=0.7,
-                    max_tokens=100
-                )
-                
-                state = add_message(
-                    state=state,
-                    role="assistant",
-                    content=goodbye,
-                    node="closing"
-                )
-                
-                state["conversation_ended"] = True
-                state["current_node"] = "closing"
-                state["waiting_for_user_input"] = False
-                
-                return {
-                    "messages": state["messages"],
-                    "conversation_ended": True,
-                    "current_node": state["current_node"],
-                    "waiting_for_user_input": False
-                }
+    elif ticket_created and ticket_id:
+        # Escalation path - technician will come
+        closing_text = f"Ačiū už kantrybę, {first_name}. " if first_name else "Ačiū už kantrybę. "
+        closing_text += f"Technikas susisieks su jumis dėl vizito. Jūsų užklausos numeris: {ticket_id}. Geros dienos!"
+        
+    else:
+        # Fallback
+        closing_text = "Ačiū, kad kreipėtės. Geros dienos!"
     
-    # First time - ask if anything else
-    question = "Ar dar kuo galiu padėti?"
+    logger.info(f"Closing conversation. Resolved: {problem_resolved}, Ticket: {ticket_id}")
     
-    state = add_message(
-        state=state,
+    message = add_message(
         role="assistant",
-        content=question,
+        content=closing_text,
         node="closing"
     )
     
-    state["waiting_for_user_input"] = True
-    state["last_question"] = "anything_else"
-    state["current_node"] = "closing"
-    
     return {
-        "messages": state["messages"],
-        "waiting_for_user_input": True,
-        "last_question": "anything_else",
-        "current_node": state["current_node"]
+        "messages": [message],
+        "current_node": "closing",
+        "conversation_ended": True,
     }
-
-
-# def run(state: ConversationState) -> Dict[str, Any]:
-#     """Synchronous wrapper for LangGraph with nested loop support."""
-#     import asyncio
-#     import nest_asyncio
-    
-#     nest_asyncio.apply()
-    
-#     try:
-#         loop = asyncio.get_event_loop()
-#     except RuntimeError:
-#         loop = asyncio.new_event_loop()
-#         asyncio.set_event_loop(loop)
-    
-#     return loop.run_until_complete(closing_node_async(state))

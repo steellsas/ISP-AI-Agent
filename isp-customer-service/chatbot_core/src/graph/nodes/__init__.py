@@ -40,6 +40,8 @@ from .address_search import address_search_node, address_search_router
 from .diagnostics import diagnostics_node, diagnostics_router
 from .inform_provider_issue import inform_provider_issue_node
 from .troubleshooting import troubleshooting_node, troubleshooting_router
+from .create_ticket import create_ticket_node
+from .closing import closing_node
 
 __all__ = [
     "greeting_node",
@@ -56,4 +58,6 @@ __all__ = [
     "inform_provider_issue_node",
     "troubleshooting_node",
     "troubleshooting_router",
+     "create_ticket_node",
+    "closing_node",
 ]

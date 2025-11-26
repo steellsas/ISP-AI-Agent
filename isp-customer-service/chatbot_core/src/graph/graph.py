@@ -28,6 +28,8 @@ from src.graph.nodes import (
     inform_provider_issue_node,
     troubleshooting_node,
     troubleshooting_router,
+    create_ticket_node,
+    closing_node,
 )
 
 # Global checkpointer - must be module level for persistence
@@ -96,6 +98,8 @@ def create_graph() -> StateGraph:
     workflow.add_node("diagnostics", diagnostics_node)
     workflow.add_node("inform_provider_issue", inform_provider_issue_node)
     workflow.add_node("troubleshooting", troubleshooting_node)
+    workflow.add_node("create_ticket", create_ticket_node)
+    workflow.add_node("closing", closing_node)
     # === EDGES ===
     
     # START → router decides greeting or problem_capture
@@ -171,12 +175,14 @@ def create_graph() -> StateGraph:
         "troubleshooting",
         troubleshooting_router,
         {
-            "troubleshooting": "troubleshooting",  # Loop back (wait for user)
-            "create_ticket": END,     # TODO: pridėsim vėliau
-            "closing": END,           # TODO: pridėsim vėliau
-            "end": END,               # Wait for user input
+            "create_ticket": "create_ticket", 
+            "closing": "closing",             
+            "end": END,
         }
     )
+    workflow.add_edge("create_ticket", "closing")
+    # closing → END
+    workflow.add_edge("closing", END)
 
  
     # === COMPILE ===
