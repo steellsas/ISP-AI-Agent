@@ -1,0 +1,12 @@
+# Streamlit UI Requirements
+
+# Core
+streamlit>=1.28.0
+
+# These should already be installed from chatbot_core:
+# langgraph>=0.0.30
+# litellm>=1.0.0
+# pydantic>=2.0.0
+
+# Optional: for better mermaid rendering
+# streamlit-mermaid>=0.1.0
