@@ -161,59 +161,7 @@ def run_chat(phone_number: str = "+37061234567"):
                 if result.get("ticket_id"):
                     print(f"  Ticket: {result.get('ticket_id')} ({result.get('ticket_type')})")
                 break
-            # # Check if provider issue informed
-            # if result.get("provider_issue_informed"):
-            #     print("\n[Provider issue informed!]")
-            #     diagnostic_results = result.get("diagnostic_results", {})
-            #     issues = diagnostic_results.get("issues_found", [])
-            #     for issue in issues:
-            #         if issue.get("source") == "provider":
-            #             print(f"  Issue: {issue.get('type')} - {issue.get('message')}")
-            #     break
-            
-            # # Check if diagnostics completed and going to troubleshooting
-            # if result.get("diagnostics_completed") and not result.get("provider_issue_detected"):
-            #     print("\n[Diagnostics complete! Next: troubleshooting (coming soon)]")
-            #     print(f"  Needs troubleshooting: {result.get('needs_troubleshooting')}")
-            #     issues = result.get("diagnostic_results", {}).get("issues_found", [])
-            #     if issues:
-            #         print("  Found issues:")
-            #         for issue in issues:
-            #             print(f"    - {issue.get('type')}: {issue.get('message')}")
-            #     break
-            
-            # # Check if address search completed successfully
-            # if result.get("address_search_successful") is True:
-            #     print("\n[Customer found by address! Next: diagnostics]")
-            #     print(f"  Customer: {result.get('customer_name')}")
-            #     # Don't break - continue to diagnostics
-            #     pass
-            
-            # # Check if address search failed (customer not found)
-            # if result.get("address_search_successful") is False:
-            #     print("\n[Customer not found by address - conversation ended]")
-            #     break
-            
-            # # Check if address search completed successfully
-            # if result.get("address_search_successful") is True:
-            #     print("\n[Customer found by address! Next: diagnostics (coming soon)]")
-            #     print(f"  Customer: {result.get('customer_name')}")
-            #     break
-            
-            # # Check if address search failed (customer not found)
-            # if result.get("address_search_successful") is False:
-            #     print("\n[Customer not found by address - conversation ended]")
-            #     break
-            # # Check if provider issue informed
-            # if result.get("provider_issue_informed"):
-            #     print("\n[Provider issue informed! Conversation can continue or end]")
-            #     # Don't break - let user respond
-            #     pass
-            
-            # # Check if diagnostics completed and going to troubleshooting
-            # if result.get("diagnostics_completed") and not result.get("provider_issue_detected"):
-            #     print("\n[Diagnostics complete! Next: troubleshooting (coming soon)]")
-            #     break
+           
 
         except KeyboardInterrupt:
             print("\n\n👋 Viso gero!")

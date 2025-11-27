@@ -44,8 +44,26 @@ class State(BaseModel):
     confirmed_address: str | None = None  # Žmogui skaitomas adresas
     
     # === Problem ===
-    problem_type: Literal["internet", "tv", "phone", "other"] | None = None
+    problem_type: Literal["internet", "tv", "phone", "billing", "other"] | None = None
     problem_description: str | None = None
+    
+    # Problem Capture v2.1 - Qualifying context
+    problem_context: dict = Field(default_factory=dict)
+    # Stores extracted facts: {
+    #   "duration": "nuo vakar",
+    #   "scope": "visi įrenginiai",
+    #   "tried_restart": True,
+    #   "router_lights": "nedega",
+    #   "context_score": 85,
+    # }
+    
+    qualifying_questions_asked: int = 0
+    qualifying_answers: list[dict] = Field(default_factory=list)
+    # Stores Q&A history: [
+    #   {"question": "...", "answer": "...", "target_field": "duration", "understood": True},
+    # ]
+    
+    problem_capture_complete: bool = False  # True when ready to proceed
     
     # === Workflow control ===
     needs_address_confirmation: bool = False
@@ -53,33 +71,35 @@ class State(BaseModel):
     address_confirmed: bool | None = None
     address_search_successful: bool | None = None
 
-    # Diagnostics
+    # === Diagnostics ===
     diagnostics_completed: bool = False
     provider_issue_detected: bool = False  # Only CRITICAL issues (outages)
     needs_troubleshooting: bool = False
     provider_issue_informed: bool = False
     diagnostic_results: dict = Field(default_factory=dict)
 
-    # Troubleshooting
+    # === Troubleshooting ===
     troubleshooting_scenario_id: str | None = None
     troubleshooting_current_step: int = 1
     troubleshooting_completed_steps: list = Field(default_factory=list)
     troubleshooting_needs_escalation: bool = False
     troubleshooting_escalation_reason: str | None = None
+    troubleshooting_skipped_steps: list = Field(default_factory=list) 
+    troubleshooting_checked_items: dict = Field(default_factory=dict)
     troubleshooting_failed: bool = False
     
-    # Resolution - PRIDĖTA!
+    # Resolution
     problem_resolved: bool = False
- 
 
-    # Ticket
+    # === Ticket ===
     ticket_created: bool = False
     ticket_id: str | None = None
     ticket_type: str | None = None
-    # End state
+    
+    # === End state ===
     conversation_ended: bool = False
     
-    # Error tracking
+    # === Error tracking ===
     last_error: str | None = None
     llm_error_count: int = 0  # Track LLM failures to prevent infinite loops
     
@@ -137,6 +157,7 @@ def _get_messages(state) -> list[dict]:
     if hasattr(state, "messages"):
         return state.messages
     return state.get("messages", [])
+
 
 def _get_attr(state, key: str, default=None):
     """Universal state attribute accessor (works with both Pydantic and dict)."""

@@ -1,12 +1,12 @@
 # ISP Support Agent Configuration
 
 agent:
-  company_name: "ISP Lietuva"
+  company_name: "ISP Sun CIty"
   agent_name: "Andrius"
   language: "lt"
 
 greeting:
-  template: "Labas, čia {company_name} klientų aptarnavimas. Mano vardas {agent_name}. Kuo galiu jums padėti?"
+  template: "Labas, {company_name} klientų aptarnavimas.Kuo galiu jums padėti?"
 
 conversation:
   max_troubleshooting_attempts: 3

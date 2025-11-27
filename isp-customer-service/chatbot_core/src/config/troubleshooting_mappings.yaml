@@ -1,0 +1,100 @@
+# =============================================================================
+# TROUBLESHOOTING CONTEXT MAPPINGS
+# =============================================================================
+# Defines how problem_context info maps to troubleshooting step skipping
+# =============================================================================
+
+# Mapping: which steps to skip based on known context
+context_to_skip_rules:
+  internet:
+    # If customer already tried restarting router
+    - condition:
+        tried_restart: true
+      skip_steps:
+        - "router_restart"
+        - "restart_router"
+      reason: "Klientas jau bandė perkrauti routerį"
+    
+    # If router lights are off - skip to power check
+    - condition:
+        router_lights: "nedega"
+      skip_steps:
+        - "router_restart"
+        - "check_lights"
+      start_from: "power_check"
+      reason: "Routerio lemputos nedega - tikėtina maitinimo problema"
+    
+    # If router lights are on and WiFi visible - skip router steps
+    - condition:
+        router_lights: "dega"
+        wifi_visible: true
+      skip_steps:
+        - "router_restart"
+        - "check_lights"
+        - "power_check"
+      start_from: "device_check"
+      reason: "Routeris veikia, WiFi matomas - problema įrenginyje"
+    
+    # If tried restart and lights are on - go to connection check
+    - condition:
+        tried_restart: true
+        router_lights: "dega"
+      skip_steps:
+        - "router_restart"
+        - "check_lights"
+      start_from: "connection_check"
+      reason: "Routeris perkrautas, lemputos dega - tikrinam ryšį"
+
+  tv:
+    # If decoder is off
+    - condition:
+        decoder_status: "išjungtas"
+      start_from: "decoder_power"
+      reason: "Dekoderis išjungtas"
+    
+    # If decoder is on but no signal
+    - condition:
+        decoder_status: "įjungtas"
+        has_image: false
+      skip_steps:
+        - "decoder_power"
+      start_from: "signal_check"
+      reason: "Dekoderis įjungtas bet nėra vaizdo"
+
+  phone:
+    # If no dial tone
+    - condition:
+        error_sound: "tylu"
+      start_from: "line_check"
+      reason: "Nėra signalo - tikrinam liniją"
+
+# Step aliases - maps generic step names to scenario-specific IDs
+step_aliases:
+  internet_no_connection:
+    router_restart: "step_1"
+    check_lights: "step_1"  # Same step
+    power_check: "step_2"
+    connection_check: "step_3"
+    device_check: "step_4"
+  
+  internet_slow:
+    router_restart: "step_1"
+    speed_test: "step_2"
+    device_check: "step_3"
+  
+  tv_no_signal:
+    decoder_power: "step_1"
+    signal_check: "step_2"
+    cable_check: "step_3"
+
+# Context summary templates for LLM
+context_summary_templates:
+  tried_restart: "Klientas jau bandė perkrauti routerį"
+  router_lights_off: "Routerio lemputos nedega"
+  router_lights_on: "Routerio lemputos dega"
+  wifi_visible: "Klientas mato WiFi tinklą"
+  wifi_not_visible: "Klientas nemato WiFi tinklo"
+  all_devices_affected: "Problema visuose įrenginiuose"
+  single_device_affected: "Problema tik viename įrenginyje"
+  duration_short: "Problema prasidėjo neseniai"
+  duration_long: "Problema tęsiasi ilgai"
