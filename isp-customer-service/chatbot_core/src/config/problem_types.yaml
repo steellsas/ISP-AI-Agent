@@ -1,0 +1,404 @@
+# =============================================================================
+# PROBLEM TYPES CONFIGURATION
+# =============================================================================
+# Lengvai pridėti naujus tipus, keisti klausimus, weights
+# Modifikuoti be kodo pakeitimų
+# =============================================================================
+
+problem_types:
+  internet:
+    display_name: "Interneto problema"
+    keywords:
+      # Standard
+      - "internetas"
+      - "internet"
+      - "wifi"
+      - "wi-fi"
+      - "ryšys"
+      - "neprisijungia"
+      - "nesijungia"
+      - "lėtas"
+      - "neveikia internetas"
+      - "nėra interneto"
+      - "dingsta ryšys"
+      - "routeris"
+      - "maršrutizatorius"
+      # Browser related
+      - "naršyklė"
+      - "narsykle"
+      - "puslapis"
+      - "puslapiai"
+      - "nekrauna"
+      - "neatsidaro"
+      - "chrome"
+      - "firefox"
+      # Common typos
+      - "interentas"
+      - "interneto"
+      - "interento"
+      - "intrenetas"
+      - "internts"
+      - "intrenet"
+      - "wifis"
+      - "rysis"
+      - "marsrutizatorius"
+      - "ruteris"
+      - "router"
+      # Connection related  
+      - "prisijungti"
+      - "jungtis"
+      - "tinklas"
+      - "nėra ryšio"
+      - "nera rysio"
+    
+    # Konteksto surinkimo konfigūracija
+    context_fields:
+      duration:
+        weight: 25
+        description: "Nuo kada problema"
+        question: "Nuo kada pastebėjote šią problemą?"
+        simpler_question: "Ar šiandien dar veikė internetas?"
+        extract_patterns:
+          - "vakar"
+          - "šiandien"
+          - "savaitė"
+          - "valanda"
+          - "rytas"
+          - "vakare"
+          - "nuo"
+          - "prieš"
+        
+      scope:
+        weight: 25
+        description: "Paveikti įrenginiai"
+        question: "Ar neveikia visuose įrenginiuose - telefone, kompiuteryje?"
+        simpler_question: "Ar telefone matote WiFi tinklą?"
+        extract_patterns:
+          - "visur"
+          - "visi"
+          - "visuose"
+          - "telefonas"
+          - "kompiuteris"
+          - "vienas"
+          - "tik"
+          - "niekas"
+        
+      tried_restart:
+        weight: 20
+        description: "Ar bandė perkrauti"
+        question: "Ar bandėte išjungti ir vėl įjungti routerį?"
+        simpler_question: "Ar routeris dabar įjungtas?"
+        extract_patterns:
+          - "perkroviau"
+          - "perkrauti"
+          - "išjungiau"
+          - "įjungiau"
+          - "restartavau"
+          - "restart"
+          - "bandžiau"
+          - "nebandžiau"
+        
+      router_lights:
+        weight: 15
+        description: "Routerio lempučių būklė"
+        question: "Kokios lemputes dega ant routerio?"
+        simpler_question: "Ar routeryje dega bent viena lempute?"
+        extract_patterns:
+          - "lempute"
+          - "lemputes"
+          - "šviesa"
+          - "dega"
+          - "nedega"
+          - "žalia"
+          - "raudona"
+          - "mirksi"
+        
+      wifi_visible:
+        weight: 15
+        description: "Ar matomas WiFi tinklas"
+        question: "Ar matote savo WiFi tinklą įrenginyje?"
+        simpler_question: "Ar telefone rodoma WiFi ikona?"
+        extract_patterns:
+          - "matau"
+          - "nematau"
+          - "wifi"
+          - "tinklas"
+          - "sąrašas"
+          - "rodo"
+          - "nerodo"
+    
+    context_threshold: 70
+    max_questions: 3
+    
+    question_priority:
+      - "duration"
+      - "scope"
+      - "tried_restart"
+      - "router_lights"
+      - "wifi_visible"
+
+  tv:
+    display_name: "Televizijos problema"
+    keywords:
+      - "televizorius"
+      - "televizija"
+      - "tv"
+      - "kanalai"
+      - "kanalas"
+      - "dekoderis"
+      - "neveikia tv"
+      - "nėra vaizdo"
+      - "nėra garso"
+      - "juodas ekranas"
+      - "priedėlis"
+    
+    context_fields:
+      duration:
+        weight: 25
+        description: "Nuo kada problema"
+        question: "Nuo kada neveikia televizija?"
+        simpler_question: "Ar šiandien dar veikė?"
+        extract_patterns:
+          - "vakar"
+          - "šiandien"
+          - "nuo"
+          - "prieš"
+          - "rytas"
+          - "vakare"
+        
+      scope:
+        weight: 20
+        description: "Paveikti kanalai"
+        question: "Ar neveikia visi kanalai, ar tik kai kurie?"
+        simpler_question: "Ar matote juodą ekraną, ar yra koks nors vaizdas?"
+        extract_patterns:
+          - "visi"
+          - "kai kurie"
+          - "vienas"
+          - "keli"
+          - "tik"
+        
+      decoder_status:
+        weight: 25
+        description: "Dekoderio būklė"
+        question: "Ar dekoderio lemputes dega?"
+        simpler_question: "Ar dekoderis įjungtas?"
+        extract_patterns:
+          - "dekoderis"
+          - "priedėlis"
+          - "dega"
+          - "nedega"
+          - "įjungtas"
+          - "išjungtas"
+        
+      has_image:
+        weight: 15
+        description: "Vaizdo būklė"
+        question: "Ar matote kokį nors vaizdą ekrane?"
+        simpler_question: "Ar ekranas visiškai juodas?"
+        extract_patterns:
+          - "vaizdas"
+          - "matau"
+          - "nematau"
+          - "juoda"
+          - "mėlyna"
+          - "ekranas"
+        
+      has_sound:
+        weight: 15
+        description: "Garso būklė"
+        question: "Ar girdisi garsas?"
+        simpler_question: "Ar televizorius visiškai tylus?"
+        extract_patterns:
+          - "garsas"
+          - "girdisi"
+          - "negirdisi"
+          - "tylus"
+          - "garso nėra"
+    
+    context_threshold: 70
+    max_questions: 3
+    question_priority:
+      - "duration"
+      - "decoder_status"
+      - "scope"
+      - "has_image"
+      - "has_sound"
+
+  phone:
+    display_name: "Telefonijos problema"
+    keywords:
+      - "telefonas"
+      - "fiksuotas"
+      - "skambinti"
+      - "skambutis"
+      - "negirdisi"
+      - "neišsiskambina"
+      - "numeris"
+      - "linija"
+    
+    context_fields:
+      duration:
+        weight: 25
+        description: "Nuo kada problema"
+        question: "Nuo kada turite problemą su telefonu?"
+        simpler_question: "Ar šiandien dar veikė telefonas?"
+        extract_patterns:
+          - "vakar"
+          - "šiandien"
+          - "nuo"
+          - "prieš"
+        
+      issue_type:
+        weight: 30
+        description: "Problemos tipas"
+        question: "Kas konkrečiai neveikia - negirdite, ar negalite skambinti?"
+        simpler_question: "Ar girdite signalą kai pakeliate ragelį?"
+        extract_patterns:
+          - "negirdisi"
+          - "negirdi"
+          - "neskambina"
+          - "neišsiskambina"
+          - "triukšmas"
+          - "traškėjimas"
+        
+      direction:
+        weight: 25
+        description: "Kryptis"
+        question: "Ar problema su įeinančiais, išeinančiais skambučiais, ar abiem?"
+        simpler_question: "Ar galite paskambinti kam nors?"
+        extract_patterns:
+          - "įeinantys"
+          - "išeinantys"
+          - "skambina"
+          - "neskambina"
+          - "priima"
+          - "nepriima"
+        
+      error_sound:
+        weight: 20
+        description: "Klaidos garsas"
+        question: "Ar girdite kokį nors klaidos pranešimą ar pyptelėjimą?"
+        simpler_question: "Ar yra visiškai tylu?"
+        extract_patterns:
+          - "pypsi"
+          - "pranešimas"
+          - "tylu"
+          - "garsas"
+          - "signalas"
+    
+    context_threshold: 70
+    max_questions: 3
+    question_priority:
+      - "issue_type"
+      - "duration"
+      - "direction"
+      - "error_sound"
+
+  billing:
+    display_name: "Sąskaitų/mokėjimų klausimas"
+    keywords:
+      - "sąskaita"
+      - "saskaita"
+      - "mokėjimas"
+      - "mokejimas"
+      - "kaina"
+      - "planas"
+      - "sutartis"
+      - "pinigai"
+      - "apmokėti"
+      - "suma"
+      - "skolos"
+    
+    context_fields:
+      issue_type:
+        weight: 50
+        description: "Klausimo tipas"
+        question: "Ar klausimas susijęs su sąskaita, mokėjimu, ar plano pakeitimu?"
+        simpler_question: "Ar gavote sąskaitą kuri atrodo neteisinga?"
+        extract_patterns:
+          - "sąskaita"
+          - "mokėjimas"
+          - "planas"
+          - "keisti"
+          - "atjungti"
+          - "prijungti"
+        
+      invoice_reference:
+        weight: 25
+        description: "Sąskaitos numeris"
+        question: "Ar turite sąskaitos numerį?"
+        simpler_question: "Ar turite sąskaitą priešais save?"
+        extract_patterns:
+          - "numeris"
+          - "sąskaita"
+          - "nr"
+        
+      amount_issue:
+        weight: 25
+        description: "Sumos problema"
+        question: "Ar suma atrodo neteisinga?"
+        simpler_question: "Ar sąskaita didesnė nei tikėjotės?"
+        extract_patterns:
+          - "suma"
+          - "kaina"
+          - "per didelė"
+          - "neteisinga"
+          - "klaida"
+    
+    context_threshold: 60
+    max_questions: 2
+    question_priority:
+      - "issue_type"
+      - "invoice_reference"
+      - "amount_issue"
+
+  other:
+    display_name: "Kita problema"
+    keywords: []
+    
+    context_fields:
+      description:
+        weight: 100
+        description: "Problemos aprašymas"
+        question: "Prašome plačiau papasakoti apie jūsų problemą."
+        simpler_question: "Su kuo konkrečiai reikia pagalbos?"
+        extract_patterns: []
+    
+    context_threshold: 50
+    max_questions: 2
+    question_priority:
+      - "description"
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+
+settings:
+  default_context_threshold: 70
+  default_max_questions: 3
+  fallback_problem_type: "other"
+  
+  # Frazės kurios rodo kad klientas nori praleisti klausimus
+  skip_phrases:
+    - "tiesiog padėkite"
+    - "tiesiog padekit"
+    - "tiesiog patikrinkite"
+    - "nesvarbu"
+    - "pereikime toliau"
+    - "greitai"
+    - "negaliu patikrinti"
+    - "nenoriu atsakinėti"
+  
+  # Frazės kurios rodo kad klientas nežino atsakymo
+  unknown_phrases:
+    - "nežinau"
+    - "nezinau"
+    - "neaišku"
+    - "neaisku"
+    - "negaliu pasakyti"
+    - "nesuprantu"
+    - "gal"
+    - "galbūt"
+    - "nematau"
+    - "neturiu"

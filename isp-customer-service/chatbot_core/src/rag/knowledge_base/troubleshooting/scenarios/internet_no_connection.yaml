@@ -1,0 +1,156 @@
+scenario:
+  id: "internet_no_connection"
+  title: "Interneto ryšio nebuvimas"
+  problem_type: "internet"
+  keywords:
+    - "neveikia internetas"
+    - "nėra interneto"
+    - "nėra ryšio"
+    - "neprisijungia"
+  
+  description: |
+    Scenarijus kai klientas neturi jokio interneto ryšio.
+    Tikrinami pagrindiniai komponentai: routeris, kabeliai, maitinimas.
+  
+  steps:
+    - step_id: 1
+      title: "Routerio lempučių tikrinimas"
+      instruction: |
+        Prašome patikrinti routerio lemputes ir pasakyti kas dega:
+        
+        1. POWER lempute (turi būti žalia arba mėlyna)
+        2. INTERNET/WAN lempute (turi būti žalia arba mirkčioti)
+        3. WiFi lempute (jei naudojate bevielį ryšį)
+      
+      expected_answer: "description of lights"
+      
+      branches:
+        no_lights:
+          condition: "jokios lemputes nedega"
+          next_step: 2
+          message: "Routeris neįjungtas arba nėra maitinimo."
+        
+        power_only:
+          condition: "tik power dega"
+          next_step: 3
+          message: "Routeris įjungtas, bet nėra interneto signalo."
+        
+        internet_red:
+          condition: "internet lempute raudona"
+          next_step: 3
+          message: "Aptikta kabelio ar ryšio problema."
+        
+        all_green:
+          condition: "visos lemputes žalios"
+          next_step: 4
+          message: "Routeris veikia teisingai, problema gali būti įrenginyje."
+
+    - step_id: 2
+      title: "Maitinimo tikrinimas"
+      instruction: |
+        Prašome patikrinti:
+        
+        1. Ar routeris įjungtas į elektros lizdą?
+        2. Ar veikia elektra tame lizde? (pabandykite įkišti kitą įrenginį)
+        3. Ar routerio maitinimo adapteris gerai prijungtas?
+        4. Pabandykite išjungti routerį iš elektros 30 sekundžių ir vėl įjungti.
+        
+        Ar dabar dega routerio lemputes?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        lights_on:
+          condition: "taip"
+          next_step: 1
+          message: "Puiku! Grįžkime prie lempučių tikrinimo."
+        
+        still_off:
+          condition: "ne"
+          action: "escalate"
+          reason: "faulty_power"
+          message: "Panašu, kad routerio maitinimo problema. Reikalingas techniko vizitas."
+
+    - step_id: 3
+      title: "Interneto kabelio tikrinimas"
+      instruction: |
+        Prašome patikrinti internetinį kabelį:
+        
+        1. Raskite kabelį, kuris eina nuo sienos į routerį (paprastai geltonas arba mėlynas)
+        2. Patikrinkite ar jis įkištas į WAN/INTERNET portą routeryje (dažniausiai geltonas)
+        3. Patikrinkite ar kabelis nepažeistas, nelankstomas
+        4. Pabandykite ištraukti ir vėl tvirtai įkišti kabelį
+        
+        Ar INTERNET lempute dabar pradėjo degti žaliai?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        working:
+          condition: "taip"
+          next_step: 5
+          message: "Puiku! Pabandykime patikrinti internetą."
+        
+        not_working:
+          condition: "ne"
+          action: "escalate"
+          reason: "cable_or_network_issue"
+          message: "Problema gali būti su kabeliu arba mūsų tinklu. Reikalingas techniko vizitas."
+
+    - step_id: 4
+      title: "WiFi ar kabelio interneto tikrinimas"
+      instruction: |
+        Jei naudojate WiFi:
+        1. Patikrinkite ar WiFi įjungtas įrenginyje
+        2. Pamėginkite atjungti ir vėl prisijungti prie WiFi
+        3. Pabandykite prisijungti kitu įrenginiu
+        
+        Jei turite galimybę, prijunkite kompiuterį tiesiogiai kabeliu į routerį.
+        
+        Ar dabar veikia internetas?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        working:
+          condition: "taip"
+          action: "resolved"
+          message: "Puiku! Problema išspręsta. Jei vėl kiltų problemų, susisiekite su mumis."
+        
+        not_working:
+          condition: "ne"
+          next_step: 5
+          message: "Pabandykime perkrauti routerį."
+
+    - step_id: 5
+      title: "Routerio perkrovimas"
+      instruction: |
+        Atlikime routerio perkrovimą:
+        
+        1. Išjunkite routerį iš elektros lizdo
+        2. Palaukite 30 sekundžių
+        3. Įjunkite routerį atgal
+        4. Palaukite 2-3 minutes, kol routeris pilnai pakraus
+        5. Patikrinkite ar visos lemputes dega teisingai
+        6. Pabandykite prisijungti prie interneto
+        
+        Ar dabar veikia internetas?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        working:
+          condition: "taip"
+          action: "resolved"
+          message: "Puiku! Problema išspręsta. Rekomenduojame kartais perkrauti routerį profilaktiškai."
+        
+        not_working:
+          condition: "ne"
+          action: "escalate"
+          reason: "advanced_troubleshooting_needed"
+          message: "Problema sudėtingesnė. Sukursiu techninės pagalbos užklausą. Technikas susisieks su jumis artimiausiu metu."
+
+  escalation:
+    create_ticket: true
+    priority: "high"
+    include_steps: true

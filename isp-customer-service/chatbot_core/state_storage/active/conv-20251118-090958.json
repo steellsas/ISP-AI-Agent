@@ -1,0 +1,112 @@
+{
+  "conversation_id": "conv-20251118-090958",
+  "session_start": "2025-11-18T09:09:58.551313",
+  "language": "lt",
+  "current_node": "problem_identification",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "Sveiki! 👋\n\nAš esu ISP pagalbos asistentas. Padėsiu išspręsti Jūsų interneto ar televizijos problemas 22.\n\nNorėdamas pradėti, man reikės kelių dalykų:\n• Jūsų adreso (miestas, gatvė, namo numeris)\n• Trumpo problemos aprašymo\n\nKaip galiu Jums padėti šiandien?",
+      "timestamp": "2025-11-18T09:09:58.551852"
+    },
+    {
+      "role": "user",
+      "content": "Šiauliai Tilžės g . 60 - 12",
+      "timestamp": "2025-11-18T09:10:19.291041"
+    },
+    {
+      "role": "assistant",
+      "content": "Puiku! Radau Jūsų duomenis. ✅\n\nVardas: Jonas\nAdresas: Šiauliai,  60\n\nDabar papasakokite apie problemą - kas neveikia ar veikia netinkamai?",
+      "timestamp": "2025-11-18T09:10:19.292039"
+    },
+    {
+      "role": "user",
+      "content": "nera interento",
+      "timestamp": "2025-11-18T09:10:34.814467"
+    },
+    {
+      "role": "assistant",
+      "content": "Norėčiau geriau suprasti problemą.\n\nAr galėtumėte patikslinti:\n• Kas tiksliai neveikia? (internetas / TV / kita)\n• Kaip problema pasireiškia?\n• Nuo kada tai vyksta?",
+      "timestamp": "2025-11-18T09:10:34.815467"
+    },
+    {
+      "role": "user",
+      "content": "tiesiog dingo risys ir tiek",
+      "timestamp": "2025-11-18T09:11:04.270962"
+    },
+    {
+      "role": "assistant",
+      "content": "Norėčiau geriau suprasti problemą.\n\nAr galėtumėte patikslinti:\n• Kas tiksliai neveikia? (internetas / TV / kita)\n• Kaip problema pasireiškia?\n• Nuo kada tai vyksta?",
+      "timestamp": "2025-11-18T09:11:04.271963"
+    },
+    {
+      "role": "user",
+      "content": "internetas",
+      "timestamp": "2025-11-18T09:12:04.342349"
+    },
+    {
+      "role": "assistant",
+      "content": "Norėčiau geriau suprasti problemą.\n\nAr galėtumėte patikslinti:\n• Kas tiksliai neveikia? (internetas / TV / kita)\n• Kaip problema pasireiškia?\n• Nuo kada tai vyksta?",
+      "timestamp": "2025-11-18T09:12:04.343348"
+    },
+    {
+      "role": "user",
+      "content": "interneto nera",
+      "timestamp": "2025-11-18T09:23:30.871982"
+    },
+    {
+      "role": "assistant",
+      "content": "Norėčiau geriau suprasti problemą.\n\nAr galėtumėte patikslinti:\n• Kas tiksliai neveikia? (internetas / TV / kita)\n• Kaip problema pasireiškia?\n• Nuo kada tai vyksta?",
+      "timestamp": "2025-11-18T09:23:30.871982"
+    },
+    {
+      "role": "user",
+      "content": "tv",
+      "timestamp": "2025-11-18T09:23:36.399489"
+    },
+    {
+      "role": "assistant",
+      "content": "Norėčiau geriau suprasti problemą.\n\nAr galėtumėte patikslinti:\n• Kas tiksliai neveikia? (internetas / TV / kita)\n• Kaip problema pasireiškia?\n• Nuo kada tai vyksta?",
+      "timestamp": "2025-11-18T09:23:36.400490"
+    }
+  ],
+  "customer": {
+    "customer_id": "CUST001",
+    "first_name": "Jonas",
+    "last_name": "Jonaitis",
+    "phone": "+37060012345",
+    "email": "jonas@example.com",
+    "address": {
+      "city": "Šiauliai",
+      "street": "",
+      "house_number": "60",
+      "apartment_number": null,
+      "full_address": "Šiauliai,  60"
+    }
+  },
+  "customer_identified": true,
+  "problem": {},
+  "problem_identified": false,
+  "diagnostics": {},
+  "diagnostics_completed": false,
+  "troubleshooting": {
+    "steps_taken": [],
+    "instructions_given": [],
+    "customer_actions": [],
+    "resolved": false
+  },
+  "troubleshooting_attempted": false,
+  "ticket": {
+    "created": false
+  },
+  "ticket_created": false,
+  "next_action": null,
+  "requires_escalation": false,
+  "conversation_ended": false,
+  "retrieved_documents": [],
+  "tool_calls": [],
+  "metadata": {
+    "greeting_sent": true,
+    "greeting_timestamp": "2025-11-18T09:09:58.551313"
+  }
+}

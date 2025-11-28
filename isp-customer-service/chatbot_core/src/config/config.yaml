@@ -1,0 +1,18 @@
+# ISP Support Agent Configuration
+
+agent:
+  company_name: "ISP Sun CIty"
+  agent_name: "Andrius"
+  language: "lt"
+
+greeting:
+  template: "Labas, {company_name} klientų aptarnavimas.Kuo galiu jums padėti?"
+
+conversation:
+  max_troubleshooting_attempts: 3
+  timeout_seconds: 300
+
+llm:
+  model: "gpt-4o-mini"
+  temperature: 0.3
+  max_tokens: 500

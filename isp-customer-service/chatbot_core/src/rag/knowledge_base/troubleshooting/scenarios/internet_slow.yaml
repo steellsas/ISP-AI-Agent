@@ -1,0 +1,165 @@
+scenario:
+  id: "internet_slow"
+  title: "Lėtas interneto greitis"
+  problem_type: "internet"
+  keywords:
+    - "lėtas internetas"
+    - "prastas greitis"
+    - "ilgai kraunasi"
+    - "stringa"
+    - "lėtai veikia"
+  
+  description: |
+    Scenarijus kai klientas turi interneto ryšį, bet greitis yra lėtas.
+    Tikrinami galimi lėtumo šaltiniai: WiFi signalas, routeris, daug įrenginių.
+  
+  steps:
+    - step_id: 1
+      title: "Greičio testavimas"
+      instruction: |
+        Pirmiausia patikrinkime tikrąjį greitį.
+        
+        Prašome atlikti greičio testą:
+        1. Atidarykite naršyklę
+        2. Eikite į www.speedtest.net
+        3. Paspauskite "GO"
+        4. Palaukite kol testas pasibaigs
+        
+        Kokį download greitį matote? (Mbps)
+      
+      expected_answer: "speed in Mbps"
+      
+      branches:
+        very_slow:
+          condition: "mažiau nei 10 Mbps"
+          next_step: 2
+          message: "Greitis tikrai žemas. Patikrinkime ryšio būdą."
+        
+        moderately_slow:
+          condition: "10-30 Mbps"
+          next_step: 3
+          message: "Greitis šiek tiek žemesnis nei turėtų būti. Patikrinkime WiFi."
+        
+        acceptable:
+          condition: "daugiau nei 30 Mbps"
+          next_step: 5
+          message: "Greitis normalus. Problema gali būti specifinėje programoje ar puslapyje."
+
+    - step_id: 2
+      title: "WiFi ar kabelio interneto tikrinimas"
+      instruction: |
+        Labai svarbu suprasti kaip esate prisijungę:
+        
+        - Ar naudojate WiFi bevielį ryšį?
+        - Ar galite pabandyti prisijungti kabeliu tiesiogiai prie routerio?
+        
+        Jei prisijungsite kabeliu ir greitis bus geresnis, problema yra su WiFi signalu.
+        
+        Kokiu būdu dabar prisijungę?
+      
+      expected_answer: "WiFi or cable"
+      
+      branches:
+        wifi:
+          condition: "WiFi"
+          next_step: 3
+          message: "Suprantu. Patikrinkime WiFi signalo kokybę."
+        
+        cable:
+          condition: "kabelis"
+          next_step: 4
+          message: "Prisijungęs kabeliu turėtų būti greičiau. Patikrinsime routerį."
+
+    - step_id: 3
+      title: "WiFi signalo gerinimas"
+      instruction: |
+        WiFi greitis priklauso nuo signalo stiprumo. Pabandykime pagerinti:
+        
+        1. Priartėkite arčiau prie routerio (idealioje to paties kambario)
+        2. Patikrinkite ar tarp routerio ir jūsų nėra daug sienų
+        3. Patikrinkite ar routeris stovi atvirai (ne spintoje)
+        4. Perkraukite routerį (išjungti 30 sek, įjungti)
+        
+        Taip pat patikrinkite:
+        - Ar daugiau žmonių dabar naudoja internetą?
+        - Ar atsisiunčiate/įkeliate didelius failus?
+        
+        Ar dabar greitis pageėjo?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        improved:
+          condition: "taip"
+          action: "resolved"
+          message: "Puiku! WiFi signalas buvo problema. Rekomenduojame laikyti routerį atviroje vietoje."
+        
+        not_improved:
+          condition: "ne"
+          next_step: 4
+          message: "Patikrinsime routerį ir įrenginius."
+
+    - step_id: 4
+      title: "Routerio ir įrenginių tikrinimas"
+      instruction: |
+        Patikrinkime ar routeris neperkaitus ir ar nedaug įrenginių prisijungę:
+        
+        1. Palieskite routerį - ar jis labai karštas?
+        2. Kiek įrenginių dabar prijungta prie WiFi? (telefonai, planšetės, TV, kt.)
+        3. Ar kas nors dabar žiūri video/atsisiunčia failus?
+        4. Pabandykite atjungti kitus įrenginius ir palikti tik vieną
+        
+        Taip pat:
+        - Perkraukite routerį (išjungti 30 sek)
+        - Perkraukite kompiuterį/telefoną
+        
+        Ar dabar greitis pageėjo?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        improved:
+          condition: "taip"
+          action: "resolved"
+          message: "Puiku! Perkaites routeris arba daug įrenginių buvo problema. Stebėkite situaciją."
+        
+        not_improved:
+          condition: "ne"
+          action: "escalate"
+          reason: "persistent_slow_speed"
+          message: "Problema gali būti sudėtingesnė. Sukursiu užklausą technikui patikrinti jūsų liniją."
+
+    - step_id: 5
+      title: "Specifinės problemos tikrinimas"
+      instruction: |
+        Jei bendras greitis geras, bet kai kurie dalykai lėti:
+        
+        1. Ar lėtas tik vienas puslapis/paslauga? (pvz., YouTube, Facebook)
+        2. Ar lėtas tik viename įrenginyje?
+        3. Ar problema tik tam tikru paros metu?
+        
+        Pabandykite:
+        - Išvalyti naršyklės cache
+        - Pabandyti kitą naršyklę
+        - Patikrinti ar tas puslapis neturi problemų (Google Search: "[site name] down")
+        
+        Ar problema išspręsta?
+      
+      expected_answer: "yes/no"
+      
+      branches:
+        resolved:
+          condition: "taip"
+          action: "resolved"
+          message: "Puiku! Problema buvo specifinė tam tikram puslapiui ar įrenginiui."
+        
+        not_resolved:
+          condition: "ne"
+          action: "escalate"
+          reason: "complex_speed_issue"
+          message: "Sukursiu užklausą gilesnei analizei. Technikas susisieks su jumis."
+
+  escalation:
+    create_ticket: true
+    priority: "medium"
+    include_steps: true

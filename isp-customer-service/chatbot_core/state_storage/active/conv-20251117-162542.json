@@ -1,0 +1,59 @@
+{
+  "conversation_id": "conv-20251117-162542",
+  "session_start": "2025-11-17T16:25:42.021438",
+  "language": "lt",
+  "current_node": "greeting",
+  "messages": [
+    {
+      "role": "assistant",
+      "content": "Sveiki! 👋\n\nAš esu ISP pagalbos asistentas. Padėsiu išspręsti Jūsų interneto ar televizijos problemas 22.\n\nNorėdamas pradėti, man reikės kelių dalykų:\n• Jūsų adreso (miestas, gatvė, namo numeris)\n• Trumpo problemos aprašymo\n\nKaip galiu Jums padėti šiandien?",
+      "timestamp": "2025-11-17T16:25:42.021438"
+    },
+    {
+      "role": "user",
+      "content": "sveiki nera intereneto",
+      "timestamp": "2025-11-17T16:26:25.896495"
+    },
+    {
+      "role": "user",
+      "content": "Šiauliai Tilžės g . 60 - 12",
+      "timestamp": "2025-11-17T16:27:01.232044"
+    },
+    {
+      "role": "user",
+      "content": "nera interento ar gali man padeti",
+      "timestamp": "2025-11-17T16:27:53.440167"
+    },
+    {
+      "role": "user",
+      "content": "lopas",
+      "timestamp": "2025-11-17T16:28:37.352077"
+    }
+  ],
+  "customer": {},
+  "customer_identified": false,
+  "problem": {},
+  "problem_identified": false,
+  "diagnostics": {},
+  "diagnostics_completed": false,
+  "troubleshooting": {
+    "steps_taken": [],
+    "instructions_given": [],
+    "customer_actions": [],
+    "resolved": false
+  },
+  "troubleshooting_attempted": false,
+  "ticket": {
+    "created": false
+  },
+  "ticket_created": false,
+  "next_action": null,
+  "requires_escalation": false,
+  "conversation_ended": false,
+  "retrieved_documents": [],
+  "tool_calls": [],
+  "metadata": {
+    "greeting_sent": true,
+    "greeting_timestamp": "2025-11-17T16:25:42.021438"
+  }
+}
