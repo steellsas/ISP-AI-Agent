@@ -5,18 +5,28 @@ Detailed monitoring, debugging, and graph visualization
 
 import streamlit as st
 import json
+import sys
+from pathlib import Path
+
+# Fix imports
+_current = Path(__file__).resolve().parent.parent
+if str(_current) not in sys.path:
+    sys.path.insert(0, str(_current))
 
 from ui_utils.session import get_state_summary
+
+# Import LLM stats
+try:
+    from services.llm.stats import get_session_stats
+    LLM_STATS_AVAILABLE = True
+except ImportError:
+    LLM_STATS_AVAILABLE = False
 
 
 def render_monitor_tab():
     """Render the monitoring tab."""
     
     st.markdown("## 📊 Monitoring Dashboard")
-    
-    if not st.session_state.chatbot_state:
-        st.info("Pradėkite pokalbį 📞 Call tab'e, kad matytumėte monitoring duomenis")
-        return
     
     # Top metrics row
     render_metrics_row()
@@ -34,14 +44,14 @@ def render_monitor_tab():
     
     st.markdown("---")
     
-    # Bottom section: RAG docs and LLM calls
-    col_rag, col_llm = st.columns([1, 1])
-    
-    with col_rag:
-        render_rag_section()
+    # Bottom section: LLM calls and RAG
+    col_llm, col_rag = st.columns([1, 1])
     
     with col_llm:
         render_llm_calls_section()
+    
+    with col_rag:
+        render_rag_section()
     
     # Debug section
     st.markdown("---")
@@ -53,36 +63,79 @@ def render_metrics_row():
     
     col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
-        st.metric(
-            "💬 Žinutės",
-            len(st.session_state.messages)
-        )
+    if LLM_STATS_AVAILABLE:
+        stats = get_session_stats()
+        
+        with col1:
+            st.metric("💬 Žinutės", len(st.session_state.messages))
+        
+        with col2:
+            st.metric(
+                "🎫 Tokens",
+                f"{stats.total_tokens:,}",
+                help=f"Input: {stats.total_input_tokens:,} | Output: {stats.total_output_tokens:,}"
+            )
+        
+        with col3:
+            st.metric(
+                "💰 Cost",
+                f"${stats.total_cost_usd:.4f}",
+            )
+        
+        with col4:
+            st.metric(
+                "🔄 LLM Calls",
+                stats.total_calls,
+                help=f"✓ {stats.successful_calls} | ✗ {stats.failed_calls} | 📦 {stats.cached_calls} cached"
+            )
+    else:
+        with col1:
+            st.metric("💬 Žinutės", len(st.session_state.messages))
+        with col2:
+            st.metric("🎫 Tokens", "N/A")
+        with col3:
+            st.metric("💰 Cost", "N/A")
+        with col4:
+            st.metric("🔄 LLM Calls", "N/A")
+        st.warning("LLM stats not available")
+
+
+def render_llm_calls_section():
+    """Render LLM calls history section."""
     
-    with col2:
-        token_usage = st.session_state.token_usage
-        st.metric(
-            "🎫 Tokens",
-            f"{token_usage['total']:,}",
-            help=f"Input: {token_usage['input']:,} | Output: {token_usage['output']:,}"
-        )
+    st.markdown("### 🤖 LLM Calls")
     
-    with col3:
-        # Estimate cost (GPT-4o-mini pricing)
-        # Input: $0.15/1M, Output: $0.60/1M
-        input_cost = token_usage['input'] * 0.00000015
-        output_cost = token_usage['output'] * 0.0000006
-        total_cost = input_cost + output_cost
-        st.metric(
-            "💰 Cost",
-            f"${total_cost:.4f}",
-            help="Estimated cost based on GPT-4o-mini pricing"
-        )
+    if not LLM_STATS_AVAILABLE:
+        st.warning("LLM stats not available")
+        return
     
-    with col4:
-        st.metric(
-            "🔄 LLM Calls",
-            len(st.session_state.llm_calls)
+    stats = get_session_stats()
+    recent_calls = stats.get_recent_calls(10)
+    
+    if not recent_calls:
+        st.info("Kol kas LLM iškvietimų nebuvo")
+        return
+    
+    # Summary by model
+    if stats.calls_per_model:
+        st.markdown("**Pagal modelį:**")
+        for model, count in stats.calls_per_model.items():
+            tokens = stats.tokens_per_model.get(model, 0)
+            cost = stats.cost_per_model.get(model, 0)
+            st.markdown(f"• `{model}`: {count} calls, {tokens:,} tokens, ${cost:.4f}")
+    
+    st.markdown("---")
+    
+    # Recent calls
+    st.markdown("**Paskutiniai iškvietimai:**")
+    for call in reversed(recent_calls):
+        status = "✓" if call.success else "✗"
+        cached = "📦" if call.cached else ""
+        st.markdown(
+            f"{status} {cached} `{call.model}` | "
+            f"{call.total_tokens} tok | "
+            f"${call.cost_usd:.5f} | "
+            f"{call.latency_ms:.0f}ms"
         )
 
 
@@ -91,20 +144,16 @@ def render_graph_section():
     
     st.markdown("### 🗺️ Workflow Graph")
     
-    # Import graph image function
     from ui_utils.chatbot_bridge import get_graph_image
     
-    # Get and display graph PNG
     graph_png = get_graph_image()
     if graph_png:
         st.image(graph_png, caption="LangGraph Workflow", width="stretch")
     else:
         st.warning("Nepavyko sugeneruoti graph vizualizacijos")
     
-    # Also show current node indicator
     state = get_state_summary()
     current_node = state.get("current_node", "unknown")
-    
     st.markdown(f"**Dabartinis node:** `{current_node}`")
 
 
@@ -115,7 +164,10 @@ def render_details_section():
     
     state = get_state_summary()
     
-    # Organized state display
+    if not st.session_state.chatbot_state:
+        st.info("Pradėkite pokalbį, kad matytumėte state")
+        return
+    
     tab1, tab2, tab3 = st.tabs(["Customer", "Problem", "Workflow"])
     
     with tab1:
@@ -152,14 +204,6 @@ def render_rag_section():
     
     if not rag_docs:
         st.info("Kol kas RAG dokumentų nepanaudota")
-        
-        # Placeholder for demonstration
-        st.markdown("""
-        *Čia bus rodomi dokumentai, kuriuos agentas panaudojo atsakymui:*
-        - Troubleshooting guides
-        - FAQ entries
-        - Technical documentation
-        """)
     else:
         for doc in rag_docs:
             with st.expander(f"📄 {doc.get('title', 'Document')} (score: {doc.get('score', 0):.2f})"):
@@ -167,44 +211,16 @@ def render_rag_section():
                 st.markdown(f"**Retrieved:** {doc.get('timestamp')}")
 
 
-def render_llm_calls_section():
-    """Render LLM calls history section."""
-    
-    st.markdown("### 🤖 LLM Calls")
-    
-    llm_calls = st.session_state.llm_calls
-    
-    if not llm_calls:
-        st.info("Kol kas LLM iškvietimų nebuvo užregistruota")
-        
-        # Placeholder
-        st.markdown("""
-        *Čia bus rodoma LLM iškvietimų istorija:*
-        - Node kuris iškvietė
-        - Modelis
-        - Token count
-        - Response time
-        """)
-    else:
-        for i, call in enumerate(reversed(llm_calls[-10:])):
-            st.markdown(f"""
-            **#{len(llm_calls) - i}** `{call.get('node')}` 
-            | Model: {call.get('model')} 
-            | Tokens: {call.get('tokens')} 
-            | Time: {call.get('duration_ms')}ms
-            """)
-
-
 def render_debug_section():
     """Render debug section with full state."""
     
     with st.expander("🐛 Debug: Full State"):
         if st.session_state.chatbot_state:
-            # Make it copy-able
             st.code(json.dumps(st.session_state.chatbot_state, indent=2, default=str), language="json")
         else:
             st.info("No state available")
     
-    with st.expander("📜 Message History (Raw)"):
-        for i, msg in enumerate(st.session_state.messages):
-            st.markdown(f"**[{i}]** `{msg.get('role')}`: {msg.get('content')[:100]}...")
+    if LLM_STATS_AVAILABLE:
+        with st.expander("📊 LLM Stats Raw"):
+            stats = get_session_stats()
+            st.code(stats.get_summary_text())
