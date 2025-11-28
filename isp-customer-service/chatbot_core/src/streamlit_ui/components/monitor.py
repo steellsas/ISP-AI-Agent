@@ -91,77 +91,21 @@ def render_graph_section():
     
     st.markdown("### 🗺️ Workflow Graph")
     
-    # Get current node
+    # Import graph image function
+    from ui_utils.chatbot_bridge import get_graph_image
+    
+    # Get and display graph PNG
+    graph_png = get_graph_image()
+    if graph_png:
+        st.image(graph_png, caption="LangGraph Workflow", width="stretch")
+    else:
+        st.warning("Nepavyko sugeneruoti graph vizualizacijos")
+    
+    # Also show current node indicator
     state = get_state_summary()
     current_node = state.get("current_node", "unknown")
     
-    # Mermaid graph
-    # Highlight current node
-    node_styles = {
-        "greeting": "",
-        "identify_customer": "",
-        "problem_capture": "",
-        "diagnostics": "",
-        "troubleshooting": "",
-        "ticket_creation": "",
-        "closing": "",
-        "end": ""
-    }
-    
-    # Set current node style
-    if current_node in node_styles:
-        node_styles[current_node] = ":::active"
-    
-    mermaid_code = f"""
-    graph TD
-        A[Start] --> B[greeting{node_styles.get('greeting', '')}]
-        B --> C[identify_customer{node_styles.get('identify_customer', '')}]
-        C --> D[problem_capture{node_styles.get('problem_capture', '')}]
-        D --> E[diagnostics{node_styles.get('diagnostics', '')}]
-        E --> F{{Router}}
-        F -->|provider issue| G[inform_provider_issue]
-        F -->|customer issue| H[troubleshooting{node_styles.get('troubleshooting', '')}]
-        H --> I{{Resolved?}}
-        I -->|yes| J[closing{node_styles.get('closing', '')}]
-        I -->|no| K[ticket_creation{node_styles.get('ticket_creation', '')}]
-        K --> J
-        G --> J
-        J --> L[end{node_styles.get('end', '')}]
-        
-        classDef active fill:#4CAF50,stroke:#2E7D32,color:white
-    """
-    
-    st.markdown(f"""
-    ```mermaid
-    {mermaid_code}
-    ```
-    """)
-    
-    # Note: Streamlit doesn't render mermaid natively, 
-    # but we can show it as code or use streamlit-mermaid component
-    
-    # Alternative: simple text representation
-    st.markdown("#### Node Flow:")
-    
-    nodes = [
-        ("greeting", "🟢"),
-        ("identify_customer", "🔵"),
-        ("problem_capture", "🟡"),
-        ("diagnostics", "🟠"),
-        ("troubleshooting", "🔧"),
-        ("ticket_creation", "🎫"),
-        ("closing", "✅"),
-        ("end", "⬛")
-    ]
-    
-    flow_text = ""
-    for node, icon in nodes:
-        if node == current_node:
-            flow_text += f"**→ {icon} {node} ←**  "
-        else:
-            flow_text += f"{icon} {node}  →  "
-    
-    st.markdown(flow_text.rstrip(" → "))
+    st.markdown(f"**Dabartinis node:** `{current_node}`")
 
 
 def render_details_section():

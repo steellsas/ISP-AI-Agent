@@ -183,3 +183,13 @@ def get_agent_decision_info(result: dict) -> dict:
         "troubleshooting_step": result.get("troubleshooting_current_step"),
         "diagnostic_results": result.get("diagnostic_results", {}),
     }
+def get_graph_image() -> bytes | None:
+    """Get graph visualization as PNG bytes."""
+    try:
+        app = get_cached_app()
+        if not app:
+            return None
+        return app.get_graph().draw_mermaid_png()
+    except Exception as e:
+        print(f"Error generating graph: {e}")
+        return None
