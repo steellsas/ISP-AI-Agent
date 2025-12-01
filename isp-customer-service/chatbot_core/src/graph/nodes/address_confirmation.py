@@ -339,7 +339,6 @@ def address_confirmation_node(state) -> dict:
     try:
         response = llm_json_completion(
             messages=messages,
-            model="gpt-4o-mini",
             temperature=0.2,
             max_tokens=200
         )

@@ -6,6 +6,7 @@ Handles all communication with the LangGraph workflow
 import streamlit as st
 from typing import Tuple, Optional
 import time
+from datetime import datetime
 
 # These imports will work when file is in chatbot_core/src/ui/streamlit_ui/
 # and src is in sys.path
@@ -17,6 +18,35 @@ except ImportError as e:
     CHATBOT_AVAILABLE = False
     IMPORT_ERROR = str(e)
 
+def _on_llm_call(data: dict):
+    """Callback for LLM calls - store in session state."""
+    if "llm_calls" not in st.session_state:
+        st.session_state.llm_calls = []
+    
+    st.session_state.llm_calls.append({
+        **data,
+        "timestamp": datetime.now().isoformat(),
+    })
+    
+    # Update totals
+    if "total_tokens" not in st.session_state:
+        st.session_state.total_tokens = 0
+    if "total_cost" not in st.session_state:
+        st.session_state.total_cost = 0.0
+    
+    st.session_state.total_tokens += data.get("input_tokens", 0) + data.get("output_tokens", 0)
+    st.session_state.total_cost += data.get("cost", 0)
+
+
+def _on_rag_retrieval(data: dict):
+    """Callback for RAG retrievals - store in session state."""
+    if "rag_retrievals" not in st.session_state:
+        st.session_state.rag_retrievals = []
+    
+    st.session_state.rag_retrievals.append({
+        **data,
+        "timestamp": datetime.now().isoformat(),
+    })
 
 def check_chatbot_available() -> Tuple[bool, str]:
     """Check if chatbot core is available."""
@@ -39,7 +69,23 @@ def start_conversation(phone_number: str) -> dict:
     
     Returns:
         Result state from graph invocation
+
     """
+    # Reset stats for new conversation
+    st.session_state.llm_calls = []
+    st.session_state.rag_retrievals = []
+    st.session_state.total_tokens = 0
+    st.session_state.total_cost = 0.0
+    
+    # Register callbacks
+    try:
+        from src.services.llm.client import register_stats_callback
+        from src.rag.retriever import register_rag_callback
+        register_stats_callback(_on_llm_call)
+        register_rag_callback(_on_rag_retrieval)
+    except ImportError as e:
+        print(f"Warning: Could not register callbacks: {e}")
+        
     app = get_cached_app()
     if not app:
         return {"error": "Chatbot not available"}

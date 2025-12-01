@@ -23,6 +23,26 @@ from .vector_store import VectorStore, get_vector_store
 logger = get_logger(__name__)
 
 
+# RAG callbacks for UI integration
+_rag_callbacks = []
+
+
+def register_rag_callback(callback):
+    """Register callback for RAG retrieval updates."""
+    global _rag_callbacks
+    if callback not in _rag_callbacks:
+        _rag_callbacks.append(callback)
+
+
+def _notify_rag_callbacks(data: dict):
+    """Notify all registered callbacks."""
+    for callback in _rag_callbacks:
+        try:
+            callback(data)
+        except Exception:
+            pass  # Silent fail for UI callbacks
+
+
 class Retriever:
     """
     Document retriever combining embeddings and vector store.
@@ -104,6 +124,19 @@ class Retriever:
             results = results[:k]
             
             logger.info(f"Retrieved {len(results)} documents")
+            # Notify UI callbacks
+            _notify_rag_callbacks({
+                "type": "rag_retrieval",
+                "query": query,
+                "results_count": len(results),
+                "results": [
+                    {
+                        "score": r.get("score", 0),
+                        "metadata": r.get("metadata", {}),
+                    }
+                    for r in results
+                ],
+            })
             
             return results
             

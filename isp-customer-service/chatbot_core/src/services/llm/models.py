@@ -51,25 +51,14 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         supports_vision=True,
         description="Fast and affordable, good for most tasks"
     ),
-    "gpt-4-turbo": ModelInfo(
-        id="gpt-4-turbo",
-        name="GPT-4 Turbo",
-        provider="openai",
-        input_cost_per_1k=0.01,
-        output_cost_per_1k=0.03,
-        max_tokens=128000,
-        default_temperature=0.3,
-        supports_json_mode=True,
-        supports_vision=True,
-        description="Previous generation GPT-4"
-    ),
+
     
     # =========================================================================
     # Google Gemini Models
     # =========================================================================
-    "gemini/gemini-1.5-pro": ModelInfo(
-        id="gemini/gemini-1.5-pro",
-        name="Gemini 1.5 Pro",
+    "gemini/gemini-2.5-pro": ModelInfo(
+        id="gemini/gemini-2.5-pro",
+        name="Gemini 2.5 Pro",
         provider="google",
         input_cost_per_1k=0.00125,
         output_cost_per_1k=0.005,
@@ -79,9 +68,9 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         supports_vision=True,
         description="Google's most capable model, huge context"
     ),
-    "gemini/gemini-1.5-flash": ModelInfo(
-        id="gemini/gemini-1.5-flash",
-        name="Gemini 1.5 Flash",
+    "gemini/gemini-2.0-flash": ModelInfo(
+        id="gemini/gemini-2.0-flash",
+        name="Gemini 2.0 Flash",
         provider="google",
         input_cost_per_1k=0.000075,
         output_cost_per_1k=0.0003,
@@ -91,46 +80,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         supports_vision=True,
         description="Fast and cheap, good for simple tasks"
     ),
-    "gemini/gemini-pro": ModelInfo(
-        id="gemini/gemini-pro",
-        name="Gemini Pro",
-        provider="google",
-        input_cost_per_1k=0.0005,
-        output_cost_per_1k=0.0015,
-        max_tokens=32000,
-        default_temperature=0.3,
-        supports_json_mode=True,
-        supports_vision=False,
-        description="Previous generation Gemini"
-    ),
-    
-    # =========================================================================
-    # Anthropic Models
-    # =========================================================================
-    "claude-3-5-sonnet-20241022": ModelInfo(
-        id="claude-3-5-sonnet-20241022",
-        name="Claude 3.5 Sonnet",
-        provider="anthropic",
-        input_cost_per_1k=0.003,
-        output_cost_per_1k=0.015,
-        max_tokens=200000,
-        default_temperature=0.3,
-        supports_json_mode=False,
-        supports_vision=True,
-        description="Best Claude model for most tasks"
-    ),
-    "claude-3-haiku-20240307": ModelInfo(
-        id="claude-3-haiku-20240307",
-        name="Claude 3 Haiku",
-        provider="anthropic",
-        input_cost_per_1k=0.00025,
-        output_cost_per_1k=0.00125,
-        max_tokens=200000,
-        default_temperature=0.3,
-        supports_json_mode=False,
-        supports_vision=True,
-        description="Fast and affordable Claude"
-    ),
+  
 }
 
 

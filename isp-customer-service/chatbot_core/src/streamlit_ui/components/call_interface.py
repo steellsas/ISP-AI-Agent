@@ -40,18 +40,24 @@ from ui_utils.chatbot_bridge import (
     get_agent_decision_info
 )
 
+# Localization
+try:
+    from src.locales import t
+    LOCALES_AVAILABLE = True
+except ImportError:
+    LOCALES_AVAILABLE = False
+    def t(key, **kwargs):
+        return key
 
 def render_call_tab():
     """Render the main call interface tab."""
     
-    # Check chatbot availability
     available, message = check_chatbot_available()
     if not available:
-        st.error(f"⚠️ Chatbot nepasiekiamas: {message}")
-        st.info("Patikrinkite ar chatbot_core yra teisingai sukonfigūruotas.")
+        st.error(t("errors.chatbot_unavailable", message=message))
+        st.info(t("errors.check_config"))
         return
     
-    # Layout: Phone UI | Agent Panel
     col_phone, col_agent = st.columns([1, 1])
     
     with col_phone:
@@ -64,7 +70,7 @@ def render_call_tab():
 def render_phone_ui():
     """Render the phone call interface."""
     
-    st.markdown("### 📱 Phone")
+    st.markdown(f"### {t('call.phone_title')}")
     
     # Phone frame container
     with st.container():
@@ -85,18 +91,18 @@ def render_phone_ui():
 def render_dial_screen():
     """Render the initial dial screen."""
     
-    st.markdown("""
+    st.markdown(f"""
     <div style="text-align: center; padding: 40px 20px;">
         <div style="font-size: 48px; margin-bottom: 20px;">📞</div>
         <div style="font-size: 18px; color: #666; margin-bottom: 30px;">
-            ISP Customer Support
-        </div>
+          {t('call.support_title')}
+        </div
     </div>
     """, unsafe_allow_html=True)
     
     # Phone number input
     phone = st.text_input(
-        "📱 Telefono numeris",
+        t("call.phone_label"),
         value=st.session_state.phone_number,
         placeholder="+37061234567",
         key="phone_input"
@@ -108,14 +114,14 @@ def render_dial_screen():
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("📞 Skambinti", type="primary", use_container_width=True):
+        if st.button(t("call.call_button"), type="primary", use_container_width=True):
             start_new_call()
             
-            with st.spinner("Jungiamasi..."):
+            with st.spinner(t("call.connecting")):
                 result = start_conversation(st.session_state.phone_number)
                 
                 if "error" in result:
-                    st.error(f"Klaida: {result['error']}")
+                    st.error(f"ERROR: {result['error']}")
                     end_call()
                 else:
                     # Add greeting messages to display
@@ -134,7 +140,7 @@ def render_active_call():
     with col2:
         st.markdown(f"""
         <div style="text-align: center; padding: 10px; background: #e8f5e9; border-radius: 10px; margin-bottom: 15px;">
-            <div style="color: #2e7d32; font-weight: bold;">🟢 Aktyvus skambutis</div>
+            <div style="color: #2e7d32; font-weight: bold;">{t('call.active_call')}</div>
             <div style="font-size: 24px; font-weight: bold;">{get_call_duration()}</div>
             <div style="color: #666;">{st.session_state.phone_number}</div>
         </div>
@@ -160,10 +166,10 @@ def render_active_call():
     col_input, col_end = st.columns([4, 1])
     
     with col_input:
-        user_input = st.chat_input("Rašykite žinutę...", key="chat_input")
+        user_input = st.chat_input(t("call.type_message"), key="chat_input")
     
     with col_end:
-        if st.button("🔴", help="Baigti skambutį", type="secondary"):
+        if st.button("🔴", help=t("call.end_call_tooltip"), type="secondary"):
             end_call()
             st.rerun()
     
@@ -180,7 +186,7 @@ def render_active_call():
             result = send_message(user_input)
         
         if "error" in result:
-            st.error(f"Klaida: {result['error']}")
+            st.error(f"Error: {result['error']}")
         else:
             # Get new assistant messages
             new_messages = get_new_assistant_messages(result, prev_count)
@@ -201,36 +207,36 @@ def render_call_ended():
     <div style="text-align: center; padding: 40px 20px;">
         <div style="font-size: 48px; margin-bottom: 20px;">📴</div>
         <div style="font-size: 18px; color: #666; margin-bottom: 10px;">
-            Skambutis baigtas
+           {t('call.call_ended')}
         </div>
         <div style="font-size: 14px; color: #999;">
-            Trukmė: {get_call_duration()}
+           {t('call.call_duration')}: {get_call_duration()}
         </div>
     </div>
     """, unsafe_allow_html=True)
     
     # Summary
     if state.get("problem_resolved"):
-        st.success("✅ Problema išspręsta!")
+        st.success(t("call.problem_resolved"))
     elif state.get("troubleshooting_needs_escalation"):
-        st.warning("📋 Problema perduota technikui")
+        st.warning(t("call.escalated"))
     elif state.get("ticket_id"):
-        st.info(f"🎫 Sukurtas ticket: {state.get('ticket_id')}")
+        st.info(t("call.ticket_created", ticket_id=state.get('ticket_id')))
     elif state.get("provider_issue_informed"):
-        st.info("ℹ️ Informuota apie tiekėjo problemą")
-    
+        st.info(t("call.provider_issue"))
+        
     # New call button
     st.markdown("<br>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("🔄 Naujas skambutis", type="primary", use_container_width=True):
+        if st.button(t("call.new_call_button"), type="primary", use_container_width=True):
             from ui_utils.session import reset_session
             reset_session()
             st.rerun()
     
     # Show conversation log
-    with st.expander("📜 Pokalbio istorija"):
+    with st.expander(t("call.chat_history")):
         for msg in st.session_state.messages:
             role_icon = "🤖" if msg["role"] == "assistant" else "👤"
             st.markdown(f"**{role_icon}** {msg['content']}")
@@ -250,10 +256,17 @@ def render_message(msg: dict):
 def render_agent_panel():
     """Render the agent status/decision panel."""
     
-    st.markdown("### 🧠 Agent Status")
+    st.markdown(f"### {t('agent.title')}")
+    # Show current model
+    try:
+        from src.services.llm.settings import get_settings
+        current_model = get_settings().model
+        st.caption(f"🤖 {t('agent.model')}: `{current_model}`")
+    except:
+        pass
     
     if not st.session_state.chatbot_state:
-        st.info("Pradėkite skambutį, kad matytumėte agento informaciją")
+        st.info(t("agent.start_hint"))
         return
     
     decision_info = get_agent_decision_info(st.session_state.chatbot_state)
@@ -281,15 +294,15 @@ def render_agent_panel():
     """, unsafe_allow_html=True)
     
     # Customer info
-    st.markdown("#### 👤 Klientas")
+    st.markdown(f"#### {t('agent.customer')}")
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Vardas", state.get("customer_name") or "-")
+        st.metric(t("agent.name"), state.get("customer_name") or "-")
     with col2:
         st.metric("ID", state.get("customer_id") or "-")
     
     # Problem info
-    st.markdown("#### 🔧 Problema")
+    st.markdown(f"#### {t('agent.problem')}")
     
     problem_type = state.get("problem_type") or "-"
     problem_icons = {
@@ -301,49 +314,49 @@ def render_agent_panel():
     }
     problem_icon = problem_icons.get(problem_type, "")
     
-    st.markdown(f"**Tipas:** {problem_icon} {problem_type}")
+    st.markdown(f"**{t('agent.type_label')}:** {problem_icon} {problem_type}")
     
     if state.get("problem_description"):
-        st.markdown(f"**Aprašymas:** {state['problem_description'][:100]}...")
+        st.markdown(f"**Problem Description:** {state['problem_description'][:100]}...")
     
     # Context score
     context = state.get("problem_context", {})
     score = context.get("context_score", 0)
     
-    st.progress(score / 100, text=f"Kontekstas surinktas: {score}%")
+    st.progress(score / 100, text=f"{t('agent.context_collected')}: {score}%")
     
     # Context details
     if context and any(v for k, v in context.items() if k != "context_score"):
-        with st.expander("📋 Ištraukta informacija"):
+        with st.expander(t("agent.extracted_info")):
             for key, value in context.items():
                 if key != "context_score" and value is not None:
                     st.markdown(f"• **{key}:** {value}")
     
     # Troubleshooting info
     if decision_info.get("troubleshooting_scenario"):
-        st.markdown("#### 🔧 Troubleshooting")
-        st.markdown(f"**Scenarijus:** {decision_info['troubleshooting_scenario']}")
-        st.markdown(f"**Žingsnis:** {decision_info['troubleshooting_step']}")
+        st.markdown(f"#### {t('agent.troubleshooting')}")
+        st.markdown(f"**{t('agent.scenario')}:** {decision_info['troubleshooting_scenario']}")
+        st.markdown(f"**{t('agent.step')}:** {decision_info['troubleshooting_step']}")
     
     # Status flags
-    st.markdown("#### ✅ Statusas")
+    st.markdown(f"#### {t('agent.status')}")
     
     flags_col1, flags_col2 = st.columns(2)
     
     with flags_col1:
         if state.get("address_confirmed"):
-            st.success("Adresas ✓", icon="📍")
+            st.success(t("agent.address_confirmed"), icon="📍")
         if state.get("diagnostics_completed"):
-            st.success("Diagnostika ✓", icon="🔍")
+            st.success(t("agent.diagnostics_done"), icon="🔍")
     
     with flags_col2:
         if state.get("problem_resolved"):
-            st.success("Išspręsta ✓", icon="✅")
+            st.success(t("agent.resolved"), icon="✅")
         if state.get("ticket_id"):
             st.info(f"Ticket: {state['ticket_id']}", icon="🎫")
     
     # Node history
     if st.session_state.node_history:
-        with st.expander("📊 Node istorija"):
+        with st.expander(t("agent.node_history")):
             for transition in reversed(st.session_state.node_history[-10:]):
                 st.markdown(f"`{transition['from']}` → `{transition['to']}`")

@@ -55,8 +55,9 @@ class Config:
         )
         
         # OpenAI API
-        self.openai_api_key = os.getenv("OPENAI_API_KEY", "nera")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
         
         # LangSmith (optional)
         self.langsmith_api_key = os.getenv("LANGCHAIN_API_KEY", "")

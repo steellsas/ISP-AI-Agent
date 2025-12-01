@@ -22,6 +22,16 @@ from components.settings import render_settings_tab
 from components.docs import render_docs_tab
 from ui_utils.session import init_session
 
+
+# Localization
+try:
+    from src.locales import t, set_language
+    LOCALES_AVAILABLE = True
+except ImportError:
+    LOCALES_AVAILABLE = False
+    def t(key, **kwargs):
+        return key
+
 # Page config
 st.set_page_config(
     page_title="ISP Customer Service Demo",
@@ -135,18 +145,24 @@ def main():
     
     # Initialize session state
     init_session()
+    try:
+        from src.locales import set_language
+        saved_lang = st.session_state.settings.get("language", "lt")
+        set_language(saved_lang)
+    except ImportError:
+        pass
     
     # Header
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.title("📞 ISP Customer Service Demo")
+       st.title(t("app.title"))
     
     # Main tabs
     tab_call, tab_monitor, tab_settings, tab_docs = st.tabs([
-        "📞 Call",
-        "📊 Monitor", 
-        "⚙️ Settings",
-        "📖 Docs"
+        t("tabs.call"),
+        t("tabs.monitor"), 
+        t("tabs.settings"),
+        t("tabs.docs")
     ])
     
     with tab_call:

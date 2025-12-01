@@ -26,6 +26,33 @@ from .utils import (
 
 logger = logging.getLogger(__name__)
 
+# Stats callbacks for UI integration
+_stats_callbacks = []
+
+
+def register_stats_callback(callback):
+    """Register callback for LLM stats updates."""
+    global _stats_callbacks
+    if callback not in _stats_callbacks:
+        _stats_callbacks.append(callback)
+
+
+def unregister_stats_callback(callback):
+    """Remove callback."""
+    global _stats_callbacks
+    if callback in _stats_callbacks:
+        _stats_callbacks.remove(callback)
+
+
+def _notify_callbacks(data: dict):
+    """Notify all registered callbacks."""
+    for callback in _stats_callbacks:
+        try:
+            callback(data)
+        except Exception as e:
+            logger.warning(f"Stats callback error: {e}")
+
+
 
 def llm_completion(
     messages: list[dict],
@@ -109,13 +136,14 @@ def llm_completion(
     
     for attempt in range(settings.max_retries):
         try:
-            logger.debug(f"LLM call: model={model}, attempt={attempt + 1}")
+            logger.debug(f"LLM call 22: model={model}, attempt={attempt + 1}")
             
             response = litellm.completion(**kwargs)
             
             latency_ms = (time.time() - start_time) * 1000
             
             # Extract token counts
+       
             usage = response.usage
             input_tokens = usage.prompt_tokens if usage else 0
             output_tokens = usage.completion_tokens if usage else 0
@@ -125,9 +153,12 @@ def llm_completion(
             
             # Get content
             content = response.choices[0].message.content
+
+
             
             # Record call
             rate_limiter.record_call()
+            print(f"DEBUG CLIENT: Recording call - tokens={input_tokens}+{output_tokens}, cost=${cost:.6f}")
             record_call(
                 model=model,
                 input_tokens=input_tokens,
@@ -135,7 +166,21 @@ def llm_completion(
                 cost_usd=cost,
                 latency_ms=latency_ms,
             )
-            
+            print(f"DEBUG CLIENT: Total calls now = {get_session_stats().total_calls}")
+            print(f"DEBUG CLIENT: stats id = {id(get_session_stats())}, total_calls = {get_session_stats().total_calls}")
+
+
+            # Notify UI callbacks
+            _notify_callbacks({
+                "type": "llm_call",
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost": cost,
+                "latency_ms": latency_ms,
+                "cached": False,
+                "success": True,
+            })
             # Cache response
             if use_cache:
                 cache.set(messages, model, temperature, content)
@@ -151,6 +196,7 @@ def llm_completion(
                 time.sleep(delay)
     
     # Record failed call
+
     record_call(
         model=model,
         input_tokens=0,
