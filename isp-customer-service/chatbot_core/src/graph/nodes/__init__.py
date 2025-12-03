@@ -1,32 +1,4 @@
-"""
-Graph Nodes
-All workflow nodes - async versions for LangGraph
-"""
 
-# Import async functions directly (LangGraph supports async natively!)
-# from .greeting import greeting_node
-# from .problem_capture import problem_capture_node, problem_capture_router
-
-# from .problem_capture import problem_capture_node_async as problem_capture_node
-# from .phone_lookup_background import phone_lookup_background_async as phone_lookup_background_node
-# from .address_confirmation import address_confirmation_node_async as address_confirmation_node
-# from .address_selection import address_selection_node_async as address_selection_node
-# from .address_search import address_search_node_async as address_search_node
-# from .diagnostics import diagnostics_node_async as diagnostics_node
-# from .inform_provider_issue import inform_provider_issue_node_async as inform_provider_issue_node
-# from .closing import closing_node_async as closing_node
-
-# __all__ = [
-#     "greeting_node",
-#     # "problem_capture_node",
-#     # "phone_lookup_background_node",
-#     # "address_confirmation_node",
-#     # "address_selection_node",
-#     # "address_search_node",
-#     # "diagnostics_node",
-#     # "inform_provider_issue_node",
-#     # "closing_node",
-# ]
 
 """
 Graph Nodes - All workflow nodes
@@ -61,3 +33,124 @@ __all__ = [
      "create_ticket_node",
     "closing_node",
 ]
+
+
+# """
+# Graph Nodes Package
+
+# All workflow nodes for the ISP customer service chatbot.
+# Import nodes and routers from this package.
+
+# Usage:
+#     from src.graph.nodes import (
+#         greeting_node,
+#         problem_capture_node,
+#         problem_capture_router,
+#         ...
+#     )
+# """
+
+# # Greeting
+# from .greeting import greeting_node
+
+# # Problem Capture
+# from .problem_capture import (
+#     problem_capture_node,
+#     problem_capture_router,
+# )
+
+# # Phone Lookup
+# from .phone_lookup import (
+#     phone_lookup_node,
+#     phone_lookup_router,
+# )
+
+# # Address Confirmation
+# from .address_confirmation import (
+#     address_confirmation_node,
+#     address_confirmation_router,
+# )
+
+# # Address Search
+# from .address_search import (
+#     address_search_node,
+#     address_search_router,
+# )
+
+# # Address Selection (if exists)
+# try:
+#     from .address_selection import (
+#         address_selection_node,
+#         address_selection_router,
+#     )
+# except ImportError:
+#     address_selection_node = None
+#     address_selection_router = None
+
+# # Diagnostics
+# from .diagnostics import (
+#     diagnostics_node,
+#     diagnostics_router,
+# )
+
+# # Inform Provider Issue
+# from .inform_provider_issue import inform_provider_issue_node
+
+# # Troubleshooting
+# from .troubleshooting import (
+#     troubleshooting_node,
+#     troubleshooting_router,
+# )
+
+# # Create Ticket
+# from .create_ticket import create_ticket_node
+
+# # Closing
+# from .closing import closing_node
+
+
+# # =============================================================================
+# # EXPORTS
+# # =============================================================================
+
+# __all__ = [
+#     # Greeting
+#     "greeting_node",
+    
+#     # Problem Capture
+#     "problem_capture_node",
+#     "problem_capture_router",
+    
+#     # Phone Lookup
+#     "phone_lookup_node",
+#     "phone_lookup_router",
+    
+#     # Address Confirmation
+#     "address_confirmation_node",
+#     "address_confirmation_router",
+    
+#     # Address Search
+#     "address_search_node",
+#     "address_search_router",
+    
+#     # Address Selection
+#     "address_selection_node",
+#     "address_selection_router",
+    
+#     # Diagnostics
+#     "diagnostics_node",
+#     "diagnostics_router",
+    
+#     # Inform Provider Issue
+#     "inform_provider_issue_node",
+    
+#     # Troubleshooting
+#     "troubleshooting_node",
+#     "troubleshooting_router",
+    
+#     # Create Ticket
+#     "create_ticket_node",
+    
+#     # Closing
+#     "closing_node",
+# ]

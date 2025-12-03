@@ -1,0 +1,272 @@
+# =============================================================================
+# LITHUANIAN MESSAGES (lt)
+# =============================================================================
+# Visi agento pranešimai lietuvių kalba
+# Naudojimas: t("greeting.welcome", customer_name="Jonas")
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# GREETING - Pasisveikinimas
+# -----------------------------------------------------------------------------
+greeting:
+  welcome: "Labas, čia {company_name} klientų aptarnavimas. Mano vardas {agent_name}. Kuo galiu jums padėti?"
+  welcome_returning: "Labas, {customer_name}! Kuo galiu jums padėti šiandien?"
+
+# -----------------------------------------------------------------------------
+# PROBLEM CAPTURE - Problemos surinkimas
+# -----------------------------------------------------------------------------
+problem_capture:
+  # Pradiniai atsakymai pagal problem_type
+  acknowledgment:
+    internet: "Suprantu, turite interneto problemą."
+    tv: "Suprantu, turite problemą su televizija."
+    phone: "Suprantu, turite problemą su telefonu."
+    billing: "Suprantu, turite klausimą dėl sąskaitos ar mokėjimo."
+    other: "Suprantu, turite problemą."
+    default: "Suprantu."
+  
+  # Perėjimas į sekantį etapą
+  transitioning: "Dabar patikrinsiu jūsų duomenis..."
+  
+  # Kai kontekstas surinktas
+  context_complete: "Ačiū už informaciją. Dabar patikrinsiu jūsų duomenis ir padėsiu išspręsti."
+  context_complete_short: "Gerai, supratau. Patikrinsiu jūsų duomenis."
+  
+  # Kai klientas nežino atsakymo
+  user_unknown: "Nieko tokio, pabandysime išsiaiškinti kartu."
+  
+  # Kai klientas nori praleisti
+  skip_acknowledged: "Gerai, pereikime prie sprendimo."
+  
+  # Bendras klausimas
+  ask_more_details: "Ar galėtumėte plačiau papasakoti apie problemą?"
+
+# -----------------------------------------------------------------------------
+# PHONE LOOKUP - Telefono paieška
+# -----------------------------------------------------------------------------
+phone_lookup:
+  not_found: "Nepavyko rasti kliento su šiuo telefono numeriu."
+  error: "Įvyko klaida tikrinant telefono numerį."
+
+# -----------------------------------------------------------------------------
+# ADDRESS - Adreso valdymas
+# -----------------------------------------------------------------------------
+address:
+  # Patvirtinimas
+  confirmation_ask: "Ačiū, {customer_name}. Ar jūsų adresas yra {address}?"
+  confirmation_ask_short: "Ar problema yra adresu {address}?"
+  confirmed: "Puiku, adresas patvirtintas. Tikrinu jūsų ryšio būklę..."
+  
+  # Paieška
+  ask_for_address: "Deja, nepavyko jūsų rasti pagal telefono numerį. Ar galėtumėte pasakyti savo adresą (miestas, gatvė, namo numeris)?"
+  clarify_address: "Ar galėtumėte patikslinti savo adresą (miestas, gatvė, namo numeris)?"
+  
+  # Rezultatai
+  found: "Radau jus sistemoje! {customer_name}, adresas: {address}. Tikrinu jūsų ryšio būklę..."
+  not_found: "Atsiprašau, bet adresu {address} kliento neradome. Galbūt galite patikrinti adresą arba susisiekti su mumis kitu būdu."
+  
+  # Pasirinkimas (keli adresai)
+  multiple_addresses: "Radau kelis adresus. Kuriuo adresu problema?"
+  select_address: "Pasirinkite adresą arba pasakykite numerį:"
+
+# -----------------------------------------------------------------------------
+# DIAGNOSTICS - Diagnostika
+# -----------------------------------------------------------------------------
+diagnostics:
+  checking: "Vienu momentu, tikrinu ar nėra gedimų jūsų rajone ir jūsų ryšio parametrus..."
+  no_issues: "Tiekėjo pusėje gedimų neaptikta. Bandykime patikrinti jūsų įrangą."
+  error: "Atsiprašau, įvyko klaida tikrinant sistemą. Bandykime spręsti problemą kitais būdais."
+  
+  # Rezultatų pranešimai
+  results_header: "Diagnostikos rezultatai:"
+  issue_area_outage: "• Aptiktas gedimas jūsų rajone"
+  issue_port_down: "• Tinklo portas neaktyvus"
+  issue_no_ip: "• Nėra aktyvaus IP priskyrimo"
+
+# -----------------------------------------------------------------------------
+# PROVIDER ISSUE - Tiekėjo problemos
+# -----------------------------------------------------------------------------
+provider_issue:
+  # Gedimo pranešimai
+  area_outage: "Šiuo metu jūsų rajone vyksta {outage_type} gedimas. Mūsų specialistai aktyviai dirba prie sprendimo."
+  area_outage_eta: "Šiuo metu jūsų rajone vyksta {outage_type} gedimas. Mūsų specialistai aktyviai dirba prie sprendimo. Tikimasi išspręsti iki: {estimated_resolution}."
+  maintenance: "Šiuo metu vyksta planiniai techniniai darbai jūsų rajone. Darbai turėtų baigtis {end_time}."
+  
+  # Gedimo tipai (genitive case)
+  outage_types:
+    internet: "interneto"
+    tv: "televizijos"
+    phone: "telefono"
+    all: "visų paslaugų"
+    default: "paslaugos"
+  
+  # Papildoma info
+  affected_customers: "Paveikta apie {count} klientų rajone."
+  details: "Detalės: {description}"
+  
+  # Bendra
+  generic: "Aptikome problemą mūsų tinkle. Mūsų specialistai jau dirba prie jos sprendimo. Atsiprašome už nepatogumus."
+  apology: "Atsiprašome už nepatogumus. Ar yra dar kažkas, kuo galėčiau padėti?"
+
+# -----------------------------------------------------------------------------
+# TROUBLESHOOTING - Problemų sprendimas
+# -----------------------------------------------------------------------------
+troubleshooting:
+  starting: "Gerai, pabandykime išspręsti problemą kartu."
+  
+  # Kai problema išspręsta
+  resolved: "Puiku! Džiaugiuosi, kad pavyko išspręsti problemą!"
+  resolved_message: "{message}\n\nDžiaugiuosi, kad pavyko išspręsti problemą!"
+  
+  # Kai reikia eskaluoti
+  escalating: "Nepavyko automatiškai išspręsti problemos. Sukursiu techninės pagalbos užklausą."
+  escalating_with_ticket: "{message}\n\nSukursiu techninės pagalbos užklausą."
+
+  skip_single_device: "Kadangi problema tik viename įrenginyje, routeris greičiausiai veikia. Patikrinsime jūsų įrenginį."
+  skip_restart_tried: "Kadangi jau bandėte perkrauti routerį, praleisime tą žingsnį."
+  skip_lights_checked: "Kadangi routerio lemputes jau patikrintos ir dega, patikrinsime įrenginį."
+  
+  # Scenarijaus klaidos
+  step_not_found: "Įvyko klaida scenarijuje. Sukursiu techninės pagalbos užklausą."
+  scenario_not_found: "Atsiprašau, neradau tinkamo sprendimo scenarijaus. Sukursiu techninės pagalbos užklausą."
+  
+  # Frustracijos atsakymai
+  apology_repetition: "Labai atsiprašau, kad kartoju klausimus! Turite visišką teisę pykti.\n\nApibendrinu ką jau žinome:\n• Problema: {problem}\n• Jau patikrinta: {checked}\n\nPabandykime kitaip - ar galite pasakyti, ar dabar telefone matote WiFi tinklo pavadinimą ir ar prie jo prisijungęs?"
+  apology_frustration: "Atsiprašau, kad nepavyksta greitai išspręsti problemos. Suprantu jūsų nusivylimą.\n\nKą žinome: {summary}\n\nAr norėtumėte, kad sukurčiau užklausą technikui? Jis galėtų paskambinti ir padėti išsamiau."
+  offer_escalation: "Suprantu, sukursiu užklausą ir mūsų specialistas su jumis susisieks artimiausiu metu.\n\nAr yra konkretus laikas, kada būtų patogiau sulaukti skambučio?"
+  
+  # Pagalbos atsakymai (generic)
+  help_generic: "Suprantu, kad reikia daugiau paaiškinimo.\n\nDabartinis žingsnis: {step_title}\n\n{instruction}\n\nJei kažkas neaišku - pasakykite konkrečiai kas, ir pabandysiu paaiškinti paprasčiau."
+
+# -----------------------------------------------------------------------------
+# TICKET - Užklausos
+# -----------------------------------------------------------------------------
+ticket:
+  creating: "Sukuriama techninės pagalbos užklausa..."
+  created: "{customer_name}, užregistravau jūsų užklausą. Mūsų technikas susisieks su jumis artimiausiu metu dėl vizito laiko suderinimo. Užklausos numeris: {ticket_id}."
+  created_short: "Užklausa sukurta. Numeris: {ticket_id}."
+  creation_failed: "Atsiprašau, įvyko klaida registruojant užklausą. Prašome pabandyti vėliau arba paskambinti mūsų pagalbos linija."
+
+# -----------------------------------------------------------------------------
+# CLOSING - Pokalbio pabaiga
+# -----------------------------------------------------------------------------
+closing:
+  # Problema išspręsta
+  resolved: "Džiaugiuosi, kad pavyko išspręsti problemą{customer_suffix}! Jei ateityje kiltų klausimų, drąsiai kreipkitės. Geros dienos!"
+  resolved_short: "Džiaugiuosi, kad pavyko išspręsti problemą! Geros dienos!"
+  
+  # Technikas atvyks
+  escalated: "Ačiū už kantrybę{customer_suffix}. Technikas susisieks su jumis dėl vizito. Jūsų užklausos numeris: {ticket_id}. Geros dienos!"
+  escalated_short: "Technikas susisieks su jumis. Užklausos numeris: {ticket_id}. Geros dienos!"
+  
+  # Tiekėjo gedimas
+  provider_issue: "Ačiū, kad pranešėte{customer_suffix}. Kai gedimas bus pašalintas, ryšys automatiškai atsistatys. Geros dienos!"
+  
+  # Bendras
+  fallback: "Ačiū, kad kreipėtės. Geros dienos!"
+  anything_else: "Ar yra dar kažkas, kuo galėčiau padėti?"
+  
+  # Kliento vardo priesaga
+  customer_suffix:
+    with_name: ", {first_name}"
+    without_name: ""
+
+# -----------------------------------------------------------------------------
+# ERRORS - Klaidų pranešimai
+# -----------------------------------------------------------------------------
+errors:
+  llm_error: "Atsiprašau, įvyko techninė klaida. Pabandykime dar kartą."
+  not_understood: "Atsiprašau, nesupratau. Ar galėtumėte pasakyti kitaip?"
+  timeout: "Atsiprašau už laukimą. Ar dar esate linijoje?"
+  general: "Atsiprašau, kažkas nepavyko. Pabandykime dar kartą."
+  no_customer_id: "Nepavyko identifikuoti kliento."
+  repeat_request: "Ar galėtumėte pakartoti?"
+
+# -----------------------------------------------------------------------------
+# PROBLEM TYPES - Problemų tipai ir kvalifikuojantys klausimai
+# -----------------------------------------------------------------------------
+problem_types:
+  # Frazės kurios rodo kad klientas nori praleisti
+  skip_phrases:
+    - "tiesiog padėkite"
+    - "tiesiog padekit"
+    - "tiesiog patikrinkite"
+    - "nesvarbu"
+    - "pereikime toliau"
+    - "greitai"
+    - "negaliu patikrinti"
+    - "nenoriu atsakinėti"
+  
+  # Frazės kurios rodo kad klientas nežino atsakymo
+  unknown_phrases:
+    - "nežinau"
+    - "nezinau"
+    - "neaišku"
+    - "neaisku"
+    - "negaliu pasakyti"
+    - "nesuprantu"
+    - "gal"
+    - "galbūt"
+    - "nematau"
+    - "neturiu"
+
+  # INTERNET
+  internet:
+    display_name: "Interneto problema"
+    questions:
+      duration: "Nuo kada pastebėjote šią problemą?"
+      duration_simple: "Ar šiandien dar veikė internetas?"
+      scope: "Ar neveikia visuose įrenginiuose - telefone, kompiuteryje?"
+      scope_simple: "Ar telefone matote WiFi tinklą?"
+      tried_restart: "Ar bandėte išjungti ir vėl įjungti routerį?"
+      tried_restart_simple: "Ar routeris dabar įjungtas?"
+      router_lights: "Kokios lemputės dega ant routerio?"
+      router_lights_simple: "Ar routeryje dega bent viena lemputė?"
+      wifi_visible: "Ar matote savo WiFi tinklą įrenginyje?"
+      wifi_visible_simple: "Ar telefone rodoma WiFi ikona?"
+
+  # TV
+  tv:
+    display_name: "Televizijos problema"
+    questions:
+      duration: "Nuo kada neveikia televizija?"
+      duration_simple: "Ar šiandien dar veikė?"
+      scope: "Ar neveikia visi kanalai, ar tik kai kurie?"
+      scope_simple: "Ar matote juodą ekraną, ar yra koks nors vaizdas?"
+      decoder_status: "Ar dekoderio lemputės dega?"
+      decoder_status_simple: "Ar dekoderis įjungtas?"
+      has_image: "Ar matote kokį nors vaizdą ekrane?"
+      has_image_simple: "Ar ekranas visiškai juodas?"
+      has_sound: "Ar girdisi garsas?"
+      has_sound_simple: "Ar televizorius visiškai tylus?"
+
+  # PHONE
+  phone:
+    display_name: "Telefonijos problema"
+    questions:
+      duration: "Nuo kada turite problemą su telefonu?"
+      duration_simple: "Ar šiandien dar veikė telefonas?"
+      issue_type: "Kas konkrečiai neveikia - negirdite, ar negalite skambinti?"
+      issue_type_simple: "Ar girdite signalą kai pakeliate ragelį?"
+      direction: "Ar problema su įeinančiais, išeinančiais skambučiais, ar abiem?"
+      direction_simple: "Ar galite paskambinti kam nors?"
+      error_sound: "Ar girdite kokį nors klaidos pranešimą ar pyptelėjimą?"
+      error_sound_simple: "Ar yra visiškai tylu?"
+
+  # BILLING
+  billing:
+    display_name: "Sąskaitų/mokėjimų klausimas"
+    questions:
+      issue_type: "Ar klausimas susijęs su sąskaita, mokėjimu, ar plano pakeitimu?"
+      issue_type_simple: "Ar gavote sąskaitą kuri atrodo neteisinga?"
+      invoice_reference: "Ar turite sąskaitos numerį?"
+      invoice_reference_simple: "Ar turite sąskaitą priešais save?"
+      amount_issue: "Ar suma atrodo neteisinga?"
+      amount_issue_simple: "Ar sąskaita didesnė nei tikėjotės?"
+
+  # OTHER
+  other:
+    display_name: "Kita problema"
+    questions:
+      description: "Prašome plačiau papasakoti apie jūsų problemą."
+      description_simple: "Su kuo konkrečiai reikia pagalbos?"

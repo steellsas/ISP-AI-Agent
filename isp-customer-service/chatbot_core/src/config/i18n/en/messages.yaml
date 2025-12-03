@@ -1,0 +1,276 @@
+# =============================================================================
+# ENGLISH MESSAGES (en)
+# =============================================================================
+# All agent messages in English
+# Usage: t("greeting.welcome", customer_name="John")
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# GREETING
+# -----------------------------------------------------------------------------
+greeting:
+  welcome: "Hello, this is {company_name} customer service. My name is {agent_name}. How can I help you?"
+  welcome_returning: "Hello, {customer_name}! How can I help you today?"
+
+# -----------------------------------------------------------------------------
+# PROBLEM CAPTURE
+# -----------------------------------------------------------------------------
+problem_capture:
+  # Acknowledgments by problem type
+  acknowledgment:
+    internet: "I understand you're having an internet problem."
+    tv: "I understand you're having a TV problem."
+    phone: "I understand you're having a phone problem."
+    billing: "I understand you have a question about your bill or payment."
+    other: "I understand you're having a problem."
+    default: "I understand."
+  
+  # Transition to next step
+  transitioning: "Let me check your account..."
+  
+  # Context collected
+  context_complete: "Thank you for the information. Let me check your account and help you resolve this."
+  context_complete_short: "Got it. Let me check your account."
+  
+  # When customer doesn't know
+  user_unknown: "No problem, let's figure this out together."
+  
+  # When customer wants to skip
+  skip_acknowledged: "Okay, let's move on to the solution."
+  
+  # General question
+  ask_more_details: "Could you tell me more about the problem?"
+
+# -----------------------------------------------------------------------------
+# PHONE LOOKUP
+# -----------------------------------------------------------------------------
+phone_lookup:
+  not_found: "Could not find a customer with this phone number."
+  error: "An error occurred while checking the phone number."
+
+# -----------------------------------------------------------------------------
+# ADDRESS
+# -----------------------------------------------------------------------------
+address:
+  # Confirmation
+  confirmation_ask: "Thank you, {customer_name}. Is your address {address}?"
+  confirmation_ask_short: "Is the problem at {address}?"
+  confirmed: "Great, address confirmed. Checking your connection status..."
+  
+  # Search
+  ask_for_address: "I couldn't find you by phone number. Could you tell me your address (city, street, house number)?"
+  clarify_address: "Could you please clarify your address (city, street, house number)?"
+  
+  # Results
+  found: "Found you in our system! {customer_name}, address: {address}. Checking your connection status..."
+  not_found: "Sorry, we couldn't find a customer at {address}. Please verify the address or contact us another way."
+  
+  # Selection (multiple addresses)
+  multiple_addresses: "I found multiple addresses. Which address has the problem?"
+  select_address: "Please select an address or say the number:"
+
+# -----------------------------------------------------------------------------
+# DIAGNOSTICS
+# -----------------------------------------------------------------------------
+diagnostics:
+  checking: "One moment, checking for outages in your area and your connection parameters..."
+  no_issues: "No provider-side issues detected. Let's check your equipment."
+  error: "Sorry, an error occurred while checking the system. Let's try to solve the problem another way."
+  
+  # Result messages
+  results_header: "Diagnostic results:"
+  issue_area_outage: "• Outage detected in your area"
+  issue_port_down: "• Network port is inactive"
+  issue_no_ip: "• No active IP assignment"
+
+# -----------------------------------------------------------------------------
+# PROVIDER ISSUE
+# -----------------------------------------------------------------------------
+provider_issue:
+  # Outage messages
+  area_outage: "There is currently a {outage_type} outage in your area. Our specialists are actively working on a solution."
+  area_outage_eta: "There is currently a {outage_type} outage in your area. Our specialists are actively working on a solution. Expected resolution: {estimated_resolution}."
+  maintenance: "There is currently scheduled maintenance in your area. Work should be completed by {end_time}."
+  
+  # Outage types
+  outage_types:
+    internet: "internet"
+    tv: "TV"
+    phone: "phone"
+    all: "service"
+    default: "service"
+  
+  # Additional info
+  affected_customers: "Approximately {count} customers in the area are affected."
+  details: "Details: {description}"
+  
+  # Generic
+  generic: "We detected a problem in our network. Our specialists are already working on it. We apologize for the inconvenience."
+  apology: "We apologize for the inconvenience. Is there anything else I can help you with?"
+
+# -----------------------------------------------------------------------------
+# TROUBLESHOOTING
+# -----------------------------------------------------------------------------
+
+
+ 
+troubleshooting:
+  starting: "Okay, let's try to solve the problem together."
+  
+  # Problem resolved
+  resolved: "Great! I'm glad we could solve the problem!"
+  resolved_message: "{message}\n\nI'm glad we could solve the problem!"
+  
+  # Escalation needed
+  escalating: "Unable to automatically resolve the problem. I'll create a support ticket."
+  escalating_with_ticket: "{message}\n\nI'll create a support ticket."
+  
+  # Scenario errors
+  step_not_found: "An error occurred in the scenario. I'll create a support ticket."
+  scenario_not_found: "Sorry, I couldn't find a suitable solution scenario. I'll create a support ticket."
+  
+  # Frustration responses
+  apology_repetition: "I'm very sorry for repeating questions! You have every right to be frustrated.\n\nLet me summarize what we know:\n• Problem: {problem}\n• Already checked: {checked}\n\nLet's try a different approach - can you tell me if you see the WiFi network name on your phone and if you're connected to it?"
+  apology_frustration: "I'm sorry we haven't been able to resolve this quickly. I understand your frustration.\n\nWhat we know: {summary}\n\nWould you like me to create a ticket for a technician? They could call and help in more detail."
+  offer_escalation: "I understand. I'll create a ticket and our specialist will contact you shortly.\n\nIs there a specific time that would be more convenient for a call?"
+  
+  # Help responses (generic)
+  help_generic: "I understand you need more explanation.\n\nCurrent step: {step_title}\n\n{instruction}\n\nIf something is unclear - please tell me specifically what, and I'll try to explain more simply."
+  
+  # Skip step messages (smart routing)
+  skip_single_device: "Since the problem only affects one device, the router is probably working fine. Let's check your device."
+  skip_restart_tried: "Since you already tried restarting the router, we'll skip that step."
+  skip_lights_checked: "Since the router lights have already been checked and are on, let's check the device."
+# -----------------------------------------------------------------------------
+# TICKET
+# -----------------------------------------------------------------------------
+ticket:
+  creating: "Creating a support ticket..."
+  created: "{customer_name}, I've registered your request. Our technician will contact you shortly to schedule a visit. Ticket number: {ticket_id}."
+  created_short: "Ticket created. Number: {ticket_id}."
+  creation_failed: "Sorry, an error occurred while registering the request. Please try again later or call our support line."
+
+# -----------------------------------------------------------------------------
+# CLOSING
+# -----------------------------------------------------------------------------
+closing:
+  # Problem resolved
+  resolved: "I'm glad we could solve the problem{customer_suffix}! If you have any questions in the future, don't hesitate to reach out. Have a great day!"
+  resolved_short: "I'm glad we could solve the problem! Have a great day!"
+  
+  # Technician will visit
+  escalated: "Thank you for your patience{customer_suffix}. A technician will contact you about the visit. Your ticket number: {ticket_id}. Have a great day!"
+  escalated_short: "A technician will contact you. Ticket number: {ticket_id}. Have a great day!"
+  
+  # Provider outage
+  provider_issue: "Thank you for reporting{customer_suffix}. When the outage is resolved, your connection will be restored automatically. Have a great day!"
+  
+  # Generic
+  fallback: "Thank you for contacting us. Have a great day!"
+  anything_else: "Is there anything else I can help you with?"
+  
+  # Customer name suffix
+  customer_suffix:
+    with_name: ", {first_name}"
+    without_name: ""
+
+# -----------------------------------------------------------------------------
+# ERRORS
+# -----------------------------------------------------------------------------
+errors:
+  llm_error: "Sorry, a technical error occurred. Let's try again."
+  not_understood: "Sorry, I didn't understand. Could you say that differently?"
+  timeout: "Sorry for the wait. Are you still there?"
+  general: "Sorry, something went wrong. Let's try again."
+  no_customer_id: "Could not identify the customer."
+  repeat_request: "Could you please repeat that?"
+
+# -----------------------------------------------------------------------------
+# PROBLEM TYPES - Problem types and qualifying questions
+# -----------------------------------------------------------------------------
+problem_types:
+  # Phrases indicating customer wants to skip
+  skip_phrases:
+    - "just help me"
+    - "just check"
+    - "doesn't matter"
+    - "let's move on"
+    - "quickly"
+    - "i can't check"
+    - "i don't want to answer"
+    - "skip"
+    - "nevermind"
+  
+  # Phrases indicating customer doesn't know the answer
+  unknown_phrases:
+    - "i don't know"
+    - "don't know"
+    - "not sure"
+    - "unsure"
+    - "can't tell"
+    - "i'm not sure"
+    - "maybe"
+    - "perhaps"
+    - "can't see"
+    - "don't have"
+
+  # INTERNET
+  internet:
+    display_name: "Internet problem"
+    questions:
+      duration: "When did you first notice this problem?"
+      duration_simple: "Did the internet work earlier today?"
+      scope: "Is it not working on all devices - phone, computer?"
+      scope_simple: "Can you see your WiFi network on your phone?"
+      tried_restart: "Have you tried turning the router off and on again?"
+      tried_restart_simple: "Is the router currently turned on?"
+      router_lights: "What lights are on the router?"
+      router_lights_simple: "Is there at least one light on the router?"
+      wifi_visible: "Can you see your WiFi network on your device?"
+      wifi_visible_simple: "Is there a WiFi icon on your phone?"
+
+  # TV
+  tv:
+    display_name: "TV problem"
+    questions:
+      duration: "When did the TV stop working?"
+      duration_simple: "Did it work earlier today?"
+      scope: "Are all channels not working, or just some?"
+      scope_simple: "Do you see a black screen, or is there some picture?"
+      decoder_status: "Are the decoder lights on?"
+      decoder_status_simple: "Is the decoder turned on?"
+      has_image: "Do you see any picture on the screen?"
+      has_image_simple: "Is the screen completely black?"
+      has_sound: "Can you hear any sound?"
+      has_sound_simple: "Is the TV completely silent?"
+
+  # PHONE
+  phone:
+    display_name: "Phone problem"
+    questions:
+      duration: "When did you start having problems with the phone?"
+      duration_simple: "Did the phone work earlier today?"
+      issue_type: "What exactly isn't working - can't hear, or can't make calls?"
+      issue_type_simple: "Do you hear a dial tone when you pick up the handset?"
+      direction: "Is the problem with incoming calls, outgoing calls, or both?"
+      direction_simple: "Can you call someone?"
+      error_sound: "Do you hear any error message or beeping?"
+      error_sound_simple: "Is it completely silent?"
+
+  # BILLING
+  billing:
+    display_name: "Billing question"
+    questions:
+      issue_type: "Is this about a bill, payment, or changing your plan?"
+      issue_type_simple: "Did you receive a bill that seems incorrect?"
+      invoice_reference: "Do you have the invoice number?"
+      invoice_reference_simple: "Do you have the bill in front of you?"
+      amount_issue: "Does the amount seem incorrect?"
+      amount_issue_simple: "Is the bill higher than you expected?"
+
+  # OTHER
+  other:
+    display_name: "Other problem"
+    questions:
+      description: "Please tell me more about your problem."
+      description_simple: "What specifically do you need help with?"
