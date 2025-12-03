@@ -5,18 +5,37 @@ Detailed monitoring, debugging, and graph visualization
 
 import streamlit as st
 import json
+import sys
+from pathlib import Path
+
+# Fix imports
+_current = Path(__file__).resolve().parent.parent
+if str(_current) not in sys.path:
+    sys.path.insert(0, str(_current))
 
 from ui_utils.session import get_state_summary
+
+# Localization
+try:
+    from src.locales import t
+    LOCALES_AVAILABLE = True
+except ImportError:
+    LOCALES_AVAILABLE = False
+    def t(key, **kwargs):
+        return key
+
+# Import LLM stats
+try:
+    from services.llm import get_session_stats
+    LLM_STATS_AVAILABLE = True
+except ImportError:
+    LLM_STATS_AVAILABLE = False
 
 
 def render_monitor_tab():
     """Render the monitoring tab."""
     
-    st.markdown("## 📊 Monitoring Dashboard")
-    
-    if not st.session_state.chatbot_state:
-        st.info("Pradėkite pokalbį 📞 Call tab'e, kad matytumėte monitoring duomenis")
-        return
+    st.markdown(f"## {t('monitor.title')}")
     
     # Top metrics row
     render_metrics_row()
@@ -34,14 +53,14 @@ def render_monitor_tab():
     
     st.markdown("---")
     
-    # Bottom section: RAG docs and LLM calls
-    col_rag, col_llm = st.columns([1, 1])
-    
-    with col_rag:
-        render_rag_section()
+    # Bottom section: LLM calls and RAG
+    col_llm, col_rag = st.columns([1, 1])
     
     with col_llm:
         render_llm_calls_section()
+    
+    with col_rag:
+        render_rag_section()
     
     # Debug section
     st.markdown("---")
@@ -49,129 +68,94 @@ def render_monitor_tab():
 
 
 def render_metrics_row():
-    """Render top metrics row."""
+    """Render top metrics from session_state."""
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric(
-            "💬 Žinutės",
-            len(st.session_state.messages)
-        )
-    
+       st.metric(t("monitor.messages"), len(st.session_state.get("messages", [])))
+
     with col2:
-        token_usage = st.session_state.token_usage
-        st.metric(
-            "🎫 Tokens",
-            f"{token_usage['total']:,}",
-            help=f"Input: {token_usage['input']:,} | Output: {token_usage['output']:,}"
-        )
+        tokens = st.session_state.get("total_tokens", 0)
+        st.metric(t("monitor.tokens"), f"{tokens:,}")
     
     with col3:
-        # Estimate cost (GPT-4o-mini pricing)
-        # Input: $0.15/1M, Output: $0.60/1M
-        input_cost = token_usage['input'] * 0.00000015
-        output_cost = token_usage['output'] * 0.0000006
-        total_cost = input_cost + output_cost
-        st.metric(
-            "💰 Cost",
-            f"${total_cost:.4f}",
-            help="Estimated cost based on GPT-4o-mini pricing"
-        )
+        cost = st.session_state.get("total_cost", 0)
+        st.metric("💰 Cost", f"${cost:.4f}")
     
     with col4:
-        st.metric(
-            "🔄 LLM Calls",
-            len(st.session_state.llm_calls)
-        )
+        calls = len(st.session_state.get("llm_calls", []))
+        st.metric(t("monitor.llm_calls"), calls)
 
+
+def render_llm_calls_section():
+    """Render LLM calls from session_state."""
+    
+    st.markdown(f"### {t('monitor.llm_title')}")
+    
+    llm_calls = st.session_state.get("llm_calls", [])
+    
+    if not llm_calls:
+        st.info(t("monitor.no_llm_calls"))
+        return
+    
+    # Summary by model
+    models = {}
+    for call in llm_calls:
+        model = call.get("model", "unknown")
+        if model not in models:
+            models[model] = {"count": 0, "tokens": 0, "cost": 0}
+        models[model]["count"] += 1
+        models[model]["tokens"] += call.get("input_tokens", 0) + call.get("output_tokens", 0)
+        models[model]["cost"] += call.get("cost", 0)
+    
+    st.markdown(f"**{t('monitor.by_model')}:**")
+    for model, stats in models.items():
+        st.markdown(f"• `{model}`: {stats['count']} calls, {stats['tokens']:,} tokens, ${stats['cost']:.4f}")
+    
+    st.markdown("---")
+    
+    # Recent calls
+    st.markdown(f"**{t('monitor.recent_calls')}:**")
+    for call in reversed(llm_calls[-10:]):
+        cached = "📦" if call.get("cached") else ""
+        total_tok = call.get("input_tokens", 0) + call.get("output_tokens", 0)
+        st.markdown(
+            f"✓ {cached} `{call.get('model')}` | "
+            f"{total_tok} tok | "
+            f"${call.get('cost', 0):.5f} | "
+            f"{call.get('latency_ms', 0):.0f}ms"
+        )
 
 def render_graph_section():
     """Render graph visualization section."""
     
-    st.markdown("### 🗺️ Workflow Graph")
+    st.markdown(f"### {t('monitor.graph_title')}")
     
-    # Get current node
+    from ui_utils.chatbot_bridge import get_graph_image
+    
+    graph_png = get_graph_image()
+    if graph_png:
+        st.image(graph_png, caption="LangGraph Workflow", width="stretch")
+    else:
+        st.warning("Can generate graph image yet.")
+    
     state = get_state_summary()
     current_node = state.get("current_node", "unknown")
-    
-    # Mermaid graph
-    # Highlight current node
-    node_styles = {
-        "greeting": "",
-        "identify_customer": "",
-        "problem_capture": "",
-        "diagnostics": "",
-        "troubleshooting": "",
-        "ticket_creation": "",
-        "closing": "",
-        "end": ""
-    }
-    
-    # Set current node style
-    if current_node in node_styles:
-        node_styles[current_node] = ":::active"
-    
-    mermaid_code = f"""
-    graph TD
-        A[Start] --> B[greeting{node_styles.get('greeting', '')}]
-        B --> C[identify_customer{node_styles.get('identify_customer', '')}]
-        C --> D[problem_capture{node_styles.get('problem_capture', '')}]
-        D --> E[diagnostics{node_styles.get('diagnostics', '')}]
-        E --> F{{Router}}
-        F -->|provider issue| G[inform_provider_issue]
-        F -->|customer issue| H[troubleshooting{node_styles.get('troubleshooting', '')}]
-        H --> I{{Resolved?}}
-        I -->|yes| J[closing{node_styles.get('closing', '')}]
-        I -->|no| K[ticket_creation{node_styles.get('ticket_creation', '')}]
-        K --> J
-        G --> J
-        J --> L[end{node_styles.get('end', '')}]
-        
-        classDef active fill:#4CAF50,stroke:#2E7D32,color:white
-    """
-    
-    st.markdown(f"""
-    ```mermaid
-    {mermaid_code}
-    ```
-    """)
-    
-    # Note: Streamlit doesn't render mermaid natively, 
-    # but we can show it as code or use streamlit-mermaid component
-    
-    # Alternative: simple text representation
-    st.markdown("#### Node Flow:")
-    
-    nodes = [
-        ("greeting", "🟢"),
-        ("identify_customer", "🔵"),
-        ("problem_capture", "🟡"),
-        ("diagnostics", "🟠"),
-        ("troubleshooting", "🔧"),
-        ("ticket_creation", "🎫"),
-        ("closing", "✅"),
-        ("end", "⬛")
-    ]
-    
-    flow_text = ""
-    for node, icon in nodes:
-        if node == current_node:
-            flow_text += f"**→ {icon} {node} ←**  "
-        else:
-            flow_text += f"{icon} {node}  →  "
-    
-    st.markdown(flow_text.rstrip(" → "))
+    st.markdown(f"**{t('monitor.current_node_label')}:** `{current_node}`")
 
 
 def render_details_section():
     """Render state details section."""
     
-    st.markdown("### 📋 State Details")
+    st.markdown(f"### {t('monitor.state_title')}")
     
     state = get_state_summary()
     
-    # Organized state display
+    if not st.session_state.chatbot_state:
+        st.info("Pradėkite pokalbį, kad matytumėte state")
+        return
+    
     tab1, tab2, tab3 = st.tabs(["Customer", "Problem", "Workflow"])
     
     with tab1:
@@ -200,67 +184,38 @@ def render_details_section():
 
 
 def render_rag_section():
-    """Render RAG documents section."""
+    """Render RAG documents from session_state."""
     
-    st.markdown("### 📚 RAG Documents")
+    st.markdown(f"### {t('monitor.rag_title')}")
     
-    rag_docs = st.session_state.rag_documents
+    rag_retrievals = st.session_state.get("rag_retrievals", [])
     
-    if not rag_docs:
-        st.info("Kol kas RAG dokumentų nepanaudota")
-        
-        # Placeholder for demonstration
-        st.markdown("""
-        *Čia bus rodomi dokumentai, kuriuos agentas panaudojo atsakymui:*
-        - Troubleshooting guides
-        - FAQ entries
-        - Technical documentation
-        """)
-    else:
-        for doc in rag_docs:
-            with st.expander(f"📄 {doc.get('title', 'Document')} (score: {doc.get('score', 0):.2f})"):
-                st.markdown(f"**ID:** {doc.get('doc_id')}")
-                st.markdown(f"**Retrieved:** {doc.get('timestamp')}")
-
-
-def render_llm_calls_section():
-    """Render LLM calls history section."""
+    if not rag_retrievals:
+        st.info(t("monitor.no_rag"))
+        return
     
-    st.markdown("### 🤖 LLM Calls")
-    
-    llm_calls = st.session_state.llm_calls
-    
-    if not llm_calls:
-        st.info("Kol kas LLM iškvietimų nebuvo užregistruota")
-        
-        # Placeholder
-        st.markdown("""
-        *Čia bus rodoma LLM iškvietimų istorija:*
-        - Node kuris iškvietė
-        - Modelis
-        - Token count
-        - Response time
-        """)
-    else:
-        for i, call in enumerate(reversed(llm_calls[-10:])):
-            st.markdown(f"""
-            **#{len(llm_calls) - i}** `{call.get('node')}` 
-            | Model: {call.get('model')} 
-            | Tokens: {call.get('tokens')} 
-            | Time: {call.get('duration_ms')}ms
-            """)
-
+    for retrieval in reversed(rag_retrievals[-5:]):
+        query = retrieval.get("query", "")[:50]
+        with st.expander(f"🔍 Query: {query}..."):
+            st.markdown(f"**Results:** {retrieval.get('results_count', 0)}")
+            
+            for result in retrieval.get("results", []):
+                meta = result.get("metadata", {})
+                score = result.get("score", 0)
+                scenario_id = meta.get("scenario_id", "doc")
+                title = meta.get("title", "")
+                st.markdown(f"• **{scenario_id}** (score: {score:.2f}) - {title}")
 
 def render_debug_section():
     """Render debug section with full state."""
-    
-    with st.expander("🐛 Debug: Full State"):
+
+    with st.expander(t("monitor.debug_title")):
         if st.session_state.chatbot_state:
-            # Make it copy-able
             st.code(json.dumps(st.session_state.chatbot_state, indent=2, default=str), language="json")
         else:
-            st.info("No state available")
+            st.info(t("monitor.no_state"))
     
-    with st.expander("📜 Message History (Raw)"):
-        for i, msg in enumerate(st.session_state.messages):
-            st.markdown(f"**[{i}]** `{msg.get('role')}`: {msg.get('content')[:100]}...")
+    if LLM_STATS_AVAILABLE:
+        with st.expander("📊 LLM Stats Raw"):
+            stats = get_session_stats()
+            st.code(stats.get_summary_text())

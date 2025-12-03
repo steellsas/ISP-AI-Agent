@@ -5,11 +5,20 @@ Configuration for models, language, and other options
 
 import streamlit as st
 
+# Localization
+try:
+    from src.locales import t
+    LOCALES_AVAILABLE = True
+except ImportError:
+    LOCALES_AVAILABLE = False
+    def t(key, **kwargs):
+        return key
+
 
 def render_settings_tab():
     """Render the settings tab."""
     
-    st.markdown("## ⚙️ Nustatymai")
+    st.markdown(f"## {t('settings.title')}")
     
     # Two columns layout
     col1, col2 = st.columns(2)
@@ -22,94 +31,172 @@ def render_settings_tab():
     
     st.markdown("---")
     
-    render_advanced_settings()
+    render_advanced_settings()    
 
 
 def render_model_settings():
     """Render model selection settings."""
     
-    st.markdown("### 🤖 AI Modeliai")
+    st.markdown(f"### {t('settings.models_title')}")
     
-    st.info("⚠️ Modelių keitimas bus implementuotas vėliau")
+    # Import model registry
+    try:
+        from src.services.llm.models import MODEL_REGISTRY
+        from src.services.llm.settings import get_settings, update_settings
+        MODELS_AVAILABLE = True
+    except ImportError as e:
+        MODELS_AVAILABLE = False
+        st.error(f"Model settings not available: {e}")
+        return
     
-    # Main model selection
-    main_model = st.selectbox(
-        "Pagrindinis modelis",
-        options=[
-            "gpt-4o-mini",
-            "gpt-4o",
-            "gpt-4-turbo",
-            "claude-3-5-sonnet",
-            "claude-3-haiku",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash"
-        ],
-        index=0,
-        help="Modelis naudojamas pagrindinėms užduotims",
-        disabled=True  # TODO: Enable when implemented
+    current_settings = get_settings()
+    current_model = current_settings.model
+    
+    # Detect current provider
+    current_provider = "openai"
+    for model_id, info in MODEL_REGISTRY.items():
+        if model_id == current_model:
+            current_provider = info.provider
+            break
+    
+    # Provider selection
+    providers = ["openai", "google"]
+    provider_labels = {
+        "openai": "🟢 OpenAI",
+        "google": "🔵 Google"
+    }
+    
+    selected_provider = st.selectbox(
+        t("settings.provider"),
+        providers,
+        index=providers.index(current_provider),
+        format_func=lambda x: provider_labels.get(x, x)
     )
     
-    st.markdown("#### Modeliai pagal node'ą")
-    st.markdown("*Galimybė naudoti skirtingus modelius skirtingiems workflow žingsniams*")
+    # Filter models by provider
+    provider_models = [
+        (model_id, info) 
+        for model_id, info in MODEL_REGISTRY.items() 
+        if info.provider == selected_provider
+    ]
     
-    # Per-node model selection (future feature)
-    with st.expander("📊 Node-specific models", expanded=False):
-        nodes = [
-            ("greeting", "Pasisveikinimas"),
-            ("identify_customer", "Kliento identifikavimas"),
-            ("problem_capture", "Problemos surinkimas"),
-            ("diagnostics", "Diagnostika"),
-            ("troubleshooting", "Troubleshooting"),
-            ("ticket_creation", "Ticket kūrimas"),
-            ("closing", "Pokalbio užbaigimas")
-        ]
-        
-        for node_id, node_name in nodes:
-            st.selectbox(
-                f"{node_name}",
-                options=["Default (gpt-4o-mini)", "gpt-4o", "claude-3-haiku"],
-                key=f"model_{node_id}",
-                disabled=True
-            )
+    # Model selection
+    model_options = [m[0] for m in provider_models]
+    
+    # Find current index
+    current_index = 0
+    if current_model in model_options:
+        current_index = model_options.index(current_model)
+    
+    def format_model_option(model_id):
+        info = MODEL_REGISTRY.get(model_id)
+        if info:
+            return f"{info.name} - ${info.input_cost_per_1k * 1000:.2f}/1M tokens"
+        return model_id
+    
+    selected_model = st.selectbox(
+        t("settings.model"),
+        model_options,
+        index=current_index,
+        format_func=format_model_option
+    )
+    
+    # Show model info
+    if selected_model in MODEL_REGISTRY:
+        info = MODEL_REGISTRY[selected_model]
+        st.info(f"""
+**{info.name}**
+- Input: ${info.input_cost_per_1k * 1000:.2f} / 1M tokens
+- Output: ${info.output_cost_per_1k * 1000:.2f} / 1M tokens  
+- Max context: {info.max_tokens:,} tokens
+- JSON mode: {"✅" if info.supports_json_mode else "❌"}
+- Vision: {"✅" if info.supports_vision else "❌"}
+        """)
+    
+    # Temperature slider
+    st.markdown(f"#### {t('settings.parameters')}")
+    
+    temperature = st.slider(
+        "Temperature",
+        min_value=0.0,
+        max_value=1.0,
+        value=current_settings.temperature,
+        step=0.1,
+        help=t("settings.temperature_help")
+    )
+    
+    # Check if settings changed
+    settings_changed = (
+        selected_model != current_model or 
+        temperature != current_settings.temperature
+    )
+    
+    # Apply button
+    if settings_changed:
+         st.warning(t("settings.settings_changed"))
+    
+    if st.button(t("settings.save_button"), type="primary", disabled=not settings_changed):
+        update_settings(model=selected_model, temperature=temperature)
+        st.success(t("settings.saved_message", model=selected_model, temperature=temperature))
+        st.rerun()
 
 
 def render_general_settings():
     """Render general settings."""
     
-    st.markdown("### 🌍 Bendri nustatymai")
+    # Import localization
+    try:
+        from src.locales import t, get_language, set_language, get_available_languages
+        LOCALES_AVAILABLE = True
+    except ImportError:
+        LOCALES_AVAILABLE = False
     
-    # Language selection
-    language = st.selectbox(
-        "Kalba / Language",
-        options=["Lietuvių", "English"],
-        index=0,
-        key="language_select"
-    )
+    st.markdown(f"### {t('settings.language_title') if LOCALES_AVAILABLE else '🌍 Language'}")
     
-    if language == "Lietuvių":
-        st.session_state.settings["language"] = "lt"
+    if LOCALES_AVAILABLE:
+        languages = get_available_languages()
+        current_lang = get_language()
+        
+        # Find current index
+        lang_codes = [l["code"] for l in languages]
+        current_index = lang_codes.index(current_lang) if current_lang in lang_codes else 0
+        
+        selected_lang = st.selectbox(
+            t("settings.language_title"),
+            lang_codes,
+            index=current_index,
+            format_func=lambda x: next(
+                (f"{l['flag']} {l['name']}" for l in languages if l["code"] == x),
+                x
+            ),
+            label_visibility="collapsed"
+        )
+        
+        if selected_lang != current_lang:
+            set_language(selected_lang)
+            st.session_state.settings["language"] = selected_lang
+            st.rerun()
     else:
-        st.session_state.settings["language"] = "en"
+        st.warning("Localization not available")
     
     st.markdown("---")
     
     # UI preferences
-    st.markdown("#### 🎨 UI nustatymai")
+    st.markdown(f"#### {t('settings.ui_settings') if LOCALES_AVAILABLE else '🎨 UI settings'}")
     
     show_agent_thoughts = st.checkbox(
-        "Rodyti agento 'mintis'",
+        t("settings.show_agent_thoughts") if LOCALES_AVAILABLE else "Show agent thoughts",
         value=st.session_state.settings.get("show_agent_thoughts", True),
-        help="Rodyti agento sprendimų informaciją Call tab'e"
+        help=t("settings.show_agent_thoughts_help") if LOCALES_AVAILABLE else "Show agent decision info"
     )
     st.session_state.settings["show_agent_thoughts"] = show_agent_thoughts
     
     debug_mode = st.checkbox(
-        "Debug režimas",
+        t("settings.debug_mode") if LOCALES_AVAILABLE else "Debug mode",
         value=st.session_state.settings.get("debug_mode", False),
-        help="Rodyti papildomą techninę informaciją"
+        help=t("settings.debug_mode_help") if LOCALES_AVAILABLE else "Show technical info"
     )
     st.session_state.settings["debug_mode"] = debug_mode
-
 
 def render_advanced_settings():
     """Render advanced settings."""

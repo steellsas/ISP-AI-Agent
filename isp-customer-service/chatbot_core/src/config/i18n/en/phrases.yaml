@@ -1,0 +1,224 @@
+# =============================================================================
+# ENGLISH PHRASES (en)
+# =============================================================================
+# Phrases for recognition - yes/no, help, frustration, goodbye
+# Usage: t_list("phrases.confirmation.yes")
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# CONFIRMATION
+# -----------------------------------------------------------------------------
+confirmation:
+  yes:
+    - "yes"
+    - "yeah"
+    - "yep"
+    - "correct"
+    - "right"
+    - "okay"
+    - "ok"
+    - "sure"
+    - "exactly"
+    - "that's right"
+    - "thats right"
+    - "yes yes"
+    - "uh huh"
+    - "mhm"
+    - "true"
+    - "indeed"
+    - "of course"
+  
+  no:
+    - "no"
+    - "nope"
+    - "not correct"
+    - "wrong"
+    - "incorrect"
+    - "that's wrong"
+    - "thats wrong"
+    - "different"
+    - "another"
+    - "not that"
+    - "not right"
+
+# -----------------------------------------------------------------------------
+# HELP REQUEST
+# -----------------------------------------------------------------------------
+help_request:
+  general:
+    - "how do i"
+    - "how to"
+    - "i don't know how"
+    - "i dont know how"
+    - "help me"
+    - "help"
+    - "explain"
+    - "i can't"
+    - "i cant"
+    - "i don't understand"
+    - "i dont understand"
+    - "impossible"
+    - "too hard"
+    - "too difficult"
+    - "not working"
+  
+  location:
+    - "where is"
+    - "where to find"
+    - "how to find"
+    - "where can i"
+    - "where do i"
+  
+  meaning:
+    - "what is"
+    - "what does"
+    - "what's that"
+    - "whats that"
+    - "what do you mean"
+  
+  how_to:
+    - "how to check"
+    - "how to do"
+    - "how to turn on"
+    - "how to turn off"
+    - "how to enable"
+    - "how to disable"
+  
+  # Short confused responses
+  confused:
+    - "?"
+    - "??"
+    - "what"
+    - "where"
+    - "how"
+    - "huh"
+    - "hmm"
+    - "um"
+
+# -----------------------------------------------------------------------------
+# FRUSTRATION
+# -----------------------------------------------------------------------------
+frustration:
+  general:
+    - "you can't help"
+    - "you cant help"
+    - "not helping"
+    - "useless"
+    - "this is useless"
+    - "bad"
+    - "doesn't work"
+    - "doesnt work"
+    - "stupid"
+    - "pointless"
+    - "waste of time"
+    - "nonsense"
+    - "ridiculous"
+    - "fed up"
+    - "annoyed"
+    - "frustrated"
+  
+  give_up:
+    - "enough"
+    - "i give up"
+    - "forget it"
+    - "never mind"
+    - "nevermind"
+    - "stop"
+    - "done"
+  
+  repetition:
+    - "i already said"
+    - "already told you"
+    - "i mentioned"
+    - "you're repeating"
+    - "youre repeating"
+    - "same thing again"
+    - "again"
+    - "you don't remember"
+    - "you dont remember"
+    - "you forgot"
+    - "how many times"
+    - "third time"
+    - "second time"
+    - "asked already"
+  
+  escalation:
+    - "i want a human"
+    - "real person"
+    - "talk to someone"
+    - "connect me to"
+    - "transfer me"
+    - "speak to a person"
+    - "real human"
+    - "live agent"
+    - "manager"
+    - "supervisor"
+    - "technician"
+    - "specialist"
+
+# -----------------------------------------------------------------------------
+# GOODBYE
+# -----------------------------------------------------------------------------
+goodbye:
+  - "thank you"
+  - "thanks"
+  - "goodbye"
+  - "bye"
+  - "bye bye"
+  - "see you"
+  - "take care"
+  - "that's all"
+  - "thats all"
+  - "nothing else"
+  - "all done"
+  - "have a nice day"
+
+# -----------------------------------------------------------------------------
+# RESOLUTION CONFIRMATION
+# -----------------------------------------------------------------------------
+resolution:
+  positive:
+    - "all good"
+    - "it works"
+    - "working"
+    - "it's working"
+    - "its working"
+    - "i can see"
+    - "yes it works"
+    - "good now"
+    - "fixed"
+    - "solved"
+    - "resolved"
+    - "perfect"
+    - "great"
+  
+  negative:
+    - "still not working"
+    - "still doesn't work"
+    - "still doesnt work"
+    - "didn't work"
+    - "didnt work"
+    - "not working"
+    - "can't see"
+    - "cant see"
+    - "nothing"
+    - "no"
+    - "didn't help"
+    - "didnt help"
+
+# -----------------------------------------------------------------------------
+# SKIP
+# -----------------------------------------------------------------------------
+skip:
+  - "i don't know"
+  - "i dont know"
+  - "not sure"
+  - "no idea"
+  - "just help me"
+  - "skip"
+  - "doesn't matter"
+  - "doesnt matter"
+  - "let's move on"
+  - "lets move on"
+  - "continue"
+  - "next"

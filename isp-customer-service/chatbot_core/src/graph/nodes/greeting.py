@@ -1,99 +1,254 @@
 # """
-# Greeting Node
-# First interaction - welcomes the customer (no wait)
+# Greeting Node - First contact with customer
+
+# Returns static greeting from translations. No LLM call needed.
+# Supports multiple languages via translation service.
 # """
 
-# from typing import Dict, Any
-# from ..state import ConversationState, add_message
-# from ...services.llm_service import get_llm_service
-# from ...config.old.prompts import GREETING_PROMPT, format_prompt
+# import logging
+# from typing import Any
+
+# from src.config.config import load_config
+# from src.graph.state import add_message, _get_attr
+# from src.services.language_service import get_agent_name, get_language
+# from src.services.translation_service import t
+
+# logger = logging.getLogger(__name__)
 
 
-# async def greeting_node_async(state: ConversationState) -> Dict[str, Any]:
+# # =============================================================================
+# # NODE FUNCTION
+# # =============================================================================
+
+# def greeting_node(state: Any) -> dict:
 #     """
-#     Welcome the customer and initiate conversation.
+#     Greeting node - greets the customer.
     
-#     This node generates greeting and immediately proceeds to next node.
-#     Does NOT wait for user input.
+#     This is the first node in the workflow. Returns static text from
+#     translation files. No LLM call - minimal latency.
+    
+#     Supports:
+#     - Multiple languages (LT/EN) via translation service
+#     - Personalized greeting for returning customers
+#     - Structured logging
+#     - Error handling with fallback
     
 #     Args:
-#         state: Current conversation state
+#         state: Current conversation state (Pydantic object or dict)
         
 #     Returns:
-#         Updated state with greeting message
+#         State update with greeting message
 #     """
+#     conversation_id = _get_attr(state, "conversation_id", "unknown")
+#     logger.info(f"[{conversation_id}] Greeting node started")
     
-#     # Initialize LLM service (use singleton getter)
-#     llm = get_llm_service()
+#     try:
+#         # Load config for company name
+#         config = load_config()
+#         company_name = config.agent.company_name
+        
+#         # Get agent name based on current language
+#         agent_name = get_agent_name()
+        
+#         # Check if returning customer (has customer_name in state)
+#         customer_name = _get_attr(state, "customer_name")
+        
+#         if customer_name:
+#             # Returning customer - personalized greeting
+#             greeting_text = t(
+#                 "greeting.welcome_returning",
+#                 customer_name=customer_name
+#             )
+#             logger.info(f"[{conversation_id}] Returning customer: {customer_name}")
+#         else:
+#             # New customer - standard greeting
+#             greeting_text = t(
+#                 "greeting.welcome",
+#                 company_name=company_name,
+#                 agent_name=agent_name
+#             )
+#             logger.info(f"[{conversation_id}] New customer greeting")
+        
+#         # Create message
+#         message = add_message(
+#             role="assistant",
+#             content=greeting_text,
+#             node="greeting"
+#         )
+        
+#         logger.info(f"[{conversation_id}] Greeting node completed | lang={get_language()}")
+        
+#         return {
+#             "messages": [message],
+#             "current_node": "greeting"
+#         }
+        
+#     except Exception as e:
+#         logger.error(f"[{conversation_id}] Greeting node error: {e}", exc_info=True)
+        
+#         # Fallback greeting - hardcoded as last resort
+#         fallback_greeting = t(
+#             "greeting.welcome",
+#             default="Labas! Kuo galiu padėti?",
+#             company_name="ISP",
+#             agent_name="Andrius"
+#         )
+        
+#         message = add_message(
+#             role="assistant",
+#             content=fallback_greeting,
+#             node="greeting"
+#         )
+        
+#         return {
+#             "messages": [message],
+#             "current_node": "greeting",
+#             "last_error": str(e)
+#         }
+
+
+# # =============================================================================
+# # ALTERNATIVE: Async version (if needed in future)
+# # =============================================================================
+
+# async def greeting_node_async(state: Any) -> dict:
+#     """
+#     Async version of greeting node.
     
-#     # Prepare system prompt
-#     system_prompt = format_prompt(
-#         GREETING_PROMPT,
-#         language=state["language"]
-#     )
-    
-#     # Generate greeting
-#     greeting_message = await llm.generate(
-#         system_prompt=system_prompt,
-#         messages=[],  # Empty for greeting
-#         temperature=0.7,
-#         max_tokens=150
-#     )
-    
-#     # Update state
-#     state = add_message(
-#         state=state,
-#         role="assistant",
-#         content=greeting_message,
-#         node="greeting"
-#     )
-    
-#     # Set current node but DO NOT WAIT
-#     state["current_node"] = "greeting"
-#     state["waiting_for_user_input"] = False  # ← CHANGED: Ne-pause
-    
-#     return {
-#         "messages": state["messages"],
-#         "current_node": state["current_node"],
-#         "waiting_for_user_input": False  # ← CRITICAL: Proceed immediately
-#     }
+#     Currently just wraps sync version, but allows for future
+#     async operations if needed (e.g., async config loading).
+#     """
+#     return greeting_node(state)
 
 
 """
 Greeting Node - First contact with customer
 
-Returns static greeting from config. No LLM call needed.
+Returns static greeting from translations. No LLM call needed.
+Supports multiple languages via translation service.
 """
 
-from src.config.config import load_config, get_greeting
-from src.graph.state import add_message
+import logging
+from typing import Any
+
+from src.config.config import load_config
+from src.graph.state import add_message, _get_attr
+from src.services.language_service import (
+    sync_language_from_state,  # ← PRIDĖTA
+    get_agent_name, 
+    get_language
+)
+from src.services.translation_service import t
+
+logger = logging.getLogger(__name__)
 
 
-def greeting_node(state) -> dict:
+# =============================================================================
+# NODE FUNCTION
+# =============================================================================
+
+def greeting_node(state: Any) -> dict:
     """
-    Greeting node - pasisveikina su klientu.
+    Greeting node - greets the customer.
     
-    Tai pirmas node workflow'e. Grąžina statinį tekstą iš config.
-    Jokio LLM call - minimali latency.
+    This is the first node in the workflow. Returns static text from
+    translation files. No LLM call - minimal latency.
+    
+    Supports:
+    - Multiple languages (LT/EN) via translation service
+    - Personalized greeting for returning customers
+    - Structured logging
+    - Error handling with fallback
     
     Args:
-        state: Current conversation state (Pydantic object)
+        state: Current conversation state (Pydantic object or dict)
         
     Returns:
         State update with greeting message
     """
-    # Load config and get greeting
-    config = load_config()
-    greeting_text = get_greeting(config)
+    conversation_id = _get_attr(state, "conversation_id", "unknown")
     
-    # Create message
-    message = add_message(
-        role="assistant",
-        content=greeting_text,
-        node="greeting"
-    )
+    # =============================================
+    # CRITICAL: Sync language from state FIRST
+    # This ensures t() and get_agent_name() use correct language
+    # =============================================
+    lang = sync_language_from_state(state)
     
-    return {
-        "messages": [message],
-        "current_node": "greeting"
-    }
+    logger.info(f"[{conversation_id}] Greeting node started | language={lang}")
+    
+    try:
+        # Load config for company name
+        config = load_config()
+        company_name = config.agent.company_name
+        
+        # Get agent name based on current language (now synced from state)
+        agent_name = get_agent_name()
+        
+        # Check if returning customer (has customer_name in state)
+        customer_name = _get_attr(state, "customer_name")
+        
+        if customer_name:
+            # Returning customer - personalized greeting
+            greeting_text = t(
+                "greeting.welcome_returning",
+                customer_name=customer_name
+            )
+            logger.info(f"[{conversation_id}] Returning customer: {customer_name}")
+        else:
+            # New customer - standard greeting
+            greeting_text = t(
+                "greeting.welcome",
+                company_name=company_name,
+                agent_name=agent_name
+            )
+            logger.info(f"[{conversation_id}] New customer greeting")
+        
+        # Create message
+        message = add_message(
+            role="assistant",
+            content=greeting_text,
+            node="greeting"
+        )
+        
+        logger.info(f"[{conversation_id}] Greeting node completed | lang={lang} | agent={agent_name}")
+        
+        return {
+            "messages": [message],
+            "current_node": "greeting"
+        }
+        
+    except Exception as e:
+        logger.error(f"[{conversation_id}] Greeting node error: {e}", exc_info=True)
+        
+        # Fallback greeting - language-aware
+        current_lang = get_language()
+        if current_lang == "en":
+            fallback_greeting = "Hello! How can I help you today?"
+        else:
+            fallback_greeting = "Labas! Kuo galiu jums padėti?"
+        
+        message = add_message(
+            role="assistant",
+            content=fallback_greeting,
+            node="greeting"
+        )
+        
+        return {
+            "messages": [message],
+            "current_node": "greeting",
+            "last_error": str(e)
+        }
+
+
+# =============================================================================
+# ALTERNATIVE: Async version (if needed in future)
+# =============================================================================
+
+async def greeting_node_async(state: Any) -> dict:
+    """
+    Async version of greeting node.
+    
+    Currently just wraps sync version, but allows for future
+    async operations if needed (e.g., async config loading).
+    """
+    return greeting_node(state)
