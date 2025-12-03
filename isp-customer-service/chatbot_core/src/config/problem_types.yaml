@@ -117,12 +117,32 @@ problem_types:
           - "visible"
           - "network"
           - "shows"
+      connection_pattern:
+        weight: 20
+        description: "Ryšio pobūdis"
+        question: "Ar internetas neveikia visai, ar kartais veikia, kartais ne?"
+        simpler_question: "Ar internetas kartais veikia?"
+        extract_patterns:
+          - "nutrūksta"
+          - "dingsta"
+          - "kartais"
+          - "atsijungia"
+          - "nestabilus"
+          - "lėtas"
+          - "lėtai"
+          - "greitis"
+          - "visai neveikia"
+          - "niekada"
+          - "visiškai"
+          - "intermittent"
+          - "slow"
     
     context_threshold: 70
     max_questions: 3
     question_priority:
       - "duration"
       - "scope"
+      - "connection_pattern" 
       - "tried_restart"
       - "router_lights"
       - "wifi_visible"

@@ -9,14 +9,6 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 
-# # Add shared to path
-# shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
-# if str(shared_path) not in sys.path:
-#     sys.path.insert(0, str(shared_path))
-
-# from utils import get_logger
-
-# logger = get_logger(__name__)
 
 
 try:

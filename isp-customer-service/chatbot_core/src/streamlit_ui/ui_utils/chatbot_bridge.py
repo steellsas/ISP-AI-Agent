@@ -11,11 +11,9 @@ from datetime import datetime
 # These imports will work when file is in chatbot_core/src/ui/streamlit_ui/
 # and src is in sys.path
 try:
-    print('bandom importuoti+++++++++++++++++++++++++++++++++++++++++++++++')
     from graph.graph import get_app
-    print('get app importuotas')
     from graph.state import create_initial_state, add_message
-    print('abu importai importuoti')
+ 
     CHATBOT_AVAILABLE = True
 except ImportError as e:
     CHATBOT_AVAILABLE = False
