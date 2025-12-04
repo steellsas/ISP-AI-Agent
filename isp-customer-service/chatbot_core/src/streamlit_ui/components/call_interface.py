@@ -5,20 +5,19 @@ Phone call simulation UI with agent status panel
 import sys
 from pathlib import Path
 
-# Add streamlit_ui to path for utils imports
+
 _streamlit_ui = Path(__file__).resolve().parent.parent  # components -> streamlit_ui
-print(f"DEBUG call_interface: _streamlit_ui = {_streamlit_ui}")
-print(f"DEBUG call_interface: sys.path[:3] = {sys.path[:3]}")
+
 if str(_streamlit_ui) not in sys.path:
     sys.path.insert(0, str(_streamlit_ui))
 
-print(f"DEBUG call_interface: after insert sys.path[:3] = {sys.path[:3]}")
+# print(f"DEBUG call_interface: after insert sys.path[:3] = {sys.path[:3]}")
 
-# Check if utils exists
+
 import os
 utils_path = _streamlit_ui / "ui_utils"
-print(f"DEBUG: utils folder exists: {utils_path.exists()}")
-print(f"DEBUG: utils contents: {list(utils_path.iterdir()) if utils_path.exists() else 'N/A'}")
+# print(f"DEBUG: utils folder exists: {utils_path.exists()}")
+# print(f"DEBUG: utils contents: {list(utils_path.iterdir()) if utils_path.exists() else 'N/A'}")
 
 
 import streamlit as st

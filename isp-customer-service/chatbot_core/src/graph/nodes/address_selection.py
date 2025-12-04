@@ -30,7 +30,6 @@ async def address_selection_node_async(state: ConversationState) -> Dict[str, An
     
     logger.info("=== ADDRESS SELECTION ===")
     
-    # Check if this is first call or response processing
     if not state.get("waiting_for_user_input"):
         # FIRST CALL: Show address list
         logger.info("First call - showing address options")
@@ -185,18 +184,3 @@ Atsakyk tik numeriu (1, 2, 3, etc.)
         "current_node": "address_selection"
     }
 
-
-# def run(state: ConversationState) -> Dict[str, Any]:
-#     """Synchronous wrapper for LangGraph with nested loop support."""
-#     import asyncio
-#     import nest_asyncio
-    
-#     nest_asyncio.apply()
-    
-#     try:
-#         loop = asyncio.get_event_loop()
-#     except RuntimeError:
-#         loop = asyncio.new_event_loop()
-#         asyncio.set_event_loop(loop)
-    
-#     return loop.run_until_complete(address_selection_node_async(state))

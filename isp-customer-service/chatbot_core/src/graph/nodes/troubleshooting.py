@@ -375,51 +375,6 @@ def determine_starting_step(scenario, problem_context: dict, problem_type: str, 
     return first_step, skipped_steps, skip_message
 
 
-# def get_smart_scenario_id(problem_type: str, problem_context: dict, diagnostic_results: dict = None) -> str:
-#     """
-#     Select the most appropriate scenario based on context.
-    
-#     Smart routing:
-#     - Single device problem → internet_single_device (device-first approach)
-#     - All devices problem → internet_no_connection (router-first approach)
-#     """
-#     if problem_type != "internet":
-#         # For non-internet problems, use default scenarios
-#         default_scenarios = {
-#             "tv": "tv_no_signal",
-#             "phone": "internet_no_connection",  # fallback
-#             "other": "internet_no_connection",
-#         }
-#         return default_scenarios.get(problem_type, "internet_no_connection")
-    
-#     # For internet problems, check scope to determine best scenario
-#     if problem_context:
-#         scope = str(problem_context.get("scope", "")).lower()
-        
-#         # Single device keywords - use device-first scenario
-#         single_device_keywords = [
-#             "telefonas", "telefone", "phone", 
-#             "vienas", "viename", "tik vienas",
-#             "laptop", "kompiuteris", "kompiuteryje",
-#             "tablet", "planšetė"
-#         ]
-        
-#         if any(kw in scope for kw in single_device_keywords):
-#             # Try to use single device scenario if available
-#             # Will fallback to internet_no_connection if scenario not loaded
-#             logger.info(f"Smart routing: Single device detected ('{scope}') → internet_single_device")
-#             return "internet_single_device"
-        
-#         # All devices affected - router-first approach
-#         all_devices_keywords = ["visi", "visur", "visuose", "all", "viskas"]
-#         if any(kw in scope for kw in all_devices_keywords):
-#             logger.info(f"Smart routing: All devices affected ('{scope}') → internet_no_connection")
-#             return "internet_no_connection"
-    
-#     # Default fallback
-#     return "internet_no_connection"
-
-
 def get_smart_scenario_id(
     problem_type: str, 
     problem_context: dict, 
@@ -539,13 +494,7 @@ def select_scenario(problem_description: str, problem_type: str, conversation_id
         logger.info(f"[{conversation_id}] Selected scenario: {scenario_id}")
         return scenario_id
     
-    # default_scenarios = {
-    #     "internet": "internet_no_connection",
-    #     "tv": "tv_no_signal",
-    #     "phone": "internet_no_connection",
-    #     "other": "internet_no_connection",
-    # }
-    # return default_scenarios.get(actual_type, "internet_no_connection")
+  
     return None
 
 
