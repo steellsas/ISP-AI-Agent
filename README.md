@@ -331,8 +331,8 @@ Problem Context Analysis
 | [WORKFLOW.md](isp-customer-service/docs/WORKFLOW.md) | LangGraph nodes and routing logic |
 | [MCP_TOOLS.md](isp-customer-service/docs/MCP_TOOLS.md) | MCP servers and tool specifications |
 | [RAG_SYSTEM.md](isp-customer-service/docs/RAG_SYSTEM.md) | Knowledge retrieval pipeline |
-| [CONFIGURATION.md](isp-customer-servicedocs/CONFIGURATION.md) | YAML configuration reference |
-| [INSTALLATION.md](isp-customer-servicedocs/INSTALLATION.md) | Setup and deployment guide |
+| [CONFIGURATION.md](isp-customer-service/docs/CONFIGURATION.md) | YAML configuration reference |
+| [INSTALLATION.md](isp-customer-service/docs/INSTALLATION.md) | Setup and deployment guide |
 
 
 ---
