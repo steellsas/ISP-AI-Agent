@@ -124,10 +124,6 @@ The Streamlit-based interface provides comprehensive tools for testing and monit
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-→ *Details: [docs/UI.md](docs/UI.md)*
-
----
-
 ## What Makes It Smart
 
 ### 1. LangGraph Workflow Engine
@@ -248,7 +244,7 @@ Problem Context Analysis
 - Recognizes resolution confirmation (explicit and implicit)
 - Escalates appropriately with full context preservation
 
-→ *Details: [docs/TROUBLESHOOTING_SCENARIOS.md](docs/TROUBLESHOOTING_SCENARIOS.md)*
+
 
 ---
 
@@ -326,39 +322,6 @@ Problem Context Analysis
 | **Language** | Python 3.11+ | Primary development language |
 
 ---
-
-## Quick Start
-
-```bash
-# 1. Clone repository
-git clone https://github.com/your-org/isp-chatbot.git
-cd isp-chatbot
-
-# 2. Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 3. Install dependencies
-pip install -e ".[dev]"
-
-# 4. Initialize database
-python scripts/init_database.py
-
-# 5. Start MCP servers (separate terminal)
-python -m crm_service.src.crm_mcp.server
-
-# 6. Run chatbot
-streamlit run chatbot_core/src/streamlit_ui/app.py
-
-uv run streamlit run chatbot_core\src\streamlit_ui\app.py
-```
-
-chatbot_core\src\streamlit_ui\app.py
-
-→ *Full installation guide: [docs/INSTALLATION.md](docs/INSTALLATION.md)*
-
----
-
 
 ## Documentation
 
