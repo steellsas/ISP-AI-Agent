@@ -30,7 +30,7 @@ __all__ = [
     "inform_provider_issue_node",
     "troubleshooting_node",
     "troubleshooting_router",
-     "create_ticket_node",
+    "create_ticket_node",
     "closing_node",
 ]
 
