@@ -53,13 +53,7 @@ class State(BaseModel):
     
     # Problem Capture v2.1 - Qualifying context
     problem_context: dict = Field(default_factory=dict)
-    # Stores extracted facts: {
-    #   "duration": "nuo vakar",
-    #   "scope": "visi įrenginiai",
-    #   "tried_restart": True,
-    #   "router_lights": "nedega",
-    #   "context_score": 85,
-    # }
+   
     
     qualifying_questions_asked: int = 0
     qualifying_answers: list[dict] = Field(default_factory=list)

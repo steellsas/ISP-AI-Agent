@@ -11,7 +11,7 @@ from typing import Any
 from src.config.config import load_config
 from src.graph.state import add_message, _get_attr
 from src.services.language_service import (
-    sync_language_from_state,  # ← PRIDĖTA
+    sync_language_from_state, 
     get_agent_name, 
     get_language
 )
@@ -45,10 +45,7 @@ def greeting_node(state: Any) -> dict:
     """
     conversation_id = _get_attr(state, "conversation_id", "unknown")
     
-    # =============================================
-    # CRITICAL: Sync language from state FIRST
-    # This ensures t() and get_agent_name() use correct language
-    # =============================================
+
     lang = sync_language_from_state(state)
     
     logger.info(f"[{conversation_id}] Greeting node started | language={lang}")

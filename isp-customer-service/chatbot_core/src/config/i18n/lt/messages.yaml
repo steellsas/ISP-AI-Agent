@@ -53,7 +53,7 @@ phone_lookup:
 # -----------------------------------------------------------------------------
 address:
   # Patvirtinimas
-  confirmation_ask: "Ačiū, {customer_name}. Ar jūsų adresas yra {address}?"
+  confirmation_ask: "Ačiū. Ar jūsų adresas yra {address}?"
   confirmation_ask_short: "Ar problema yra adresu {address}?"
   confirmed: "Puiku, adresas patvirtintas. Tikrinu jūsų ryšio būklę..."
   

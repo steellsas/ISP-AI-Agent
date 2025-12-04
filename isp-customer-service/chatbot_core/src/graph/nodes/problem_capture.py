@@ -64,7 +64,7 @@ class ProblemAnalysis(BaseModel):
     """LLM response schema for problem analysis."""
     
     # Classification
-    problem_type: Literal["internet", "tv", "phone", "billing", "other"]
+    problem_type: Literal["internet", "tv", "other"]
     problem_summary: str
     
     # Extracted facts (what we now know)

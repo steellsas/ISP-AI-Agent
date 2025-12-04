@@ -45,7 +45,7 @@ LANGUAGE_CONFIG = {
         "code": "lt",
         "name": "Lithuanian",
         "native_name": "Lietuvių",
-        "default_agent_name": "Andrius",
+        "default_agent_name": "Andrius Pliusas",
         "flag": "🇱🇹",
     },
     "en": {

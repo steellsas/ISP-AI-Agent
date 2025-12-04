@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 API_KEY_ENV_VARS = {
     "openai": "OPENAI_API_KEY",
     "google": "GEMINI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
+
 }
 
 
