@@ -147,19 +147,7 @@ uv run python scripts/setup_db.py
 uv run python scripts/seed_data.py
 ```
 
-
-
-
----
-
-```
-
 ### Config Files
-
-
-
-
-
 
 Access at: `http://localhost:8501`
 
