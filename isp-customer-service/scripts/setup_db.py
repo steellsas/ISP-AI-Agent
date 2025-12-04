@@ -27,51 +27,51 @@ def get_db_path() -> Path:
 def load_schema_file(schema_name: str) -> str:
     """Load SQL schema from file."""
     schema_path = get_project_root() / "database" / "schema" / f"{schema_name}.sql"
-    
+
     if not schema_path.exists():
         raise FileNotFoundError(f"Schema file not found: {schema_path}")
-    
-    with open(schema_path, 'r', encoding='utf-8') as f:
+
+    with open(schema_path, "r", encoding="utf-8") as f:
         return f.read()
 
 
 def create_database():
     """Create database and execute schema files."""
     db_path = get_db_path()
-    
+
     # Create database directory if not exists
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Remove old database if exists
     if db_path.exists():
         print(f"⚠️  Removing existing database: {db_path}")
         db_path.unlink()
-    
+
     print(f"📦 Creating database at: {db_path}")
-    
+
     # Connect to database (creates file)
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     try:
         # Load and execute CRM schema
         print("📋 Creating CRM schema...")
         crm_schema = load_schema_file("crm_schema")
         cursor.executescript(crm_schema)
         print("   ✅ CRM schema created")
-        
+
         # Load and execute Network schema
         print("📋 Creating Network schema...")
         network_schema = load_schema_file("network_schema")
         cursor.executescript(network_schema)
         print("   ✅ Network schema created")
-        
+
         # Commit changes
         conn.commit()
         print("\n✅ Database created successfully!")
         print(f"📍 Location: {db_path}")
         print(f"📊 Size: {db_path.stat().st_size} bytes")
-        
+
     except FileNotFoundError as e:
         print(f"\n❌ Error: {e}")
         print("\n💡 Hint: Schema files should be created first:")
@@ -80,17 +80,17 @@ def create_database():
         conn.close()
         db_path.unlink()  # Remove incomplete database
         return False
-        
+
     except sqlite3.Error as e:
         print(f"\n❌ Database error: {e}")
         conn.close()
         if db_path.exists():
             db_path.unlink()
         return False
-        
+
     finally:
         conn.close()
-    
+
     return True
 
 
@@ -100,9 +100,9 @@ def main():
     print("ISP Customer Service - Database Setup")
     print("=" * 60)
     print()
-    
+
     success = create_database()
-    
+
     if success:
         print("\n" + "=" * 60)
         print("Next steps:")

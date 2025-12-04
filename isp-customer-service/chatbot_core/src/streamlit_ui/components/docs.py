@@ -8,20 +8,16 @@ import streamlit as st
 
 def render_docs_tab():
     """Render the documentation tab."""
-    
+
     st.markdown("## 📖 Dokumentacija")
-    
+
     # Language toggle
-    doc_lang = st.radio(
-        "Kalba / Language",
-        options=["🇱🇹 Lietuvių", "🇬🇧 English"],
-        horizontal=True
-    )
-    
+    doc_lang = st.radio("Kalba / Language", options=["🇱🇹 Lietuvių", "🇬🇧 English"], horizontal=True)
+
     is_lt = "Lietuvių" in doc_lang
-    
+
     st.markdown("---")
-    
+
     # Docs sections
     if is_lt:
         render_docs_lt()
@@ -31,8 +27,9 @@ def render_docs_tab():
 
 def render_docs_lt():
     """Render Lithuanian documentation."""
-    
-    st.markdown("""
+
+    st.markdown(
+        """
     ## ISP Klientų Aptarnavimo Chatbot
     
     ### 📋 Apžvalga
@@ -99,13 +96,15 @@ def render_docs_lt():
     
     **K: Kaip pridėti naujus troubleshooting scenarijus?**
     A: Scenarijai aprašomi YAML failuose `chatbot_core/src/config/` folderyje.
-    """)
+    """
+    )
 
 
 def render_docs_en():
     """Render English documentation."""
-    
-    st.markdown("""
+
+    st.markdown(
+        """
     ## ISP Customer Service Chatbot
     
     ### 📋 Overview
@@ -172,4 +171,5 @@ def render_docs_en():
     
     **Q: How to add new troubleshooting scenarios?**
     A: Scenarios are defined in YAML files in `chatbot_core/src/config/` folder.
-    """)
+    """
+    )

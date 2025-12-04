@@ -10,12 +10,13 @@ from dataclasses import dataclass
 @dataclass
 class ModelInfo:
     """Information about an LLM model."""
-    id: str                          # Model ID for API calls
-    name: str                        # Display name
-    provider: str                    # openai, google, anthropic
-    input_cost_per_1k: float        # Cost per 1K input tokens (USD)
-    output_cost_per_1k: float       # Cost per 1K output tokens (USD)
-    max_tokens: int                  # Max context window
+
+    id: str  # Model ID for API calls
+    name: str  # Display name
+    provider: str  # openai, google, anthropic
+    input_cost_per_1k: float  # Cost per 1K input tokens (USD)
+    output_cost_per_1k: float  # Cost per 1K output tokens (USD)
+    max_tokens: int  # Max context window
     default_temperature: float = 0.3
     supports_json_mode: bool = True
     supports_vision: bool = False
@@ -37,7 +38,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Most capable OpenAI model, multimodal"
+        description="Most capable OpenAI model, multimodal",
     ),
     "gpt-4o-mini": ModelInfo(
         id="gpt-4o-mini",
@@ -49,10 +50,8 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Fast and affordable, good for most tasks"
+        description="Fast and affordable, good for most tasks",
     ),
-
-    
     # =========================================================================
     # Google Gemini Models
     # =========================================================================
@@ -66,7 +65,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Google's most capable model, huge context"
+        description="Google's most capable model, huge context",
     ),
     "gemini/gemini-2.0-flash": ModelInfo(
         id="gemini/gemini-2.0-flash",
@@ -78,9 +77,8 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Fast and cheap, good for simple tasks"
+        description="Fast and cheap, good for simple tasks",
     ),
-  
 }
 
 
@@ -103,11 +101,11 @@ def _get_cost_tier(cost_per_1k: float) -> str:
     if cost_per_1k > 0.003:
         return "💰💰"  # Expensive
     elif cost_per_1k > 0.001:
-        return "💰"    # Medium
+        return "💰"  # Medium
     elif cost_per_1k > 0.0005:
-        return "💵"    # Affordable
+        return "💵"  # Affordable
     else:
-        return "🆓"    # Very cheap
+        return "🆓"  # Very cheap
 
 
 def get_models_by_provider(provider: str = None) -> list[dict]:

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CallStats:
     """Statistics for a single LLM call."""
+
     model: str
     input_tokens: int
     output_tokens: int
@@ -25,7 +26,7 @@ class CallStats:
     cached: bool = False
     success: bool = True
     error: Optional[str] = None
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary."""
         return {
@@ -45,78 +46,79 @@ class CallStats:
 @dataclass
 class SessionStats:
     """Aggregated statistics for a session."""
+
     calls: list[CallStats] = field(default_factory=list)
     start_time: datetime = field(default_factory=datetime.now)
-    
+
     # Computed properties
     @property
     def total_calls(self) -> int:
         return len(self.calls)
-    
+
     @property
     def successful_calls(self) -> int:
         return sum(1 for c in self.calls if c.success)
-    
+
     @property
     def failed_calls(self) -> int:
         return sum(1 for c in self.calls if not c.success)
-    
+
     @property
     def cached_calls(self) -> int:
         return sum(1 for c in self.calls if c.cached)
-    
+
     @property
     def total_tokens(self) -> int:
         return sum(c.total_tokens for c in self.calls)
-    
+
     @property
     def total_input_tokens(self) -> int:
         return sum(c.input_tokens for c in self.calls)
-    
+
     @property
     def total_output_tokens(self) -> int:
         return sum(c.output_tokens for c in self.calls)
-    
+
     @property
     def total_cost_usd(self) -> float:
         return sum(c.cost_usd for c in self.calls)
-    
+
     @property
     def average_latency_ms(self) -> float:
         non_cached = [c for c in self.calls if not c.cached and c.success]
         if not non_cached:
             return 0.0
         return sum(c.latency_ms for c in non_cached) / len(non_cached)
-    
+
     @property
     def calls_per_model(self) -> dict[str, int]:
         counts = {}
         for c in self.calls:
             counts[c.model] = counts.get(c.model, 0) + 1
         return counts
-    
+
     @property
     def tokens_per_model(self) -> dict[str, int]:
         tokens = {}
         for c in self.calls:
             tokens[c.model] = tokens.get(c.model, 0) + c.total_tokens
         return tokens
-    
+
     @property
     def cost_per_model(self) -> dict[str, float]:
         costs = {}
         for c in self.calls:
             costs[c.model] = costs.get(c.model, 0) + c.cost_usd
         return costs
-    
+
     @property
     def session_duration_seconds(self) -> float:
         return (datetime.now() - self.start_time).total_seconds()
-    
+
     def get_recent_calls(self, n: int = 10) -> list[CallStats]:
         """Get n most recent calls."""
         return self.calls[-n:]
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for UI display."""
         return {
@@ -135,7 +137,7 @@ class SessionStats:
             "cost_per_model": {k: round(v, 6) for k, v in self.cost_per_model.items()},
             "session_duration_seconds": round(self.session_duration_seconds, 1),
         }
-    
+
     def get_summary_text(self) -> str:
         """Get human-readable summary."""
         stats = self.to_dict()
@@ -196,7 +198,7 @@ def record_call(
         error=error,
     )
     get_session_stats().calls.append(stats)
-    
+
     if not cached:
         logger.debug(
             f"LLM call recorded: {model}, tokens={input_tokens}+{output_tokens}, "

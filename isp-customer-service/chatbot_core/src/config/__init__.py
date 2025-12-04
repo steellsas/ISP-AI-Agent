@@ -27,33 +27,33 @@
 # def load_yaml_config(filename: str) -> Dict[str, Any]:
 #     """
 #     Load YAML configuration file.
-    
+
 #     Args:
 #         filename: Config filename (e.g., 'settings.yaml')
-        
+
 #     Returns:
 #         Configuration dictionary
 #     """
 #     # Check cache
 #     if filename in _cached_configs:
 #         return _cached_configs[filename]
-    
+
 #     config_path = CONFIG_DIR / filename
-    
+
 #     if not config_path.exists():
 #         logger.error(f"Config file not found: {config_path}")
 #         return {}
-    
+
 #     try:
 #         with open(config_path, 'r', encoding='utf-8') as f:
 #             config = yaml.safe_load(f)
-        
+
 #         # Cache config
 #         _cached_configs[filename] = config
-        
+
 #         logger.info(f"Loaded config: {filename}")
 #         return config
-        
+
 #     except Exception as e:
 #         logger.error(f"Error loading config {filename}: {e}", exc_info=True)
 #         return {}
@@ -67,10 +67,10 @@
 # def get_prompts(language: str = 'lt') -> Dict[str, Any]:
 #     """
 #     Get prompts for specified language.
-    
+
 #     Args:
 #         language: Language code ('lt' or 'en')
-        
+
 #     Returns:
 #         Prompts dictionary
 #     """
@@ -86,10 +86,10 @@
 # def get_system_prompt(language: str = 'lt') -> str:
 #     """
 #     Get system prompt for LLM.
-    
+
 #     Args:
 #         language: Language code
-        
+
 #     Returns:
 #         System prompt string
 #     """
@@ -100,11 +100,11 @@
 # def get_node_prompt(node_name: str, language: str = 'lt') -> str:
 #     """
 #     Get prompt for specific node.
-    
+
 #     Args:
 #         node_name: Name of the node
 #         language: Language code
-        
+
 #     Returns:
 #         Node prompt string
 #     """
@@ -154,13 +154,13 @@ Configuration Module
 #     ACKNOWLEDGMENT_PROMPT,
 #     INTENT_YES_NO_PROMPT,
 #     ERROR_RECOVERY_PROMPT,
-    
+
 #     # Helper functions
 #     format_prompt,
 #     get_problem_clarification_prompt,
 #     get_troubleshooting_prompt,
 #     get_prompt,
-    
+
 #     # Registry
 #     PROMPTS,
 # )
@@ -184,13 +184,13 @@ Configuration Module
 #     "ACKNOWLEDGMENT_PROMPT",
 #     "INTENT_YES_NO_PROMPT",
 #     "ERROR_RECOVERY_PROMPT",
-    
+
 #     # Helpers
 #     "format_prompt",
 #     "get_problem_clarification_prompt",
 #     "get_troubleshooting_prompt",
 #     "get_prompt",
-    
+
 #     # Registry
 #     "PROMPTS",
 # ]
@@ -203,7 +203,7 @@ from .config import load_config, get_greeting, Config, reload_config
 
 __all__ = [
     "load_config",
-    "get_greeting", 
+    "get_greeting",
     "Config",
     "reload_config",
 ]

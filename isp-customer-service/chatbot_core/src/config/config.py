@@ -10,6 +10,7 @@ from functools import lru_cache
 
 class AgentConfig(BaseModel):
     """Agent identity configuration."""
+
     company_name: str
     agent_name: str
     language: str = "lt"
@@ -17,17 +18,20 @@ class AgentConfig(BaseModel):
 
 class GreetingConfig(BaseModel):
     """Greeting template configuration."""
+
     template: str
 
 
 class ConversationConfig(BaseModel):
     """Conversation settings."""
+
     max_troubleshooting_attempts: int = 3
     timeout_seconds: int = 300
 
 
 class LLMConfig(BaseModel):
     """LLM settings."""
+
     model: str = "gpt-4o-mini"
     temperature: float = 0.3
     max_tokens: int = 500
@@ -35,6 +39,7 @@ class LLMConfig(BaseModel):
 
 class Config(BaseModel):
     """Main configuration."""
+
     agent: AgentConfig
     greeting: GreetingConfig
     conversation: ConversationConfig = ConversationConfig()
@@ -44,7 +49,7 @@ class Config(BaseModel):
 def find_config_file() -> Path:
     """
     Find config.yaml file.
-    
+
     Searches in:
     1. src/config/config.yaml (relative to cwd)
     2. config/config.yaml (relative to cwd)
@@ -55,26 +60,24 @@ def find_config_file() -> Path:
         Path("config/config.yaml"),
         Path(__file__).parent / "config.yaml",
     ]
-    
+
     for path in search_paths:
         if path.exists():
             return path
-    
-    raise FileNotFoundError(
-        f"config.yaml not found. Searched: {[str(p) for p in search_paths]}"
-    )
+
+    raise FileNotFoundError(f"config.yaml not found. Searched: {[str(p) for p in search_paths]}")
 
 
 @lru_cache(maxsize=1)
 def load_config(config_path: str | None = None) -> Config:
     """
     Load config from YAML file.
-    
+
     Uses lru_cache to load only once.
-    
+
     Args:
         config_path: Optional explicit path to config file
-        
+
     Returns:
         Config object
     """
@@ -82,29 +85,28 @@ def load_config(config_path: str | None = None) -> Config:
         path = Path(config_path)
     else:
         path = find_config_file()
-    
+
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
-    
+
     return Config(**data)
 
 
 def get_greeting(config: Config | None = None) -> str:
     """
     Generate greeting message from config.
-    
+
     Args:
         config: Config object (loads if not provided)
-        
+
     Returns:
         Formatted greeting string
     """
     if config is None:
         config = load_config()
-    
+
     return config.greeting.template.format(
-        company_name=config.agent.company_name,
-        agent_name=config.agent.agent_name
+        company_name=config.agent.company_name, agent_name=config.agent.agent_name
     )
 
 

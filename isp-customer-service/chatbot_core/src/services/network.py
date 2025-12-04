@@ -41,13 +41,13 @@ def get_db():
 def check_provider_issues(customer_id: str) -> dict:
     """
     Check for provider-side issues.
-    
+
     Only CRITICAL provider issues (like area outages) are flagged as provider_issue.
     Other issues (port down, no IP) may be customer-side and need troubleshooting.
-    
+
     Args:
         customer_id: Customer ID
-        
+
     Returns:
         Diagnostics results with:
         - provider_issue: bool (only for CRITICAL issues like outages)
@@ -56,7 +56,7 @@ def check_provider_issues(customer_id: str) -> dict:
     """
     logger.info(f"Running provider diagnostics for customer: {customer_id}")
     db = get_db()
-    
+
     results = {
         "customer_id": customer_id,
         "checks_performed": [],
@@ -64,85 +64,93 @@ def check_provider_issues(customer_id: str) -> dict:
         "provider_issue": False,  # Only for CRITICAL provider issues
         "needs_troubleshooting": False,  # For issues that need investigation
     }
-    
+
     # Check 1: Area outages (CRITICAL - definitely provider issue)
     try:
         outage_result = check_customer_affected_by_outage(db, customer_id)
         results["checks_performed"].append("area_outages")
         results["area_outage_check"] = outage_result
-        
+
         if outage_result.get("affected"):
             results["provider_issue"] = True  # CRITICAL
-            results["issues_found"].append({
-                "type": "area_outage",
-                "severity": "critical",
-                "source": "provider",
-                "message": outage_result.get("message"),
-                "outages": outage_result.get("outages", [])
-            })
+            results["issues_found"].append(
+                {
+                    "type": "area_outage",
+                    "severity": "critical",
+                    "source": "provider",
+                    "message": outage_result.get("message"),
+                    "outages": outage_result.get("outages", []),
+                }
+            )
     except Exception as e:
         logger.error(f"Area outage check failed: {e}")
         results["checks_performed"].append("area_outages_failed")
-    
+
     # Check 2: Port status (may be customer side - router off, cable unplugged)
     try:
         port_result = check_port_status(db, customer_id)
         results["checks_performed"].append("port_status")
         results["port_status_check"] = port_result
-        
+
         if port_result.get("success"):
             diagnostics = port_result.get("diagnostics", {})
             if not diagnostics.get("all_ports_healthy"):
                 results["needs_troubleshooting"] = True
-                results["issues_found"].append({
-                    "type": "port_down",
-                    "severity": "high",
-                    "source": "unknown",  # Could be customer or provider
-                    "message": "Tinklo portas neaktyvus (gali būti išjungta įranga)",
-                    "ports": port_result.get("ports", [])
-                })
+                results["issues_found"].append(
+                    {
+                        "type": "port_down",
+                        "severity": "high",
+                        "source": "unknown",  # Could be customer or provider
+                        "message": "Tinklo portas neaktyvus (gali būti išjungta įranga)",
+                        "ports": port_result.get("ports", []),
+                    }
+                )
     except Exception as e:
         logger.error(f"Port status check failed: {e}")
         results["checks_performed"].append("port_status_failed")
-    
+
     # Check 3: IP assignment (may be customer side - equipment off)
     try:
         ip_result = check_ip_assignment(db, customer_id)
         results["checks_performed"].append("ip_assignment")
         results["ip_assignment_check"] = ip_result
-        
+
         if not ip_result.get("success") or ip_result.get("active_count", 0) == 0:
             results["needs_troubleshooting"] = True
-            results["issues_found"].append({
-                "type": "no_ip",
-                "severity": "high",
-                "source": "unknown",  # Could be customer or provider
-                "message": "Nėra aktyvaus IP priskyrimo (gali būti išjungta įranga)"
-            })
+            results["issues_found"].append(
+                {
+                    "type": "no_ip",
+                    "severity": "high",
+                    "source": "unknown",  # Could be customer or provider
+                    "message": "Nėra aktyvaus IP priskyrimo (gali būti išjungta įranga)",
+                }
+            )
     except Exception as e:
         logger.error(f"IP assignment check failed: {e}")
         results["checks_performed"].append("ip_assignment_failed")
-    
-    logger.info(f"Diagnostics complete. Provider issue: {results['provider_issue']}, "
-               f"Needs troubleshooting: {results['needs_troubleshooting']}, "
-               f"Issues found: {len(results['issues_found'])}")
-    
+
+    logger.info(
+        f"Diagnostics complete. Provider issue: {results['provider_issue']}, "
+        f"Needs troubleshooting: {results['needs_troubleshooting']}, "
+        f"Issues found: {len(results['issues_found'])}"
+    )
+
     return results
 
 
 def run_ping_test(customer_id: str) -> dict:
     """
     Run connectivity test (ping).
-    
+
     Args:
         customer_id: Customer ID
-        
+
     Returns:
         Ping test results
     """
     logger.info(f"Running ping test for customer: {customer_id}")
     db = get_db()
-    
+
     try:
         return ping_test(db, customer_id)
     except Exception as e:
@@ -150,23 +158,23 @@ def run_ping_test(customer_id: str) -> dict:
         return {
             "success": False,
             "error": "test_failed",
-            "message": f"Nepavyko atlikti testo: {str(e)}"
+            "message": f"Nepavyko atlikti testo: {str(e)}",
         }
 
 
 def get_port_info(customer_id: str) -> dict:
     """
     Get detailed port information.
-    
+
     Args:
         customer_id: Customer ID
-        
+
     Returns:
         Port information
     """
     logger.info(f"Getting port info for customer: {customer_id}")
     db = get_db()
-    
+
     try:
         return check_port_status(db, customer_id)
     except Exception as e:
@@ -174,23 +182,23 @@ def get_port_info(customer_id: str) -> dict:
         return {
             "success": False,
             "error": "query_failed",
-            "message": f"Nepavyko gauti porto informacijos: {str(e)}"
+            "message": f"Nepavyko gauti porto informacijos: {str(e)}",
         }
 
 
 def get_ip_info(customer_id: str) -> dict:
     """
     Get IP assignment information.
-    
+
     Args:
         customer_id: Customer ID
-        
+
     Returns:
         IP assignment info
     """
     logger.info(f"Getting IP info for customer: {customer_id}")
     db = get_db()
-    
+
     try:
         return check_ip_assignment(db, customer_id)
     except Exception as e:
@@ -198,5 +206,5 @@ def get_ip_info(customer_id: str) -> dict:
         return {
             "success": False,
             "error": "query_failed",
-            "message": f"Nepavyko gauti IP informacijos: {str(e)}"
+            "message": f"Nepavyko gauti IP informacijos: {str(e)}",
         }

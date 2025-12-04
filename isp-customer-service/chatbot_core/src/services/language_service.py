@@ -14,13 +14,13 @@ Supported languages:
 Usage:
     # Sync from state (call at node start)
     sync_language_from_state(state)
-    
+
     # Get current language
     lang = get_language()  # "lt" or "en"
-    
+
     # Get language name for LLM prompts
     name = get_language_name()  # "Lithuanian" or "English"
-    
+
     # Get agent name based on language
     agent = get_agent_name()  # "Andrius" or "Andrew"
 """
@@ -64,32 +64,33 @@ FALLBACK_LANGUAGE = "lt"
 # LANGUAGE STATE (Thread-safe singleton pattern)
 # =============================================================================
 
+
 class _LanguageState:
     """Singleton to hold current language state."""
-    
+
     def __init__(self):
         self._global_language: str = DEFAULT_LANGUAGE
         self._conversation_languages: dict[str, str] = {}
-    
+
     def set_language(self, lang: str, conversation_id: str | None = None) -> None:
         """Set language globally or per conversation."""
         if lang not in LANGUAGE_CONFIG:
             logger.warning(f"Invalid language '{lang}', using default '{DEFAULT_LANGUAGE}'")
             lang = DEFAULT_LANGUAGE
-        
+
         if conversation_id:
             self._conversation_languages[conversation_id] = lang
             logger.debug(f"Set language for conversation {conversation_id}: {lang}")
         else:
             self._global_language = lang
             logger.debug(f"Set global language: {lang}")
-    
+
     def get_language(self, conversation_id: str | None = None) -> str:
         """Get language for conversation or global default."""
         if conversation_id and conversation_id in self._conversation_languages:
             return self._conversation_languages[conversation_id]
         return self._global_language
-    
+
     def clear_conversation(self, conversation_id: str) -> None:
         """Clear language setting for ended conversation."""
         if conversation_id in self._conversation_languages:
@@ -105,10 +106,11 @@ _language_state = _LanguageState()
 # PUBLIC API - BASIC FUNCTIONS
 # =============================================================================
 
+
 def set_language(lang: str, conversation_id: str | None = None) -> None:
     """
     Set current language.
-    
+
     Args:
         lang: Language code ("lt" or "en")
         conversation_id: Optional conversation ID for per-conversation language
@@ -119,10 +121,10 @@ def set_language(lang: str, conversation_id: str | None = None) -> None:
 def get_language(conversation_id: str | None = None) -> str:
     """
     Get current language code.
-    
+
     Args:
         conversation_id: Optional conversation ID
-    
+
     Returns:
         Language code ("lt" or "en")
     """
@@ -132,10 +134,10 @@ def get_language(conversation_id: str | None = None) -> str:
 def get_language_config(lang: str | None = None) -> dict:
     """
     Get full language configuration.
-    
+
     Args:
         lang: Language code (uses current if None)
-    
+
     Returns:
         Language config dict with code, name, native_name, agent_name, flag
     """
@@ -147,10 +149,10 @@ def get_language_config(lang: str | None = None) -> dict:
 def get_language_name(conversation_id: str | None = None) -> str:
     """
     Get language name for LLM prompts.
-    
+
     Args:
         conversation_id: Optional conversation ID
-    
+
     Returns:
         Language name in English ("Lithuanian" or "English")
     """
@@ -161,10 +163,10 @@ def get_language_name(conversation_id: str | None = None) -> str:
 def get_agent_name(conversation_id: str | None = None) -> str:
     """
     Get agent name based on current language.
-    
+
     Args:
         conversation_id: Optional conversation ID
-    
+
     Returns:
         Agent name ("Andrius" for LT, "Andrew" for EN)
     """
@@ -175,7 +177,7 @@ def get_agent_name(conversation_id: str | None = None) -> str:
 def get_available_languages() -> list[dict]:
     """
     Get list of available languages.
-    
+
     Returns:
         List of language info dicts
     """
@@ -198,19 +200,20 @@ def is_valid_language(lang: str) -> bool:
 # STATE SYNCHRONIZATION - Bridge between UI and Backend
 # =============================================================================
 
+
 def sync_language_from_state(state: Any) -> str:
     """
     Synchronize language service with conversation state.
-    
+
     This should be called at the START of each node to ensure
     the language service uses the correct language from state.
-    
+
     Args:
         state: LangGraph state (Pydantic model or dict)
-    
+
     Returns:
         Current language code
-    
+
     Usage in nodes:
         def some_node(state) -> dict:
             sync_language_from_state(state)  # First line!
@@ -224,7 +227,7 @@ def sync_language_from_state(state: Any) -> str:
         conversation_id = state.get("conversation_id")
     else:
         conversation_id = None
-    
+
     # Extract language from state
     if hasattr(state, "language"):
         lang = state.language
@@ -232,31 +235,31 @@ def sync_language_from_state(state: Any) -> str:
         lang = state.get("language", DEFAULT_LANGUAGE)
     else:
         lang = DEFAULT_LANGUAGE
-    
+
     # Validate and set
     if not is_valid_language(lang):
         logger.warning(f"Invalid language in state: '{lang}', using default")
         lang = DEFAULT_LANGUAGE
-    
+
     # Set both global and per-conversation
     set_language(lang)  # Global fallback
     if conversation_id:
         set_language(lang, conversation_id)
-    
+
     logger.debug(f"Synced language from state: {lang} (conv: {conversation_id})")
-    
+
     return lang
 
 
 def language_from_state(state: Any) -> str:
     """
     Get language from state without setting it.
-    
+
     Useful for reading language without side effects.
-    
+
     Args:
         state: LangGraph state
-    
+
     Returns:
         Language code from state
     """
@@ -266,14 +269,14 @@ def language_from_state(state: Any) -> str:
         lang = state.get("language", DEFAULT_LANGUAGE)
     else:
         lang = DEFAULT_LANGUAGE
-    
+
     return lang if is_valid_language(lang) else DEFAULT_LANGUAGE
 
 
 def clear_conversation_language(conversation_id: str) -> None:
     """
     Clear language setting when conversation ends.
-    
+
     Call this in closing node to clean up.
     """
     _language_state.clear_conversation(conversation_id)
@@ -283,16 +286,17 @@ def clear_conversation_language(conversation_id: str) -> None:
 # LLM PROMPT HELPERS
 # =============================================================================
 
+
 def get_output_language_instruction(conversation_id: str | None = None) -> str:
     """
     Get instruction string for LLM to respond in correct language.
-    
+
     Args:
         conversation_id: Optional conversation ID
-    
+
     Returns:
         Instruction string for system prompt
-    
+
     Usage:
         system_prompt = f'''
         You are a helpful assistant.
@@ -306,17 +310,17 @@ def get_output_language_instruction(conversation_id: str | None = None) -> str:
 def get_language_context(conversation_id: str | None = None) -> dict:
     """
     Get full language context for templates.
-    
+
     Returns:
         Dict with language info for template formatting
-    
+
     Usage:
         ctx = get_language_context()
         prompt = template.format(**ctx)
     """
     lang = get_language(conversation_id)
     config = get_language_config(lang)
-    
+
     return {
         "language_code": lang,
         "output_language": config["name"],

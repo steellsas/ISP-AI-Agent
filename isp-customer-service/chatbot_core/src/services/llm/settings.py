@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LLMSettings:
     """LLM settings that can be adjusted via UI or config."""
-    
+
     # Model settings
     model: str = "gpt-4o-mini"
     temperature: float = 0.3
@@ -24,23 +24,23 @@ class LLMSettings:
     top_p: float = 1.0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
-    
+
     # Rate limiting
     max_calls_per_minute: int = 30
     max_calls_per_session: int = 100
-    
+
     # Retry settings
     max_retries: int = 3
     retry_delay: float = 1.0
-    
+
     # Caching
     enable_cache: bool = True
     cache_ttl_seconds: int = 300
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for UI/serialization."""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "LLMSettings":
         """Create from dictionary."""
@@ -56,15 +56,15 @@ def load_settings_from_config() -> LLMSettings:
         Path(__file__).parent.parent / "config" / "config.yaml",
         Path(__file__).parent.parent.parent / "config" / "config.yaml",
     ]
-    
+
     for config_path in config_paths:
         if config_path.exists():
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     config = yaml.safe_load(f)
-                
+
                 llm_config = config.get("llm", {})
-                
+
                 settings = LLMSettings(
                     model=llm_config.get("model", "gpt-4o-mini"),
                     temperature=llm_config.get("temperature", 0.3),
@@ -73,13 +73,13 @@ def load_settings_from_config() -> LLMSettings:
                     max_retries=llm_config.get("max_retries", 3),
                     enable_cache=llm_config.get("enable_cache", True),
                 )
-                
+
                 logger.info(f"Loaded LLM settings from {config_path}")
                 return settings
-                
+
             except Exception as e:
                 logger.warning(f"Failed to load config from {config_path}: {e}")
-    
+
     logger.info("Using default LLM settings")
     return LLMSettings()
 
@@ -103,14 +103,14 @@ def update_settings(**kwargs) -> LLMSettings:
     """Update LLM settings."""
     global _current_settings
     settings = get_settings()
-    
+
     for key, value in kwargs.items():
         if hasattr(settings, key):
             setattr(settings, key, value)
             logger.debug(f"Updated setting: {key} = {value}")
         else:
             logger.warning(f"Unknown setting: {key}")
-    
+
     return settings
 
 

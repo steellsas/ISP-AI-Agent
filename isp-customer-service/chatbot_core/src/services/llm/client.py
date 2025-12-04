@@ -53,7 +53,6 @@ def _notify_callbacks(data: dict):
             logger.warning(f"Stats callback error: {e}")
 
 
-
 def llm_completion(
     messages: list[dict],
     model: str = None,
@@ -65,7 +64,7 @@ def llm_completion(
 ) -> str:
     """
     Call LLM and return response text.
-    
+
     Args:
         messages: List of {"role": ..., "content": ...}
         model: Model ID (uses settings default if None)
@@ -74,30 +73,30 @@ def llm_completion(
         top_p: Nucleus sampling (uses settings default if None)
         response_format: Optional {"type": "json_object"} for JSON mode
         use_cache: Whether to use caching (uses settings default if None)
-    
+
     Returns:
         Response text content
-        
+
     Raises:
         RateLimitError: If rate limit exceeded
         LLMError: If API call fails
     """
     settings = get_settings()
-    
+
     # Apply defaults from settings
     model = model or settings.model
     temperature = temperature if temperature is not None else settings.temperature
     max_tokens = max_tokens or settings.max_tokens
     top_p = top_p if top_p is not None else settings.top_p
     use_cache = use_cache if use_cache is not None else settings.enable_cache
-    
+
     model_info = get_model_info(model)
     cache = get_cache()
     rate_limiter = get_rate_limiter()
-    
+
     # Check rate limit
     rate_limiter.check_or_raise()
-    
+
     # Check cache
     if use_cache:
         cached = cache.get(messages, model, temperature)
@@ -111,11 +110,11 @@ def llm_completion(
                 cached=True,
             )
             return cached
-    
+
     # Get API key and configure litellm
     api_key = get_api_key(model_info.provider)
     _configure_litellm(model_info.provider, api_key)
-    
+
     # Build request
     kwargs = {
         "model": model,
@@ -123,42 +122,42 @@ def llm_completion(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    
+
     if top_p != 1.0:
         kwargs["top_p"] = top_p
-    
+
     if response_format and model_info.supports_json_mode:
         kwargs["response_format"] = response_format
-    
+
     # Make call with retry
     start_time = time.time()
     last_error = None
-    
+
     for attempt in range(settings.max_retries):
         try:
             logger.debug(f"LLM call 22: model={model}, attempt={attempt + 1}")
-            
+
             response = litellm.completion(**kwargs)
-            
+
             latency_ms = (time.time() - start_time) * 1000
-            
+
             # Extract token counts
-       
+
             usage = response.usage
             input_tokens = usage.prompt_tokens if usage else 0
             output_tokens = usage.completion_tokens if usage else 0
-            
+
             # Calculate cost
             cost = calculate_cost(model, input_tokens, output_tokens)
-            
+
             # Get content
             content = response.choices[0].message.content
 
-
-            
             # Record call
             rate_limiter.record_call()
-            print(f"DEBUG CLIENT: Recording call - tokens={input_tokens}+{output_tokens}, cost=${cost:.6f}")
+            print(
+                f"DEBUG CLIENT: Recording call - tokens={input_tokens}+{output_tokens}, cost=${cost:.6f}"
+            )
             record_call(
                 model=model,
                 input_tokens=input_tokens,
@@ -167,34 +166,37 @@ def llm_completion(
                 latency_ms=latency_ms,
             )
             print(f"DEBUG CLIENT: Total calls now = {get_session_stats().total_calls}")
-            print(f"DEBUG CLIENT: stats id = {id(get_session_stats())}, total_calls = {get_session_stats().total_calls}")
-
+            print(
+                f"DEBUG CLIENT: stats id = {id(get_session_stats())}, total_calls = {get_session_stats().total_calls}"
+            )
 
             # Notify UI callbacks
-            _notify_callbacks({
-                "type": "llm_call",
-                "model": model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "cost": cost,
-                "latency_ms": latency_ms,
-                "cached": False,
-                "success": True,
-            })
+            _notify_callbacks(
+                {
+                    "type": "llm_call",
+                    "model": model,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cost": cost,
+                    "latency_ms": latency_ms,
+                    "cached": False,
+                    "success": True,
+                }
+            )
             # Cache response
             if use_cache:
                 cache.set(messages, model, temperature, content)
-            
+
             return content
-            
+
         except Exception as e:
             last_error = e
             logger.warning(f"LLM call failed (attempt {attempt + 1}): {e}")
-            
+
             if attempt < settings.max_retries - 1:
                 delay = settings.retry_delay * (attempt + 1)
                 time.sleep(delay)
-    
+
     # Record failed call
 
     record_call(
@@ -206,7 +208,7 @@ def llm_completion(
         success=False,
         error=str(last_error),
     )
-    
+
     raise LLMError(f"LLM call failed after {settings.max_retries} retries: {last_error}")
 
 
@@ -220,7 +222,7 @@ def llm_json_completion(
 ) -> dict:
     """
     Call LLM with JSON mode and return parsed dict.
-    
+
     Args:
         messages: List of messages (prompt must ask for JSON!)
         model: Model ID
@@ -228,20 +230,20 @@ def llm_json_completion(
         max_tokens: Max response length
         validate_schema: Optional Pydantic model for validation
         retry_on_invalid: Retry with hint if JSON invalid
-    
+
     Returns:
         Parsed JSON as dict
-        
+
     Raises:
         ValueError: If JSON parsing fails after retries
     """
     settings = get_settings()
     model = model or settings.model
     model_info = get_model_info(model)
-    
+
     # Use JSON mode if supported
     response_format = {"type": "json_object"} if model_info.supports_json_mode else None
-    
+
     for attempt in range(2 if retry_on_invalid else 1):
         try:
             content = llm_completion(
@@ -251,36 +253,40 @@ def llm_json_completion(
                 max_tokens=max_tokens,
                 response_format=response_format,
             )
-            
+
             # Parse JSON
             result = extract_json_from_response(content)
-            
+
             # Validate if schema provided
             if validate_schema:
                 is_valid, error = validate_json_response(result, validate_schema)
                 if not is_valid:
                     if retry_on_invalid and attempt == 0:
                         logger.warning(f"JSON validation failed, retrying: {error}")
-                        messages = messages + [{
-                            "role": "user",
-                            "content": f"Invalid JSON. Error: {error}. Respond with valid JSON only."
-                        }]
+                        messages = messages + [
+                            {
+                                "role": "user",
+                                "content": f"Invalid JSON. Error: {error}. Respond with valid JSON only.",
+                            }
+                        ]
                         continue
                     raise ValueError(f"Invalid response: {error}")
-            
+
             return result
-            
+
         except ValueError as e:
             if "Could not extract JSON" in str(e):
                 if retry_on_invalid and attempt == 0:
                     logger.warning(f"JSON parse failed, retrying")
-                    messages = messages + [{
-                        "role": "user",
-                        "content": "Your response was not valid JSON. Please respond ONLY with a JSON object, no other text."
-                    }]
+                    messages = messages + [
+                        {
+                            "role": "user",
+                            "content": "Your response was not valid JSON. Please respond ONLY with a JSON object, no other text.",
+                        }
+                    ]
                     continue
             raise
-    
+
     raise ValueError("Failed to get valid JSON response after retries")
 
 
@@ -297,6 +303,7 @@ def _configure_litellm(provider: str, api_key: str):
 # =============================================================================
 # Convenience Functions
 # =============================================================================
+
 
 def quick_completion(prompt: str, model: str = None) -> str:
     """Quick single-prompt completion."""

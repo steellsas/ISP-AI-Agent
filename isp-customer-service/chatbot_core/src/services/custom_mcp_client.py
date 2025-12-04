@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 class CustomMCPClient:
     """Custom MCP client using direct subprocess communication."""
-    
+
     def __init__(self, server_path: Path, server_name: str):
         """
         Initialize custom MCP client.
-        
+
         Args:
             server_path: Path to MCP server directory
             server_name: Name for logging (e.g., "crm", "network")
@@ -30,15 +30,15 @@ class CustomMCPClient:
         self.process = None
         self.next_id = 1
         self.initialized = False
-        
+
     async def initialize(self):
         """Start MCP server and initialize connection."""
         logger.info(f"Starting {self.server_name} MCP server...")
-        
+
         # Set unbuffered environment
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
-        
+
         # Determine module name based on server
         if "crm" in self.server_name.lower():
             module_name = "crm_mcp.server"
@@ -47,23 +47,27 @@ class CustomMCPClient:
         else:
             # Fallback to old name (shouldn't happen)
             module_name = "mcp_server.server"
-        
+
         # Start subprocess
         self.process = await asyncio.create_subprocess_exec(
             "uv",
-            "--directory", str(self.server_path),
-            "run", "python", "-m", module_name,
+            "--directory",
+            str(self.server_path),
+            "run",
+            "python",
+            "-m",
+            module_name,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=env
+            env=env,
         )
-        
+
         logger.info(f"{self.server_name} server started, PID: {self.process.pid}")
-        
+
         # Wait for server to start
         await asyncio.sleep(2)
-        
+
         # Check if process is still running
         if self.process.returncode is not None:
             # Process crashed, read stderr
@@ -74,9 +78,9 @@ class CustomMCPClient:
                 f"Exit code: {self.process.returncode}\n"
                 f"Stderr: {stderr_text}"
             )
-        
+
         logger.info(f"{self.server_name} server process is running")
-        
+
         # Send initialize request
         init_request = {
             "jsonrpc": "2.0",
@@ -85,15 +89,12 @@ class CustomMCPClient:
             "params": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {
-                    "name": "custom-mcp-client",
-                    "version": "1.0.0"
-                }
-            }
+                "clientInfo": {"name": "custom-mcp-client", "version": "1.0.0"},
+            },
         }
-        
+
         response = await self._send_request(init_request)
-        
+
         if response and "result" in response:
             self.initialized = True
             logger.info(f"✓ {self.server_name} server initialized")
@@ -101,33 +102,30 @@ class CustomMCPClient:
             return response["result"]
         else:
             raise RuntimeError(f"Failed to initialize {self.server_name} server")
-    
+
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """
         Call MCP tool.
-        
+
         Args:
             tool_name: Tool name
             arguments: Tool arguments
-            
+
         Returns:
             Tool result dictionary
         """
         if not self.initialized:
             raise RuntimeError(f"{self.server_name} client not initialized")
-        
+
         logger.info(f"Calling {self.server_name} tool 1: {tool_name}")
-        
+
         request = {
             "jsonrpc": "2.0",
             "id": self._get_next_id(),
             "method": "tools/call",
-            "params": {
-                "name": tool_name,
-                "arguments": arguments
-            }
+            "params": {"name": tool_name, "arguments": arguments},
         }
-    
+
         response = await self._send_request(request)
         # logger.info(f"respone {response} ")
         if response and "result" in response:
@@ -147,6 +145,7 @@ class CustomMCPClient:
                         # Try eval for Python dict strings (fallback)
                         try:
                             import ast
+
                             parsed = ast.literal_eval(text)
                             return parsed
                         except:
@@ -154,62 +153,51 @@ class CustomMCPClient:
             return {"success": True, "result": result}
         elif response and "error" in response:
             error = response["error"]
-            return {
-                "success": False,
-                "error": error.get("code"),
-                "message": error.get("message")
-            }
+            return {"success": False, "error": error.get("code"), "message": error.get("message")}
         else:
-            return {
-                "success": False,
-                "error": "no_response",
-                "message": "No response from server"
-            }
-    
+            return {"success": False, "error": "no_response", "message": "No response from server"}
+
     async def _send_request(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Send JSON-RPC request and get response."""
         if not self.process or self.process.returncode is not None:
             raise RuntimeError(f"{self.server_name} server process not running")
-        
+
         # Send request
         request_json = json.dumps(request) + "\n"
         self.process.stdin.write(request_json.encode())
         await self.process.stdin.drain()
-        
+
         # Read response with timeout
         try:
-            response_line = await asyncio.wait_for(
-                self.process.stdout.readline(),
-                timeout=10.0
-            )
-            
+            response_line = await asyncio.wait_for(self.process.stdout.readline(), timeout=10.0)
+
             if response_line:
                 response_str = response_line.decode().strip()
                 return json.loads(response_str)
             else:
                 logger.error(f"{self.server_name}: Empty response")
                 return None
-                
+
         except asyncio.TimeoutError:
             logger.error(f"{self.server_name}: Response timeout")
             return None
         except json.JSONDecodeError as e:
             logger.error(f"{self.server_name}: Invalid JSON response: {e}")
             return None
-    
+
     def _get_next_id(self) -> int:
         """Get next request ID."""
         request_id = self.next_id
         self.next_id += 1
         return request_id
-    
+
     # async def close(self):
     #     """Close connection and terminate server."""
     #     if self.process and self.process.returncode is None:
     #         logger.info(f"Closing {self.server_name} server...")
     #         self.process.terminate()
     #         await self.process.wait()
-        
+
     #     self.process = None
     #     self.initialized = False
     #     logger.info(f"✓ {self.server_name} server closed")
@@ -217,14 +205,15 @@ class CustomMCPClient:
     async def close(self):
         """Close MCP server connection with timeout."""
         logger.info(f"Closing {self.server_type} server...")
-        
+
         try:
             if self.session:
                 # Close session with timeout
                 import asyncio
+
                 await asyncio.wait_for(self.session.__aexit__(None, None, None), timeout=2.0)
                 self.session = None
-            
+
             if self.read_stream or self.write_stream:
                 # Close streams with timeout
                 if self.write_stream:
@@ -234,7 +223,7 @@ class CustomMCPClient:
                         logger.warning(f"{self.server_type}: Write stream close timeout")
                     except Exception as e:
                         logger.debug(f"{self.server_type}: Write stream error: {e}")
-                
+
                 if self.read_stream:
                     try:
                         await asyncio.wait_for(self.read_stream.aclose(), timeout=1.0)
@@ -242,65 +231,63 @@ class CustomMCPClient:
                         logger.warning(f"{self.server_type}: Read stream close timeout")
                     except Exception as e:
                         logger.debug(f"{self.server_type}: Read stream error: {e}")
-                
+
                 self.read_stream = None
                 self.write_stream = None
-            
+
             if self.process:
                 # Terminate process forcefully if still running
                 if self.process.poll() is None:  # Still running
                     logger.warning(f"{self.server_type}: Force terminating process...")
                     self.process.terminate()
-                    
+
                     # Wait briefly for graceful shutdown
                     try:
-                        await asyncio.wait_for(
-                            asyncio.to_thread(self.process.wait),
-                            timeout=1.0
-                        )
+                        await asyncio.wait_for(asyncio.to_thread(self.process.wait), timeout=1.0)
                     except asyncio.TimeoutError:
                         # Force kill if terminate didn't work
                         logger.warning(f"{self.server_type}: Force killing process...")
                         self.process.kill()
-                
+
                 self.process = None
-            
+
             logger.info(f"{self.server_type} server closed successfully")
-            
+
         except asyncio.TimeoutError:
             logger.warning(f"{self.server_type}: Close operation timeout")
         except Exception as e:
             logger.error(f"Error closing {self.server_type} server: {e}")
 
+
 # Example usage
 if __name__ == "__main__":
+
     async def test():
         """Test custom MCP client."""
-        
+
         # CRM client - fix path (go up 4 levels to workspace root)
         crm_path = Path(__file__).parent.parent.parent.parent / "crm_service"
         print(f"CRM path: {crm_path}")
         print(f"Path exists: {crm_path.exists()}")
-        
+
         crm = CustomMCPClient(crm_path, "CRM")
-        
+
         try:
             # Initialize
             print("Initializing CRM client...")
             await crm.initialize()
-            
+
             # Call tool
             print("\nCalling lookup_customer_by_address...")
-            result = await crm.call_tool("lookup_customer_by_address", {
-                "city": "Šiauliai",
-                "street": "Tilžės g.",
-                "house_number": "60"
-            })
-            
+            result = await crm.call_tool(
+                "lookup_customer_by_address",
+                {"city": "Šiauliai", "street": "Tilžės g.", "house_number": "60"},
+            )
+
             print(f"\nResult:")
             print(json.dumps(result, indent=2, ensure_ascii=False))
-            
+
         finally:
             await crm.close()
-    
+
     asyncio.run(test())

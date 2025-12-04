@@ -50,7 +50,7 @@ from .graph import get_app, app
 
 __all__ = [
     "State",
-    "create_initial_state", 
+    "create_initial_state",
     "add_message",
     "get_app",
     "app",

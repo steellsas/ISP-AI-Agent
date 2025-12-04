@@ -23,8 +23,10 @@ logger = logging.getLogger(__name__)
 # STRUCTURED OUTPUT SCHEMA
 # =============================================================================
 
+
 class AddressExtraction(BaseModel):
     """LLM response schema for address extraction."""
+
     has_address: bool = False
     city: str | None = None
     street: str | None = None
@@ -37,17 +39,18 @@ class AddressExtraction(BaseModel):
 # PROMPT BUILDER
 # =============================================================================
 
+
 def _build_extraction_prompt() -> str:
     """
     Build system prompt for address extraction.
-    
+
     Prompt is in English, but instructs LLM to respond appropriately.
-    
+
     Returns:
         System prompt string
     """
     output_language = get_language_name()
-    
+
     return f"""You are an ISP customer service assistant.
 The customer was not found by phone number. You need to extract their address.
 
@@ -83,20 +86,21 @@ Be friendly."""
 # HELPER FUNCTIONS
 # =============================================================================
 
+
 def _needs_address_question(state: Any) -> bool:
     """Check if we need to ask for address (first time in this node)."""
     messages = _get_messages(state)
-    
+
     # Check if we already asked for address
     for msg in reversed(messages):
         if msg.get("node") == "address_search" and msg["role"] == "assistant":
             # Check if there's a user message after
             idx = messages.index(msg)
-            for later_msg in messages[idx+1:]:
+            for later_msg in messages[idx + 1 :]:
                 if later_msg["role"] == "user":
                     return False
             return True
-    
+
     return True
 
 
@@ -104,120 +108,112 @@ def _needs_address_question(state: Any) -> bool:
 # NODE FUNCTION
 # =============================================================================
 
+
 def address_search_node(state: Any) -> dict:
     """
     Address search node - asks for and extracts address.
-    
+
     Flow:
     1. First call: Ask for address
     2. Subsequent calls: Extract address from user response
     3. If complete: Lookup in CRM
     4. If incomplete: Ask clarification
-    
+
     Args:
         state: Current conversation state
-        
+
     Returns:
         State update dict
     """
     conversation_id = _get_attr(state, "conversation_id", "unknown")
     logger.info(f"[{conversation_id}] Address search node started")
-    
+
     try:
         # Check if we need to ask the initial question
         if _needs_address_question(state):
             logger.info(f"[{conversation_id}] Asking for address")
-            
+
             message = add_message(
-                role="assistant",
-                content=t("address.ask_for_address"),
-                node="address_search"
+                role="assistant", content=t("address.ask_for_address"), node="address_search"
             )
-            
+
             return {
                 "messages": [message],
                 "current_node": "address_search",
             }
-        
+
         # Extract address from user message
         user_message = get_last_user_message(state)
         logger.info(f"[{conversation_id}] Extracting address from: {user_message[:50]}...")
-        
+
         # Build prompt and call LLM
         system_prompt = _build_extraction_prompt()
-        
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": user_message},
         ]
-        
-        response = llm_json_completion(
-            messages=messages,
-            temperature=0.2,
-            max_tokens=200
-        )
-        
+
+        response = llm_json_completion(messages=messages, temperature=0.2, max_tokens=200)
+
         extraction = AddressExtraction(**response)
-        
+
         logger.info(
             f"[{conversation_id}] Extraction result | "
             f"has_address={extraction.has_address} | "
             f"city={extraction.city} | "
             f"street={extraction.street}"
         )
-        
+
         # If address incomplete, ask clarification
-        if not extraction.has_address or not all([extraction.city, extraction.street, extraction.house_number]):
+        if not extraction.has_address or not all(
+            [extraction.city, extraction.street, extraction.house_number]
+        ):
             question = extraction.clarification_question or t("address.clarify_address")
-            
-            message = add_message(
-                role="assistant",
-                content=question,
-                node="address_search"
-            )
-            
+
+            message = add_message(role="assistant", content=question, node="address_search")
+
             logger.info(f"[{conversation_id}] Address incomplete, asking clarification")
-            
+
             return {
                 "messages": [message],
                 "current_node": "address_search",
             }
-        
+
         # Address complete - lookup in CRM
         logger.info(
             f"[{conversation_id}] Looking up address: "
             f"{extraction.city}, {extraction.street} {extraction.house_number}"
         )
-        
+
         result = get_customer_by_address(
             city=extraction.city,
             street=extraction.street,
             house_number=extraction.house_number,
-            apartment_number=extraction.apartment_number
+            apartment_number=extraction.apartment_number,
         )
-        
+
         if result.get("success"):
             customer = result["customer"]
             address = customer.get("address", {})
             customer_name = f"{customer['first_name']} {customer['last_name']}"
-            full_address = address.get("full_address") or f"{extraction.city}, {extraction.street} {extraction.house_number}"
-            
+            full_address = (
+                address.get("full_address")
+                or f"{extraction.city}, {extraction.street} {extraction.house_number}"
+            )
+
             logger.info(
                 f"[{conversation_id}] Customer found by address | "
                 f"customer_id={customer['customer_id']} | "
                 f"lang={get_language()}"
             )
-            
+
             confirm_message = add_message(
                 role="assistant",
-                content=t(
-                    "address.found",
-                    customer_name=customer_name,
-                    address=full_address
-                ),
-                node="address_search"
+                content=t("address.found", customer_name=customer_name, address=full_address),
+                node="address_search",
             )
-            
+
             return {
                 "messages": [confirm_message],
                 "current_node": "address_search",
@@ -229,41 +225,39 @@ def address_search_node(state: Any) -> dict:
                 "confirmed_address": full_address,
                 "address_search_successful": True,
             }
-        
+
         else:
             # Customer not found by address
             full_address = f"{extraction.city}, {extraction.street} {extraction.house_number}"
-            
-            logger.warning(
-                f"[{conversation_id}] Customer not found by address: {full_address}"
-            )
-            
+
+            logger.warning(f"[{conversation_id}] Customer not found by address: {full_address}")
+
             not_found_message = add_message(
                 role="assistant",
                 content=t("address.not_found", address=full_address),
-                node="address_search"
+                node="address_search",
             )
-            
+
             return {
                 "messages": [not_found_message],
                 "current_node": "address_search",
                 "address_search_successful": False,
                 "conversation_ended": True,
             }
-            
+
     except Exception as e:
         logger.error(f"[{conversation_id}] Address search error: {e}", exc_info=True)
-        
+
         fallback_message = add_message(
             role="assistant",
             content=t("errors.repeat_request", default="Ar galėtumėte pakartoti savo adresą?"),
-            node="address_search"
+            node="address_search",
         )
-        
+
         return {
             "messages": [fallback_message],
             "current_node": "address_search",
-            "last_error": str(e)
+            "last_error": str(e),
         }
 
 
@@ -271,10 +265,11 @@ def address_search_node(state: Any) -> dict:
 # ROUTER FUNCTION
 # =============================================================================
 
+
 def address_search_router(state: Any) -> str:
     """
     Route after address search.
-    
+
     Returns:
         - "diagnostics" → customer found
         - "closing" → customer not found, end conversation
@@ -283,15 +278,15 @@ def address_search_router(state: Any) -> str:
     conversation_id = _get_attr(state, "conversation_id", "unknown")
     address_search_successful = _get_attr(state, "address_search_successful")
     conversation_ended = _get_attr(state, "conversation_ended", False)
-    
+
     if conversation_ended:
         logger.info(f"[{conversation_id}] Router → closing (conversation ended)")
         return "closing"
-    
+
     if address_search_successful is True:
         logger.info(f"[{conversation_id}] Router → diagnostics (customer found)")
         return "diagnostics"
-    
+
     # Still searching
     logger.info(f"[{conversation_id}] Router → end (waiting for address)")
     return "end"

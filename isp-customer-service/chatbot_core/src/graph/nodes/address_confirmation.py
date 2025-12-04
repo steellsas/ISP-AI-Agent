@@ -20,27 +20,28 @@ logger = logging.getLogger(__name__)
 
 class AddressConfirmationAnalysis(BaseModel):
     """LLM response schema for address confirmation."""
+
     confirmed: bool = False
     rejected: bool = False
-    correction_provided: str | None = None  
+    correction_provided: str | None = None
     clarification_needed: bool = False
-    response_message: str  
+    response_message: str
 
 
 def _build_confirmation_prompt(address: str) -> str:
     """
     Build system prompt for address confirmation analysis.
-    
+
     Prompt is in English, but instructs LLM to respond in target language.
-    
+
     Args:
         address: The address to confirm
-        
+
     Returns:
         System prompt string
     """
     output_language = get_language_name()
-    
+
     return f"""You are an ISP customer service assistant.
 The customer needs to confirm their address.
 
@@ -76,114 +77,109 @@ Be friendly and professional."""
 # HELPER FUNCTIONS
 # =============================================================================
 
+
 def _get_address_string(state: Any) -> str:
     """Get formatted address from state."""
     addresses = _get_attr(state, "customer_addresses", [])
     if addresses:
         addr = addresses[0]
-        return addr.get("full_address") or f"{addr.get('city', '')}, {addr.get('street', '')} {addr.get('house_number', '')}"
+        return (
+            addr.get("full_address")
+            or f"{addr.get('city', '')}, {addr.get('street', '')} {addr.get('house_number', '')}"
+        )
     return t("address.unknown", default="unknown address")
 
 
 def _needs_confirmation_question(state: Any) -> bool:
     """Check if we need to ask confirmation question (no user response yet)."""
     messages = _get_messages(state)
-    
+
     for msg in reversed(messages):
         if msg.get("node") == "address_confirmation" and msg["role"] == "assistant":
             idx = messages.index(msg)
-            for later_msg in messages[idx+1:]:
+            for later_msg in messages[idx + 1 :]:
                 if later_msg["role"] == "user":
-                    return False  
-            return True 
-    return True  
+                    return False
+            return True
+    return True
 
 
 # =============================================================================
 # NODE FUNCTION
 # =============================================================================
 
+
 def address_confirmation_node(state: Any) -> dict:
     """
     Address confirmation node - asks and verifies address.
-    
+
     Flow:
     1. First call: Ask confirmation question
     2. Second call: Analyze user response with LLM
-    
+
     Args:
         state: Current conversation state
-        
+
     Returns:
         State update dict
     """
     conversation_id = _get_attr(state, "conversation_id", "unknown")
     logger.info(f"[{conversation_id}] Address confirmation node started")
-    
+
     address = _get_address_string(state)
     customer_name = _get_attr(state, "customer_name", "")
     first_name = customer_name.split()[0] if customer_name else ""
-    
+
     try:
         if _needs_confirmation_question(state):
             logger.info(f"[{conversation_id}] Asking confirmation for address: {address}")
-            
+
             if first_name:
                 question = t("address.confirmation_ask", customer_name=first_name, address=address)
             else:
                 question = t("address.confirmation_ask_short", address=address)
-            
-            message = add_message(
-                role="assistant",
-                content=question,
-                node="address_confirmation"
-            )
-            
+
+            message = add_message(role="assistant", content=question, node="address_confirmation")
+
             return {
                 "messages": [message],
                 "current_node": "address_confirmation",
             }
-        
+
         # Analyze user response
         user_message = get_last_user_message(state)
         logger.info(f"[{conversation_id}] Analyzing user response: {user_message[:50]}...")
-        
+
         system_prompt = _build_confirmation_prompt(address)
-        
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
+            {"role": "user", "content": user_message},
         ]
-        
-        response = llm_json_completion(
-            messages=messages,
-            temperature=0.2,
-            max_tokens=200
-        )
-        
+
+        response = llm_json_completion(messages=messages, temperature=0.2, max_tokens=200)
+
         analysis = AddressConfirmationAnalysis(**response)
-        
+
         logger.info(
             f"[{conversation_id}] Analysis result | "
             f"confirmed={analysis.confirmed} | "
             f"rejected={analysis.rejected} | "
             f"clarification={analysis.clarification_needed}"
         )
-        
+
         # Create response message
         message = add_message(
-            role="assistant",
-            content=analysis.response_message,
-            node="address_confirmation"
+            role="assistant", content=analysis.response_message, node="address_confirmation"
         )
-        
+
         # Update state based on analysis
         if analysis.confirmed:
             addresses = _get_attr(state, "customer_addresses", [])
             confirmed_addr = addresses[0] if addresses else {}
-            
+
             logger.info(f"[{conversation_id}] Address confirmed | lang={get_language()}")
-            
+
             return {
                 "messages": [message],
                 "current_node": "address_confirmation",
@@ -191,10 +187,12 @@ def address_confirmation_node(state: Any) -> dict:
                 "confirmed_address_id": confirmed_addr.get("address_id"),
                 "confirmed_address": address,
             }
-        
+
         elif analysis.rejected:
-            logger.info(f"[{conversation_id}] Address rejected, correction: {analysis.correction_provided}")
-            
+            logger.info(
+                f"[{conversation_id}] Address rejected, correction: {analysis.correction_provided}"
+            )
+
             # Don't add message - address_search will ask for address
             return {
                 "messages": [],
@@ -202,36 +200,34 @@ def address_confirmation_node(state: Any) -> dict:
                 "address_confirmed": False,
                 "address_correction": analysis.correction_provided,
             }
-        
+
         else:
             # Need clarification - will loop back
             logger.info(f"[{conversation_id}] Needs clarification")
-            
+
             return {
                 "messages": [message],
                 "current_node": "address_confirmation",
             }
-            
+
     except Exception as e:
         logger.error(f"[{conversation_id}] Address confirmation error: {e}", exc_info=True)
-        
+
         # Fallback - ask again
         fallback_question = t(
             "address.confirmation_ask_short",
             default=f"Ar jūsų adresas yra {address}?",
-            address=address
+            address=address,
         )
-        
+
         fallback_message = add_message(
-            role="assistant",
-            content=fallback_question,
-            node="address_confirmation"
+            role="assistant", content=fallback_question, node="address_confirmation"
         )
-        
+
         return {
             "messages": [fallback_message],
             "current_node": "address_confirmation",
-            "last_error": str(e)
+            "last_error": str(e),
         }
 
 
@@ -239,10 +235,11 @@ def address_confirmation_node(state: Any) -> dict:
 # ROUTER FUNCTION
 # =============================================================================
 
+
 def address_confirmation_router(state: Any) -> str:
     """
     Route after address confirmation.
-    
+
     Returns:
         - "address_confirmation" → need clarification (loop)
         - "diagnostics" → address confirmed
@@ -251,15 +248,15 @@ def address_confirmation_router(state: Any) -> str:
     """
     conversation_id = _get_attr(state, "conversation_id", "unknown")
     address_confirmed = _get_attr(state, "address_confirmed")
-    
+
     if address_confirmed is True:
         logger.info(f"[{conversation_id}] Router → diagnostics (address confirmed)")
         return "diagnostics"
-    
+
     elif address_confirmed is False:
         logger.info(f"[{conversation_id}] Router → address_search (address rejected)")
         return "address_search"
-    
+
     else:
         logger.info(f"[{conversation_id}] Router → end (waiting for user)")
         return "end"

@@ -1,4 +1,3 @@
-
 """
 Conversation State - Pydantic schema for LangGraph workflow
 
@@ -14,55 +13,54 @@ import operator
 class State(BaseModel):
     """
     Flat conversation state for ISP support agent.
-    
+
     Design principles:
     - Flat structure (no deep nesting)
     - Minimal fields (add when needed)
     - Pydantic validation
     - Compatible with LangGraph
     """
-    
+
     # === Conversation ===
     conversation_id: str
     started_at: str = Field(default_factory=lambda: datetime.now().isoformat())
-    
+
     # === Language (from UI settings) ===
     language: Literal["lt", "en"] = "lt"  # Default: Lithuanian
-    
+
     # Messages - simple dicts with reducer for LangGraph
     messages: Annotated[list[dict], operator.add] = Field(default_factory=list)
-    
+
     # Current position in workflow
     current_node: str = "start"
-    
+
     # === Customer (from phone lookup) ===
     phone_number: str  # Ateina su skambučiu - privalomas
-    
+
     # DB lookup rezultatai
     customer_id: str | None = None
     customer_name: str | None = None
     customer_addresses: list[dict] = Field(default_factory=list)  # Gali būti keli
-    
+
     # Po adreso patvirtinimo
     confirmed_address_id: str | None = None
     confirmed_address: str | None = None  # Žmogui skaitomas adresas
-    
+
     # === Problem ===
     problem_type: Literal["internet", "tv", "phone", "billing", "other"] | None = None
     problem_description: str | None = None
-    
+
     # Problem Capture v2.1 - Qualifying context
     problem_context: dict = Field(default_factory=dict)
-   
-    
+
     qualifying_questions_asked: int = 0
     qualifying_answers: list[dict] = Field(default_factory=list)
     # Stores Q&A history: [
     #   {"question": "...", "answer": "...", "target_field": "duration", "understood": True},
     # ]
-    
+
     problem_capture_complete: bool = False  # True when ready to proceed
-    
+
     # === Workflow control ===
     needs_address_confirmation: bool = False
     needs_address_selection: bool = False  # Kai keli adresai
@@ -82,10 +80,10 @@ class State(BaseModel):
     troubleshooting_completed_steps: list = Field(default_factory=list)
     troubleshooting_needs_escalation: bool = False
     troubleshooting_escalation_reason: str | None = None
-    troubleshooting_skipped_steps: list = Field(default_factory=list) 
+    troubleshooting_skipped_steps: list = Field(default_factory=list)
     troubleshooting_checked_items: dict = Field(default_factory=dict)
     troubleshooting_failed: bool = False
-    
+
     # Resolution
     problem_resolved: bool = False
 
@@ -93,32 +91,29 @@ class State(BaseModel):
     ticket_created: bool = False
     ticket_id: str | None = None
     ticket_type: str | None = None
-    
+
     # === End state ===
     conversation_ended: bool = False
-    
+
     # === Error tracking ===
     last_error: str | None = None
     llm_error_count: int = 0  # Track LLM failures to prevent infinite loops
-    
+
     class Config:
         """Pydantic config."""
+
         extra = "allow"  # Leidžia pridėti papildomus laukus jei reikia
 
 
-def create_initial_state(
-    conversation_id: str, 
-    phone_number: str,
-    language: str = "lt"
-) -> dict:
+def create_initial_state(conversation_id: str, phone_number: str, language: str = "lt") -> dict:
     """
     Create initial state dict for LangGraph.
-    
+
     Args:
         conversation_id: Unique conversation ID
         phone_number: Customer phone (from caller ID)
         language: UI language code ("lt" or "en")
-    
+
     Returns:
         State as dict (LangGraph requirement)
     """
@@ -126,39 +121,29 @@ def create_initial_state(
     valid_languages = ["lt", "en"]
     if language not in valid_languages:
         language = "lt"  # Fallback to default
-    
-    state = State(
-        conversation_id=conversation_id,
-        phone_number=phone_number,
-        language=language
-    )
+
+    state = State(conversation_id=conversation_id, phone_number=phone_number, language=language)
     return state.model_dump()
 
 
 # === Message Helpers ===
 
+
 def add_message(
-    role: Literal["user", "assistant", "system"], 
-    content: str, 
-    node: str | None = None
+    role: Literal["user", "assistant", "system"], content: str, node: str | None = None
 ) -> dict:
     """
     Create a message dict.
-    
+
     Args:
         role: user, assistant, or system
         content: Message text
         node: Which node created this message
-    
+
     Returns:
         Message dict ready to append to state.messages
     """
-    return {
-        "role": role,
-        "content": content,
-        "node": node,
-        "timestamp": datetime.now().isoformat()
-    }
+    return {"role": role, "content": content, "node": node, "timestamp": datetime.now().isoformat()}
 
 
 def _get_messages(state) -> list[dict]:
@@ -200,18 +185,16 @@ def get_last_assistant_message(state) -> str | None:
 def get_conversation_for_llm(state) -> list[dict]:
     """
     Get messages formatted for LLM API call.
-    
+
     Returns:
         List of {"role": ..., "content": ...} dicts
     """
     messages = _get_messages(state)
-    return [
-        {"role": m["role"], "content": m["content"]} 
-        for m in messages
-    ]
+    return [{"role": m["role"], "content": m["content"]} for m in messages]
 
 
 # === State Check Helpers ===
+
 
 def is_customer_identified(state) -> bool:
     """Check if customer was found in DB."""

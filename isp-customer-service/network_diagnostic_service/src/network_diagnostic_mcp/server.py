@@ -25,32 +25,31 @@ log_dir = Path(__file__).parent.parent.parent / "logs"
 log_dir.mkdir(exist_ok=True)
 
 logger = setup_mcp_server_logger(
-    "network_service",
-    level="INFO",
-    log_file=log_dir / "network_service.log"
+    "network_service", level="INFO", log_file=log_dir / "network_service.log"
 )
+
 
 class NetworkDiagnosticServer:
     """Network Diagnostic Service MCP Server."""
-    
+
     def __init__(self, db_path: str | Path):
         """
         Initialize Network Diagnostic Server.
-        
+
         Args:
             db_path: Path to SQLite database
         """
         self.db = init_database(db_path)
         self.server = Server("network-diagnostic-service")  # ← Correct name!
-        
+
         # Register tools
         self._register_tools()
-        
+
         logger.info("Network Diagnostic Service initialized")
-    
+
     def _register_tools(self) -> None:
         """Register all MCP tools."""
-        
+
         # Tool definitions
         @self.server.list_tools()
         async def list_tools() -> List[Tool]:
@@ -65,13 +64,10 @@ class NetworkDiagnosticServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "customer_id": {
-                                "type": "string",
-                                "description": "Customer ID"
-                            }
+                            "customer_id": {"type": "string", "description": "Customer ID"}
                         },
-                        "required": ["customer_id"]
-                    }
+                        "required": ["customer_id"],
+                    },
                 ),
                 Tool(
                     name="check_ip_assignment",
@@ -82,13 +78,10 @@ class NetworkDiagnosticServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "customer_id": {
-                                "type": "string",
-                                "description": "Customer ID"
-                            }
+                            "customer_id": {"type": "string", "description": "Customer ID"}
                         },
-                        "required": ["customer_id"]
-                    }
+                        "required": ["customer_id"],
+                    },
                 ),
                 Tool(
                     name="check_bandwidth_history",
@@ -99,18 +92,15 @@ class NetworkDiagnosticServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "customer_id": {
-                                "type": "string",
-                                "description": "Customer ID"
-                            },
+                            "customer_id": {"type": "string", "description": "Customer ID"},
                             "limit": {
                                 "type": "integer",
                                 "description": "Number of recent measurements (default: 10)",
-                                "default": 10
-                            }
+                                "default": 10,
+                            },
                         },
-                        "required": ["customer_id"]
-                    }
+                        "required": ["customer_id"],
+                    },
                 ),
                 Tool(
                     name="check_area_outages",
@@ -121,17 +111,11 @@ class NetworkDiagnosticServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "city": {
-                                "type": "string",
-                                "description": "City name"
-                            },
-                            "street": {
-                                "type": "string",
-                                "description": "Street name (optional)"
-                            }
+                            "city": {"type": "string", "description": "City name"},
+                            "street": {"type": "string", "description": "Street name (optional)"},
                         },
-                        "required": ["city"]
-                    }
+                        "required": ["city"],
+                    },
                 ),
                 Tool(
                     name="check_signal_quality",
@@ -142,13 +126,10 @@ class NetworkDiagnosticServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "customer_id": {
-                                "type": "string",
-                                "description": "Customer ID"
-                            }
+                            "customer_id": {"type": "string", "description": "Customer ID"}
                         },
-                        "required": ["customer_id"]
-                    }
+                        "required": ["customer_id"],
+                    },
                 ),
                 Tool(
                     name="ping_test",
@@ -160,13 +141,10 @@ class NetworkDiagnosticServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "customer_id": {
-                                "type": "string",
-                                "description": "Customer ID"
-                            }
+                            "customer_id": {"type": "string", "description": "Customer ID"}
                         },
-                        "required": ["customer_id"]
-                    }
+                        "required": ["customer_id"],
+                    },
                 ),
                 Tool(
                     name="get_switch_info",
@@ -177,23 +155,20 @@ class NetworkDiagnosticServer:
                     inputSchema={
                         "type": "object",
                         "properties": {
-                            "customer_id": {
-                                "type": "string",
-                                "description": "Customer ID"
-                            }
+                            "customer_id": {"type": "string", "description": "Customer ID"}
                         },
-                        "required": ["customer_id"]
-                    }
+                        "required": ["customer_id"],
+                    },
                 ),
             ]
-        
+
         # Tool handlers
         @self.server.call_tool()
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             """Handle tool calls."""
-            
+
             logger.info(f"Tool called: {name} with args: {arguments}")
-            
+
             try:
                 if name == "check_port_status":
                     result = await self._check_port_status(arguments)
@@ -211,81 +186,72 @@ class NetworkDiagnosticServer:
                     result = await self._get_switch_info(arguments)
                 else:
                     result = {"error": f"Unknown tool: {name}"}
-                
-                return [TextContent(
-                    type="text",
-                    text=str(result)
-                )]
-                
+
+                return [TextContent(type="text", text=str(result))]
+
             except Exception as e:
                 logger.error(f"Error in tool {name}: {e}", exc_info=True)
-                return [TextContent(
-                    type="text",
-                    text=f"Error: {str(e)}"
-                )]
-    
+                return [TextContent(type="text", text=f"Error: {str(e)}")]
+
     async def _check_port_status(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Check port status for customer."""
         from .tools.port_diagnostics import check_port_status
+
         return check_port_status(self.db, args["customer_id"])
-    
+
     async def _check_ip_assignment(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Check IP assignment."""
         from .tools.connectivity_tests import check_ip_assignment
+
         return check_ip_assignment(self.db, args["customer_id"])
-    
+
     async def _check_bandwidth_history(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Check bandwidth history."""
         from .tools.connectivity_tests import check_bandwidth_history
-        return check_bandwidth_history(
-            self.db,
-            args["customer_id"],
-            args.get("limit", 10)
-        )
-    
+
+        return check_bandwidth_history(self.db, args["customer_id"], args.get("limit", 10))
+
     async def _check_area_outages(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Check area outages."""
         from .tools.outage_checks import check_area_outages
-        return check_area_outages(
-            self.db,
-            args["city"],
-            args.get("street")
-        )
-    
+
+        return check_area_outages(self.db, args["city"], args.get("street"))
+
     async def _check_signal_quality(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Check signal quality."""
         from .tools.connectivity_tests import check_signal_quality
+
         return check_signal_quality(self.db, args["customer_id"])
-    
+
     async def _ping_test(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Perform ping test."""
         from .tools.connectivity_tests import ping_test
+
         return ping_test(self.db, args["customer_id"])
-    
+
     async def _get_switch_info(self, args: Dict[str, Any]) -> Dict[str, Any]:
         """Get switch information."""
         from .tools.port_diagnostics import get_switch_info
+
         return get_switch_info(self.db, args["customer_id"])
-    
+
     async def run(self) -> None:
         """Run the MCP server."""
         logger.info("Starting Network Diagnostic Service MCP Server...")
-        
+
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options()
+                read_stream, write_stream, self.server.create_initialization_options()
             )
 
 
 def create_server(db_path: str | Path) -> NetworkDiagnosticServer:
     """
     Create Network Diagnostic MCP Server instance.
-    
+
     Args:
         db_path: Path to database file
-        
+
     Returns:
         NetworkDiagnosticServer instance
     """
@@ -297,14 +263,14 @@ async def main():
     # Get database path
     project_root = Path(__file__).parent.parent.parent.parent
     db_path = project_root / "database" / "isp_database.db"
-    
+
     if not db_path.exists():
         logger.error(f"Database not found: {db_path}")
         sys.exit(1)
-    
+
     # Create and run server
     server = create_server(db_path)
-    
+
     await server.run()
 
 

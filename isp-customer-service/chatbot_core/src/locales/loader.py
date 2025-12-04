@@ -43,13 +43,13 @@ def _load_translations(lang: str) -> dict:
     """Load translations for a language."""
     if lang in _translations:
         return _translations[lang]
-    
+
     file_path = _translations_dir / f"{lang}.yaml"
-    
+
     if not file_path.exists():
         print(f"Warning: Translation file not found: {file_path}")
         return {}
-    
+
     try:
         with open(file_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
@@ -63,19 +63,19 @@ def _load_translations(lang: str) -> dict:
 def t(key: str, **kwargs) -> str:
     """
     Get translation by dot-notation key.
-    
+
     Args:
         key: Dot-notation key, e.g. "call.phone_label"
         **kwargs: Format arguments, e.g. t("greeting", name="Jonas")
-    
+
     Returns:
         Translated string or key if not found
-    
+
     Example:
         t("call.call_button")  # Returns "📞 Skambinti" or "📞 Call"
     """
     translations = _load_translations(_current_language)
-    
+
     # Navigate nested dict by dots
     value = translations
     for part in key.split("."):
@@ -84,14 +84,14 @@ def t(key: str, **kwargs) -> str:
         else:
             # Key not found - return key itself
             return key
-    
+
     # Format with kwargs if provided
     if isinstance(value, str) and kwargs:
         try:
             return value.format(**kwargs)
         except KeyError:
             return value
-    
+
     return value if isinstance(value, str) else key
 
 
