@@ -93,6 +93,8 @@ The Streamlit-based interface provides comprehensive tools for testing and monit
 - **Node Transition Log** — Track workflow progression
 - **Message History** — Full conversation with metadata
 
+
+![alt text](image-1.png)
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Demo UI Layout                                                  │
@@ -347,56 +349,16 @@ python -m crm_service.src.crm_mcp.server
 
 # 6. Run chatbot
 streamlit run chatbot_core/src/streamlit_ui/app.py
+
+uv run streamlit run chatbot_core\src\streamlit_ui\app.py
 ```
+
+chatbot_core\src\streamlit_ui\app.py
 
 → *Full installation guide: [docs/INSTALLATION.md](docs/INSTALLATION.md)*
 
 ---
 
-## Project Structure
-
-```
-isp-customer-service/
-│
-├── chatbot_core/                   # Main application
-│   └── src/
-│       ├── graph/                  # LangGraph workflow
-│       │   ├── graph.py            # Graph definition
-│       │   ├── state.py            # Pydantic state model
-│       │   └── nodes/              # Individual nodes
-│       │
-│       ├── rag/                    # Knowledge retrieval
-│       │   ├── retriever.py        # Hybrid retriever
-│       │   ├── embeddings.py       # Embedding manager
-│       │   ├── vector_store.py     # FAISS wrapper
-│       │   └── scenario_loader.py  # YAML scenarios
-│       │
-│       ├── services/               # External integrations
-│       │   ├── llm.py              # Claude API wrapper
-│       │   └── mcp_service.py      # MCP client
-│       │
-│       ├── config/                 # Configuration files
-│       │   ├── config.yaml
-│       │   ├── messages.yaml
-│       │   └── problem_types.yaml
-│       │
-│       └── streamlit_ui/           # Demo interface
-│
-├── crm_service/                    # CRM MCP server
-│   └── src/crm_mcp/
-│       ├── server.py
-│       └── tools/
-│
-├── knowledge_base/                 # RAG content
-│   └── troubleshooting/
-│       └── scenarios/
-│
-├── database/                       # SQLite database
-│
-└── docs/                           # Documentation
-```
-
----
 
 ## Documentation
 
