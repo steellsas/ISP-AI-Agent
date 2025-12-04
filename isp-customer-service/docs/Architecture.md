@@ -1,206 +1,371 @@
-# System Architecture
+# Architecture Documentation
+
+High-level system architecture and design decisions.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [System Architecture](#system-architecture)
+- [Component Details](#component-details)
+- [Data Flow](#data-flow)
+- [Design Decisions](#design-decisions)
+- [Scalability Considerations](#scalability-considerations)
+
+---
 
 ## Overview
 
-ISP Customer Service Chatbot is built using a microservices architecture with MCP (Model Context Protocol) for inter-service communication.
+The ISP Customer Service Chatbot follows a modular architecture with clear separation of concerns:
 
-## Architecture Diagram
+- **Interface Layer** — User-facing components (UI, CLI)
+- **Core Engine** — LangGraph workflow orchestration
+- **Services Layer** — LLM, RAG, MCP integrations
+- **External Services** — MCP servers, databases
+
+---
+
+## System Architecture
+
+### High-Level Diagram
 
 ```
-┌─────────────────────────────────┐
-│   Chatbot Core                  │
-│   - LangGraph workflow          │
-│   - RAG knowledge base          │
-│   - Streamlit UI                │
-│   - MCP Client                  │
-└────────────┬────────────────────┘
-             │ MCP Protocol (stdio)
-    ┌────────┴────────┐
-    │                 │
-┌───▼──────────┐ ┌───▼────────────────┐
-│ CRM Service  │ │ Network Diagnostic │
-│ MCP Server   │ │ MCP Server         │
-└───┬──────────┘ └───┬────────────────┘
-    │                │
-    └────────┬───────┘
-             │
-    ┌────────▼────────┐
-    │  SQLite Database│
-    │  - crm schema   │
-    │  - network schema│
-    └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         ISP Customer Service Bot                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌────────────────────────────────────────────────────────────────────┐    │
+│   │                        Interface Layer                              │    │
+│   │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐            │    │
+│   │  │  Streamlit   │   │   CLI Chat   │   │   REST API   │            │    │
+│   │  │   Demo UI    │   │  Interface   │   │   (Future)   │            │    │
+│   │  └──────────────┘   └──────────────┘   └──────────────┘            │    │
+│   └────────────────────────────────────────────────────────────────────┘    │
+│                                      │                                       │
+│                                      ▼                                       │
+│   ┌────────────────────────────────────────────────────────────────────┐    │
+│   │                        Core Engine                                  │    │
+│   │                                                                     │    │
+│   │   ┌─────────────────────────────────────────────────────────┐      │    │
+│   │   │              LangGraph Workflow Engine                   │      │    │
+│   │   │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐       │      │    │
+│   │   │  │ Greeting│→│ Problem │→│ Phone   │→│ Address │       │      │    │
+│   │   │  │         │ │ Capture │ │ Lookup  │ │ Confirm │       │      │    │
+│   │   │  └─────────┘ └─────────┘ └─────────┘ └─────────┘       │      │    │
+│   │   │       │           │           │           │             │      │    │
+│   │   │       ▼           ▼           ▼           ▼             │      │    │
+│   │   │  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐       │      │    │
+│   │   │  │Diagnos- │→│Trouble- │→│ Create  │→│ Closing │       │      │    │
+│   │   │  │  tics   │ │ shoot   │ │ Ticket  │ │         │       │      │    │
+│   │   │  └─────────┘ └─────────┘ └─────────┘ └─────────┘       │      │    │
+│   │   │                                                         │      │    │
+│   │   │  ┌──────────────────────────────────────────────────┐  │      │    │
+│   │   │  │           Pydantic State Model                    │  │      │    │
+│   │   │  │  (conversation_id, messages, customer_id, ...)    │  │      │    │
+│   │   │  └──────────────────────────────────────────────────┘  │      │    │
+│   │   └─────────────────────────────────────────────────────────┘      │    │
+│   │                              │                                      │    │
+│   │          ┌───────────────────┼───────────────────┐                 │    │
+│   │          ▼                   ▼                   ▼                 │    │
+│   │   ┌────────────┐     ┌─────────────┐     ┌────────────┐           │    │
+│   │   │    LLM     │     │     MCP     │     │    RAG     │           │    │
+│   │   │  Service   │     │   Client    │     │  System    │           │    │
+│   │   │ (LiteLLM)  │     │             │     │  (FAISS)   │           │    │
+│   │   └─────┬──────┘     └──────┬──────┘     └─────┬──────┘           │    │
+│   │         │                   │                   │                  │    │
+│   └─────────│───────────────────│───────────────────│──────────────────┘    │
+│             │                   │                   │                        │
+│             ▼                   ▼                   ▼                        │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                        External Services                             │   │
+│   │                                                                      │   │
+│   │  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐             │   │
+│   │  │              │   |  MCP Servers │   │  Knowledge   │             │   │
+│   │  │   OpenAI /   │   │  ┌────────┐  │   │    Base      │             │   │
+│   │  │   Gemini     │   │  │  CRM   │  │   │  (Markdown)  │             │   │
+│   │  │              │   │  │Service │  │   │              │             │   │
+│   │  └──────────────┘   │  ├────────┤  │   └──────┬───────┘             │   │
+│   │                     │  │Network │  │          │                     │   │
+│   │                     │  │  Diag  │  │          ▼                     │   │
+│   │                     │  └────────┘  │   ┌──────────────┐             │   │
+│   │                     └──────┬───────┘   │    FAISS     │             │   │
+│   │                            │           │    Index     │             │   │
+│   │                            ▼           └──────────────┘             │   │
+│   │                     ┌──────────────┐                                │   │
+│   │                     │   SQLite     │                                │   │
+│   │                     │   Database   │                                │   │
+│   │                     └──────────────┘                                │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Services
+---
 
-### 1. Chatbot Core
-**Responsibility**: Conversational flow and user interaction
+## Component Details
 
-**Technology**:
-- LangGraph for state machine
-- LangChain for LLM interactions
-- FAISS for RAG vector store
-- Streamlit for UI
+### Interface Layer
 
-**Key Components**:
-- 8-node workflow graph
-- Config-driven problem types
-- RAG knowledge base
-- MCP client for tool calling
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Streamlit UI | Streamlit 1.40+ | Demo interface with monitoring |
+| CLI Chat | Python | Command-line testing |
 
-### 2. CRM Service
-**Responsibility**: Customer data management
 
-**Technology**:
-- MCP Server
-- SQLAlchemy ORM
-- Levenshtein for fuzzy matching
+### Core Engine
 
-**Key Components**:
-- Customer lookup tools
-- Fuzzy search algorithms
-- Ticket management
-- History tracking
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Workflow Engine | LangGraph | State machine orchestration |
+| State Model | Pydantic | Type-safe conversation state |
+| Node Functions | Python | Individual workflow steps |
+| Routers | Python | Conditional path selection |
 
-### 3. Network Diagnostic Service
-**Responsibility**: Network monitoring and diagnostics
+### Services Layer
 
-**Technology**:
-- MCP Server
-- Mock diagnostic logic (Phase 1)
-- Real API integration (Future)
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| LLM Service | LiteLLM | Multi-provider LLM access |
+| MCP Client | MCP SDK | Tool execution protocol |
+| RAG System | FAISS + Transformers | Knowledge retrieval |
+| Config Loader | PyYAML | Configuration management |
 
-**Key Components**:
-- Port status checks
-- IP/MAC validation
-- Bandwidth measurement
-- Area outage detection
+### External Services
 
-### 4. Shared Package
-**Responsibility**: Common utilities
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| LLM Providers | Claude/OpenAI/Gemini | Language understanding |
+| CRM MCP Server | Python + SQLite | Customer data access |
+| Network MCP Server | Python | Network diagnostics |
+| Knowledge Base | Markdown + YAML | Troubleshooting content |
 
-**Components**:
-- Database connection manager
-- Shared type definitions
-- Common utilities
-- Logger configuration
+---
 
 ## Data Flow
 
-### Typical Conversation Flow
+### Request Flow
 
-1. **User initiates** → Chatbot UI
-2. **Greeting** → Check for caller ID
-3. **Customer ID** → Call CRM lookup tools via MCP
-4. **Check History** → Load previous issues via CRM
-5. **Problem ID** → User describes issue
-6. **Diagnostics** → Call Network diagnostic tools via MCP
-7. **Decision**: Provider issue OR Customer issue
-8. **If Customer issue** → Troubleshooting with RAG
-9. **Ticket Registration** → Create via CRM tools
-10. **Resolution** → Final message, save conversation
+```
+User Input
+     │
+     ▼
+┌──────────────────┐
+│   Streamlit UI   │  ◄─── Session state management
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  LangGraph App   │  ◄─── Compiled workflow graph
+│  app.invoke()    │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  Entry Router    │  ◄─── Determines active node
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐      ┌──────────────┐
+│   Active Node    │─────►│ LLM Service  │─────► OpenAI/Gemini
+│  (e.g. problem   │      └──────────────┘
+│   capture)       │      ┌──────────────┐
+│                  │─────►│ MCP Client   │─────► CRM/Network MCP
+│                  │      └──────────────┘
+│                  │      ┌──────────────┐
+│                  │─────►│ RAG System   │─────► FAISS Index
+└────────┬─────────┘      └──────────────┘
+         │
+         ▼
+┌──────────────────┐
+│   Node Router    │  ◄─── Determines next node
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  State Update    │  ◄─── Merge node output with state
+└────────┬─────────┘
+         │
+         ▼
+    Response to UI
+```
 
-## Communication Protocol
+### State Update Flow
 
-### MCP (Model Context Protocol)
+```
+┌──────────────┐    invoke()    ┌──────────────┐
+│  Current     │───────────────►│    Node      │
+│   State      │                │  Function    │
+└──────────────┘                └──────┬───────┘
+                                       │
+                                       │ returns {partial updates}
+                                       ▼
+                                ┌──────────────┐
+                                │   Reducer    │
+                                │  (merge)     │
+                                └──────┬───────┘
+                                       │
+                                       ▼
+                                ┌──────────────┐
+                                │    New       │
+                                │   State      │
+                                └──────────────┘
+```
 
-**Why MCP?**
-- Standardized tool calling
-- Auto-discovery of tools
-- Easy to add new services
-- Local or remote connections
+---
 
-**Connection Type**: stdio (local processes)
+## Design Decisions
 
-**Tool Discovery**: Automatic on startup
+### Why LangGraph?
 
-## Database Design
+| Alternative | Reason Not Chosen |
+|-------------|-------------------|
+| Raw LLM | No state management, complex routing |
+| LangChain Agents | Less control over flow |
 
-### Schemas
 
-**CRM Schema**:
-- customers
-- addresses
-- service_plans
-- customer_equipment
-- tickets
-- customer_history
-- customer_memory
-- conversations
+**LangGraph Benefits:**
+- Built-in state persistence
+- Conditional routing
+- Checkpoint/restore
+- Type-safe with Pydantic
 
-**Network Schema**:
-- switches
-- ports
-- ip_assignments
-- bandwidth_logs
-- area_outages
-- signal_quality
 
-**Relationships**:
-- `crm.customer_equipment.mac_address` ↔ `network.ports.equipment_mac`
-- `crm.customers.customer_id` ↔ `network.ports.customer_id`
+### Why Hybrid RAG?
 
-## Scalability
+| Alternative | Reason Not Chosen |
+|-------------|-------------------|
+| Pure semantic | Misses exact technical terms |
+| Pure keyword | Misses semantic meaning |
+| LLM-based | Too slow, expensive |
 
-### Current (Phase 1)
-- All services run locally
-- Single SQLite database
-- stdio MCP connections
+**Hybrid Benefits:**
+- Semantic understanding (70%)
+- Technical term matching (30%)
+- Fast retrieval
+- Multilingual support
 
-### Future
-- Services can be deployed separately
-- Switch to PostgreSQL for production
-- Remote MCP connections (WebSocket/SSE)
-- Independent scaling per service
+### Why LiteLLM?
 
-## Security
+| Alternative | Reason Not Chosen |
+|-------------|-------------------|
+| Direct API calls | Different APIs per provider |
+| LangChain LLMs | Extra dependency |
+| Single provider | Vendor lock-in |
 
-### Current
-- Local-only access
-- No authentication needed
+**LiteLLM Benefits:**
+- Unified interface
+- Easy provider switching
+- Cost tracking
+- Fallback support
 
-### Future (Production)
-- JWT authentication for MCP
-- API keys for external services
-- Encrypted database
+---
+
+## Scalability Considerations
+
+### Current Limitations (Demo)
+
+| Component | Limitation | Production Solution |
+|-----------|------------|---------------------|
+| State | In-memory | Redis/PostgreSQL |
+| RAG Index | File-based | Pinecone/Weaviate |
+| MCP Servers | Single process | Container orchestration |
+| Database | SQLite | PostgreSQL |
+
+### Horizontal Scaling
+
+```
+                    ┌──────────────┐
+                    │ Load Balancer│
+                    └──────┬───────┘
+                           │
+         ┌─────────────────┼─────────────────┐
+         │                 │                 │
+         ▼                 ▼                 ▼
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│  Instance 1  │   │  Instance 2  │   │  Instance 3  │
+│  (Chatbot)   │   │  (Chatbot)   │   │  (Chatbot)   │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘
+       │                  │                  │
+       └──────────────────┼──────────────────┘
+                          │
+         ┌────────────────┼────────────────┐
+         ▼                ▼                ▼
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+│   Redis      │   │  PostgreSQL  │   │   Vector     │
+│  (Sessions)  │   │  (CRM Data)  │   │   Store      │
+└──────────────┘   └──────────────┘   └──────────────┘
+```
+
+### Performance Targets
+
+| Metric | Demo | Production Target |
+|--------|------|-------------------|
+| Response latency | ~2s | <1s |
+| Concurrent users | 1-5 | 100+ |
+| RAG retrieval | ~50ms | <20ms |
+| LLM calls/min | 10 | 1000 |
+
+---
+
+## Module Dependencies
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Application                           │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │                 streamlit_ui/                    │    │
+│  │                     app.py                       │    │
+│  └─────────────────────────┬───────────────────────┘    │
+│                            │                             │
+│  ┌─────────────────────────▼───────────────────────┐    │
+│  │                    graph/                        │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │    │
+│  │  │ graph.py │  │ state.py │  │   nodes/*    │   │    │
+│  │  └────┬─────┘  └────┬─────┘  └──────┬───────┘   │    │
+│  └───────│─────────────│───────────────│───────────┘    │
+│          │             │               │                 │
+│  ┌───────▼─────────────▼───────────────▼───────────┐    │
+│  │                  services/                       │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │    │
+│  │  │  llm.py  │  │ mcp_*.py │  │config_loader │   │    │
+│  │  └────┬─────┘  └────┬─────┘  └──────┬───────┘   │    │
+│  └───────│─────────────│───────────────│───────────┘    │
+│          │             │               │                 │
+│  ┌───────▼─────────────│───────────────▼───────────┐    │
+│  │                    rag/                          │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │    │
+│  │  │retriever │  │embeddings│  │ vector_store │   │    │
+│  │  └──────────┘  └──────────┘  └──────────────┘   │    │
+│  └─────────────────────────────────────────────────┘    │
+│                                                          │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │                   config/                        │    │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │    │
+│  │  │*.yaml    │  │ locales/ │  │  prompts/    │   │    │
+│  │  └──────────┘  └──────────┘  └──────────────┘   │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Security Considerations
+
+### Current State (Demo)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Authentication | None | Demo only |
+| Data encryption | None | SQLite local |
+| API keys | Env vars | .env file |
+| Input validation | Pydantic | Type checking |
+
+### Production Requirements
+
+- API key management (vault)
+- Database encryption
+- Input sanitization
 - Rate limiting
+- Audit logging
+- GDPR compliance
 
-## Extensibility
-
-### Adding New Problem Types
-1. Add entry to `problems.yaml`
-2. Create RAG document
-3. Add tools if needed (via new MCP server)
-4. No code changes required!
-
-### Adding New Services
-1. Create new MCP server
-2. Register tools
-3. Chatbot auto-discovers
-4. Ready to use!
-
-## Technology Choices
-
-| Component | Technology | Why? |
-|-----------|-----------|------|
-| Workflow | LangGraph | State machine, conditional edges, great for complex flows |
-| LLM | Anthropic Claude | Best reasoning, Lithuanian support |
-| RAG | FAISS | Fast, local, no external dependencies |
-| MCP | stdio | Simple, local, perfect for development |
-| Database | SQLite | Easy setup, sufficient for mock data |
-| UI | Streamlit | Rapid prototyping, easy to use |
-| Package Manager | UV | Fast, modern, workspace support |
-
-## Monitoring
-
-### LangSmith Integration
-- Trace all LLM calls
-- Monitor latency
-- Debug flows
-- Track costs
-
-### Logging
-- Structured logging
-- Session logs
-- Error tracking
-- Performance metrics
+---

@@ -33,13 +33,13 @@ The demo includes simulated CRM data, mock network diagnostics, and sample troub
 
 | Capability | Description |
 |------------|-------------|
-| **Intelligent Problem Classification** | LLM-powered categorization (internet, TV, phone, billing) with context extraction |
+| **Intelligent Problem Classification** | LLM-powered categorization (internet, TV, billing) with context extraction |
 | **Customer Identification** | Phone-based lookup with address verification and fuzzy matching |
 | **Automated Network Diagnostics** | Simulated checks for area outages, port status, and IP assignment |
 | **Guided Troubleshooting** | RAG-powered step-by-step resolution with smart scenario selection |
 | **Context-Aware Routing** | Skips redundant steps based on information customer already provided |
 | **Automatic Ticket Creation** | Seamless escalation with full troubleshooting history |
-| **Multi-LLM Support** | Switchable between Claude, OpenAI, and Gemini providers |
+| **Multi-LLM Support** | Switchable between OpenAI and Gemini providers |
 | **Bilingual Interface** | Lithuanian and English conversation modes |
 | **Real-time Monitoring** | LLM call tracking, cost estimation, RAG document visibility |
 | **State Inspection** | Debug tools for workflow and conversation state analysis |
@@ -315,7 +315,7 @@ Problem Context Analysis
 | Category | Technology | Purpose |
 |----------|------------|---------|
 | **Orchestration** | LangGraph | Workflow state machine |
-| **LLM Gateway** | LiteLLM | Multi-provider support (Claude, OpenAI, Gemini) |
+| **LLM Gateway** | LiteLLM | Multi-provider support (OpenAI, Gemini) |
 | **Embeddings** | sentence-transformers | Multilingual text embeddings |
 | **Vector Store** | FAISS | Similarity search |
 | **Tool Protocol** | MCP (Model Context Protocol) | External service integration |
@@ -364,24 +364,12 @@ chatbot_core\src\streamlit_ui\app.py
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture and design decisions |
-| [WORKFLOW.md](docs/WORKFLOW.md) | LangGraph nodes and routing logic |
-| [STATE.md](docs/STATE.md) | Pydantic state model reference |
-| [MCP_TOOLS.md](docs/MCP_TOOLS.md) | MCP servers and tool specifications |
-| [RAG_SYSTEM.md](docs/RAG_SYSTEM.md) | Knowledge retrieval pipeline |
-| [TROUBLESHOOTING_SCENARIOS.md](docs/TROUBLESHOOTING_SCENARIOS.md) | Scenario format and creation guide |
-| [INTERNATIONALIZATION.md](docs/INTERNATIONALIZATION.md) | Multi-language support |
-| [UI.md](docs/UI.md) | Streamlit interface components |
+| [ARCHITECTURE.md](isp-customer-service/docs/ARCHITECTURE.md) | System architecture and design decisions |
+| [WORKFLOW.md](isp-customer-service/docs/WORKFLOW.md) | LangGraph nodes and routing logic |
+| [MCP_TOOLS.md](isp-customer-service/docs/MCP_TOOLS.md) | MCP servers and tool specifications |
+| [RAG_SYSTEM.md](isp-customer-service/docs/RAG_SYSTEM.md) | Knowledge retrieval pipeline |
 | [CONFIGURATION.md](docs/CONFIGURATION.md) | YAML configuration reference |
 | [INSTALLATION.md](docs/INSTALLATION.md) | Setup and deployment guide |
-| [API_REFERENCE.md](docs/API_REFERENCE.md) | Programmatic API documentation |
+
 
 ---
-
-## License
-
-[License information]
-
----
-
-*Demo built with LangGraph, LiteLLM, FAISS, and MCP*
