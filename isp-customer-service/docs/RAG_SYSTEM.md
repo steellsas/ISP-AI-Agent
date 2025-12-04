@@ -10,8 +10,8 @@ Complete reference for the Retrieval-Augmented Generation knowledge system.
 - [Knowledge Base](#knowledge-base)
 - [Scenario Format](#scenario-format)
 - [Smart Routing](#smart-routing)
-- [Usage](#usage)
-- [Optimization](#optimization)
+
+
 
 ---
 
@@ -761,14 +761,7 @@ context = retriever.retrieve_with_context(
     include_scores=True
 )
 
-# context is a formatted string:
-# [Document 1] (Relevance: 0.85)
-# Check Router Lights...
-#
-# ---
-#
-# [Document 2] (Relevance: 0.72)
-# ...
+
 ```
 
 ### With Scenario Loader
@@ -802,7 +795,7 @@ print(step["instruction"])
 ### Caching Strategy
 
 ```python
-# Query caching (embeddings)
+
 embedding_manager = EmbeddingManager(cache_size=1000)
 
 # Document caching (results)
@@ -820,58 +813,5 @@ def cached_retrieve(query: str, top_k: int) -> tuple:
 | `ivf` | Fast for >10K docs | Medium | Production |
 | `hnsw` | Very fast | High | Real-time apps |
 
-### Adding Documents
 
-```python
-# Batch add for efficiency
-retriever.add_documents(
-    documents=[doc1, doc2, doc3, ...],
-    metadata=[meta1, meta2, meta3, ...],
-    batch_size=32  # Adjust based on memory
-)
 
-# Save index for persistence
-retriever.save("production_index")
-
-# Load existing index
-retriever.load("production_index")
-```
-
----
-
-## Monitoring
-
-### Statistics
-
-```python
-stats = retriever.get_statistics()
-
-# {
-#     "embedding_model": "paraphrase-multilingual-mpnet-base-v2",
-#     "embedding_dim": 768,
-#     "total_documents": 150,
-#     "top_k": 3,
-#     "similarity_threshold": 0.5,
-#     "cache_hits": 234,
-#     "cache_misses": 56
-# }
-```
-
-### Callbacks for UI
-
-```python
-from rag.retriever import register_rag_callback
-
-def on_retrieval(data):
-    """Called after each retrieval."""
-    print(f"Query: {data['query']}")
-    print(f"Results: {data['results_count']}")
-    for r in data['results']:
-        print(f"  - {r['metadata']['source']}: {r['score']:.3f}")
-
-register_rag_callback(on_retrieval)
-```
-
----
-
-*Next: [TROUBLESHOOTING_SCENARIOS.md](TROUBLESHOOTING_SCENARIOS.md) — Scenario format and creation guide*
