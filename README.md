@@ -59,9 +59,9 @@ The agent operates through a directed graph of specialized nodes, each responsib
 | Node | Purpose | Technology |
 |------|---------|------------|
 | `greeting` | Welcome message display | Static config |
-| `problem_capture` | Problem classification and context extraction | LLM (Claude) |
+| `problem_capture` | Problem classification and context extraction | LLM  |
 | `phone_lookup` | Customer identification by phone | MCP → CRM |
-| `address_confirmation` | Service address verification | LLM (Claude) |
+| `address_confirmation` | Service address verification | LLM  |
 | `address_search` | Fuzzy address matching | MCP → CRM |
 | `diagnostics` | Network status verification | MCP → Network |
 | `inform_provider_issue` | Outage notification | Static message |
