@@ -32,7 +32,7 @@ from typing import Optional
 from .embeddings import EmbeddingManager, get_embedding_manager, preload_embedding_model
 from .vector_store import VectorStore, get_vector_store
 from .retriever import Retriever, get_retriever
-from .scenario_loader import ScenarioLoader, get_scenario_loader, TroubleshootingScenario
+# from .scenario_loader import ScenarioLoader, get_scenario_loader, TroubleshootingScenario
 
 # Enhanced components
 from .document_processor import DocumentProcessor
@@ -154,10 +154,10 @@ __all__ = [
     "HybridRetriever",
     "get_hybrid_retriever",
     "DocumentProcessor",
-    # Scenarios
-    "ScenarioLoader",
-    "get_scenario_loader",
-    "TroubleshootingScenario",
+    # # Scenarios
+    # "ScenarioLoader",
+    # "get_scenario_loader",
+    # "TroubleshootingScenario",
     # Initialization
     "init_rag",
     "is_rag_initialized",

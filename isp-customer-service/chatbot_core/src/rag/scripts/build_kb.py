@@ -30,11 +30,11 @@ if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
 from rag import get_retriever
-from rag.scenario_loader import get_scenario_loader
+# from rag.scenario_loader import get_scenario_loader
 
 # Import utilities from shared package
 try:
-    from isp_shared.utils import get_logger
+    from shared.utils import get_logger
 except ImportError:
     import logging
 
@@ -145,20 +145,25 @@ class DocumentProcessor:
 
         return chunks
 
+  
     def _extract_problem_type(self, source: str) -> str:
         """Extract problem_type from filename."""
+   
         source_lower = source.lower()
 
-        if any(kw in source_lower for kw in ["internet", "wifi", "router"]):
+        if any(kw in source_lower for kw in ["internet", "wifi"]):
             return "internet"
-        elif any(kw in source_lower for kw in ["tv", "television", "decoder"]):
+        elif any(kw in source_lower for kw in ["tv", "television", "decoder", "tv_box"]):
             return "tv"
         elif any(kw in source_lower for kw in ["phone", "telefon", "voip"]):
             return "phone"
-        elif any(kw in source_lower for kw in ["billing", "invoice", "payment"]):
-            return "billing"
+        elif any(kw in source_lower for kw in ["router", "tplink", "equipment"]):
+            return "equipment"
+        elif any(kw in source_lower for kw in ["technician", "visit", "replacement", "procedur"]):
+            return "procedure"
 
         return "other"
+
 
     def _extract_title(self, content: str) -> str:
         """Extract title from first # header."""
@@ -279,7 +284,7 @@ def build_knowledge_base(
     log("\n3. Processing markdown documents...")
     log("-" * 80)
 
-    directories = ["troubleshooting", "procedures", "faq"]
+    directories = ["troubleshooting", "procedures", "faq", "equipment"]
 
     for directory in directories:
         dir_path = kb_path / directory
@@ -326,34 +331,34 @@ def build_knowledge_base(
     log("\n4. Loading YAML scenarios...")
     log("-" * 80)
 
-    try:
-        scenario_loader = get_scenario_loader()
-        scenarios_data = scenario_loader.get_scenarios_for_embedding()
+    # try:
+    #     scenario_loader = get_scenario_loader()
+    #     scenarios_data = scenario_loader.get_scenarios_for_embedding()
 
-        if not scenarios_data:
-            log("⚠️  No scenarios found")
-        else:
-            log(f"\n📋 Scenarios:")
+    #     if not scenarios_data:
+    #         log("⚠️  No scenarios found")
+    #     else:
+    #         log(f"\n📋 Scenarios:")
 
-            for scenario in scenarios_data:
-                # Convert to chunk format
-                chunk = {
-                    "text": scenario["text"],
-                    "metadata": {**scenario["metadata"], "type": "scenario"},
-                }
-                all_chunks.append(chunk)
+    #         for scenario in scenarios_data:
+    #             # Convert to chunk format
+    #             chunk = {
+    #                 "text": scenario["text"],
+    #                 "metadata": {**scenario["metadata"], "type": "scenario"},
+    #             }
+    #             all_chunks.append(chunk)
 
-                log(
-                    f"   ✅ {scenario['metadata']['title']} ({scenario['metadata']['scenario_id']})"
-                )
+    #             log(
+    #                 f"   ✅ {scenario['metadata']['title']} ({scenario['metadata']['scenario_id']})"
+    #             )
 
-            stats["scenarios"] = len(scenarios_data)
+    #         stats["scenarios"] = len(scenarios_data)
 
-    except Exception as e:
-        log(f"❌ Error loading scenarios: {e}")
-        import traceback
+    # except Exception as e:
+    #     log(f"❌ Error loading scenarios: {e}")
+    #     import traceback
 
-        traceback.print_exc()
+        # traceback.print_exc()
 
     log("\n" + "-" * 80)
     log(f"📊 Scenarios: {stats['scenarios']}")

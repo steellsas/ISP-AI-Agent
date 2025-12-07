@@ -1,272 +1,66 @@
 -- ============================================
--- Mock Network Infrastructure Data
--- Switches: 48-port switches in Šiauliai
--- Ports: Assigned to customers
--- IP Assignments: Active customer connections
+-- Demo Network - switches, ports, IPs, outages
 -- ============================================
 
--- Switches (3 switches, 48 ports each, covering different areas of Šiauliai)
+-- Switches
 INSERT INTO switches (switch_id, switch_name, location, ip_address, model, status, max_ports) VALUES
-('SW001', 'Šiauliai-Central-SW01', 'Šiauliai, Tilžės/Dainų rajonas', '10.10.1.1', 'Cisco Catalyst 2960-48TT', 'active', 48),
-('SW002', 'Šiauliai-North-SW02', 'Šiauliai, Lieporių/Vilniaus rajonas', '10.10.2.1', 'Cisco Catalyst 2960-48TT', 'active', 48),
-('SW003', 'Šiauliai-South-SW03', 'Šiauliai, Birutės/Gegužių rajonas', '10.10.3.1', 'Cisco Catalyst 2960-48TT', 'active', 48);
+('SW001', 'Šiauliai-Central-SW01', 'Šiauliai, Tilžės/Dainų rajonas', '10.10.1.1', 'Cisco Catalyst 2960-48TT', 'active', 48);
 
--- Ports for SW001 (Tilžės/Dainų streets - customers 1-34)
-INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, status, speed_mbps, duplex, vlan_id) VALUES
-('PORT001', 'SW001', 1, 'CUST001', '00:1A:2B:3C:4D:01', 'up', 100, 'full', 10),
-('PORT002', 'SW001', 2, 'CUST002', '00:1A:2B:3C:4D:02', 'up', 100, 'full', 10),
-('PORT003', 'SW001', 3, 'CUST003', '00:1A:2B:3C:4D:03', 'up', 100, 'full', 10),
-('PORT004', 'SW001', 4, 'CUST004', '00:1A:2B:3C:4D:04', 'up', 100, 'full', 10),
-('PORT005', 'SW001', 5, 'CUST005', '00:1A:2B:3C:4D:05', 'up', 100, 'full', 10),
-('PORT006', 'SW001', 6, 'CUST006', '00:1A:2B:3C:4D:06', 'up', 100, 'full', 10),
-('PORT007', 'SW001', 7, 'CUST007', '00:1A:2B:3C:4D:07', 'up', 100, 'full', 10),
-('PORT008', 'SW001', 8, 'CUST008', '00:1A:2B:3C:4D:08', 'up', 100, 'full', 10),
-('PORT009', 'SW001', 9, 'CUST009', '00:1A:2B:3C:4D:09', 'up', 100, 'full', 10),
-('PORT010', 'SW001', 10, 'CUST010', '00:1A:2B:3C:4D:10', 'up', 100, 'full', 10),
-('PORT011', 'SW001', 11, 'CUST011', '00:1A:2B:3C:4D:11', 'up', 100, 'full', 10),
-('PORT012', 'SW001', 12, 'CUST012', '00:1A:2B:3C:4D:12', 'up', 100, 'full', 10),
-('PORT013', 'SW001', 13, 'CUST013', '00:1A:2B:3C:4D:13', 'up', 100, 'full', 10),
-('PORT014', 'SW001', 14, 'CUST014', '00:1A:2B:3C:4D:14', 'up', 100, 'full', 10),
-('PORT015', 'SW001', 15, 'CUST015', '00:1A:2B:3C:4D:15', 'up', 100, 'full', 10),
-('PORT016', 'SW001', 16, 'CUST016', '00:1A:2B:3C:4D:16', 'up', 100, 'full', 10),
-('PORT017', 'SW001', 17, 'CUST017', '00:1A:2B:3C:4D:17', 'up', 100, 'full', 10),
-('PORT018', 'SW001', 18, 'CUST018', '00:1A:2B:3C:4D:18', 'up', 100, 'full', 10),
-('PORT019', 'SW001', 19, 'CUST019', '00:1A:2B:3C:4D:19', 'up', 100, 'full', 10),
-('PORT020', 'SW001', 20, 'CUST020', '00:1A:2B:3C:4D:20', 'up', 100, 'full', 10),
-('PORT021', 'SW001', 21, 'CUST061', '00:2A:3B:4C:5D:61', 'up', 300, 'full', 10),
-('PORT022', 'SW001', 22, 'CUST062', NULL, 'up', 300, 'full', 10),
-('PORT023', 'SW001', 23, 'CUST063', '00:2A:3B:4C:5D:63', 'up', 300, 'full', 10),
-('PORT024', 'SW001', 24, 'CUST064', NULL, 'up', 300, 'full', 10),
-('PORT025', 'SW001', 25, 'CUST073', '00:3A:4B:5C:6D:73', 'up', 300, 'full', 10),
-('PORT026', 'SW001', 26, 'CUST074', '00:3A:4B:5C:6D:74', 'up', 300, 'full', 10),
-('PORT027', 'SW001', 27, 'CUST075', '00:3A:4B:5C:6D:75', 'up', 300, 'full', 10),
-('PORT028', 'SW001', 28, 'CUST076', '00:3A:4B:5C:6D:76', 'up', 300, 'full', 10),
-('PORT029', 'SW001', 29, 'CUST087', NULL, 'up', 300, 'full', 10),
-('PORT030', 'SW001', 30, 'CUST088', NULL, 'up', 300, 'full', 10),
-('PORT031', 'SW001', 31, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT032', 'SW001', 32, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT033', 'SW001', 33, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT034', 'SW001', 34, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT035', 'SW001', 35, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT036', 'SW001', 36, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT037', 'SW001', 37, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT038', 'SW001', 38, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT039', 'SW001', 39, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT040', 'SW001', 40, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT041', 'SW001', 41, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT042', 'SW001', 42, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT043', 'SW001', 43, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT044', 'SW001', 44, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT045', 'SW001', 45, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT046', 'SW001', 46, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT047', 'SW001', 47, NULL, NULL, 'admin_down', NULL, NULL, 10),
-('PORT048', 'SW001', 48, NULL, NULL, 'admin_down', NULL, NULL, 10);
+-- Ports - various statuses for scenarios
+INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, status, speed_mbps, duplex, vlan_id, notes) VALUES
+-- CUST001: Happy path - port UP
+('PORT001', 'SW001', 1, 'CUST001', '00:1A:2B:3C:4D:01', 'up', 100, 'full', 10, 'Happy path'),
 
--- Ports for SW002 (Lieporių/Vilniaus streets - customers 21-60, 65-72)
-INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, status, speed_mbps, duplex, vlan_id) VALUES
-('PORT049', 'SW002', 1, 'CUST021', '00:1A:2B:3C:4D:21', 'up', 100, 'full', 10),
-('PORT050', 'SW002', 2, 'CUST022', '00:1A:2B:3C:4D:22', 'up', 100, 'full', 10),
-('PORT051', 'SW002', 3, 'CUST023', '00:1A:2B:3C:4D:23', 'up', 100, 'full', 10),
-('PORT052', 'SW002', 4, 'CUST024', '00:1A:2B:3C:4D:24', 'up', 100, 'full', 10),
-('PORT053', 'SW002', 5, 'CUST025', '00:1A:2B:3C:4D:25', 'up', 100, 'full', 10),
-('PORT054', 'SW002', 6, 'CUST026', '00:1A:2B:3C:4D:26', 'up', 100, 'full', 10),
-('PORT055', 'SW002', 7, 'CUST027', '00:1A:2B:3C:4D:27', 'up', 100, 'full', 10),
-('PORT056', 'SW002', 8, 'CUST028', '00:1A:2B:3C:4D:28', 'up', 100, 'full', 10),
-('PORT057', 'SW002', 9, 'CUST029', '00:1A:2B:3C:4D:29', 'up', 100, 'full', 10),
-('PORT058', 'SW002', 10, 'CUST030', '00:1A:2B:3C:4D:30', 'up', 100, 'full', 10),
-('PORT059', 'SW002', 11, 'CUST031', '00:1A:2B:3C:4D:31', 'up', 100, 'full', 10),
-('PORT060', 'SW002', 12, 'CUST032', '00:1A:2B:3C:4D:32', 'up', 100, 'full', 10),
-('PORT061', 'SW002', 13, 'CUST033', '00:1A:2B:3C:4D:33', 'up', 100, 'full', 10),
-('PORT062', 'SW002', 14, 'CUST034', '00:1A:2B:3C:4D:34', 'up', 100, 'full', 10),
-('PORT063', 'SW002', 15, 'CUST035', '00:1A:2B:3C:4D:35', 'up', 100, 'full', 10),
-('PORT064', 'SW002', 16, 'CUST036', '00:2A:3B:4C:5D:36', 'up', 100, 'full', 10),
-('PORT065', 'SW002', 17, 'CUST037', '00:2A:3B:4C:5D:37', 'up', 100, 'full', 10),
-('PORT066', 'SW002', 18, 'CUST038', '00:2A:3B:4C:5D:38', 'up', 100, 'full', 10),
-('PORT067', 'SW002', 19, 'CUST039', '00:2A:3B:4C:5D:39', 'up', 100, 'full', 10),
-('PORT068', 'SW002', 20, 'CUST040', '00:2A:3B:4C:5D:40', 'up', 100, 'full', 10),
-('PORT069', 'SW002', 21, 'CUST065', '00:2A:3B:4C:5D:65', 'up', 300, 'full', 10),
-('PORT070', 'SW002', 22, 'CUST066', '00:3A:4B:5C:6D:66', 'up', 300, 'full', 10),
-('PORT071', 'SW002', 23, 'CUST067', '00:3A:4B:5C:6D:67', 'up', 300, 'full', 10),
-('PORT072', 'SW002', 24, 'CUST068', '00:3A:4B:5C:6D:68', 'up', 300, 'full', 10),
-('PORT073', 'SW002', 25, 'CUST069', '00:3A:4B:5C:6D:69', 'up', 300, 'full', 10),
-('PORT074', 'SW002', 26, 'CUST070', '00:3A:4B:5C:6D:70', 'up', 300, 'full', 10),
-('PORT075', 'SW002', 27, 'CUST077', '00:3A:4B:5C:6D:77', 'up', 300, 'full', 10),
-('PORT076', 'SW002', 28, 'CUST078', '00:3A:4B:5C:6D:78', 'up', 300, 'full', 10),
-('PORT077', 'SW002', 29, 'CUST089', NULL, 'up', 300, 'full', 10),
-('PORT078', 'SW002', 30, 'CUST090', NULL, 'up', 300, 'full', 10),
-('PORT079', 'SW002', 31, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT080', 'SW002', 32, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT081', 'SW002', 33, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT082', 'SW002', 34, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT083', 'SW002', 35, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT084', 'SW002', 36, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT085', 'SW002', 37, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT086', 'SW002', 38, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT087', 'SW002', 39, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT088', 'SW002', 40, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT089', 'SW002', 41, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT090', 'SW002', 42, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT091', 'SW002', 43, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT092', 'SW002', 44, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT093', 'SW002', 45, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT094', 'SW002', 46, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT095', 'SW002', 47, NULL, NULL, 'admin_down', NULL, NULL, 10),
-('PORT096', 'SW002', 48, NULL, NULL, 'admin_down', NULL, NULL, 10);
+-- CUST002: Outage area - port UP (problem is area outage)
+('PORT002', 'SW001', 2, 'CUST002', '00:1A:2B:3C:4D:02', 'up', 100, 'full', 10, 'Outage area'),
 
--- Ports for SW003 (Birutės/Gegužių streets - customers 41-60, 71-100)
-INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, status, speed_mbps, duplex, vlan_id) VALUES
-('PORT097', 'SW003', 1, 'CUST041', '00:2A:3B:4C:5D:41', 'up', 100, 'full', 10),
-('PORT098', 'SW003', 2, 'CUST042', '00:2A:3B:4C:5D:42', 'up', 100, 'full', 10),
-('PORT099', 'SW003', 3, 'CUST043', '00:2A:3B:4C:5D:43', 'up', 100, 'full', 10),
-('PORT100', 'SW003', 4, 'CUST044', '00:2A:3B:4C:5D:44', 'up', 100, 'full', 10),
-('PORT101', 'SW003', 5, 'CUST045', '00:2A:3B:4C:5D:45', 'up', 100, 'full', 10),
-('PORT102', 'SW003', 6, 'CUST046', '00:2A:3B:4C:5D:46', 'up', 100, 'full', 10),
-('PORT103', 'SW003', 7, 'CUST047', '00:2A:3B:4C:5D:47', 'up', 100, 'full', 10),
-('PORT104', 'SW003', 8, 'CUST048', '00:2A:3B:4C:5D:48', 'up', 100, 'full', 10),
-('PORT105', 'SW003', 9, 'CUST049', '00:2A:3B:4C:5D:49', 'up', 100, 'full', 10),
-('PORT106', 'SW003', 10, 'CUST050', '00:2A:3B:4C:5D:50', 'up', 100, 'full', 10),
-('PORT107', 'SW003', 11, 'CUST051', '00:2A:3B:4C:5D:51', 'up', 300, 'full', 10),
-('PORT108', 'SW003', 12, 'CUST052', '00:2A:3B:4C:5D:52', 'up', 300, 'full', 10),
-('PORT109', 'SW003', 13, 'CUST053', '00:2A:3B:4C:5D:53', 'up', 300, 'full', 10),
-('PORT110', 'SW003', 14, 'CUST054', '00:2A:3B:4C:5D:54', 'up', 300, 'full', 10),
-('PORT111', 'SW003', 15, 'CUST055', '00:2A:3B:4C:5D:55', 'up', 300, 'full', 10),
-('PORT112', 'SW003', 16, 'CUST056', '00:2A:3B:4C:5D:56', 'up', 300, 'full', 10),
-('PORT113', 'SW003', 17, 'CUST057', '00:2A:3B:4C:5D:57', 'up', 300, 'full', 10),
-('PORT114', 'SW003', 18, 'CUST058', '00:2A:3B:4C:5D:58', 'up', 300, 'full', 10),
-('PORT115', 'SW003', 19, 'CUST059', '00:2A:3B:4C:5D:59', 'up', 300, 'full', 10),
-('PORT116', 'SW003', 20, 'CUST060', '00:2A:3B:4C:5D:60', 'up', 300, 'full', 10),
-('PORT117', 'SW003', 21, 'CUST071', '00:3A:4B:5C:6D:71', 'up', 300, 'full', 10),
-('PORT118', 'SW003', 22, 'CUST072', '00:3A:4B:5C:6D:72', 'up', 300, 'full', 10),
-('PORT119', 'SW003', 23, 'CUST079', '00:3A:4B:5C:6D:79', 'up', 300, 'full', 10),
-('PORT120', 'SW003', 24, 'CUST080', '00:3A:4B:5C:6D:80', 'up', 300, 'full', 10),
-('PORT121', 'SW003', 25, 'CUST081', NULL, 'up', 300, 'full', 10),
-('PORT122', 'SW003', 26, 'CUST082', NULL, 'up', 300, 'full', 10),
-('PORT123', 'SW003', 27, 'CUST083', NULL, 'up', 300, 'full', 10),
-('PORT124', 'SW003', 28, 'CUST084', NULL, 'up', 300, 'full', 10),
-('PORT125', 'SW003', 29, 'CUST085', NULL, 'up', 300, 'full', 10),
-('PORT126', 'SW003', 30, 'CUST086', NULL, 'up', 300, 'full', 10),
-('PORT127', 'SW003', 31, 'CUST091', NULL, 'up', 300, 'full', 10),
-('PORT128', 'SW003', 32, 'CUST092', NULL, 'up', 300, 'full', 10),
-('PORT129', 'SW003', 33, 'CUST093', NULL, 'up', 300, 'full', 10),
-('PORT130', 'SW003', 34, 'CUST094', NULL, 'up', 300, 'full', 10),
-('PORT131', 'SW003', 35, 'CUST095', NULL, 'up', 300, 'full', 10),
-('PORT132', 'SW003', 36, 'CUST096', NULL, 'up', 300, 'full', 10),
-('PORT133', 'SW003', 37, 'CUST097', NULL, 'up', 300, 'full', 10),
-('PORT134', 'SW003', 38, 'CUST098', NULL, 'up', 300, 'full', 10),
-('PORT135', 'SW003', 39, 'CUST099', NULL, 'up', 300, 'full', 10),
-('PORT136', 'SW003', 40, 'CUST100', NULL, 'up', 300, 'full', 10),
-('PORT137', 'SW003', 41, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT138', 'SW003', 42, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT139', 'SW003', 43, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT140', 'SW003', 44, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT141', 'SW003', 45, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT142', 'SW003', 46, NULL, NULL, 'down', NULL, NULL, 10),
-('PORT143', 'SW003', 47, NULL, NULL, 'admin_down', NULL, NULL, 10),
-('PORT144', 'SW003', 48, NULL, NULL, 'admin_down', NULL, NULL, 10);
+-- CUST003: Slow peak - port UP
+('PORT003', 'SW001', 3, 'CUST003', '00:1A:2B:3C:4D:03', 'up', 100, 'full', 10, 'Peak hours slow'),
 
--- IP Assignments for all active customers
-INSERT INTO ip_assignments (assignment_id, customer_id, ip_address, mac_address, assignment_type, status) VALUES
-('IP001', 'CUST001', '192.168.1.101', '00:1A:2B:3C:4D:01', 'dhcp', 'active'),
-('IP002', 'CUST002', '192.168.1.102', '00:1A:2B:3C:4D:02', 'dhcp', 'active'),
-('IP003', 'CUST003', '192.168.1.103', '00:1A:2B:3C:4D:03', 'dhcp', 'active'),
-('IP004', 'CUST004', '192.168.1.104', '00:1A:2B:3C:4D:04', 'dhcp', 'active'),
-('IP005', 'CUST005', '192.168.1.105', '00:1A:2B:3C:4D:05', 'dhcp', 'active'),
-('IP006', 'CUST006', '192.168.1.106', '00:1A:2B:3C:4D:06', 'dhcp', 'active'),
-('IP007', 'CUST007', '192.168.1.107', '00:1A:2B:3C:4D:07', 'dhcp', 'active'),
-('IP008', 'CUST008', '192.168.1.108', '00:1A:2B:3C:4D:08', 'dhcp', 'active'),
-('IP009', 'CUST009', '192.168.1.109', '00:1A:2B:3C:4D:09', 'dhcp', 'active'),
-('IP010', 'CUST010', '192.168.1.110', '00:1A:2B:3C:4D:10', 'dhcp', 'active'),
-('IP011', 'CUST011', '192.168.1.111', '00:1A:2B:3C:4D:11', 'dhcp', 'active'),
-('IP012', 'CUST012', '192.168.1.112', '00:1A:2B:3C:4D:12', 'dhcp', 'active'),
-('IP013', 'CUST013', '192.168.1.113', '00:1A:2B:3C:4D:13', 'dhcp', 'active'),
-('IP014', 'CUST014', '192.168.1.114', '00:1A:2B:3C:4D:14', 'dhcp', 'active'),
-('IP015', 'CUST015', '192.168.1.115', '00:1A:2B:3C:4D:15', 'dhcp', 'active'),
-('IP016', 'CUST016', '192.168.1.116', '00:1A:2B:3C:4D:16', 'dhcp', 'active'),
-('IP017', 'CUST017', '192.168.1.117', '00:1A:2B:3C:4D:17', 'dhcp', 'active'),
-('IP018', 'CUST018', '192.168.1.118', '00:1A:2B:3C:4D:18', 'dhcp', 'active'),
-('IP019', 'CUST019', '192.168.1.119', '00:1A:2B:3C:4D:19', 'dhcp', 'active'),
-('IP020', 'CUST020', '192.168.1.120', '00:1A:2B:3C:4D:20', 'dhcp', 'active'),
-('IP021', 'CUST021', '192.168.1.121', '00:1A:2B:3C:4D:21', 'dhcp', 'active'),
-('IP022', 'CUST022', '192.168.1.122', '00:1A:2B:3C:4D:22', 'dhcp', 'active'),
-('IP023', 'CUST023', '192.168.1.123', '00:1A:2B:3C:4D:23', 'dhcp', 'active'),
-('IP024', 'CUST024', '192.168.1.124', '00:1A:2B:3C:4D:24', 'dhcp', 'active'),
-('IP025', 'CUST025', '192.168.1.125', '00:1A:2B:3C:4D:25', 'dhcp', 'active'),
-('IP026', 'CUST026', '192.168.1.126', '00:1A:2B:3C:4D:26', 'dhcp', 'active'),
-('IP027', 'CUST027', '192.168.1.127', '00:1A:2B:3C:4D:27', 'dhcp', 'active'),
-('IP028', 'CUST028', '192.168.1.128', '00:1A:2B:3C:4D:28', 'dhcp', 'active'),
-('IP029', 'CUST029', '192.168.1.129', '00:1A:2B:3C:4D:29', 'dhcp', 'active'),
-('IP030', 'CUST030', '192.168.1.130', '00:1A:2B:3C:4D:30', 'dhcp', 'active'),
-('IP031', 'CUST031', '192.168.1.131', '00:1A:2B:3C:4D:31', 'dhcp', 'active'),
-('IP032', 'CUST032', '192.168.1.132', '00:1A:2B:3C:4D:32', 'dhcp', 'active'),
-('IP033', 'CUST033', '192.168.1.133', '00:1A:2B:3C:4D:33', 'dhcp', 'active'),
-('IP034', 'CUST034', '192.168.1.134', '00:1A:2B:3C:4D:34', 'dhcp', 'active'),
-('IP035', 'CUST035', '192.168.1.135', '00:1A:2B:3C:4D:35', 'dhcp', 'active'),
-('IP036', 'CUST036', '192.168.1.136', '00:2A:3B:4C:5D:36', 'dhcp', 'active'),
-('IP037', 'CUST037', '192.168.1.137', '00:2A:3B:4C:5D:37', 'dhcp', 'active'),
-('IP038', 'CUST038', '192.168.1.138', '00:2A:3B:4C:5D:38', 'dhcp', 'active'),
-('IP039', 'CUST039', '192.168.1.139', '00:2A:3B:4C:5D:39', 'dhcp', 'active'),
-('IP040', 'CUST040', '192.168.1.140', '00:2A:3B:4C:5D:40', 'dhcp', 'active'),
-('IP041', 'CUST041', '192.168.1.141', '00:2A:3B:4C:5D:41', 'dhcp', 'active'),
-('IP042', 'CUST042', '192.168.1.142', '00:2A:3B:4C:5D:42', 'dhcp', 'active'),
-('IP043', 'CUST043', '192.168.1.143', '00:2A:3B:4C:5D:43', 'dhcp', 'active'),
-('IP044', 'CUST044', '192.168.1.144', '00:2A:3B:4C:5D:44', 'dhcp', 'active'),
-('IP045', 'CUST045', '192.168.1.145', '00:2A:3B:4C:5D:45', 'dhcp', 'active'),
-('IP046', 'CUST046', '192.168.1.146', '00:2A:3B:4C:5D:46', 'dhcp', 'active'),
-('IP047', 'CUST047', '192.168.1.147', '00:2A:3B:4C:5D:47', 'dhcp', 'active'),
-('IP048', 'CUST048', '192.168.1.148', '00:2A:3B:4C:5D:48', 'dhcp', 'active'),
-('IP049', 'CUST049', '192.168.1.149', '00:2A:3B:4C:5D:49', 'dhcp', 'active'),
-('IP050', 'CUST050', '192.168.1.150', '00:2A:3B:4C:5D:50', 'dhcp', 'active'),
-('IP051', 'CUST051', '192.168.2.101', '00:2A:3B:4C:5D:51', 'dhcp', 'active'),
-('IP052', 'CUST052', '192.168.2.102', '00:2A:3B:4C:5D:52', 'dhcp', 'active'),
-('IP053', 'CUST053', '192.168.2.103', '00:2A:3B:4C:5D:53', 'dhcp', 'active'),
-('IP054', 'CUST054', '192.168.2.104', '00:2A:3B:4C:5D:54', 'dhcp', 'active'),
-('IP055', 'CUST055', '192.168.2.105', '00:2A:3B:4C:5D:55', 'dhcp', 'active'),
-('IP056', 'CUST056', '192.168.2.106', '00:2A:3B:4C:5D:56', 'dhcp', 'active'),
-('IP057', 'CUST057', '192.168.2.107', '00:2A:3B:4C:5D:57', 'dhcp', 'active'),
-('IP058', 'CUST058', '192.168.2.108', '00:2A:3B:4C:5D:58', 'dhcp', 'active'),
-('IP059', 'CUST059', '192.168.2.109', '00:2A:3B:4C:5D:59', 'dhcp', 'active'),
-('IP060', 'CUST060', '192.168.2.110', '00:2A:3B:4C:5D:60', 'dhcp', 'active'),
-('IP061', 'CUST061', '192.168.2.111', '00:2A:3B:4C:5D:61', 'dhcp', 'active'),
-('IP062', 'CUST062', '192.168.2.112', NULL, 'dhcp', 'active'),
-('IP063', 'CUST063', '192.168.2.113', '00:2A:3B:4C:5D:63', 'dhcp', 'active'),
-('IP064', 'CUST064', '192.168.2.114', NULL, 'dhcp', 'active'),
-('IP065', 'CUST065', '192.168.2.115', '00:2A:3B:4C:5D:65', 'dhcp', 'active'),
-('IP066', 'CUST066', '192.168.2.116', '00:3A:4B:5C:6D:66', 'dhcp', 'active'),
-('IP067', 'CUST067', '192.168.2.117', '00:3A:4B:5C:6D:67', 'dhcp', 'active'),
-('IP068', 'CUST068', '192.168.2.118', '00:3A:4B:5C:6D:68', 'dhcp', 'active'),
-('IP069', 'CUST069', '192.168.2.119', '00:3A:4B:5C:6D:69', 'dhcp', 'active'),
-('IP070', 'CUST070', '192.168.2.120', '00:3A:4B:5C:6D:70', 'dhcp', 'active'),
-('IP071', 'CUST071', '192.168.2.121', '00:3A:4B:5C:6D:71', 'dhcp', 'active'),
-('IP072', 'CUST072', '192.168.2.122', '00:3A:4B:5C:6D:72', 'dhcp', 'active'),
-('IP073', 'CUST073', '192.168.2.123', '00:3A:4B:5C:6D:73', 'dhcp', 'active'),
-('IP074', 'CUST074', '192.168.2.124', '00:3A:4B:5C:6D:74', 'dhcp', 'active'),
-('IP075', 'CUST075', '192.168.2.125', '00:3A:4B:5C:6D:75', 'dhcp', 'active'),
-('IP076', 'CUST076', '192.168.2.126', '00:3A:4B:5C:6D:76', 'dhcp', 'active'),
-('IP077', 'CUST077', '192.168.2.127', '00:3A:4B:5C:6D:77', 'dhcp', 'active'),
-('IP078', 'CUST078', '192.168.2.128', '00:3A:4B:5C:6D:78', 'dhcp', 'active'),
-('IP079', 'CUST079', '192.168.2.129', '00:3A:4B:5C:6D:79', 'dhcp', 'active'),
-('IP080', 'CUST080', '192.168.2.130', '00:3A:4B:5C:6D:80', 'dhcp', 'active'),
-('IP081', 'CUST081', '192.168.2.131', NULL, 'dhcp', 'active'),
-('IP082', 'CUST082', '192.168.2.132', NULL, 'dhcp', 'active'),
-('IP083', 'CUST083', '192.168.2.133', NULL, 'dhcp', 'active'),
-('IP084', 'CUST084', '192.168.2.134', NULL, 'dhcp', 'active'),
-('IP085', 'CUST085', '192.168.2.135', NULL, 'dhcp', 'active'),
-('IP086', 'CUST086', '192.168.2.136', NULL, 'dhcp', 'active'),
-('IP087', 'CUST087', '192.168.2.137', NULL, 'dhcp', 'active'),
-('IP088', 'CUST088', '192.168.2.138', NULL, 'dhcp', 'active'),
-('IP089', 'CUST089', '192.168.2.139', NULL, 'dhcp', 'active'),
-('IP090', 'CUST090', '192.168.2.140', NULL, 'dhcp', 'active'),
-('IP091', 'CUST091', '192.168.2.141', NULL, 'dhcp', 'active'),
-('IP092', 'CUST092', '192.168.2.142', NULL, 'dhcp', 'active'),
-('IP093', 'CUST093', '192.168.2.143', NULL, 'dhcp', 'active'),
-('IP094', 'CUST094', '192.168.2.144', NULL, 'dhcp', 'active'),
-('IP095', 'CUST095', '192.168.2.145', NULL, 'dhcp', 'active'),
-('IP096', 'CUST096', '192.168.2.146', NULL, 'dhcp', 'active'),
-('IP097', 'CUST097', '192.168.2.147', NULL, 'dhcp', 'active'),
-('IP098', 'CUST098', '192.168.2.148', NULL, 'dhcp', 'active'),
-('IP099', 'CUST099', '192.168.2.149', NULL, 'dhcp', 'active'),
-('IP100', 'CUST100', '192.168.2.150', NULL, 'dhcp', 'active');
+-- CUST004: Port DOWN - needs technician!
+('PORT004', 'SW001', 4, 'CUST004', '00:1A:2B:3C:4D:04', 'down', NULL, NULL, 10, 'Port down - escalation'),
 
--- Mock area outage (resolved example)
-INSERT INTO area_outages (outage_id, city, street, outage_type, severity, status, reported_at, resolved_at, affected_customers, description) VALUES
-('OUT001', 'Šiauliai', 'Tilžės g.', 'internet', 'major', 'resolved', '2024-11-05 14:30:00', '2024-11-05 16:45:00', 10, 'Fiber cable damaged during construction work');
+-- CUST005: TV customer - port UP
+('PORT005', 'SW001', 5, 'CUST005', '00:1A:2B:3C:4D:05', 'up', 100, 'full', 10, 'TV customer'),
+
+-- CUST006: No IP - port UP but IP expired
+('PORT006', 'SW001', 6, 'CUST006', '00:1A:2B:3C:4D:06', 'up', 100, 'full', 10, 'No IP assigned'),
+
+-- CUST007: Suspended - port UP
+('PORT007', 'SW001', 7, 'CUST007', '00:1A:2B:3C:4D:07', 'up', 100, 'full', 10, 'Suspended account'),
+
+-- CUST008: Intermittent - port UP but has issues
+('PORT008', 'SW001', 8, 'CUST008', '00:1A:2B:3C:4D:08', 'up', 100, 'full', 10, 'Intermittent connection'),
+
+-- CUST009: All OK
+('PORT009', 'SW001', 9, 'CUST009', '00:1A:2B:3C:4D:09', 'up', 100, 'full', 10, 'All OK'),
+
+-- CUST010: All OK with TV
+('PORT010', 'SW001', 10, 'CUST010', '00:1A:2B:3C:4D:10', 'up', 100, 'full', 10, 'All OK with TV');
+
+-- IP Assignments - various statuses
+INSERT INTO ip_assignments (assignment_id, customer_id, ip_address, mac_address, assignment_type, status, notes) VALUES
+('IP001', 'CUST001', '192.168.1.101', '00:1A:2B:3C:4D:01', 'dhcp', 'active', 'Happy path'),
+('IP002', 'CUST002', '192.168.1.102', '00:1A:2B:3C:4D:02', 'dhcp', 'active', 'Outage area'),
+('IP003', 'CUST003', '192.168.1.103', '00:1A:2B:3C:4D:03', 'dhcp', 'active', 'Peak hours'),
+-- CUST004: NO IP - port is down
+('IP005', 'CUST005', '192.168.1.105', '00:1A:2B:3C:4D:05', 'dhcp', 'active', 'TV customer'),
+-- CUST006: IP EXPIRED!
+('IP006', 'CUST006', '192.168.1.106', '00:1A:2B:3C:4D:06', 'dhcp', 'expired', 'DHCP expired - no IP'),
+('IP007', 'CUST007', '192.168.1.107', '00:1A:2B:3C:4D:07', 'dhcp', 'active', 'Suspended'),
+('IP008', 'CUST008', '192.168.1.108', '00:1A:2B:3C:4D:08', 'dhcp', 'active', 'Intermittent'),
+('IP009', 'CUST009', '192.168.1.109', '00:1A:2B:3C:4D:09', 'dhcp', 'active', 'All OK'),
+('IP010', 'CUST010', '192.168.1.110', '00:1A:2B:3C:4D:10', 'dhcp', 'active', 'All OK TV');
+
+-- ACTIVE Area Outage - affects CUST002 (Dainų g.)
+INSERT INTO area_outages (outage_id, city, street, outage_type, severity, status, reported_at, estimated_resolution, affected_customers, description) VALUES
+('OUT001', 'Šiauliai', 'Dainų g.', 'internet', 'major', 'active', datetime('now', '-2 hours'), datetime('now', '+2 hours'), 15, 'Fiber cable damaged during construction. Technicians on site.');
+
+-- Bandwidth logs for CUST008 - intermittent with packet loss
+INSERT INTO bandwidth_logs (log_id, customer_id, timestamp, download_mbps, upload_mbps, latency_ms, packet_loss_percent, measurement_type, notes) VALUES
+('BW001', 'CUST008', datetime('now', '-1 hour'), 45.5, 8.2, 85, 12.5, 'diagnostic', 'High packet loss detected'),
+('BW002', 'CUST008', datetime('now', '-30 minutes'), 38.2, 7.1, 120, 18.3, 'diagnostic', 'Intermittent issue');
+
+-- Ping test for CUST008 - shows packet loss
+INSERT INTO ping_tests (test_id, customer_id, target_ip, timestamp, packets_sent, packets_received, packet_loss_percent, avg_latency_ms, test_result) VALUES
+('PING001', 'CUST008', '8.8.8.8', datetime('now', '-15 minutes'), 10, 7, 30.0, 95.5, 'partial');
