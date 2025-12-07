@@ -26,8 +26,7 @@ def setup_paths():
     # Find project root (assumes we're in chatbot_core/src/agent/)
     current = Path(__file__).resolve()
     
-    # Go up to find project root (parent of chatbot_core, crm_service, shared)
-    # chatbot_core/src/agent/tools.py -> chatbot_core/src/agent -> chatbot_core/src -> chatbot_core -> project_root
+
     chatbot_core = current.parent.parent.parent
     project_root = chatbot_core.parent
     
