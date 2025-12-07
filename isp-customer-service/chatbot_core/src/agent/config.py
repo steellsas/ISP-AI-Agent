@@ -1,34 +1,83 @@
 """
-Agent Configuration.
+Agent Configuration
 
-All configurable parameters for the ReAct agent.
-Uses language_service for translated messages.
+Single configuration source for the entire ISP Support Agent.
+Used by: ReactAgent, LLM services, Streamlit UI
+
+Usage:
+    from src.agent.config import get_config, create_config, update_config
+    
+    # Get default config
+    config = get_config()
+    
+    # Create config with custom settings
+    config = create_config(language="en", model="gpt-4o")
+    
+    # Update runtime settings
+    update_config(temperature=0.5)
 """
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
 class AgentConfig:
-    """Configuration for ReAct agent."""
+    """
+    Complete configuration for ISP Support Agent.
     
-    # LLM settings
-    temperature: float = 0.3
-    max_tokens: int = 1000
+    Includes: company info, language, agent behavior, LLM settings.
+    """
     
-    # Agent limits
-    max_turns: int = 20
-    max_tool_calls_per_response: int = 5
-    
-    # Company info
+    # =========================================================================
+    # Company & Identity
+    # =========================================================================
     company_name: str = "SUN CITY"
     
-    # Language ("lt" or "en")
-    language: str = "lt"
+    # =========================================================================
+    # Language Settings
+    # =========================================================================
+    language: str = "lt"  # "lt" or "en"
     formal: bool = False  # True = "Jūs", False = "tu" (only for LT)
     
-    # Debug
+    # =========================================================================
+    # Agent Behavior
+    # =========================================================================
+    max_turns: int = 20
+    max_tool_calls_per_response: int = 5
     debug_mode: bool = False
+    
+    # =========================================================================
+    # LLM Model Settings
+    # =========================================================================
+    model: str = "gpt-4o-mini"
+    temperature: float = 0.3
+    max_tokens: int = 500
+    top_p: float = 1.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    
+    # =========================================================================
+    # LLM Retry Settings
+    # =========================================================================
+    max_retries: int = 3
+    retry_delay: float = 1.0
+    
+    # =========================================================================
+    # LLM Cache Settings
+    # =========================================================================
+    enable_cache: bool = True
+    cache_ttl_seconds: int = 300
+    
+    # =========================================================================
+    # LLM Rate Limiting
+    # =========================================================================
+    max_calls_per_minute: int = 30
+    max_calls_per_session: int = 100
+    
+    # =========================================================================
+    # Post Init - Set language service
+    # =========================================================================
     
     def __post_init__(self):
         """Initialize language service with configured language."""
@@ -36,7 +85,7 @@ class AgentConfig:
         set_language(self.language)
     
     # =========================================================================
-    # Message properties - use language_service for translations
+    # Message Properties (from language service)
     # =========================================================================
     
     @property
@@ -82,40 +131,91 @@ class AgentConfig:
         return t("cli.interrupted")
 
 
-# Default configuration
-DEFAULT_CONFIG = AgentConfig()
+# =============================================================================
+# Global Config Instance
+# =============================================================================
+
+_default_config: Optional[AgentConfig] = None
 
 
 def get_config() -> AgentConfig:
-    """Get agent configuration."""
-    return DEFAULT_CONFIG
-
-
-def create_config(language: str = "lt", **kwargs) -> AgentConfig:
     """
-    Create new configuration with specified language.
+    Get current configuration.
+    
+    Creates default config on first call.
+    """
+    global _default_config
+    if _default_config is None:
+        _default_config = AgentConfig()
+    return _default_config
+
+
+def create_config(**kwargs) -> AgentConfig:
+    """
+    Create new configuration with custom settings.
     
     Args:
-        language: Language code ("lt" or "en")
-        **kwargs: Other config parameters
+        **kwargs: Any AgentConfig field
         
     Returns:
         New AgentConfig instance
+        
+    Example:
+        config = create_config(language="en", model="gpt-4o", temperature=0.5)
     """
-    return AgentConfig(language=language, **kwargs)
+    return AgentConfig(**kwargs)
 
 
 def update_config(**kwargs) -> AgentConfig:
-    """Update default configuration with new values."""
-    global DEFAULT_CONFIG
+    """
+    Update default configuration.
     
-    # If language is being updated, re-initialize
+    Args:
+        **kwargs: Fields to update
+        
+    Returns:
+        Updated config
+    """
+    global _default_config
+    config = get_config()
+    
+    # Update language service if language changed
     if "language" in kwargs:
         from src.services.language_service import set_language
         set_language(kwargs["language"])
     
+    # Update fields
     for key, value in kwargs.items():
-        if hasattr(DEFAULT_CONFIG, key):
-            object.__setattr__(DEFAULT_CONFIG, key, value)
+        if hasattr(config, key):
+            object.__setattr__(config, key, value)
     
-    return DEFAULT_CONFIG
+    return config
+
+
+def reset_config() -> AgentConfig:
+    """Reset to default configuration."""
+    global _default_config
+    _default_config = AgentConfig()
+    return _default_config
+
+
+# =============================================================================
+# Convenience Functions
+# =============================================================================
+
+def set_model(model_id: str) -> None:
+    """Change LLM model."""
+    update_config(model=model_id)
+
+
+def set_language(lang: str) -> None:
+    """Change language."""
+    update_config(language=lang)
+
+
+def set_temperature(temp: float) -> None:
+    """Change temperature."""
+    if 0 <= temp <= 2:
+        update_config(temperature=temp)
+    else:
+        raise ValueError("Temperature must be between 0 and 2")

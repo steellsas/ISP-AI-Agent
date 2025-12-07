@@ -47,13 +47,69 @@ def init_session():
     if "total_cost" not in st.session_state:
         st.session_state.total_cost = 0.0
     
-    # Settings
+    # LLM call tracking (updated via callbacks)
+    if "llm_call_count" not in st.session_state:
+        st.session_state.llm_call_count = 0
+    
+    if "average_latency" not in st.session_state:
+        st.session_state.average_latency = 0.0
+    
+    if "cached_count" not in st.session_state:
+        st.session_state.cached_count = 0
+    
+    # RAG retrievals tracking
+    if "rag_retrievals" not in st.session_state:
+        st.session_state.rag_retrievals = []
+    
+    # Chatbot state for monitoring
+    if "chatbot_state" not in st.session_state:
+        st.session_state.chatbot_state = {}
+    
+    # RAG ready flag
+    if "rag_ready" not in st.session_state:
+        st.session_state.rag_ready = False
+    
+    # Settings with defaults
     if "settings" not in st.session_state:
         st.session_state.settings = {
-            "language": "lt",
+            # Language - default English
+            "language": "en",
+            
+            # LLM Model settings
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "temperature": 0.3,
+            
+            # UI settings
             "debug_mode": False,
             "show_agent_thoughts": True,
         }
+
+
+def get_current_language() -> str:
+    """Get current language from settings."""
+    return st.session_state.settings.get("language", "en")
+
+
+def get_current_model() -> str:
+    """Get current model from settings."""
+    return st.session_state.settings.get("model", "gpt-4o-mini")
+
+
+def get_current_provider() -> str:
+    """Get current provider from settings."""
+    return st.session_state.settings.get("provider", "openai")
+
+
+def get_current_temperature() -> float:
+    """Get current temperature from settings."""
+    return st.session_state.settings.get("temperature", 0.3)
+
+
+def update_settings(**kwargs):
+    """Update settings."""
+    for key, value in kwargs.items():
+        st.session_state.settings[key] = value
 
 
 def start_new_call():
@@ -70,6 +126,11 @@ def start_new_call():
     st.session_state.tool_calls = []
     st.session_state.total_tokens = 0
     st.session_state.total_cost = 0.0
+    st.session_state.llm_call_count = 0
+    st.session_state.average_latency = 0.0
+    st.session_state.cached_count = 0
+    st.session_state.rag_retrievals = []
+    st.session_state.chatbot_state = {}
 
 
 def end_call():
@@ -90,6 +151,11 @@ def reset_session():
     st.session_state.tool_calls = []
     st.session_state.total_tokens = 0
     st.session_state.total_cost = 0.0
+    st.session_state.llm_call_count = 0
+    st.session_state.average_latency = 0.0
+    st.session_state.cached_count = 0
+    st.session_state.rag_retrievals = []
+    st.session_state.chatbot_state = {}
 
 
 def add_message(role: str, content: str, metadata: dict = None):
@@ -130,3 +196,13 @@ def get_state_summary() -> dict:
         "turn_count": state.turn_count,
         "is_complete": state.is_complete,
     }
+
+
+def log_rag_retrieval(query: str, results: list):
+    """Log RAG retrieval for monitoring."""
+    st.session_state.rag_retrievals.append({
+        "timestamp": datetime.now().isoformat(),
+        "query": query,
+        "results_count": len(results),
+        "results": results[:5],  # Keep top 5
+    })

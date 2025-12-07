@@ -1,83 +1,144 @@
-"""
-LLM Models Registry
+# """
+# LLM Models Registry
 
-Available models with pricing and capabilities.
-"""
+# Available models with pricing and capabilities.
+# """
 
-from dataclasses import dataclass
-
-
-@dataclass
-class ModelInfo:
-    """Information about an LLM model."""
-
-    id: str  # Model ID for API calls
-    name: str  # Display name
-    provider: str  # openai, google, anthropic
-    input_cost_per_1k: float  # Cost per 1K input tokens (USD)
-    output_cost_per_1k: float  # Cost per 1K output tokens (USD)
-    max_tokens: int  # Max context window
-    default_temperature: float = 0.3
-    supports_json_mode: bool = True
-    supports_vision: bool = False
-    description: str = ""
+# from dataclasses import dataclass
 
 
-# Available models registry
+# @dataclass
+# class ModelInfo:
+#     """Information about an LLM model."""
+
+#     id: str  # Model ID for API calls
+#     name: str  # Display name
+#     provider: str  # openai, google, anthropic
+#     input_cost_per_1k: float  # Cost per 1K input tokens (USD)
+#     output_cost_per_1k: float  # Cost per 1K output tokens (USD)
+#     max_tokens: int  # Max context window
+#     default_temperature: float = 0.3
+#     supports_json_mode: bool = True
+#     supports_vision: bool = False
+#     description: str = ""
+
+
+# # Available models registry
+# MODEL_REGISTRY: dict[str, ModelInfo] = {
+#     # =========================================================================
+#     # OpenAI Models
+#     # =========================================================================
+#     "gpt-4o": ModelInfo(
+#         id="gpt-4o",
+#         name="GPT-4o",
+#         provider="openai",
+#         input_cost_per_1k=0.005,
+#         output_cost_per_1k=0.015,
+#         max_tokens=128000,
+#         default_temperature=0.3,
+#         supports_json_mode=True,
+#         supports_vision=True,
+#         description="Most capable OpenAI model, multimodal",
+#     ),
+#     "gpt-4o-mini": ModelInfo(
+#         id="gpt-4o-mini",
+#         name="GPT-4o Mini",
+#         provider="openai",
+#         input_cost_per_1k=0.00015,
+#         output_cost_per_1k=0.0006,
+#         max_tokens=128000,
+#         default_temperature=0.3,
+#         supports_json_mode=True,
+#         supports_vision=True,
+#         description="Fast and affordable, good for most tasks",
+#     ),
+#     # =========================================================================
+#     # Google Gemini Models
+#     # =========================================================================
+#     "gemini/gemini-2.5-pro": ModelInfo(
+#         id="gemini/gemini-2.5-pro",
+#         name="Gemini 2.5 Pro",
+#         provider="google",
+#         input_cost_per_1k=0.00125,
+#         output_cost_per_1k=0.005,
+#         max_tokens=1000000,
+#         default_temperature=0.3,
+#         supports_json_mode=True,
+#         supports_vision=True,
+#         description="Google's most capable model, huge context",
+#     ),
+#     "gemini/gemini-2.0-flash": ModelInfo(
+#         id="gemini/gemini-2.0-flash",
+#         name="Gemini 2.0 Flash",
+#         provider="google",
+#         input_cost_per_1k=0.000075,
+#         output_cost_per_1k=0.0003,
+#         max_tokens=1000000,
+#         default_temperature=0.3,
+#         supports_json_mode=True,
+#         supports_vision=True,
+#         description="Fast and cheap, good for simple tasks",
+#     ),
+# }
+
 MODEL_REGISTRY: dict[str, ModelInfo] = {
     # =========================================================================
-    # OpenAI Models
+    # OpenAI Models (Atnaujintos)
     # =========================================================================
     "gpt-4o": ModelInfo(
         id="gpt-4o",
         name="GPT-4o",
         provider="openai",
-        input_cost_per_1k=0.005,
-        output_cost_per_1k=0.015,
+        input_cost_per_1k=0.005,  # $5.00 / 1M tokens
+        output_cost_per_1k=0.015, # $15.00 / 1M tokens
         max_tokens=128000,
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Most capable OpenAI model, multimodal",
+        description="Most capable OpenAI model, multimodal, good pricing.",
     ),
     "gpt-4o-mini": ModelInfo(
         id="gpt-4o-mini",
         name="GPT-4o Mini",
         provider="openai",
-        input_cost_per_1k=0.00015,
-        output_cost_per_1k=0.0006,
+        input_cost_per_1k=0.00015, # $0.15 / 1M tokens
+        output_cost_per_1k=0.0006, # $0.60 / 1M tokens
         max_tokens=128000,
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Fast and affordable, good for most tasks",
+        description="Fast and affordable OpenAI model, excellent for general tasks.",
     ),
     # =========================================================================
-    # Google Gemini Models
+    # Google Gemini Models (NAUJAUSIOS KAINOS)
+    # Konvertuota iš 1M žetonų kainos (USD):
+    # Gemini 2.5 Flash: Input $0.30/1M -> $0.0003/1K; Output $2.50/1M -> $0.0025/1K
+    # Gemini 2.5 Pro: Input $1.25/1M -> $0.00125/1K; Output $10.00/1M -> $0.01/1K
     # =========================================================================
-    "gemini/gemini-2.5-pro": ModelInfo(
-        id="gemini/gemini-2.5-pro",
+    "gemini-2.5-pro": ModelInfo(
+        id="gemini-2.5-pro", # Naudojant google-genai SDK, gali reikėti "gemini-2.5-pro"
         name="Gemini 2.5 Pro",
         provider="google",
         input_cost_per_1k=0.00125,
-        output_cost_per_1k=0.005,
+        output_cost_per_1k=0.01,
         max_tokens=1000000,
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Google's most capable model, huge context",
+        description="Google's most capable model, huge context, for complex reasoning.",
     ),
-    "gemini/gemini-2.0-flash": ModelInfo(
-        id="gemini/gemini-2.0-flash",
-        name="Gemini 2.0 Flash",
+    "gemini-2.5-flash": ModelInfo(
+        id="gemini-2.5-flash", # Naudojant google-genai SDK, gali reikėti "gemini-2.5-flash"
+        name="Gemini 2.5 Flash",
         provider="google",
-        input_cost_per_1k=0.000075,
-        output_cost_per_1k=0.0003,
+        # Rekomenduojama jūsų chatbot'ui dėl mažos kainos ir didelio greičio
+        input_cost_per_1k=0.0003, 
+        output_cost_per_1k=0.0025,
         max_tokens=1000000,
         default_temperature=0.3,
         supports_json_mode=True,
         supports_vision=True,
-        description="Fast and cheap, good for simple tasks",
+        description="Fastest and cheapest Gemini model, recommended for technical support agents.",
     ),
 }
 

@@ -297,12 +297,15 @@ class TestScenario08Intermittent:
     
     def test_packet_loss_detected(self, tools):
         """Should detect packet loss."""
+        print('tools testas------------')
         result = tools.check_network_status(customer_id=self.CUSTOMER_ID)
+        print('+++++++', result)
         
         assert result["success"] == True
         
         # Check packet loss data
         packet_loss = result.get("packet_loss", {})
+        print(packet_loss,'+-+-+')
         assert packet_loss.get("has_packet_loss") == True
         assert packet_loss.get("avg_packet_loss", 0) > 10  # Should be ~30%
     

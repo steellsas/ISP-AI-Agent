@@ -21,13 +21,14 @@ import re
 import json
 import logging
 from typing import Optional, Dict, Any
+from dataclasses import dataclass
 
 from .state import AgentState
 from .config import AgentConfig, get_config, create_config
 from .prompts import load_system_prompt
 
 # LLM client
-from src.services.llm.client import llm_completion
+from src.services.llm.client import llm_completion, get_last_call_stats
 
 # Tools
 try:
@@ -45,6 +46,54 @@ except ImportError as e:
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class LLMStats:
+    """Accumulated LLM statistics for a conversation."""
+    total_calls: int = 0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
+    total_cost: float = 0.0
+    total_latency_ms: float = 0.0
+    cached_calls: int = 0
+    model: str = ""
+    
+    @property
+    def total_tokens(self) -> int:
+        return self.total_input_tokens + self.total_output_tokens
+    
+    @property
+    def average_latency_ms(self) -> float:
+        non_cached = self.total_calls - self.cached_calls
+        if non_cached > 0:
+            return self.total_latency_ms / non_cached
+        return 0.0
+    
+    def add_call(self, input_tokens: int, output_tokens: int, cost: float, 
+                 latency_ms: float, cached: bool, model: str):
+        """Add stats from one LLM call."""
+        self.total_calls += 1
+        self.total_input_tokens += input_tokens
+        self.total_output_tokens += output_tokens
+        self.total_cost += cost
+        self.total_latency_ms += latency_ms
+        if cached:
+            self.cached_calls += 1
+        self.model = model
+    
+    def to_dict(self) -> dict:
+        """Convert to dictionary for UI."""
+        return {
+            "total_calls": self.total_calls,
+            "total_tokens": self.total_tokens,
+            "input_tokens": self.total_input_tokens,
+            "output_tokens": self.total_output_tokens,
+            "total_cost": self.total_cost,
+            "average_latency_ms": self.average_latency_ms,
+            "cached_calls": self.cached_calls,
+            "model": self.model,
+        }
 
 
 class ReactAgent:
@@ -82,6 +131,9 @@ class ReactAgent:
             max_turns=self.config.max_turns,
         )
         
+        # Initialize LLM stats tracking
+        self.llm_stats = LLMStats()
+        
         # Load and format system prompt with language
         self.system_prompt = load_system_prompt(
             tools_description=get_tools_description(),
@@ -94,6 +146,10 @@ class ReactAgent:
             logger.info("Using REAL tools")
         else:
             logger.warning("Using MOCK tools")
+    
+    def get_stats(self) -> dict:
+        """Get accumulated LLM statistics."""
+        return self.llm_stats.to_dict()
     
     def _build_messages(self, user_input: str = None) -> list:
         """Build message list for LLM call."""
@@ -198,9 +254,22 @@ class ReactAgent:
         try:
             response = llm_completion(
                 messages=messages,
+                model=self.config.model,
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
             )
+            
+            # Track LLM stats
+            stats = get_last_call_stats()
+            self.llm_stats.add_call(
+                input_tokens=stats.get("input_tokens", 0),
+                output_tokens=stats.get("output_tokens", 0),
+                cost=stats.get("cost", 0),
+                latency_ms=stats.get("latency_ms", 0),
+                cached=stats.get("cached", False),
+                model=stats.get("model", self.config.model),
+            )
+            
         except Exception as e:
             logger.error(f"LLM error: {e}")
             return {

@@ -7,9 +7,12 @@ import sys
 from pathlib import Path
 
 _streamlit_ui = Path(__file__).resolve().parent.parent  # components -> streamlit_ui
+_src_dir = _streamlit_ui.parent  # src
 
 if str(_streamlit_ui) not in sys.path:
     sys.path.insert(0, str(_streamlit_ui))
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
 
 import streamlit as st
 from datetime import datetime
@@ -21,6 +24,7 @@ from ui_utils.session import (
     get_state_summary,
     add_message as session_add_message,
     reset_session,
+    get_current_language,
 )
 from ui_utils.chatbot_bridge import (
     check_chatbot_available,
@@ -29,6 +33,7 @@ from ui_utils.chatbot_bridge import (
     get_new_assistant_messages,
     is_conversation_ended,
     get_agent_decision_info,
+    get_llm_stats,
 )
 
 
@@ -53,7 +58,7 @@ def render_call_tab():
 def render_phone_ui():
     """Render the phone call interface."""
     
-    st.markdown("### 📞 Telefono simuliacija")
+    st.markdown("### 📞 Phone Simulation")
     
     with st.container():
         # If no active call - show dial screen
@@ -72,12 +77,19 @@ def render_phone_ui():
 def render_dial_screen():
     """Render the initial dial screen."""
     
+    # Get current language for display
+    lang = st.session_state.settings.get("language", "en")
+    lang_display = "🇬🇧 English" if lang == "en" else "🇱🇹 Lietuvių"
+    
     st.markdown(
-        """
+        f"""
         <div style="text-align: center; padding: 40px 20px;">
             <div style="font-size: 48px; margin-bottom: 20px;">📞</div>
-            <div style="font-size: 18px; color: #666; margin-bottom: 30px;">
-                ISP Klientų Aptarnavimas
+            <div style="font-size: 18px; color: #666; margin-bottom: 10px;">
+                ISP Customer Service
+            </div>
+            <div style="font-size: 14px; color: #999; margin-bottom: 30px;">
+                Language: {lang_display}
             </div>
         </div>
         """,
@@ -86,7 +98,7 @@ def render_dial_screen():
     
     # Phone number input
     phone = st.text_input(
-        "Telefono numeris",
+        "Phone Number",
         value=st.session_state.phone_number,
         placeholder="+37060012345",
         key="phone_input",
@@ -97,14 +109,20 @@ def render_dial_screen():
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("📞 Skambinti", type="primary", use_container_width=True):
+        if st.button("📞 Start Call", type="primary", use_container_width=True):
             start_new_call()
             
-            with st.spinner("Jungiamasi..."):
-                result = start_conversation(st.session_state.phone_number)
+            # Get language from settings
+            language = get_current_language()
+            
+            with st.spinner("Connecting..."):
+                result = start_conversation(
+                    st.session_state.phone_number,
+                    language=language,
+                )
                 
                 if "error" in result:
-                    st.error(f"Klaida: {result['error']}")
+                    st.error(f"Error: {result['error']}")
                     end_call()
                 else:
                     # Add greeting messages to display
@@ -124,7 +142,7 @@ def render_active_call():
         st.markdown(
             f"""
             <div style="text-align: center; padding: 10px; background: #e8f5e9; border-radius: 10px; margin-bottom: 15px;">
-                <div style="color: #2e7d32; font-weight: bold;">🟢 Aktyvus skambutis</div>
+                <div style="color: #2e7d32; font-weight: bold;">🟢 Active Call</div>
                 <div style="font-size: 24px; font-weight: bold;">{get_call_duration()}</div>
                 <div style="color: #666;">{st.session_state.phone_number}</div>
             </div>
@@ -145,10 +163,10 @@ def render_active_call():
     col_input, col_end = st.columns([4, 1])
     
     with col_input:
-        user_input = st.chat_input("Rašykite žinutę...", key="chat_input")
+        user_input = st.chat_input("Type your message...", key="chat_input")
     
     with col_end:
-        if st.button("🔴 Baigti", help="Baigti skambutį", type="secondary"):
+        if st.button("🔴 End", help="End call", type="secondary"):
             end_call()
             st.rerun()
     
@@ -162,7 +180,7 @@ def render_active_call():
             result = send_message(user_input)
         
         if "error" in result:
-            st.error(f"Klaida: {result['error']}")
+            st.error(f"Error: {result['error']}")
         else:
             # Get assistant response
             for msg in result.get("messages", []):
@@ -181,40 +199,53 @@ def render_call_ended():
     """Render call ended screen."""
     
     state = get_state_summary()
+    llm_stats = get_llm_stats()
     
     st.markdown(
         f"""
         <div style="text-align: center; padding: 40px 20px;">
             <div style="font-size: 48px; margin-bottom: 20px;">📴</div>
             <div style="font-size: 18px; color: #666; margin-bottom: 10px;">
-                Skambutis baigtas
+                Call Ended
             </div>
             <div style="font-size: 14px; color: #999;">
-                Trukmė: {get_call_duration()}
+                Duration: {get_call_duration()}
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
     
-    # Summary
+    # Summary metrics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("🧠 LLM Calls", llm_stats.get("total_calls", 0))
+    
+    with col2:
+        st.metric("📝 Tokens", f"{llm_stats.get('total_tokens', 0):,}")
+    
+    with col3:
+        st.metric("💰 Cost", f"${llm_stats.get('total_cost', 0):.4f}")
+    
+    # Customer info
     if state.get("customer_name"):
-        st.info(f"👤 Klientas: {state['customer_name']}")
+        st.info(f"👤 Customer: {state['customer_name']}")
     
     if state.get("is_complete"):
-        st.success("✅ Pokalbis užbaigtas sėkmingai")
+        st.success("✅ Conversation completed successfully")
     
     # New call button
     st.markdown("<br>", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if st.button("📞 Naujas skambutis", type="primary", use_container_width=True):
+        if st.button("📞 New Call", type="primary", use_container_width=True):
             reset_session()
             st.rerun()
     
     # Show conversation log
-    with st.expander("💬 Pokalbio istorija"):
+    with st.expander("💬 Conversation History"):
         for msg in st.session_state.messages:
             role_icon = "🤖" if msg["role"] == "assistant" else "👤"
             st.markdown(f"**{role_icon}** {msg['content']}")
@@ -234,79 +265,82 @@ def render_message(msg: dict):
 def render_agent_panel():
     """Render the agent status/decision panel."""
     
-    st.markdown("### 🤖 Agento būsena")
+    st.markdown("### 🤖 Agent Status")
     
     if not st.session_state.get("agent"):
-        st.info("Pradėkite skambutį, kad matytumėte agento būseną")
+        st.info("Start a call to see agent status")
         return
     
     decision_info = get_agent_decision_info()
     state = get_state_summary()
+    llm_stats = get_llm_stats()
     
     # Turn counter
     turn_count = decision_info.get("turn_count", 0)
     max_turns = decision_info.get("max_turns", 20)
     
-    st.progress(turn_count / max_turns, text=f"Žingsnis: {turn_count}/{max_turns}")
+    st.progress(turn_count / max_turns, text=f"Turn: {turn_count}/{max_turns}")
     
-    # Customer info - ONLY show if we have customer and address seems confirmed
-    # We show info only when customer_address exists (means address was looked up)
+    # Quick stats
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Tokens", f"{llm_stats.get('total_tokens', 0):,}")
+    with col2:
+        st.metric("Cost", f"${llm_stats.get('total_cost', 0):.4f}")
+    
+    # Customer info
+    st.markdown("#### 👤 Customer")
+    
     customer_id = state.get("customer_id")
     customer_name = state.get("customer_name")
     customer_address = state.get("customer_address")
     
-    st.markdown("#### 👤 Klientas")
-    
     if customer_id and customer_address:
-        # Show customer info
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Vardas", customer_name or "Nežinomas")
+            st.metric("Name", customer_name or "Unknown")
         with col2:
             st.metric("ID", customer_id)
         
-        st.markdown(f"📍 **Adresas:** {customer_address}")
+        st.markdown(f"📍 **Address:** {customer_address}")
     else:
-        st.caption("Laukiama kliento identifikacijos...")
+        st.caption("Waiting for customer identification...")
     
     # Tool calls
-    st.markdown("#### 🔧 Įrankių iškvietimai")
+    st.markdown("#### 🔧 Tool Calls")
     
     tool_calls = st.session_state.get("tool_calls", [])
     
     if tool_calls:
+        tool_icons = {
+            "find_customer": "🔍",
+            "check_network_status": "📡",
+            "check_outages": "⚠️",
+            "run_ping_test": "📶",
+            "search_knowledge": "📚",
+            "create_ticket": "🎫",
+        }
+        
         for call in tool_calls[-5:]:  # Last 5 calls
             tool_name = call.get("tool", "unknown")
-            duration = call.get("duration_ms", 0)
-            tool_input = call.get("input", {})
-            
-            tool_icons = {
-                "find_customer": "🔍",
-                "check_network_status": "📡",
-                "check_outages": "⚠️",
-                "run_ping_test": "📶",
-                "search_knowledge": "📚",
-                "create_ticket": "🎫",
-            }
             icon = tool_icons.get(tool_name, "🔧")
             
-            # Show tool with input summary
+            # Input summary
+            tool_input = call.get("input", {})
             input_summary = ""
             if tool_input:
                 if "phone" in tool_input:
                     input_summary = f" ({tool_input['phone']})"
                 elif "query" in tool_input:
-                    input_summary = f" ({tool_input['query'][:30]}...)"
-                elif "customer_id" in tool_input:
-                    input_summary = f" ({tool_input['customer_id']})"
+                    input_summary = f" ({tool_input['query'][:25]}...)"
             
             st.markdown(f"{icon} `{tool_name}`{input_summary}")
     else:
-        st.caption("Dar nebuvo įrankių iškvietimų")
+        st.caption("No tool calls yet")
     
     # Recent thoughts (debug mode)
     if st.session_state.settings.get("show_agent_thoughts"):
-        with st.expander("💭 Agento mintys"):
+        with st.expander("💭 Agent Thoughts"):
             llm_calls = st.session_state.get("llm_calls", [])
             
             if llm_calls:
@@ -315,16 +349,9 @@ def render_agent_panel():
                     action = call.get("action", "")
                     
                     if thought:
-                        st.markdown(f"**Thought:** {thought[:150]}...")
+                        st.markdown(f"**Thought:** {thought[:120]}...")
                     if action:
                         st.markdown(f"**Action:** `{action}`")
                     st.markdown("---")
             else:
-                st.caption("Dar nėra minčių")
-    
-    # Recent observations
-    observations = decision_info.get("recent_observations", [])
-    if observations:
-        with st.expander("📋 Paskutiniai stebėjimai"):
-            for obs in observations:
-                st.code(obs[:500] if len(obs) > 500 else obs)
+                st.caption("No thoughts yet")

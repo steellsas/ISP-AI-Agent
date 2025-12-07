@@ -20,12 +20,58 @@ if str(_src_dir) not in sys.path:
 
 # Try to import ReactAgent
 try:
-    from agent.poc_react import ReactAgent
+    from agent.react_agent import ReactAgent
     AGENT_AVAILABLE = True
     IMPORT_ERROR = None
 except ImportError as e:
     AGENT_AVAILABLE = False
     IMPORT_ERROR = str(e)
+
+# Try to import LLM stats
+try:
+    from services.llm.stats import get_session_stats, reset_session_stats
+    from services.llm.client import register_stats_callback, unregister_stats_callback
+    LLM_STATS_AVAILABLE = True
+except ImportError:
+    LLM_STATS_AVAILABLE = False
+
+
+def _llm_stats_callback(data: dict):
+    """Callback to update session_state with LLM call data."""
+    if "total_tokens" not in st.session_state:
+        st.session_state.total_tokens = 0
+    if "total_cost" not in st.session_state:
+        st.session_state.total_cost = 0.0
+    if "llm_call_count" not in st.session_state:
+        st.session_state.llm_call_count = 0
+    if "average_latency" not in st.session_state:
+        st.session_state.average_latency = 0.0
+    if "cached_count" not in st.session_state:
+        st.session_state.cached_count = 0
+    
+    # Update stats from callback data
+    if data.get("success", True):
+        input_tokens = data.get("input_tokens", 0)
+        output_tokens = data.get("output_tokens", 0)
+        cost = data.get("cost", 0)
+        latency = data.get("latency_ms", 0)
+        cached = data.get("cached", False)
+        
+        st.session_state.total_tokens += (input_tokens + output_tokens)
+        st.session_state.total_cost += cost
+        st.session_state.llm_call_count += 1
+        st.session_state.average_latency += latency
+        if cached:
+            st.session_state.cached_count += 1
+
+
+def _register_llm_callback():
+    """Register the LLM stats callback."""
+    if LLM_STATS_AVAILABLE:
+        try:
+            register_stats_callback(_llm_stats_callback)
+        except Exception as e:
+            print(f"Failed to register LLM callback: {e}")
 
 
 def check_chatbot_available() -> Tuple[bool, str]:
@@ -35,12 +81,13 @@ def check_chatbot_available() -> Tuple[bool, str]:
     return False, f"Import error: {IMPORT_ERROR}"
 
 
-def start_conversation(phone_number: str) -> dict:
+def start_conversation(phone_number: str, language: str = "en") -> dict:
     """
     Start a new conversation with the agent.
     
     Args:
         phone_number: Customer's phone number
+        language: Language code ("lt" or "en")
     
     Returns:
         Result dict with initial greeting
@@ -53,10 +100,36 @@ def start_conversation(phone_number: str) -> dict:
     st.session_state.tool_calls = []
     st.session_state.total_tokens = 0
     st.session_state.total_cost = 0.0
+    st.session_state.llm_call_count = 0
+    st.session_state.average_latency = 0.0
+    st.session_state.cached_count = 0
+    st.session_state.rag_retrievals = []
+    
+    # Reset LLM session stats
+    if LLM_STATS_AVAILABLE:
+        reset_session_stats()
+        _register_llm_callback()
     
     try:
-        # Create new agent instance
-        agent = ReactAgent(caller_phone=phone_number)
+        # Get model settings from session_state
+        settings = st.session_state.get("settings", {})
+        model = settings.get("model", "gpt-4o-mini")
+        temperature = settings.get("temperature", 0.3)
+        
+        # Create config with all settings
+        from agent.config import create_config
+        config = create_config(
+            language=language,
+            model=model,
+            temperature=temperature,
+        )
+        
+        # Create new agent instance with config
+        agent = ReactAgent(
+            caller_phone=phone_number,
+            language=language,
+            config=config,
+        )
         
         # Store agent in session
         st.session_state.agent = agent
@@ -82,6 +155,9 @@ def start_conversation(phone_number: str) -> dict:
         
         # Log the call
         _log_agent_turn(agent, duration_ms)
+        
+        # Update token stats from LLM service
+        _update_token_stats()
         
         return {
             "success": True,
@@ -137,6 +213,9 @@ def send_message(user_input: str) -> dict:
         # Log the call
         _log_agent_turn(agent, duration_ms)
         
+        # Update token stats from LLM service
+        _update_token_stats()
+        
         return {
             "success": True,
             "messages": messages,
@@ -154,17 +233,41 @@ def _extract_state_info(agent: "ReactAgent") -> dict:
     """Extract state information from agent for display."""
     state = agent.state
     
-    # Check if address was confirmed (simple heuristic - customer said something other than "ne")
-    # This is a simplification - in real app would track this in state
-    address_confirmed = state.customer_address is not None and state.customer_id is not None
-    
     return {
         "customer_id": state.customer_id,
         "customer_name": state.customer_name,
         "customer_address": state.customer_address,
         "is_complete": state.is_complete,
         "turn_count": state.turn_count,
-        "address_confirmed": address_confirmed,
+    }
+
+
+def _update_token_stats():
+    """Update session token stats from agent."""
+    agent = st.session_state.get("agent")
+    if not agent:
+        return
+    
+    try:
+        # Get stats from agent
+        stats = agent.get_stats()
+        st.session_state.llm_call_count = stats.get("total_calls", 0)
+        st.session_state.total_tokens = stats.get("total_tokens", 0)
+        st.session_state.total_cost = stats.get("total_cost", 0.0)
+        st.session_state.average_latency = stats.get("average_latency_ms", 0.0)
+        st.session_state.cached_count = stats.get("cached_calls", 0)
+    except Exception as e:
+        print(f"Error updating token stats: {e}")
+
+
+def get_llm_stats() -> dict:
+    """Get current LLM statistics from session_state."""
+    return {
+        "total_calls": st.session_state.get("llm_call_count", 0),
+        "total_tokens": st.session_state.get("total_tokens", 0),
+        "total_cost": st.session_state.get("total_cost", 0.0),
+        "average_latency_ms": st.session_state.get("average_latency", 0.0),
+        "cached_calls": st.session_state.get("cached_count", 0),
     }
 
 
@@ -239,11 +342,19 @@ def _log_agent_turn(agent: "ReactAgent", duration_ms: int):
                 last_action = action_match.group(1).strip()
             break
     
+    # Get model from agent config
+    model = "unknown"
+    try:
+        model = agent.config.model
+    except:
+        pass
+    
     st.session_state.llm_calls.append({
         "timestamp": datetime.now().isoformat(),
         "thought": last_thought[:200] if last_thought else "",
         "action": last_action,
         "duration_ms": duration_ms,
+        "model": model,
     })
 
 

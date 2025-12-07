@@ -295,10 +295,11 @@ class TestPromptLoader:
         
         prompt = load_system_prompt(
             tools_description="- test_tool: Test description",
-            caller_phone="+37060012345"
+            caller_phone="+37060012345",
+            language="lt"  # Specify Lithuanian
         )
         
         assert isinstance(prompt, str)
         assert "+37060012345" in prompt
         assert "test_tool" in prompt
-        assert "Labas" in prompt  # Greeting instruction
+        assert "Lithuanian" in prompt 

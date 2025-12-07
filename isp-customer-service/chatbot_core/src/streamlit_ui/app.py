@@ -88,6 +88,11 @@ st.markdown("""
         border-radius: 10px;
     }
     
+    /* Metrics styling */
+    [data-testid="stMetricValue"] {
+        font-size: 1.5rem;
+    }
+    
     /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -109,17 +114,14 @@ def main():
     rag_ready = init_rag_system()
     st.session_state.rag_ready = rag_ready
     
-    # Header
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.title("📞 ISP Klientų Aptarnavimas")
-        st.caption("ReAct Agent Demo")
+    # Header with current settings info
+    render_header()
     
     # Main tabs
     tab_call, tab_monitor, tab_settings = st.tabs([
-        "📞 Skambutis",
-        "📊 Monitoringas", 
-        "⚙️ Nustatymai"
+        "📞 Call",
+        "📊 Monitoring", 
+        "⚙️ Settings"
     ])
     
     with tab_call:
@@ -132,6 +134,32 @@ def main():
         render_settings_tab()
 
 
+def render_header():
+    """Render header with title and current settings."""
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.title("📞 ISP Customer Service")
+        st.caption("ReAct Agent Demo")
+    
+    # Show current settings in small text
+    with col3:
+        lang = st.session_state.settings.get("language", "en").upper()
+        model = st.session_state.settings.get("model", "gpt-4o-mini")
+        # Shorten model name for display
+        model_short = model.split("/")[-1] if "/" in model else model
+        
+        st.markdown(
+            f"""
+            <div style="text-align: right; font-size: 12px; color: #666;">
+                🌍 {lang} | 🤖 {model_short}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
 def render_call_tab():
     """Render main call interface."""
     try:
@@ -139,77 +167,72 @@ def render_call_tab():
         _render_call()
     except ImportError as e:
         st.error(f"Failed to load call interface: {e}")
+        
+        # Fallback simple interface
+        st.markdown("### Phone Interface")
+        st.text_input("Phone number", value=st.session_state.phone_number)
+        if st.button("📞 Start Call"):
+            st.info("Call interface not available")
 
 
 def render_monitor_tab():
     """Render monitoring dashboard."""
-    st.markdown("### 📊 Sesijos statistika")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        llm_count = len(st.session_state.get("llm_calls", []))
-        st.metric("LLM iškvietimai", llm_count)
-    
-    with col2:
-        tool_count = len(st.session_state.get("tool_calls", []))
-        st.metric("Įrankių iškvietimai", tool_count)
-    
-    with col3:
-        msg_count = len(st.session_state.get("messages", []))
-        st.metric("Žinutės", msg_count)
-    
-    # Tool calls log
-    st.markdown("#### 🔧 Įrankių istorija")
-    
-    tool_calls = st.session_state.get("tool_calls", [])
-    if tool_calls:
-        for call in reversed(tool_calls):
-            with st.expander(f"`{call['tool']}` - {call['timestamp'][:19]}"):
-                st.json(call.get("input", {}))
-    else:
-        st.info("Dar nebuvo įrankių iškvietimų")
-    
-    # LLM calls log
-    st.markdown("#### 🧠 LLM istorija")
-    
-    llm_calls = st.session_state.get("llm_calls", [])
-    if llm_calls:
-        for call in reversed(llm_calls[-10:]):
-            thought = call.get("thought", "")[:100]
-            action = call.get("action", "-")
-            st.markdown(f"**{action}**: {thought}...")
-    else:
-        st.info("Dar nebuvo LLM iškvietimų")
+    try:
+        from components.monitoring import render_monitor_tab as _render_monitor
+        _render_monitor()
+    except ImportError as e:
+        st.error(f"Failed to load monitoring: {e}")
+        
+        # Fallback simple metrics
+        st.markdown("### Session Statistics")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            llm_count = len(st.session_state.get("llm_calls", []))
+            st.metric("LLM Calls", llm_count)
+        
+        with col2:
+            tool_count = len(st.session_state.get("tool_calls", []))
+            st.metric("Tool Calls", tool_count)
+        
+        with col3:
+            tokens = st.session_state.get("total_tokens", 0)
+            st.metric("Tokens", f"{tokens:,}")
 
 
 def render_settings_tab():
     """Render settings panel."""
-    st.markdown("### ⚙️ Nustatymai")
-    
-    # Debug mode
-    debug = st.checkbox(
-        "Rodyti agento mintis",
-        value=st.session_state.settings.get("show_agent_thoughts", True),
-        help="Rodyti agento 'Thought' žingsnius"
-    )
-    st.session_state.settings["show_agent_thoughts"] = debug
-    
-    # RAG status
-    st.markdown("---")
-    st.markdown("#### 📚 RAG Sistema")
-    
-    if st.session_state.get("rag_ready"):
-        st.success("✅ Knowledge base užkrauta")
-    else:
-        st.warning("⚠️ Knowledge base nepasiekiama")
-    
-    # Reset button
-    st.markdown("---")
-    if st.button("🔄 Reset sesija", type="secondary"):
-        from ui_utils.session import reset_session
-        reset_session()
-        st.rerun()
+    try:
+        from components.settings import render_settings_tab as _render_settings
+        _render_settings()
+    except ImportError as e:
+        st.error(f"Failed to load settings: {e}")
+        
+        # Fallback simple settings
+        st.markdown("### Settings")
+        
+        # Language
+        lang = st.selectbox(
+            "Language",
+            ["en", "lt"],
+            index=0 if st.session_state.settings.get("language") == "en" else 1,
+        )
+        st.session_state.settings["language"] = lang
+        
+        # Debug mode
+        debug = st.checkbox(
+            "Show agent thoughts",
+            value=st.session_state.settings.get("show_agent_thoughts", True),
+        )
+        st.session_state.settings["show_agent_thoughts"] = debug
+        
+        # Reset button
+        st.markdown("---")
+        if st.button("🔄 Reset Session"):
+            from ui_utils.session import reset_session
+            reset_session()
+            st.rerun()
 
 
 if __name__ == "__main__":
