@@ -467,10 +467,13 @@ Settings can be adjusted in the UI or via configuration:
 | Document | Description |
 |----------|-------------|
 
-| [REACT_AGENT.md](docs/REACT_AGENT.md) | Agent pattern and decision logic |
-| [TOOLS.md](docs/TOOLS.md) | Tool specifications and usage |
-| [RAG_SYSTEM.md](docs/RAG_SYSTEM.md) | Knowledge retrieval system |
-| [INSTALLATION.md](docs/INSTALLATION.md) | Detailed setup guide |
+| [REACT_AGENT.md](isp-customer-service/docs/REACT_AGENT.md) | Agent pattern and decision logic |
+
+| [TOOLS.md](isp-customer-service/docs/TOOLS.md) | Tool specifications and usage |
+
+| [RAG_SYSTEM.md](isp-customer-service/docs/RAG_SYSTEM.md) | Knowledge retrieval system |
+
+| [INSTALLATION.md](isp-customer-service/docs/INSTALLATION.md) | Detailed setup guide |
 
 ---
 
