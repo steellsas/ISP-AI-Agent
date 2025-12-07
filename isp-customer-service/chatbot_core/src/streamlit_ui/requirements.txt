@@ -1,5 +1,2 @@
-# Streamlit UI Requirements
-
-# Core
-streamlit>=1.28.0
-
+# Streamlit UI requirements
+streamlit>=1.30.0

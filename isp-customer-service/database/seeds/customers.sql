@@ -1,107 +1,34 @@
 -- ============================================
--- Mock Customer Data - 100 Customers
--- Lithuanian names and Šiauliai addresses
+-- Demo Customers - 10 customers for testing scenarios
 -- ============================================
 
--- Insert 100 customers with Lithuanian names
-INSERT INTO customers (customer_id, first_name, last_name, phone, email, status) VALUES
-('CUST001', 'Jonas', 'Jonaitis', '+37060012345', 'jonas.jonaitis@gmail.com', 'active'),
-('CUST002', 'Ona', 'Petraitė', '+37061023456', 'ona.petraite@gmail.com', 'active'),
-('CUST003', 'Petras', 'Kazlauskas', '+37062034567', 'petras.kazlauskas@gmail.com', 'active'),
-('CUST004', 'Janina', 'Stankevičienė', '+37063045678', 'janina.stankeviciene@gmail.com', 'active'),
-('CUST005', 'Antanas', 'Vasiliauskas', '+37064056789', 'antanas.vasiliauskas@gmail.com', 'active'),
-('CUST006', 'Marija', 'Paulauskaitė', '+37065067890', 'marija.paulauskaite@gmail.com', 'active'),
-('CUST007', 'Vytautas', 'Žukauskas', '+37066078901', 'vytautas.zukauskas@gmail.com', 'active'),
-('CUST008', 'Gražina', 'Balčiūnienė', '+37067089012', 'grazina.balciuniene@gmail.com', 'active'),
-('CUST009', 'Darius', 'Urbanavičius', '+37068090123', 'darius.uranavicius@gmail.com', 'active'),
-('CUST010', 'Aldona', 'Mickevičiūtė', '+37069001234', 'aldona.mickeviciute@gmail.com', 'active'),
-('CUST011', 'Mindaugas', 'Norkus', '+37060112345', 'mindaugas.norkus@gmail.com', 'active'),
-('CUST012', 'Vida', 'Adamkienė', '+37061123456', 'vida.adamkiene@gmail.com', 'active'),
-('CUST013', 'Saulius', 'Rimkus', '+37062134567', 'saulius.rimkus@gmail.com', 'active'),
-('CUST014', 'Rūta', 'Šukytė', '+37063145678', 'ruta.sukyte@gmail.com', 'active'),
-('CUST015', 'Tomas', 'Jankauskas', '+37064156789', 'tomas.jankauskas@gmail.com', 'active'),
-('CUST016', 'Laima', 'Rakauskienė', '+37065167890', 'laima.rakauskiene@gmail.com', 'active'),
-('CUST017', 'Gediminas', 'Butkus', '+37066178901', 'gediminas.butkus@gmail.com', 'active'),
-('CUST018', 'Nijolė', 'Pavilonienė', '+37067189012', 'nijole.paviloniene@gmail.com', 'active'),
-('CUST019', 'Rimantas', 'Galdikas', '+37068190123', 'rimantas.galdikas@gmail.com', 'active'),
-('CUST020', 'Daiva', 'Sabonytė', '+37069101234', 'daiva.sabonyte@gmail.com', 'active'),
-('CUST021', 'Arvydas', 'Lukšas', '+37060212345', 'arvydas.luksas@gmail.com', 'active'),
-('CUST022', 'Irena', 'Vaitkuvienė', '+37061223456', 'irena.vaitkuviene@gmail.com', 'active'),
-('CUST023', 'Kęstutis', 'Matulis', '+37062234567', 'kestutis.matulis@gmail.com', 'active'),
-('CUST024', 'Aurelija', 'Barauskaitė', '+37063245678', 'aurelija.barauskaite@gmail.com', 'active'),
-('CUST025', 'Algirdas', 'Bielskis', '+37064256789', 'algirdas.bielskis@gmail.com', 'active'),
-('CUST026', 'Jūratė', 'Kazlauskienė', '+37065267890', 'jurate.kazlauskiene@gmail.com', 'active'),
-('CUST027', 'Virginijus', 'Savickas', '+37066278901', 'virginijus.savickas@gmail.com', 'active'),
-('CUST028', 'Birutė', 'Grigonytė', '+37067289012', 'birute.grigonyte@gmail.com', 'active'),
-('CUST029', 'Rolandas', 'Petkevičius', '+37068290123', 'rolandas.petkevicius@gmail.com', 'active'),
-('CUST030', 'Rimantė', 'Urbonaitė', '+37069201234', 'rimante.urbonaite@gmail.com', 'active'),
-('CUST031', 'Vytas', 'Šiaulys', '+37060312345', 'vytas.siaulys@gmail.com', 'active'),
-('CUST032', 'Jolanta', 'Marcinkevičienė', '+37061323456', 'jolanta.marcinkeviciene@gmail.com', 'active'),
-('CUST033', 'Algis', 'Daukšas', '+37062334567', 'algis.dauksas@gmail.com', 'active'),
-('CUST034', 'Danguolė', 'Varnelytė', '+37063345678', 'danguole.varnelyte@gmail.com', 'active'),
-('CUST035', 'Edmundas', 'Laurinavičius', '+37064356789', 'edmundas.laurinavicius@gmail.com', 'active'),
-('CUST036', 'Kristina', 'Mockutė', '+37065367890', 'kristina.mockute@gmail.com', 'active'),
-('CUST037', 'Vidmantas', 'Ramanauskas', '+37066378901', 'vidmantas.ramanauskas@gmail.com', 'active'),
-('CUST038', 'Jadvyga', 'Vilimienė', '+37067389012', 'jadvyga.vilimiene@gmail.com', 'active'),
-('CUST039', 'Arūnas', 'Mockus', '+37068390123', 'arunas.mockus@gmail.com', 'active'),
-('CUST040', 'Vitalija', 'Juškaitė', '+37069301234', 'vitalija.juskaite@gmail.com', 'active'),
-('CUST041', 'Albertas', 'Navickas', '+37060412345', 'albertas.navickas@gmail.com', 'active'),
-('CUST042', 'Vaida', 'Misiūnaitė', '+37061423456', 'vaida.misiunaite@gmail.com', 'active'),
-('CUST043', 'Stasys', 'Žemaitis', '+37062434567', 'stasys.zemaitis@gmail.com', 'active'),
-('CUST044', 'Loreta', 'Bagdonienė', '+37063445678', 'loreta.bagdoniene@gmail.com', 'active'),
-('CUST045', 'Linas', 'Venckus', '+37064456789', 'linas.venckus@gmail.com', 'active'),
-('CUST046', 'Inga', 'Dambrauskaitė', '+37065467890', 'inga.dambrauskaite@gmail.com', 'active'),
-('CUST047', 'Evaldas', 'Žilinskas', '+37066478901', 'evaldas.zilinskas@gmail.com', 'active'),
-('CUST048', 'Ramunė', 'Liutkutė', '+37067489012', 'ramune.liutkute@gmail.com', 'active'),
-('CUST049', 'Gintaras', 'Pečiulis', '+37068490123', 'gintaras.peciulis@gmail.com', 'active'),
-('CUST050', 'Audronė', 'Danilevičiūtė', '+37069401234', 'audrone.danileviciute@gmail.com', 'active'),
-('CUST051', 'Juozas', 'Baltrūnas', '+37060512345', 'juozas.baltrunas@gmail.com', 'active'),
-('CUST052', 'Eglė', 'Klimavičienė', '+37061523456', 'egle.klimaviciene@gmail.com', 'active'),
-('CUST053', 'Donatas', 'Šileika', '+37062534567', 'donatas.sileika@gmail.com', 'active'),
-('CUST054', 'Vilma', 'Radavičiūtė', '+37063545678', 'vilma.radaviciute@gmail.com', 'active'),
-('CUST055', 'Remigijus', 'Černiauskas', '+37064556789', 'remigijus.cerniauskas@gmail.com', 'active'),
-('CUST056', 'Sigita', 'Žukauskienė', '+37065567890', 'sigita.zukauskiene@gmail.com', 'active'),
-('CUST057', 'Vidas', 'Kučinskas', '+37066578901', 'vidas.kucinskas@gmail.com', 'active'),
-('CUST058', 'Rita', 'Navickaitė', '+37067589012', 'rita.navickaite@gmail.com', 'active'),
-('CUST059', 'Valdas', 'Puodzius', '+37068590123', 'valdas.puodzius@gmail.com', 'active'),
-('CUST060', 'Aušra', 'Lukoševičiūtė', '+37069501234', 'ausra.lukoseviciute@gmail.com', 'active'),
-('CUST061', 'Žydrūnas', 'Petrauskas', '+37060612345', 'zydrunas.petrauskas@gmail.com', 'active'),
-('CUST062', 'Palmira', 'Gudaitienė', '+37061623456', 'palmira.gudaitiene@gmail.com', 'active'),
-('CUST063', 'Adomas', 'Jonaitis', '+37062634567', 'adomas.jonaitis@gmail.com', 'active'),
-('CUST064', 'Laura', 'Stankutė', '+37063645678', 'laura.stankute@gmail.com', 'active'),
-('CUST065', 'Tadas', 'Rutkauskas', '+37064656789', 'tadas.rutkauskas@gmail.com', 'active'),
-('CUST066', 'Živilė', 'Baranauskaitė', '+37065667890', 'zivile.baranauskaite@gmail.com', 'active'),
-('CUST067', 'Povilas', 'Valutis', '+37066678901', 'povilas.valutis@gmail.com', 'active'),
-('CUST068', 'Neringa', 'Grigaliūnienė', '+37067689012', 'neringa.grigaliuniene@gmail.com', 'active'),
-('CUST069', 'Lukas', 'Budrevičius', '+37068690123', 'lukas.budrevicius@gmail.com', 'active'),
-('CUST070', 'Sandra', 'Mickevičiūtė', '+37069601234', 'sandra.mickeviciute@gmail.com', 'active'),
-('CUST071', 'Mantas', 'Šimkus', '+37060712345', 'mantas.simkus@gmail.com', 'active'),
-('CUST072', 'Lina', 'Juodvalkienė', '+37061723456', 'lina.juodvalkiene@gmail.com', 'active'),
-('CUST073', 'Giedrius', 'Mikalauskas', '+37062734567', 'giedrius.mikalauskas@gmail.com', 'active'),
-('CUST074', 'Reda', 'Pakalnytė', '+37063745678', 'reda.pakalnyte@gmail.com', 'active'),
-('CUST075', 'Audrius', 'Višinskis', '+37064756789', 'audrius.visinskis@gmail.com', 'active'),
-('CUST076', 'Ingrida', 'Matulevičienė', '+37065767890', 'ingrida.matuleviciene@gmail.com', 'active'),
-('CUST077', 'Paulius', 'Serapinas', '+37066778901', 'paulius.serapinas@gmail.com', 'active'),
-('CUST078', 'Violeta', 'Juškienė', '+37067789012', 'violeta.juskiene@gmail.com', 'active'),
-('CUST079', 'Artūras', 'Rimkevičius', '+37068790123', 'arturas.rimkevicius@gmail.com', 'active'),
-('CUST080', 'Valerija', 'Paulauskaitė', '+37069701234', 'valerija.paulauskaite@gmail.com', 'active'),
-('CUST081', 'Deividas', 'Čeponis', '+37060812345', 'deividas.ceponis@gmail.com', 'active'),
-('CUST082', 'Jurgita', 'Balčiūnaitė', '+37061823456', 'jurgita.balciunaite@gmail.com', 'active'),
-('CUST083', 'Nerijus', 'Bagdonas', '+37062834567', 'nerijus.bagdonas@gmail.com', 'active'),
-('CUST084', 'Agnė', 'Kavaliauskaitė', '+37063845678', 'agne.kavaliauskaite@gmail.com', 'active'),
-('CUST085', 'Marius', 'Eidukevičius', '+37064856789', 'marius.eidukevicius@gmail.com', 'active'),
-('CUST086', 'Justina', 'Laurinavičiūtė', '+37065867890', 'justina.laurinaviciute@gmail.com', 'active'),
-('CUST087', 'Andrius', 'Beržanskis', '+37066878901', 'andrius.berzanskis@gmail.com', 'active'),
-('CUST088', 'Aistė', 'Venckutė', '+37067889012', 'aiste.venckute@gmail.com', 'active'),
-('CUST089', 'Dainius', 'Šinkūnas', '+37068890123', 'dainius.sinkunas@gmail.com', 'active'),
-('CUST090', 'Monika', 'Žemaitienė', '+37069801234', 'monika.zemaitiene@gmail.com', 'active'),
-('CUST091', 'Eimantas', 'Vaitkus', '+37060912345', 'eimantas.vaitkus@gmail.com', 'active'),
-('CUST092', 'Simona', 'Dainoraitė', '+37061923456', 'simona.dainoraite@gmail.com', 'active'),
-('CUST093', 'Dovydas', 'Stulginskas', '+37062934567', 'dovydas.stulginskas@gmail.com', 'active'),
-('CUST094', 'Kristijonas', 'Vildžiūnas', '+37063945678', 'kristijonas.vildziunas@gmail.com', 'active'),
-('CUST095', 'Ineta', 'Rasimavičienė', '+37064956789', 'ineta.rasimaviciene@gmail.com', 'active'),
-('CUST096', 'Simas', 'Mockevičius', '+37065967890', 'simas.mockevicius@gmail.com', 'active'),
-('CUST097', 'Gintarė', 'Venslovaitė', '+37066978901', 'gintare.venslovaite@gmail.com', 'active'),
-('CUST098', 'Robertas', 'Sabonis', '+37067989012', 'robertas.sabonis@gmail.com', 'active'),
-('CUST099', 'Ieva', 'Marcinkevičiūtė', '+37068990123', 'ieva.marcinkeviciute@gmail.com', 'active'),
-('CUST100', 'Kipras', 'Gedvilas', '+37069901234', 'kipras.gedvilas@gmail.com', 'active');
+INSERT INTO customers (customer_id, first_name, last_name, phone, email, status, notes) VALUES
+-- Scenario 1: Happy path - everything works, just needs router restart
+('CUST001', 'Jonas', 'Jonaitis', '+37060012345', 'jonas.jonaitis@gmail.com', 'active', 'Happy path scenario'),
+
+-- Scenario 2: Area outage - customer in affected area
+('CUST002', 'Marija', 'Kazlauskienė', '+37060012346', 'marija.kazlauskiene@gmail.com', 'active', 'Outage scenario - Dainų g.'),
+
+-- Scenario 3: Slow internet during peak hours
+('CUST003', 'Petras', 'Petraitis', '+37060012347', 'petras.petraitis@gmail.com', 'active', 'Slow internet peak hours'),
+
+-- Scenario 4: Port down - needs technician visit
+('CUST004', 'Andrius', 'Andriuška', '+37060012348', 'andrius.andriuska@gmail.com', 'active', 'Port down - escalation scenario'),
+
+-- Scenario 5: TV no signal
+('CUST005', 'Ona', 'Onaitė', '+37060012349', 'ona.onaite@gmail.com', 'active', 'TV no signal scenario'),
+
+-- Scenario 6: No IP assigned (expired DHCP)
+('CUST006', 'Laima', 'Laimutė', '+37060012350', 'laima.laimute@gmail.com', 'active', 'No IP - DHCP expired'),
+
+-- Scenario 7: Payment issue - suspended account
+('CUST007', 'Tomas', 'Tomauskas', '+37060012351', 'tomas.tomauskas@gmail.com', 'suspended', 'Payment overdue - suspended'),
+
+-- Scenario 8: Intermittent connection (packet loss)
+('CUST008', 'Rūta', 'Rūtaitė', '+37060012352', 'ruta.rutaite@gmail.com', 'active', 'Intermittent - high packet loss'),
+
+-- Scenario 9: All OK - control customer
+('CUST009', 'Giedrius', 'Giedraitis', '+37060012353', 'giedrius.giedraitis@gmail.com', 'active', 'All OK - control'),
+
+-- Scenario 10: All OK with TV
+('CUST010', 'Vida', 'Vidaitė', '+37060012354', 'vida.vidaite@gmail.com', 'active', 'All OK with TV - control');

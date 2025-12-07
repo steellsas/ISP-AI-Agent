@@ -1,265 +1,143 @@
-# TV Neveikia - Nėra Signalo - Troubleshooting
+# TV neveikia / nėra signalo - diagnostika ir sprendimas
 
-## Problema
-Televizija rodo "No Signal", juodą ekraną arba "Check Signal Cable"
+## Simptomai tipai
 
-## Prioritetas
-**AUKŠTAS** - Paslauga visiškai neveikia
+### A) TV priedėlis neįsijungia
+- Neveikia maitinimas
+- Jokių lemputių
 
-## Simptomai
-- Ekranas juodas su "No Signal"
-- "Check Signal Cable" pranešimas
-- Visi kanalai neveikia
-- Lemputės ant dekoderio švie
+### B) Nėra vaizdo
+- "No signal" pranešimas
+- Juodas ekranas
+- TV priedėlis veikia, bet TV nerodo
 
-ča/mirksi keistai
+### C) Nėra kanalų / kai kurių kanalų
+- Kai kurie kanalai neveikia
+- "Kanalas neprieinamas"
+- Užšąla vaizdas
 
-## Greiti Patikriniai
+### D) Prasta vaizdo kokybė
+- Pikseliai, artefaktai
+- Užšąla
+- Lėtai keičiasi kanalai
 
-### 1. Dekoderis Įjungtas?
-**Patikrinkite:**
-- Ar dekoderis prijungtas prie elektros?
-- Ar lemputės šviečia?
-- Ar mygtukai reaguoja?
+---
 
-**Normalus veikimas:**
-- POWER lemputė: Šviečia žalia
-- DATA/SIGNAL: Šviečia arba mirksi
+## A) TV priedėlis neįsijungia
 
-### 2. Televizorius Teisingame Input?
-**Dažna klaida** - televizorius ne ant to HDMI!
+### Žingsnis 1: Maitinimas
+1. Patikrinti ar maitinimo laidas prijungtas
+2. Patikrinti ar rozetė veikia (pabandyti kitą prietaisą)
+3. Patikrinti ar laidas tvirtai įkištas į priedėlį
 
-**Patikrinimas:**
-1. Spauskite TV pultelio "Input" arba "Source" mygtuką
-2. Pasirinkite teisingą HDMI (pvz. HDMI1, HDMI2)
-3. Turėtumėte matyti dekoderio vaizdą
+### Žingsnis 2: Maitinimo mygtukas
+- Kai kuriuose priedėliuose yra mygtukas ant korpuso
+- Pabandyti paspausti
 
-## Troubleshooting Žingsniai
-
-### Žingsnis 1: Kabelių Patikrinimas
-**Tikslas:** Įsitikinti kad visi kabeliai prijungti
+### Žingsnis 3: Perkrovimas
+1. Ištraukti maitinimo laidą
+2. Palaukti 30 sekundžių
+3. Įkišti atgal
 
-**HDMI/Scart Kabelis:**
-```
-Dekoderis [HDMI OUT] ←→ [HDMI IN] Televizorius
-```
-
-**Instrukcijos:**
-1. **Patikrini dekoderio pusę:**
-   - Kabelis įjungtas į HDMI OUT arba Scart
-   - Tvirtai įsmeigtas
-
-2. **Patikrini TV pusę:**
-   - Kabelis įjungtas į HDMI portą (1,2,3)
-   - Įsimink KURIAME porte (pvz. HDMI2)
-   - Tvirtai įsmeigtas
-
-3. **Testuoji:**
-   - TV: spausk Source → pasirink tą HDMI
-   - Turėtum matyti dekoderių (net jei klaida)
-
-### Žingsnis 2: Dekoderio Perkrovimas
-**Kodėl:** 80% TV problemų išsisprendžia po restart
-
-**Instrukcijos:**
-1. **Atjunk dekoderį nuo elektros:**
-   - Ištrauk kištuką arba spausk power mygtuką
-   - Lemputės turi užgesti
-
-2. **Lauk 30 sekundžių:**
-   - Labai svarbu pilnai išsikrauti
-   - Galite skaičiuoti
-
-3. **Vėl įjunk:**
-   - Įjunk į elektros lizdą
-   - Lemputės pradės šviesti
-
-4. **Lauk 2-3 minutes:**
-   - Dekoderis kraunasi
-   - POWER švies, DATA mirksi
-   - Po 2-3 min turėtų atsirasti vaizdas
-
-**Jei nėra vaizdo po 3 min:**
-→ Tęsti su kitu žingsniu
-
-### Žingsnis 3: Kitą HDMI Portą
-**Kodėl:** TV HDMI portas gali būti sugadęs
-
-**Instrukcijos:**
-1. Atjunk HDMI kabelį iš TV
-2. Prijunk į kitą HDMI portą (pvz. iš HDMI1 į HDMI2)
-3. TV Source → pasirink naują HDMI
-4. Žiūrėk ar atsiranda vaizdas
+**Jei vis tiek neįsijungia** → Priedėlis sugedęs, reikia keitimo
 
-**Jei veikia:** = Senasis HDMI portas sugedęs
-**Jei neveikia:** = Ne porto problema
-
-### Žingsnis 4: Kitą HDMI Kabelį (jei turi)
-**Kodėl:** HDMI kabelis gali būti pažeistas
+---
 
-**Instrukcijos:**
-1. Jei klientas turi atsarginį HDMI kabelį
-2. Pakeiskite į naują
-3. Testuokite
-
-**Alternatyva:** Scart kabelis
-- Jei dekoderis turi Scart
-- Pabandykite per Scart
-
-### Žingsnis 5: Kitas Televizorius (jei turi)
-**Tikslas:** Nustatyti ar dekoderis ar televizorius
-
-**Instrukcijos:**
-1. Jei namuose yra antras TV
-2. Prijunkite dekoderį prie jo
-3. Testuokite
+## B) Nėra vaizdo (No signal)
 
-**Rezultatai:**
-- **Veikia ant kito TV:** = Pirmojo TV problema
-- **Neveikia ir ant kito TV:** = Dekoderio problema
-
-### Žingsnis 6: Gamykliniai Nustatymai (Extreme)
-**DĖMESIO:** Tai išvalys VISUS nustatymus!
-
-**Tik jei:**
-- Visos kitos priemonės nepadėjo
-- Technikas atvyks tik po kelių dienų
-- Klientas sutinka prarasti nustatymus
+### Žingsnis 1: Patikrinti HDMI
+1. Ar HDMI laidas tvirtai įkištas į priedėlį?
+2. Ar HDMI laidas tvirtai įkištas į TV?
+3. Ištraukti ir įkišti atgal
 
-**Instrukcijos:**
-1. Raskite RESET mygtuką dekoderyje (mažas, viduje skylutės)
-2. Laikykite nuspaudę 10 sekundžių
-3. Paleiskite kai lemputės mirksi
-4. Laukite 5 minutes kol perkrauna
-
-**Kas dings:**
-- Kanalų sąrašas
-- Tėvų kontrolė
-- WiFi nustatymai
-
-## MCP Diagnostika
-
-### Signal Quality Check
-```
-check_signal_quality(customer_id)
-```
-
-**Normalūs rezultatai:**
-- Signal strength: >-15 dBm
-- SNR: >30 dB
-- Status: "good"
-
-**Probleminiai:**
-- Signal strength: <-25 dBm → Silpnas signalas
-- SNR: <20 dB → Trukdžiai
-- Status: "poor" / "no signal" → Eskalacija
-
-### Port Status
-```
-check_port_status(customer_id)
-```
-**Tikrina:** Ar TV paslaugos portas aktyvus
-
-### Area Outages
-```
-check_area_outages(customer_id)
-```
-**Tikrina:** Ar gedimas rajone
-
-## Dažnos Priežastys
-
-### 1. Neteisingas TV Input (50%)
-**Požymiai:**
-- "No Signal" užrašas
-- Dekoderis veikia (lemputės)
-
-**Sprendimas:** Source → pasirink teisingą HDMI
-
-### 2. Atsilaisvinęs HDMI (20%)
-**Požymiai:**
-- Veikė, dabar neveikia
-- Pajudinus kabelį kartais atsiranda
-
-**Sprendimas:** Tvirtai įjungti kabelį
-
-### 3. Dekoderis Pakibęs (15%)
-**Požymiai:**
-- Lemputės šviečia bet neveikia
-- Pultelis nereaguoja
-
-**Sprendimas:** Restart
-
-### 4. Signalas Silpnas/Nėra (10%)
-**Požymiai:**
-- Diagnostika rodo "no signal"
-- Area outage
-
-**Sprendimas:** Eskalacija - tinklo problema
-
-### 5. Sugedęs HDMI Portas (3%)
-**Požymiai:**
-- Kitas HDMI portas veikia
-- Atsitiktinai dingsta
-
-**Sprendimas:** Naudoti kitą portą
-
-### 6. Sugedęs Dekoderis (2%)
-**Požymiai:**
-- Lemputės nemirksi/nešviečia
-- Restart nepadeda
-- Kitas TV nepadeda
-
-**Sprendimas:** Equipment replacement
-
-## Eskalacija
-
-**Sukurti gedimo pranešimą JEI:**
-1. Signal quality diagnostika rodo "poor" arba "no signal"
-2. Area outage aktyvus
-3. Po visų troubleshooting žingsnių problema lieka
-4. Įtariamas dekoderio gedimas
-5. Klientas praneša apie fizinį pažeidimą
-
-**Prioritetas:** HIGH
-**SLA:** 4 valandos
-
-## Komunikacija su Klientu
-
-### Jei Problema Išsisprendė
-```
-"Puiku! Televizija vėl veikia.
-Problema buvo [Input nustatymas / Atsilaisvinęs kabelis / Restart].
-Jei vėl įvyktų - žinote kaip išspręsti!"
-```
-
-### Jei Reikia Technician
-```
-"Atsiprašau, problema nėra paprasta.
-Sukursiu gedimo pranešimą.
-Mūsų technikas atvyks per 4 valandas ir išspręs.
-
-Gedimo numeris: [TICKET_ID]
-Technikas skambins prieš atvykdamas."
-```
-
-### Laikinas Workaround
-```
-"Kol lauksite techniko, galite:
-- Naudoti kitą HDMI portą
-- Žiūrėti per kitą TV
-- Naudoti online streaming (jei turi)"
-```
-
-## Dažni Klausimai
-
-**K: Ar prarasiu įrašytus filmus?**
-A: Ne, restart NEIŠTRINA įrašų.
-
-**K: Ar reikia kažką mokėti?**
-A: Ne, jei problema ISP pusėje. Taip, jei pažeista kliento kaltė.
-
-**K: Kiek laiko užtruks?**
-A: Restart - 3 minutės. Technikas - 4 valandos.
-
-**K: Ar veiks kiti kanalai?**
-A: Jei vienas kanalas - kanalas nėra aktyvus plane. Jei visi - signalas problema.
+### Žingsnis 2: Teisingas TV šaltinis (Source/Input)
+1. Paimti TV pultelį (ne priedėlio!)
+2. Spausti SOURCE arba INPUT mygtuką
+3. Pasirinkti HDMI (1, 2, 3 - priklausomai kur prijungta)
+
+**Tai dažniausia problema!** Klientai dažnai pamiršta pakeisti source.
+
+### Žingsnis 3: Bandyti kitą HDMI portą
+1. Ištraukti HDMI iš dabartinio porto
+2. Įkišti į kitą HDMI portą TV
+3. Pakeisti source į tą HDMI
+
+### Žingsnis 4: Patikrinti HDMI laidą
+- Jei yra kitas HDMI laidas - pabandyti su juo
+- HDMI laidai gali sugesti
+
+---
+
+## C) Nėra kanalų / kai kurių kanalų
+
+### Žingsnis 1: Interneto ryšys
+TV priedėliui reikia interneto!
+1. Patikrinti ar priedėlis prijungtas prie routerio (laidu arba WiFi)
+2. Jei WiFi - ar signalas pakankamas?
+3. Ar internetas veikia kituose įrenginiuose?
+
+### Žingsnis 2: Priedėlio perkrovimas
+1. Išjungti priedėlį 30 sek
+2. Įjungti
+3. Palaukti kol pilnai užsikraus (gali užtrukti 1-2 min)
+
+### Žingsnis 3: Kanalų atnaujinimas
+- Priedėlio nustatymuose rasti "Atnaujinti kanalus" arba "Channel scan"
+- Palaukti kol baigs
+
+### Žingsnis 4: Patikrinti prenumeratą
+- Gali būti kad kanalas nepriklauso paketui
+- Patikrinti CRM kokį paketą klientas turi
+
+---
+
+## D) Prasta kokybė / užšąla
+
+### Žingsnis 1: Interneto greitis
+TV srautui reikia:
+- SD kokybė: 3-5 Mbps
+- HD kokybė: 10-15 Mbps
+- 4K kokybė: 25+ Mbps
+
+Jei internetas lėtas → žr. internet_slow.md
+
+### Žingsnis 2: Laidinis vs WiFi
+- Laidinis (Ethernet) visada stabilesnis
+- Jei priedėlis per WiFi ir stringa → rekomenduoti laidą
+
+### Žingsnis 3: Priedėlio perkrovimas
+Dažnai padeda atstatyti kokybę
+
+### Žingsnis 4: Atminties išvalymas
+- Priedėlio nustatymuose rasti "Clear cache" arba "Išvalyti atmintį"
+- Gali padėti jei priedėlis senas ir pilna atmintis
+
+---
+
+## TV priedėlio indikatoriai
+
+| Lemputė | Būsena | Reikšmė |
+|---------|--------|---------|
+| POWER | Žalia | Veikia |
+| POWER | Raudona | Standby režimas |
+| POWER | Nedega | Nėra maitinimo |
+| NETWORK | Žalia | Prijungtas prie interneto |
+| NETWORK | Raudona/nedega | Nėra interneto |
+
+---
+
+## Kada eskaluoti
+
+Registruoti ticket jei:
+- Priedėlis neįsijungia (reikia keitimo)
+- HDMI nepadeda, gali būti sugedęs priedėlis
+- Problema su prenumerata/paketu
+- Reikia naujo HDMI laido (technikas gali atvežti)
+
+## Naudingos frazės
+
+- "Ar priedėlio lemputė dega? Kokia spalva?"
+- "Pabandyk paspausti SOURCE ant TV pultelio ir pasirinkti HDMI"
+- "Ar priedėlis prijungtas prie interneto laidu ar per WiFi?"
+- "Pabandyk išjungti priedėlį iš rozetės ir įjungti po 30 sekundžių"
+- "Panašu, kad priedėlis sugedęs - atsiųsime naują"

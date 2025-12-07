@@ -1,134 +1,81 @@
-# Internetas Neveikia - Troubleshooting
-
-## Problema
-Internetas visiškai neveikia. Jokio ryšio, puslapiai nesikrauna.
-
-## Prioritetas
-**AUKŠTAS** - Paslauga visiškai neveikia
+# Internetas neveikia - diagnostika ir sprendimas
 
 ## Simptomai
-- Nėra interneto jokiame įrenginyje
-- Puslapiai nesikrauna (net Google)
-- WiFi rodo "Connected, no internet"
-- Maršrutizatoriaus Internet/WAN lemputė nedega arba raudona
-- Kabeliu prijungus - tas pats
+- Visiškai nėra interneto
+- Puslapiai neatsidaro
+- "No internet connection" pranešimas
+- WiFi prijungtas, bet nėra interneto
 
-## Greiti Patikrinimai
+## Greita diagnostika
 
-### 1. Kelių Įrenginių Testas
-**Kritinis klausimas:** Ar problema visuose įrenginiuose ar tik viename?
+### 1. Ar problema visuose įrenginiuose?
+- **TAIP, visuose** → Problema su routeriu arba tiekėjo pusėje
+- **NE, tik viename** → Problema su konkrečiu įrenginiu (žr. wifi_problems.md)
 
-- **Visuose įrenginiuose** → Maršrutizatoriaus/ISP problema
-- **Tik viename įrenginyje** → Įrenginio problema (žr. internet_single_device)
+### 2. Ar routeris įjungtas?
+- Patikrinti ar dega POWER lemputė
+- Jei nedega → patikrinti maitinimo laidą ir rozetę
 
-### 2. Maršrutizatoriaus Lemputės
-**Ką reiškia lemputės:**
+### 3. INTERNET/WAN lemputė
+- **Žalia** → Ryšys su tiekėju yra, problema gali būti WiFi arba įrenginyje
+- **Raudona arba nedega** → Nėra ryšio su tiekėju
 
-| Lemputė | Žalia | Raudona/Oranžinė | Nedega |
-|---------|-------|------------------|--------|
-| Power | OK | Perkraunamas | Nėra maitinimo |
-| Internet/WAN | Yra ryšys | Nėra ryšio | Nėra signalo |
-| LAN 1-4 | Prijungtas | - | Neprijungta |
-| WiFi | Įjungtas | - | Išjungtas |
+## Troubleshooting žingsniai
 
-### 3. Ar Buvo Pakeitimų?
-- Ar kas nors keitė nustatymus?
-- Ar buvo elektros dingimas?
-- Ar kas nors judino laidus?
-- Ar nauji įrenginiai prijungti?
+### Žingsnis 1: Router perkrovimas
+Tai išsprendžia ~70% problemų!
 
-## Troubleshooting Žingsniai
+1. Išjunk routerį (ištrauk maitinimo laidą)
+2. Palauk 30 sekundžių
+3. Įjunk atgal
+4. Palauk 2-3 minutes kol pilnai užsikraus
+5. Patikrink ar INTERNET lemputė dega žaliai
 
-### Žingsnis 1: Maršrutizatoriaus Lemputės
-**Tikslas:** Nustatyti maršrutizatoriaus būseną
+**Jei po perkrovimo veikia** → Problema išspręsta!
+**Jei neveikia** → Eiti prie Žingsnis 2
 
-**Instrukcijos:**
-1. Pažiūrėkite į maršrutizatoriaus priekinį skydelį
-2. Kokios lemputės dega?
-3. Ar kažkuri mirksi?
+### Žingsnis 2: Patikrinti laidus
+1. WAN/INTERNET laidas (paprastai mėlynas arba geltonas) - ar tvirtai įkištas?
+2. Ištraukti ir įkišti atgal iki "click"
+3. Patikrinti ar laidas nepažeistas (nesulaužtas, nesugniaužtas)
 
-**Rezultatai pagal lemputę:**
-- **Power nedega** → Žingsnis 2 (Maitinimas)
-- **Internet/WAN raudona/nedega** → Žingsnis 3 (Kabeliai)
-- **Visos žalios** → Žingsnis 4 (Įrenginio problema)
+**Jei laidas pažeistas** → Reikia techniko vizito
 
-### Žingsnis 2: Maitinimo Patikrinimas
-**Jei Power lemputė nedega:**
+### Žingsnis 3: Patikrinti ONT (jei yra optika)
+Jei klientas turi šviesolaidinį internetą:
+1. Rasti mažą baltą dėžutę (ONT) prie įėjimo/spintos
+2. Patikrinti ar dega žalia LOS lemputė
+3. Jei LOS mirksi raudonai → optinio kabelio problema, reikia techniko
 
-**Instrukcijos:**
-1. Ar maitinimo laidas tvirtai įjungtas į maršrutizatorių?
-2. Ar tvirtai įjungtas į rozetę?
-3. Pabandykite kitą rozetę
-4. Jei yra - pabandykite kitą maitinimo adapterį
+### Žingsnis 4: Factory reset (paskutinė priemonė)
+Tik jei klientas sutinka prarasti nustatymus:
+1. Rasti RESET mygtuką (mažas, reikia smulkaus daikto)
+2. Laikyti 10 sekundžių
+3. Routeris persikraus į gamyklinius nustatymus
+4. WiFi slaptažodis bus tas, kuris ant lipduko
 
-**Jei vis tiek nedega:**
-- Maršrutizatorius sugedo → Eskalacija (equipment replacement)
+## Kada eskaluoti
 
-### Žingsnis 3: Kabelių Patikrinimas
-**Jei Internet/WAN lemputė nedega arba raudona:**
+Registruoti ticket jei:
+- Po visų žingsnių vis dar neveikia
+- INTERNET lemputė nedega ilgiau nei 5 min po perkrovimo
+- ONT rodo raudoną LOS
+- Fizinis įrangos pažeidimas
+- Klientas negali atlikti žingsnių (nėra namie, negali pasiekti routerio)
 
-**Instrukcijos:**
-1. **WAN kabelis (iš sienos į maršrutizatorių):**
-   - Raskite kabelį einantį iš sienos
-   - Įjunkite į maršrutizatoriaus WAN portą
-   - Ar girdėjote "klik" garsą?
-   
-2. **Patikrinkite sienos lizdą:**
-   - Ar kabelis tvirtai sienos lizde?
-   - Ar lizdas nepažeistas?
+## Dažnos priežastys
 
-3. **Perjunkite kabelį:**
-   - Ištraukite WAN kabelį
-   - Palaukite 10 sekundžių
-   - Įjunkite tvirtai atgal
+| Priežastis | Požymis | Sprendimas |
+|------------|---------|------------|
+| Router užstrigo | Veikė, staiga nustojo | Perkrauti |
+| Laidas atjungtas | Po valymo/remonto | Patikrinti laidus |
+| Elektros dingimas | Po audros | Perkrauti, patikrinti rozetę |
+| Tiekėjo gedimas | Visiems rajone neveikia | Laukti, informuoti klientą |
+| ONT problema | LOS raudona | Technikas |
 
-**Po pakeitimo:** Palaukite 1-2 minutes ir stebėkite lemputę
+## Naudingos frazės klientui
 
-### Žingsnis 4: Maršrutizatoriaus Perkrovimas
-**Standartinis reset:**
-
-**Instrukcijos:**
-1. Atjunkite maršrutizatoriaus maitinimą
-2. **Palaukite 30 sekundžių** (svarbu!)
-3. Įjunkite maitinimą atgal
-4. Palaukite 2-3 minutes kol užsikraus
-5. Stebėkite lemputių seką
-
-**Normali įkrovimo seka:**
-1. Power → žalia
-2. System mirksi → stabili
-3. Internet → žalia (gali užtrukti 1-2 min)
-4. WiFi → žalia
-
-**Jei Internet nedega po 3 min:**
-- Problema ISP pusėje arba kabelyje → Eskalacija
-
-### Žingsnis 5: WiFi Įrenginio Patikrinimas
-**Jei maršrutizatorius OK (visos lemputės žalios):**
-
-**Instrukcijos telefone/kompiuteryje:**
-1. Išjunkite WiFi
-2. Palaukite 10 sekundžių
-3. Įjunkite WiFi
-4. Prisijunkite prie tinklo
-5. Ar matote "Connected" ar "No Internet"?
-
-**Jei "No Internet" bet Connected:**
-- Pabandykite "Forget network" ir prisijungti iš naujo
-- Įveskite slaptažodį
-
-### Žingsnis 6: Kabeliu Prijungtas Testas
-**Jei WiFi nepadeda:**
-
-**Instrukcijos:**
-1. Prijunkite kompiuterį kabeliu tiesiai į maršrutizatorių
-2. Naudokite LAN 1, 2, 3 arba 4 portą
-3. Ar veikia internetas per kabelį?
-
-**Rezultatai:**
-- **Per kabelį veikia** → WiFi problema (channel, slaptažodis)
-- **Per kabelį neveikia** → Maršrutizatoriaus/ISP problema
-
-## MCP Diagnostika
-
-### Port Status Check
+- "Pabandyk išjungti routerį ir palaukti 30 sekundžių"
+- "Ar matai žalią lemputę prie INTERNET užrašo?"
+- "Ar galėtum patikrinti ar mėlynas laidas tvirtai įkištas?"
+- "Panašu, kad reikės techniko - užregistruosiu vizitą"
