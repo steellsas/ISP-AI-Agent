@@ -8,39 +8,41 @@ authors = [
     { name = "Andrius", email = "aplienius@gmail.com" }
 ]
 
-# Root project depends on all workspace members
+# All dependencies inline (no workspace references for Railway)
 dependencies = [
-    "isp-shared",
-    "crm-service",
-    "network-diagnostic-service",
-    "chatbot-core",
-    "psycopg2-binary>=2.9.11",
+    # Core Framework
+    "streamlit>=1.30.0",
+    # LLM Integration
+    "litellm>=1.80.5",
+    "openai>=1.0.0",
+    # LangChain/LangGraph
+    "langchain>=0.1.0",
+    "langgraph>=0.0.20",
+    "langsmith>=0.0.87",
+    # RAG System
+    "sentence-transformers>=2.2.0",
+    "faiss-cpu>=1.7.4",
+    "numpy>=1.24.0",
+    # Database
+    "psycopg2-binary>=2.9.0",
+    # Configuration
+    "pyyaml>=6.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    # Utilities
+    "colorama>=0.4.6",
+    "httpx>=0.25.0",
+    # MCP (optional - comment out if not needed)
+    # "mcp>=1.21.0",
+    # "nest-asyncio>=1.6.0",
 ]
 
-[tool.uv.sources]
-isp-shared = { workspace = true }
-crm-service = { workspace = true }
-network-diagnostic-service = { workspace = true }
-chatbot-core = { workspace = true }
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
-[tool.uv.workspace]
-members = [
-    "chatbot_core",
-    "crm_service",
-    "network_diagnostic_service",
-    "shared",
-]
-
-[tool.uv]
-dev-dependencies = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "black>=24.0.0",
-    "ruff>=0.3.0",
-    "mypy>=1.8.0",
-]
-
-
+[tool.hatch.build.targets.wheel]
+packages = ["shared/src", "chatbot_core/src", "database", "scripts"]
 
 [tool.black]
 line-length = 100
