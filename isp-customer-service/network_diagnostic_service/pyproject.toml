@@ -1,0 +1,23 @@
+[project]
+name = "network-diagnostic-service"
+version = "0.1.0"
+description = "ISP Network Diagnostic Service - MCP Server for network diagnostics"
+requires-python = ">=3.12"
+
+dependencies = [
+    "isp-shared",
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+network-diagnostic-service = "network_diagnostic_mcp.server:main"
+
+[tool.uv.sources]
+isp-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/network_diagnostic_mcp"]

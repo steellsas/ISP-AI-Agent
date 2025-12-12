@@ -1,0 +1,1 @@
+web: python scripts/setup_db.py && python scripts/seed_data.py && cd chatbot_core && python -m streamlit run src/streamlit_ui/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true

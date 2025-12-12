@@ -1,0 +1,63 @@
+[project]
+name = "isp-customer-service"
+version = "0.1.0"
+description = "ISP Customer Service Chatbot with LangGraph and MCP"
+requires-python = ">=3.12"
+readme = "README.md"
+authors = [
+    { name = "Andrius", email = "aplienius@gmail.com" }
+]
+
+# Root project depends on all workspace members
+dependencies = [
+    "isp-shared",
+    "crm-service",
+    "network-diagnostic-service",
+    "chatbot-core",
+    "psycopg2-binary>=2.9.11",
+]
+
+[tool.uv.sources]
+isp-shared = { workspace = true }
+crm-service = { workspace = true }
+network-diagnostic-service = { workspace = true }
+chatbot-core = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "chatbot_core",
+    "crm_service",
+    "network_diagnostic_service",
+    "shared",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+]
+
+
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

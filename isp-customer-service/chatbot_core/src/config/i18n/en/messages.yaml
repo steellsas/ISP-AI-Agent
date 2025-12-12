@@ -1,0 +1,8 @@
+greeting: "Hello! This is {company_name} customer service. How can I help you?"
+error: "Sorry, a technical error occurred. Please try again."
+timeout: "Sorry, I couldn't process your request. Could you repeat that?"
+max_turns: "Sorry, the conversation took too long. I'm registering your issue."
+conversation_ended: "Conversation ended."
+cli:
+  goodbye: "Goodbye. Have a nice day!"
+  interrupted: "Conversation interrupted."

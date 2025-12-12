@@ -1,0 +1,20 @@
+# =============================================================================
+# Lithuanian Messages (lt)
+# =============================================================================
+# Minimal messages for ReAct Agent
+# LLM generates troubleshooting - we only need static messages
+# =============================================================================
+
+# Greeting (first message - hardcoded, no LLM)
+greeting: "Labas! Čia {company_name} klientų aptarnavimas. Kuo galiu padėti?"
+
+# Error messages
+error: "Atsiprašau, įvyko techninė klaida. Pabandykite dar kartą."
+timeout: "Atsiprašau, negaliu apdoroti užklausos. Ar galite pakartoti?"
+max_turns: "Atsiprašau, pokalbis užtruko per ilgai. Registruoju jūsų problemą."
+conversation_ended: "Pokalbis baigtas."
+
+# CLI messages (not shown to customer via LLM)
+cli:
+  goodbye: "Pokalbis baigtas. Viso gero!"
+  interrupted: "Pokalbis nutrauktas."
