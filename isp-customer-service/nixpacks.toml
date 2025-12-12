@@ -1,11 +1,17 @@
 # Nixpacks configuration for Railway
-# Forces use of requirements.txt instead of pyproject.toml workspace
 
 [phases.setup]
 nixPkgs = ["python312", "postgresql_16"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = [
+    "python -m venv /opt/venv",
+    ". /opt/venv/bin/activate && pip install --upgrade pip",
+    ". /opt/venv/bin/activate && pip install -r requirements.txt"
+]
+
+[phases.build]
+cmds = []
 
 [start]
-cmd = "python scripts/setup_db.py && python scripts/seed_data.py && cd chatbot_core && python -m streamlit run src/streamlit_ui/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
+cmd = ". /opt/venv/bin/activate && python scripts/setup_db.py && python scripts/seed_data.py && cd chatbot_core && python -m streamlit run src/streamlit_ui/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
