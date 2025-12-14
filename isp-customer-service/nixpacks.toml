@@ -1,4 +1,5 @@
 # Nixpacks configuration for Railway
+# ISP Customer Service Chatbot
 
 [phases.setup]
 nixPkgs = ["python312", "postgresql_16"]
@@ -13,5 +14,11 @@ cmds = [
 [phases.build]
 cmds = []
 
+# PYTHONPATH includes all source directories:
+# /app - root (for database, scripts imports)
+# /app/shared/src - utils, isp_types, database modules  
+# /app/chatbot_core/src - agent, rag, services, streamlit_ui, config
+# /app/crm_service/src - crm_mcp, repository
+# /app/network_diagnostic_service/src - network_diagnostic_mcp, repository
 [start]
-cmd = ". /opt/venv/bin/activate && python scripts/setup_db.py && python scripts/seed_data.py && cd chatbot_core && python -m streamlit run src/streamlit_ui/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
+cmd = "export PATH=/opt/venv/bin:$PATH && export PYTHONPATH=/app:/app/shared/src:/app/chatbot_core/src:/app/crm_service/src:/app/network_diagnostic_service/src:$PYTHONPATH && python scripts/setup_db.py && python scripts/seed_data.py && cd chatbot_core && python -m streamlit run src/streamlit_ui/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true"
