@@ -1,6 +1,39 @@
-# ISP After-Hours Technical Support Bot
+# 🤖 ISP After-Hours Technical Support Bot
+
+![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
+![LangChain](https://img.shields.io/badge/LangChain-ReAct_Agent-green)
+![LiteLLM](https://img.shields.io/badge/LiteLLM-Multi_Provider-orange)
+![RAG](https://img.shields.io/badge/RAG-FAISS-purple)
+![Streamlit](https://img.shields.io/badge/Streamlit-UI-red?logo=streamlit)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 An intelligent AI agent designed to provide automated technical support for Internet Service Provider customers outside of business hours. The bot handles common technical issues through guided troubleshooting, and seamlessly escalates to technician visits when remote resolution isn't possible.
+
+## 🚀 Live Demo
+
+[![Demo](https://img.shields.io/badge/🌐_Live_Demo-Railway-blueviolet?style=for-the-badge)](https://isp-ai-agent-production.up.railway.app)
+
+**Try it now:** [https://isp-ai-agent-production.up.railway.app](https://isp-ai-agent-production.up.railway.app)
+
+> 💡 **Demo tip:** Try calling with phone number `+37060012345` and describe an internet problem in Lithuanian or English!
+
+---
+
+## 📋 Table of Contents
+
+- [Purpose](#purpose)
+- [Key Benefits](#key-benefits)
+- [What The Bot Can Do](#what-the-bot-can-do)
+- [How It Works - ReAct Agent](#how-it-works---react-agent)
+- [Agent Tools](#agent-tools)
+- [Knowledge Base (RAG)](#knowledge-base-rag)
+- [Conversation Flow](#conversation-flow)
+- [Architecture Overview](#architecture-overview)
+- [Technology Stack](#technology-stack)
+- [Quick Start](#quick-start)
+- [Configuration](#configuration)
+
+---
 
 ## Purpose
 
@@ -150,10 +183,8 @@ The agent has access to 6 specialized tools for customer service operations:
 │            └─────────────────────┼─────────────────────┘                    │
 │                                  │                                          │
 │                           ┌──────┴──────┐                                   │
-│                           │             │                                   │
-│                           │  ReAct      │                                   │
-│                           │  Agent      │                                   │
-│                           │             │                                   │
+│                           │   ReAct     │                                   │
+│                           │   Agent     │                                   │
 │                           └──────┬──────┘                                   │
 │                                  │                                          │
 │            ┌─────────────────────┼─────────────────────┐                    │
@@ -296,7 +327,6 @@ Complete customer journey from initial contact to resolution or escalation:
 │          │         │  ✓ Done     │          │             │ │              │
 │          │         └──────┬──────┘          └──────┬──────┘ │              │
 │          │                │                        │        │              │
-│          │                │                        │        │              │
 │          ▼                │                        ▼        │              │
 │   ┌───────────────────────┼────────────────────────────┐    │              │
 │   │  6. CREATE TICKET     │                            │    │              │
@@ -397,15 +427,12 @@ Complete customer journey from initial contact to resolution or escalation:
 | **State Management** | Pydantic | Type-safe conversation state |
 | **Configuration** | YAML | Prompts, translations, settings |
 | **Web UI** | Streamlit | Interactive demo interface with monitoring |
+| **Deployment** | Railway | Cloud hosting for live demo |
 | **Language** | Python 3.11+ | Primary development language |
 
 ---
 
-
-
-
-
-### UI Features
+## 🖥️ UI Features
 
 | Feature | Description |
 |---------|-------------|
@@ -418,25 +445,38 @@ Complete customer journey from initial contact to resolution or escalation:
 
 ---
 
-
-
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
+- [uv](https://docs.astral.sh/uv/) package manager
 - API key for at least one LLM provider (OpenAI, Anthropic, or Google)
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/steellsas/ISP-AI-Agent.git
+cd ISP-AI-Agent/chatbot_core
+
+# Install dependencies with uv
+uv sync
+```
 
 ### Running
 
 ```bash
 # Web UI (recommended for demo)
-cd chatbot_core
-uv run python streamlit run src/streamlit_ui/app.py
+uv run streamlit run src/streamlit_ui/app.py
 
 # CLI interface
- uv run python -m src.agent.react_agent --lang lt --phone +37060012345
+uv run python -m src.agent.react_agent --lang lt --phone +37060012345
 ```
+
+### Or try the live demo
+
+🌐 **[https://isp-ai-agent-production.up.railway.app](https://isp-ai-agent-production.up.railway.app)**
 
 ---
 
@@ -444,10 +484,14 @@ uv run python streamlit run src/streamlit_ui/app.py
 
 ### Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_API_KEY` | OpenAI API key |
-| `GEMINI_API_KEY` | Google Gemini API key |
+Create a `.env` file in the project root:
+
+```bash
+# At least one of these is required
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=AI...
+```
 
 ### Agent Settings
 
@@ -462,18 +506,36 @@ Settings can be adjusted in the UI or via configuration:
 
 ---
 
-## Documentation
+## 📚 Documentation
 
 | Document | Description |
 |----------|-------------|
-
-| [REACT_AGENT.md](isp-customer-service/docs/REACT_AGENT.md) | Agent pattern and decision logic |
-
-| [TOOLS.md](isp-customer-service/docs/TOOLS.md) | Tool specifications and usage |
-
-| [RAG_SYSTEM.md](isp-customer-service/docs/RAG_SYSTEM.md) | Knowledge retrieval system |
-
-| [INSTALLATION.md](isp-customer-service/docs/INSTALLATION.md) | Detailed setup guide |
+| [REACT_AGENT.md](docs/REACT_AGENT.md) | Agent pattern and decision logic |
+| [TOOLS.md](docs/TOOLS.md) | Tool specifications and usage |
+| [RAG_SYSTEM.md](docs/RAG_SYSTEM.md) | Knowledge retrieval system |
+| [INSTALLATION.md](docs/INSTALLATION.md) | Detailed setup guide |
 
 ---
 
+## 🔮 Future Improvements
+
+- [ ] Voice integration (Speech-to-Text, Text-to-Speech)
+- [ ] Multi-turn memory with conversation history persistence
+- [ ] Integration with real CRM/Network monitoring systems
+- [ ] LangGraph migration for more complex workflows
+- [ ] Docker containerization
+- [ ] Webhook notifications for ticket creation
+
+---
+
+## 📝 License
+
+This project is open source and available under the [MIT License](LICENSE).
+
+## 🤝 Contact
+
+**Andrius** - [GitHub](https://github.com/steellsas)
+
+---
+
+⭐ If you found this project interesting, please give it a star!
