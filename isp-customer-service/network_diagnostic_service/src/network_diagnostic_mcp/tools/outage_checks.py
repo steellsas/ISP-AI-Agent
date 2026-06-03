@@ -4,24 +4,25 @@ Check for area-wide service outages
 """
 
 import sys
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
 
 def check_area_outages(
-    db: DatabaseConnection, city: str, street: Optional[str] = None
-) -> Dict[str, Any]:
+    db: DatabaseConnection, city: str, street: str | None = None
+) -> dict[str, Any]:
     """
     Check for area-wide service outages.
 
@@ -38,7 +39,7 @@ def check_area_outages(
     try:
         # Build query
         query = """
-            SELECT 
+            SELECT
                 outage_id,
                 city,
                 street,
@@ -118,7 +119,7 @@ def check_area_outages(
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-def check_customer_affected_by_outage(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+def check_customer_affected_by_outage(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Check if customer is affected by any area outages.
 
@@ -199,7 +200,7 @@ def check_customer_affected_by_outage(db: DatabaseConnection, customer_id: str) 
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-def get_outage_history(db: DatabaseConnection, city: str, days: int = 30) -> Dict[str, Any]:
+def get_outage_history(db: DatabaseConnection, city: str, days: int = 30) -> dict[str, Any]:
     """
     Get outage history for an area.
 
@@ -220,7 +221,7 @@ def get_outage_history(db: DatabaseConnection, city: str, days: int = 30) -> Dic
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     outage_id,
                     street,
                     outage_type,

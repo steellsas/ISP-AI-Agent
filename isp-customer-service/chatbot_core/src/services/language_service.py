@@ -5,23 +5,22 @@ Simple translation service that loads messages from YAML files.
 
 Usage:
     from src.services.language_service import t, set_language, get_language
-    
+
     # Set language
     set_language("lt")
-    
+
     # Get translation
     greeting = t("greeting", company_name="SUN CITY")
     # -> "Labas! Čia SUN CITY klientų aptarnavimas. Kuo galiu padėti?"
-    
+
     # Nested keys
     goodbye = t("cli.goodbye")
     # -> "Pokalbis baigtas. Viso gero!"
 """
 
 import logging
-from pathlib import Path
-from typing import Any
 from functools import lru_cache
+from pathlib import Path
 
 import yaml
 
@@ -48,16 +47,16 @@ _current_language: str = DEFAULT_LANGUAGE
 def set_language(lang: str) -> None:
     """
     Set current language.
-    
+
     Args:
         lang: Language code ("lt" or "en")
     """
     global _current_language
-    
+
     if lang not in SUPPORTED_LANGUAGES:
         logger.warning(f"Unsupported language '{lang}', using '{DEFAULT_LANGUAGE}'")
         lang = DEFAULT_LANGUAGE
-    
+
     _current_language = lang
     logger.debug(f"Language set to: {lang}")
 
@@ -70,7 +69,7 @@ def get_language() -> str:
 def get_language_name() -> str:
     """
     Get language name for LLM prompts.
-    
+
     Returns:
         "Lithuanian" or "English"
     """
@@ -85,28 +84,29 @@ def get_language_name() -> str:
 # TRANSLATION LOADING
 # =============================================================================
 
+
 @lru_cache(maxsize=4)
 def _load_messages(lang: str) -> dict:
     """
     Load messages from YAML file.
-    
+
     Args:
         lang: Language code
-        
+
     Returns:
         Messages dictionary
     """
     yaml_path = I18N_DIR / lang / "messages.yaml"
-    
+
     if not yaml_path.exists():
         logger.error(f"Messages file not found: {yaml_path}")
         # Fallback to default language
         if lang != DEFAULT_LANGUAGE:
             return _load_messages(DEFAULT_LANGUAGE)
         return {}
-    
+
     try:
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             messages = yaml.safe_load(f)
         logger.debug(f"Loaded messages for '{lang}': {len(messages)} keys")
         return messages or {}
@@ -125,24 +125,25 @@ def reload_messages() -> None:
 # TRANSLATION FUNCTION
 # =============================================================================
 
+
 def t(key: str, **kwargs) -> str:
     """
     Get translated message.
-    
+
     Args:
         key: Message key (supports nested keys like "cli.goodbye")
         **kwargs: Format arguments (e.g., company_name="SUN CITY")
-        
+
     Returns:
         Translated and formatted message
-        
+
     Examples:
         t("greeting", company_name="SUN CITY")
         t("cli.goodbye")
         t("error")
     """
     messages = _load_messages(_current_language)
-    
+
     # Handle nested keys (e.g., "cli.goodbye")
     value = messages
     for part in key.split("."):
@@ -151,17 +152,17 @@ def t(key: str, **kwargs) -> str:
         else:
             value = None
             break
-    
+
     # Key not found
     if value is None:
         logger.warning(f"Translation not found: '{key}' [{_current_language}]")
         return f"[{key}]"
-    
+
     # Not a string (nested dict without final key)
     if not isinstance(value, str):
         logger.warning(f"Translation key '{key}' is not a string")
         return f"[{key}]"
-    
+
     # Format with kwargs
     if kwargs:
         try:
@@ -169,7 +170,7 @@ def t(key: str, **kwargs) -> str:
         except KeyError as e:
             logger.warning(f"Missing format key {e} in translation '{key}'")
             return value
-    
+
     return value
 
 
@@ -177,10 +178,11 @@ def t(key: str, **kwargs) -> str:
 # HELPER FUNCTIONS
 # =============================================================================
 
+
 def get_available_languages() -> list[dict]:
     """
     Get list of available languages.
-    
+
     Returns:
         List of language info dicts
     """
@@ -198,12 +200,12 @@ def is_valid_language(lang: str) -> bool:
 def get_output_language_instruction() -> str:
     """
     Get instruction for LLM to respond in correct language.
-    
+
     Returns:
         Instruction string for system prompt
     """
     lang_name = get_language_name()
-    
+
     if _current_language == "lt":
         return f"CRITICAL: Respond ONLY in {lang_name}. Use INFORMAL 'tu' form (not 'Jūs')."
     else:
@@ -216,9 +218,9 @@ def get_output_language_instruction() -> str:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
-    
+
     print("Testing Language Service\n")
-    
+
     # Test LT
     print("=== Lithuanian ===")
     set_language("lt")
@@ -227,7 +229,7 @@ if __name__ == "__main__":
     print(f"Error: {t('error')}")
     print(f"CLI goodbye: {t('cli.goodbye')}")
     print(f"LLM instruction: {get_output_language_instruction()}")
-    
+
     print("\n=== English ===")
     set_language("en")
     print(f"Language: {get_language()} ({get_language_name()})")
@@ -235,6 +237,6 @@ if __name__ == "__main__":
     print(f"Error: {t('error')}")
     print(f"CLI goodbye: {t('cli.goodbye')}")
     print(f"LLM instruction: {get_output_language_instruction()}")
-    
+
     print("\n=== Missing key ===")
     print(f"Missing: {t('nonexistent.key')}")

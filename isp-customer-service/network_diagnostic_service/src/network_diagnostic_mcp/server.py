@@ -6,7 +6,7 @@ Provides network diagnostic tools via MCP protocol
 import asyncio
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
@@ -15,10 +15,10 @@ if str(shared_path) not in sys.path:
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import TextContent, Tool
+from utils.logger import setup_mcp_server_logger
 
 from database import init_database
-from utils.logger import setup_mcp_server_logger
 
 # Setup logger with absolute path
 log_dir = Path(__file__).parent.parent.parent / "logs"
@@ -52,7 +52,7 @@ class NetworkDiagnosticServer:
 
         # Tool definitions
         @self.server.list_tools()
-        async def list_tools() -> List[Tool]:
+        async def list_tools() -> list[Tool]:
             return [
                 Tool(
                     name="check_port_status",
@@ -164,7 +164,7 @@ class NetworkDiagnosticServer:
 
         # Tool handlers
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+        async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             """Handle tool calls."""
 
             logger.info(f"Tool called: {name} with args: {arguments}")
@@ -193,43 +193,43 @@ class NetworkDiagnosticServer:
                 logger.error(f"Error in tool {name}: {e}", exc_info=True)
                 return [TextContent(type="text", text=f"Error: {str(e)}")]
 
-    async def _check_port_status(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _check_port_status(self, args: dict[str, Any]) -> dict[str, Any]:
         """Check port status for customer."""
         from .tools.port_diagnostics import check_port_status
 
         return check_port_status(self.db, args["customer_id"])
 
-    async def _check_ip_assignment(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _check_ip_assignment(self, args: dict[str, Any]) -> dict[str, Any]:
         """Check IP assignment."""
         from .tools.connectivity_tests import check_ip_assignment
 
         return check_ip_assignment(self.db, args["customer_id"])
 
-    async def _check_bandwidth_history(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _check_bandwidth_history(self, args: dict[str, Any]) -> dict[str, Any]:
         """Check bandwidth history."""
         from .tools.connectivity_tests import check_bandwidth_history
 
         return check_bandwidth_history(self.db, args["customer_id"], args.get("limit", 10))
 
-    async def _check_area_outages(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _check_area_outages(self, args: dict[str, Any]) -> dict[str, Any]:
         """Check area outages."""
         from .tools.outage_checks import check_area_outages
 
         return check_area_outages(self.db, args["city"], args.get("street"))
 
-    async def _check_signal_quality(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _check_signal_quality(self, args: dict[str, Any]) -> dict[str, Any]:
         """Check signal quality."""
         from .tools.connectivity_tests import check_signal_quality
 
         return check_signal_quality(self.db, args["customer_id"])
 
-    async def _ping_test(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _ping_test(self, args: dict[str, Any]) -> dict[str, Any]:
         """Perform ping test."""
         from .tools.connectivity_tests import ping_test
 
         return ping_test(self.db, args["customer_id"])
 
-    async def _get_switch_info(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get_switch_info(self, args: dict[str, Any]) -> dict[str, Any]:
         """Get switch information."""
         from .tools.port_diagnostics import get_switch_info
 

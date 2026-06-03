@@ -4,18 +4,19 @@ Clean data access layer for network-related queries
 """
 
 import sys
-from pathlib import Path
-from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
-from isp_types import Switch, Port, IPAssignment, AreaOutage, BandwidthLog, PortStatus
+from isp_types import AreaOutage, BandwidthLog, IPAssignment, Port, Switch
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
@@ -34,7 +35,7 @@ class NetworkRepository:
 
     # ========== Switch Methods ==========
 
-    def find_switch_by_id(self, switch_id: str) -> Optional[Switch]:
+    def find_switch_by_id(self, switch_id: str) -> Switch | None:
         """
         Find switch by ID.
 
@@ -64,7 +65,7 @@ class NetworkRepository:
             logger.error(f"Error finding switch {switch_id}: {e}")
             return None
 
-    def find_switch_by_customer(self, customer_id: str) -> Optional[Switch]:
+    def find_switch_by_customer(self, customer_id: str) -> Switch | None:
         """
         Find switch serving a customer.
 
@@ -98,7 +99,7 @@ class NetworkRepository:
             logger.error(f"Error finding switch for customer {customer_id}: {e}")
             return None
 
-    def get_all_switches(self, status: Optional[str] = None) -> List[Switch]:
+    def get_all_switches(self, status: str | None = None) -> list[Switch]:
         """
         Get all switches.
 
@@ -128,7 +129,7 @@ class NetworkRepository:
             logger.error(f"Error getting switches: {e}")
             return []
 
-    def get_switch_statistics(self, switch_id: str) -> Dict[str, Any]:
+    def get_switch_statistics(self, switch_id: str) -> dict[str, Any]:
         """
         Get port statistics for a switch.
 
@@ -142,7 +143,7 @@ class NetworkRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT 
+                    SELECT
                         COUNT(*) as total_ports,
                         SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as active_ports,
                         SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END) as down_ports,
@@ -163,7 +164,7 @@ class NetworkRepository:
 
     # ========== Port Methods ==========
 
-    def find_port_by_id(self, port_id: str) -> Optional[Port]:
+    def find_port_by_id(self, port_id: str) -> Port | None:
         """
         Find port by ID.
 
@@ -193,7 +194,7 @@ class NetworkRepository:
             logger.error(f"Error finding port {port_id}: {e}")
             return None
 
-    def find_ports_by_customer(self, customer_id: str) -> List[Port]:
+    def find_ports_by_customer(self, customer_id: str) -> list[Port]:
         """
         Find all ports for a customer.
 
@@ -207,7 +208,7 @@ class NetworkRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT * FROM ports 
+                    SELECT * FROM ports
                     WHERE customer_id = ?
                     ORDER BY switch_id, port_number
                 """,
@@ -222,7 +223,7 @@ class NetworkRepository:
             logger.error(f"Error finding ports for customer {customer_id}: {e}")
             return []
 
-    def find_ports_by_mac(self, mac_address: str) -> List[Port]:
+    def find_ports_by_mac(self, mac_address: str) -> list[Port]:
         """
         Find ports by equipment MAC address.
 
@@ -236,7 +237,7 @@ class NetworkRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT * FROM ports 
+                    SELECT * FROM ports
                     WHERE equipment_mac = ?
                 """,
                     (mac_address,),
@@ -250,7 +251,7 @@ class NetworkRepository:
             logger.error(f"Error finding ports by MAC {mac_address}: {e}")
             return []
 
-    def get_ports_by_switch(self, switch_id: str, status: Optional[str] = None) -> List[Port]:
+    def get_ports_by_switch(self, switch_id: str, status: str | None = None) -> list[Port]:
         """
         Get all ports on a switch.
 
@@ -281,7 +282,7 @@ class NetworkRepository:
             logger.error(f"Error getting ports for switch {switch_id}: {e}")
             return []
 
-    def count_ports_by_status(self, switch_id: Optional[str] = None) -> Dict[str, int]:
+    def count_ports_by_status(self, switch_id: str | None = None) -> dict[str, int]:
         """
         Count ports by status.
 
@@ -313,7 +314,7 @@ class NetworkRepository:
 
     # ========== IP Assignment Methods ==========
 
-    def find_ip_by_customer(self, customer_id: str, active_only: bool = True) -> List[IPAssignment]:
+    def find_ip_by_customer(self, customer_id: str, active_only: bool = True) -> list[IPAssignment]:
         """
         Find IP assignments for customer.
 
@@ -343,7 +344,7 @@ class NetworkRepository:
             logger.error(f"Error finding IP for customer {customer_id}: {e}")
             return []
 
-    def find_ip_by_address(self, ip_address: str) -> Optional[IPAssignment]:
+    def find_ip_by_address(self, ip_address: str) -> IPAssignment | None:
         """
         Find IP assignment by address.
 
@@ -357,7 +358,7 @@ class NetworkRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT * FROM ip_assignments 
+                    SELECT * FROM ip_assignments
                     WHERE ip_address = ?
                     ORDER BY assigned_at DESC
                     LIMIT 1
@@ -376,7 +377,7 @@ class NetworkRepository:
             logger.error(f"Error finding IP {ip_address}: {e}")
             return None
 
-    def find_ip_by_mac(self, mac_address: str) -> List[IPAssignment]:
+    def find_ip_by_mac(self, mac_address: str) -> list[IPAssignment]:
         """
         Find IP assignments by MAC address.
 
@@ -390,7 +391,7 @@ class NetworkRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT * FROM ip_assignments 
+                    SELECT * FROM ip_assignments
                     WHERE mac_address = ?
                     ORDER BY assigned_at DESC
                 """,
@@ -408,8 +409,8 @@ class NetworkRepository:
     # ========== Bandwidth Log Methods ==========
 
     def get_bandwidth_logs(
-        self, customer_id: str, limit: int = 10, measurement_type: Optional[str] = None
-    ) -> List[BandwidthLog]:
+        self, customer_id: str, limit: int = 10, measurement_type: str | None = None
+    ) -> list[BandwidthLog]:
         """
         Get bandwidth measurement logs.
 
@@ -442,7 +443,7 @@ class NetworkRepository:
             logger.error(f"Error getting bandwidth logs: {e}")
             return []
 
-    def get_bandwidth_statistics(self, customer_id: str, days: int = 30) -> Dict[str, Any]:
+    def get_bandwidth_statistics(self, customer_id: str, days: int = 30) -> dict[str, Any]:
         """
         Get bandwidth statistics for a period.
 
@@ -459,7 +460,7 @@ class NetworkRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT 
+                    SELECT
                         AVG(download_mbps) as avg_download,
                         MAX(download_mbps) as max_download,
                         MIN(download_mbps) as min_download,
@@ -486,7 +487,7 @@ class NetworkRepository:
 
     # ========== Area Outage Methods ==========
 
-    def find_active_outages(self, city: str, street: Optional[str] = None) -> List[AreaOutage]:
+    def find_active_outages(self, city: str, street: str | None = None) -> list[AreaOutage]:
         """
         Find active outages in an area.
 
@@ -499,7 +500,7 @@ class NetworkRepository:
         """
         try:
             query = """
-                SELECT * FROM area_outages 
+                SELECT * FROM area_outages
                 WHERE LOWER(city) = LOWER(?)
                     AND status IN ('active', 'investigating')
             """
@@ -521,7 +522,7 @@ class NetworkRepository:
             logger.error(f"Error finding outages in {city}: {e}")
             return []
 
-    def find_outage_by_id(self, outage_id: str) -> Optional[AreaOutage]:
+    def find_outage_by_id(self, outage_id: str) -> AreaOutage | None:
         """
         Find outage by ID.
 
@@ -551,7 +552,7 @@ class NetworkRepository:
             logger.error(f"Error finding outage {outage_id}: {e}")
             return None
 
-    def get_outage_history(self, city: str, days: int = 30) -> List[AreaOutage]:
+    def get_outage_history(self, city: str, days: int = 30) -> list[AreaOutage]:
         """
         Get outage history for an area.
 
@@ -584,7 +585,7 @@ class NetworkRepository:
             logger.error(f"Error getting outage history for {city}: {e}")
             return []
 
-    def count_active_outages(self, city: Optional[str] = None) -> int:
+    def count_active_outages(self, city: str | None = None) -> int:
         """
         Count active outages.
 
@@ -596,8 +597,8 @@ class NetworkRepository:
         """
         try:
             query = """
-                SELECT COUNT(*) as count 
-                FROM area_outages 
+                SELECT COUNT(*) as count
+                FROM area_outages
                 WHERE status IN ('active', 'investigating')
             """
             params = []
@@ -618,7 +619,7 @@ class NetworkRepository:
 
     # ========== Diagnostic Helper Methods ==========
 
-    def get_customer_network_summary(self, customer_id: str) -> Dict[str, Any]:
+    def get_customer_network_summary(self, customer_id: str) -> dict[str, Any]:
         """
         Get comprehensive network summary for customer.
 

@@ -1,7 +1,7 @@
 # document_processor.py - NAUJAS failas
 
-from typing import List, Dict, Any
 import re
+from typing import Any
 
 
 class DocumentProcessor:
@@ -11,7 +11,7 @@ class DocumentProcessor:
         self.chunk_size = chunk_size
         self.overlap = overlap
 
-    def process_markdown(self, content: str, source: str) -> List[Dict[str, Any]]:
+    def process_markdown(self, content: str, source: str) -> list[dict[str, Any]]:
         """
         Process markdown into chunks with extracted metadata.
 
@@ -103,7 +103,7 @@ class DocumentProcessor:
             return "cause"
         return "general"
 
-    def _chunk_text(self, text: str) -> List[str]:
+    def _chunk_text(self, text: str) -> list[str]:
         """Split text into overlapping chunks."""
         words = text.split()
         chunks = []

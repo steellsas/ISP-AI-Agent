@@ -5,7 +5,6 @@ Tests MCP server startup and JSON-RPC communication
 
 import asyncio
 import json
-import sys
 from pathlib import Path
 
 
@@ -56,7 +55,7 @@ async def test_mcp_server():
         stderr_task = asyncio.create_task(proc.stderr.read(1024))
         stderr_data = await asyncio.wait_for(stderr_task, timeout=1.0)
         print(f"Server logs:\n{stderr_data.decode()}")
-    except asyncio.TimeoutError:
+    except TimeoutError:
         print("(No stderr output yet)")
 
     # Send MCP initialize request
@@ -94,7 +93,7 @@ async def test_mcp_server():
 
             try:
                 response_json = json.loads(response_str)
-                print(f"\n✅ Valid JSON response:")
+                print("\n✅ Valid JSON response:")
                 print(json.dumps(response_json, indent=2))
 
                 if response_json.get("id") == 1:
@@ -109,7 +108,7 @@ async def test_mcp_server():
         else:
             print("❌ No response received")
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         print("❌ Timeout waiting for response")
 
     # Cleanup

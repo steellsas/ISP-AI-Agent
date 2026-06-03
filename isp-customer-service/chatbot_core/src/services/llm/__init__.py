@@ -9,17 +9,17 @@ Usage:
     # Simple completion
     response = llm_completion(messages=[{"role": "user", "content": "Hello"}])
 
-    # JSON completion  
+    # JSON completion
     data = llm_json_completion(messages=[...])
 """
 
 # Main completion functions
 from .client import (
-    llm_completion,
-    llm_json_completion,
+    extract_json_from_response,
     get_last_call_stats,
     get_model_info,
-    extract_json_from_response,
+    llm_completion,
+    llm_json_completion,
     validate_json_response,
 )
 
@@ -27,14 +27,13 @@ from .client import (
 from .settings import (
     LLMSettings,
     get_settings,
-    update_settings,
     refresh_settings,
     reset_settings,
+    set_max_tokens,
     set_model,
     set_temperature,
-    set_max_tokens,
+    update_settings,
 )
-
 
 __all__ = [
     # Main functions

@@ -199,7 +199,7 @@ Configuration Module
 Config module
 """
 
-from .config import load_config, get_greeting, Config, reload_config
+from .config import Config, get_greeting, load_config, reload_config
 
 __all__ = [
     "load_config",

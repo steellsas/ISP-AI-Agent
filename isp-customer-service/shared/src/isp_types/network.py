@@ -3,9 +3,10 @@ Network-related Pydantic models.
 """
 
 from datetime import datetime
-from typing import Optional, Literal
-from enum import Enum
 from decimal import Decimal
+from enum import Enum
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -24,15 +25,15 @@ class Switch(BaseModel):
     switch_id: str = Field(..., description="Unique switch ID")
     switch_name: str = Field(..., description="Switch name")
     location: str = Field(..., description="Physical location")
-    ip_address: Optional[str] = Field(None, description="Management IP address")
-    model: Optional[str] = Field(None, description="Switch model")
+    ip_address: str | None = Field(None, description="Management IP address")
+    model: str | None = Field(None, description="Switch model")
     status: Literal["active", "inactive", "maintenance"] = Field(
         default="active", description="Switch status"
     )
     max_ports: int = Field(default=48, description="Maximum number of ports")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
     last_checked: datetime = Field(default_factory=datetime.now, description="Last health check")
-    notes: Optional[str] = Field(None, description="Additional notes")
+    notes: str | None = Field(None, description="Additional notes")
 
     class Config:
         from_attributes = True
@@ -44,17 +45,17 @@ class Port(BaseModel):
     port_id: str = Field(..., description="Unique port ID")
     switch_id: str = Field(..., description="Switch ID")
     port_number: int = Field(..., description="Port number")
-    customer_id: Optional[str] = Field(None, description="Connected customer ID")
-    equipment_mac: Optional[str] = Field(None, description="Connected equipment MAC")
+    customer_id: str | None = Field(None, description="Connected customer ID")
+    equipment_mac: str | None = Field(None, description="Connected equipment MAC")
     status: PortStatus = Field(default=PortStatus.DOWN, description="Port status")
-    speed_mbps: Optional[int] = Field(None, description="Port speed in Mbps")
-    duplex: Optional[Literal["full", "half", "auto"]] = Field(None, description="Duplex mode")
-    vlan_id: Optional[int] = Field(None, description="VLAN ID")
+    speed_mbps: int | None = Field(None, description="Port speed in Mbps")
+    duplex: Literal["full", "half", "auto"] | None = Field(None, description="Duplex mode")
+    vlan_id: int | None = Field(None, description="VLAN ID")
     last_status_change: datetime = Field(
         default_factory=datetime.now, description="Last status change"
     )
     last_checked: datetime = Field(default_factory=datetime.now, description="Last check")
-    notes: Optional[str] = Field(None, description="Additional notes")
+    notes: str | None = Field(None, description="Additional notes")
 
     class Config:
         from_attributes = True
@@ -73,19 +74,19 @@ class IPAssignment(BaseModel):
     """IP address assignment model."""
 
     assignment_id: str = Field(..., description="Unique assignment ID")
-    customer_id: Optional[str] = Field(None, description="Customer ID")
+    customer_id: str | None = Field(None, description="Customer ID")
     ip_address: str = Field(..., description="Assigned IP address")
-    mac_address: Optional[str] = Field(None, description="MAC address")
-    assignment_type: Optional[Literal["static", "dhcp", "pppoe"]] = Field(
+    mac_address: str | None = Field(None, description="MAC address")
+    assignment_type: Literal["static", "dhcp", "pppoe"] | None = Field(
         None, description="Assignment type"
     )
     assigned_at: datetime = Field(default_factory=datetime.now, description="Assigned timestamp")
-    lease_expires: Optional[datetime] = Field(None, description="DHCP lease expiration")
+    lease_expires: datetime | None = Field(None, description="DHCP lease expiration")
     status: Literal["active", "expired", "reserved", "blacklisted"] = Field(
         default="active", description="Assignment status"
     )
     last_seen: datetime = Field(default_factory=datetime.now, description="Last seen online")
-    notes: Optional[str] = Field(None, description="Additional notes")
+    notes: str | None = Field(None, description="Additional notes")
 
     class Config:
         from_attributes = True
@@ -96,8 +97,8 @@ class AreaOutage(BaseModel):
 
     outage_id: str = Field(..., description="Unique outage ID")
     city: str = Field(..., description="Affected city")
-    street: Optional[str] = Field(None, description="Affected street")
-    area_description: Optional[str] = Field(None, description="Area description")
+    street: str | None = Field(None, description="Affected street")
+    area_description: str | None = Field(None, description="Area description")
     outage_type: Literal["internet", "tv", "phone", "all"] = Field(
         ..., description="Service type affected"
     )
@@ -108,12 +109,12 @@ class AreaOutage(BaseModel):
         default="active", description="Outage status"
     )
     reported_at: datetime = Field(default_factory=datetime.now, description="Reported timestamp")
-    resolved_at: Optional[datetime] = Field(None, description="Resolved timestamp")
-    estimated_resolution: Optional[datetime] = Field(None, description="Estimated resolution time")
-    affected_customers: Optional[int] = Field(None, description="Number of affected customers")
+    resolved_at: datetime | None = Field(None, description="Resolved timestamp")
+    estimated_resolution: datetime | None = Field(None, description="Estimated resolution time")
+    affected_customers: int | None = Field(None, description="Number of affected customers")
     description: str = Field(..., description="Outage description")
-    root_cause: Optional[str] = Field(None, description="Root cause")
-    resolution_notes: Optional[str] = Field(None, description="Resolution notes")
+    root_cause: str | None = Field(None, description="Root cause")
+    resolution_notes: str | None = Field(None, description="Resolution notes")
 
     class Config:
         from_attributes = True
@@ -133,15 +134,15 @@ class BandwidthLog(BaseModel):
     log_id: str = Field(..., description="Unique log ID")
     customer_id: str = Field(..., description="Customer ID")
     timestamp: datetime = Field(default_factory=datetime.now, description="Measurement timestamp")
-    download_mbps: Optional[Decimal] = Field(None, description="Download speed in Mbps")
-    upload_mbps: Optional[Decimal] = Field(None, description="Upload speed in Mbps")
-    latency_ms: Optional[int] = Field(None, description="Latency in milliseconds")
-    packet_loss_percent: Optional[Decimal] = Field(None, description="Packet loss percentage")
-    jitter_ms: Optional[Decimal] = Field(None, description="Jitter in milliseconds")
-    measurement_type: Optional[Literal["speedtest", "continuous", "diagnostic"]] = Field(
+    download_mbps: Decimal | None = Field(None, description="Download speed in Mbps")
+    upload_mbps: Decimal | None = Field(None, description="Upload speed in Mbps")
+    latency_ms: int | None = Field(None, description="Latency in milliseconds")
+    packet_loss_percent: Decimal | None = Field(None, description="Packet loss percentage")
+    jitter_ms: Decimal | None = Field(None, description="Jitter in milliseconds")
+    measurement_type: Literal["speedtest", "continuous", "diagnostic"] | None = Field(
         None, description="Measurement type"
     )
-    notes: Optional[str] = Field(None, description="Additional notes")
+    notes: str | None = Field(None, description="Additional notes")
 
     class Config:
         from_attributes = True
@@ -153,15 +154,15 @@ class SignalQuality(BaseModel):
     quality_id: str = Field(..., description="Unique quality ID")
     customer_id: str = Field(..., description="Customer ID")
     timestamp: datetime = Field(default_factory=datetime.now, description="Measurement timestamp")
-    signal_strength_dbm: Optional[int] = Field(None, description="Signal strength in dBm")
-    snr_db: Optional[Decimal] = Field(None, description="Signal-to-noise ratio in dB")
-    ber: Optional[Decimal] = Field(None, description="Bit error rate")
-    mer_db: Optional[Decimal] = Field(None, description="Modulation error ratio in dB")
-    status: Optional[Literal["excellent", "good", "fair", "poor", "critical"]] = Field(
+    signal_strength_dbm: int | None = Field(None, description="Signal strength in dBm")
+    snr_db: Decimal | None = Field(None, description="Signal-to-noise ratio in dB")
+    ber: Decimal | None = Field(None, description="Bit error rate")
+    mer_db: Decimal | None = Field(None, description="Modulation error ratio in dB")
+    status: Literal["excellent", "good", "fair", "poor", "critical"] | None = Field(
         None, description="Quality status"
     )
-    channel_issues: Optional[str] = Field(None, description="Channel-specific issues")
-    notes: Optional[str] = Field(None, description="Additional notes")
+    channel_issues: str | None = Field(None, description="Channel-specific issues")
+    notes: str | None = Field(None, description="Additional notes")
 
     class Config:
         from_attributes = True

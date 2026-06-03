@@ -14,10 +14,11 @@ for p in [str(crm_service_path), str(shared_path)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from database import init_database
-from crm_mcp.tools.customer_lookup import lookup_customer_by_phone, lookup_customer_by_address
+from crm_mcp.tools.customer_lookup import lookup_customer_by_address, lookup_customer_by_phone
 from crm_mcp.tools.tickets import create_ticket
 from utils import get_logger
+
+from database import init_database
 
 logger = get_logger(__name__)
 
@@ -119,7 +120,7 @@ def create_support_ticket(
         full_details = details or ""
         if troubleshooting_steps:
             steps_text = "\n".join(
-                [f"- Žingsnis {i+1}: {step}" for i, step in enumerate(troubleshooting_steps)]
+                [f"- Žingsnis {i + 1}: {step}" for i, step in enumerate(troubleshooting_steps)]
             )
             full_details += f"\n\nAtlikti troubleshooting žingsniai:\n{steps_text}"
 

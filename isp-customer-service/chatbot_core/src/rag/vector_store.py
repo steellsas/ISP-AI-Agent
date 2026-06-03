@@ -3,12 +3,11 @@ Vector Store
 FAISS-based vector storage for efficient similarity search
 """
 
-import sys
 import pickle
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
-import numpy as np
+from typing import Any
 
+import numpy as np
 
 try:
     from isp_shared.utils import get_logger
@@ -34,7 +33,7 @@ class VectorStore:
     """
 
     def __init__(
-        self, embedding_dim: int = 768, index_type: str = "flatl2", store_dir: Optional[str] = None
+        self, embedding_dim: int = 768, index_type: str = "flatl2", store_dir: str | None = None
     ):
         """
         Initialize vector store.
@@ -59,9 +58,9 @@ class VectorStore:
         self._create_index()
 
         # Metadata storage
-        self.documents: List[str] = []
-        self.metadata: List[Dict[str, Any]] = []
-        self.ids: List[str] = []
+        self.documents: list[str] = []
+        self.metadata: list[dict[str, Any]] = []
+        self.ids: list[str] = []
 
         logger.info(f"VectorStore initialized: {index_type} ({embedding_dim}d)")
 
@@ -101,9 +100,9 @@ class VectorStore:
     def add(
         self,
         embeddings: np.ndarray,
-        documents: List[str],
-        metadata: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
+        documents: list[str],
+        metadata: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
     ):
         """
         Add documents with embeddings to the store.
@@ -153,8 +152,8 @@ class VectorStore:
             raise
 
     def search(
-        self, query_embedding: np.ndarray, k: int = 5, threshold: Optional[float] = None
-    ) -> List[Dict[str, Any]]:
+        self, query_embedding: np.ndarray, k: int = 5, threshold: float | None = None
+    ) -> list[dict[str, Any]]:
         """
         Search for similar documents.
 
@@ -213,8 +212,8 @@ class VectorStore:
             raise
 
     def batch_search(
-        self, query_embeddings: np.ndarray, k: int = 5, threshold: Optional[float] = None
-    ) -> List[List[Dict[str, Any]]]:
+        self, query_embeddings: np.ndarray, k: int = 5, threshold: float | None = None
+    ) -> list[list[dict[str, Any]]]:
         """
         Search for multiple queries.
 
@@ -234,7 +233,7 @@ class VectorStore:
 
         return all_results
 
-    def get_by_id(self, doc_id: str) -> Optional[Dict[str, Any]]:
+    def get_by_id(self, doc_id: str) -> dict[str, Any] | None:
         """
         Get document by ID.
 
@@ -373,7 +372,7 @@ class VectorStore:
             logger.error(f"Error loading vector store: {e}", exc_info=True)
             return False
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get vector store statistics.
 
@@ -390,11 +389,11 @@ class VectorStore:
 
 
 # Singleton instance
-_vector_store: Optional[VectorStore] = None
+_vector_store: VectorStore | None = None
 
 
 def get_vector_store(
-    embedding_dim: int = 768, index_type: str = "flatl2", store_dir: Optional[str] = None
+    embedding_dim: int = 768, index_type: str = "flatl2", store_dir: str | None = None
 ) -> VectorStore:
     """
     Get or create VectorStore singleton instance.

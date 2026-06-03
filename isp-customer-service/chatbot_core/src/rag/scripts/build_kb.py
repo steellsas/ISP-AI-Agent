@@ -16,12 +16,11 @@ Usage:
     uv run python src/rag/scripts/build_kb.py --rebuild-all
 """
 
-import sys
 import re
+import sys
 import time
 from pathlib import Path
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 # Setup paths for imports
 current_dir = Path(__file__).parent
@@ -30,6 +29,7 @@ if str(src_dir) not in sys.path:
     sys.path.insert(0, str(src_dir))
 
 from rag import get_retriever
+
 # from rag.scenario_loader import get_scenario_loader
 
 # Import utilities from shared package
@@ -74,8 +74,8 @@ class DocumentProcessor:
         self.chunk_overlap = chunk_overlap
 
     def process_markdown(
-        self, content: str, source: str, base_metadata: Optional[Dict] = None
-    ) -> List[Dict[str, Any]]:
+        self, content: str, source: str, base_metadata: dict | None = None
+    ) -> list[dict[str, Any]]:
         """
         Process markdown file into chunks with metadata.
 
@@ -129,7 +129,7 @@ class DocumentProcessor:
                 for i, sub_chunk in enumerate(sub_chunks):
                     chunks.append(
                         {
-                            "text": f"# {title}\n## {section_title} (dalis {i+1})\n{sub_chunk}".strip(),
+                            "text": f"# {title}\n## {section_title} (dalis {i + 1})\n{sub_chunk}".strip(),
                             "metadata": {
                                 "source": source,
                                 "title": title,
@@ -145,10 +145,9 @@ class DocumentProcessor:
 
         return chunks
 
-  
     def _extract_problem_type(self, source: str) -> str:
         """Extract problem_type from filename."""
-   
+
         source_lower = source.lower()
 
         if any(kw in source_lower for kw in ["internet", "wifi"]):
@@ -164,7 +163,6 @@ class DocumentProcessor:
 
         return "other"
 
-
     def _extract_title(self, content: str) -> str:
         """Extract title from first # header."""
         match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
@@ -172,7 +170,7 @@ class DocumentProcessor:
             return match.group(1).strip()
         return "Unknown"
 
-    def _split_into_sections(self, content: str) -> List[tuple]:
+    def _split_into_sections(self, content: str) -> list[tuple]:
         """Split content by ## headers."""
         sections = []
 
@@ -217,7 +215,7 @@ class DocumentProcessor:
 
         return "general"
 
-    def _chunk_text(self, text: str) -> List[str]:
+    def _chunk_text(self, text: str) -> list[str]:
         """Split text into overlapping chunks."""
         words = text.split()
         chunks = []
@@ -265,7 +263,7 @@ def build_knowledge_base(
     log("\n1. Initializing...")
     retriever = get_retriever(top_k=5, similarity_threshold=0.5)
     processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    log(f"   ✅ Retriever ready")
+    log("   ✅ Retriever ready")
     log(f"   ✅ Document processor ready (chunk_size={chunk_size})")
 
     # Knowledge base path
@@ -358,7 +356,7 @@ def build_knowledge_base(
     #     log(f"❌ Error loading scenarios: {e}")
     #     import traceback
 
-        # traceback.print_exc()
+    # traceback.print_exc()
 
     log("\n" + "-" * 80)
     log(f"📊 Scenarios: {stats['scenarios']}")
@@ -392,7 +390,7 @@ def build_knowledge_base(
 
     try:
         retriever.save(kb_name)
-        log(f"   ✅ Saved successfully")
+        log("   ✅ Saved successfully")
     except Exception as e:
         log(f"❌ Save failed: {e}")
         return False
@@ -453,7 +451,7 @@ def build_knowledge_base(
     log("\n" + "=" * 80)
     log("✅ KNOWLEDGE BASE BUILD COMPLETE")
     log("=" * 80)
-    log(f"\n📊 Build Summary:")
+    log("\n📊 Build Summary:")
     log(f"   Time: {elapsed_time:.1f}s")
     log(f"   KB name: {kb_name}")
     log(f"   Markdown files: {stats['markdown_files']}")
@@ -467,11 +465,11 @@ def build_knowledge_base(
 
     log(f"   Test queries: {test_passed}/{len(test_queries)} passed")
 
-    log(f"\n📝 Usage:")
-    log(f"   from rag import get_retriever")
-    log(f"   retriever = get_retriever()")
+    log("\n📝 Usage:")
+    log("   from rag import get_retriever")
+    log("   retriever = get_retriever()")
     log(f"   retriever.load('{kb_name}')")
-    log(f"   results = retriever.retrieve('neveikia internetas')")
+    log("   results = retriever.retrieve('neveikia internetas')")
 
     return True
 

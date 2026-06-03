@@ -9,7 +9,6 @@ Usage:
     uv run python scripts/setup_db.py
 """
 
-import os
 import sqlite3
 from pathlib import Path
 
@@ -31,7 +30,7 @@ def load_schema_file(schema_name: str) -> str:
     if not schema_path.exists():
         raise FileNotFoundError(f"Schema file not found: {schema_path}")
 
-    with open(schema_path, "r", encoding="utf-8") as f:
+    with open(schema_path, encoding="utf-8") as f:
         return f.read()
 
 

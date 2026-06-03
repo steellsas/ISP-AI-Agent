@@ -6,10 +6,10 @@ Uses direct subprocess communication (which we know works!)
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
-import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ class CustomMCPClient:
         else:
             raise RuntimeError(f"Failed to initialize {self.server_name} server")
 
-    async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Call MCP tool.
 
@@ -157,7 +157,7 @@ class CustomMCPClient:
         else:
             return {"success": False, "error": "no_response", "message": "No response from server"}
 
-    async def _send_request(self, request: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _send_request(self, request: dict[str, Any]) -> dict[str, Any] | None:
         """Send JSON-RPC request and get response."""
         if not self.process or self.process.returncode is not None:
             raise RuntimeError(f"{self.server_name} server process not running")
@@ -178,7 +178,7 @@ class CustomMCPClient:
                 logger.error(f"{self.server_name}: Empty response")
                 return None
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"{self.server_name}: Response timeout")
             return None
         except json.JSONDecodeError as e:
@@ -219,7 +219,7 @@ class CustomMCPClient:
                 if self.write_stream:
                     try:
                         await asyncio.wait_for(self.write_stream.aclose(), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning(f"{self.server_type}: Write stream close timeout")
                     except Exception as e:
                         logger.debug(f"{self.server_type}: Write stream error: {e}")
@@ -227,7 +227,7 @@ class CustomMCPClient:
                 if self.read_stream:
                     try:
                         await asyncio.wait_for(self.read_stream.aclose(), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning(f"{self.server_type}: Read stream close timeout")
                     except Exception as e:
                         logger.debug(f"{self.server_type}: Read stream error: {e}")
@@ -244,7 +244,7 @@ class CustomMCPClient:
                     # Wait briefly for graceful shutdown
                     try:
                         await asyncio.wait_for(asyncio.to_thread(self.process.wait), timeout=1.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         # Force kill if terminate didn't work
                         logger.warning(f"{self.server_type}: Force killing process...")
                         self.process.kill()
@@ -253,7 +253,7 @@ class CustomMCPClient:
 
             logger.info(f"{self.server_type} server closed successfully")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(f"{self.server_type}: Close operation timeout")
         except Exception as e:
             logger.error(f"Error closing {self.server_type} server: {e}")
@@ -284,7 +284,7 @@ if __name__ == "__main__":
                 {"city": "Šiauliai", "street": "Tilžės g.", "house_number": "60"},
             )
 
-            print(f"\nResult:")
+            print("\nResult:")
             print(json.dumps(result, indent=2, ensure_ascii=False))
 
         finally:

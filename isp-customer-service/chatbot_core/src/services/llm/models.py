@@ -2,7 +2,7 @@
 # LLM Models Registry
 
 # Available models with pricing and capabilities.
-# """
+#"""
 
 from dataclasses import dataclass
 
@@ -132,7 +132,7 @@ MODEL_REGISTRY: dict[str, ModelInfo] = {
 #         name="Gemini 2.5 Flash",
 #         provider="google",
 #         # Rekomenduojama jūsų chatbot'ui dėl mažos kainos ir didelio greičio
-#         input_cost_per_1k=0.0003, 
+#         input_cost_per_1k=0.0003,
 #         output_cost_per_1k=0.0025,
 #         max_tokens=1000000,
 #         default_temperature=0.3,

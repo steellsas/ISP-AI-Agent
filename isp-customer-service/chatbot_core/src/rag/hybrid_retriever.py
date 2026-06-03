@@ -8,9 +8,9 @@ Benefits:
 - Proxy methods: Works as drop-in replacement for base Retriever
 """
 
-from typing import List, Dict, Any, Optional
-import re
 import logging
+import re
+from typing import Any
 
 try:
     from isp_shared.utils import get_logger
@@ -151,7 +151,6 @@ class HybridRetriever:
             "are",
             "was",
             "were",
-            "be",
             "been",
             "have",
             "has",
@@ -211,9 +210,9 @@ class HybridRetriever:
         self,
         query: str,
         top_k: int = 5,
-        threshold: Optional[float] = None,
-        filter_metadata: Optional[Dict] = None,
-    ) -> List[Dict[str, Any]]:
+        threshold: float | None = None,
+        filter_metadata: dict | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Hybrid retrieval combining semantic and keyword search.
 
@@ -288,8 +287,8 @@ class HybridRetriever:
     def retrieve_with_context(
         self,
         query: str,
-        top_k: Optional[int] = None,
-        threshold: Optional[float] = None,
+        top_k: int | None = None,
+        threshold: float | None = None,
         include_scores: bool = True,
     ) -> str:
         """
@@ -365,9 +364,9 @@ class HybridRetriever:
 
     def add_documents(
         self,
-        documents: List[str],
-        metadata: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
+        documents: list[str],
+        metadata: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
         batch_size: int = 32,
     ):
         """Add documents (proxy to base retriever)."""
@@ -383,7 +382,7 @@ class HybridRetriever:
             directory=directory, file_extension=file_extension, recursive=recursive
         )
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """Get statistics (proxy + hybrid info)."""
         stats = self.retriever.get_statistics()
         stats["hybrid_enabled"] = True
@@ -411,7 +410,7 @@ class HybridRetriever:
         self.keyword_weight = max(0.0, min(1.0, weight))
         logger.info(f"Keyword weight updated to: {self.keyword_weight}")
 
-    def add_technical_keywords(self, keywords: List[str]):
+    def add_technical_keywords(self, keywords: list[str]):
         """
         Add custom technical keywords.
 

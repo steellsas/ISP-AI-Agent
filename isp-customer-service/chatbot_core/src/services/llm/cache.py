@@ -4,11 +4,10 @@ LLM Response Cache
 In-memory cache for LLM responses to reduce costs.
 """
 
-import json
-import time
 import hashlib
+import json
 import logging
-from typing import Optional, Any
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ class ResponseCache:
 
         return hashlib.md5(content.encode()).hexdigest()
 
-    def get(self, messages: list[dict], model: str, temperature: float) -> Optional[str]:
+    def get(self, messages: list[dict], model: str, temperature: float) -> str | None:
         """
         Get cached response if available.
 
