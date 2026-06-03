@@ -34,29 +34,84 @@ members = [
 dev-dependencies = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
-    "black>=24.0.0",
-    "ruff>=0.3.0",
-    "mypy>=1.8.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
 ]
 
 
-
-[tool.black]
-line-length = 100
-target-version = ['py312']
-
+# ----------------------------------------------------------------------------
+# Ruff — linter + formatter (replaces black + isort + flake8)
+# ----------------------------------------------------------------------------
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+    "*.egg-info",
+    "**/vector_store_data",
+]
 
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = isort, B = bugbear,
+# UP = pyupgrade, SIM = flake8-simplify, C4 = comprehensions
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4"]
+ignore = [
+    "E501",  # line length is handled by the formatter
+    "B008",  # function calls in argument defaults (common in FastAPI/typer)
+
+    # --- Ratchet list: tracked tech-debt, removed phase-by-phase (see ROADMAP) ---
+    # These need real code changes; deferred until the regression net (Phase 0/2)
+    # exists so refactors stay safe. Remove codes as the underlying issues are fixed.
+    "E402",   # imports not at top — caused by sys.path hacks (Phase 2 restructure)
+    "E722",   # bare except — Phase 0 bug pass
+    "E741",   # ambiguous variable name (l/I/O)
+    "B904",   # raise ... from err — Phase 0 bug pass
+    "B905",   # zip without explicit strict=
+    "C416",   # unnecessary comprehension
+    "F811",   # redefinition (ValidationError) — Phase 0 LLM cleanup
+    "F841",   # unused local variable
+    "UP042",  # use enum.StrEnum — Phase 2 modernization
+    "SIM102", # collapsible if
+    "SIM105", # use contextlib.suppress
+    "SIM108", # ternary instead of if/else
+]
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py legitimately re-exports symbols
+"**/__init__.py" = ["F401"]
+# Tests: looser rules; assert x == True is fine in test assertions
+"**/tests/**" = ["B", "SIM", "E712", "F401"]
+# Import-smoke test scripts intentionally import to verify availability
+"**/scripts/**" = ["B", "SIM", "F401"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+
+# ----------------------------------------------------------------------------
+# Pytest
+# ----------------------------------------------------------------------------
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["chatbot_core/tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
 
+
+# ----------------------------------------------------------------------------
+# Mypy — gradual typing: advisory now, tightened per-module over time
+# ----------------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.12"
-warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = true
+ignore_missing_imports = true   # many ML/voice libs ship no stubs
+disallow_untyped_defs = false   # TODO: enable per-module as code gets typed
+exclude = [
+    "tests/",
+    "scripts/",
+    "build/",
+]
