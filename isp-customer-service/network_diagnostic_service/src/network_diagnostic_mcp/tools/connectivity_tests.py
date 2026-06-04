@@ -291,7 +291,7 @@ def ping_test(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
                     "message": "Klientas neturi aktyvios paslaugos",
                 }
 
-        # Get recent ping results from ping_logs table
+        # Get recent ping results from ping_tests table
         with db.cursor() as cursor:
             cursor.execute(
                 """
@@ -303,7 +303,7 @@ def ping_test(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
                     avg_latency_ms,
                     max_latency_ms,
                     jitter_ms
-                FROM ping_logs
+                FROM ping_tests
                 WHERE customer_id = ?
                 ORDER BY timestamp DESC
                 LIMIT 1

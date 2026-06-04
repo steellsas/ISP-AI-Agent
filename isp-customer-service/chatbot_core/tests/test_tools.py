@@ -147,7 +147,7 @@ class TestRunPingTest:
 class TestSearchKnowledge:
     """Tests for search_knowledge tool."""
 
-    def test_search_knowledge_returns_results(self):
+    def test_search_knowledge_returns_results(self, require_kb):
         """Should return results for valid query."""
         from agent.tools import search_knowledge
 
@@ -156,7 +156,7 @@ class TestSearchKnowledge:
         assert result["success"] == True
         assert "results" in result
 
-    def test_search_knowledge_internet_query(self):
+    def test_search_knowledge_internet_query(self, require_kb):
         """Should find internet-related content."""
         from agent.tools import search_knowledge
 
