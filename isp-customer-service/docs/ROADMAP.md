@@ -104,7 +104,13 @@ chatbot_core/src/
         Now a plain class; lifecycle is owned solely by `init_database` /
         `get_db_connection` (which everyone already uses); `init_database` closes the
         previous connection before replacing. — *via `fix/db-singleton`*
-  - Transaction atomicity for `create_ticket`: `connection.py:101` + `crm_mcp/tools/tickets.py`
+  - [x] Transaction atomicity (`crm_mcp/tools/tickets.py`): `create_ticket` wrote
+        the ticket row and its history entry in **two separate** `db.cursor()`
+        blocks — each its own commit — so a failure on the second left an orphan
+        ticket with no history (unrecoverable, already on disk). Both writes now
+        share a single `db.transaction()` (commit-or-rollback together). Same fix
+        applied to `update_ticket_status` (status update + resolution history),
+        which had the identical two-commit pattern. — *via `fix/ticket-atomicity`*
   - Lock down SQL f-strings: `shared/.../database/base.py:157`
   - Error / PII sanitization at tool boundary; redact phone numbers in logs
   - `Optional[...]` type-hint sweep
@@ -224,6 +230,8 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 0 · Critical-fix #2 — empty `respond` message handling (PR #9).
 - [x] Phase 0 · Critical-fix #3 — DB singleton (`__new__`) removed; lifecycle via
       `init_database` only (`fix/db-singleton`).
-- [ ] **Next:** Phase 0 · Critical-fix pass continues — transaction atomicity for
-      `create_ticket` (`connection.py` + `crm_mcp/tools/tickets.py`), then SQL
-      f-string lockdown (`database/base.py`) — all protected by the green scenario eval.
+- [x] Phase 0 · Critical-fix #4 — transaction atomicity for `create_ticket` +
+      `update_ticket_status` (single `db.transaction()`) (`fix/ticket-atomicity`).
+- [ ] **Next:** Phase 0 · Critical-fix pass continues — SQL f-string lockdown
+      (`database/base.py`), then PII sanitization at the tool boundary — all
+      protected by the green scenario eval.
