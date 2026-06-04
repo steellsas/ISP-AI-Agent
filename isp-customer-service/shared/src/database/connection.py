@@ -9,7 +9,6 @@ import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +18,12 @@ class DatabaseConnection:
     Thread-safe SQLite database connection manager.
 
     Uses thread-local storage to ensure each thread gets its own connection.
-    Implements connection pooling and automatic cleanup.
-    """
+    Each instance manages connections to a single database file.
 
-    _instance: Optional["DatabaseConnection"] = None
-    _lock = threading.Lock()
+    Instance lifecycle is managed by the module-level ``init_database`` /
+    ``get_db_connection`` factory functions — do not rely on this class being
+    a process-wide singleton.
+    """
 
     def __init__(self, db_path: str | Path) -> None:
         """
@@ -39,14 +39,6 @@ class DatabaseConnection:
             raise FileNotFoundError(f"Database not found: {self.db_path}")
 
         logger.info(f"DatabaseConnection initialized: {self.db_path}")
-
-    def __new__(cls, db_path: str | Path) -> "DatabaseConnection":
-        """Singleton pattern to ensure only one instance exists."""
-        if cls._instance is None:
-            with cls._lock:
-                if cls._instance is None:
-                    cls._instance = super().__new__(cls)
-        return cls._instance
 
     def get_connection(self) -> sqlite3.Connection:
         """
@@ -166,5 +158,10 @@ def init_database(db_path: str | Path) -> DatabaseConnection:
         DatabaseConnection instance
     """
     global _db_connection
+    # Close the previous instance's current-thread connection before replacing
+    # it, so re-initialising (e.g. multiple services, or per-test temp DBs)
+    # does not leak the old open connection.
+    if _db_connection is not None:
+        _db_connection.close()
     _db_connection = DatabaseConnection(db_path)
     return _db_connection

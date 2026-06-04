@@ -68,10 +68,13 @@ def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any
 
         # Generate ticket ID
         ticket_id = generate_ticket_id()
+        now = datetime.now().isoformat()
 
-        # Create ticket
-        with db.cursor() as cursor:
-            cursor.execute(
+        # The ticket row and its history entry must be written atomically: a
+        # single transaction so that if the history insert fails, the ticket
+        # insert is rolled back too (no orphan ticket without history).
+        with db.transaction() as conn:
+            conn.execute(
                 """
                 INSERT INTO tickets (
                     ticket_id,
@@ -95,14 +98,11 @@ def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any
                     summary,
                     details,
                     troubleshooting_steps,
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat(),
+                    now,
+                    now,
                 ),
             )
-
-        # Create history entry
-        with db.cursor() as cursor:
-            cursor.execute(
+            conn.execute(
                 """
                 INSERT INTO customer_history (
                     history_id,
@@ -117,7 +117,7 @@ def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any
                     f"HIST{uuid.uuid4().hex[:8].upper()}",
                     customer_id,
                     "ticket_created",
-                    datetime.now().isoformat(),
+                    now,
                     f"Ticket created: {summary}",
                     ticket_id,
                 ),
@@ -135,7 +135,7 @@ def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any
                 "status": "open",
                 "summary": summary,
                 "details": details,
-                "created_at": datetime.now().isoformat(),
+                "created_at": now,
             },
             "message": f"Gedimo pranešimas {ticket_id} sėkmingai sukurtas",
         }
@@ -252,16 +252,17 @@ def update_ticket_status(
 
         ticket_dict = dict(ticket)
 
-        # Update ticket
+        # Build the update statement
+        now = datetime.now().isoformat()
         update_query = """
             UPDATE tickets
             SET status = ?, updated_at = ?
         """
-        params = [status, datetime.now().isoformat()]
+        params = [status, now]
 
         if status == "closed":
             update_query += ", resolved_at = ?"
-            params.append(datetime.now().isoformat())
+            params.append(now)
 
             if resolution_summary:
                 update_query += ", resolution_summary = ?"
@@ -270,13 +271,14 @@ def update_ticket_status(
         update_query += " WHERE ticket_id = ?"
         params.append(ticket_id)
 
-        with db.cursor() as cursor:
-            cursor.execute(update_query, params)
+        # The status update and the resolution history entry must be written
+        # atomically: a single transaction so a failure in the history insert
+        # rolls back the status change too (no status change without history).
+        with db.transaction() as conn:
+            conn.execute(update_query, params)
 
-        # Create history entry
-        if status == "closed":
-            with db.cursor() as cursor:
-                cursor.execute(
+            if status == "closed":
+                conn.execute(
                     """
                     INSERT INTO customer_history (
                         history_id,
@@ -291,7 +293,7 @@ def update_ticket_status(
                         f"HIST{uuid.uuid4().hex[:8].upper()}",
                         ticket_dict["customer_id"],
                         "ticket_resolved",
-                        datetime.now().isoformat(),
+                        now,
                         f"Ticket resolved: {resolution_summary or 'No details'}",
                         ticket_id,
                     ),
