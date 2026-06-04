@@ -3,83 +3,82 @@ Session State Management for Streamlit UI
 Simplified for ReAct Agent
 """
 
-import streamlit as st
 import uuid
 from datetime import datetime
+
+import streamlit as st
 
 
 def init_session():
     """Initialize all session state variables."""
-    
+
     # Conversation state
     if "conversation_id" not in st.session_state:
         st.session_state.conversation_id = None
-    
+
     if "phone_number" not in st.session_state:
         st.session_state.phone_number = "+37060012345"
-    
+
     if "messages" not in st.session_state:
         st.session_state.messages = []
-    
+
     if "agent" not in st.session_state:
         st.session_state.agent = None
-    
+
     # Call state
     if "call_active" not in st.session_state:
         st.session_state.call_active = False
-    
+
     if "call_start_time" not in st.session_state:
         st.session_state.call_start_time = None
-    
+
     if "call_ended" not in st.session_state:
         st.session_state.call_ended = False
-    
+
     # Monitoring data
     if "llm_calls" not in st.session_state:
         st.session_state.llm_calls = []
-    
+
     if "tool_calls" not in st.session_state:
         st.session_state.tool_calls = []
-    
+
     if "total_tokens" not in st.session_state:
         st.session_state.total_tokens = 0
-    
+
     if "total_cost" not in st.session_state:
         st.session_state.total_cost = 0.0
-    
+
     # LLM call tracking (updated via callbacks)
     if "llm_call_count" not in st.session_state:
         st.session_state.llm_call_count = 0
-    
+
     if "average_latency" not in st.session_state:
         st.session_state.average_latency = 0.0
-    
+
     if "cached_count" not in st.session_state:
         st.session_state.cached_count = 0
-    
+
     # RAG retrievals tracking
     if "rag_retrievals" not in st.session_state:
         st.session_state.rag_retrievals = []
-    
+
     # Chatbot state for monitoring
     if "chatbot_state" not in st.session_state:
         st.session_state.chatbot_state = {}
-    
+
     # RAG ready flag
     if "rag_ready" not in st.session_state:
         st.session_state.rag_ready = False
-    
+
     # Settings with defaults
     if "settings" not in st.session_state:
         st.session_state.settings = {
             # Language - default English
             "language": "en",
-            
             # LLM Model settings
             "provider": "openai",
             "model": "gpt-4o-mini",
             "temperature": 0.3,
-            
             # UI settings
             "debug_mode": False,
             "show_agent_thoughts": True,
@@ -120,7 +119,7 @@ def start_new_call():
     st.session_state.call_active = True
     st.session_state.call_start_time = datetime.now()
     st.session_state.call_ended = False
-    
+
     # Reset monitoring
     st.session_state.llm_calls = []
     st.session_state.tool_calls = []
@@ -174,7 +173,7 @@ def get_call_duration() -> str:
     """Get formatted call duration."""
     if not st.session_state.call_start_time:
         return "00:00"
-    
+
     duration = datetime.now() - st.session_state.call_start_time
     minutes = int(duration.total_seconds() // 60)
     seconds = int(duration.total_seconds() % 60)
@@ -186,9 +185,9 @@ def get_state_summary() -> dict:
     agent = st.session_state.get("agent")
     if not agent:
         return {}
-    
+
     state = agent.state
-    
+
     return {
         "customer_id": state.customer_id,
         "customer_name": state.customer_name,
@@ -200,9 +199,11 @@ def get_state_summary() -> dict:
 
 def log_rag_retrieval(query: str, results: list):
     """Log RAG retrieval for monitoring."""
-    st.session_state.rag_retrievals.append({
-        "timestamp": datetime.now().isoformat(),
-        "query": query,
-        "results_count": len(results),
-        "results": results[:5],  # Keep top 5
-    })
+    st.session_state.rag_retrievals.append(
+        {
+            "timestamp": datetime.now().isoformat(),
+            "query": query,
+            "results_count": len(results),
+            "results": results[:5],  # Keep top 5
+        }
+    )

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "shared" / "src"))
 
 from crm_mcp.tools.customer_lookup import lookup_customer_by_phone
 from repository.customer_repo import CustomerRepository
+
 from database import init_database
 
 
@@ -42,7 +43,7 @@ def test_phone_lookup():
     result = lookup_customer_by_phone(db, {"phone_number": valid_phone})
 
     if result["success"]:
-        print(f"✅ SUCCESS: Found customer")
+        print("✅ SUCCESS: Found customer")
         print(f"   Name: {result['customer']['first_name']} {result['customer']['last_name']}")
         print(f"   Customer ID: {result['customer']['customer_id']}")
         print(f"   Email: {result['customer']['email']}")
@@ -70,7 +71,7 @@ def test_phone_lookup():
     result = lookup_customer_by_phone(db, {"phone_number": "+37099999999"})
 
     if result["success"]:
-        print(f"❌ FAILED: Should not have found customer")
+        print("❌ FAILED: Should not have found customer")
     else:
         print(f"✅ SUCCESS: {result['message']}")
 
@@ -82,7 +83,7 @@ def test_phone_lookup():
     result = lookup_customer_by_phone(db, {"phone_number": ""})
 
     if result["success"]:
-        print(f"❌ FAILED: Should have rejected empty phone")
+        print("❌ FAILED: Should have rejected empty phone")
     else:
         print(f"✅ SUCCESS: {result['message']}")
 
@@ -94,7 +95,7 @@ def test_phone_lookup():
     result = lookup_customer_by_phone(db, {})
 
     if result["success"]:
-        print(f"❌ FAILED: Should have rejected missing parameter")
+        print("❌ FAILED: Should have rejected missing parameter")
     else:
         print(f"✅ SUCCESS: {result['message']}")
 

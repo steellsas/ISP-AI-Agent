@@ -2,8 +2,9 @@
 Customer-related Pydantic models.
 """
 
-from datetime import datetime, date
-from typing import Optional, Literal
+from datetime import date, datetime
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -13,20 +14,20 @@ class Customer(BaseModel):
     customer_id: str = Field(..., description="Unique customer ID")
     first_name: str = Field(..., description="Customer first name")
     last_name: str = Field(..., description="Customer last name")
-    phone: Optional[str] = Field(None, description="Phone number")
-    email: Optional[str] = Field(None, description="Email address")
+    phone: str | None = Field(None, description="Phone number")
+    email: str | None = Field(None, description="Email address")
     status: Literal["active", "suspended", "cancelled"] = Field(
         default="active", description="Customer status"
     )
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
-    notes: Optional[str] = Field(None, description="Additional notes")
+    notes: str | None = Field(None, description="Additional notes")
 
     class Config:
         from_attributes = True
 
     @field_validator("phone")
     @classmethod
-    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+    def validate_phone(cls, v: str | None) -> str | None:
         """Validate phone number format."""
         if v and not v.startswith("+"):
             raise ValueError("Phone must start with country code (+)")
@@ -41,9 +42,9 @@ class Address(BaseModel):
     city: str = Field(..., description="City name")
     street: str = Field(..., description="Street name")
     house_number: str = Field(..., description="House number")
-    apartment_number: Optional[str] = Field(None, description="Apartment number")
-    postal_code: Optional[str] = Field(None, description="Postal code")
-    full_address: Optional[str] = Field(None, description="Full formatted address")
+    apartment_number: str | None = Field(None, description="Apartment number")
+    postal_code: str | None = Field(None, description="Postal code")
+    full_address: str | None = Field(None, description="Full formatted address")
     is_primary: bool = Field(default=True, description="Is primary address")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
 
@@ -67,13 +68,13 @@ class ServicePlan(BaseModel):
         ..., description="Service type"
     )
     plan_name: str = Field(..., description="Plan name")
-    speed_mbps: Optional[int] = Field(None, description="Internet speed in Mbps")
+    speed_mbps: int | None = Field(None, description="Internet speed in Mbps")
     price: float = Field(..., description="Monthly price")
     status: Literal["active", "suspended", "cancelled"] = Field(
         default="active", description="Plan status"
     )
     activation_date: date = Field(..., description="Activation date")
-    suspension_reason: Optional[str] = Field(None, description="Suspension reason")
+    suspension_reason: str | None = Field(None, description="Suspension reason")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
 
     class Config:
@@ -96,14 +97,14 @@ class CustomerEquipment(BaseModel):
     equipment_type: Literal["router", "modem", "decoder", "phone", "ont"] = Field(
         ..., description="Equipment type"
     )
-    model: Optional[str] = Field(None, description="Equipment model")
-    serial_number: Optional[str] = Field(None, description="Serial number")
-    mac_address: Optional[str] = Field(None, description="MAC address")
-    installed_date: Optional[date] = Field(None, description="Installation date")
+    model: str | None = Field(None, description="Equipment model")
+    serial_number: str | None = Field(None, description="Serial number")
+    mac_address: str | None = Field(None, description="MAC address")
+    installed_date: date | None = Field(None, description="Installation date")
     status: Literal["active", "inactive", "faulty", "returned"] = Field(
         default="active", description="Equipment status"
     )
-    notes: Optional[str] = Field(None, description="Additional notes")
+    notes: str | None = Field(None, description="Additional notes")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
 
     class Config:
@@ -116,7 +117,7 @@ class CustomerMemory(BaseModel):
     memory_id: str = Field(..., description="Unique memory ID")
     customer_id: str = Field(..., description="Customer ID")
     memory_key: str = Field(..., description="Memory key")
-    memory_value: Optional[str] = Field(None, description="Memory value")
+    memory_value: str | None = Field(None, description="Memory value")
     last_updated: datetime = Field(default_factory=datetime.now, description="Last updated")
 
     class Config:
@@ -137,8 +138,8 @@ class CustomerHistory(BaseModel):
         "status_change",
     ] = Field(..., description="Event type")
     event_date: datetime = Field(default_factory=datetime.now, description="Event date")
-    details: Optional[str] = Field(None, description="Event details")
-    related_ticket_id: Optional[str] = Field(None, description="Related ticket ID")
+    details: str | None = Field(None, description="Event details")
+    related_ticket_id: str | None = Field(None, description="Related ticket ID")
 
     class Config:
         from_attributes = True

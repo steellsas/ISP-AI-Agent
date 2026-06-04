@@ -14,11 +14,12 @@ for p in [str(network_service_path), str(shared_path)]:
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from database import init_database
+from network_diagnostic_mcp.tools.connectivity_tests import check_ip_assignment, ping_test
 from network_diagnostic_mcp.tools.outage_checks import check_customer_affected_by_outage
 from network_diagnostic_mcp.tools.port_diagnostics import check_port_status
-from network_diagnostic_mcp.tools.connectivity_tests import check_ip_assignment, ping_test
 from utils import get_logger
+
+from database import init_database
 
 logger = get_logger(__name__)
 

@@ -4,11 +4,11 @@ LLM Utilities
 API key management, JSON extraction, response validation.
 """
 
-import os
-import re
 import json
 import logging
-from typing import Optional
+import os
+import re
+
 from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,7 @@ def extract_json_from_response(content: str) -> dict:
 
 def validate_json_response(
     response: dict, schema: type[BaseModel] = None
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Validate JSON response against Pydantic schema.
 

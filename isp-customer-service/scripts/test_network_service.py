@@ -25,12 +25,12 @@ def test_imports():
 
     try:
         # Database
-        from database import init_database, DatabaseConnection
+        from database import DatabaseConnection, init_database
 
         print("✅ Database imports OK")
 
         # Shared types
-        from isp_types import Switch, Port, IPAssignment, AreaOutage, BandwidthLog
+        from isp_types import AreaOutage, BandwidthLog, IPAssignment, Port, Switch
 
         print("✅ Shared types imports OK")
 
@@ -45,7 +45,7 @@ def test_imports():
         print("✅ MCP server imports OK")
 
         # Tools
-        from mcp_server.tools import port_diagnostics, connectivity_tests, outage_checks
+        from mcp_server.tools import connectivity_tests, outage_checks, port_diagnostics
 
         print("✅ Tools imports OK")
 
@@ -65,8 +65,9 @@ def test_network_repository():
     print("TEST 2: Network Repository")
     print("=" * 60)
 
-    from database import init_database
     from repository import NetworkRepository
+
+    from database import init_database
 
     try:
         # Initialize database
@@ -122,8 +123,9 @@ def test_port_diagnostics():
     print("TEST 3: Port Diagnostics Tools")
     print("=" * 60)
 
-    from database import init_database
     from mcp_server.tools.port_diagnostics import check_port_status, get_switch_info
+
+    from database import init_database
 
     try:
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
@@ -175,12 +177,13 @@ def test_connectivity_tools():
     print("TEST 4: Connectivity Tools")
     print("=" * 60)
 
-    from database import init_database
     from mcp_server.tools.connectivity_tests import (
-        check_ip_assignment,
         check_bandwidth_history,
+        check_ip_assignment,
         ping_test,
     )
+
+    from database import init_database
 
     try:
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
@@ -241,8 +244,9 @@ def test_outage_checks():
     print("TEST 5: Outage Checks")
     print("=" * 60)
 
-    from database import init_database
     from mcp_server.tools.outage_checks import check_area_outages, check_customer_affected_by_outage
+
+    from database import init_database
 
     try:
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
@@ -331,8 +335,9 @@ def test_network_models():
     print("TEST 7: Network Models")
     print("=" * 60)
 
-    from isp_types import Switch, Port, PortStatus, IPAssignment, AreaOutage, BandwidthLog
     from decimal import Decimal
+
+    from isp_types import AreaOutage, BandwidthLog, IPAssignment, Port, PortStatus, Switch
 
     try:
         # Test Switch model

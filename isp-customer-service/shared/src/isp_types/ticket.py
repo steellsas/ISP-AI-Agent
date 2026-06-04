@@ -3,8 +3,8 @@ Ticket-related Pydantic models.
 """
 
 from datetime import datetime
-from typing import Optional, Literal
 from enum import Enum
+
 from pydantic import BaseModel, Field
 
 
@@ -41,17 +41,17 @@ class Ticket(BaseModel):
     ticket_id: str = Field(..., description="Unique ticket ID")
     customer_id: str = Field(..., description="Customer ID")
     ticket_type: TicketType = Field(..., description="Ticket type")
-    problem_type: Optional[str] = Field(None, description="Problem category")
+    problem_type: str | None = Field(None, description="Problem category")
     priority: TicketPriority = Field(default=TicketPriority.MEDIUM, description="Ticket priority")
     status: TicketStatus = Field(default=TicketStatus.OPEN, description="Ticket status")
     summary: str = Field(..., description="Brief summary")
-    details: Optional[str] = Field(None, description="Detailed description")
-    resolution_summary: Optional[str] = Field(None, description="Resolution summary")
+    details: str | None = Field(None, description="Detailed description")
+    resolution_summary: str | None = Field(None, description="Resolution summary")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
     updated_at: datetime = Field(default_factory=datetime.now, description="Updated timestamp")
-    resolved_at: Optional[datetime] = Field(None, description="Resolved timestamp")
-    assigned_to: Optional[str] = Field(None, description="Assigned technician")
-    troubleshooting_steps: Optional[str] = Field(None, description="Steps taken to troubleshoot")
+    resolved_at: datetime | None = Field(None, description="Resolved timestamp")
+    assigned_to: str | None = Field(None, description="Assigned technician")
+    troubleshooting_steps: str | None = Field(None, description="Steps taken to troubleshoot")
 
     class Config:
         from_attributes = True
@@ -71,21 +71,19 @@ class TicketCreateRequest(BaseModel):
 
     customer_id: str = Field(..., description="Customer ID")
     ticket_type: TicketType = Field(..., description="Ticket type")
-    problem_type: Optional[str] = Field(None, description="Problem category")
+    problem_type: str | None = Field(None, description="Problem category")
     priority: TicketPriority = Field(default=TicketPriority.MEDIUM, description="Ticket priority")
     summary: str = Field(..., description="Brief summary")
-    details: Optional[str] = Field(None, description="Detailed description")
-    troubleshooting_steps: Optional[str] = Field(None, description="Steps already taken")
+    details: str | None = Field(None, description="Detailed description")
+    troubleshooting_steps: str | None = Field(None, description="Steps already taken")
 
 
 class TicketUpdateRequest(BaseModel):
     """Request model for updating a ticket."""
 
-    status: Optional[TicketStatus] = Field(None, description="New status")
-    priority: Optional[TicketPriority] = Field(None, description="New priority")
-    details: Optional[str] = Field(None, description="Additional details")
-    resolution_summary: Optional[str] = Field(None, description="Resolution summary")
-    assigned_to: Optional[str] = Field(None, description="Assigned technician")
-    troubleshooting_steps: Optional[str] = Field(
-        None, description="Additional troubleshooting steps"
-    )
+    status: TicketStatus | None = Field(None, description="New status")
+    priority: TicketPriority | None = Field(None, description="New priority")
+    details: str | None = Field(None, description="Additional details")
+    resolution_summary: str | None = Field(None, description="Resolution summary")
+    assigned_to: str | None = Field(None, description="Assigned technician")
+    troubleshooting_steps: str | None = Field(None, description="Additional troubleshooting steps")

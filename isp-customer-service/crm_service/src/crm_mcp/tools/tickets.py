@@ -4,18 +4,19 @@ Create and manage support tickets
 """
 
 import sys
-from pathlib import Path
-from typing import Dict, Any, List
-from datetime import datetime
 import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
@@ -25,7 +26,7 @@ def generate_ticket_id() -> str:
     return f"TKT{uuid.uuid4().hex[:8].upper()}"
 
 
-def create_ticket(db: DatabaseConnection, args: Dict[str, Any]) -> Dict[str, Any]:
+def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any]:
     """
     Create a new support ticket.
 
@@ -50,8 +51,8 @@ def create_ticket(db: DatabaseConnection, args: Dict[str, Any]) -> Dict[str, Any
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT customer_id, first_name, last_name 
-                FROM customers 
+                SELECT customer_id, first_name, last_name
+                FROM customers
                 WHERE customer_id = ?
             """,
                 (customer_id,),
@@ -150,7 +151,7 @@ def create_ticket(db: DatabaseConnection, args: Dict[str, Any]) -> Dict[str, Any
 
 def get_customer_tickets(
     db: DatabaseConnection, customer_id: str, status: str = "all"
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get customer's tickets.
 
@@ -166,7 +167,7 @@ def get_customer_tickets(
 
     try:
         query = """
-            SELECT 
+            SELECT
                 ticket_id,
                 ticket_type,
                 priority,
@@ -214,7 +215,7 @@ def get_customer_tickets(
 
 def update_ticket_status(
     db: DatabaseConnection, ticket_id: str, status: str, resolution_summary: str = None
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update ticket status.
 
@@ -234,8 +235,8 @@ def update_ticket_status(
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT ticket_id, customer_id, status 
-                FROM tickets 
+                SELECT ticket_id, customer_id, status
+                FROM tickets
                 WHERE ticket_id = ?
             """,
                 (ticket_id,),
@@ -253,7 +254,7 @@ def update_ticket_status(
 
         # Update ticket
         update_query = """
-            UPDATE tickets 
+            UPDATE tickets
             SET status = ?, updated_at = ?
         """
         params = [status, datetime.now().isoformat()]

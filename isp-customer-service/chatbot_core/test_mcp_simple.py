@@ -29,7 +29,7 @@ async def test():
 
         await mcp.close()
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         print("❌ Timeout - hanging on connection")
         print("\nCheck if CRM server is running standalone:")
         print("  cd crm_service")

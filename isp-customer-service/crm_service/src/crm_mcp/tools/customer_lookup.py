@@ -5,7 +5,7 @@ Find customers by address with fuzzy matching support
 
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
@@ -13,8 +13,9 @@ if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
 from Levenshtein import ratio
-from database import DatabaseConnection
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
@@ -43,8 +44,8 @@ def normalize_street_name(street: str) -> str:
 
 
 def fuzzy_match_street(
-    input_street: str, db_streets: List[str], threshold: float = 0.7
-) -> Optional[str]:
+    input_street: str, db_streets: list[str], threshold: float = 0.7
+) -> str | None:
     """
     Find best matching street using fuzzy matching.
 
@@ -76,7 +77,7 @@ def fuzzy_match_street(
     return None
 
 
-def lookup_customer_by_address(db: DatabaseConnection, args: Dict[str, Any]) -> Dict[str, Any]:
+def lookup_customer_by_address(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any]:
     """
     Lookup customer by address with fuzzy matching.
 
@@ -104,8 +105,8 @@ def lookup_customer_by_address(db: DatabaseConnection, args: Dict[str, Any]) -> 
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT DISTINCT street 
-                FROM addresses 
+                SELECT DISTINCT street
+                FROM addresses
                 WHERE LOWER(city) = LOWER(?)
             """,
                 (city,),
@@ -133,7 +134,7 @@ def lookup_customer_by_address(db: DatabaseConnection, args: Dict[str, Any]) -> 
 
         # Step 3: Find customer by exact address
         query = """
-            SELECT 
+            SELECT
                 c.customer_id,
                 c.first_name,
                 c.last_name,
@@ -205,7 +206,7 @@ def lookup_customer_by_address(db: DatabaseConnection, args: Dict[str, Any]) -> 
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-def lookup_customer_by_phone(db: DatabaseConnection, args: Dict[str, Any]) -> Dict[str, Any]:
+def lookup_customer_by_phone(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any]:
     """
     Lookup customer by phone number using repository pattern.
 
@@ -309,7 +310,7 @@ def lookup_customer_by_phone(db: DatabaseConnection, args: Dict[str, Any]) -> Di
         }
 
 
-def get_customer_details(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+def get_customer_details(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Get comprehensive customer information.
 
@@ -356,7 +357,7 @@ def get_customer_details(db: DatabaseConnection, customer_id: str) -> Dict[str, 
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT * FROM service_plans 
+                SELECT * FROM service_plans
                 WHERE customer_id = ? AND status = 'active'
             """,
                 (customer_id,),
@@ -367,7 +368,7 @@ def get_customer_details(db: DatabaseConnection, customer_id: str) -> Dict[str, 
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT * FROM customer_equipment 
+                SELECT * FROM customer_equipment
                 WHERE customer_id = ? AND status = 'active'
             """,
                 (customer_id,),
@@ -378,7 +379,7 @@ def get_customer_details(db: DatabaseConnection, customer_id: str) -> Dict[str, 
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT * FROM tickets 
+                SELECT * FROM tickets
                 WHERE customer_id = ?
                 ORDER BY created_at DESC
                 LIMIT 5

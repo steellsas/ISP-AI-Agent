@@ -9,7 +9,6 @@ Usage:
     uv run python scripts/seed_data.py
 """
 
-import os
 import sqlite3
 from pathlib import Path
 
@@ -31,7 +30,7 @@ def load_seed_file(seed_name: str) -> str:
     if not seed_path.exists():
         raise FileNotFoundError(f"Seed file not found: {seed_path}")
 
-    with open(seed_path, "r", encoding="utf-8") as f:
+    with open(seed_path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -94,7 +93,7 @@ def seed_database():
         port_count = cursor.fetchone()[0]
 
         print("\n Mock data loaded successfully!")
-        print(f" Statistics:")
+        print(" Statistics:")
         print(f"   - Customers: {customer_count}")
         print(f"   - Switches: {switch_count}")
         print(f"   - Ports: {port_count}")

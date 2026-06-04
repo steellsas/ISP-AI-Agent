@@ -5,20 +5,21 @@ Check network port status and switch information
 
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
 
-def check_port_status(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+def check_port_status(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Check network port status for customer.
 
@@ -64,7 +65,7 @@ def check_port_status(db: DatabaseConnection, customer_id: str) -> Dict[str, Any
             with db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT 
+                    SELECT
                         p.port_id,
                         p.port_number,
                         p.status,
@@ -127,7 +128,7 @@ def check_port_status(db: DatabaseConnection, customer_id: str) -> Dict[str, Any
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-def get_switch_info(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+def get_switch_info(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Get network switch information for customer.
 
@@ -176,7 +177,7 @@ def get_switch_info(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_ports,
                     SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) as active_ports,
                     SUM(CASE WHEN customer_id IS NOT NULL THEN 1 ELSE 0 END) as assigned_ports
@@ -210,7 +211,7 @@ def get_switch_info(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-def get_port_history(db: DatabaseConnection, port_id: str, limit: int = 10) -> Dict[str, Any]:
+def get_port_history(db: DatabaseConnection, port_id: str, limit: int = 10) -> dict[str, Any]:
     """
     Get port status change history.
 

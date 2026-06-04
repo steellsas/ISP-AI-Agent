@@ -7,7 +7,6 @@ Track token usage, costs, and performance metrics.
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class CallStats:
     timestamp: datetime
     cached: bool = False
     success: bool = True
-    error: Optional[str] = None
+    error: str | None = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary."""
@@ -144,11 +143,11 @@ class SessionStats:
         return f"""
 📊 LLM Usage Summary
 ───────────────────
-Calls: {stats['total_calls']} ({stats['successful_calls']} success, {stats['cached_calls']} cached)
-Tokens: {stats['input_tokens']:,} in + {stats['output_tokens']:,} out = {stats['total_tokens']:,} total
-Cost: {stats['total_cost_display']}
-Avg Latency: {stats['average_latency_ms']:.0f}ms
-Session: {stats['session_duration_seconds']:.0f}s
+Calls: {stats["total_calls"]} ({stats["successful_calls"]} success, {stats["cached_calls"]} cached)
+Tokens: {stats["input_tokens"]:,} in + {stats["output_tokens"]:,} out = {stats["total_tokens"]:,} total
+Cost: {stats["total_cost_display"]}
+Avg Latency: {stats["average_latency_ms"]:.0f}ms
+Session: {stats["session_duration_seconds"]:.0f}s
 """
 
 

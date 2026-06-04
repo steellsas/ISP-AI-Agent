@@ -5,17 +5,17 @@ Clean data access layer for customer-related queries
 
 import sys
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
-from isp_types import Customer, Address, ServicePlan, CustomerEquipment
+from isp_types import Address, Customer, CustomerEquipment, ServicePlan
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
@@ -32,7 +32,7 @@ class CustomerRepository:
         """
         self.db = db
 
-    def find_by_id(self, customer_id: str) -> Optional[Customer]:
+    def find_by_id(self, customer_id: str) -> Customer | None:
         """
         Find customer by ID.
 
@@ -63,8 +63,8 @@ class CustomerRepository:
             return None
 
     def find_by_address(
-        self, city: str, street: str, house_number: str, apartment_number: Optional[str] = None
-    ) -> Optional[Customer]:
+        self, city: str, street: str, house_number: str, apartment_number: str | None = None
+    ) -> Customer | None:
         """
         Find customer by address.
 
@@ -108,7 +108,7 @@ class CustomerRepository:
             logger.error(f"Error finding customer by address: {e}")
             return None
 
-    def find_by_phone(self, phone: str) -> Optional[Customer]:
+    def find_by_phone(self, phone: str) -> Customer | None:
         """
         Find customer by phone number.
 
@@ -138,7 +138,7 @@ class CustomerRepository:
             logger.error(f"Error finding customer by phone {phone}: {e}")
             return None
 
-    def find_by_email(self, email: str) -> Optional[Customer]:
+    def find_by_email(self, email: str) -> Customer | None:
         """
         Find customer by email.
 
@@ -168,7 +168,7 @@ class CustomerRepository:
             logger.error(f"Error finding customer by email {email}: {e}")
             return None
 
-    def get_addresses(self, customer_id: str) -> List[Address]:
+    def get_addresses(self, customer_id: str) -> list[Address]:
         """
         Get all addresses for customer.
 
@@ -196,7 +196,7 @@ class CustomerRepository:
             logger.error(f"Error getting addresses for {customer_id}: {e}")
             return []
 
-    def get_primary_address(self, customer_id: str) -> Optional[Address]:
+    def get_primary_address(self, customer_id: str) -> Address | None:
         """
         Get primary address for customer.
 
@@ -210,7 +210,7 @@ class CustomerRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT * FROM addresses 
+                    SELECT * FROM addresses
                     WHERE customer_id = ? AND is_primary = 1
                 """,
                     (customer_id,),
@@ -223,7 +223,7 @@ class CustomerRepository:
                 with self.db.cursor() as cursor:
                     cursor.execute(
                         """
-                        SELECT * FROM addresses 
+                        SELECT * FROM addresses
                         WHERE customer_id = ?
                         LIMIT 1
                     """,
@@ -240,7 +240,7 @@ class CustomerRepository:
             logger.error(f"Error getting primary address for {customer_id}: {e}")
             return None
 
-    def get_service_plans(self, customer_id: str, active_only: bool = True) -> List[ServicePlan]:
+    def get_service_plans(self, customer_id: str, active_only: bool = True) -> list[ServicePlan]:
         """
         Get service plans for customer.
 
@@ -270,7 +270,7 @@ class CustomerRepository:
             logger.error(f"Error getting service plans for {customer_id}: {e}")
             return []
 
-    def get_equipment(self, customer_id: str, active_only: bool = True) -> List[CustomerEquipment]:
+    def get_equipment(self, customer_id: str, active_only: bool = True) -> list[CustomerEquipment]:
         """
         Get equipment for customer.
 
@@ -300,7 +300,7 @@ class CustomerRepository:
             logger.error(f"Error getting equipment for {customer_id}: {e}")
             return []
 
-    def get_customer_summary(self, customer_id: str) -> Optional[Dict[str, Any]]:
+    def get_customer_summary(self, customer_id: str) -> dict[str, Any] | None:
         """
         Get comprehensive customer summary.
 
@@ -321,7 +321,7 @@ class CustomerRepository:
             "equipment": [eq.model_dump() for eq in self.get_equipment(customer_id)],
         }
 
-    def get_streets_in_city(self, city: str) -> List[str]:
+    def get_streets_in_city(self, city: str) -> list[str]:
         """
         Get all unique streets in a city.
 
@@ -335,8 +335,8 @@ class CustomerRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT DISTINCT street 
-                    FROM addresses 
+                    SELECT DISTINCT street
+                    FROM addresses
                     WHERE LOWER(city) = LOWER(?)
                     ORDER BY street
                 """,
@@ -351,7 +351,7 @@ class CustomerRepository:
             logger.error(f"Error getting streets in {city}: {e}")
             return []
 
-    def get_cities(self) -> List[str]:
+    def get_cities(self) -> list[str]:
         """
         Get all unique cities.
 
@@ -362,8 +362,8 @@ class CustomerRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT DISTINCT city 
-                    FROM addresses 
+                    SELECT DISTINCT city
+                    FROM addresses
                     ORDER BY city
                 """
                 )
@@ -376,7 +376,7 @@ class CustomerRepository:
             logger.error(f"Error getting cities: {e}")
             return []
 
-    def count_customers(self, status: Optional[str] = None) -> int:
+    def count_customers(self, status: str | None = None) -> int:
         """
         Count customers.
 
@@ -404,7 +404,7 @@ class CustomerRepository:
             logger.error(f"Error counting customers: {e}")
             return 0
 
-    def search_customers(self, query: str, limit: int = 10) -> List[Customer]:
+    def search_customers(self, query: str, limit: int = 10) -> list[Customer]:
         """
         Search customers by name, phone, or email.
 

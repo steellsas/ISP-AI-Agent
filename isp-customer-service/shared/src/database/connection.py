@@ -3,12 +3,13 @@ Database Connection Manager
 Provides thread-safe SQLite connections with connection pooling
 """
 
+import logging
 import sqlite3
 import threading
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator, Optional
-import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +129,10 @@ class DatabaseConnection:
 
 
 # Global database connection instance
-_db_connection: Optional[DatabaseConnection] = None
+_db_connection: DatabaseConnection | None = None
 
 
-def get_db_connection(db_path: Optional[str | Path] = None) -> DatabaseConnection:
+def get_db_connection(db_path: str | Path | None = None) -> DatabaseConnection:
     """
     Get global database connection instance.
 

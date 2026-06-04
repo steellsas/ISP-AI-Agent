@@ -1,25 +1,25 @@
 """Shared Pydantic types and models."""
 
 from .customer import (
-    Customer,
     Address,
-    ServicePlan,
+    Customer,
     CustomerEquipment,
     CustomerMemory,
+    ServicePlan,
+)
+from .network import (
+    AreaOutage,
+    BandwidthLog,
+    IPAssignment,
+    Port,
+    PortStatus,
+    Switch,
 )
 from .ticket import (
     Ticket,
-    TicketType,
     TicketPriority,
     TicketStatus,
-)
-from .network import (
-    Switch,
-    Port,
-    PortStatus,
-    IPAssignment,
-    AreaOutage,
-    BandwidthLog,
+    TicketType,
 )
 
 __all__ = [

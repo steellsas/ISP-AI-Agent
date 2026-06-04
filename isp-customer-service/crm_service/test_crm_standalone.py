@@ -50,7 +50,7 @@ def test_crm_service():
 
     if result.get("success"):
         customer = result.get("customer", {})
-        print(f"\n✅ Customer found:")
+        print("\n✅ Customer found:")
         print(f"   ID: {customer.get('customer_id')}")
         print(f"   Name: {customer.get('first_name')} {customer.get('last_name')}")
         print(f"   Address: {customer.get('address', {}).get('full_address')}")
@@ -71,7 +71,7 @@ def test_crm_service():
         print(f"Result: {details}")
 
         if details.get("success"):
-            print(f"\n✅ Customer details:")
+            print("\n✅ Customer details:")
             print(f"   Services: {len(details.get('services', []))}")
             print(f"   Equipment: {len(details.get('equipment', []))}")
 
@@ -98,7 +98,7 @@ def test_crm_service():
 
     if ticket_result.get("success"):
         ticket = ticket_result.get("ticket", {})
-        print(f"\n✅ Ticket created:")
+        print("\n✅ Ticket created:")
         print(f"   ID: {ticket.get('ticket_id')}")
         print(f"   Type: {ticket.get('ticket_type')}")
         print(f"   Priority: {ticket.get('priority')}")
