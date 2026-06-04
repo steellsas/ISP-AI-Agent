@@ -87,8 +87,23 @@ chatbot_core/src/
         hit-rate ≈ 0. The actual cost/quality lever is history management (see
         Phase 2). Decide cache's fate there — likely delete, or replace with a
         semantic cache — rather than wiring low-ROI infra now.
-  - `respond` with empty message → infinite loop: `agent/react_agent.py:300,373`
-  - DB singleton fix: `shared/.../database/connection.py:42`
+  - [x] Empty `respond` message handling: model could pick `action: respond`
+        with an empty `message`; the falsy check in `run_until_response` treated
+        `""` as "no response" and silently fell through to `timeout_message`
+        (wasting an LLM call). `step()` now detects an empty respond, injects a
+        corrective observation and retries (bounded by `max_tool_calls_per_response`
+        → no loop / cost blowup); `run_until_response` distinguishes `None` from a
+        real reply via `is not None`. Empty *user* input (silent caller) left as a
+        boundary concern for the voice phase. — *merged via PR #9*
+  - [x] DB singleton fix (`shared/src/database/connection.py`): removed the broken
+        `__new__` singleton. `__init__` re-ran on every `DatabaseConnection(...)`
+        call (Python always calls it after `__new__`), replacing `self._local` →
+        leaking open thread-local connections, and mutating `db_path` to the last
+        caller's path while keeping the first instance — two conflicting sources of
+        truth (`cls._instance` vs module `_db_connection`) and cross-test pollution.
+        Now a plain class; lifecycle is owned solely by `init_database` /
+        `get_db_connection` (which everyone already uses); `init_database` closes the
+        previous connection before replacing. — *via `fix/db-singleton`*
   - Transaction atomicity for `create_ticket`: `connection.py:101` + `crm_mcp/tools/tickets.py`
   - Lock down SQL f-strings: `shared/.../database/base.py:157`
   - Error / PII sanitization at tool boundary; redact phone numbers in logs
@@ -206,6 +221,9 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 0 · Ports skeleton (`ports/` Protocol interfaces) (PR #3).
 - [x] Phase 0 · Critical-fix #1 — LLM rate-limiter + session stats + single cost
       source wired into `llm_completion`; cache deferred (PR #6).
-- [ ] **Next:** Phase 0 · Critical-fix pass continues — `respond` empty-message
-      infinite loop (`react_agent.py:300,373`), then DB singleton / transaction
-      atomicity / SQL-injection lockdown — all protected by the green scenario eval.
+- [x] Phase 0 · Critical-fix #2 — empty `respond` message handling (PR #9).
+- [x] Phase 0 · Critical-fix #3 — DB singleton (`__new__`) removed; lifecycle via
+      `init_database` only (`fix/db-singleton`).
+- [ ] **Next:** Phase 0 · Critical-fix pass continues — transaction atomicity for
+      `create_ticket` (`connection.py` + `crm_mcp/tools/tickets.py`), then SQL
+      f-string lockdown (`database/base.py`) — all protected by the green scenario eval.
