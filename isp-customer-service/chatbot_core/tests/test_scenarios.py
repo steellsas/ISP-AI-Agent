@@ -337,7 +337,7 @@ class TestScenario08Intermittent:
 class TestSearchKnowledge:
     """Tests for RAG search_knowledge tool."""
 
-    def test_search_slow_internet(self, tools):
+    def test_search_slow_internet(self, tools, require_kb):
         """Should find slow internet troubleshooting."""
         result = tools.search_knowledge(query="lėtas internetas")
 
@@ -350,14 +350,14 @@ class TestSearchKnowledge:
             "wifi" in content or "speed" in content or "greitis" in content or "router" in content
         )
 
-    def test_search_no_connection(self, tools):
+    def test_search_no_connection(self, tools, require_kb):
         """Should find no connection troubleshooting."""
         result = tools.search_knowledge(query="nėra interneto ryšio")
 
         assert result["success"] == True
         assert len(result.get("results", [])) > 0
 
-    def test_search_tv_issues(self, tools):
+    def test_search_tv_issues(self, tools, require_kb):
         """Should find TV troubleshooting."""
         result = tools.search_knowledge(query="TV nėra signalo")
 
