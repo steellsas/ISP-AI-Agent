@@ -13,6 +13,9 @@ import time
 import litellm
 from pydantic import BaseModel, ValidationError
 
+from . import stats
+from .models import calculate_cost
+from .rate_limiter import get_rate_limiter
 from .settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -52,34 +55,6 @@ _last_call_stats = {}
 def get_last_call_stats() -> dict:
     """Get stats from the last LLM call."""
     return _last_call_stats.copy()
-
-
-def _calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate cost based on model pricing."""
-    # Pricing per 1M tokens (approximate)
-    pricing = {
-        # OpenAI
-        "gpt-4o": {"input": 2.50, "output": 10.00},
-        "gpt-4o-mini": {"input": 0.15, "output": 0.60},
-        "gpt-4-turbo": {"input": 10.00, "output": 30.00},
-        "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
-        # Google
-        "gemini/gemini-1.5-pro": {"input": 1.25, "output": 5.00},
-        "gemini/gemini-1.5-flash": {"input": 0.075, "output": 0.30},
-        "gemini/gemini-2.0-flash-exp": {"input": 0.10, "output": 0.40},
-        # Anthropic
-        "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
-        "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25},
-    }
-
-    # Get pricing for model
-    model_pricing = pricing.get(model, {"input": 0.50, "output": 1.50})
-
-    # Calculate cost
-    input_cost = (input_tokens / 1_000_000) * model_pricing["input"]
-    output_cost = (output_tokens / 1_000_000) * model_pricing["output"]
-
-    return input_cost + output_cost
 
 
 def _get_api_key(provider: str) -> str | None:
@@ -228,6 +203,9 @@ def llm_completion(
     if response_format:
         kwargs["response_format"] = response_format
 
+    # Rate limit: guard against runaway loops / cost blowup before hitting the API
+    get_rate_limiter().check_or_raise()
+
     # Make call with retry
     start_time = time.time()
     last_error = None
@@ -243,8 +221,8 @@ def llm_completion(
             input_tokens = usage.prompt_tokens if usage else 0
             output_tokens = usage.completion_tokens if usage else 0
 
-            # Calculate cost
-            cost = _calculate_cost(model, input_tokens, output_tokens)
+            # Calculate cost (single source of truth: models.calculate_cost)
+            cost = calculate_cost(model, input_tokens, output_tokens)
 
             # Get content
             content = response.choices[0].message.content
@@ -261,6 +239,19 @@ def llm_completion(
                 "success": True,
             }
 
+            # Wire the previously-dead infra: count the call against the rate
+            # limiter and record it in aggregated session stats (cost/observability).
+            get_rate_limiter().record_call()
+            stats.record_call(
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost,
+                latency_ms=latency_ms,
+                cached=False,
+                success=True,
+            )
+
             logger.debug(
                 f"LLM call: {model}, {input_tokens}+{output_tokens} tokens, ${cost:.4f}, {latency_ms:.0f}ms"
             )
@@ -276,17 +267,28 @@ def llm_completion(
                 time.sleep(delay)
 
     # Record failed call
+    failed_latency_ms = (time.time() - start_time) * 1000
     _last_call_stats = {
         "model": model,
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
         "cost": 0,
-        "latency_ms": (time.time() - start_time) * 1000,
+        "latency_ms": failed_latency_ms,
         "cached": False,
         "success": False,
         "error": str(last_error),
     }
+    stats.record_call(
+        model=model,
+        input_tokens=0,
+        output_tokens=0,
+        cost_usd=0,
+        latency_ms=failed_latency_ms,
+        cached=False,
+        success=False,
+        error=str(last_error),
+    )
 
     raise Exception(f"LLM call failed after {settings.max_retries} retries: {last_error}")
 
