@@ -4,7 +4,7 @@ Combines embedding manager and vector store for document retrieval
 """
 
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 # Import utilities from shared package
 try:
@@ -59,8 +59,8 @@ class Retriever:
 
     def __init__(
         self,
-        embedding_manager: Optional[EmbeddingManager] = None,
-        vector_store: Optional[VectorStore] = None,
+        embedding_manager: EmbeddingManager | None = None,
+        vector_store: VectorStore | None = None,
         top_k: int = 3,
         similarity_threshold: float = 0.7,
     ):
@@ -86,10 +86,10 @@ class Retriever:
     def retrieve(
         self,
         query: str,
-        top_k: Optional[int] = None,
-        threshold: Optional[float] = None,
-        filter_metadata: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        top_k: int | None = None,
+        threshold: float | None = None,
+        filter_metadata: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Retrieve relevant documents for a query.
 
@@ -114,7 +114,9 @@ class Retriever:
 
             # Search vector store
             results = self.vector_store.search(
-                query_embedding, k=k * 2, threshold=thresh  # Get more results for filtering
+                query_embedding,
+                k=k * 2,
+                threshold=thresh,  # Get more results for filtering
             )
 
             # Apply metadata filter if specified
@@ -150,8 +152,8 @@ class Retriever:
     def retrieve_with_context(
         self,
         query: str,
-        top_k: Optional[int] = None,
-        threshold: Optional[float] = None,
+        top_k: int | None = None,
+        threshold: float | None = None,
         include_scores: bool = True,
     ) -> str:
         """
@@ -188,9 +190,9 @@ class Retriever:
 
     def add_documents(
         self,
-        documents: List[str],
-        metadata: Optional[List[Dict[str, Any]]] = None,
-        ids: Optional[List[str]] = None,
+        documents: list[str],
+        metadata: list[dict[str, Any]] | None = None,
+        ids: list[str] | None = None,
         batch_size: int = 32,
     ):
         """
@@ -253,7 +255,7 @@ class Retriever:
             ids = []
 
             for file_path in files:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     content = f.read()
 
                 documents.append(content)
@@ -276,8 +278,8 @@ class Retriever:
             raise
 
     def _filter_by_metadata(
-        self, results: List[Dict[str, Any]], filter_metadata: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, results: list[dict[str, Any]], filter_metadata: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Filter results by metadata criteria."""
         filtered = []
 
@@ -321,7 +323,7 @@ class Retriever:
             logger.info(f"Retriever loaded: {name}")
         return success
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get retriever statistics.
 
@@ -341,12 +343,12 @@ class Retriever:
 
 
 # Singleton instance
-_retriever: Optional[Retriever] = None
+_retriever: Retriever | None = None
 
 
 def get_retriever(
-    embedding_manager: Optional[EmbeddingManager] = None,
-    vector_store: Optional[VectorStore] = None,
+    embedding_manager: EmbeddingManager | None = None,
+    vector_store: VectorStore | None = None,
     top_k: int = 3,
     similarity_threshold: float = 0.7,
 ) -> Retriever:

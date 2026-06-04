@@ -3,9 +3,10 @@ Scenario Loader
 Load and parse YAML troubleshooting scenarios
 """
 
-import yaml
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
+import yaml
 
 try:
     from isp_shared.utils import get_logger
@@ -22,7 +23,7 @@ logger = get_logger(__name__)
 class TroubleshootingScenario:
     """Represents a troubleshooting scenario."""
 
-    def __init__(self, data: Dict[str, Any]):
+    def __init__(self, data: dict[str, Any]):
         """
         Initialize scenario from parsed YAML data.
 
@@ -39,14 +40,14 @@ class TroubleshootingScenario:
         self.steps = scenario_data.get("steps", [])
         self.escalation = scenario_data.get("escalation", {})
 
-    def get_step(self, step_id: int) -> Optional[Dict[str, Any]]:
+    def get_step(self, step_id: int) -> dict[str, Any] | None:
         """Get step by ID."""
         for step in self.steps:
             if step.get("step_id") == step_id:
                 return step
         return None
 
-    def get_first_step(self) -> Optional[Dict[str, Any]]:
+    def get_first_step(self) -> dict[str, Any] | None:
         """Get first step."""
         return self.steps[0] if self.steps else None
 
@@ -62,7 +63,7 @@ class TroubleshootingScenario:
 class ScenarioLoader:
     """Load troubleshooting scenarios from YAML files."""
 
-    def __init__(self, scenarios_dir: Optional[str | Path] = None):
+    def __init__(self, scenarios_dir: str | Path | None = None):
         """
         Initialize scenario loader.
 
@@ -76,11 +77,11 @@ class ScenarioLoader:
             )
 
         self.scenarios_dir = Path(scenarios_dir)
-        self.scenarios: Dict[str, TroubleshootingScenario] = {}
+        self.scenarios: dict[str, TroubleshootingScenario] = {}
 
         logger.info(f"ScenarioLoader initialized: {self.scenarios_dir}")
 
-    def load_all(self) -> Dict[str, TroubleshootingScenario]:
+    def load_all(self) -> dict[str, TroubleshootingScenario]:
         """
         Load all scenarios from directory.
 
@@ -115,16 +116,16 @@ class ScenarioLoader:
         Returns:
             TroubleshootingScenario instance
         """
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         return TroubleshootingScenario(data)
 
-    def get_scenario(self, scenario_id: str) -> Optional[TroubleshootingScenario]:
+    def get_scenario(self, scenario_id: str) -> TroubleshootingScenario | None:
         """Get scenario by ID."""
         return self.scenarios.get(scenario_id)
 
-    def get_scenarios_for_embedding(self) -> List[Dict[str, Any]]:
+    def get_scenarios_for_embedding(self) -> list[dict[str, Any]]:
         """
         Get scenarios formatted for embedding.
 
@@ -151,10 +152,10 @@ class ScenarioLoader:
 
 
 # Singleton instance
-_scenario_loader: Optional[ScenarioLoader] = None
+_scenario_loader: ScenarioLoader | None = None
 
 
-def get_scenario_loader(scenarios_dir: Optional[str | Path] = None) -> ScenarioLoader:
+def get_scenario_loader(scenarios_dir: str | Path | None = None) -> ScenarioLoader:
     """Get or create ScenarioLoader singleton."""
     global _scenario_loader
 

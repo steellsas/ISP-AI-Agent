@@ -203,11 +203,11 @@ def test_save_load(retriever):
 
             # Verify
             stats = new_retriever.get_statistics()
-            print(f"\n4. Verification:")
+            print("\n4. Verification:")
             print(f"   Documents loaded: {stats['total_documents']}")
 
             # Test query
-            print(f"\n5. Testing query on loaded retriever...")
+            print("\n5. Testing query on loaded retriever...")
             results = new_retriever.retrieve("Internetas neveikia", top_k=1)
             if results:
                 print(f"✅ Query works! Found: {results[0]['metadata']['filename']}")

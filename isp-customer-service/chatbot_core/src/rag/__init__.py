@@ -28,21 +28,21 @@ Components:
 import threading
 from typing import Optional
 
-# Core components
-from .embeddings import EmbeddingManager, get_embedding_manager, preload_embedding_model
-from .vector_store import VectorStore, get_vector_store
-from .retriever import Retriever, get_retriever
 # from .scenario_loader import ScenarioLoader, get_scenario_loader, TroubleshootingScenario
-
 # Enhanced components
 from .document_processor import DocumentProcessor
+
+# Core components
+from .embeddings import EmbeddingManager, get_embedding_manager, preload_embedding_model
 from .hybrid_retriever import HybridRetriever
+from .retriever import Retriever, get_retriever
+from .vector_store import VectorStore, get_vector_store
 
 # =============================================================================
 # HYBRID RETRIEVER SINGLETON
 # =============================================================================
 
-_hybrid_retriever: Optional[HybridRetriever] = None
+_hybrid_retriever: HybridRetriever | None = None
 _hybrid_lock = threading.Lock()
 
 

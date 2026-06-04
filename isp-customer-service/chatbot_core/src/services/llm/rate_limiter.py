@@ -4,8 +4,8 @@ LLM Rate Limiter
 Prevents excessive API calls.
 """
 
-import time
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 

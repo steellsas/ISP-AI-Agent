@@ -6,7 +6,7 @@ Provides customer data access tools via MCP protocol
 import asyncio
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
@@ -15,16 +15,12 @@ if str(shared_path) not in sys.path:
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
-
-from database import init_database
-
+from mcp.types import TextContent, Tool
 
 # Setup logger
-
-
 from utils.logger import setup_mcp_server_logger
 
+from database import init_database
 
 # Setup logger with absolute path
 log_dir = Path(__file__).parent.parent.parent / "logs"  # crm_service/logs/
@@ -56,7 +52,7 @@ class CRMServer:
 
         # Tool 1: Customer Lookup by Address
         @self.server.list_tools()
-        async def list_tools() -> List[Tool]:
+        async def list_tools() -> list[Tool]:
             return [
                 Tool(
                     name="lookup_customer_by_phone",
@@ -192,7 +188,7 @@ class CRMServer:
 
         # Tool handlers
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
+        async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             """Handle tool calls."""
 
             logger.info(f"Tool called: {name} with args: {arguments}")
@@ -219,37 +215,37 @@ class CRMServer:
                 logger.error(f"Error in tool {name}: {e}", exc_info=True)
                 return [TextContent(type="text", text=f"Error: {str(e)}")]
 
-    async def _lookup_customer_by_address(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _lookup_customer_by_address(self, args: dict[str, Any]) -> dict[str, Any]:
         """Lookup customer by address with fuzzy matching."""
         from .tools.customer_lookup import lookup_customer_by_address
 
         return lookup_customer_by_address(self.db, args)
 
-    async def _lookup_customer_by_phone(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _lookup_customer_by_phone(self, args: dict[str, Any]) -> dict[str, Any]:
         """Lookup customer by phone number."""
         from .tools.customer_lookup import lookup_customer_by_phone
 
         return lookup_customer_by_phone(self.db, args)
 
-    async def _get_customer_details(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get_customer_details(self, args: dict[str, Any]) -> dict[str, Any]:
         """Get detailed customer information."""
         from .tools.customer_lookup import get_customer_details
 
         return get_customer_details(self.db, args["customer_id"])
 
-    async def _get_customer_equipment(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get_customer_equipment(self, args: dict[str, Any]) -> dict[str, Any]:
         """Get customer equipment."""
         from .tools.equipment import get_customer_equipment
 
         return get_customer_equipment(self.db, args["customer_id"])
 
-    async def _create_ticket(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_ticket(self, args: dict[str, Any]) -> dict[str, Any]:
         """Create support ticket."""
         from .tools.tickets import create_ticket
 
         return create_ticket(self.db, args)
 
-    async def _get_customer_tickets(self, args: Dict[str, Any]) -> Dict[str, Any]:
+    async def _get_customer_tickets(self, args: dict[str, Any]) -> dict[str, Any]:
         """Get customer tickets."""
         from .tools.tickets import get_customer_tickets
 

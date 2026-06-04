@@ -10,8 +10,7 @@ Optimizations:
 
 import hashlib
 import threading
-from pathlib import Path
-from typing import List, Union, Optional, Dict
+
 import numpy as np
 
 try:
@@ -42,7 +41,7 @@ class EmbeddingManager:
         self,
         model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
         device: str = "cpu",
-        cache_dir: Optional[str] = None,
+        cache_dir: str | None = None,
         query_cache_size: int = 500,
     ):
         """
@@ -64,12 +63,12 @@ class EmbeddingManager:
         self._model_loaded = False
 
         # Query cache
-        self._query_cache: Dict[str, np.ndarray] = {}
+        self._query_cache: dict[str, np.ndarray] = {}
         self._query_cache_size = query_cache_size
         self._cache_lock = threading.Lock()
 
         # Embedding dimension (will be set when model loads)
-        self._embedding_dim: Optional[int] = None
+        self._embedding_dim: int | None = None
 
         logger.info(f"EmbeddingManager initialized (lazy): {model_name}")
 
@@ -129,7 +128,7 @@ class EmbeddingManager:
         """Generate cache key for text."""
         return hashlib.md5(text.encode("utf-8")).hexdigest()
 
-    def _get_from_cache(self, text: str) -> Optional[np.ndarray]:
+    def _get_from_cache(self, text: str) -> np.ndarray | None:
         """Get embedding from cache if exists."""
         cache_key = self._get_cache_key(text)
         with self._cache_lock:
@@ -150,7 +149,7 @@ class EmbeddingManager:
 
     def encode(
         self,
-        texts: Union[str, List[str]],
+        texts: str | list[str],
         batch_size: int = 32,
         show_progress: bool = False,
         normalize: bool = True,
@@ -241,7 +240,7 @@ class EmbeddingManager:
 
     def encode_documents(
         self,
-        documents: List[str],
+        documents: list[str],
         batch_size: int = 32,
         show_progress: bool = True,
         normalize: bool = True,
@@ -336,14 +335,14 @@ class EmbeddingManager:
 # SINGLETON
 # =============================================================================
 
-_embedding_manager: Optional[EmbeddingManager] = None
+_embedding_manager: EmbeddingManager | None = None
 _singleton_lock = threading.Lock()
 
 
 def get_embedding_manager(
     model_name: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
     device: str = "cpu",
-    cache_dir: Optional[str] = None,
+    cache_dir: str | None = None,
     query_cache_size: int = 500,
 ) -> EmbeddingManager:
     """
@@ -407,7 +406,7 @@ if __name__ == "__main__":
     start = time.time()
     manager = EmbeddingManager()
     init_time = time.time() - start
-    print(f"   Init time (no model load): {init_time*1000:.1f}ms")
+    print(f"   Init time (no model load): {init_time * 1000:.1f}ms")
     print(f"   Model loaded: {manager._model_loaded}")
 
     # First encode triggers model load
@@ -415,7 +414,7 @@ if __name__ == "__main__":
     start = time.time()
     embedding = manager.encode_single("Internetas neveikia")
     first_encode_time = time.time() - start
-    print(f"   First encode time: {first_encode_time*1000:.1f}ms")
+    print(f"   First encode time: {first_encode_time * 1000:.1f}ms")
     print(f"   Model loaded: {manager._model_loaded}")
 
     # Test caching
@@ -425,14 +424,14 @@ if __name__ == "__main__":
     start = time.time()
     emb1 = manager.encode_query("Internetas neveikia")
     no_cache_time = time.time() - start
-    print(f"   No cache: {no_cache_time*1000:.1f}ms")
+    print(f"   No cache: {no_cache_time * 1000:.1f}ms")
 
     # Second query (from cache)
     start = time.time()
     emb2 = manager.encode_query("Internetas neveikia")
     cache_time = time.time() - start
-    print(f"   From cache: {cache_time*1000:.1f}ms")
-    print(f"   Speedup: {no_cache_time/cache_time:.1f}x")
+    print(f"   From cache: {cache_time * 1000:.1f}ms")
+    print(f"   Speedup: {no_cache_time / cache_time:.1f}x")
 
     # Verify same embedding
     print(f"   Same embedding: {np.allclose(emb1, emb2)}")

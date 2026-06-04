@@ -3,10 +3,10 @@ Base Repository Class
 Provides common database operations for all repositories
 """
 
-import sqlite3
-from typing import Any, Dict, List, Optional, Type, TypeVar
-from abc import ABC, abstractmethod
 import logging
+import sqlite3
+from abc import ABC, abstractmethod
+from typing import Any, TypeVar
 
 from .connection import DatabaseConnection
 
@@ -31,7 +31,7 @@ class BaseRepository(ABC):
         """
         self.db = db
 
-    def _row_to_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+    def _row_to_dict(self, row: sqlite3.Row) -> dict[str, Any]:
         """
         Convert SQLite Row to dictionary.
 
@@ -43,7 +43,7 @@ class BaseRepository(ABC):
         """
         return dict(row)
 
-    def _rows_to_dicts(self, rows: List[sqlite3.Row]) -> List[Dict[str, Any]]:
+    def _rows_to_dicts(self, rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
         """
         Convert list of SQLite Rows to list of dictionaries.
 
@@ -56,8 +56,8 @@ class BaseRepository(ABC):
         return [self._row_to_dict(row) for row in rows]
 
     def execute_query(
-        self, query: str, params: Optional[tuple | Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, query: str, params: tuple | dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """
         Execute SELECT query and return results as list of dicts.
 
@@ -78,8 +78,8 @@ class BaseRepository(ABC):
             return self._rows_to_dicts(rows)
 
     def execute_one(
-        self, query: str, params: Optional[tuple | Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
+        self, query: str, params: tuple | dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
         """
         Execute SELECT query and return single result.
 
@@ -99,7 +99,7 @@ class BaseRepository(ABC):
             row = cursor.fetchone()
             return self._row_to_dict(row) if row else None
 
-    def execute_write(self, query: str, params: Optional[tuple | Dict[str, Any]] = None) -> int:
+    def execute_write(self, query: str, params: tuple | dict[str, Any] | None = None) -> int:
         """
         Execute INSERT, UPDATE, or DELETE query.
 
@@ -118,7 +118,7 @@ class BaseRepository(ABC):
 
             return cursor.rowcount
 
-    def execute_many(self, query: str, params_list: List[tuple | Dict[str, Any]]) -> int:
+    def execute_many(self, query: str, params_list: list[tuple | dict[str, Any]]) -> int:
         """
         Execute query multiple times with different parameters.
 
@@ -143,7 +143,7 @@ class BaseRepository(ABC):
         conn = self.db.get_connection()
         return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-    def count(self, table: str, where: Optional[str] = None) -> int:
+    def count(self, table: str, where: str | None = None) -> int:
         """
         Count rows in table with optional WHERE clause.
 

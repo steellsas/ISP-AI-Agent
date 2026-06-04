@@ -4,19 +4,20 @@ Clean data access layer for ticket-related queries
 """
 
 import sys
-from pathlib import Path
-from typing import Dict, Any, List, Optional
-from datetime import datetime
 import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
-from isp_types import Ticket, TicketType, TicketPriority, TicketStatus
+from isp_types import Ticket
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
@@ -43,9 +44,9 @@ class TicketRepository:
         ticket_type: str,
         summary: str,
         priority: str = "medium",
-        details: Optional[str] = None,
-        troubleshooting_steps: Optional[str] = None,
-    ) -> Optional[Ticket]:
+        details: str | None = None,
+        troubleshooting_steps: str | None = None,
+    ) -> Ticket | None:
         """
         Create a new ticket.
 
@@ -107,7 +108,7 @@ class TicketRepository:
             logger.error(f"Error creating ticket: {e}")
             return None
 
-    def find_by_id(self, ticket_id: str) -> Optional[Ticket]:
+    def find_by_id(self, ticket_id: str) -> Ticket | None:
         """
         Find ticket by ID.
 
@@ -138,8 +139,8 @@ class TicketRepository:
             return None
 
     def find_by_customer(
-        self, customer_id: str, status: Optional[str] = None, limit: Optional[int] = None
-    ) -> List[Ticket]:
+        self, customer_id: str, status: str | None = None, limit: int | None = None
+    ) -> list[Ticket]:
         """
         Find tickets for a customer.
 
@@ -175,7 +176,7 @@ class TicketRepository:
             logger.error(f"Error finding tickets for customer {customer_id}: {e}")
             return []
 
-    def get_open_tickets(self, customer_id: str) -> List[Ticket]:
+    def get_open_tickets(self, customer_id: str) -> list[Ticket]:
         """
         Get all open tickets for customer.
 
@@ -187,7 +188,7 @@ class TicketRepository:
         """
         return self.find_by_customer(customer_id, status="open")
 
-    def get_recent_tickets(self, customer_id: str, limit: int = 5) -> List[Ticket]:
+    def get_recent_tickets(self, customer_id: str, limit: int = 5) -> list[Ticket]:
         """
         Get recent tickets for customer.
 
@@ -201,7 +202,7 @@ class TicketRepository:
         return self.find_by_customer(customer_id, limit=limit)
 
     def update_status(
-        self, ticket_id: str, status: str, resolution_summary: Optional[str] = None
+        self, ticket_id: str, status: str, resolution_summary: str | None = None
     ) -> bool:
         """
         Update ticket status.
@@ -216,7 +217,7 @@ class TicketRepository:
         """
         try:
             update_query = """
-                UPDATE tickets 
+                UPDATE tickets
                 SET status = ?, updated_at = ?
             """
             params = [status, datetime.now().isoformat()]
@@ -287,7 +288,7 @@ class TicketRepository:
             with self.db.cursor() as cursor:
                 cursor.execute(
                     """
-                    UPDATE tickets 
+                    UPDATE tickets
                     SET details = ?, updated_at = ?
                     WHERE ticket_id = ?
                 """,
@@ -301,7 +302,7 @@ class TicketRepository:
             logger.error(f"Error adding comment to ticket {ticket_id}: {e}")
             return False
 
-    def get_statistics(self, customer_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_statistics(self, customer_id: str | None = None) -> dict[str, Any]:
         """
         Get ticket statistics.
 
@@ -343,7 +344,7 @@ class TicketRepository:
             logger.error(f"Error getting ticket statistics: {e}")
             return {"by_status": {}, "by_priority": {}, "total": 0}
 
-    def count_open_tickets(self, customer_id: Optional[str] = None) -> int:
+    def count_open_tickets(self, customer_id: str | None = None) -> int:
         """
         Count open tickets.
 
@@ -372,7 +373,7 @@ class TicketRepository:
             return 0
 
     def _add_history(
-        self, customer_id: str, event_type: str, details: str, ticket_id: Optional[str] = None
+        self, customer_id: str, event_type: str, details: str, ticket_id: str | None = None
     ) -> None:
         """Add entry to customer history."""
         try:

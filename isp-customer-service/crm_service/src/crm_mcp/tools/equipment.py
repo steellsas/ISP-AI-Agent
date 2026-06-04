@@ -5,20 +5,21 @@ Query customer equipment (routers, decoders, etc.)
 
 import sys
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
 
-def get_customer_equipment(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+def get_customer_equipment(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Get all equipment for a customer.
 
@@ -35,7 +36,7 @@ def get_customer_equipment(db: DatabaseConnection, customer_id: str) -> Dict[str
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     equipment_id,
                     equipment_type,
                     model,
@@ -46,7 +47,7 @@ def get_customer_equipment(db: DatabaseConnection, customer_id: str) -> Dict[str
                     notes
                 FROM customer_equipment
                 WHERE customer_id = ?
-                ORDER BY 
+                ORDER BY
                     CASE equipment_type
                         WHEN 'router' THEN 1
                         WHEN 'modem' THEN 2
@@ -98,7 +99,7 @@ def get_customer_equipment(db: DatabaseConnection, customer_id: str) -> Dict[str
 
 def get_equipment_by_type(
     db: DatabaseConnection, customer_id: str, equipment_type: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get specific type of equipment for customer.
 
@@ -118,7 +119,7 @@ def get_equipment_by_type(
                 """
                 SELECT *
                 FROM customer_equipment
-                WHERE customer_id = ? 
+                WHERE customer_id = ?
                     AND equipment_type = ?
                     AND status = 'active'
                 ORDER BY installed_date DESC
@@ -140,7 +141,7 @@ def get_equipment_by_type(
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-def get_equipment_by_mac(db: DatabaseConnection, mac_address: str) -> Dict[str, Any]:
+def get_equipment_by_mac(db: DatabaseConnection, mac_address: str) -> dict[str, Any]:
     """
     Find equipment by MAC address.
 
@@ -157,7 +158,7 @@ def get_equipment_by_mac(db: DatabaseConnection, mac_address: str) -> Dict[str, 
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     ce.*,
                     c.first_name,
                     c.last_name,

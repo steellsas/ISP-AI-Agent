@@ -5,16 +5,15 @@ Centralized logging setup for all services
 
 import logging
 import sys
-from pathlib import Path
-from typing import Optional
 from datetime import datetime
+from pathlib import Path
 
 
 def setup_logger(
     name: str,
     level: str = "INFO",
-    log_file: Optional[Path] = None,
-    format_string: Optional[str] = None,
+    log_file: Path | None = None,
+    format_string: str | None = None,
     use_stderr: bool = False,  # ← NEW: For MCP servers
 ) -> logging.Logger:
     """
@@ -39,7 +38,7 @@ def setup_logger(
     # Default format
     if format_string is None:
         format_string = (
-            "%(asctime)s - %(name)s - %(levelname)s - " "%(filename)s:%(lineno)d - %(message)s"
+            "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
         )
 
     formatter = logging.Formatter(format_string)
@@ -133,7 +132,7 @@ def setup_chatbot_logger(level: str = "INFO") -> logging.Logger:
 
 
 def setup_mcp_server_logger(
-    name: str, level: str = "INFO", log_file: Optional[Path] = None
+    name: str, level: str = "INFO", log_file: Path | None = None
 ) -> logging.Logger:
     """
     Setup logger specifically for MCP stdio servers.
@@ -150,5 +149,8 @@ def setup_mcp_server_logger(
         Configured logger with stderr output
     """
     return setup_logger(
-        name=name, level=level, log_file=log_file, use_stderr=True  # ← CRITICAL for MCP!
+        name=name,
+        level=level,
+        log_file=log_file,
+        use_stderr=True,  # ← CRITICAL for MCP!
     )

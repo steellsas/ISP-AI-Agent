@@ -406,9 +406,9 @@ Uses CustomMCPClient instead of MCP SDK (Windows compatibility)
 """
 
 import json
-from pathlib import Path
-from typing import Dict, Any, Optional, List
 from enum import Enum
+from pathlib import Path
+from typing import Any
 
 try:
     from isp_shared.utils.logger import get_logger
@@ -446,9 +446,7 @@ class MCPService:
     - Error handling and retries
     """
 
-    def __init__(
-        self, crm_server_path: Optional[str] = None, network_server_path: Optional[str] = None
-    ):
+    def __init__(self, crm_server_path: str | None = None, network_server_path: str | None = None):
         """
         Initialize MCP service.
 
@@ -556,8 +554,8 @@ class MCPService:
     # ========== NEW: GENERIC TOOL CALLER (ROUTER) ==========
 
     async def call_tool(
-        self, server_name: str, tool_name: str, arguments: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, server_name: str, tool_name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Call MCP tool (generic router).
 
@@ -581,7 +579,7 @@ class MCPService:
             >>> result = await mcp.call_tool(
             ...     server_name="crm_service",
             ...     tool_name="lookup_customer_by_phone",
-            ...     arguments={"phone_number": "+37060000000"}
+            ...     arguments={"phone_number": "+37060000000"},
             ... )
         """
         self._check_initialized()
@@ -608,7 +606,7 @@ class MCPService:
 
     # ========== ORIGINAL METHODS ==========
 
-    async def call_crm_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_crm_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Call CRM MCP tool.
 
@@ -654,7 +652,7 @@ class MCPService:
 
             return error_result
 
-    async def call_network_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def call_network_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Call Network Diagnostic MCP tool.
 
@@ -706,8 +704,8 @@ class MCPService:
         self,
         server_type: MCPServerType,
         tool_name: str,
-        arguments: Dict[str, Any],
-        result: Dict[str, Any],
+        arguments: dict[str, Any],
+        result: dict[str, Any],
         success: bool,
     ):
         """Log tool call for monitoring."""
@@ -729,7 +727,7 @@ class MCPService:
         if len(self.tool_calls) > 100:
             self.tool_calls = self.tool_calls[-100:]
 
-    def get_statistics(self) -> Dict[str, Any]:
+    def get_statistics(self) -> dict[str, Any]:
         """
         Get MCP service statistics.
 
@@ -753,7 +751,7 @@ class MCPService:
             "is_initialized": self.is_initialized,
         }
 
-    def get_recent_calls(self, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_recent_calls(self, limit: int = 10) -> list[dict[str, Any]]:
         """
         Get recent tool calls.
 
@@ -774,11 +772,11 @@ class MCPService:
 
 
 # Singleton instance
-_mcp_service: Optional[MCPService] = None
+_mcp_service: MCPService | None = None
 
 
 def get_mcp_service(
-    crm_server_path: Optional[str] = None, network_server_path: Optional[str] = None
+    crm_server_path: str | None = None, network_server_path: str | None = None
 ) -> MCPService:
     """
     Get or create MCPService singleton instance.

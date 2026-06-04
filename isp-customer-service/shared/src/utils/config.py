@@ -3,16 +3,17 @@ Configuration Management
 Environment variables and settings loader
 """
 
+import logging
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
+
 from dotenv import load_dotenv
-import logging
 
 logger = logging.getLogger(__name__)
 
 
-def load_env(env_file: Optional[Path] = None) -> bool:
+def load_env(env_file: Path | None = None) -> bool:
     """
     Load environment variables from .env file.
 
@@ -85,7 +86,7 @@ class Config:
         """
         return getattr(self, key, default)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """
         Convert configuration to dictionary.
 
@@ -203,7 +204,7 @@ class Config:
 
 
 # Global configuration instance
-_config: Optional[Config] = None
+_config: Config | None = None
 
 
 def get_config(reload: bool = False) -> Config:

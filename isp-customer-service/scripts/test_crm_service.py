@@ -25,12 +25,12 @@ def test_imports():
 
     try:
         # Database
-        from database import init_database, DatabaseConnection
+        from database import DatabaseConnection, init_database
 
         print("✅ Database imports OK")
 
         # Shared types
-        from isp_types import Customer, Ticket, Address
+        from isp_types import Address, Customer, Ticket
 
         print("✅ Shared types imports OK")
 
@@ -65,8 +65,9 @@ def test_customer_repository():
     print("TEST 2: Customer Repository")
     print("=" * 60)
 
-    from database import init_database
     from repository import CustomerRepository
+
+    from database import init_database
 
     try:
         # Initialize database
@@ -123,8 +124,9 @@ def test_ticket_repository():
     print("TEST 3: Ticket Repository")
     print("=" * 60)
 
-    from database import init_database
     from repository import TicketRepository
+
+    from database import init_database
 
     try:
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
@@ -165,12 +167,13 @@ def test_customer_lookup_tool():
     print("TEST 4: Customer Lookup Tool")
     print("=" * 60)
 
-    from database import init_database
     from mcp_server.tools.customer_lookup import (
-        lookup_customer_by_address,
         fuzzy_match_street,
+        lookup_customer_by_address,
         normalize_street_name,
     )
+
+    from database import init_database
 
     try:
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
@@ -222,8 +225,9 @@ def test_equipment_tool():
     print("TEST 5: Equipment Tool")
     print("=" * 60)
 
-    from database import init_database
     from mcp_server.tools.equipment import get_customer_equipment
+
+    from database import init_database
 
     try:
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
@@ -259,8 +263,9 @@ def test_ticket_tool():
     print("TEST 6: Ticket Tool")
     print("=" * 60)
 
+    from mcp_server.tools.tickets import get_customer_tickets
+
     from database import init_database
-    from mcp_server.tools.tickets import create_ticket, get_customer_tickets
 
     try:
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"

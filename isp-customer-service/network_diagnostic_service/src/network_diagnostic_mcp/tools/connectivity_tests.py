@@ -4,23 +4,23 @@ IP assignment, bandwidth, signal quality, and ping tests
 """
 
 import sys
-from pathlib import Path
-from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
-import random
+from pathlib import Path
+from typing import Any
 
 # Add shared to path
 shared_path = Path(__file__).parent.parent.parent.parent.parent / "shared" / "src"
 if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
-from database import DatabaseConnection
 from utils import get_logger
+
+from database import DatabaseConnection
 
 logger = get_logger(__name__)
 
 
-def check_ip_assignment(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+def check_ip_assignment(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Check IP address assignment for customer.
 
@@ -37,7 +37,7 @@ def check_ip_assignment(db: DatabaseConnection, customer_id: str) -> Dict[str, A
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     ip.assignment_id,
                     ip.ip_address,
                     ip.mac_address,
@@ -91,7 +91,7 @@ def check_ip_assignment(db: DatabaseConnection, customer_id: str) -> Dict[str, A
 
 def check_bandwidth_history(
     db: DatabaseConnection, customer_id: str, limit: int = 10
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Check bandwidth usage history and speed tests.
 
@@ -109,7 +109,7 @@ def check_bandwidth_history(
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     log_id,
                     timestamp,
                     download_mbps,
@@ -177,7 +177,7 @@ def check_bandwidth_history(
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-def check_signal_quality(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+def check_signal_quality(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Check TV/Cable signal quality.
 
@@ -194,7 +194,7 @@ def check_signal_quality(db: DatabaseConnection, customer_id: str) -> Dict[str, 
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     quality_id,
                     timestamp,
                     signal_strength_dbm,
@@ -255,10 +255,10 @@ def check_signal_quality(db: DatabaseConnection, customer_id: str) -> Dict[str, 
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
-
 # Replace the ping_test function in connectivity_tests.py with this:
 
-def ping_test(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
+
+def ping_test(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Get ping test results from database.
 
@@ -295,7 +295,7 @@ def ping_test(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
         with db.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT 
+                SELECT
                     packets_sent,
                     packets_received,
                     packet_loss_percent,
@@ -327,12 +327,14 @@ def ping_test(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
                     (customer_id,),
                 )
                 fallback = cursor.fetchone()
-                
+
             if fallback:
                 fallback_dict = dict(fallback)
                 stats = {
                     "packets_sent": 10,
-                    "packets_received": int(10 * (1 - fallback_dict.get("packet_loss_percent", 0) / 100)),
+                    "packets_received": int(
+                        10 * (1 - fallback_dict.get("packet_loss_percent", 0) / 100)
+                    ),
                     "packet_loss_percent": fallback_dict.get("packet_loss_percent", 0),
                     "avg_latency_ms": fallback_dict.get("latency_ms", 20),
                 }
@@ -359,7 +361,7 @@ def ping_test(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
         # Determine status based on actual data
         packet_loss = stats.get("packet_loss_percent", 0) or 0
         avg_latency = stats.get("avg_latency_ms", 0) or 0
-        
+
         if packet_loss > 10:
             status = "critical"
             message = f"Kritinė paketų praradimo problema: {packet_loss}%"
@@ -373,9 +375,7 @@ def ping_test(db: DatabaseConnection, customer_id: str) -> Dict[str, Any]:
             status = "healthy"
             message = "Ryšys normalus"
 
-        logger.info(
-            f"Ping test complete: {packet_loss}% loss, {avg_latency}ms avg"
-        )
+        logger.info(f"Ping test complete: {packet_loss}% loss, {avg_latency}ms avg")
 
         return {
             "success": True,

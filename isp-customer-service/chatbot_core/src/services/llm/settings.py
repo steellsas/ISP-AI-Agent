@@ -6,8 +6,7 @@ Gets settings from centralized AgentConfig.
 """
 
 import logging
-from dataclasses import dataclass, asdict
-from typing import Optional
+from dataclasses import asdict, dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LLMSettings:
     """LLM settings for client.py"""
-    
+
     # Model settings
     model: str = "gpt-4o-mini"
     temperature: float = 0.3
@@ -23,23 +22,23 @@ class LLMSettings:
     top_p: float = 1.0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
-    
+
     # Rate limiting
     max_calls_per_minute: int = 30
     max_calls_per_session: int = 100
-    
+
     # Retry settings
     max_retries: int = 3
     retry_delay: float = 1.0
-    
+
     # Caching
     enable_cache: bool = True
     cache_ttl_seconds: int = 300
-    
+
     def to_dict(self) -> dict:
         """Convert to dictionary for UI/serialization."""
         return asdict(self)
-    
+
     @classmethod
     def from_dict(cls, data: dict) -> "LLMSettings":
         """Create from dictionary."""
@@ -52,8 +51,9 @@ def _load_from_agent_config() -> LLMSettings:
     """Load LLM settings from AgentConfig."""
     try:
         from src.agent.config import get_config
+
         config = get_config()
-        
+
         settings = LLMSettings(
             model=config.model,
             temperature=config.temperature,
@@ -68,10 +68,10 @@ def _load_from_agent_config() -> LLMSettings:
             enable_cache=config.enable_cache,
             cache_ttl_seconds=config.cache_ttl_seconds,
         )
-        
+
         logger.debug(f"Loaded LLM settings from AgentConfig: model={settings.model}")
         return settings
-        
+
     except ImportError as e:
         logger.warning(f"Could not import AgentConfig: {e}, using defaults")
         return LLMSettings()
@@ -84,7 +84,7 @@ def _load_from_agent_config() -> LLMSettings:
 # Global Settings Instance
 # =============================================================================
 
-_current_settings: Optional[LLMSettings] = None
+_current_settings: LLMSettings | None = None
 
 
 def get_settings() -> LLMSettings:
@@ -105,19 +105,20 @@ def refresh_settings() -> LLMSettings:
 def update_settings(**kwargs) -> LLMSettings:
     """
     Update LLM settings.
-    
+
     Note: This updates local settings AND AgentConfig.
     """
     global _current_settings
     settings = get_settings()
-    
+
     # Update AgentConfig too
     try:
         from src.agent.config import update_config
+
         update_config(**kwargs)
     except ImportError:
         pass
-    
+
     # Update local settings
     for key, value in kwargs.items():
         if hasattr(settings, key):
@@ -125,7 +126,7 @@ def update_settings(**kwargs) -> LLMSettings:
             logger.debug(f"Updated setting: {key} = {value}")
         else:
             logger.warning(f"Unknown setting: {key}")
-    
+
     return settings
 
 
@@ -140,6 +141,7 @@ def reset_settings() -> LLMSettings:
 # =============================================================================
 # Convenience Functions
 # =============================================================================
+
 
 def set_model(model_id: str) -> None:
     """Change model."""
