@@ -28,7 +28,8 @@ ENV/
 
 # UV
 .uv/
-uv.lock
+# NOTE: uv.lock is intentionally committed for reproducible CI builds
+# (setup-uv cache + deterministic dependency resolution).
 
 # Environment variables
 .env
