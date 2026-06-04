@@ -70,10 +70,12 @@ chatbot_core/src/
 
 **Goal:** clean, tested, secure base. No new features.
 
-- [ ] Tooling + CI + pre-commit (see §3)
-- [ ] **Regression safety net:** harden `tests/test_scenarios.py` into a scenario eval
-      (assert expected tool calls / outcomes) — *before* any refactor
-- [ ] Ports skeleton (`ports/`) — interfaces only, no behavior change
+- [x] Tooling + CI + pre-commit (see §3) — *merged via PR #1*
+- [x] **Regression safety net:** self-contained scenario/tool suite (rebuilds the
+      SQLite DB from versioned SQL; RAG tests skip offline); `pytest` enabled in CI
+      — *merged via PR #2; 66 passed / 22 skipped, hermetic*
+- [x] Ports skeleton (`ports/`) — `Protocol` interfaces only, no behavior change
+      (LLMProvider, ToolProvider, ASRProvider, TTSProvider, Transport) — *merged via PR #3*
 - [ ] **Critical fixes (small, high impact):**
   - Wire LLM cache + rate-limiter + `record_call` into `llm_completion` — `services/llm/client.py:230` (currently dead code)
   - Single cost source: `client.py:55` → `models.calculate_cost`
@@ -83,6 +85,16 @@ chatbot_core/src/
   - Lock down SQL f-strings: `shared/.../database/base.py:157`
   - Error / PII sanitization at tool boundary; redact phone numbers in logs
   - `Optional[...]` type-hint sweep
+  - **Pydantic v1→v2:** migrate class-based `Config` → `ConfigDict` across
+    `shared/src/isp_types/*` (Customer, Address, Port, Ticket, …); clears 13
+    `PydanticDeprecatedSince20` warnings. Also drop the `UP042` ratchet by moving
+    enums to `enum.StrEnum`. *(Dedicated pass — touches all shared models.)*
+  - **Windows UTF-8:** `scripts/setup_db.py` & `scripts/seed_data.py` crash with
+    `UnicodeEncodeError` printing emoji to a cp1252 console — add a stdout UTF-8
+    reconfigure (or drop the emoji).
+
+- **Found & fixed by the regression net:** `run_ping_test` queried a non-existent
+  `ping_logs` table (schema has `ping_tests`) — fixed in PR #2.
 
 **Done:** CI green · scenario eval green · demo behaves as before (no regression).
 **Stable from here:** the port interfaces — every later phase plugs into them.
@@ -179,6 +191,11 @@ never degrades consultation quality — the core "pro" safety net.
 
 ## Current next action
 
-1. Tag `v1-demo` on `main`; create `develop` and `chore/foundation`.
-2. Commit this `docs/ROADMAP.md` as the reference document.
-3. Start Phase 0: tooling + regression safety net + ports skeleton.
+- [x] Tag `v1-demo` on `main`; create `develop` and `chore/foundation`.
+- [x] Commit this `docs/ROADMAP.md` as the reference document.
+- [x] Phase 0 · Tooling + CI + pre-commit (PR #1).
+- [x] Phase 0 · Regression safety net + `pytest` in CI (PR #2).
+- [x] Phase 0 · Ports skeleton (`ports/` Protocol interfaces) (PR #3).
+- [ ] **Next:** Phase 0 · Critical-fix pass — starting with wiring the LLM cache +
+      rate-limiter + `record_call` into `llm_completion` (`client.py:230`, dead code),
+      all protected by the green scenario eval.
