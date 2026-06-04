@@ -35,4 +35,11 @@ jobs:
         continue-on-error: true
 
       - name: Tests
+        # RAG embedding model is not cached on the runner; force offline so the
+        # RAG-dependent tests fail fast (and skip via require_kb) instead of
+        # hammering the HF Hub and hitting 429 rate limits. RAG correctness is
+        # covered in Phase 1, not here.
+        env:
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
         run: uv run pytest
