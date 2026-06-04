@@ -77,8 +77,16 @@ chatbot_core/src/
 - [x] Ports skeleton (`ports/`) — `Protocol` interfaces only, no behavior change
       (LLMProvider, ToolProvider, ASRProvider, TTSProvider, Transport) — *merged via PR #3*
 - [ ] **Critical fixes (small, high impact):**
-  - Wire LLM cache + rate-limiter + `record_call` into `llm_completion` — `services/llm/client.py:230` (currently dead code)
-  - Single cost source: `client.py:55` → `models.calculate_cost`
+  - [x] Wire rate-limiter (`check_or_raise`) + `record_call` / session stats into
+        `llm_completion` (was dead code) — *merged via PR #6*
+  - [x] Single cost source: dropped `client.py` local `_calculate_cost` →
+        `models.calculate_cost` — *merged via PR #6*
+  - [ ] **LLM response cache — deliberately deferred.** `ResponseCache` is
+        exact-match (`md5(messages+model)`); in a ReAct dialog every turn sends a
+        *growing* history, so identical requests almost never recur and the real
+        hit-rate ≈ 0. The actual cost/quality lever is history management (see
+        Phase 2). Decide cache's fate there — likely delete, or replace with a
+        semantic cache — rather than wiring low-ROI infra now.
   - `respond` with empty message → infinite loop: `agent/react_agent.py:300,373`
   - DB singleton fix: `shared/.../database/connection.py:42`
   - Transaction atomicity for `create_ticket`: `connection.py:101` + `crm_mcp/tools/tickets.py`
@@ -196,6 +204,8 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 0 · Tooling + CI + pre-commit (PR #1).
 - [x] Phase 0 · Regression safety net + `pytest` in CI (PR #2).
 - [x] Phase 0 · Ports skeleton (`ports/` Protocol interfaces) (PR #3).
-- [ ] **Next:** Phase 0 · Critical-fix pass — starting with wiring the LLM cache +
-      rate-limiter + `record_call` into `llm_completion` (`client.py:230`, dead code),
-      all protected by the green scenario eval.
+- [x] Phase 0 · Critical-fix #1 — LLM rate-limiter + session stats + single cost
+      source wired into `llm_completion`; cache deferred (PR #6).
+- [ ] **Next:** Phase 0 · Critical-fix pass continues — `respond` empty-message
+      infinite loop (`react_agent.py:300,373`), then DB singleton / transaction
+      atomicity / SQL-injection lockdown — all protected by the green scenario eval.

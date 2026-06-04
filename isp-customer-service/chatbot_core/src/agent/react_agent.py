@@ -311,13 +311,38 @@ class ReactAgent:
         # Handle actions
         if action == "respond":
             message = action_input.get("message", "")
-            result["response"] = message
-            self.state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": f"Thought: {thought}\nAction: respond\nAction Input: {json.dumps(action_input, ensure_ascii=False)}",
-                }
-            )
+            # Model failure mode: it chose to respond but produced no text.
+            # An empty reply gives the customer nothing, so instead of returning
+            # it, nudge the model with a corrective observation and let the loop
+            # retry (bounded by max_tool_calls_per_response → no infinite loop /
+            # cost blowup). result["response"] stays None so run_until_response
+            # does not treat this as a real answer.
+            if not message.strip():
+                logger.warning("[AGENT] Empty respond message; injecting correction and retrying")
+                self.state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": f"Thought: {thought}\nAction: respond\nAction Input: {json.dumps(action_input, ensure_ascii=False)}",
+                    }
+                )
+                self.state.messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Observation: Your respond message was empty. "
+                            "You must provide a non-empty message to the customer."
+                        ),
+                    }
+                )
+                result["needs_continuation"] = True
+            else:
+                result["response"] = message
+                self.state.messages.append(
+                    {
+                        "role": "assistant",
+                        "content": f"Thought: {thought}\nAction: respond\nAction Input: {json.dumps(action_input, ensure_ascii=False)}",
+                    }
+                )
 
         elif action == "finish":
             result["is_complete"] = True
@@ -385,7 +410,10 @@ class ReactAgent:
             result = self.step(user_input)
             user_input = None  # Only pass on first step
 
-            if result.get("response"):
+            # Distinguish "no response yet" (None) from a real reply. An empty
+            # respond is now caught in step() (needs_continuation), so any
+            # non-None response here is a genuine answer for the customer.
+            if result.get("response") is not None:
                 return result["response"]
 
             if result.get("is_complete"):
