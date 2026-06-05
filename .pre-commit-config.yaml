@@ -3,7 +3,7 @@
 # Run on all:    uv run pre-commit run --all-files
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.15.15  # keep in sync with the ruff in chatbot_core's uv env (CI runs `uv run ruff`)
     hooks:
       - id: ruff           # lint
         args: [--fix]

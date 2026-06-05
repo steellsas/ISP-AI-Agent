@@ -118,8 +118,7 @@ def _evaluate(name: str, retriever, queries: list[dict], k: int) -> None:
         top = ", ".join(dict.fromkeys(s["srcs"])) or "(no results)"
         hit = f"{s['hit_score']:.2f}" if s["hit_score"] is not None else "  - "
         print(
-            f"  [{mark}] rr={s['rr']:.2f} top={s['top_score']:.2f} hit={hit}  "
-            f"{q[:38]:<38} -> {top}"
+            f"  [{mark}] rr={s['rr']:.2f} top={s['top_score']:.2f} hit={hit}  {q[:38]:<38} -> {top}"
         )
         if not s["lenient"]:
             misses.append(f"{q}  (want one of: {', '.join(docs)})")
