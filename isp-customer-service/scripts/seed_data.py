@@ -39,10 +39,10 @@ def seed_database():
     db_path = get_db_path()
 
     if not db_path.exists():
-        print("❌ Database not found! Run setup_db.py first.")
+        print("Database not found! Run setup_db.py first.")
         return False
 
-    print(f"📦 Loading mock data into: {db_path}")
+    print(f"Loading mock data into: {db_path}")
 
     # Connect to database
     conn = sqlite3.connect(db_path)
@@ -50,7 +50,7 @@ def seed_database():
 
     try:
         # Seed CRM data
-        print("📋 Seeding CRM data...")
+        print("Seeding CRM data...")
 
         print("   - Loading customers...")
         customers_sql = load_seed_file("customers")
@@ -68,16 +68,16 @@ def seed_database():
         equipment_sql = load_seed_file("equipment")
         cursor.executescript(equipment_sql)
 
-        print("   ✅ CRM data loaded")
+        print("   CRM data loaded")
 
         # Seed Network data
-        print("📋 Seeding Network data...")
+        print("Seeding Network data...")
 
         print("   - Loading network infrastructure...")
         network_sql = load_seed_file("network")
         cursor.executescript(network_sql)
 
-        print("   ✅ Network data loaded")
+        print("   Network data loaded")
 
         # Commit changes
         conn.commit()
@@ -93,14 +93,14 @@ def seed_database():
         port_count = cursor.fetchone()[0]
 
         print("\n Mock data loaded successfully!")
-        print(" Statistics:")
+        print("Statistics:")
         print(f"   - Customers: {customer_count}")
         print(f"   - Switches: {switch_count}")
         print(f"   - Ports: {port_count}")
 
     except FileNotFoundError as e:
-        print(f"\n❌ Error: {e}")
-        print("\n💡 Hint: Seed files should be created first:")
+        print(f"\nError: {e}")
+        print("\nHint: Seed files should be created first:")
         print("   - database/seeds/customers.sql")
         print("   - database/seeds/addresses.sql")
         print("   - database/seeds/service_plans.sql")
@@ -110,7 +110,7 @@ def seed_database():
         return False
 
     except sqlite3.Error as e:
-        print(f"\n❌ Database error: {e}")
+        print(f"\nDatabase error: {e}")
         conn.rollback()
         conn.close()
         return False

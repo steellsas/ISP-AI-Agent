@@ -27,32 +27,32 @@ def test_imports():
         # Database
         from database import DatabaseConnection, init_database
 
-        print("✅ Database imports OK")
+        print("Database imports OK")
 
         # Shared types
         from isp_types import AreaOutage, BandwidthLog, IPAssignment, Port, Switch
 
-        print("✅ Shared types imports OK")
+        print("Shared types imports OK")
 
         # Repository
         from repository import NetworkRepository
 
-        print("✅ Repository imports OK")
+        print("Repository imports OK")
 
         # MCP Server
         from mcp_server.server import create_server
 
-        print("✅ MCP server imports OK")
+        print("MCP server imports OK")
 
         # Tools
         from mcp_server.tools import connectivity_tests, outage_checks, port_diagnostics
 
-        print("✅ Tools imports OK")
+        print("Tools imports OK")
 
         return True
 
     except ImportError as e:
-        print(f"❌ Import failed: {e}")
+        print(f"Import failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -73,16 +73,16 @@ def test_network_repository():
         # Initialize database
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
         if not db_path.exists():
-            print(f"❌ Database not found: {db_path}")
+            print(f"Database not found: {db_path}")
             return False
 
         db = init_database(db_path)
         repo = NetworkRepository(db)
-        print("✅ Repository initialized")
+        print("Repository initialized")
 
         # Test: Get all switches
         switches = repo.get_all_switches()
-        print(f"✅ Switches: {len(switches)} found")
+        print(f"Switches: {len(switches)} found")
 
         if switches:
             switch = switches[0]
@@ -91,26 +91,26 @@ def test_network_repository():
             # Test: Get switch statistics
             stats = repo.get_switch_statistics(switch.switch_id)
             print(
-                f"✅ Switch stats: {stats.get('total_ports', 0)} ports, "
+                f"Switch stats: {stats.get('total_ports', 0)} ports, "
                 f"{stats.get('active_ports', 0)} active"
             )
 
         # Test: Count active outages
         outage_count = repo.count_active_outages()
-        print(f"✅ Active outages: {outage_count}")
+        print(f"Active outages: {outage_count}")
 
         # Test: Find ports by customer
         ports = repo.find_ports_by_customer("CUST001")
-        print(f"✅ Ports for CUST001: {len(ports)} found")
+        print(f"Ports for CUST001: {len(ports)} found")
 
         # Test: Get bandwidth logs
         logs = repo.get_bandwidth_logs("CUST001", limit=5)
-        print(f"✅ Bandwidth logs for CUST001: {len(logs)} found")
+        print(f"Bandwidth logs for CUST001: {len(logs)} found")
 
         return True
 
     except Exception as e:
-        print(f"❌ Network repository test failed: {e}")
+        print(f"Network repository test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -137,7 +137,7 @@ def test_port_diagnostics():
         if result.get("success"):
             diagnostics = result.get("diagnostics", {})
             print(
-                f"✅ Port status check: {diagnostics.get('ports_up', 0)}/"
+                f"Port status check: {diagnostics.get('ports_up', 0)}/"
                 f"{diagnostics.get('total_ports', 0)} ports up"
             )
 
@@ -145,26 +145,26 @@ def test_port_diagnostics():
                 port = result["ports"][0]
                 print(f"   Example port: {port['port_number']} on {port['switch_name']}")
         else:
-            print(f"⚠️  Port status: {result.get('message')}")
+            print(f"Port status: {result.get('message')}")
 
         # Test: Get switch info
         switch_result = get_switch_info(db, "CUST001")
 
         if switch_result.get("success"):
             switch = switch_result["switch"]
-            print(f"✅ Switch info: {switch['switch_name']}")
+            print(f"Switch info: {switch['switch_name']}")
             print(f"   Status: {switch['status']}, Location: {switch['location']}")
 
             if "health" in switch:
                 health = switch["health"]
                 print(f"   Health: {health['utilization_percent']}% utilization")
         else:
-            print(f"⚠️  Switch info: {switch_result.get('message')}")
+            print(f"Switch info: {switch_result.get('message')}")
 
         return True
 
     except Exception as e:
-        print(f"❌ Port diagnostics test failed: {e}")
+        print(f"Port diagnostics test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -194,13 +194,13 @@ def test_connectivity_tools():
 
         if ip_result.get("success"):
             active = ip_result.get("active_count", 0)
-            print(f"✅ IP assignment: {active} active IPs")
+            print(f"IP assignment: {active} active IPs")
 
             if ip_result.get("ip_assignments"):
                 ip = ip_result["ip_assignments"][0]
                 print(f"   Example: {ip['ip_address']} ({ip['assignment_type']})")
         else:
-            print(f"⚠️  IP assignment: {ip_result.get('message')}")
+            print(f"IP assignment: {ip_result.get('message')}")
 
         # Test: Bandwidth history
         bw_result = check_bandwidth_history(db, "CUST001", limit=5)
@@ -208,12 +208,12 @@ def test_connectivity_tools():
         if bw_result.get("success"):
             logs = bw_result.get("bandwidth_logs", [])
             stats = bw_result.get("statistics", {})
-            print(f"✅ Bandwidth history: {len(logs)} measurements")
+            print(f"Bandwidth history: {len(logs)} measurements")
 
             if stats.get("download"):
                 print(f"   Avg download: {stats['download']['avg_mbps']} Mbps")
         else:
-            print(f"⚠️  Bandwidth history: {bw_result.get('message')}")
+            print(f"Bandwidth history: {bw_result.get('message')}")
 
         # Test: Ping test
         ping_result = ping_test(db, "CUST001")
@@ -221,17 +221,17 @@ def test_connectivity_tools():
         if ping_result.get("success"):
             stats = ping_result["statistics"]
             print(
-                f"✅ Ping test: {stats['packet_loss_percent']}% loss, "
+                f"Ping test: {stats['packet_loss_percent']}% loss, "
                 f"{stats.get('avg_latency_ms', 'N/A')}ms avg"
             )
             print(f"   Status: {ping_result['status']}")
         else:
-            print(f"⚠️  Ping test: {ping_result.get('message')}")
+            print(f"Ping test: {ping_result.get('message')}")
 
         return True
 
     except Exception as e:
-        print(f"❌ Connectivity tools test failed: {e}")
+        print(f"Connectivity tools test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -257,7 +257,7 @@ def test_outage_checks():
 
         if outage_result.get("success"):
             outages = outage_result.get("outages", [])
-            print(f"✅ Area outages in Šiauliai: {len(outages)} found")
+            print(f"Area outages in Šiauliai: {len(outages)} found")
 
             if outages:
                 summary = outage_result.get("summary", {})
@@ -271,17 +271,17 @@ def test_outage_checks():
 
         if affected_result.get("success"):
             is_affected = affected_result.get("affected", False)
-            print(f"✅ Customer CUST001 affected: {is_affected}")
+            print(f"Customer CUST001 affected: {is_affected}")
 
             if is_affected:
                 print(f"   Affected by {len(affected_result.get('outages', []))} outages")
         else:
-            print(f"⚠️  Customer check: {affected_result.get('message')}")
+            print(f"Customer check: {affected_result.get('message')}")
 
         return True
 
     except Exception as e:
-        print(f"❌ Outage checks test failed: {e}")
+        print(f"Outage checks test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -300,29 +300,29 @@ def test_mcp_server_structure():
         db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
 
         if not db_path.exists():
-            print(f"❌ Database not found: {db_path}")
+            print(f"Database not found: {db_path}")
             return False
 
         # Create server instance
         server = create_server(db_path)
-        print("✅ MCP Server created")
+        print("MCP Server created")
 
         # Check server has required attributes
         assert hasattr(server, "db"), "Server missing 'db' attribute"
         assert hasattr(server, "server"), "Server missing 'server' attribute"
-        print("✅ Server has required attributes")
+        print("Server has required attributes")
 
         # Check database connection
         with server.db.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) as count FROM switches")
             result = cursor.fetchone()
             count = dict(result)["count"]
-        print(f"✅ Server database connection works ({count} switches)")
+        print(f"Server database connection works ({count} switches)")
 
         return True
 
     except Exception as e:
-        print(f"❌ MCP server structure test failed: {e}")
+        print(f"MCP server structure test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -348,7 +348,7 @@ def test_network_models():
             ip_address="10.0.0.1",
             model="Test Model",
         )
-        print(f"✅ Switch model: {switch.switch_name}")
+        print(f"Switch model: {switch.switch_name}")
 
         # Test Port model
         port = Port(
@@ -358,18 +358,18 @@ def test_network_models():
             status=PortStatus.UP,
             speed_mbps=1000,
         )
-        print(f"✅ Port model: Port {port.port_number} - {port.status}")
+        print(f"Port model: Port {port.port_number} - {port.status}")
         print(f"   Is active: {port.is_active()}")
 
         # Test IPAssignment model
         ip = IPAssignment(assignment_id="IP001", ip_address="192.168.1.100", assignment_type="dhcp")
-        print(f"✅ IPAssignment model: {ip.ip_address}")
+        print(f"IPAssignment model: {ip.ip_address}")
 
         # Test AreaOutage model
         outage = AreaOutage(
             outage_id="OUT001", city="Test City", outage_type="internet", description="Test outage"
         )
-        print(f"✅ AreaOutage model: {outage.city} - {outage.description}")
+        print(f"AreaOutage model: {outage.city} - {outage.description}")
         print(f"   Is active: {outage.is_active()}")
 
         # Test BandwidthLog model
@@ -380,12 +380,12 @@ def test_network_models():
             upload_mbps=Decimal("50.2"),
             latency_ms=20,
         )
-        print(f"✅ BandwidthLog model: {bandwidth.download_mbps} Mbps down")
+        print(f"BandwidthLog model: {bandwidth.download_mbps} Mbps down")
 
         return True
 
     except Exception as e:
-        print(f"❌ Network models test failed: {e}")
+        print(f"Network models test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -414,7 +414,7 @@ def main():
             success = test_func()
             results.append((name, success))
         except Exception as e:
-            print(f"\n❌ Test '{name}' crashed: {e}")
+            print(f"\nTest '{name}' crashed: {e}")
             import traceback
 
             traceback.print_exc()
@@ -426,7 +426,7 @@ def main():
     print("=" * 60)
 
     for name, success in results:
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "PASS" if success else "FAIL"
         print(f"{status} - {name}")
 
     passed = sum(1 for _, success in results if success)
@@ -436,11 +436,11 @@ def main():
     print(f"Results: {passed}/{total} tests passed")
 
     if passed == total:
-        print("🎉 ALL TESTS PASSED!")
+        print("ALL TESTS PASSED!")
         print("=" * 60)
         return 0
     else:
-        print("⚠️  Some tests failed")
+        print("Some tests failed")
         print("=" * 60)
         return 1
 
