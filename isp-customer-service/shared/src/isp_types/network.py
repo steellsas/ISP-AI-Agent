@@ -4,13 +4,13 @@ Network-related Pydantic models.
 
 from datetime import datetime
 from decimal import Decimal
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class PortStatus(str, Enum):
+class PortStatus(StrEnum):
     """Port status enumeration."""
 
     UP = "up"
@@ -35,8 +35,7 @@ class Switch(BaseModel):
     last_checked: datetime = Field(default_factory=datetime.now, description="Last health check")
     notes: str | None = Field(None, description="Additional notes")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Port(BaseModel):
@@ -57,9 +56,7 @@ class Port(BaseModel):
     last_checked: datetime = Field(default_factory=datetime.now, description="Last check")
     notes: str | None = Field(None, description="Additional notes")
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     def is_active(self) -> bool:
         """Check if port is active (up)."""
@@ -88,8 +85,7 @@ class IPAssignment(BaseModel):
     last_seen: datetime = Field(default_factory=datetime.now, description="Last seen online")
     notes: str | None = Field(None, description="Additional notes")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AreaOutage(BaseModel):
@@ -116,8 +112,7 @@ class AreaOutage(BaseModel):
     root_cause: str | None = Field(None, description="Root cause")
     resolution_notes: str | None = Field(None, description="Resolution notes")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     def is_active(self) -> bool:
         """Check if outage is active."""
@@ -144,8 +139,7 @@ class BandwidthLog(BaseModel):
     )
     notes: str | None = Field(None, description="Additional notes")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SignalQuality(BaseModel):
@@ -164,5 +158,4 @@ class SignalQuality(BaseModel):
     channel_issues: str | None = Field(None, description="Channel-specific issues")
     notes: str | None = Field(None, description="Additional notes")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

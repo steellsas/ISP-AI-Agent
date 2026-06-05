@@ -3,12 +3,12 @@ Ticket-related Pydantic models.
 """
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class TicketType(str, Enum):
+class TicketType(StrEnum):
     """Ticket type enumeration."""
 
     NETWORK_ISSUE = "network_issue"
@@ -18,7 +18,7 @@ class TicketType(str, Enum):
     NO_SERVICE_AREA = "no_service_area"
 
 
-class TicketPriority(str, Enum):
+class TicketPriority(StrEnum):
     """Ticket priority enumeration."""
 
     LOW = "low"
@@ -27,7 +27,7 @@ class TicketPriority(str, Enum):
     CRITICAL = "critical"
 
 
-class TicketStatus(str, Enum):
+class TicketStatus(StrEnum):
     """Ticket status enumeration."""
 
     OPEN = "open"
@@ -53,9 +53,7 @@ class Ticket(BaseModel):
     assigned_to: str | None = Field(None, description="Assigned technician")
     troubleshooting_steps: str | None = Field(None, description="Steps taken to troubleshoot")
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
     def is_open(self) -> bool:
         """Check if ticket is open."""
