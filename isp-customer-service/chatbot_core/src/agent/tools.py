@@ -109,7 +109,12 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
     Returns:
         Customer data or error
     """
-    logger.info(f"[TOOL] find_customer(phone={phone}, address={address}, name={name})")
+    # Phone is masked by the central PII log filter; address/name are PII the
+    # regex can't catch, so log only whether each lookup path was provided.
+    logger.info(
+        f"[TOOL] find_customer(phone={phone}, by_address={address is not None}, "
+        f"by_name={name is not None})"
+    )
 
     try:
         db = get_db()
@@ -1037,6 +1042,11 @@ def execute_tool(tool_name: str, arguments: dict) -> str:
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+
+    # Mask phone numbers in logs (after basicConfig set up the root handler).
+    from utils import install_pii_redaction
+
+    install_pii_redaction()
 
     print("Testing real tools integration...\n")
 

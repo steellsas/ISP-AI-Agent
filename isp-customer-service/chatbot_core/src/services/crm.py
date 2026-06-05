@@ -68,7 +68,8 @@ def get_customer_by_address(
     Returns:
         Result dict with customer data or error
     """
-    logger.info(f"CRM lookup by address: {city}, {street} {house_number}")
+    # Log only the city (area) — the precise street/house is PII.
+    logger.info(f"CRM lookup by address in {city}")
     db = get_db()
     return lookup_customer_by_address(
         db,

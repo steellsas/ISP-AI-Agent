@@ -252,7 +252,8 @@ def lookup_customer_by_phone(db: DatabaseConnection, args: dict[str, Any]) -> di
         services = repo.get_service_plans(customer_id, active_only=True)
         equipment = repo.get_equipment(customer_id, active_only=True)
 
-        logger.info(f"Found customer: {customer_id} - {customer.first_name} {customer.last_name}")
+        # Log only the non-PII internal ID — not the customer's name.
+        logger.info(f"Found customer: {customer_id}")
 
         # Convert to dicts
         return {
