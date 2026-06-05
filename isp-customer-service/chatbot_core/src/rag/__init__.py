@@ -47,15 +47,24 @@ _hybrid_lock = threading.Lock()
 
 
 def get_hybrid_retriever(
-    keyword_weight: float = 0.3, top_k: int = 5, similarity_threshold: float = 0.5
+    keyword_weight: float | None = None,
+    top_k: int | None = None,
+    similarity_threshold: float | None = None,
 ) -> HybridRetriever:
     """
     Get or create HybridRetriever singleton.
 
+    Args are resolved from config (``rag_keyword_weight`` / ``rag_top_k`` /
+    ``rag_threshold``) when left as ``None``, so the production retrieval knobs
+    live in one place (Config/env) instead of being hardcoded here. Explicit
+    values still win (used by the eval harness to sweep knobs). Note the
+    threshold gates the *semantic cosine* pre-filter inside HybridRetriever
+    (applied before the keyword blend), so it stays a real cosine floor.
+
     Args:
-        keyword_weight: Weight for keyword matching (0-1)
-        top_k: Default number of results
-        similarity_threshold: Minimum similarity score
+        keyword_weight: Weight for keyword matching (0-1); None -> config
+        top_k: Default number of results; None -> config
+        similarity_threshold: Minimum cosine similarity; None -> config
 
     Returns:
         HybridRetriever instance
@@ -65,6 +74,25 @@ def get_hybrid_retriever(
     if _hybrid_retriever is None:
         with _hybrid_lock:
             if _hybrid_retriever is None:
+                # Centralized defaults from config (fall back to prior literals
+                # if config is unavailable, e.g. running rag/ in isolation).
+                try:
+                    from utils import get_config
+
+                    cfg = get_config()
+                    if keyword_weight is None:
+                        keyword_weight = cfg.rag_keyword_weight
+                    if top_k is None:
+                        top_k = cfg.rag_top_k
+                    if similarity_threshold is None:
+                        similarity_threshold = cfg.rag_threshold
+                except Exception:
+                    keyword_weight = 0.3 if keyword_weight is None else keyword_weight
+                    top_k = 5 if top_k is None else top_k
+                    similarity_threshold = (
+                        0.5 if similarity_threshold is None else similarity_threshold
+                    )
+
                 # Get base retriever
                 base_retriever = get_retriever(
                     top_k=top_k, similarity_threshold=similarity_threshold
