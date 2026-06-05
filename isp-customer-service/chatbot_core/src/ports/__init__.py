@@ -12,14 +12,18 @@ every later phase plugs into.
 
 from .asr import ASRProvider
 from .llm import LLMProvider, Message
+from .retrieval import ChunkMetadata, RetrievedChunk, RetrieverPort
 from .tools import ToolProvider, ToolSpec
 from .transport import Transport
 from .tts import TTSProvider
 
 __all__ = [
     "ASRProvider",
+    "ChunkMetadata",
     "LLMProvider",
     "Message",
+    "RetrievedChunk",
+    "RetrieverPort",
     "TTSProvider",
     "ToolProvider",
     "ToolSpec",

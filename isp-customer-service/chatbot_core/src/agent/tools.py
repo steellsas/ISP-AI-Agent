@@ -685,7 +685,7 @@ def search_knowledge(query: str) -> dict:
         retriever = get_retriever()
 
         # Load production KB if not already loaded
-        if retriever.vector_store.index.ntotal == 0:
+        if not retriever.is_loaded():
             logger.info("Loading production knowledge base...")
             if not retriever.load("production"):
                 logger.warning("Failed to load production KB, trying default...")

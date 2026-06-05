@@ -357,6 +357,10 @@ class HybridRetriever:
             logger.info(f"HybridRetriever loaded KB: {name}")
         return success
 
+    def is_loaded(self) -> bool:
+        """Check whether a KB is loaded (proxy to base retriever)."""
+        return self.retriever.is_loaded()
+
     def save(self, name: str = "default"):
         """Save knowledge base (proxy to base retriever)."""
         self.retriever.save(name)
