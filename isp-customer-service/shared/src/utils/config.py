@@ -90,9 +90,11 @@ class Config:
             "RAG_MODEL_NAME",
             "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
         )
-        # "flatl2" (current behaviour) vs "flatip" (true cosine). Kept at flatl2
-        # here; flipping to flatip is the deliberate retrieval-quality step.
-        self.rag_index_type = os.getenv("RAG_INDEX_TYPE", "flatl2")
+        # "flatip" (true cosine, with L2-normalized vectors) vs "flatl2"
+        # (Euclidean, mapped to a similarity via 1/(1+dist)). flatip makes the
+        # score a directly interpretable cosine in [-1, 1], so the threshold
+        # below is a real relevance floor — the payoff grows as the KB grows.
+        self.rag_index_type = os.getenv("RAG_INDEX_TYPE", "flatip")
         self.rag_top_k = int(os.getenv("RAG_TOP_K", "3"))
         self.rag_threshold = float(os.getenv("RAG_THRESHOLD", "0.4"))
         self.rag_keyword_weight = float(os.getenv("RAG_KEYWORD_WEIGHT", "0.3"))

@@ -34,7 +34,7 @@ from rag import get_retriever
 
 # Import utilities from shared package
 try:
-    from shared.utils import get_logger
+    from utils import get_logger
 except ImportError:
     import logging
 
@@ -268,7 +268,7 @@ def build_knowledge_base(
     retriever = get_retriever(top_k=5, similarity_threshold=0.5)
     processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     try:
-        from isp_shared.utils import get_config
+        from utils import get_config
 
         default_lang = get_config().rag_default_lang
     except Exception:

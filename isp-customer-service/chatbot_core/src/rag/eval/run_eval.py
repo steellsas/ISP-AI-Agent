@@ -42,13 +42,19 @@ from rag.retriever import Retriever  # noqa: E402
 from rag.vector_store import get_vector_store  # noqa: E402
 
 try:
-    from isp_shared.utils import get_config
+    from utils import get_config
 except ImportError:  # config is optional; fall back to literals matching its defaults
     get_config = None
 
 
 QUERIES_PATH = _EVAL_DIR / "queries.json"
 KB_NAME = "production"
+
+# Sentinel passed as the retrieval threshold to disable filtering entirely.
+# Retriever.retrieve() treats threshold=None as "use the configured default"
+# (0.4), so None would NOT measure raw ranking. Cosine similarity is in
+# [-1, 1], so -1.0 admits every candidate -> pure recall@k / MRR.
+NO_FILTER = -1.0
 
 
 def _load_queries() -> tuple[int, list[dict]]:
@@ -62,44 +68,72 @@ def _sources(results: list[dict]) -> list[str]:
 
 
 def _score_one(results: list[dict], acceptable: set[str], canonical: str, k: int) -> dict:
-    srcs = _sources(results)[:k]
+    top = results[:k]
+    srcs = [r.get("metadata", {}).get("source", "") for r in top]
     lenient = any(s in acceptable for s in srcs)
     strict = canonical in srcs
+    top_score = float(top[0].get("score", 0.0)) if top else 0.0
     rr = 0.0
-    for i, s in enumerate(srcs):
-        if s in acceptable:
+    hit_score = None  # similarity of the first acceptable hit (threshold-calibration signal)
+    for i, r in enumerate(top):
+        if r.get("metadata", {}).get("source", "") in acceptable:
             rr = 1.0 / (i + 1)
+            hit_score = float(r.get("score", 0.0))
             break
-    return {"lenient": lenient, "strict": strict, "rr": rr, "srcs": srcs}
+    return {
+        "lenient": lenient,
+        "strict": strict,
+        "rr": rr,
+        "srcs": srcs,
+        "top_score": top_score,
+        "hit_score": hit_score,
+    }
 
 
-def _evaluate(name: str, retriever, queries: list[dict], k: int, threshold: float) -> None:
-    print(f"\n{'=' * 78}\n{name}  (k={k}, threshold={threshold})\n{'=' * 78}")
+def _evaluate(name: str, retriever, queries: list[dict], k: int) -> None:
+    # Retrieve WITHOUT a threshold: this measures pure ranking quality
+    # (recall@k, MRR). Thresholding is a separate downstream filter -- the score
+    # columns below tell us where to set it without breaking recall.
+    print(f"\n{'=' * 78}\n{name}  (k={k}, threshold={NO_FILTER} = no filter)\n{'=' * 78}")
     n = len(queries)
     sum_lenient = sum_strict = sum_rr = 0.0
     misses: list[str] = []
+    hit_scores: list[float] = []  # similarity of each correct hit -> threshold floor
 
     for item in queries:
         q = item["q"]
         docs = item["docs"]
         acceptable = set(docs)
         canonical = docs[0]
-        results = retriever.retrieve(q, top_k=k, threshold=threshold)
+        results = retriever.retrieve(q, top_k=k, threshold=NO_FILTER)
         s = _score_one(results, acceptable, canonical, k)
 
         sum_lenient += s["lenient"]
         sum_strict += s["strict"]
         sum_rr += s["rr"]
+        if s["hit_score"] is not None:
+            hit_scores.append(s["hit_score"])
 
         mark = "ok " if s["lenient"] else "MISS"
         top = ", ".join(dict.fromkeys(s["srcs"])) or "(no results)"
-        print(f"  [{mark}] rr={s['rr']:.2f}  {q[:42]:<42} -> {top}")
+        hit = f"{s['hit_score']:.2f}" if s["hit_score"] is not None else "  - "
+        print(
+            f"  [{mark}] rr={s['rr']:.2f} top={s['top_score']:.2f} hit={hit}  "
+            f"{q[:38]:<38} -> {top}"
+        )
         if not s["lenient"]:
             misses.append(f"{q}  (want one of: {', '.join(docs)})")
 
     print(f"\n  recall@{k} lenient : {sum_lenient / n:.3f}  ({int(sum_lenient)}/{n})")
     print(f"  recall@{k} strict  : {sum_strict / n:.3f}  ({int(sum_strict)}/{n})")
     print(f"  MRR               : {sum_rr / n:.3f}")
+    if hit_scores:
+        # The lowest correct-hit score is the ceiling for a safe threshold:
+        # set rag_threshold below it or that query starts missing.
+        print(
+            f"  hit score         : min={min(hit_scores):.3f}  "
+            f"mean={sum(hit_scores) / len(hit_scores):.3f}  max={max(hit_scores):.3f}"
+        )
     if misses:
         print("  misses:")
         for m in misses:
@@ -143,8 +177,9 @@ def main() -> int:
     hybrid = HybridRetriever(base, keyword_weight=keyword_weight)
 
     print(f"\nEval set: {len(queries)} queries from {QUERIES_PATH.name}")
-    _evaluate("BASE (semantic only)", base, queries, k, threshold)
-    _evaluate("HYBRID (semantic + keyword)", hybrid, queries, k, threshold)
+    print(f"Index type: {base.vector_store.index_type}")
+    _evaluate("BASE (semantic only)", base, queries, k)
+    _evaluate("HYBRID (semantic + keyword)", hybrid, queries, k)
     return 0
 
 

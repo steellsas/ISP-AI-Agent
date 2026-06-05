@@ -13,7 +13,7 @@ import re
 from typing import Any
 
 try:
-    from isp_shared.utils import get_logger
+    from utils import get_logger
 except ImportError:
 
     def get_logger(name):
