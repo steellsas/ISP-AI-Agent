@@ -19,6 +19,13 @@ chatbot_core = src_dir.parent  # chatbot_core/
 # Add paths for imports
 sys.path.insert(0, str(current_dir))  # ui_utils, components
 sys.path.insert(0, str(src_dir))  # agent, rag, services
+sys.path.insert(0, str(chatbot_core.parent / "shared" / "src"))  # shared utils
+
+# Mask customer phone numbers in logs before anything starts logging. Streamlit
+# owns the root logger, so we install the process-wide redaction here.
+from utils import install_pii_redaction
+
+install_pii_redaction()
 
 from ui_utils.session import init_session
 

@@ -502,4 +502,9 @@ if __name__ == "__main__":
         datefmt="%H:%M:%S",
     )
 
+    # Mask phone numbers in logs (after basicConfig set up the root handler).
+    from utils import install_pii_redaction
+
+    install_pii_redaction()
+
     run_cli(caller_phone=args.phone, language=args.lang)

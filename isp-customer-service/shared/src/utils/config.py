@@ -65,6 +65,15 @@ class Config:
 
         # Logging
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
+        # PII redaction: phone numbers are masked in logs by default. Set
+        # REDACT_PII=false locally to keep full numbers for test traceability;
+        # deployed environments should leave it on.
+        self.redact_pii = os.getenv("REDACT_PII", "true").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+            "off",
+        )
 
         # Service ports (for MCP servers)
         self.crm_service_port = int(os.getenv("CRM_SERVICE_PORT", "8001"))
