@@ -137,14 +137,21 @@ chatbot_core/src/
         a `-24h` window) age out → non-deterministic `TestScenario08` failures.
         `conftest.py` now rebuilds the DB every session (sub-second, pure
         sqlite3). — *PR #13*
-  - `Optional[...]` type-hint sweep
-  - **Pydantic v1→v2:** migrate class-based `Config` → `ConfigDict` across
-    `shared/src/isp_types/*` (Customer, Address, Port, Ticket, …); clears 13
-    `PydanticDeprecatedSince20` warnings. Also drop the `UP042` ratchet by moving
-    enums to `enum.StrEnum`. *(Dedicated pass — touches all shared models.)*
-  - **Windows UTF-8:** `scripts/setup_db.py` & `scripts/seed_data.py` crash with
-    `UnicodeEncodeError` printing emoji to a cp1252 console — add a stdout UTF-8
-    reconfigure (or drop the emoji).
+  - [x] **Pydantic v1→v2:** migrated class-based `Config` → `ConfigDict` across
+    `shared/src/isp_types/*` (Customer, Address, Port, Ticket, …); cleared 13
+    `PydanticDeprecatedSince20` warnings. Also dropped the `UP042` ratchet by moving
+    enums to `enum.StrEnum`. Behaviour-neutral (verified `-W error::DeprecationWarning`
+    + full suite green). — *PR #15*
+  - [x] `Optional[...]` type-hint sweep — **moot:** the only `Optional[...]` in
+    tracked code lived in a ~400-line commented-out *old* version of
+    `mcp_service.py`; the live rewrite already uses `X | None` / `from typing import
+    Any`. Rather than rename hints inside dead comments, deleted the stale block
+    outright (891 → 490 lines; old version preserved in git history). No live
+    behaviour change.
+  - [x] **Windows UTF-8:** `scripts/setup_db.py` & `seed_data.py` (plus the three
+    `scripts/test_*.py` smoke tests) crashed with `UnicodeEncodeError` printing emoji
+    to a cp1252 console. Dropped the decorative emoji outright (the `€` currency sign
+    in `test_shared.py` kept) — output is now pure ASCII, no reconfigure needed. — *this PR*
 
 - **Found & fixed by the regression net:** `run_ping_test` queried a non-existent
   `ping_logs` table (schema has `ping_tests`) — fixed in PR #2.
@@ -263,7 +270,13 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 0 · Critical-fix #6 — PII sanitization: central phone-number
       redaction in logs (`redact_phone` + LogRecord factory + `REDACT_PII`
       flag); 19 unit tests (PR #14).
-- [ ] **Next:** Phase 0 · final cleanup passes — the dedicated `Optional[...]`
-      type-hint sweep and the Pydantic v1→v2 (`ConfigDict` + `StrEnum`)
-      migration, plus the Windows UTF-8 emoji-crash fix — all protected by the
-      green eval.
+- [x] Phase 0 · Pydantic v1→v2 migration (`ConfigDict` + `StrEnum`) across the
+      shared models (PR #15).
+- [x] Phase 0 · final cleanup — dropped decorative emoji from `scripts/*.py`
+      (fixes the cp1252 `UnicodeEncodeError`) and deleted the ~400-line
+      commented-out old `mcp_service.py` (the only `Optional[...]` site, hence the
+      sweep was moot) (`chore/strip-script-emoji`).
+- [ ] **Next:** Phase 0 **done** → begin **Phase 1 · RAG correctness**
+      (`fix/rag-retrieval`): `IndexFlatIP` + cosine scoring, single
+      `DocumentProcessor`, real hybrid retrieval (BM25/RRF), and a small LT↔EN
+      eval set with expected top-k docs.

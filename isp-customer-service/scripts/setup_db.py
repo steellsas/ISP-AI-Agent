@@ -43,10 +43,10 @@ def create_database():
 
     # Remove old database if exists
     if db_path.exists():
-        print(f"⚠️  Removing existing database: {db_path}")
+        print(f"Removing existing database: {db_path}")
         db_path.unlink()
 
-    print(f"📦 Creating database at: {db_path}")
+    print(f"Creating database at: {db_path}")
 
     # Connect to database (creates file)
     conn = sqlite3.connect(db_path)
@@ -54,26 +54,26 @@ def create_database():
 
     try:
         # Load and execute CRM schema
-        print("📋 Creating CRM schema...")
+        print("Creating CRM schema...")
         crm_schema = load_schema_file("crm_schema")
         cursor.executescript(crm_schema)
-        print("   ✅ CRM schema created")
+        print("   CRM schema created")
 
         # Load and execute Network schema
-        print("📋 Creating Network schema...")
+        print("Creating Network schema...")
         network_schema = load_schema_file("network_schema")
         cursor.executescript(network_schema)
-        print("   ✅ Network schema created")
+        print("   Network schema created")
 
         # Commit changes
         conn.commit()
-        print("\n✅ Database created successfully!")
-        print(f"📍 Location: {db_path}")
-        print(f"📊 Size: {db_path.stat().st_size} bytes")
+        print("\nDatabase created successfully!")
+        print(f"Location: {db_path}")
+        print(f"Size: {db_path.stat().st_size} bytes")
 
     except FileNotFoundError as e:
-        print(f"\n❌ Error: {e}")
-        print("\n💡 Hint: Schema files should be created first:")
+        print(f"\nError: {e}")
+        print("\nHint: Schema files should be created first:")
         print("   - database/schema/crm_schema.sql")
         print("   - database/schema/network_schema.sql")
         conn.close()
@@ -81,7 +81,7 @@ def create_database():
         return False
 
     except sqlite3.Error as e:
-        print(f"\n❌ Database error: {e}")
+        print(f"\nDatabase error: {e}")
         conn.close()
         if db_path.exists():
             db_path.unlink()

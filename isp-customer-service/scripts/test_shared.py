@@ -24,9 +24,9 @@ def test_imports():
     try:
         from database import DatabaseConnection, get_db_connection, init_database
 
-        print("✅ Database imports OK")
+        print("Database imports OK")
     except ImportError as e:
-        print(f"❌ Database import failed: {e}")
+        print(f"Database import failed: {e}")
         return False
 
     try:
@@ -45,17 +45,17 @@ def test_imports():
             TicketType,
         )
 
-        print("✅ All types imported OK")
+        print("All types imported OK")
     except ImportError as e:
-        print(f"❌ Types import failed: {e}")
+        print(f"Types import failed: {e}")
         return False
 
     try:
         from utils import get_config, get_logger, load_env, setup_logger
 
-        print("✅ Utils imports OK")
+        print("Utils imports OK")
     except ImportError as e:
-        print(f"❌ Utils import failed: {e}")
+        print(f"Utils import failed: {e}")
         return False
 
     return True
@@ -72,20 +72,20 @@ def test_database_connection():
     db_path = Path(__file__).parent.parent / "database" / "isp_database.db"
 
     if not db_path.exists():
-        print(f"❌ Database not found: {db_path}")
+        print(f"Database not found: {db_path}")
         return False
 
     try:
         # Initialize connection
         db = init_database(db_path)
-        print(f"✅ Database initialized: {db_path}")
+        print(f"Database initialized: {db_path}")
 
         # Test query with cursor
         with db.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) as count FROM customers")
             result = cursor.fetchone()
             count = dict(result)["count"]
-            print(f"✅ Query executed: {count} customers in database")
+            print(f"Query executed: {count} customers in database")
 
         # Test transaction context manager
         with db.transaction() as conn:
@@ -93,11 +93,11 @@ def test_database_connection():
             cursor.execute("SELECT customer_id, first_name FROM customers LIMIT 1")
             customer = cursor.fetchone()
             if customer:
-                print(f"✅ Transaction test: Found customer {dict(customer)['first_name']}")
+                print(f"Transaction test: Found customer {dict(customer)['first_name']}")
 
         return True
     except Exception as e:
-        print(f"❌ Database test failed: {e}")
+        print(f"Database test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -121,7 +121,7 @@ def test_customer_models():
             phone="+37060012345",
             email="jonas@test.com",
         )
-        print(f"✅ Customer model: {customer.first_name} {customer.last_name}")
+        print(f"Customer model: {customer.first_name} {customer.last_name}")
 
         # Test Address model
         address = Address(
@@ -133,7 +133,7 @@ def test_customer_models():
             apartment_number="5",
         )
         formatted = address.format_address()
-        print(f"✅ Address model: {formatted}")
+        print(f"Address model: {formatted}")
 
         # Test ServicePlan model
         plan = ServicePlan(
@@ -145,7 +145,7 @@ def test_customer_models():
             price=24.99,
             activation_date="2024-01-01",
         )
-        print(f"✅ ServicePlan model: {plan.plan_name} - {plan.price}€")
+        print(f"ServicePlan model: {plan.plan_name} - {plan.price}€")
 
         # Test CustomerEquipment model
         equipment = CustomerEquipment(
@@ -155,11 +155,11 @@ def test_customer_models():
             model="TP-Link Archer C6",
             mac_address="00:1A:2B:3C:4D:01",
         )
-        print(f"✅ Equipment model: {equipment.model}")
+        print(f"Equipment model: {equipment.model}")
 
         return True
     except Exception as e:
-        print(f"❌ Customer models test failed: {e}")
+        print(f"Customer models test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -184,14 +184,14 @@ def test_ticket_models():
             summary="Internet connection problem",
             details="Customer reports no internet connectivity",
         )
-        print(f"✅ Ticket created: {ticket.ticket_id} - {ticket.summary}")
+        print(f"Ticket created: {ticket.ticket_id} - {ticket.summary}")
         print(f"   Priority: {ticket.priority}")
         print(f"   Type: {ticket.ticket_type}")
         print(f"   Is open: {ticket.is_open()}")
 
         return True
     except Exception as e:
-        print(f"❌ Ticket models test failed: {e}")
+        print(f"Ticket models test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -215,7 +215,7 @@ def test_network_models():
             ip_address="10.10.1.1",
             model="Cisco Catalyst 2960-48TT",
         )
-        print(f"✅ Switch model: {switch.switch_name}")
+        print(f"Switch model: {switch.switch_name}")
 
         # Test Port model
         port = Port(
@@ -227,7 +227,7 @@ def test_network_models():
             speed_mbps=100,
             duplex="full",
         )
-        print(f"✅ Port model: Port {port.port_number} - Status: {port.status}")
+        print(f"Port model: Port {port.port_number} - Status: {port.status}")
         print(f"   Is active: {port.is_active()}")
         print(f"   Is assigned: {port.is_assigned()}")
 
@@ -239,7 +239,7 @@ def test_network_models():
             mac_address="00:1A:2B:3C:4D:01",
             assignment_type="dhcp",
         )
-        print(f"✅ IPAssignment model: {ip.ip_address}")
+        print(f"IPAssignment model: {ip.ip_address}")
 
         # Test AreaOutage model
         outage = AreaOutage(
@@ -249,12 +249,12 @@ def test_network_models():
             outage_type="internet",
             description="Fiber cable damaged",
         )
-        print(f"✅ AreaOutage model: {outage.city} - {outage.description}")
+        print(f"AreaOutage model: {outage.city} - {outage.description}")
         print(f"   Is active: {outage.is_active()}")
 
         return True
     except Exception as e:
-        print(f"❌ Network models test failed: {e}")
+        print(f"Network models test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -274,20 +274,20 @@ def test_logger():
         logger = setup_logger("test_service", level="INFO")
         logger.info("Test INFO message")
         logger.debug("Test DEBUG message (should not show)")
-        print("✅ Basic logger works")
+        print("Basic logger works")
 
         # Test logger with DEBUG level
         debug_logger = setup_logger("debug_service", level="DEBUG")
         debug_logger.debug("Test DEBUG message (should show)")
-        print("✅ DEBUG logger works")
+        print("DEBUG logger works")
 
         # Test get_logger
         existing_logger = get_logger("test_service")
-        print("✅ get_logger works")
+        print("get_logger works")
 
         return True
     except Exception as e:
-        print(f"❌ Logger test failed: {e}")
+        print(f"Logger test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -306,13 +306,13 @@ def test_config():
         # Load environment
         env_loaded = load_env()
         if env_loaded:
-            print("✅ .env file loaded")
+            print(".env file loaded")
         else:
-            print("⚠️  No .env file found (this is OK for testing)")
+            print("No .env file found (this is OK for testing)")
 
         # Get configuration
         config = get_config()
-        print("✅ Config loaded")
+        print("Config loaded")
         print(f"   Database path: {config.database_path}")
         print(f"   Log level: {config.log_level}")
         print(f"   CRM service port: {config.crm_service_port}")
@@ -321,13 +321,13 @@ def test_config():
         # Test validation (will fail if OpenAI key not set, but that's expected)
         is_valid = config.validate()
         if is_valid:
-            print("✅ Configuration is valid")
+            print("Configuration is valid")
         else:
-            print("⚠️  Configuration validation failed (expected if OPENAI_API_KEY not set)")
+            print("Configuration validation failed (expected if OPENAI_API_KEY not set)")
 
         return True
     except Exception as e:
-        print(f"❌ Config test failed: {e}")
+        print(f"Config test failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -356,7 +356,7 @@ def main():
             success = test_func()
             results.append((name, success))
         except Exception as e:
-            print(f"\n❌ Test '{name}' crashed: {e}")
+            print(f"\nTest '{name}' crashed: {e}")
             import traceback
 
             traceback.print_exc()
@@ -368,7 +368,7 @@ def main():
     print("=" * 60)
 
     for name, success in results:
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "PASS" if success else "FAIL"
         print(f"{status} - {name}")
 
     passed = sum(1 for _, success in results if success)
@@ -378,11 +378,11 @@ def main():
     print(f"Results: {passed}/{total} tests passed")
 
     if passed == total:
-        print("🎉 ALL TESTS PASSED!")
+        print("ALL TESTS PASSED!")
         print("=" * 60)
         return 0
     else:
-        print("⚠️  Some tests failed")
+        print("Some tests failed")
         print("=" * 60)
         return 1
 
