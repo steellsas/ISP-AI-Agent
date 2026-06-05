@@ -143,37 +143,6 @@ class BaseRepository(ABC):
         conn = self.db.get_connection()
         return conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-    def count(self, table: str, where: str | None = None) -> int:
-        """
-        Count rows in table with optional WHERE clause.
-
-        Args:
-            table: Table name
-            where: Optional WHERE clause (without WHERE keyword)
-
-        Returns:
-            Number of rows
-        """
-        query = f"SELECT COUNT(*) as count FROM {table}"
-        if where:
-            query += f" WHERE {where}"
-
-        result = self.execute_one(query)
-        return result["count"] if result else 0
-
-    def exists(self, table: str, where: str) -> bool:
-        """
-        Check if row exists in table.
-
-        Args:
-            table: Table name
-            where: WHERE clause (without WHERE keyword)
-
-        Returns:
-            True if row exists, False otherwise
-        """
-        return self.count(table, where) > 0
-
     @abstractmethod
     def get_table_name(self) -> str:
         """
