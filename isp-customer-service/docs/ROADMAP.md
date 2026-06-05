@@ -118,7 +118,25 @@ chatbot_core/src/
         `pathlib.Path.exists()`), so they were deleted outright (0 code = 0 risk)
         rather than hardened. The remaining `execute_*` helpers already use `?`
         placeholders. — *via `fix/sql-injection`*
-  - Error / PII sanitization at tool boundary; redact phone numbers in logs
+  - [x] PII sanitization at the tool boundary (redact phone numbers in logs):
+        customer phone numbers (GDPR identifiers) were logged in plain text at
+        `find_customer`, CRM lookups and agent init. Added central redaction in
+        `shared/src/utils/logger.py` — `redact_phone()` masks LT numbers to the
+        last 4 digits (`***2345`) via an anchored regex that leaves IPs, MACs
+        and CUST/ticket IDs untouched; a `LogRecord` factory + handler filter
+        mask **every** logger process-wide (covers module loggers that only
+        propagate to a Streamlit/basicConfig root), installed via
+        `install_pii_redaction()` at the app/CLI entry points. Traceability is
+        preserved: `REDACT_PII` flag (default on) lets local testing keep full
+        numbers; deployed stays masked. Names/addresses (not regex-catchable)
+        dropped from the relevant call-sites. Tool return payloads unchanged —
+        the agent still gets the real number. 19 unit tests added. — *PR #14*
+  - [x] **Regression-net hardening (during #5):** the session DB fixture only
+        built the SQLite DB when missing, so a cached DB from a prior day let
+        `datetime('now')`-relative seed rows (CUST008 packet-loss / bandwidth in
+        a `-24h` window) age out → non-deterministic `TestScenario08` failures.
+        `conftest.py` now rebuilds the DB every session (sub-second, pure
+        sqlite3). — *PR #13*
   - `Optional[...]` type-hint sweep
   - **Pydantic v1→v2:** migrate class-based `Config` → `ConfigDict` across
     `shared/src/isp_types/*` (Customer, Address, Port, Ticket, …); clears 13
@@ -239,7 +257,13 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 0 · Critical-fix #4 — transaction atomicity for `create_ticket` +
       `update_ticket_status` (single `db.transaction()`) (`fix/ticket-atomicity`).
 - [x] Phase 0 · Critical-fix #5 — SQL f-string lockdown: deleted unused
-      `count()`/`exists()` (injection vector) from `base.py` (`fix/sql-injection`).
-- [ ] **Next:** Phase 0 · Critical-fix pass continues — PII sanitization at the
-      tool boundary (redact phone numbers in logs / errors), then the dedicated
-      `Optional[...]` + Pydantic v1→v2 passes — all protected by the green eval.
+      `count()`/`exists()` (injection vector) from `base.py` (PR #13).
+- [x] Phase 0 · Regression-net hardening — `conftest.py` rebuilds the test DB
+      every session so time-windowed seed data never goes stale (PR #13).
+- [x] Phase 0 · Critical-fix #6 — PII sanitization: central phone-number
+      redaction in logs (`redact_phone` + LogRecord factory + `REDACT_PII`
+      flag); 19 unit tests (PR #14).
+- [ ] **Next:** Phase 0 · final cleanup passes — the dedicated `Optional[...]`
+      type-hint sweep and the Pydantic v1→v2 (`ConfigDict` + `StrEnum`)
+      migration, plus the Windows UTF-8 emoji-crash fix — all protected by the
+      green eval.

@@ -5,7 +5,7 @@ Customer-related Pydantic models.
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Customer(BaseModel):
@@ -22,8 +22,7 @@ class Customer(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
     notes: str | None = Field(None, description="Additional notes")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @field_validator("phone")
     @classmethod
@@ -48,8 +47,7 @@ class Address(BaseModel):
     is_primary: bool = Field(default=True, description="Is primary address")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     def format_address(self) -> str:
         """Format address as human-readable string."""
@@ -77,8 +75,7 @@ class ServicePlan(BaseModel):
     suspension_reason: str | None = Field(None, description="Suspension reason")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
     @field_validator("price")
     @classmethod
@@ -107,8 +104,7 @@ class CustomerEquipment(BaseModel):
     notes: str | None = Field(None, description="Additional notes")
     created_at: datetime = Field(default_factory=datetime.now, description="Created timestamp")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CustomerMemory(BaseModel):
@@ -120,8 +116,7 @@ class CustomerMemory(BaseModel):
     memory_value: str | None = Field(None, description="Memory value")
     last_updated: datetime = Field(default_factory=datetime.now, description="Last updated")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CustomerHistory(BaseModel):
@@ -141,5 +136,4 @@ class CustomerHistory(BaseModel):
     details: str | None = Field(None, description="Event details")
     related_ticket_id: str | None = Field(None, description="Related ticket ID")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
