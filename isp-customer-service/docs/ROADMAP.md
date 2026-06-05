@@ -111,7 +111,13 @@ chatbot_core/src/
         share a single `db.transaction()` (commit-or-rollback together). Same fix
         applied to `update_ticket_status` (status update + resolution history),
         which had the identical two-commit pattern. — *via `fix/ticket-atomicity`*
-  - Lock down SQL f-strings: `shared/.../database/base.py:157`
+  - [x] Lock down SQL f-strings (`shared/src/database/base.py`): `count()` and
+        `exists()` interpolated `{table}` and `{where}` directly into the SQL
+        string (no parameterisation) — a SQL-injection vector. A codebase scan
+        showed both methods were **unused** (every other `.exists()` was
+        `pathlib.Path.exists()`), so they were deleted outright (0 code = 0 risk)
+        rather than hardened. The remaining `execute_*` helpers already use `?`
+        placeholders. — *via `fix/sql-injection`*
   - Error / PII sanitization at tool boundary; redact phone numbers in logs
   - `Optional[...]` type-hint sweep
   - **Pydantic v1→v2:** migrate class-based `Config` → `ConfigDict` across
@@ -232,6 +238,8 @@ never degrades consultation quality — the core "pro" safety net.
       `init_database` only (`fix/db-singleton`).
 - [x] Phase 0 · Critical-fix #4 — transaction atomicity for `create_ticket` +
       `update_ticket_status` (single `db.transaction()`) (`fix/ticket-atomicity`).
-- [ ] **Next:** Phase 0 · Critical-fix pass continues — SQL f-string lockdown
-      (`database/base.py`), then PII sanitization at the tool boundary — all
-      protected by the green scenario eval.
+- [x] Phase 0 · Critical-fix #5 — SQL f-string lockdown: deleted unused
+      `count()`/`exists()` (injection vector) from `base.py` (`fix/sql-injection`).
+- [ ] **Next:** Phase 0 · Critical-fix pass continues — PII sanitization at the
+      tool boundary (redact phone numbers in logs / errors), then the dedicated
+      `Optional[...]` + Pydantic v1→v2 passes — all protected by the green eval.
