@@ -46,10 +46,19 @@ def _build_test_database() -> None:
     Pure sqlite3: no network, no heavy deps, runs in well under a second. This
     mirrors scripts/setup_db.py + scripts/seed_data.py but without the emoji
     console output that crashes on non-UTF-8 Windows terminals.
+
+    The DB is rebuilt from scratch on every session (the previous file is
+    removed first) because several seed rows are written relative to
+    ``datetime('now')`` — e.g. CUST008's ping_tests / bandwidth_logs sit inside
+    a ``-24 hours`` detection window. A cached DB from a prior day would let
+    that data age out of the window and make time-windowed tools (packet-loss
+    /bandwidth diagnostics) non-deterministic. Rebuilding keeps the window
+    fresh for zero practical cost.
     """
     schema_dir = _PROJECT_ROOT / "database" / "schema"
     seeds_dir = _PROJECT_ROOT / "database" / "seeds"
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _DB_PATH.unlink(missing_ok=True)
 
     conn = sqlite3.connect(_DB_PATH)
     try:
@@ -69,9 +78,14 @@ def _build_test_database() -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def ensure_test_database():
-    """Guarantee a seeded SQLite DB exists before any DB-backed test runs."""
-    if not _DB_PATH.exists():
-        _build_test_database()
+    """Guarantee a freshly seeded SQLite DB before any DB-backed test runs.
+
+    Rebuilt every session (not just when missing) so that ``datetime('now')``
+    -relative seed data — e.g. CUST008's packet-loss / bandwidth rows inside a
+    24-hour detection window — never goes stale and silently breaks the
+    time-windowed diagnostic tools.
+    """
+    _build_test_database()
     yield
 
 
