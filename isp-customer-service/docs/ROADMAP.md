@@ -165,12 +165,38 @@ chatbot_core/src/
 
 **Goal:** reliable ranking and measurable retrieval quality.
 
-- [ ] `IndexFlatIP` + use cosine score directly; retune thresholds — `rag/vector_store.py:75,192`
+*Measure-first:* the eval harness + RetrieverPort seam were built **before** the
+retrieval changes, so every change below is verified against numbers, not eyeballed.
+
+- [x] **`RetrieverPort` seam + centralized RAG config** — retrieval sits behind a
+      `Protocol` (`ports/retrieval.py`); tuning knobs (`rag_index_type`, `rag_top_k`,
+      `rag_threshold`, `rag_keyword_weight`, `rag_default_lang`) moved to
+      `Config`/env, out of scattered call-sites. — *PR #17 (`feat/rag-retriever-port`)*
+- [x] **Eval harness (recall@k + MRR)** — fixed 18-query LT set (`rag/eval/queries.json`)
+      + `run_eval.py` measuring recall@k (lenient/strict) and MRR for BASE vs HYBRID
+      via `RetrieverPort.retrieve()` only. Baseline: recall@3=1.0, MRR base 0.917 /
+      hybrid 0.972 (hybrid measurably ranks better → reason to wire it into prod).
+      — *PR #18 (`feat/rag-eval-harness`)*
+- [x] **`lang` metadata (multilingual foundation)** — every chunk stamped with a
+      `lang` from a `knowledge_base/<lang>/<category>/` folder convention (flat LT →
+      `lt`; dropping an `en/` tree later is auto-picked with zero code change).
+      Groundwork for the LT↔EN cross-lingual eval below. — *PR #18*
+- [x] **`IndexFlatIP` + cosine score directly** — FAISS flipped flatl2 → flatip;
+      score is now raw interpretable cosine in [-1, 1]. Ranking unchanged (as
+      expected — cosine changes values, not order); hit-score floors readable:
+      BASE min=0.501, HYBRID min=0.381. **Also fixed a silent `isp_shared`/`shared`
+      import bug** that made every RAG module hit its except-fallback (so config
+      never reached the index — the flip looked dead until repointed to `utils`).
+      — *PR #18*
+- [ ] **Retune thresholds into production** — `tools.py:search_knowledge` still uses
+      BASE + hardcoded `top_k=3, threshold=0.4`; `get_hybrid_retriever` defaults are
+      hardcoded `0.5`. Wire prod to `config.rag_*`, switch to HYBRID, set threshold
+      below the measured hybrid floor (~0.35). **← next concrete step**
 - [ ] Single `DocumentProcessor`, token-based chunking (merge `document_processor.py` vs `scripts/build_kb.py`)
-- [ ] Real hybrid retrieval: BM25 (`rank_bm25`) or RRF normalization — `rag/hybrid_retriever.py:262`
+- [ ] Real hybrid retrieval: BM25 (`rank_bm25`) or RRF normalization (current blend is weighted keyword-overlap) — `rag/hybrid_retriever.py:262`
 - [ ] Implement `_rebuild_index` (currently `pass`) or persist embeddings — `vector_store.py:289`
 - [ ] Embedding dim from the model; include `normalize` flag in cache key — `rag/embeddings.py`
-- [ ] LT↔EN cross-lingual retrieval tests (small eval set with expected docs)
+- [ ] LT↔EN cross-lingual retrieval tests (small eval set with expected docs) — `lang` metadata foundation already in place
 
 **Done:** eval set returns correct docs in top-k; thresholds are principled, not arbitrary.
 
@@ -276,7 +302,14 @@ never degrades consultation quality — the core "pro" safety net.
       (fixes the cp1252 `UnicodeEncodeError`) and deleted the ~400-line
       commented-out old `mcp_service.py` (the only `Optional[...]` site, hence the
       sweep was moot) (`chore/strip-script-emoji`).
-- [ ] **Next:** Phase 0 **done** → begin **Phase 1 · RAG correctness**
-      (`fix/rag-retrieval`): `IndexFlatIP` + cosine scoring, single
-      `DocumentProcessor`, real hybrid retrieval (BM25/RRF), and a small LT↔EN
-      eval set with expected top-k docs.
+- [x] Phase 1 · RetrieverPort seam + centralized RAG config (PR #17,
+      `feat/rag-retriever-port`).
+- [x] Phase 1 · Eval harness (recall@k + MRR, 18-query LT set) + `lang` metadata
+      foundation + `IndexFlatIP` cosine flip (with the silent `isp_shared` import-bug
+      fix that had kept the flip dead) (PR #18, `feat/rag-eval-harness`).
+- [ ] **Next:** Phase 1 · wire production retrieval to config — switch
+      `tools.py:search_knowledge` from BASE to HYBRID, read `config.rag_top_k /
+      rag_threshold / rag_keyword_weight`, and set the threshold below the measured
+      hybrid floor (~0.35). Turns the measured hybrid win (MRR 0.972 vs 0.917) into a
+      real production improvement. Then: single `DocumentProcessor`, BM25/RRF hybrid,
+      LT↔EN cross-lingual eval.
