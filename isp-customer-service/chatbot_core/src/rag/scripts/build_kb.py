@@ -74,7 +74,7 @@ class DocumentProcessor:
         self.chunk_overlap = chunk_overlap
 
     def process_markdown(
-        self, content: str, source: str, base_metadata: dict | None = None
+        self, content: str, source: str, lang: str = "lt", base_metadata: dict | None = None
     ) -> list[dict[str, Any]]:
         """
         Process markdown file into chunks with metadata.
@@ -82,6 +82,8 @@ class DocumentProcessor:
         Args:
             content: Markdown file content
             source: Source filename
+            lang: Language code stamped on every chunk (matches ChunkMetadata.lang
+                in ports/retrieval.py). Lets retrieval filter to one language.
             base_metadata: Additional metadata to include
 
         Returns:
@@ -117,6 +119,7 @@ class DocumentProcessor:
                             "section": section_title,
                             "problem_type": problem_type,
                             "chunk_type": chunk_type,
+                            "lang": lang,
                             "type": "document",
                             **base_metadata,
                         },
@@ -137,6 +140,7 @@ class DocumentProcessor:
                                 "problem_type": problem_type,
                                 "chunk_type": chunk_type,
                                 "chunk_index": i,
+                                "lang": lang,
                                 "type": "document",
                                 **base_metadata,
                             },
@@ -263,8 +267,14 @@ def build_knowledge_base(
     log("\n1. Initializing...")
     retriever = get_retriever(top_k=5, similarity_threshold=0.5)
     processor = DocumentProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    try:
+        from isp_shared.utils import get_config
+
+        default_lang = get_config().rag_default_lang
+    except Exception:
+        default_lang = "lt"
     log("   ✅ Retriever ready")
-    log(f"   ✅ Document processor ready (chunk_size={chunk_size})")
+    log(f"   ✅ Document processor ready (chunk_size={chunk_size}, default_lang={default_lang})")
 
     # Knowledge base path
     kb_path = current_dir.parent / "knowledge_base"
@@ -282,45 +292,51 @@ def build_knowledge_base(
     log("\n3. Processing markdown documents...")
     log("-" * 80)
 
-    directories = ["troubleshooting", "procedures", "faq", "equipment"]
+    # Language is a data dimension, not code. A file's language comes from a
+    # top-level language folder (knowledge_base/<lang>/<category>/file.md); files
+    # sitting directly under a category folder fall back to default_lang. So the
+    # current flat LT layout -> "lt", and dropping an "en/" tree later is picked
+    # up automatically with zero code change. The category is preserved either way.
+    lang_codes = {"lt", "en", "ru", "pl", "lv", "et", "de", "fr"}
 
-    for directory in directories:
-        dir_path = kb_path / directory
+    md_files = sorted(kb_path.rglob("*.md"))
+    if not md_files:
+        log("   No markdown files found")
 
-        if not dir_path.exists():
-            log(f"⚠️  Skipping missing directory: {directory}/")
+    for md_file in md_files:
+        rel_parts = md_file.relative_to(kb_path).parts
+
+        if rel_parts and rel_parts[0].lower() in lang_codes:
+            lang = rel_parts[0].lower()
+            category = rel_parts[1] if len(rel_parts) >= 3 else "general"
+        else:
+            lang = default_lang
+            category = rel_parts[0] if len(rel_parts) >= 2 else "general"
+
+        # Skip empty files
+        if md_file.stat().st_size == 0:
+            log(f"   - {md_file.name} (empty, skipped)")
             continue
 
-        md_files = list(dir_path.glob("*.md"))
+        try:
+            content = md_file.read_text(encoding="utf-8")
 
-        if not md_files:
-            log(f"⚠️  No files in: {directory}/")
-            continue
+            # Process into chunks
+            chunks = processor.process_markdown(
+                content=content,
+                source=md_file.name,
+                lang=lang,
+                base_metadata={"category": category},
+            )
 
-        log(f"\n📁 {directory}/")
+            all_chunks.extend(chunks)
+            stats["markdown_files"] += 1
+            stats["markdown_chunks"] += len(chunks)
 
-        for md_file in md_files:
-            # Skip empty files
-            if md_file.stat().st_size == 0:
-                log(f"   ⚠️  {md_file.name} (empty, skipped)")
-                continue
+            log(f"   {category}/{md_file.name} [{lang}] -> {len(chunks)} chunks")
 
-            try:
-                content = md_file.read_text(encoding="utf-8")
-
-                # Process into chunks
-                chunks = processor.process_markdown(
-                    content=content, source=md_file.name, base_metadata={"category": directory}
-                )
-
-                all_chunks.extend(chunks)
-                stats["markdown_files"] += 1
-                stats["markdown_chunks"] += len(chunks)
-
-                log(f"   ✅ {md_file.name} → {len(chunks)} chunks")
-
-            except Exception as e:
-                log(f"   ❌ {md_file.name}: {e}")
+        except Exception as e:
+            log(f"   ERROR {md_file.name}: {e}")
 
     log("\n" + "-" * 80)
     log(f"📊 Markdown: {stats['markdown_files']} files → {stats['markdown_chunks']} chunks")

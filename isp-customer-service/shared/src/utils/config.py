@@ -96,6 +96,12 @@ class Config:
         self.rag_top_k = int(os.getenv("RAG_TOP_K", "3"))
         self.rag_threshold = float(os.getenv("RAG_THRESHOLD", "0.4"))
         self.rag_keyword_weight = float(os.getenv("RAG_KEYWORD_WEIGHT", "0.3"))
+        # Default language stamped on KB chunks that don't live under a
+        # language folder (knowledge_base/<lang>/...). Makes language a data
+        # dimension: today everything is "lt"; adding an "en/" folder later is
+        # picked up automatically, so retrieval can filter to the caller's
+        # language (filter_metadata={"lang": ...}) with zero code change.
+        self.rag_default_lang = os.getenv("RAG_DEFAULT_LANG", "lt")
 
     def get(self, key: str, default: Any = None) -> Any:
         """
