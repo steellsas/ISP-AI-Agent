@@ -323,6 +323,15 @@ class Retriever:
             logger.info(f"Retriever loaded: {name}")
         return success
 
+    def is_loaded(self) -> bool:
+        """Check whether a knowledge base is loaded and searchable.
+
+        Implements ``ports.RetrieverPort.is_loaded`` so callers never have to
+        reach into the FAISS-specific ``vector_store.index`` internals.
+        """
+        index = self.vector_store.index
+        return index is not None and index.ntotal > 0
+
     def get_statistics(self) -> dict[str, Any]:
         """
         Get retriever statistics.

@@ -82,6 +82,21 @@ class Config:
         # UI
         self.streamlit_port = int(os.getenv("STREAMLIT_PORT", "8501"))
 
+        # RAG / retrieval — single source for tuning knobs that were previously
+        # scattered across call sites (tools.py, retriever/hybrid defaults). The
+        # embedding dimension is intentionally NOT here: it must come from the
+        # model so swapping models can't silently mismatch the index.
+        self.rag_model_name = os.getenv(
+            "RAG_MODEL_NAME",
+            "sentence-transformers/paraphrase-multilingual-mpnet-base-v2",
+        )
+        # "flatl2" (current behaviour) vs "flatip" (true cosine). Kept at flatl2
+        # here; flipping to flatip is the deliberate retrieval-quality step.
+        self.rag_index_type = os.getenv("RAG_INDEX_TYPE", "flatl2")
+        self.rag_top_k = int(os.getenv("RAG_TOP_K", "3"))
+        self.rag_threshold = float(os.getenv("RAG_THRESHOLD", "0.4"))
+        self.rag_keyword_weight = float(os.getenv("RAG_KEYWORD_WEIGHT", "0.3"))
+
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get configuration value.
