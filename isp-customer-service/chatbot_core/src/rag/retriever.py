@@ -8,7 +8,7 @@ from typing import Any
 
 # Import utilities from shared package
 try:
-    from isp_shared.utils import get_logger
+    from utils import get_logger
 except ImportError:
     # Fallback if shared package not available
     import logging

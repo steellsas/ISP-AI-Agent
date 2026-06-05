@@ -14,7 +14,7 @@ import threading
 import numpy as np
 
 try:
-    from isp_shared.utils import get_logger
+    from utils import get_logger
 except ImportError:
     import logging
 

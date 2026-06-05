@@ -1,0 +1,24 @@
+{
+  "_README": "RAG retrieval eval set. Each query maps to a list of acceptable KB docs (bare 'source' filename). CONVENTION: docs[0] = canonical (used for strict recall); the whole list = acceptable set (used for lenient recall@k and MRR). LT->LT, doc-level ground truth. Edit freely; this is the source of truth for measuring retrieval quality before/after each Phase 1b change (cosine, RRF, chunking).",
+  "k": 3,
+  "queries": [
+    { "q": "internetas visai neveikia", "docs": ["internet_no_connection.md"] },
+    { "q": "neturiu interneto ryšio", "docs": ["internet_no_connection.md"] },
+    { "q": "router lemputė dega raudonai, interneto nėra", "docs": ["internet_no_connection.md", "router_tplink.md"] },
+    { "q": "internetas labai lėtas", "docs": ["internet_slow.md"] },
+    { "q": "puslapiai kraunasi lėtai, video bufferina", "docs": ["internet_slow.md"] },
+    { "q": "wifi nerodo tinklo, nematau savo tinklo", "docs": ["wifi_problems.md"] },
+    { "q": "negaliu prisijungti prie wifi, blogas slaptažodis", "docs": ["wifi_problems.md"] },
+    { "q": "wifi atsijunginėja, silpnas signalas", "docs": ["wifi_problems.md"] },
+    { "q": "kur rasti wifi slaptažodį", "docs": ["wifi_problems.md", "common_questions.md"] },
+    { "q": "televizorius nerodo signalo", "docs": ["tv_no_signal.md"] },
+    { "q": "tv priedėlis neįsijungia", "docs": ["tv_no_signal.md", "tv_box.md"] },
+    { "q": "kokie tv priedėlio pultelio mygtukai", "docs": ["tv_box.md"] },
+    { "q": "kokie tp-link routerio modeliai naudojami", "docs": ["router_tplink.md"] },
+    { "q": "kaip prisijungti prie routerio nustatymų", "docs": ["router_tplink.md"] },
+    { "q": "noriu pakeisti routerį, sena įranga", "docs": ["equipment_replacement.md"] },
+    { "q": "kada atvyks technikas", "docs": ["technician_visit.md"] },
+    { "q": "kiek kainuoja techniko vizitas", "docs": ["technician_visit.md"] },
+    { "q": "koks interneto greitis pagal mano planą", "docs": ["common_questions.md", "internet_slow.md"] }
+  ]
+}

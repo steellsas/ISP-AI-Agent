@@ -9,7 +9,7 @@ from typing import Any
 import yaml
 
 try:
-    from isp_shared.utils import get_logger
+    from utils import get_logger
 except ImportError:
     import logging
 

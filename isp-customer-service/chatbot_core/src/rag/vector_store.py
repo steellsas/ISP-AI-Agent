@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 
 try:
-    from isp_shared.utils import get_logger
+    from utils import get_logger
 except ImportError:
     import logging
 
@@ -185,10 +185,18 @@ class VectorStore:
                 if idx == -1:
                     continue
 
-                # Convert distance to similarity score
-                # For L2: smaller distance = more similar
-                # Convert to similarity: 1 / (1 + distance)
-                similarity = 1.0 / (1.0 + float(dist))
+                # Convert the index's raw score into a comparable similarity.
+                # - flatip: document and query vectors are L2-normalized upstream
+                #   (EmbeddingManager.encode(normalize=True) by default), so the
+                #   inner product IS cosine similarity in [-1, 1]. FAISS already
+                #   returns these highest-first, so no transform is needed and the
+                #   score is directly interpretable (threshold = real cosine floor).
+                # - flatl2 / other L2 indexes: smaller distance = more similar;
+                #   map into (0, 1] with 1 / (1 + distance).
+                if self.index_type == "flatip":
+                    similarity = float(dist)
+                else:
+                    similarity = 1.0 / (1.0 + float(dist))
 
                 # Apply threshold if specified
                 if threshold is not None and similarity < threshold:
@@ -393,14 +401,18 @@ _vector_store: VectorStore | None = None
 
 
 def get_vector_store(
-    embedding_dim: int = 768, index_type: str = "flatl2", store_dir: str | None = None
+    embedding_dim: int = 768, index_type: str | None = None, store_dir: str | None = None
 ) -> VectorStore:
     """
     Get or create VectorStore singleton instance.
 
     Args:
         embedding_dim: Embedding dimension (only used on first call)
-        index_type: Index type (only used on first call)
+        index_type: Index type (only used on first call). When None, resolved
+            from config (rag_index_type) so the FAISS index kind is a single
+            centralized knob; falls back to "flatl2" if config is unavailable.
+            Note: load() overrides this from the persisted KB, so the index_type
+            a KB was *built* with always wins at search time.
         store_dir: Store directory (only used on first call)
 
     Returns:
@@ -409,6 +421,13 @@ def get_vector_store(
     global _vector_store
 
     if _vector_store is None:
+        if index_type is None:
+            try:
+                from utils import get_config
+
+                index_type = get_config().rag_index_type
+            except Exception:
+                index_type = "flatl2"
         _vector_store = VectorStore(
             embedding_dim=embedding_dim, index_type=index_type, store_dir=store_dir
         )
