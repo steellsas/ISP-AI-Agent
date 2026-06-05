@@ -188,10 +188,13 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       import bug** that made every RAG module hit its except-fallback (so config
       never reached the index — the flip looked dead until repointed to `utils`).
       — *PR #18*
-- [ ] **Retune thresholds into production** — `tools.py:search_knowledge` still uses
-      BASE + hardcoded `top_k=3, threshold=0.4`; `get_hybrid_retriever` defaults are
-      hardcoded `0.5`. Wire prod to `config.rag_*`, switch to HYBRID, set threshold
-      below the measured hybrid floor (~0.35). **← next concrete step**
+- [x] **Production retrieval wired to HYBRID + config** — `tools.py:search_knowledge`
+      switched from BASE to `get_hybrid_retriever()` (eval: MRR 0.972 vs 0.917) and
+      now reads `config.rag_top_k/rag_threshold`; `get_hybrid_retriever` resolves its
+      knobs from config too. Key insight: the threshold gates the *semantic cosine*
+      pre-filter inside the hybrid (before the keyword blend), so the existing 0.4 is
+      already a valid floor — correct-doc cosine ≥0.5. Verified recall@3=18/18 holds
+      at threshold=0.4. — *`feat/rag-prod-hybrid-wiring`*
 - [ ] Single `DocumentProcessor`, token-based chunking (merge `document_processor.py` vs `scripts/build_kb.py`)
 - [ ] Real hybrid retrieval: BM25 (`rank_bm25`) or RRF normalization (current blend is weighted keyword-overlap) — `rag/hybrid_retriever.py:262`
 - [ ] Implement `_rebuild_index` (currently `pass`) or persist embeddings — `vector_store.py:289`
@@ -307,9 +310,11 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 1 · Eval harness (recall@k + MRR, 18-query LT set) + `lang` metadata
       foundation + `IndexFlatIP` cosine flip (with the silent `isp_shared` import-bug
       fix that had kept the flip dead) (PR #18, `feat/rag-eval-harness`).
-- [ ] **Next:** Phase 1 · wire production retrieval to config — switch
-      `tools.py:search_knowledge` from BASE to HYBRID, read `config.rag_top_k /
-      rag_threshold / rag_keyword_weight`, and set the threshold below the measured
-      hybrid floor (~0.35). Turns the measured hybrid win (MRR 0.972 vs 0.917) into a
-      real production improvement. Then: single `DocumentProcessor`, BM25/RRF hybrid,
-      LT↔EN cross-lingual eval.
+- [x] Phase 1 · production retrieval wired to HYBRID + config thresholds
+      (`tools.py:search_knowledge` → `get_hybrid_retriever()`, knobs from
+      `config.rag_*`); recall@3=18/18 verified at threshold=0.4
+      (`feat/rag-prod-hybrid-wiring`).
+- [ ] **Next:** Phase 1 · single `DocumentProcessor` + token-based chunking (merge
+      `document_processor.py` vs `scripts/build_kb.py`), then real hybrid (BM25/RRF
+      normalization) and the LT↔EN cross-lingual eval (lang metadata already in
+      place). Each measured against the eval harness.
