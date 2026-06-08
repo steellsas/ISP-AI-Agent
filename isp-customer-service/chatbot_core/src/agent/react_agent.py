@@ -219,12 +219,17 @@ class ReactAgent:
             obs_data = json.loads(observation)
 
             if action == "find_customer" and obs_data.get("success"):
+                addresses = obs_data.get("addresses") or []
+                # Normalized find_customer addresses carry `full_address`
+                # (the primary one first when available).
+                primary = next(
+                    (a for a in addresses if a.get("is_primary")),
+                    addresses[0] if addresses else {},
+                )
                 self.state.set_customer_info(
                     customer_id=obs_data.get("customer_id"),
                     name=obs_data.get("name"),
-                    address=obs_data.get("addresses", [{}])[0].get("address")
-                    if obs_data.get("addresses")
-                    else None,
+                    address=primary.get("full_address"),
                 )
 
             elif action == "create_ticket" and obs_data.get("success"):
@@ -436,6 +441,9 @@ class ReactAgent:
 
 def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
     """Run interactive agent session in CLI."""
+    # Local import avoids a circular import (session imports ReactAgent).
+    from .session import AgentSession
+
     print("\n" + "=" * 60)
     print("ISP SUPPORT AGENT (ReAct)")
     print("=" * 60)
@@ -444,15 +452,17 @@ def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
     print("Type 'quit' to exit, 'debug' to toggle debug mode")
     print("=" * 60 + "\n")
 
-    agent = ReactAgent(caller_phone=caller_phone, language=language)
+    # Drive the CLI through the stable AgentSession boundary (same seam voice
+    # and web use), not the ReactAgent engine directly.
+    session = AgentSession(caller_phone=caller_phone, language=language)
     debug_mode = False
 
     # Initial greeting
-    initial_response = agent.run_until_response()
+    initial_response = session.greeting()
     if initial_response:
         print(f"\n🤖 Agent: {initial_response}\n")
 
-    while not agent.state.is_complete:
+    while not session.is_complete:
         try:
             user_input = input("👤 You: ").strip()
 
@@ -460,7 +470,7 @@ def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
                 continue
 
             if user_input.lower() == "quit":
-                print(f"\n{agent.config.cli_goodbye_message}")
+                print(f"\n{session.config.cli_goodbye_message}")
                 break
 
             if user_input.lower() == "debug":
@@ -470,22 +480,22 @@ def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
                 continue
 
             if user_input.lower() == "state":
-                print(f"\n[STATE] {agent.state.to_dict()}\n")
+                print(f"\n[STATE] {session.state.to_dict()}\n")
                 continue
 
-            response = agent.run_until_response(user_input)
+            response = session.handle_turn(user_input)
             print(f"\n🤖 Agent: {response}\n")
 
         except KeyboardInterrupt:
-            print(f"\n\n{agent.config.cli_interrupted_message}")
+            print(f"\n\n{session.config.cli_interrupted_message}")
             break
 
     print("\n" + "=" * 60)
-    print(f"Conversation ended. Turns: {agent.state.turn_count}")
-    if agent.state.customer_id:
-        print(f"Customer: {agent.state.customer_name} ({agent.state.customer_id})")
-    if agent.state.ticket_id:
-        print(f"Ticket: {agent.state.ticket_id}")
+    print(f"Conversation ended. Turns: {session.state.turn_count}")
+    if session.state.customer_id:
+        print(f"Customer: {session.state.customer_name} ({session.state.customer_id})")
+    if session.state.ticket_id:
+        print(f"Ticket: {session.state.ticket_id}")
     print("=" * 60)
 
 
