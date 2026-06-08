@@ -1,90 +1,129 @@
 """
-Tests for ReAct agent logic (without LLM calls where possible).
+Tests for agent logic (without real LLM calls where possible).
 
-These tests verify agent parsing, tool descriptions, and basic logic.
+These tests verify agent stepping (native tool calling), tool descriptions,
+and basic logic. The LLM is mocked so no network/API key is needed.
 Run: pytest tests/test_agent.py -v
 """
 
+import json
+from types import SimpleNamespace
+from unittest.mock import patch
 
-class TestAgentParsing:
-    """Tests for agent response parsing."""
 
-    def test_parse_respond_action(self):
-        """Should parse respond action correctly."""
+def _fake_message(content=None, tool_calls=None):
+    """Build a stand-in for the litellm assistant message object."""
+    return SimpleNamespace(content=content, tool_calls=tool_calls)
+
+
+def _fake_tool_call(call_id, name, arguments):
+    """Build a stand-in for a single litellm tool_call (arguments is a JSON str)."""
+    return SimpleNamespace(
+        id=call_id,
+        type="function",
+        function=SimpleNamespace(name=name, arguments=arguments),
+    )
+
+
+class TestAgentStep:
+    """Tests for ReactAgent.step() under native tool calling (LLM mocked)."""
+
+    def test_step_text_reply(self):
+        """A message with no tool_calls becomes the customer reply."""
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
 
-        # Simulate LLM response
-        response = """Thought: Customer needs help
-Action: respond
-Action Input: {"message": "Labas! Kuo galiu padėti?"}"""
+        msg = _fake_message(content="Labas! Kuo galiu padėti?")
+        with (
+            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            result = agent.step(user_input="Labas")
 
-        thought, action, action_input = agent._parse_response(response)
+        assert result["action"] == "respond"
+        assert result["response"] == "Labas! Kuo galiu padėti?"
+        assert result["needs_continuation"] is False
+        # Reply is persisted as a plain assistant message.
+        assert agent.state.messages[-1] == {
+            "role": "assistant",
+            "content": "Labas! Kuo galiu padėti?",
+        }
 
-        assert action == "respond"
-        assert action_input["message"] == "Labas! Kuo galiu padėti?"
-        assert "Customer needs help" in thought
-
-    def test_parse_tool_action(self):
-        """Should parse tool action correctly."""
+    def test_step_tool_call(self):
+        """A tool_call is executed and recorded as a role:'tool' message."""
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
 
-        response = """Thought: Need to find customer
-Action: find_customer
-Action Input: {"phone": "+37060012345"}"""
+        tc = _fake_tool_call("call_1", "search_knowledge", '{"query": "lėtas internetas"}')
+        msg = _fake_message(content=None, tool_calls=[tc])
+        observation = json.dumps({"success": True, "results": []})
 
-        thought, action, action_input = agent._parse_response(response)
+        with (
+            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.react_agent.execute_tool", return_value=observation) as exec_mock,
+        ):
+            result = agent.step(user_input="Lėtas internetas")
 
-        assert action == "find_customer"
-        assert action_input["phone"] == "+37060012345"
+        # Tool was executed with parsed args, loop must continue.
+        exec_mock.assert_called_once_with("search_knowledge", {"query": "lėtas internetas"})
+        assert result["needs_continuation"] is True
+        assert result["response"] is None
+        assert result["action"] == "search_knowledge"
+        assert result["tool_calls"][0]["name"] == "search_knowledge"
 
-    def test_parse_search_knowledge_action(self):
-        """Should parse search_knowledge action correctly."""
+        # History: assistant(tool_calls) followed by a tool result keyed by id.
+        assistant_msg = agent.state.messages[-2]
+        tool_msg = agent.state.messages[-1]
+        assert assistant_msg["tool_calls"][0]["function"]["name"] == "search_knowledge"
+        assert tool_msg["role"] == "tool"
+        assert tool_msg["tool_call_id"] == "call_1"
+        assert tool_msg["content"] == observation
+
+    def test_step_empty_reply_retries(self):
+        """No tool call and empty content should trigger a corrective retry."""
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
 
-        response = """Thought: Need to search for slow internet solutions
-Action: search_knowledge
-Action Input: {"query": "lėtas internetas"}"""
+        msg = _fake_message(content="")
+        with (
+            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            result = agent.step(user_input="Labas")
 
-        thought, action, action_input = agent._parse_response(response)
+        assert result["response"] is None
+        assert result["needs_continuation"] is True
 
-        assert action == "search_knowledge"
-        assert action_input["query"] == "lėtas internetas"
-
-    def test_parse_finish_action(self):
-        """Should parse finish action correctly."""
+    def test_step_updates_customer_state(self):
+        """find_customer tool result should populate customer state."""
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
 
-        response = """Thought: Issue resolved
-Action: finish
-Action Input: {"summary": "Problema išspręsta"}"""
+        tc = _fake_tool_call("call_1", "find_customer", '{"phone": "+37060012345"}')
+        msg = _fake_message(content=None, tool_calls=[tc])
+        observation = json.dumps(
+            {
+                "success": True,
+                "customer_id": "CUST-1",
+                "name": "Jonas",
+                "addresses": [{"address": "Vilnius, Gatvė 1"}],
+            }
+        )
 
-        thought, action, action_input = agent._parse_response(response)
+        with (
+            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.react_agent.execute_tool", return_value=observation),
+        ):
+            agent.step(user_input="Neveikia internetas")
 
-        assert action == "finish"
-        assert "summary" in action_input
-
-    def test_parse_malformed_json(self):
-        """Should handle malformed JSON gracefully."""
-        from agent.react_agent import ReactAgent
-
-        agent = ReactAgent(caller_phone="+37060012345")
-
-        response = """Thought: Test
-Action: respond
-Action Input: not valid json"""
-
-        thought, action, action_input = agent._parse_response(response)
-
-        # Should not crash, action should be parsed
-        assert action == "respond"
+        assert agent.state.customer_id == "CUST-1"
+        assert agent.state.customer_name == "Jonas"
 
 
 class TestAgentSystemPrompt:

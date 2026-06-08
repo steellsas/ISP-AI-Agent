@@ -1,13 +1,17 @@
 """
-ReAct Agent - ISP Customer Support
+Agent - ISP Customer Support
 
-Implements the ReAct (Reasoning + Acting) pattern for customer support.
+Drives the support conversation with native LLM function/tool calling.
 
-ReAct Loop:
-1. Thought: Agent reasons about what to do
-2. Action: Agent calls a tool or responds
-3. Observation: Tool returns result
-4. Repeat until task complete
+Loop (run_until_response):
+1. The model receives the conversation + tool schemas (tool_choice="auto").
+2. It either calls one or more tools (structured tool_calls) or replies in text.
+3. Tool results are fed back as role:"tool" messages and the model continues.
+4. When the model replies with text (no tool call), that is the customer answer.
+
+The class is still named ReactAgent for import compatibility; the brittle
+"Thought:/Action:/Action Input:" regex parsing has been replaced by native
+tool calls (see agent.tools.get_tools_schema and services.llm.llm_tool_completion).
 
 Usage:
     from agent import ReactAgent
@@ -19,12 +23,11 @@ Usage:
 
 import json
 import logging
-import re
 from dataclasses import dataclass
 from typing import Any
 
 # LLM client
-from src.services.llm.client import get_last_call_stats, llm_completion
+from src.services.llm.client import get_last_call_stats, llm_tool_completion
 
 from .config import AgentConfig, create_config
 from .prompts import load_system_prompt
@@ -33,7 +36,7 @@ from .state import AgentState
 # Tools
 try:
     from .tools import REAL_TOOLS as TOOLS
-    from .tools import execute_tool, get_tools_description
+    from .tools import execute_tool, get_tools_description, get_tools_schema
 
     USING_REAL_TOOLS = True
 except ImportError:
@@ -42,6 +45,9 @@ except ImportError:
 
     def get_tools_description():
         return "No tools available"
+
+    def get_tools_schema():
+        return []
 
     def execute_tool(name, args):
         return json.dumps({"error": "Tools not available"})
@@ -144,6 +150,11 @@ class ReactAgent:
         # Initialize LLM stats tracking
         self.llm_stats = LLMStats()
 
+        # OpenAI function-calling schemas passed to the LLM on every step.
+        # The model picks which tools to call (tool_choice="auto"); this is the
+        # single source of truth, derived from the Tool dataclass.
+        self.tools_schema = get_tools_schema()
+
         # Load and format system prompt with language
         self.system_prompt = load_system_prompt(
             tools_description=get_tools_description(),
@@ -171,50 +182,36 @@ class ReactAgent:
 
         # Add new user input if provided
         if user_input:
-            messages.append({"role": "user", "content": f"Customer: {user_input}"})
+            messages.append({"role": "user", "content": user_input})
 
         return messages
 
-    def _parse_response(self, response: str) -> tuple:
+    @staticmethod
+    def _assistant_tool_message(message: Any) -> dict:
         """
-        Parse LLM response into (thought, action, action_input).
+        Serialize an assistant message that requested tool calls into the dict
+        shape the chat API needs echoed back on the next turn.
 
-        Args:
-            response: Raw LLM response string
-
-        Returns:
-            Tuple of (thought, action_name, action_input_dict)
+        The protocol requires that, before any role:"tool" result messages, the
+        exact assistant message that issued the tool_calls is present in history
+        (matched by tool_call_id). We store a plain dict (not the litellm object)
+        so the history stays JSON-serializable.
         """
-        thought = ""
-        action = ""
-        action_input = {}
-
-        # Extract Thought
-        thought_match = re.search(r"Thought:\s*(.+?)(?=\nAction:|\Z)", response, re.DOTALL)
-        if thought_match:
-            thought = thought_match.group(1).strip()
-
-        # Extract Action
-        action_match = re.search(r"Action:\s*(\w+)", response)
-        if action_match:
-            action = action_match.group(1).strip()
-
-        # Extract Action Input
-        input_match = re.search(r"Action Input:\s*(\{.+?\})", response, re.DOTALL)
-        if input_match:
-            try:
-                action_input = json.loads(input_match.group(1))
-            except json.JSONDecodeError:
-                # Try to fix common JSON issues
-                raw = input_match.group(1)
-                fixed = raw.replace("'", '"')
-                try:
-                    action_input = json.loads(fixed)
-                except:
-                    logger.warning(f"Failed to parse action input: {raw}")
-                    action_input = {"raw": raw}
-
-        return thought, action, action_input
+        return {
+            "role": "assistant",
+            "content": message.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in message.tool_calls
+            ],
+        }
 
     def _update_state_from_observation(self, action: str, observation: str):
         """Update agent state based on tool observation."""
@@ -261,11 +258,13 @@ class ReactAgent:
         messages = self._build_messages(user_input)
 
         if user_input:
-            self.state.messages.append({"role": "user", "content": f"Customer: {user_input}"})
+            self.state.messages.append({"role": "user", "content": user_input})
 
         try:
-            response = llm_completion(
+            message = llm_tool_completion(
                 messages=messages,
+                tools=self.tools_schema,
+                tool_choice="auto",
                 model=self.config.model,
                 temperature=self.config.temperature,
                 max_tokens=self.config.max_tokens,
@@ -291,84 +290,91 @@ class ReactAgent:
                 "is_complete": False,
             }
 
-        # Parse response
-        thought, action, action_input = self._parse_response(response)
-
-        logger.info(f"[AGENT] Thought: {thought[:100]}...")
-        logger.info(f"[AGENT] Action: {action}")
-        logger.debug(f"[AGENT] Input: {action_input}")
-
         result = {
-            "thought": thought,
-            "action": action,
-            "action_input": action_input,
+            "thought": None,
+            "action": None,
+            "action_input": None,
             "observation": None,
             "response": None,
             "is_complete": False,
             "needs_continuation": False,
+            "tool_calls": [],
         }
 
-        # Handle actions
-        if action == "respond":
-            message = action_input.get("message", "")
-            # Model failure mode: it chose to respond but produced no text.
-            # An empty reply gives the customer nothing, so instead of returning
-            # it, nudge the model with a corrective observation and let the loop
-            # retry (bounded by max_tool_calls_per_response → no infinite loop /
-            # cost blowup). result["response"] stays None so run_until_response
-            # does not treat this as a real answer.
-            if not message.strip():
-                logger.warning("[AGENT] Empty respond message; injecting correction and retrying")
+        tool_calls = getattr(message, "tool_calls", None)
+
+        if tool_calls:
+            # The model chose to call one or more tools. Echo the assistant
+            # message that requested them (required by the protocol), then run
+            # each tool and append its result as a role:"tool" message keyed by
+            # tool_call_id. No customer-facing reply yet → needs_continuation so
+            # run_until_response loops and lets the model see the results.
+            self.state.messages.append(self._assistant_tool_message(message))
+
+            executed = []
+            for tc in tool_calls:
+                name = tc.function.name
+                raw_args = tc.function.arguments or "{}"
+                try:
+                    args = json.loads(raw_args)
+                except json.JSONDecodeError:
+                    logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
+                    args = {}
+
+                logger.info(f"[AGENT] Tool call: {name}")
+                logger.debug(f"[AGENT] Args: {args}")
+
+                observation = execute_tool(name, args)
+
                 self.state.messages.append(
                     {
-                        "role": "assistant",
-                        "content": f"Thought: {thought}\nAction: respond\nAction Input: {json.dumps(action_input, ensure_ascii=False)}",
-                    }
-                )
-                self.state.messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "Observation: Your respond message was empty. "
-                            "You must provide a non-empty message to the customer."
-                        ),
-                    }
-                )
-                result["needs_continuation"] = True
-            else:
-                result["response"] = message
-                self.state.messages.append(
-                    {
-                        "role": "assistant",
-                        "content": f"Thought: {thought}\nAction: respond\nAction Input: {json.dumps(action_input, ensure_ascii=False)}",
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": observation,
                     }
                 )
 
-        elif action == "finish":
-            result["is_complete"] = True
-            self.state.is_complete = True
-            result["response"] = action_input.get("summary", self.config.conversation_end_message)
+                self._update_state_from_observation(name, observation)
+                self.state.add_observation(observation)
 
-        else:
-            # Execute tool
-            observation = execute_tool(action, action_input)
-            result["observation"] = observation
+                executed.append({"name": name, "arguments": args, "observation": observation})
 
-            # Add to message history
+            result["tool_calls"] = executed
+            # Back-compat single-action view (last tool) for existing callers/UI.
+            result["action"] = executed[-1]["name"] if executed else None
+            result["action_input"] = executed[-1]["arguments"] if executed else None
+            result["observation"] = executed[-1]["observation"] if executed else None
+            result["needs_continuation"] = True
+            return result
+
+        # No tool calls → the content is the reply for the customer.
+        content = (message.content or "").strip()
+
+        # Model failure mode: no tool call AND no text. An empty reply gives the
+        # customer nothing, so nudge the model with a corrective turn and let the
+        # loop retry (bounded by max_tool_calls_per_response → no infinite loop /
+        # cost blowup). result["response"] stays None so run_until_response does
+        # not treat this as a real answer.
+        if not content:
+            logger.warning(
+                "[AGENT] Empty reply with no tool call; injecting correction and retrying"
+            )
+            self.state.messages.append({"role": "assistant", "content": ""})
             self.state.messages.append(
                 {
-                    "role": "assistant",
-                    "content": f"Thought: {thought}\nAction: {action}\nAction Input: {json.dumps(action_input, ensure_ascii=False)}",
+                    "role": "user",
+                    "content": (
+                        "Your last reply was empty. Either call a tool or write a "
+                        "non-empty message to the customer."
+                    ),
                 }
             )
-            self.state.messages.append({"role": "user", "content": f"Observation: {observation}"})
-
-            # Update state from observation
-            self._update_state_from_observation(action, observation)
-            self.state.add_observation(observation)
-
             result["needs_continuation"] = True
+            return result
 
+        result["action"] = "respond"
+        result["response"] = content
+        self.state.messages.append({"role": "assistant", "content": content})
         return result
 
     def run_until_response(
@@ -391,12 +397,7 @@ class ReactAgent:
             greeting = self.config.greeting_message
 
             # Log to message history (for context)
-            self.state.messages.append(
-                {
-                    "role": "assistant",
-                    "content": f'Thought: Initial greeting\nAction: respond\nAction Input: {{"message": "{greeting}"}}',
-                }
-            )
+            self.state.messages.append({"role": "assistant", "content": greeting})
             self.state.turn_count += 1
 
             logger.info(f"[AGENT] Hardcoded greeting: {greeting}")
