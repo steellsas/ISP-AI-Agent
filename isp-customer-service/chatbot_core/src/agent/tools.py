@@ -149,6 +149,72 @@ class Tool:
             },
         }
 
+    def validate_arguments(self, arguments: dict) -> tuple[dict, dict | None]:
+        """
+        Validate and clean model-supplied arguments against this tool's schema.
+
+        Native function calling does not guarantee well-formed arguments — the
+        model may hallucinate parameter names, omit required ones, or send the
+        wrong scalar type. We validate here, at the single execution choke
+        point, using the same `parameters` dict that produces the OpenAI schema
+        (one source of truth).
+
+        Policy:
+          - Missing required parameter -> hard stop: return a structured error
+            (no execution) so the model sees it as a tool result and can
+            self-correct on the next turn.
+          - Unknown argument -> dropped with a warning (the function would
+            reject it as an unexpected kwarg anyway); robust to harmless extra
+            keys the model invents.
+          - Declared "string" but a scalar (int/float/bool) arrived -> coerced
+            to str so downstream code gets the type it expects.
+
+        Returns:
+            (cleaned_args, error). On success error is None. On failure
+            cleaned_args is {} and error is a JSON-serializable dict describing
+            the problem, to be handed back to the model as the observation.
+        """
+        if not isinstance(arguments, dict):
+            return {}, {
+                "error": "invalid_arguments",
+                "tool": self.name,
+                "message": "Arguments must be a JSON object.",
+                "valid_parameters": self.parameters,
+            }
+
+        cleaned: dict = {}
+        unknown: list[str] = []
+
+        for key, value in arguments.items():
+            spec = self.parameters.get(key)
+            if spec is None:
+                unknown.append(key)
+                continue
+            # Light coercion: schema says string but a scalar slipped through.
+            if spec.get("type") == "string" and isinstance(value, (int, float, bool)):
+                value = str(value)
+            cleaned[key] = value
+
+        if unknown:
+            logger.warning(
+                f"[TOOL] {self.name}: dropping unknown argument(s): {', '.join(unknown)}"
+            )
+
+        missing_required = [
+            name
+            for name, spec in self.parameters.items()
+            if spec.get("required") and name not in cleaned
+        ]
+        if missing_required:
+            return {}, {
+                "error": "invalid_arguments",
+                "tool": self.name,
+                "missing_required": missing_required,
+                "valid_parameters": self.parameters,
+            }
+
+        return cleaned, None
+
 
 # =============================================================================
 # REAL TOOL IMPLEMENTATIONS
@@ -1108,11 +1174,19 @@ def get_tools_schema() -> list[dict]:
 
 
 def execute_tool(tool_name: str, arguments: dict) -> str:
-    """Execute a tool by name with given arguments."""
+    """Execute a tool by name with given arguments (validated against its schema)."""
     for tool in REAL_TOOLS:
         if tool.name == tool_name:
+            # Guard at the boundary: never call the function with unvalidated,
+            # model-supplied arguments. A validation error is returned as the
+            # observation so the model can self-correct instead of crashing.
+            cleaned_args, error = tool.validate_arguments(arguments)
+            if error is not None:
+                logger.warning(f"[TOOL] {tool_name} argument validation failed: {error}")
+                return json.dumps(error, ensure_ascii=False)
+
             try:
-                result = tool.function(**arguments)
+                result = tool.function(**cleaned_args)
                 return json.dumps(result, ensure_ascii=False, indent=2)
             except Exception as e:
                 logger.error(f"Tool execution error: {e}", exc_info=True)
