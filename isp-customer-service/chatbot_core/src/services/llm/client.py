@@ -142,71 +142,54 @@ def validate_json_response(data: dict, schema: type[BaseModel]) -> tuple[bool, s
 # =============================================================================
 
 
-def llm_completion(
-    messages: list[dict],
-    model: str = None,
-    temperature: float = None,
-    max_tokens: int = None,
-    top_p: float = None,
-    response_format: dict = None,
-) -> str:
-    """
-    Call LLM and return response text.
-
-    Stats are stored in module-level _last_call_stats.
-
-    Args:
-        messages: List of {"role": ..., "content": ...}
-        model: Model ID (uses settings default if None)
-        temperature: Creativity 0-2 (uses settings default if None)
-        max_tokens: Max response length (uses settings default if None)
-        top_p: Nucleus sampling (uses settings default if None)
-        response_format: Optional {"type": "json_object"} for JSON mode
-
-    Returns:
-        Response text content
-    """
-    global _last_call_stats
-
+def _resolve_params(
+    model: str | None,
+    temperature: float | None,
+    max_tokens: int | None,
+    top_p: float | None,
+) -> tuple[str, float, int, float]:
+    """Fill in defaults from settings for any params left as None."""
     settings = get_settings()
-
-    # Apply defaults from settings
     model = model or settings.model
     temperature = temperature if temperature is not None else settings.temperature
     max_tokens = max_tokens or settings.max_tokens
     top_p = top_p if top_p is not None else settings.top_p
+    return model, temperature, max_tokens, top_p
 
+
+def _configure_provider(model: str) -> str:
+    """Resolve the provider for a model and export its API key for litellm."""
     provider = _get_provider(model)
 
-    # Get API key
     api_key = _get_api_key(provider)
     if not api_key:
         raise ValueError(f"No API key found for provider: {provider}")
 
-    # Configure litellm
     if provider == "openai":
         os.environ["OPENAI_API_KEY"] = api_key
     elif provider == "google":
         os.environ["GEMINI_API_KEY"] = api_key
 
-    # Build request
-    kwargs = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
+    return provider
 
-    if top_p != 1.0:
-        kwargs["top_p"] = top_p
 
-    if response_format:
-        kwargs["response_format"] = response_format
+def _execute_completion(kwargs: dict, model: str):
+    """
+    Run litellm.completion with rate limiting, retry, and stats tracking.
+
+    This is the shared core behind both llm_completion (returns text) and
+    llm_tool_completion (returns the message with tool_calls). Callers build
+    the request kwargs; this function owns the cross-cutting concerns —
+    rate-limit guard, retry loop, cost/latency stats — and returns the raw
+    litellm response so each caller can extract what it needs.
+    """
+    global _last_call_stats
+
+    settings = get_settings()
 
     # Rate limit: guard against runaway loops / cost blowup before hitting the API
     get_rate_limiter().check_or_raise()
 
-    # Make call with retry
     start_time = time.time()
     last_error = None
 
@@ -223,9 +206,6 @@ def llm_completion(
 
             # Calculate cost (single source of truth: models.calculate_cost)
             cost = calculate_cost(model, input_tokens, output_tokens)
-
-            # Get content
-            content = response.choices[0].message.content
 
             # Store stats
             _last_call_stats = {
@@ -256,7 +236,7 @@ def llm_completion(
                 f"LLM call: {model}, {input_tokens}+{output_tokens} tokens, ${cost:.4f}, {latency_ms:.0f}ms"
             )
 
-            return content
+            return response
 
         except Exception as e:
             last_error = e
@@ -291,6 +271,109 @@ def llm_completion(
     )
 
     raise Exception(f"LLM call failed after {settings.max_retries} retries: {last_error}")
+
+
+def llm_completion(
+    messages: list[dict],
+    model: str = None,
+    temperature: float = None,
+    max_tokens: int = None,
+    top_p: float = None,
+    response_format: dict = None,
+) -> str:
+    """
+    Call LLM and return response text.
+
+    Stats are stored in module-level _last_call_stats.
+
+    Args:
+        messages: List of {"role": ..., "content": ...}
+        model: Model ID (uses settings default if None)
+        temperature: Creativity 0-2 (uses settings default if None)
+        max_tokens: Max response length (uses settings default if None)
+        top_p: Nucleus sampling (uses settings default if None)
+        response_format: Optional {"type": "json_object"} for JSON mode
+
+    Returns:
+        Response text content
+    """
+    model, temperature, max_tokens, top_p = _resolve_params(model, temperature, max_tokens, top_p)
+    _configure_provider(model)
+
+    # Build request
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    if top_p != 1.0:
+        kwargs["top_p"] = top_p
+
+    if response_format:
+        kwargs["response_format"] = response_format
+
+    response = _execute_completion(kwargs, model)
+    return response.choices[0].message.content
+
+
+def llm_tool_completion(
+    messages: list[dict],
+    tools: list[dict],
+    tool_choice: str = "auto",
+    model: str = None,
+    temperature: float = None,
+    max_tokens: int = None,
+    top_p: float = None,
+):
+    """
+    Call LLM with native function/tool calling and return the response message.
+
+    Unlike llm_completion (which returns only the text content), this returns
+    the full assistant message object so the caller can inspect both:
+      - message.content    -> the natural-language reply (may be None when the
+                              model decides to call a tool instead of talking)
+      - message.tool_calls -> a list of structured tool calls, each with
+                              .id, .function.name, .function.arguments (JSON str)
+
+    This is the native-function-calling replacement for the ReAct regex parser:
+    the model receives structured tool schemas (tools=...) and returns
+    structured calls, eliminating the brittle "Action:/Action Input:" text
+    parsing. The same shared infra (rate limit, retry, stats) is reused.
+
+    Args:
+        messages: Conversation so far (system/user/assistant/tool messages)
+        tools: OpenAI function schemas, e.g. from agent.tools.get_tools_schema()
+        tool_choice: "auto" (model decides), "none", "required", or a forced
+            tool spec. Defaults to "auto" so the agent keeps full freedom over
+            which tools to call and when.
+        model: Model ID (uses settings default if None)
+        temperature: Creativity (uses settings default if None)
+        max_tokens: Max response length (uses settings default if None)
+        top_p: Nucleus sampling (uses settings default if None)
+
+    Returns:
+        The assistant message object (litellm Message) with .content and
+        .tool_calls.
+    """
+    model, temperature, max_tokens, top_p = _resolve_params(model, temperature, max_tokens, top_p)
+    _configure_provider(model)
+
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "tools": tools,
+        "tool_choice": tool_choice,
+    }
+
+    if top_p != 1.0:
+        kwargs["top_p"] = top_p
+
+    response = _execute_completion(kwargs, model)
+    return response.choices[0].message
 
 
 # =============================================================================
