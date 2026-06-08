@@ -200,7 +200,13 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       `rag/document_processor.py` and `build_kb.py` imports it. Behaviour-preserving
       (recall@3 = 18/18). — *`refactor/rag-single-document-processor`*
 - [ ] Token-based chunking (current `_chunk_text` splits on whitespace words) — `rag/document_processor.py`
-- [ ] Real hybrid retrieval: BM25 (`rank_bm25`) or RRF normalization (current blend is weighted keyword-overlap) — `rag/hybrid_retriever.py:262`
+- [x] **Real hybrid retrieval: BM25 + RRF** — replaced the weighted keyword-overlap
+      re-ranker with `rank_bm25.BM25Okapi` over the FULL corpus (catches exact
+      technical matches semantic misses) fused with Reciprocal Rank Fusion (k=60,
+      ranks not raw scores). `keyword_weight` is now the RRF weight on the BM25 arm;
+      `threshold` still gates the semantic arm only. Eval: recall@3=18/18, MRR 0.972
+      (no regression; this LT set lacks the model-number cases where BM25 wins, so
+      the gain is architectural — proven by design + smoke test). — *`feat/rag-bm25-rrf-hybrid`*
 - [ ] Implement `_rebuild_index` (currently `pass`) or persist embeddings — `vector_store.py:289`
 - [ ] Embedding dim from the model; include `normalize` flag in cache key — `rag/embeddings.py`
 - [ ] LT↔EN cross-lingual retrieval tests (small eval set with expected docs) — `lang` metadata foundation already in place
@@ -322,6 +328,10 @@ never degrades consultation quality — the core "pro" safety net.
       with the inline copy in `build_kb.py`; canonical class now in
       `rag/document_processor.py`, behaviour-preserving (recall@3=18/18)
       (`refactor/rag-single-document-processor`).
-- [ ] **Next:** Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`),
-      then real hybrid (BM25/RRF normalization) and the LT↔EN cross-lingual eval
-      (lang metadata already in place). Each measured against the eval harness.
+- [x] Phase 1 · real hybrid retrieval — BM25 (full corpus) + RRF fusion replacing
+      the weighted-overlap re-ranker; recall@3=18/18, MRR 0.972 (no regression)
+      (`feat/rag-bm25-rrf-hybrid`).
+- [ ] **Next:** Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
+      and the LT↔EN cross-lingual eval (lang metadata already in place). The
+      cross-lingual / harder eval set is also what would finally show BM25's upside
+      numerically. Each measured against the eval harness.
