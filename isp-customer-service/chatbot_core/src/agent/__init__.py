@@ -22,6 +22,7 @@ CLI Usage:
 
 from .config import AgentConfig, get_config, update_config
 from .react_agent import ReactAgent, run_cli
+from .session import AgentSession
 from .state import AgentState
 from .tools import REAL_TOOLS, execute_tool, get_tools_description
 
@@ -29,7 +30,9 @@ from .tools import REAL_TOOLS, execute_tool, get_tools_description
 run_agent = run_cli
 
 __all__ = [
-    # Main class
+    # Stable conversation entry point
+    "AgentSession",
+    # Engine (used internally / for advanced callers)
     "ReactAgent",
     # State
     "AgentState",
