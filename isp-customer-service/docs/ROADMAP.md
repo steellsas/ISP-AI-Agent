@@ -195,7 +195,11 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       pre-filter inside the hybrid (before the keyword blend), so the existing 0.4 is
       already a valid floor — correct-doc cosine ≥0.5. Verified recall@3=18/18 holds
       at threshold=0.4. — *`feat/rag-prod-hybrid-wiring`*
-- [ ] Single `DocumentProcessor`, token-based chunking (merge `document_processor.py` vs `scripts/build_kb.py`)
+- [x] **Single `DocumentProcessor`** — merged the dead `document_processor.py` with the
+      inline copy in `build_kb.py`; the canonical lang-aware class now lives in
+      `rag/document_processor.py` and `build_kb.py` imports it. Behaviour-preserving
+      (recall@3 = 18/18). — *`refactor/rag-single-document-processor`*
+- [ ] Token-based chunking (current `_chunk_text` splits on whitespace words) — `rag/document_processor.py`
 - [ ] Real hybrid retrieval: BM25 (`rank_bm25`) or RRF normalization (current blend is weighted keyword-overlap) — `rag/hybrid_retriever.py:262`
 - [ ] Implement `_rebuild_index` (currently `pass`) or persist embeddings — `vector_store.py:289`
 - [ ] Embedding dim from the model; include `normalize` flag in cache key — `rag/embeddings.py`
@@ -314,7 +318,10 @@ never degrades consultation quality — the core "pro" safety net.
       (`tools.py:search_knowledge` → `get_hybrid_retriever()`, knobs from
       `config.rag_*`); recall@3=18/18 verified at threshold=0.4
       (`feat/rag-prod-hybrid-wiring`).
-- [ ] **Next:** Phase 1 · single `DocumentProcessor` + token-based chunking (merge
-      `document_processor.py` vs `scripts/build_kb.py`), then real hybrid (BM25/RRF
-      normalization) and the LT↔EN cross-lingual eval (lang metadata already in
-      place). Each measured against the eval harness.
+- [x] Phase 1 · single `DocumentProcessor` — merged the dead `document_processor.py`
+      with the inline copy in `build_kb.py`; canonical class now in
+      `rag/document_processor.py`, behaviour-preserving (recall@3=18/18)
+      (`refactor/rag-single-document-processor`).
+- [ ] **Next:** Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`),
+      then real hybrid (BM25/RRF normalization) and the LT↔EN cross-lingual eval
+      (lang metadata already in place). Each measured against the eval harness.
