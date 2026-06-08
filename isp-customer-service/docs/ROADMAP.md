@@ -210,6 +210,11 @@ retrieval changes, so every change below is verified against numbers, not eyebal
 - [ ] Implement `_rebuild_index` (currently `pass`) or persist embeddings — `vector_store.py:289`
 - [ ] Embedding dim from the model; include `normalize` flag in cache key — `rag/embeddings.py`
 - [ ] LT↔EN cross-lingual retrieval tests (small eval set with expected docs) — `lang` metadata foundation already in place
+- [ ] _(later stage)_ RAG content governance: structure the knowledge base to the
+      company's processes, de-duplicate / strip noise, and a workflow for
+      updating & extending docs — eventually automate the add/fix pipeline. Deferred
+      until there is more real content and settled internal conventions; re-run the
+      eval harness after each content change to catch retrieval regressions.
 
 **Done:** eval set returns correct docs in top-k; thresholds are principled, not arbitrary.
 
