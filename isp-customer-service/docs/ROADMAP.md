@@ -224,12 +224,40 @@ retrieval changes, so every change below is verified against numbers, not eyebal
 
 **Goal:** robust, latency-friendly agent; prep for voice and Ollama.
 
-- [ ] **ReAct regex → native tool / function calling** via LiteLLM (removes the fragile parser)
-- [ ] Tool-argument validation against the schema (replaces the `tools.py` `**kwargs` risk)
+- [x] **ReAct regex → native tool / function calling** via LiteLLM (removes the fragile
+      parser): `Tool.to_openai_schema()` + `llm_tool_completion` + `step()` rewrite
+      (assistant `tool_calls` → `role:"tool"` results, no regex). — *PR #22*
+- [x] Tool-argument validation against the schema (replaces the `tools.py` `**kwargs`
+      risk): `Tool.validate_arguments()` guards `execute_tool` — missing required →
+      structured error observation (model self-corrects, no call); unknown args dropped
+      + warned; scalar→string coercion. — *PR #23*
+- [ ] Normalize tool response schema — **next.** Same logical field must have the same
+      shape across every return path. Concrete bug: `find_customer` returns `addresses`
+      (list of objects) on the phone path but `address` (single string) on the address
+      path, and the address path omits `status`/`email`/`active_services` (so the agent
+      can't check suspension after an address lookup). Fix: one envelope
+      (`{"success": True, ...}` / `{"success": False, "error", "message"}`) and one
+      consistent payload across all 6 tools (shared `ok()`/`err()` helpers).
 - [ ] History management: truncate / summarize observations — `react_agent.py:159`
 - [ ] Route DB access through repositories / MCP consistently (no raw SQL in tools)
-- [ ] Normalize tool response schema (`find_customer` addresses)
 - [ ] `AgentSession` stable interface (`handle_turn(text) -> reply`) — base for voice and web
+  - **Identity gate + `policy.yaml` (core vision — refine during testing).** The lookup
+    finds an *account*, not necessarily the *caller*. Real-world variants to handle
+    (captured now, designed/tuned during live testing):
+    - Caller's phone resolves to an account, but the **address is someone else's** —
+      caller is helping parents / a neighbour, or lives elsewhere. Address match ≠ caller
+      identity.
+    - Contract under a **spouse's / family member's name**; caller may not know whose
+      name it's registered under.
+    - **Partial name match** (surname matches, given name differs, e.g. "Romutė" vs the
+      registered "Roma") → ask a clarifying question rather than accept/reject outright.
+    - Possible **extra verification tools**: is this phone number seen in the outage /
+      support history for that address? does the surname match? ask who signed the
+      contract, DOB, etc.
+    - **PII-disclosure guardrails (two-way):** don't over-reveal ("there's a contract at
+      this address, but not under Andrius's name"), yet sometimes a name/surname/DOB
+      *must* be revealed/confirmed to disambiguate. Where to relax vs. tighten is a
+      `policy.yaml` decision, validated by where lookups string/fail in testing.
 
 **Done:** scenario eval green with native tool-calling; switching model (OpenAI/Claude/Ollama) is config-only.
 
@@ -336,7 +364,15 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 1 · real hybrid retrieval — BM25 (full corpus) + RRF fusion replacing
       the weighted-overlap re-ranker; recall@3=18/18, MRR 0.972 (no regression)
       (`feat/rag-bm25-rrf-hybrid`).
-- [ ] **Next:** Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
+- [x] Phase 2 · ReAct regex → native tool/function calling (LiteLLM): schema export +
+      `llm_tool_completion` + `step()` rewrite (PR #22).
+- [x] Phase 2 · tool-argument validation against the schema (`Tool.validate_arguments`
+      guarding `execute_tool`) (PR #23).
+- [ ] **Next:** Phase 2 · normalize tool response schema across all 6 tools (one
+      envelope + consistent payload; fixes `find_customer` `addresses` vs `address`).
+      Identity-gate / `policy.yaml` logic deferred to the `AgentSession` step and tuned
+      during live testing (see Phase 2 notes).
+- [ ] _(deferred)_ Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
       and the LT↔EN cross-lingual eval (lang metadata already in place). The
       cross-lingual / harder eval set is also what would finally show BM25's upside
       numerically. Each measured against the eval harness.
