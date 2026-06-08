@@ -221,9 +221,85 @@ class Tool:
 # =============================================================================
 
 
+def _parse_address(address: str) -> tuple[dict | None, dict | None]:
+    """
+    Parse a free-form address string into CRM lookup args.
+
+    Expected format: "City, Street HouseNumber" or
+    "City, Street HouseNumber-Apartment". Returns (args, error); on a parse
+    failure args is None and error is a normalized error payload ready to be
+    returned to the agent.
+    """
+    parts = address.replace(",", " ").split()
+    if len(parts) < 3:
+        return None, {
+            "success": False,
+            "error": "invalid_address_format",
+            "message": "Could not parse address. Expected format: 'City, Street HouseNumber'",
+        }
+
+    city = parts[0]
+    street = " ".join(parts[1:-1])
+    house_apt = parts[-1]
+
+    if "-" in house_apt:
+        house, apt = house_apt.split("-", 1)
+    else:
+        house, apt = house_apt, None
+
+    args = {"city": city, "street": street, "house_number": house}
+    if apt:
+        args["apartment_number"] = apt
+    return args, None
+
+
+def _format_customer_profile(details: dict) -> dict:
+    """
+    Build the normalized find_customer payload from get_customer_details().
+
+    Every find_customer search key (phone / address today, name / account code
+    later) resolves to a customer_id and then funnels through this single
+    formatter, so the agent always sees an identical shape no matter how the
+    customer was found. `addresses` is always a list of structured objects
+    (never a bare string), and account fields (status/email) are always
+    present so downstream checks (e.g. suspension) work on every path.
+    """
+    customer = details.get("customer", {})
+    addresses = details.get("addresses", [])
+    services = details.get("services", [])
+
+    return {
+        "success": True,
+        "customer_id": customer.get("customer_id"),
+        "name": f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip(),
+        "phone": customer.get("phone"),
+        "email": customer.get("email"),
+        "status": customer.get("status"),
+        "addresses": [
+            {
+                "address_id": a.get("address_id"),
+                "full_address": a.get("full_address"),
+                "city": a.get("city"),
+                "street": a.get("street"),
+                "house_number": a.get("house_number"),
+                "apartment_number": a.get("apartment_number"),
+                "is_primary": bool(a.get("is_primary")),
+            }
+            for a in addresses
+        ],
+        # get_customer_details already filters to active service plans.
+        "active_services": [s.get("plan_name") for s in services if s.get("plan_name")],
+    }
+
+
 def find_customer(phone: str = None, address: str = None, name: str = None) -> dict:
     """
     Find customer in CRM database.
+
+    A search key (phone or address today; name / account code later) only
+    *resolves* a customer_id. The full profile is then fetched once by
+    customer_id via get_customer_details, so every lookup path returns the
+    same normalized shape (see _format_customer_profile).
 
     Args:
         phone: Phone number (e.g., '+37061234567' or '861234567')
@@ -231,7 +307,7 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
         name: Customer name
 
     Returns:
-        Customer data or error
+        Normalized customer profile or error
     """
     # Phone is masked by the central PII log filter; address/name are PII the
     # regex can't catch, so log only whether each lookup path was provided.
@@ -242,96 +318,61 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
 
     try:
         db = get_db()
+        from crm_mcp.tools.customer_lookup import (
+            get_customer_details,
+            lookup_customer_by_address,
+            lookup_customer_by_phone,
+        )
 
-        # Try phone lookup first (most common)
+        customer_id = None
+
+        # --- Resolve customer_id from whichever search key was provided ----
         if phone:
-            from crm_mcp.tools.customer_lookup import lookup_customer_by_phone
-
             result = lookup_customer_by_phone(db, {"phone_number": phone})
-
-            if result.get("success"):
-                # Format response for agent
-                customer = result.get("customer", {})
-                addresses = result.get("addresses", [])
-                services = result.get("services", [])
-
-                return {
-                    "success": True,
-                    "customer_id": customer.get("customer_id"),
-                    "name": f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip(),
-                    "phone": customer.get("phone"),
-                    "email": customer.get("email"),
-                    "status": customer.get("status"),
-                    "addresses": addresses,
-                    "active_services": [
-                        s.get("plan_name") for s in services if s.get("status") == "active"
-                    ],
-                }
-            else:
+            if not result.get("success"):
                 return {
                     "success": False,
                     "error": result.get("error", "customer_not_found"),
                     "message": result.get("message", "Customer not found"),
                 }
+            customer_id = result.get("customer", {}).get("customer_id")
 
-        # Try address lookup
-        if address:
-            # Parse address string (simple parsing)
-            # Expected format: "City, Street HouseNumber" or "City, Street HouseNumber-Apartment"
-            from crm_mcp.tools.customer_lookup import lookup_customer_by_address
-
-            parts = address.replace(",", " ").split()
-            if len(parts) >= 3:
-                city = parts[0]
-                street = " ".join(parts[1:-1])
-                house_apt = parts[-1]
-
-                # Check for apartment
-                if "-" in house_apt:
-                    house, apt = house_apt.split("-", 1)
-                else:
-                    house = house_apt
-                    apt = None
-
-                args = {
-                    "city": city,
-                    "street": street,
-                    "house_number": house,
+        elif address:
+            args, parse_error = _parse_address(address)
+            if parse_error is not None:
+                return parse_error
+            result = lookup_customer_by_address(db, args)
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "error": result.get("error", "customer_not_found"),
+                    "message": result.get("message", "Customer not found"),
                 }
-                if apt:
-                    args["apartment_number"] = apt
+            customer_id = result.get("customer", {}).get("customer_id")
 
-                result = lookup_customer_by_address(db, args)
-
-                if result.get("success"):
-                    customer = result.get("customer", {})
-                    return {
-                        "success": True,
-                        "customer_id": customer.get("customer_id"),
-                        "name": f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip(),
-                        "phone": customer.get("phone"),
-                        "address": customer.get("address", {}).get("full_address"),
-                    }
-
-            return {
-                "success": False,
-                "error": "invalid_address_format",
-                "message": "Could not parse address. Expected format: 'City, Street HouseNumber'",
-            }
-
-        # Name lookup not implemented yet
-        if name:
+        elif name:
             return {
                 "success": False,
                 "error": "not_implemented",
                 "message": "Name lookup not yet implemented. Please use phone number.",
             }
 
-        return {
-            "success": False,
-            "error": "missing_parameters",
-            "message": "Please provide phone number or address to search.",
-        }
+        else:
+            return {
+                "success": False,
+                "error": "missing_parameters",
+                "message": "Please provide phone number or address to search.",
+            }
+
+        # --- Single enrichment-by-id path -> identical shape everywhere ----
+        details = get_customer_details(db, customer_id)
+        if not details.get("success"):
+            return {
+                "success": False,
+                "error": details.get("error", "customer_not_found"),
+                "message": details.get("message", "Customer not found"),
+            }
+        return _format_customer_profile(details)
 
     except ImportError as e:
         logger.error(f"Import error in find_customer: {e}")
@@ -732,6 +773,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                         "customer_id": customer_id,
                         "affected": False,
                         "active_outages": [],
+                        "outage_count": 0,
                         "message": "Klientas nėra paveiktas žinomų gedimų",
                     }
 
@@ -751,6 +793,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                 return {
                     "success": True,
                     "area": area,
+                    "affected": len(outages) > 0,
                     "active_outages": outages,
                     "outage_count": len(outages),
                     "summary": summary,
@@ -761,7 +804,9 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
         return {
             "success": True,
             "area": "unknown",
+            "affected": False,
             "active_outages": [],
+            "outage_count": 0,
             "message": "Nurodykite rajoną arba kliento ID gedimų patikrinimui",
         }
 
@@ -782,7 +827,9 @@ def _check_outages_fallback(area: str) -> dict:
     return {
         "success": True,
         "area": area or "unknown",
+        "affected": False,
         "active_outages": [],
+        "outage_count": 0,
         "message": "Nėra žinomų gedimų (fallback mode)",
     }
 
@@ -951,7 +998,13 @@ def create_ticket(
                 "message": f"Ticket created successfully. ID: {ticket_id}",
             }
         else:
-            return result
+            # Normalize the inner CRM failure to our envelope instead of leaking
+            # its raw shape to the agent.
+            return {
+                "success": False,
+                "error": result.get("error", "ticket_creation_failed"),
+                "message": result.get("message", "Failed to create ticket"),
+            }
 
     except ImportError as e:
         logger.warning(f"CRM ticket module not available: {e}")
@@ -1034,7 +1087,13 @@ def run_ping_test(customer_id: str) -> dict:
                 "message": result.get("message"),
             }
         else:
-            return result
+            # Normalize the inner failure to our envelope instead of leaking
+            # the raw ping_test result shape to the agent.
+            return {
+                "success": False,
+                "error": result.get("error", "ping_test_error"),
+                "message": result.get("message", "Ping test failed"),
+            }
 
     except ImportError as e:
         logger.warning(f"Ping test module not available: {e}")
