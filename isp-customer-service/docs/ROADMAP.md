@@ -231,17 +231,28 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       risk): `Tool.validate_arguments()` guards `execute_tool` — missing required →
       structured error observation (model self-corrects, no call); unknown args dropped
       + warned; scalar→string coercion. — *PR #23*
-- [ ] Normalize tool response schema — **next.** Same logical field must have the same
-      shape across every return path. Concrete bug: `find_customer` returns `addresses`
-      (list of objects) on the phone path but `address` (single string) on the address
-      path, and the address path omits `status`/`email`/`active_services` (so the agent
-      can't check suspension after an address lookup). Fix: one envelope
-      (`{"success": True, ...}` / `{"success": False, "error", "message"}`) and one
-      consistent payload across all 6 tools (shared `ok()`/`err()` helpers).
-- [ ] History management: truncate / summarize observations — `react_agent.py:159`
+- [x] Normalize tool response schema. Same logical field now has the same shape across
+      every return path. `find_customer` rewritten so any search key (phone/address) only
+      *resolves* a customer_id, then the full profile is fetched once via
+      `get_customer_details` → both paths return an identical shape (`addresses` always a
+      list of objects, never a bare `address` string; `status`/`email` always present, so
+      suspension checks work after any lookup). `check_outages` always returns
+      `affected` + `outage_count`; `create_ticket`/`run_ping_test` wrap inner failures in
+      the `{success,error,message}` envelope instead of leaking raw shapes. — *PR #24*
+- [x] `AgentSession` stable interface (`handle_turn(text) -> reply` + `greeting()`) — the
+      single framework-free seam every transport (CLI, Streamlit, voice/FastRTC,
+      telephony) calls. Wraps `ReactAgent` by composition, so internals (history, model
+      swap, prompts) evolve *behind* the boundary without breaking callers; `run_cli` is
+      the first consumer. Locked the interface first so memory management plugs in inside,
+      not on top. Also fixed a latent bug: state now reads the normalized `full_address`
+      (was the non-existent `address` key → `customer_address` was always None). — *PR #25*
+- [ ] **History management — next.** Truncate / summarize observations so the context
+      sent each turn stops growing unbounded — `react_agent.py` (`_build_messages` /
+      `state.messages`). Implemented *behind* `AgentSession`, so the turn interface is
+      untouched. Decide here the fate of the deferred `ResponseCache` (Phase 0 note).
 - [ ] Route DB access through repositories / MCP consistently (no raw SQL in tools)
-- [ ] `AgentSession` stable interface (`handle_turn(text) -> reply`) — base for voice and web
-  - **Identity gate + `policy.yaml` (core vision — refine during testing).** The lookup
+- [ ] **Identity gate + `policy.yaml`** (core vision — refine during testing), implemented
+      inside `AgentSession`. The lookup
     finds an *account*, not necessarily the *caller*. Real-world variants to handle
     (captured now, designed/tuned during live testing):
     - Caller's phone resolves to an account, but the **address is someone else's** —
@@ -368,10 +379,16 @@ never degrades consultation quality — the core "pro" safety net.
       `llm_tool_completion` + `step()` rewrite (PR #22).
 - [x] Phase 2 · tool-argument validation against the schema (`Tool.validate_arguments`
       guarding `execute_tool`) (PR #23).
-- [ ] **Next:** Phase 2 · normalize tool response schema across all 6 tools (one
-      envelope + consistent payload; fixes `find_customer` `addresses` vs `address`).
-      Identity-gate / `policy.yaml` logic deferred to the `AgentSession` step and tuned
-      during live testing (see Phase 2 notes).
+- [x] Phase 2 · normalize tool response schema across all 6 tools (one envelope +
+      consistent payload; `find_customer` funnels every search key through a single
+      enrichment-by-id so both paths return an identical shape) (PR #24).
+- [x] Phase 2 · `AgentSession` stable interface (`handle_turn(text) -> reply` +
+      `greeting()`), composition wrapper over `ReactAgent`; `run_cli` migrated as the
+      first consumer; latent `full_address` state bug fixed (PR #25).
+- [ ] **Next:** Phase 2 · history management — truncate / summarize the growing message
+      history behind `AgentSession` (turn interface untouched); decide the deferred
+      `ResponseCache`'s fate here. Then identity-gate + `policy.yaml` inside `AgentSession`,
+      tuned during live testing.
 - [ ] _(deferred)_ Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
       and the LT↔EN cross-lingual eval (lang metadata already in place). The
       cross-lingual / harder eval set is also what would finally show BM25's upside
