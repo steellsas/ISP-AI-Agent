@@ -20,6 +20,7 @@ from .client import (
     get_model_info,
     llm_completion,
     llm_json_completion,
+    llm_tool_completion,
     validate_json_response,
 )
 
@@ -39,6 +40,7 @@ __all__ = [
     # Main functions
     "llm_completion",
     "llm_json_completion",
+    "llm_tool_completion",
     "get_last_call_stats",
     "get_model_info",
     "extract_json_from_response",

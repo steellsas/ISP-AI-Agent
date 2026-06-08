@@ -91,6 +91,64 @@ class Tool:
     parameters: dict
     function: Callable
 
+    def to_openai_schema(self) -> dict:
+        """
+        Export this tool as an OpenAI function-calling schema.
+
+        LiteLLM (and the providers behind it: OpenAI, Anthropic, Gemini,
+        Ollama) all accept the OpenAI tool schema shape, so this single
+        export keeps the `Tool` dataclass as the one source of truth while
+        speaking the wire format every model understands.
+
+        Our internal `parameters` shape is::
+
+            {"customer_id": {"type": "string", "description": "...", "required": True}}
+
+        The OpenAI shape splits that into JSON-Schema `properties` (without the
+        `required` flag) plus a top-level `required` list of names::
+
+            {
+                "type": "function",
+                "function": {
+                    "name": ...,
+                    "description": ...,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"customer_id": {"type": "string", "description": "..."}},
+                        "required": ["customer_id"],
+                    },
+                },
+            }
+        """
+        properties: dict = {}
+        required: list[str] = []
+
+        for param_name, spec in self.parameters.items():
+            # Copy the spec but strip our internal "required" marker — in
+            # JSON Schema requiredness lives in the sibling `required` list,
+            # not inside each property.
+            prop = {k: v for k, v in spec.items() if k != "required"}
+            properties[param_name] = prop
+
+            if spec.get("required"):
+                required.append(param_name)
+
+        parameters_schema: dict = {
+            "type": "object",
+            "properties": properties,
+        }
+        if required:
+            parameters_schema["required"] = required
+
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": parameters_schema,
+            },
+        }
+
 
 # =============================================================================
 # REAL TOOL IMPLEMENTATIONS
@@ -1035,6 +1093,18 @@ def get_tools_description() -> str:
         lines.append(f"\n- {tool.name}: {tool.description}")
         lines.append(f"  Parameters: {params}")
     return "\n".join(lines)
+
+
+def get_tools_schema() -> list[dict]:
+    """
+    Export all registered tools as OpenAI function-calling schemas.
+
+    This is what gets passed as `tools=...` to the LLM. Native function
+    calling replaces the old prose `get_tools_description()` prompt: instead
+    of describing tools in text and parsing a ReAct "Action:" block back out,
+    the model receives structured schemas and returns structured tool calls.
+    """
+    return [tool.to_openai_schema() for tool in REAL_TOOLS]
 
 
 def execute_tool(tool_name: str, arguments: dict) -> str:
