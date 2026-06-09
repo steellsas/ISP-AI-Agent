@@ -527,7 +527,7 @@ def execute_tool(tool_name: str, arguments: dict) -> str:
                 return json.dumps(result, ensure_ascii=False)
             except Exception as e:
                 return json.dumps({"error": str(e)})
-    
+
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
 ```
 
@@ -542,20 +542,29 @@ def execute_tool(tool_name: str, arguments: dict) -> str:
 | `missing_customer_id` | Tool requires customer_id | Find customer first |
 | `not_found` | Customer/data not found | Ask for alternative info |
 | `database_error` | Database connection issue | Retry or apologize |
-| `import_error` | Module not available | Use fallback |
+| `service_unavailable` | Diagnostic service module not importable | Apologize; no DB fallback |
 
-### Fallback Behavior
+### Service boundary (no raw SQL in tools)
 
-Each tool has a fallback for when external services are unavailable:
+The agent tool layer never touches the database directly — all SQL lives in the
+MCP service adapters (`crm_mcp`, `network_diagnostic_mcp`). If a service module
+can't be imported, the tool returns a clean error envelope rather than secretly
+querying the DB itself:
 
 ```python
 try:
-    # Try real implementation
-    from network_diagnostic_mcp.tools import check_port_status
+    from network_diagnostic_mcp.tools.connectivity_tests import (
+        get_packet_loss_summary,
+        get_bandwidth_summary,
+    )
+    from network_diagnostic_mcp.tools.port_diagnostics import check_port_status
     result = check_port_status(db, customer_id)
 except ImportError:
-    # Use fallback
-    result = _check_network_status_fallback(customer_id)
+    return {
+        "success": False,
+        "error": "service_unavailable",
+        "message": "Network diagnostic service is unavailable.",
+    }
 ```
 
 ---

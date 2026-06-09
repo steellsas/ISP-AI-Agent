@@ -420,10 +420,13 @@ def check_network_status(customer_id: str, address_id: str = None) -> dict:
     try:
         db = get_db()
 
-        # Import network diagnostic tools
+        # Import network diagnostic tools (the agent talks only to the service;
+        # all SQL lives in the network-diagnostic adapter, not here).
         from network_diagnostic_mcp.tools.connectivity_tests import (
             check_ip_assignment,
             check_signal_quality,
+            get_bandwidth_summary,
+            get_packet_loss_summary,
         )
         from network_diagnostic_mcp.tools.port_diagnostics import check_port_status
 
@@ -436,11 +439,11 @@ def check_network_status(customer_id: str, address_id: str = None) -> dict:
         # 3. Check signal quality (for TV/cable)
         signal_result = check_signal_quality(db, customer_id)
 
-        # 4. Check packet loss from ping tests
-        packet_loss_data = _check_packet_loss(db, customer_id)
+        # 4. Check packet loss from ping tests (24h aggregate)
+        packet_loss_data = get_packet_loss_summary(db, customer_id)
 
-        # 5. Check bandwidth logs for intermittent issues
-        bandwidth_data = _check_bandwidth_logs(db, customer_id)
+        # 5. Check bandwidth logs for intermittent issues (24h aggregate)
+        bandwidth_data = get_bandwidth_summary(db, customer_id)
 
         # Compile results
         port_status = "unknown"
@@ -529,8 +532,15 @@ def check_network_status(customer_id: str, address_id: str = None) -> dict:
         }
 
     except ImportError as e:
-        logger.warning(f"Network diagnostic module not available: {e}, using fallback")
-        return _check_network_status_fallback(db, customer_id)
+        # No silent raw-SQL fallback: if the network-diagnostic adapter can't be
+        # imported, the agent has no DB-access path of its own (by design). Fail
+        # with a clean envelope instead of reaching into the database directly.
+        logger.error(f"Network diagnostic module not available: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "Network diagnostic service is unavailable.",
+        }
     except Exception as e:
         logger.error(f"Error in check_network_status: {e}", exc_info=True)
         return {
@@ -538,192 +548,6 @@ def check_network_status(customer_id: str, address_id: str = None) -> dict:
             "error": "diagnostic_error",
             "message": f"Error checking network: {e}",
         }
-
-
-def _check_network_status_fallback(db, customer_id: str) -> dict:
-    """Fallback with direct DB queries when network diagnostic module not available."""
-    logger.info(f"Using fallback network check for {customer_id}")
-
-    issues = []
-    overall_status = "healthy"
-    port_status = "unknown"
-    ip_assigned = False
-    ip_address = None
-
-    try:
-        # Check port status directly
-        with db.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT port_id, status, speed_mbps
-                FROM ports
-                WHERE customer_id = ?
-            """,
-                (customer_id,),
-            )
-            ports = cursor.fetchall()
-
-            if ports:
-                port_up = any(p["status"] == "up" for p in ports)
-                port_status = "up" if port_up else "down"
-                if port_status == "down":
-                    issues.append("Port is down - no connection to network")
-                    overall_status = "issues_detected"
-
-        # Check IP assignment directly
-        with db.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT ip_address, status
-                FROM ip_assignments
-                WHERE customer_id = ? AND status = 'active'
-            """,
-                (customer_id,),
-            )
-            ips = cursor.fetchall()
-
-            if ips:
-                ip_assigned = True
-                ip_address = ips[0]["ip_address"]
-            else:
-                issues.append("No active IP assignment")
-                overall_status = "issues_detected"
-
-        # Check packet loss
-        packet_loss_data = _check_packet_loss(db, customer_id)
-        if packet_loss_data.get("has_packet_loss"):
-            avg_loss = packet_loss_data.get("avg_packet_loss", 0)
-            issues.append(f"Packet loss detected: {avg_loss:.1f}%")
-            overall_status = "issues_detected"
-
-        # Check bandwidth logs
-        bandwidth_data = _check_bandwidth_logs(db, customer_id)
-        if bandwidth_data.get("has_issues"):
-            if bandwidth_data.get("high_jitter"):
-                issues.append(f"High jitter: {bandwidth_data.get('avg_jitter', 0):.1f}ms")
-            if bandwidth_data.get("intermittent"):
-                issues.append("Intermittent connection detected")
-            overall_status = "issues_detected"
-
-        # Generate interpretation
-        if not issues:
-            interpretation = "Network connection is healthy (fallback mode)."
-        elif port_status == "down":
-            interpretation = "Port is down - requires technician visit."
-        elif packet_loss_data.get("has_packet_loss") or bandwidth_data.get("intermittent"):
-            interpretation = "Intermittent connection detected - unstable network."
-        else:
-            interpretation = f"Issues detected: {'; '.join(issues)}"
-
-        return {
-            "success": True,
-            "customer_id": customer_id,
-            "overall_status": overall_status,
-            "port_status": port_status,
-            "ip_assigned": ip_assigned,
-            "ip_address": ip_address,
-            "packet_loss": packet_loss_data,
-            "bandwidth_history": bandwidth_data,
-            "issues": issues if issues else None,
-            "interpretation": interpretation,
-        }
-
-    except Exception as e:
-        logger.error(f"Fallback network check failed: {e}")
-        return {
-            "success": False,
-            "error": "fallback_error",
-            "message": f"Error in fallback network check: {e}",
-        }
-
-
-def _check_packet_loss(db, customer_id: str) -> dict:
-    """Check recent ping tests for packet loss."""
-    try:
-        with db.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    AVG(packet_loss_percent) as avg_loss,
-                    MAX(packet_loss_percent) as max_loss,
-                    COUNT(*) as test_count,
-                    MAX(timestamp) as last_test
-                FROM ping_tests
-                WHERE customer_id = ?
-                AND timestamp >= datetime('now', '-24 hours')
-            """,
-                (customer_id,),
-            )
-            result = cursor.fetchone()
-
-            if result and result["test_count"] and result["test_count"] > 0:
-                avg_loss = result["avg_loss"] or 0
-                return {
-                    "has_packet_loss": avg_loss > 5,  # >5% is problematic
-                    "avg_packet_loss": avg_loss,
-                    "max_packet_loss": result["max_loss"] or 0,
-                    "test_count": result["test_count"],
-                    "last_test": result["last_test"],
-                }
-
-            return {"has_packet_loss": False, "test_count": 0}
-
-    except Exception as e:
-        logger.warning(f"Error checking packet loss: {e}")
-        return {"has_packet_loss": False, "error": str(e)}
-
-
-def _check_bandwidth_logs(db, customer_id: str) -> dict:
-    """Check bandwidth logs for intermittent issues."""
-    try:
-        with db.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    AVG(download_mbps) as avg_download,
-                    MIN(download_mbps) as min_download,
-                    MAX(download_mbps) as max_download,
-                    AVG(latency_ms) as avg_latency,
-                    AVG(packet_loss_percent) as avg_packet_loss,
-                    AVG(jitter_ms) as avg_jitter,
-                    COUNT(*) as log_count
-                FROM bandwidth_logs
-                WHERE customer_id = ?
-                AND timestamp >= datetime('now', '-24 hours')
-            """,
-                (customer_id,),
-            )
-            result = cursor.fetchone()
-
-            if result and result["log_count"] and result["log_count"] > 0:
-                avg_download = result["avg_download"] or 0
-                min_download = result["min_download"] or 0
-                max_download = result["max_download"] or 0
-                avg_jitter = result["avg_jitter"] or 0
-                avg_packet_loss = result["avg_packet_loss"] or 0
-
-                # Detect intermittent: big variance in download speeds
-                variance = max_download - min_download if max_download else 0
-                is_intermittent = variance > (avg_download * 0.5) if avg_download > 0 else False
-
-                return {
-                    "has_issues": avg_packet_loss > 5 or avg_jitter > 50 or is_intermittent,
-                    "avg_download_mbps": avg_download,
-                    "min_download_mbps": min_download,
-                    "max_download_mbps": max_download,
-                    "avg_latency_ms": result["avg_latency"] or 0,
-                    "avg_packet_loss": avg_packet_loss,
-                    "avg_jitter": avg_jitter,
-                    "high_jitter": avg_jitter > 50,
-                    "intermittent": is_intermittent,
-                    "log_count": result["log_count"],
-                }
-
-            return {"has_issues": False, "log_count": 0}
-
-    except Exception as e:
-        logger.warning(f"Error checking bandwidth logs: {e}")
-        return {"has_issues": False, "error": str(e)}
 
 
 def check_outages(area: str = None, customer_id: str = None) -> dict:
