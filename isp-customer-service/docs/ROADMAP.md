@@ -249,9 +249,17 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       `_state_facts_block` re-injects resolved customer/problem/ticket facts (no extra
       LLM call) so pruning never loses context. Static system prompt stays cache-friendly;
       the fact addendum is the seam where identity-gate/policy plugs in. — *PR #26*
-- [ ] Route DB access through repositories / MCP consistently (no raw SQL in tools)
-- [ ] **Identity gate + `policy.yaml` (core vision — refine during testing)** — plugs into
-      the `AgentSession` / `_state_facts_block` seam. The lookup
+- [x] **Route DB access through MCP consistently (no raw SQL in tools)** — the agent
+      tool layer no longer calls `db.cursor()`. The three raw-SQL helpers in `tools.py`
+      (ports/ip/ping_tests/bandwidth_logs) were removed; that SQL moved into the
+      network-diagnostic adapter as `get_packet_loss_summary` / `get_bandwidth_summary`
+      (24h aggregation the service lacked), returning the exact shapes the agent already
+      consumed. `ImportError` → clean `service_unavailable` envelope (no silent DB
+      fallback). MCP service = the DB adapter; agent depends only on it. — *PR #27*
+- [ ] **Identity gate + `policy.yaml` (core vision — deferred to voice/live testing)** —
+      plugs into the `AgentSession` / `_state_facts_block` seam. Intentionally built
+      *after* the voice slice (Phase 3) so it's tuned against real call transcripts, not
+      imagined scenarios. The lookup
     finds an *account*, not necessarily the *caller*. Real-world variants to handle
     (captured now, designed/tuned during live testing):
     - Caller's phone resolves to an account, but the **address is someone else's** —
@@ -385,9 +393,14 @@ never degrades consultation quality — the core "pro" safety net.
 - [x] Phase 2 · history management — windowed payload behind `AgentSession`
       (`_prune_history` tool-pairing-safe + `_state_facts_block` durable-fact
       re-injection; `config.history_window_messages`) (PR #26).
-- [ ] **Next:** Phase 2 · either **identity-gate + `policy.yaml`** (core vision — caller
-      ≠ account; plugs into the `_state_facts_block` seam, tuned during live testing) or
-      **route DB access through repositories / MCP** (no raw SQL in tools). Decide order.
+- [x] Phase 2 · route DB access through MCP — removed all raw SQL from the agent
+      tool layer; SQL moved into the network-diagnostic adapter
+      (`get_packet_loss_summary` / `get_bandwidth_summary`); `ImportError` → clean
+      `service_unavailable` envelope (PR #27).
+- [ ] **Next:** Phase 3 · voice vertical slice — `ASRProvider` (faster-whisper, LT) +
+      `TTSProvider` (gTTS, LT) adapters behind the existing ports, wired through
+      `AgentSession` via FastRTC `Stream` + `ReplyOnPause`. Identity-gate / `policy.yaml`
+      follows, tuned against real call transcripts.
 - [ ] _(deferred)_ Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
       and the LT↔EN cross-lingual eval (lang metadata already in place). The
       cross-lingual / harder eval set is also what would finally show BM25's upside
