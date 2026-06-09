@@ -23,6 +23,16 @@ dependencies = [
     "litellm>=1.80.5",
 ]
 
+# Voice slice (Phase 3) — heavy/optional, kept out of the core install so the
+# text agent stays light. Install (uv workspace) with:
+#   uv sync --package chatbot-core --extra voice
+# (FastRTC transport deps are added in the follow-up transport branch.)
+[project.optional-dependencies]
+voice = [
+    "faster-whisper>=1.0.0",
+    "gTTS>=2.5.0",
+]
+
 [tool.uv.sources]
 isp-shared = { workspace = true }
 
