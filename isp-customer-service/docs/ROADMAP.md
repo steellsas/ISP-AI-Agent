@@ -231,17 +231,27 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       risk): `Tool.validate_arguments()` guards `execute_tool` — missing required →
       structured error observation (model self-corrects, no call); unknown args dropped
       + warned; scalar→string coercion. — *PR #23*
-- [ ] Normalize tool response schema — **next.** Same logical field must have the same
-      shape across every return path. Concrete bug: `find_customer` returns `addresses`
-      (list of objects) on the phone path but `address` (single string) on the address
-      path, and the address path omits `status`/`email`/`active_services` (so the agent
-      can't check suspension after an address lookup). Fix: one envelope
-      (`{"success": True, ...}` / `{"success": False, "error", "message"}`) and one
-      consistent payload across all 6 tools (shared `ok()`/`err()` helpers).
-- [ ] History management: truncate / summarize observations — `react_agent.py:159`
+- [x] **Normalize tool response schema** — same logical field has the same shape across
+      every return path. Resolved the `find_customer` `addresses` vs `address` split via
+      an **enrichment-by-id** pattern: any search key (phone/address) only resolves a
+      `customer_id`, then `get_customer_details(customer_id)` → `_format_customer_profile`
+      yields one identical envelope (`{"success": True, ...}` / `{"success": False,
+      "error", "message"}`) with `addresses`/`status`/`email`/`active_services` on every
+      path. `check_outages` gained `affected`/`outage_count`; `create_ticket` /
+      `run_ping_test` else-branches stop leaking raw passthrough. — *PR #24*
+- [x] **`AgentSession` stable interface** (`handle_turn(text) -> reply` + `greeting()`) —
+      composition wrapper over `ReactAgent`; the single seam every transport (CLI,
+      Streamlit, voice) calls, so history/memory/model/prompt internals evolve behind it.
+      `run_cli` migrated to it; fixed a latent `full_address` state bug. — *PR #25*
+- [x] **History management** — windowed LLM payload behind `AgentSession`:
+      `_prune_history` (tool-pairing-safe sliding window, `config.history_window_messages`)
+      keeps the payload bounded while `AgentState.messages` stays the full transcript;
+      `_state_facts_block` re-injects resolved customer/problem/ticket facts (no extra
+      LLM call) so pruning never loses context. Static system prompt stays cache-friendly;
+      the fact addendum is the seam where identity-gate/policy plugs in. — *PR #26*
 - [ ] Route DB access through repositories / MCP consistently (no raw SQL in tools)
-- [ ] `AgentSession` stable interface (`handle_turn(text) -> reply`) — base for voice and web
-  - **Identity gate + `policy.yaml` (core vision — refine during testing).** The lookup
+- [ ] **Identity gate + `policy.yaml` (core vision — refine during testing)** — plugs into
+      the `AgentSession` / `_state_facts_block` seam. The lookup
     finds an *account*, not necessarily the *caller*. Real-world variants to handle
     (captured now, designed/tuned during live testing):
     - Caller's phone resolves to an account, but the **address is someone else's** —
@@ -368,10 +378,16 @@ never degrades consultation quality — the core "pro" safety net.
       `llm_tool_completion` + `step()` rewrite (PR #22).
 - [x] Phase 2 · tool-argument validation against the schema (`Tool.validate_arguments`
       guarding `execute_tool`) (PR #23).
-- [ ] **Next:** Phase 2 · normalize tool response schema across all 6 tools (one
-      envelope + consistent payload; fixes `find_customer` `addresses` vs `address`).
-      Identity-gate / `policy.yaml` logic deferred to the `AgentSession` step and tuned
-      during live testing (see Phase 2 notes).
+- [x] Phase 2 · normalize tool response schema across all 6 tools (one envelope +
+      enrichment-by-id; fixes `find_customer` `addresses` vs `address`) (PR #24).
+- [x] Phase 2 · `AgentSession` stable interface (`handle_turn`/`greeting`) over
+      `ReactAgent`; `run_cli` migrated; latent `full_address` bug fixed (PR #25).
+- [x] Phase 2 · history management — windowed payload behind `AgentSession`
+      (`_prune_history` tool-pairing-safe + `_state_facts_block` durable-fact
+      re-injection; `config.history_window_messages`) (PR #26).
+- [ ] **Next:** Phase 2 · either **identity-gate + `policy.yaml`** (core vision — caller
+      ≠ account; plugs into the `_state_facts_block` seam, tuned during live testing) or
+      **route DB access through repositories / MCP** (no raw SQL in tools). Decide order.
 - [ ] _(deferred)_ Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
       and the LT↔EN cross-lingual eval (lang metadata already in place). The
       cross-lingual / harder eval set is also what would finally show BM25's upside
