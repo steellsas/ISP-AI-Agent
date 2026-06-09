@@ -200,6 +200,85 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
+# Loggers too chatty for a focused session log: HTTP clients, model loaders, the
+# LLM router and the WebRTC/audio stack. Quieted to WARNING so the file stays
+# about the agent's own reasoning and tool calls.
+_NOISY_LOGGERS = (
+    "httpx",
+    "httpcore",
+    "urllib3",
+    "openai",
+    "sentence_transformers",
+    "faiss",
+    "LiteLLM",
+    "litellm",
+    "asyncio",
+    "fastrtc",
+    "aioice",
+    "aiortc",
+    "av",
+    "gradio",
+    "websockets",
+    "python_multipart",
+)
+
+
+def setup_session_logging(session_kind: str = "session") -> tuple[Path, logging.Logger]:
+    """Configure logging for an interactive entry point (text CLI / voice demo).
+
+    Every entry point uses this so their logs are identical: whether you test by
+    text or by voice you get the same reviewable file — full transcript, every
+    tool call, timings and LLM stats.
+
+    Sets up:
+      * console handler at INFO (clean), a per-run DEBUG file under ``logs/``,
+      * chatty third-party libraries quieted to WARNING (see ``_NOISY_LOGGERS``),
+      * process-wide phone-number redaction,
+      * a file-only ``transcript`` logger for USER / AGENT / timing lines (so
+        they don't double up on the console where they're already shown).
+
+    Args:
+        session_kind: Filename prefix, e.g. ``"cli_session"`` / ``"voice_session"``.
+
+    Returns:
+        ``(log_file, transcript_logger)``.
+    """
+    log_dir = Path("logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / f"{session_kind}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+    fmt = logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s", "%H:%M:%S")
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(fmt)
+    root.addHandler(console_handler)
+
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(fmt)
+    root.addHandler(file_handler)
+
+    for name in _NOISY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+    # Mask phone numbers everywhere (process-wide LogRecord factory).
+    install_pii_redaction()
+
+    # Transcript writes ONLY to the file (propagate=False) so USER/AGENT lines
+    # don't double on the console where they're already printed.
+    transcript = logging.getLogger("transcript")
+    transcript.setLevel(logging.INFO)
+    transcript.propagate = False
+    transcript.handlers.clear()
+    transcript.addHandler(file_handler)
+
+    return log_file, transcript
+
+
 # Service-specific logger setup functions
 
 

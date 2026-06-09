@@ -17,6 +17,8 @@ later, with no change here.
 
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -25,6 +27,12 @@ from .session import AgentSession
 if TYPE_CHECKING:
     from src.ports.asr import ASRProvider
     from src.ports.tts import TTSProvider
+
+# Per-turn transcript + timing go to the file-only "transcript" logger (set up
+# by utils.setup_session_logging), so a voice session is reviewable exactly like
+# a text CLI one. When no transcript handler is configured (e.g. unit tests),
+# these records are silently dropped — pure instrumentation, no behaviour change.
+_transcript = logging.getLogger("transcript")
 
 
 @dataclass
@@ -68,8 +76,13 @@ class VoicePipeline:
 
     def greeting_audio(self) -> bytes:
         """Synthesize the opening line spoken before the caller says anything."""
+        t0 = time.perf_counter()
         greeting = self._session.greeting()
-        return self._tts.synthesize(greeting, language=self._language)
+        t1 = time.perf_counter()
+        audio = self._tts.synthesize(greeting, language=self._language)
+        t2 = time.perf_counter()
+        _transcript.info("GREETING (agent %.1fs | tts %.1fs): %s", t1 - t0, t2 - t1, greeting)
+        return audio
 
     def handle_audio(self, audio: bytes, *, sample_rate: int = 16_000) -> VoiceTurn:
         """
@@ -83,9 +96,24 @@ class VoicePipeline:
             A `VoiceTurn` with transcript, reply text, reply audio and the
             conversation-complete flag.
         """
+        t0 = time.perf_counter()
         transcript = self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
+        t1 = time.perf_counter()
         reply_text = self._session.handle_turn(transcript)
+        t2 = time.perf_counter()
         reply_audio = self._tts.synthesize(reply_text, language=self._language)
+        t3 = time.perf_counter()
+        # Same transcript shape as the text CLI, plus the voice latency breakdown
+        # (ASR vs agent vs TTS) so slow turns can be pinned to the right stage.
+        _transcript.info("USER: %s", transcript)
+        _transcript.info(
+            "AGENT (asr %.1fs | agent %.1fs | tts %.1fs | total %.1fs): %s",
+            t1 - t0,
+            t2 - t1,
+            t3 - t2,
+            t3 - t0,
+            reply_text,
+        )
         return VoiceTurn(
             transcript=transcript,
             reply_text=reply_text,

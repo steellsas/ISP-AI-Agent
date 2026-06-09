@@ -23,6 +23,7 @@ Usage:
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -516,10 +517,19 @@ def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
     session = AgentSession(caller_phone=caller_phone, language=language)
     debug_mode = False
 
+    # Transcript logger: USER / AGENT / timing lines go to the per-run log file
+    # (set up in __main__) for review, without doubling the console output.
+    tlog = logging.getLogger("transcript")
+    tlog.info("=" * 60)
+    tlog.info("SESSION START | caller=%s | lang=%s", caller_phone, language)
+
     # Initial greeting
+    t0 = time.perf_counter()
     initial_response = session.greeting()
+    dt = time.perf_counter() - t0
     if initial_response:
         print(f"\n🤖 Agent: {initial_response}\n")
+        tlog.info("GREETING (%.1fs): %s", dt, initial_response)
 
     while not session.is_complete:
         try:
@@ -533,29 +543,53 @@ def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
                 break
 
             if user_input.lower() == "debug":
+                # Toggle CONSOLE verbosity only — the log file always keeps the
+                # full DEBUG detail (tool calls etc.) regardless of this.
                 debug_mode = not debug_mode
-                logging.getLogger().setLevel(logging.DEBUG if debug_mode else logging.INFO)
-                print(f"[Debug mode: {'ON' if debug_mode else 'OFF'}]")
+                for h in logging.getLogger().handlers:
+                    if isinstance(h, logging.StreamHandler) and not isinstance(
+                        h, logging.FileHandler
+                    ):
+                        h.setLevel(logging.DEBUG if debug_mode else logging.INFO)
+                print(f"[Debug mode: {'ON' if debug_mode else 'OFF'}] (failo logas visada pilnas)")
                 continue
 
             if user_input.lower() == "state":
                 print(f"\n[STATE] {session.state.to_dict()}\n")
                 continue
 
+            tlog.info("USER: %s", user_input)
+            t0 = time.perf_counter()
             response = session.handle_turn(user_input)
-            print(f"\n🤖 Agent: {response}\n")
+            dt = time.perf_counter() - t0
+            print(f"\n🤖 Agent: {response}   ({dt:.1f}s)\n")
+            tlog.info("AGENT (%.1fs): %s", dt, response)
 
         except KeyboardInterrupt:
             print(f"\n\n{session.config.cli_interrupted_message}")
             break
 
+    stats = session.stats
     print("\n" + "=" * 60)
     print(f"Conversation ended. Turns: {session.state.turn_count}")
     if session.state.customer_id:
         print(f"Customer: {session.state.customer_name} ({session.state.customer_id})")
     if session.state.ticket_id:
         print(f"Ticket: {session.state.ticket_id}")
+    print(
+        f"LLM: {stats.get('total_calls')} calls, {stats.get('total_tokens')} tokens, "
+        f"${stats.get('total_cost', 0):.4f}, avg {stats.get('average_latency_ms', 0):.0f} ms/call"
+    )
     print("=" * 60)
+
+    # Mirror the wrap-up into the log file for later review.
+    tlog.info(
+        "SESSION END | turns=%s | customer=%s | ticket=%s | stats=%s",
+        session.state.turn_count,
+        session.state.customer_id,
+        session.state.ticket_id,
+        stats,
+    )
 
 
 if __name__ == "__main__":
@@ -566,15 +600,15 @@ if __name__ == "__main__":
     parser.add_argument("--lang", default="lt", choices=["lt", "en"], help="Language (lt or en)")
     args = parser.parse_args()
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-        datefmt="%H:%M:%S",
-    )
+    # Shared session logging: console at INFO, a per-run DEBUG file under logs/
+    # (full transcript, tool calls, timings). The voice demo uses the very same
+    # helper, so text and voice sessions produce identical, comparable logs.
+    from utils import load_env, setup_session_logging
 
-    # Mask phone numbers in logs (after basicConfig set up the root handler).
-    from utils import install_pii_redaction
+    log_file, _ = setup_session_logging("cli_session")
+    # Entry point loads the repo-root .env so OPENAI_API_KEY is available for the
+    # LLM (the core never reaches for a file — only this CLI runner does).
+    load_env()
 
-    install_pii_redaction()
-
+    print(f"📝 Visa sesija rašoma į: {log_file}")
     run_cli(caller_phone=args.phone, language=args.lang)
