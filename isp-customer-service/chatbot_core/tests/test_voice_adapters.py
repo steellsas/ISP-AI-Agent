@@ -14,9 +14,11 @@ import wave
 import numpy as np
 import pytest
 from adapters.asr import FasterWhisperASR
+from adapters.transport import FastRTCVoiceTransport
 from adapters.tts import GTTSProvider
 from agent.voice_pipeline import VoicePipeline, VoiceTurn
 from ports.asr import ASRProvider
+from ports.transport import Transport
 from ports.tts import TTSProvider
 
 
@@ -172,6 +174,39 @@ class TestVoicePipeline:
         assert tts.calls[0][1] == "en"
 
 
+class TestFastRTCTransport:
+    """Audio bridging between FastRTC frames and the pipeline (offline)."""
+
+    def test_is_transport(self):
+        # Structural Protocol check — start/stop exist; no engine needed.
+        transport = FastRTCVoiceTransport(object())
+        assert isinstance(transport, Transport)
+
+    def test_incoming_int16_frame_to_pcm(self):
+        # FastRTC delivers (sample_rate, (1, N) int16); we want raw PCM + rate.
+        frame = np.array([[0, 1000, -1000, 32767]], dtype=np.int16)
+        pcm, rate = FastRTCVoiceTransport._incoming_to_pcm16((48_000, frame))
+
+        assert rate == 48_000
+        assert np.frombuffer(pcm, dtype="<i2").tolist() == [0, 1000, -1000, 32767]
+
+    def test_incoming_float32_frame_scaled_to_int16(self):
+        frame = np.array([[0.0, 0.5, -0.5, 1.0]], dtype=np.float32)
+        pcm, rate = FastRTCVoiceTransport._incoming_to_pcm16((16_000, frame))
+
+        decoded = np.frombuffer(pcm, dtype="<i2")
+        assert rate == 16_000
+        assert decoded[0] == 0
+        assert decoded[1] == pytest.approx(16383, abs=2)  # 0.5 * 32767
+        assert decoded[3] == 32767
+
+    def test_decode_empty_audio_returns_empty_frame(self):
+        # Empty TTS bytes must not touch the (deferred) av decoder.
+        out = FastRTCVoiceTransport._decode_audio_to_int16(b"", 24_000)
+        assert out.dtype == np.int16
+        assert out.shape == (1, 0)
+
+
 @pytest.mark.integration
 class TestVoiceIntegration:
     """Real engines/network — skipped unless the `voice` extra is installed."""
@@ -184,3 +219,18 @@ class TestVoiceIntegration:
         except Exception as exc:  # network/lookup failures shouldn't fail CI
             pytest.skip(f"gTTS unavailable (network?): {exc}")
         assert audio[:3] == b"ID3" or len(audio) > 0  # MP3 payload
+
+    def test_decode_gtts_mp3_to_fastrtc_frame(self):
+        # End-to-end of the transport's output path: gTTS MP3 -> int16 (1, N).
+        pytest.importorskip("gtts")
+        pytest.importorskip("av")
+        tts = GTTSProvider()
+        try:
+            mp3 = tts.synthesize("Labas", language="lt")
+        except Exception as exc:
+            pytest.skip(f"gTTS unavailable (network?): {exc}")
+
+        frame = FastRTCVoiceTransport._decode_audio_to_int16(mp3, 24_000)
+        assert frame.dtype == np.int16
+        assert frame.ndim == 2 and frame.shape[0] == 1  # mono (1, N)
+        assert frame.shape[1] > 0  # actually decoded some audio

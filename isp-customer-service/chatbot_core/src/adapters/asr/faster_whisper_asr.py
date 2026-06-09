@@ -36,6 +36,9 @@ class FasterWhisperASR:
         compute_type: str = "int8",
         default_language: str | None = "lt",
         download_root: str | None = None,
+        beam_size: int = 5,
+        initial_prompt: str | None = None,
+        vad_filter: bool = False,
     ):
         """
         Configure the adapter (no model is loaded yet).
@@ -47,12 +50,23 @@ class FasterWhisperASR:
             compute_type: ctranslate2 compute type ("int8" is a good CPU default).
             default_language: ISO hint used when `transcribe(language=None)`.
             download_root: where to cache model weights (None = library default).
+            beam_size: decoding beam width. 5 = best quality; 1 (greedy) is the
+                main CPU-latency lever, trading a little accuracy for ~2x speed.
+            initial_prompt: text primed into the decoder to bias vocabulary and
+                spelling toward the domain (e.g. a short Lithuanian ISP-support
+                sentence). The single most effective lever for real-voice domain
+                terms and diacritics — it costs nothing at runtime.
+            vad_filter: run Silero VAD first to drop silence/noise before/after
+                speech. Reduces hallucination on real recordings.
         """
         self._model_size = model_size
         self._device = device
         self._compute_type = compute_type
         self._default_language = default_language
         self._download_root = download_root
+        self._beam_size = beam_size
+        self._initial_prompt = initial_prompt
+        self._vad_filter = vad_filter
         self._model: Any | None = None  # lazy WhisperModel
 
     def _ensure_model(self) -> Any:
@@ -97,7 +111,9 @@ class FasterWhisperASR:
         segments, _info = model.transcribe(
             samples,
             language=language or self._default_language,
-            beam_size=5,
+            beam_size=self._beam_size,
+            initial_prompt=self._initial_prompt,
+            vad_filter=self._vad_filter,
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()
         logger.debug("ASR transcript (%d chars): %s", len(text), text)
