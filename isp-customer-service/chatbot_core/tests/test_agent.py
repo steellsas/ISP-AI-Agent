@@ -392,6 +392,108 @@ class TestAgentBuildMessages:
         assert "Labas" in messages[-1]["content"]
 
 
+class TestHistoryWindow:
+    """Tests for history pruning (windowing) and durable-fact injection."""
+
+    def test_short_history_not_pruned(self):
+        """History at or below the window is returned unchanged."""
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.config.history_window_messages = 10
+        agent.state.messages = [{"role": "user", "content": f"m{i}"} for i in range(5)]
+
+        pruned = agent._prune_history(agent.state.messages)
+
+        assert pruned == agent.state.messages
+
+    def test_window_zero_disables_pruning(self):
+        """A window of 0 sends the full history."""
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.config.history_window_messages = 0
+        agent.state.messages = [{"role": "user", "content": f"m{i}"} for i in range(50)]
+
+        pruned = agent._prune_history(agent.state.messages)
+
+        assert len(pruned) == 50
+
+    def test_long_history_pruned_to_window(self):
+        """A long, tool-free history is trimmed to exactly the window size."""
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.config.history_window_messages = 6
+        # 20 alternating user/assistant text messages (no tool exchanges)
+        agent.state.messages = [
+            {"role": "user" if i % 2 == 0 else "assistant", "content": f"m{i}"} for i in range(20)
+        ]
+
+        pruned = agent._prune_history(agent.state.messages)
+
+        assert len(pruned) == 6
+        assert pruned[-1]["content"] == "m19"
+
+    def test_prune_never_starts_on_orphaned_tool(self):
+        """
+        If the window boundary lands on a tool result, it must expand left to
+        include the assistant(tool_calls) that owns it — otherwise the chat API
+        rejects the orphaned tool message.
+        """
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.config.history_window_messages = 3
+        # ...older..., assistant(tool_calls), tool, tool, assistant(text)
+        agent.state.messages = [
+            {"role": "user", "content": "old1"},
+            {"role": "assistant", "content": "old2"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "a"}, {"id": "b"}]},
+            {"role": "tool", "tool_call_id": "a", "content": "r1"},
+            {"role": "tool", "tool_call_id": "b", "content": "r2"},
+            {"role": "assistant", "content": "done"},
+        ]
+
+        pruned = agent._prune_history(agent.state.messages)
+
+        # window=3 would start on a tool result (index 3); must back up to the
+        # assistant that issued the tool_calls (index 2).
+        assert pruned[0].get("role") == "assistant"
+        assert pruned[0].get("tool_calls") is not None
+        # No tool result may appear without its owning assistant before it.
+        assert pruned[0]["role"] != "tool"
+
+    def test_build_messages_injects_known_facts(self):
+        """Resolved AgentState facts are appended to the system message."""
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.state.set_customer_info(
+            customer_id="C123",
+            name="Jonas Jonaitis",
+            address="Vilniaus g. 1, Vilnius",
+        )
+
+        messages = agent._build_messages()
+
+        system = messages[0]["content"]
+        assert messages[0]["role"] == "system"
+        assert "C123" in system
+        assert "Jonas Jonaitis" in system
+        assert "Vilniaus g. 1, Vilnius" in system
+
+    def test_state_facts_block_none_when_empty(self):
+        """No facts resolved yet -> no addendum (system prompt unchanged)."""
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012345")
+
+        assert agent._state_facts_block() is None
+        messages = agent._build_messages()
+        assert messages[0]["content"] == agent.system_prompt
+
+
 class TestPromptLoader:
     """Tests for prompt loading."""
 

@@ -47,6 +47,16 @@ class AgentConfig:
     debug_mode: bool = False
 
     # =========================================================================
+    # Conversation History Management
+    # =========================================================================
+    # Max number of recent history messages (excluding the system prompt) sent
+    # to the LLM each turn. Older messages are dropped from the *payload* only —
+    # AgentState.messages keeps the full transcript. Durable facts (customer,
+    # problem, ticket) are re-injected from AgentState, so pruning never loses
+    # resolved context. Set to 0 to disable pruning (send full history).
+    history_window_messages: int = 30
+
+    # =========================================================================
     # LLM Model Settings
     # =========================================================================
     model: str = "gpt-4o-mini"

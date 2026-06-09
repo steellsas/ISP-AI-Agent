@@ -173,18 +173,77 @@ class ReactAgent:
         return self.llm_stats.to_dict()
 
     def _build_messages(self, user_input: str = None) -> list:
-        """Build message list for LLM call."""
-        messages = [{"role": "system", "content": self.system_prompt}]
+        """
+        Build the message payload for one LLM call.
 
-        # Add conversation history
-        for msg in self.state.messages:
-            messages.append(msg)
+        Token cost grows with conversation length because the whole history is
+        resent every turn. To keep voice latency and cost bounded we send only
+        a recent *window* of history (see _prune_history) plus a compact block
+        of durable facts re-injected from AgentState (see _state_facts_block),
+        so pruning old messages never loses the resolved customer/problem/ticket
+        context. The full transcript still lives in AgentState.messages.
+        """
+        system_content = self.system_prompt
+        facts = self._state_facts_block()
+        if facts:
+            system_content = f"{system_content}\n\n{facts}"
+
+        messages = [{"role": "system", "content": system_content}]
+
+        # Add recent conversation history (windowed, tool-pairing safe)
+        messages.extend(self._prune_history(self.state.messages))
 
         # Add new user input if provided
         if user_input:
             messages.append({"role": "user", "content": user_input})
 
         return messages
+
+    def _prune_history(self, messages: list) -> list:
+        """
+        Return the most recent slice of history that fits the configured window.
+
+        Pairing safety: native tool calling requires every role:"tool" message to
+        be preceded by the assistant message that issued the matching tool_calls.
+        A naive "last N" cut can land mid-exchange and orphan a tool result, which
+        the chat API rejects (400). So if the window would start on a tool result,
+        we walk the start index left until it lands on the owning assistant
+        message, keeping the exchange intact.
+        """
+        window = self.config.history_window_messages
+        if window <= 0 or len(messages) <= window:
+            return list(messages)
+
+        start = len(messages) - window
+        while start > 0 and messages[start].get("role") == "tool":
+            start -= 1
+        return messages[start:]
+
+    def _state_facts_block(self) -> str | None:
+        """
+        Render durable facts from AgentState as a short system addendum.
+
+        These survive history pruning (they live in AgentState, not the message
+        log), so re-injecting them keeps the model from re-asking for details it
+        already resolved. Returns None when nothing has been resolved yet.
+        """
+        s = self.state
+        facts: list[str] = []
+        if s.customer_id:
+            facts.append(f"- Customer ID: {s.customer_id}")
+        if s.customer_name:
+            facts.append(f"- Customer name: {s.customer_name}")
+        if s.customer_address:
+            facts.append(f"- Address: {s.customer_address}")
+        if s.problem_type:
+            facts.append(f"- Problem type: {s.problem_type}")
+        if s.ticket_id:
+            facts.append(f"- Ticket: {s.ticket_id}")
+
+        if not facts:
+            return None
+
+        return "KNOWN FACTS (already resolved this call — do not ask again):\n" + "\n".join(facts)
 
     @staticmethod
     def _assistant_tool_message(message: Any) -> dict:
