@@ -177,6 +177,129 @@ def check_bandwidth_history(
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
+def get_packet_loss_summary(
+    db: DatabaseConnection, customer_id: str, window_hours: int = 24
+) -> dict[str, Any]:
+    """
+    Aggregate packet loss over a recent time window from ping_tests.
+
+    Unlike ping_test (latest single result), this rolls up AVG/MAX packet loss
+    across the window — the signal used to flag chronic loss. Owning this query
+    here keeps SQL inside the network-diagnostic adapter (callers stay DB-free).
+
+    Returns:
+        {"has_packet_loss": bool, "avg_packet_loss": float, "max_packet_loss":
+        float, "test_count": int, "last_test": str} when tests exist; otherwise
+        {"has_packet_loss": False, "test_count": 0}; on error
+        {"has_packet_loss": False, "error": str}.
+    """
+    logger.info(f"Summarizing packet loss for customer: {customer_id} ({window_hours}h)")
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    AVG(packet_loss_percent) as avg_loss,
+                    MAX(packet_loss_percent) as max_loss,
+                    COUNT(*) as test_count,
+                    MAX(timestamp) as last_test
+                FROM ping_tests
+                WHERE customer_id = ?
+                AND timestamp >= datetime('now', ?)
+                """,
+                (customer_id, f"-{window_hours} hours"),
+            )
+            result = cursor.fetchone()
+
+        if result and result["test_count"] and result["test_count"] > 0:
+            avg_loss = result["avg_loss"] or 0
+            return {
+                "has_packet_loss": avg_loss > 5,  # >5% is problematic
+                "avg_packet_loss": avg_loss,
+                "max_packet_loss": result["max_loss"] or 0,
+                "test_count": result["test_count"],
+                "last_test": result["last_test"],
+            }
+
+        return {"has_packet_loss": False, "test_count": 0}
+
+    except Exception as e:
+        logger.warning(f"Error summarizing packet loss: {e}")
+        return {"has_packet_loss": False, "error": str(e)}
+
+
+def get_bandwidth_summary(
+    db: DatabaseConnection, customer_id: str, window_hours: int = 24
+) -> dict[str, Any]:
+    """
+    Aggregate bandwidth_logs over a recent window to detect intermittent /
+    unstable connections (high jitter, packet loss, large download variance).
+
+    Unlike check_bandwidth_history (recent raw logs), this returns the rolled-up
+    diagnostic flags the agent consumes. SQL lives here, in the adapter.
+
+    Returns:
+        {"has_issues": bool, "avg_download_mbps": float, "min_download_mbps":
+        float, "max_download_mbps": float, "avg_latency_ms": float,
+        "avg_packet_loss": float, "avg_jitter": float, "high_jitter": bool,
+        "intermittent": bool, "log_count": int} when logs exist; otherwise
+        {"has_issues": False, "log_count": 0}; on error
+        {"has_issues": False, "error": str}.
+    """
+    logger.info(f"Summarizing bandwidth for customer: {customer_id} ({window_hours}h)")
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    AVG(download_mbps) as avg_download,
+                    MIN(download_mbps) as min_download,
+                    MAX(download_mbps) as max_download,
+                    AVG(latency_ms) as avg_latency,
+                    AVG(packet_loss_percent) as avg_packet_loss,
+                    AVG(jitter_ms) as avg_jitter,
+                    COUNT(*) as log_count
+                FROM bandwidth_logs
+                WHERE customer_id = ?
+                AND timestamp >= datetime('now', ?)
+                """,
+                (customer_id, f"-{window_hours} hours"),
+            )
+            result = cursor.fetchone()
+
+        if result and result["log_count"] and result["log_count"] > 0:
+            avg_download = result["avg_download"] or 0
+            min_download = result["min_download"] or 0
+            max_download = result["max_download"] or 0
+            avg_jitter = result["avg_jitter"] or 0
+            avg_packet_loss = result["avg_packet_loss"] or 0
+
+            # Detect intermittent: big variance in download speeds
+            variance = max_download - min_download if max_download else 0
+            is_intermittent = variance > (avg_download * 0.5) if avg_download > 0 else False
+
+            return {
+                "has_issues": avg_packet_loss > 5 or avg_jitter > 50 or is_intermittent,
+                "avg_download_mbps": avg_download,
+                "min_download_mbps": min_download,
+                "max_download_mbps": max_download,
+                "avg_latency_ms": result["avg_latency"] or 0,
+                "avg_packet_loss": avg_packet_loss,
+                "avg_jitter": avg_jitter,
+                "high_jitter": avg_jitter > 50,
+                "intermittent": is_intermittent,
+                "log_count": result["log_count"],
+            }
+
+        return {"has_issues": False, "log_count": 0}
+
+    except Exception as e:
+        logger.warning(f"Error summarizing bandwidth: {e}")
+        return {"has_issues": False, "error": str(e)}
+
+
 def check_signal_quality(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Check TV/Cable signal quality.
