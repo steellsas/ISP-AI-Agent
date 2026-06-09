@@ -283,8 +283,12 @@ retrieval changes, so every change below is verified against numbers, not eyebal
 
 ## Phase 3 — Voice vertical slice · `feat/voice-fastrtc`
 
-- [ ] `ASRProvider` (faster-whisper, LT) + `TTSProvider` (gTTS, LT) adapters
-- [ ] FastRTC `Stream` + `ReplyOnPause` handler → ASR → `AgentSession` → TTS
+- [x] `ASRProvider` (faster-whisper, LT) + `TTSProvider` (gTTS, LT) adapters,
+      plus framework-free `VoicePipeline` (ASR → `AgentSession` → TTS) behind
+      the ports. Engine imports deferred so adapters construct without the
+      `voice` extra; offline tests cover protocol conformance, empty inputs,
+      WAV/PCM decoding and pipeline orchestration. — *PR #28*
+- [ ] FastRTC `Stream` + `ReplyOnPause` handler → `VoicePipeline` (transport adapter)
 - [ ] `.ui.launch()` for instant testing
 
 **Done:** speak Lithuanian, agent replies by voice, consultation quality testable end-to-end.
@@ -397,10 +401,14 @@ never degrades consultation quality — the core "pro" safety net.
       tool layer; SQL moved into the network-diagnostic adapter
       (`get_packet_loss_summary` / `get_bandwidth_summary`); `ImportError` → clean
       `service_unavailable` envelope (PR #27).
-- [ ] **Next:** Phase 3 · voice vertical slice — `ASRProvider` (faster-whisper, LT) +
-      `TTSProvider` (gTTS, LT) adapters behind the existing ports, wired through
-      `AgentSession` via FastRTC `Stream` + `ReplyOnPause`. Identity-gate / `policy.yaml`
-      follows, tuned against real call transcripts.
+- [x] Phase 3 · voice adapters slice — `FasterWhisperASR` + `GTTSProvider` behind
+      the ASR/TTS ports, plus framework-free `VoicePipeline` (ASR → `AgentSession`
+      → TTS). Engine imports deferred; `voice` optional extra; offline tests green
+      (PR #28).
+- [ ] **Next:** Phase 3 · FastRTC transport adapter — `Stream` + `ReplyOnPause` →
+      `VoicePipeline`, `.ui.launch()` for live Lithuanian voice testing; add
+      `fastrtc` to the `voice` extra. Identity-gate / `policy.yaml` follows, tuned
+      against real call transcripts.
 - [ ] _(deferred)_ Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
       and the LT↔EN cross-lingual eval (lang metadata already in place). The
       cross-lingual / harder eval set is also what would finally show BM25's upside
