@@ -359,8 +359,16 @@ is MANDATORY agent behaviour (into the system prompt).
         disambiguation), **Sodo g. 122F, Vinkšnėnų k.** (house number with a letter —
         voice/STT robustness). ~11 customers: S1–S5 + the Dainų g. 7 pair + the
         recovery/edge customers; one found by phone, one carries an account code.
-- [ ] **2. `diagnose_connection` verdict tool (A variant, "thick"/deterministic) —
-      ORCHESTRATOR above both services.** It belongs to neither DB: it calls CRM
+- [x] **2. `diagnose_connection` verdict tool (A variant, "thick"/deterministic) —
+      ORCHESTRATOR above both services.** — *done: `agent/verdict.py`
+      (`gather_signals` I/O + pure `decide` tree, unit-testable without DB);
+      `get_billing_status` added to the CRM adapter (get_customer_details filters
+      to active plans, so suspension_reason was invisible); network adapter:
+      `check_port_status` SELECT +telemetry fields +switch_status,
+      new `get_switch_neighbor_summary` (assigned-port neighbour correlation);
+      thin tool wrapper + registration (English keys: side/group/action/reason/
+      agent_message, LT text in agent_message); 23 verdict tests (every tree
+      branch + S1-S5 integration over seed); suite 158/158 green.* It belongs to neither DB: it calls CRM
       (billing/suspension → B1) **and** network (outage/switch/port/MAC/CRC/DHCP →
       B2–B7), then applies the decision tree. One call gathers signals →
       `{pusė: tiekėjas|klientas|neaišku, grupė: B1..B7, veiksmas:

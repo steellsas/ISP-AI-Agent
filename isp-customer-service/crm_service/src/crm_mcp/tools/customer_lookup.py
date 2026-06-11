@@ -311,6 +311,65 @@ def lookup_customer_by_phone(db: DatabaseConnection, args: dict[str, Any]) -> di
         }
 
 
+def get_billing_status(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
+    """
+    Get the customer's billing/suspension state (diagnose_connection signal).
+
+    get_customer_details filters service plans to status='active', so a
+    suspended plan — and its suspension_reason — is invisible there. The
+    verdict's Step 1 (billing) needs exactly that, so this reads both the
+    account status and any suspended plans directly.
+
+    Args:
+        db: Database connection
+        customer_id: Customer ID
+
+    Returns:
+        {success, customer_status, suspended: bool, suspended_plans: [
+            {service_type, plan_name, suspension_reason}]}
+    """
+    logger.info(f"Getting billing status for customer: {customer_id}")
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT status FROM customers WHERE customer_id = ?",
+                (customer_id,),
+            )
+            customer = cursor.fetchone()
+
+        if not customer:
+            return {
+                "success": False,
+                "error": "customer_not_found",
+                "message": f"Klientas {customer_id} nerastas",
+            }
+
+        customer_status = dict(customer)["status"]
+
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT service_type, plan_name, suspension_reason
+                FROM service_plans
+                WHERE customer_id = ? AND status = 'suspended'
+                """,
+                (customer_id,),
+            )
+            suspended_plans = [dict(row) for row in cursor.fetchall()]
+
+        return {
+            "success": True,
+            "customer_status": customer_status,
+            "suspended": customer_status == "suspended" or bool(suspended_plans),
+            "suspended_plans": suspended_plans,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in get_billing_status: {e}", exc_info=True)
+        return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
 def get_customer_details(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     Get comprehensive customer information.

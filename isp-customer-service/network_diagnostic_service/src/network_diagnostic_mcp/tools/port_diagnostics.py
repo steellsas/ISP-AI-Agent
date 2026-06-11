@@ -72,11 +72,15 @@ def check_port_status(db: DatabaseConnection, customer_id: str) -> dict[str, Any
                         p.speed_mbps,
                         p.duplex,
                         p.vlan_id,
+                        p.observed_mac,
+                        p.crc_error_rate,
+                        p.dhcp_status,
                         p.last_status_change,
                         p.last_checked,
                         s.switch_name,
                         s.location,
-                        s.switch_id
+                        s.switch_id,
+                        s.status AS switch_status
                     FROM ports p
                     JOIN switches s ON p.switch_id = s.switch_id
                     WHERE p.equipment_mac = ?
@@ -125,6 +129,61 @@ def check_port_status(db: DatabaseConnection, customer_id: str) -> dict[str, Any
 
     except Exception as e:
         logger.error(f"Error checking port status: {e}", exc_info=True)
+        return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
+def get_switch_neighbor_summary(
+    db: DatabaseConnection, switch_id: str, exclude_customer_id: str | None = None
+) -> dict[str, Any]:
+    """
+    Summarize the state of the OTHER assigned ports on a switch.
+
+    Neighbour correlation for the diagnose_connection verdict: when the
+    customer's port is link-down, neighbours mostly UP means the fault is
+    local to the customer (B4/B5); neighbours DOWN too means a node-level
+    provider fault (B3).
+
+    Only customer-assigned ports count — unassigned ports are down by default
+    and would drown the signal.
+
+    Args:
+        db: Database connection
+        switch_id: Switch to summarize
+        exclude_customer_id: The customer being diagnosed (their own port is
+            excluded from the neighbour counts)
+
+    Returns:
+        {success, switch_id, neighbors_total, neighbors_up, neighbors_down}
+    """
+    logger.info(f"Summarizing neighbour ports on switch: {switch_id}")
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*) AS neighbors_total,
+                    SUM(CASE WHEN status = 'up' THEN 1 ELSE 0 END) AS neighbors_up,
+                    SUM(CASE WHEN status != 'up' THEN 1 ELSE 0 END) AS neighbors_down
+                FROM ports
+                WHERE switch_id = ?
+                  AND customer_id IS NOT NULL
+                  AND (? IS NULL OR customer_id != ?)
+                """,
+                (switch_id, exclude_customer_id, exclude_customer_id),
+            )
+            row = dict(cursor.fetchone())
+
+        return {
+            "success": True,
+            "switch_id": switch_id,
+            "neighbors_total": row["neighbors_total"] or 0,
+            "neighbors_up": row["neighbors_up"] or 0,
+            "neighbors_down": row["neighbors_down"] or 0,
+        }
+
+    except Exception as e:
+        logger.error(f"Error summarizing switch neighbours: {e}", exc_info=True)
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 

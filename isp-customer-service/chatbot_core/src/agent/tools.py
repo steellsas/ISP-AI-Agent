@@ -390,6 +390,54 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
         }
 
 
+def diagnose_connection(customer_id: str) -> dict:
+    """
+    Run the full no-internet diagnostic and return a deterministic verdict.
+
+    One call gathers billing + incident + switch + port telemetry + neighbour
+    signals and runs the decision tree (see agent/verdict.py). Returns
+    {verdict: {side, group, action, reason, agent_message}, signals: {...}}.
+    The verdict draws the provider/customer boundary; on side=customer or
+    unclear the agent continues the conversation (symptoms + RAG).
+
+    Args:
+        customer_id: Customer ID from CRM (identify the customer first)
+
+    Returns:
+        Verdict envelope or error
+    """
+    logger.info(f"[TOOL] diagnose_connection(customer_id={customer_id})")
+
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID is required for diagnosis.",
+        }
+
+    try:
+        from .verdict import diagnose
+
+        return diagnose(get_db(), customer_id)
+
+    except ImportError as e:
+        # Same policy as check_network_status: no raw-SQL fallback in the
+        # agent layer — if an adapter can't be imported, fail cleanly.
+        logger.error(f"Diagnostic modules not available: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "Diagnostic service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in diagnose_connection: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "diagnostic_error",
+            "message": f"Error diagnosing connection: {e}",
+        }
+
+
 def check_network_status(customer_id: str, address_id: str = None) -> dict:
     """
     Check network status for a customer.
@@ -957,6 +1005,26 @@ REAL_TOOLS = [
             "name": {"type": "string", "description": "Customer name"},
         },
         function=find_customer,
+    ),
+    Tool(
+        name="diagnose_connection",
+        description=(
+            "PRIMARY diagnostic for 'no internet' complaints. One call checks "
+            "billing, registered outages, switch, port and equipment signals and "
+            "returns a deterministic verdict: side (provider/customer/unclear), "
+            "group, action (inform/create_ticket/instruct) and agent_message with "
+            "guidance. Call it right after the customer is identified. Follow the "
+            "verdict's action; when side is customer/unclear, continue the "
+            "conversation to pin down the cause."
+        ),
+        parameters={
+            "customer_id": {
+                "type": "string",
+                "description": "Customer ID from CRM",
+                "required": True,
+            },
+        },
+        function=diagnose_connection,
     ),
     Tool(
         name="check_network_status",
