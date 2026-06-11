@@ -23,18 +23,25 @@ nesakant „nerandu, pakartokite visą adresą".
 
 ---
 
-## 2. Du identifikacijos režimai
+## 2. Identifikacijos režimai
 
-### 2.1 Telefonu (greitas kelias)
-- Fone pagal skambinančiojo numerį surandama sutartis.
-- **Rado → tik patvirtinti** (adresą arba pavardę). Toliau diagnostika.
-- Tai pagrindinis, lengviausias kelias — čia problemų nėra.
+> **PAKEISTA po CLI testavimo (2026-06):** adresas — PAGRINDINIS ir VISADA
+> klausiamas kelias. Telefonas — tik pagalbinė priemonė (kryžminiam
+> patikrinimui), nes skambinantysis dažnai nėra sutarties savininkas
+> (žmona, kaimynas, kitas numeris) — telefonu rasta sąskaita ≠ skambinantysis.
 
-### 2.2 Adresu + miestu (PAGRINDINIS atsarginis kelias — visas darbas čia)
-- Naudojamas, kai pagal telefoną nerasta (skambina ne nuo savo numerio,
-  numeris neregistruotas, slaptas ir pan.).
-- Vykdomas **hierarchiškai** (§3): miestas → gatvė → namas → butas.
-- **Tai pagrindinis paieškos kelias.**
+### 2.1 Adresu (PAGRINDINIS — visada klausiamas)
+- Agentas **visada paklausia adreso**, kuriuo neveikia paslauga.
+- **Klientas gali pasakyti VISĄ adresą vienu sakiniu** („Šiauliai, Dainų g. 5,
+  butas 5") — agentas privalo **pagauti visus paminėtus laukus iš karto**,
+  atkartoti ir patvirtinti. NEVERSTI eiti po vieną lygį, jei viskas pasakyta.
+- **Trūkstamus / nesuprastus laukus** pildo hierarchiškai (§3): klausia TIK to,
+  ko trūksta (pvz., pasakė gatvę ir namą be miesto → klausia tik miesto ir buto).
+
+### 2.2 Telefonu (PAGALBINĖ priemonė)
+- Skambinančiojo numeris žinomas fone — gali būti naudojamas **kryžminiam
+  patikrinimui** (pvz., adresas dviprasmiškas ar nerandamas), bet
+  **identifikacija visada patvirtinama per adresą, kurį pasako klientas**.
 
 ### 2.3 Abonento / sutarties kodu (jei klientas žino)
 - Jei klientas žino kodą — **greičiausias kelias**, tiesioginis radimas.
@@ -94,9 +101,9 @@ patvirtinti", lengva atsistatyti po klaidos (perklausi **tik tą vieną** lygį)
 
 | Kelias | Prioritetas | Statusas dabar | Reikia |
 |---|---|---|---|
-| **Adresas + miestas (hierarchinis)** | **Pagrindinis** | ⚠️ fuzzy yra, bet balso kelias naivus | Per-lygio lookup + normalizatoriaus prijungimas |
-| **Telefono nr.** | Greitas (jei sutampa) | ✅ veikia (`lookup_customer_by_phone`) | Patvirtinimo žingsnis |
-| **Abonento / sutarties kodas** | Greičiausias (jei žino) | ❌ nėra lauko/tool'o | Lauko + lookup |
+| **Adresas (pilnas sakinys ARBA hierarchinis pildymas)** | **Pagrindinis — VISADA klausiamas** | ⚠️ fuzzy yra, bet: butas nepasiekia įrankio (naivus parse), „nerandu" vietoj „kuris butas?" | Per-lygio lookup su butu + pilno adreso parse + normalizatoriaus prijungimas |
+| **Telefono nr.** | Pagalbinis (kryžminis patikrinimas) | ✅ veikia (`lookup_customer_by_phone`) | Naudoti tik kaip užuominą, ne identifikaciją |
+| **Abonento / sutarties kodas** | Greičiausias (jei žino) | ⚠️ laukas DB yra (`account_code`), tool'o nėra | Lookup tool |
 | **Pavardė** | Tik patvirtinimui/disambiguacijai | ❌ nėra | Patvirtinimo logika (ne pilna vardo paieška) |
 
 ---
@@ -185,6 +192,64 @@ telemetrijos būsena pagal scenarijų — žr. demo planą) + 2 sutarčių pora
 Dainų g. 7 (disambiguacija) + recovery/edge klientai (Žeimių 12-6, Aušros 8,
 Sodo 122F, S. Dariaus ir S. Girėno 25-45). Vienas randamas **telefonu**
 (greitas kelias), vienas turi **abonento kodą**.
+
+### 8.2 `resolve_address` kontraktas — SUTARTA (4 žingsnio šerdis)
+
+**Principas — „rich result":** įrankis ne tik ieško, bet grąžina **diagnozę, KUR
+nesutapo**, ir alternatyvas — agentas iškart žino, ko tikslintis, be papildomų
+spėliojimo ratų. (Tas pats šablonas kaip `diagnose_connection` verdiktas.)
+
+**Kvietimas — dalinė įvestis LEIDŽIAMA pagal dizainą:**
+`resolve_address(city?, street?, house_number?, apartment_number?, surname?)`
+
+**„Agentas mąstytojas" — tikrina iškart:** vos turėdamas miestą+gatvę agentas
+kviečia įrankį su tuo, ką turi. Jei gatvės mieste nėra — sužino PRIEŠ
+klausdamas namo. Klaida pagaunama anksčiausiame taške → greičiausias radimas.
+
+**Grąžinama forma (konceptualiai):**
+```
+{
+  success: bool,                  // true = vienareikšmiškai rastas klientas
+  customer_id: ... | null,
+  resolution: {
+    city:      {given, status: ok|not_found|ambiguous, candidates: [...]},
+    street:    {given, status: ok|not_in_city|unclear,
+                found_elsewhere: [{city, district}],   // ta pati gatvė kitur
+                fuzzy_candidates: [...]},               // Dainų / Dailės
+    house:     {given, status: ok|not_found|skipped,
+                found_elsewhere: [...]},                // namas yra kitoje vietovėje
+    apartment: {given, status: ok|required|skipped,
+                contracts_count: N}                     // butų/sutarčių kiekis name
+  },
+  hint: "trumpas paaiškinimas agentui, ką tikslintis"
+}
+```
+
+**Nesutapimo klasės → agento klausimai:**
+| Įrankis grąžina | Agentas klausia |
+|---|---|
+| `street.not_in_city` + `found_elsewhere: Ginkūnai (Šiaulių r.)` | „Gal Šiaulių rajonas, Ginkūnai?" |
+| `street.ok`, bet `house.not_found` + `found_elsewhere` | „Šiauliuose tokio namo nėra, bet yra Ginkūnuose — gal ten?" |
+| `street.fuzzy_candidates: [Dainų, Dailės]` | „Dainų ar Dailės gatvė?" |
+| `apartment.required, contracts_count: 2` | buto numerio ARBA pavardės |
+| `success: true` | „Radau — [adresas], taip?" |
+
+**Gatvių pavadinimų atsparumas (sudėtiniai pavadinimai):**
+- Normalizacija: numetami inicialai („S."), jungtukai („ir"), „g./gatvė" →
+  `S. Dariaus ir S. Girėno g.` → žodžių aibė `{dariaus, girėno}`.
+- **Token-set palyginimas:** „Girėno Dariaus" → `{girėno, dariaus}` → 100 %
+  sutapimas nepriklausomai nuo žodžių tvarkos; „Dariaus" → dalinis → kandidatas
+  su patvirtinimu.
+- Galutinis balas = max(Levenshtein, token-set) — trumpiems pavadinimams
+  (Dainų/Dailės) toliau veikia raidinis fuzzy.
+
+**PII:** kandidatuose tik adresų struktūra ir skaičiai, niekada pavardės.
+`surname` — tik patvirtinimo parametras (`matched: true/false`); agentas
+pavardės pirmas neištaria.
+
+**Darbo pasidalijimas:** `resolve_address` — pagrindinė identifikacija;
+`find_customer(phone)` lieka pagalbiniam kryžminiam patikrinimui;
+`find_customer(account_code)` — greičiausias kelias žinantiems kodą.
 
 - **Per-lygio lookup tool'ai** (vietoj vieno „rask pagal adresą"):
   gatvės pagal miestą+fragmentą; namai pagal gatvę; sutartis pagal adresą(+pavardę).

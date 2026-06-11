@@ -375,10 +375,20 @@ is MANDATORY agent behaviour (into the system prompt).
       informuoti|kurti_tiketą|instruktuoti, priežastis, signalai{...}, žinutė_agentui}`.
       The decision tree (Steps 1–4, BŪSENA A/B/C) lives in code; on `klientas`/`neaišku`
       it hands off to the conversation (does NOT decide the final cause). Fast for voice.
-- [ ] **3. System-prompt rewrite.** Bakes in: hierarchical identification, two-speed
-      latency flow (fast path = incident/billing → inform & terminate instantly; slow
-      path = full diagnostics with announced delay), MANDATORY fill-wait-with-symptoms
-      + parallel diagnostics, and A/B/C branch routing after the verdict.
+- [x] **3. System-prompt rewrite.** — *done + CLI-tested (3 scripted scenarios).*
+      Identification is **address-first** (changed during testing: the phone is a
+      HELPER only — mandatory fallback when the address lookup fails, anchored to
+      the customer-stated address); full-sentence address capture (no forced
+      level-by-level), echo+confirm, re-ask only the failing level, never re-ask
+      given info; hard anti-hallucination rules (never invent customer_id/address;
+      no diagnostics before identification — both observed in CLI and fixed);
+      verdict routing (inform = fast path, create_ticket = no-time-promise wording,
+      instruct = announce + fill-wait-with-symptoms + one-step-at-a-time);
+      waiting behaviour; filtering zone; formal "Jūs"; vocabulary ("gedimo
+      registracija", never "bilietas"). Known CLI-verified limits left for step 4:
+      apartment never reaches the lookup (naive parse), district/village strings
+      mangle the city field. Prompt polish backlog: B1 reason wording, surname
+      offered as search in one turn, double address confirm.
 - [ ] **4. Identification lookup improvements.** Wire the existing
       `normalize_street_name` + `fuzzy_match_street` into the voice/dialog path;
       per-level lookup (city → street → house → apartment); account-code lookup;
