@@ -312,7 +312,11 @@ is MANDATORY agent behaviour (into the system prompt).
 
 **Build order (text-to-text):**
 
-- [ ] **1. Seed customers S1–S5 (mock telemetry via seed DB).** Each scenario
+- [x] **1. Seed customers S1–S5 (mock telemetry via seed DB).** — *done: additive
+      `database/seeds/demo_internet.sql` (CUST101–111, SW101–103, streets+district);
+      schema: `ports` +`observed_mac`/`crc_error_rate`/`dhcp_status`, `area_outages`
+      +`switch_id` (OUT001 linked to SW001), `customers` +`account_code`, `streets`
+      +`district`; wired into `conftest.py` + `seed_data.py`; suite 135/135 green.* Each scenario
       customer carries a known telemetry state (billing / incident / switch / port
       / MAC / CRC / DHCP) so `diagnose_connection` returns a deterministic verdict.
       Mechanism approved: per-scenario seed rows feed the mock telemetry (extends the

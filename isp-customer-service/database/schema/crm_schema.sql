@@ -15,11 +15,15 @@ CREATE TABLE IF NOT EXISTS customers (
     last_name TEXT NOT NULL,
     phone TEXT,
     email TEXT,
+    -- Abonento/sutarties kodas — the customer-facing account number printed on
+    -- invoices. Fastest identification path when the caller knows it.
+    account_code TEXT UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     status TEXT DEFAULT 'active' CHECK(status IN ('active', 'suspended', 'cancelled')),
     notes TEXT
 );
 
+CREATE INDEX idx_customers_account_code ON customers(account_code);
 CREATE INDEX idx_customers_phone ON customers(phone);
 CREATE INDEX idx_customers_email ON customers(email);
 CREATE INDEX idx_customers_status ON customers(status);
@@ -180,6 +184,10 @@ CREATE TABLE IF NOT EXISTS streets (
     city TEXT NOT NULL,
     street_name TEXT NOT NULL,
     street_type TEXT,
+    -- Administracinis vienetas virš miesto/kaimo (pvz. 'Šiaulių r.'); NULL =
+    -- miestas pats sau. Leidžia disambiguaciją „ne Šiauliai, o Šiaulių rajonas"
+    -- ir „kurio kaimo?" (Ginkūnai / Bubiai / Vinkšnėnai).
+    district TEXT,
     postal_code_prefix TEXT,
     UNIQUE(city, street_name)
 );
@@ -193,7 +201,7 @@ CREATE INDEX idx_streets_name ON streets(street_name);
 
 -- View: Active customers with their primary address
 CREATE VIEW IF NOT EXISTS active_customers_with_address AS
-SELECT 
+SELECT
     c.customer_id,
     c.first_name,
     c.last_name,
@@ -210,7 +218,7 @@ WHERE c.status = 'active';
 
 -- View: Customer service summary
 CREATE VIEW IF NOT EXISTS customer_service_summary AS
-SELECT 
+SELECT
     c.customer_id,
     c.first_name,
     c.last_name,

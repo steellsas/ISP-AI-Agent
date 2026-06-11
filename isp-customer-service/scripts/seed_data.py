@@ -79,6 +79,12 @@ def seed_database():
 
         print("   Network data loaded")
 
+        # Demo slice last - it references rows from the base seeds (SW001, OUT001)
+        print("Seeding 'neveikia internetas' demo slice...")
+        demo_sql = load_seed_file("demo_internet")
+        cursor.executescript(demo_sql)
+        print("   Demo slice loaded (CUST101-111, SW101-103)")
+
         # Commit changes
         conn.commit()
         print("commited")
