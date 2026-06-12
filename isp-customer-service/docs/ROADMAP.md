@@ -406,8 +406,9 @@ is MANDATORY agent behaviour (into the system prompt).
       ticket). Suite 184/184. **First concrete cut of the deferred Phase 2
       "Identity gate + policy.yaml" item** — tune against real transcripts later.
       Manual test script: `chatbot_core/docs/cli_testavimo_scenarijai.md`.
-- [ ] **4b. Prompt polish (CLI-testing findings — own commit).** Agreed after the
-      step-4 manual CLI round:
+- [x] **4b. Prompt polish (CLI-testing findings — own commit).** — *done
+      (prompt-only; per user decision validated within the step-6 RAG testing
+      round rather than its own smoke).* Agreed after the step-4 manual CLI round:
       - **Phone↔address cross-check:** as soon as the customer names a street, peek
         at the caller's phone account; if its address matches the spoken street/house,
         offer the full address for confirmation in ONE turn ("Ar skambinate dėl
