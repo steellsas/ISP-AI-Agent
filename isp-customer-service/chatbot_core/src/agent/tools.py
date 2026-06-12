@@ -292,19 +292,81 @@ def _format_customer_profile(details: dict) -> dict:
     }
 
 
-def find_customer(phone: str = None, address: str = None, name: str = None) -> dict:
+def resolve_address(
+    city: str = None,
+    street: str = None,
+    house_number: str = None,
+    apartment_number: str = None,
+    surname: str = None,
+) -> dict:
+    """
+    Resolve a (possibly partial) spoken address into a customer — rich result.
+
+    Returns a per-level diagnosis (city/street/house/apartment status,
+    alternatives, found_elsewhere) plus a `hint` telling the agent what to
+    clarify next. On unique success the full normalized customer profile is
+    attached (same shape as find_customer).
+    """
+    logger.info(
+        f"[TOOL] resolve_address(city={city!r}, street={street!r}, house={house_number!r}, "
+        f"apt={apartment_number!r}, surname={'<given>' if surname else None})"
+    )
+
+    try:
+        db = get_db()
+        from crm_mcp.tools.address_resolver import resolve_address as _resolve
+        from crm_mcp.tools.customer_lookup import get_customer_details
+
+        result = _resolve(
+            db,
+            {
+                "city": city,
+                "street": street,
+                "house_number": house_number,
+                "apartment_number": apartment_number,
+                "surname": surname,
+            },
+        )
+
+        # Unique hit -> attach the same normalized profile find_customer returns.
+        if result.get("success") and result.get("customer_id"):
+            details = get_customer_details(db, result["customer_id"])
+            if details.get("success"):
+                result["customer"] = _format_customer_profile(details)
+        return result
+
+    except ImportError as e:
+        logger.error(f"Import error in resolve_address: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "Address resolver service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in resolve_address: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "internal_error",
+            "message": f"Error resolving address: {e}",
+        }
+
+
+def find_customer(
+    phone: str = None, address: str = None, name: str = None, account_code: str = None
+) -> dict:
     """
     Find customer in CRM database.
 
-    A search key (phone or address today; name / account code later) only
-    *resolves* a customer_id. The full profile is then fetched once by
-    customer_id via get_customer_details, so every lookup path returns the
-    same normalized shape (see _format_customer_profile).
+    A search key (phone / account code / address) only *resolves* a
+    customer_id. The full profile is then fetched once by customer_id via
+    get_customer_details, so every lookup path returns the same normalized
+    shape (see _format_customer_profile).
 
     Args:
         phone: Phone number (e.g., '+37061234567' or '861234567')
-        address: Address string (will be parsed)
-        name: Customer name
+        address: Address string (legacy single-string path; prefer resolve_address)
+        name: Customer name (not supported — surname is confirm-only)
+        account_code: Invoice account code (abonento kodas), e.g. 'AB-10101'
 
     Returns:
         Normalized customer profile or error
@@ -313,11 +375,12 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
     # regex can't catch, so log only whether each lookup path was provided.
     logger.info(
         f"[TOOL] find_customer(phone={phone}, by_address={address is not None}, "
-        f"by_name={name is not None})"
+        f"by_name={name is not None}, by_account_code={account_code is not None})"
     )
 
     try:
         db = get_db()
+        from crm_mcp.tools.address_resolver import lookup_customer_by_account_code
         from crm_mcp.tools.customer_lookup import (
             get_customer_details,
             lookup_customer_by_address,
@@ -327,7 +390,17 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
         customer_id = None
 
         # --- Resolve customer_id from whichever search key was provided ----
-        if phone:
+        if account_code:
+            result = lookup_customer_by_account_code(db, account_code)
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "error": result.get("error", "customer_not_found"),
+                    "message": result.get("message", "Customer not found"),
+                }
+            customer_id = result.get("customer", {}).get("customer_id")
+
+        elif phone:
             result = lookup_customer_by_phone(db, {"phone_number": phone})
             if not result.get("success"):
                 return {
@@ -991,18 +1064,66 @@ def run_ping_test(customer_id: str) -> dict:
 
 REAL_TOOLS = [
     Tool(
+        name="resolve_address",
+        description=(
+            "PRIMARY identification tool. Resolve the customer's spoken service "
+            "address — accepts PARTIAL input by design: call it as soon as you have "
+            "city+street to verify early, then again with more parts. Returns a "
+            "per-level diagnosis (city/street/house/apartment: ok / not_found / "
+            "unclear / found_elsewhere alternatives / contracts_count) plus a 'hint' "
+            "telling you exactly what to clarify next. On unique success returns the "
+            "full customer profile."
+        ),
+        parameters={
+            "city": {
+                "type": "string",
+                "description": (
+                    "City or village as the customer said it. When BOTH a district "
+                    "and a village are named ('Šiaulių rajonas, Bubių kaimas'), pass "
+                    "the WHOLE phrase or at least the village — NEVER drop the "
+                    "village and pass only 'Šiaulių rajonas'."
+                ),
+            },
+            "street": {
+                "type": "string",
+                "description": "Street as heard (e.g. 'Dainų g', 'Girėno Dariaus')",
+            },
+            "house_number": {
+                "type": "string",
+                "description": "House number, may contain a letter (e.g. '12', '122F')",
+            },
+            "apartment_number": {
+                "type": "string",
+                "description": "Apartment number if the customer gave one",
+            },
+            "surname": {
+                "type": "string",
+                "description": "ONLY for confirmation/disambiguation when the tool asks — the customer says it first",
+            },
+        },
+        function=resolve_address,
+    ),
+    Tool(
         name="find_customer",
-        description="Search for customer in CRM by phone number, address, or name. Use this FIRST to identify who is calling.",
+        description=(
+            "Helper lookups: by the caller's phone (mandatory fallback when "
+            "resolve_address fails) or by account code (abonento kodas — fastest "
+            "path when the customer knows it). For addresses use resolve_address."
+        ),
         parameters={
             "phone": {
                 "type": "string",
                 "description": "Phone number (e.g., +37061234567 or 861234567)",
             },
+            "account_code": {
+                "type": "string",
+                "description": "Invoice account code (abonento kodas), e.g. 'AB-10101'",
+            },
             "address": {
                 "type": "string",
-                "description": "Address to search (format: 'City, Street HouseNumber')",
+                "description": "Legacy single-string address (prefer resolve_address)",
             },
-            "name": {"type": "string", "description": "Customer name"},
+            "name": {"type": "string", "description": "Customer name (not supported)"},
         },
         function=find_customer,
     ),

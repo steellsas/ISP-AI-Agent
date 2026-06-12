@@ -389,19 +389,62 @@ is MANDATORY agent behaviour (into the system prompt).
       apartment never reaches the lookup (naive parse), district/village strings
       mangle the city field. Prompt polish backlog: B1 reason wording, surname
       offered as search in one turn, double address confirm.
-- [ ] **4. Identification lookup improvements.** Wire the existing
-      `normalize_street_name` + `fuzzy_match_street` into the voice/dialog path;
-      per-level lookup (city → street → house → apartment); account-code lookup;
-      surname-for-confirmation-only (PII: agent never states the surname first).
-      **Connects to the deferred Phase 2 "Identity gate + `policy.yaml`" item** — this
-      is the concrete first cut of that lookup, to be tuned later against real
-      transcripts.
+- [x] **4. Identification lookup improvements — `resolve_address` rich-result tool.**
+      — *done (contract: design doc §8.2).* New CRM adapter `address_resolver.py`:
+      per-level diagnosis (city/street/house/apartment status + alternatives +
+      LT `hint` telling the agent the exact next question); token-set street
+      matching (compound names with initials, any word order — "Girėno Dariaus"
+      → S. Dariaus ir S. Girėno g.); district+village in one phrase ("Šiaulių
+      rajonas, Bubių kaimas" → Bubiai, genitive-tolerant); strong
+      street-elsewhere beats weak in-city fuzzy (Žeimių → Ginkūnai recovery, not
+      "gal Žemaitės?"); apartment finally reaches the DB (separate param);
+      contracts_count → ask flat or surname; surname confirm-only, no PII leak
+      in hints. `find_customer` gained `account_code`; agent state now tracks
+      the customer from resolve_address too. 26 resolver tests; scripted
+      AgentSession smoke: all 4 previously-failing scenarios pass (flat found
+      first try, village extracted, Žeimių recovery dialog, account-code → B3
+      ticket). Suite 184/184. **First concrete cut of the deferred Phase 2
+      "Identity gate + policy.yaml" item** — tune against real transcripts later.
+      Manual test script: `chatbot_core/docs/cli_testavimo_scenarijai.md`.
+- [ ] **4b. Prompt polish (CLI-testing findings — own commit).** Agreed after the
+      step-4 manual CLI round:
+      - **Phone↔address cross-check:** as soon as the customer names a street, peek
+        at the caller's phone account; if its address matches the spoken street/house,
+        offer the full address for confirmation in ONE turn ("Ar skambinate dėl
+        Tilžės g. 60-7?") instead of asking city/flat separately.
+      - **Early outage fast-path (mass-fault shortcut):** once the STREET is
+        confirmed (no apartment needed!), call check_outages(city+street); active
+        outage → inform + ETA and FINISH — no full identification, no flat question
+        (everyone at that address is down anyway).
+      - Convert spoken Lithuanian numerals to digits before tool calls ("dvylika"
+        → 12; observed: house='dvulika' passed verbatim).
+      - **Harden the phone-fallback anchor rule** — observed violation: address
+        lookup failed, fallback found a DIFFERENT street's account and the agent
+        created a ticket for the wrong address. The found account's street MUST
+        match the spoken one, otherwise say "not found", never adopt the account.
+      - Never print bracketed placeholders (observed verbatim output: "Priežastis:
+        [priežastis iš agento žinutės]"); B1 must quote the exact verdict reason.
+      - Surname is never offered as a search key; avoid double address confirmation;
+        after account-code identification still confirm the address briefly.
 - [ ] **5. Simulated tools `update_mac` / `reset_port` (stubs).** Log + "success"
       message, no real infrastructure — demonstrate the B6/B4 action flow. Detail
       level of the simulated responses still open (so the dialog feels real).
+      Also needed by the B-Plan bridge content in step 6 (MAC binding is its core
+      action). Observed in CLI: without the tool the model SAID "Dabar atnaujinsiu
+      MAC adresą" and faked it via check_network_status — the stub closes this hole.
 - [ ] **6. RAG knowledge-base entries for S4/S5 instruction steps.** Step-by-step
       customer-side guidance (power/cable check; Factory Reset → DHCP; Wi-Fi module),
       delivered one step at a time. Re-run the eval harness after content changes.
+      **EXPANDED (approved 2026-06-12): "bridge until the technician" content —
+      the B-Plan moves INTO scope** on the knowledge side. Dead router with a live
+      line (internet reaches the home; router shows no life, TV dead too):
+      - (a) connect the WAN cable DIRECTLY to one device (PC/laptop) + bind its MAC
+        (`update_mac`) → temporary internet on one device;
+      - (b) the customer uses/buys their OWN router → bind its MAC → full service.
+      Goal: keep the customer online while waiting for the technician / router
+      replacement. KB must teach the agent WHEN to offer it (router dead, line OK)
+      and the exact steps + that MAC binding is required. Depends on step 5's
+      `update_mac` stub.
 - [ ] **7. CLI text-to-text test.** Validates LOGIC/dialog flow (identification,
       verdict → A/B/C routing, instruction steps, ticket creation, filtering zone).
       Voice runtime (barge-in, real latency, state-aware timeouts) is documented in

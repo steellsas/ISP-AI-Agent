@@ -32,8 +32,15 @@
 2. **SMS — neįtraukiam visai.** Pašalinta iš srauto.
 3. **Simuliaciniai (stub) tool'ai** — kelios funkcijos imituojamos (logas +
    „sėkmės" pranešimas), kad parodytume srautą be tikros infrastruktūros.
-4. **Kiti veiksmai vėliau** (TR-069 auto-konfig, Wi-Fi slaptažodžio nuskaitymas,
-   B-Plan „laidas tiesiai į PC") — tobulinant ir sprendžiant realias problemas.
+4. **Kiti veiksmai vėliau** (TR-069 auto-konfig, Wi-Fi slaptažodžio nuskaitymas) —
+   tobulinant ir sprendžiant realias problemas.
+   **PAKEISTA (2026-06-12): B-Plan grįžta į apimtį** — „tiltas iki techniko":
+   kai routeris miręs, bet linija gyva (internetas ateina iki namo, TV irgi
+   nerodo): (a) WAN laidas **tiesiai į vieną įrenginį** + MAC pririšimas
+   (`update_mac`) → laikinas internetas; (b) klientas pasijungia / nusiperka
+   **savo routerį** → pririšame jo MAC → pilna paslauga. Esmė: padėti klientui
+   išlaukti techniko. Įgyvendinama per **RAG turinį (6 žingsnis)** + `update_mac`
+   stub (5 žingsnis).
 5. **Latencijos maskavimas = dviejų greičių srautas** (žr. §4): greiti
    „užbaigiantys" patikrinimai (avarija/skola) — momentiniai; lėta diagnostika —
    su delsimu ir užpildymu pokalbiu.

@@ -101,10 +101,10 @@ patvirtinti", lengva atsistatyti po klaidos (perklausi **tik tą vieną** lygį)
 
 | Kelias | Prioritetas | Statusas dabar | Reikia |
 |---|---|---|---|
-| **Adresas (pilnas sakinys ARBA hierarchinis pildymas)** | **Pagrindinis — VISADA klausiamas** | ⚠️ fuzzy yra, bet: butas nepasiekia įrankio (naivus parse), „nerandu" vietoj „kuris butas?" | Per-lygio lookup su butu + pilno adreso parse + normalizatoriaus prijungimas |
-| **Telefono nr.** | Pagalbinis (kryžminis patikrinimas) | ✅ veikia (`lookup_customer_by_phone`) | Naudoti tik kaip užuominą, ne identifikaciją |
-| **Abonento / sutarties kodas** | Greičiausias (jei žino) | ⚠️ laukas DB yra (`account_code`), tool'o nėra | Lookup tool |
-| **Pavardė** | Tik patvirtinimui/disambiguacijai | ❌ nėra | Patvirtinimo logika (ne pilna vardo paieška) |
+| **Adresas (pilnas sakinys ARBA hierarchinis pildymas)** | **Pagrindinis — VISADA klausiamas** | ✅ **įgyvendinta** — `resolve_address` (§8.2): butas pasiekia DB, per-lygio diagnozė, token-set gatvės, rajonas+kaimas, recovery | Derinimas su realiais transkriptais (Identity gate fazė) |
+| **Telefono nr.** | Pagalbinis (kryžminis patikrinimas) | ✅ veikia kaip privalomas fallback (prompt'e) | — |
+| **Abonento / sutarties kodas** | Greičiausias (jei žino) | ✅ **įgyvendinta** — `find_customer(account_code)` | — |
+| **Pavardė** | Tik patvirtinimui/disambiguacijai | ✅ **įgyvendinta** — `resolve_address(surname=...)`, be PII nutekėjimo | — |
 
 ---
 

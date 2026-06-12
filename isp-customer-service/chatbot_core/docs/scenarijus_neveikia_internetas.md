@@ -201,7 +201,10 @@ Tikslas: per kelis klausimus priskirti pokalbį grupei.
       (`update_mac` / `reset_port`); realus API vėliau.
 - [x] **Nuotolinis prievado/sesijos atstatymas** (B3 „port freeze") — dengia tas pats
       simuliuotas `reset_port`.
-- [x] **B-Plan** — **vėliau** (ne demo apimtis).
+- [x] **B-Plan** — **GRĮŽO Į APIMTĮ (2026-06-12)** kaip „tiltas iki techniko":
+      miręs routeris + gyva linija → (a) laidas tiesiai į įrenginį + MAC pririšimas,
+      arba (b) kliento nuosavas routeris + MAC pririšimas. Per RAG turinį (6 ž.) +
+      `update_mac` (5 ž.).
 - [x] **SMS** — **išmesta visai** (ne demo, ne vėliau šiame plane).
 - [x] **TR-069 auto-konfigūracija** — **vėliau**.
 - [x] **Wi-Fi slaptažodžio nuskaitymas per API** — **vėliau**.
