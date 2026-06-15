@@ -277,19 +277,23 @@ class ReactAgent:
         try:
             obs_data = json.loads(observation)
 
-            if action == "find_customer" and obs_data.get("success"):
-                addresses = obs_data.get("addresses") or []
-                # Normalized find_customer addresses carry `full_address`
-                # (the primary one first when available).
+            if action in ("find_customer", "resolve_address") and obs_data.get("success"):
+                # resolve_address nests the normalized profile under `customer`;
+                # find_customer returns it flat. Same shape either way.
+                profile = obs_data.get("customer") or obs_data
+                addresses = profile.get("addresses") or []
+                # Normalized addresses carry `full_address` (primary first
+                # when available).
                 primary = next(
                     (a for a in addresses if a.get("is_primary")),
                     addresses[0] if addresses else {},
                 )
-                self.state.set_customer_info(
-                    customer_id=obs_data.get("customer_id"),
-                    name=obs_data.get("name"),
-                    address=primary.get("full_address"),
-                )
+                if profile.get("customer_id"):
+                    self.state.set_customer_info(
+                        customer_id=profile.get("customer_id"),
+                        name=profile.get("name"),
+                        address=primary.get("full_address"),
+                    )
 
             elif action == "create_ticket" and obs_data.get("success"):
                 self.state.ticket_id = obs_data.get("ticket_id")

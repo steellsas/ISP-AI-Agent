@@ -19,6 +19,14 @@
     { "q": "noriu pakeisti routerį, sena įranga", "docs": ["equipment_replacement.md"] },
     { "q": "kada atvyks technikas", "docs": ["technician_visit.md"] },
     { "q": "kiek kainuoja techniko vizitas", "docs": ["technician_visit.md"] },
-    { "q": "koks interneto greitis pagal mano planą", "docs": ["common_questions.md", "internet_slow.md"] }
+    { "q": "koks interneto greitis pagal mano planą", "docs": ["common_questions.md", "internet_slow.md"] },
+    { "q": "pakeičiau routerį ir internetas nebeveikia", "docs": ["internet_pakeistas_routeris_mac.md"] },
+    { "q": "routeris sugedo kaip laikinai gauti internetą", "docs": ["internet_sugedes_routeris_tiltas.md"] },
+    { "q": "ar galima prijungti interneto laidą tiesiai prie kompiuterio", "docs": ["internet_sugedes_routeris_tiltas.md"] },
+    { "q": "po factory reset neveikia internetas", "docs": ["internet_factory_reset_dhcp.md"] },
+    { "q": "kaip nustatyti DHCP routerio nustatymuose", "docs": ["internet_factory_reset_dhcp.md", "router_tplink.md"] },
+    { "q": "nemoku prisijungti prie wifi telefone", "docs": ["wifi_problems.md"] },
+    { "q": "perkėliau routerį į kitą vietą ir dingo internetas", "docs": ["wifi_problems.md", "internet_no_connection.md"] },
+    { "q": "pamiršau wifi slaptažodį ar galite pasakyti", "docs": ["wifi_problems.md"] }
   ]
 }

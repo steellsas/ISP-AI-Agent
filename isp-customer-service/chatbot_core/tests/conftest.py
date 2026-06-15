@@ -35,9 +35,10 @@ _PROJECT_ROOT = _CHATBOT_CORE.parent  # isp-customer-service
 _DB_PATH = _PROJECT_ROOT / "database" / "isp_database.db"
 _PROD_INDEX = _CHATBOT_CORE / "src" / "rag" / "vector_store_data" / "production_index.faiss"
 
-# Order matters: schemas first (DDL), then seeds (DML).
+# Order matters: schemas first (DDL), then seeds (DML). demo_internet last —
+# it references rows from the base seeds (SW001, OUT001).
 _SCHEMA_FILES = ("crm_schema", "network_schema")
-_SEED_FILES = ("customers", "addresses", "service_plans", "equipment", "network")
+_SEED_FILES = ("customers", "addresses", "service_plans", "equipment", "network", "demo_internet")
 
 
 def _build_test_database() -> None:

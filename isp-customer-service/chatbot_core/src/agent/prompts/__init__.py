@@ -27,10 +27,10 @@ def get_language_instruction(language: str) -> str:
         Instruction string for LLM
     """
     if language == "lt":
-        return """You MUST respond in INFORMAL Lithuanian ("tu" form). This is mandatory!
-- ✅ CORRECT: "Ar gali patikrinti?", "Palauk, patikrinsiu"
-- ❌ WRONG: "Ar galėtumėte?", "Jūsų", "gerbiamas"
-- NEVER use formal "Jūs" - always use "tu\""""
+        return """You MUST respond in POLITE formal Lithuanian ("Jūs" form). This is mandatory!
+- ✅ CORRECT: "Ar galėtumėte patikrinti?", "Palaukite, patikrinsiu", "Perkraukite routerį"
+- ❌ WRONG: informal "tu" forms ("ar gali", "palauk", "perkrauk")
+- Polite and warm, but professional - no "gerbiamas kliente" stiffness"""
     else:
         return """You MUST respond in English. Be friendly and casual.
 - Use simple, clear language

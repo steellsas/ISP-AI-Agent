@@ -1,5 +1,16 @@
 # WiFi problemos - diagnostika ir sprendimas
 
+## Pagalbos principas (svarbu agentui)
+WiFi pagalba yra PAGALBINĖ paslauga - padedame, kiek įmanoma nuotoliniu būdu,
+kai klientas nori bandyti pats pagal instrukcijas:
+- Bandome padėti žingsnis po žingsnio.
+- Jei klientui nepavyksta, jis nesijaučia užtikrintai arba trūksta informacijos
+  (pvz., nežinomas slaptažodis) - NEtęsiame per jėgą: registruojame gedimą
+  papildomai pagalbai ir tiek. Nieko nežadame, ko negalime padaryti.
+- SVARBU dėl slaptažodžių: įmonė kliento WiFi slaptažodžių NESAUGO ir technikai
+  jų neatsimena. Slaptažodis yra TIK pas klientą: ant routerio lipduko (jei
+  nekeistas) arba routerio nustatymuose (žr. žemiau).
+
 ## Simptomai tipai
 
 ### A) WiFi tinklas nematomas
@@ -19,6 +30,9 @@
 ---
 
 ## A) WiFi tinklas nematomas
+
+Klientas sako: "nematau savo tinklo", "WiFi nerodo mano tinklo", "tinklo
+sąraše nėra mano WiFi", "dingo WiFi tinklas iš sąrašo".
 
 ### Žingsnis 1: Patikrinti ar WiFi įjungtas routeryje
 - WiFi lemputė ant routerio turi degti
@@ -64,10 +78,26 @@ WiFi slaptažodis yra:
 - Jei per daug → atjungti senus/nenaudojamus
 
 ### Žingsnis 4: Jei slaptažodis buvo pakeistas ir pamirštas
+PRIMINTI: įmonė slaptažodžių nesaugo - jį žino tik klientas.
 **Variantai:**
-1. Rasti žmogų kuris pakeitė ir žino
-2. Prisijungti prie routerio per laidą ir pažiūrėti/pakeisti
-3. Factory reset (praranda visus nustatymus!)
+1. Rasti žmogų, kuris pakeitė ir žino
+2. Pažiūrėti routerio nustatymuose (jei klientas sutinka eiti pagal
+   instrukcijas):
+   - Prijungti kompiuterį prie routerio LAIDU
+   - Naršyklėje atidaryti 192.168.0.1 arba 192.168.1.1 (adresas ant lipduko)
+   - Prisijungimo duomenys - ant lipduko (dažnai admin/admin, jei nekeisti)
+   - Skiltyje "Wireless" / "WiFi" matosi arba pakeičiamas slaptažodis
+3. Factory reset (praranda visus nustatymus! WiFi grįžta į lipduko duomenis)
+**Nepavyko / klientas nesiima** → registruoti gedimą papildomai pagalbai.
+
+### Kaip prisijungti prie WiFi telefone (kai klientas nemoka)
+1. Telefono Nustatymai → "Wi-Fi" / "Bevielis tinklas"
+2. Patikrinti, kad WiFi JUNGIKLIS ĮJUNGTAS (dažna priežastis - tiesiog
+   išjungtas!) ir neįjungtas lėktuvo režimas
+3. Sąraše pasirinkti savo tinklo pavadinimą (ant routerio lipduko, jei
+   nekeistas)
+4. Įvesti slaptažodį (didžiosios/mažosios raidės svarbu)
+5. Neprisijungia - "Pamiršti" tinklą ir bandyti iš naujo
 
 ---
 
@@ -89,6 +119,17 @@ Patarimai:
 - Ne spintos viduje
 - Ne prie mikrobangų krosnelės
 - Centrinė vieta namie geriausia
+
+### Žingsnis 3b: Jei routeris buvo PERKELTAS į kitą vietą
+Klientas sako: "perkėliau routerį į kitą vietą ir dingo internetas",
+"perkėlus routerį nebeveikia WiFi", "po perkėlimo blogas signalas".
+Po routerio perkėlimo dažnos dvi problemos:
+1. **Laidai:** perkeliant galėjo atsilaisvinti WAN laidas - patikrinti, ar
+   visi laidai tvirtai įkišti (jei internetas visai dingo po perkėlimo, tai
+   pirmiausia!)
+2. **Signalas:** naujoje vietoje WiFi gali nebesiekti dalies namų - žr.
+   vietos patarimus aukščiau; jei perkelti reikėjo (pvz., remontas), o
+   signalas nebesiekia - svarstyti extender/Mesh
 
 ### Žingsnis 4: WiFi Extender / Mesh
 Jei didelis butas/namas:
@@ -117,6 +158,9 @@ Registruoti ticket jei:
 - Factory reset nepadėjo
 - Reikia WiFi extender montavimo
 - Įtariama routerio gedimas
+- Klientui nepavyksta atlikti žingsnių arba jis nesijaučia užtikrintai -
+  registruoti gedimą papildomai pagalbai (be pažadų dėl slaptažodžių -
+  įmonė jų nesaugo)
 
 ## Naudingos frazės
 

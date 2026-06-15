@@ -292,19 +292,81 @@ def _format_customer_profile(details: dict) -> dict:
     }
 
 
-def find_customer(phone: str = None, address: str = None, name: str = None) -> dict:
+def resolve_address(
+    city: str = None,
+    street: str = None,
+    house_number: str = None,
+    apartment_number: str = None,
+    surname: str = None,
+) -> dict:
+    """
+    Resolve a (possibly partial) spoken address into a customer — rich result.
+
+    Returns a per-level diagnosis (city/street/house/apartment status,
+    alternatives, found_elsewhere) plus a `hint` telling the agent what to
+    clarify next. On unique success the full normalized customer profile is
+    attached (same shape as find_customer).
+    """
+    logger.info(
+        f"[TOOL] resolve_address(city={city!r}, street={street!r}, house={house_number!r}, "
+        f"apt={apartment_number!r}, surname={'<given>' if surname else None})"
+    )
+
+    try:
+        db = get_db()
+        from crm_mcp.tools.address_resolver import resolve_address as _resolve
+        from crm_mcp.tools.customer_lookup import get_customer_details
+
+        result = _resolve(
+            db,
+            {
+                "city": city,
+                "street": street,
+                "house_number": house_number,
+                "apartment_number": apartment_number,
+                "surname": surname,
+            },
+        )
+
+        # Unique hit -> attach the same normalized profile find_customer returns.
+        if result.get("success") and result.get("customer_id"):
+            details = get_customer_details(db, result["customer_id"])
+            if details.get("success"):
+                result["customer"] = _format_customer_profile(details)
+        return result
+
+    except ImportError as e:
+        logger.error(f"Import error in resolve_address: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "Address resolver service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in resolve_address: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "internal_error",
+            "message": f"Error resolving address: {e}",
+        }
+
+
+def find_customer(
+    phone: str = None, address: str = None, name: str = None, account_code: str = None
+) -> dict:
     """
     Find customer in CRM database.
 
-    A search key (phone or address today; name / account code later) only
-    *resolves* a customer_id. The full profile is then fetched once by
-    customer_id via get_customer_details, so every lookup path returns the
-    same normalized shape (see _format_customer_profile).
+    A search key (phone / account code / address) only *resolves* a
+    customer_id. The full profile is then fetched once by customer_id via
+    get_customer_details, so every lookup path returns the same normalized
+    shape (see _format_customer_profile).
 
     Args:
         phone: Phone number (e.g., '+37061234567' or '861234567')
-        address: Address string (will be parsed)
-        name: Customer name
+        address: Address string (legacy single-string path; prefer resolve_address)
+        name: Customer name (not supported — surname is confirm-only)
+        account_code: Invoice account code (abonento kodas), e.g. 'AB-10101'
 
     Returns:
         Normalized customer profile or error
@@ -313,11 +375,12 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
     # regex can't catch, so log only whether each lookup path was provided.
     logger.info(
         f"[TOOL] find_customer(phone={phone}, by_address={address is not None}, "
-        f"by_name={name is not None})"
+        f"by_name={name is not None}, by_account_code={account_code is not None})"
     )
 
     try:
         db = get_db()
+        from crm_mcp.tools.address_resolver import lookup_customer_by_account_code
         from crm_mcp.tools.customer_lookup import (
             get_customer_details,
             lookup_customer_by_address,
@@ -327,7 +390,17 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
         customer_id = None
 
         # --- Resolve customer_id from whichever search key was provided ----
-        if phone:
+        if account_code:
+            result = lookup_customer_by_account_code(db, account_code)
+            if not result.get("success"):
+                return {
+                    "success": False,
+                    "error": result.get("error", "customer_not_found"),
+                    "message": result.get("message", "Customer not found"),
+                }
+            customer_id = result.get("customer", {}).get("customer_id")
+
+        elif phone:
             result = lookup_customer_by_phone(db, {"phone_number": phone})
             if not result.get("success"):
                 return {
@@ -387,6 +460,54 @@ def find_customer(phone: str = None, address: str = None, name: str = None) -> d
             "success": False,
             "error": "internal_error",
             "message": f"Error searching customer: {e}",
+        }
+
+
+def diagnose_connection(customer_id: str) -> dict:
+    """
+    Run the full no-internet diagnostic and return a deterministic verdict.
+
+    One call gathers billing + incident + switch + port telemetry + neighbour
+    signals and runs the decision tree (see agent/verdict.py). Returns
+    {verdict: {side, group, action, reason, agent_message}, signals: {...}}.
+    The verdict draws the provider/customer boundary; on side=customer or
+    unclear the agent continues the conversation (symptoms + RAG).
+
+    Args:
+        customer_id: Customer ID from CRM (identify the customer first)
+
+    Returns:
+        Verdict envelope or error
+    """
+    logger.info(f"[TOOL] diagnose_connection(customer_id={customer_id})")
+
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID is required for diagnosis.",
+        }
+
+    try:
+        from .verdict import diagnose
+
+        return diagnose(get_db(), customer_id)
+
+    except ImportError as e:
+        # Same policy as check_network_status: no raw-SQL fallback in the
+        # agent layer — if an adapter can't be imported, fail cleanly.
+        logger.error(f"Diagnostic modules not available: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "Diagnostic service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in diagnose_connection: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "diagnostic_error",
+            "message": f"Error diagnosing connection: {e}",
         }
 
 
@@ -550,6 +671,114 @@ def check_network_status(customer_id: str, address_id: str = None) -> dict:
         }
 
 
+def update_mac(customer_id: str) -> dict:
+    """
+    SIMULATED: bind the device currently seen on the customer's line.
+
+    Orchestrates both domains (like diagnose_connection): the network adapter
+    re-binds the port to the OBSERVED MAC + refreshes the lease; the CRM
+    adapter updates the registered equipment record. Use after the customer
+    confirms they replaced the router (B6 foreign MAC), or for the B-Plan
+    bridge (cable straight into a PC / customer's own router).
+
+    Args:
+        customer_id: Customer ID from CRM
+
+    Returns:
+        {success, old_mac, new_mac, message} or error
+    """
+    logger.info(f"[TOOL] update_mac(customer_id={customer_id})")
+
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID is required.",
+        }
+
+    try:
+        db = get_db()
+        from crm_mcp.tools.equipment import update_equipment_mac
+        from network_diagnostic_mcp.tools.port_actions import bind_port_mac
+
+        # Network side first — it knows WHAT is observed on the line.
+        bind = bind_port_mac(db, customer_id)
+        if not bind.get("success"):
+            return bind
+
+        # CRM side: keep the equipment registry consistent with the binding.
+        crm = update_equipment_mac(db, customer_id, bind["new_mac"])
+        if not crm.get("success"):
+            logger.warning(f"CRM equipment MAC update failed: {crm.get('error')}")
+
+        return {
+            "success": True,
+            "customer_id": customer_id,
+            "old_mac": bind.get("old_mac"),
+            "new_mac": bind.get("new_mac"),
+            "message": bind.get("message"),
+        }
+
+    except ImportError as e:
+        logger.error(f"Port action modules not available: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "MAC binding service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in update_mac: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "action_error",
+            "message": f"Error binding MAC: {e}",
+        }
+
+
+def reset_port(customer_id: str) -> dict:
+    """
+    SIMULATED: bounce the customer's switch port / session.
+
+    Use right after update_mac (forces re-authorization) or when the verdict
+    suggests a session freeze.
+
+    Args:
+        customer_id: Customer ID from CRM
+
+    Returns:
+        {success, port_id, message} or error
+    """
+    logger.info(f"[TOOL] reset_port(customer_id={customer_id})")
+
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID is required.",
+        }
+
+    try:
+        db = get_db()
+        from network_diagnostic_mcp.tools.port_actions import reset_customer_port
+
+        return reset_customer_port(db, customer_id)
+
+    except ImportError as e:
+        logger.error(f"Port action modules not available: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "Port reset service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in reset_port: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "action_error",
+            "message": f"Error resetting port: {e}",
+        }
+
+
 def check_outages(area: str = None, customer_id: str = None) -> dict:
     """
     Check for active outages or planned works in an area.
@@ -614,6 +843,18 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                 outages = result.get("outages", [])
                 summary = result.get("summary", {})
 
+                message = result.get("message", "Patikrinta")
+                # A city-only check returns outages from OTHER streets too —
+                # observed in testing: the model attributed another street's
+                # outage to the caller. Make the tool itself raise the flag.
+                if outages and not street:
+                    message = (
+                        "DĖMESIO: tikrinta visame mieste BE gatvės — rasti gedimai "
+                        "gali būti KITOSE gatvėse. Prieš informuojant klientą "
+                        "PRIVALOMA sutikrinti, ar gedimo gatvė (laukas 'street') "
+                        "sutampa su kliento gatve. " + message
+                    )
+
                 return {
                     "success": True,
                     "area": area,
@@ -622,7 +863,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                     "outage_count": len(outages),
                     "summary": summary,
                     "has_critical": summary.get("has_critical", False),
-                    "message": result.get("message", "Patikrinta"),
+                    "message": message,
                 }
 
         return {
@@ -943,20 +1184,88 @@ def run_ping_test(customer_id: str) -> dict:
 
 REAL_TOOLS = [
     Tool(
+        name="resolve_address",
+        description=(
+            "PRIMARY identification tool. Resolve the customer's spoken service "
+            "address — accepts PARTIAL input by design: call it as soon as you have "
+            "city+street to verify early, then again with more parts. Returns a "
+            "per-level diagnosis (city/street/house/apartment: ok / not_found / "
+            "unclear / found_elsewhere alternatives / contracts_count) plus a 'hint' "
+            "telling you exactly what to clarify next. On unique success returns the "
+            "full customer profile."
+        ),
+        parameters={
+            "city": {
+                "type": "string",
+                "description": (
+                    "City or village as the customer said it. When BOTH a district "
+                    "and a village are named ('Šiaulių rajonas, Bubių kaimas'), pass "
+                    "the WHOLE phrase or at least the village — NEVER drop the "
+                    "village and pass only 'Šiaulių rajonas'."
+                ),
+            },
+            "street": {
+                "type": "string",
+                "description": "Street as heard (e.g. 'Dainų g', 'Girėno Dariaus')",
+            },
+            "house_number": {
+                "type": "string",
+                "description": "House number, may contain a letter (e.g. '12', '122F')",
+            },
+            "apartment_number": {
+                "type": "string",
+                "description": "Apartment number if the customer gave one",
+            },
+            "surname": {
+                "type": "string",
+                "description": "ONLY for confirmation/disambiguation when the tool asks — the customer says it first",
+            },
+        },
+        function=resolve_address,
+    ),
+    Tool(
         name="find_customer",
-        description="Search for customer in CRM by phone number, address, or name. Use this FIRST to identify who is calling.",
+        description=(
+            "Helper lookups: by the caller's phone (mandatory fallback when "
+            "resolve_address fails) or by account code (abonento kodas — fastest "
+            "path when the customer knows it). For addresses use resolve_address."
+        ),
         parameters={
             "phone": {
                 "type": "string",
                 "description": "Phone number (e.g., +37061234567 or 861234567)",
             },
+            "account_code": {
+                "type": "string",
+                "description": "Invoice account code (abonento kodas), e.g. 'AB-10101'",
+            },
             "address": {
                 "type": "string",
-                "description": "Address to search (format: 'City, Street HouseNumber')",
+                "description": "Legacy single-string address (prefer resolve_address)",
             },
-            "name": {"type": "string", "description": "Customer name"},
+            "name": {"type": "string", "description": "Customer name (not supported)"},
         },
         function=find_customer,
+    ),
+    Tool(
+        name="diagnose_connection",
+        description=(
+            "PRIMARY diagnostic for 'no internet' complaints. One call checks "
+            "billing, registered outages, switch, port and equipment signals and "
+            "returns a deterministic verdict: side (provider/customer/unclear), "
+            "group, action (inform/create_ticket/instruct) and agent_message with "
+            "guidance. Call it right after the customer is identified. Follow the "
+            "verdict's action; when side is customer/unclear, continue the "
+            "conversation to pin down the cause."
+        ),
+        parameters={
+            "customer_id": {
+                "type": "string",
+                "description": "Customer ID from CRM",
+                "required": True,
+            },
+        },
+        function=diagnose_connection,
     ),
     Tool(
         name="check_network_status",
@@ -1000,6 +1309,42 @@ REAL_TOOLS = [
             },
         },
         function=run_ping_test,
+    ),
+    Tool(
+        name="update_mac",
+        description=(
+            "SIMULATED remote action: bind the device currently seen on the "
+            "customer's line (re-binds port authorization to the observed MAC, "
+            "refreshes the lease, updates the equipment registry). Use ONLY after "
+            "the customer confirms they connected a different device: replaced "
+            "router (B6 foreign MAC) or the bridge-until-technician options "
+            "(cable straight into a PC / customer's own router). Follow with "
+            "reset_port."
+        ),
+        parameters={
+            "customer_id": {
+                "type": "string",
+                "description": "Customer ID from CRM",
+                "required": True,
+            },
+        },
+        function=update_mac,
+    ),
+    Tool(
+        name="reset_port",
+        description=(
+            "SIMULATED remote action: bounce the customer's switch port/session "
+            "(forces re-authorization). Use right after update_mac, or for a "
+            "suspected session freeze."
+        ),
+        parameters={
+            "customer_id": {
+                "type": "string",
+                "description": "Customer ID from CRM",
+                "required": True,
+            },
+        },
+        function=reset_port,
     ),
     Tool(
         name="search_knowledge",

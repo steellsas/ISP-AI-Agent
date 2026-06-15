@@ -207,7 +207,13 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       `threshold` still gates the semantic arm only. Eval: recall@3=18/18, MRR 0.972
       (no regression; this LT set lacks the model-number cases where BM25 wins, so
       the gain is architectural — proven by design + smoke test). — *`feat/rag-bm25-rrf-hybrid`*
-- [ ] Implement `_rebuild_index` (currently `pass`) or persist embeddings — `vector_store.py:289`
+- [ ] Implement `_rebuild_index` (currently `pass`) or persist embeddings — `vector_store.py:296`.
+      **Verified not on the demo path:** `_rebuild_index`'s only caller is
+      `delete_document`, which is **unused anywhere in `src/`**. `build_kb.py` always
+      rebuilds the KB from scratch (fresh retriever → `add_documents` → `save`), never
+      deletes — so adding S4/S5 content (Phase 2.5 step 6) does **not** trigger the
+      stale-index bug. Stays deferred / low-priority; fix only if incremental
+      delete is ever needed.
 - [ ] Embedding dim from the model; include `normalize` flag in cache key — `rag/embeddings.py`
 - [ ] LT↔EN cross-lingual retrieval tests (small eval set with expected docs) — `lang` metadata foundation already in place
 - [ ] _(later stage)_ RAG content governance: structure the knowledge base to the
@@ -281,7 +287,227 @@ retrieval changes, so every change below is verified against numbers, not eyebal
 
 ---
 
+## Phase 2.5 — "Neveikia internetas" demo slice · `feat/no-internet-demo`
+
+**Goal:** prove ONE repeatable pattern end-to-end on a single fault family —
+**identify the fault → reach a verdict → instruct the customer step-by-step →
+close (inform / escalate / resolve remotely)** — text-to-text first. Every other
+fault (incl. TV) reuses the same template; only knowledge-base / seed content
+changes.
+
+> **Design docs (the "why" + domain logic) live in `chatbot_core/docs/`:**
+> - `scenarijus_neveikia_internetas.md` — domain reference/TEMPLATE: causes →
+>   detection → action, provider side (B1–B3) + customer side (B4–B7), diagnostic
+>   pipeline Steps 1–4 (BŪSENA A/B/C).
+> - `demo_plan_neveikia_internetas.md` — demo scope, scenarios S1–S5, two-speed
+>   latency, locked decisions.
+> - `kliento_identifikacijos_dizainas.md` — hierarchical voice-robust customer lookup.
+> - `pokalbio_valdymas.md` — turn-taking / barge-in / state-aware timeouts (voice runtime).
+
+**Scope:** only "no internet / nėra interneto." Demonstration of capability, not a
+full product. Locked decisions: verdict = ONE deterministic composite tool (A
+variant); SMS dropped entirely; MAC-change + reboot/port-reset = simulated (stub)
+tools; two-speed latency flow; "fill-the-wait-with-symptoms + parallel diagnostics"
+is MANDATORY agent behaviour (into the system prompt).
+
+**Build order (text-to-text):**
+
+- [x] **1. Seed customers S1–S5 (mock telemetry via seed DB).** — *done: additive
+      `database/seeds/demo_internet.sql` (CUST101–111, SW101–103, streets+district);
+      schema: `ports` +`observed_mac`/`crc_error_rate`/`dhcp_status`, `area_outages`
+      +`switch_id` (OUT001 linked to SW001), `customers` +`account_code`, `streets`
+      +`district`; wired into `conftest.py` + `seed_data.py`; suite 135/135 green.* Each scenario
+      customer carries a known telemetry state (billing / incident / switch / port
+      / MAC / CRC / DHCP) so `diagnose_connection` returns a deterministic verdict.
+      Mechanism approved: per-scenario seed rows feed the mock telemetry (extends the
+      existing versioned-SQL seed the regression net already rebuilds).
+      **APPROVED — where telemetry lives (data-sourcing architecture):**
+      - **Telemetry belongs to the NETWORK domain, not CRM.** Customer/billing/contract
+        = CRM (`crm_mcp`); switch / port / `observed_mac` / `crc_error_rate` /
+        `dhcp_status` / vlan / outage = network (`network_mcp`). The 3 missing fields
+        go into `network_schema.sql` (on `ports` or a `port_telemetry` snapshot table);
+        `area_outages` gets a `switch_id` FK. **Decision: seed rows in the schema, NOT a
+        separate Python mock layer** — one coherent seed world (customer Sxx → its ports
+        → telemetry state), and the tool's "fetch" path is identical to real integration
+        (call tool → adapter queries source → returns signals).
+      - **The agent never touches the DB** — it calls a tool (port); the adapter reads
+        the seed now, real OSS/network systems (SNMP, RADIUS, DHCP, switch CLI/TR-069,
+        NMS) later. Swap = adapter-only; agent + verdict logic unchanged. The stable seam
+        is the **tool contract** (`signalai{...}` shape), designed to match what real
+        systems can return.
+      - **Shared vs separate DB:** keep the **logical** separation strong (separate
+        schemas + separate MCP services — already in place). Physically one SQLite file
+        for the demo is fine because access is service-only (Phase 2: "no raw SQL in
+        tools"). When network becomes a real separate system, swap only the network
+        adapter's backing — CRM + agent untouched. **Do NOT JOIN across the CRM/network
+        schemas** — `diagnose_connection` orchestrates by calling both services
+        separately (see step 2), so the future split stays an adapter swap, not a rewrite.
+      - **APPROVED — seed locations** (full scheme in
+        `kliento_identifikacijos_dizainas.md` §8.1): Šiauliai (main stage) +
+        **Šiaulių r. with THREE villages** (Ginkūnų / Bubių / Vinkšnėnų k. — forces
+        the "which village?" question). Streets: Dainų g. / Dailės g. (fuzzy pair) /
+        Tilžės g. (apartment block, full 5-level flow) / **Žemaitės g.** (street
+        named after a surname — must not be confused with the customer's surname) /
+        **S. Dariaus ir S. Girėno g.** (long compound name with initials — spoken
+        many ways → normalization/fuzzy challenge) in Šiauliai; Žeimių g. (Ginkūnai),
+        Aušros g. (Bubiai), Sodo g. (Vinkšnėnai). Key addresses: Tilžės g. 60
+        (flats 1–12), Dainų g. 5 (the §7.2 example verbatim), Dainų g. 7 (two
+        contracts, no flats → surname disambiguation), **S. Dariaus ir S. Girėno g.
+        25-45** (flat in a big block + compound-name recognition), **Žeimių g. 12-6,
+        Ginkūnų k.** (street-level recovery: "Šiauliai, Žeimių g." → not in Šiauliai
+        → suggest Šiaulių r.), **Aušros g. 8, Bubių k.** (village-level
+        disambiguation), **Sodo g. 122F, Vinkšnėnų k.** (house number with a letter —
+        voice/STT robustness). ~11 customers: S1–S5 + the Dainų g. 7 pair + the
+        recovery/edge customers; one found by phone, one carries an account code.
+- [x] **2. `diagnose_connection` verdict tool (A variant, "thick"/deterministic) —
+      ORCHESTRATOR above both services.** — *done: `agent/verdict.py`
+      (`gather_signals` I/O + pure `decide` tree, unit-testable without DB);
+      `get_billing_status` added to the CRM adapter (get_customer_details filters
+      to active plans, so suspension_reason was invisible); network adapter:
+      `check_port_status` SELECT +telemetry fields +switch_status,
+      new `get_switch_neighbor_summary` (assigned-port neighbour correlation);
+      thin tool wrapper + registration (English keys: side/group/action/reason/
+      agent_message, LT text in agent_message); 23 verdict tests (every tree
+      branch + S1-S5 integration over seed); suite 158/158 green.* It belongs to neither DB: it calls CRM
+      (billing/suspension → B1) **and** network (outage/switch/port/MAC/CRC/DHCP →
+      B2–B7), then applies the decision tree. One call gathers signals →
+      `{pusė: tiekėjas|klientas|neaišku, grupė: B1..B7, veiksmas:
+      informuoti|kurti_tiketą|instruktuoti, priežastis, signalai{...}, žinutė_agentui}`.
+      The decision tree (Steps 1–4, BŪSENA A/B/C) lives in code; on `klientas`/`neaišku`
+      it hands off to the conversation (does NOT decide the final cause). Fast for voice.
+- [x] **3. System-prompt rewrite.** — *done + CLI-tested (3 scripted scenarios).*
+      Identification is **address-first** (changed during testing: the phone is a
+      HELPER only — mandatory fallback when the address lookup fails, anchored to
+      the customer-stated address); full-sentence address capture (no forced
+      level-by-level), echo+confirm, re-ask only the failing level, never re-ask
+      given info; hard anti-hallucination rules (never invent customer_id/address;
+      no diagnostics before identification — both observed in CLI and fixed);
+      verdict routing (inform = fast path, create_ticket = no-time-promise wording,
+      instruct = announce + fill-wait-with-symptoms + one-step-at-a-time);
+      waiting behaviour; filtering zone; formal "Jūs"; vocabulary ("gedimo
+      registracija", never "bilietas"). Known CLI-verified limits left for step 4:
+      apartment never reaches the lookup (naive parse), district/village strings
+      mangle the city field. Prompt polish backlog: B1 reason wording, surname
+      offered as search in one turn, double address confirm.
+- [x] **4. Identification lookup improvements — `resolve_address` rich-result tool.**
+      — *done (contract: design doc §8.2).* New CRM adapter `address_resolver.py`:
+      per-level diagnosis (city/street/house/apartment status + alternatives +
+      LT `hint` telling the agent the exact next question); token-set street
+      matching (compound names with initials, any word order — "Girėno Dariaus"
+      → S. Dariaus ir S. Girėno g.); district+village in one phrase ("Šiaulių
+      rajonas, Bubių kaimas" → Bubiai, genitive-tolerant); strong
+      street-elsewhere beats weak in-city fuzzy (Žeimių → Ginkūnai recovery, not
+      "gal Žemaitės?"); apartment finally reaches the DB (separate param);
+      contracts_count → ask flat or surname; surname confirm-only, no PII leak
+      in hints. `find_customer` gained `account_code`; agent state now tracks
+      the customer from resolve_address too. 26 resolver tests; scripted
+      AgentSession smoke: all 4 previously-failing scenarios pass (flat found
+      first try, village extracted, Žeimių recovery dialog, account-code → B3
+      ticket). Suite 184/184. **First concrete cut of the deferred Phase 2
+      "Identity gate + policy.yaml" item** — tune against real transcripts later.
+      Manual test script: `chatbot_core/docs/cli_testavimo_scenarijai.md`.
+- [x] **4b. Prompt polish (CLI-testing findings — own commit).** — *done
+      (prompt-only; per user decision validated within the step-6 RAG testing
+      round rather than its own smoke).* Agreed after the step-4 manual CLI round:
+      - **Phone↔address cross-check:** as soon as the customer names a street, peek
+        at the caller's phone account; if its address matches the spoken street/house,
+        offer the full address for confirmation in ONE turn ("Ar skambinate dėl
+        Tilžės g. 60-7?") instead of asking city/flat separately.
+      - **Early outage fast-path (mass-fault shortcut):** once the STREET is
+        confirmed (no apartment needed!), call check_outages(city+street); active
+        outage → inform + ETA and FINISH — no full identification, no flat question
+        (everyone at that address is down anyway).
+      - Convert spoken Lithuanian numerals to digits before tool calls ("dvylika"
+        → 12; observed: house='dvulika' passed verbatim).
+      - **Harden the phone-fallback anchor rule** — observed violation: address
+        lookup failed, fallback found a DIFFERENT street's account and the agent
+        created a ticket for the wrong address. The found account's street MUST
+        match the spoken one, otherwise say "not found", never adopt the account.
+      - Never print bracketed placeholders (observed verbatim output: "Priežastis:
+        [priežastis iš agento žinutės]"); B1 must quote the exact verdict reason.
+      - Surname is never offered as a search key; avoid double address confirmation;
+        after account-code identification still confirm the address briefly.
+- [x] **5. Simulated tools `update_mac` / `reset_port` (DB-effect stubs).** — *done.*
+      Approved variant (b): the stubs MUTATE the mock DB so the flow is believable
+      end-to-end — after update_mac a repeated diagnose_connection shows the problem
+      GONE (observed==registered, DHCP ok, lease refreshed). Orchestration mirrors
+      diagnose_connection: network adapter `bind_port_mac`/`reset_customer_port`
+      (port_actions.py, new) + CRM adapter `update_equipment_mac`; agent-level
+      update_mac calls both (no cross-schema writes in adapters). Clean
+      `no_observed_mac` error when nothing is connected. Registry 8 -> 10;
+      6 tests incl. end-to-end foreign_mac -> healthy + snapshot/restore fixture
+      (session-scoped DB + mutating stubs = later test files must see seed state).
+      Also needed by the B-Plan bridge content in step 6 (MAC binding is its core
+      action). Observed in CLI: without the tool the model SAID "Dabar atnaujinsiu
+      MAC adresą" and faked it via check_network_status — the stub closes this hole.
+- [ ] **6. RAG knowledge-base entries for S4/S5 instruction steps.** Step-by-step
+      customer-side guidance (power/cable check; Factory Reset → DHCP; Wi-Fi module),
+      delivered one step at a time. Re-run the eval harness after content changes.
+      **EXPANDED (approved 2026-06-12): "bridge until the technician" content —
+      the B-Plan moves INTO scope** on the knowledge side. Dead router with a live
+      line (internet reaches the home; router shows no life, TV dead too):
+      - (a) connect the WAN cable DIRECTLY to one device (PC/laptop) + bind its MAC
+        (`update_mac`) → temporary internet on one device;
+      - (b) the customer uses/buys their OWN router → bind its MAC → full service.
+      Goal: keep the customer online while waiting for the technician / router
+      replacement. KB must teach the agent WHEN to offer it (router dead, line OK)
+      and the exact steps + that MAC binding is required. Depends on step 5's
+      `update_mac` stub.
+- [ ] **6b. Proactive outage awareness (designed 2026-06-12, details TBD).**
+      Motivated by a CLI bug: the model called check_outages city-only and
+      attributed ANOTHER street's outage to the caller (sent away with the wrong
+      answer while his real fault — foreign MAC — stayed unsolved). Patched at
+      prompt+tool level (shortcut only pre-identification; street required;
+      street-match mandatory; city-only tool warning), but the better design
+      moves the decision out of the LLM entirely:
+      - **`get_active_outages()` tool** — list of streets with active mass
+        outages `{city, street, description, ETA}`; no customer needed.
+      - **Pre-flight injection** — at session start (caller phone known),
+        deterministically look up the phone account's street, match against
+        active outages, and inject a fact via the `_state_facts_block` seam:
+        the agent's FIRST reply to "neveikia internetas" can then be
+        "Ar skambinate dėl Dainų g.? Ten avarija, visame kvartale nėra
+        interneto, atstatymas ~17 val." — two-phrase handling during call
+        storms. PII note: reveals only the street tied to the caller's number.
+- [ ] **7. CLI text-to-text test.** Validates LOGIC/dialog flow (identification,
+      verdict → A/B/C routing, instruction steps, ticket creation, filtering zone).
+      Voice runtime (barge-in, real latency, state-aware timeouts) is documented in
+      `pokalbio_valdymas.md` but deferred to the voice phase — non-blocking here.
+
+**Scenarios (S1–S5):** S1 Apmokėjimas (B1) inform, no ticket · S2 Masinė avarija
+(B2) inform + ETA, **no ticket** (already-registered incident) · S3 Tinklo gedimas
+individualus (B3) → ticket · S4 Kabelis/maitinimas (B4/B5) instruct → resolve or
+ticket · S5 Routerio suderinimas (B6/B7) instruct/simulate → resolve or ticket.
+
+**Resolved mini-decisions:** telemetry lives in the network schema as seed rows
+(step 1); seed locations approved (step 1 / design doc §8.1); disambiguation depth =
+city + village level (seed supports it); **ticket = fault registration with NO time
+promise** — the agent creates the ticket and says a worker will call (next business
+morning) to arrange the visit; the agent never promises a time and knows nothing of
+technician schedules → **no working-hours logic in the demo** (no after-18:00
+branching in branch C).
+
+**Done:** the five scenarios run end-to-end in CLI text-to-text — correct
+identification, correct verdict→branch, correct close (inform / ticket / resolve) —
+proving the template generalises to other faults by content alone.
+
+> **Feedback loop (applies from here on):** improvements surfaced during testing
+> (text-to-text first, then voice) are folded **back into this roadmap and the
+> `chatbot_core/docs/` design docs** as we go — the docs stay the living source of
+> truth, roadmap tracks the work. Voice-only refinements (real latency,
+> barge-in, state-aware timeouts — see `pokalbio_valdymas.md`) are captured but
+> only acted on in the voice phase below.
+
+---
+
 ## Phase 3 — Voice vertical slice · `feat/voice-fastrtc`
+
+> **Sequencing:** starts **after** the Phase 2.5 text-to-text slice validates the
+> dialog logic. Voice testing then checks how the agent actually *converses* by
+> voice — and any improvements it surfaces feed back into the roadmap + docs
+> (see the Phase 2.5 feedback-loop note). The runtime behaviours in
+> `pokalbio_valdymas.md` (barge-in, endpointing, waits during reboot, state-aware
+> timeouts) are realised here, not in text-to-text.
 
 - [x] `ASRProvider` (faster-whisper, LT) + `TTSProvider` (gTTS, LT) adapters,
       plus framework-free `VoicePipeline` (ASR → `AgentSession` → TTS) behind
@@ -405,7 +631,16 @@ never degrades consultation quality — the core "pro" safety net.
       the ASR/TTS ports, plus framework-free `VoicePipeline` (ASR → `AgentSession`
       → TTS). Engine imports deferred; `voice` optional extra; offline tests green
       (PR #28).
-- [ ] **Next:** Phase 3 · FastRTC transport adapter — `Stream` + `ReplyOnPause` →
+- [ ] **Next:** Phase 2.5 · "Neveikia internetas" demo slice (text-to-text) —
+      build order: (1) seed S1–S5 + mock telemetry, (2) `diagnose_connection`
+      verdict (A variant), (3) system-prompt rewrite (hierarchical ID + two-speed
+      latency + mandatory fill-wait + A/B/C routing), (4) identification lookup
+      (wire normalizer/fuzzy, per-level, account-code, surname-confirm — first cut
+      of the deferred Identity-gate item), (5) simulated `update_mac`/`reset_port`,
+      (6) RAG KB for S4/S5, (7) CLI text-to-text test. Design docs in
+      `chatbot_core/docs/` (`scenarijus_`, `demo_plan_`, `kliento_identifikacijos_`,
+      `pokalbio_valdymas`).
+- [ ] Phase 3 · FastRTC transport adapter — `Stream` + `ReplyOnPause` →
       `VoicePipeline`, `.ui.launch()` for live Lithuanian voice testing; add
       `fastrtc` to the `voice` extra. Identity-gate / `policy.yaml` follows, tuned
       against real call transcripts.

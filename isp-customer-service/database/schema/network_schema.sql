@@ -38,6 +38,15 @@ CREATE TABLE IF NOT EXISTS ports (
     speed_mbps INTEGER,
     duplex TEXT CHECK(duplex IN ('full', 'half', 'auto')),
     vlan_id INTEGER,
+    -- Port telemetry (diagnose_connection verdict signals). In production these
+    -- come from the network systems (SNMP / DHCP server / switch CLI); in the
+    -- demo they are seeded per scenario. equipment_mac above = the REGISTERED
+    -- MAC (from CRM); observed_mac = what the switch actually sees on the port.
+    -- observed_mac IS NULL while link is down or nothing transmits;
+    -- observed_mac != equipment_mac => foreign/new device (B6 "naujas MAC").
+    observed_mac TEXT,
+    crc_error_rate DECIMAL(8,2),  -- CRC errors/min; >0 sustained => cable/physical fault (B5)
+    dhcp_status TEXT CHECK(dhcp_status IN ('ok', 'no_requests', 'expired')),
     last_status_change TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notes TEXT,
@@ -98,6 +107,9 @@ CREATE TABLE IF NOT EXISTS area_outages (
     city TEXT NOT NULL,
     street TEXT,
     area_description TEXT,
+    -- Optional link to the affected network node: lets the verdict correlate
+    -- "this customer's switch" with a registered incident (B2 vs B3 split).
+    switch_id TEXT REFERENCES switches(switch_id) ON DELETE SET NULL,
     outage_type TEXT NOT NULL CHECK(outage_type IN ('internet', 'tv', 'phone', 'all')),
     severity TEXT DEFAULT 'major' CHECK(severity IN ('minor', 'major', 'critical')),
     status TEXT DEFAULT 'active' CHECK(status IN ('active', 'resolved', 'investigating')),
@@ -205,7 +217,7 @@ CREATE INDEX idx_traceroute_timestamp ON traceroute_logs(timestamp);
 
 -- View: Port status summary by switch
 CREATE VIEW IF NOT EXISTS port_status_summary AS
-SELECT 
+SELECT
     s.switch_id,
     s.switch_name,
     s.location,
@@ -219,7 +231,7 @@ GROUP BY s.switch_id;
 
 -- View: Active outages by area
 CREATE VIEW IF NOT EXISTS active_outages_by_area AS
-SELECT 
+SELECT
     city,
     street,
     outage_type,
@@ -234,7 +246,7 @@ GROUP BY city, street, outage_type;
 
 -- View: Customer network health
 CREATE VIEW IF NOT EXISTS customer_network_health AS
-SELECT 
+SELECT
     bl.customer_id,
     AVG(bl.download_mbps) as avg_download_mbps,
     AVG(bl.upload_mbps) as avg_upload_mbps,

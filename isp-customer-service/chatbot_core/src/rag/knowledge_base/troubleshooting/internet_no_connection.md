@@ -54,6 +54,22 @@ Tik jei klientas sutinka prarasti nustatymus:
 3. Routeris persikraus į gamyklinius nustatymus
 4. WiFi slaptažodis bus tas, kuris ant lipduko
 
+## Po routerio perkėlimo dingo internetas
+
+Klientas sako: "perkėliau routerį į kitą vietą ir dingo internetas",
+"perkėlus routerį nebeveikia", "pajudinau routerį ir nėra ryšio".
+
+SVARBU atskirti: jei klientas routerį PAKEITĖ NAUJU (ne perkėlė tą patį) -
+tai MAC pririšimo atvejis, žr. internet_pakeistas_routeris_mac.md.
+
+Perkeliant TĄ PATĮ routerį dažniausiai atsilaisvina arba sukeičiami laidai:
+1. Patikrinti, ar WAN/INTERNET laidas tvirtai įkištas (iki "click")
+2. Patikrinti, ar laidai nesukeisti vietomis (WAN laidas turi būti WAN lizde,
+   ne LAN)
+3. Patikrinti maitinimą ir perkrauti routerį
+4. Jei naujoje vietoje silpnas WiFi signalas - žr. wifi_problems.md
+   (routerio vietos patarimai)
+
 ## Kada eskaluoti
 
 Registruoti ticket jei:
