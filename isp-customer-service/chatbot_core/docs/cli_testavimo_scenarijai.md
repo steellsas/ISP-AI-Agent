@@ -104,6 +104,8 @@ CLI komandos viduje: `quit` — išeiti · `debug` — derinimo logai · `state`
 
 > Čia identifikacija paprasta — svarbiausia **šakojimasis po verdikto**.
 
+uv run --package chatbot-core python -m src.agent.react_agent --phone +37060020101 --lang lt
+
 ### S1 · Skola (B1) — `--phone +37060020101` (Vaitkus, Tilžės g. 60-3)
 `neveikia internetas` → adresas → `taip`
 **Tikėtis:** IŠ KART skola + kaip atstatyti. Jokio troubleshooting'o, **be tiketo**.
