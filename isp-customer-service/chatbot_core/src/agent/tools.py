@@ -671,6 +671,114 @@ def check_network_status(customer_id: str, address_id: str = None) -> dict:
         }
 
 
+def update_mac(customer_id: str) -> dict:
+    """
+    SIMULATED: bind the device currently seen on the customer's line.
+
+    Orchestrates both domains (like diagnose_connection): the network adapter
+    re-binds the port to the OBSERVED MAC + refreshes the lease; the CRM
+    adapter updates the registered equipment record. Use after the customer
+    confirms they replaced the router (B6 foreign MAC), or for the B-Plan
+    bridge (cable straight into a PC / customer's own router).
+
+    Args:
+        customer_id: Customer ID from CRM
+
+    Returns:
+        {success, old_mac, new_mac, message} or error
+    """
+    logger.info(f"[TOOL] update_mac(customer_id={customer_id})")
+
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID is required.",
+        }
+
+    try:
+        db = get_db()
+        from crm_mcp.tools.equipment import update_equipment_mac
+        from network_diagnostic_mcp.tools.port_actions import bind_port_mac
+
+        # Network side first — it knows WHAT is observed on the line.
+        bind = bind_port_mac(db, customer_id)
+        if not bind.get("success"):
+            return bind
+
+        # CRM side: keep the equipment registry consistent with the binding.
+        crm = update_equipment_mac(db, customer_id, bind["new_mac"])
+        if not crm.get("success"):
+            logger.warning(f"CRM equipment MAC update failed: {crm.get('error')}")
+
+        return {
+            "success": True,
+            "customer_id": customer_id,
+            "old_mac": bind.get("old_mac"),
+            "new_mac": bind.get("new_mac"),
+            "message": bind.get("message"),
+        }
+
+    except ImportError as e:
+        logger.error(f"Port action modules not available: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "MAC binding service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in update_mac: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "action_error",
+            "message": f"Error binding MAC: {e}",
+        }
+
+
+def reset_port(customer_id: str) -> dict:
+    """
+    SIMULATED: bounce the customer's switch port / session.
+
+    Use right after update_mac (forces re-authorization) or when the verdict
+    suggests a session freeze.
+
+    Args:
+        customer_id: Customer ID from CRM
+
+    Returns:
+        {success, port_id, message} or error
+    """
+    logger.info(f"[TOOL] reset_port(customer_id={customer_id})")
+
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID is required.",
+        }
+
+    try:
+        db = get_db()
+        from network_diagnostic_mcp.tools.port_actions import reset_customer_port
+
+        return reset_customer_port(db, customer_id)
+
+    except ImportError as e:
+        logger.error(f"Port action modules not available: {e}")
+        return {
+            "success": False,
+            "error": "service_unavailable",
+            "message": "Port reset service is unavailable.",
+        }
+    except Exception as e:
+        logger.error(f"Error in reset_port: {e}", exc_info=True)
+        return {
+            "success": False,
+            "error": "action_error",
+            "message": f"Error resetting port: {e}",
+        }
+
+
 def check_outages(area: str = None, customer_id: str = None) -> dict:
     """
     Check for active outages or planned works in an area.
@@ -735,6 +843,18 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                 outages = result.get("outages", [])
                 summary = result.get("summary", {})
 
+                message = result.get("message", "Patikrinta")
+                # A city-only check returns outages from OTHER streets too —
+                # observed in testing: the model attributed another street's
+                # outage to the caller. Make the tool itself raise the flag.
+                if outages and not street:
+                    message = (
+                        "DĖMESIO: tikrinta visame mieste BE gatvės — rasti gedimai "
+                        "gali būti KITOSE gatvėse. Prieš informuojant klientą "
+                        "PRIVALOMA sutikrinti, ar gedimo gatvė (laukas 'street') "
+                        "sutampa su kliento gatve. " + message
+                    )
+
                 return {
                     "success": True,
                     "area": area,
@@ -743,7 +863,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                     "outage_count": len(outages),
                     "summary": summary,
                     "has_critical": summary.get("has_critical", False),
-                    "message": result.get("message", "Patikrinta"),
+                    "message": message,
                 }
 
         return {
@@ -1189,6 +1309,42 @@ REAL_TOOLS = [
             },
         },
         function=run_ping_test,
+    ),
+    Tool(
+        name="update_mac",
+        description=(
+            "SIMULATED remote action: bind the device currently seen on the "
+            "customer's line (re-binds port authorization to the observed MAC, "
+            "refreshes the lease, updates the equipment registry). Use ONLY after "
+            "the customer confirms they connected a different device: replaced "
+            "router (B6 foreign MAC) or the bridge-until-technician options "
+            "(cable straight into a PC / customer's own router). Follow with "
+            "reset_port."
+        ),
+        parameters={
+            "customer_id": {
+                "type": "string",
+                "description": "Customer ID from CRM",
+                "required": True,
+            },
+        },
+        function=update_mac,
+    ),
+    Tool(
+        name="reset_port",
+        description=(
+            "SIMULATED remote action: bounce the customer's switch port/session "
+            "(forces re-authorization). Use right after update_mac, or for a "
+            "suspected session freeze."
+        ),
+        parameters={
+            "customer_id": {
+                "type": "string",
+                "description": "Customer ID from CRM",
+                "required": True,
+            },
+        },
+        function=reset_port,
     ),
     Tool(
         name="search_knowledge",

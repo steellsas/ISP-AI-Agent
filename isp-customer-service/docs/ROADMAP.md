@@ -427,9 +427,16 @@ is MANDATORY agent behaviour (into the system prompt).
         [priežastis iš agento žinutės]"); B1 must quote the exact verdict reason.
       - Surname is never offered as a search key; avoid double address confirmation;
         after account-code identification still confirm the address briefly.
-- [ ] **5. Simulated tools `update_mac` / `reset_port` (stubs).** Log + "success"
-      message, no real infrastructure — demonstrate the B6/B4 action flow. Detail
-      level of the simulated responses still open (so the dialog feels real).
+- [x] **5. Simulated tools `update_mac` / `reset_port` (DB-effect stubs).** — *done.*
+      Approved variant (b): the stubs MUTATE the mock DB so the flow is believable
+      end-to-end — after update_mac a repeated diagnose_connection shows the problem
+      GONE (observed==registered, DHCP ok, lease refreshed). Orchestration mirrors
+      diagnose_connection: network adapter `bind_port_mac`/`reset_customer_port`
+      (port_actions.py, new) + CRM adapter `update_equipment_mac`; agent-level
+      update_mac calls both (no cross-schema writes in adapters). Clean
+      `no_observed_mac` error when nothing is connected. Registry 8 -> 10;
+      6 tests incl. end-to-end foreign_mac -> healthy + snapshot/restore fixture
+      (session-scoped DB + mutating stubs = later test files must see seed state).
       Also needed by the B-Plan bridge content in step 6 (MAC binding is its core
       action). Observed in CLI: without the tool the model SAID "Dabar atnaujinsiu
       MAC adresą" and faked it via check_network_status — the stub closes this hole.
@@ -446,6 +453,22 @@ is MANDATORY agent behaviour (into the system prompt).
       replacement. KB must teach the agent WHEN to offer it (router dead, line OK)
       and the exact steps + that MAC binding is required. Depends on step 5's
       `update_mac` stub.
+- [ ] **6b. Proactive outage awareness (designed 2026-06-12, details TBD).**
+      Motivated by a CLI bug: the model called check_outages city-only and
+      attributed ANOTHER street's outage to the caller (sent away with the wrong
+      answer while his real fault — foreign MAC — stayed unsolved). Patched at
+      prompt+tool level (shortcut only pre-identification; street required;
+      street-match mandatory; city-only tool warning), but the better design
+      moves the decision out of the LLM entirely:
+      - **`get_active_outages()` tool** — list of streets with active mass
+        outages `{city, street, description, ETA}`; no customer needed.
+      - **Pre-flight injection** — at session start (caller phone known),
+        deterministically look up the phone account's street, match against
+        active outages, and inject a fact via the `_state_facts_block` seam:
+        the agent's FIRST reply to "neveikia internetas" can then be
+        "Ar skambinate dėl Dainų g.? Ten avarija, visame kvartale nėra
+        interneto, atstatymas ~17 val." — two-phrase handling during call
+        storms. PII note: reveals only the street tied to the caller's number.
 - [ ] **7. CLI text-to-text test.** Validates LOGIC/dialog flow (identification,
       verdict → A/B/C routing, instruction steps, ticket creation, filtering zone).
       Voice runtime (barge-in, real latency, state-aware timeouts) is documented in

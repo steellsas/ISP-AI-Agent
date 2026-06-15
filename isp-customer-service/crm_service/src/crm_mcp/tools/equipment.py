@@ -186,3 +186,55 @@ def get_equipment_by_mac(db: DatabaseConnection, mac_address: str) -> dict[str, 
     except Exception as e:
         logger.error(f"Error in get_equipment_by_mac: {e}", exc_info=True)
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
+def update_equipment_mac(db: DatabaseConnection, customer_id: str, new_mac: str) -> dict[str, Any]:
+    """
+    SIMULATED (demo): update the registered router MAC in the CRM registry.
+
+    The CRM half of the agent-level update_mac orchestration — the network
+    half (port binding + lease) lives in the network adapter's bind_port_mac.
+    Touches the customer's active ROUTER record only.
+    """
+    logger.info(f"[SIM] Updating registered router MAC for customer: {customer_id}")
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT equipment_id, mac_address FROM customer_equipment
+                WHERE customer_id = ? AND equipment_type = 'router' AND status = 'active'
+                """,
+                (customer_id,),
+            )
+            router = cursor.fetchone()
+
+        if not router:
+            return {
+                "success": False,
+                "error": "no_router_registered",
+                "message": "Klientui nerastas registruotas routeris.",
+            }
+
+        router = dict(router)
+
+        with db.transaction() as cursor:
+            cursor.execute(
+                "UPDATE customer_equipment SET mac_address = ? WHERE equipment_id = ?",
+                (new_mac, router["equipment_id"]),
+            )
+
+        logger.info(
+            f"[SIM] Equipment {router['equipment_id']} MAC: {router['mac_address']} -> {new_mac}"
+        )
+        return {
+            "success": True,
+            "equipment_id": router["equipment_id"],
+            "old_mac": router["mac_address"],
+            "new_mac": new_mac,
+            "message": "Registruotas įrangos MAC atnaujintas (simuliuota).",
+        }
+
+    except Exception as e:
+        logger.error(f"Error in update_equipment_mac: {e}", exc_info=True)
+        return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}

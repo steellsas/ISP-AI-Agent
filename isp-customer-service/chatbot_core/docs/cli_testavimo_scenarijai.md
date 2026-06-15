@@ -128,15 +128,38 @@ dingo? ar judino laidus? ar perkrovė?) → instruktuoja **po vieną žingsnį**
 
 ### S5a · Naujas routeris / svetimas MAC (B6) — `--phone +37060020105` (Urbonas, Tilžės g. 60-7)
 `neveikia internetas` → adresas → `taip` → `taip, vakar pakeičiau routerį`
-**Tikėtis:** atpažįsta, kad linijoje kitas įrenginys; klausia ar keitė routerį.
-**Kol kas** (5 žingsnio tool'ų nėra): „specialistas atliks pririšimą" → **tiketas**.
-*(Po 5 žingsnio: pasiūlys atnaujinti MAC nuotoliniu būdu — update_mac + reset_port.)*
+**Tikėtis (PO 5 žingsnio):** patvirtinus keitimą → **`update_mac` + `reset_port`**
+(matysis loguose `[SIM]`) → „pririšau naują įrenginį, palaukite minutę ir
+patikrinkite" → `veikia, ačiū` → **išspręsta nuotoliniu būdu, BE tiketo!**
+⚠️ DB lieka mutuota (MAC pririštas) — prieš kartojant testą perkrauti seed:
+`uv run python scripts/setup_db.py && uv run python scripts/seed_data.py`
 
 ### S5b · Factory reset / DHCP tyli (B6) — `--phone +37060020106` (Šimkutė, Vilniaus g. 31-2)
 `neveikia internetas` → adresas → `taip` → `vaikas kažką spaudė ant routerio`
-**Tikėtis:** „routeris matomas, bet nesiunčia DHCP užklausų — tikėtinas Factory
-Reset" → instruktuoja nustatyti DHCP routerio panelėje *(instrukcijos kol kas
-bendros — RAG turinys 6 žingsnyje)*.
+**Tikėtis:** „routeris nesiunčia DHCP užklausų — tikėtinas Factory Reset" →
+**konkretūs žingsniai iš KB** (192.168.0.1, lipduko duomenys, WAN tipas → DHCP)
+po vieną; klientui nesiimant — gedimo registracija.
+
+### B-PLAN · Tiltas iki techniko — `--phone +37060020104` (Stankūnienė, S4)
+`neveikia internetas` → adresas → `taip` → simptomai → `routeris visiškai miręs,
+maitinimas geras, lemputės nedega` → **tikėtis: tiketas + pasiūlymas tilto:**
+„kol atvyks technikas, galiu laikinai paleisti internetą — ar turite kompiuterį
+su tinklo lizdu arba atsarginį routerį?"
+- **Šaka A:** `turiu kompiuterį su LAN lizdu` → instruktuoja įkišti WAN laidą
+  tiesiai → `įkišau` → `update_mac` + `reset_port` → laikinas internetas viename
+  įrenginyje (su įspėjimu: be WiFi!).
+- **Šaka B:** `turiu atsarginį routerį` → prijungti → pririšimas → pilna paslauga.
+- **Šaka C:** `nieko neturiu` → lieka tik tiketas, jokio spaudimo.
+⚠️ Pastaba: CUST104 porto link DOWN — kol klientas „neprijungė" įrenginio,
+`update_mac` grąžins `no_observed_mac` (teisinga elgsena: „linijoje nesimato
+įrenginio"). Pilnam A/B šakos demo geriau naudoti CUST105.
+
+### WIFI · Best-effort pagalba — bet kuris klientas (pvz. `+37060020110`)
+Po identifikacijos: `internetas veikia, bet nemoku prisijungti prie wifi telefone`
+**Tikėtis:** žingsniai iš KB (nustatymai → WiFi jungiklis → tinklas iš sąrašo →
+slaptažodis nuo lipduko). Tada paklausk: `o koks mano wifi slaptažodis?`
+**Tikėtis:** **NEžada pasakyti** — paaiškina, kad įmonė slaptažodžių nesaugo
+(lipdukas arba routerio nustatymai); nepavykus — siūlo gedimo registraciją.
 
 ---
 
