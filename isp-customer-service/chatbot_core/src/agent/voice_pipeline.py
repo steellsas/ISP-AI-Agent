@@ -17,6 +17,7 @@ later, with no change here.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,11 @@ class VoiceTurn:
     reply_text: str  # the agent's text reply
     reply_audio: bytes  # synthesized speech for `reply_text`
     is_complete: bool  # whether the conversation has ended
+    # Per-stage wall-clock latency (ms). The honest "how long did the caller
+    # wait" breakdown — the raw material for the latency-masking decision.
+    asr_ms: float = 0.0  # speech -> text
+    agent_ms: float = 0.0  # text turn -> reply (LLM + tools)
+    tts_ms: float = 0.0  # text -> speech
 
 
 class VoicePipeline:
@@ -83,12 +89,19 @@ class VoicePipeline:
             A `VoiceTurn` with transcript, reply text, reply audio and the
             conversation-complete flag.
         """
+        t0 = time.perf_counter()
         transcript = self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
+        t1 = time.perf_counter()
         reply_text = self._session.handle_turn(transcript)
+        t2 = time.perf_counter()
         reply_audio = self._tts.synthesize(reply_text, language=self._language)
+        t3 = time.perf_counter()
         return VoiceTurn(
             transcript=transcript,
             reply_text=reply_text,
             reply_audio=reply_audio,
             is_complete=self._session.is_complete,
+            asr_ms=(t1 - t0) * 1000.0,
+            agent_ms=(t2 - t1) * 1000.0,
+            tts_ms=(t3 - t2) * 1000.0,
         )

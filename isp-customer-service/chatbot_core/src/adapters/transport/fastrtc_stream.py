@@ -93,7 +93,16 @@ class FastRTCVoiceTransport:
         """Run one full voice turn for a detected utterance and stream it back."""
         pcm, sample_rate = self._incoming_to_pcm16(audio)
         turn = self._pipeline.handle_audio(pcm, sample_rate=sample_rate)
-        logger.info("voice turn | heard=%r -> reply=%r", turn.transcript, turn.reply_text)
+        # Latency breakdown is the raw material for the masking decision (a vs b).
+        logger.info(
+            "voice turn | heard=%r -> reply=%r | asr=%.0fms agent=%.0fms tts=%.0fms total=%.0fms",
+            turn.transcript,
+            turn.reply_text,
+            turn.asr_ms,
+            turn.agent_ms,
+            turn.tts_ms,
+            turn.asr_ms + turn.agent_ms + turn.tts_ms,
+        )
         out = self._decode_audio_to_int16(turn.reply_audio, self._output_sample_rate)
         if out.size:
             yield (self._output_sample_rate, out)

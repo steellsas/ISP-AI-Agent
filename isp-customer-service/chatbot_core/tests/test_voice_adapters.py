@@ -173,6 +173,24 @@ class TestVoicePipeline:
         assert asr.calls[0][1] == "en"
         assert tts.calls[0][1] == "en"
 
+    def test_handle_audio_reports_per_stage_latency(self):
+        # A slow ASR proves the stage timer measures real wall-clock, not 0.
+        class _SlowASR(_FakeASR):
+            def transcribe(self, audio, *, language=None, sample_rate=16_000):
+                import time
+
+                time.sleep(0.005)
+                return super().transcribe(audio, language=language, sample_rate=sample_rate)
+
+        session, asr, tts = _FakeSession(), _SlowASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts)
+
+        turn = pipeline.handle_audio(b"x")
+
+        assert turn.asr_ms >= 5.0  # the 5 ms sleep is counted in the ASR stage
+        assert turn.agent_ms >= 0.0
+        assert turn.tts_ms >= 0.0
+
 
 class TestFastRTCTransport:
     """Audio bridging between FastRTC frames and the pipeline (offline)."""
