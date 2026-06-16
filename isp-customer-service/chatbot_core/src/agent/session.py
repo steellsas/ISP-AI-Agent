@@ -35,6 +35,7 @@ class AgentSession:
         caller_phone: str = "unknown",
         language: str = "lt",
         config: AgentConfig | None = None,
+        tracer=None,
     ):
         """
         Start a session.
@@ -43,12 +44,27 @@ class AgentSession:
             caller_phone: Customer's phone number.
             language: Language code ("lt" or "en").
             config: Optional agent configuration (defaults applied if None).
+            tracer: Optional ConversationTracer (defaults to the JSONL sink).
         """
         self._agent = ReactAgent(
             caller_phone=caller_phone,
             language=language,
             config=config,
+            tracer=tracer,
         )
+
+    def end_session(self, outcome: str | None = None) -> None:
+        """Mark the conversation finished (emits session_end to the trace).
+
+        Idempotent. Transports call this when the call ends (CLI quit, voice
+        hang-up) so every conversation's trace is properly closed.
+        """
+        self._agent.end_session(outcome=outcome)
+
+    @property
+    def session_id(self) -> str:
+        """The conversation's trace id (also the JSONL filename stem)."""
+        return self._agent.session_id
 
     def greeting(self) -> str:
         """

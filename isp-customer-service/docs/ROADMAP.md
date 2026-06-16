@@ -474,6 +474,20 @@ is MANDATORY agent behaviour (into the system prompt).
       Voice runtime (barge-in, real latency, state-aware timeouts) is documented in
       `pokalbio_valdymas.md` but deferred to the voice phase — non-blocking here.
 
+- [x] **8. Observability — conversation trace (BEFORE the voice phase).** — *done.*
+      Design: `stebejimo_dizainas.md`. One unified trace, hooked at the single `AgentSession`
+      seam, so it is identical across CLI / voice / future UI. Per-session JSONL
+      (`logs/sessions/<id>.jsonl`), one event per line: session_start / user_turn /
+      tool_call / tool_result / **verdict (own type)** / agent_reply / session_end;
+      every event carries `session_id` + `ts` (+ schema `v`). Thin
+      `ConversationTracer` port → swappable sink (file now → UI reads the same →
+      prod aggregator later). Trace ≠ error logs (errors appear in both). Reuses
+      `REDACT_PII`; non-blocking append for voice. Debug verbosity now; tokens/cost,
+      human-readable UI view, dashboards, and **conversation-history persistence**
+      (session_end → existing `conversations` table, like a ticket) are deferred.
+      Rationale: voice is far harder to debug than CLI (no live text stream), and
+      this same trace is the foundation for the demo UI and Phase 7 observability.
+
 **Scenarios (S1–S5):** S1 Apmokėjimas (B1) inform, no ticket · S2 Masinė avarija
 (B2) inform + ETA, **no ticket** (already-registered incident) · S3 Tinklo gedimas
 individualus (B3) → ticket · S4 Kabelis/maitinimas (B4/B5) instruct → resolve or

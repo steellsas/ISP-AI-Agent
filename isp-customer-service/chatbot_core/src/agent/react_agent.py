@@ -33,6 +33,26 @@ from .config import AgentConfig, create_config
 from .prompts import load_system_prompt
 from .state import AgentState
 
+# Conversation trace (observability). Optional: if the adapter can't import,
+# fall back to a no-op so tracing never breaks the agent.
+try:
+    from src.adapters.tracing import get_tracer, new_session_id
+
+    _TRACING_AVAILABLE = True
+except ImportError:  # pragma: no cover - defensive
+    _TRACING_AVAILABLE = False
+
+    def new_session_id() -> str:
+        return "no-trace"
+
+    def get_tracer(session_id, **_kwargs):
+        class _Null:
+            def emit(self, *_a, **_k):
+                return None
+
+        return _Null()
+
+
 # Tools
 try:
     from .tools import REAL_TOOLS as TOOLS
@@ -127,6 +147,7 @@ class ReactAgent:
         caller_phone: str = "unknown",
         language: str = "lt",
         config: AgentConfig = None,
+        tracer=None,
     ):
         """
         Initialize agent.
@@ -135,6 +156,7 @@ class ReactAgent:
             caller_phone: Customer's phone number
             language: Language code ("lt" or "en")
             config: Agent configuration (uses default if None)
+            tracer: ConversationTracer (defaults to the configured JSONL sink).
         """
         # Create config with language if not provided
         if config is None:
@@ -145,6 +167,17 @@ class ReactAgent:
         self.state = AgentState(
             caller_phone=caller_phone,
             max_turns=self.config.max_turns,
+        )
+
+        # Conversation trace: one file per session, identical across transports.
+        self.session_id = new_session_id()
+        self.tracer = tracer if tracer is not None else get_tracer(self.session_id)
+        self._session_ended = False
+        self.tracer.emit(
+            "session_start",
+            caller_phone=caller_phone,
+            language=self.config.language,
+            model=self.config.model,
         )
 
         # Initialize LLM stats tracking
@@ -301,6 +334,56 @@ class ReactAgent:
         except json.JSONDecodeError:
             pass
 
+    def _trace_tool_result(self, name: str, observation: str) -> None:
+        """Emit a tool_result event (+ a dedicated verdict event for diagnoses).
+
+        Keeps the trace small: a boolean ok + a few key fields, not the whole
+        payload. The verdict is its own event type because "why the agent acted"
+        is the most valuable thing when debugging.
+        """
+        try:
+            data = json.loads(observation)
+        except (json.JSONDecodeError, TypeError):
+            self.tracer.emit("tool_result", name=name, ok=None, summary="<non-json>")
+            return
+
+        ok = data.get("success")
+        summary: dict[str, Any] = {}
+        for key in ("customer_id", "ticket_id", "outcome"):
+            if data.get(key):
+                summary[key] = data[key]
+        if not ok and data.get("error"):
+            summary["error"] = data["error"]
+        # resolve_address: surface the per-level hint (drives the next question).
+        if name == "resolve_address" and data.get("hint"):
+            summary["hint"] = data["hint"]
+
+        self.tracer.emit("tool_result", name=name, ok=ok, summary=summary or None)
+
+        # diagnose_connection carries the verdict -> its own event.
+        verdict = data.get("verdict") if isinstance(data, dict) else None
+        if verdict:
+            self.tracer.emit(
+                "verdict",
+                side=verdict.get("side"),
+                group=verdict.get("group"),
+                action=verdict.get("action"),
+                reason=verdict.get("reason"),
+            )
+
+    def end_session(self, outcome: str | None = None) -> None:
+        """Emit session_end once (idempotent). Call when the conversation ends."""
+        if self._session_ended:
+            return
+        self._session_ended = True
+        self.tracer.emit(
+            "session_end",
+            outcome=outcome,
+            customer_id=self.state.customer_id,
+            ticket_id=self.state.ticket_id,
+            turn_count=self.state.turn_count,
+        )
+
     def step(self, user_input: str = None) -> dict[str, Any]:
         """
         Execute one agent step.
@@ -391,6 +474,7 @@ class ReactAgent:
 
                 logger.info(f"[AGENT] Tool call: {name}")
                 logger.debug(f"[AGENT] Args: {args}")
+                self.tracer.emit("tool_call", name=name, args=args)
 
                 observation = execute_tool(name, args)
 
@@ -402,6 +486,7 @@ class ReactAgent:
                     }
                 )
 
+                self._trace_tool_result(name, observation)
                 self._update_state_from_observation(name, observation)
                 self.state.add_observation(observation)
 
@@ -469,7 +554,11 @@ class ReactAgent:
             self.state.turn_count += 1
 
             logger.info(f"[AGENT] Hardcoded greeting: {greeting}")
+            self.tracer.emit("agent_reply", text=greeting)
             return greeting
+
+        if user_input:
+            self.tracer.emit("user_turn", text=user_input)
 
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response
@@ -483,10 +572,12 @@ class ReactAgent:
             # respond is now caught in step() (needs_continuation), so any
             # non-None response here is a genuine answer for the customer.
             if result.get("response") is not None:
-                return result["response"]
+                return self._reply(result["response"])
 
             if result.get("is_complete"):
-                return result.get("response", self.config.conversation_end_message)
+                reply = result.get("response", self.config.conversation_end_message)
+                self.end_session(outcome="complete")
+                return self._reply(reply)
 
             if result.get("needs_continuation"):
                 tool_calls += 1
@@ -494,7 +585,12 @@ class ReactAgent:
 
             break
 
-        return self.config.timeout_message
+        return self._reply(self.config.timeout_message)
+
+    def _reply(self, text: str) -> str:
+        """Emit the customer-facing reply to the trace and return it."""
+        self.tracer.emit("agent_reply", text=text)
+        return text
 
 
 # =============================================================================
@@ -553,12 +649,16 @@ def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
             print(f"\n\n{session.config.cli_interrupted_message}")
             break
 
+    # Close the trace for this conversation (emits session_end).
+    session.end_session(outcome="cli_quit")
+
     print("\n" + "=" * 60)
     print(f"Conversation ended. Turns: {session.state.turn_count}")
     if session.state.customer_id:
         print(f"Customer: {session.state.customer_name} ({session.state.customer_id})")
     if session.state.ticket_id:
         print(f"Ticket: {session.state.ticket_id}")
+    print(f"Trace: logs/sessions/{session.session_id}.jsonl")
     print("=" * 60)
 
 
