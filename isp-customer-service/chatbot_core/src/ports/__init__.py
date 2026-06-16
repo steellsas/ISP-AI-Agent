@@ -14,12 +14,14 @@ from .asr import ASRProvider
 from .llm import LLMProvider, Message
 from .retrieval import ChunkMetadata, RetrievedChunk, RetrieverPort
 from .tools import ToolProvider, ToolSpec
+from .tracing import ConversationTracer
 from .transport import Transport
 from .tts import TTSProvider
 
 __all__ = [
     "ASRProvider",
     "ChunkMetadata",
+    "ConversationTracer",
     "LLMProvider",
     "Message",
     "RetrievedChunk",
