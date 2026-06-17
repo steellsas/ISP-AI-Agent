@@ -66,6 +66,11 @@ class AgentSession:
         """The conversation's trace id (also the JSONL filename stem)."""
         return self._agent.session_id
 
+    @property
+    def tracer(self):
+        """The ConversationTracer for this call (lets the voice pipeline log)."""
+        return self._agent.tracer
+
     def greeting(self) -> str:
         """
         Return the conversation's opening message.

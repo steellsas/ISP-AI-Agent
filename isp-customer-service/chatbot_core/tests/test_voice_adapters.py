@@ -13,7 +13,7 @@ import wave
 
 import numpy as np
 import pytest
-from adapters.asr import FasterWhisperASR
+from adapters.asr import FasterWhisperASR, GroqWhisperASR
 from adapters.transport import FastRTCVoiceTransport
 from adapters.tts import GTTSProvider
 from agent.voice_pipeline import VoicePipeline, VoiceTurn
@@ -81,6 +81,10 @@ class TestProtocolConformance:
     def test_gtts_is_tts_provider(self):
         assert isinstance(GTTSProvider(), TTSProvider)
 
+    def test_groq_is_asr_provider(self):
+        # Construct without a key (no client built until transcribe).
+        assert isinstance(GroqWhisperASR(api_key="x"), ASRProvider)
+
     def test_fakes_satisfy_protocols(self):
         assert isinstance(_FakeASR(), ASRProvider)
         assert isinstance(_FakeTTS(), TTSProvider)
@@ -98,6 +102,30 @@ class TestEmptyInputs:
         # No model load happens: zero samples returns before _ensure_model().
         asr = FasterWhisperASR()
         assert asr.transcribe(b"") == ""
+
+    def test_groq_empty_audio_returns_empty_string(self):
+        # No client/network: empty returns before _ensure_client().
+        assert GroqWhisperASR(api_key="x").transcribe(b"") == ""
+
+
+class TestGroqWavPacking:
+    """Groq wants an audio file: raw PCM is wrapped in WAV, WAV passes through."""
+
+    def test_raw_pcm_wrapped_in_wav(self):
+        pcm = np.array([0, 1000, -1000, 32767], dtype="<i2").tobytes()
+        wav = GroqWhisperASR._to_wav_bytes(pcm, 16_000)
+
+        assert wav[:4] == b"RIFF"
+        with wave.open(io.BytesIO(wav), "rb") as w:
+            assert w.getnchannels() == 1
+            assert w.getsampwidth() == 2
+            assert w.getframerate() == 16_000
+            assert w.readframes(w.getnframes()) == pcm
+
+    def test_existing_wav_passed_through(self):
+        samples = np.array([0, 16384, -16384], dtype=np.int16)
+        wav = _make_wav(samples, rate=16_000)
+        assert GroqWhisperASR._to_wav_bytes(wav, 16_000) is wav
 
 
 class TestWavDecoding:
@@ -172,6 +200,53 @@ class TestVoicePipeline:
 
         assert asr.calls[0][1] == "en"
         assert tts.calls[0][1] == "en"
+
+    def test_transcript_filter_applied_before_agent(self):
+        # The filter (e.g. number normalization) runs on the transcript the
+        # agent receives, not the raw ASR text.
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts, transcript_filter=str.upper)
+
+        turn = pipeline.handle_audio(b"x")
+
+        assert turn.transcript == "NEVEIKIA INTERNETAS"
+        assert session.turns == ["NEVEIKIA INTERNETAS"]
+
+    def test_voice_latency_emitted_to_session_tracer(self):
+        class _CaptureTracer:
+            def __init__(self):
+                self.events = []
+
+            def emit(self, event_type, **fields):
+                self.events.append({"type": event_type, **fields})
+
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        session.tracer = _CaptureTracer()
+        pipeline = VoicePipeline(session, asr, tts)
+
+        pipeline.handle_audio(b"x")
+
+        lat = [e for e in session.tracer.events if e["type"] == "voice_latency"]
+        assert len(lat) == 1
+        assert {"asr_ms", "agent_ms", "tts_ms", "total_ms"} <= set(lat[0])
+
+    def test_handle_audio_reports_per_stage_latency(self):
+        # A slow ASR proves the stage timer measures real wall-clock, not 0.
+        class _SlowASR(_FakeASR):
+            def transcribe(self, audio, *, language=None, sample_rate=16_000):
+                import time
+
+                time.sleep(0.005)
+                return super().transcribe(audio, language=language, sample_rate=sample_rate)
+
+        session, asr, tts = _FakeSession(), _SlowASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts)
+
+        turn = pipeline.handle_audio(b"x")
+
+        assert turn.asr_ms >= 5.0  # the 5 ms sleep is counted in the ASR stage
+        assert turn.agent_ms >= 0.0
+        assert turn.tts_ms >= 0.0
 
 
 class TestFastRTCTransport:
