@@ -23,6 +23,7 @@ Usage:
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -334,17 +335,18 @@ class ReactAgent:
         except json.JSONDecodeError:
             pass
 
-    def _trace_tool_result(self, name: str, observation: str) -> None:
+    def _trace_tool_result(self, name: str, observation: str, ms: int | None = None) -> None:
         """Emit a tool_result event (+ a dedicated verdict event for diagnoses).
 
-        Keeps the trace small: a boolean ok + a few key fields, not the whole
-        payload. The verdict is its own event type because "why the agent acted"
-        is the most valuable thing when debugging.
+        Keeps the trace small: a boolean ok + a few key fields + how long the
+        tool took (ms) — needed to know which tool to overlap/mask. The verdict
+        is its own event type because "why the agent acted" is the most valuable
+        thing when debugging.
         """
         try:
             data = json.loads(observation)
         except (json.JSONDecodeError, TypeError):
-            self.tracer.emit("tool_result", name=name, ok=None, summary="<non-json>")
+            self.tracer.emit("tool_result", name=name, ok=None, ms=ms, summary="<non-json>")
             return
 
         ok = data.get("success")
@@ -358,7 +360,7 @@ class ReactAgent:
         if name == "resolve_address" and data.get("hint"):
             summary["hint"] = data["hint"]
 
-        self.tracer.emit("tool_result", name=name, ok=ok, summary=summary or None)
+        self.tracer.emit("tool_result", name=name, ok=ok, ms=ms, summary=summary or None)
 
         # diagnose_connection carries the verdict -> its own event.
         verdict = data.get("verdict") if isinstance(data, dict) else None
@@ -382,7 +384,14 @@ class ReactAgent:
             customer_id=self.state.customer_id,
             ticket_id=self.state.ticket_id,
             turn_count=self.state.turn_count,
+            llm_calls=self.llm_stats.total_calls,
+            total_tokens=self.llm_stats.total_tokens,
+            total_cost=round(self.llm_stats.total_cost, 5),
         )
+        # Write a human-readable transcript next to the JSONL, if supported.
+        export = getattr(self.tracer, "export_txt", None)
+        if callable(export):
+            export()
 
     def step(self, user_input: str = None) -> dict[str, Any]:
         """
@@ -431,6 +440,15 @@ class ReactAgent:
                 cached=stats.get("cached", False),
                 model=stats.get("model", self.config.model),
             )
+            # One LLM call per step -> trace its tokens/latency (where agent_ms goes).
+            self.tracer.emit(
+                "llm",
+                model=stats.get("model", self.config.model),
+                input_tokens=stats.get("input_tokens", 0),
+                output_tokens=stats.get("output_tokens", 0),
+                latency_ms=round(stats.get("latency_ms", 0)),
+                cached=stats.get("cached", False),
+            )
 
         except Exception as e:
             logger.error(f"LLM error: {e}")
@@ -476,7 +494,9 @@ class ReactAgent:
                 logger.debug(f"[AGENT] Args: {args}")
                 self.tracer.emit("tool_call", name=name, args=args)
 
+                _t = time.perf_counter()
                 observation = execute_tool(name, args)
+                tool_ms = round((time.perf_counter() - _t) * 1000.0)
 
                 self.state.messages.append(
                     {
@@ -486,7 +506,7 @@ class ReactAgent:
                     }
                 )
 
-                self._trace_tool_result(name, observation)
+                self._trace_tool_result(name, observation, tool_ms)
                 self._update_state_from_observation(name, observation)
                 self.state.add_observation(observation)
 

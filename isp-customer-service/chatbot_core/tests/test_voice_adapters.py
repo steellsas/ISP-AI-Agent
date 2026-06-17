@@ -212,6 +212,27 @@ class TestVoicePipeline:
         assert turn.transcript == "NEVEIKIA INTERNETAS"
         assert session.turns == ["NEVEIKIA INTERNETAS"]
 
+    def test_asr_event_carries_raw_and_normalized(self):
+        class _CaptureTracer:
+            def __init__(self):
+                self.events = []
+
+            def emit(self, event_type, **fields):
+                self.events.append({"type": event_type, **fields})
+
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        session.tracer = _CaptureTracer()
+        # filter uppercases -> raw differs from transcript the agent receives.
+        pipeline = VoicePipeline(session, asr, tts, transcript_filter=str.upper)
+
+        pipeline.handle_audio(b"x")
+
+        asr_ev = [e for e in session.tracer.events if e["type"] == "asr"]
+        assert len(asr_ev) == 1
+        assert asr_ev[0]["raw"] == "neveikia internetas"
+        assert asr_ev[0]["transcript"] == "NEVEIKIA INTERNETAS"
+        assert "ms" in asr_ev[0]
+
     def test_voice_latency_emitted_to_session_tracer(self):
         class _CaptureTracer:
             def __init__(self):
@@ -280,6 +301,23 @@ class TestFastRTCTransport:
         out = FastRTCVoiceTransport._decode_audio_to_int16(b"", 24_000)
         assert out.dtype == np.int16
         assert out.shape == (1, 0)
+
+    def test_record_saves_caller_pcm_as_wav(self, tmp_path):
+        transport = FastRTCVoiceTransport(object(), record_dir=tmp_path)
+        pcm = np.array([0, 1000, -1000, 32767], dtype="<i2").tobytes()
+
+        transport._save_audio("01_user", pcm, kind="pcm", sample_rate=16_000)
+
+        wav_path = tmp_path / "01_user.wav"
+        assert wav_path.exists()
+        with wave.open(str(wav_path), "rb") as w:
+            assert w.getframerate() == 16_000
+            assert w.readframes(w.getnframes()) == pcm
+
+    def test_record_disabled_is_noop(self, tmp_path):
+        transport = FastRTCVoiceTransport(object())  # no record_dir
+        transport._save_audio("01_user", b"\x00\x01", kind="pcm")
+        assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.integration

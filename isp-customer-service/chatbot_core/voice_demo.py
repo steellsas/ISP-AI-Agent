@@ -49,6 +49,7 @@ BEAM_SIZE = int(os.environ.get("WHISPER_BEAM", "1"))
 USE_PROMPT = os.environ.get("WHISPER_PROMPT", "1") != "0"
 USE_VAD = os.environ.get("WHISPER_VAD", "1") != "0"
 USE_ECHO = os.environ.get("VOICE_ECHO", "0") == "1"
+RECORD_AUDIO = os.environ.get("RECORD_AUDIO", "0") == "1"
 
 
 class _Config:
@@ -133,9 +134,14 @@ def main() -> None:
     )
     trace_id = getattr(session, "session_id", None)
     if trace_id:
-        print(f"[trace] logs/sessions/{trace_id}.jsonl")
+        print(f"[trace] logs/sessions/{trace_id}.jsonl  (+ .txt on exit)")
 
-    transport = FastRTCVoiceTransport(pipeline)
+    record_dir = None
+    if RECORD_AUDIO and trace_id:
+        record_dir = Path(__file__).resolve().parent.parent / "logs" / "sessions" / trace_id
+        print(f"[record] per-turn audio -> {record_dir}")
+
+    transport = FastRTCVoiceTransport(pipeline, record_dir=record_dir)
     print("Starting voice demo — open the local URL below and allow the mic.")
     try:
         transport.start()  # launches the Gradio UI (blocks until you close it)

@@ -97,10 +97,25 @@ class VoicePipeline:
             conversation-complete flag.
         """
         t0 = time.perf_counter()
-        transcript = self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
+        raw_transcript = self._asr.transcribe(
+            audio, language=self._language, sample_rate=sample_rate
+        )
+        transcript = raw_transcript
         if self._transcript_filter and transcript:
             transcript = self._transcript_filter(transcript)
         t1 = time.perf_counter()
+
+        tracer = getattr(self._session, "tracer", None)
+        # The STT record: what was heard RAW vs after number normalization, so a
+        # bad turn is traceable to the model vs the filter.
+        if tracer is not None:
+            tracer.emit(
+                "asr",
+                raw=raw_transcript,
+                transcript=transcript,
+                ms=round((t1 - t0) * 1000.0),
+            )
+
         reply_text = self._session.handle_turn(transcript)
         t2 = time.perf_counter()
         reply_audio = self._tts.synthesize(reply_text, language=self._language)
@@ -112,7 +127,6 @@ class VoicePipeline:
 
         # Surface the latency breakdown into the conversation trace so it is
         # measurable per turn from the JSONL (where the 10 s actually goes).
-        tracer = getattr(self._session, "tracer", None)
         if tracer is not None:
             tracer.emit(
                 "voice_latency",

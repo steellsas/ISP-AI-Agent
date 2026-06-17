@@ -57,12 +57,51 @@ class TestJsonlFileTracer:
         assert "+37060020105" not in raw  # masked everywhere, incl. nested args
         assert "***0105" in raw
 
+    def test_session_id_not_corrupted_by_redaction(self, tmp_path):
+        # A numeric session id can coincidentally match the phone regex; it must
+        # survive redaction intact (structural field), unlike text/args values.
+        from adapters.tracing import JsonlFileTracer
+
+        sid = "20260617-135857-245253-0001"
+        tracer = JsonlFileTracer(sid, trace_dir=tmp_path, redact=True)
+        tracer.emit("user_turn", text="+37060020105")
+
+        events = _read_events(tracer.path)
+        assert events[0]["session_id"] == sid  # untouched
+        assert events[0]["text"] == "***0105"  # value still redacted
+
     def test_redact_off_keeps_full_number(self, tmp_path):
         from adapters.tracing import JsonlFileTracer
 
         tracer = JsonlFileTracer("sess-3", trace_dir=tmp_path, redact=False)
         tracer.emit("session_start", caller_phone="+37060020105")
         assert "+37060020105" in tracer.path.read_text(encoding="utf-8")
+
+    def test_export_txt_writes_readable_transcript(self, tmp_path):
+        from adapters.tracing import JsonlFileTracer
+
+        tracer = JsonlFileTracer("sess-txt", trace_dir=tmp_path, redact=False)
+        tracer.emit("session_start", caller_phone="+37060020105", model="gpt-4o-mini")
+        tracer.emit("user_turn", text="neveikia internetas")
+        tracer.emit("tool_call", name="resolve_address", args={"city": "Šiauliai"})
+        tracer.emit(
+            "tool_result",
+            name="resolve_address",
+            ok=True,
+            ms=12,
+            summary={"customer_id": "CUST105"},
+        )
+        tracer.emit("verdict", side="customer", group="B6", action="instruct", reason="foreign_mac")
+        tracer.emit("agent_reply", text="Ar pakeitėte routerį?")
+        tracer.emit("session_end", outcome="done", customer_id="CUST105", ticket_id=None)
+
+        txt = tracer.export_txt()
+        assert txt is not None and txt.exists()
+        content = txt.read_text(encoding="utf-8")
+        assert "USER : neveikia internetas" in content
+        assert "AGENT: Ar pakeitėte routerį?" in content
+        assert "VERDICT B6 instruct foreign_mac" in content
+        assert "12ms" in content
 
     def test_emit_never_raises_on_bad_dir(self, tmp_path):
         from adapters.tracing import JsonlFileTracer

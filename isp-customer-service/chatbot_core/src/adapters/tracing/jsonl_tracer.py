@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 _DISABLED_VALUES = {"0", "false", "no", "off"}
+# Structural fields are never redacted — their digit runs (session_id, ts) can
+# coincidentally match the phone regex and would otherwise be corrupted.
+_STRUCTURAL_KEYS = {"v", "ts", "session_id", "type"}
 
 # Per-process counter disambiguates ids created in the same microsecond
 # (e.g. concurrent voice sessions or back-to-back starts).
@@ -97,14 +100,84 @@ class JsonlFileTracer:
             **fields,
         }
         try:
-            line = json.dumps(event, ensure_ascii=False, default=str)
-            # Redact phone numbers anywhere in the line (covers nested args/text);
-            # the LT-phone regex leaves CUST ids / MACs / IPs untouched.
-            line = redact_phone(line, enabled=self._redact)
+            # Redact phone numbers in VALUES (text, nested args/summary), but
+            # never in structural keys whose digit runs could false-match.
+            scrubbed = {
+                k: (v if k in _STRUCTURAL_KEYS else self._scrub(v)) for k, v in event.items()
+            }
+            line = json.dumps(scrubbed, ensure_ascii=False, default=str)
             with open(self._path, "a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(f"Conversation trace write failed: {e}")
+
+    def _scrub(self, value: Any) -> Any:
+        """Recursively redact phone numbers in string values."""
+        if isinstance(value, str):
+            return redact_phone(value, enabled=self._redact)
+        if isinstance(value, dict):
+            return {k: self._scrub(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._scrub(v) for v in value]
+        return value
+
+    def export_txt(self) -> Path | None:
+        """Write a human-readable transcript (<id>.txt) next to the JSONL.
+
+        Quick-read view of the call: USER / AGENT turns with compact tool,
+        verdict and latency annotations. Best-effort; never raises.
+        """
+        if self._path is None or not self._path.exists():
+            return None
+        txt_path = self._path.with_suffix(".txt")
+        try:
+            lines: list[str] = []
+            with open(self._path, encoding="utf-8") as f:
+                for raw in f:
+                    if not raw.strip():
+                        continue
+                    e = json.loads(raw)
+                    t = e.get("type")
+                    if t == "session_start":
+                        lines.append(
+                            f"[{e.get('session_id')}] phone={e.get('caller_phone')} "
+                            f"model={e.get('model')}"
+                        )
+                    elif t == "asr":
+                        if e.get("raw") != e.get("transcript"):
+                            lines.append(f"   (heard: {e.get('raw')!r})")
+                    elif t == "user_turn":
+                        lines.append(f"USER : {e.get('text')}")
+                    elif t == "agent_reply":
+                        lines.append(f"AGENT: {e.get('text')}")
+                    elif t == "tool_call":
+                        lines.append(f"   . tool {e.get('name')} {e.get('args')}")
+                    elif t == "tool_result":
+                        lines.append(
+                            f"   . -> ok={e.get('ok')} {e.get('summary') or ''} ({e.get('ms')}ms)"
+                        )
+                    elif t == "verdict":
+                        lines.append(
+                            f"   . VERDICT {e.get('group')} {e.get('action')} {e.get('reason')}"
+                        )
+                    elif t == "voice_latency":
+                        lines.append(
+                            f"   ~ asr={e.get('asr_ms')} agent={e.get('agent_ms')} "
+                            f"tts={e.get('tts_ms')} total={e.get('total_ms')}ms"
+                        )
+                    elif t == "session_end":
+                        lines.append(
+                            f"--- end: {e.get('outcome')} customer={e.get('customer_id')} "
+                            f"ticket={e.get('ticket_id')} "
+                            f"llm_calls={e.get('llm_calls')} tokens={e.get('total_tokens')}"
+                        )
+            # The JSONL values are already redacted per-field, so just join them
+            # (re-redacting the whole text would mask the numeric session id).
+            txt_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return txt_path
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(f"Transcript export failed: {e}")
+            return None
 
 
 def _enabled_from_env() -> bool:
