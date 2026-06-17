@@ -88,16 +88,22 @@ _UNITS = {
     "tris": 3,
     "keturi": 4,
     "keturios": 4,
+    "keturias": 4,
     "penki": 5,
     "penkios": 5,
+    "penkias": 5,
     "šeši": 6,
     "šešios": 6,
+    "šešias": 6,
     "septyni": 7,
     "septynios": 7,
+    "septynias": 7,
     "aštuoni": 8,
     "aštuonios": 8,
+    "aštuonias": 8,
     "devyni": 9,
     "devynios": 9,
+    "devynias": 9,
 }
 _TEENS = {
     "dešimt": 10,
@@ -196,7 +202,12 @@ def _run_value(words: list[str]) -> int:
             total += _TENS[t]
             pending = 0
         elif kind == "teens":
-            total += _TEENS[t]
+            # STT often splits a single ten-word: "šešias dešimt" -> 6 + "dešimt".
+            # A unit (2-9) immediately before "dešimt" means unit*10 (= 60).
+            if t == "dešimt" and 2 <= pending <= 9:
+                total += pending * 10
+            else:
+                total += _TEENS[t]
             pending = 0
         elif kind == "unit":
             pending = _UNITS[t]

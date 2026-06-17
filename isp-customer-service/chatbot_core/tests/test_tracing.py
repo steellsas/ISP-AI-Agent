@@ -193,6 +193,31 @@ class TestReactAgentEmits:
         assert result["type"] == "tool_result"
         assert "Ginkūnai" in result["summary"]["hint"]
 
+    def test_preflight_phone_sets_unconfirmed_candidate(self, db_connection):
+        cap = _CaptureTracer()
+        agent = self._agent(cap)  # caller +37060020105 -> CUST105
+
+        agent._preflight_phone()
+
+        cand = agent.state.phone_candidate
+        assert cand is not None
+        assert cand["customer_id"] == "CUST105"
+        assert "Tilžės" in (cand["address"] or "")
+        assert agent.state.customer_id is None  # candidate, NOT confirmed
+        # The fact block surfaces it for the agent's first reply.
+        facts = agent._state_facts_block()
+        assert "PHONE CANDIDATE" in facts and "CUST105" in facts
+        assert any(e["type"] == "preflight" and e["found"] for e in cap.events)
+
+    def test_preflight_unknown_phone_no_candidate(self, db_connection):
+        cap = _CaptureTracer()
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37069999999", language="lt", tracer=cap)
+        agent._preflight_phone()
+
+        assert agent.state.phone_candidate is None
+
     def test_end_session_idempotent(self, db_connection):
         cap = _CaptureTracer()
         agent = self._agent(cap)

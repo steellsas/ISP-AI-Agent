@@ -273,6 +273,18 @@ class ReactAgent:
             facts.append(f"- Problem type: {s.problem_type}")
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        # Pre-flight phone candidate: known but UNCONFIRMED until the caller
+        # agrees the offered address is theirs (anchor rule). Only relevant
+        # before a customer has been confirmed.
+        if not s.customer_id and s.phone_candidate and s.phone_candidate.get("address"):
+            cand = s.phone_candidate
+            facts.append(
+                f"- PHONE CANDIDATE (unconfirmed): the caller's number is registered to "
+                f"address {cand['address']} (customer {cand['customer_id']}). Your FIRST "
+                f"reply should offer THIS address for confirmation; if the caller agrees, "
+                f"use customer_id {cand['customer_id']} for diagnosis. If they state a "
+                f"different address, ignore this candidate."
+            )
 
         if not facts:
             return None
@@ -372,6 +384,36 @@ class ReactAgent:
                 action=verdict.get("action"),
                 reason=verdict.get("reason"),
             )
+
+    def _preflight_phone(self) -> None:
+        """Look up the caller's number at the START of the call (deterministic).
+
+        Runs once, in code (not via the LLM), so by the customer's first turn the
+        phone account — if any — is already known and the agent can offer its
+        address for confirmation without a tool round-trip. Stored as an
+        UNCONFIRMED candidate (anchor rule), never as a confirmed customer.
+        """
+        phone = self.state.caller_phone
+        if not phone or phone == "unknown":
+            return
+        try:
+            result = json.loads(execute_tool("find_customer", {"phone": phone}))
+        except Exception:
+            return
+        if not result.get("success"):
+            self.tracer.emit("preflight", found=False)
+            return
+        addresses = result.get("addresses") or []
+        primary = next(
+            (a for a in addresses if a.get("is_primary")),
+            addresses[0] if addresses else {},
+        )
+        self.state.phone_candidate = {
+            "customer_id": result.get("customer_id"),
+            "name": result.get("name"),
+            "address": primary.get("full_address"),
+        }
+        self.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
 
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
@@ -567,6 +609,10 @@ class ReactAgent:
         """
         # Hardcoded greeting - first message without user input
         if user_input is None and self.state.turn_count == 0:
+            # Pre-flight the caller's number while the greeting plays — by the
+            # customer's first turn the phone account is already known.
+            self._preflight_phone()
+
             greeting = self.config.greeting_message
 
             # Log to message history (for context)

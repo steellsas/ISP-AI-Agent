@@ -53,6 +53,9 @@ class TestNormalizeLtNumbers:
             ("dvidešimt", "20"),
             ("šešiasdešimt", "60"),  # the hard one from the traces
             ("šešesdešimt", "60"),  # Whisper misspelling variant
+            ("šešias dešimt", "60"),  # STT split of šešiasdešimt (live trace)
+            ("dvi dešimt", "20"),  # split tens
+            ("šešias", "6"),  # accusative unit form
             ("šešiasdešimt penki", "65"),
             ("dvidešimt du", "22"),
             ("šimtas", "100"),
