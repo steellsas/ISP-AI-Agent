@@ -173,6 +173,35 @@ class TestVoicePipeline:
         assert asr.calls[0][1] == "en"
         assert tts.calls[0][1] == "en"
 
+    def test_transcript_filter_applied_before_agent(self):
+        # The filter (e.g. number normalization) runs on the transcript the
+        # agent receives, not the raw ASR text.
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts, transcript_filter=str.upper)
+
+        turn = pipeline.handle_audio(b"x")
+
+        assert turn.transcript == "NEVEIKIA INTERNETAS"
+        assert session.turns == ["NEVEIKIA INTERNETAS"]
+
+    def test_voice_latency_emitted_to_session_tracer(self):
+        class _CaptureTracer:
+            def __init__(self):
+                self.events = []
+
+            def emit(self, event_type, **fields):
+                self.events.append({"type": event_type, **fields})
+
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        session.tracer = _CaptureTracer()
+        pipeline = VoicePipeline(session, asr, tts)
+
+        pipeline.handle_audio(b"x")
+
+        lat = [e for e in session.tracer.events if e["type"] == "voice_latency"]
+        assert len(lat) == 1
+        assert {"asr_ms", "agent_ms", "tts_ms", "total_ms"} <= set(lat[0])
+
     def test_handle_audio_reports_per_stage_latency(self):
         # A slow ASR proves the stage timer measures real wall-clock, not 0.
         class _SlowASR(_FakeASR):

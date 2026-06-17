@@ -45,12 +45,6 @@ USE_PROMPT = os.environ.get("WHISPER_PROMPT", "1") != "0"
 USE_VAD = os.environ.get("WHISPER_VAD", "1") != "0"
 USE_ECHO = os.environ.get("VOICE_ECHO", "0") == "1"
 
-# Primes the decoder toward Lithuanian ISP-support vocabulary + diacritics.
-DOMAIN_PROMPT = (
-    "Pokalbis su interneto paslaugu tiekejo klientu aptarnavimu lietuviu kalba. "
-    "Klientas kalba apie interneta, rysi, greiti, gedima, saskaita ir sutarti."
-)
-
 
 class _Config:
     """Minimal stand-in for AgentConfig (echo mode only reads `language`)."""
@@ -92,7 +86,7 @@ def _build_session():
 
 
 def main() -> None:
-    from adapters.asr import FasterWhisperASR
+    from adapters.asr import DOMAIN_PROMPT_LT, FasterWhisperASR, normalize_lt_numbers
     from adapters.transport import FastRTCVoiceTransport
     from adapters.tts import GTTSProvider
     from agent.voice_pipeline import VoicePipeline
@@ -106,13 +100,16 @@ def main() -> None:
         device="cpu",
         compute_type="int8",
         beam_size=BEAM_SIZE,
-        initial_prompt=DOMAIN_PROMPT if USE_PROMPT else None,
+        initial_prompt=DOMAIN_PROMPT_LT if USE_PROMPT else None,
         vad_filter=USE_VAD,
     )
     tts = GTTSProvider(default_language=LANGUAGE)
 
     session = _build_session()
-    pipeline = VoicePipeline(session, asr, tts, language=LANGUAGE)
+    # Spoken-number -> digit cleanup on the transcript before the agent sees it.
+    pipeline = VoicePipeline(
+        session, asr, tts, language=LANGUAGE, transcript_filter=normalize_lt_numbers
+    )
     trace_id = getattr(session, "session_id", None)
     if trace_id:
         print(f"[trace] logs/sessions/{trace_id}.jsonl")

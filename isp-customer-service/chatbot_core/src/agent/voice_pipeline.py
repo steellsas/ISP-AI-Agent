@@ -18,6 +18,7 @@ later, with no change here.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -53,6 +54,7 @@ class VoicePipeline:
         tts: TTSProvider,
         *,
         language: str | None = None,
+        transcript_filter: Callable[[str], str] | None = None,
     ):
         """
         Args:
@@ -61,11 +63,16 @@ class VoicePipeline:
             tts: Text-to-speech backend (any `TTSProvider`).
             language: ISO hint passed to ASR/TTS; defaults to the session's
                 configured language.
+            transcript_filter: optional post-ASR text cleanup applied to the
+                transcript before the agent sees it (e.g. spoken-number ->
+                digit normalization for voice). Keeps the pipeline generic —
+                the language-specific logic lives in an adapter.
         """
         self._session = session
         self._asr = asr
         self._tts = tts
         self._language = language or session.config.language
+        self._transcript_filter = transcript_filter
 
     @property
     def session(self) -> AgentSession:
@@ -91,17 +98,36 @@ class VoicePipeline:
         """
         t0 = time.perf_counter()
         transcript = self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
+        if self._transcript_filter and transcript:
+            transcript = self._transcript_filter(transcript)
         t1 = time.perf_counter()
         reply_text = self._session.handle_turn(transcript)
         t2 = time.perf_counter()
         reply_audio = self._tts.synthesize(reply_text, language=self._language)
         t3 = time.perf_counter()
+
+        asr_ms = (t1 - t0) * 1000.0
+        agent_ms = (t2 - t1) * 1000.0
+        tts_ms = (t3 - t2) * 1000.0
+
+        # Surface the latency breakdown into the conversation trace so it is
+        # measurable per turn from the JSONL (where the 10 s actually goes).
+        tracer = getattr(self._session, "tracer", None)
+        if tracer is not None:
+            tracer.emit(
+                "voice_latency",
+                asr_ms=round(asr_ms),
+                agent_ms=round(agent_ms),
+                tts_ms=round(tts_ms),
+                total_ms=round(asr_ms + agent_ms + tts_ms),
+            )
+
         return VoiceTurn(
             transcript=transcript,
             reply_text=reply_text,
             reply_audio=reply_audio,
             is_complete=self._session.is_complete,
-            asr_ms=(t1 - t0) * 1000.0,
-            agent_ms=(t2 - t1) * 1000.0,
-            tts_ms=(t3 - t2) * 1000.0,
+            asr_ms=asr_ms,
+            agent_ms=agent_ms,
+            tts_ms=tts_ms,
         )

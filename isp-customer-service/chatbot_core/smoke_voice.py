@@ -53,11 +53,8 @@ LANGUAGE = "lt"
 USE_PROMPT = os.environ.get("WHISPER_PROMPT", "1") != "0"
 USE_VAD = os.environ.get("WHISPER_VAD", "1") != "0"
 
-# Primes the decoder toward Lithuanian ISP-support vocabulary + diacritics.
-DOMAIN_PROMPT = (
-    "Pokalbis su interneto paslaugu tiekejo klientu aptarnavimu lietuviu kalba. "
-    "Klientas kalba apie interneta, rysi, greiti, gedima, saskaita ir sutarti."
-)
+# Shared domain prime (names the demo's cities/streets so Whisper spells them).
+from adapters.asr import DOMAIN_PROMPT_LT as DOMAIN_PROMPT  # noqa: E402
 
 # ISP-domain Lithuanian sentences — exercise the vocabulary the agent will hear.
 SENTENCES = [
@@ -172,7 +169,11 @@ def _asr_file(path: str) -> None:
     t0 = time.perf_counter()
     heard = asr.transcribe(pcm, language=LANGUAGE, sample_rate=16_000)
     dt = time.perf_counter() - t0
-    print(f"  ({dt:.1f}s)  heard: {heard!r}")
+    print(f"  ({dt:.1f}s)  heard:      {heard!r}")
+    # Show the number-normalized form the agent would actually receive.
+    from adapters.asr import normalize_lt_numbers
+
+    print(f"           normalized: {normalize_lt_numbers(heard)!r}")
 
 
 def main() -> None:
