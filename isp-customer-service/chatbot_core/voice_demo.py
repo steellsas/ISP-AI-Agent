@@ -17,10 +17,13 @@ See chatbot_core/docs/balso_testavimo_scenarijai.md for what to say.
 
 Tunables (env, no file edit needed):
     CALLER_PHONE=+37060020105   caller number (default below; any seed phone)
-    WHISPER_MODEL=small         tiny/base/small/medium/large-v3 (bigger=accurate,slower)
-    WHISPER_BEAM=1              1=fastest (greedy), 5=best quality
+    ASR_BACKEND=groq            groq (hosted, fast+accurate) | local (faster-whisper CPU)
+    GROQ_API_KEY=...            required when ASR_BACKEND=groq
+    GROQ_MODEL=whisper-large-v3 whisper-large-v3 | whisper-large-v3-turbo
+    WHISPER_MODEL=small         (local only) tiny/base/small/medium/large-v3
+    WHISPER_BEAM=1              (local only) 1=fastest, 5=best quality
     WHISPER_PROMPT=1           0 disables the Lithuanian domain prime
-    WHISPER_VAD=1              0 disables silence/noise trimming
+    WHISPER_VAD=1              (local only) 0 disables silence/noise trimming
     VOICE_ECHO=0               1 = echo agent (transport-only test, no LLM/tools)
 """
 
@@ -39,6 +42,8 @@ LANGUAGE = "lt"
 
 # Defaults are not critical — every knob is overridable per run via env.
 CALLER_PHONE = os.environ.get("CALLER_PHONE", "+37060020105")
+ASR_BACKEND = os.environ.get("ASR_BACKEND", "groq").lower()  # groq | local
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "whisper-large-v3")
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "small")
 BEAM_SIZE = int(os.environ.get("WHISPER_BEAM", "1"))
 USE_PROMPT = os.environ.get("WHISPER_PROMPT", "1") != "0"
@@ -85,24 +90,40 @@ def _build_session():
     return AgentSession(caller_phone=CALLER_PHONE, language=LANGUAGE)
 
 
-def main() -> None:
-    from adapters.asr import DOMAIN_PROMPT_LT, FasterWhisperASR, normalize_lt_numbers
-    from adapters.transport import FastRTCVoiceTransport
-    from adapters.tts import GTTSProvider
-    from agent.voice_pipeline import VoicePipeline
+def _build_asr():
+    """Hosted Groq STT (fast+accurate, needs GROQ_API_KEY) or local CPU Whisper."""
+    from adapters.asr import DOMAIN_PROMPT_LT
+
+    prompt = DOMAIN_PROMPT_LT if USE_PROMPT else None
+    if ASR_BACKEND == "groq":
+        from adapters.asr import GroqWhisperASR
+
+        print(f"[asr] Groq '{GROQ_MODEL}' (hosted) prompt={'on' if USE_PROMPT else 'off'}")
+        return GroqWhisperASR(GROQ_MODEL, default_language=LANGUAGE, initial_prompt=prompt)
+
+    from adapters.asr import FasterWhisperASR
 
     print(
-        f"[asr] faster-whisper '{MODEL_SIZE}' beam={BEAM_SIZE} "
+        f"[asr] faster-whisper '{MODEL_SIZE}' beam={BEAM_SIZE} (local CPU) "
         f"prompt={'on' if USE_PROMPT else 'off'} vad={'on' if USE_VAD else 'off'}"
     )
-    asr = FasterWhisperASR(
+    return FasterWhisperASR(
         MODEL_SIZE,
         device="cpu",
         compute_type="int8",
         beam_size=BEAM_SIZE,
-        initial_prompt=DOMAIN_PROMPT_LT if USE_PROMPT else None,
+        initial_prompt=prompt,
         vad_filter=USE_VAD,
     )
+
+
+def main() -> None:
+    from adapters.asr import normalize_lt_numbers
+    from adapters.transport import FastRTCVoiceTransport
+    from adapters.tts import GTTSProvider
+    from agent.voice_pipeline import VoicePipeline
+
+    asr = _build_asr()
     tts = GTTSProvider(default_language=LANGUAGE)
 
     session = _build_session()

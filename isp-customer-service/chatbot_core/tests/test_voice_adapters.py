@@ -13,7 +13,7 @@ import wave
 
 import numpy as np
 import pytest
-from adapters.asr import FasterWhisperASR
+from adapters.asr import FasterWhisperASR, GroqWhisperASR
 from adapters.transport import FastRTCVoiceTransport
 from adapters.tts import GTTSProvider
 from agent.voice_pipeline import VoicePipeline, VoiceTurn
@@ -81,6 +81,10 @@ class TestProtocolConformance:
     def test_gtts_is_tts_provider(self):
         assert isinstance(GTTSProvider(), TTSProvider)
 
+    def test_groq_is_asr_provider(self):
+        # Construct without a key (no client built until transcribe).
+        assert isinstance(GroqWhisperASR(api_key="x"), ASRProvider)
+
     def test_fakes_satisfy_protocols(self):
         assert isinstance(_FakeASR(), ASRProvider)
         assert isinstance(_FakeTTS(), TTSProvider)
@@ -98,6 +102,30 @@ class TestEmptyInputs:
         # No model load happens: zero samples returns before _ensure_model().
         asr = FasterWhisperASR()
         assert asr.transcribe(b"") == ""
+
+    def test_groq_empty_audio_returns_empty_string(self):
+        # No client/network: empty returns before _ensure_client().
+        assert GroqWhisperASR(api_key="x").transcribe(b"") == ""
+
+
+class TestGroqWavPacking:
+    """Groq wants an audio file: raw PCM is wrapped in WAV, WAV passes through."""
+
+    def test_raw_pcm_wrapped_in_wav(self):
+        pcm = np.array([0, 1000, -1000, 32767], dtype="<i2").tobytes()
+        wav = GroqWhisperASR._to_wav_bytes(pcm, 16_000)
+
+        assert wav[:4] == b"RIFF"
+        with wave.open(io.BytesIO(wav), "rb") as w:
+            assert w.getnchannels() == 1
+            assert w.getsampwidth() == 2
+            assert w.getframerate() == 16_000
+            assert w.readframes(w.getnframes()) == pcm
+
+    def test_existing_wav_passed_through(self):
+        samples = np.array([0, 16384, -16384], dtype=np.int16)
+        wav = _make_wav(samples, rate=16_000)
+        assert GroqWhisperASR._to_wav_bytes(wav, 16_000) is wav
 
 
 class TestWavDecoding:

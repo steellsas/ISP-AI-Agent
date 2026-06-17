@@ -10,17 +10,17 @@
 ## Paruošimas
 
 ```bash
-# 1. Balso priklausomybės (pirmą kartą parsisiunčia Whisper modelį)
+# 1. Balso priklausomybės
 uv sync --package chatbot-core --extra voice
 
 # 2. Švari seed DB
 uv run python scripts/setup_db.py && uv run python scripts/seed_data.py
 
-# 3. (nebūtina) modelio pasirinkimas testui — A/B greitis vs tikslumas
-set WHISPER_MODEL=small     # tiny/base/small/medium/large-v3 (didesnis=tiksliau,lėčiau)
-set WHISPER_BEAM=1          # 1=greičiausias, 5=tiksliausias
-set WHISPER_PROMPT=1        # domeno prime (interneto/ryšio žodynas)
-set WHISPER_VAD=1           # tylos/triukšmo nukirpimas
+# 3. STT backend. NUMATYTA: Groq (hostuojamas, greitas+tikslus, reikia rakto).
+#    Be GPU tai geriausias variantas — lokalus Whisper CPU per lėtas/netikslus.
+set ASR_BACKEND=groq
+set GROQ_API_KEY=gsk_...        # gauk iš console.groq.com (nemokamas tier)
+#   (alternatyva — lokalus CPU Whisper, lėtas: set ASR_BACKEND=local + WHISPER_MODEL=small)
 
 # 4. Kliento numeris šiam pokalbiui (telefonas-pirma identifikacija)
 set CALLER_PHONE=+37060020105
