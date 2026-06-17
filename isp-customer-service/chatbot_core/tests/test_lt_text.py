@@ -9,7 +9,38 @@ Run: pytest tests/test_lt_text.py -v
 """
 
 import pytest
-from adapters.asr import DOMAIN_PROMPT_LT, normalize_lt_numbers
+from adapters.asr import DOMAIN_PROMPT_LT, is_asr_noise, normalize_lt_numbers
+
+
+class TestIsAsrNoise:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "   ",
+            "www.youtube.come",  # the observed live hallucination
+            "WWW.YouTube.com",
+            "Ačiū, kad žiūrėjote!",
+            "...",
+            "-",
+        ],
+    )
+    def test_noise_is_dropped(self, text):
+        assert is_asr_noise(text) is True
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "neveikia internetas",
+            "Šiauliai Tilžės g 60 butas 7",
+            "taip",
+            "gerai",
+            "nu",
+            "lemputės dega",
+        ],
+    )
+    def test_real_speech_kept(self, text):
+        assert is_asr_noise(text) is False
 
 
 class TestNormalizeLtNumbers:

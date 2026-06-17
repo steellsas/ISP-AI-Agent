@@ -22,6 +22,45 @@ from __future__ import annotations
 
 import re
 
+# Common Whisper hallucinations on silence/noise (it emits frequent training
+# artefacts when there is no real speech). Observed live: "www.youtube.come".
+# Matched case-insensitively as a substring of the stripped transcript.
+_HALLUCINATION_MARKERS = (
+    "youtube.com",
+    "youtube",
+    "amara.org",
+    "subtitles",
+    "subscribe",
+    "thanks for watching",
+    "ačiū, kad žiūrėjote",
+    "ačiū kad žiūrėjote",
+    "redaguota",
+    "продолжение следует",
+)
+
+
+def is_asr_noise(text: str) -> bool:
+    """True when an ASR result is empty or a likely silence/noise hallucination.
+
+    Voice-only guard: such a "turn" should be ignored (the agent stays silent and
+    waits for real speech) rather than answered. Conservative — it does not drop
+    short real words like "taip"/"gerai"/"nu".
+    """
+    if text is None:
+        return True
+    stripped = text.strip()
+    if not stripped:
+        return True
+    low = stripped.lower()
+    if any(marker in low for marker in _HALLUCINATION_MARKERS):
+        return True
+    # A URL is never a real spoken answer when reporting no internet.
+    if "www." in low or "http" in low:
+        return True
+    # Nothing but punctuation/symbols (no letters or digits) -> noise.
+    return not re.search(r"[^\W_]", stripped, re.UNICODE)
+
+
 # --- Whisper domain prime (proper nouns + vocabulary it must spell right) -----
 # Kept short (Whisper's initial_prompt is ~224 tokens) and focused on the demo's
 # localities/streets plus the words that recur in ISP support.

@@ -119,7 +119,7 @@ def _build_asr():
 
 
 def main() -> None:
-    from adapters.asr import normalize_lt_numbers
+    from adapters.asr import is_asr_noise, normalize_lt_numbers
     from adapters.transport import FastRTCVoiceTransport
     from adapters.tts import GTTSProvider
     from agent.voice_pipeline import VoicePipeline
@@ -128,9 +128,15 @@ def main() -> None:
     tts = GTTSProvider(default_language=LANGUAGE)
 
     session = _build_session()
-    # Spoken-number -> digit cleanup on the transcript before the agent sees it.
+    # transcript_filter: spoken-number -> digit cleanup before the agent.
+    # noise_filter: drop silence/noise hallucinations ("www.youtube.com").
     pipeline = VoicePipeline(
-        session, asr, tts, language=LANGUAGE, transcript_filter=normalize_lt_numbers
+        session,
+        asr,
+        tts,
+        language=LANGUAGE,
+        transcript_filter=normalize_lt_numbers,
+        noise_filter=is_asr_noise,
     )
     trace_id = getattr(session, "session_id", None)
     if trace_id:
@@ -141,7 +147,14 @@ def main() -> None:
         record_dir = Path(__file__).resolve().parent.parent / "logs" / "sessions" / trace_id
         print(f"[record] per-turn audio -> {record_dir}")
 
-    transport = FastRTCVoiceTransport(pipeline, record_dir=record_dir)
+    # VAD turn-taking (env-tunable): calmer than FastRTC defaults.
+    transport = FastRTCVoiceTransport(
+        pipeline,
+        record_dir=record_dir,
+        started_talking_threshold=float(os.environ.get("VAD_STARTED", "0.3")),
+        speech_threshold=float(os.environ.get("VAD_SPEECH", "0.3")),
+        audio_chunk_duration=float(os.environ.get("VAD_CHUNK", "0.6")),
+    )
     print("Starting voice demo — open the local URL below and allow the mic.")
     try:
         transport.start()  # launches the Gradio UI (blocks until you close it)

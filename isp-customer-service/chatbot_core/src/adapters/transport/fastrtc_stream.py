@@ -46,6 +46,9 @@ class FastRTCVoiceTransport:
         *,
         output_sample_rate: int = _DEFAULT_OUTPUT_RATE,
         record_dir: str | Path | None = None,
+        started_talking_threshold: float = 0.3,
+        speech_threshold: float = 0.3,
+        audio_chunk_duration: float = 0.6,
         **launch_kwargs: Any,
     ):
         """
@@ -54,12 +57,20 @@ class FastRTCVoiceTransport:
             output_sample_rate: Sample rate we tag synthesized reply audio with.
             record_dir: if set, save each turn's audio (caller WAV + agent reply)
                 here, so a real call can be replayed and re-tested offline.
+            started_talking_threshold: seconds of speech in a chunk before a turn
+                starts (FastRTC default 0.2 fires on brief noise; 0.3 is calmer).
+            speech_threshold: pause length (s) that ends the caller's turn
+                (default 0.1 cuts people off mid-sentence; 0.3 lets them breathe).
+            audio_chunk_duration: VAD processing chunk size (s).
             **launch_kwargs: Forwarded to `Stream.ui.launch()` (e.g. `share=True`,
                 `server_port=...`).
         """
         self._pipeline = pipeline
         self._output_sample_rate = output_sample_rate
         self._record_dir = Path(record_dir) if record_dir else None
+        self._started_talking_threshold = started_talking_threshold
+        self._speech_threshold = speech_threshold
+        self._audio_chunk_duration = audio_chunk_duration
         self._turn_idx = 0
         self._launch_kwargs = launch_kwargs
         self._stream: Any | None = None
@@ -86,9 +97,17 @@ class FastRTCVoiceTransport:
     # --- FastRTC wiring -----------------------------------------------------
 
     def _build_stream(self) -> Any:
-        from fastrtc import ReplyOnPause, Stream  # deferred (optional dep)
+        from fastrtc import AlgoOptions, ReplyOnPause, Stream  # deferred (optional dep)
 
-        handler = ReplyOnPause(self._reply, startup_fn=self._startup)
+        # Calmer turn-taking than the defaults: needs a bit more speech to start
+        # (fewer noise false-fires) and waits a touch longer before replying
+        # (stops cutting the caller off mid-sentence).
+        algo = AlgoOptions(
+            audio_chunk_duration=self._audio_chunk_duration,
+            started_talking_threshold=self._started_talking_threshold,
+            speech_threshold=self._speech_threshold,
+        )
+        handler = ReplyOnPause(self._reply, startup_fn=self._startup, algo_options=algo)
         return Stream(handler=handler, modality="audio", mode="send-receive")
 
     def _startup(self):
@@ -135,8 +154,17 @@ class FastRTCVoiceTransport:
                     wav.setframerate(sample_rate)
                     wav.writeframes(data)
             else:
-                # gTTS emits MP3; keep the container the TTS produced.
-                ext = "mp3" if data[:3] == b"ID3" or data[:2] == b"\xff\xfb" else "audio"
+                # gTTS emits MP3. Detect MP3 (ID3 tag or any MPEG frame sync
+                # 0xFFEx — gTTS uses 0xFFF3 too, not only 0xFFFB) / WAV; else
+                # default to .mp3 since the TTS is gTTS.
+                if data[:4] == b"RIFF":
+                    ext = "wav"
+                elif data[:3] == b"ID3" or (
+                    len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
+                ):
+                    ext = "mp3"
+                else:
+                    ext = "mp3"
                 (self._record_dir / f"{stem}.{ext}").write_bytes(data)
         except Exception as e:  # pragma: no cover - best-effort
             logger.warning(f"Audio record failed ({stem}): {e}")

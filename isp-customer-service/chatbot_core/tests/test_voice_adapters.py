@@ -233,6 +233,27 @@ class TestVoicePipeline:
         assert asr_ev[0]["transcript"] == "NEVEIKIA INTERNETAS"
         assert "ms" in asr_ev[0]
 
+    def test_noise_turn_is_dropped_agent_not_called(self):
+        # A noise/hallucination transcript -> agent is NOT called, reply empty.
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts, noise_filter=lambda t: True)
+
+        turn = pipeline.handle_audio(b"x")
+
+        assert turn.reply_text == ""
+        assert turn.reply_audio == b""
+        assert session.turns == []  # handle_turn never ran
+        assert tts.calls == []  # nothing synthesized
+
+    def test_non_noise_turn_runs_normally(self):
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts, noise_filter=lambda t: False)
+
+        turn = pipeline.handle_audio(b"x")
+
+        assert turn.reply_text == "atsakymas: neveikia internetas"
+        assert session.turns == ["neveikia internetas"]
+
     def test_voice_latency_emitted_to_session_tracer(self):
         class _CaptureTracer:
             def __init__(self):
