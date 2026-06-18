@@ -7,6 +7,8 @@ Contains the state dataclass that tracks conversation progress.
 from dataclasses import dataclass, field
 from typing import Any
 
+from .slots import ClientProfileState
+
 
 @dataclass
 class AgentState:
@@ -21,6 +23,12 @@ class AgentState:
 
     # Conversation history (for LLM context)
     messages: list[dict[str, str]] = field(default_factory=list)
+
+    # Structured address slots (Phase 3.5) — durable, typed identification memory
+    # populated from resolve_address. Additive: the existing customer_* /
+    # address_confirmed fields below still drive current behaviour; the slots are
+    # the foundation the policy/NLU steps build on.
+    profile: ClientProfileState = field(default_factory=ClientProfileState)
 
     # Customer information (populated after find_customer)
     customer_id: str | None = None

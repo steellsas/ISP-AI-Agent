@@ -332,6 +332,13 @@ class ReactAgent:
         try:
             obs_data = json.loads(observation)
 
+            # Fold the per-level address resolution into the durable slots on
+            # EVERY resolve_address call (success or not) — what the caller said
+            # accumulates as structured memory, protected from low-confidence
+            # overwrites (slots.Slot.propose).
+            if action == "resolve_address" and isinstance(obs_data.get("resolution"), dict):
+                self.state.profile.update_from_resolution(obs_data["resolution"])
+
             if action in ("find_customer", "resolve_address") and obs_data.get("success"):
                 # resolve_address nests the normalized profile under `customer`;
                 # find_customer returns it flat. Same shape either way.
