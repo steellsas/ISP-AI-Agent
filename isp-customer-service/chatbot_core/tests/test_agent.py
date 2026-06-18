@@ -465,7 +465,8 @@ class TestHistoryWindow:
         assert pruned[0]["role"] != "tool"
 
     def test_build_messages_injects_known_facts(self):
-        """Resolved AgentState facts are appended to the system message."""
+        """Resolved AgentState facts ride in a SEPARATE trailing system message,
+        not concatenated into the (cacheable) system prompt."""
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
@@ -475,13 +476,20 @@ class TestHistoryWindow:
             address="Vilniaus g. 1, Vilnius",
         )
 
-        messages = agent._build_messages()
+        messages = agent._build_messages(user_input="Labas")
 
-        system = messages[0]["content"]
+        # The system prefix stays byte-stable (cache-friendly) — no facts in it.
         assert messages[0]["role"] == "system"
-        assert "C123" in system
-        assert "Jonas Jonaitis" in system
-        assert "Vilniaus g. 1, Vilnius" in system
+        assert messages[0]["content"] == agent.system_prompt
+        assert "C123" not in messages[0]["content"]
+
+        # The facts live in a later system message, before the trailing user turn.
+        fact_msgs = [m for m in messages[1:] if m["role"] == "system" and "C123" in m["content"]]
+        assert len(fact_msgs) == 1
+        facts = fact_msgs[0]["content"]
+        assert "Jonas Jonaitis" in facts
+        assert "Vilniaus g. 1, Vilnius" in facts
+        assert messages[-1]["role"] == "user"  # user input stays last
 
     def test_state_facts_block_none_when_empty(self):
         """No facts resolved yet -> no addendum (system prompt unchanged)."""

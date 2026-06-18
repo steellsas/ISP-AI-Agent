@@ -216,16 +216,25 @@ class ReactAgent:
         of durable facts re-injected from AgentState (see _state_facts_block),
         so pruning old messages never loses the resolved customer/problem/ticket
         context. The full transcript still lives in AgentState.messages.
-        """
-        system_content = self.system_prompt
-        facts = self._state_facts_block()
-        if facts:
-            system_content = f"{system_content}\n\n{facts}"
 
-        messages = [{"role": "system", "content": system_content}]
+        Prompt-cache friendliness: the system prompt is kept BYTE-STABLE across
+        turns so providers can cache the prefix. The durable-fact block changes
+        as the call progresses, so it goes in a SEPARATE trailing system message
+        (just before the new user input) rather than being concatenated into the
+        system content — concatenating would mutate the system message every turn
+        and bust the cache (the real cost, not the few fact tokens).
+        """
+        # Stable system prefix (cacheable).
+        messages = [{"role": "system", "content": self.system_prompt}]
 
         # Add recent conversation history (windowed, tool-pairing safe)
         messages.extend(self._prune_history(self.state.messages))
+
+        # Durable facts as a trailing system message (kept OUT of the cached
+        # prefix). None until something is resolved this call.
+        facts = self._state_facts_block()
+        if facts:
+            messages.append({"role": "system", "content": facts})
 
         # Add new user input if provided
         if user_input:
