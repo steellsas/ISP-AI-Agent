@@ -25,6 +25,8 @@ Tunables (env, no file edit needed):
     WHISPER_PROMPT=1           0 disables the Lithuanian domain prime
     WHISPER_VAD=1              (local only) 0 disables silence/noise trimming
     VOICE_ECHO=0               1 = echo agent (transport-only test, no LLM/tools)
+    VOICE_BARGE_IN=0           1 = let the caller interrupt the agent (needs echo
+                               cancellation; default off so the agent finishes)
 """
 
 from __future__ import annotations
@@ -37,6 +39,16 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parent / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+
+# Load the project .env so keys (GROQ_API_KEY, OPENAI_API_KEY) need not be set
+# in the shell — the adapters read them straight from os.environ. OS-level env
+# vars still win / work if no .env is present.
+try:
+    from utils import load_env
+
+    load_env()
+except Exception:  # .env is optional; OS environment is the fallback
+    pass
 
 LANGUAGE = "lt"
 
@@ -154,6 +166,9 @@ def main() -> None:
         started_talking_threshold=float(os.environ.get("VAD_STARTED", "0.3")),
         speech_threshold=float(os.environ.get("VAD_SPEECH", "0.3")),
         audio_chunk_duration=float(os.environ.get("VAD_CHUNK", "0.6")),
+        # Barge-in OFF by default: without echo cancellation the agent's own
+        # voice cuts it off mid-sentence. VOICE_BARGE_IN=1 to re-enable.
+        can_interrupt=os.environ.get("VOICE_BARGE_IN", "0") == "1",
     )
     print("Starting voice demo — open the local URL below and allow the mic.")
     try:

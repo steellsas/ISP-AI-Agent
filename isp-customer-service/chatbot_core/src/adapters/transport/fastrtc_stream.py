@@ -49,6 +49,7 @@ class FastRTCVoiceTransport:
         started_talking_threshold: float = 0.3,
         speech_threshold: float = 0.3,
         audio_chunk_duration: float = 0.6,
+        can_interrupt: bool = False,
         **launch_kwargs: Any,
     ):
         """
@@ -62,6 +63,11 @@ class FastRTCVoiceTransport:
             speech_threshold: pause length (s) that ends the caller's turn
                 (default 0.1 cuts people off mid-sentence; 0.3 lets them breathe).
             audio_chunk_duration: VAD processing chunk size (s).
+            can_interrupt: barge-in. FastRTC defaults this to True, but without
+                acoustic echo cancellation the agent's own voice (and room noise)
+                re-triggers the VAD and CUTS THE AGENT OFF mid-sentence. Default
+                False here so the agent always finishes speaking; re-enable once
+                echo cancellation is in place.
             **launch_kwargs: Forwarded to `Stream.ui.launch()` (e.g. `share=True`,
                 `server_port=...`).
         """
@@ -71,6 +77,7 @@ class FastRTCVoiceTransport:
         self._started_talking_threshold = started_talking_threshold
         self._speech_threshold = speech_threshold
         self._audio_chunk_duration = audio_chunk_duration
+        self._can_interrupt = can_interrupt
         self._turn_idx = 0
         self._launch_kwargs = launch_kwargs
         self._stream: Any | None = None
@@ -107,7 +114,12 @@ class FastRTCVoiceTransport:
             started_talking_threshold=self._started_talking_threshold,
             speech_threshold=self._speech_threshold,
         )
-        handler = ReplyOnPause(self._reply, startup_fn=self._startup, algo_options=algo)
+        handler = ReplyOnPause(
+            self._reply,
+            startup_fn=self._startup,
+            algo_options=algo,
+            can_interrupt=self._can_interrupt,
+        )
         return Stream(handler=handler, modality="audio", mode="send-receive")
 
     def _startup(self):
