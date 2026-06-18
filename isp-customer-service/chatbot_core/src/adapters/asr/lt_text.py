@@ -22,6 +22,45 @@ from __future__ import annotations
 
 import re
 
+# Common Whisper hallucinations on silence/noise (it emits frequent training
+# artefacts when there is no real speech). Observed live: "www.youtube.come".
+# Matched case-insensitively as a substring of the stripped transcript.
+_HALLUCINATION_MARKERS = (
+    "youtube.com",
+    "youtube",
+    "amara.org",
+    "subtitles",
+    "subscribe",
+    "thanks for watching",
+    "ačiū, kad žiūrėjote",
+    "ačiū kad žiūrėjote",
+    "redaguota",
+    "продолжение следует",
+)
+
+
+def is_asr_noise(text: str) -> bool:
+    """True when an ASR result is empty or a likely silence/noise hallucination.
+
+    Voice-only guard: such a "turn" should be ignored (the agent stays silent and
+    waits for real speech) rather than answered. Conservative — it does not drop
+    short real words like "taip"/"gerai"/"nu".
+    """
+    if text is None:
+        return True
+    stripped = text.strip()
+    if not stripped:
+        return True
+    low = stripped.lower()
+    if any(marker in low for marker in _HALLUCINATION_MARKERS):
+        return True
+    # A URL is never a real spoken answer when reporting no internet.
+    if "www." in low or "http" in low:
+        return True
+    # Nothing but punctuation/symbols (no letters or digits) -> noise.
+    return not re.search(r"[^\W_]", stripped, re.UNICODE)
+
+
 # --- Whisper domain prime (proper nouns + vocabulary it must spell right) -----
 # Kept short (Whisper's initial_prompt is ~224 tokens) and focused on the demo's
 # localities/streets plus the words that recur in ISP support.
@@ -49,16 +88,32 @@ _UNITS = {
     "tris": 3,
     "keturi": 4,
     "keturios": 4,
+    "keturias": 4,
+    "keturės": 4,
     "penki": 5,
     "penkios": 5,
+    "penkias": 5,
+    "penkės": 5,
     "šeši": 6,
     "šešios": 6,
+    "šešias": 6,
+    "šešės": 6,
     "septyni": 7,
     "septynios": 7,
+    "septynias": 7,
+    "septynės": 7,
     "aštuoni": 8,
     "aštuonios": 8,
+    "aštuonias": 8,
+    "aštuonės": 8,
     "devyni": 9,
     "devynios": 9,
+    "devynias": 9,
+    "devynės": 9,
+    # Whisper sometimes hears the genitive "-ių" for these units.
+    "šešių": 6,
+    "penkių": 5,
+    "keturių": 4,
 }
 _TEENS = {
     "dešimt": 10,
@@ -157,7 +212,12 @@ def _run_value(words: list[str]) -> int:
             total += _TENS[t]
             pending = 0
         elif kind == "teens":
-            total += _TEENS[t]
+            # STT often splits a single ten-word: "šešias dešimt" -> 6 + "dešimt".
+            # A unit (2-9) immediately before "dešimt" means unit*10 (= 60).
+            if t == "dešimt" and 2 <= pending <= 9:
+                total += pending * 10
+            else:
+                total += _TEENS[t]
             pending = 0
         elif kind == "unit":
             pending = _UNITS[t]

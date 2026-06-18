@@ -55,6 +55,7 @@ class VoicePipeline:
         *,
         language: str | None = None,
         transcript_filter: Callable[[str], str] | None = None,
+        noise_filter: Callable[[str], bool] | None = None,
     ):
         """
         Args:
@@ -67,12 +68,17 @@ class VoicePipeline:
                 transcript before the agent sees it (e.g. spoken-number ->
                 digit normalization for voice). Keeps the pipeline generic —
                 the language-specific logic lives in an adapter.
+            noise_filter: optional predicate; when it returns True for a
+                transcript (silence/noise hallucination), the turn is DROPPED —
+                the agent is not called and no reply is spoken, so it stays
+                silent and waits for real speech instead of answering noise.
         """
         self._session = session
         self._asr = asr
         self._tts = tts
         self._language = language or session.config.language
         self._transcript_filter = transcript_filter
+        self._noise_filter = noise_filter
 
     @property
     def session(self) -> AgentSession:
@@ -97,10 +103,37 @@ class VoicePipeline:
             conversation-complete flag.
         """
         t0 = time.perf_counter()
-        transcript = self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
+        raw_transcript = self._asr.transcribe(
+            audio, language=self._language, sample_rate=sample_rate
+        )
+        transcript = raw_transcript
         if self._transcript_filter and transcript:
             transcript = self._transcript_filter(transcript)
         t1 = time.perf_counter()
+
+        tracer = getattr(self._session, "tracer", None)
+
+        # Drop silence/noise hallucinations: ignore the turn, stay silent, wait
+        # for real speech (answering "www.youtube.come" breaks the conversation).
+        dropped = bool(self._noise_filter and self._noise_filter(transcript))
+        if tracer is not None:
+            # The STT record: RAW vs after normalization, + whether it was dropped.
+            tracer.emit(
+                "asr",
+                raw=raw_transcript,
+                transcript=transcript,
+                ms=round((t1 - t0) * 1000.0),
+                dropped=dropped,
+            )
+        if dropped:
+            return VoiceTurn(
+                transcript=transcript,
+                reply_text="",
+                reply_audio=b"",
+                is_complete=self._session.is_complete,
+                asr_ms=(t1 - t0) * 1000.0,
+            )
+
         reply_text = self._session.handle_turn(transcript)
         t2 = time.perf_counter()
         reply_audio = self._tts.synthesize(reply_text, language=self._language)
@@ -112,7 +145,6 @@ class VoicePipeline:
 
         # Surface the latency breakdown into the conversation trace so it is
         # measurable per turn from the JSONL (where the 10 s actually goes).
-        tracer = getattr(self._session, "tracer", None)
         if tracer is not None:
             tracer.emit(
                 "voice_latency",

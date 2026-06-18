@@ -209,6 +209,37 @@ def _contracts_at_house(db: DatabaseConnection, city: str, street: str, house: s
         return [dict(row) for row in cursor.fetchall()]
 
 
+def _recover_city_by_street(
+    db: DatabaseConnection, street: str, house: str
+) -> dict[str, Any] | None:
+    """
+    Recover the locality from the STREET when the spoken city isn't one we serve.
+
+    We only serve the Šiauliai region, so an out-of-area city ('Vilnius') is
+    almost always an STT mishearing of a stray word — but the street + house can
+    still pin the real address. Recovers ONLY when BOTH a street and a house are
+    given, the street matches exactly one served locality at >= 0.9, AND the
+    house exists on that street — so a misheard street can't silently snap to a
+    real address, and a street-only utterance never auto-recovers.
+
+    Returns {city, district, street} or None (stay safe → ask the caller).
+    """
+    if not street or not house:
+        return None
+    strong = [
+        hit
+        for hit in _street_everywhere(db, street)
+        if street_match_score(street, hit["street"]) >= 0.9
+    ]
+    if len({hit["city"].lower() for hit in strong}) != 1:
+        return None  # zero or several localities → not unique, don't guess
+    hit = strong[0]
+    houses = _houses_on_street(db, hit["city"], hit["street"])
+    if not any(h.lower() == house.lower() for h in houses):
+        return None  # street matches but the house doesn't → likely wrong street
+    return hit
+
+
 def resolve_address(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any]:
     """
     Resolve a (possibly partial) spoken address into a customer.
@@ -288,26 +319,42 @@ def resolve_address(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, A
             best_score, best_loc = scored[0] if scored else (0.0, None)
 
             if best_score < AMBIGUOUS_THRESHOLD or best_loc is None:
+                # City unrecognized (we serve only the Šiauliai region, so this
+                # is usually an STT mishearing). Try to recover it from the
+                # street+house before dead-ending.
+                recovered = _recover_city_by_street(db, street_in, house_in)
+                if recovered is None:
+                    resolution["city"].update(
+                        {
+                            "status": "not_found",
+                            "candidates": [
+                                {"city": loc["city"], "district": loc["district"]}
+                                for s, loc in scored[:4]
+                                if s >= 0.4
+                            ],
+                        }
+                    )
+                    envelope["hint"] = (
+                        f"Vietovės '{city_in}' neaptarnaujame arba nesupratau pavadinimo "
+                        "(aptarnaujame tik Šiaulių regioną). Atkartok klientui, kaip "
+                        "supratai, ir paprašyk patikslinti."
+                    )
+                    return envelope
+
+                city = recovered["city"]
                 resolution["city"].update(
                     {
-                        "status": "not_found",
-                        "candidates": [
-                            {"city": loc["city"], "district": loc["district"]}
-                            for s, loc in scored[:4]
-                            if s >= 0.4
-                        ],
+                        "status": "recovered",
+                        "given": city_in,
+                        "matched": city,
+                        "district": recovered["district"],
                     }
                 )
-                envelope["hint"] = (
-                    f"Vietovės '{city_in}' neaptarnaujame arba nesupratau pavadinimo. "
-                    "Atkartok klientui, kaip supratai, ir paprašyk patikslinti."
+            else:
+                city = best_loc["city"]
+                resolution["city"].update(
+                    {"status": "ok", "matched": city, "district": best_loc["district"]}
                 )
-                return envelope
-
-            city = best_loc["city"]
-            resolution["city"].update(
-                {"status": "ok", "matched": city, "district": best_loc["district"]}
-            )
 
         # ---- STREET --------------------------------------------------------
         if not street_in:

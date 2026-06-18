@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import io
 import logging
+import wave
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -43,19 +45,44 @@ class FastRTCVoiceTransport:
         pipeline: VoicePipeline,
         *,
         output_sample_rate: int = _DEFAULT_OUTPUT_RATE,
+        record_dir: str | Path | None = None,
+        started_talking_threshold: float = 0.3,
+        speech_threshold: float = 0.3,
+        audio_chunk_duration: float = 0.6,
+        can_interrupt: bool = False,
         **launch_kwargs: Any,
     ):
         """
         Args:
             pipeline: The audio-in/audio-out conversation pipeline to serve.
             output_sample_rate: Sample rate we tag synthesized reply audio with.
+            record_dir: if set, save each turn's audio (caller WAV + agent reply)
+                here, so a real call can be replayed and re-tested offline.
+            started_talking_threshold: seconds of speech in a chunk before a turn
+                starts (FastRTC default 0.2 fires on brief noise; 0.3 is calmer).
+            speech_threshold: pause length (s) that ends the caller's turn
+                (default 0.1 cuts people off mid-sentence; 0.3 lets them breathe).
+            audio_chunk_duration: VAD processing chunk size (s).
+            can_interrupt: barge-in. FastRTC defaults this to True, but without
+                acoustic echo cancellation the agent's own voice (and room noise)
+                re-triggers the VAD and CUTS THE AGENT OFF mid-sentence. Default
+                False here so the agent always finishes speaking; re-enable once
+                echo cancellation is in place.
             **launch_kwargs: Forwarded to `Stream.ui.launch()` (e.g. `share=True`,
                 `server_port=...`).
         """
         self._pipeline = pipeline
         self._output_sample_rate = output_sample_rate
+        self._record_dir = Path(record_dir) if record_dir else None
+        self._started_talking_threshold = started_talking_threshold
+        self._speech_threshold = speech_threshold
+        self._audio_chunk_duration = audio_chunk_duration
+        self._can_interrupt = can_interrupt
+        self._turn_idx = 0
         self._launch_kwargs = launch_kwargs
         self._stream: Any | None = None
+        if self._record_dir is not None:
+            self._record_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Transport port ----------------------------------------------------
 
@@ -77,14 +104,28 @@ class FastRTCVoiceTransport:
     # --- FastRTC wiring -----------------------------------------------------
 
     def _build_stream(self) -> Any:
-        from fastrtc import ReplyOnPause, Stream  # deferred (optional dep)
+        from fastrtc import AlgoOptions, ReplyOnPause, Stream  # deferred (optional dep)
 
-        handler = ReplyOnPause(self._reply, startup_fn=self._startup)
+        # Calmer turn-taking than the defaults: needs a bit more speech to start
+        # (fewer noise false-fires) and waits a touch longer before replying
+        # (stops cutting the caller off mid-sentence).
+        algo = AlgoOptions(
+            audio_chunk_duration=self._audio_chunk_duration,
+            started_talking_threshold=self._started_talking_threshold,
+            speech_threshold=self._speech_threshold,
+        )
+        handler = ReplyOnPause(
+            self._reply,
+            startup_fn=self._startup,
+            algo_options=algo,
+            can_interrupt=self._can_interrupt,
+        )
         return Stream(handler=handler, modality="audio", mode="send-receive")
 
     def _startup(self):
         """Speak the greeting once, before the caller says anything."""
         audio = self._pipeline.greeting_audio()
+        self._save_audio("00_agent", audio, kind="reply")
         out = self._decode_audio_to_int16(audio, self._output_sample_rate)
         if out.size:
             yield (self._output_sample_rate, out)
@@ -92,7 +133,10 @@ class FastRTCVoiceTransport:
     def _reply(self, audio: tuple[int, Any]):
         """Run one full voice turn for a detected utterance and stream it back."""
         pcm, sample_rate = self._incoming_to_pcm16(audio)
+        self._turn_idx += 1
+        self._save_audio(f"{self._turn_idx:02d}_user", pcm, kind="pcm", sample_rate=sample_rate)
         turn = self._pipeline.handle_audio(pcm, sample_rate=sample_rate)
+        self._save_audio(f"{self._turn_idx:02d}_agent", turn.reply_audio, kind="reply")
         # Latency breakdown is the raw material for the masking decision (a vs b).
         logger.info(
             "voice turn | heard=%r -> reply=%r | asr=%.0fms agent=%.0fms tts=%.0fms total=%.0fms",
@@ -106,6 +150,36 @@ class FastRTCVoiceTransport:
         out = self._decode_audio_to_int16(turn.reply_audio, self._output_sample_rate)
         if out.size:
             yield (self._output_sample_rate, out)
+
+    # --- Audio recording (opt-in: replay & offline re-test) ----------------
+
+    def _save_audio(self, stem: str, data: bytes, *, kind: str, sample_rate: int = 16_000):
+        """Save one turn's audio: caller PCM -> WAV, agent reply bytes -> as-is."""
+        if self._record_dir is None or not data:
+            return
+        try:
+            if kind == "pcm":
+                path = self._record_dir / f"{stem}.wav"
+                with wave.open(str(path), "wb") as wav:
+                    wav.setnchannels(1)
+                    wav.setsampwidth(2)
+                    wav.setframerate(sample_rate)
+                    wav.writeframes(data)
+            else:
+                # gTTS emits MP3. Detect MP3 (ID3 tag or any MPEG frame sync
+                # 0xFFEx — gTTS uses 0xFFF3 too, not only 0xFFFB) / WAV; else
+                # default to .mp3 since the TTS is gTTS.
+                if data[:4] == b"RIFF":
+                    ext = "wav"
+                elif data[:3] == b"ID3" or (
+                    len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0
+                ):
+                    ext = "mp3"
+                else:
+                    ext = "mp3"
+                (self._record_dir / f"{stem}.{ext}").write_bytes(data)
+        except Exception as e:  # pragma: no cover - best-effort
+            logger.warning(f"Audio record failed ({stem}): {e}")
 
     # --- Audio bridging (pure, offline-testable) ---------------------------
 

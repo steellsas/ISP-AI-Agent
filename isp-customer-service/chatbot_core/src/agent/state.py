@@ -27,6 +27,11 @@ class AgentState:
     customer_name: str | None = None  # Name from CRM (may differ from caller)
     customer_address: str | None = None
 
+    # Pre-flight phone lookup result (the caller's number, resolved at the start
+    # of the call). UNCONFIRMED — a candidate the agent offers for the caller to
+    # confirm, NOT a confirmed identity. {customer_id, name, address} or None.
+    phone_candidate: dict[str, Any] | None = None
+
     # Caller information (populated after customer confirms)
     caller_name: str | None = None  # Actual caller's name
     address_confirmed: bool = False

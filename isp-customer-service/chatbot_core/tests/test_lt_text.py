@@ -9,7 +9,38 @@ Run: pytest tests/test_lt_text.py -v
 """
 
 import pytest
-from adapters.asr import DOMAIN_PROMPT_LT, normalize_lt_numbers
+from adapters.asr import DOMAIN_PROMPT_LT, is_asr_noise, normalize_lt_numbers
+
+
+class TestIsAsrNoise:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "",
+            "   ",
+            "www.youtube.come",  # the observed live hallucination
+            "WWW.YouTube.com",
+            "Ačiū, kad žiūrėjote!",
+            "...",
+            "-",
+        ],
+    )
+    def test_noise_is_dropped(self, text):
+        assert is_asr_noise(text) is True
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "neveikia internetas",
+            "Šiauliai Tilžės g 60 butas 7",
+            "taip",
+            "gerai",
+            "nu",
+            "lemputės dega",
+        ],
+    )
+    def test_real_speech_kept(self, text):
+        assert is_asr_noise(text) is False
 
 
 class TestNormalizeLtNumbers:
@@ -22,6 +53,12 @@ class TestNormalizeLtNumbers:
             ("dvidešimt", "20"),
             ("šešiasdešimt", "60"),  # the hard one from the traces
             ("šešesdešimt", "60"),  # Whisper misspelling variant
+            ("šešias dešimt", "60"),  # STT split of šešiasdešimt (live trace)
+            ("šešės dešimt", "60"),  # "-ės" variant split (live trace ***0199)
+            ("dvi dešimt", "20"),  # split tens
+            ("šešias", "6"),  # accusative unit form
+            ("šešės", "6"),  # "-ės" unit variant
+            ("penkės", "5"),
             ("šešiasdešimt penki", "65"),
             ("dvidešimt du", "22"),
             ("šimtas", "100"),

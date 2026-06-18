@@ -25,6 +25,8 @@ Tunables (env, no file edit needed):
     WHISPER_PROMPT=1           0 disables the Lithuanian domain prime
     WHISPER_VAD=1              (local only) 0 disables silence/noise trimming
     VOICE_ECHO=0               1 = echo agent (transport-only test, no LLM/tools)
+    VOICE_BARGE_IN=0           1 = let the caller interrupt the agent (needs echo
+                               cancellation; default off so the agent finishes)
 """
 
 from __future__ import annotations
@@ -38,6 +40,16 @@ SRC = Path(__file__).resolve().parent / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+# Load the project .env so keys (GROQ_API_KEY, OPENAI_API_KEY) need not be set
+# in the shell — the adapters read them straight from os.environ. OS-level env
+# vars still win / work if no .env is present.
+try:
+    from utils import load_env
+
+    load_env()
+except Exception:  # .env is optional; OS environment is the fallback
+    pass
+
 LANGUAGE = "lt"
 
 # Defaults are not critical — every knob is overridable per run via env.
@@ -49,6 +61,7 @@ BEAM_SIZE = int(os.environ.get("WHISPER_BEAM", "1"))
 USE_PROMPT = os.environ.get("WHISPER_PROMPT", "1") != "0"
 USE_VAD = os.environ.get("WHISPER_VAD", "1") != "0"
 USE_ECHO = os.environ.get("VOICE_ECHO", "0") == "1"
+RECORD_AUDIO = os.environ.get("RECORD_AUDIO", "0") == "1"
 
 
 class _Config:
@@ -118,7 +131,7 @@ def _build_asr():
 
 
 def main() -> None:
-    from adapters.asr import normalize_lt_numbers
+    from adapters.asr import is_asr_noise, normalize_lt_numbers
     from adapters.transport import FastRTCVoiceTransport
     from adapters.tts import GTTSProvider
     from agent.voice_pipeline import VoicePipeline
@@ -127,15 +140,36 @@ def main() -> None:
     tts = GTTSProvider(default_language=LANGUAGE)
 
     session = _build_session()
-    # Spoken-number -> digit cleanup on the transcript before the agent sees it.
+    # transcript_filter: spoken-number -> digit cleanup before the agent.
+    # noise_filter: drop silence/noise hallucinations ("www.youtube.com").
     pipeline = VoicePipeline(
-        session, asr, tts, language=LANGUAGE, transcript_filter=normalize_lt_numbers
+        session,
+        asr,
+        tts,
+        language=LANGUAGE,
+        transcript_filter=normalize_lt_numbers,
+        noise_filter=is_asr_noise,
     )
     trace_id = getattr(session, "session_id", None)
     if trace_id:
-        print(f"[trace] logs/sessions/{trace_id}.jsonl")
+        print(f"[trace] logs/sessions/{trace_id}.jsonl  (+ .txt on exit)")
 
-    transport = FastRTCVoiceTransport(pipeline)
+    record_dir = None
+    if RECORD_AUDIO and trace_id:
+        record_dir = Path(__file__).resolve().parent.parent / "logs" / "sessions" / trace_id
+        print(f"[record] per-turn audio -> {record_dir}")
+
+    # VAD turn-taking (env-tunable): calmer than FastRTC defaults.
+    transport = FastRTCVoiceTransport(
+        pipeline,
+        record_dir=record_dir,
+        started_talking_threshold=float(os.environ.get("VAD_STARTED", "0.3")),
+        speech_threshold=float(os.environ.get("VAD_SPEECH", "0.3")),
+        audio_chunk_duration=float(os.environ.get("VAD_CHUNK", "0.6")),
+        # Barge-in OFF by default: without echo cancellation the agent's own
+        # voice cuts it off mid-sentence. VOICE_BARGE_IN=1 to re-enable.
+        can_interrupt=os.environ.get("VOICE_BARGE_IN", "0") == "1",
+    )
     print("Starting voice demo — open the local URL below and allow the mic.")
     try:
         transport.start()  # launches the Gradio UI (blocks until you close it)

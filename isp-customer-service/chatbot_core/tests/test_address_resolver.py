@@ -80,6 +80,27 @@ class TestCityResolution:
         assert r["resolution"]["city"]["status"] == "not_found"
         assert r["success"] is False
 
+    def test_unserved_city_recovered_by_street_and_house(self, resolver):
+        """STT mishears the city ('Vilnius') but street+house pin Tilžės 60-7."""
+        r = resolver(city="Vilnius", street="Tilžės", house_number="60", apartment_number="7")
+        assert r["resolution"]["city"]["status"] == "recovered"
+        assert r["resolution"]["city"]["matched"] == "Šiauliai"
+        assert r["success"] is True
+        assert r["customer_id"] == "CUST105"
+
+    def test_unserved_city_not_recovered_when_house_wrong(self, resolver):
+        """Wrong street from STT must NOT snap to a real address: Žeimių 60
+        does not exist (Žeimių has house 12), so recovery refuses."""
+        r = resolver(city="Vilnius", street="Žeimių", house_number="60")
+        assert r["resolution"]["city"]["status"] == "not_found"
+        assert r["success"] is False
+
+    def test_unserved_city_not_recovered_without_house(self, resolver):
+        """Street alone never auto-recovers the city — the agent must ask."""
+        r = resolver(city="Vilnius", street="Tilžės")
+        assert r["resolution"]["city"]["status"] == "not_found"
+        assert r["success"] is False
+
 
 class TestStreetResolution:
     def test_street_not_in_city_found_elsewhere(self, resolver):
