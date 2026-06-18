@@ -327,6 +327,48 @@ class ReactAgent:
             ],
         }
 
+    # Technical tools that must NOT run before the customer is identified
+    # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
+    _GATED_TOOLS = frozenset({"diagnose_connection", "update_mac", "reset_port", "create_ticket"})
+
+    def _gate_tool(self, name: str, args: dict) -> str | None:
+        """
+        Deterministic tool-access gate.
+
+        Returns a corrective observation (JSON string) when a technical tool is
+        called before identification, or with a customer_id that is not the
+        identified one — otherwise None (the call proceeds). This moves the "no
+        diagnostics before identification" / "never act on a guessed id" rules
+        out of the prompt and into code, so a hallucinated `diagnose_connection`
+        cannot fire (observed: customer_id='1' on an unidentified caller).
+        """
+        if name not in self._GATED_TOOLS:
+            return None
+        if not self.state.customer_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "not_identified",
+                    "message": (
+                        "Klientas dar neidentifikuotas. Pirma surask ir patvirtink "
+                        "adresą (resolve_address) — tik tada galima diagnozė ar veiksmai."
+                    ),
+                }
+            )
+        cid = args.get("customer_id")
+        if cid and cid != self.state.customer_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "id_mismatch",
+                    "message": (
+                        f"customer_id turi būti identifikuoto kliento: "
+                        f"{self.state.customer_id}. Nenaudok kito ar spėto id."
+                    ),
+                }
+            )
+        return None
+
     def _update_state_from_observation(self, action: str, observation: str):
         """Update agent state based on tool observation."""
         try:
@@ -552,9 +594,17 @@ class ReactAgent:
                 logger.debug(f"[AGENT] Args: {args}")
                 self.tracer.emit("tool_call", name=name, args=args)
 
-                _t = time.perf_counter()
-                observation = execute_tool(name, args)
-                tool_ms = round((time.perf_counter() - _t) * 1000.0)
+                # Deterministic gate: technical tools are blocked until the
+                # customer is identified (no diagnostics / ticket on a guessed or
+                # missing customer_id). A blocked call returns a corrective
+                # observation instead of executing — the model self-corrects.
+                gate = self._gate_tool(name, args)
+                if gate is not None:
+                    observation, tool_ms = gate, 0
+                else:
+                    _t = time.perf_counter()
+                    observation = execute_tool(name, args)
+                    tool_ms = round((time.perf_counter() - _t) * 1000.0)
 
                 self.state.messages.append(
                     {
