@@ -602,15 +602,15 @@ losing/overwriting facts, deciding wrongly, and is ready for many fault types an
 - [x] **0. Design doc `pokalbio_variklis.md`** — slot schema, policy state machine
       (a table, like the verdict tree), node graph, principles + corrections,
       target diagram next to the current architecture. *(No code.)*
-- [ ] **1.1 Prompt-cache fix** — stable system prompt; durable facts move from the
+- [x] **1.1 Prompt-cache fix** — stable system prompt; durable facts move from the
       system message to a trailing message (cache-friendly → lower latency/cost).
-- [ ] **1.2 Explicit slots in state** — typed `ClientProfileState`
+- [x] **1.2 Explicit slots in state** — typed `ClientProfileState`
       (city/street/house/apartment/`address_verified`/customer_id/problem_type);
       `resolve_address` writes into slots with confidence.
-- [ ] **1.3 Tool-access gate** — block technical tools until `address_verified`;
+- [x] **1.3 Tool-access gate** — block technical tools until `address_verified`;
       deterministic guard in the dispatcher (kills diagnose-too-early + id
       hallucination). *Framework-independent — value even without LangGraph.*
-- [ ] **1.4 NLU extraction (Dual-Track)** — deterministic owns the *values* (street
+- [x] **1.4 NLU extraction (Dual-Track)** — deterministic owns the *values* (street
       via the registry fuzzy, numbers via the normalizer); the LLM only *segments*
       the utterance into slot fields, and only when the deterministic track is
       ambiguous / the sentence is complex. A clean address skips the LLM entirely
