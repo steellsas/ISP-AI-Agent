@@ -599,7 +599,7 @@ losing/overwriting facts, deciding wrongly, and is ready for many fault types an
   trailing message.
 
 ### Build order
-- [ ] **0. Design doc `pokalbio_variklis.md`** — slot schema, policy state machine
+- [x] **0. Design doc `pokalbio_variklis.md`** — slot schema, policy state machine
       (a table, like the verdict tree), node graph, principles + corrections,
       target diagram next to the current architecture. *(No code.)*
 - [ ] **1.1 Prompt-cache fix** — stable system prompt; durable facts move from the
@@ -610,10 +610,17 @@ losing/overwriting facts, deciding wrongly, and is ready for many fault types an
 - [ ] **1.3 Tool-access gate** — block technical tools until `address_verified`;
       deterministic guard in the dispatcher (kills diagnose-too-early + id
       hallucination). *Framework-independent — value even without LangGraph.*
-- [ ] **1.4 NLU extraction** — focused extractor (`json_object` schema) fills slots
-      from STT, out of the free ReAct loop.
+- [ ] **1.4 NLU extraction (Dual-Track)** — deterministic owns the *values* (street
+      via the registry fuzzy, numbers via the normalizer); the LLM only *segments*
+      the utterance into slot fields, and only when the deterministic track is
+      ambiguous / the sentence is complex. A clean address skips the LLM entirely
+      (faster + no hallucination). LLM never passes a street value directly —
+      `resolve_address` validates it.
 - [ ] **2. Latency masking** — TTS streaming port (gTTS adapter behind it) + instant
-      filler ("sekundėlę, tikrinu…") at the `AgentSession` seam.
+      filler ("sekundėlę, tikrinu…") at the `AgentSession` seam + **audio cache**:
+      pre-render the fixed/static phrases (greeting, fillers, common instructions)
+      as WAV/MP3 → 0 ms for those (the filler is a cache client). Caching adapter
+      behind the TTS port; only FIXED phrases cache — LLM-varied replies still synth.
 - [ ] **3. LangGraph migration** — `ReactAgent` → Router / AddressValidation /
       Diagnosis nodes over the typed state; `MemorySaver` checkpointer (in-RAM, not
       Redis/Postgres — not needed); LangSmith debug.
@@ -649,9 +656,14 @@ address, hallucinated id, premature diagnosis) are gone; a new fault type is con
 - [ ] **Fast-path / slow-path split** — real-time media loop (WebSocket STT/TTS)
       decoupled from the async LangGraph "brain" (event-driven). Needed for
       telephony; enables true overlap.
-- [ ] **AEC + barge-in policy** — acoustic echo cancellation so `can_interrupt`
-      can be re-enabled without the agent cutting itself off (browser AEC alone
-      proved insufficient — trace `20260618-092029`).
+- [ ] **AEC + asymmetric barge-in filter** — acoustic echo cancellation so
+      `can_interrupt` can be re-enabled without the agent cutting itself off
+      (browser AEC alone proved insufficient — trace `20260618-092029`). On top of
+      AEC, an **asymmetric barge-in filter**: a small local (ms) check classifies a
+      detected interruption as a backchannel ("aha"/"taip"/"gerai" — short duration
+      + LT affirmation list → keep talking) vs real new speech ("ne, ne tas
+      adresas" → stop + full LangGraph switch). Start heuristic (duration +
+      wordlist), not an ML classifier. Prereq: AEC.
 - [ ] Barge-in / streaming polish
 - [ ] `fastphone()` real-call test → later Twilio / PBX `transport` adapter
 
