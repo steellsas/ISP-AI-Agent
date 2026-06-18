@@ -184,6 +184,10 @@ class ReactAgent:
         # Initialize LLM stats tracking
         self.llm_stats = LLMStats()
 
+        # Streets/localities registry for deterministic NLU prefill (loaded lazily
+        # on the first user turn so construction stays DB-free where possible).
+        self._registry: tuple[list[str], list[str]] | None = None
+
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
         # single source of truth, derived from the Tool dataclass.
@@ -473,6 +477,48 @@ class ReactAgent:
         }
         self.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
 
+    def _prefill_slots_from_text(self, text: str) -> None:
+        """Deterministic NLU Track A: extract the address from the caller's turn and
+        propose it into the slots BEFORE the LLM runs (docs/pokalbio_variklis.md §4).
+
+        The reading is the high-confidence floor — registry-validated street +
+        normalized numbers — so the slots get a reliable source independent of the
+        LLM. Proposed as HEARD; resolve_address upgrades a confirmed hit to
+        RESOLVED. Best-effort: any failure (DB, import) silently no-ops the turn.
+        """
+        try:
+            from .nlu import extract_address, load_registry
+            from .slots import SlotStatus
+            from .tools import get_db
+
+            if self._registry is None:
+                self._registry = load_registry(get_db())
+            streets, localities = self._registry
+            reading = extract_address(text, streets, localities)
+        except Exception:  # pragma: no cover - best-effort, never break a turn
+            logger.debug("NLU prefill failed", exc_info=True)
+            return
+
+        p = self.state.profile
+        conf = reading.street_confidence or 0.6
+        if reading.city:
+            p.city.propose(reading.city, conf, SlotStatus.HEARD)
+        if reading.street:
+            p.street.propose(reading.street, conf, SlotStatus.HEARD)
+        if reading.house:
+            p.house.propose(reading.house, conf, SlotStatus.HEARD)
+        if reading.apartment:
+            p.apartment.propose(reading.apartment, conf, SlotStatus.HEARD)
+
+        self.tracer.emit(
+            "nlu",
+            city=reading.city,
+            street=reading.street,
+            house=reading.house,
+            apartment=reading.apartment,
+            confidence=round(reading.street_confidence, 2),
+        )
+
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
         if self._session_ended:
@@ -691,6 +737,8 @@ class ReactAgent:
 
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
+            # Deterministic NLU prefill (Track A) before the LLM sees the turn.
+            self._prefill_slots_from_text(user_input)
 
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response
