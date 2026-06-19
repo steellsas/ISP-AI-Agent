@@ -324,6 +324,28 @@ class ReactAgent:
             facts.append(f"- Problem type: {s.problem_type}")
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        # Deterministically heard address parts (NLU Track A prefill). Surface them
+        # so the model passes THESE to resolve_address instead of re-extracting
+        # garbled STT (observed: NLU heard "Aušros g. 8" but the model sent
+        # "Raušuos"). Only relevant before the customer is identified.
+        if not s.customer_id:
+            p = s.profile
+            heard = [
+                f"{label}={slot.value}"
+                for label, slot in (
+                    ("city", p.city),
+                    ("street", p.street),
+                    ("house", p.house),
+                    ("apartment", p.apartment),
+                )
+                if slot.value
+            ]
+            if heard:
+                facts.append(
+                    "- HEARD ADDRESS (deterministic — PREFER these over re-extracting "
+                    "from the raw text): " + ", ".join(heard) + ". Pass them to "
+                    "resolve_address unless the caller explicitly corrects them."
+                )
         # Pre-flight phone candidate: known but UNCONFIRMED until the caller
         # agrees the offered address is theirs (anchor rule). Only relevant
         # before a customer has been confirmed.

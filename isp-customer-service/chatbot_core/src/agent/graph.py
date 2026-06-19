@@ -35,12 +35,22 @@ LOOKUP_TOOLS = frozenset({"resolve_address", "find_customer", "check_outages", "
 _ADDRESS_NODE_PROMPT = (
     "=== STAGE: IDENTIFICATION ===\n"
     "The customer is NOT yet identified. Your ONLY goal now is to capture and "
-    "confirm the service address (or an account code). You currently have ONLY "
-    "lookup tools — you CANNOT diagnose, change anything, or create a ticket yet, "
-    "so do not promise it. Ask only for the MISSING address parts, call "
-    "resolve_address, and echo-confirm what you found "
-    '("Radau ... Ar šiuo adresu neveikia internetas?"). Once the address '
-    "resolves and the customer confirms, the diagnosis stage begins next turn."
+    "confirm the service address (or an account code). You have ONLY lookup tools "
+    "— you CANNOT diagnose, change anything, or create a ticket yet; do not "
+    "promise it.\n"
+    "- If KNOWN FACTS lists a HEARD ADDRESS, USE those values for resolve_address "
+    "instead of re-reading the raw text.\n"
+    "- Ask only for the MISSING parts, call resolve_address, and echo-confirm what "
+    'it returned ("Radau <rastas adresas>. Ar šiuo adresu neveikia internetas?").\n'
+    "- ECHO what you heard so the caller can catch STT errors: when a part fails, "
+    'echo the VALUE ("Išgirdau namo numerį 8 — ar teisingai?") — do NOT just '
+    "repeat the generic question.\n"
+    "- GRACEFUL EXIT: if the SAME part fails about twice, STOP repeating the "
+    'identical ask — offer the account code ("Gal turite abonento kodą nuo '
+    'sąskaitos?") or register the issue for a callback. Never loop the same '
+    "sentence like a stuck record.\n"
+    "- Never invent or parrot an address you were not given. Once the address "
+    "resolves and the customer confirms, diagnosis begins next turn."
 )
 
 _DIAGNOSIS_NODE_PROMPT = (
