@@ -621,9 +621,14 @@ losing/overwriting facts, deciding wrongly, and is ready for many fault types an
       pre-render the fixed/static phrases (greeting, fillers, common instructions)
       as WAV/MP3 → 0 ms for those (the filler is a cache client). Caching adapter
       behind the TTS port; only FIXED phrases cache — LLM-varied replies still synth.
-- [ ] **3. LangGraph migration** — `ReactAgent` → Router / AddressValidation /
-      Diagnosis nodes over the typed state; `MemorySaver` checkpointer (in-RAM, not
-      Redis/Postgres — not needed); LangSmith debug.
+- **3. LangGraph migration** — done BEFORE step 2 (decision 2026-06-19: get the
+  structure right, then mask latency on top of the working graph). Split:
+  - [x] **3.1 graph plumbing** — one-node `StateGraph` + `MemorySaver` behind the
+        `AgentSession` seam, delegating each turn to the existing ReactAgent
+        (behaviour-preserving; `AGENT_ENGINE=legacy` bypass). `agent/graph.py`.
+  - [ ] **3.2 node split** — `ReactAgent` → Router / AddressValidation / Diagnosis
+        nodes over the typed state (reusing gate / resolve_address / verdict tree);
+        deterministic routing on `address_verified`; LangSmith debug.
 
 **Kept unchanged:** the verdict tree, `resolve_address` (now a slot validator), the
 10-tool registry (becomes the Diagnosis node's tools), the Tracer (extended per
