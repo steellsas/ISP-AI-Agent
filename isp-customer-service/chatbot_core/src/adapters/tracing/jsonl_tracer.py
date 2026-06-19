@@ -150,6 +150,11 @@ class JsonlFileTracer:
                         lines.append(f"USER : {e.get('text')}")
                     elif t == "agent_reply":
                         lines.append(f"AGENT: {e.get('text')}")
+                    elif t == "nlu":
+                        lines.append(
+                            f"   . nlu street={e.get('street')} house={e.get('house')} "
+                            f"apt={e.get('apartment')} city={e.get('city')} conf={e.get('confidence')}"
+                        )
                     elif t == "tool_call":
                         lines.append(f"   . tool {e.get('name')} {e.get('args')}")
                     elif t == "tool_result":
