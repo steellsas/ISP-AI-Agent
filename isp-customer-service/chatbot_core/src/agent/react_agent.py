@@ -188,6 +188,12 @@ class ReactAgent:
         # on the first user turn so construction stays DB-free where possible).
         self._registry: tuple[list[str], list[str]] | None = None
 
+        # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
+        # tools exposed to the model and add a focused prompt. None = unrestricted
+        # (the legacy single-agent behaviour).
+        self._active_tool_names: frozenset[str] | None = None
+        self._node_prompt: str | None = None
+
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
         # single source of truth, derived from the Tool dataclass.
@@ -240,11 +246,43 @@ class ReactAgent:
         if facts:
             messages.append({"role": "system", "content": facts})
 
+        # Per-node focus prompt (graph stage), if a node set one.
+        if self._node_prompt:
+            messages.append({"role": "system", "content": self._node_prompt})
+
         # Add new user input if provided
         if user_input:
             messages.append({"role": "user", "content": user_input})
 
         return messages
+
+    def _scoped_tools_schema(self) -> list:
+        """The tool schema for the current node — all tools, or only the subset a
+        graph node restricted the model to (self._active_tool_names)."""
+        if self._active_tool_names is None:
+            return self.tools_schema
+        return [
+            t
+            for t in self.tools_schema
+            if t.get("function", {}).get("name") in self._active_tool_names
+        ]
+
+    def run_turn_scoped(
+        self,
+        user_input: str | None,
+        allowed_tools: frozenset[str] | None,
+        node_prompt: str | None,
+    ) -> str:
+        """Run ONE turn restricted to `allowed_tools` with a focused `node_prompt`
+        appended (used by the LangGraph nodes). Scoping is reset afterwards so the
+        engine returns to its unrestricted default."""
+        self._active_tool_names = allowed_tools
+        self._node_prompt = node_prompt
+        try:
+            return self.run_until_response(user_input)
+        finally:
+            self._active_tool_names = None
+            self._node_prompt = None
 
     def _prune_history(self, messages: list) -> list:
         """
@@ -569,7 +607,7 @@ class ReactAgent:
         try:
             message = llm_tool_completion(
                 messages=messages,
-                tools=self.tools_schema,
+                tools=self._scoped_tools_schema(),
                 tool_choice="auto",
                 model=self.config.model,
                 temperature=self.config.temperature,

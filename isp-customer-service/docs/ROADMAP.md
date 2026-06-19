@@ -626,9 +626,13 @@ losing/overwriting facts, deciding wrongly, and is ready for many fault types an
   - [x] **3.1 graph plumbing** — one-node `StateGraph` + `MemorySaver` behind the
         `AgentSession` seam, delegating each turn to the existing ReactAgent
         (behaviour-preserving; `AGENT_ENGINE=legacy` bypass). `agent/graph.py`.
-  - [ ] **3.2 node split** — `ReactAgent` → Router / AddressValidation / Diagnosis
-        nodes over the typed state (reusing gate / resolve_address / verdict tree);
-        deterministic routing on `address_verified`; LangSmith debug.
+  - [x] **3.2 node split** — deterministic router (on `customer_id`) → two focused
+        nodes: `address_validation` (lookup tools only — structural gate) and
+        `diagnosis` (full toolset), each with a short stage prompt, both delegating
+        the tool-loop to the ReactAgent (`run_turn_scoped`). Reuses gate /
+        resolve_address / verdict tree / NLU. Conversation state still in the
+        engine; migrating it into the typed graph state + LangSmith debug are later
+        refinements.
 
 **Kept unchanged:** the verdict tree, `resolve_address` (now a slot validator), the
 10-tool registry (becomes the Diagnosis node's tools), the Tracer (extended per
