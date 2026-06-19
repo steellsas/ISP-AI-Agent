@@ -184,6 +184,10 @@ class ReactAgent:
         # Initialize LLM stats tracking
         self.llm_stats = LLMStats()
 
+        # Streets/localities registry for deterministic NLU prefill (loaded lazily
+        # on the first user turn so construction stays DB-free where possible).
+        self._registry: tuple[list[str], list[str]] | None = None
+
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
         # single source of truth, derived from the Tool dataclass.
@@ -216,16 +220,25 @@ class ReactAgent:
         of durable facts re-injected from AgentState (see _state_facts_block),
         so pruning old messages never loses the resolved customer/problem/ticket
         context. The full transcript still lives in AgentState.messages.
-        """
-        system_content = self.system_prompt
-        facts = self._state_facts_block()
-        if facts:
-            system_content = f"{system_content}\n\n{facts}"
 
-        messages = [{"role": "system", "content": system_content}]
+        Prompt-cache friendliness: the system prompt is kept BYTE-STABLE across
+        turns so providers can cache the prefix. The durable-fact block changes
+        as the call progresses, so it goes in a SEPARATE trailing system message
+        (just before the new user input) rather than being concatenated into the
+        system content — concatenating would mutate the system message every turn
+        and bust the cache (the real cost, not the few fact tokens).
+        """
+        # Stable system prefix (cacheable).
+        messages = [{"role": "system", "content": self.system_prompt}]
 
         # Add recent conversation history (windowed, tool-pairing safe)
         messages.extend(self._prune_history(self.state.messages))
+
+        # Durable facts as a trailing system message (kept OUT of the cached
+        # prefix). None until something is resolved this call.
+        facts = self._state_facts_block()
+        if facts:
+            messages.append({"role": "system", "content": facts})
 
         # Add new user input if provided
         if user_input:
@@ -318,10 +331,59 @@ class ReactAgent:
             ],
         }
 
+    # Technical tools that must NOT run before the customer is identified
+    # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
+    _GATED_TOOLS = frozenset({"diagnose_connection", "update_mac", "reset_port", "create_ticket"})
+
+    def _gate_tool(self, name: str, args: dict) -> str | None:
+        """
+        Deterministic tool-access gate.
+
+        Returns a corrective observation (JSON string) when a technical tool is
+        called before identification, or with a customer_id that is not the
+        identified one — otherwise None (the call proceeds). This moves the "no
+        diagnostics before identification" / "never act on a guessed id" rules
+        out of the prompt and into code, so a hallucinated `diagnose_connection`
+        cannot fire (observed: customer_id='1' on an unidentified caller).
+        """
+        if name not in self._GATED_TOOLS:
+            return None
+        if not self.state.customer_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "not_identified",
+                    "message": (
+                        "Klientas dar neidentifikuotas. Pirma surask ir patvirtink "
+                        "adresą (resolve_address) — tik tada galima diagnozė ar veiksmai."
+                    ),
+                }
+            )
+        cid = args.get("customer_id")
+        if cid and cid != self.state.customer_id:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "id_mismatch",
+                    "message": (
+                        f"customer_id turi būti identifikuoto kliento: "
+                        f"{self.state.customer_id}. Nenaudok kito ar spėto id."
+                    ),
+                }
+            )
+        return None
+
     def _update_state_from_observation(self, action: str, observation: str):
         """Update agent state based on tool observation."""
         try:
             obs_data = json.loads(observation)
+
+            # Fold the per-level address resolution into the durable slots on
+            # EVERY resolve_address call (success or not) — what the caller said
+            # accumulates as structured memory, protected from low-confidence
+            # overwrites (slots.Slot.propose).
+            if action == "resolve_address" and isinstance(obs_data.get("resolution"), dict):
+                self.state.profile.update_from_resolution(obs_data["resolution"])
 
             if action in ("find_customer", "resolve_address") and obs_data.get("success"):
                 # resolve_address nests the normalized profile under `customer`;
@@ -414,6 +476,48 @@ class ReactAgent:
             "address": primary.get("full_address"),
         }
         self.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
+
+    def _prefill_slots_from_text(self, text: str) -> None:
+        """Deterministic NLU Track A: extract the address from the caller's turn and
+        propose it into the slots BEFORE the LLM runs (docs/pokalbio_variklis.md §4).
+
+        The reading is the high-confidence floor — registry-validated street +
+        normalized numbers — so the slots get a reliable source independent of the
+        LLM. Proposed as HEARD; resolve_address upgrades a confirmed hit to
+        RESOLVED. Best-effort: any failure (DB, import) silently no-ops the turn.
+        """
+        try:
+            from .nlu import extract_address, load_registry
+            from .slots import SlotStatus
+            from .tools import get_db
+
+            if self._registry is None:
+                self._registry = load_registry(get_db())
+            streets, localities = self._registry
+            reading = extract_address(text, streets, localities)
+        except Exception:  # pragma: no cover - best-effort, never break a turn
+            logger.debug("NLU prefill failed", exc_info=True)
+            return
+
+        p = self.state.profile
+        conf = reading.street_confidence or 0.6
+        if reading.city:
+            p.city.propose(reading.city, conf, SlotStatus.HEARD)
+        if reading.street:
+            p.street.propose(reading.street, conf, SlotStatus.HEARD)
+        if reading.house:
+            p.house.propose(reading.house, conf, SlotStatus.HEARD)
+        if reading.apartment:
+            p.apartment.propose(reading.apartment, conf, SlotStatus.HEARD)
+
+        self.tracer.emit(
+            "nlu",
+            city=reading.city,
+            street=reading.street,
+            house=reading.house,
+            apartment=reading.apartment,
+            confidence=round(reading.street_confidence, 2),
+        )
 
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
@@ -536,9 +640,17 @@ class ReactAgent:
                 logger.debug(f"[AGENT] Args: {args}")
                 self.tracer.emit("tool_call", name=name, args=args)
 
-                _t = time.perf_counter()
-                observation = execute_tool(name, args)
-                tool_ms = round((time.perf_counter() - _t) * 1000.0)
+                # Deterministic gate: technical tools are blocked until the
+                # customer is identified (no diagnostics / ticket on a guessed or
+                # missing customer_id). A blocked call returns a corrective
+                # observation instead of executing — the model self-corrects.
+                gate = self._gate_tool(name, args)
+                if gate is not None:
+                    observation, tool_ms = gate, 0
+                else:
+                    _t = time.perf_counter()
+                    observation = execute_tool(name, args)
+                    tool_ms = round((time.perf_counter() - _t) * 1000.0)
 
                 self.state.messages.append(
                     {
@@ -625,6 +737,8 @@ class ReactAgent:
 
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
+            # Deterministic NLU prefill (Track A) before the LLM sees the turn.
+            self._prefill_slots_from_text(user_input)
 
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response

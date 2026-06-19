@@ -13,7 +13,13 @@
 
 - **Ports & Adapters (hexagonal).** Anything that can change (LLM, ASR, TTS, Transport, DB)
   lives behind a `Protocol` interface; concrete implementations are pluggable adapters.
-- **Framework-free core.** Dialog logic + RAG + tools never depend on Streamlit / FastRTC / Ollama.
+- **Frameworks where they earn it (revised 2026-06-18).** The earlier hard
+  "framework-free core" rule is relaxed: proven libraries/frameworks (e.g.
+  LangGraph for orchestration) are adopted when they make the app more
+  professional and faster to build — *behind the Ports*, so they stay swappable.
+  The non-negotiable that remains: **decision logic stays pure and unit-testable**
+  (slot policy, verdict tree) — the framework wires and runs the decisions, it
+  does not own them.
 - **`main` is the live demo.** The Railway deployment must never break — all work happens on branches.
 - **Safety net first.** A scenario-based regression/eval harness is established *before* refactoring,
   so "how well it consults" is measurable and protected.
@@ -528,10 +534,109 @@ proving the template generalises to other faults by content alone.
       the ports. Engine imports deferred so adapters construct without the
       `voice` extra; offline tests cover protocol conformance, empty inputs,
       WAV/PCM decoding and pipeline orchestration. — *PR #28*
-- [ ] FastRTC `Stream` + `ReplyOnPause` handler → `VoicePipeline` (transport adapter)
-- [ ] `.ui.launch()` for instant testing
+- [x] FastRTC `Stream` + `ReplyOnPause` handler → `VoicePipeline` (transport
+      adapter) + `.ui.launch()` for instant testing — *PR #32 (`feat/voice-real-agent`)*
+- [x] **Hosted LT STT + observability + reliability fixes** — Groq Whisper
+      (CPU has no GPU) for fast/accurate Lithuanian; richer trace (raw STT,
+      per-tool/LLM timing, `.txt` export, per-turn audio recording); STT
+      noise/hallucination filter + calmer VAD; phone pre-flight + echo-confirm
+      address; LT number normalizer; `can_interrupt=False` (agent no longer cuts
+      itself off); `resolve_address` city-recovery; fuzzy-"yes"; `.env` auto-load.
+      — *PR #33 (`feat/voice-instrumentation`)*
 
-**Done:** speak Lithuanian, agent replies by voice, consultation quality testable end-to-end.
+**Done:** speak Lithuanian, agent replies by voice, consultation quality testable
+end-to-end. **Voice testing surfaced structural faults → Phase 3.5 below.**
+
+---
+
+## Phase 3.5 — Conversation engine: dialog state + nodes · `feat/conversation-engine`
+
+**Goal:** replace the single free-form ReAct loop with a structured dialog engine
+— explicit typed slots, deterministic policy, focused nodes — so the agent stops
+losing/overwriting facts, deciding wrongly, and is ready for many fault types and
+(later) async voice.
+
+> **Why now:** live voice traces (`logs/sessions/20260618-*`) exposed structural
+> faults a prompt cannot fix: a garbled turn OVERWRITES a resolved address; the
+> LLM HALLUCINATES a customer_id; it DIAGNOSES before identification; the address
+> SPIRALS because there is no durable slot to protect. Root cause = the engine,
+> not the prompt. Full design discussion → `chatbot_core/docs/pokalbio_variklis.md`.
+
+### Architecture (target)
+- **Per turn: NLU → DialogState (slots) → Policy → NLG.** The LLM only *understands*
+  and *phrases*; the **decisions are made by code** (deterministic policy + verdict
+  tree) — so it cannot re-open a resolved address, hallucinate an id, or rush.
+- **Slots** (typed, Pydantic): `problem_type, city, street, house, apartment,
+  address_verified, customer_id` — each with confidence; durable, never lost to a
+  single garbled turn.
+- **Nodes (one LangGraph):** Router (classify `problem_type`) → AddressValidation
+  (Režimas A: slot-filling + tool-access gate, **problem-agnostic**) → Diagnosis
+  (Režimas B: a **per-problem-type strategy registry** sharing "gather signals →
+  verdict → act"; `diagnose_connection` is the first strategy).
+- **Shared skeleton for EVERY fault** (no internet / slow / TV / billing …):
+  identify → retrieve (RAG) → diagnose → resolve. A new fault = a new diagnosis
+  strategy + KB content; identification and core stay untouched.
+
+### Forward-compat principles (baked in from the start)
+1. **Tools may be slow** — SQLite is a test stand-in; a real DB/OSS may be slower.
+   Tool calls are timeout- and filler-ready; true async impl in Phase 5.
+2. **Streaming TTS by design** — the TTS port is a streaming interface now; gTTS is
+   a non-streaming adapter behind it; swap the engine without touching the core.
+3. **State will grow** — dynamic state in a TRAILING message (not the system
+   prompt), plus a state-summarization step when slots/history grow.
+4. **Concurrency-ready (far future)** — no global mutable state; nodes are pure
+   `(state) -> state`; checkpointer keyed by `thread_id` (one state per call).
+
+### Corrections folded in (from trace evidence)
+- Latency is **LLM + audio**, not the DB (tools run in 1–13 ms) — the gate is for
+  CORRECTNESS, the filler masks the LLM (not the DB). Do **not** optimize DB I/O.
+- Focused nodes buy **accuracy/control**, not dramatic speed (the LLM round-trip
+  floor dominates; a shorter prompt is cheaper, not "lightning fast").
+- Token-streaming into TTS needs a streaming engine (gTTS blocks it); the interim
+  filler does not and lands first.
+- Re-injecting facts into the **system prompt busts the prompt cache** — the real
+  cost (not token count); fix by a stable system prompt + dynamic state in a
+  trailing message.
+
+### Build order
+- [x] **0. Design doc `pokalbio_variklis.md`** — slot schema, policy state machine
+      (a table, like the verdict tree), node graph, principles + corrections,
+      target diagram next to the current architecture. *(No code.)*
+- [x] **1.1 Prompt-cache fix** — stable system prompt; durable facts move from the
+      system message to a trailing message (cache-friendly → lower latency/cost).
+- [x] **1.2 Explicit slots in state** — typed `ClientProfileState`
+      (city/street/house/apartment/`address_verified`/customer_id/problem_type);
+      `resolve_address` writes into slots with confidence.
+- [x] **1.3 Tool-access gate** — block technical tools until `address_verified`;
+      deterministic guard in the dispatcher (kills diagnose-too-early + id
+      hallucination). *Framework-independent — value even without LangGraph.*
+- [x] **1.4 NLU extraction (Dual-Track)** — deterministic owns the *values* (street
+      via the registry fuzzy, numbers via the normalizer); the LLM only *segments*
+      the utterance into slot fields, and only when the deterministic track is
+      ambiguous / the sentence is complex. A clean address skips the LLM entirely
+      (faster + no hallucination). LLM never passes a street value directly —
+      `resolve_address` validates it.
+- [ ] **2. Latency masking** — TTS streaming port (gTTS adapter behind it) + instant
+      filler ("sekundėlę, tikrinu…") at the `AgentSession` seam + **audio cache**:
+      pre-render the fixed/static phrases (greeting, fillers, common instructions)
+      as WAV/MP3 → 0 ms for those (the filler is a cache client). Caching adapter
+      behind the TTS port; only FIXED phrases cache — LLM-varied replies still synth.
+- [ ] **3. LangGraph migration** — `ReactAgent` → Router / AddressValidation /
+      Diagnosis nodes over the typed state; `MemorySaver` checkpointer (in-RAM, not
+      Redis/Postgres — not needed); LangSmith debug.
+
+**Kept unchanged:** the verdict tree, `resolve_address` (now a slot validator), the
+10-tool registry (becomes the Diagnosis node's tools), the Tracer (extended per
+node), the seed world, the 259-test suite.
+
+**Deferred to Phase 5 (realtime/telephony):** async generator + token streaming,
+fast-path / slow-path split (real-time media vs async brain), AEC + barge-in, real
+slow-DB async.
+
+**Done:** identification runs as deterministic slot-filling behind a tool-access
+gate; LangGraph orchestrates the nodes over typed state; the trace bugs (overwritten
+address, hallucinated id, premature diagnosis) are gone; a new fault type is content
++ a diagnosis strategy, not a core change.
 
 ---
 
@@ -546,6 +651,19 @@ proving the template generalises to other faults by content alone.
 
 ## Phase 5 — Realtime & telephony
 
+- [ ] **Async conversation engine** — `run_until_response` → async generator;
+      token streaming into the streaming TTS port (deferred here from Phase 3.5).
+- [ ] **Fast-path / slow-path split** — real-time media loop (WebSocket STT/TTS)
+      decoupled from the async LangGraph "brain" (event-driven). Needed for
+      telephony; enables true overlap.
+- [ ] **AEC + asymmetric barge-in filter** — acoustic echo cancellation so
+      `can_interrupt` can be re-enabled without the agent cutting itself off
+      (browser AEC alone proved insufficient — trace `20260618-092029`). On top of
+      AEC, an **asymmetric barge-in filter**: a small local (ms) check classifies a
+      detected interruption as a backchannel ("aha"/"taip"/"gerai" — short duration
+      + LT affirmation list → keep talking) vs real new speech ("ne, ne tas
+      adresas" → stop + full LangGraph switch). Start heuristic (duration +
+      wordlist), not an ML classifier. Prereq: AEC.
 - [ ] Barge-in / streaming polish
 - [ ] `fastphone()` real-call test → later Twilio / PBX `transport` adapter
 
@@ -662,3 +780,8 @@ never degrades consultation quality — the core "pro" safety net.
       and the LT↔EN cross-lingual eval (lang metadata already in place). The
       cross-lingual / harder eval set is also what would finally show BM25's upside
       numerically. Each measured against the eval harness.
+- [ ] **Next:** Phase 3.5 · Conversation engine (`feat/conversation-engine`) —
+      build order: (0) design doc `pokalbio_variklis.md`, (1.1) prompt-cache fix,
+      (1.2) typed slots, (1.3) tool-access gate, (1.4) NLU extraction, (2) latency
+      masking (filler + streaming TTS port), (3) LangGraph migration (nodes +
+      MemorySaver). Async / fast-slow split / AEC deferred to Phase 5.
