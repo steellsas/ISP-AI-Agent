@@ -501,6 +501,33 @@ class TestHistoryWindow:
         messages = agent._build_messages()
         assert messages[0]["content"] == agent.system_prompt
 
+    def test_facts_block_surfaces_heard_address(self):
+        """NLU-prefilled slots are surfaced so the model passes them to
+        resolve_address instead of re-extracting garbled text (R5)."""
+        from agent.react_agent import ReactAgent
+        from agent.slots import SlotStatus
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.state.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
+        agent.state.profile.house.propose("8", 0.8, SlotStatus.HEARD)
+
+        facts = agent._state_facts_block()
+        assert "HEARD ADDRESS" in facts
+        assert "street=Aušros g." in facts
+        assert "house=8" in facts
+
+    def test_heard_address_hidden_once_identified(self):
+        """Once identified the heard-address hint is dropped (already known)."""
+        from agent.react_agent import ReactAgent
+        from agent.slots import SlotStatus
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.state.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
+        agent.state.customer_id = "CUST110"
+
+        facts = agent._state_facts_block()
+        assert "HEARD ADDRESS" not in (facts or "")
+
 
 class TestPromptLoader:
     """Tests for prompt loading."""

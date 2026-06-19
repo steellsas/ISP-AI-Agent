@@ -20,9 +20,11 @@ Usage:
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .config import AgentConfig
+from .graph import build_turn_graph
 from .react_agent import ReactAgent
 from .state import AgentState
 
@@ -36,6 +38,7 @@ class AgentSession:
         language: str = "lt",
         config: AgentConfig | None = None,
         tracer=None,
+        engine: str | None = None,
     ):
         """
         Start a session.
@@ -45,6 +48,9 @@ class AgentSession:
             language: Language code ("lt" or "en").
             config: Optional agent configuration (defaults applied if None).
             tracer: Optional ConversationTracer (defaults to the JSONL sink).
+            engine: orchestration engine — "graph" (LangGraph, default) or
+                "legacy" (direct ReactAgent loop, rollback). Overridable by the
+                AGENT_ENGINE env var. Behaviour is identical in step 3.1.
         """
         self._agent = ReactAgent(
             caller_phone=caller_phone,
@@ -52,6 +58,14 @@ class AgentSession:
             config=config,
             tracer=tracer,
         )
+
+        # LangGraph plumbing (step 3.1): a one-node graph that delegates each turn
+        # to the ReactAgent above, checkpointed per session_id. Set engine/env to
+        # "legacy" to bypass the graph entirely.
+        mode = engine or os.getenv("AGENT_ENGINE", "graph")
+        self._use_graph = mode != "legacy"
+        self._graph = build_turn_graph(self._agent) if self._use_graph else None
+        self._graph_config = {"configurable": {"thread_id": self._agent.session_id}}
 
     def end_session(self, outcome: str | None = None) -> None:
         """Mark the conversation finished (emits session_end to the trace).
@@ -78,6 +92,8 @@ class AgentSession:
         The first turn has no user input — the agent greets, then waits for the
         customer's problem. Voice/telephony speak this before listening.
         """
+        if self._use_graph:
+            return self._graph.invoke({"user_input": None}, self._graph_config).get("reply")
         return self._agent.run_until_response()
 
     def handle_turn(self, text: str) -> str:
@@ -93,6 +109,8 @@ class AgentSession:
         Returns:
             The agent's reply string.
         """
+        if self._use_graph:
+            return self._graph.invoke({"user_input": text}, self._graph_config).get("reply")
         return self._agent.run_until_response(text)
 
     # --- Read-only views for transports / debug UIs ------------------------

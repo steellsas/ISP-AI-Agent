@@ -285,3 +285,49 @@ fast-path/slow-path split; **AEC + asimetrinis barge-in filtras** (backchannel
 Verdiktų medis (`diagnose_connection`), `resolve_address` (tampa **slotų
 validatoriumi**), 10-įrankių registras (tampa Diagnosis node turiniu), Tracer
 (praplečiam node'ams), seed pasaulis, esami **259 testai**.
+
+---
+
+## 12. Evoliucijos kryptis (po 3.2, dizainas — dar ne kodas)
+
+> Aptarta 2026-06-19. Grafas **plečiamas pagal poreikį**: pridėti node'ą =
+> `add_node` + briauna + fokusuotas promptas/įrankių pomėgis; router sprendžia
+> maršrutą. **Nauja problema = nauja strategija registre, NE grafo operacija.**
+
+### 12.1 Ankstyvas „outage short-circuit" node (NAUJAS)
+- Lengvas, deterministinis pirmas node: pagal skambinančiojo nr. → gatvė → aktyvi
+  avarija. Yra → **informuok + END** (1–2 frazės, **be pilnos identifikacijos**) —
+  avarijų audrai. Nėra → tęsk į `identify`.
+- Realaus laiko „kurios gatvės/regionai neveikia" = **įrankis/adapteris**
+  (`get_active_outages` prieš NMS/OSS), ne node. Generalizuojasi į **„žinomų
+  problemų short-circuit"**. (Sutampa su roadmap step 6b + esamu STEP 1b.)
+- Niuansas: `address_validation` jau turi `check_outages`; node promptas turi
+  AIŠKIAI leisti ankstyvą avarijų patikrą, kad „tik surink adresą" jos neužgožtų.
+
+### 12.2 `problem_type` = HIPOTEZĖ, ne tiesa
+- Klientas gali klaidingai nurodyti: „nėra interneto" → realiai **lėtas**;
+  „nėra TV" → dėl **linijos gedimo**. Tad `problem_type` — **revizuojamas slotas**
+  (vertė + pasitikėjimas), ne vienkartinis užrakinimas.
+- Diagnozė gali **perklasifikuoti**, sujungusi symptomus + telemetriją.
+
+### 12.3 Symptomų slotai (NAUJAS) — ir produktyvus tylos pildymas
+- Slotai, kaupiantys diagnostinį signalą: `kada_prasidėjo`, `dažnis`
+  (nuolat/protarpiais), `įrenginiai` (visi/vienas), `laidinis_wifi`,
+  `paslaugos` (internetas/tv/tel), `routerio_lemputės`.
+- **Esmė:** klausimai, kuriais agentas **pildo tylą** kol diagnozė sukasi fone,
+  turi būti diagnostiniai — atsakymai krenta į symptomų slotus, kurie **maitina
+  verdiktą**. Latencijos maskavimas tampa PRODUKTYVUS, ne tuščias. (Roadmap
+  „fill-the-wait-with-symptoms" — dabar suteikiam jam struktūrą.)
+
+### 12.4 Diagnozės strategijų registras
+- `Diagnose` node maršrutizuoja pagal `problem_type` į strategiją; visos dalijasi
+  „signalai → verdiktas → veiksmas" forma. `diagnose_connection` = pirmoji
+  (internet_down); `internet_slow` / `tv` / `billing` — pridedamos kaip nauji
+  strategijų moduliai + RAG turinys, identifikacijos ir branduolio neliečiant.
+
+### 12.5 Seka
+- **Artimiausia:** R1 `problem_type` slotas (NLU klasifikacija), R2 outage-check
+  prompto patikslinimas — pamatas symptomams/registrui.
+- **Po to:** symptomų slotai → outage short-circuit node → strategijų registras
+  (kai bus >1 problemos tipas).
+- Pilną deterministinę politiką validuojam **plačiu testavimu**.
