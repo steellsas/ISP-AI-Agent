@@ -49,10 +49,14 @@ _ADDRESS_NODE_PROMPT = (
     'identical ask — offer the account code ("Gal turite abonento kodą nuo '
     'sąskaitos?") or register the issue for a callback. Never loop the same '
     "sentence like a stuck record.\n"
-    "- MASS OUTAGE: as soon as you know the STREET (before the house/apartment), "
-    "you MAY call check_outages(city, street). If there is an active outage on "
-    "that street, INFORM the caller + estimated time and you are DONE — a "
-    "street-wide outage needs no apartment and no full identification.\n"
+    "- MASS OUTAGE — do this BEFORE asking for the apartment. The moment you know "
+    'the STREET, call check_outages(area="Miestas, Gatvė") — ALWAYS include the '
+    "street, NEVER city-only (a city-only result covers other streets and proves "
+    "nothing). If there is an active outage on that street, INFORM the caller + "
+    "estimated time and you are DONE (a street-wide outage needs no apartment and "
+    "no full identification). ESPECIALLY when resolve_address says 'kelios "
+    "sutartys / paklausk buto' — check the outage FIRST; only ask for the apartment "
+    "if there is NO outage.\n"
     "- Never invent or parrot an address you were not given. Once the address "
     "resolves and the customer confirms, diagnosis begins next turn."
 )
