@@ -77,6 +77,7 @@ class VoicePipeline:
         self._asr = asr
         self._tts = tts
         self._language = language or session.config.language
+        self._filler_audio: bytes | None = None  # lazily synthesized cue (2.2)
         self._transcript_filter = transcript_filter
         self._noise_filter = noise_filter
 
@@ -89,6 +90,19 @@ class VoicePipeline:
         """Synthesize the opening line spoken before the caller says anything."""
         greeting = self._session.greeting()
         return self._tts.synthesize(greeting, language=self._language)
+
+    # A short "thinking" cue the transport plays immediately while the real reply
+    # (ASR + agent + TTS) is still computing — masks per-turn latency (step 2.2).
+    # Synthesized once and cached (it never changes); the general static-phrase
+    # audio cache is step 2.3.
+    _FILLER_TEXT = {"lt": "Sekundėlę, tikrinu.", "en": "One moment, let me check."}
+
+    def filler_audio(self) -> bytes:
+        """Cached audio for the short 'let me check' cue (lazily synthesized)."""
+        if self._filler_audio is None:
+            text = self._FILLER_TEXT.get(self._language, self._FILLER_TEXT["lt"])
+            self._filler_audio = self._tts.synthesize(text, language=self._language)
+        return self._filler_audio
 
     def handle_audio(self, audio: bytes, *, sample_rate: int = 16_000) -> VoiceTurn:
         """

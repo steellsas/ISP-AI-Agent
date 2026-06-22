@@ -50,6 +50,7 @@ class FastRTCVoiceTransport:
         speech_threshold: float = 0.3,
         audio_chunk_duration: float = 0.6,
         can_interrupt: bool = False,
+        play_filler: bool = True,
         **launch_kwargs: Any,
     ):
         """
@@ -78,6 +79,7 @@ class FastRTCVoiceTransport:
         self._speech_threshold = speech_threshold
         self._audio_chunk_duration = audio_chunk_duration
         self._can_interrupt = can_interrupt
+        self._play_filler = play_filler
         self._turn_idx = 0
         self._launch_kwargs = launch_kwargs
         self._stream: Any | None = None
@@ -135,6 +137,20 @@ class FastRTCVoiceTransport:
         pcm, sample_rate = self._incoming_to_pcm16(audio)
         self._turn_idx += 1
         self._save_audio(f"{self._turn_idx:02d}_user", pcm, kind="pcm", sample_rate=sample_rate)
+
+        # Instant filler (step 2.2): play a cached "let me check" cue immediately so
+        # the caller hears the agent working while ASR+agent+TTS compute. Best-
+        # effort; a synth/decode failure must never block the real reply.
+        if self._play_filler:
+            filler = getattr(self._pipeline, "filler_audio", None)
+            if callable(filler):
+                try:
+                    fout = self._decode_audio_to_int16(filler(), self._output_sample_rate)
+                    if fout.size:
+                        yield (self._output_sample_rate, fout)
+                except Exception:  # pragma: no cover - best-effort
+                    logger.debug("Filler playback failed", exc_info=True)
+
         turn = self._pipeline.handle_audio(pcm, sample_rate=sample_rate)
         self._save_audio(f"{self._turn_idx:02d}_agent", turn.reply_audio, kind="reply")
         # Latency breakdown is the raw material for the masking decision (a vs b).

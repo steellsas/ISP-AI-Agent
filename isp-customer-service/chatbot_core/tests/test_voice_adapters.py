@@ -177,6 +177,19 @@ class TestVoicePipeline:
         assert audio == b"AUDIO:Labas!"
         assert tts.calls == [("Labas!", "lt")]  # language pulled from session config
 
+    def test_filler_audio_synthesized_once_and_cached(self):
+        """The 'let me check' cue (step 2.2) is synthesized once, then cached."""
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts)
+
+        a1 = pipeline.filler_audio()
+        a2 = pipeline.filler_audio()
+
+        assert a1.startswith(b"AUDIO:")
+        assert "Sekundėlę" in a1.decode("utf-8")  # LT cue from session language
+        assert a1 == a2
+        assert len(tts.calls) == 1  # cached, not re-synthesized
+
     def test_handle_audio_runs_full_turn(self):
         session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
         pipeline = VoicePipeline(session, asr, tts)

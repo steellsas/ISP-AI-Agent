@@ -169,6 +169,9 @@ def main() -> None:
         # Barge-in OFF by default: without echo cancellation the agent's own
         # voice cuts it off mid-sentence. VOICE_BARGE_IN=1 to re-enable.
         can_interrupt=os.environ.get("VOICE_BARGE_IN", "0") == "1",
+        # Instant filler ON by default: a short "tikrinu…" cue masks per-turn
+        # latency. VOICE_FILLER=0 to disable.
+        play_filler=os.environ.get("VOICE_FILLER", "1") != "0",
     )
     print("Starting voice demo — open the local URL below and allow the mic.")
     try:
