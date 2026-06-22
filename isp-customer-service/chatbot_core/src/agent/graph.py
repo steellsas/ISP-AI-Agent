@@ -53,10 +53,12 @@ _ADDRESS_NODE_PROMPT = (
     'the STREET, call check_outages(area="Miestas, Gatvė") — ALWAYS include the '
     "street, NEVER city-only (a city-only result covers other streets and proves "
     "nothing). If there is an active outage on that street, INFORM the caller + "
-    "estimated time and you are DONE (a street-wide outage needs no apartment and "
-    "no full identification). ESPECIALLY when resolve_address says 'kelios "
-    "sutartys / paklausk buto' — check the outage FIRST; only ask for the apartment "
-    "if there is NO outage.\n"
+    "estimated time, then STOP: do NOT ask for the house/apartment, do NOT "
+    "re-confirm the address, do NOT diagnose — the outage IS the final answer. "
+    'Close politely ("Ar dar kuo galiu padėti?"). A street-wide outage needs no '
+    "apartment and no full identification. ESPECIALLY when resolve_address says "
+    "'kelios sutartys / paklausk buto' — check the outage FIRST; only ask for the "
+    "apartment if there is NO outage.\n"
     "- Never invent or parrot an address you were not given. Once the address "
     "resolves and the customer confirms, diagnosis begins next turn."
 )
