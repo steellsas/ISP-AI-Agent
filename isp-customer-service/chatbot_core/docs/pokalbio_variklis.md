@@ -325,6 +325,14 @@ validatoriumi**), 10-įrankių registras (tampa Diagnosis node turiniu), Tracer
   (internet_down); `internet_slow` / `tv` / `billing` — pridedamos kaip nauji
   strategijų moduliai + RAG turinys, identifikacijos ir branduolio neliečiant.
 
+### 12.6 Outage-contact log (planuota plėtra)
+- Avarijos metu klientą **nevarginam** (jokio buto klausimo — greitis svarbiausias),
+  bet verta **užfiksuoti kontaktą** lygmeniu `telefonas + gatvė + avarijos ID`
+  (skambinančiojo nr. žinomas, gatvę pasakė) — operacijoms: kiek žmonių paveikta,
+  callback sąrašas atstačius. Be pilnos identifikacijos.
+- Realizacija: sietųsi su **pokalbio istorijos išsaugojimu** (`session_end` →
+  įrašas, kaip tiketas). Maža atskira plėtra; daryti kai imsimės istorijos.
+
 ### 12.5 Seka
 - **Artimiausia:** R1 `problem_type` slotas (NLU klasifikacija), R2 outage-check
   prompto patikslinimas — pamatas symptomams/registrui.

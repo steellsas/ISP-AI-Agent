@@ -546,6 +546,18 @@ class ReactAgent:
         LLM. Proposed as HEARD; resolve_address upgrades a confirmed hit to
         RESOLVED. Best-effort: any failure (DB, import) silently no-ops the turn.
         """
+        # Problem classification (R1) — independent of the registry/DB, so it runs
+        # even if address extraction fails. A revisable hypothesis: a clearer later
+        # statement overrides (docs/pokalbio_variklis.md §12.2).
+        try:
+            from .nlu import classify_problem
+
+            problem = classify_problem(text)
+            if problem:
+                self.state.problem_type = problem
+        except Exception:  # pragma: no cover - best-effort
+            pass
+
         try:
             from .nlu import extract_address, load_registry
             from .slots import SlotStatus
@@ -572,6 +584,7 @@ class ReactAgent:
 
         self.tracer.emit(
             "nlu",
+            problem=self.state.problem_type,
             city=reading.city,
             street=reading.street,
             house=reading.house,

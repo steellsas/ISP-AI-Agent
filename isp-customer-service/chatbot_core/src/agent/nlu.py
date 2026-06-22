@@ -135,6 +135,27 @@ def extract_address(
     )
 
 
+# --- Problem classification (R1) ---------------------------------------------
+# Deterministic keyword classifier for the stated problem. A first hypothesis,
+# revisable on a later turn (docs/pokalbio_variklis.md §12.2). Order matters:
+# more specific first ("lėtas internetas" -> slow, not down).
+_PROBLEM_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("internet_slow", ("lėtas", "lėtai", "lėta", "stringa", "lūžinėja", "buferiuoja")),
+    ("tv", ("televizij", "televizor", " tv", "kanalai", "kanalų")),
+    ("billing", ("sąskait", "mokė", "skola", "kaina", "tarif")),
+    ("internet_down", ("internet", "ryši", "ryšys", "neveikia", "nėra interneto", "wifi", "wi-fi")),
+)
+
+
+def classify_problem(text: str) -> str | None:
+    """Best-effort problem type from the utterance (keyword match), or None."""
+    low = f" {(text or '').lower()} "
+    for problem, keywords in _PROBLEM_KEYWORDS:
+        if any(kw in low for kw in keywords):
+            return problem
+    return None
+
+
 def load_registry(db) -> tuple[list[str], list[str]]:
     """(street names with their 'g.' suffix, sorted locality names) from the DB."""
     with db.cursor() as cursor:

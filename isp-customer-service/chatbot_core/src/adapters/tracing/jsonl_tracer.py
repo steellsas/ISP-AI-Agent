@@ -152,8 +152,9 @@ class JsonlFileTracer:
                         lines.append(f"AGENT: {e.get('text')}")
                     elif t == "nlu":
                         lines.append(
-                            f"   . nlu street={e.get('street')} house={e.get('house')} "
-                            f"apt={e.get('apartment')} city={e.get('city')} conf={e.get('confidence')}"
+                            f"   . nlu problem={e.get('problem')} street={e.get('street')} "
+                            f"house={e.get('house')} apt={e.get('apartment')} "
+                            f"city={e.get('city')} conf={e.get('confidence')}"
                         )
                     elif t == "tool_call":
                         lines.append(f"   . tool {e.get('name')} {e.get('args')}")

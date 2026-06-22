@@ -99,6 +99,32 @@ class TestLoadRegistryIntegration:
         assert r.apartment == "7"
 
 
+class TestClassifyProblem:
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("neveikia internetas", "internet_down"),
+            ("nėra interneto man", "internet_down"),
+            ("internetas labai lėtas", "internet_slow"),
+            ("viskas stringa ir buferiuoja", "internet_slow"),
+            ("neveikia televizija", "tv"),
+            ("klausimas dėl sąskaitos", "billing"),
+            ("noriu sumokėti", "billing"),
+            ("labas, kaip sekasi", None),
+        ],
+    )
+    def test_keyword_classification(self, text, expected):
+        from agent.nlu import classify_problem
+
+        assert classify_problem(text) == expected
+
+    def test_slow_beats_down(self):
+        """'lėtas internetas' is slow, not down (specific keyword first)."""
+        from agent.nlu import classify_problem
+
+        assert classify_problem("internetas lėtas") == "internet_slow"
+
+
 class TestPrefillWiring:
     def test_user_turn_prefills_slots(self, db_connection):
         """A caller turn populates the slots before the LLM, via the agent."""
@@ -121,3 +147,5 @@ class TestPrefillWiring:
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
         assert p.house.value == "60"
         assert p.apartment.value == "7"
+        # R1: the stated problem is captured as a durable fact.
+        assert agent.state.problem_type == "internet_down"
