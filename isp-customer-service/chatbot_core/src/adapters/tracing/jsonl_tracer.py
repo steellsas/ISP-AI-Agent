@@ -170,7 +170,7 @@ class JsonlFileTracer:
                         lines.append(
                             f"   = CASE problem={e.get('problem')} "
                             f"customer={e.get('customer_id')} addr={e.get('address')} "
-                            f"diag={e.get('diagnosis')}"
+                            f"symptoms={e.get('symptoms')} diag={e.get('diagnosis')}"
                         )
                     elif t == "voice_latency":
                         lines.append(

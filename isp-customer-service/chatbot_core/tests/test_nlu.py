@@ -125,6 +125,39 @@ class TestClassifyProblem:
         assert classify_problem("internetas lėtas") == "internet_slow"
 
 
+class TestExtractSymptoms:
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("lemputės nedega", {"lights": "nedega"}),
+            ("routerio lemputės dega žaliai", {"lights": "dega"}),
+            ("lemputė mirksi", {"lights": "mirksi"}),
+            ("jungiuosi per wifi", {"connection": "wifi"}),
+            ("prijungta laidu", {"connection": "laidinis"}),
+            ("neveikia visuose įrenginiuose", {"devices": "visi"}),
+            ("internetas dingsta kartais", {"frequency": "protarpiais"}),
+            ("dar ir televizija neveikia", {"services": "tv"}),
+            ("labas", {}),
+        ],
+    )
+    def test_categorical_symptoms(self, text, expected):
+        from agent.nlu import extract_symptoms
+
+        assert extract_symptoms(text) == expected
+
+    def test_negation_beats_positive(self):
+        """'nedega' must win over the substring 'dega'."""
+        from agent.nlu import extract_symptoms
+
+        assert extract_symptoms("lemputės nedega")["lights"] == "nedega"
+
+    def test_multiple_categories(self):
+        from agent.nlu import extract_symptoms
+
+        got = extract_symptoms("per wifi, lemputės nedega")
+        assert got == {"connection": "wifi", "lights": "nedega"}
+
+
 class TestPrefillWiring:
     def test_user_turn_prefills_slots(self, db_connection):
         """A caller turn populates the slots before the LLM, via the agent."""
@@ -149,3 +182,24 @@ class TestPrefillWiring:
         assert p.apartment.value == "7"
         # R1: the stated problem is captured as a durable fact.
         assert agent.state.problem_type == "internet_down"
+
+    def test_symptoms_prefilled_and_surfaced(self, db_connection):
+        """A symptom turn populates state.symptoms and the facts block (A3)."""
+        from unittest.mock import patch
+
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012345")
+        agent.state.turn_count = 1
+
+        msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
+        with (
+            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            agent.run_until_response("internetas neveikia, lemputės nedega, jungiuosi per wifi")
+
+        assert agent.state.symptoms["lights"] == "nedega"
+        assert agent.state.symptoms["connection"] == "wifi"
+        facts = agent._state_facts_block()
+        assert "SYMPTOMAI" in facts and "lights=nedega" in facts

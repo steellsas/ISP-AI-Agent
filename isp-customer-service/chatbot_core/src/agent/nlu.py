@@ -156,6 +156,47 @@ def classify_problem(text: str) -> str | None:
     return None
 
 
+# --- Symptom extraction (A3) -------------------------------------------------
+# Deterministic categorical symptoms from the utterance. Order WITHIN a category
+# matters (negations/specifics first: "nedega" before "dega"). Free-form symptoms
+# (exact onset time) are left to the LLM / a future SLM (§12.7).
+_SYMPTOM_KEYWORDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    "lights": (
+        ("nedega", ("nedega", "užgesę", "užgesusios", "negyvos", "nešviečia")),
+        ("mirksi", ("mirksi", "mirga", "blyksi")),
+        ("dega", ("dega", "šviečia", "žalia")),
+    ),
+    "connection": (
+        ("wifi", ("wifi", "wi-fi", "belaid", "bevielis", "bevieliu")),
+        ("laidinis", ("laidas", "laidu", "laidin", "kabel")),
+    ),
+    "devices": (
+        ("visi", ("visi", "visur", "visuose", "viskas")),
+        ("vienas", ("viename", "tik vien", "vienam", "vienas įreng")),
+    ),
+    "frequency": (
+        ("nuolat", ("nuolat", "visada", "visą laiką")),
+        ("protarpiais", ("kartais", "protarpiais", "retkarčiais", "dingsta", "lūžinėja")),
+    ),
+    "services": (
+        ("tv", ("televizij", "televizor", "kanalai", "kanalų")),
+        ("telefonas", ("telefon",)),
+    ),
+}
+
+
+def extract_symptoms(text: str) -> dict[str, str]:
+    """Categorical symptoms present in the utterance, e.g. {'lights': 'nedega'}."""
+    low = f" {(text or '').lower()} "
+    out: dict[str, str] = {}
+    for category, options in _SYMPTOM_KEYWORDS.items():
+        for value, keywords in options:
+            if any(kw in low for kw in keywords):
+                out[category] = value
+                break
+    return out
+
+
 def load_registry(db) -> tuple[list[str], list[str]]:
     """(street names with their 'g.' suffix, sorted locality names) from the DB."""
     with db.cursor() as cursor:

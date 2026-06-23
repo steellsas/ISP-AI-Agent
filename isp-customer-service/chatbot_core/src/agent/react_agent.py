@@ -338,6 +338,12 @@ class ReactAgent:
             facts.append(f"- Address: {s.customer_address}")
         if s.problem_type:
             facts.append(f"- Problem type: {s.problem_type}")
+        if s.symptoms:
+            parts = ", ".join(f"{k}={v}" for k, v in s.symptoms.items())
+            facts.append(
+                f"- SYMPTOMAI (kliento): {parts}. Naudok diagnozei ir klausk tik "
+                "TRŪKSTAMŲ; nepersiklausk to, ką jau žinai."
+            )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
         # Diagnostic findings (case state), per domain: durable current truth, so
@@ -590,11 +596,13 @@ class ReactAgent:
         # even if address extraction fails. A revisable hypothesis: a clearer later
         # statement overrides (docs/pokalbio_variklis.md §12.2).
         try:
-            from .nlu import classify_problem
+            from .nlu import classify_problem, extract_symptoms
 
             problem = classify_problem(text)
             if problem:
                 self.state.problem_type = problem
+            # Revisable: a clearer later mention overrides an earlier reading.
+            self.state.symptoms.update(extract_symptoms(text))
         except Exception:  # pragma: no cover - best-effort
             pass
 
@@ -889,13 +897,14 @@ class ReactAgent:
             "; ".join(f"{dom}:{f.get('group')}/{f.get('reason')}" for dom, f in s.diagnosis.items())
             or None
         )
-        if not (s.problem_type or s.customer_id or diag):
+        if not (s.problem_type or s.customer_id or diag or s.symptoms):
             return
         self.tracer.emit(
             "case",
             problem=s.problem_type,
             customer_id=s.customer_id,
             address=s.customer_address,
+            symptoms=(", ".join(f"{k}={v}" for k, v in s.symptoms.items()) or None),
             diagnosis=diag,
         )
 

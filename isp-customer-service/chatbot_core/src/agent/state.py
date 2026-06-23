@@ -59,6 +59,12 @@ class AgentState:
     # that actually exist (today: "network").
     diagnosis: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    # Symptoms the customer reported (case state) — deterministically extracted
+    # categoricals: {lights, connection, devices, frequency, services}. Revisable;
+    # feeds the agent's questioning + the eventual diagnosis. Free-form symptoms
+    # (exact "when did it start") are left to the LLM / a future SLM (§12.7).
+    symptoms: dict[str, str] = field(default_factory=dict)
+
     # Conversation control
     is_complete: bool = False
     turn_count: int = 0
