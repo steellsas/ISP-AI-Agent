@@ -76,6 +76,22 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Short Lithuanian gloss for each verdict reason, surfaced in the case-state facts
+# block so the agent can reconcile the finding with what the customer says.
+_DIAGNOSIS_LT = {
+    "billing_suspended": "paslauga sustabdyta dėl neapmokėtos sąskaitos",
+    "active_outage": "rajone registruota masinė avarija",
+    "switch_unreachable": "tinklo mazgas nepasiekiamas (tiekėjo gedimas)",
+    "node_fault_unregistered": "mazgo gedimas (neregistruotas)",
+    "link_down_local": "ryšys iki kliento įrangos nutrūkęs (maitinimas/laidas)",
+    "foreign_mac": "linijoje matomas kitas įrenginys (MAC) nei registruota",
+    "crc_errors": "linijos klaidos (CRC) — kabelio/jungties problema",
+    "dhcp_silent": "įranga negauna IP (DHCP tyli) — galbūt po gamyklinio atstatymo",
+    "no_mac_observed": "linijoje nematoma jokio įrenginio",
+    "healthy_to_router": "tinklas iki routerio veikia — problema kliento pusėje",
+    "no_port_data": "nėra prievado duomenų",
+}
+
 
 @dataclass
 class LLMStats:
@@ -324,6 +340,16 @@ class ReactAgent:
             facts.append(f"- Problem type: {s.problem_type}")
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        # Diagnostic findings (case state): durable, so the agent reconciles them
+        # with the caller and never re-runs / loses them.
+        if s.diagnosis:
+            d = s.diagnosis
+            gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+            facts.append(
+                f"- DIAGNOSTIKA ({d.get('group')}, pusė={d.get('side')}): {gloss}. "
+                "Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų neprarask. Jei "
+                "klientas sako kitaip nei rodo diagnostika, švelniai sutaikink."
+            )
         # Deterministically heard address parts (NLU Track A prefill). Surface them
         # so the model passes THESE to resolve_address instead of re-extracting
         # garbled STT (observed: NLU heard "Aušros g. 8" but the model sent
@@ -465,6 +491,18 @@ class ReactAgent:
 
             elif action == "create_ticket" and obs_data.get("success"):
                 self.state.ticket_id = obs_data.get("ticket_id")
+
+            # Diagnostic findings -> case state, so the agent reconciles them with
+            # what the customer says and never loses / re-runs them.
+            if action == "diagnose_connection" and isinstance(obs_data.get("verdict"), dict):
+                v = obs_data["verdict"]
+                self.state.diagnosis = {
+                    "group": v.get("group"),
+                    "side": v.get("side"),
+                    "action": v.get("action"),
+                    "reason": v.get("reason"),
+                    "signals": v.get("signals"),
+                }
 
         except json.JSONDecodeError:
             pass

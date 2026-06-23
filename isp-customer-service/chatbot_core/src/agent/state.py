@@ -51,6 +51,11 @@ class AgentState:
     problem_type: str | None = None  # internet, tv, phone, billing
     problem_description: str | None = None
 
+    # Diagnostic findings (case state) — the verdict + key signals from
+    # diagnose_connection, kept so the agent can reconcile them with what the
+    # customer says and not lose/re-run them. {group, side, action, reason, signals}.
+    diagnosis: dict[str, Any] | None = None
+
     # Conversation control
     is_complete: bool = False
     turn_count: int = 0

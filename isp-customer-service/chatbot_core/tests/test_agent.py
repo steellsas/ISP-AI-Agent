@@ -528,6 +528,24 @@ class TestHistoryWindow:
         facts = agent._state_facts_block()
         assert "HEARD ADDRESS" not in (facts or "")
 
+    def test_diagnosis_captured_and_surfaced(self, db_connection):
+        """diagnose_connection findings become durable case state (Pillar A1)."""
+        import json
+
+        from agent.react_agent import ReactAgent
+        from agent.tools import diagnose_connection
+
+        agent = ReactAgent(caller_phone="+37060020105")
+        obs = json.dumps(diagnose_connection("CUST105"))  # S5a -> B6 foreign_mac
+        agent._update_state_from_observation("diagnose_connection", obs)
+
+        assert agent.state.diagnosis["group"] == "B6"
+        assert agent.state.diagnosis["reason"] == "foreign_mac"
+
+        facts = agent._state_facts_block()
+        assert "DIAGNOSTIKA (B6" in facts
+        assert "kitas įrenginys (MAC)" in facts  # the LT gloss
+
 
 class TestPromptLoader:
     """Tests for prompt loading."""
