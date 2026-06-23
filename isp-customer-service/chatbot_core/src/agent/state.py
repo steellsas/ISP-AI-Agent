@@ -51,10 +51,13 @@ class AgentState:
     problem_type: str | None = None  # internet, tv, phone, billing
     problem_description: str | None = None
 
-    # Diagnostic findings (case state) — the verdict + key signals from
-    # diagnose_connection, kept so the agent can reconcile them with what the
-    # customer says and not lose/re-run them. {group, side, action, reason, signals}.
-    diagnosis: dict[str, Any] | None = None
+    # Diagnostic findings (case state), namespaced BY DOMAIN so new fault families
+    # (iptv, voip…) attach additively without touching the base flow:
+    #   {"network": {group, side, action, reason, signals}}
+    # Kept so the agent reconciles findings with what the customer says and never
+    # loses / re-runs them. The container is extensible; we only populate domains
+    # that actually exist (today: "network").
+    diagnosis: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     # Conversation control
     is_complete: bool = False

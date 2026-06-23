@@ -68,7 +68,12 @@ _DIAGNOSIS_NODE_PROMPT = (
     "The customer is identified (customer_id is in KNOWN FACTS). Solve the "
     "problem: call diagnose_connection(customer_id) and route STRICTLY by its "
     "verdict, then use the technical tools as needed. If the customer now says "
-    "the address is wrong, re-resolve it with resolve_address before anything else."
+    "the address is wrong, re-resolve it with resolve_address before anything else.\n"
+    "- REVIEW THE CASE (KNOWN FACTS) before acting, and RECONCILE what the customer "
+    "says with the DIAGNOSTIKA findings: callers often misreport ('no internet' but "
+    "it's slow; 'no TV' caused by the line). If the line shows one thing and the "
+    "customer another, gently say what you see and ask a clarifying question rather "
+    "than re-diagnosing."
 )
 
 

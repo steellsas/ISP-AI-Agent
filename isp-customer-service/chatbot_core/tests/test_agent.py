@@ -539,11 +539,11 @@ class TestHistoryWindow:
         obs = json.dumps(diagnose_connection("CUST105"))  # S5a -> B6 foreign_mac
         agent._update_state_from_observation("diagnose_connection", obs)
 
-        assert agent.state.diagnosis["group"] == "B6"
-        assert agent.state.diagnosis["reason"] == "foreign_mac"
+        assert agent.state.diagnosis["network"]["group"] == "B6"
+        assert agent.state.diagnosis["network"]["reason"] == "foreign_mac"
 
         facts = agent._state_facts_block()
-        assert "DIAGNOSTIKA (B6" in facts
+        assert "DIAGNOSTIKA [network] (B6" in facts
         assert "kitas įrenginys (MAC)" in facts  # the LT gloss
 
 

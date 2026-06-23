@@ -340,15 +340,16 @@ class ReactAgent:
             facts.append(f"- Problem type: {s.problem_type}")
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
-        # Diagnostic findings (case state): durable, so the agent reconciles them
-        # with the caller and never re-runs / loses them.
-        if s.diagnosis:
-            d = s.diagnosis
+        # Diagnostic findings (case state), per domain: durable current truth, so
+        # the agent reconciles them with the caller and never re-runs / loses them.
+        # Only active domains are surfaced (lean — history lives in the trace, §12.7).
+        for domain, d in s.diagnosis.items():
             gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
             facts.append(
-                f"- DIAGNOSTIKA ({d.get('group')}, pusė={d.get('side')}): {gloss}. "
-                "Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų neprarask. Jei "
-                "klientas sako kitaip nei rodo diagnostika, švelniai sutaikink."
+                f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): "
+                f"{gloss}. Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų "
+                "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
+                "sutaikink."
             )
         # Deterministically heard address parts (NLU Track A prefill). Surface them
         # so the model passes THESE to resolve_address instead of re-extracting
@@ -492,11 +493,12 @@ class ReactAgent:
             elif action == "create_ticket" and obs_data.get("success"):
                 self.state.ticket_id = obs_data.get("ticket_id")
 
-            # Diagnostic findings -> case state, so the agent reconciles them with
-            # what the customer says and never loses / re-runs them.
+            # Diagnostic findings -> case state under their DOMAIN, so the agent
+            # reconciles them with the customer and never loses / re-runs them, and
+            # new fault families attach additively (§12.1).
             if action == "diagnose_connection" and isinstance(obs_data.get("verdict"), dict):
                 v = obs_data["verdict"]
-                self.state.diagnosis = {
+                self.state.diagnosis["network"] = {
                     "group": v.get("group"),
                     "side": v.get("side"),
                     "action": v.get("action"),
@@ -878,8 +880,28 @@ class ReactAgent:
 
         return self._reply(self.config.timeout_message)
 
+    def _emit_case(self) -> None:
+        """Emit a compact case-state snapshot to the TRACE (for review) — NOT into
+        the LLM context. The lean current-truth the model reads is the facts block;
+        the full running summary / history stays in the trace + DB (§12.7)."""
+        s = self.state
+        diag = (
+            "; ".join(f"{dom}:{f.get('group')}/{f.get('reason')}" for dom, f in s.diagnosis.items())
+            or None
+        )
+        if not (s.problem_type or s.customer_id or diag):
+            return
+        self.tracer.emit(
+            "case",
+            problem=s.problem_type,
+            customer_id=s.customer_id,
+            address=s.customer_address,
+            diagnosis=diag,
+        )
+
     def _reply(self, text: str) -> str:
         """Emit the customer-facing reply to the trace and return it."""
+        self._emit_case()
         self.tracer.emit("agent_reply", text=text)
         return text
 
