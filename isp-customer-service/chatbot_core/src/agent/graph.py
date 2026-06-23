@@ -65,15 +65,23 @@ _ADDRESS_NODE_PROMPT = (
 
 _DIAGNOSIS_NODE_PROMPT = (
     "=== STAGE: DIAGNOSIS ===\n"
-    "The customer is identified (customer_id is in KNOWN FACTS). Solve the "
-    "problem: call diagnose_connection(customer_id) and route STRICTLY by its "
-    "verdict, then use the technical tools as needed. If the customer now says "
-    "the address is wrong, re-resolve it with resolve_address before anything else.\n"
-    "- REVIEW THE CASE (KNOWN FACTS) before acting, and RECONCILE what the customer "
-    "says with the DIAGNOSTIKA findings: callers often misreport ('no internet' but "
-    "it's slow; 'no TV' caused by the line). If the line shows one thing and the "
-    "customer another, gently say what you see and ask a clarifying question rather "
-    "than re-diagnosing."
+    "The customer is identified. Call diagnose_connection(customer_id) and route "
+    "STRICTLY by its verdict; use the technical tools as needed. You MAY re-run "
+    "diagnose_connection to re-check the facts whenever the customer contradicts a "
+    "finding or after you take an action.\n"
+    "- FACTS WIN. The DIAGNOSTIKA findings (network telemetry) are GROUND TRUTH; the "
+    "caller's words are a HYPOTHESIS to verify against them. Callers often look at "
+    "the wrong device or confuse the router with the power brick.\n"
+    "- If the line shows a device / IP / traffic (e.g. a MAC is observed), the "
+    "signal DOES reach the home — do NOT chase power / cable / 'lights off'. Say what "
+    "the line shows and route by the VERDICT (e.g. B6 foreign_mac -> ask if they "
+    "changed the router -> update_mac). Do NOT improvise a troubleshooting path the "
+    "facts contradict.\n"
+    "- If the customer says one thing then corrects it, CONFIRM your understanding "
+    '("Ar teisingai supratau, kad …?") before acting.\n'
+    "- ONE step at a time, SHORT replies, and REACT to what the customer JUST said: "
+    "if they say it now works, acknowledge and close — do not push the script. If "
+    "the address is now wrong, re-resolve it first."
 )
 
 

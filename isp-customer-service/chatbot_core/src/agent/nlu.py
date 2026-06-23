@@ -161,14 +161,16 @@ def classify_problem(text: str) -> str | None:
 # matters (negations/specifics first: "nedega" before "dega"). Free-form symptoms
 # (exact onset time) are left to the LLM / a future SLM (§12.7).
 _SYMPTOM_KEYWORDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    # STT-tolerant stems (Whisper mishears "nedega"->"nedaga", "dega"->"dagą").
+    # Order matters: negation/specific first ("nedeg" before "deg").
     "lights": (
-        ("nedega", ("nedega", "užgesę", "užgesusios", "negyvos", "nešviečia")),
-        ("mirksi", ("mirksi", "mirga", "blyksi")),
-        ("dega", ("dega", "šviečia", "žalia")),
+        ("nedega", ("nedeg", "nedag", "užges", "negyv", "nešvie")),
+        ("mirksi", ("mirks", "mirg", "blyks")),
+        ("dega", ("dega", "dag", "švie", "žali")),
     ),
     "connection": (
-        ("wifi", ("wifi", "wi-fi", "belaid", "bevielis", "bevieliu")),
-        ("laidinis", ("laidas", "laidu", "laidin", "kabel")),
+        ("wifi", ("wifi", "wi-fi", "vaifai", "belaid", "beviel")),
+        ("laidinis", ("laid", "kabel")),
     ),
     "devices": (
         ("visi", ("visi", "visur", "visuose", "viskas")),
@@ -179,7 +181,7 @@ _SYMPTOM_KEYWORDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
         ("protarpiais", ("kartais", "protarpiais", "retkarčiais", "dingsta", "lūžinėja")),
     ),
     "services": (
-        ("tv", ("televizij", "televizor", "kanalai", "kanalų")),
+        ("tv", ("televizij", "televizor", "kanal")),
         ("telefonas", ("telefon",)),
     ),
 }

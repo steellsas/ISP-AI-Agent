@@ -137,6 +137,8 @@ class TestExtractSymptoms:
             ("neveikia visuose įrenginiuose", {"devices": "visi"}),
             ("internetas dingsta kartais", {"frequency": "protarpiais"}),
             ("dar ir televizija neveikia", {"services": "tv"}),
+            ("lamputės nedaga", {"lights": "nedega"}),  # STT misspelling (live)
+            ("lemputės dagą", {"lights": "dega"}),  # STT misspelling (live)
             ("labas", {}),
         ],
     )
