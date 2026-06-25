@@ -60,9 +60,9 @@ class TestEdgeTTS:
     def test_voice_selection(self):
         from adapters.tts import EdgeTTSProvider
 
-        assert EdgeTTSProvider()._voice_for("lt") == "lt-LT-OnaNeural"
-        assert EdgeTTSProvider()._voice_for("en") == "en-US-AriaNeural"
-        assert EdgeTTSProvider()._voice_for(None) == "lt-LT-OnaNeural"  # default lt
+        assert EdgeTTSProvider()._voice_for("lt") == "lt-LT-LeonasNeural"  # male, default
+        assert EdgeTTSProvider()._voice_for("en") == "en-US-GuyNeural"
+        assert EdgeTTSProvider()._voice_for(None) == "lt-LT-LeonasNeural"  # default lt
         assert EdgeTTSProvider(voice="custom")._voice_for("lt") == "custom"
 
     def test_stream_chunks_by_sentence(self):

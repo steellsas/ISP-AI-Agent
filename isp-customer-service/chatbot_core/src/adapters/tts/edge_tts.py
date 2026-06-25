@@ -21,8 +21,9 @@ from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
-# Default voices per language (extend as more locales are added).
-_VOICES = {"lt": "lt-LT-OnaNeural", "en": "en-US-AriaNeural"}
+# Default voices per language (extend as more locales are added). Lithuanian
+# defaults to the male voice — fits the support-specialist persona.
+_VOICES = {"lt": "lt-LT-LeonasNeural", "en": "en-US-GuyNeural"}
 
 
 class EdgeTTSProvider:

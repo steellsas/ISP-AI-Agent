@@ -19,7 +19,7 @@ Tunables (env, no file edit needed):
     CALLER_PHONE=+37060020105   caller number (default below; any seed phone)
     ASR_BACKEND=groq            groq (hosted, fast+accurate) | local (faster-whisper CPU)
     TTS_ENGINE=edge             edge (free neural LT, streaming) | gtts
-    TTS_VOICE=lt-LT-OnaNeural   edge voice (e.g. lt-LT-LeonasNeural)
+    TTS_VOICE=lt-LT-LeonasNeural edge voice (male; lt-LT-OnaNeural = female)
     GROQ_API_KEY=...            required when ASR_BACKEND=groq
     GROQ_MODEL=whisper-large-v3 whisper-large-v3 | whisper-large-v3-turbo
     WHISPER_MODEL=small         (local only) tiny/base/small/medium/large-v3
@@ -143,7 +143,7 @@ def _build_tts():
 
     from adapters.tts import EdgeTTSProvider
 
-    voice = os.environ.get("TTS_VOICE", "lt-LT-OnaNeural")
+    voice = os.environ.get("TTS_VOICE", "lt-LT-LeonasNeural")
     print(f"[tts] edge-tts (neural) — {voice}")
     return EdgeTTSProvider(default_language=LANGUAGE, voice=voice)
 
