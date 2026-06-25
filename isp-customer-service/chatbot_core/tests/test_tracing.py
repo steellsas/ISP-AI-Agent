@@ -229,3 +229,29 @@ class TestReactAgentEmits:
         ends = [e for e in cap.events if e["type"] == "session_end"]
         assert len(ends) == 1
         assert ends[0]["outcome"] == "complete"
+
+    def test_reply_emits_case_snapshot(self, db_connection):
+        """_reply emits a compact case snapshot for review (Pillar A2)."""
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        agent.state.problem_type = "internet_down"
+        agent.state.customer_id = "CUST105"
+        agent.state.diagnosis["network"] = {"group": "B6", "reason": "foreign_mac"}
+        cap.events.clear()
+
+        agent._reply("Ar pakeitėte routerį?")
+
+        case = next(e for e in cap.events if e["type"] == "case")
+        assert case["problem"] == "internet_down"
+        assert case["customer_id"] == "CUST105"
+        assert "network:B6/foreign_mac" in case["diagnosis"]
+
+    def test_no_case_snapshot_when_empty(self, db_connection):
+        """No problem/customer/diagnosis yet -> no case event (e.g. greeting)."""
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        cap.events.clear()
+
+        agent._reply("Labas!")
+
+        assert not [e for e in cap.events if e["type"] == "case"]

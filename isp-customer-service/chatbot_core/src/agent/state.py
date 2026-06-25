@@ -39,6 +39,10 @@ class AgentState:
     # of the call). UNCONFIRMED — a candidate the agent offers for the caller to
     # confirm, NOT a confirmed identity. {customer_id, name, address} or None.
     phone_candidate: dict[str, Any] | None = None
+    # Whether the pre-flight phone lookup has run (so "no candidate" can be told
+    # apart from "lookup not done yet" — the agent only states "no account on
+    # file" once we have actually checked).
+    preflight_done: bool = False
 
     # Caller information (populated after customer confirms)
     caller_name: str | None = None  # Actual caller's name
@@ -50,6 +54,20 @@ class AgentState:
     # Problem tracking
     problem_type: str | None = None  # internet, tv, phone, billing
     problem_description: str | None = None
+
+    # Diagnostic findings (case state), namespaced BY DOMAIN so new fault families
+    # (iptv, voip…) attach additively without touching the base flow:
+    #   {"network": {group, side, action, reason, signals}}
+    # Kept so the agent reconciles findings with what the customer says and never
+    # loses / re-runs them. The container is extensible; we only populate domains
+    # that actually exist (today: "network").
+    diagnosis: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # Symptoms the customer reported (case state) — deterministically extracted
+    # categoricals: {lights, connection, devices, frequency, services}. Revisable;
+    # feeds the agent's questioning + the eventual diagnosis. Free-form symptoms
+    # (exact "when did it start") are left to the LLM / a future SLM (§12.7).
+    symptoms: dict[str, str] = field(default_factory=dict)
 
     # Conversation control
     is_complete: bool = False

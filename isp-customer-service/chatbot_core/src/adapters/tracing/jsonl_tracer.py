@@ -166,6 +166,12 @@ class JsonlFileTracer:
                         lines.append(
                             f"   . VERDICT {e.get('group')} {e.get('action')} {e.get('reason')}"
                         )
+                    elif t == "case":
+                        lines.append(
+                            f"   = CASE problem={e.get('problem')} "
+                            f"customer={e.get('customer_id')} addr={e.get('address')} "
+                            f"symptoms={e.get('symptoms')} diag={e.get('diagnosis')}"
+                        )
                     elif t == "voice_latency":
                         lines.append(
                             f"   ~ asr={e.get('asr_ms')} agent={e.get('agent_ms')} "

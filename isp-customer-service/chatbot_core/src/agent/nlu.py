@@ -156,6 +156,49 @@ def classify_problem(text: str) -> str | None:
     return None
 
 
+# --- Symptom extraction (A3) -------------------------------------------------
+# Deterministic categorical symptoms from the utterance. Order WITHIN a category
+# matters (negations/specifics first: "nedega" before "dega"). Free-form symptoms
+# (exact onset time) are left to the LLM / a future SLM (§12.7).
+_SYMPTOM_KEYWORDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    # STT-tolerant stems (Whisper mishears "nedega"->"nedaga", "dega"->"dagą").
+    # Order matters: negation/specific first ("nedeg" before "deg").
+    "lights": (
+        ("nedega", ("nedeg", "nedag", "užges", "negyv", "nešvie")),
+        ("mirksi", ("mirks", "mirg", "blyks")),
+        ("dega", ("dega", "dag", "švie", "žali")),
+    ),
+    "connection": (
+        ("wifi", ("wifi", "wi-fi", "vaifai", "belaid", "beviel")),
+        ("laidinis", ("laid", "kabel")),
+    ),
+    "devices": (
+        ("visi", ("visi", "visur", "visuose", "viskas")),
+        ("vienas", ("viename", "tik vien", "vienam", "vienas įreng")),
+    ),
+    "frequency": (
+        ("nuolat", ("nuolat", "visada", "visą laiką")),
+        ("protarpiais", ("kartais", "protarpiais", "retkarčiais", "dingsta", "lūžinėja")),
+    ),
+    "services": (
+        ("tv", ("televizij", "televizor", "kanal")),
+        ("telefonas", ("telefon",)),
+    ),
+}
+
+
+def extract_symptoms(text: str) -> dict[str, str]:
+    """Categorical symptoms present in the utterance, e.g. {'lights': 'nedega'}."""
+    low = f" {(text or '').lower()} "
+    out: dict[str, str] = {}
+    for category, options in _SYMPTOM_KEYWORDS.items():
+        for value, keywords in options:
+            if any(kw in low for kw in keywords):
+                out[category] = value
+                break
+    return out
+
+
 def load_registry(db) -> tuple[list[str], list[str]]:
     """(street names with their 'g.' suffix, sorted locality names) from the DB."""
     with db.cursor() as cursor:

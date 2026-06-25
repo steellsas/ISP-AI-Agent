@@ -333,6 +333,26 @@ validatoriumi**), 10-įrankių registras (tampa Diagnosis node turiniu), Tracer
 - Realizacija: sietųsi su **pokalbio istorijos išsaugojimu** (`session_end` →
   įrašas, kaip tiketas). Maža atskira plėtra; daryti kai imsimės istorijos.
 
+### 12.7 Scaling strategijos (kai problemų bus dešimtys — ateitis)
+Vienas didelis promptas + vienas LLM nebepakaks. Kelias (viskas additive, mūsų
+node grafas + namespacing yra pamatas):
+
+1. **Dinaminis fact-bloko filtravimas** — promptui paduoti tik **aktyvios srities**
+   slotus (group=`network` → tik laidas_wifi/MAC/ping; IPTV slotai išvis
+   nepaduodami). Taupo token'us, saugo nuo painiavos. *Caution:* palik bendrą
+   branduolį (identifikacija, problema) visada; nefiltruok cross-domain konteksto
+   („nėra TV dėl interneto"). Namespacing (§12.1, domain-key) tai įgalina.
+2. **Router → specializuoti sub-agentai** — Diagnosis išauga į per-srities
+   ekspertus (IPTV: STB/HDMI/firmware) su siauru promptu+įrankiais+slotais.
+   Geriausia kaip **subgraph TAME PAČIAME grafe** (bendra būsena, in-process), ne
+   atskiras servisas. *Caution:* keli agentai = daugiau round-trip'ų; naudoti kai
+   sritis tikrai sudėtinga. Bet siauras kontekstas gali ir sumažinti latenciją.
+3. **Fine-tuned SLM slotų ekstrakcijai** — mažas, pigus, fine-tuned (Unsloth/SLM,
+   LT domenui) modelis ištraukia JSON symptomus fone (Ramstis B), pildo case state;
+   didelis modelis lieka dialogui. *Duomenys:* mūsų **trace'ai (jsonl)** = treniravimo
+   šaltinis. *Caution:* matuok pirma — deterministinis NLU + GPT dabar daug dengia;
+   SLM kai slotų kiekis/latencija/kaina peraugs.
+
 ### 12.5 Seka
 - **Artimiausia:** R1 `problem_type` slotas (NLU klasifikacija), R2 outage-check
   prompto patikslinimas — pamatas symptomams/registrui.

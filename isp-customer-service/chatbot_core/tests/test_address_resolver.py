@@ -127,6 +127,36 @@ class TestStreetResolution:
         assert r["customer_id"] == "CUST104"
 
 
+class TestStreetFirstResolution:
+    """No city given — derive the locality from the street (street-first)."""
+
+    def test_street_only_derives_city(self, resolver):
+        r = resolver(street="Tilžės")
+        assert r["resolution"]["city"]["status"] == "derived"
+        assert r["resolution"]["city"]["matched"] == "Šiauliai"
+
+    def test_full_address_without_city_resolves(self, resolver):
+        r = resolver(street="Tilžės", house_number="60", apartment_number="7")
+        assert r["success"] is True
+        assert r["customer_id"] == "CUST105"
+
+    def test_village_street_derives_district_locality(self, resolver):
+        """'Žeimių' (no city) -> Ginkūnai (the only locality with that street)."""
+        r = resolver(street="Žeimių", house_number="12", apartment_number="6")
+        assert r["success"] is True
+        assert r["customer_id"] == "CUST109"
+
+    def test_no_city_no_street_asks_for_street(self, resolver):
+        r = resolver()
+        assert r["resolution"]["street"]["status"] == "not_given"
+        assert "gatv" in r["hint"].lower()
+
+    def test_unknown_street_without_city(self, resolver):
+        r = resolver(street="Nesamų")
+        assert r["resolution"]["street"]["status"] == "not_found"
+        assert r["success"] is False
+
+
 class TestHouseResolution:
     def test_house_not_found_lists_known(self, resolver):
         r = resolver(city="Šiauliai", street="Dainų", house_number="99")

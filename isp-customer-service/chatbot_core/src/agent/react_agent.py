@@ -76,6 +76,22 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Short Lithuanian gloss for each verdict reason, surfaced in the case-state facts
+# block so the agent can reconcile the finding with what the customer says.
+_DIAGNOSIS_LT = {
+    "billing_suspended": "paslauga sustabdyta dėl neapmokėtos sąskaitos",
+    "active_outage": "rajone registruota masinė avarija",
+    "switch_unreachable": "tinklo mazgas nepasiekiamas (tiekėjo gedimas)",
+    "node_fault_unregistered": "mazgo gedimas (neregistruotas)",
+    "link_down_local": "ryšys iki kliento įrangos nutrūkęs (maitinimas/laidas)",
+    "foreign_mac": "linijoje matomas kitas įrenginys (MAC) nei registruota",
+    "crc_errors": "linijos klaidos (CRC) — kabelio/jungties problema",
+    "dhcp_silent": "įranga negauna IP (DHCP tyli) — galbūt po gamyklinio atstatymo",
+    "no_mac_observed": "linijoje nematoma jokio įrenginio",
+    "healthy_to_router": "tinklas iki routerio veikia — problema kliento pusėje",
+    "no_port_data": "nėra prievado duomenų",
+}
+
 
 @dataclass
 class LLMStats:
@@ -322,8 +338,25 @@ class ReactAgent:
             facts.append(f"- Address: {s.customer_address}")
         if s.problem_type:
             facts.append(f"- Problem type: {s.problem_type}")
+        if s.symptoms:
+            parts = ", ".join(f"{k}={v}" for k, v in s.symptoms.items())
+            facts.append(
+                f"- SYMPTOMAI (kliento): {parts}. Naudok diagnozei ir klausk tik "
+                "TRŪKSTAMŲ; nepersiklausk to, ką jau žinai."
+            )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        # Diagnostic findings (case state), per domain: durable current truth, so
+        # the agent reconciles them with the caller and never re-runs / loses them.
+        # Only active domains are surfaced (lean — history lives in the trace, §12.7).
+        for domain, d in s.diagnosis.items():
+            gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+            facts.append(
+                f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): "
+                f"{gloss}. Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų "
+                "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
+                "sutaikink."
+            )
         # Deterministically heard address parts (NLU Track A prefill). Surface them
         # so the model passes THESE to resolve_address instead of re-extracting
         # garbled STT (observed: NLU heard "Aušros g. 8" but the model sent
@@ -357,6 +390,15 @@ class ReactAgent:
                 f"reply should offer THIS address for confirmation; if the caller agrees, "
                 f"use customer_id {cand['customer_id']} for diagnosis. If they state a "
                 f"different address, ignore this candidate."
+            )
+        elif s.preflight_done and not s.customer_id and s.caller_phone not in (None, "", "unknown"):
+            # Pre-flight ran and found NO account for this number. Make the absence
+            # explicit so the model cannot invent a "skambinate iš numerio..."
+            # address out of thin air (observed hallucination).
+            facts.append(
+                "- NO phone account is on file for this caller's number. You do NOT "
+                "know their address — NEVER say 'skambinate iš numerio, registruoto "
+                "adresu ...' and never invent one. Ask for the address."
             )
 
         if not facts:
@@ -466,6 +508,19 @@ class ReactAgent:
             elif action == "create_ticket" and obs_data.get("success"):
                 self.state.ticket_id = obs_data.get("ticket_id")
 
+            # Diagnostic findings -> case state under their DOMAIN, so the agent
+            # reconciles them with the customer and never loses / re-runs them, and
+            # new fault families attach additively (§12.1).
+            if action == "diagnose_connection" and isinstance(obs_data.get("verdict"), dict):
+                v = obs_data["verdict"]
+                self.state.diagnosis["network"] = {
+                    "group": v.get("group"),
+                    "side": v.get("side"),
+                    "action": v.get("action"),
+                    "reason": v.get("reason"),
+                    "signals": v.get("signals"),
+                }
+
         except json.JSONDecodeError:
             pass
 
@@ -518,6 +573,7 @@ class ReactAgent:
         phone = self.state.caller_phone
         if not phone or phone == "unknown":
             return
+        self.state.preflight_done = True
         try:
             result = json.loads(execute_tool("find_customer", {"phone": phone}))
         except Exception:
@@ -550,11 +606,13 @@ class ReactAgent:
         # even if address extraction fails. A revisable hypothesis: a clearer later
         # statement overrides (docs/pokalbio_variklis.md §12.2).
         try:
-            from .nlu import classify_problem
+            from .nlu import classify_problem, extract_symptoms
 
             problem = classify_problem(text)
             if problem:
                 self.state.problem_type = problem
+            # Revisable: a clearer later mention overrides an earlier reading.
+            self.state.symptoms.update(extract_symptoms(text))
         except Exception:  # pragma: no cover - best-effort
             pass
 
@@ -840,8 +898,29 @@ class ReactAgent:
 
         return self._reply(self.config.timeout_message)
 
+    def _emit_case(self) -> None:
+        """Emit a compact case-state snapshot to the TRACE (for review) — NOT into
+        the LLM context. The lean current-truth the model reads is the facts block;
+        the full running summary / history stays in the trace + DB (§12.7)."""
+        s = self.state
+        diag = (
+            "; ".join(f"{dom}:{f.get('group')}/{f.get('reason')}" for dom, f in s.diagnosis.items())
+            or None
+        )
+        if not (s.problem_type or s.customer_id or diag or s.symptoms):
+            return
+        self.tracer.emit(
+            "case",
+            problem=s.problem_type,
+            customer_id=s.customer_id,
+            address=s.customer_address,
+            symptoms=(", ".join(f"{k}={v}" for k, v in s.symptoms.items()) or None),
+            diagnosis=diag,
+        )
+
     def _reply(self, text: str) -> str:
         """Emit the customer-facing reply to the trace and return it."""
+        self._emit_case()
         self.tracer.emit("agent_reply", text=text)
         return text
 

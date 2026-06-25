@@ -38,17 +38,28 @@ _ADDRESS_NODE_PROMPT = (
     "confirm the service address (or an account code). You have ONLY lookup tools "
     "— you CANNOT diagnose, change anything, or create a ticket yet; do not "
     "promise it.\n"
+    "- If the problem is NOT yet clarified (the first exchange after the complaint), "
+    'ask ONLY a short problem question ("Kada nustojo? Ar ką keitėte?") this turn '
+    "and WAIT — do NOT ask for the address in the same turn. Then proceed.\n"
     "- If KNOWN FACTS lists a HEARD ADDRESS, USE those values for resolve_address "
     "instead of re-reading the raw text.\n"
+    "- LEAD WITH THE STREET: pass street + house to resolve_address WITHOUT a city "
+    "— it derives the locality. Ask the city only if resolve_address says the "
+    "street is in several localities or none. Do NOT recite 'miestą, gatvę, namą, "
+    "butą' — ask the missing part naturally and ECHO the parsed parts (\"Gatvė "
+    'Tilžės, namas 60, butas 7 — teisingai?").\n'
     "- Ask only for the MISSING parts, call resolve_address, and echo-confirm what "
-    'it returned ("Radau <rastas adresas>. Ar šiuo adresu neveikia internetas?").\n'
+    'it returned ("Radau <rastas adresas>. Ar šiuo adresu neveikia internetas?"). '
+    'Say "Radau" ONLY on a real customer hit, not on a partial street match.\n'
     "- ECHO what you heard so the caller can catch STT errors: when a part fails, "
     'echo the VALUE ("Išgirdau namo numerį 8 — ar teisingai?") — do NOT just '
     "repeat the generic question.\n"
-    "- GRACEFUL EXIT: if the SAME part fails about twice, STOP repeating the "
-    'identical ask — offer the account code ("Gal turite abonento kodą nuo '
-    'sąskaitos?") or register the issue for a callback. Never loop the same '
-    "sentence like a stuck record.\n"
+    "- NEVER ask for 'gatvės pavadinimą ir namo numerį' (or any identical request) "
+    "more than ONCE. If the reply is garbled/unclear, do NOT repeat it — echo what "
+    'you heard ("Išgirdau …, ar teisingai?") or ask a NARROWER question. After about '
+    'two unclear replies, OFFER the account code ("Gal turite abonento kodą nuo '
+    'sąskaitos?") or register the issue. Never loop the same sentence like a stuck '
+    "record.\n"
     "- MASS OUTAGE — do this BEFORE asking for the apartment. The moment you know "
     'the STREET, call check_outages(area="Miestas, Gatvė") — ALWAYS include the '
     "street, NEVER city-only (a city-only result covers other streets and proves "
@@ -59,16 +70,32 @@ _ADDRESS_NODE_PROMPT = (
     "apartment and no full identification. ESPECIALLY when resolve_address says "
     "'kelios sutartys / paklausk buto' — check the outage FIRST; only ask for the "
     "apartment if there is NO outage.\n"
+    "- AFTER you inform about an outage the call is DONE: if the caller says anything "
+    "more, briefly reaffirm the outage and close — do NOT re-ask for the address, "
+    "house or apartment.\n"
     "- Never invent or parrot an address you were not given. Once the address "
     "resolves and the customer confirms, diagnosis begins next turn."
 )
 
 _DIAGNOSIS_NODE_PROMPT = (
     "=== STAGE: DIAGNOSIS ===\n"
-    "The customer is identified (customer_id is in KNOWN FACTS). Solve the "
-    "problem: call diagnose_connection(customer_id) and route STRICTLY by its "
-    "verdict, then use the technical tools as needed. If the customer now says "
-    "the address is wrong, re-resolve it with resolve_address before anything else."
+    "The customer is identified. Call diagnose_connection(customer_id) and route "
+    "STRICTLY by its verdict; use the technical tools as needed. You MAY re-run "
+    "diagnose_connection to re-check the facts whenever the customer contradicts a "
+    "finding or after you take an action.\n"
+    "- FACTS WIN. The DIAGNOSTIKA findings (network telemetry) are GROUND TRUTH; the "
+    "caller's words are a HYPOTHESIS to verify against them. Callers often look at "
+    "the wrong device or confuse the router with the power brick.\n"
+    "- If the line shows a device / IP / traffic (e.g. a MAC is observed), the "
+    "signal DOES reach the home — do NOT chase power / cable / 'lights off'. Say what "
+    "the line shows and route by the VERDICT (e.g. B6 foreign_mac -> ask if they "
+    "changed the router -> update_mac). Do NOT improvise a troubleshooting path the "
+    "facts contradict.\n"
+    "- If the customer says one thing then corrects it, CONFIRM your understanding "
+    '("Ar teisingai supratau, kad …?") before acting.\n'
+    "- ONE step at a time, SHORT replies, and REACT to what the customer JUST said: "
+    "if they say it now works, acknowledge and close — do not push the script. If "
+    "the address is now wrong, re-resolve it first."
 )
 
 
