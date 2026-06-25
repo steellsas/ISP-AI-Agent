@@ -38,6 +38,9 @@ _ADDRESS_NODE_PROMPT = (
     "confirm the service address (or an account code). You have ONLY lookup tools "
     "— you CANNOT diagnose, change anything, or create a ticket yet; do not "
     "promise it.\n"
+    "- If the problem is NOT yet clarified (the first exchange after the complaint), "
+    'ask ONLY a short problem question ("Kada nustojo? Ar ką keitėte?") this turn '
+    "and WAIT — do NOT ask for the address in the same turn. Then proceed.\n"
     "- If KNOWN FACTS lists a HEARD ADDRESS, USE those values for resolve_address "
     "instead of re-reading the raw text.\n"
     "- LEAD WITH THE STREET: pass street + house to resolve_address WITHOUT a city "
@@ -51,10 +54,12 @@ _ADDRESS_NODE_PROMPT = (
     "- ECHO what you heard so the caller can catch STT errors: when a part fails, "
     'echo the VALUE ("Išgirdau namo numerį 8 — ar teisingai?") — do NOT just '
     "repeat the generic question.\n"
-    "- GRACEFUL EXIT: if the SAME part fails about twice, STOP repeating the "
-    'identical ask — offer the account code ("Gal turite abonento kodą nuo '
-    'sąskaitos?") or register the issue for a callback. Never loop the same '
-    "sentence like a stuck record.\n"
+    "- NEVER ask for 'gatvės pavadinimą ir namo numerį' (or any identical request) "
+    "more than ONCE. If the reply is garbled/unclear, do NOT repeat it — echo what "
+    'you heard ("Išgirdau …, ar teisingai?") or ask a NARROWER question. After about '
+    'two unclear replies, OFFER the account code ("Gal turite abonento kodą nuo '
+    'sąskaitos?") or register the issue. Never loop the same sentence like a stuck '
+    "record.\n"
     "- MASS OUTAGE — do this BEFORE asking for the apartment. The moment you know "
     'the STREET, call check_outages(area="Miestas, Gatvė") — ALWAYS include the '
     "street, NEVER city-only (a city-only result covers other streets and proves "
@@ -65,6 +70,9 @@ _ADDRESS_NODE_PROMPT = (
     "apartment and no full identification. ESPECIALLY when resolve_address says "
     "'kelios sutartys / paklausk buto' — check the outage FIRST; only ask for the "
     "apartment if there is NO outage.\n"
+    "- AFTER you inform about an outage the call is DONE: if the caller says anything "
+    "more, briefly reaffirm the outage and close — do NOT re-ask for the address, "
+    "house or apartment.\n"
     "- Never invent or parrot an address you were not given. Once the address "
     "resolves and the customer confirms, diagnosis begins next turn."
 )
