@@ -279,12 +279,51 @@ def resolve_address(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, A
         localities = _known_localities(db)
 
         # ---- CITY ----------------------------------------------------------
-        if not city_in:
-            envelope["hint"] = "Paklausk miesto arba kaimo."
-            resolution["city"]["status"] = "not_given"
-            return envelope
-
         city = None
+        if not city_in:
+            # STREET-FIRST: no city given. We serve one region, so the locality
+            # falls out of the street — search it across served localities and
+            # DERIVE the city (ask only if the street spans several). Avoids the
+            # redundant "miestą, gatvę, namą, butą" recital and scales: the same
+            # street in two cities just triggers a "which one?" question.
+            if not street_in:
+                envelope["hint"] = "Paklausk gatvės."
+                resolution["street"]["status"] = "not_given"
+                return envelope
+            hits = _street_everywhere(db, street_in)
+            cities = sorted({h["city"] for h in hits})
+            if len(cities) == 1:
+                hit = hits[0]
+                city = hit["city"]
+                resolution["city"].update(
+                    {"status": "derived", "matched": city, "district": hit["district"]}
+                )
+            elif len(cities) > 1:
+                resolution["city"].update(
+                    {
+                        "status": "ambiguous",
+                        "candidates": [
+                            {
+                                "city": c,
+                                "district": next(h["district"] for h in hits if h["city"] == c),
+                            }
+                            for c in cities
+                        ],
+                    }
+                )
+                envelope["hint"] = (
+                    "Tokia gatvė yra keliose vietovėse — paklausk kurioje: "
+                    + ", ".join(cities)
+                    + "."
+                )
+                return envelope
+            else:
+                resolution["street"].update({"status": "not_found"})
+                envelope["hint"] = (
+                    "Tokios gatvės aptarnaujamose vietovėse nerandu. Atkartok, kaip "
+                    "supratai, ir patikslink gatvę."
+                )
+                return envelope
 
         # District phrase may carry the village inside it ("Šiaulių rajonas,
         # Bubių kaimas") — extract it token-wise before declaring ambiguity.

@@ -249,7 +249,7 @@ class TestAgentConfig:
 
         config = get_config()
 
-        assert config.max_turns == 20
+        assert config.max_turns == 50
         assert config.temperature == 0.3
         assert config.language == "lt"
 
@@ -263,7 +263,7 @@ class TestAgentConfig:
         assert config.max_turns == 30
 
         # Reset
-        update_config(max_turns=20)
+        update_config(max_turns=50)
 
 
 class TestToolDescriptions:

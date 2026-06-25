@@ -391,6 +391,15 @@ class ReactAgent:
                 f"use customer_id {cand['customer_id']} for diagnosis. If they state a "
                 f"different address, ignore this candidate."
             )
+        elif s.preflight_done and not s.customer_id and s.caller_phone not in (None, "", "unknown"):
+            # Pre-flight ran and found NO account for this number. Make the absence
+            # explicit so the model cannot invent a "skambinate iš numerio..."
+            # address out of thin air (observed hallucination).
+            facts.append(
+                "- NO phone account is on file for this caller's number. You do NOT "
+                "know their address — NEVER say 'skambinate iš numerio, registruoto "
+                "adresu ...' and never invent one. Ask for the address."
+            )
 
         if not facts:
             return None
@@ -564,6 +573,7 @@ class ReactAgent:
         phone = self.state.caller_phone
         if not phone or phone == "unknown":
             return
+        self.state.preflight_done = True
         try:
             result = json.loads(execute_tool("find_customer", {"phone": phone}))
         except Exception:

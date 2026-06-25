@@ -40,8 +40,14 @@ _ADDRESS_NODE_PROMPT = (
     "promise it.\n"
     "- If KNOWN FACTS lists a HEARD ADDRESS, USE those values for resolve_address "
     "instead of re-reading the raw text.\n"
+    "- LEAD WITH THE STREET: pass street + house to resolve_address WITHOUT a city "
+    "— it derives the locality. Ask the city only if resolve_address says the "
+    "street is in several localities or none. Do NOT recite 'miestą, gatvę, namą, "
+    "butą' — ask the missing part naturally and ECHO the parsed parts (\"Gatvė "
+    'Tilžės, namas 60, butas 7 — teisingai?").\n'
     "- Ask only for the MISSING parts, call resolve_address, and echo-confirm what "
-    'it returned ("Radau <rastas adresas>. Ar šiuo adresu neveikia internetas?").\n'
+    'it returned ("Radau <rastas adresas>. Ar šiuo adresu neveikia internetas?"). '
+    'Say "Radau" ONLY on a real customer hit, not on a partial street match.\n'
     "- ECHO what you heard so the caller can catch STT errors: when a part fails, "
     'echo the VALUE ("Išgirdau namo numerį 8 — ar teisingai?") — do NOT just '
     "repeat the generic question.\n"

@@ -42,7 +42,11 @@ class AgentConfig:
     # =========================================================================
     # Agent Behavior
     # =========================================================================
-    max_turns: int = 20
+    # turn_count counts agent STEPS (each LLM call), not user turns, so a
+    # question-heavy voice call burns through these fast. Raised while there is no
+    # async overlap + lots of waiting/clarifying; can come back down once
+    # synchronization lands (the conversation naturally shortens then).
+    max_turns: int = 50
     max_tool_calls_per_response: int = 5
     debug_mode: bool = False
 

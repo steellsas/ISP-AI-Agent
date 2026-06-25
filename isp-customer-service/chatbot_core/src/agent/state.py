@@ -39,6 +39,10 @@ class AgentState:
     # of the call). UNCONFIRMED — a candidate the agent offers for the caller to
     # confirm, NOT a confirmed identity. {customer_id, name, address} or None.
     phone_candidate: dict[str, Any] | None = None
+    # Whether the pre-flight phone lookup has run (so "no candidate" can be told
+    # apart from "lookup not done yet" — the agent only states "no account on
+    # file" once we have actually checked).
+    preflight_done: bool = False
 
     # Caller information (populated after customer confirms)
     caller_name: str | None = None  # Actual caller's name
