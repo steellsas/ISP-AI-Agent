@@ -376,6 +376,109 @@ def llm_tool_completion(
     return response.choices[0].message
 
 
+def stream_tool_completion(
+    messages: list[dict],
+    tools: list[dict],
+    tool_choice: str = "auto",
+    model: str = None,
+    temperature: float = None,
+    max_tokens: int = None,
+    top_p: float = None,
+):
+    """
+    Streaming variant of llm_tool_completion (Pillar C3).
+
+    A GENERATOR that yields content tokens (str) as they arrive and RETURNS the
+    final assistant message (with .content and .tool_calls, same shape as
+    llm_tool_completion) via the generator's return value — so callers do
+    ``message = yield from stream_tool_completion(...)`` to both stream the text
+    and get the structured result. Tool-call rounds emit no content (no yields);
+    the final text reply streams token by token. Updates get_last_call_stats().
+    """
+    from types import SimpleNamespace
+
+    global _last_call_stats
+
+    model, temperature, max_tokens, top_p = _resolve_params(model, temperature, max_tokens, top_p)
+    _configure_provider(model)
+
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "tools": tools,
+        "tool_choice": tool_choice,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if top_p != 1.0:
+        kwargs["top_p"] = top_p
+
+    start_time = time.time()
+    content_parts: list[str] = []
+    tc_acc: dict[int, dict] = {}
+    usage = None
+
+    for chunk in litellm.completion(**kwargs):
+        if getattr(chunk, "usage", None):
+            usage = chunk.usage
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            continue
+        delta = choices[0].delta
+        if getattr(delta, "content", None):
+            content_parts.append(delta.content)
+            yield delta.content
+        for tc in getattr(delta, "tool_calls", None) or []:
+            acc = tc_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+            if getattr(tc, "id", None):
+                acc["id"] = tc.id
+            fn = getattr(tc, "function", None)
+            if fn and getattr(fn, "name", None):
+                acc["name"] = fn.name
+            if fn and getattr(fn, "arguments", None):
+                acc["arguments"] += fn.arguments
+
+    latency_ms = (time.time() - start_time) * 1000
+    input_tokens = usage.prompt_tokens if usage else 0
+    output_tokens = usage.completion_tokens if usage else 0
+    cost = calculate_cost(model, input_tokens, output_tokens)
+    _last_call_stats = {
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "cost": cost,
+        "latency_ms": latency_ms,
+        "cached": False,
+        "success": True,
+    }
+    try:
+        get_rate_limiter().record_call()
+        stats.record_call(
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+            latency_ms=latency_ms,
+            cached=False,
+            success=True,
+        )
+    except Exception:  # pragma: no cover - stats are best-effort
+        pass
+
+    tool_calls = [
+        SimpleNamespace(
+            id=tc_acc[i]["id"],
+            type="function",
+            function=SimpleNamespace(name=tc_acc[i]["name"], arguments=tc_acc[i]["arguments"]),
+        )
+        for i in sorted(tc_acc)
+    ] or None
+    return SimpleNamespace(content=("".join(content_parts) or None), tool_calls=tool_calls)
+
+
 # =============================================================================
 # JSON Completion
 # =============================================================================

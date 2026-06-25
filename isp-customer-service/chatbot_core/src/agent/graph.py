@@ -26,6 +26,7 @@ from __future__ import annotations
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
@@ -113,17 +114,24 @@ def build_turn_graph(engine: Any):
     checkpointed with MemorySaver (thread_id = session_id).
     """
 
+    def _run_node(state: TurnState, allowed_tools, node_prompt) -> TurnState:
+        """Stream the reply tokens out via the LangGraph stream writer (a no-op
+        under .invoke(), live under .stream(stream_mode='custom')) while collecting
+        the full reply for the checkpoint. LangGraph stays the orchestrator."""
+        writer = get_stream_writer()
+        parts: list[str] = []
+        for token in engine.run_turn_scoped_stream(
+            state.get("user_input"), allowed_tools, node_prompt
+        ):
+            writer(token)
+            parts.append(token)
+        return {"reply": "".join(parts)}
+
     def address_validation(state: TurnState) -> TurnState:
-        return {
-            "reply": engine.run_turn_scoped(
-                state.get("user_input"), LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT
-            )
-        }
+        return _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT)
 
     def diagnosis(state: TurnState) -> TurnState:
-        return {
-            "reply": engine.run_turn_scoped(state.get("user_input"), None, _DIAGNOSIS_NODE_PROMPT)
-        }
+        return _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
 
     def route(state: TurnState) -> str:
         # Deterministic: identified -> diagnosis, else keep identifying.

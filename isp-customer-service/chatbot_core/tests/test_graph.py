@@ -20,6 +20,20 @@ def _tool_names(schema):
     return {t["function"]["name"] for t in (schema or [])}
 
 
+def _fake_stream(content=None, tool_calls=None, captured=None):
+    """A fake stream_tool_completion: yields the content token, returns the message
+    (so `yield from` both streams and captures the structured result)."""
+
+    def _gen(**kwargs):
+        if captured is not None:
+            captured["tools"] = kwargs.get("tools")
+        if content:
+            yield content
+        return _fake_message(content=content, tool_calls=tool_calls)
+
+    return _gen
+
+
 class TestGreetingParity:
     def test_graph_greeting_matches_legacy(self):
         from agent.session import AgentSession
@@ -51,9 +65,11 @@ class TestTurnThroughGraph:
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()  # establish the checkpoint / first turn
 
-        msg = _fake_message(content="Pasakykite adresą.")
         with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="Pasakykite adresą."),
+            ),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
             reply = session.handle_turn("neveikia internetas")
@@ -71,7 +87,11 @@ class TestTurnThroughGraph:
             session = AgentSession(caller_phone="unknown", engine=mode)
             session.greeting()
             with (
-                patch("agent.react_agent.llm_tool_completion", return_value=msg),
+                patch("agent.react_agent.llm_tool_completion", return_value=msg),  # legacy
+                patch(
+                    "agent.react_agent.stream_tool_completion",
+                    side_effect=_fake_stream(content="Tas pats atsakymas."),
+                ),  # graph
                 patch("agent.react_agent.get_last_call_stats", return_value={}),
             ):
                 replies[mode] = session.handle_turn("labas")
@@ -84,13 +104,11 @@ class TestRouting:
 
     def _run_turn_capture_tools(self, session, text):
         captured = {}
-
-        def fake_llm(**kwargs):
-            captured["tools"] = kwargs.get("tools")
-            return _fake_message(content="ok")
-
         with (
-            patch("agent.react_agent.llm_tool_completion", side_effect=fake_llm),
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="ok", captured=captured),
+            ),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
             session.handle_turn(text)

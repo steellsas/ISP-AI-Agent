@@ -85,6 +85,13 @@ class _FakeStreamingTTS:
             yield b"A:" + sentence.encode()
 
 
+class _FakeStreamingSession(_FakeSession):
+    """A session that STREAMS the reply token by token (Pillar C3)."""
+
+    def handle_turn_stream(self, text):
+        yield from ("Svei", "ki. ", "Ar ", "veikia?")
+
+
 class TestProtocolConformance:
     """Adapters and fakes must satisfy their port Protocols (structural)."""
 
@@ -225,6 +232,16 @@ class TestVoicePipeline:
         pipeline = VoicePipeline(session, asr, tts, noise_filter=lambda t: True)
 
         assert list(pipeline.stream_turn(b"pcm")) == []
+
+    def test_stream_turn_buffers_agent_tokens_into_sentence_tts(self):
+        """C3: an agent token stream is buffered to sentences and TTS'd each."""
+        session, asr, tts = _FakeStreamingSession(), _FakeASR(), _FakeTTS()
+        pipeline = VoicePipeline(session, asr, tts)
+
+        chunks = list(pipeline.stream_turn(b"pcm"))
+
+        # "Svei|ki. |Ar |veikia?" -> sentences "Sveiki." then "Ar veikia?"
+        assert chunks == [b"AUDIO:Sveiki.", b"AUDIO:Ar veikia?"]
 
     def test_handle_audio_runs_full_turn(self):
         session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()

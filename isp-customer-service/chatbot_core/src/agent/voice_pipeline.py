@@ -210,39 +210,69 @@ class VoicePipeline:
         if dropped:
             return
 
-        reply_text = self._session.handle_turn(transcript)
-        t2 = time.perf_counter()
         asr_ms = (t1 - t0) * 1000.0
-        agent_ms = (t2 - t1) * 1000.0
+        emitted = False
 
+        def _emit_latency(audio_ready_at: float) -> None:
+            nonlocal emitted
+            if not emitted and tracer is not None:
+                # With token streaming the agent + TTS overlap, so report the one
+                # number that matters: ASR-done -> first audio (when speech starts).
+                to_first = (audio_ready_at - t1) * 1000.0
+                tracer.emit(
+                    "voice_latency",
+                    asr_ms=round(asr_ms),
+                    agent_ms=0,
+                    tts_ms=round(to_first),
+                    total_ms=round(asr_ms + to_first),
+                )
+            emitted = True
+
+        # Pillar C3: if the session streams the reply token by token, buffer to
+        # sentence boundaries and synthesize each sentence as soon as it completes.
+        agent_stream = getattr(self._session, "handle_turn_stream", None)
+        if callable(agent_stream):
+            from src.adapters.tts.sentences import pop_sentence
+
+            buf = ""
+            for token in agent_stream(transcript):
+                buf += token
+                sentence, buf = pop_sentence(buf)
+                while sentence:
+                    chunk = self._tts.synthesize(sentence, language=self._language)
+                    if chunk:
+                        _emit_latency(time.perf_counter())
+                        yield chunk
+                    sentence, buf = pop_sentence(buf)
+            tail = buf.strip()
+            if tail:
+                chunk = self._tts.synthesize(tail, language=self._language)
+                if chunk:
+                    _emit_latency(time.perf_counter())
+                    yield chunk
+            if not emitted and tracer is not None:
+                tracer.emit(
+                    "voice_latency",
+                    asr_ms=round(asr_ms),
+                    agent_ms=0,
+                    tts_ms=0,
+                    total_ms=round(asr_ms),
+                )
+            return
+
+        # Fallback (C2b): non-streaming agent -> full reply -> per-sentence TTS.
+        reply_text = self._session.handle_turn(transcript)
         stream = getattr(self._tts, "stream", None)
         if callable(stream):
             chunks = stream(reply_text, language=self._language)
-        else:  # non-streaming TTS -> a single blob
+        else:
             chunks = iter([self._tts.synthesize(reply_text, language=self._language)])
-
-        emitted = False
         for chunk in chunks:
             if not chunk:
                 continue
-            if not emitted:
-                if tracer is not None:
-                    ttfa = (time.perf_counter() - t2) * 1000.0  # time to first audio
-                    tracer.emit(
-                        "voice_latency",
-                        asr_ms=round(asr_ms),
-                        agent_ms=round(agent_ms),
-                        tts_ms=round(ttfa),
-                        total_ms=round(asr_ms + agent_ms + ttfa),
-                    )
-                emitted = True
+            _emit_latency(time.perf_counter())
             yield chunk
-
-        if not emitted and tracer is not None:  # empty reply
+        if not emitted and tracer is not None:
             tracer.emit(
-                "voice_latency",
-                asr_ms=round(asr_ms),
-                agent_ms=round(agent_ms),
-                tts_ms=0,
-                total_ms=round(asr_ms + agent_ms),
+                "voice_latency", asr_ms=round(asr_ms), agent_ms=0, tts_ms=0, total_ms=round(asr_ms)
             )

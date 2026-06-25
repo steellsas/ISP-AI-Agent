@@ -28,7 +28,11 @@ from dataclasses import dataclass
 from typing import Any
 
 # LLM client
-from src.services.llm.client import get_last_call_stats, llm_tool_completion
+from src.services.llm.client import (
+    get_last_call_stats,
+    llm_tool_completion,
+    stream_tool_completion,
+)
 
 from .config import AgentConfig, create_config
 from .prompts import load_system_prompt
@@ -670,6 +674,155 @@ class ReactAgent:
         if callable(export):
             export()
 
+    def _execute_tool_calls(self, message: Any) -> list[dict]:
+        """Echo the assistant tool-call message, run each tool through the gate,
+        append results to history, trace, and update state. Returns the executed
+        list. Shared by step() (non-streaming) and the streaming loop."""
+        self.state.messages.append(self._assistant_tool_message(message))
+        executed = []
+        for tc in message.tool_calls:
+            name = tc.function.name
+            raw_args = tc.function.arguments or "{}"
+            try:
+                args = json.loads(raw_args)
+            except json.JSONDecodeError:
+                logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
+                args = {}
+
+            logger.info(f"[AGENT] Tool call: {name}")
+            self.tracer.emit("tool_call", name=name, args=args)
+
+            gate = self._gate_tool(name, args)
+            if gate is not None:
+                observation, tool_ms = gate, 0
+            else:
+                _t = time.perf_counter()
+                observation = execute_tool(name, args)
+                tool_ms = round((time.perf_counter() - _t) * 1000.0)
+
+            self.state.messages.append(
+                {"role": "tool", "tool_call_id": tc.id, "content": observation}
+            )
+            self._trace_tool_result(name, observation, tool_ms)
+            self._update_state_from_observation(name, observation)
+            self.state.add_observation(observation)
+            executed.append({"name": name, "arguments": args, "observation": observation})
+        return executed
+
+    def _record_llm_stats(self) -> None:
+        """Fold the last LLM call's stats into the running totals + trace."""
+        s = get_last_call_stats()
+        self.llm_stats.add_call(
+            input_tokens=s.get("input_tokens", 0),
+            output_tokens=s.get("output_tokens", 0),
+            cost=s.get("cost", 0),
+            latency_ms=s.get("latency_ms", 0),
+            cached=s.get("cached", False),
+            model=s.get("model", self.config.model),
+        )
+        self.tracer.emit(
+            "llm",
+            model=s.get("model", self.config.model),
+            input_tokens=s.get("input_tokens", 0),
+            output_tokens=s.get("output_tokens", 0),
+            latency_ms=round(s.get("latency_ms", 0)),
+            cached=s.get("cached", False),
+        )
+
+    def run_turn_scoped_stream(
+        self,
+        user_input: str | None,
+        allowed_tools: frozenset[str] | None,
+        node_prompt: str | None,
+    ):
+        """Streaming variant of run_turn_scoped (Pillar C3): a generator that YIELDS
+        the FINAL reply's text tokens as the LLM produces them. Tool rounds run
+        silently (no yields). Called from inside the LangGraph nodes, which forward
+        the tokens via the stream writer — so LangGraph stays the orchestrator."""
+        self._active_tool_names = allowed_tools
+        self._node_prompt = node_prompt
+        try:
+            yield from self._run_until_response_stream(user_input)
+        finally:
+            self._active_tool_names = None
+            self._node_prompt = None
+
+    def _run_until_response_stream(self, user_input: str | None = None):
+        """Like run_until_response, but streams the final reply token by token."""
+        # Hardcoded greeting (first turn, no input) — mirrors run_until_response so
+        # the streaming node yields the fixed opening line, not an LLM call.
+        if user_input is None and self.state.turn_count == 0:
+            self._preflight_phone()
+            greeting = self.config.greeting_message
+            self.state.messages.append({"role": "assistant", "content": greeting})
+            self.state.turn_count += 1
+            self.tracer.emit("agent_reply", text=greeting)
+            yield greeting
+            return
+
+        if user_input:
+            self.tracer.emit("user_turn", text=user_input)
+            self._prefill_slots_from_text(user_input)
+
+        max_calls = self.config.max_tool_calls_per_response
+        tool_rounds = 0
+        while tool_rounds < max_calls:
+            self.state.turn_count += 1
+            if self.state.turn_count > self.state.max_turns:
+                yield self.config.max_turns_message
+                return
+
+            messages = self._build_messages(user_input)
+            if user_input:
+                self.state.messages.append({"role": "user", "content": user_input})
+                user_input = None
+
+            try:
+                message = yield from stream_tool_completion(
+                    messages=messages,
+                    tools=self._scoped_tools_schema(),
+                    tool_choice="auto",
+                    model=self.config.model,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                )
+            except Exception as e:
+                logger.error(f"LLM stream error: {e}")
+                yield self.config.error_message
+                return
+
+            self._record_llm_stats()
+
+            if message.tool_calls:
+                self._execute_tool_calls(message)
+                tool_rounds += 1
+                continue
+
+            content = (message.content or "").strip()
+            if not content:
+                # Empty reply (already yielded nothing) -> nudge and retry.
+                self.state.messages.append({"role": "assistant", "content": ""})
+                self.state.messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your last reply was empty. Either call a tool or write a "
+                            "non-empty message to the customer."
+                        ),
+                    }
+                )
+                tool_rounds += 1
+                continue
+
+            # The final reply text was already streamed via `yield from`; persist it
+            # to history and emit the trace (no extra yield).
+            self.state.messages.append({"role": "assistant", "content": content})
+            self._emit_case()
+            self.tracer.emit("agent_reply", text=content)
+            return
+
+        yield self.config.timeout_message
+
     def step(self, user_input: str = None) -> dict[str, Any]:
         """
         Execute one agent step.
@@ -750,53 +903,10 @@ class ReactAgent:
         tool_calls = getattr(message, "tool_calls", None)
 
         if tool_calls:
-            # The model chose to call one or more tools. Echo the assistant
-            # message that requested them (required by the protocol), then run
-            # each tool and append its result as a role:"tool" message keyed by
-            # tool_call_id. No customer-facing reply yet → needs_continuation so
-            # run_until_response loops and lets the model see the results.
-            self.state.messages.append(self._assistant_tool_message(message))
-
-            executed = []
-            for tc in tool_calls:
-                name = tc.function.name
-                raw_args = tc.function.arguments or "{}"
-                try:
-                    args = json.loads(raw_args)
-                except json.JSONDecodeError:
-                    logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
-                    args = {}
-
-                logger.info(f"[AGENT] Tool call: {name}")
-                logger.debug(f"[AGENT] Args: {args}")
-                self.tracer.emit("tool_call", name=name, args=args)
-
-                # Deterministic gate: technical tools are blocked until the
-                # customer is identified (no diagnostics / ticket on a guessed or
-                # missing customer_id). A blocked call returns a corrective
-                # observation instead of executing — the model self-corrects.
-                gate = self._gate_tool(name, args)
-                if gate is not None:
-                    observation, tool_ms = gate, 0
-                else:
-                    _t = time.perf_counter()
-                    observation = execute_tool(name, args)
-                    tool_ms = round((time.perf_counter() - _t) * 1000.0)
-
-                self.state.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": observation,
-                    }
-                )
-
-                self._trace_tool_result(name, observation, tool_ms)
-                self._update_state_from_observation(name, observation)
-                self.state.add_observation(observation)
-
-                executed.append({"name": name, "arguments": args, "observation": observation})
-
+            # The model chose to call one or more tools. Echo the assistant message,
+            # run each tool, append results — no customer-facing reply yet →
+            # needs_continuation so run_until_response loops.
+            executed = self._execute_tool_calls(message)
             result["tool_calls"] = executed
             # Back-compat single-action view (last tool) for existing callers/UI.
             result["action"] = executed[-1]["name"] if executed else None
