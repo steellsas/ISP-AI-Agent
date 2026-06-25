@@ -18,7 +18,7 @@ later, with no change here.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -177,3 +177,72 @@ class VoicePipeline:
             agent_ms=agent_ms,
             tts_ms=tts_ms,
         )
+
+    def stream_turn(self, audio: bytes, *, sample_rate: int = 16_000) -> Iterator[bytes]:
+        """
+        Run one turn and STREAM the reply audio in chunks (one per sentence) so the
+        transport can start playing before the whole reply is rendered (Pillar C2b).
+
+        Same ASR + noise-drop + agent path as handle_audio; emits the same
+        `asr` / `voice_latency` trace events (tts_ms here = time-to-first-audio,
+        the metric that matters for streaming). Falls back to a single
+        synthesize() blob if the TTS cannot stream. A noise turn yields nothing.
+        """
+        t0 = time.perf_counter()
+        raw_transcript = self._asr.transcribe(
+            audio, language=self._language, sample_rate=sample_rate
+        )
+        transcript = raw_transcript
+        if self._transcript_filter and transcript:
+            transcript = self._transcript_filter(transcript)
+        t1 = time.perf_counter()
+
+        tracer = getattr(self._session, "tracer", None)
+        dropped = bool(self._noise_filter and self._noise_filter(transcript))
+        if tracer is not None:
+            tracer.emit(
+                "asr",
+                raw=raw_transcript,
+                transcript=transcript,
+                ms=round((t1 - t0) * 1000.0),
+                dropped=dropped,
+            )
+        if dropped:
+            return
+
+        reply_text = self._session.handle_turn(transcript)
+        t2 = time.perf_counter()
+        asr_ms = (t1 - t0) * 1000.0
+        agent_ms = (t2 - t1) * 1000.0
+
+        stream = getattr(self._tts, "stream", None)
+        if callable(stream):
+            chunks = stream(reply_text, language=self._language)
+        else:  # non-streaming TTS -> a single blob
+            chunks = iter([self._tts.synthesize(reply_text, language=self._language)])
+
+        emitted = False
+        for chunk in chunks:
+            if not chunk:
+                continue
+            if not emitted:
+                if tracer is not None:
+                    ttfa = (time.perf_counter() - t2) * 1000.0  # time to first audio
+                    tracer.emit(
+                        "voice_latency",
+                        asr_ms=round(asr_ms),
+                        agent_ms=round(agent_ms),
+                        tts_ms=round(ttfa),
+                        total_ms=round(asr_ms + agent_ms + ttfa),
+                    )
+                emitted = True
+            yield chunk
+
+        if not emitted and tracer is not None:  # empty reply
+            tracer.emit(
+                "voice_latency",
+                asr_ms=round(asr_ms),
+                agent_ms=round(agent_ms),
+                tts_ms=0,
+                total_ms=round(asr_ms + agent_ms),
+            )

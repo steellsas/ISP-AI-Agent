@@ -51,6 +51,7 @@ class FastRTCVoiceTransport:
         audio_chunk_duration: float = 0.6,
         can_interrupt: bool = False,
         play_filler: bool = False,
+        stream_playback: bool = True,
         **launch_kwargs: Any,
     ):
         """
@@ -80,6 +81,7 @@ class FastRTCVoiceTransport:
         self._audio_chunk_duration = audio_chunk_duration
         self._can_interrupt = can_interrupt
         self._play_filler = play_filler
+        self._stream_playback = stream_playback
         self._turn_idx = 0
         self._launch_kwargs = launch_kwargs
         self._stream: Any | None = None
@@ -150,6 +152,20 @@ class FastRTCVoiceTransport:
                         yield (self._output_sample_rate, fout)
                 except Exception:  # pragma: no cover - best-effort
                     logger.debug("Filler playback failed", exc_info=True)
+
+        # Streaming playback (C2b): play each sentence's audio as soon as it is
+        # synthesized, so the agent starts speaking before the whole reply is
+        # rendered. Falls back to the one-blob path if the pipeline can't stream.
+        if self._stream_playback and hasattr(self._pipeline, "stream_turn"):
+            saved = bytearray()
+            for chunk in self._pipeline.stream_turn(pcm, sample_rate=sample_rate):
+                saved += chunk
+                out = self._decode_audio_to_int16(chunk, self._output_sample_rate)
+                if out.size:
+                    yield (self._output_sample_rate, out)
+            if saved:
+                self._save_audio(f"{self._turn_idx:02d}_agent", bytes(saved), kind="reply")
+            return
 
         turn = self._pipeline.handle_audio(pcm, sample_rate=sample_rate)
         self._save_audio(f"{self._turn_idx:02d}_agent", turn.reply_audio, kind="reply")

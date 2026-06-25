@@ -72,6 +72,19 @@ class _FakeSession:
         return f"atsakymas: {text}"
 
 
+class _FakeStreamingTTS:
+    """A TTSProvider that also streams: one chunk per sentence."""
+
+    def synthesize(self, text, *, language=None):
+        return b"A:" + text.encode()
+
+    def stream(self, text, *, language=None):
+        from adapters.tts import split_sentences
+
+        for sentence in split_sentences(text):
+            yield b"A:" + sentence.encode()
+
+
 class TestProtocolConformance:
     """Adapters and fakes must satisfy their port Protocols (structural)."""
 
@@ -189,6 +202,29 @@ class TestVoicePipeline:
         assert "Sekundėlę" in a1.decode("utf-8")  # LT cue from session language
         assert a1 == a2
         assert len(tts.calls) == 1  # cached, not re-synthesized
+
+    def test_stream_turn_yields_one_chunk_per_sentence(self):
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeStreamingTTS()
+        session.handle_turn = lambda t: "Sveiki. Ar veikia?"
+        pipeline = VoicePipeline(session, asr, tts)
+
+        chunks = list(pipeline.stream_turn(b"pcm"))
+
+        assert chunks == [b"A:Sveiki.", b"A:Ar veikia?"]
+
+    def test_stream_turn_falls_back_when_tts_not_streaming(self):
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()  # synthesize only
+        pipeline = VoicePipeline(session, asr, tts)
+
+        chunks = list(pipeline.stream_turn(b"pcm"))
+
+        assert chunks == [b"AUDIO:atsakymas: neveikia internetas"]
+
+    def test_stream_turn_drops_noise(self):
+        session, asr, tts = _FakeSession(), _FakeASR(), _FakeStreamingTTS()
+        pipeline = VoicePipeline(session, asr, tts, noise_filter=lambda t: True)
+
+        assert list(pipeline.stream_turn(b"pcm")) == []
 
     def test_handle_audio_runs_full_turn(self):
         session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()
