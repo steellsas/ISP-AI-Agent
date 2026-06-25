@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import logging
+from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -51,3 +52,13 @@ class GTTSProvider:
         audio = buffer.getvalue()
         logger.debug("TTS synthesized %d bytes for %d chars (lang=%s)", len(audio), len(text), lang)
         return audio
+
+    def stream(self, text: str, *, language: str | None = None) -> Iterator[bytes]:
+        """Yield one MP3 blob per sentence (gTTS is per-request, so this is
+        sentence-level streaming — the transport plays each as the next renders)."""
+        from .sentences import split_sentences
+
+        for sentence in split_sentences(text):
+            audio = self.synthesize(sentence, language=language)
+            if audio:
+                yield audio
