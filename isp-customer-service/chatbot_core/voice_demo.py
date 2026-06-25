@@ -18,6 +18,8 @@ See chatbot_core/docs/balso_testavimo_scenarijai.md for what to say.
 Tunables (env, no file edit needed):
     CALLER_PHONE=+37060020105   caller number (default below; any seed phone)
     ASR_BACKEND=groq            groq (hosted, fast+accurate) | local (faster-whisper CPU)
+    TTS_ENGINE=edge             edge (free neural LT, streaming) | gtts
+    TTS_VOICE=lt-LT-LeonasNeural edge voice (male; lt-LT-OnaNeural = female)
     GROQ_API_KEY=...            required when ASR_BACKEND=groq
     GROQ_MODEL=whisper-large-v3 whisper-large-v3 | whisper-large-v3-turbo
     WHISPER_MODEL=small         (local only) tiny/base/small/medium/large-v3
@@ -55,6 +57,7 @@ LANGUAGE = "lt"
 # Defaults are not critical — every knob is overridable per run via env.
 CALLER_PHONE = os.environ.get("CALLER_PHONE", "+37060020105")
 ASR_BACKEND = os.environ.get("ASR_BACKEND", "groq").lower()  # groq | local
+TTS_ENGINE = os.environ.get("TTS_ENGINE", "edge").lower()  # edge (neural) | gtts
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "whisper-large-v3")
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "small")
 BEAM_SIZE = int(os.environ.get("WHISPER_BEAM", "1"))
@@ -130,14 +133,28 @@ def _build_asr():
     )
 
 
+def _build_tts():
+    """Edge neural LT voice (default, streaming-capable) or gTTS."""
+    if TTS_ENGINE == "gtts":
+        from adapters.tts import GTTSProvider
+
+        print("[tts] gTTS (Google) — LT")
+        return GTTSProvider(default_language=LANGUAGE)
+
+    from adapters.tts import EdgeTTSProvider
+
+    voice = os.environ.get("TTS_VOICE", "lt-LT-LeonasNeural")
+    print(f"[tts] edge-tts (neural) — {voice}")
+    return EdgeTTSProvider(default_language=LANGUAGE, voice=voice)
+
+
 def main() -> None:
     from adapters.asr import is_asr_noise, normalize_lt_numbers
     from adapters.transport import FastRTCVoiceTransport
-    from adapters.tts import GTTSProvider
     from agent.voice_pipeline import VoicePipeline
 
     asr = _build_asr()
-    tts = GTTSProvider(default_language=LANGUAGE)
+    tts = _build_tts()
 
     session = _build_session()
     # transcript_filter: spoken-number -> digit cleanup before the agent.
