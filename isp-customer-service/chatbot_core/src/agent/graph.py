@@ -30,6 +30,8 @@ from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
+from .prompts import load_node_prompt
+
 # Identification stage: lookup tools only — NO diagnostics / mutations / tickets.
 # close_case is allowed here too, so an outage (found pre-identification) can be
 # acknowledged and the call closed without forcing a full ID first.
@@ -41,111 +43,14 @@ LOOKUP_TOOLS = frozenset(
 # address; the agent can only say a short goodbye.
 CLOSING_TOOLS: frozenset[str] = frozenset()
 
-# Shared speaking style (prepended to both working stages). Keeps the voice
-# grounded — one ask at a time, echo what was heard, stay short — which is what
-# makes the caller feel listened to (the redesign's core goal).
-_STYLE = (
-    "=== KALBĖJIMO STILIUS (visada) ===\n"
-    "- VIENAS klausimas/žingsnis per ėjimą. NIEKADA neprašyk dviejų dalykų su „ir“ "
-    "(NE „patikrinkite laidą IR pasakykite ar dega lemputė“). Vienas dalykas — tada "
-    "lauk atsakymo.\n"
-    "- ECHO/patvirtinimas: kai klientas pasako adresą, numerį ar kodą, TRUMPAI "
-    "pakartok, ką supratai, kad jis jaustųsi išgirstas („Taip, Dariaus ir Girėno "
-    "gatvė Šiauliuose. Koks namo numeris?“).\n"
-    "- TRUMPAI: sakiniai iki ~12 žodžių. Šnekamoji, žmogiška kalba, be sąrašų, be "
-    "techninio žargono.\n"
-)
-
-_ADDRESS_NODE_PROMPT = _STYLE + (
-    "=== STAGE: IDENTIFICATION ===\n"
-    "The customer is NOT yet identified. Your ONLY goal now is to capture and "
-    "confirm the service address (or an account code). You have ONLY lookup tools "
-    "— you CANNOT diagnose, change anything, or create a ticket yet; do not "
-    "promise it.\n"
-    "- If the problem is NOT yet clarified (the first exchange after the complaint), "
-    'ask ONLY a short problem question ("Kada nustojo? Ar ką keitėte?") this turn '
-    "and WAIT — do NOT ask for the address in the same turn. Then proceed.\n"
-    "- If KNOWN FACTS lists a HEARD ADDRESS, USE those values for resolve_address "
-    "instead of re-reading the raw text.\n"
-    "- STREET FIRST, THEN CONFIRM THE LOCALITY AND WAIT. The moment you have the "
-    "street (even WITHOUT a house), call resolve_address(street=...) WITHOUT a house "
-    "number — it returns the locality. ECHO the locality back and WAIT for a yes: "
-    '"Aušros gatvė — Bubių kaime, Šiaulių rajone, taip?". Only AFTER the caller '
-    "confirms, ask for the house number. NEVER ask the house number in the SAME turn "
-    "as the street/locality confirmation — one thing, then wait. Ask the city "
-    "yourself only if resolve_address says the street is in several localities or "
-    "none. Do NOT recite 'miestą, gatvę, namą, butą'.\n"
-    "- Ask only for the MISSING parts, call resolve_address, and echo-confirm what "
-    'it returned ("Radau <rastas adresas>. Ar šiuo adresu neveikia internetas?"). '
-    'Say "Radau" ONLY on a real customer hit, not on a partial street match.\n'
-    "- ECHO what you heard so the caller can catch STT errors: when a part fails, "
-    'echo the VALUE ("Išgirdau namo numerį 8 — ar teisingai?") — do NOT just '
-    "repeat the generic question.\n"
-    "- NEVER ask for 'gatvės pavadinimą ir namo numerį' (or any identical request) "
-    "more than ONCE. If the reply is garbled/unclear, do NOT repeat it — echo what "
-    'you heard ("Išgirdau …, ar teisingai?") or ask a NARROWER question. After about '
-    'two unclear replies, OFFER the account code ("Gal turite abonento kodą nuo '
-    'sąskaitos?") or register the issue. Never loop the same sentence like a stuck '
-    "record.\n"
-    "- MASS OUTAGE — do this BEFORE asking for the apartment. The moment you know "
-    'the STREET, call check_outages(area="Miestas, Gatvė") — ALWAYS include the '
-    "street, NEVER city-only (a city-only result covers other streets and proves "
-    "nothing). If there is an active outage on that street, INFORM the caller + "
-    "estimated time, then STOP: do NOT ask for the house/apartment, do NOT "
-    "re-confirm the address, do NOT diagnose — the outage IS the final answer. "
-    'Close politely ("Ar dar kuo galiu padėti?"). A street-wide outage needs no '
-    "apartment and no full identification. ESPECIALLY when resolve_address says "
-    "'kelios sutartys / paklausk buto' — check the outage FIRST; only ask for the "
-    "apartment if there is NO outage.\n"
-    "- AFTER you inform about an outage: do NOT re-ask for the address/house/"
-    "apartment and do NOT diagnose. Answer the caller's outage follow-ups (ETA, "
-    "compensation — use search_knowledge if needed). When the caller is done / says "
-    "they will wait, call close_case(reason='outage').\n"
-    "- Never invent or parrot an address you were not given. Once the address "
-    "resolves and the customer confirms, diagnosis begins next turn."
-)
-
-_DIAGNOSIS_NODE_PROMPT = _STYLE + (
-    "=== STAGE: DIAGNOSIS ===\n"
-    "The customer is identified. Call diagnose_connection(customer_id) and route "
-    "STRICTLY by its verdict; use the technical tools as needed. You MAY re-run "
-    "diagnose_connection to re-check the facts whenever the customer contradicts a "
-    "finding or after you take an action.\n"
-    "- FACTS WIN. The DIAGNOSTIKA findings (network telemetry) are GROUND TRUTH; the "
-    "caller's words are a HYPOTHESIS to verify against them. Callers often look at "
-    "the wrong device or confuse the router with the power brick.\n"
-    "- If the line shows a device / IP / traffic (e.g. a MAC is observed), the "
-    "signal DOES reach the home — do NOT chase power / cable / 'lights off'. Say what "
-    "the line shows and route by the VERDICT (e.g. B6 foreign_mac -> ask if they "
-    "changed the router -> update_mac). Do NOT improvise a troubleshooting path the "
-    "facts contradict.\n"
-    "- If the customer says one thing then corrects it, CONFIRM your understanding "
-    '("Ar teisingai supratau, kad …?") before acting.\n'
-    "- REACT to what the customer JUST said (do not push a script). If the address "
-    "is now wrong, re-resolve it first.\n"
-    "- CLOSING: the moment the customer confirms the service WORKS NOW (present "
-    "tense — 'veikia', 'atsirado'), briefly celebrate and call "
-    "close_case(reason='resolved'). If they clearly want to end, "
-    "close_case(reason='declined'). Do NOT call close_case if they only HOPE it "
-    "will work after a step — wait for confirmation."
-)
-
-
-_CLOSING_BASE = (
-    "=== STAGE: CLOSING ===\n"
-    "The case is CLOSED. Reply with ONE short, warm closing line ONLY (max ~12 "
-    "words). Do NOT diagnose, do NOT ask for an address, do NOT identify a new "
-    "problem, do NOT call tools. If the caller thanks you or says goodbye, say "
-    "goodbye. If they raise something new, briefly say it is handled and they can "
-    "call again — then close."
-)
-
-# Reason-specific goodbye so the closing line feels heard, not canned.
-_CLOSING_REASON_HINT = {
-    "resolved": " The issue was RESOLVED — be glad it works (pvz. „Džiaugiuosi, kad sutvarkėme, gražaus vakaro!“).",
-    "outage": " An OUTAGE was reported and logged — reassure it will be fixed (pvz. „Informaciją perdaviau, gedimą pašalinsime — iki!“).",
-    "declined": " The caller is done — a neutral, polite goodbye.",
-}
+# Per-stage prompts (dynamic prompting): each stage loads ONLY its own focused
+# rules from prompts/*.txt, so the model is not diluted by the whole call's
+# instructions. The shared contract + tools live in the system prompt; the dynamic
+# state (KNOWN FACTS, DIAGNOSTIKA, closed reason, stuck nudge) is injected by the
+# engine's facts block.
+_ADDRESS_NODE_PROMPT = load_node_prompt("address_node")
+_DIAGNOSIS_NODE_PROMPT = load_node_prompt("diagnosis_node")
+_CLOSING_NODE_PROMPT = load_node_prompt("closing_node")
 
 
 class TurnState(TypedDict, total=False):
@@ -182,9 +87,7 @@ def build_turn_graph(engine: Any):
         return _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
 
     def closing(state: TurnState) -> TurnState:
-        reason = engine.state.closed_reason or "resolved"
-        prompt = _CLOSING_BASE + _CLOSING_REASON_HINT.get(reason, "")
-        return _run_node(state, CLOSING_TOOLS, prompt)
+        return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT)
 
     def route(state: TurnState) -> str:
         # Deterministic. case_closed wins (END stage); then identified -> diagnosis,

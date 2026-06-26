@@ -71,6 +71,18 @@ def load_system_prompt(
     )
 
 
+def load_node_prompt(name: str) -> str:
+    """Load a per-stage node prompt (address_node / diagnosis_node / closing_node).
+
+    Dynamic per-stage prompting (LangGraph): each stage gets ONLY its own rules so
+    the model is not diluted by the whole call's instructions. The shared
+    conversation contract + facts live in the system prompt and the KNOWN FACTS
+    block; these files carry just the stage focus.
+    """
+    with open(PROMPTS_DIR / f"{name}.txt", encoding="utf-8") as f:
+        return f.read().strip()
+
+
 def get_prompt_path(name: str) -> Path:
     """Get path to a prompt file."""
     return PROMPTS_DIR / f"{name}.txt"

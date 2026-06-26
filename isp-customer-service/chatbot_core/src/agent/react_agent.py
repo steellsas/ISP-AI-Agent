@@ -377,6 +377,8 @@ class ReactAgent:
             )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        if s.case_closed:
+            facts.append(f"- Byla UŽDARYTA (priežastis: {s.closed_reason or 'resolved'}).")
         # Repeat-guard nudge (scaled): the caller's last reply did not advance us.
         # Don't loop the same question — acknowledge, narrow, then change tactic.
         if s.stuck_count >= 2:
