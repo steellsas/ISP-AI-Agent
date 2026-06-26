@@ -67,11 +67,14 @@ _ADDRESS_NODE_PROMPT = _STYLE + (
     "and WAIT — do NOT ask for the address in the same turn. Then proceed.\n"
     "- If KNOWN FACTS lists a HEARD ADDRESS, USE those values for resolve_address "
     "instead of re-reading the raw text.\n"
-    "- LEAD WITH THE STREET: pass street + house to resolve_address WITHOUT a city "
-    "— it derives the locality. Ask the city only if resolve_address says the "
-    "street is in several localities or none. Do NOT recite 'miestą, gatvę, namą, "
-    "butą' — ask the missing part naturally and ECHO the parsed parts (\"Gatvė "
-    'Tilžės, namas 60, butas 7 — teisingai?").\n'
+    "- STREET FIRST, THEN CONFIRM THE LOCALITY AND WAIT. The moment you have the "
+    "street (even WITHOUT a house), call resolve_address(street=...) WITHOUT a house "
+    "number — it returns the locality. ECHO the locality back and WAIT for a yes: "
+    '"Aušros gatvė — Bubių kaime, Šiaulių rajone, taip?". Only AFTER the caller '
+    "confirms, ask for the house number. NEVER ask the house number in the SAME turn "
+    "as the street/locality confirmation — one thing, then wait. Ask the city "
+    "yourself only if resolve_address says the street is in several localities or "
+    "none. Do NOT recite 'miestą, gatvę, namą, butą'.\n"
     "- Ask only for the MISSING parts, call resolve_address, and echo-confirm what "
     'it returned ("Radau <rastas adresas>. Ar šiuo adresu neveikia internetas?"). '
     'Say "Radau" ONLY on a real customer hit, not on a partial street match.\n'
