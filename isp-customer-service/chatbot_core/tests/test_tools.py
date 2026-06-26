@@ -252,5 +252,5 @@ class TestToolsRegistry:
         from agent.tools import REAL_TOOLS
 
         assert (
-            len(REAL_TOOLS) == 10
-        )  # resolve_address, find_customer, diagnose_connection, check_network_status, update_mac, reset_port, check_outages, run_ping_test, search_knowledge, create_ticket
+            len(REAL_TOOLS) == 11
+        )  # resolve_address, find_customer, diagnose_connection, check_network_status, update_mac, reset_port, check_outages, run_ping_test, search_knowledge, create_ticket, close_case

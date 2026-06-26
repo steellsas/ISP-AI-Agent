@@ -69,6 +69,17 @@ class AgentState:
     # (exact "when did it start") are left to the LLM / a future SLM (§12.7).
     symptoms: dict[str, str] = field(default_factory=dict)
 
+    # Case closing (END state, Phase 3.5). case_closed flips the router to the
+    # tools-less `closing` node — set ONLY by the close_case tool (model-driven, so
+    # the model owns the "is the caller actually done?" judgement; never auto-set,
+    # see the outage discussion). closed_reason tailors the goodbye.
+    case_closed: bool = False
+    closed_reason: str | None = None  # "resolved" | "outage" | "declined"
+    # An active outage was reported for the caller's street. This does NOT close the
+    # case (the caller still asks "when fixed? / compensation?") — it switches the
+    # agent into a restricted mode: answer outage follow-ups, no more diagnosis.
+    outage_reported: bool = False
+
     # Conversation control
     is_complete: bool = False
     turn_count: int = 0

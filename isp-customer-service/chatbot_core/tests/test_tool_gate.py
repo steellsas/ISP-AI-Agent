@@ -68,6 +68,49 @@ class TestGateUnit:
         assert agent._gate_tool("reset_port", {}) is None
 
 
+class TestOutageGate:
+    """check_outages must be street-specific (city-only returns other streets)."""
+
+    def test_city_only_blocked(self, agent):
+        out = agent._gate_tool("check_outages", {"area": "Šiauliai"})
+        assert out is not None
+        assert json.loads(out)["error"] == "city_only"
+
+    def test_street_level_passes(self, agent):
+        assert agent._gate_tool("check_outages", {"area": "Šiauliai, Dainų g."}) is None
+
+    def test_by_customer_id_passes(self, agent):
+        assert agent._gate_tool("check_outages", {"customer_id": "CUST105"}) is None
+
+    def test_no_args_passes(self, agent):
+        assert agent._gate_tool("check_outages", {}) is None
+
+
+class TestCloseCaseGate:
+    """close_case reason-specific backstop against premature/unfounded closes."""
+
+    def test_resolved_blocked_when_not_identified(self, agent):
+        out = agent._gate_tool("close_case", {"reason": "resolved"})
+        assert out is not None
+        assert json.loads(out)["error"] == "not_identified"
+
+    def test_resolved_allowed_when_identified(self, agent):
+        agent.state.customer_id = "CUST105"
+        assert agent._gate_tool("close_case", {"reason": "resolved"}) is None
+
+    def test_outage_blocked_without_outage_reported(self, agent):
+        out = agent._gate_tool("close_case", {"reason": "outage"})
+        assert out is not None
+        assert json.loads(out)["error"] == "no_outage"
+
+    def test_outage_allowed_after_outage_reported(self, agent):
+        agent.state.outage_reported = True
+        assert agent._gate_tool("close_case", {"reason": "outage"}) is None
+
+    def test_declined_always_allowed(self, agent):
+        assert agent._gate_tool("close_case", {"reason": "declined"}) is None
+
+
 class TestGateInStep:
     def test_blocked_call_does_not_execute_tool(self, agent):
         """A premature diagnose is intercepted; execute_tool is never called."""

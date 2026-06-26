@@ -350,6 +350,17 @@ class ReactAgent:
             )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        # Outage reported (restricted mode): an active outage IS the answer, so stop
+        # identifying/diagnosing — but stay available for the caller's follow-ups
+        # (ETA, compensation) and close only when they are done (close_case).
+        if s.outage_reported and not s.case_closed:
+            facts.append(
+                "- GEDIMAS PASKELBTAS šiai gatvei — tai galutinis atsakymas. NEklausk "
+                "namo/buto, NEdiagnozuok, NEsiūlyk maitinimo/laidų. Atsakyk į kliento "
+                "klausimus apie gedimą (laikas, eiga, kompensacija; gali naudoti "
+                "search_knowledge). Kai klientas supranta / lauks — kviesk "
+                "close_case(reason='outage')."
+            )
         # Diagnostic findings (case state), per domain: durable current truth, so
         # the agent reconciles them with the caller and never re-runs / loses them.
         # Only active domains are surfaced (lean — history lives in the trace, §12.7).
@@ -452,6 +463,55 @@ class ReactAgent:
         out of the prompt and into code, so a hallucinated `diagnose_connection`
         cannot fire (observed: customer_id='1' on an unidentified caller).
         """
+        # check_outages must be street-specific. A city-only query returns OTHER
+        # streets' outages, which the model then misattributes to the caller
+        # (observed). Require a street (area="Miestas, Gatvė") OR a customer_id —
+        # the house/apartment is NOT required (street-level check is valid pre-house).
+        if name == "check_outages":
+            area = (args.get("area") or "").strip()
+            if area and "," not in area and not args.get("customer_id"):
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "city_only",
+                        "message": (
+                            "check_outages reikalauja gatvės: perduok area='Miestas, "
+                            "Gatvė' (ne vien miestą) arba customer_id. Tik-miesto "
+                            "patikra grąžina kitų gatvių gedimus."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            return None
+
+        # close_case: reason-specific backstop so an over-eager model can't end the
+        # call prematurely. "resolved" needs an identified customer; "outage" needs
+        # an outage to have actually been reported.
+        if name == "close_case":
+            reason = args.get("reason", "resolved")
+            if reason == "resolved" and not self.state.customer_id:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "not_identified",
+                        "message": "Negalima uždaryti kaip 'resolved' neidentifikavus kliento.",
+                    },
+                    ensure_ascii=False,
+                )
+            if reason == "outage" and not self.state.outage_reported:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "no_outage",
+                        "message": (
+                            "close_case(reason='outage') leidžiama tik po to, kai "
+                            "check_outages patvirtino aktyvų gedimą."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            return None
+
         if name not in self._GATED_TOOLS:
             return None
         if not self.state.customer_id:
@@ -524,6 +584,20 @@ class ReactAgent:
                     "reason": v.get("reason"),
                     "signals": v.get("signals"),
                 }
+
+            # An active outage for the caller's street -> restricted mode (NOT a
+            # close): the caller still asks "when fixed? / compensation?", so the
+            # agent stays in a tool-having node but stops diagnosing (facts block).
+            # By the gate, a returned `affected` here is already street-specific.
+            if action == "check_outages" and obs_data.get("affected"):
+                self.state.outage_reported = True
+
+            # close_case signal -> flip the router to the closing stage. The model
+            # owns WHEN (it read the caller's confirmation); the gate already
+            # backstopped premature/unfounded closes.
+            if action == "close_case" and obs_data.get("case_closed"):
+                self.state.case_closed = True
+                self.state.closed_reason = obs_data.get("reason")
 
         except json.JSONDecodeError:
             pass

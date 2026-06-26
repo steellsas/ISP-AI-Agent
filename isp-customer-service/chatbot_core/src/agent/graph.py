@@ -31,7 +31,15 @@ from langgraph.graph import END, StateGraph
 from typing_extensions import TypedDict
 
 # Identification stage: lookup tools only — NO diagnostics / mutations / tickets.
-LOOKUP_TOOLS = frozenset({"resolve_address", "find_customer", "check_outages", "search_knowledge"})
+# close_case is allowed here too, so an outage (found pre-identification) can be
+# acknowledged and the call closed without forcing a full ID first.
+LOOKUP_TOOLS = frozenset(
+    {"resolve_address", "find_customer", "check_outages", "search_knowledge", "close_case"}
+)
+
+# Closing stage: NO tools at all — structurally cannot diagnose or ask for an
+# address; the agent can only say a short goodbye.
+CLOSING_TOOLS: frozenset[str] = frozenset()
 
 _ADDRESS_NODE_PROMPT = (
     "=== STAGE: IDENTIFICATION ===\n"
@@ -71,9 +79,10 @@ _ADDRESS_NODE_PROMPT = (
     "apartment and no full identification. ESPECIALLY when resolve_address says "
     "'kelios sutartys / paklausk buto' — check the outage FIRST; only ask for the "
     "apartment if there is NO outage.\n"
-    "- AFTER you inform about an outage the call is DONE: if the caller says anything "
-    "more, briefly reaffirm the outage and close — do NOT re-ask for the address, "
-    "house or apartment.\n"
+    "- AFTER you inform about an outage: do NOT re-ask for the address/house/"
+    "apartment and do NOT diagnose. Answer the caller's outage follow-ups (ETA, "
+    "compensation — use search_knowledge if needed). When the caller is done / says "
+    "they will wait, call close_case(reason='outage').\n"
     "- Never invent or parrot an address you were not given. Once the address "
     "resolves and the customer confirms, diagnosis begins next turn."
 )
@@ -94,10 +103,31 @@ _DIAGNOSIS_NODE_PROMPT = (
     "facts contradict.\n"
     "- If the customer says one thing then corrects it, CONFIRM your understanding "
     '("Ar teisingai supratau, kad …?") before acting.\n'
-    "- ONE step at a time, SHORT replies, and REACT to what the customer JUST said: "
-    "if they say it now works, acknowledge and close — do not push the script. If "
-    "the address is now wrong, re-resolve it first."
+    "- ONE step at a time, SHORT replies, and REACT to what the customer JUST said. "
+    "If the address is now wrong, re-resolve it first.\n"
+    "- CLOSING: the moment the customer confirms the service WORKS NOW (present "
+    "tense — 'veikia', 'atsirado'), briefly celebrate and call "
+    "close_case(reason='resolved'). If they clearly want to end, "
+    "close_case(reason='declined'). Do NOT call close_case if they only HOPE it "
+    "will work after a step — wait for confirmation."
 )
+
+
+_CLOSING_BASE = (
+    "=== STAGE: CLOSING ===\n"
+    "The case is CLOSED. Reply with ONE short, warm closing line ONLY (max ~12 "
+    "words). Do NOT diagnose, do NOT ask for an address, do NOT identify a new "
+    "problem, do NOT call tools. If the caller thanks you or says goodbye, say "
+    "goodbye. If they raise something new, briefly say it is handled and they can "
+    "call again — then close."
+)
+
+# Reason-specific goodbye so the closing line feels heard, not canned.
+_CLOSING_REASON_HINT = {
+    "resolved": " The issue was RESOLVED — be glad it works (pvz. „Džiaugiuosi, kad sutvarkėme, gražaus vakaro!“).",
+    "outage": " An OUTAGE was reported and logged — reassure it will be fixed (pvz. „Informaciją perdaviau, gedimą pašalinsime — iki!“).",
+    "declined": " The caller is done — a neutral, polite goodbye.",
+}
 
 
 class TurnState(TypedDict, total=False):
@@ -133,17 +163,32 @@ def build_turn_graph(engine: Any):
     def diagnosis(state: TurnState) -> TurnState:
         return _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
 
+    def closing(state: TurnState) -> TurnState:
+        reason = engine.state.closed_reason or "resolved"
+        prompt = _CLOSING_BASE + _CLOSING_REASON_HINT.get(reason, "")
+        return _run_node(state, CLOSING_TOOLS, prompt)
+
     def route(state: TurnState) -> str:
-        # Deterministic: identified -> diagnosis, else keep identifying.
+        # Deterministic. case_closed wins (END stage); then identified -> diagnosis,
+        # else keep identifying. (State lives in the engine — see module docstring —
+        # and each AgentSession has its own engine + graph, so this is per-session.)
+        if engine.state.case_closed:
+            return "closing"
         return "diagnosis" if engine.state.customer_id else "address_validation"
 
     builder = StateGraph(TurnState)
     builder.add_node("address_validation", address_validation)
     builder.add_node("diagnosis", diagnosis)
+    builder.add_node("closing", closing)
     builder.set_conditional_entry_point(
         route,
-        {"address_validation": "address_validation", "diagnosis": "diagnosis"},
+        {
+            "address_validation": "address_validation",
+            "diagnosis": "diagnosis",
+            "closing": "closing",
+        },
     )
     builder.add_edge("address_validation", END)
     builder.add_edge("diagnosis", END)
+    builder.add_edge("closing", END)
     return builder.compile(checkpointer=MemorySaver())
