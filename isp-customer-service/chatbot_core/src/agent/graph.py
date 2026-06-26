@@ -48,9 +48,9 @@ CLOSING_TOOLS: frozenset[str] = frozenset()
 # instructions. The shared contract + tools live in the system prompt; the dynamic
 # state (KNOWN FACTS, DIAGNOSTIKA, closed reason, stuck nudge) is injected by the
 # engine's facts block.
-_ADDRESS_NODE_PROMPT = load_node_prompt("address_node")
-_DIAGNOSIS_NODE_PROMPT = load_node_prompt("diagnosis_node")
-_CLOSING_NODE_PROMPT = load_node_prompt("closing_node")
+_ADDRESS_NODE_PROMPT = load_node_prompt("stages/identification")
+_DIAGNOSIS_NODE_PROMPT = load_node_prompt("stages/diagnosis")
+_CLOSING_NODE_PROMPT = load_node_prompt("stages/closing")
 
 
 class TurnState(TypedDict, total=False):
