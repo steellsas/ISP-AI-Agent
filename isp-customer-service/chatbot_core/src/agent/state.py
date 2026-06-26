@@ -80,6 +80,14 @@ class AgentState:
     # agent into a restricted mode: answer outage follow-ups, no more diagnosis.
     outage_reported: bool = False
 
+    # Repeat-guard (Phase 3.5): stop the agent re-asking the same thing 2–4×.
+    # stuck_count = consecutive question-turns that made NO progress (a slot/
+    # customer_id/node change resets it); last_question is the previous question
+    # asked, for verbatim-repeat detection. Drives a scaled nudge → deterministic
+    # backstop (offer account code → register + close).
+    last_question: str | None = None
+    stuck_count: int = 0
+
     # Conversation control
     is_complete: bool = False
     turn_count: int = 0

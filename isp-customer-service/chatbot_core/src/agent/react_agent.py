@@ -23,6 +23,7 @@ Usage:
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -95,6 +96,26 @@ _DIAGNOSIS_LT = {
     "healthy_to_router": "tinklas iki routerio veikia — problema kliento pusėje",
     "no_port_data": "nėra prievado duomenų",
 }
+
+# Repeat-guard: politeness/acknowledgement words stripped before comparing two
+# questions, so "Atsiprašau, ar galėtumėte ..." matches "Ar galėtumėte ..." as a
+# verbatim re-ask instead of looking different because of the prefix.
+_STUCK_FILLER = {
+    "atsiprašau",
+    "gerai",
+    "supratau",
+    "prašau",
+    "ačiū",
+    "sakykite",
+    "pasakykite",
+}
+
+# Deterministic backstops (LT), used when the prompt-level nudge fails to break a
+# loop. Kept here (not the language service) so the escalation is self-contained.
+_STUCK_OFFER_CODE = "Atsiprašau, vis nepavyksta išgirsti. Gal turite abonento kodą nuo sąskaitos?"
+_STUCK_REGISTER = (
+    "Užregistruosiu jūsų problemą ir mūsų specialistas su jumis susisieks. Geros dienos!"
+)
 
 
 @dataclass
@@ -213,6 +234,12 @@ class ReactAgent:
         # (the legacy single-agent behaviour).
         self._active_tool_names: frozenset[str] | None = None
         self._node_prompt: str | None = None
+
+        # Repeat-guard bookkeeping (set per turn). _turn_start_key snapshots the
+        # progress fields at the start of a turn so the finalizer can tell whether
+        # the turn advanced; _repeated_verbatim flags a near-identical re-ask.
+        self._turn_start_key: tuple | None = None
+        self._repeated_verbatim: bool = False
 
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
@@ -350,6 +377,25 @@ class ReactAgent:
             )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        # Repeat-guard nudge (scaled): the caller's last reply did not advance us.
+        # Don't loop the same question — acknowledge, narrow, then change tactic.
+        if s.stuck_count >= 2:
+            facts.append(
+                "- STRIGTI: to paties klausimo NEBEKARTOK. Pakeisk taktiką — pasiūlyk "
+                "abonento kodą („Gal turite abonento kodą nuo sąskaitos?“) arba "
+                "užregistruok problemą atskambinimui."
+            )
+        elif s.stuck_count == 1:
+            extra = (
+                " Praeitą klausimą uždavei pažodžiui — BŪTINAI perfrazuok."
+                if self._repeated_verbatim
+                else ""
+            )
+            facts.append(
+                "- Praeitas klausimas liko be atsakymo. NEKARTOK jo pažodžiui — trumpai "
+                "pasakyk „Atsiprašau, neišgirdau“ ir paprašyk pakartoti TIK trūkstamą "
+                "dalį (pvz. gatvės pavadinimą)." + extra
+            )
         # Outage reported (restricted mode): an active outage IS the answer, so stop
         # identifying/diagnosing — but stay available for the caller's follow-ups
         # (ETA, compensation) and close only when they are done (close_case).
@@ -838,6 +884,20 @@ class ReactAgent:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
 
+        # Repeat-guard: snapshot progress, and fire the deterministic backstop
+        # BEFORE the LLM (so it works with token streaming).
+        self._turn_start_key = self._progress_key()
+        backstop = self._stuck_backstop()
+        if backstop is not None:
+            text, should_close = backstop
+            if should_close:
+                self.state.case_closed = True
+                self.state.closed_reason = "declined"
+            self.state.messages.append({"role": "assistant", "content": text})
+            self._finalize_reply(text)
+            yield text
+            return
+
         max_calls = self.config.max_tool_calls_per_response
         tool_rounds = 0
         while tool_rounds < max_calls:
@@ -889,10 +949,9 @@ class ReactAgent:
                 continue
 
             # The final reply text was already streamed via `yield from`; persist it
-            # to history and emit the trace (no extra yield).
+            # to history and run end-of-turn bookkeeping (no extra yield).
             self.state.messages.append({"role": "assistant", "content": content})
-            self._emit_case()
-            self.tracer.emit("agent_reply", text=content)
+            self._finalize_reply(content)
             return
 
         yield self.config.timeout_message
@@ -1055,6 +1114,17 @@ class ReactAgent:
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
             self._prefill_slots_from_text(user_input)
 
+        # Repeat-guard: snapshot progress + deterministic backstop before the LLM.
+        self._turn_start_key = self._progress_key()
+        backstop = self._stuck_backstop()
+        if backstop is not None:
+            text, should_close = backstop
+            if should_close:
+                self.state.case_closed = True
+                self.state.closed_reason = "declined"
+            self.state.messages.append({"role": "assistant", "content": text})
+            return self._reply(text)
+
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response
         tool_calls = 0
@@ -1082,6 +1152,85 @@ class ReactAgent:
 
         return self._reply(self.config.timeout_message)
 
+    # --- Repeat-guard ------------------------------------------------------
+
+    def _progress_key(self) -> tuple:
+        """A snapshot of the fields that mean the conversation ADVANCED. Compared
+        start-vs-end of a turn: if it changed, the turn made real progress (a slot
+        filled, identified, an outage found, the case closed) — so the stuck
+        counter resets. Text changing alone is NOT progress (docs: reset on state,
+        not on a reworded question)."""
+        p = self.state.profile
+        filled = sum(
+            1 for slot in (p.city, p.street, p.house, p.apartment, p.account_code) if slot.value
+        )
+        s = self.state
+        return (
+            s.customer_id,
+            filled,
+            s.problem_type,
+            s.outage_reported,
+            s.case_closed,
+            s.ticket_id,
+        )
+
+    @staticmethod
+    def _is_question(text: str) -> bool:
+        return text.strip().endswith("?")
+
+    def _sanitize_question(self, text: str) -> str:
+        """Lowercase, drop punctuation + politeness fillers, collapse whitespace —
+        so two questions compare on their CORE, not their wording trim."""
+        cleaned = re.sub(r"[^\w\s]", " ", text.lower(), flags=re.UNICODE)
+        return " ".join(w for w in cleaned.split() if w not in _STUCK_FILLER)
+
+    def _similar(self, a: str, b: str) -> bool:
+        """True if two questions are effectively the same re-ask (containment, to
+        catch an added prefix, or a high difflib ratio on the sanitized cores)."""
+        from difflib import SequenceMatcher
+
+        sa, sb = self._sanitize_question(a), self._sanitize_question(b)
+        if not sa or not sb:
+            return False
+        if sa in sb or sb in sa:
+            return True
+        return SequenceMatcher(None, sa, sb).ratio() > 0.8
+
+    def _stuck_backstop(self) -> tuple[str, bool] | None:
+        """Deterministic escalation (text, should_close) once the prompt-level nudge
+        has failed — fired BEFORE the LLM (so it works with token streaming): at 3
+        offer the account code, at 4 register + close. None below that."""
+        n = self.state.stuck_count
+        if n >= 4:
+            return (_STUCK_REGISTER, True)
+        if n >= 3:
+            return (_STUCK_OFFER_CODE, False)
+        return None
+
+    def _track_stuck(self, reply: str) -> None:
+        """Update the stuck counter from this turn's outcome. Reset on real progress
+        or a non-question; otherwise (a question that advanced nothing) increment.
+        Records last_question + a verbatim-repeat flag for the next turn's nudge."""
+        progressed = self._progress_key() != self._turn_start_key
+        is_q = self._is_question(reply)
+        self._repeated_verbatim = bool(
+            is_q and self.state.last_question and self._similar(reply, self.state.last_question)
+        )
+        if progressed or not is_q:
+            self.state.stuck_count = 0
+        else:
+            self.state.stuck_count += 1
+        if is_q:
+            self.state.last_question = reply
+        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=self._repeated_verbatim)
+
+    def _finalize_reply(self, text: str) -> None:
+        """Shared end-of-turn bookkeeping for a customer-facing reply: update the
+        repeat-guard, emit the case snapshot + the reply trace."""
+        self._track_stuck(text)
+        self._emit_case()
+        self.tracer.emit("agent_reply", text=text)
+
     def _emit_case(self) -> None:
         """Emit a compact case-state snapshot to the TRACE (for review) — NOT into
         the LLM context. The lean current-truth the model reads is the facts block;
@@ -1103,9 +1252,8 @@ class ReactAgent:
         )
 
     def _reply(self, text: str) -> str:
-        """Emit the customer-facing reply to the trace and return it."""
-        self._emit_case()
-        self.tracer.emit("agent_reply", text=text)
+        """Emit the customer-facing reply (with repeat-guard bookkeeping) and return it."""
+        self._finalize_reply(text)
         return text
 
 
