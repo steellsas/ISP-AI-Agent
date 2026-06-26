@@ -8,6 +8,7 @@ a no-progress question increments stuck_count, real progress resets it, and at
 Run: pytest tests/test_repeat_guard.py -v
 """
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -36,25 +37,35 @@ class TestQuestionSimilarity:
 
 
 class TestStuckCounter:
-    def test_no_progress_question_increments(self):
+    def test_repeat_increments(self):
+        a = _agent()
+        a.state.last_question = "Kurioje gatvėje neveikia internetas?"
+        a._turn_start_key = a._progress_key()
+        a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
+        assert a.state.stuck_count == 1
+
+    def test_first_question_does_not_increment(self):
+        # No prior question -> not a repeat -> normal opening, no strike.
         a = _agent()
         a._turn_start_key = a._progress_key()
         a._track_stuck("Kurioje gatvėje neveikia internetas?")
-        assert a.state.stuck_count == 1
-
-    def test_progress_resets(self):
-        a = _agent()
-        a.state.stuck_count = 2
-        a._turn_start_key = a._progress_key()
-        a.state.customer_id = "CUST105"  # the turn advanced
-        a._track_stuck("Ar dabar veikia?")
         assert a.state.stuck_count == 0
 
-    def test_non_question_resets(self):
+    def test_different_question_does_not_increment(self):
+        # A new, distinct question is normal progression, not a stuck loop.
+        a = _agent()
+        a.state.last_question = "Kurioje gatvėje neveikia internetas?"
+        a._turn_start_key = a._progress_key()
+        a._track_stuck("Koks namo numeris?")
+        assert a.state.stuck_count == 0
+
+    def test_progress_resets_even_on_repeat(self):
         a = _agent()
         a.state.stuck_count = 2
+        a.state.last_question = "Kurioje gatvėje?"
         a._turn_start_key = a._progress_key()
-        a._track_stuck("Radau jūsų adresą.")
+        a.state.customer_id = "CUST105"  # the turn advanced
+        a._track_stuck("Kurioje gatvėje?")
         assert a.state.stuck_count == 0
 
     def test_repeated_verbatim_flag_set(self):
@@ -63,6 +74,19 @@ class TestStuckCounter:
         a._turn_start_key = a._progress_key()
         a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
         assert a._repeated_verbatim is True
+
+    def test_apply_backstop_offer_climbs_ladder(self):
+        a = _agent()
+        a.state.stuck_count = 3
+        a._apply_backstop(("Gal turite abonento kodą?", False))
+        assert a.state.stuck_count == 4
+
+    def test_apply_backstop_register_closes(self):
+        a = _agent()
+        a.state.stuck_count = 4
+        a._apply_backstop(("Užregistruosiu jūsų problemą.", True))
+        assert a.state.case_closed is True
+        assert a.state.closed_reason == "declined"
 
 
 class TestBackstop:
@@ -106,6 +130,24 @@ class TestBackstop:
             a.run_until_response("vis dar nesąmonė")
         assert a.state.case_closed is True
         assert a.state.closed_reason == "declined"
+
+
+class TestProgressReset:
+    """The bug that shipped: NLU progress this turn must clear the counter."""
+
+    def test_nlu_street_fill_resets_stuck(self, db_connection):
+        a = _agent()
+        a.run_until_response()  # greeting
+        a.state.stuck_count = 2
+        a.state.problem_type = "internet_down"
+        msg = SimpleNamespace(content="Radau gatvę. Koks namo numeris?", tool_calls=None)
+        with (
+            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            a.run_until_response("Dainų gatvė")
+        assert a.state.profile.street.value  # NLU heard the street this turn
+        assert a.state.stuck_count == 0  # ...which counts as progress and resets
 
 
 class TestStuckFacts:

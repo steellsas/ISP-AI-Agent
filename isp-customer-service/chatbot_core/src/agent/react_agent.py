@@ -880,22 +880,19 @@ class ReactAgent:
             yield greeting
             return
 
+        # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
+        # slot/problem filled THIS turn counts as progress and clears the counter.
+        self._turn_start_key = self._progress_key()
+
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
 
-        # Repeat-guard: snapshot progress, and fire the deterministic backstop
-        # BEFORE the LLM (so it works with token streaming).
-        self._turn_start_key = self._progress_key()
+        # Deterministic backstop (before the LLM, so it works with streaming) once a
+        # genuine repeat loop has escalated.
         backstop = self._stuck_backstop()
         if backstop is not None:
-            text, should_close = backstop
-            if should_close:
-                self.state.case_closed = True
-                self.state.closed_reason = "declined"
-            self.state.messages.append({"role": "assistant", "content": text})
-            self._finalize_reply(text)
-            yield text
+            yield self._apply_backstop(backstop)
             return
 
         max_calls = self.config.max_tool_calls_per_response
@@ -1109,21 +1106,19 @@ class ReactAgent:
             self.tracer.emit("agent_reply", text=greeting)
             return greeting
 
+        # Repeat-guard: snapshot progress BEFORE the NLU prefill (so a slot filled
+        # this turn counts as progress and clears the counter).
+        self._turn_start_key = self._progress_key()
+
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
             self._prefill_slots_from_text(user_input)
 
-        # Repeat-guard: snapshot progress + deterministic backstop before the LLM.
-        self._turn_start_key = self._progress_key()
+        # Deterministic backstop before the LLM, once a genuine repeat loop escalated.
         backstop = self._stuck_backstop()
         if backstop is not None:
-            text, should_close = backstop
-            if should_close:
-                self.state.case_closed = True
-                self.state.closed_reason = "declined"
-            self.state.messages.append({"role": "assistant", "content": text})
-            return self._reply(text)
+            return self._apply_backstop(backstop)
 
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response
@@ -1208,21 +1203,43 @@ class ReactAgent:
         return None
 
     def _track_stuck(self, reply: str) -> None:
-        """Update the stuck counter from this turn's outcome. Reset on real progress
-        or a non-question; otherwise (a question that advanced nothing) increment.
-        Records last_question + a verbatim-repeat flag for the next turn's nudge."""
+        """Update the stuck counter from this turn's outcome. Increment ONLY when the
+        agent actually RE-ASKS the same question (a genuine loop) — a new/different
+        question or normal back-and-forth must not escalate. Real progress (a slot/
+        customer_id/problem change since the turn started) clears it. Records
+        last_question for the next turn's repeat check."""
         progressed = self._progress_key() != self._turn_start_key
         is_q = self._is_question(reply)
-        self._repeated_verbatim = bool(
+        repeat = bool(
             is_q and self.state.last_question and self._similar(reply, self.state.last_question)
         )
-        if progressed or not is_q:
+        self._repeated_verbatim = repeat
+        if progressed:
             self.state.stuck_count = 0
-        else:
+        elif repeat:
             self.state.stuck_count += 1
+        # else: a different question or a statement leaves the counter unchanged —
+        # only a real re-ask escalates, and only real progress clears it.
         if is_q:
             self.state.last_question = reply
-        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=self._repeated_verbatim)
+        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=repeat)
+
+    def _apply_backstop(self, backstop: tuple[str, bool]) -> str:
+        """Emit a deterministic backstop reply (manages the counter itself so a
+        repeat backstop climbs 3 -> 4 -> close). Returns the text to yield/return."""
+        text, should_close = backstop
+        if should_close:
+            self.state.case_closed = True
+            self.state.closed_reason = "declined"
+        else:
+            self.state.stuck_count += 1  # advance the ladder for the next turn
+        self.state.messages.append({"role": "assistant", "content": text})
+        if self._is_question(text):
+            self.state.last_question = text
+        self._emit_case()
+        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=False)
+        self.tracer.emit("agent_reply", text=text)
+        return text
 
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the
