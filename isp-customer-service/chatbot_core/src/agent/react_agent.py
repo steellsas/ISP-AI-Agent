@@ -23,12 +23,17 @@ Usage:
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
 
 # LLM client
-from src.services.llm.client import get_last_call_stats, llm_tool_completion
+from src.services.llm.client import (
+    get_last_call_stats,
+    llm_tool_completion,
+    stream_tool_completion,
+)
 
 from .config import AgentConfig, create_config
 from .prompts import load_system_prompt
@@ -91,6 +96,26 @@ _DIAGNOSIS_LT = {
     "healthy_to_router": "tinklas iki routerio veikia — problema kliento pusėje",
     "no_port_data": "nėra prievado duomenų",
 }
+
+# Repeat-guard: politeness/acknowledgement words stripped before comparing two
+# questions, so "Atsiprašau, ar galėtumėte ..." matches "Ar galėtumėte ..." as a
+# verbatim re-ask instead of looking different because of the prefix.
+_STUCK_FILLER = {
+    "atsiprašau",
+    "gerai",
+    "supratau",
+    "prašau",
+    "ačiū",
+    "sakykite",
+    "pasakykite",
+}
+
+# Deterministic backstops (LT), used when the prompt-level nudge fails to break a
+# loop. Kept here (not the language service) so the escalation is self-contained.
+_STUCK_OFFER_CODE = "Atsiprašau, vis nepavyksta išgirsti. Gal turite abonento kodą nuo sąskaitos?"
+_STUCK_REGISTER = (
+    "Užregistruosiu jūsų problemą ir mūsų specialistas su jumis susisieks. Geros dienos!"
+)
 
 
 @dataclass
@@ -209,6 +234,12 @@ class ReactAgent:
         # (the legacy single-agent behaviour).
         self._active_tool_names: frozenset[str] | None = None
         self._node_prompt: str | None = None
+
+        # Repeat-guard bookkeeping (set per turn). _turn_start_key snapshots the
+        # progress fields at the start of a turn so the finalizer can tell whether
+        # the turn advanced; _repeated_verbatim flags a near-identical re-ask.
+        self._turn_start_key: tuple | None = None
+        self._repeated_verbatim: bool = False
 
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
@@ -346,6 +377,38 @@ class ReactAgent:
             )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
+        if s.case_closed:
+            facts.append(f"- Byla UŽDARYTA (priežastis: {s.closed_reason or 'resolved'}).")
+        # Repeat-guard nudge (scaled): the caller's last reply did not advance us.
+        # Don't loop the same question — acknowledge, narrow, then change tactic.
+        if s.stuck_count >= 2:
+            facts.append(
+                "- STRIGTI: to paties klausimo NEBEKARTOK. Pakeisk taktiką — pasiūlyk "
+                "abonento kodą („Gal turite abonento kodą nuo sąskaitos?“) arba "
+                "užregistruok problemą atskambinimui."
+            )
+        elif s.stuck_count == 1:
+            extra = (
+                " Praeitą klausimą uždavei pažodžiui — BŪTINAI perfrazuok."
+                if self._repeated_verbatim
+                else ""
+            )
+            facts.append(
+                "- Praeitas klausimas liko be atsakymo. NEKARTOK jo pažodžiui — trumpai "
+                "pasakyk „Atsiprašau, neišgirdau“ ir paprašyk pakartoti TIK trūkstamą "
+                "dalį (pvz. gatvės pavadinimą)." + extra
+            )
+        # Outage reported (restricted mode): an active outage IS the answer, so stop
+        # identifying/diagnosing — but stay available for the caller's follow-ups
+        # (ETA, compensation) and close only when they are done (close_case).
+        if s.outage_reported and not s.case_closed:
+            facts.append(
+                "- GEDIMAS PASKELBTAS šiai gatvei — tai galutinis atsakymas. NEklausk "
+                "namo/buto, NEdiagnozuok, NEsiūlyk maitinimo/laidų. Atsakyk į kliento "
+                "klausimus apie gedimą (laikas, eiga, kompensacija; gali naudoti "
+                "search_knowledge). Kai klientas supranta / lauks — kviesk "
+                "close_case(reason='outage')."
+            )
         # Diagnostic findings (case state), per domain: durable current truth, so
         # the agent reconciles them with the caller and never re-runs / loses them.
         # Only active domains are surfaced (lean — history lives in the trace, §12.7).
@@ -448,6 +511,55 @@ class ReactAgent:
         out of the prompt and into code, so a hallucinated `diagnose_connection`
         cannot fire (observed: customer_id='1' on an unidentified caller).
         """
+        # check_outages must be street-specific. A city-only query returns OTHER
+        # streets' outages, which the model then misattributes to the caller
+        # (observed). Require a street (area="Miestas, Gatvė") OR a customer_id —
+        # the house/apartment is NOT required (street-level check is valid pre-house).
+        if name == "check_outages":
+            area = (args.get("area") or "").strip()
+            if area and "," not in area and not args.get("customer_id"):
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "city_only",
+                        "message": (
+                            "check_outages reikalauja gatvės: perduok area='Miestas, "
+                            "Gatvė' (ne vien miestą) arba customer_id. Tik-miesto "
+                            "patikra grąžina kitų gatvių gedimus."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            return None
+
+        # close_case: reason-specific backstop so an over-eager model can't end the
+        # call prematurely. "resolved" needs an identified customer; "outage" needs
+        # an outage to have actually been reported.
+        if name == "close_case":
+            reason = args.get("reason", "resolved")
+            if reason == "resolved" and not self.state.customer_id:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "not_identified",
+                        "message": "Negalima uždaryti kaip 'resolved' neidentifikavus kliento.",
+                    },
+                    ensure_ascii=False,
+                )
+            if reason == "outage" and not self.state.outage_reported:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "no_outage",
+                        "message": (
+                            "close_case(reason='outage') leidžiama tik po to, kai "
+                            "check_outages patvirtino aktyvų gedimą."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+            return None
+
         if name not in self._GATED_TOOLS:
             return None
         if not self.state.customer_id:
@@ -520,6 +632,20 @@ class ReactAgent:
                     "reason": v.get("reason"),
                     "signals": v.get("signals"),
                 }
+
+            # An active outage for the caller's street -> restricted mode (NOT a
+            # close): the caller still asks "when fixed? / compensation?", so the
+            # agent stays in a tool-having node but stops diagnosing (facts block).
+            # By the gate, a returned `affected` here is already street-specific.
+            if action == "check_outages" and obs_data.get("affected"):
+                self.state.outage_reported = True
+
+            # close_case signal -> flip the router to the closing stage. The model
+            # owns WHEN (it read the caller's confirmation); the gate already
+            # backstopped premature/unfounded closes.
+            if action == "close_case" and obs_data.get("case_closed"):
+                self.state.case_closed = True
+                self.state.closed_reason = obs_data.get("reason")
 
         except json.JSONDecodeError:
             pass
@@ -670,6 +796,165 @@ class ReactAgent:
         if callable(export):
             export()
 
+    def _execute_tool_calls(self, message: Any) -> list[dict]:
+        """Echo the assistant tool-call message, run each tool through the gate,
+        append results to history, trace, and update state. Returns the executed
+        list. Shared by step() (non-streaming) and the streaming loop."""
+        self.state.messages.append(self._assistant_tool_message(message))
+        executed = []
+        for tc in message.tool_calls:
+            name = tc.function.name
+            raw_args = tc.function.arguments or "{}"
+            try:
+                args = json.loads(raw_args)
+            except json.JSONDecodeError:
+                logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
+                args = {}
+
+            logger.info(f"[AGENT] Tool call: {name}")
+            self.tracer.emit("tool_call", name=name, args=args)
+
+            gate = self._gate_tool(name, args)
+            if gate is not None:
+                observation, tool_ms = gate, 0
+            else:
+                _t = time.perf_counter()
+                observation = execute_tool(name, args)
+                tool_ms = round((time.perf_counter() - _t) * 1000.0)
+
+            self.state.messages.append(
+                {"role": "tool", "tool_call_id": tc.id, "content": observation}
+            )
+            self._trace_tool_result(name, observation, tool_ms)
+            self._update_state_from_observation(name, observation)
+            self.state.add_observation(observation)
+            executed.append({"name": name, "arguments": args, "observation": observation})
+        return executed
+
+    def _record_llm_stats(self) -> None:
+        """Fold the last LLM call's stats into the running totals + trace."""
+        s = get_last_call_stats()
+        self.llm_stats.add_call(
+            input_tokens=s.get("input_tokens", 0),
+            output_tokens=s.get("output_tokens", 0),
+            cost=s.get("cost", 0),
+            latency_ms=s.get("latency_ms", 0),
+            cached=s.get("cached", False),
+            model=s.get("model", self.config.model),
+        )
+        self.tracer.emit(
+            "llm",
+            model=s.get("model", self.config.model),
+            input_tokens=s.get("input_tokens", 0),
+            output_tokens=s.get("output_tokens", 0),
+            latency_ms=round(s.get("latency_ms", 0)),
+            cached=s.get("cached", False),
+        )
+
+    def run_turn_scoped_stream(
+        self,
+        user_input: str | None,
+        allowed_tools: frozenset[str] | None,
+        node_prompt: str | None,
+    ):
+        """Streaming variant of run_turn_scoped (Pillar C3): a generator that YIELDS
+        the FINAL reply's text tokens as the LLM produces them. Tool rounds run
+        silently (no yields). Called from inside the LangGraph nodes, which forward
+        the tokens via the stream writer — so LangGraph stays the orchestrator."""
+        self._active_tool_names = allowed_tools
+        self._node_prompt = node_prompt
+        try:
+            yield from self._run_until_response_stream(user_input)
+        finally:
+            self._active_tool_names = None
+            self._node_prompt = None
+
+    def _run_until_response_stream(self, user_input: str | None = None):
+        """Like run_until_response, but streams the final reply token by token."""
+        # Hardcoded greeting (first turn, no input) — mirrors run_until_response so
+        # the streaming node yields the fixed opening line, not an LLM call.
+        if user_input is None and self.state.turn_count == 0:
+            self._preflight_phone()
+            greeting = self.config.greeting_message
+            self.state.messages.append({"role": "assistant", "content": greeting})
+            self.state.turn_count += 1
+            self.tracer.emit("agent_reply", text=greeting)
+            yield greeting
+            return
+
+        # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
+        # slot/problem filled THIS turn counts as progress and clears the counter.
+        self._turn_start_key = self._progress_key()
+
+        if user_input:
+            self.tracer.emit("user_turn", text=user_input)
+            self._prefill_slots_from_text(user_input)
+
+        # Deterministic backstop (before the LLM, so it works with streaming) once a
+        # genuine repeat loop has escalated.
+        backstop = self._stuck_backstop()
+        if backstop is not None:
+            yield self._apply_backstop(backstop)
+            return
+
+        max_calls = self.config.max_tool_calls_per_response
+        tool_rounds = 0
+        while tool_rounds < max_calls:
+            self.state.turn_count += 1
+            if self.state.turn_count > self.state.max_turns:
+                yield self.config.max_turns_message
+                return
+
+            messages = self._build_messages(user_input)
+            if user_input:
+                self.state.messages.append({"role": "user", "content": user_input})
+                user_input = None
+
+            try:
+                message = yield from stream_tool_completion(
+                    messages=messages,
+                    tools=self._scoped_tools_schema(),
+                    tool_choice="auto",
+                    model=self.config.model,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                )
+            except Exception as e:
+                logger.error(f"LLM stream error: {e}")
+                yield self.config.error_message
+                return
+
+            self._record_llm_stats()
+
+            if message.tool_calls:
+                self._execute_tool_calls(message)
+                tool_rounds += 1
+                continue
+
+            content = (message.content or "").strip()
+            if not content:
+                # Empty reply (already yielded nothing) -> nudge and retry.
+                self.state.messages.append({"role": "assistant", "content": ""})
+                self.state.messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your last reply was empty. Either call a tool or write a "
+                            "non-empty message to the customer."
+                        ),
+                    }
+                )
+                tool_rounds += 1
+                continue
+
+            # The final reply text was already streamed via `yield from`; persist it
+            # to history and run end-of-turn bookkeeping (no extra yield).
+            self.state.messages.append({"role": "assistant", "content": content})
+            self._finalize_reply(content)
+            return
+
+        yield self.config.timeout_message
+
     def step(self, user_input: str = None) -> dict[str, Any]:
         """
         Execute one agent step.
@@ -750,53 +1035,10 @@ class ReactAgent:
         tool_calls = getattr(message, "tool_calls", None)
 
         if tool_calls:
-            # The model chose to call one or more tools. Echo the assistant
-            # message that requested them (required by the protocol), then run
-            # each tool and append its result as a role:"tool" message keyed by
-            # tool_call_id. No customer-facing reply yet → needs_continuation so
-            # run_until_response loops and lets the model see the results.
-            self.state.messages.append(self._assistant_tool_message(message))
-
-            executed = []
-            for tc in tool_calls:
-                name = tc.function.name
-                raw_args = tc.function.arguments or "{}"
-                try:
-                    args = json.loads(raw_args)
-                except json.JSONDecodeError:
-                    logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
-                    args = {}
-
-                logger.info(f"[AGENT] Tool call: {name}")
-                logger.debug(f"[AGENT] Args: {args}")
-                self.tracer.emit("tool_call", name=name, args=args)
-
-                # Deterministic gate: technical tools are blocked until the
-                # customer is identified (no diagnostics / ticket on a guessed or
-                # missing customer_id). A blocked call returns a corrective
-                # observation instead of executing — the model self-corrects.
-                gate = self._gate_tool(name, args)
-                if gate is not None:
-                    observation, tool_ms = gate, 0
-                else:
-                    _t = time.perf_counter()
-                    observation = execute_tool(name, args)
-                    tool_ms = round((time.perf_counter() - _t) * 1000.0)
-
-                self.state.messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "content": observation,
-                    }
-                )
-
-                self._trace_tool_result(name, observation, tool_ms)
-                self._update_state_from_observation(name, observation)
-                self.state.add_observation(observation)
-
-                executed.append({"name": name, "arguments": args, "observation": observation})
-
+            # The model chose to call one or more tools. Echo the assistant message,
+            # run each tool, append results — no customer-facing reply yet →
+            # needs_continuation so run_until_response loops.
+            executed = self._execute_tool_calls(message)
             result["tool_calls"] = executed
             # Back-compat single-action view (last tool) for existing callers/UI.
             result["action"] = executed[-1]["name"] if executed else None
@@ -866,10 +1108,19 @@ class ReactAgent:
             self.tracer.emit("agent_reply", text=greeting)
             return greeting
 
+        # Repeat-guard: snapshot progress BEFORE the NLU prefill (so a slot filled
+        # this turn counts as progress and clears the counter).
+        self._turn_start_key = self._progress_key()
+
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
             self._prefill_slots_from_text(user_input)
+
+        # Deterministic backstop before the LLM, once a genuine repeat loop escalated.
+        backstop = self._stuck_backstop()
+        if backstop is not None:
+            return self._apply_backstop(backstop)
 
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response
@@ -898,6 +1149,107 @@ class ReactAgent:
 
         return self._reply(self.config.timeout_message)
 
+    # --- Repeat-guard ------------------------------------------------------
+
+    def _progress_key(self) -> tuple:
+        """A snapshot of the fields that mean the conversation ADVANCED. Compared
+        start-vs-end of a turn: if it changed, the turn made real progress (a slot
+        filled, identified, an outage found, the case closed) — so the stuck
+        counter resets. Text changing alone is NOT progress (docs: reset on state,
+        not on a reworded question)."""
+        p = self.state.profile
+        filled = sum(
+            1 for slot in (p.city, p.street, p.house, p.apartment, p.account_code) if slot.value
+        )
+        s = self.state
+        return (
+            s.customer_id,
+            filled,
+            s.problem_type,
+            s.outage_reported,
+            s.case_closed,
+            s.ticket_id,
+        )
+
+    @staticmethod
+    def _is_question(text: str) -> bool:
+        return text.strip().endswith("?")
+
+    def _sanitize_question(self, text: str) -> str:
+        """Lowercase, drop punctuation + politeness fillers, collapse whitespace —
+        so two questions compare on their CORE, not their wording trim."""
+        cleaned = re.sub(r"[^\w\s]", " ", text.lower(), flags=re.UNICODE)
+        return " ".join(w for w in cleaned.split() if w not in _STUCK_FILLER)
+
+    def _similar(self, a: str, b: str) -> bool:
+        """True if two questions are effectively the same re-ask (containment, to
+        catch an added prefix, or a high difflib ratio on the sanitized cores)."""
+        from difflib import SequenceMatcher
+
+        sa, sb = self._sanitize_question(a), self._sanitize_question(b)
+        if not sa or not sb:
+            return False
+        if sa in sb or sb in sa:
+            return True
+        return SequenceMatcher(None, sa, sb).ratio() > 0.8
+
+    def _stuck_backstop(self) -> tuple[str, bool] | None:
+        """Deterministic escalation (text, should_close) once the prompt-level nudge
+        has failed — fired BEFORE the LLM (so it works with token streaming): at 3
+        offer the account code, at 4 register + close. None below that."""
+        n = self.state.stuck_count
+        if n >= 4:
+            return (_STUCK_REGISTER, True)
+        if n >= 3:
+            return (_STUCK_OFFER_CODE, False)
+        return None
+
+    def _track_stuck(self, reply: str) -> None:
+        """Update the stuck counter from this turn's outcome. Increment ONLY when the
+        agent actually RE-ASKS the same question (a genuine loop) — a new/different
+        question or normal back-and-forth must not escalate. Real progress (a slot/
+        customer_id/problem change since the turn started) clears it. Records
+        last_question for the next turn's repeat check."""
+        progressed = self._progress_key() != self._turn_start_key
+        is_q = self._is_question(reply)
+        repeat = bool(
+            is_q and self.state.last_question and self._similar(reply, self.state.last_question)
+        )
+        self._repeated_verbatim = repeat
+        if progressed:
+            self.state.stuck_count = 0
+        elif repeat:
+            self.state.stuck_count += 1
+        # else: a different question or a statement leaves the counter unchanged —
+        # only a real re-ask escalates, and only real progress clears it.
+        if is_q:
+            self.state.last_question = reply
+        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=repeat)
+
+    def _apply_backstop(self, backstop: tuple[str, bool]) -> str:
+        """Emit a deterministic backstop reply (manages the counter itself so a
+        repeat backstop climbs 3 -> 4 -> close). Returns the text to yield/return."""
+        text, should_close = backstop
+        if should_close:
+            self.state.case_closed = True
+            self.state.closed_reason = "declined"
+        else:
+            self.state.stuck_count += 1  # advance the ladder for the next turn
+        self.state.messages.append({"role": "assistant", "content": text})
+        if self._is_question(text):
+            self.state.last_question = text
+        self._emit_case()
+        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=False)
+        self.tracer.emit("agent_reply", text=text)
+        return text
+
+    def _finalize_reply(self, text: str) -> None:
+        """Shared end-of-turn bookkeeping for a customer-facing reply: update the
+        repeat-guard, emit the case snapshot + the reply trace."""
+        self._track_stuck(text)
+        self._emit_case()
+        self.tracer.emit("agent_reply", text=text)
+
     def _emit_case(self) -> None:
         """Emit a compact case-state snapshot to the TRACE (for review) — NOT into
         the LLM context. The lean current-truth the model reads is the facts block;
@@ -919,9 +1271,8 @@ class ReactAgent:
         )
 
     def _reply(self, text: str) -> str:
-        """Emit the customer-facing reply to the trace and return it."""
-        self._emit_case()
-        self.tracer.emit("agent_reply", text=text)
+        """Emit the customer-facing reply (with repeat-guard bookkeeping) and return it."""
+        self._finalize_reply(text)
         return text
 
 

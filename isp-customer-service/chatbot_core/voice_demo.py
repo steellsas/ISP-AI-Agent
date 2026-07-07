@@ -189,6 +189,9 @@ def main() -> None:
         # Instant filler OFF by default: a fixed "tikrinu…" cue felt robotic; the
         # real masking is streaming (Pillar C). VOICE_FILLER=1 to experiment.
         play_filler=os.environ.get("VOICE_FILLER", "0") == "1",
+        # Streaming playback ON: speak each sentence as it is synthesized.
+        # STREAM_PLAYBACK=0 to fall back to one-blob playback.
+        stream_playback=os.environ.get("STREAM_PLAYBACK", "1") != "0",
     )
     print("Starting voice demo — open the local URL below and allow the mic.")
     try:

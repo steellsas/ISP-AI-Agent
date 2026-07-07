@@ -19,3 +19,16 @@ def split_sentences(text: str) -> list[str]:
     if not stripped:
         return []
     return [piece.strip() for piece in _SPLIT_RE.split(stripped) if piece.strip()]
+
+
+# Pop the FIRST complete sentence from a growing buffer (LLM token streaming, C3):
+# a sentence is complete once its ending punctuation is followed by whitespace.
+_POP_RE = re.compile(r"^(.*?[.!?…])\s+(.*)$", re.DOTALL)
+
+
+def pop_sentence(buffer: str) -> tuple[str | None, str]:
+    """(first_complete_sentence, remainder) — (None, buffer) if none is complete yet."""
+    m = _POP_RE.match(buffer)
+    if m and m.group(1).strip():
+        return m.group(1).strip(), m.group(2)
+    return None, buffer

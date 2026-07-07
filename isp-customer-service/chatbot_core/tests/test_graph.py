@@ -20,6 +20,20 @@ def _tool_names(schema):
     return {t["function"]["name"] for t in (schema or [])}
 
 
+def _fake_stream(content=None, tool_calls=None, captured=None):
+    """A fake stream_tool_completion: yields the content token, returns the message
+    (so `yield from` both streams and captures the structured result)."""
+
+    def _gen(**kwargs):
+        if captured is not None:
+            captured["tools"] = kwargs.get("tools")
+        if content:
+            yield content
+        return _fake_message(content=content, tool_calls=tool_calls)
+
+    return _gen
+
+
 class TestGreetingParity:
     def test_graph_greeting_matches_legacy(self):
         from agent.session import AgentSession
@@ -51,9 +65,11 @@ class TestTurnThroughGraph:
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()  # establish the checkpoint / first turn
 
-        msg = _fake_message(content="Pasakykite adresą.")
         with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="Pasakykite adresą."),
+            ),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
             reply = session.handle_turn("neveikia internetas")
@@ -71,7 +87,11 @@ class TestTurnThroughGraph:
             session = AgentSession(caller_phone="unknown", engine=mode)
             session.greeting()
             with (
-                patch("agent.react_agent.llm_tool_completion", return_value=msg),
+                patch("agent.react_agent.llm_tool_completion", return_value=msg),  # legacy
+                patch(
+                    "agent.react_agent.stream_tool_completion",
+                    side_effect=_fake_stream(content="Tas pats atsakymas."),
+                ),  # graph
                 patch("agent.react_agent.get_last_call_stats", return_value={}),
             ):
                 replies[mode] = session.handle_turn("labas")
@@ -84,13 +104,11 @@ class TestRouting:
 
     def _run_turn_capture_tools(self, session, text):
         captured = {}
-
-        def fake_llm(**kwargs):
-            captured["tools"] = kwargs.get("tools")
-            return _fake_message(content="ok")
-
         with (
-            patch("agent.react_agent.llm_tool_completion", side_effect=fake_llm),
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="ok", captured=captured),
+            ),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
             session.handle_turn(text)
@@ -121,3 +139,68 @@ class TestRouting:
 
         assert "diagnose_connection" in names
         assert "resolve_address" in names  # diagnosis keeps lookup too (re-resolve)
+
+    def test_closed_session_routes_to_closing_with_no_tools(self, db_connection):
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="unknown", engine="graph")
+        session.greeting()
+        session.state.customer_id = "CUST105"
+        session.state.case_closed = True  # END stage
+        session.state.closed_reason = "resolved"
+
+        captured = {}
+        with (
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="Geros dienos!", captured=captured),
+            ),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            reply = session.handle_turn("ačiū")
+
+        assert reply == "Geros dienos!"
+        assert captured["tools"] == []  # closing stage is structurally tools-less
+
+
+class TestCaseStateTransitions:
+    """_update_state_from_observation drives the END-state flags."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def test_close_case_observation_sets_closed(self):
+        import json
+
+        agent = self._agent()
+        agent._update_state_from_observation(
+            "close_case",
+            json.dumps({"success": True, "case_closed": True, "reason": "resolved"}),
+        )
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "resolved"
+
+    def test_active_outage_sets_reported_not_closed(self):
+        import json
+
+        agent = self._agent()
+        agent._update_state_from_observation(
+            "check_outages",
+            json.dumps(
+                {"success": True, "affected": True, "active_outages": [{"street": "Dainų g."}]}
+            ),
+        )
+        assert agent.state.outage_reported is True
+        assert agent.state.case_closed is False  # an outage does NOT close the case
+
+    def test_no_outage_leaves_reported_false(self):
+        import json
+
+        agent = self._agent()
+        agent._update_state_from_observation(
+            "check_outages",
+            json.dumps({"success": True, "affected": False, "active_outages": []}),
+        )
+        assert agent.state.outage_reported is False

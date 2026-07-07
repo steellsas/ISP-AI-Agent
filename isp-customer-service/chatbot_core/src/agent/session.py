@@ -113,6 +113,22 @@ class AgentSession:
             return self._graph.invoke({"user_input": text}, self._graph_config).get("reply")
         return self._agent.run_until_response(text)
 
+    def handle_turn_stream(self, text: str):
+        """Streaming variant of handle_turn (Pillar C3): a generator yielding the
+        reply's text tokens as the LLM produces them, so the voice pipeline can
+        synthesize per sentence and start speaking sooner.
+
+        LangGraph stays the orchestrator — the graph nodes stream their tokens via
+        the stream writer and `graph.stream(stream_mode="custom")` surfaces them.
+        Falls back to a single chunk (the full reply) when the graph is disabled.
+        """
+        if not self._use_graph:
+            yield self._agent.run_until_response(text)
+            return
+        yield from self._graph.stream(
+            {"user_input": text}, self._graph_config, stream_mode="custom"
+        )
+
     # --- Read-only views for transports / debug UIs ------------------------
     # Exposed as properties (not the agent itself) so callers depend on this
     # surface, not on ReactAgent internals.

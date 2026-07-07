@@ -1178,6 +1178,32 @@ def run_ping_test(customer_id: str) -> dict:
         }
 
 
+def close_case(reason: str = "resolved") -> dict:
+    """
+    Signal that the support case is finished and the call should move to closing.
+
+    This is a SIGNAL tool: it does no DB work — the agent engine reads the result
+    and flips the conversation into the tools-less closing stage (a polite
+    goodbye). Reasons: "resolved" (service works again), "outage" (an active
+    outage was reported and the caller is done asking about it), "declined" (the
+    caller wants to end).
+
+    Args:
+        reason: Why the case closes — "resolved" | "outage" | "declined".
+
+    Returns:
+        Acknowledgement carrying the close signal (read by the engine).
+    """
+    logger.info(f"[TOOL] close_case(reason={reason})")
+    reason = reason if reason in ("resolved", "outage", "declined") else "resolved"
+    return {
+        "success": True,
+        "case_closed": True,
+        "reason": reason,
+        "message": "Byla uždaroma — pereinama prie atsisveikinimo.",
+    }
+
+
 # =============================================================================
 # TOOLS REGISTRY
 # =============================================================================
@@ -1375,6 +1401,23 @@ REAL_TOOLS = [
             "notes": {"type": "string", "description": "Additional notes for technician"},
         },
         function=create_ticket,
+    ),
+    Tool(
+        name="close_case",
+        description=(
+            "Finish the support case and move to a polite goodbye. Call this ONLY "
+            "when the customer confirms the service is ALREADY WORKING NOW (present "
+            "tense), or has acknowledged a reported outage and is done, or clearly "
+            "wants to end the call. Do NOT call it when the customer merely hopes or "
+            "expects it will work after a step — wait until they confirm it works."
+        ),
+        parameters={
+            "reason": {
+                "type": "string",
+                "description": "resolved (works again) | outage (outage reported, caller done) | declined (caller ends)",
+            },
+        },
+        function=close_case,
     ),
 ]
 
