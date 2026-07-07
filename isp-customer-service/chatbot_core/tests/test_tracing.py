@@ -204,9 +204,12 @@ class TestReactAgentEmits:
         assert cand["customer_id"] == "CUST105"
         assert "Tilžės" in (cand["address"] or "")
         assert agent.state.customer_id is None  # candidate, NOT confirmed
-        # The fact block surfaces it for the agent's first reply.
+        # Address-first design: the candidate is kept in state for SILENT use
+        # only (cross-check / outage fast-path) and is NOT surfaced to the model.
+        # The agent asks for the address rather than offering this one, so the
+        # facts block must not leak a "PHONE CANDIDATE" to confirm.
         facts = agent._state_facts_block()
-        assert "PHONE CANDIDATE" in facts and "CUST105" in facts
+        assert facts is None or "PHONE CANDIDATE" not in facts
         assert any(e["type"] == "preflight" and e["found"] for e in cap.events)
 
     def test_preflight_unknown_phone_no_candidate(self, db_connection):

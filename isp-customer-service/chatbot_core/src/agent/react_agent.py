@@ -361,6 +361,24 @@ class ReactAgent:
         """
         s = self.state
         facts: list[str] = []
+        # Proactive mass-outage (the ONE time the phone is used up front): if the
+        # caller's street has an active outage, inform immediately instead of
+        # identifying. Leads the block so it drives the FIRST reply. Reveals only
+        # the street, and as a question — not an identity claim.
+        if s.preflight_outage and not s.customer_id and not s.case_closed:
+            o = s.preflight_outage
+            eta = f", atstatymas iki {o['eta']}" if o.get("eta") else ""
+            facts.append(
+                f"- PROACTIVE OUTAGE: the caller's number is on {o['street']}, which has "
+                f"an ACTIVE mass outage{eta}. This IS the answer — NOT identification. "
+                f"Your FIRST reply asks whether they are calling about {o['street']} and "
+                f"states the outage + estimated time. Do NOT run identification: do NOT "
+                f"say 'Radau sutartį', do NOT ask 'ar šiuo adresu', do NOT ask for a "
+                f"house/apartment. Answer outage follow-ups (time, compensation); as soon "
+                f"as they have no more questions or thank you / say goodbye, call "
+                f"close_case(reason='outage'). If they name a DIFFERENT street, drop this "
+                f"and ask for the address."
+            )
         if s.customer_id:
             facts.append(f"- Customer ID: {s.customer_id}")
         if s.customer_name:
@@ -442,27 +460,16 @@ class ReactAgent:
                     "from the raw text): " + ", ".join(heard) + ". Pass them to "
                     "resolve_address unless the caller explicitly corrects them."
                 )
-        # Pre-flight phone candidate: known but UNCONFIRMED until the caller
-        # agrees the offered address is theirs (anchor rule). Only relevant
-        # before a customer has been confirmed.
-        if not s.customer_id and s.phone_candidate and s.phone_candidate.get("address"):
-            cand = s.phone_candidate
-            facts.append(
-                f"- PHONE CANDIDATE (unconfirmed): the caller's number is registered to "
-                f"address {cand['address']} (customer {cand['customer_id']}). Your FIRST "
-                f"reply should offer THIS address for confirmation; if the caller agrees, "
-                f"use customer_id {cand['customer_id']} for diagnosis. If they state a "
-                f"different address, ignore this candidate."
-            )
-        elif s.preflight_done and not s.customer_id and s.caller_phone not in (None, "", "unknown"):
-            # Pre-flight ran and found NO account for this number. Make the absence
-            # explicit so the model cannot invent a "skambinate iš numerio..."
-            # address out of thin air (observed hallucination).
-            facts.append(
-                "- NO phone account is on file for this caller's number. You do NOT "
-                "know their address — NEVER say 'skambinate iš numerio, registruoto "
-                "adresu ...' and never invent one. Ask for the address."
-            )
+        # Phone candidate is NOT surfaced to the model. Identification is
+        # address-first: the agent always asks for the service address and
+        # resolve_address is what commits the customer_id. The preflight
+        # phone_candidate stays in AgentState for SILENT use only — a
+        # deterministic cross-check (does the stated address match the caller's
+        # account?) and the mass-outage fast-path — never as an address to
+        # offer. Surfacing it caused the model to (a) re-ask the same
+        # confirmation without ever committing the id, and (b) present a
+        # user-stated address as "skambinate iš numerio, registruoto adresu ..."
+        # even for callers with no account on file.
 
         if not facts:
             return None
@@ -719,6 +726,25 @@ class ReactAgent:
         }
         self.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
 
+        # Proactive mass-outage awareness (roadmap 6b): if this caller's street
+        # has an active outage, remember it so the FIRST reply can inform right
+        # away — no full identification needed (everyone at that street is down).
+        try:
+            outage = json.loads(
+                execute_tool("check_outages", {"customer_id": result.get("customer_id")})
+            )
+        except Exception:
+            return
+        if outage.get("affected") and outage.get("active_outages"):
+            first = outage["active_outages"][0]
+            eta = first.get("estimated_resolution") or ""
+            self.state.preflight_outage = {
+                "street": first.get("street"),
+                "eta": eta[11:16] if len(eta) >= 16 else eta,  # HH:MM, voice-friendly
+                "description": first.get("description"),
+            }
+            self.tracer.emit("preflight_outage", street=first.get("street"))
+
     def _prefill_slots_from_text(self, text: str) -> None:
         """Deterministic NLU Track A: extract the address from the caller's turn and
         propose it into the slots BEFORE the LLM runs (docs/pokalbio_variklis.md §4).
@@ -765,6 +791,18 @@ class ReactAgent:
             p.house.propose(reading.house, conf, SlotStatus.HEARD)
         if reading.apartment:
             p.apartment.propose(reading.apartment, conf, SlotStatus.HEARD)
+
+        # If the caller names a DIFFERENT street than the pre-flight outage was
+        # for, that outage is not theirs — drop it so its proactive instruction
+        # stops polluting the rest of the call (observed: the agent kept
+        # apologising and re-mentioning the outage after the caller switched
+        # streets).
+        if (
+            reading.street
+            and self.state.preflight_outage
+            and reading.street != self.state.preflight_outage.get("street")
+        ):
+            self.state.preflight_outage = None
 
         self.tracer.emit(
             "nlu",
