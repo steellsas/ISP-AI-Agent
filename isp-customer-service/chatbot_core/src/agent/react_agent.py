@@ -241,6 +241,11 @@ class ReactAgent:
         self._turn_start_key: tuple | None = None
         self._repeated_verbatim: bool = False
 
+        # DB-grounded address note (set per turn from the accumulated slots): the
+        # DB's verdict on everything heard so far, surfaced so the agent is steered
+        # by what the DB actually holds, not by the last garbled fragment.
+        self._db_address_note: str | None = None
+
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
         # single source of truth, derived from the Tool dataclass.
@@ -402,6 +407,9 @@ class ReactAgent:
                 f"street='{c['street']}', house_number='{c['house']}'{flat_arg}) to identify. "
                 f"If they say a DIFFERENT house/flat, take that instead."
             )
+        # DB-grounded verdict on the accumulated address (set in the prefill).
+        if self._db_address_note and not s.customer_id:
+            facts.append(self._db_address_note)
         if s.customer_id:
             facts.append(f"- Customer ID: {s.customer_id}")
         if s.customer_name:
@@ -866,6 +874,46 @@ class ReactAgent:
             apartment=reading.apartment,
             confidence=round(reading.street_confidence, 2),
         )
+
+        # DB-ground everything heard so far (any order, across fragments).
+        self._revalidate_accumulated_address()
+
+    def _revalidate_accumulated_address(self) -> None:
+        """Check the ACCUMULATED address slots against the DB every turn and stash
+        the DB's verdict for the facts block.
+
+        The tools can always validate what is real — which streets exist, in which
+        village, which house numbers are on a street — so we lean on that instead
+        of the last (often garbled) fragment. resolve_address is called with ALL
+        slots gathered so far, in any order; its `hint` already says the exact next
+        step ("Radau sutartį adresu … — patvirtink", "Paklausk namo numerio",
+        "Dainų ar Dailės?", "Namo 6 … nerandu"). Read-only: the id is committed only
+        when the agent confirms with the caller (anchor rule), never here.
+        """
+        self._db_address_note = None
+        s = self.state
+        if s.customer_id or not s.profile.street.value:
+            return
+        p = s.profile
+        args: dict[str, str] = {"street": p.street.value}
+        if p.city.value:
+            args["city"] = p.city.value
+        if p.house.value:
+            args["house_number"] = p.house.value
+        if p.apartment.value:
+            args["apartment_number"] = p.apartment.value
+        try:
+            res = json.loads(execute_tool("resolve_address", args))
+        except Exception:  # pragma: no cover - best-effort, never break a turn
+            return
+        hint = res.get("hint")
+        if hint:
+            self._db_address_note = (
+                f"- DB CHECK (everything heard so far → {args}): {hint} "
+                "Act on THIS (the DB), not on the last thing you misheard; if it is a "
+                "match, confirm that exact address; if a part is missing/unclear, ask "
+                "only for it."
+            )
 
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
