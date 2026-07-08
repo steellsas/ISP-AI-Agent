@@ -57,6 +57,14 @@ class AgentState:
     # Tool observations
     observations: list[str] = field(default_factory=list)
 
+    # Raw utterance buffer — everything the caller said, verbatim (noise already
+    # filtered upstream). VAD/STT can split one spoken address into short garbled
+    # fragments ("šešiasdešimt" -> "šešias dešimt"); no single fragment parses,
+    # but the WHOLE buffer lets the LLM reconcile the address (esp. numbers) when
+    # the deterministic slots stall. Also the seam for later async silent
+    # re-processing. Keeps ALL info (address + problem + symptoms), never dropped.
+    heard_utterances: list[str] = field(default_factory=list)
+
     # Problem tracking
     problem_type: str | None = None  # internet, tv, phone, billing
     problem_description: str | None = None

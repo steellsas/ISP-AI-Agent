@@ -439,6 +439,22 @@ class ReactAgent:
                 "pasakyk „Atsiprašau, neišgirdau“ ir paprašyk pakartoti TIK trūkstamą "
                 "dalį (pvz. gatvės pavadinimą)." + extra
             )
+        # Raw-buffer reconciliation: once we're stuck AND still unidentified, hand
+        # the LLM EVERYTHING the caller said so far. VAD/STT splits and garbles
+        # spoken numbers ("šešiasdešimt" -> "šešias dešimt" -> a fragment that
+        # parses as 10, not 60); no single turn resolves, but the whole buffer
+        # lets the model infer the intended address. Only kicks in when the
+        # deterministic path has stalled, so the clean case stays LLM-free.
+        if not s.customer_id and s.stuck_count >= 1 and len(s.heard_utterances) >= 2:
+            recent = " | ".join(s.heard_utterances[-8:])
+            facts.append(
+                "- ALL HEARD (reconcile): the caller has said these pieces so far: "
+                f'"{recent}". STT may have split or garbled a spoken number '
+                '("šešiasdešimt" 60 can arrive as "šešias dešimt" and mis-parse to 10). '
+                "Infer the MOST LIKELY full address from everything above (prefer the "
+                "latest correction), then call resolve_address with it — do not make the "
+                "caller repeat again if you can reasonably infer it."
+            )
         # Outage reported (restricted mode): an active outage IS the answer, so stop
         # identifying/diagnosing — but stay available for the caller's follow-ups
         # (ETA, compensation) and close only when they are done (close_case).
@@ -784,6 +800,13 @@ class ReactAgent:
         LLM. Proposed as HEARD; resolve_address upgrades a confirmed hit to
         RESOLVED. Best-effort: any failure (DB, import) silently no-ops the turn.
         """
+        # Raw utterance buffer: keep every caller turn verbatim so nothing is lost
+        # when VAD/STT splits an utterance into fragments. Feeds the LLM
+        # reconciliation fact when the deterministic slots stall (see
+        # _state_facts_block), and the future async silent re-processing.
+        if text and text.strip():
+            self.state.heard_utterances.append(text.strip())
+
         # Problem classification (R1) — independent of the registry/DB, so it runs
         # even if address extraction fails. A revisable hypothesis: a clearer later
         # statement overrides (docs/pokalbio_variklis.md §12.2).

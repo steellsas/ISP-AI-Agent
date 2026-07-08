@@ -98,6 +98,7 @@ _UNITS = {
     "šešios": 6,
     "šešias": 6,
     "šešės": 6,
+    "šešis": 6,  # common Whisper variant, e.g. split "šešis dešimt" -> 60
     "septyni": 7,
     "septynios": 7,
     "septynias": 7,
