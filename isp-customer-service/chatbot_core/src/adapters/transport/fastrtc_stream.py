@@ -47,7 +47,7 @@ class FastRTCVoiceTransport:
         output_sample_rate: int = _DEFAULT_OUTPUT_RATE,
         record_dir: str | Path | None = None,
         started_talking_threshold: float = 0.3,
-        speech_threshold: float = 0.3,
+        speech_threshold: float = 0.7,
         audio_chunk_duration: float = 0.6,
         can_interrupt: bool = False,
         play_filler: bool = False,
@@ -62,8 +62,11 @@ class FastRTCVoiceTransport:
                 here, so a real call can be replayed and re-tested offline.
             started_talking_threshold: seconds of speech in a chunk before a turn
                 starts (FastRTC default 0.2 fires on brief noise; 0.3 is calmer).
-            speech_threshold: pause length (s) that ends the caller's turn
-                (default 0.1 cuts people off mid-sentence; 0.3 lets them breathe).
+            speech_threshold: pause length (s) that ends the caller's turn.
+                FastRTC's 0.1 cuts people off mid-sentence; 0.7 lets a caller
+                pause mid-address ("Tilžės gatvė 60 … butas 3") and still finish
+                as ONE utterance, so the ASR/NLU see the whole address instead of
+                garbled fragments (best-practice end-of-speech is ~500–800 ms).
             audio_chunk_duration: VAD processing chunk size (s).
             can_interrupt: barge-in. FastRTC defaults this to True, but without
                 acoustic echo cancellation the agent's own voice (and room noise)
