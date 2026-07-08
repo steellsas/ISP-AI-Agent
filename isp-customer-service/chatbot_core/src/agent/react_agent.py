@@ -379,6 +379,29 @@ class ReactAgent:
                 f"close_case(reason='outage'). If they name a DIFFERENT street, drop this "
                 f"and ask for the address."
             )
+        # Phone cross-check: the caller named the SAME street their number is
+        # registered at. Offer the account's full address to confirm so they need
+        # not dictate the house/apartment (spoken numbers are STT-fragile — the
+        # top cause of failed identification on the phone).
+        if (
+            not s.customer_id
+            and not s.preflight_outage
+            and s.phone_candidate
+            and s.phone_candidate.get("street")
+            and s.profile.street.value
+            and s.profile.street.value == s.phone_candidate.get("street")
+        ):
+            c = s.phone_candidate
+            flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+            flat_arg = f", apartment_number='{c['apartment']}'" if c.get("apartment") else ""
+            facts.append(
+                f"- PHONE MATCH: the caller's number is registered at {c['address']} and "
+                f"they just named that street. Offer the FULL address to confirm — "
+                f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?" — do NOT make them '
+                f"dictate the house/apartment. On yes, call resolve_address(city='{c['city']}', "
+                f"street='{c['street']}', house_number='{c['house']}'{flat_arg}) to identify. "
+                f"If they say a DIFFERENT house/flat, take that instead."
+            )
         if s.customer_id:
             facts.append(f"- Customer ID: {s.customer_id}")
         if s.customer_name:
@@ -723,6 +746,13 @@ class ReactAgent:
             "customer_id": result.get("customer_id"),
             "name": result.get("name"),
             "address": primary.get("full_address"),
+            # Structured parts for the phone cross-check: if the caller names this
+            # street, offer the full address to confirm instead of making them
+            # dictate the house/apartment (spoken numbers are STT-fragile).
+            "city": primary.get("city"),
+            "street": primary.get("street"),
+            "house": primary.get("house_number"),
+            "apartment": primary.get("apartment_number"),
         }
         self.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
 
