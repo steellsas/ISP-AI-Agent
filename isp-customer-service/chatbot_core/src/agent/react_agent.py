@@ -241,6 +241,11 @@ class ReactAgent:
         self._turn_start_key: tuple | None = None
         self._repeated_verbatim: bool = False
 
+        # DB-grounded address note (set per turn from the accumulated slots): the
+        # DB's verdict on everything heard so far, surfaced so the agent is steered
+        # by what the DB actually holds, not by the last garbled fragment.
+        self._db_address_note: str | None = None
+
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
         # single source of truth, derived from the Tool dataclass.
@@ -361,6 +366,49 @@ class ReactAgent:
         """
         s = self.state
         facts: list[str] = []
+        # Proactive mass-outage (the ONE time the phone is used up front): if the
+        # caller's street has an active outage, inform immediately instead of
+        # identifying. Leads the block so it drives the FIRST reply. Reveals only
+        # the street, and as a question — not an identity claim.
+        if s.preflight_outage and not s.customer_id and not s.case_closed:
+            o = s.preflight_outage
+            eta = f", atstatymas iki {o['eta']}" if o.get("eta") else ""
+            facts.append(
+                f"- PROACTIVE OUTAGE: the caller's number is registered on {o['street']}, "
+                f"which has an ACTIVE mass outage{eta}. The caller has NOT named this "
+                f"street — do NOT say 'Girdžiu {o['street']}' or claim they mentioned it. "
+                f"Ask NEUTRALLY and WAIT for their answer: 'Ar skambinate dėl "
+                f"{o['street']}?'. ONLY after they confirm, inform about the outage + "
+                f"estimated time and then call close_case(reason='outage'). Do NOT run "
+                f"identification (no 'Radau sutartį', no house/apartment). If they name a "
+                f"DIFFERENT street, drop this and ask for the address."
+            )
+        # Phone cross-check: the caller named the SAME street their number is
+        # registered at. Offer the account's full address to confirm so they need
+        # not dictate the house/apartment (spoken numbers are STT-fragile — the
+        # top cause of failed identification on the phone).
+        if (
+            not s.customer_id
+            and not s.preflight_outage
+            and s.phone_candidate
+            and s.phone_candidate.get("street")
+            and s.profile.street.value
+            and s.profile.street.value == s.phone_candidate.get("street")
+        ):
+            c = s.phone_candidate
+            flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+            flat_arg = f", apartment_number='{c['apartment']}'" if c.get("apartment") else ""
+            facts.append(
+                f"- PHONE MATCH: the caller's number is registered at {c['address']} and "
+                f"they just named that street. Offer the FULL address to confirm — "
+                f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?" — do NOT make them '
+                f"dictate the house/apartment. On yes, call resolve_address(city='{c['city']}', "
+                f"street='{c['street']}', house_number='{c['house']}'{flat_arg}) to identify. "
+                f"If they say a DIFFERENT house/flat, take that instead."
+            )
+        # DB-grounded verdict on the accumulated address (set in the prefill).
+        if self._db_address_note and not s.customer_id:
+            facts.append(self._db_address_note)
         if s.customer_id:
             facts.append(f"- Customer ID: {s.customer_id}")
         if s.customer_name:
@@ -397,6 +445,22 @@ class ReactAgent:
                 "- Praeitas klausimas liko be atsakymo. NEKARTOK jo pažodžiui — trumpai "
                 "pasakyk „Atsiprašau, neišgirdau“ ir paprašyk pakartoti TIK trūkstamą "
                 "dalį (pvz. gatvės pavadinimą)." + extra
+            )
+        # Raw-buffer reconciliation: once we're stuck AND still unidentified, hand
+        # the LLM EVERYTHING the caller said so far. VAD/STT splits and garbles
+        # spoken numbers ("šešiasdešimt" -> "šešias dešimt" -> a fragment that
+        # parses as 10, not 60); no single turn resolves, but the whole buffer
+        # lets the model infer the intended address. Only kicks in when the
+        # deterministic path has stalled, so the clean case stays LLM-free.
+        if not s.customer_id and s.stuck_count >= 1 and len(s.heard_utterances) >= 2:
+            recent = " | ".join(s.heard_utterances[-8:])
+            facts.append(
+                "- ALL HEARD (reconcile): the caller has said these pieces so far: "
+                f'"{recent}". STT may have split or garbled a spoken number '
+                '("šešiasdešimt" 60 can arrive as "šešias dešimt" and mis-parse to 10). '
+                "Infer the MOST LIKELY full address from everything above (prefer the "
+                "latest correction), then call resolve_address with it — do not make the "
+                "caller repeat again if you can reasonably infer it."
             )
         # Outage reported (restricted mode): an active outage IS the answer, so stop
         # identifying/diagnosing — but stay available for the caller's follow-ups
@@ -442,27 +506,16 @@ class ReactAgent:
                     "from the raw text): " + ", ".join(heard) + ". Pass them to "
                     "resolve_address unless the caller explicitly corrects them."
                 )
-        # Pre-flight phone candidate: known but UNCONFIRMED until the caller
-        # agrees the offered address is theirs (anchor rule). Only relevant
-        # before a customer has been confirmed.
-        if not s.customer_id and s.phone_candidate and s.phone_candidate.get("address"):
-            cand = s.phone_candidate
-            facts.append(
-                f"- PHONE CANDIDATE (unconfirmed): the caller's number is registered to "
-                f"address {cand['address']} (customer {cand['customer_id']}). Your FIRST "
-                f"reply should offer THIS address for confirmation; if the caller agrees, "
-                f"use customer_id {cand['customer_id']} for diagnosis. If they state a "
-                f"different address, ignore this candidate."
-            )
-        elif s.preflight_done and not s.customer_id and s.caller_phone not in (None, "", "unknown"):
-            # Pre-flight ran and found NO account for this number. Make the absence
-            # explicit so the model cannot invent a "skambinate iš numerio..."
-            # address out of thin air (observed hallucination).
-            facts.append(
-                "- NO phone account is on file for this caller's number. You do NOT "
-                "know their address — NEVER say 'skambinate iš numerio, registruoto "
-                "adresu ...' and never invent one. Ask for the address."
-            )
+        # Phone candidate is NOT surfaced to the model. Identification is
+        # address-first: the agent always asks for the service address and
+        # resolve_address is what commits the customer_id. The preflight
+        # phone_candidate stays in AgentState for SILENT use only — a
+        # deterministic cross-check (does the stated address match the caller's
+        # account?) and the mass-outage fast-path — never as an address to
+        # offer. Surfacing it caused the model to (a) re-ask the same
+        # confirmation without ever committing the id, and (b) present a
+        # user-stated address as "skambinate iš numerio, registruoto adresu ..."
+        # even for callers with no account on file.
 
         if not facts:
             return None
@@ -716,8 +769,34 @@ class ReactAgent:
             "customer_id": result.get("customer_id"),
             "name": result.get("name"),
             "address": primary.get("full_address"),
+            # Structured parts for the phone cross-check: if the caller names this
+            # street, offer the full address to confirm instead of making them
+            # dictate the house/apartment (spoken numbers are STT-fragile).
+            "city": primary.get("city"),
+            "street": primary.get("street"),
+            "house": primary.get("house_number"),
+            "apartment": primary.get("apartment_number"),
         }
         self.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
+
+        # Proactive mass-outage awareness (roadmap 6b): if this caller's street
+        # has an active outage, remember it so the FIRST reply can inform right
+        # away — no full identification needed (everyone at that street is down).
+        try:
+            outage = json.loads(
+                execute_tool("check_outages", {"customer_id": result.get("customer_id")})
+            )
+        except Exception:
+            return
+        if outage.get("affected") and outage.get("active_outages"):
+            first = outage["active_outages"][0]
+            eta = first.get("estimated_resolution") or ""
+            self.state.preflight_outage = {
+                "street": first.get("street"),
+                "eta": eta[11:16] if len(eta) >= 16 else eta,  # HH:MM, voice-friendly
+                "description": first.get("description"),
+            }
+            self.tracer.emit("preflight_outage", street=first.get("street"))
 
     def _prefill_slots_from_text(self, text: str) -> None:
         """Deterministic NLU Track A: extract the address from the caller's turn and
@@ -728,6 +807,13 @@ class ReactAgent:
         LLM. Proposed as HEARD; resolve_address upgrades a confirmed hit to
         RESOLVED. Best-effort: any failure (DB, import) silently no-ops the turn.
         """
+        # Raw utterance buffer: keep every caller turn verbatim so nothing is lost
+        # when VAD/STT splits an utterance into fragments. Feeds the LLM
+        # reconciliation fact when the deterministic slots stall (see
+        # _state_facts_block), and the future async silent re-processing.
+        if text and text.strip():
+            self.state.heard_utterances.append(text.strip())
+
         # Problem classification (R1) — independent of the registry/DB, so it runs
         # even if address extraction fails. A revisable hypothesis: a clearer later
         # statement overrides (docs/pokalbio_variklis.md §12.2).
@@ -766,6 +852,18 @@ class ReactAgent:
         if reading.apartment:
             p.apartment.propose(reading.apartment, conf, SlotStatus.HEARD)
 
+        # If the caller names a DIFFERENT street than the pre-flight outage was
+        # for, that outage is not theirs — drop it so its proactive instruction
+        # stops polluting the rest of the call (observed: the agent kept
+        # apologising and re-mentioning the outage after the caller switched
+        # streets).
+        if (
+            reading.street
+            and self.state.preflight_outage
+            and reading.street != self.state.preflight_outage.get("street")
+        ):
+            self.state.preflight_outage = None
+
         self.tracer.emit(
             "nlu",
             problem=self.state.problem_type,
@@ -775,6 +873,47 @@ class ReactAgent:
             apartment=reading.apartment,
             confidence=round(reading.street_confidence, 2),
         )
+
+        # DB-ground everything heard so far (any order, across fragments).
+        self._revalidate_accumulated_address()
+
+    def _revalidate_accumulated_address(self) -> None:
+        """Check the ACCUMULATED address slots against the DB every turn and stash
+        the DB's verdict for the facts block.
+
+        The tools can always validate what is real — which streets exist, in which
+        village, which house numbers are on a street — so we lean on that instead
+        of the last (often garbled) fragment. resolve_address is called with ALL
+        slots gathered so far, in any order; its `hint` already says the exact next
+        step ("Radau sutartį adresu … — patvirtink", "Paklausk namo numerio",
+        "Dainų ar Dailės?", "Namo 6 … nerandu"). Read-only: the id is committed only
+        when the agent confirms with the caller (anchor rule), never here.
+        """
+        self._db_address_note = None
+        s = self.state
+        if s.customer_id or not s.profile.street.value:
+            return
+        p = s.profile
+        args: dict[str, str] = {"street": p.street.value}
+        if p.city.value:
+            args["city"] = p.city.value
+        if p.house.value:
+            args["house_number"] = p.house.value
+        if p.apartment.value:
+            args["apartment_number"] = p.apartment.value
+        try:
+            res = json.loads(execute_tool("resolve_address", args))
+        except Exception:  # pragma: no cover - best-effort, never break a turn
+            return
+        hint = res.get("hint")
+        if hint:
+            self._db_address_note = (
+                f"- DB CHECK (everything heard so far → {args}): {hint} "
+                "Act on THIS (the DB), not on the last thing you misheard; if it is a "
+                "match, confirm that exact address; if a part is missing/unclear, ask "
+                "only for it. Do NOT read out a list of street names for the caller to "
+                "pick from — if the street is unclear, ask them to repeat it."
+            )
 
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""

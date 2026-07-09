@@ -98,6 +98,7 @@ _UNITS = {
     "šešios": 6,
     "šešias": 6,
     "šešės": 6,
+    "šešis": 6,  # common Whisper variant, e.g. split "šešis dešimt" -> 60
     "septyni": 7,
     "septynios": 7,
     "septynias": 7,
@@ -199,7 +200,17 @@ def _classify(token: str) -> str | None:
 
 
 def _run_value(words: list[str]) -> int:
-    """Combine a run of consecutive LT number words into one integer (1-999)."""
+    """Combine a run of consecutive LT number words into one integer.
+
+    Digit-sequence first: a run of ONLY bare units (0-9), two or more long, is
+    spoken digits — "šeši nulis" -> 60, "šeši aštuoni" -> 68 — so concatenate them.
+    A real compound number always contains a tens/teens/hundred word, so this
+    never mis-fires on "šešiasdešimt aštuoni" (= 68 by arithmetic below). This is
+    what makes the digit-by-digit fallback ("pasakykite skaitmenimis") work.
+    """
+    if len(words) >= 2 and all(_classify(w) == "unit" for w in words):
+        return int("".join(str(_UNITS[w.lower()]) for w in words))
+
     total = 0
     pending = 0  # a bare unit: multiplier before 'šimtai', else the ones digit
     for w in words:

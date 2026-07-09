@@ -43,6 +43,12 @@ class AgentState:
     # apart from "lookup not done yet" — the agent only states "no account on
     # file" once we have actually checked).
     preflight_done: bool = False
+    # Proactive mass-outage awareness: if the caller's number is on a street with
+    # an active outage, the pre-flight stores {street, eta, description} here so
+    # the agent can inform immediately ("Ar dėl <street>? Ten avarija…") instead
+    # of running full identification. Only the STREET is revealed (PII-safe), and
+    # as a question, not an identity claim. None = no known outage for the caller.
+    preflight_outage: dict[str, Any] | None = None
 
     # Caller information (populated after customer confirms)
     caller_name: str | None = None  # Actual caller's name
@@ -50,6 +56,14 @@ class AgentState:
 
     # Tool observations
     observations: list[str] = field(default_factory=list)
+
+    # Raw utterance buffer — everything the caller said, verbatim (noise already
+    # filtered upstream). VAD/STT can split one spoken address into short garbled
+    # fragments ("šešiasdešimt" -> "šešias dešimt"); no single fragment parses,
+    # but the WHOLE buffer lets the LLM reconcile the address (esp. numbers) when
+    # the deterministic slots stall. Also the seam for later async silent
+    # re-processing. Keeps ALL info (address + problem + symptoms), never dropped.
+    heard_utterances: list[str] = field(default_factory=list)
 
     # Problem tracking
     problem_type: str | None = None  # internet, tv, phone, billing
