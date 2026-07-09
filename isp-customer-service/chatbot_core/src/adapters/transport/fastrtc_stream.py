@@ -47,8 +47,8 @@ class FastRTCVoiceTransport:
         output_sample_rate: int = _DEFAULT_OUTPUT_RATE,
         record_dir: str | Path | None = None,
         started_talking_threshold: float = 0.3,
-        speech_threshold: float = 0.7,
-        audio_chunk_duration: float = 0.6,
+        speech_threshold: float = 0.3,
+        audio_chunk_duration: float = 1.0,
         can_interrupt: bool = False,
         play_filler: bool = False,
         stream_playback: bool = True,
@@ -62,11 +62,17 @@ class FastRTCVoiceTransport:
                 here, so a real call can be replayed and re-tested offline.
             started_talking_threshold: seconds of speech in a chunk before a turn
                 starts (FastRTC default 0.2 fires on brief noise; 0.3 is calmer).
-            speech_threshold: pause length (s) that ends the caller's turn.
-                FastRTC's 0.1 cuts people off mid-sentence; 0.7 lets a caller
-                pause mid-address ("Tilžės gatvė 60 … butas 3") and still finish
-                as ONE utterance, so the ASR/NLU see the whole address instead of
-                garbled fragments (best-practice end-of-speech is ~500–800 ms).
+            speech_threshold: max seconds of speech WITHIN one `audio_chunk_duration`
+                window below which FastRTC decides the caller paused. MUST be
+                < audio_chunk_duration — otherwise every chunk looks like a pause
+                (max speech in a chunk == its duration) and the handler fires after
+                ~one chunk, so the ASR only ever gets that first fragment (one word).
+                To tolerate a longer mid-address pause, RAISE audio_chunk_duration,
+                not this. (Regression fixed: 0.7 > 0.6 chunk truncated every turn.)
+            audio_chunk_duration: VAD window (s). Larger = tolerates longer pauses
+                mid-address before ending the turn (at the cost of a bit more
+                latency deciding the caller finished). 1.0 lets "Tilžės gatvė 60 …
+                butas 3" land as ONE utterance.
             audio_chunk_duration: VAD processing chunk size (s).
             can_interrupt: barge-in. FastRTC defaults this to True, but without
                 acoustic echo cancellation the agent's own voice (and room noise)
@@ -113,9 +119,24 @@ class FastRTCVoiceTransport:
     def _build_stream(self) -> Any:
         from fastrtc import AlgoOptions, ReplyOnPause, Stream  # deferred (optional dep)
 
+        # INVARIANT: speech_threshold must be < audio_chunk_duration. Otherwise
+        # every VAD chunk looks like a pause (a chunk holds at most its own
+        # duration of speech), so the handler fires after ~one chunk and the ASR
+        # only ever receives that first fragment. Clamp defensively.
+        if self._speech_threshold >= self._audio_chunk_duration:
+            safe = round(self._audio_chunk_duration * 0.5, 3)
+            logger.warning(
+                "VAD speech_threshold (%.2f) >= audio_chunk_duration (%.2f) would "
+                "truncate every turn to one chunk; clamping to %.2f.",
+                self._speech_threshold,
+                self._audio_chunk_duration,
+                safe,
+            )
+            self._speech_threshold = safe
+
         # Calmer turn-taking than the defaults: needs a bit more speech to start
-        # (fewer noise false-fires) and waits a touch longer before replying
-        # (stops cutting the caller off mid-sentence).
+        # (fewer noise false-fires) and a larger VAD window so a mid-address pause
+        # does not cut the caller off (see the __init__ docstring).
         algo = AlgoOptions(
             audio_chunk_duration=self._audio_chunk_duration,
             started_talking_threshold=self._started_talking_threshold,

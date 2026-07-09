@@ -181,8 +181,8 @@ def main() -> None:
         pipeline,
         record_dir=record_dir,
         started_talking_threshold=float(os.environ.get("VAD_STARTED", "0.3")),
-        speech_threshold=float(os.environ.get("VAD_SPEECH", "0.7")),
-        audio_chunk_duration=float(os.environ.get("VAD_CHUNK", "0.6")),
+        speech_threshold=float(os.environ.get("VAD_SPEECH", "0.3")),
+        audio_chunk_duration=float(os.environ.get("VAD_CHUNK", "1.0")),
         # Barge-in OFF by default: without echo cancellation the agent's own
         # voice cuts it off mid-sentence. VOICE_BARGE_IN=1 to re-enable.
         can_interrupt=os.environ.get("VOICE_BARGE_IN", "0") == "1",
