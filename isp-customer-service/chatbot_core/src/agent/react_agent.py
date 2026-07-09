@@ -912,7 +912,8 @@ class ReactAgent:
                 f"- DB CHECK (everything heard so far → {args}): {hint} "
                 "Act on THIS (the DB), not on the last thing you misheard; if it is a "
                 "match, confirm that exact address; if a part is missing/unclear, ask "
-                "only for it."
+                "only for it. Do NOT read out a list of street names for the caller to "
+                "pick from — if the street is unclear, ask them to repeat it."
             )
 
     def end_session(self, outcome: str | None = None) -> None:

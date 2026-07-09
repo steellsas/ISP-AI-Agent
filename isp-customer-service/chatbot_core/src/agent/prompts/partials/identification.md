@@ -29,8 +29,10 @@ come in a later stage, so do not start them or promise them yet.
    locality and WAIT: "Aušros gatvė — Bubių kaime, Šiaulių rajone, taip?". Only
    after they confirm, ask for the house number. Ask the city yourself only if the
    tool says the street is in several localities or none.
-4. Ask only for the MISSING part, and follow the tool's 'hint': street unclear ->
-   offer the candidates ("Dainų ar Dailės gatvė?"); several contracts -> do the
+4. Ask only for the MISSING part. If the street is UNCLEAR, do NOT read out a list
+   of street names for the caller to choose from — instead ask them to repeat or
+   spell it ("Atsiprašau, gatvės nelabai išgirdau — gal galite pakartoti?") and let
+   the DB CHECK interpret it against the real streets. Several contracts -> do the
    outage check first, and if there is none, ask the apartment number. Do NOT
    re-ask or re-confirm a part the customer already gave, and once resolve_address
    returns a customer hit do NOT confirm the same address twice.
