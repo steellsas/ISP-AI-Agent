@@ -374,15 +374,14 @@ class ReactAgent:
             o = s.preflight_outage
             eta = f", atstatymas iki {o['eta']}" if o.get("eta") else ""
             facts.append(
-                f"- PROACTIVE OUTAGE: the caller's number is on {o['street']}, which has "
-                f"an ACTIVE mass outage{eta}. This IS the answer — NOT identification. "
-                f"Your FIRST reply asks whether they are calling about {o['street']} and "
-                f"states the outage + estimated time. Do NOT run identification: do NOT "
-                f"say 'Radau sutartį', do NOT ask 'ar šiuo adresu', do NOT ask for a "
-                f"house/apartment. Answer outage follow-ups (time, compensation); as soon "
-                f"as they have no more questions or thank you / say goodbye, call "
-                f"close_case(reason='outage'). If they name a DIFFERENT street, drop this "
-                f"and ask for the address."
+                f"- PROACTIVE OUTAGE: the caller's number is registered on {o['street']}, "
+                f"which has an ACTIVE mass outage{eta}. The caller has NOT named this "
+                f"street — do NOT say 'Girdžiu {o['street']}' or claim they mentioned it. "
+                f"Ask NEUTRALLY and WAIT for their answer: 'Ar skambinate dėl "
+                f"{o['street']}?'. ONLY after they confirm, inform about the outage + "
+                f"estimated time and then call close_case(reason='outage'). Do NOT run "
+                f"identification (no 'Radau sutartį', no house/apartment). If they name a "
+                f"DIFFERENT street, drop this and ask for the address."
             )
         # Phone cross-check: the caller named the SAME street their number is
         # registered at. Offer the account's full address to confirm so they need
