@@ -553,6 +553,68 @@ class ReactAgent:
     # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
     _GATED_TOOLS = frozenset({"diagnose_connection", "update_mac", "reset_port", "create_ticket"})
 
+    # Line/provider-side faults that a remote or instructed fix is supposed to
+    # clear. If a fresh diagnose still shows one of these, the fix has NOT taken —
+    # so "resolved" is premature (telemetry is the source of truth, not the
+    # caller's word). healthy_to_router is deliberately absent: the line is fine,
+    # any remaining fault is client-side (Wi-Fi/device) which telemetry can't see,
+    # so that close is the caller's call.
+    _UNRESOLVED_LINE_FAULTS = frozenset(
+        {"foreign_mac", "link_down_local", "dhcp_silent", "crc_errors", "no_mac_observed"}
+    )
+
+    def _fresh_diagnose_reason(self) -> str | None:
+        """Re-read telemetry now and return the verdict reason (or None on error).
+        Read-only — used to VERIFY a fix actually took before closing/acting."""
+        if not self.state.customer_id:
+            return None
+        try:
+            d = json.loads(
+                execute_tool("diagnose_connection", {"customer_id": self.state.customer_id})
+            )
+            return (d.get("verdict") or {}).get("reason")
+        except Exception:  # pragma: no cover - best-effort
+            return None
+
+    def _augment_tool_result(self, name: str, observation: str) -> str:
+        """Deterministic post-action chaining + telemetry verification (B6 strategy).
+
+        update_mac ALONE does not restore service — the port must be reset and the
+        line re-checked. Rather than trust the model to remember the whole sequence
+        (observed: it bound nothing and closed on the caller's word), the engine
+        chains it: after a successful update_mac it runs reset_port and re-reads the
+        telemetry, and hands the model a VERIFIED outcome to narrate (what the
+        provider side actually shows, not what the caller claims)."""
+        if name != "update_mac":
+            return observation
+        try:
+            obs = json.loads(observation)
+        except (TypeError, ValueError):
+            return observation
+        if not obs.get("success"):
+            return observation  # nothing bound (e.g. no_observed_mac) — leave as is
+        cid = self.state.customer_id
+        try:
+            rp = json.loads(execute_tool("reset_port", {"customer_id": cid}))
+            self.tracer.emit("tool_call", name="reset_port", args={"customer_id": cid})
+            obs["auto_reset_port"] = bool(rp.get("success"))
+        except Exception:  # pragma: no cover - best-effort
+            obs["auto_reset_port"] = None
+        reason_now = self._fresh_diagnose_reason()
+        fixed = reason_now not in self._UNRESOLVED_LINE_FAULTS
+        obs["telemetry_after"] = reason_now
+        obs["fixed"] = fixed
+        gloss = _DIAGNOSIS_LT.get(reason_now, reason_now or "—")
+        obs["message"] = (obs.get("message", "") or "").strip() + (
+            f" Portas perkrautas. Telemetrija dabar: {gloss}. "
+            + (
+                "Ryšys iki namo ATSTATYTAS — pasakyk klientui ir uždaryk kaip resolved."
+                if fixed
+                else "Ryšys DAR neatstatytas — nesakyk, kad sutvarkyta."
+            )
+        )
+        return json.dumps(obs, ensure_ascii=False)
+
     def _gate_tool(self, name: str, args: dict) -> str | None:
         """
         Deterministic tool-access gate.
@@ -590,15 +652,35 @@ class ReactAgent:
         # an outage to have actually been reported.
         if name == "close_case":
             reason = args.get("reason", "resolved")
-            if reason == "resolved" and not self.state.customer_id:
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": "not_identified",
-                        "message": "Negalima uždaryti kaip 'resolved' neidentifikavus kliento.",
-                    },
-                    ensure_ascii=False,
-                )
+            if reason == "resolved":
+                if not self.state.customer_id:
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "error": "not_identified",
+                            "message": "Negalima uždaryti kaip 'resolved' neidentifikavus kliento.",
+                        },
+                        ensure_ascii=False,
+                    )
+                # Verify-gate: telemetry is the source of truth. If a fresh
+                # diagnose still shows the line fault, the fix has NOT taken —
+                # block "resolved" so the agent can't close on the caller's word
+                # (observed: B6 closed as resolved without ever binding the MAC).
+                reason_now = self._fresh_diagnose_reason()
+                if reason_now in self._UNRESOLVED_LINE_FAULTS:
+                    gloss = _DIAGNOSIS_LT.get(reason_now, reason_now)
+                    return json.dumps(
+                        {
+                            "success": False,
+                            "error": "not_fixed",
+                            "message": (
+                                f"Telemetrija dar rodo gedimą ({gloss}) — dar NEsutvarkyta, "
+                                "neuždaryk kaip 'resolved'. Atlik reikiamą veiksmą (pvz. "
+                                "update_mac + reset_port) ir per-tikrink diagnostiką."
+                            ),
+                        },
+                        ensure_ascii=False,
+                    )
             if reason == "outage" and not self.state.outage_reported:
                 return json.dumps(
                     {
@@ -960,6 +1042,7 @@ class ReactAgent:
                 _t = time.perf_counter()
                 observation = execute_tool(name, args)
                 tool_ms = round((time.perf_counter() - _t) * 1000.0)
+                observation = self._augment_tool_result(name, observation)
 
             self.state.messages.append(
                 {"role": "tool", "tool_call_id": tc.id, "content": observation}
