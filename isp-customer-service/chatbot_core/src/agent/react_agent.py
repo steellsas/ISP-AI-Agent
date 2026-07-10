@@ -309,15 +309,23 @@ class ReactAgent:
         return messages
 
     def _scoped_tools_schema(self) -> list:
-        """The tool schema for the current node — all tools, or only the subset a
-        graph node restricted the model to (self._active_tool_names)."""
-        if self._active_tool_names is None:
-            return self.tools_schema
-        return [
-            t
-            for t in self.tools_schema
-            if t.get("function", {}).get("name") in self._active_tool_names
-        ]
+        """The tool schema for the current node — all tools, or the subset a graph
+        node restricted the model to (self._active_tool_names).
+
+        Per-step scoping: while a resolution strategy is active, diagnose_connection
+        is withheld — the ENGINE owns re-diagnosis (the VERIFY step), so the model
+        cannot re-diagnose into a different branch and derail the strategy (observed:
+        a stray B7 'which device?' question right after the MAC fix)."""
+        schema = self.tools_schema
+        if self._active_tool_names is not None:
+            schema = [
+                t for t in schema if t.get("function", {}).get("name") in self._active_tool_names
+            ]
+        if self.state.resolution is not None:
+            schema = [
+                t for t in schema if t.get("function", {}).get("name") != "diagnose_connection"
+            ]
+        return schema
 
     def run_turn_scoped(
         self,
