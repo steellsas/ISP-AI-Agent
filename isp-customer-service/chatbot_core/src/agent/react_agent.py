@@ -605,13 +605,34 @@ class ReactAgent:
         obs["telemetry_after"] = reason_now
         obs["fixed"] = fixed
         gloss = _DIAGNOSIS_LT.get(reason_now, reason_now or "—")
-        obs["message"] = (obs.get("message", "") or "").strip() + (
-            f" Portas perkrautas. Telemetrija dabar: {gloss}. "
-            + (
-                "Ryšys iki namo ATSTATYTAS — pasakyk klientui ir uždaryk kaip resolved."
-                if fixed
-                else "Ryšys DAR neatstatytas — nesakyk, kad sutvarkyta."
+
+        # VERIFY step, decided by the sequencer from the TELEMETRY (not the model).
+        # This is what closes the observed gap: after the fix the line reads
+        # healthy_to_router, and instead of the model treating that as a fresh
+        # client-side issue, the engine resolves it deterministically.
+        from .resolution import get_strategy, verify_target
+
+        strat = get_strategy((self.state.resolution or {}).get("verdict"))
+        target = verify_target(strat, fixed) if strat else ("resolve" if fixed else None)
+        if target == "resolve":
+            self.state.case_closed = True
+            self.state.closed_reason = "resolved"
+            self.state.resolution = None
+            tail = (
+                "Ryšys iki namo ATSTATYTAS (telemetrija). Trumpai pasakyk klientui, kad "
+                "sutvarkėte, palinkėk geros dienos ir tuo baik — NEklausk apie įrenginius."
             )
+        elif target == "escalate":
+            tail = (
+                "Ryšys DAR neatstatytas (telemetrija). Nesakyk, kad sutvarkyta — "
+                "užregistruok gedimą patikrinimui (create_ticket)."
+            )
+        else:
+            tail = "Ryšys atstatytas." if fixed else "Ryšys dar neatstatytas."
+        obs["message"] = (
+            (obs.get("message", "") or "").strip()
+            + f" Portas perkrautas. Telemetrija dabar: {gloss}. "
+            + tail
         )
         return json.dumps(obs, ensure_ascii=False)
 
@@ -767,6 +788,19 @@ class ReactAgent:
                     "reason": v.get("reason"),
                     "signals": v.get("signals"),
                 }
+                # Activate / re-evaluate the resolution strategy for this verdict
+                # (dynamic pivot: a re-diagnose with a different verdict switches
+                # strategy). None = generic inform/instruct flow.
+                from .resolution import get_strategy
+
+                strat = get_strategy(v.get("reason"))
+                if strat is not None:
+                    prev = (self.state.resolution or {}).get("verdict")
+                    if prev != strat.verdict:  # new or pivoted
+                        self.state.resolution = {
+                            "verdict": strat.verdict,
+                            "step": strat.steps[0].id,
+                        }
 
             # An active outage for the caller's street -> restricted mode (NOT a
             # close): the caller still asks "when fixed? / compensation?", so the

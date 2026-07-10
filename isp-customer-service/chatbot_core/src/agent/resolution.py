@@ -138,3 +138,13 @@ def get_strategy(verdict: str | None) -> Strategy | None:
     """The strategy for a diagnosis verdict reason, or None if unhandled (the
     caller falls back to the generic instruct/inform flow)."""
     return STRATEGIES.get(verdict or "")
+
+
+def verify_target(strategy: Strategy, fixed: bool) -> str | None:
+    """The terminal a strategy's VERIFY step routes to for a fixed / not-fixed
+    telemetry outcome (e.g. 'resolve' / 'escalate'). None if it has no VERIFY step.
+    Used by the engine after a silent action to decide resolve vs escalate."""
+    vstep = next((s for s in strategy.steps if s.kind == StepKind.VERIFY), None)
+    if vstep is None:
+        return None
+    return next_step_id(strategy, vstep.id, Outcome.FIXED if fixed else Outcome.NOT_FIXED)
