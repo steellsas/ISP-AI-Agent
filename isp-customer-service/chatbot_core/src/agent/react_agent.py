@@ -652,8 +652,9 @@ class ReactAgent:
             # per round), and the model re-diagnoses into a stray B7 branch. The
             # case is closing anyway (case_closed routes to the closing node).
             tail = (
-                "Ryšys iki namo ATSTATYTAS (telemetrija). Trumpai pasakyk klientui, kad "
-                "sutvarkėte, palinkėk geros dienos ir tuo baik — NEklausk apie įrenginius."
+                "Naujas įrenginys PRIRIŠTAS, ryšys iki namo ATSTATYTAS (telemetrija). "
+                "Pasakyk klientui, kad pririšai jo naują įrenginį ir internetas veiks; "
+                "palinkėk geros dienos ir tuo baik — NEklausk apie įrenginius."
             )
         elif target == "escalate":
             tail = (

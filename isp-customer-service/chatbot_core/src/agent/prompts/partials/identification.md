@@ -23,7 +23,10 @@ come in a later stage, so do not start them or promise them yet.
    <rastas adresas>. Ar šiuo adresu neveikia internetas?". A clear yes (also garbled
    "taip", "aha", "teisingai") confirms — resolve_address has ALREADY set the
    customer_id, so you are identified and diagnosis follows; do NOT re-ask the
-   address. Say "Radau" only on a real customer hit, not on a partial street match.
+   address. NEVER say "Radau sutartį" until resolve_address has ACTUALLY returned a
+   customer with a resolved address — not on an empty/garbled turn, not before you
+   have the street. If you have no resolved address yet, ask for it; do not claim to
+   have found a contract with a blank address.
 3. STREET FIRST: as soon as you have the street (even without a house), call
    resolve_address(street=...) WITHOUT a house — it returns the locality. Echo the
    locality and WAIT: "Aušros gatvė — Bubių kaime, Šiaulių rajone, taip?". Only
