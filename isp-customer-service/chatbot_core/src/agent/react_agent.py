@@ -492,6 +492,26 @@ class ReactAgent:
                 "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
                 "sutaikink."
             )
+        # Active resolution strategy: inject ONLY the current step's playbook
+        # section (never the whole doc — a streaming model would run several steps
+        # ahead). This is the "what to do NOW" for the step the engine is on.
+        if s.resolution and not s.case_closed:
+            from .playbook import get_step
+            from .resolution import get_strategy
+
+            strat = get_strategy(s.resolution.get("verdict"))
+            step = strat.step(s.resolution.get("step", "")) if strat else None
+            if step is not None:
+                if step.rag_section is not None:
+                    section = get_step(strat.rag_doc, step.rag_section)
+                    if section:
+                        facts.append(
+                            "- PLAYBOOK (tavo vidinė instrukcija ŠIAM žingsniui — elkis "
+                            "pagal ją, NEskaityk kliento pažodžiui, vienas klausimas per "
+                            "kartą):\n" + section
+                        )
+                if step.hint:
+                    facts.append(f"- ŠIS ŽINGSNIS: {step.hint}")
         # Deterministically heard address parts (NLU Track A prefill). Surface them
         # so the model passes THESE to resolve_address instead of re-extracting
         # garbled STT (observed: NLU heard "Aušros g. 8" but the model sent

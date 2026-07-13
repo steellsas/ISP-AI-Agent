@@ -53,7 +53,9 @@ class Step:
     hint: str = ""  # LT guidance shown to the LLM for THIS step only
     tools: frozenset[str] = frozenset()  # tools the LLM may call this step
     tool_actions: tuple[str, ...] = ()  # backend tools the engine runs (ACTION)
-    rag_section: str | None = None
+    # 0-based index of the "### Žingsnis N" section in the strategy's RAG doc to
+    # inject for THIS step (only that section, never the whole file). None = none.
+    rag_section: int | None = None
     # Where to jump on each outcome (step id). Missing outcome = fall through to
     # the next step in order. "resolve"/"escalate"/"end" are terminal sentinels.
     on: dict[Outcome, str] = field(default_factory=dict)
@@ -105,9 +107,11 @@ _FOREIGN_MAC = Strategy(
             id="confirm_change",
             kind=StepKind.CONFIRM,
             tools=frozenset(),
+            rag_section=0,  # "### Žingsnis 1: Ką klientas prijungė"
             hint=(
-                "Paklausk, ar klientas neseniai keitė ar prijungė kitą routerį. "
-                "Jei NE — įtartinas įrenginys linijoje, eskaluoti (registruoti)."
+                "Paklausk, ar klientas neseniai keitė ar prijungė kitą įrenginį "
+                "(routerį, kompiuterį ar TV). Jei nieko nekeitė ir nepaaiškina — "
+                "įtartinas įrenginys, eskaluoti (registruoti)."
             ),
             on={Outcome.NO: "escalate"},
         ),
