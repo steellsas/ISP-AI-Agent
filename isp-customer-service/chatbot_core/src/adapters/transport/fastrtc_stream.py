@@ -48,7 +48,7 @@ class FastRTCVoiceTransport:
         record_dir: str | Path | None = None,
         started_talking_threshold: float = 0.3,
         speech_threshold: float = 0.3,
-        audio_chunk_duration: float = 1.0,
+        audio_chunk_duration: float = 1.5,
         can_interrupt: bool = False,
         play_filler: bool = False,
         stream_playback: bool = True,

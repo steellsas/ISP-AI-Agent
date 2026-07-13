@@ -54,6 +54,11 @@ class AgentState:
     caller_name: str | None = None  # Actual caller's name
     address_confirmed: bool = False
 
+    # Active resolution strategy (agent/resolution.py): {"verdict", "step"} once a
+    # diagnose verdict maps to a strategy, so the engine can walk its steps
+    # deterministically (the model cannot skip). None = generic inform/instruct.
+    resolution: dict[str, Any] | None = None
+
     # Tool observations
     observations: list[str] = field(default_factory=list)
 

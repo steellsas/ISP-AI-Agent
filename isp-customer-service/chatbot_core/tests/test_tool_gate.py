@@ -94,9 +94,20 @@ class TestCloseCaseGate:
         assert out is not None
         assert json.loads(out)["error"] == "not_identified"
 
-    def test_resolved_allowed_when_identified(self, agent):
+    def test_resolved_allowed_when_line_healthy(self, agent):
+        # Identified AND a fresh diagnose shows no line fault -> resolved allowed.
         agent.state.customer_id = "CUST105"
-        assert agent._gate_tool("close_case", {"reason": "resolved"}) is None
+        with patch.object(agent, "_fresh_diagnose_reason", return_value="healthy_to_router"):
+            assert agent._gate_tool("close_case", {"reason": "resolved"}) is None
+
+    def test_resolved_blocked_when_line_still_broken(self, agent):
+        # Verify-gate: telemetry still shows a line fault, so "resolved" is
+        # premature and must be blocked (source of truth = telemetry, not caller).
+        agent.state.customer_id = "CUST105"
+        with patch.object(agent, "_fresh_diagnose_reason", return_value="foreign_mac"):
+            out = agent._gate_tool("close_case", {"reason": "resolved"})
+        assert out is not None
+        assert json.loads(out)["error"] == "not_fixed"
 
     def test_outage_blocked_without_outage_reported(self, agent):
         out = agent._gate_tool("close_case", {"reason": "outage"})
