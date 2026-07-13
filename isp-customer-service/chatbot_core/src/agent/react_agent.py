@@ -506,12 +506,12 @@ class ReactAgent:
                     section = get_step(strat.rag_doc, step.rag_section)
                     if section:
                         facts.append(
-                            "- PLAYBOOK (tavo vidinė instrukcija ŠIAM žingsniui — elkis "
-                            "pagal ją, NEskaityk kliento pažodžiui, vienas klausimas per "
-                            "kartą):\n" + section
+                            "- PLAYBOOK — your INTERNAL guidance for THIS step (Lithuanian "
+                            "content). Act on it, do NOT read it to the caller verbatim, "
+                            "ask ONE thing at a time:\n" + section
                         )
                 if step.hint:
-                    facts.append(f"- ŠIS ŽINGSNIS: {step.hint}")
+                    facts.append(f"- THIS STEP: {step.hint}")
         # Deterministically heard address parts (NLU Track A prefill). Surface them
         # so the model passes THESE to resolve_address instead of re-extracting
         # garbled STT (observed: NLU heard "Aušros g. 8" but the model sent

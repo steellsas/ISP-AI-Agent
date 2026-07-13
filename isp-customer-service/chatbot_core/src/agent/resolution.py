@@ -109,9 +109,9 @@ _FOREIGN_MAC = Strategy(
             tools=frozenset(),
             rag_section=0,  # "### Žingsnis 1: Ką klientas prijungė"
             hint=(
-                "Paklausk, ar klientas neseniai keitė ar prijungė kitą įrenginį "
-                "(routerį, kompiuterį ar TV). Jei nieko nekeitė ir nepaaiškina — "
-                "įtartinas įrenginys, eskaluoti (registruoti)."
+                "Ask whether the caller recently changed or connected another device "
+                "(router, PC or TV). If they changed nothing and cannot explain the "
+                "foreign device, do NOT bind it — escalate (register)."
             ),
             on={Outcome.NO: "escalate"},
         ),
@@ -119,14 +119,14 @@ _FOREIGN_MAC = Strategy(
             id="bind_mac",
             kind=StepKind.ACTION,
             tool_actions=("update_mac",),  # engine chains reset_port + re-diagnose silently
-            hint="Pririšk naują įrenginį; sistema perkraus portą ir per-tikrins liniją.",
+            hint="Bind their new device; the system resets the port and re-checks the line.",
         ),
         Step(
             id="verify",
             kind=StepKind.VERIFY,
             hint=(
-                "Jei telemetrija rodo, kad linija atstatyta — pasakyk klientui, kad "
-                "sutvarkyta, ir uždaryk kaip resolved. Jei ne — eskaluoti."
+                "If the telemetry shows the line restored, tell the caller it is fixed "
+                "and close as resolved. If not, escalate (register)."
             ),
             on={Outcome.FIXED: "resolve", Outcome.NOT_FIXED: "escalate"},
         ),
