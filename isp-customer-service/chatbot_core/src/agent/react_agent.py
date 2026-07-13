@@ -584,6 +584,28 @@ class ReactAgent:
         except Exception:  # pragma: no cover - best-effort
             return None
 
+    def ensure_diagnosed(self) -> None:
+        """Deterministically run diagnose_connection the first time we enter the
+        diagnosis stage (customer identified), so the verdict + strategy are set
+        BEFORE the model narrates. The flow no longer depends on the model choosing
+        to diagnose — which it did inconsistently (sometimes jumping straight to
+        update_mac, sometimes re-diagnosing into another branch). Runs once; the
+        VERIFY step owns re-diagnosis afterwards."""
+        s = self.state
+        if not s.customer_id or s.case_closed:
+            return
+        if s.diagnosis.get("network") or s.outage_reported:
+            return  # already diagnosed this stage (or an outage short-circuited it)
+        try:
+            obs = execute_tool("diagnose_connection", {"customer_id": s.customer_id})
+        except Exception:  # pragma: no cover - best-effort
+            return
+        self.tracer.emit(
+            "tool_call", name="diagnose_connection", args={"customer_id": s.customer_id}
+        )
+        self._trace_tool_result("diagnose_connection", obs)
+        self._update_state_from_observation("diagnose_connection", obs)
+
     def _augment_tool_result(self, name: str, observation: str) -> str:
         """Deterministic post-action chaining + telemetry verification (B6 strategy).
 
@@ -625,7 +647,10 @@ class ReactAgent:
         if target == "resolve":
             self.state.case_closed = True
             self.state.closed_reason = "resolved"
-            self.state.resolution = None
+            # Keep state.resolution set: clearing it here re-exposes
+            # diagnose_connection within the same ReAct turn (tools are re-scoped
+            # per round), and the model re-diagnoses into a stray B7 branch. The
+            # case is closing anyway (case_closed routes to the closing node).
             tail = (
                 "Ryšys iki namo ATSTATYTAS (telemetrija). Trumpai pasakyk klientui, kad "
                 "sutvarkėte, palinkėk geros dienos ir tuo baik — NEklausk apie įrenginius."

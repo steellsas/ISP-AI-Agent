@@ -84,6 +84,10 @@ def build_turn_graph(engine: Any):
         return _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT)
 
     def diagnosis(state: TurnState) -> TurnState:
+        # Deterministic driver: diagnose ONCE on entering the stage (before the LLM
+        # narrates), so the verdict + resolution strategy are set and the flow no
+        # longer depends on the model choosing to diagnose.
+        engine.ensure_diagnosed()
         return _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
 
     def closing(state: TurnState) -> TurnState:

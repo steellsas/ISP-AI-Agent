@@ -133,12 +133,27 @@ class TestRouting:
 
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()
-        session.state.customer_id = "CUST105"  # simulate an identified caller
+        session.state.customer_id = "CUST001"  # identified, healthy -> no strategy
 
         names = self._run_turn_capture_tools(session, "taip")
 
+        # Healthy line -> no resolution strategy -> the diagnosis node keeps the
+        # full toolset (diagnose available; lookup kept for a re-resolve).
         assert "diagnose_connection" in names
-        assert "resolve_address" in names  # diagnosis keeps lookup too (re-resolve)
+        assert "resolve_address" in names
+
+    def test_diagnose_withheld_while_strategy_active(self, db_connection):
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="unknown", engine="graph")
+        session.greeting()
+        session.state.customer_id = "CUST105"  # foreign_mac -> strategy activates
+
+        # ensure_diagnosed runs on entry -> strategy active -> the engine owns
+        # re-diagnosis, so diagnose_connection is withheld from the model.
+        names = self._run_turn_capture_tools(session, "taip")
+        assert "diagnose_connection" not in names
+        assert "update_mac" in names  # the fix action stays available
 
     def test_closed_session_routes_to_closing_with_no_tools(self, db_connection):
         from agent.session import AgentSession
