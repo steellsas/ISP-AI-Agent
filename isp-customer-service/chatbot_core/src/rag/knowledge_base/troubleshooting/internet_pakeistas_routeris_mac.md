@@ -21,6 +21,19 @@ internetas neveikia, nors visa linija iki namo sveika.
 - Ateinantis (tiekėjo) kabelis turi būti įkištas į routerio **WAN** (interneto)
   lizdą, ne į LAN. Įkišus ne ten, routeris neveiks.
 
+## Kada NErišti MAC
+Pririšimas suteikia įrenginiui prieigą prie kliento tinklo - tai saugumo veiksmas.
+NErišti, kai:
+- Klientas **nieko neprijungė ir nepažįsta** įrenginio - galimas svetimas ar kaimyno
+  įrenginys. Registruoti gedimą patikrinimui, ne pririšti.
+- Klientas **ne namie arba negali patvirtinti**, kas prijungta - palaukti, kol
+  patvirtins; nerišti aklai.
+- **Nesi tikras, kad skambina sutarties savininkas** - pirma įsitikinti kliento
+  tapatybe. (Demo etape laikom, kad skambina tikras klientas; realioje sistemoje čia
+  bus tapatybės patikra - MAC pririšimas yra pagrindinis saugumo taškas.)
+
+Rišti TIK kai klientas sąmoningai prijungė savo įrenginį ir tai patvirtina.
+
 ### Žingsnis 1: Ką klientas prijungė
 Paklausti, ką klientas neseniai keitė ar prijungė, ir ar tai jo įrenginys:
 - "Ar neseniai keitėte routerį arba prijungėte kitą įrenginį?"
