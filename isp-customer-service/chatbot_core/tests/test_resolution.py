@@ -25,6 +25,17 @@ class TestDetectYesNo:
         assert detect_yes_no("ne") == Outcome.NO
         assert detect_yes_no("routerio nekeičiau") == Outcome.NO
 
+    def test_stt_dropped_i_both_directions(self):
+        # STT drops the 'i' in BOTH "keičiau"->"kečiau" (yes) and
+        # "nekeičiau"->"nekečiau" (no). The denial must still win.
+        from agent.resolution import confirms_device_change
+
+        assert detect_yes_no("kečiau routerį") == Outcome.YES
+        assert confirms_device_change("kečiau routerį") is True
+        assert detect_yes_no("nekečiau") == Outcome.NO
+        assert detect_yes_no("nieko nekečiau") == Outcome.NO
+        assert confirms_device_change("nekečiau") is False
+
     def test_unclear_is_none(self):
         assert detect_yes_no("nežinau tiksliai kas ten") == Outcome.NO  # nežinau -> denial
         assert detect_yes_no("gerai") is None

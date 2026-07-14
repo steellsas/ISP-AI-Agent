@@ -212,6 +212,7 @@ _NEG = (
     "nekėč",
     "nekič",
     "nekie",  # STT garbling of "nekeičiau" -> "nekiečiau"
+    "nekeč",  # STT drop of the 'i' -> "nekečiau" (must beat the "keč" positive)
     "nieko nekeit",
     "nieko nedar",
     "nieko nekyč",
@@ -225,6 +226,7 @@ _POS = (
     "aha",
     "teisingai",
     "keičiau",
+    "keč",  # STT drop of the 'i' in "keičiau" -> "kečiau"
     "pakeič",
     "prijungiau",
     "prijungėm",
@@ -240,6 +242,7 @@ _POS = (
 # routerį"). A bare affirmative alone must NOT advance a confirm before it is asked.
 _DEVICE_CHANGE = (
     "keičiau",
+    "keč",  # STT drop of the 'i' in "keičiau" -> "kečiau"
     "keitėm",
     "pakeič",
     "prijungiau",

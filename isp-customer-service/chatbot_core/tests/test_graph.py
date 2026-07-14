@@ -151,12 +151,15 @@ class TestRouting:
         session.state.customer_id = "CUST105"  # foreign_mac -> strategy activates
 
         # ensure_diagnosed runs on entry -> strategy active at the CONFIRM step.
-        # diagnose is withheld (engine owns re-diagnosis) AND binding is withheld
-        # until the caller confirms (per-step scoping) — the model cannot bind a MAC
-        # during the confirm step.
+        # A CONFIRM step exposes NO tools at all: the engine owns diagnosis, the
+        # action and closing, so the model just talks. This is the fix for the
+        # observed catastrophe where an empty step still left lookup tools on the
+        # table and the model spammed check_outages to the call limit.
         names = self._run_turn_capture_tools(session, "taip")
+        assert names == set()
         assert "diagnose_connection" not in names
         assert "update_mac" not in names  # bind only exposed after confirm (bind_mac)
+        assert "check_outages" not in names  # the looped tool in the failing trace
 
     def test_closed_session_routes_to_closing_with_no_tools(self, db_connection):
         from agent.session import AgentSession

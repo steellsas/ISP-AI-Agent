@@ -342,11 +342,16 @@ class ReactAgent:
 
             strat = get_strategy(self.state.resolution.get("verdict"))
             step = strat.step(self.state.resolution.get("step", "")) if strat else None
-            # Once the case is closing (e.g. bind resolved / ticket registered), the
-            # action tool is DONE — withdraw it so the model narrates instead of
-            # re-calling it in a loop.
-            if step is not None and step.tools and not self.state.case_closed:
-                schema = [t for t in schema if t.get("function", {}).get("name") in step.tools]
+            if step is not None:
+                # Scope to EXACTLY this step's tools. A CONFIRM / INSTRUCT / VERIFY
+                # step has NONE — the model just talks while the engine owns the
+                # diagnostics, the action and the closing. This is what stops the
+                # model spamming an unrelated lookup while it "waits" (observed:
+                # check_outages looped to the call limit -> 'negaliu apdoroti').
+                # An ACTION/ESCALATE step exposes only its one tool (a fallback —
+                # the engine usually runs the action itself before the model narrates).
+                allowed = step.tools
+                schema = [t for t in schema if t.get("function", {}).get("name") in allowed]
             else:
                 schema = [
                     t
