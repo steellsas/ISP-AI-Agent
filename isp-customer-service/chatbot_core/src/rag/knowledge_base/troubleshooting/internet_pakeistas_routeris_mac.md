@@ -62,25 +62,34 @@ Kai routeris tinkamai prijungtas:
   2. reset_port - perkrauna portą, kad autorizacija atsinaujintų
 - (Sistema po pririšimo pati per-tikrina liniją.) Neskubėti, skirti dėmesį klientui.
 
-### Žingsnis 4: Patikrinti srautą
-Po pririšimo telemetrija turi rodyti atsiradusį srautą / IP:
-- Srautas atsirado - problema išspręsta nuotoliniu būdu, tiketo nereikia. Pasakyti
-  klientui, kad pririšai jo įrenginį ir internetas veiks.
-- Srauto NĖRA (linija vis dar be įrenginio/IP) - pririšimas nepavyko; registruoti
-  gedimą.
-- Tiekėjo pusėje jau viskas gerai (srautas yra), bet klientas sako, kad įrenginiuose
-  vis tiek nėra interneto - tai jau **kliento pusės** problema (Wi-Fi, įrenginio
-  nustatymai). Pereiti prie kliento pusės tikrinimo (visuose įrenginiuose ar viename;
-  laidu ar Wi-Fi).
+### Žingsnis 4: Patikrinti, ar ryšys atsistatė (paklausti kliento)
+Po pririšimo NEskelbti, kad sutvarkyta, savavališkai. Pasakyti klientui, kad pririšai
+jo įrenginį, ir **paklausti, ar internetas jau atsirado** - gali užtrukti minutę kitą:
+- Klientas sako **veikia** - problema išspręsta, palinkėti geros dienos.
+- Klientas sako **dar neveikia**, o tiekėjo pusėje srauto DAR nėra - gali užtrukti
+  kelias minutes, kol prisiriš. Nuraminti, paprašyti palaukti ir pasitikrinti dar
+  kartą. Jei ir po to nieko - registruoti gedimą (Žingsnis paskutinis).
+- Klientas sako **dar neveikia**, bet tiekėjo pusėje jau viskas gerai (srautas yra) -
+  tai jau **kliento pusės** gedimas. Pereiti prie kliento pusės tikrinimo (Žingsnis 5).
+
+### Žingsnis 5: Kliento pusės gedimas
+Tiekėjo pusė tvarkoje, bet kliento įrenginiuose interneto nėra - problema namuose
+(Wi-Fi, įrenginio nustatymai, laidas iki įrenginio). Grįžti prie problemos supratimo
+iš kliento pusės:
+- Paprašyti atlikti vieną paprastą patikrą: perkrauti savo įrenginį, patikrinti ar
+  Wi-Fi įjungtas, pabandyti laidą tiesiai į įrenginį.
+- Veikia - problema išspręsta.
+- Nepadeda - registruoti gedimą detalesniam patikrinimui.
 
 ## Kada eskaluoti (registruoti gedimą)
 Eskaluoti tik retais atvejais - pririšimas yra numatytas sprendimas:
-- Po pririšimo ir porto perkrovimo srautas **neatsiranda** (pririšimas nepadėjo).
+- Po pririšimo srautas **neatsiranda** net palaukus (pririšimas nepadėjo).
+- Tiekėjo pusė tvarkoje, bet kliento pusės patikros **nepadeda**.
 - Klientas **negali pasiekti routerio** ar nėra namie ir negali patikrinti kabelio.
 
 ## Naudingos frazės
 - "Matau, kad linijoje yra kitas įrenginys, dėl jo nėra interneto. Ar keitėte routerį?"
 - "Gal galite patikrinti, ar tiekėjo kabelis įkištas į routerio WAN lizdą? Jis dažnai
   kitos spalvos."
-- "Dabar pririšiu jūsų įrenginį prie tinklo - užtruks minutę."
-- "Pririšau jūsų įrenginį, ryšys atstatytas - patikrinkite, ar veikia."
+- "Pririšau jūsų įrenginį prie tinklo. Ar internetas jau atsirado? Gali užtrukti minutę."
+- "Tiekėjo pusėje viskas gerai. Pabandykite perkrauti įrenginį - ar dabar veikia?"

@@ -92,6 +92,12 @@ def build_turn_graph(engine: Any):
         # plain yes/no advances next turn.
         engine.ensure_diagnosed()
         engine._advance_resolution(state.get("user_input"))
+        # If the caller's reply advanced us onto an ACTION step (e.g. bind_mac after
+        # they confirmed the device change), run it deterministically BEFORE the LLM
+        # narrates — the engine binds + resets + re-verifies and sets case_closed, so
+        # the model only PHRASES the verified result (no model-invoked update_mac,
+        # so no single-tool loop and no "nepririštas, dabar pririšiu" after binding).
+        engine.ensure_action_done()
         result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
         engine._mark_confirm_asked()
         return result

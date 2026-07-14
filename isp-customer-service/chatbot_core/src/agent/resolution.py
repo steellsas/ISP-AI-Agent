@@ -150,27 +150,45 @@ _FOREIGN_MAC = Strategy(
             tool_actions=("update_mac",),  # engine chains reset_port + re-diagnose silently
             rag_section=2,  # "### Žingsnis 3: Pririšti įrenginį"
             hint=(
-                "Announce the fix plainly first ('dabar pririšiu jūsų įrenginį prie "
-                "tinklo, palaukite') — say WHAT you are doing and WHY (the line shows a "
-                "device that is not yet bound) — then call update_mac. Do not rush."
+                "The engine binds the device silently (update_mac + reset_port) and "
+                "re-reads telemetry — you do not call the tool. Then move to asking the "
+                "caller whether the connection is back."
             ),
         ),
         Step(
-            id="verify",
-            kind=StepKind.VERIFY,
-            rag_section=3,  # "### Žingsnis 4: Patikrinti srautą"
+            id="confirm_restored",
+            kind=StepKind.CONFIRM,
+            tools=frozenset(),
+            rag_section=3,  # "### Žingsnis 4: Patikrinti, ar ryšys atsistatė"
             hint=(
-                "If the telemetry shows the line restored, tell the caller it is fixed "
-                "and close as resolved. If not, escalate (register)."
+                "You have just bound the caller's device (silently). Tell them plainly "
+                "you bound their device and ASK whether the internet is back now — it "
+                "can take a minute or two to come up. Do NOT declare it fixed yourself; "
+                "wait for their answer. If they say not yet, reassure them it may take "
+                "a couple of minutes and ask them to check again."
             ),
-            on={Outcome.FIXED: "resolve", Outcome.NOT_FIXED: "escalate"},
+        ),
+        Step(
+            id="client_side",
+            kind=StepKind.CONFIRM,
+            tools=frozenset(),
+            rag_section=4,  # "### Žingsnis 5: Kliento pusės gedimas"
+            hint=(
+                "The provider side is restored (telemetry OK) but the caller still has "
+                "no internet, so the fault is INSIDE their home — Wi-Fi off, device "
+                "settings, or the cable to the device. Guide ONE simple client-side "
+                "check (restart the device, check Wi-Fi is on, try a cable straight "
+                "into the device) and ask if it works now. If yes -> resolved; if not "
+                "-> register the fault."
+            ),
+            on={Outcome.YES: "resolve", Outcome.NO: "escalate"},
         ),
         Step(
             id="escalate",
             kind=StepKind.ESCALATE,
             tools=frozenset({"create_ticket"}),
             hint=(
-                "Binding did not restore the line (or the device cannot be reached). "
+                "Binding did not restore the line (or the in-home checks did not help). "
                 "Register the fault for a technician check ('gedimo registracija') — a "
                 "worker will call the next business day."
             ),

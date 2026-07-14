@@ -8,6 +8,7 @@ the graph (greeting + a mocked turn) and that the legacy switch still bypasses i
 Run: pytest tests/test_graph.py -v
 """
 
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -178,6 +179,86 @@ class TestRouting:
 
         assert reply == "Geros dienos!"
         assert captured["tools"] == []  # closing stage is structurally tools-less
+
+
+class TestEngineDrivenAction:
+    """The ACTION step (bind_mac) is run by the engine, not the model — so there is
+    no single-tool loop and the LLM only phrases a verified outcome. After binding we
+    ASK the caller and re-read telemetry before deciding.
+
+    These stub execute_tool + _fresh_diagnose_reason so they neither mutate the
+    session-shared DB (which would leak into other tests) nor depend on test order.
+    The real bind→telemetry flip is covered in test_port_actions / test_verdict."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def _at_bind(self, agent):
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {"verdict": "foreign_mac", "step": "bind_mac", "asked": False}
+
+    def _at_restored(self, agent):
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {
+            "verdict": "foreign_mac",
+            "step": "confirm_restored",
+            "asked": True,
+        }
+
+    def _stub_tools(self, monkeypatch, telemetry):
+        import agent.react_agent as ra
+
+        monkeypatch.setattr(
+            ra, "execute_tool", lambda name, args: json.dumps({"success": True, "new_mac": "X"})
+        )
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: telemetry)
+
+    def test_bind_asks_before_closing(self, monkeypatch):
+        agent = self._agent()
+        self._at_bind(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        # The engine binds + resets + re-reads telemetry — but does NOT close. It
+        # advances to confirm_restored so we ASK the caller first.
+        assert agent.ensure_action_done() is True
+        assert agent.state.case_closed is False
+        assert agent.state.resolution["step"] == "confirm_restored"
+        assert agent.state.resolution["telemetry_fixed"] is True
+
+    def test_restored_yes_resolves(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        agent._advance_resolution("taip, veikia")
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "resolved"
+
+    def test_restored_no_but_provider_ok_pivots_client_side(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")  # provider OK
+        agent._advance_resolution("ne, vis dar neveikia")
+        # Provider OK but caller has no internet -> in-home fault, not escalate.
+        assert agent.state.case_closed is False
+        assert agent.state.resolution["step"] == "client_side"
+
+    def test_restored_no_and_line_still_down_waits_then_escalates(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)
+        self._stub_tools(monkeypatch, telemetry="foreign_mac")  # line not restored yet
+        agent._advance_resolution("ne")  # 1st denial -> wait (may take a few minutes)
+        assert agent.state.resolution["step"] == "confirm_restored"
+        agent.state.resolution["asked"] = True
+        agent._advance_resolution("vis dar ne")  # 2nd denial -> escalate
+        assert agent.state.resolution["step"] == "escalate"
+
+    def test_ensure_action_noop_on_confirm_step(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)  # a CONFIRM step, not ACTION
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        assert agent.ensure_action_done() is False  # nothing to run
+        assert agent.state.case_closed is False
 
 
 class TestCaseStateTransitions:

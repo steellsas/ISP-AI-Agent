@@ -45,7 +45,14 @@ class TestRegistry:
     def test_steps_are_ordered_and_unique(self):
         s = get_strategy("foreign_mac")
         ids = [st.id for st in s.steps]
-        assert ids == ["confirm_change", "check_cable", "bind_mac", "verify", "escalate"]
+        assert ids == [
+            "confirm_change",
+            "check_cable",
+            "bind_mac",
+            "confirm_restored",
+            "client_side",
+            "escalate",
+        ]
         assert len(ids) == len(set(ids))
 
     def test_action_tools_are_step_scoped(self):
@@ -53,6 +60,8 @@ class TestRegistry:
         # binding is only exposed on bind_mac; registering only on escalate.
         assert s.step("confirm_change").tools == frozenset()  # no action during confirm
         assert s.step("check_cable").tools == frozenset()  # cable check asks, no action
+        assert s.step("confirm_restored").tools == frozenset()  # asks the caller only
+        assert s.step("client_side").tools == frozenset()  # asks the caller only
         assert "update_mac" in s.step("bind_mac").tools
         assert "create_ticket" in s.step("escalate").tools
 
@@ -74,45 +83,43 @@ class TestForeignMacSequence:
         assert next_step_id(self.s, "check_cable", Outcome.YES) == "bind_mac"
         assert next_step_id(self.s, "check_cable", Outcome.NO) == "bind_mac"
 
-    def test_action_falls_through_to_verify(self):
-        assert next_step_id(self.s, "bind_mac", None) == "verify"
+    def test_action_falls_through_to_confirm_restored(self):
+        # After binding we ASK the caller (confirm_restored), not auto-close.
+        assert next_step_id(self.s, "bind_mac", None) == "confirm_restored"
 
-    def test_verify_fixed_resolves(self):
-        assert next_step_id(self.s, "verify", Outcome.FIXED) == "resolve"
+    def test_client_side_yes_resolves_no_escalates(self):
+        assert next_step_id(self.s, "client_side", Outcome.YES) == "resolve"
+        assert next_step_id(self.s, "client_side", Outcome.NO) == "escalate"
 
-    def test_verify_not_fixed_escalates(self):
-        assert next_step_id(self.s, "verify", Outcome.NOT_FIXED) == "escalate"
-
-    def test_happy_path_changed_device_walks_confirm_bind_verify_resolve(self):
+    def test_happy_path_changed_device_reaches_confirm_restored(self):
+        # confirm_restored is engine-routed (telemetry + caller word), so the static
+        # walk stops there — the resolve/pivot/escalate decision lives in the engine.
         path, cur = [], "confirm_change"
-        outcomes = {"confirm_change": Outcome.YES, "bind_mac": None, "verify": Outcome.FIXED}
+        outcomes = {"confirm_change": Outcome.YES, "bind_mac": None}
         for _ in range(10):
             path.append(cur)
-            if cur in TERMINALS:
+            if cur == "confirm_restored" or cur in TERMINALS:
                 break
             cur = next_step_id(self.s, cur, outcomes.get(cur))
-        assert path == ["confirm_change", "bind_mac", "verify", "resolve"]
+        assert path == ["confirm_change", "bind_mac", "confirm_restored"]
 
-    def test_nothing_changed_walks_confirm_cable_bind_verify_resolve(self):
+    def test_nothing_changed_walks_confirm_cable_bind(self):
         path, cur = [], "confirm_change"
-        outcomes = {
-            "confirm_change": Outcome.NO,
-            "check_cable": Outcome.YES,
-            "bind_mac": None,
-            "verify": Outcome.FIXED,
-        }
+        outcomes = {"confirm_change": Outcome.NO, "check_cable": Outcome.YES, "bind_mac": None}
         for _ in range(10):
             path.append(cur)
-            if cur in TERMINALS:
+            if cur == "confirm_restored" or cur in TERMINALS:
                 break
             cur = next_step_id(self.s, cur, outcomes.get(cur))
-        assert path == ["confirm_change", "check_cable", "bind_mac", "verify", "resolve"]
+        assert path == ["confirm_change", "check_cable", "bind_mac", "confirm_restored"]
 
     def test_step_kinds_are_typed(self):
         kinds = {st.id: st.kind for st in self.s.steps}
         assert kinds["confirm_change"] == StepKind.CONFIRM
+        assert kinds["check_cable"] == StepKind.CONFIRM
         assert kinds["bind_mac"] == StepKind.ACTION
-        assert kinds["verify"] == StepKind.VERIFY
+        assert kinds["confirm_restored"] == StepKind.CONFIRM
+        assert kinds["client_side"] == StepKind.CONFIRM
 
     def test_action_step_declares_backend_tool(self):
         bind = self.s.step("bind_mac")
