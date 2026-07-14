@@ -99,7 +99,7 @@ def build_turn_graph(engine: Any):
         # so no single-tool loop and no "nepririštas, dabar pririšiu" after binding).
         engine.ensure_action_done()
         result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
-        engine._mark_confirm_asked()
+        engine._mark_step_presented()
         return result
 
     def closing(state: TurnState) -> TurnState:

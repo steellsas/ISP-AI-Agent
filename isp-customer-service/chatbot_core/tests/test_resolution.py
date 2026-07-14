@@ -43,6 +43,34 @@ class TestDetectYesNo:
         assert detect_yes_no(None) is None
 
 
+class TestDetectRestored:
+    """confirm_restored uses restoration vocabulary (veikia/atsirado/neveikia),
+    NOT the device-change words — 'neveikia' must read as NO despite containing
+    'veik'."""
+
+    def test_restored_yes(self):
+        from agent.resolution import detect_restored
+
+        assert detect_restored("atsirado internetas") == Outcome.YES
+        assert detect_restored("jau veikia") == Outcome.YES
+        assert detect_restored("ryšys atsistatė") == Outcome.YES
+
+    def test_restored_no(self):
+        from agent.resolution import detect_restored
+
+        assert detect_restored("vis dar neveikia") == Outcome.NO
+        assert detect_restored("nevykia") == Outcome.NO  # STT garble
+        assert detect_restored("nėra interneto") == Outcome.NO
+        assert detect_restored("ne") == Outcome.NO
+
+    def test_restored_unclear(self):
+        from agent.resolution import detect_restored
+
+        assert detect_restored("hmm") is None
+        assert detect_restored("supratau") is None
+        assert detect_restored("") is None
+
+
 class TestRegistry:
     def test_known_verdict_returns_strategy(self):
         s = get_strategy("foreign_mac")
@@ -58,7 +86,8 @@ class TestRegistry:
         ids = [st.id for st in s.steps]
         assert ids == [
             "confirm_change",
-            "check_cable",
+            "cable_check",
+            "cable_reconnect",
             "bind_mac",
             "confirm_restored",
             "client_side",
@@ -70,7 +99,8 @@ class TestRegistry:
         s = get_strategy("foreign_mac")
         # binding is only exposed on bind_mac; registering only on escalate.
         assert s.step("confirm_change").tools == frozenset()  # no action during confirm
-        assert s.step("check_cable").tools == frozenset()  # cable check asks, no action
+        assert s.step("cable_check").tools == frozenset()  # instruct, no action
+        assert s.step("cable_reconnect").tools == frozenset()  # instruct, no action
         assert s.step("confirm_restored").tools == frozenset()  # asks the caller only
         assert s.step("client_side").tools == frozenset()  # asks the caller only
         assert "update_mac" in s.step("bind_mac").tools
@@ -86,13 +116,13 @@ class TestForeignMacSequence:
         assert next_step_id(self.s, "confirm_change", Outcome.YES) == "bind_mac"
 
     def test_confirm_no_checks_cable(self):
-        # Changed nothing -> check the WAN cable, NOT escalate (device is theirs).
-        assert next_step_id(self.s, "confirm_change", Outcome.NO) == "check_cable"
+        # Changed nothing -> walk the cable steps, NOT escalate (device is theirs).
+        assert next_step_id(self.s, "confirm_change", Outcome.NO) == "cable_check"
 
-    def test_check_cable_falls_through_to_bind(self):
-        # Whatever the cable answer, we proceed to bind.
-        assert next_step_id(self.s, "check_cable", Outcome.YES) == "bind_mac"
-        assert next_step_id(self.s, "check_cable", Outcome.NO) == "bind_mac"
+    def test_cable_steps_walk_to_bind(self):
+        # INSTRUCT steps fall through in order (advanced by the walker on any reply).
+        assert next_step_id(self.s, "cable_check", None) == "cable_reconnect"
+        assert next_step_id(self.s, "cable_reconnect", None) == "bind_mac"
 
     def test_action_falls_through_to_confirm_restored(self):
         # After binding we ASK the caller (confirm_restored), not auto-close.
@@ -116,18 +146,25 @@ class TestForeignMacSequence:
 
     def test_nothing_changed_walks_confirm_cable_bind(self):
         path, cur = [], "confirm_change"
-        outcomes = {"confirm_change": Outcome.NO, "check_cable": Outcome.YES, "bind_mac": None}
+        outcomes = {"confirm_change": Outcome.NO}  # cable steps fall through (None)
         for _ in range(10):
             path.append(cur)
             if cur == "confirm_restored" or cur in TERMINALS:
                 break
             cur = next_step_id(self.s, cur, outcomes.get(cur))
-        assert path == ["confirm_change", "check_cable", "bind_mac", "confirm_restored"]
+        assert path == [
+            "confirm_change",
+            "cable_check",
+            "cable_reconnect",
+            "bind_mac",
+            "confirm_restored",
+        ]
 
     def test_step_kinds_are_typed(self):
         kinds = {st.id: st.kind for st in self.s.steps}
         assert kinds["confirm_change"] == StepKind.CONFIRM
-        assert kinds["check_cable"] == StepKind.CONFIRM
+        assert kinds["cable_check"] == StepKind.INSTRUCT
+        assert kinds["cable_reconnect"] == StepKind.INSTRUCT
         assert kinds["bind_mac"] == StepKind.ACTION
         assert kinds["confirm_restored"] == StepKind.CONFIRM
         assert kinds["client_side"] == StepKind.CONFIRM

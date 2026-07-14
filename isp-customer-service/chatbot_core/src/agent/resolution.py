@@ -124,23 +124,34 @@ _FOREIGN_MAC = Strategy(
                 "reaches their own flat, so the device is almost certainly theirs; "
                 "move on to checking how the cable is plugged (next step)."
             ),
-            on={Outcome.YES: "bind_mac", Outcome.NO: "check_cable"},
+            on={Outcome.YES: "bind_mac", Outcome.NO: "cable_check"},
         ),
+        # Cable check — walked step by step, ONE instruction per turn (INSTRUCT steps
+        # advance on any caller reply). A LAN mis-plug makes the router a switch and
+        # the line shows a jumping MAC, so fix the cable BEFORE binding.
         Step(
-            id="check_cable",
-            kind=StepKind.CONFIRM,
+            id="cable_check",
+            kind=StepKind.INSTRUCT,
             tools=frozenset(),
-            rag_section=1,  # "### Žingsnis 2: Patikrinti kabelius"
+            rag_section=1,  # "### Žingsnis 2a: Į kokį lizdą įkištas kabelis"
             hint=(
                 "The caller changed nothing, so the foreign/jumping MAC is usually a "
-                "mis-plugged cable. The incoming line cable must sit in the router's "
-                "WAN (internet) port — often a different colour or marked 'Internet' — "
-                "not a LAN port. A LAN plug turns the router into a switch and the line "
-                "then shows a jumping device MAC. Ask them to check the cable is in "
-                "WAN; if it was elsewhere, ask them to move it to WAN (the correct "
-                "router MAC then appears). Do NOT suggest rebooting — it changes "
-                "nothing if the cable is in the wrong port. Whatever they answer, we "
-                "proceed to bind next."
+                "mis-plugged cable. Ask ONE thing and wait: which port is the incoming "
+                "line cable plugged into — the router's blue WAN (internet) port, or a "
+                "yellow LAN port? Do not explain more this turn."
+            ),
+        ),
+        Step(
+            id="cable_reconnect",
+            kind=StepKind.INSTRUCT,
+            tools=frozenset(),
+            rag_section=2,  # "### Žingsnis 2b: Perjungti į WAN"
+            hint=(
+                "Give ONE instruction and wait: if the cable was in a yellow LAN port, "
+                "ask them to unplug it and plug it into the blue WAN port, and to say "
+                "when done; if it was already in the blue WAN port, tell them that's "
+                "correct. Do NOT suggest rebooting — it changes nothing if the cable is "
+                "misplugged."
             ),
         ),
         Step(
@@ -148,31 +159,32 @@ _FOREIGN_MAC = Strategy(
             kind=StepKind.ACTION,
             tools=frozenset({"update_mac"}),  # only NOW is binding exposed to the model
             tool_actions=("update_mac",),  # engine chains reset_port + re-diagnose silently
-            rag_section=2,  # "### Žingsnis 3: Pririšti įrenginį"
+            rag_section=3,  # "### Žingsnis 3: Pririšti įrenginį"
             hint=(
-                "The engine binds the device silently (update_mac + reset_port) and "
-                "re-reads telemetry — you do not call the tool. Then move to asking the "
-                "caller whether the connection is back."
+                "The engine binds the device silently — you do NOT call the tool. "
+                "Announce it naturally: 'Dabar pririšiu jūsų naujai matomą įrenginį — "
+                "turėtų atsirasti internetas. Palaukite akimirką.' Do NOT ask yet "
+                "whether it works — that is the next step."
             ),
         ),
         Step(
             id="confirm_restored",
             kind=StepKind.CONFIRM,
             tools=frozenset(),
-            rag_section=3,  # "### Žingsnis 4: Patikrinti, ar ryšys atsistatė"
+            rag_section=4,  # "### Žingsnis 4: Patikrinti, ar internetas atsirado"
             hint=(
-                "You have just bound the caller's device (silently). Tell them plainly "
-                "you bound their device and ASK whether the internet is back now — it "
-                "can take a minute or two to come up. Do NOT declare it fixed yourself; "
-                "wait for their answer. If they say not yet, reassure them it may take "
-                "a couple of minutes and ask them to check again."
+                "The device is ALREADY bound. ASK whether the internet is back now "
+                "('ar internetas jau atsirado?') and wait. Do NOT say you 'will' bind, "
+                "do NOT say it is 'not yet bound', do NOT re-explain that another device "
+                "is on the line — that is done. Do NOT declare it fixed yourself. If not "
+                "yet, reassure it may take a minute or two and ask them to check again."
             ),
         ),
         Step(
             id="client_side",
             kind=StepKind.CONFIRM,
             tools=frozenset(),
-            rag_section=4,  # "### Žingsnis 5: Kliento pusės gedimas"
+            rag_section=5,  # "### Žingsnis 5: Kliento pusės gedimas"
             hint=(
                 "The provider side is restored (telemetry OK) but the caller still has "
                 "no internet, so the fault is INSIDE their home — Wi-Fi off, device "
@@ -282,6 +294,47 @@ def detect_yes_no(text: str | None) -> Outcome | None:
     if re.search(r"\bne\b", low):
         return Outcome.NO
     if any(m in low for m in _POS):
+        return Outcome.YES
+    return None
+
+
+# "Is the internet back?" answers use DIFFERENT vocabulary than the device-change
+# confirm (veikia/atsirado vs keičiau) — so confirm_restored needs its own reader.
+# Negatives are tested first because "neveikia" contains "veik".
+_RESTORED_NO = (
+    "neveik",
+    "nevyk",  # STT garble of "neveikia"
+    "neatsirad",
+    "vis dar ne",
+    "vis tiek ne",
+    "dar ne",
+    "nėra internet",
+    "nesat",
+)
+_RESTORED_YES = (
+    "veikia",
+    "atsirad",  # atsirado internetas
+    "atsistat",  # ryšys atsistatė
+    "prisijung",
+    "jau yra",
+    "yra internet",
+    "dirba",
+    "atgal",
+)
+
+
+def detect_restored(text: str | None) -> Outcome | None:
+    """YES (internet is back) / NO (still down) / None, for the confirm_restored
+    step. Separate from detect_yes_no because the vocabulary differs and 'neveikia'
+    must read as NO even though it contains 'veik'."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _RESTORED_NO):
+        return Outcome.NO
+    if re.search(r"\bne\b", low) or low.strip() in ("ne", "ne."):
+        return Outcome.NO
+    if any(m in low for m in _RESTORED_YES):
         return Outcome.YES
     return None
 

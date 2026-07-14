@@ -529,14 +529,20 @@ class ReactAgent:
         # Diagnostic findings (case state), per domain: durable current truth, so
         # the agent reconciles them with the caller and never re-runs / loses them.
         # Only active domains are surfaced (lean — history lives in the trace, §12.7).
-        for domain, d in s.diagnosis.items():
-            gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
-            facts.append(
-                f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): "
-                f"{gloss}. Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų "
-                "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
-                "sutaikink."
-            )
+        # BUT once the strategy has run the action (telemetry_fixed recorded), the
+        # raw finding is STALE — surfacing "foreign_mac: kitas įrenginys" post-bind
+        # made the agent re-narrate the solved problem ("dar nepririštas") every
+        # turn. Past the bind, the step's own hint is the single source of truth.
+        past_action = bool(s.resolution) and "telemetry_fixed" in (s.resolution or {})
+        if not past_action:
+            for domain, d in s.diagnosis.items():
+                gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+                facts.append(
+                    f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): "
+                    f"{gloss}. Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų "
+                    "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
+                    "sutaikink."
+                )
         # Active resolution strategy: inject ONLY the current step's playbook
         # section (never the whole doc — a streaming model would run several steps
         # ahead). This is the "what to do NOW" for the step the engine is on.
@@ -699,6 +705,8 @@ class ReactAgent:
         step = strat.step(r.get("step", "")) if strat else None
         if step is None or step.kind != StepKind.ACTION:
             return False
+        if r.get("action_done"):
+            return False  # already ran this action; the walker advances it next turn
         ran = False
         for action in step.tool_actions:
             try:
@@ -706,17 +714,26 @@ class ReactAgent:
             except Exception:  # pragma: no cover - best-effort
                 continue
             self.tracer.emit("tool_call", name=action, args={"customer_id": s.customer_id})
-            obs = self._augment_tool_result(action, obs)  # chains reset_port + verify
+            obs = self._augment_tool_result(action, obs)  # chains reset_port + re-diagnose
             self._trace_tool_result(action, obs)
             ran = True
+        if ran:
+            r["action_done"] = True  # the announce is narrated this turn; advance next
         return ran
 
     def _advance_resolution(self, user_input: str | None) -> None:
-        """Walk the active strategy's CONFIRM step from the caller's reply. A clear
-        YES advances to the next step (e.g. the bind action, which then exposes
-        update_mac); a denial routes to escalate; an unclear answer stays (re-ask).
-        ACTION and VERIFY steps advance in _augment (backend + telemetry), not here.
-        This is what stops the model binding a device the caller did not confirm."""
+        """Generic step-by-step walker over the active strategy, from the caller's
+        reply. Uniform for all fault types:
+
+        - INSTRUCT / ACTION: a guided step. Once its instruction (or the bind
+          announce) has been presented, ANY caller reply — they did it / answered —
+          advances to the next step. One instruction per turn, listen, move on.
+        - CONFIRM: branches on yes/no (and a strong device-change pre-answer).
+        - confirm_restored: a VERIFY that blends the caller's word with a fresh
+          telemetry read — routed separately (_advance_restored).
+
+        This is what leads the caller one step at a time instead of dumping the
+        whole playbook, and stops the model binding a device they never confirmed."""
         from .resolution import (
             Outcome,
             StepKind,
@@ -731,12 +748,19 @@ class ReactAgent:
             return
         strat = get_strategy(r.get("verdict"))
         step = strat.step(r.get("step", "")) if strat else None
-        if step is None or step.kind != StepKind.CONFIRM:
+        if step is None:
             return
-        # confirm_restored blends the caller's word with a fresh telemetry read, so
-        # it routes on BOTH signals — handled separately.
+        # confirm_restored blends the caller's word with a fresh telemetry read.
         if step.id == "confirm_restored":
             self._advance_restored(r, user_input)
+            return
+        # A guided instruction / the bind announce: advance to the next step on ANY
+        # reply, once it was presented last turn (they did it / answered).
+        if step.kind in (StepKind.INSTRUCT, StepKind.ACTION):
+            if r.get("asked"):
+                self._goto_step(r, next_step_id(strat, step.id, None))
+            return
+        if step.kind != StepKind.CONFIRM:
             return
         # A strong device-change signal advances even before the question is asked
         # (the caller pre-answered, e.g. "neveikia, keičiau routerį").
@@ -762,14 +786,14 @@ class ReactAgent:
         - caller says NO, provider not yet OK   -> wait (reassure); after a second
                                                    denial with still-no-line, escalate
         An unclear answer stays and re-asks."""
-        from .resolution import Outcome, detect_yes_no
+        from .resolution import Outcome, detect_restored
 
         reason_now = self._fresh_diagnose_reason()
         fixed = reason_now not in self._UNRESOLVED_LINE_FAULTS
         r["telemetry_fixed"] = fixed
         if not r.get("asked"):
             return  # question not asked yet (the bind turn) — just record telemetry
-        outcome = detect_yes_no(user_input)
+        outcome = detect_restored(user_input)
         if outcome == Outcome.YES:
             self.state.case_closed = True
             self.state.closed_reason = "resolved"
@@ -795,9 +819,10 @@ class ReactAgent:
             r["asked"] = False
         r["step"] = next_id
 
-    def _mark_confirm_asked(self) -> None:
-        """After the agent replies while on a CONFIRM step, record that its question
-        has now been asked, so a plain 'taip'/'ne' next turn advances the step."""
+    def _mark_step_presented(self) -> None:
+        """After the agent replies while on a strategy step, record that the step's
+        message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)
+        has now been presented — so the caller's NEXT reply advances the walker."""
         r = self.state.resolution
         if not r:
             return
@@ -805,7 +830,11 @@ class ReactAgent:
 
         strat = get_strategy(r.get("verdict"))
         step = strat.step(r.get("step", "")) if strat else None
-        if step is not None and step.kind == StepKind.CONFIRM:
+        if step is not None and step.kind in (
+            StepKind.CONFIRM,
+            StepKind.INSTRUCT,
+            StepKind.ACTION,
+        ):
             r["asked"] = True
 
     def _augment_tool_result(self, name: str, observation: str) -> str:
@@ -838,19 +867,13 @@ class ReactAgent:
         obs["fixed"] = fixed
         gloss = _DIAGNOSIS_LT.get(reason_now, reason_now or "—")
 
-        # Do NOT close here. A bind can take a minute or two to come up, and a
-        # provider-side OK does not guarantee the caller actually has internet (it
-        # could be a home/Wi-Fi issue). Record the telemetry and advance to
-        # confirm_restored, where we ASK the caller and re-read telemetry each turn
-        # before deciding resolve / client-side pivot / escalate (_advance_restored).
+        # Do NOT close or advance here. The bind was announced THIS turn; the walker
+        # advances bind_mac -> confirm_restored on the caller's next reply, where we
+        # ASK them and re-read telemetry before deciding resolve / client-side /
+        # escalate (_advance_restored). Just record the telemetry reading.
         r = self.state.resolution
         if r is not None:
             r["telemetry_fixed"] = fixed
-            from .resolution import get_strategy
-
-            strat = get_strategy(r.get("verdict"))
-            if strat and strat.step("confirm_restored") is not None:
-                self._goto_step(r, "confirm_restored")
         obs["message"] = (
             obs.get("message", "") or ""
         ).strip() + f" Portas perkrautas. Telemetrija dabar: {gloss}."

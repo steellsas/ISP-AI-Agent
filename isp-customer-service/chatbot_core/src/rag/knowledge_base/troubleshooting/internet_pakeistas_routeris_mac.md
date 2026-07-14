@@ -41,30 +41,33 @@ tada paklausti, ką klientas neseniai keitė ar prijungė:
   arba pasikeitė/nusiresetino MAC parametrai. Pereiti prie kabelių patikros
   (Žingsnis 2), tada pririšti.
 
-### Žingsnis 2: Patikrinti kabelius (kai klientas nieko nekeitė)
-Įsitikinti, kad prijungta teisingai, kad nepririštume šokinėjančio MAC:
-- Ateinantis (tiekėjo) kabelis turi būti routerio **WAN** (dažnai kitos spalvos ar
-  pažymėtas "Internet") lizde, NE LAN.
-- "Gal galite patikrinti, ar tiekėjo kabelis įkištas į routerio WAN, interneto,
-  lizdą? Jis dažnai kitos spalvos."
-- Jei buvo įkištas ne ten - paprašyti **perjungti kabelį į WAN** lizdą; tada
-  linijoje atsiras teisingas routerio MAC.
-- SVARBU: dėl sumaišytų kabelių **NEsiūlyti perkrauti routerio** - perkrovimas
-  nieko neduos, jei kabelis blogame lizde. Sprendimas - perjungti kabelį, ne
-  perkrauti.
-- Kad ir ką klientas atsakytų apie kabelį - toliau pririšame (Žingsnis 3).
+### Žingsnis 2a: Į kokį lizdą įkištas kabelis (paklausti)
+Kai klientas nieko nekeitė - patikrinti kabelį pažingsniui, po VIENĄ klausimą.
+Pirmas žingsnis - tik paklausti ir laukti atsakymo:
+- "Pažiūrėkite, prašau, į kokį lizdą įkištas įeinantis kabelis - į mėlyną (interneto,
+  WAN) lizdą, ar į geltoną?"
+- (Mėlynas WAN = teisingai; geltonas LAN = routeris veikia kaip švitchas ir MAC
+  šokinėja.) Nieko daugiau šį kartą - palaukti atsakymo.
+
+### Žingsnis 2b: Perjungti į WAN (jei reikia)
+Pagal atsakymą - viena instrukcija ir laukti:
+- Jei kabelis buvo **geltoname (LAN)** - "Ištraukite kabelį iš geltono ir įkiškite į
+  mėlyną WAN lizdą. Pasakykite, kai padarysite." Tada linijoje atsiras teisingas
+  routerio MAC.
+- Jei jau **mėlyname (WAN)** - "Puiku, tai teisingas lizdas."
+- SVARBU: dėl sumaišytų kabelių **NEsiūlyti perkrauti routerio** - nieko neduos, jei
+  kabelis blogame lizde. Sprendimas - perjungti kabelį, ne perkrauti.
 
 ### Žingsnis 3: Pririšti įrenginį (update_mac)
-Kai routeris tinkamai prijungtas:
-- Pasakyti klientui, ką darysi ir kodėl: "Dabar pririšiu jūsų įrenginį prie tinklo,
-  palaukite." Tada atlikti nuotoliniu būdu:
-  1. update_mac - pririša linijoje matomą įrenginį
-  2. reset_port - perkrauna portą, kad autorizacija atsinaujintų
-- (Sistema po pririšimo pati per-tikrina liniją.) Neskubėti, skirti dėmesį klientui.
+Kai routeris tinkamai prijungtas, variklis pririša tyliai. Agentas tik **anonsuoja**
+natūraliai (ateities/vykstančio laiku), NEklausdamas dar ar veikia:
+- "Dabar pririšiu jūsų naujai matomą įrenginį - turėtų atsirasti internetas. Palaukite
+  akimirką." (Variklis atlieka update_mac + reset_port ir per-tikrina liniją.)
+- Neskubėti, skirti dėmesį klientui.
 
-### Žingsnis 4: Patikrinti, ar ryšys atsistatė (paklausti kliento)
-Po pririšimo NEskelbti, kad sutvarkyta, savavališkai. Pasakyti klientui, kad pririšai
-jo įrenginį, ir **paklausti, ar internetas jau atsirado** - gali užtrukti minutę kitą:
+### Žingsnis 4: Patikrinti, ar internetas atsirado (paklausti kliento)
+Po pririšimo NEskelbti, kad sutvarkyta, savavališkai. **Paklausti, ar internetas jau
+atsirado** - gali užtrukti minutę kitą:
 - Klientas sako **veikia** - problema išspręsta, palinkėti geros dienos.
 - Klientas sako **dar neveikia**, o tiekėjo pusėje srauto DAR nėra - gali užtrukti
   kelias minutes, kol prisiriš. Nuraminti, paprašyti palaukti ir pasitikrinti dar

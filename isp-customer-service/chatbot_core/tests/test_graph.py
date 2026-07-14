@@ -218,16 +218,28 @@ class TestEngineDrivenAction:
         )
         monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: telemetry)
 
-    def test_bind_asks_before_closing(self, monkeypatch):
+    def test_bind_announces_then_walks_to_confirm(self, monkeypatch):
         agent = self._agent()
         self._at_bind(agent)
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")
-        # The engine binds + resets + re-reads telemetry — but does NOT close. It
-        # advances to confirm_restored so we ASK the caller first.
+        # The engine binds + re-reads telemetry, but does NOT close or jump ahead —
+        # it STAYS on bind_mac to announce (model B). Telemetry is recorded.
         assert agent.ensure_action_done() is True
         assert agent.state.case_closed is False
-        assert agent.state.resolution["step"] == "confirm_restored"
+        assert agent.state.resolution["step"] == "bind_mac"
         assert agent.state.resolution["telemetry_fixed"] is True
+        assert agent.state.resolution["action_done"] is True
+        # Once the announce is presented, the caller's next reply advances to verify.
+        agent._mark_step_presented()
+        agent._advance_resolution("laukiu")
+        assert agent.state.resolution["step"] == "confirm_restored"
+
+    def test_bind_runs_once(self, monkeypatch):
+        agent = self._agent()
+        self._at_bind(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        assert agent.ensure_action_done() is True
+        assert agent.ensure_action_done() is False  # action_done guard — no re-bind
 
     def test_restored_yes_resolves(self, monkeypatch):
         agent = self._agent()
@@ -262,6 +274,25 @@ class TestEngineDrivenAction:
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")
         assert agent.ensure_action_done() is False  # nothing to run
         assert agent.state.case_closed is False
+
+    def test_instruct_steps_walk_one_per_turn(self):
+        # "nieko nekeičiau" -> the cable INSTRUCT steps are walked ONE per reply:
+        # each advances only after its instruction was presented last turn.
+        agent = self._agent()
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {"verdict": "foreign_mac", "step": "cable_check", "asked": False}
+
+        # Instruction not presented yet -> a reply does NOT skip ahead.
+        agent._advance_resolution("gerai")
+        assert agent.state.resolution["step"] == "cable_check"
+        # Present it, then the next reply advances to the reconnect instruction.
+        agent._mark_step_presented()
+        agent._advance_resolution("geltoname")
+        assert agent.state.resolution["step"] == "cable_reconnect"
+        # And one more reply (after presenting) reaches the bind action.
+        agent._mark_step_presented()
+        agent._advance_resolution("padariau")
+        assert agent.state.resolution["step"] == "bind_mac"
 
 
 class TestCaseStateTransitions:

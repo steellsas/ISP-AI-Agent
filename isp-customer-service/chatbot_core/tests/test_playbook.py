@@ -45,13 +45,15 @@ class TestRealPlaybook:
     DOC = "troubleshooting/internet_pakeistas_routeris_mac"
 
     def test_mac_playbook_has_steps(self):
-        assert step_count(self.DOC) == 5
+        assert step_count(self.DOC) == 6
 
     def test_get_step_returns_the_right_section(self):
         assert get_step(self.DOC, 0).startswith("### Žingsnis 1")
-        assert "update_mac" in get_step(self.DOC, 2)  # step 3 is the bind
-        assert "atsistat" in get_step(self.DOC, 3)  # step 4 asks if restored
-        assert "kliento pus" in get_step(self.DOC, 4).lower()  # step 5 client-side
+        assert "lizd" in get_step(self.DOC, 1).lower()  # 2a: which port
+        assert "WAN" in get_step(self.DOC, 2)  # 2b: reconnect to WAN
+        assert "update_mac" in get_step(self.DOC, 3)  # step 3 is the bind
+        assert "atsirad" in get_step(self.DOC, 4)  # step 4 asks if restored
+        assert "kliento pus" in get_step(self.DOC, 5).lower()  # step 5 client-side
 
     def test_out_of_range_and_missing(self):
         assert get_step(self.DOC, 99) is None
