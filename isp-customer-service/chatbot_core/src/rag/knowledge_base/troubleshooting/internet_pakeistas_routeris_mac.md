@@ -49,8 +49,11 @@ Prieš pririšant įsitikinti, kad prijungta teisingai:
 - Ateinantis kabelis iš sienos turi būti routerio **WAN** (dažnai kitos spalvos ar
   pažymėtas "Internet") lizde, NE LAN.
 - "Ar tiekėjo kabelis įkištas į routerio WAN, interneto, lizdą?"
-- Jei buvo įkištas ne ten - paprašyti perjungti; tada linijoje atsiras teisingas
-  routerio MAC.
+- Jei buvo įkištas ne ten - paprašyti **perjungti kabelį į WAN** lizdą; tada
+  linijoje atsiras teisingas routerio MAC.
+- SVARBU: dėl sumaišytų kabelių **NEsiūlyti perkrauti routerio** - perkrovimas
+  nieko neduos, jei kabelis blogame lizde. Sprendimas - perjungti kabelį, ne
+  perkrauti.
 
 ### Žingsnis 3: Pririšti įrenginį (update_mac)
 Kai routeris tinkamai prijungtas:
