@@ -99,8 +99,13 @@ def next_step_id(strategy: Strategy, current_id: str, outcome: Outcome | None) -
 
 
 # --- Strategy registry -------------------------------------------------------
-# B6 — foreign MAC after a router change. confirm -> bind (silent action that
-# auto-resets the port and re-checks the line) -> verify -> resolve/escalate.
+# B6 — foreign MAC after a router change. The default resolution is to BIND: the
+# line cable physically reaches the caller's flat, so the device on it is almost
+# certainly theirs. Flow: confirm (did you change a device?) -> if not, check the
+# WAN cable (a mis-plug into a LAN port makes the router act as a switch and the
+# line then shows a *jumping* device MAC — bind the WAN'd router MAC, not a
+# jumping one) -> bind (silent action: reset_port + re-diagnose) -> verify ->
+# resolve, or escalate ONLY if binding did not restore the line.
 _FOREIGN_MAC = Strategy(
     verdict="foreign_mac",
     rag_doc="troubleshooting/internet_pakeistas_routeris_mac",
@@ -111,11 +116,32 @@ _FOREIGN_MAC = Strategy(
             tools=frozenset(),
             rag_section=0,  # "### Žingsnis 1: Ką klientas prijungė"
             hint=(
-                "Ask whether the caller recently changed or connected another device "
-                "(router, PC or TV). If they changed nothing and cannot explain the "
-                "foreign device, do NOT bind it — escalate (register)."
+                "Tell the caller plainly that the line shows a new/other device and "
+                "that is why there is no internet, then ask whether they recently "
+                "changed or connected a device — a new router, or a PC/TV plugged "
+                "straight into the line (a valid temporary bridge). If YES -> we bind "
+                "it. If they changed NOTHING -> do NOT escalate: the line cable "
+                "reaches their own flat, so the device is almost certainly theirs; "
+                "move on to checking how the cable is plugged (next step)."
             ),
-            on={Outcome.NO: "escalate"},
+            on={Outcome.YES: "bind_mac", Outcome.NO: "check_cable"},
+        ),
+        Step(
+            id="check_cable",
+            kind=StepKind.CONFIRM,
+            tools=frozenset(),
+            rag_section=1,  # "### Žingsnis 2: Patikrinti kabelius"
+            hint=(
+                "The caller changed nothing, so the foreign/jumping MAC is usually a "
+                "mis-plugged cable. The incoming line cable must sit in the router's "
+                "WAN (internet) port — often a different colour or marked 'Internet' — "
+                "not a LAN port. A LAN plug turns the router into a switch and the line "
+                "then shows a jumping device MAC. Ask them to check the cable is in "
+                "WAN; if it was elsewhere, ask them to move it to WAN (the correct "
+                "router MAC then appears). Do NOT suggest rebooting — it changes "
+                "nothing if the cable is in the wrong port. Whatever they answer, we "
+                "proceed to bind next."
+            ),
         ),
         Step(
             id="bind_mac",
@@ -124,8 +150,9 @@ _FOREIGN_MAC = Strategy(
             tool_actions=("update_mac",),  # engine chains reset_port + re-diagnose silently
             rag_section=2,  # "### Žingsnis 3: Pririšti įrenginį"
             hint=(
-                "The caller confirmed connecting a device. Announce the fix ('dabar "
-                "pririšiu jūsų įrenginį, palaukite') and call update_mac."
+                "Announce the fix plainly first ('dabar pririšiu jūsų įrenginį prie "
+                "tinklo, palaukite') — say WHAT you are doing and WHY (the line shows a "
+                "device that is not yet bound) — then call update_mac. Do not rush."
             ),
         ),
         Step(
@@ -143,8 +170,9 @@ _FOREIGN_MAC = Strategy(
             kind=StepKind.ESCALATE,
             tools=frozenset({"create_ticket"}),
             hint=(
-                "Do NOT bind anything. Register the fault for a technician check "
-                "('gedimo registracija') — a worker will call the next business day."
+                "Binding did not restore the line (or the device cannot be reached). "
+                "Register the fault for a technician check ('gedimo registracija') — a "
+                "worker will call the next business day."
             ),
         ),
     ),
@@ -165,6 +193,7 @@ _NEG = (
     "nekyč",  # STT garbling of "nekeičiau"
     "nekėč",
     "nekič",
+    "nekie",  # STT garbling of "nekeičiau" -> "nekiečiau"
     "nieko nekeit",
     "nieko nedar",
     "nieko nekyč",
@@ -203,6 +232,10 @@ _DEVICE_CHANGE = (
     "naujas router",
     "kitą įrenginį",
     "kitą router",
+    "kompiuter",  # PC plugged straight into the line (temporary bridge)
+    "kompiuterį",
+    "televizor",
+    "prijungiau tv",
 )
 
 

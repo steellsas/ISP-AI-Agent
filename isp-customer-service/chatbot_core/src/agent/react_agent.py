@@ -684,7 +684,7 @@ class ReactAgent:
         # A strong device-change signal advances even before the question is asked
         # (the caller pre-answered, e.g. "neveikia, keičiau routerį").
         if confirms_device_change(user_input):
-            r["step"] = next_step_id(strat, step.id, Outcome.YES)
+            self._goto_step(r, next_step_id(strat, step.id, Outcome.YES))
             return
         # Otherwise a plain yes/no only advances once the confirm question was asked
         # — a bare "taip" on the diagnose turn is the address confirmation, not the
@@ -694,7 +694,15 @@ class ReactAgent:
         outcome = detect_yes_no(user_input)
         if outcome is None:
             return  # unclear -> stay on the CONFIRM step, re-ask
-        r["step"] = next_step_id(strat, step.id, outcome)
+        self._goto_step(r, next_step_id(strat, step.id, outcome))
+
+    def _goto_step(self, r: dict, next_id: str) -> None:
+        """Move the strategy to `next_id`. When the step actually changes, clear the
+        'asked' flag so the NEXT step (e.g. a second CONFIRM like check_cable) waits
+        for its OWN question to be asked before a plain yes/no can advance it."""
+        if next_id != r.get("step"):
+            r["asked"] = False
+        r["step"] = next_id
 
     def _mark_confirm_asked(self) -> None:
         """After the agent replies while on a CONFIRM step, record that its question

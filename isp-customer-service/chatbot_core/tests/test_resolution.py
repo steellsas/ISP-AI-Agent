@@ -45,13 +45,14 @@ class TestRegistry:
     def test_steps_are_ordered_and_unique(self):
         s = get_strategy("foreign_mac")
         ids = [st.id for st in s.steps]
-        assert ids == ["confirm_change", "bind_mac", "verify", "escalate"]
+        assert ids == ["confirm_change", "check_cable", "bind_mac", "verify", "escalate"]
         assert len(ids) == len(set(ids))
 
     def test_action_tools_are_step_scoped(self):
         s = get_strategy("foreign_mac")
         # binding is only exposed on bind_mac; registering only on escalate.
         assert s.step("confirm_change").tools == frozenset()  # no action during confirm
+        assert s.step("check_cable").tools == frozenset()  # cable check asks, no action
         assert "update_mac" in s.step("bind_mac").tools
         assert "create_ticket" in s.step("escalate").tools
 
@@ -60,12 +61,18 @@ class TestForeignMacSequence:
     def setup_method(self):
         self.s = STRATEGIES["foreign_mac"]
 
-    def test_confirm_yes_falls_through_to_action(self):
-        # No explicit route for YES -> next step in order.
+    def test_confirm_yes_binds_directly(self):
+        # Caller changed a device -> bind (skips the cable check).
         assert next_step_id(self.s, "confirm_change", Outcome.YES) == "bind_mac"
 
-    def test_confirm_no_escalates(self):
-        assert next_step_id(self.s, "confirm_change", Outcome.NO) == "escalate"
+    def test_confirm_no_checks_cable(self):
+        # Changed nothing -> check the WAN cable, NOT escalate (device is theirs).
+        assert next_step_id(self.s, "confirm_change", Outcome.NO) == "check_cable"
+
+    def test_check_cable_falls_through_to_bind(self):
+        # Whatever the cable answer, we proceed to bind.
+        assert next_step_id(self.s, "check_cable", Outcome.YES) == "bind_mac"
+        assert next_step_id(self.s, "check_cable", Outcome.NO) == "bind_mac"
 
     def test_action_falls_through_to_verify(self):
         assert next_step_id(self.s, "bind_mac", None) == "verify"
@@ -76,7 +83,7 @@ class TestForeignMacSequence:
     def test_verify_not_fixed_escalates(self):
         assert next_step_id(self.s, "verify", Outcome.NOT_FIXED) == "escalate"
 
-    def test_happy_path_walks_confirm_action_verify_resolve(self):
+    def test_happy_path_changed_device_walks_confirm_bind_verify_resolve(self):
         path, cur = [], "confirm_change"
         outcomes = {"confirm_change": Outcome.YES, "bind_mac": None, "verify": Outcome.FIXED}
         for _ in range(10):
@@ -85,6 +92,21 @@ class TestForeignMacSequence:
                 break
             cur = next_step_id(self.s, cur, outcomes.get(cur))
         assert path == ["confirm_change", "bind_mac", "verify", "resolve"]
+
+    def test_nothing_changed_walks_confirm_cable_bind_verify_resolve(self):
+        path, cur = [], "confirm_change"
+        outcomes = {
+            "confirm_change": Outcome.NO,
+            "check_cable": Outcome.YES,
+            "bind_mac": None,
+            "verify": Outcome.FIXED,
+        }
+        for _ in range(10):
+            path.append(cur)
+            if cur in TERMINALS:
+                break
+            cur = next_step_id(self.s, cur, outcomes.get(cur))
+        assert path == ["confirm_change", "check_cable", "bind_mac", "verify", "resolve"]
 
     def test_step_kinds_are_typed(self):
         kinds = {st.id: st.kind for st in self.s.steps}
