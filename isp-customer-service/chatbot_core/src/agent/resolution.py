@@ -162,8 +162,12 @@ STRATEGIES: dict[str, Strategy] = {
 _NEG = (
     "nekeič",
     "nekeit",
+    "nekyč",  # STT garbling of "nekeičiau"
+    "nekėč",
+    "nekič",
     "nieko nekeit",
     "nieko nedar",
+    "nieko nekyč",
     "neprijung",
     "nemaiš",
     "nežinau",

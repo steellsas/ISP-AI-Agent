@@ -309,20 +309,29 @@ class ReactAgent:
         return messages
 
     # Security-sensitive resolution actions — only exposed on the strategy STEP
-    # that permits them (e.g. update_mac only on bind_mac, create_ticket only on
-    # escalate). So the model cannot bind a device during a CONFIRM step, before
-    # the caller confirms they connected one.
+    # that permits them (update_mac on bind_mac, create_ticket on escalate). So the
+    # model cannot bind a device during a CONFIRM step, before the caller confirms.
     _STRATEGY_ACTION_TOOLS = frozenset({"update_mac", "reset_port", "create_ticket"})
+    # Diagnostics the ENGINE owns during a strategy — the model must not call them
+    # (observed: it looped check_network_status / run_ping_test instead of talking).
+    _STRATEGY_DIAG_TOOLS = frozenset(
+        {"diagnose_connection", "check_network_status", "run_ping_test", "check_port_status"}
+    )
 
     def _scoped_tools_schema(self) -> list:
         """The tool schema for the current node — all tools, or the subset a graph
         node restricted the model to (self._active_tool_names).
 
-        Per-step scoping: while a resolution strategy is active, diagnose_connection
-        is withheld (the ENGINE owns re-diagnosis, the VERIFY step), and the action
-        tools are gated to the CURRENT step's allowed set — the model cannot bind a
-        MAC or register a ticket until the step-walk reaches the step that permits
-        it."""
+        Per-step scoping while a resolution strategy is active: the engine owns all
+        diagnostics (withheld); an ACTION/ESCALATE step exposes ONLY its tool so the
+        model does that action once; a CONFIRM step (or a case being closed) exposes
+        NO action tool. This prevents both 'binds before confirm' and the tool-call
+        loop where the model re-calls the one exposed tool until the 5-call limit."""
+        # Case closed mid-turn (bind resolved / ticket registered): no tools at all,
+        # so the model narrates the close instead of looping tool calls to the limit
+        # (which surfaced the 'negaliu apdoroti' fallback).
+        if self.state.case_closed:
+            return []
         schema = self.tools_schema
         if self._active_tool_names is not None:
             schema = [
@@ -333,20 +342,16 @@ class ReactAgent:
 
             strat = get_strategy(self.state.resolution.get("verdict"))
             step = strat.step(self.state.resolution.get("step", "")) if strat else None
-            if step is not None and step.tools:
-                # ACTION / ESCALATE step: expose ONLY this step's tool(s), so the
-                # model does the intended action (bind / register) and cannot wander
-                # into diagnostics instead (observed: it ran ping/status, not
-                # update_mac).
+            # Once the case is closing (e.g. bind resolved / ticket registered), the
+            # action tool is DONE — withdraw it so the model narrates instead of
+            # re-calling it in a loop.
+            if step is not None and step.tools and not self.state.case_closed:
                 schema = [t for t in schema if t.get("function", {}).get("name") in step.tools]
             else:
-                # CONFIRM / other: withhold diagnose (engine owns re-diagnosis) and
-                # ALL action tools — no binding or registering until the step-walk
-                # reaches the step that permits it.
                 schema = [
                     t
                     for t in schema
-                    if (n := t.get("function", {}).get("name")) != "diagnose_connection"
+                    if (n := t.get("function", {}).get("name")) not in self._STRATEGY_DIAG_TOOLS
                     and n not in self._STRATEGY_ACTION_TOOLS
                 ]
         return schema
@@ -910,6 +915,12 @@ class ReactAgent:
 
             elif action == "create_ticket" and obs_data.get("success"):
                 self.state.ticket_id = obs_data.get("ticket_id")
+                # Inside a resolution strategy (escalate step), the fault is now
+                # registered — close the case so create_ticket is withdrawn and the
+                # model narrates the close instead of re-registering in a loop.
+                if self.state.resolution and not self.state.case_closed:
+                    self.state.case_closed = True
+                    self.state.closed_reason = "registered"
 
             # Diagnostic findings -> case state under their DOMAIN, so the agent
             # reconciles them with the customer and never loses / re-runs them, and
