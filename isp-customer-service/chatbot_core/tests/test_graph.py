@@ -149,11 +149,13 @@ class TestRouting:
         session.greeting()
         session.state.customer_id = "CUST105"  # foreign_mac -> strategy activates
 
-        # ensure_diagnosed runs on entry -> strategy active -> the engine owns
-        # re-diagnosis, so diagnose_connection is withheld from the model.
+        # ensure_diagnosed runs on entry -> strategy active at the CONFIRM step.
+        # diagnose is withheld (engine owns re-diagnosis) AND binding is withheld
+        # until the caller confirms (per-step scoping) — the model cannot bind a MAC
+        # during the confirm step.
         names = self._run_turn_capture_tools(session, "taip")
         assert "diagnose_connection" not in names
-        assert "update_mac" in names  # the fix action stays available
+        assert "update_mac" not in names  # bind only exposed after confirm (bind_mac)
 
     def test_closed_session_routes_to_closing_with_no_tools(self, db_connection):
         from agent.session import AgentSession

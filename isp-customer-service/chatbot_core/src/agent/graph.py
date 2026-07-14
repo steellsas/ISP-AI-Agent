@@ -86,9 +86,15 @@ def build_turn_graph(engine: Any):
     def diagnosis(state: TurnState) -> TurnState:
         # Deterministic driver: diagnose ONCE on entering the stage (before the LLM
         # narrates), so the verdict + resolution strategy are set and the flow no
-        # longer depends on the model choosing to diagnose.
+        # longer depends on the model choosing to diagnose. Then walk the strategy's
+        # CONFIRM step from the caller's reply (binding is only exposed after they
+        # confirm connecting a device); after the reply, mark the question asked so a
+        # plain yes/no advances next turn.
         engine.ensure_diagnosed()
-        return _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
+        engine._advance_resolution(state.get("user_input"))
+        result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
+        engine._mark_confirm_asked()
+        return result
 
     def closing(state: TurnState) -> TurnState:
         return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT)

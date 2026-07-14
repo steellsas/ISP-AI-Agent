@@ -19,6 +19,7 @@ Adding a fault = one Strategy here + one RAG doc — the skeleton does not chang
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -77,8 +78,9 @@ class Strategy:
         return -1
 
 
-# Terminal sentinels a step can route to.
-TERMINALS = frozenset({"resolve", "escalate", "end"})
+# Terminal sentinels a step can route to. "escalate" is a real ESCALATE step (the
+# agent registers a fault there), so it is NOT a terminal — only resolve/end are.
+TERMINALS = frozenset({"resolve", "end"})
 
 
 def next_step_id(strategy: Strategy, current_id: str, outcome: Outcome | None) -> str:
@@ -118,17 +120,32 @@ _FOREIGN_MAC = Strategy(
         Step(
             id="bind_mac",
             kind=StepKind.ACTION,
+            tools=frozenset({"update_mac"}),  # only NOW is binding exposed to the model
             tool_actions=("update_mac",),  # engine chains reset_port + re-diagnose silently
-            hint="Bind their new device; the system resets the port and re-checks the line.",
+            rag_section=2,  # "### Žingsnis 3: Pririšti įrenginį"
+            hint=(
+                "The caller confirmed connecting a device. Announce the fix ('dabar "
+                "pririšiu jūsų įrenginį, palaukite') and call update_mac."
+            ),
         ),
         Step(
             id="verify",
             kind=StepKind.VERIFY,
+            rag_section=3,  # "### Žingsnis 4: Patikrinti srautą"
             hint=(
                 "If the telemetry shows the line restored, tell the caller it is fixed "
                 "and close as resolved. If not, escalate (register)."
             ),
             on={Outcome.FIXED: "resolve", Outcome.NOT_FIXED: "escalate"},
+        ),
+        Step(
+            id="escalate",
+            kind=StepKind.ESCALATE,
+            tools=frozenset({"create_ticket"}),
+            hint=(
+                "Do NOT bind anything. Register the fault for a technician check "
+                "('gedimo registracija') — a worker will call the next business day."
+            ),
         ),
     ),
 )
@@ -136,6 +153,79 @@ _FOREIGN_MAC = Strategy(
 STRATEGIES: dict[str, Strategy] = {
     "foreign_mac": _FOREIGN_MAC,
 }
+
+
+# Deterministic yes/no read of a caller reply, to advance a CONFIRM step. Coarse
+# on purpose: a clear affirmative advances (e.g. to bind), anything with a denial
+# or "nothing changed" does NOT advance to an action — so the agent never binds a
+# device the caller did not knowingly connect.
+_NEG = (
+    "nekeič",
+    "nekeit",
+    "nieko nekeit",
+    "nieko nedar",
+    "neprijung",
+    "nemaiš",
+    "nežinau",
+    "neatsimen",
+)
+_POS = (
+    "taip",
+    "aha",
+    "teisingai",
+    "keičiau",
+    "pakeič",
+    "prijungiau",
+    "prijungėm",
+    "naują",
+    "naujas",
+    "nusipirk",
+)
+
+
+# A STRONG device-change signal (not a bare "taip"): the caller volunteered that
+# they changed/connected equipment, so a CONFIRM step can advance even if its
+# question was not asked yet (they pre-answered — common: "neveikia, keičiau
+# routerį"). A bare affirmative alone must NOT advance a confirm before it is asked.
+_DEVICE_CHANGE = (
+    "keičiau",
+    "keitėm",
+    "pakeič",
+    "prijungiau",
+    "prijungėm",
+    "prijungiau naują",
+    "nusipirk",
+    "naują router",
+    "naujas router",
+    "kitą įrenginį",
+    "kitą router",
+)
+
+
+def confirms_device_change(text: str | None) -> bool:
+    """True if the caller clearly stated they changed/connected a device."""
+    if not text:
+        return False
+    low = text.lower()
+    if any(m in low for m in _NEG):
+        return False
+    return any(m in low for m in _DEVICE_CHANGE)
+
+
+def detect_yes_no(text: str | None) -> Outcome | None:
+    """YES / NO / None from a free-text caller reply (Lithuanian). Denials win over
+    affirmatives ('routerio nekeičiau' -> NO), so an ambiguous or negative answer
+    never advances a CONFIRM step into a binding action."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _NEG):
+        return Outcome.NO
+    if re.search(r"\bne\b", low):
+        return Outcome.NO
+    if any(m in low for m in _POS):
+        return Outcome.YES
+    return None
 
 
 def get_strategy(verdict: str | None) -> Strategy | None:

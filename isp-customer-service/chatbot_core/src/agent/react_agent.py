@@ -308,23 +308,47 @@ class ReactAgent:
 
         return messages
 
+    # Security-sensitive resolution actions — only exposed on the strategy STEP
+    # that permits them (e.g. update_mac only on bind_mac, create_ticket only on
+    # escalate). So the model cannot bind a device during a CONFIRM step, before
+    # the caller confirms they connected one.
+    _STRATEGY_ACTION_TOOLS = frozenset({"update_mac", "reset_port", "create_ticket"})
+
     def _scoped_tools_schema(self) -> list:
         """The tool schema for the current node — all tools, or the subset a graph
         node restricted the model to (self._active_tool_names).
 
         Per-step scoping: while a resolution strategy is active, diagnose_connection
-        is withheld — the ENGINE owns re-diagnosis (the VERIFY step), so the model
-        cannot re-diagnose into a different branch and derail the strategy (observed:
-        a stray B7 'which device?' question right after the MAC fix)."""
+        is withheld (the ENGINE owns re-diagnosis, the VERIFY step), and the action
+        tools are gated to the CURRENT step's allowed set — the model cannot bind a
+        MAC or register a ticket until the step-walk reaches the step that permits
+        it."""
         schema = self.tools_schema
         if self._active_tool_names is not None:
             schema = [
                 t for t in schema if t.get("function", {}).get("name") in self._active_tool_names
             ]
         if self.state.resolution is not None:
-            schema = [
-                t for t in schema if t.get("function", {}).get("name") != "diagnose_connection"
-            ]
+            from .resolution import get_strategy
+
+            strat = get_strategy(self.state.resolution.get("verdict"))
+            step = strat.step(self.state.resolution.get("step", "")) if strat else None
+            if step is not None and step.tools:
+                # ACTION / ESCALATE step: expose ONLY this step's tool(s), so the
+                # model does the intended action (bind / register) and cannot wander
+                # into diagnostics instead (observed: it ran ping/status, not
+                # update_mac).
+                schema = [t for t in schema if t.get("function", {}).get("name") in step.tools]
+            else:
+                # CONFIRM / other: withhold diagnose (engine owns re-diagnosis) and
+                # ALL action tools — no binding or registering until the step-walk
+                # reaches the step that permits it.
+                schema = [
+                    t
+                    for t in schema
+                    if (n := t.get("function", {}).get("name")) != "diagnose_connection"
+                    and n not in self._STRATEGY_ACTION_TOOLS
+                ]
         return schema
 
     def run_turn_scoped(
@@ -604,27 +628,81 @@ class ReactAgent:
         except Exception:  # pragma: no cover - best-effort
             return None
 
-    def ensure_diagnosed(self) -> None:
+    def ensure_diagnosed(self) -> bool:
         """Deterministically run diagnose_connection the first time we enter the
         diagnosis stage (customer identified), so the verdict + strategy are set
         BEFORE the model narrates. The flow no longer depends on the model choosing
         to diagnose — which it did inconsistently (sometimes jumping straight to
-        update_mac, sometimes re-diagnosing into another branch). Runs once; the
-        VERIFY step owns re-diagnosis afterwards."""
+        update_mac, sometimes re-diagnosing into another branch).
+
+        Returns True if it ran diagnose on THIS call (first entry), so the caller
+        skips a step advance that turn — the strategy's first question is only being
+        asked now, not yet answered."""
         s = self.state
         if not s.customer_id or s.case_closed:
-            return
+            return False
         if s.diagnosis.get("network") or s.outage_reported:
-            return  # already diagnosed this stage (or an outage short-circuited it)
+            return False  # already diagnosed this stage (or an outage short-circuited it)
         try:
             obs = execute_tool("diagnose_connection", {"customer_id": s.customer_id})
         except Exception:  # pragma: no cover - best-effort
-            return
+            return False
         self.tracer.emit(
             "tool_call", name="diagnose_connection", args={"customer_id": s.customer_id}
         )
         self._trace_tool_result("diagnose_connection", obs)
         self._update_state_from_observation("diagnose_connection", obs)
+        return True
+
+    def _advance_resolution(self, user_input: str | None) -> None:
+        """Walk the active strategy's CONFIRM step from the caller's reply. A clear
+        YES advances to the next step (e.g. the bind action, which then exposes
+        update_mac); a denial routes to escalate; an unclear answer stays (re-ask).
+        ACTION and VERIFY steps advance in _augment (backend + telemetry), not here.
+        This is what stops the model binding a device the caller did not confirm."""
+        from .resolution import (
+            Outcome,
+            StepKind,
+            confirms_device_change,
+            detect_yes_no,
+            get_strategy,
+            next_step_id,
+        )
+
+        r = self.state.resolution
+        if not r or self.state.case_closed:
+            return
+        strat = get_strategy(r.get("verdict"))
+        step = strat.step(r.get("step", "")) if strat else None
+        if step is None or step.kind != StepKind.CONFIRM:
+            return
+        # A strong device-change signal advances even before the question is asked
+        # (the caller pre-answered, e.g. "neveikia, keičiau routerį").
+        if confirms_device_change(user_input):
+            r["step"] = next_step_id(strat, step.id, Outcome.YES)
+            return
+        # Otherwise a plain yes/no only advances once the confirm question was asked
+        # — a bare "taip" on the diagnose turn is the address confirmation, not the
+        # answer to "did you change the router?".
+        if not r.get("asked"):
+            return
+        outcome = detect_yes_no(user_input)
+        if outcome is None:
+            return  # unclear -> stay on the CONFIRM step, re-ask
+        r["step"] = next_step_id(strat, step.id, outcome)
+
+    def _mark_confirm_asked(self) -> None:
+        """After the agent replies while on a CONFIRM step, record that its question
+        has now been asked, so a plain 'taip'/'ne' next turn advances the step."""
+        r = self.state.resolution
+        if not r:
+            return
+        from .resolution import StepKind, get_strategy
+
+        strat = get_strategy(r.get("verdict"))
+        step = strat.step(r.get("step", "")) if strat else None
+        if step is not None and step.kind == StepKind.CONFIRM:
+            r["asked"] = True
 
     def _augment_tool_result(self, name: str, observation: str) -> str:
         """Deterministic post-action chaining + telemetry verification (B6 strategy).
@@ -677,6 +755,9 @@ class ReactAgent:
                 "palinkėk geros dienos ir tuo baik — NEklausk apie įrenginius."
             )
         elif target == "escalate":
+            # Advance to the ESCALATE step so create_ticket becomes available.
+            if self.state.resolution:
+                self.state.resolution["step"] = "escalate"
             tail = (
                 "Ryšys DAR neatstatytas (telemetrija). Nesakyk, kad sutvarkyta — "
                 "užregistruok gedimą patikrinimui (create_ticket)."
