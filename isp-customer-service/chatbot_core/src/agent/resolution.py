@@ -139,15 +139,18 @@ _FOREIGN_MAC = Strategy(
         # the line shows a jumping MAC, so fix the cable BEFORE binding.
         Step(
             id="cable_check",
-            kind=StepKind.INSTRUCT,
+            kind=StepKind.CONFIRM,
+            detector="port",
             tools=frozenset(),
             rag_section=1,  # "### Žingsnis 2a: Į kokį lizdą įkištas kabelis"
             hint=(
                 "The caller changed nothing, so the foreign/jumping MAC is usually a "
-                "mis-plugged cable. Ask ONE thing and wait: which port is the incoming "
-                "line cable plugged into — the router's blue WAN (internet) port, or a "
-                "yellow LAN port? Do not explain more this turn."
+                "mis-plugged cable. Ask ONE thing and WAIT: which port is the incoming "
+                "line cable in — the router's blue WAN (internet) port, or a yellow LAN "
+                "port? Do NOT assume or conclude 'teisingas lizdas' until they clearly "
+                "say a colour; if unclear, ask again. Do not explain more this turn."
             ),
+            on={"wan": "bind_mac", "lan": "cable_reconnect"},
         ),
         Step(
             id="cable_reconnect",
@@ -155,11 +158,9 @@ _FOREIGN_MAC = Strategy(
             tools=frozenset(),
             rag_section=2,  # "### Žingsnis 2b: Perjungti į WAN"
             hint=(
-                "Give ONE instruction and wait: if the cable was in a yellow LAN port, "
-                "ask them to unplug it and plug it into the blue WAN port, and to say "
-                "when done; if it was already in the blue WAN port, tell them that's "
-                "correct. Do NOT suggest rebooting — it changes nothing if the cable is "
-                "misplugged."
+                "The cable is in the wrong (yellow LAN) port. Give ONE instruction and "
+                "wait: unplug it and plug it into the blue WAN port, and say when done. "
+                "Do NOT suggest rebooting — it changes nothing if the cable is misplugged."
             ),
         ),
         Step(
@@ -232,10 +233,10 @@ _CLIENT_SIDE = Strategy(
             detector="scope",
             rag_section=0,  # "### Žingsnis 1: Masto nustatymas"
             hint=(
-                "Explain plainly that the line up to their router works, so the fault "
-                "is at home, and you will help find where. Ask the ONE scoping "
-                "question: does it fail on ALL devices (phone, TV, computer) or just "
-                "ONE — and if one, which device? Wait."
+                "Ask ONE short question and WAIT: does it fail on all devices or just "
+                "one? Do NOT reflect or guess their answer — never say 'girdžiu, "
+                "visuose' or 'telefone' until THEY said it. If you did not clearly hear "
+                "the answer, say 'Atsiprašau, neišgirdau' and ask the same again."
             ),
             on={"all": "cs_reboot", "phone": "cs_wifi", "computer": "cs_conn"},
         ),
@@ -535,6 +536,23 @@ def detect_conn(text: str | None) -> str | None:
     return None
 
 
+_PORT_WAN = ("mėlyn", "melyn", "wan", "interneto lizd")
+_PORT_LAN = ("gelton", "lan lizd", "kitą", "kita spalv")
+
+
+def detect_port(text: str | None) -> str | None:
+    """Route the WAN cable question. 'wan' (blue/internet port — correct) / 'lan'
+    (yellow/other — must move) / None if unclear (stay and re-ask, do NOT assume)."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _PORT_LAN):
+        return "lan"
+    if any(m in low for m in _PORT_WAN):
+        return "wan"
+    return None
+
+
 def _yn(text: str | None) -> str | None:
     o = detect_yes_no(text)
     return o.value if o else None
@@ -552,6 +570,7 @@ DETECTORS = {
     "restored": _restored,
     "scope": detect_scope,
     "conn": detect_conn,
+    "port": detect_port,
 }
 
 

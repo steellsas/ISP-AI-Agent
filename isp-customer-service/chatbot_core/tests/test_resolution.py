@@ -189,9 +189,11 @@ class TestForeignMacSequence:
         # Changed nothing -> walk the cable steps, NOT escalate (device is theirs).
         assert next_step_id(self.s, "confirm_change", Outcome.NO) == "cable_check"
 
-    def test_cable_steps_walk_to_bind(self):
-        # INSTRUCT steps fall through in order (advanced by the walker on any reply).
-        assert next_step_id(self.s, "cable_check", None) == "cable_reconnect"
+    def test_cable_check_routes_by_port(self):
+        # WAN (blue) -> bind straight away; LAN (yellow) -> move it first.
+        assert next_step_id(self.s, "cable_check", "wan") == "bind_mac"
+        assert next_step_id(self.s, "cable_check", "lan") == "cable_reconnect"
+        # cable_reconnect (INSTRUCT) falls through to the bind.
         assert next_step_id(self.s, "cable_reconnect", None) == "bind_mac"
 
     def test_action_falls_through_to_confirm_restored(self):
@@ -233,7 +235,7 @@ class TestForeignMacSequence:
     def test_step_kinds_are_typed(self):
         kinds = {st.id: st.kind for st in self.s.steps}
         assert kinds["confirm_change"] == StepKind.CONFIRM
-        assert kinds["cable_check"] == StepKind.INSTRUCT
+        assert kinds["cable_check"] == StepKind.CONFIRM  # waits for a clear port answer
         assert kinds["cable_reconnect"] == StepKind.INSTRUCT
         assert kinds["bind_mac"] == StepKind.ACTION
         assert kinds["confirm_restored"] == StepKind.CONFIRM

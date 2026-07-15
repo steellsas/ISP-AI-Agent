@@ -16,11 +16,11 @@ keitimas, aparatinė) — NEMOKOM, o užregistruojam gedimą.
 klientas sako, kad neveikia kompiuteryje, prijungtame laidu.
 
 ### Žingsnis 1: Masto nustatymas (visi ar vienas įrenginys)
-Paaiškinti paprastai ir paklausti VIENĄ dalyką:
-- "Ryšys iki jūsų routerio veikia, tad problema namuose — padėsiu rasti, kur. Pasakykite,
-  internetas neveikia VISUOSE įrenginiuose (telefone, televizoriuje, kompiuteryje), ar
-  tik VIENAME? Jei viename — kuriame?"
-- Visuose → routerio lygis (Žingsnis 2). Viename → to įrenginio lygis (Žingsnis 4+).
+Trumpai, vienu klausimu, ir LAUKTI atsakymo:
+- "Internetas neveikia visuose įrenginiuose, ar tik viename?"
+- NEatspindėti ir NEspėti atsakymo. Neįrašyti „girdžiu, visuose" ar „telefone", kol
+  klientas pats nepasakė. Jei neišgirdai — „Atsiprašau, neišgirdau" ir pakartoti klausimą.
+- Visuose → routerio lygis (Žingsnis 2). Viename → paklausti, kuriame, tada Žingsnis 4+.
 
 ### Žingsnis 2: Perkrauti routerį
 Kai neveikia visuose — pigiausias ir dažniausiai padedantis veiksmas:
@@ -49,10 +49,10 @@ Kai neveikia telefone/planšetėje ar kompiuteryje per WiFi:
 - "Patikrinkite: ar WiFi įrenginyje įjungtas, ir ar prisijungę prie SAVO tinklo (ne
   kaimyno)? Pasakykite, ką matote."
 
-### Žingsnis 7: Perjungti WiFi / perkrauti įrenginį
-- "Pabandykite 'pamiršti' (Forget) šį WiFi tinklą nustatymuose ir prisijungti iš
-  naujo suvedę slaptažodį — atkreipkite dėmesį į didžiąsias/mažąsias raides. Tada
-  perkraukite įrenginį. Pasakykite, kai padarysite."
+### Žingsnis 7: Perjungti WiFi iš naujo
+Viena instrukcija, tada laukti (NEberti visų iškart):
+- "Pabandykite 'pamiršti' šį WiFi tinklą ir prisijungti iš naujo su slaptažodžiu.
+  Pasakykite, kai padarysite."
 
 ### Žingsnis 8: Patikrinti įrenginį
 - "Ar dabar tame įrenginyje internetas veikia?"
