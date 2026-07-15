@@ -9,6 +9,9 @@ from agent.resolution import (
     TERMINALS,
     Outcome,
     StepKind,
+    build_linear_strategy,
+    detect_conn,
+    detect_scope,
     detect_yes_no,
     get_strategy,
     next_step_id,
@@ -71,6 +74,66 @@ class TestDetectRestored:
         assert detect_restored("") is None
 
 
+class TestClientSideDetectors:
+    def test_scope_all_vs_one(self):
+        assert detect_scope("visuose neveikia") == "all"
+        assert detect_scope("niekur nėra") == "all"
+        assert detect_scope("tik telefone") == "phone"
+        assert detect_scope("planšetėje neveikia") == "phone"
+        assert detect_scope("tik kompiuteryje") == "computer"
+        assert detect_scope("nešiojamas neveikia") == "computer"
+        assert detect_scope("nežinau") is None
+
+    def test_conn_wired_vs_wifi(self):
+        assert detect_conn("laidu") == "wired"
+        assert detect_conn("kabeliu prijungtas") == "wired"
+        assert detect_conn("per wifi") == "wifi"
+        assert detect_conn("belaidžiu") == "wifi"
+        assert detect_conn("nežinau") is None
+
+
+class TestClientSideStrategy:
+    def setup_method(self):
+        self.s = get_strategy("healthy_to_router")
+
+    def test_scope_routes_three_ways(self):
+        assert next_step_id(self.s, "cs_scope", "all") == "cs_reboot"
+        assert next_step_id(self.s, "cs_scope", "phone") == "cs_wifi"
+        assert next_step_id(self.s, "cs_scope", "computer") == "cs_conn"
+
+    def test_reboot_verify_resolves_or_escalates(self):
+        assert next_step_id(self.s, "cs_reboot", None) == "cs_verify_all"  # fall through
+        assert next_step_id(self.s, "cs_verify_all", "yes") == "resolve"
+        assert next_step_id(self.s, "cs_verify_all", "no") == "escalate"
+
+    def test_conn_routes_wired_wifi(self):
+        assert next_step_id(self.s, "cs_conn", "wired") == "cs_cable"
+        assert next_step_id(self.s, "cs_conn", "wifi") == "cs_wifi"
+
+    def test_goto_converges_both_chains_on_verify_dev(self):
+        # cable and the wifi chain both reach the same device verify via `goto`.
+        assert self.s.step("cs_cable").goto == "cs_verify_dev"
+        assert self.s.step("cs_wifi2").goto == "cs_verify_dev"
+
+    def test_phone_branch_never_reaches_cable(self):
+        # A phone routes straight to Wi-Fi — the cable step is unreachable from it.
+        assert next_step_id(self.s, "cs_scope", "phone") == "cs_wifi"
+        assert self.s.step("cs_wifi").goto == "cs_wifi2"
+
+
+class TestLinearStrategy:
+    def test_build_linear_walks_instruct_then_verify(self):
+        s = build_linear_strategy("demo_fault", "troubleshooting/demo", 2)
+        ids = [st.id for st in s.steps]
+        assert ids == ["step_1", "step_2", "verify", "escalate"]
+        assert s.step("step_1").kind == StepKind.INSTRUCT
+        assert s.step("step_1").rag_section == 0
+        assert next_step_id(s, "step_1", None) == "step_2"  # fall through
+        assert next_step_id(s, "step_2", None) == "verify"
+        assert next_step_id(s, "verify", "yes") == "resolve"
+        assert next_step_id(s, "verify", "no") == "escalate"
+
+
 class TestRegistry:
     def test_known_verdict_returns_strategy(self):
         s = get_strategy("foreign_mac")
@@ -78,8 +141,15 @@ class TestRegistry:
         assert s.rag_doc  # every strategy points at a playbook
 
     def test_unknown_verdict_is_none(self):
-        assert get_strategy("healthy_to_router") is None
+        assert get_strategy("billing_suspended") is None  # inform verdict, no strategy
         assert get_strategy(None) is None
+
+    def test_client_side_strategy_registered(self):
+        s = get_strategy("healthy_to_router")
+        assert s is not None and s.verdict == "healthy_to_router"
+        # telemetry-blind: verify steps use the "restored" (veikia/neveikia) detector
+        assert s.step("cs_verify_all").detector == "restored"
+        assert s.step("cs_scope").detector == "scope"
 
     def test_steps_are_ordered_and_unique(self):
         s = get_strategy("foreign_mac")

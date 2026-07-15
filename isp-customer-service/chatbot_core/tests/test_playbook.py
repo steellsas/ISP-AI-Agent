@@ -55,6 +55,13 @@ class TestRealPlaybook:
         assert "atsirad" in get_step(self.DOC, 4)  # step 4 asks if restored
         assert "kliento pus" in get_step(self.DOC, 5).lower()  # step 5 client-side
 
+    def test_client_side_doc_has_eight_steps(self):
+        doc = "troubleshooting/kliento_puse_internetas"
+        assert step_count(doc) == 8
+        assert get_step(doc, 0).startswith("### Žingsnis 1")
+        assert "perkrau" in get_step(doc, 1).lower()  # reboot router
+        assert "wifi" in get_step(doc, 5).lower().replace("-", "")  # wifi check
+
     def test_out_of_range_and_missing(self):
         assert get_step(self.DOC, 99) is None
         assert get_step("troubleshooting/does_not_exist", 0) is None

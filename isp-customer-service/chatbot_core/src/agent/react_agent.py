@@ -81,6 +81,27 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _register_linear_strategies() -> None:
+    """Populate STRATEGIES with a linear guided walk for each LINEAR_DOCS verdict
+    (reads the doc's step count once), so a purely linear fault needs ONLY a RAG doc
+    — no bespoke strategy code. No-op while LINEAR_DOCS is empty."""
+    try:
+        from .playbook import step_count
+        from .resolution import LINEAR_DOCS, STRATEGIES, build_linear_strategy
+
+        for verdict, doc in LINEAR_DOCS.items():
+            if verdict in STRATEGIES:
+                continue
+            n = step_count(doc)
+            if n > 0:
+                STRATEGIES[verdict] = build_linear_strategy(verdict, doc, n)
+    except Exception:  # pragma: no cover - best-effort, never break import
+        pass
+
+
+_register_linear_strategies()
+
 # Short Lithuanian gloss for each verdict reason, surfaced in the case-state facts
 # block so the agent can reconcile the finding with what the customer says.
 _DIAGNOSIS_LT = {
@@ -739,10 +760,9 @@ class ReactAgent:
         This is what leads the caller one step at a time instead of dumping the
         whole playbook, and stops the model binding a device they never confirmed."""
         from .resolution import (
-            Outcome,
+            DETECTORS,
             StepKind,
             confirms_device_change,
-            detect_yes_no,
             get_strategy,
             next_step_id,
         )
@@ -758,28 +778,44 @@ class ReactAgent:
         if step.id == "confirm_restored":
             self._advance_restored(r, user_input)
             return
-        # A guided instruction / the bind announce: advance to the next step on ANY
-        # reply, once it was presented last turn (they did it / answered).
+        # A guided instruction / the bind announce: advance on ANY reply, once it was
+        # presented last turn — to an explicit goto if set, else the next step in order.
         if step.kind in (StepKind.INSTRUCT, StepKind.ACTION):
             if r.get("asked"):
-                self._goto_step(r, next_step_id(strat, step.id, None))
+                self._route_to(r, step.goto or next_step_id(strat, step.id, None))
             return
         if step.kind != StepKind.CONFIRM:
             return
-        # A strong device-change signal advances even before the question is asked
-        # (the caller pre-answered, e.g. "neveikia, keičiau routerį").
-        if confirms_device_change(user_input):
-            self._goto_step(r, next_step_id(strat, step.id, Outcome.YES))
+        # A strong device-change signal advances confirm_change before it is asked
+        # (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that
+        # step — elsewhere "kompiuteris" is a scope answer, not a device change.
+        if step.id == "confirm_change" and confirms_device_change(user_input):
+            self._route_to(r, next_step_id(strat, step.id, "yes"))
             return
-        # Otherwise a plain yes/no only advances once the confirm question was asked
-        # — a bare "taip" on the diagnose turn is the address confirmation, not the
-        # answer to "did you change the router?".
+        # Otherwise route only once the question was asked — a bare "taip" on the
+        # diagnose turn is the address confirmation, not an answer to this step.
         if not r.get("asked"):
             return
-        outcome = detect_yes_no(user_input)
-        if outcome is None:
-            return  # unclear -> stay on the CONFIRM step, re-ask
-        self._goto_step(r, next_step_id(strat, step.id, outcome))
+        # Read the reply with THIS step's detector (yes_no by default) into a routing
+        # key, then route. An unclear reply stays on the step and re-asks.
+        detect = DETECTORS.get(step.detector or "yes_no", DETECTORS["yes_no"])
+        key = detect(user_input)
+        if key is None:
+            return
+        self._route_to(r, next_step_id(strat, step.id, key))
+
+    def _route_to(self, r: dict, target: str) -> None:
+        """Apply a routing target: the 'resolve'/'end' terminals close the case; any
+        other id is a real step to advance to. Centralises terminal handling so every
+        branch (including client_side -> resolve) actually closes."""
+        if target == "resolve":
+            self.state.case_closed = True
+            self.state.closed_reason = "resolved"
+        elif target == "end":
+            self.state.case_closed = True
+            self.state.closed_reason = self.state.closed_reason or "declined"
+        else:
+            self._goto_step(r, target)
 
     def _advance_restored(self, r: dict, user_input: str | None) -> None:
         """After binding, decide from BOTH the caller's word and a fresh telemetry

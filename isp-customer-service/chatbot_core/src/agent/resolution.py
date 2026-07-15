@@ -57,9 +57,16 @@ class Step:
     # 0-based index of the "### Žingsnis N" section in the strategy's RAG doc to
     # inject for THIS step (only that section, never the whole file). None = none.
     rag_section: int | None = None
-    # Where to jump on each outcome (step id). Missing outcome = fall through to
-    # the next step in order. "resolve"/"escalate"/"end" are terminal sentinels.
-    on: dict[Outcome, str] = field(default_factory=dict)
+    # CONFIRM only: which detector reads the caller's reply into a routing KEY
+    # ("yes_no" default, "restored", "scope", "conn"). The key indexes `on`.
+    detector: str = ""
+    # Routing by key -> next step id. Keys are detector outputs ("yes"/"no" or
+    # "all"/"phone"/… ). Missing key = fall through to the next step in order.
+    # "resolve"/"escalate"/"end" are terminal sentinels.
+    on: dict[str, str] = field(default_factory=dict)
+    # INSTRUCT/ACTION only: explicit next step (overrides fall-through), so two
+    # instruct chains can converge on the same verify step.
+    goto: str = ""
 
 
 @dataclass(frozen=True)
@@ -83,10 +90,11 @@ class Strategy:
 TERMINALS = frozenset({"resolve", "end"})
 
 
-def next_step_id(strategy: Strategy, current_id: str, outcome: Outcome | None) -> str:
-    """Given the current step and the turn's outcome, return the next step id (or a
-    terminal sentinel). Explicit `on` routing wins; otherwise fall through to the
-    next step in order; past the last step -> 'end'."""
+def next_step_id(strategy: Strategy, current_id: str, outcome: str | None) -> str:
+    """Given the current step and the turn's routing KEY (a detector output: "yes",
+    "no", "all", "wifi"… — Outcome members work too, since Outcome is a str Enum),
+    return the next step id (or a terminal sentinel). Explicit `on` routing wins;
+    otherwise fall through to the next step in order; past the last step -> 'end'."""
     step = strategy.step(current_id)
     if step is None:
         return "end"
@@ -183,6 +191,7 @@ _FOREIGN_MAC = Strategy(
         Step(
             id="client_side",
             kind=StepKind.CONFIRM,
+            detector="restored",  # "veikia/neveikia" answer, not keičiau/nekeičiau
             tools=frozenset(),
             rag_section=5,  # "### Žingsnis 5: Kliento pusės gedimas"
             hint=(
@@ -208,9 +217,151 @@ _FOREIGN_MAC = Strategy(
     ),
 )
 
+# B7 — line healthy up to the router, but the caller has no usable internet: the
+# fault is INSIDE the home and telemetry is BLIND to it, so verification is the
+# caller's word only. Only simple self-service actions (reboot, Wi-Fi checks, cable
+# reseat); anything deeper is registered, not taught. Device-aware: a phone/tablet
+# is Wi-Fi only, so the cable branch is reachable ONLY via "computer -> wired".
+_CLIENT_SIDE = Strategy(
+    verdict="healthy_to_router",
+    rag_doc="troubleshooting/kliento_puse_internetas",
+    steps=(
+        Step(
+            id="cs_scope",
+            kind=StepKind.CONFIRM,
+            detector="scope",
+            rag_section=0,  # "### Žingsnis 1: Masto nustatymas"
+            hint=(
+                "Explain plainly that the line up to their router works, so the fault "
+                "is at home, and you will help find where. Ask the ONE scoping "
+                "question: does it fail on ALL devices (phone, TV, computer) or just "
+                "ONE — and if one, which device? Wait."
+            ),
+            on={"all": "cs_reboot", "phone": "cs_wifi", "computer": "cs_conn"},
+        ),
+        Step(
+            id="cs_reboot",
+            kind=StepKind.INSTRUCT,
+            rag_section=1,  # "### Žingsnis 2: Perkrauti routerį"
+            goto="cs_verify_all",
+            hint=(
+                "All devices are down -> the cheapest, highest-yield fix first: ask "
+                "them to reboot the router (unplug from the socket 10 seconds, plug "
+                "back in, wait for the lights) and to tell you when it is back. ONE "
+                "instruction."
+            ),
+        ),
+        Step(
+            id="cs_verify_all",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=2,  # "### Žingsnis 3: Patikrinti po perkrovimo"
+            hint=(
+                "Ask whether the internet works now. If yes -> resolved. If not, it is "
+                "beyond simple self-service (router/DNS/config) -> register the fault."
+            ),
+            on={"yes": "resolve", "no": "escalate"},
+        ),
+        Step(
+            id="cs_conn",
+            kind=StepKind.CONFIRM,
+            detector="conn",
+            rag_section=3,  # "### Žingsnis 4: Kompiuteris — laidu ar WiFi"
+            hint=(
+                "Only ONE computer is affected. Ask whether that computer connects by "
+                "cable or by Wi-Fi. Wait."
+            ),
+            on={"wired": "cs_cable", "wifi": "cs_wifi"},
+        ),
+        Step(
+            id="cs_cable",
+            kind=StepKind.INSTRUCT,
+            rag_section=4,  # "### Žingsnis 5: Patikrinti laidą"
+            goto="cs_verify_dev",
+            hint=(
+                "Wired computer: ask them to check the cable between router and "
+                "computer — pushed in fully (a click), not damaged — and reseat it. "
+                "Tell you when done. ONE instruction. (Do NOT mention cables for a "
+                "phone/tablet — that branch never reaches here.)"
+            ),
+        ),
+        Step(
+            id="cs_wifi",
+            kind=StepKind.INSTRUCT,
+            rag_section=5,  # "### Žingsnis 6: WiFi patikra"
+            goto="cs_wifi2",
+            hint=(
+                "Wi-Fi device (phone/tablet/laptop): ask them to check Wi-Fi is ON and "
+                "that they are connected to THEIR OWN network (not a neighbour's). ONE "
+                "thing, wait."
+            ),
+        ),
+        Step(
+            id="cs_wifi2",
+            kind=StepKind.INSTRUCT,
+            rag_section=6,  # "### Žingsnis 7: Perjungti WiFi / perkrauti įrenginį"
+            goto="cs_verify_dev",
+            hint=(
+                "Next Wi-Fi step: ask them to 'forget' the network and reconnect with "
+                "the password (watch upper/lowercase), then restart the device. Tell "
+                "you when done. ONE instruction."
+            ),
+        ),
+        Step(
+            id="cs_verify_dev",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=7,  # "### Žingsnis 8: Patikrinti įrenginį"
+            hint=(
+                "Ask whether it works now on that device. Yes -> resolved. No -> it is "
+                "beyond simple help (device settings/drivers) -> register the fault."
+            ),
+            on={"yes": "resolve", "no": "escalate"},
+        ),
+        Step(
+            id="escalate",
+            kind=StepKind.ESCALATE,
+            tools=frozenset({"create_ticket"}),
+            hint=(
+                "The simple self-service steps did not help — the fault is deeper "
+                "(router/DNS/config/device). Register it ('gedimo registracija'); a "
+                "worker will call the next business day."
+            ),
+        ),
+    ),
+)
+
 STRATEGIES: dict[str, Strategy] = {
     "foreign_mac": _FOREIGN_MAC,
+    "healthy_to_router": _CLIENT_SIDE,
 }
+
+# Verdicts whose fix is a straight, branch-free, action-free sequence: give them a
+# RAG doc here and the engine builds a linear guided walk (N INSTRUCT steps from the
+# doc -> caller verify -> resolve/escalate) with NO bespoke strategy code. Empty for
+# now; adding an entry + a RAG doc is all a new simple linear fault needs.
+LINEAR_DOCS: dict[str, str] = {}
+
+
+def build_linear_strategy(verdict: str, rag_doc: str, n_steps: int) -> Strategy:
+    """A purely LINEAR guided strategy: n_steps INSTRUCT steps (one per RAG section,
+    walked in order) then a caller-verified check -> resolve / escalate. Telemetry is
+    not consulted (these are client-side self-service fixes). Pure — the caller reads
+    n_steps from the doc (playbook.step_count) and passes it in."""
+    steps: list[Step] = [
+        Step(id=f"step_{i + 1}", kind=StepKind.INSTRUCT, rag_section=i) for i in range(n_steps)
+    ]
+    steps.append(
+        Step(
+            id="verify",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            hint="Ask whether it works now. Yes -> resolved; no -> register the fault.",
+            on={"yes": "resolve", "no": "escalate"},
+        )
+    )
+    steps.append(Step(id="escalate", kind=StepKind.ESCALATE, tools=frozenset({"create_ticket"})))
+    return Strategy(verdict=verdict, rag_doc=rag_doc, steps=tuple(steps))
 
 
 # Deterministic yes/no read of a caller reply, to advance a CONFIRM step. Coarse
@@ -338,6 +489,70 @@ def detect_restored(text: str | None) -> Outcome | None:
     if any(m in low for m in _RESTORED_YES):
         return Outcome.YES
     return None
+
+
+# --- Client-side branch detectors (healthy_to_router) ------------------------
+# "all devices or one?" — and, when one, WHICH device, because a phone/tablet can
+# only be Wi-Fi (never suggest a cable to it).
+_ONE_PHONE = ("telefon", "planšet", "planset", "mobil", "išmanij", "ismanij", "tv", "televizor")
+_ONE_COMPUTER = ("kompiuter", "kompas", "nešiojam", "nesiojam", "laptop", "stacionar")
+_ONE_MARK = ("tik ", "viename", "vienam", "vien ", "tik vien")
+_ALL_MARK = ("visuose", "visur", "visuos", "visi ", "visų", "nei viename", "niekur")
+
+
+def detect_scope(text: str | None) -> str | None:
+    """Route the "all devices or one?" question. Returns 'all', 'phone' (a Wi-Fi-only
+    device — phone/tablet/TV), 'computer', or None if unclear. A named single device
+    implies scope=one, so we key off the device word first."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _ONE_PHONE):
+        return "phone"
+    if any(m in low for m in _ONE_COMPUTER):
+        return "computer"
+    if any(m in low for m in _ALL_MARK):
+        return "all"
+    if any(m in low for m in _ONE_MARK):
+        return "computer"  # "tik viename" without a named device -> ask conn (computer path)
+    return None
+
+
+_CONN_WIRED = ("laid", "kabel", "eternet", "ethernet", "lan")
+_CONN_WIFI = ("wifi", "wi-fi", "vaifa", "vaifai", "belaid", "bevielis", "bevielis")
+
+
+def detect_conn(text: str | None) -> str | None:
+    """Route "wired or Wi-Fi?". Returns 'wired', 'wifi', or None. Wi-Fi is tested
+    FIRST because "belaidis" (wireless) contains "laid"."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _CONN_WIFI):
+        return "wifi"
+    if any(m in low for m in _CONN_WIRED):
+        return "wired"
+    return None
+
+
+def _yn(text: str | None) -> str | None:
+    o = detect_yes_no(text)
+    return o.value if o else None
+
+
+def _restored(text: str | None) -> str | None:
+    o = detect_restored(text)
+    return o.value if o else None
+
+
+# Named detectors a CONFIRM step selects with Step.detector. Each maps the caller's
+# reply to a routing KEY (or None = unclear, stay and re-ask).
+DETECTORS = {
+    "yes_no": _yn,
+    "restored": _restored,
+    "scope": detect_scope,
+    "conn": detect_conn,
+}
 
 
 def get_strategy(verdict: str | None) -> Strategy | None:
