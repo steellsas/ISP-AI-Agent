@@ -338,7 +338,7 @@ class ReactAgent:
                 t for t in schema if t.get("function", {}).get("name") in self._active_tool_names
             ]
         if self.state.resolution is not None:
-            from .resolution import get_strategy
+            from .resolution import StepKind, get_strategy
 
             strat = get_strategy(self.state.resolution.get("verdict"))
             step = strat.step(self.state.resolution.get("step", "")) if strat else None
@@ -348,9 +348,13 @@ class ReactAgent:
                 # diagnostics, the action and the closing. This is what stops the
                 # model spamming an unrelated lookup while it "waits" (observed:
                 # check_outages looped to the call limit -> 'negaliu apdoroti').
-                # An ACTION/ESCALATE step exposes only its one tool (a fallback —
-                # the engine usually runs the action itself before the model narrates).
                 allowed = step.tools
+                # An ACTION step exposes its tool ONLY as a fallback if the engine
+                # has not already run it. Once action_done is set, WITHHOLD it — the
+                # model only announces; otherwise the single exposed tool gets
+                # re-called to the limit (observed: update_mac x6 -> 'negaliu apdoroti').
+                if step.kind == StepKind.ACTION and self.state.resolution.get("action_done"):
+                    allowed = frozenset()
                 schema = [t for t in schema if t.get("function", {}).get("name") in allowed]
             else:
                 schema = [

@@ -241,6 +241,17 @@ class TestEngineDrivenAction:
         assert agent.ensure_action_done() is True
         assert agent.ensure_action_done() is False  # action_done guard — no re-bind
 
+    def test_bind_tool_withheld_after_engine_ran(self, monkeypatch):
+        # Once the engine has bound (action_done), update_mac must NOT be exposed to
+        # the model, or the single-tool step gets re-called to the limit (observed:
+        # update_mac x6 -> 'negaliu apdoroti'). The model only announces on this turn.
+        agent = self._agent()
+        self._at_bind(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        agent.ensure_action_done()  # engine binds; stays on bind_mac to announce
+        names = {t["function"]["name"] for t in agent._scoped_tools_schema()}
+        assert "update_mac" not in names
+
     def test_restored_yes_resolves(self, monkeypatch):
         agent = self._agent()
         self._at_restored(agent)

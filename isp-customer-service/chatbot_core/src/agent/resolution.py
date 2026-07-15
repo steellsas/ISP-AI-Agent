@@ -265,6 +265,7 @@ _DEVICE_CHANGE = (
     "naujas router",
     "kitą įrenginį",
     "kitą router",
+    "router",  # a bare "routerį/routerė" answer to "did you change the router?" = yes
     "kompiuter",  # PC plugged straight into the line (temporary bridge)
     "kompiuterį",
     "televizor",
