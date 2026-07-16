@@ -578,6 +578,38 @@ DETECTORS = {
 }
 
 
+_FAREWELL = (
+    "viso gero",
+    "viso labo",
+    "geros dienos",
+    "gero vakaro",
+    "sudie",
+    "ačiū, viskas",
+    "tai viskas",
+    "viskas ačiū",
+    "daugiau ne",
+    "nieko daugiau",
+    "pakaks",
+    "ne ačiū",
+    "nebereikia",
+    "iki",
+    "ate",
+)
+
+
+def detect_farewell(text: str | None) -> bool:
+    """True when, after the case is closed, the caller signals they are done — a
+    goodbye or a plain 'no' to 'anything else?'. Used to end the call so the agent
+    does not loop goodbyes. A 'no' that carries a new question/topic does NOT count."""
+    if not text:
+        return False
+    low = text.lower()
+    if any(m in low for m in _FAREWELL):
+        return True
+    has_followup = any(w in low for w in ("klausim", "dar ", "bet ", "problem", "taip"))
+    return not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)
+
+
 def get_strategy(verdict: str | None) -> Strategy | None:
     """The strategy for a diagnosis verdict reason, or None if unhandled (the
     caller falls back to the generic instruct/inform flow)."""

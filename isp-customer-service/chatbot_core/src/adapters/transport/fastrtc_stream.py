@@ -94,6 +94,7 @@ class FastRTCVoiceTransport:
         self._turn_idx = 0
         self._launch_kwargs = launch_kwargs
         self._stream: Any | None = None
+        self._finished = False  # set once the call ended; then ignore further audio
         if self._record_dir is not None:
             self._record_dir.mkdir(parents=True, exist_ok=True)
 
@@ -160,6 +161,10 @@ class FastRTCVoiceTransport:
 
     def _reply(self, audio: tuple[int, Any]):
         """Run one full voice turn for a detected utterance and stream it back."""
+        # Call already ended: the final goodbye was played, so ignore any further
+        # audio (VAD noise) instead of looping goodbyes.
+        if self._finished:
+            return
         pcm, sample_rate = self._incoming_to_pcm16(audio)
         self._turn_idx += 1
         self._save_audio(f"{self._turn_idx:02d}_user", pcm, kind="pcm", sample_rate=sample_rate)
@@ -189,9 +194,15 @@ class FastRTCVoiceTransport:
                     yield (self._output_sample_rate, out)
             if saved:
                 self._save_audio(f"{self._turn_idx:02d}_agent", bytes(saved), kind="reply")
+            # The goodbye (if any) has now been streamed; end the call so the next
+            # utterance is ignored.
+            if getattr(self._pipeline.session, "is_complete", False):
+                self._finished = True
             return
 
         turn = self._pipeline.handle_audio(pcm, sample_rate=sample_rate)
+        if turn.is_complete:
+            self._finished = True
         self._save_audio(f"{self._turn_idx:02d}_agent", turn.reply_audio, kind="reply")
         # Latency breakdown is the raw material for the masking decision (a vs b).
         logger.info(

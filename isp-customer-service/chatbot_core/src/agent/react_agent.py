@@ -492,18 +492,23 @@ class ReactAgent:
             )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
-        if s.case_closed:
+        if s.case_closed and s.is_complete:
+            # The caller said goodbye / "no more" — END on ONE short farewell.
+            facts.append(
+                "- POKALBIS BAIGTAS: klientas atsisveikino / neturi daugiau klausimų. "
+                "Pasakyk TIK vieną trumpą atsisveikinimą („Ačiū, kad paskambinote. "
+                "Geros dienos!“) ir NIEKO daugiau — jokių naujų klausimų."
+            )
+        elif s.case_closed:
             facts.append(f"- Byla UŽDARYTA (priežastis: {s.closed_reason or 'resolved'}).")
-            # Just resolved via the foreign-MAC strategy: the engine bound the device
-            # and telemetry confirms the line is restored. Steer the SAME-turn reply
-            # to the resolution message (not the problem re-statement the model
-            # otherwise drifts to), then close warmly — do NOT re-ask about devices.
+            # Just resolved: confirm briefly, then OFFER one more thing and WAIT — do
+            # NOT sign off yet (the engine ends the call once the caller declines).
             if s.closed_reason == "resolved" and s.resolution:
                 facts.append(
-                    "- IŠSPRĘSTA: klientas patvirtino, kad internetas veikia (arba "
-                    "telemetrija patvirtino ryšį). Trumpai padžiaukis, kad sutvarkyta, "
-                    "ir palinkėk geros dienos. NEklausk apie įrangą, NEsakyk, kad "
-                    "įrenginys nepririštas, NEprašyk tikrinti iš naujo."
+                    "- IŠSPRĘSTA: klientas patvirtino, kad internetas veikia. Trumpai "
+                    "padžiaukis, kad sutvarkyta, ir paklausk „Ar dar kuo nors galiu "
+                    "padėti?“. NEatsisveikink dar, NEklausk apie įrangą, NEprašyk "
+                    "tikrinti iš naujo."
                 )
         # Repeat-guard nudge (scaled): the caller's last reply did not advance us.
         # Don't loop the same question — acknowledge, narrow, then change tactic.
@@ -858,6 +863,20 @@ class ReactAgent:
         if next_id != r.get("step"):
             r["asked"] = False
         r["step"] = next_id
+
+    def _maybe_finish(self, user_input: str | None) -> None:
+        """In the closing stage, decide whether to end the call. The case is already
+        closed; the agent offered "ar dar kuo nors padėti?". If the caller says a
+        goodbye / "no", or we have lingered a second closing turn, set is_complete so
+        the transport hangs up — no endless goodbyes."""
+        s = self.state
+        if not s.case_closed or s.is_complete:
+            return
+        s.closing_turns += 1
+        from .resolution import detect_farewell
+
+        if detect_farewell(user_input) or s.closing_turns >= 2:
+            s.is_complete = True
 
     def _mark_step_presented(self) -> None:
         """After the agent replies while on a strategy step, record that the step's

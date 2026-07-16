@@ -306,6 +306,35 @@ class TestEngineDrivenAction:
         assert agent.state.resolution["step"] == "bind_mac"
 
 
+class TestClosing:
+    """The call ends (is_complete) on a farewell / 'no more', or a 2nd closing turn —
+    so the agent does not loop goodbyes."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def test_farewell_ends_the_call(self):
+        agent = self._agent()
+        agent.state.case_closed = True
+        agent._maybe_finish("ne, ačiū")
+        assert agent.state.is_complete is True
+
+    def test_question_keeps_it_open_then_caps(self):
+        agent = self._agent()
+        agent.state.case_closed = True
+        agent._maybe_finish("o kiek tai kainuos?")  # a real follow-up
+        assert agent.state.is_complete is False
+        agent._maybe_finish("gerai, supratau")  # 2nd closing turn -> cap
+        assert agent.state.is_complete is True
+
+    def test_noop_when_not_closed(self):
+        agent = self._agent()
+        agent._maybe_finish("viso gero")  # case not closed -> ignore
+        assert agent.state.is_complete is False
+
+
 class TestCaseStateTransitions:
     """_update_state_from_observation drives the END-state flags."""
 

@@ -103,6 +103,10 @@ def build_turn_graph(engine: Any):
         return result
 
     def closing(state: TurnState) -> TurnState:
+        # Decide whether to hang up: a farewell / "no more" from the caller, or a
+        # second closing turn, ends the call (is_complete) so the agent does not loop
+        # goodbyes. The transport plays this last reply and then stops responding.
+        engine._maybe_finish(state.get("user_input"))
         return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT)
 
     def route(state: TurnState) -> str:
