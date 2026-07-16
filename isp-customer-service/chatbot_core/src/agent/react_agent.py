@@ -463,28 +463,32 @@ class ReactAgent:
                 f"identification (no 'Radau sutartį', no house/apartment). If they name a "
                 f"DIFFERENT street, drop this and ask for the address."
             )
-        # Phone cross-check: the caller named the SAME street their number is
-        # registered at. Offer the account's full address to confirm so they need
-        # not dictate the house/apartment (spoken numbers are STT-fragile — the
-        # top cause of failed identification on the phone).
+        # Phone account: the caller's number is in the DB. Offer its registered
+        # address FIRST (before asking them to dictate anything) — the number is
+        # already tied to that address, so it reveals nothing new and saves the
+        # STT-fragile spoken house/apartment. Fires until they name a DIFFERENT
+        # street (then they are calling about someone else's address — case B).
         if (
             not s.customer_id
             and not s.preflight_outage
             and s.phone_candidate
             and s.phone_candidate.get("street")
-            and s.profile.street.value
-            and s.profile.street.value == s.phone_candidate.get("street")
+            and (
+                not s.profile.street.value
+                or s.profile.street.value == s.phone_candidate.get("street")
+            )
         ):
             c = s.phone_candidate
             flat = f", butas {c['apartment']}" if c.get("apartment") else ""
             flat_arg = f", apartment_number='{c['apartment']}'" if c.get("apartment") else ""
             facts.append(
-                f"- PHONE MATCH: the caller's number is registered at {c['address']} and "
-                f"they just named that street. Offer the FULL address to confirm — "
-                f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?" — do NOT make them '
-                f"dictate the house/apartment. On yes, call resolve_address(city='{c['city']}', "
-                f"street='{c['street']}', house_number='{c['house']}'{flat_arg}) to identify. "
-                f"If they say a DIFFERENT house/flat, take that instead."
+                f"- PHONE ACCOUNT: the caller's number is registered at {c['address']}. "
+                f"Offer THIS address FIRST, before asking them to dictate anything: "
+                f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?". On yes, call '
+                f"resolve_address(city='{c['city']}', street='{c['street']}', "
+                f"house_number='{c['house']}'{flat_arg}) to identify, then diagnose. If they "
+                f"say a DIFFERENT address (someone else's — that is allowed), ask them to "
+                f"state the address where the fault is and take THAT."
             )
         # DB-grounded verdict on the accumulated address (set in the prefill).
         if self._db_address_note and not s.customer_id:
