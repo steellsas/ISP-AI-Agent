@@ -106,6 +106,10 @@ class AgentState:
     # backstop (offer account code → register + close).
     last_question: str | None = None
     stuck_count: int = 0
+    # What the caller actually said THIS turn ("" = silence / nothing usable). Lets
+    # the agent say "nesupratau: girdžiu <...>" instead of a blanket "neišgirdau",
+    # and never reflect words from an earlier turn as if they were just said.
+    last_heard: str = ""
 
     # Conversation control
     is_complete: bool = False  # transport hangs up once True (final goodbye spoken)

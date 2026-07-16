@@ -541,11 +541,24 @@ class ReactAgent:
                 if self._repeated_verbatim
                 else ""
             )
-            facts.append(
-                "- Praeitas klausimas liko be atsakymo. NEKARTOK jo pažodžiui — trumpai "
-                "pasakyk „Atsiprašau, neišgirdau“ ir paprašyk pakartoti TIK trūkstamą "
-                "dalį (pvz. gatvės pavadinimą)." + extra
-            )
+            if s.last_heard:
+                # We DID hear them — we just could not use it. Never say "neišgirdau"
+                # here: reflect the actual words and name the part that is unclear, so
+                # the caller knows they were heard and what exactly to repeat.
+                facts.append(
+                    f"- NESUPRATAU (girdėjau!): klientas ką tik pasakė „{s.last_heard}“, bet "
+                    "iš to nepavyko paimti, ko reikia. NESAKYK „neišgirdau“ — pasakyk, ką "
+                    "girdėjai ir ko NEsupratai, ir paprašyk pakartoti TIK tą dalį: "
+                    "„Girdžiu „…“, bet nesupratau gatvės — pakartokite ją, prašau.“ Jei "
+                    "klientas iš tikrųjų kalba APIE KĄ KITA (klausia ko nors, tikslinasi) — "
+                    "atsakyk į TAI, o ne kartok savo klausimą." + extra
+                )
+            else:
+                # Genuine silence / too quiet — this is the only place "neišgirdau" fits.
+                facts.append(
+                    "- NEIŠGIRDAU (tyla arba per tyliai): pasakyk „Atsiprašau, neišgirdau“ "
+                    "ir paprašyk pakartoti TIK trūkstamą dalį (pvz. gatvės pavadinimą)." + extra
+                )
         # Raw-buffer reconciliation: once we're stuck AND still unidentified, hand
         # the LLM EVERYTHING the caller said so far. VAD/STT splits and garbles
         # spoken numbers ("šešiasdešimt" -> "šešias dešimt" -> a fragment that
@@ -1467,6 +1480,7 @@ class ReactAgent:
         # slot/problem filled THIS turn counts as progress and clears the counter.
         self._turn_start_key = self._progress_key()
 
+        self.state.last_heard = (user_input or "").strip()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
@@ -1693,6 +1707,7 @@ class ReactAgent:
         # this turn counts as progress and clears the counter).
         self._turn_start_key = self._progress_key()
 
+        self.state.last_heard = (user_input or "").strip()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
