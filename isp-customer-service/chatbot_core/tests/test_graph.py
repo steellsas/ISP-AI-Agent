@@ -334,6 +334,20 @@ class TestClosing:
         agent._maybe_finish("viso gero")  # case not closed -> ignore
         assert agent.state.is_complete is False
 
+    def test_goodbye_reply_ends_call_any_path(self):
+        # Catch-all: the agent's own farewell ends the call even without case_closed
+        # (e.g. the stuck backstop's "užregistruosiu… geros dienos" that used to loop).
+        agent = self._agent()
+        agent._maybe_end_on_goodbye(
+            "Užregistruosiu problemą, specialistas susisieks. Geros dienos!"
+        )
+        assert agent.state.is_complete is True
+
+    def test_midconversation_reply_does_not_end(self):
+        agent = self._agent()
+        agent._maybe_end_on_goodbye("Pasakykite adresą, kuriuo neveikia internetas.")
+        assert agent.state.is_complete is False
+
 
 class TestCaseStateTransitions:
     """_update_state_from_observation drives the END-state flags."""

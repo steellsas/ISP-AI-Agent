@@ -81,6 +81,19 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# When the agent's reply contains one of these, the call is over — end it (hang up)
+# no matter which path produced the goodbye. Kept to clear terminal farewells so a
+# mid-conversation "gero" never trips it.
+_GOODBYE_MARKERS = (
+    "geros dienos",
+    "geros jums dienos",
+    "gražios dienos",
+    "gero vakaro",
+    "gražaus vakaro",
+    "viso gero",
+    "viso labo",
+)
+
 
 def _register_linear_strategies() -> None:
     """Populate STRATEGIES with a linear guided walk for each LINEAR_DOCS verdict
@@ -1802,15 +1815,29 @@ class ReactAgent:
         self.state.messages.append({"role": "assistant", "content": text})
         if self._is_question(text):
             self.state.last_question = text
+        self._maybe_end_on_goodbye(text)
         self._emit_case()
         self.tracer.emit("stuck", count=self.state.stuck_count, repeated=False)
         self.tracer.emit("agent_reply", text=text)
         return text
 
+    def _maybe_end_on_goodbye(self, text: str) -> None:
+        """Catch-all hang-up: if the agent JUST said a terminal goodbye — on ANY path
+        (resolved, registered, declined, or the stuck backstop) — end the call so the
+        transport stops instead of looping the goodbye. Covers the cases the
+        case_closed/closing flow misses (e.g. the model says 'geros dienos' on a stuck
+        turn without close_case ever firing)."""
+        if self.state.is_complete or not text:
+            return
+        low = text.lower()
+        if any(m in low for m in _GOODBYE_MARKERS):
+            self.state.is_complete = True
+
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the
         repeat-guard, emit the case snapshot + the reply trace."""
         self._track_stuck(text)
+        self._maybe_end_on_goodbye(text)
         self._emit_case()
         self.tracer.emit("agent_reply", text=text)
 
