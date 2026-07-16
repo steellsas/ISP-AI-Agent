@@ -194,15 +194,15 @@ class FastRTCVoiceTransport:
                     yield (self._output_sample_rate, out)
             if saved:
                 self._save_audio(f"{self._turn_idx:02d}_agent", bytes(saved), kind="reply")
-            # The goodbye (if any) has now been streamed; end the call so the next
-            # utterance is ignored.
+            # The goodbye (if any) has now been streamed — hang up: close the WebRTC
+            # connection so the recording actually stops (real "ragelis"), not just
+            # go silent.
             if getattr(self._pipeline.session, "is_complete", False):
                 self._finished = True
+                yield self._close_signal()
             return
 
         turn = self._pipeline.handle_audio(pcm, sample_rate=sample_rate)
-        if turn.is_complete:
-            self._finished = True
         self._save_audio(f"{self._turn_idx:02d}_agent", turn.reply_audio, kind="reply")
         # Latency breakdown is the raw material for the masking decision (a vs b).
         logger.info(
@@ -217,6 +217,17 @@ class FastRTCVoiceTransport:
         out = self._decode_audio_to_int16(turn.reply_audio, self._output_sample_rate)
         if out.size:
             yield (self._output_sample_rate, out)
+        if turn.is_complete:
+            self._finished = True
+            yield self._close_signal()
+
+    @staticmethod
+    def _close_signal():
+        """FastRTC control signal that closes the WebRTC connection (real hang-up).
+        Imported lazily so the module stays importable without fastrtc installed."""
+        from fastrtc import CloseStream
+
+        return CloseStream("Pokalbis baigtas")
 
     # --- Audio recording (opt-in: replay & offline re-test) ----------------
 
