@@ -8,6 +8,7 @@ the graph (greeting + a mocked turn) and that the legacy switch still bypasses i
 Run: pytest tests/test_graph.py -v
 """
 
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -133,12 +134,32 @@ class TestRouting:
 
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()
-        session.state.customer_id = "CUST105"  # simulate an identified caller
+        session.state.customer_id = "CUST001"  # identified, healthy -> no strategy
 
         names = self._run_turn_capture_tools(session, "taip")
 
+        # Healthy line -> no resolution strategy -> the diagnosis node keeps the
+        # full toolset (diagnose available; lookup kept for a re-resolve).
         assert "diagnose_connection" in names
-        assert "resolve_address" in names  # diagnosis keeps lookup too (re-resolve)
+        assert "resolve_address" in names
+
+    def test_diagnose_withheld_while_strategy_active(self, db_connection):
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="unknown", engine="graph")
+        session.greeting()
+        session.state.customer_id = "CUST105"  # foreign_mac -> strategy activates
+
+        # ensure_diagnosed runs on entry -> strategy active at the CONFIRM step.
+        # A CONFIRM step exposes NO tools at all: the engine owns diagnosis, the
+        # action and closing, so the model just talks. This is the fix for the
+        # observed catastrophe where an empty step still left lookup tools on the
+        # table and the model spammed check_outages to the call limit.
+        names = self._run_turn_capture_tools(session, "taip")
+        assert names == set()
+        assert "diagnose_connection" not in names
+        assert "update_mac" not in names  # bind only exposed after confirm (bind_mac)
+        assert "check_outages" not in names  # the looped tool in the failing trace
 
     def test_closed_session_routes_to_closing_with_no_tools(self, db_connection):
         from agent.session import AgentSession
@@ -161,6 +182,171 @@ class TestRouting:
 
         assert reply == "Geros dienos!"
         assert captured["tools"] == []  # closing stage is structurally tools-less
+
+
+class TestEngineDrivenAction:
+    """The ACTION step (bind_mac) is run by the engine, not the model — so there is
+    no single-tool loop and the LLM only phrases a verified outcome. After binding we
+    ASK the caller and re-read telemetry before deciding.
+
+    These stub execute_tool + _fresh_diagnose_reason so they neither mutate the
+    session-shared DB (which would leak into other tests) nor depend on test order.
+    The real bind→telemetry flip is covered in test_port_actions / test_verdict."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def _at_bind(self, agent):
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {"verdict": "foreign_mac", "step": "bind_mac", "asked": False}
+
+    def _at_restored(self, agent):
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {
+            "verdict": "foreign_mac",
+            "step": "confirm_restored",
+            "asked": True,
+        }
+
+    def _stub_tools(self, monkeypatch, telemetry):
+        import agent.react_agent as ra
+
+        monkeypatch.setattr(
+            ra, "execute_tool", lambda name, args: json.dumps({"success": True, "new_mac": "X"})
+        )
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: telemetry)
+
+    def test_bind_announces_then_walks_to_confirm(self, monkeypatch):
+        agent = self._agent()
+        self._at_bind(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        # The engine binds + re-reads telemetry, but does NOT close or jump ahead —
+        # it STAYS on bind_mac to announce (model B). Telemetry is recorded.
+        assert agent.ensure_action_done() is True
+        assert agent.state.case_closed is False
+        assert agent.state.resolution["step"] == "bind_mac"
+        assert agent.state.resolution["telemetry_fixed"] is True
+        assert agent.state.resolution["action_done"] is True
+        # Once the announce is presented, the caller's next reply advances to verify.
+        agent._mark_step_presented()
+        agent._advance_resolution("laukiu")
+        assert agent.state.resolution["step"] == "confirm_restored"
+
+    def test_bind_runs_once(self, monkeypatch):
+        agent = self._agent()
+        self._at_bind(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        assert agent.ensure_action_done() is True
+        assert agent.ensure_action_done() is False  # action_done guard — no re-bind
+
+    def test_bind_tool_withheld_after_engine_ran(self, monkeypatch):
+        # Once the engine has bound (action_done), update_mac must NOT be exposed to
+        # the model, or the single-tool step gets re-called to the limit (observed:
+        # update_mac x6 -> 'negaliu apdoroti'). The model only announces on this turn.
+        agent = self._agent()
+        self._at_bind(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        agent.ensure_action_done()  # engine binds; stays on bind_mac to announce
+        names = {t["function"]["name"] for t in agent._scoped_tools_schema()}
+        assert "update_mac" not in names
+
+    def test_restored_yes_resolves(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        agent._advance_resolution("taip, veikia")
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "resolved"
+
+    def test_restored_no_but_provider_ok_pivots_client_side(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")  # provider OK
+        agent._advance_resolution("ne, vis dar neveikia")
+        # Provider OK but caller has no internet -> in-home fault, not escalate.
+        assert agent.state.case_closed is False
+        assert agent.state.resolution["step"] == "client_side"
+
+    def test_restored_no_and_line_still_down_waits_then_escalates(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)
+        self._stub_tools(monkeypatch, telemetry="foreign_mac")  # line not restored yet
+        agent._advance_resolution("ne")  # 1st denial -> wait (may take a few minutes)
+        assert agent.state.resolution["step"] == "confirm_restored"
+        agent.state.resolution["asked"] = True
+        agent._advance_resolution("vis dar ne")  # 2nd denial -> escalate
+        assert agent.state.resolution["step"] == "escalate"
+
+    def test_ensure_action_noop_on_confirm_step(self, monkeypatch):
+        agent = self._agent()
+        self._at_restored(agent)  # a CONFIRM step, not ACTION
+        self._stub_tools(monkeypatch, telemetry="healthy_to_router")
+        assert agent.ensure_action_done() is False  # nothing to run
+        assert agent.state.case_closed is False
+
+    def test_instruct_steps_walk_one_per_turn(self):
+        # "nieko nekeičiau" -> the cable INSTRUCT steps are walked ONE per reply:
+        # each advances only after its instruction was presented last turn.
+        agent = self._agent()
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {"verdict": "foreign_mac", "step": "cable_check", "asked": False}
+
+        # Instruction not presented yet -> a reply does NOT skip ahead.
+        agent._advance_resolution("gerai")
+        assert agent.state.resolution["step"] == "cable_check"
+        # Present it, then the next reply advances to the reconnect instruction.
+        agent._mark_step_presented()
+        agent._advance_resolution("geltoname")
+        assert agent.state.resolution["step"] == "cable_reconnect"
+        # And one more reply (after presenting) reaches the bind action.
+        agent._mark_step_presented()
+        agent._advance_resolution("padariau")
+        assert agent.state.resolution["step"] == "bind_mac"
+
+
+class TestClosing:
+    """The call ends (is_complete) on a farewell / 'no more', or a 2nd closing turn —
+    so the agent does not loop goodbyes."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def test_farewell_ends_the_call(self):
+        agent = self._agent()
+        agent.state.case_closed = True
+        agent._maybe_finish("ne, ačiū")
+        assert agent.state.is_complete is True
+
+    def test_question_keeps_it_open_then_caps(self):
+        agent = self._agent()
+        agent.state.case_closed = True
+        agent._maybe_finish("o kiek tai kainuos?")  # a real follow-up
+        assert agent.state.is_complete is False
+        agent._maybe_finish("gerai, supratau")  # 2nd closing turn -> cap
+        assert agent.state.is_complete is True
+
+    def test_noop_when_not_closed(self):
+        agent = self._agent()
+        agent._maybe_finish("viso gero")  # case not closed -> ignore
+        assert agent.state.is_complete is False
+
+    def test_goodbye_reply_ends_call_any_path(self):
+        # Catch-all: the agent's own farewell ends the call even without case_closed
+        # (e.g. the stuck backstop's "užregistruosiu… geros dienos" that used to loop).
+        agent = self._agent()
+        agent._maybe_end_on_goodbye(
+            "Užregistruosiu problemą, specialistas susisieks. Geros dienos!"
+        )
+        assert agent.state.is_complete is True
+
+    def test_midconversation_reply_does_not_end(self):
+        agent = self._agent()
+        agent._maybe_end_on_goodbye("Pasakykite adresą, kuriuo neveikia internetas.")
+        assert agent.state.is_complete is False
 
 
 class TestCaseStateTransitions:

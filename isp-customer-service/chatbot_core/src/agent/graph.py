@@ -84,9 +84,29 @@ def build_turn_graph(engine: Any):
         return _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT)
 
     def diagnosis(state: TurnState) -> TurnState:
-        return _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
+        # Deterministic driver: diagnose ONCE on entering the stage (before the LLM
+        # narrates), so the verdict + resolution strategy are set and the flow no
+        # longer depends on the model choosing to diagnose. Then walk the strategy's
+        # CONFIRM step from the caller's reply (binding is only exposed after they
+        # confirm connecting a device); after the reply, mark the question asked so a
+        # plain yes/no advances next turn.
+        engine.ensure_diagnosed()
+        engine._advance_resolution(state.get("user_input"))
+        # If the caller's reply advanced us onto an ACTION step (e.g. bind_mac after
+        # they confirmed the device change), run it deterministically BEFORE the LLM
+        # narrates — the engine binds + resets + re-verifies and sets case_closed, so
+        # the model only PHRASES the verified result (no model-invoked update_mac,
+        # so no single-tool loop and no "nepririštas, dabar pririšiu" after binding).
+        engine.ensure_action_done()
+        result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
+        engine._mark_step_presented()
+        return result
 
     def closing(state: TurnState) -> TurnState:
+        # Decide whether to hang up: a farewell / "no more" from the caller, or a
+        # second closing turn, ends the call (is_complete) so the agent does not loop
+        # goodbyes. The transport plays this last reply and then stops responding.
+        engine._maybe_finish(state.get("user_input"))
         return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT)
 
     def route(state: TurnState) -> str:

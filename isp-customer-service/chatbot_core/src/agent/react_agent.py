@@ -81,6 +81,40 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# When the agent's reply contains one of these, the call is over — end it (hang up)
+# no matter which path produced the goodbye. Kept to clear terminal farewells so a
+# mid-conversation "gero" never trips it.
+_GOODBYE_MARKERS = (
+    "geros dienos",
+    "geros jums dienos",
+    "gražios dienos",
+    "gero vakaro",
+    "gražaus vakaro",
+    "viso gero",
+    "viso labo",
+)
+
+
+def _register_linear_strategies() -> None:
+    """Populate STRATEGIES with a linear guided walk for each LINEAR_DOCS verdict
+    (reads the doc's step count once), so a purely linear fault needs ONLY a RAG doc
+    — no bespoke strategy code. No-op while LINEAR_DOCS is empty."""
+    try:
+        from .playbook import step_count
+        from .resolution import LINEAR_DOCS, STRATEGIES, build_linear_strategy
+
+        for verdict, doc in LINEAR_DOCS.items():
+            if verdict in STRATEGIES:
+                continue
+            n = step_count(doc)
+            if n > 0:
+                STRATEGIES[verdict] = build_linear_strategy(verdict, doc, n)
+    except Exception:  # pragma: no cover - best-effort, never break import
+        pass
+
+
+_register_linear_strategies()
+
 # Short Lithuanian gloss for each verdict reason, surfaced in the case-state facts
 # block so the agent can reconcile the finding with what the customer says.
 _DIAGNOSIS_LT = {
@@ -308,23 +342,61 @@ class ReactAgent:
 
         return messages
 
+    # Security-sensitive resolution actions — only exposed on the strategy STEP
+    # that permits them (update_mac on bind_mac, create_ticket on escalate). So the
+    # model cannot bind a device during a CONFIRM step, before the caller confirms.
+    _STRATEGY_ACTION_TOOLS = frozenset({"update_mac", "reset_port", "create_ticket"})
+    # Diagnostics the ENGINE owns during a strategy — the model must not call them
+    # (observed: it looped check_network_status / run_ping_test instead of talking).
+    _STRATEGY_DIAG_TOOLS = frozenset(
+        {"diagnose_connection", "check_network_status", "run_ping_test", "check_port_status"}
+    )
+
     def _scoped_tools_schema(self) -> list:
         """The tool schema for the current node — all tools, or the subset a graph
         node restricted the model to (self._active_tool_names).
 
-        Per-step scoping: while a resolution strategy is active, diagnose_connection
-        is withheld — the ENGINE owns re-diagnosis (the VERIFY step), so the model
-        cannot re-diagnose into a different branch and derail the strategy (observed:
-        a stray B7 'which device?' question right after the MAC fix)."""
+        Per-step scoping while a resolution strategy is active: the engine owns all
+        diagnostics (withheld); an ACTION/ESCALATE step exposes ONLY its tool so the
+        model does that action once; a CONFIRM step (or a case being closed) exposes
+        NO action tool. This prevents both 'binds before confirm' and the tool-call
+        loop where the model re-calls the one exposed tool until the 5-call limit."""
+        # Case closed mid-turn (bind resolved / ticket registered): no tools at all,
+        # so the model narrates the close instead of looping tool calls to the limit
+        # (which surfaced the 'negaliu apdoroti' fallback).
+        if self.state.case_closed:
+            return []
         schema = self.tools_schema
         if self._active_tool_names is not None:
             schema = [
                 t for t in schema if t.get("function", {}).get("name") in self._active_tool_names
             ]
         if self.state.resolution is not None:
-            schema = [
-                t for t in schema if t.get("function", {}).get("name") != "diagnose_connection"
-            ]
+            from .resolution import StepKind, get_strategy
+
+            strat = get_strategy(self.state.resolution.get("verdict"))
+            step = strat.step(self.state.resolution.get("step", "")) if strat else None
+            if step is not None:
+                # Scope to EXACTLY this step's tools. A CONFIRM / INSTRUCT / VERIFY
+                # step has NONE — the model just talks while the engine owns the
+                # diagnostics, the action and the closing. This is what stops the
+                # model spamming an unrelated lookup while it "waits" (observed:
+                # check_outages looped to the call limit -> 'negaliu apdoroti').
+                allowed = step.tools
+                # An ACTION step exposes its tool ONLY as a fallback if the engine
+                # has not already run it. Once action_done is set, WITHHOLD it — the
+                # model only announces; otherwise the single exposed tool gets
+                # re-called to the limit (observed: update_mac x6 -> 'negaliu apdoroti').
+                if step.kind == StepKind.ACTION and self.state.resolution.get("action_done"):
+                    allowed = frozenset()
+                schema = [t for t in schema if t.get("function", {}).get("name") in allowed]
+            else:
+                schema = [
+                    t
+                    for t in schema
+                    if (n := t.get("function", {}).get("name")) not in self._STRATEGY_DIAG_TOOLS
+                    and n not in self._STRATEGY_ACTION_TOOLS
+                ]
         return schema
 
     def run_turn_scoped(
@@ -433,8 +505,24 @@ class ReactAgent:
             )
         if s.ticket_id:
             facts.append(f"- Ticket: {s.ticket_id}")
-        if s.case_closed:
+        if s.case_closed and s.is_complete:
+            # The caller said goodbye / "no more" — END on ONE short farewell.
+            facts.append(
+                "- POKALBIS BAIGTAS: klientas atsisveikino / neturi daugiau klausimų. "
+                "Pasakyk TIK vieną trumpą atsisveikinimą („Ačiū, kad paskambinote. "
+                "Geros dienos!“) ir NIEKO daugiau — jokių naujų klausimų."
+            )
+        elif s.case_closed:
             facts.append(f"- Byla UŽDARYTA (priežastis: {s.closed_reason or 'resolved'}).")
+            # Just resolved: confirm briefly, then OFFER one more thing and WAIT — do
+            # NOT sign off yet (the engine ends the call once the caller declines).
+            if s.closed_reason == "resolved" and s.resolution:
+                facts.append(
+                    "- IŠSPRĘSTA: klientas patvirtino, kad internetas veikia. Trumpai "
+                    "padžiaukis, kad sutvarkyta, ir paklausk „Ar dar kuo nors galiu "
+                    "padėti?“. NEatsisveikink dar, NEklausk apie įrangą, NEprašyk "
+                    "tikrinti iš naujo."
+                )
         # Repeat-guard nudge (scaled): the caller's last reply did not advance us.
         # Don't loop the same question — acknowledge, narrow, then change tactic.
         if s.stuck_count >= 2:
@@ -484,14 +572,40 @@ class ReactAgent:
         # Diagnostic findings (case state), per domain: durable current truth, so
         # the agent reconciles them with the caller and never re-runs / loses them.
         # Only active domains are surfaced (lean — history lives in the trace, §12.7).
-        for domain, d in s.diagnosis.items():
-            gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
-            facts.append(
-                f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): "
-                f"{gloss}. Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų "
-                "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
-                "sutaikink."
-            )
+        # BUT once the strategy has run the action (telemetry_fixed recorded), the
+        # raw finding is STALE — surfacing "foreign_mac: kitas įrenginys" post-bind
+        # made the agent re-narrate the solved problem ("dar nepririštas") every
+        # turn. Past the bind, the step's own hint is the single source of truth.
+        past_action = bool(s.resolution) and "telemetry_fixed" in (s.resolution or {})
+        if not past_action:
+            for domain, d in s.diagnosis.items():
+                gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+                facts.append(
+                    f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): "
+                    f"{gloss}. Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų "
+                    "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
+                    "sutaikink."
+                )
+        # Active resolution strategy: inject ONLY the current step's playbook
+        # section (never the whole doc — a streaming model would run several steps
+        # ahead). This is the "what to do NOW" for the step the engine is on.
+        if s.resolution and not s.case_closed:
+            from .playbook import get_step
+            from .resolution import get_strategy
+
+            strat = get_strategy(s.resolution.get("verdict"))
+            step = strat.step(s.resolution.get("step", "")) if strat else None
+            if step is not None:
+                if step.rag_section is not None:
+                    section = get_step(strat.rag_doc, step.rag_section)
+                    if section:
+                        facts.append(
+                            "- PLAYBOOK — your INTERNAL guidance for THIS step (Lithuanian "
+                            "content). Act on it, do NOT read it to the caller verbatim, "
+                            "ask ONE thing at a time:\n" + section
+                        )
+                if step.hint:
+                    facts.append(f"- THIS STEP: {step.hint}")
         # Deterministically heard address parts (NLU Track A prefill). Surface them
         # so the model passes THESE to resolve_address instead of re-extracting
         # garbled STT (observed: NLU heard "Aušros g. 8" but the model sent
@@ -584,6 +698,217 @@ class ReactAgent:
         except Exception:  # pragma: no cover - best-effort
             return None
 
+    def ensure_diagnosed(self) -> bool:
+        """Deterministically run diagnose_connection the first time we enter the
+        diagnosis stage (customer identified), so the verdict + strategy are set
+        BEFORE the model narrates. The flow no longer depends on the model choosing
+        to diagnose — which it did inconsistently (sometimes jumping straight to
+        update_mac, sometimes re-diagnosing into another branch).
+
+        Returns True if it ran diagnose on THIS call (first entry), so the caller
+        skips a step advance that turn — the strategy's first question is only being
+        asked now, not yet answered."""
+        s = self.state
+        if not s.customer_id or s.case_closed:
+            return False
+        if s.diagnosis.get("network") or s.outage_reported:
+            return False  # already diagnosed this stage (or an outage short-circuited it)
+        try:
+            obs = execute_tool("diagnose_connection", {"customer_id": s.customer_id})
+        except Exception:  # pragma: no cover - best-effort
+            return False
+        self.tracer.emit(
+            "tool_call", name="diagnose_connection", args={"customer_id": s.customer_id}
+        )
+        self._trace_tool_result("diagnose_connection", obs)
+        self._update_state_from_observation("diagnose_connection", obs)
+        return True
+
+    def ensure_action_done(self) -> bool:
+        """Run the current strategy's ACTION step deterministically (engine-driven,
+        not model-invoked), the same way ensure_diagnosed runs the first diagnose.
+
+        Model-invoked update_mac caused two bugs: a single-tool loop (the bind step
+        exposes only update_mac, so the model re-called it to the limit) and a
+        contradictory narration (the model ignored the verified result and re-told
+        the problem — "nepririštas, dabar pririšiu" — right after binding). Binding
+        is a pure engine action: the engine runs it + reset_port + re-diagnose (via
+        _augment_tool_result, which also sets case_closed on success or advances to
+        escalate on failure), so by the time the LLM narrates it only PHRASES the
+        verified outcome. Returns True if it ran an action this call."""
+        s = self.state
+        if not s.customer_id or s.case_closed:
+            return False
+        r = s.resolution
+        if not r:
+            return False
+        from .resolution import StepKind, get_strategy
+
+        strat = get_strategy(r.get("verdict"))
+        step = strat.step(r.get("step", "")) if strat else None
+        if step is None or step.kind != StepKind.ACTION:
+            return False
+        if r.get("action_done"):
+            return False  # already ran this action; the walker advances it next turn
+        ran = False
+        for action in step.tool_actions:
+            try:
+                obs = execute_tool(action, {"customer_id": s.customer_id})
+            except Exception:  # pragma: no cover - best-effort
+                continue
+            self.tracer.emit("tool_call", name=action, args={"customer_id": s.customer_id})
+            obs = self._augment_tool_result(action, obs)  # chains reset_port + re-diagnose
+            self._trace_tool_result(action, obs)
+            ran = True
+        if ran:
+            r["action_done"] = True  # the announce is narrated this turn; advance next
+        return ran
+
+    def _advance_resolution(self, user_input: str | None) -> None:
+        """Generic step-by-step walker over the active strategy, from the caller's
+        reply. Uniform for all fault types:
+
+        - INSTRUCT / ACTION: a guided step. Once its instruction (or the bind
+          announce) has been presented, ANY caller reply — they did it / answered —
+          advances to the next step. One instruction per turn, listen, move on.
+        - CONFIRM: branches on yes/no (and a strong device-change pre-answer).
+        - confirm_restored: a VERIFY that blends the caller's word with a fresh
+          telemetry read — routed separately (_advance_restored).
+
+        This is what leads the caller one step at a time instead of dumping the
+        whole playbook, and stops the model binding a device they never confirmed."""
+        from .resolution import (
+            DETECTORS,
+            StepKind,
+            confirms_device_change,
+            get_strategy,
+            next_step_id,
+        )
+
+        r = self.state.resolution
+        if not r or self.state.case_closed:
+            return
+        strat = get_strategy(r.get("verdict"))
+        step = strat.step(r.get("step", "")) if strat else None
+        if step is None:
+            return
+        # confirm_restored blends the caller's word with a fresh telemetry read.
+        if step.id == "confirm_restored":
+            self._advance_restored(r, user_input)
+            return
+        # A guided instruction / the bind announce: advance on ANY reply, once it was
+        # presented last turn — to an explicit goto if set, else the next step in order.
+        if step.kind in (StepKind.INSTRUCT, StepKind.ACTION):
+            if r.get("asked"):
+                self._route_to(r, step.goto or next_step_id(strat, step.id, None))
+            return
+        if step.kind != StepKind.CONFIRM:
+            return
+        # A strong device-change signal advances confirm_change before it is asked
+        # (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that
+        # step — elsewhere "kompiuteris" is a scope answer, not a device change.
+        if step.id == "confirm_change" and confirms_device_change(user_input):
+            self._route_to(r, next_step_id(strat, step.id, "yes"))
+            return
+        # Otherwise route only once the question was asked — a bare "taip" on the
+        # diagnose turn is the address confirmation, not an answer to this step.
+        if not r.get("asked"):
+            return
+        # Read the reply with THIS step's detector (yes_no by default) into a routing
+        # key, then route. An unclear reply stays on the step and re-asks.
+        detect = DETECTORS.get(step.detector or "yes_no", DETECTORS["yes_no"])
+        key = detect(user_input)
+        if key is None:
+            return
+        self._route_to(r, next_step_id(strat, step.id, key))
+
+    def _route_to(self, r: dict, target: str) -> None:
+        """Apply a routing target: the 'resolve'/'end' terminals close the case; any
+        other id is a real step to advance to. Centralises terminal handling so every
+        branch (including client_side -> resolve) actually closes."""
+        if target == "resolve":
+            self.state.case_closed = True
+            self.state.closed_reason = "resolved"
+        elif target == "end":
+            self.state.case_closed = True
+            self.state.closed_reason = self.state.closed_reason or "declined"
+        else:
+            self._goto_step(r, target)
+
+    def _advance_restored(self, r: dict, user_input: str | None) -> None:
+        """After binding, decide from BOTH the caller's word and a fresh telemetry
+        read (re-read each turn — a bind can take a minute to come up):
+
+        - caller says it works                 -> resolved
+        - caller says NO, provider side OK      -> client-side fault (Wi-Fi/device)
+        - caller says NO, provider not yet OK   -> wait (reassure); after a second
+                                                   denial with still-no-line, escalate
+        An unclear answer stays and re-asks."""
+        from .resolution import Outcome, detect_restored
+
+        reason_now = self._fresh_diagnose_reason()
+        fixed = reason_now not in self._UNRESOLVED_LINE_FAULTS
+        r["telemetry_fixed"] = fixed
+        if not r.get("asked"):
+            return  # question not asked yet (the bind turn) — just record telemetry
+        outcome = detect_restored(user_input)
+        if outcome == Outcome.YES:
+            self.state.case_closed = True
+            self.state.closed_reason = "resolved"
+            return
+        if outcome == Outcome.NO:
+            if fixed:
+                # Provider side restored but the caller still has no internet — the
+                # fault is inside the home. Pivot to the client-side step.
+                self._goto_step(r, "client_side")
+            else:
+                r["restored_denials"] = int(r.get("restored_denials", 0)) + 1
+                if r["restored_denials"] >= 2:
+                    self._goto_step(r, "escalate")
+                # else: stay, reassure it may take a couple of minutes (see hint)
+            return
+        # unclear -> stay on confirm_restored, re-ask
+
+    def _goto_step(self, r: dict, next_id: str) -> None:
+        """Move the strategy to `next_id`. When the step actually changes, clear the
+        'asked' flag so the NEXT step (e.g. a second CONFIRM like check_cable) waits
+        for its OWN question to be asked before a plain yes/no can advance it."""
+        if next_id != r.get("step"):
+            r["asked"] = False
+        r["step"] = next_id
+
+    def _maybe_finish(self, user_input: str | None) -> None:
+        """In the closing stage, decide whether to end the call. The case is already
+        closed; the agent offered "ar dar kuo nors padėti?". If the caller says a
+        goodbye / "no", or we have lingered a second closing turn, set is_complete so
+        the transport hangs up — no endless goodbyes."""
+        s = self.state
+        if not s.case_closed or s.is_complete:
+            return
+        s.closing_turns += 1
+        from .resolution import detect_farewell
+
+        if detect_farewell(user_input) or s.closing_turns >= 2:
+            s.is_complete = True
+
+    def _mark_step_presented(self) -> None:
+        """After the agent replies while on a strategy step, record that the step's
+        message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)
+        has now been presented — so the caller's NEXT reply advances the walker."""
+        r = self.state.resolution
+        if not r:
+            return
+        from .resolution import StepKind, get_strategy
+
+        strat = get_strategy(r.get("verdict"))
+        step = strat.step(r.get("step", "")) if strat else None
+        if step is not None and step.kind in (
+            StepKind.CONFIRM,
+            StepKind.INSTRUCT,
+            StepKind.ACTION,
+        ):
+            r["asked"] = True
+
     def _augment_tool_result(self, name: str, observation: str) -> str:
         """Deterministic post-action chaining + telemetry verification (B6 strategy).
 
@@ -614,34 +939,16 @@ class ReactAgent:
         obs["fixed"] = fixed
         gloss = _DIAGNOSIS_LT.get(reason_now, reason_now or "—")
 
-        # VERIFY step, decided by the sequencer from the TELEMETRY (not the model).
-        # This is what closes the observed gap: after the fix the line reads
-        # healthy_to_router, and instead of the model treating that as a fresh
-        # client-side issue, the engine resolves it deterministically.
-        from .resolution import get_strategy, verify_target
-
-        strat = get_strategy((self.state.resolution or {}).get("verdict"))
-        target = verify_target(strat, fixed) if strat else ("resolve" if fixed else None)
-        if target == "resolve":
-            self.state.case_closed = True
-            self.state.closed_reason = "resolved"
-            self.state.resolution = None
-            tail = (
-                "Ryšys iki namo ATSTATYTAS (telemetrija). Trumpai pasakyk klientui, kad "
-                "sutvarkėte, palinkėk geros dienos ir tuo baik — NEklausk apie įrenginius."
-            )
-        elif target == "escalate":
-            tail = (
-                "Ryšys DAR neatstatytas (telemetrija). Nesakyk, kad sutvarkyta — "
-                "užregistruok gedimą patikrinimui (create_ticket)."
-            )
-        else:
-            tail = "Ryšys atstatytas." if fixed else "Ryšys dar neatstatytas."
+        # Do NOT close or advance here. The bind was announced THIS turn; the walker
+        # advances bind_mac -> confirm_restored on the caller's next reply, where we
+        # ASK them and re-read telemetry before deciding resolve / client-side /
+        # escalate (_advance_restored). Just record the telemetry reading.
+        r = self.state.resolution
+        if r is not None:
+            r["telemetry_fixed"] = fixed
         obs["message"] = (
-            (obs.get("message", "") or "").strip()
-            + f" Portas perkrautas. Telemetrija dabar: {gloss}. "
-            + tail
-        )
+            obs.get("message", "") or ""
+        ).strip() + f" Portas perkrautas. Telemetrija dabar: {gloss}."
         return json.dumps(obs, ensure_ascii=False)
 
     def _gate_tool(self, name: str, args: dict) -> str | None:
@@ -783,6 +1090,12 @@ class ReactAgent:
 
             elif action == "create_ticket" and obs_data.get("success"):
                 self.state.ticket_id = obs_data.get("ticket_id")
+                # Inside a resolution strategy (escalate step), the fault is now
+                # registered — close the case so create_ticket is withdrawn and the
+                # model narrates the close instead of re-registering in a loop.
+                if self.state.resolution and not self.state.case_closed:
+                    self.state.case_closed = True
+                    self.state.closed_reason = "registered"
 
             # Diagnostic findings -> case state under their DOMAIN, so the agent
             # reconciles them with the customer and never loses / re-runs them, and
@@ -1502,15 +1815,29 @@ class ReactAgent:
         self.state.messages.append({"role": "assistant", "content": text})
         if self._is_question(text):
             self.state.last_question = text
+        self._maybe_end_on_goodbye(text)
         self._emit_case()
         self.tracer.emit("stuck", count=self.state.stuck_count, repeated=False)
         self.tracer.emit("agent_reply", text=text)
         return text
 
+    def _maybe_end_on_goodbye(self, text: str) -> None:
+        """Catch-all hang-up: if the agent JUST said a terminal goodbye — on ANY path
+        (resolved, registered, declined, or the stuck backstop) — end the call so the
+        transport stops instead of looping the goodbye. Covers the cases the
+        case_closed/closing flow misses (e.g. the model says 'geros dienos' on a stuck
+        turn without close_case ever firing)."""
+        if self.state.is_complete or not text:
+            return
+        low = text.lower()
+        if any(m in low for m in _GOODBYE_MARKERS):
+            self.state.is_complete = True
+
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the
         repeat-guard, emit the case snapshot + the reply trace."""
         self._track_stuck(text)
+        self._maybe_end_on_goodbye(text)
         self._emit_case()
         self.tracer.emit("agent_reply", text=text)
 

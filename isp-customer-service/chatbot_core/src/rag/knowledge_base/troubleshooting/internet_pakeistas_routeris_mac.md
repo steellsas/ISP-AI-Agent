@@ -1,48 +1,98 @@
-# Pakeistas routeris - MAC pririšimas (internetas neveikia po įrangos keitimo)
+# Pakeistas įrenginys - MAC pririšimas (internetas neveikia po įrangos keitimo)
 
 ## Simptomai
 Klientas sako: "pakeičiau routerį ir internetas nebeveikia", "nusipirkau naują
-routerį, neveikia internetas", "prijungiau kitą routerį".
-- Klientas pakeitė routerį (nusipirko naują, pasiskolino, grąžino seną)
-- Internetas neveikia nuo įrangos pakeitimo momento
-- Linija veikia (port UP), bet linijoje matomas kitas įrenginys nei registruota
+routerį", "prijungiau kitą įrenginį" - arba nieko nekeitė, bet internetas dingo.
+- Linija veikia (port UP), bet linijoje matomas kitas įrenginys (MAC) nei registruota
 - Diagnostikos verdiktas: foreign_mac (B6)
 
 ## Kodėl taip nutinka
-Tiekėjo tinklas autorizuoja įrenginį pagal MAC adresą. Prijungus kitą routerį
-jo MAC nesutampa su registruotu, todėl tinklas naujo įrenginio neįleidžia -
-internetas neveikia, nors visa linija sveika.
+Tiekėjo tinklas autorizuoja įrenginį pagal MAC adresą. Prijungus kitą įrenginį
+(routerį ar kompiuterį) jo MAC nesutampa su registruotu, todėl tinklas jo neįleidžia -
+internetas neveikia, nors visa linija iki namo sveika.
 
-## Sprendimo žingsniai
+## Numatytas sprendimas: pririšti
+Ateinantis kabelis fiziškai pasiekia kliento butą, todėl linijoje matomas įrenginys
+beveik visada yra kliento. Numatyta - **pririšti matomą įrenginį**, ne atsisakyti dėl
+saugumo (tai būtų perteklinė). Galima pririšti bet kurį kliento prijungtą įrenginį:
+**routerį, kompiuterį ar TV**.
+- Prijungtas **routeris** - internetą gaus VISI namų įrenginiai (įprastas atvejis).
+- Prijungtas **vienas įrenginys** (PC ar TV) tiesiai į liniją - internetą gaus tik
+  tas įrenginys. Tai teisėtas **laikinas** sprendimas, kai routeris sugedęs, o
+  atsarginio nėra: klientas kabelį įkiša tiesiai į įrenginį, kad turėtų internetą,
+  kol įsigis naują routerį (tilto scenarijus).
 
-### Žingsnis 1: Patvirtinti įrangos keitimą
-Paklausti kliento, ar jis keitė routerį ar prijungė kitą įrenginį:
-- "Ar neseniai keitėte routerį arba prijungėte kitą įrenginį?"
-- Patvirtinus - galima atlikti pririšimą nuotoliniu būdu.
-- NEpatvirtinus (klientas nieko nekeitė) - galimas neautorizuotas įrenginys,
-  registruoti gedimą patikrinimui.
+## Svarbu: nepririšti „šokinėjančio" MAC
+Jei ateinantis kabelis įkištas į routerio **LAN** lizdą (ne WAN), routeris veikia
+kaip **švitchas** - už jo esantys įrenginiai atsiranda tiesiai linijoje ir matomas
+MAC **šokinėja** tarp jų. Pririšus vieną, internetas atsiras tik tame įrenginyje, o
+kituose ne. Todėl kai klientas sako, kad **nieko nekeitė**, pirma patikrinti, ar
+kabelis WAN lizde (Žingsnis 2), ir tik tada pririšti stabilų routerio MAC.
 
-### Žingsnis 2: Įsitikinti, kad naujas routeris prijungtas
-- Naujas routeris turi būti įjungtas ir WAN laidas įkištas
-- Tik tada linijoje matosi jo MAC, kurį galima pririšti
+### Žingsnis 1: Ką klientas prijungė
+Pasakyti paprastai, kad linijoje matomas kitas įrenginys ir dėl to nėra interneto,
+tada paklausti, ką klientas neseniai keitė ar prijungė:
+- "Matau, kad linijoje yra kitas įrenginys, dėl jo nėra interneto. Ar neseniai
+  keitėte routerį ar prijungėte kitą įrenginį?"
+- Naujas **routeris** - pririšti (Žingsnis 3); internetas veiks visame name.
+- **Vienas įrenginys** (PC/TV) tiesiai į liniją - pririšti; internetas veiks tame
+  įrenginyje. Tinka, kai routeris sugedęs - laikinas ryšys, kol bus naujas routeris.
+- Klientas **nieko nekeitė** - NEskubėti registruoti. Gal keitė kas nors iš šeimos,
+  arba pasikeitė/nusiresetino MAC parametrai. Pereiti prie kabelių patikros
+  (Žingsnis 2), tada pririšti.
 
-### Žingsnis 3: Pririšti MAC (update_mac)
-Agentas atlieka nuotoliniu būdu:
-1. update_mac - pririša linijoje matomą įrenginį
-2. reset_port - perkrauna portą, kad autorizacija atsinaujintų
+### Žingsnis 2a: Į kokį lizdą įkištas kabelis (paklausti)
+Kai klientas nieko nekeitė - patikrinti kabelį po VIENĄ klausimą. Klausti pagal lizdo
+FUNKCIJĄ, ne spalvą (klientas gali nematyti spalvų):
+- "Pažiūrėkite, prašau, į kokį lizdą įkištas įeinantis (tiekėjo) kabelis - į interneto
+  (WAN) lizdą, kuris paprastai atskiras ir pažymėtas 'Internet' ar 'WAN', ar į kitą
+  (LAN) lizdą?"
+- (WAN/Internet = teisingai; LAN ar kitas = routeris veikia kaip švitchas ir MAC
+  šokinėja.) Palaukti aiškaus atsakymo; jei neaišku - pakartoti klausimą, nespėti.
 
-### Žingsnis 4: Patikrinti ryšį
-- Paprašyti kliento palaukti ~1 minutę
-- Patikrinti, ar atsirado internetas
-- Veikia - problema išspręsta nuotoliniu būdu, tiketo nereikia!
-- Neveikia - pakartoti diagnostiką; jei vis tiek ne - registruoti gedimą
+### Žingsnis 2b: Perjungti į WAN (jei reikia)
+Kai kabelis LAN ar kitame lizde - viena instrukcija ir laukti:
+- "Ištraukite įeinantį kabelį iš to lizdo ir įkiškite į interneto (WAN) lizdą -
+  paprastai atskirą, pažymėtą 'Internet'. Pasakykite, kai padarysite." Tada linijoje
+  atsiras teisingas routerio MAC.
+- SVARBU: dėl sumaišytų kabelių **NEsiūlyti perkrauti routerio** - nieko neduos, jei
+  kabelis blogame lizde. Sprendimas - perjungti kabelį, ne perkrauti.
 
-## Kada eskaluoti
-- Klientas neigia keitęs įrangą (galimas svetimas įrenginys linijoje)
-- Po pririšimo ir porto perkrovimo internetas vis tiek neveikia
-- Klientas negali pasiekti routerio (ne namie)
+### Žingsnis 3: Pririšti įrenginį (update_mac)
+Kai routeris tinkamai prijungtas, variklis pririša tyliai. Agentas tik **anonsuoja**
+natūraliai (ateities/vykstančio laiku), NEklausdamas dar ar veikia:
+- "Dabar pririšiu jūsų naujai matomą įrenginį - turėtų atsirasti internetas. Palaukite
+  akimirką." (Variklis atlieka update_mac + reset_port ir per-tikrina liniją.)
+- Neskubėti, skirti dėmesį klientui.
+
+### Žingsnis 4: Patikrinti, ar internetas atsirado (paklausti kliento)
+Po pririšimo NEskelbti, kad sutvarkyta, savavališkai. **Paklausti, ar internetas jau
+atsirado** - gali užtrukti minutę kitą:
+- Klientas sako **veikia** - problema išspręsta, palinkėti geros dienos.
+- Klientas sako **dar neveikia**, o tiekėjo pusėje srauto DAR nėra - gali užtrukti
+  kelias minutes, kol prisiriš. Nuraminti, paprašyti palaukti ir pasitikrinti dar
+  kartą. Jei ir po to nieko - registruoti gedimą (Žingsnis paskutinis).
+- Klientas sako **dar neveikia**, bet tiekėjo pusėje jau viskas gerai (srautas yra) -
+  tai jau **kliento pusės** gedimas. Pereiti prie kliento pusės tikrinimo (Žingsnis 5).
+
+### Žingsnis 5: Kliento pusės gedimas
+Tiekėjo pusė tvarkoje, bet kliento įrenginiuose interneto nėra - problema namuose
+(Wi-Fi, įrenginio nustatymai, laidas iki įrenginio). Grįžti prie problemos supratimo
+iš kliento pusės:
+- Paprašyti atlikti vieną paprastą patikrą: perkrauti savo įrenginį, patikrinti ar
+  Wi-Fi įjungtas, pabandyti laidą tiesiai į įrenginį.
+- Veikia - problema išspręsta.
+- Nepadeda - registruoti gedimą detalesniam patikrinimui.
+
+## Kada eskaluoti (registruoti gedimą)
+Eskaluoti tik retais atvejais - pririšimas yra numatytas sprendimas:
+- Po pririšimo srautas **neatsiranda** net palaukus (pririšimas nepadėjo).
+- Tiekėjo pusė tvarkoje, bet kliento pusės patikros **nepadeda**.
+- Klientas **negali pasiekti routerio** ar nėra namie ir negali patikrinti kabelio.
 
 ## Naudingos frazės
-- "Ar neseniai keitėte routerį?"
-- "Pririšiu jūsų naują įrenginį nuotoliniu būdu - užtruks minutę"
-- "Palaukite minutę ir patikrinkite, ar atsirado internetas"
+- "Matau, kad linijoje yra kitas įrenginys, dėl jo nėra interneto. Ar keitėte routerį?"
+- "Gal galite patikrinti, ar tiekėjo kabelis įkištas į routerio WAN lizdą? Jis dažnai
+  kitos spalvos."
+- "Pririšau jūsų įrenginį prie tinklo. Ar internetas jau atsirado? Gali užtrukti minutę."
+- "Tiekėjo pusėje viskas gerai. Pabandykite perkrauti įrenginį - ar dabar veikia?"

@@ -108,7 +108,8 @@ class AgentState:
     stuck_count: int = 0
 
     # Conversation control
-    is_complete: bool = False
+    is_complete: bool = False  # transport hangs up once True (final goodbye spoken)
+    closing_turns: int = 0  # turns spent in the closing stage (cap to avoid loops)
     turn_count: int = 0
     max_turns: int = 20
 
