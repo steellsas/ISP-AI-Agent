@@ -42,19 +42,19 @@ tada paklausti, ką klientas neseniai keitė ar prijungė:
   (Žingsnis 2), tada pririšti.
 
 ### Žingsnis 2a: Į kokį lizdą įkištas kabelis (paklausti)
-Kai klientas nieko nekeitė - patikrinti kabelį pažingsniui, po VIENĄ klausimą.
-Pirmas žingsnis - tik paklausti ir laukti atsakymo:
-- "Pažiūrėkite, prašau, į kokį lizdą įkištas įeinantis kabelis - į mėlyną (interneto,
-  WAN) lizdą, ar į geltoną?"
-- (Mėlynas WAN = teisingai; geltonas LAN = routeris veikia kaip švitchas ir MAC
-  šokinėja.) Nieko daugiau šį kartą - palaukti atsakymo.
+Kai klientas nieko nekeitė - patikrinti kabelį po VIENĄ klausimą. Klausti pagal lizdo
+FUNKCIJĄ, ne spalvą (klientas gali nematyti spalvų):
+- "Pažiūrėkite, prašau, į kokį lizdą įkištas įeinantis (tiekėjo) kabelis - į interneto
+  (WAN) lizdą, kuris paprastai atskiras ir pažymėtas 'Internet' ar 'WAN', ar į kitą
+  (LAN) lizdą?"
+- (WAN/Internet = teisingai; LAN ar kitas = routeris veikia kaip švitchas ir MAC
+  šokinėja.) Palaukti aiškaus atsakymo; jei neaišku - pakartoti klausimą, nespėti.
 
 ### Žingsnis 2b: Perjungti į WAN (jei reikia)
-Pagal atsakymą - viena instrukcija ir laukti:
-- Jei kabelis buvo **geltoname (LAN)** - "Ištraukite kabelį iš geltono ir įkiškite į
-  mėlyną WAN lizdą. Pasakykite, kai padarysite." Tada linijoje atsiras teisingas
-  routerio MAC.
-- Jei jau **mėlyname (WAN)** - "Puiku, tai teisingas lizdas."
+Kai kabelis LAN ar kitame lizde - viena instrukcija ir laukti:
+- "Ištraukite įeinantį kabelį iš to lizdo ir įkiškite į interneto (WAN) lizdą -
+  paprastai atskirą, pažymėtą 'Internet'. Pasakykite, kai padarysite." Tada linijoje
+  atsiras teisingas routerio MAC.
 - SVARBU: dėl sumaišytų kabelių **NEsiūlyti perkrauti routerio** - nieko neduos, jei
   kabelis blogame lizde. Sprendimas - perjungti kabelį, ne perkrauti.
 

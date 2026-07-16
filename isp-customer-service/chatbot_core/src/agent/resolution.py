@@ -146,9 +146,10 @@ _FOREIGN_MAC = Strategy(
             hint=(
                 "The caller changed nothing, so the foreign/jumping MAC is usually a "
                 "mis-plugged cable. Ask ONE thing and WAIT: which port is the incoming "
-                "line cable in — the router's blue WAN (internet) port, or a yellow LAN "
-                "port? Do NOT assume or conclude 'teisingas lizdas' until they clearly "
-                "say a colour; if unclear, ask again. Do not explain more this turn."
+                "provider cable in — the Internet/WAN port (usually separate, labelled "
+                "'Internet' or 'WAN'), or another (LAN) port? Ask by port FUNCTION, not "
+                "colour. Do NOT conclude 'teisingas lizdas' until they clearly say WAN "
+                "or LAN; if unclear, ask again — do not rush."
             ),
             on={"wan": "bind_mac", "lan": "cable_reconnect"},
         ),
@@ -536,13 +537,16 @@ def detect_conn(text: str | None) -> str | None:
     return None
 
 
-_PORT_WAN = ("mėlyn", "melyn", "wan", "interneto lizd")
-_PORT_LAN = ("gelton", "lan lizd", "kitą", "kita spalv")
+# Route by PORT FUNCTION, not colour (a caller may not see colours; STT garbles
+# "LAN lizdą" -> "laną lėsdą"). WAN/Internet port = correct; LAN/other = must move.
+_PORT_LAN = ("lan", "laną", "lėsd", "kit", "antr", "treči", "eternet", "gelton")
+_PORT_WAN = ("wan", "internet", "pirm", "atskir", "mėlyn", "melyn")
 
 
 def detect_port(text: str | None) -> str | None:
-    """Route the WAN cable question. 'wan' (blue/internet port — correct) / 'lan'
-    (yellow/other — must move) / None if unclear (stay and re-ask, do NOT assume)."""
+    """Route the incoming-cable question. 'wan' (Internet/WAN port — correct) / 'lan'
+    (LAN or another port — must move) / None if unclear (stay and re-ask, do NOT
+    assume). LAN is tested first so an explicit 'LAN' wins."""
     if not text:
         return None
     low = text.lower()
