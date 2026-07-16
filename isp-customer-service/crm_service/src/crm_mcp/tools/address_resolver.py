@@ -530,6 +530,16 @@ def resolve_address(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, A
             resolution["apartment"].update({"status": "ok"})
         else:
             no_apt = [c for c in contracts if not c["apartment_number"]]
+            if len(contracts) == 1 and contracts[0]["apartment_number"]:
+                # A single flat at this house still needs the caller to SAY the
+                # apartment: filling it in from the DB would reveal an address part
+                # they never gave (anyone could probe addresses). A house without a
+                # flat number resolves as-is — there is nothing to reveal.
+                resolution["apartment"].update({"status": "required", "contracts_count": 1})
+                envelope["hint"] = (
+                    "Šiuo adresu sutartis bute — paklausk buto numerio. NEsakyk jo pats."
+                )
+                return envelope
             if len(contracts) == 1:
                 matches = contracts
                 resolution["apartment"]["status"] = "ok"
