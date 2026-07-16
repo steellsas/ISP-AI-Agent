@@ -554,10 +554,14 @@ class ReactAgent:
                     "atsakyk į TAI, o ne kartok savo klausimą." + extra
                 )
             else:
-                # Genuine silence / too quiet — this is the only place "neišgirdau" fits.
+                # Silence. The caller may just be listening or thinking, so do NOT
+                # apologise at them — "neišgirdau" after they said nothing reads as if
+                # THEY failed. Leave the pause; simply ask for what is needed.
                 facts.append(
-                    "- NEIŠGIRDAU (tyla arba per tyliai): pasakyk „Atsiprašau, neišgirdau“ "
-                    "ir paprašyk pakartoti TIK trūkstamą dalį (pvz. gatvės pavadinimą)." + extra
+                    "- TYLA (klientas nieko nepasakė): NESAKYK „neišgirdau“ — jis gali "
+                    "tiesiog klausytis ar galvoti. Ramiai, be atsiprašinėjimo, paklausk "
+                    "to, ko reikia (pvz. gatvės), arba pasitikslink „Ar mane girdite?“. "
+                    "Neskubėk." + extra
                 )
         # Raw-buffer reconciliation: once we're stuck AND still unidentified, hand
         # the LLM EVERYTHING the caller said so far. VAD/STT splits and garbles
