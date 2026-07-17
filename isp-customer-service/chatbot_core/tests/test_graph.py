@@ -306,6 +306,48 @@ class TestEngineDrivenAction:
         assert agent.state.resolution["step"] == "bind_mac"
 
 
+class TestIdentifyThenDiagnoseSameTurn:
+    """resolve_address identifies -> the engine diagnoses in the SAME turn, so one
+    reply confirms the address AND delivers the finding. Without this the
+    identification turn has nothing to say and the model improvises ("nėra žinomų
+    gedimų", "kokie įrenginiai prijungti?") — or the caller goes quiet and it stalls."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def test_resolve_triggers_diagnosis_and_carries_the_finding(self, db_connection):
+        from agent.tools import execute_tool
+
+        agent = self._agent()
+        obs = execute_tool(
+            "resolve_address",
+            {
+                "city": "Šiauliai",
+                "street": "Tilžės g.",
+                "house_number": "60",
+                "apartment_number": "3",
+            },
+        )
+        agent.state.customer_id = "CUST101"  # committed by resolve_address
+        out = json.loads(agent._augment_tool_result("resolve_address", obs))
+
+        # The verdict is now in state AND spelled out for the model to voice.
+        assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
+        assert "DIAGNOZĖ" in out["message"]
+        assert "gedimų nėra" in out["message"]  # explicit: do not invent the outage line
+
+    def test_failed_resolve_does_not_diagnose(self, db_connection):
+        from agent.tools import execute_tool
+
+        agent = self._agent()
+        obs = execute_tool("resolve_address", {"street": "Tilžės g."})  # no house -> no hit
+        out = agent._augment_tool_result("resolve_address", obs)
+        assert agent.state.diagnosis == {}
+        assert "DIAGNOZĖ" not in out
+
+
 class TestClosing:
     """The call ends (is_complete) on a farewell / 'no more', or a 2nd closing turn —
     so the agent does not loop goodbyes."""

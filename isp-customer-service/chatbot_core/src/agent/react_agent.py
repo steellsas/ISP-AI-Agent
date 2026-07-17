@@ -941,6 +941,42 @@ class ReactAgent:
         ):
             r["asked"] = True
 
+    def _augment_resolve_result(self, observation: str) -> str:
+        """Identification just landed — diagnose in the SAME turn.
+
+        Otherwise the identification turn has nothing real left to say (the address is
+        already confirmed) and the model fills the gap: it invents "nėra žinomų
+        gedimų", asks "kokie įrenginiai prijungti?", and a debtor only hears about the
+        debt a turn later — or the caller goes quiet and the call stalls before any
+        diagnosis. Running it here lets ONE reply confirm the address and deliver the
+        finding."""
+        try:
+            obs = json.loads(observation)
+        except (TypeError, ValueError):
+            return observation
+        if not obs.get("success") or not self.state.customer_id:
+            return observation
+        if not self.ensure_diagnosed():
+            return observation
+        d = self.state.diagnosis.get("network") or {}
+        gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+        tail = f" Iškart patikrinau ryšį — DIAGNOZĖ: {gloss}."
+        r = self.state.resolution
+        if r:
+            from .resolution import get_strategy
+
+            strat = get_strategy(r.get("verdict"))
+            step = strat.step(r.get("step", "")) if strat else None
+            if step is not None and step.hint:
+                tail += f" ŠIS ŽINGSNIS: {step.hint}"
+        tail += (
+            " Tame PAČIAME atsakyme trumpai patvirtink adresą IR pasakyk radinį (ar šio "
+            "žingsnio klausimą). NEklausk apie įrenginius savo iniciatyva ir NEminėk, "
+            "kad gedimų nėra."
+        )
+        obs["message"] = (obs.get("message", "") or "").strip() + tail
+        return json.dumps(obs, ensure_ascii=False)
+
     def _augment_tool_result(self, name: str, observation: str) -> str:
         """Deterministic post-action chaining + telemetry verification (B6 strategy).
 
@@ -950,6 +986,8 @@ class ReactAgent:
         chains it: after a successful update_mac it runs reset_port and re-reads the
         telemetry, and hands the model a VERIFIED outcome to narrate (what the
         provider side actually shows, not what the caller claims)."""
+        if name == "resolve_address":
+            return self._augment_resolve_result(observation)
         if name != "update_mac":
             return observation
         try:

@@ -81,7 +81,13 @@ def build_turn_graph(engine: Any):
         return {"reply": "".join(parts)}
 
     def address_validation(state: TurnState) -> TurnState:
-        return _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT)
+        result = _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT)
+        # resolve_address may have identified the caller mid-turn, and the engine then
+        # diagnosed + activated a strategy in the same reply (see
+        # _augment_resolve_result). Mark that step presented so the caller's next
+        # answer advances the walker instead of being read as a stray yes/no.
+        engine._mark_step_presented()
+        return result
 
     def diagnosis(state: TurnState) -> TurnState:
         # Deterministic driver: diagnose ONCE on entering the stage (before the LLM

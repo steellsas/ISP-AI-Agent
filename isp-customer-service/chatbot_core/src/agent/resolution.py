@@ -467,6 +467,9 @@ _RESTORED_NO = (
     "nesat",
 )
 _RESTORED_YES = (
+    "taip",  # the plain answer to "ar internetas atsirado?" — was missing, so a
+    "aha",  # confirmed fix looked unanswered and ended in a needless ticket
+    "jo",
     "veikia",
     "atsirad",  # atsirado internetas
     "atsistat",  # ryšys atsistatė
