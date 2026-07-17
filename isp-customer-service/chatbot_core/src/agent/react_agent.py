@@ -463,20 +463,27 @@ class ReactAgent:
                 f"identification (no 'Radau sutartį', no house/apartment). If they name a "
                 f"DIFFERENT street, drop this and ask for the address."
             )
+
         # Phone account: the caller's number is in the DB. Offer its registered
         # address FIRST (before asking them to dictate anything) — the number is
         # already tied to that address, so it reveals nothing new and saves the
         # STT-fragile spoken house/apartment. Fires until they name a DIFFERENT
         # street (then they are calling about someone else's address — case B).
+        # Every named part must match (or be unsaid): if the caller gives the same
+        # street but a DIFFERENT flat ("Tilžės 60, butas 3"), this is someone else's
+        # address — stop offering, or the model reuses the phone's parts and resolves
+        # the WRONG customer (observed: said butas 3, resolved butas 7).
+        def _fits(said, mine) -> bool:
+            return not said or str(said).lower() == str(mine or "").lower()
+
         if (
             not s.customer_id
             and not s.preflight_outage
             and s.phone_candidate
             and s.phone_candidate.get("street")
-            and (
-                not s.profile.street.value
-                or s.profile.street.value == s.phone_candidate.get("street")
-            )
+            and _fits(s.profile.street.value, s.phone_candidate.get("street"))
+            and _fits(s.profile.house.value, s.phone_candidate.get("house"))
+            and _fits(s.profile.apartment.value, s.phone_candidate.get("apartment"))
         ):
             c = s.phone_candidate
             flat = f", butas {c['apartment']}" if c.get("apartment") else ""
@@ -623,7 +630,11 @@ class ReactAgent:
                         facts.append(
                             "- PLAYBOOK — your INTERNAL guidance for THIS step (Lithuanian "
                             "content). Act on it, do NOT read it to the caller verbatim, "
-                            "ask ONE thing at a time:\n" + section
+                            "ask ONE thing at a time. Say ONLY what THIS step is about — "
+                            "do NOT invent instructions it does not mention (no rebooting, "
+                            "no lights, no cables unless this step says so). If the caller's "
+                            "answer was unclear, ask THIS SAME thing again in other words:\n"
+                            + section
                         )
                 if step.hint:
                     facts.append(f"- THIS STEP: {step.hint}")

@@ -236,8 +236,9 @@ _CLIENT_SIDE = Strategy(
             hint=(
                 "Ask ONE short question and WAIT: does it fail on all devices or just "
                 "one? Do NOT reflect or guess their answer — never say 'girdžiu, "
-                "visuose' or 'telefone' until THEY said it. If you did not clearly hear "
-                "the answer, say 'Atsiprašau, neišgirdau' and ask the same again."
+                "visuose' or 'telefone' until THEY said it. If they say just ONE device "
+                "but do not name it, ask WHICH device ('Kuriame įrenginyje?') — never "
+                "assume a computer. If the answer was unclear, ask the same again."
             ),
             on={"all": "cs_reboot", "phone": "cs_wifi", "computer": "cs_conn"},
         ),
@@ -496,7 +497,11 @@ def detect_restored(text: str | None) -> Outcome | None:
 # --- Client-side branch detectors (healthy_to_router) ------------------------
 # "all devices or one?" — and, when one, WHICH device, because a phone/tablet can
 # only be Wi-Fi (never suggest a cable to it).
-_ONE_PHONE = ("telefon", "planšet", "planset", "mobil", "išmanij", "ismanij", "tv", "televizor")
+_WIRELESS_ONLY = ("telefon", "planšet", "planset", "mobil", "išmanij", "ismanij")
+# Devices that answer "one device, and it is wireless". "tv" needs a word boundary
+# (see _TV_RE) or it fires inside words like "tvarkinga".
+_ONE_PHONE = (*_WIRELESS_ONLY, "televizor")
+_TV_RE = re.compile(r"\btv\b")
 _ONE_COMPUTER = ("kompiuter", "kompas", "nešiojam", "nesiojam", "laptop", "stacionar")
 _ONE_MARK = ("tik ", "viename", "vienam", "vien ", "tik vien")
 _ALL_MARK = ("visuose", "visur", "visuos", "visi ", "visų", "nei viename", "niekur")
@@ -509,28 +514,29 @@ def detect_scope(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _ONE_PHONE):
+    if any(m in low for m in _ONE_PHONE) or _TV_RE.search(low):
         return "phone"
     if any(m in low for m in _ONE_COMPUTER):
         return "computer"
     if any(m in low for m in _ALL_MARK):
         return "all"
-    if any(m in low for m in _ONE_MARK):
-        return "computer"  # "tik viename" without a named device -> ask conn (computer path)
+    # "tik viename" without naming the device: do NOT guess (guessing "computer" made
+    # the agent ask a phone user about cables). Stay and ask WHICH device.
     return None
 
 
 _CONN_WIRED = ("laid", "kabel", "eternet", "ethernet", "lan")
-_CONN_WIFI = ("wifi", "wi-fi", "vaifa", "vaifai", "belaid", "bevielis", "bevielis")
+_CONN_WIFI = ("wifi", "wi-fi", "wi fi", " wf", "vaifa", "vaifai", "belaid", "bevieli")
 
 
 def detect_conn(text: str | None) -> str | None:
     """Route "wired or Wi-Fi?". Returns 'wired', 'wifi', or None. Wi-Fi is tested
-    FIRST because "belaidis" (wireless) contains "laid"."""
+    FIRST because "belaidis" (wireless) contains "laid". A phone/tablet can only be
+    wireless, so naming one answers the question."""
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _CONN_WIFI):
+    if any(m in low for m in _CONN_WIFI) or any(m in low for m in _WIRELESS_ONLY):
         return "wifi"
     if any(m in low for m in _CONN_WIRED):
         return "wired"

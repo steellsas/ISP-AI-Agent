@@ -84,12 +84,28 @@ class TestClientSideDetectors:
         assert detect_scope("nešiojamas neveikia") == "computer"
         assert detect_scope("nežinau") is None
 
+    def test_one_device_unnamed_is_not_guessed(self):
+        # "just one" without naming it must NOT be read as a computer — guessing sent
+        # a phone user down the cable branch. Stay unclear and ask which device.
+        assert detect_scope("tik viename") is None
+        assert detect_scope("viename įrenginyje") is None
+
+    def test_tv_needs_a_word_boundary(self):
+        assert detect_scope("tik tv") == "phone"
+        assert detect_scope("viskas tvarkinga") is None  # "tv" inside a word
+
     def test_conn_wired_vs_wifi(self):
         assert detect_conn("laidu") == "wired"
         assert detect_conn("kabeliu prijungtas") == "wired"
         assert detect_conn("per wifi") == "wifi"
         assert detect_conn("belaidžiu") == "wifi"
         assert detect_conn("nežinau") is None
+
+    def test_conn_reads_stt_shorthand_and_wireless_devices(self):
+        # Observed: "Telefonas prijungtas per WF" fell through -> the agent improvised.
+        assert detect_conn("Telefonas prijungtas per WF") == "wifi"
+        assert detect_conn("vaifajumi") == "wifi"
+        assert detect_conn("planšetėje") == "wifi"  # a phone/tablet can only be wireless
 
 
 class TestClientSideStrategy:
