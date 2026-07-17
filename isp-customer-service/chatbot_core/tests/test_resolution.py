@@ -160,6 +160,31 @@ class TestRegistry:
         assert get_strategy("billing_suspended") is None  # inform verdict, no strategy
         assert get_strategy(None) is None
 
+    def test_dead_router_strategy_registered(self):
+        s = get_strategy("no_mac_observed")
+        assert s is not None and s.verdict == "no_mac_observed"
+        # bridge only reachable via "yes, I have a computer"; a phone user escalates.
+        assert next_step_id(s, "dr_offer_bridge", "yes") == "dr_plug_pc"
+        assert next_step_id(s, "dr_offer_bridge", "no") == "escalate"
+        # power fix that works resolves; that fails moves to the bridge offer.
+        assert next_step_id(s, "dr_recheck", "yes") == "resolve"
+        assert next_step_id(s, "dr_recheck", "no") == "dr_offer_bridge"
+
+    def test_lights_detector(self):
+        from agent.resolution import detect_lights
+
+        assert detect_lights("nedega") == "no"
+        assert detect_lights("dega žalia") == "yes"
+        assert detect_lights("užsidegė lemputės") == "yes"
+        assert detect_lights("nežinau") is None
+
+    def test_confusion_detector(self):
+        from agent.resolution import detect_confusion
+
+        assert detect_confusion("nesuprantu kas tas WAN") is True
+        assert detect_confusion("neišmanau apie tai") is True
+        assert detect_confusion("taip, mėlyname") is False
+
     def test_client_side_strategy_registered(self):
         s = get_strategy("healthy_to_router")
         assert s is not None and s.verdict == "healthy_to_router"

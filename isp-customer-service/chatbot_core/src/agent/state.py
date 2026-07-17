@@ -116,6 +116,10 @@ class AgentState:
     # the agent say "nesupratau: girdžiu <...>" instead of a blanket "neišgirdau",
     # and never reflect words from an earlier turn as if they were just said.
     last_heard: str = ""
+    # "standard" | "basic". Raised (and kept) for the rest of the call once the caller
+    # signals they do not follow the technical wording — the agent then explains in
+    # plain, visual words instead of repeating the same jargon at them.
+    clarity_level: str = "standard"
 
     # Conversation control
     is_complete: bool = False  # transport hangs up once True (final goodbye spoken)

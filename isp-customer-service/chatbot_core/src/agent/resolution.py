@@ -334,9 +334,128 @@ _CLIENT_SIDE = Strategy(
     ),
 )
 
+# B6 — the line is healthy but NO device is seen on it: the router is off, unplugged
+# or dead. Try power/cables first (cheapest), and if the router is really dead offer
+# the BRIDGE: the incoming cable straight into a computer + bind its MAC = temporary
+# internet on that one machine until they get a new router. A phone/tablet cannot take
+# a cable, so no computer -> register.
+_DEAD_ROUTER = Strategy(
+    verdict="no_mac_observed",
+    rag_doc="troubleshooting/internet_mires_routeris_tiltas",
+    steps=(
+        Step(
+            id="dr_lights",
+            kind=StepKind.CONFIRM,
+            detector="lights",
+            rag_section=0,  # "### Žingsnis 1: Ar routeris turi maitinimą"
+            hint=(
+                "The line is healthy but nothing is connected on it. Say plainly that "
+                "the internet reaches the flat but their router is not showing up, then "
+                "ask ONE thing and wait: is ANY light on the router lit? Do not guess "
+                "the answer."
+            ),
+            on={"yes": "dr_cable", "no": "dr_power"},
+        ),
+        Step(
+            id="dr_power",
+            kind=StepKind.CONFIRM,
+            detector="lights",
+            rag_section=1,  # "### Žingsnis 2: Maitinimas ir kabelis"
+            hint=(
+                "No lights at all. ONE instruction, then wait: check the power lead is "
+                "firmly in the socket and in the router, try another socket — and ask "
+                "whether any light came on now."
+            ),
+            on={"yes": "dr_cable", "no": "dr_offer_bridge"},
+        ),
+        Step(
+            id="dr_cable",
+            kind=StepKind.INSTRUCT,
+            rag_section=1,
+            goto="dr_recheck",
+            hint=(
+                "It has power but the line does not see it. ONE instruction, then wait: "
+                "reseat the cable coming from the wall into the router's internet port "
+                "and say when done."
+            ),
+        ),
+        Step(
+            id="dr_recheck",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=5,  # "### Žingsnis 6: Patikrinti, ar atsirado internetas"
+            hint=(
+                "Ask whether the internet is back now. If yes -> resolved. If not, the "
+                "router is likely dead — move on to offering the temporary bridge."
+            ),
+            on={"yes": "resolve", "no": "dr_offer_bridge"},
+        ),
+        Step(
+            id="dr_offer_bridge",
+            kind=StepKind.CONFIRM,
+            detector="yes_no",
+            rag_section=2,  # "### Žingsnis 3: Pasiūlyti laikiną tiltą"
+            hint=(
+                "The router still shows no life. Explain simply that the internet does "
+                "reach the flat, so you can give them a TEMPORARY fix, and ask ONE "
+                "thing: do they have a computer you could plug the wall cable into? "
+                "(A phone/tablet cannot take a cable — if that is all they have, this "
+                "is not possible.)"
+            ),
+            on={"yes": "dr_plug_pc", "no": "escalate"},
+        ),
+        Step(
+            id="dr_plug_pc",
+            kind=StepKind.INSTRUCT,
+            rag_section=3,  # "### Žingsnis 4: Prijungti kabelį prie kompiuterio"
+            goto="dr_bind",
+            hint=(
+                "ONE instruction, then wait: unplug the cable coming from the wall out "
+                "of the router and plug it straight into the computer's network socket; "
+                "say when done."
+            ),
+        ),
+        Step(
+            id="dr_bind",
+            kind=StepKind.ACTION,
+            tools=frozenset({"update_mac"}),
+            tool_actions=("update_mac",),
+            rag_section=4,  # "### Žingsnis 5: Pririšti kompiuterį"
+            hint=(
+                "The engine binds the computer silently — you do NOT call the tool. "
+                "Announce it: 'Dabar pririšiu jūsų kompiuterį prie tinklo — turėtų "
+                "atsirasti internetas. Palaukite akimirką.' Do not ask yet if it works."
+            ),
+        ),
+        Step(
+            id="dr_verify",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=5,  # "### Žingsnis 6: Patikrinti, ar atsirado internetas"
+            hint=(
+                "Ask whether the internet is now up on that computer. If yes -> say it "
+                "is a TEMPORARY fix until they get a new router, and to call back so we "
+                "bind the new one. If no -> register the fault."
+            ),
+            on={"yes": "resolve", "no": "escalate"},
+        ),
+        Step(
+            id="escalate",
+            kind=StepKind.ESCALATE,
+            tools=frozenset({"create_ticket"}),
+            hint=(
+                "The bridge is not possible (no computer / cannot connect) or it did not "
+                "help. Register the fault ('gedimo registracija') and explain they will "
+                "likely need a new router; a worker calls the next business day."
+            ),
+        ),
+    ),
+)
+
 STRATEGIES: dict[str, Strategy] = {
     "foreign_mac": _FOREIGN_MAC,
     "healthy_to_router": _CLIENT_SIDE,
+    "no_mac_observed": _DEAD_ROUTER,
 }
 
 # Verdicts whose fix is a straight, branch-free, action-free sequence: give them a
@@ -566,6 +685,23 @@ def detect_port(text: str | None) -> str | None:
     return None
 
 
+# "Are any lights on?" — NO is tested first because "nedega" contains "dega".
+_LIGHTS_NO = ("nedega", "nešviečia", "nesviecia", "nemirksi", "tamsu", "jokių", "jokia")
+_LIGHTS_YES = ("dega", "šviečia", "sviecia", "mirksi", "užsidegė", "uzsidege", "žalia", "raudona")
+
+
+def detect_lights(text: str | None) -> str | None:
+    """Route "is any light on the router lit?". 'yes' / 'no' / None if unclear."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _LIGHTS_NO) or re.search(r"\bne\b", low):
+        return "no"
+    if any(m in low for m in _LIGHTS_YES):
+        return "yes"
+    return None
+
+
 def _yn(text: str | None) -> str | None:
     o = detect_yes_no(text)
     return o.value if o else None
@@ -584,6 +720,7 @@ DETECTORS = {
     "scope": detect_scope,
     "conn": detect_conn,
     "port": detect_port,
+    "lights": detect_lights,
 }
 
 
@@ -604,6 +741,37 @@ _FAREWELL = (
     "iki",
     "ate",
 )
+
+
+_CONFUSED = (
+    "nesuprantu",
+    "nesupratau",
+    "kas tai",
+    "kas tas",
+    "kas ta ",
+    "ką reiškia",
+    "ka reiskia",
+    "nesigaudau",
+    "nežinau kur",
+    "nezinau kur",
+    "nežinau kas",
+    "neišmanau",
+    "neismanau",
+    "nemoku",
+    "nesu tech",
+    "paaiškinkite",
+    "paaiskinkite",
+)
+
+
+def detect_confusion(text: str | None) -> bool:
+    """True when the caller signals they do not follow the technical wording ("kas tas
+    WAN?", "nesuprantu", "neišmanau"). Raises the clarity level for the rest of the
+    call so the agent explains in plain, visual words instead of repeating jargon."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _CONFUSED)
 
 
 def detect_farewell(text: str | None) -> bool:

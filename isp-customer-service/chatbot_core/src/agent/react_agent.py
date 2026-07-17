@@ -614,6 +614,18 @@ class ReactAgent:
                     "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
                     "sutaikink."
                 )
+        # The caller told us they do not follow the jargon — repeating the same words
+        # louder does not help. Give the model plain, visual equivalents to use.
+        if s.clarity_level == "basic" and not s.case_closed:
+            facts.append(
+                "- PAPRASTAI: klientas sakė, kad nesupranta techninių žodžių. Kalbėk "
+                "VAIZDŽIAI, be žargono, po VIENĄ veiksmą. Vietoj terminų sakyk: "
+                "routeris = „dėžutė su lemputėmis“; WAN/interneto lizdas = „lizdas, į "
+                "kurį įkištas kabelis, ateinantis iš sienos, dažnai atskiras ir "
+                "pažymėtas Internet“; LAN = „kiti lizdai šalia, į kuriuos jungiami "
+                "namų įrenginiai“; MAC = „įrenginio numeris mūsų sistemoje“. Nurodyk, "
+                "KUR pažiūrėti („routerio galinėje pusėje“), o ne tik KĄ."
+            )
         # Just rejected a hypothesis and switched: let the caller HEAR the rethink, so
         # a failed first attempt reads as an engineer working the problem (we have a
         # Plan B) rather than a script that silently restarts.
@@ -1575,6 +1587,7 @@ class ReactAgent:
         self._turn_start_key = self._progress_key()
 
         self.state.last_heard = (user_input or "").strip()
+        self._maybe_raise_clarity(user_input)
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
@@ -1802,6 +1815,7 @@ class ReactAgent:
         self._turn_start_key = self._progress_key()
 
         self.state.last_heard = (user_input or "").strip()
+        self._maybe_raise_clarity(user_input)
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
@@ -1933,6 +1947,15 @@ class ReactAgent:
         self.tracer.emit("stuck", count=self.state.stuck_count, repeated=False)
         self.tracer.emit("agent_reply", text=text)
         return text
+
+    def _maybe_raise_clarity(self, user_input: str | None) -> None:
+        """Once the caller says they do not follow the wording ("kas tas WAN?"),
+        stay in plain language for the rest of the call. One-way: a caller who was
+        lost once should not be dropped back into jargon two steps later."""
+        from .resolution import detect_confusion
+
+        if self.state.clarity_level == "standard" and detect_confusion(user_input):
+            self.state.clarity_level = "basic"
 
     def _maybe_end_on_goodbye(self, text: str) -> None:
         """Catch-all hang-up: if the agent JUST said a terminal goodbye — on ANY path

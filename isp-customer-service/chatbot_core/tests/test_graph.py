@@ -134,12 +134,12 @@ class TestRouting:
 
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()
-        session.state.customer_id = "CUST001"  # identified, healthy -> no strategy
+        session.state.customer_id = "CUST104"  # link_down_local -> no strategy registered
 
         names = self._run_turn_capture_tools(session, "taip")
 
-        # Healthy line -> no resolution strategy -> the diagnosis node keeps the
-        # full toolset (diagnose available; lookup kept for a re-resolve).
+        # A verdict with no strategy -> the diagnosis node keeps the full toolset
+        # (diagnose available; lookup kept for a re-resolve).
         assert "diagnose_connection" in names
         assert "resolve_address" in names
 
