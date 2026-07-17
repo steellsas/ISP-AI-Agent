@@ -348,6 +348,59 @@ class TestIdentifyThenDiagnoseSameTurn:
         assert "DIAGNOZĖ" not in out
 
 
+class TestHypothesisRejection:
+    """A fix that does not restore the line rejects THAT hypothesis and looks for the
+    next one — the agent has a Plan B instead of registering at the first failure."""
+
+    def _at_restored(self, monkeypatch, telemetry_after):
+        import agent.react_agent as ra
+
+        agent = ra.ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {
+            "verdict": "foreign_mac",
+            "step": "confirm_restored",
+            "asked": True,
+            "restored_denials": 1,  # one denial already: the next one decides
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: "foreign_mac")
+        monkeypatch.setattr(
+            ra,
+            "execute_tool",
+            lambda n, args: json.dumps(
+                {"success": True, "verdict": {"reason": telemetry_after, "side": "x", "group": "B"}}
+            ),
+        )
+        return agent
+
+    def test_new_verdict_switches_strategy_and_flags_the_rethink(self, monkeypatch):
+        agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
+        agent._advance_resolution("vis dar neveikia")
+
+        assert agent.state.failed_hypotheses == ["foreign_mac"]
+        assert agent.state.resolution["verdict"] == "healthy_to_router"  # Plan B
+        assert agent.state.resolution["step"] == "cs_scope"
+        assert agent.state.pivoted_from == "foreign_mac"  # narrate it once
+
+    def test_same_verdict_has_no_plan_b_so_it_escalates(self, monkeypatch):
+        agent = self._at_restored(monkeypatch, telemetry_after="foreign_mac")
+        agent._advance_resolution("vis dar neveikia")
+
+        assert agent.state.failed_hypotheses == ["foreign_mac"]
+        assert agent.state.resolution["step"] == "escalate"
+        assert agent.state.pivoted_from is None
+
+    def test_rethink_is_voiced_once_then_cleared(self, monkeypatch):
+        agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
+        agent._advance_resolution("vis dar neveikia")
+
+        facts = agent._state_facts_block() or ""
+        assert "PERSIGALVOJIMAS" in facts
+        agent._mark_step_presented()  # the reply carried it
+        assert agent.state.pivoted_from is None
+        assert "PERSIGALVOJIMAS" not in (agent._state_facts_block() or "")
+
+
 class TestClosing:
     """The call ends (is_complete) on a farewell / 'no more', or a 2nd closing turn —
     so the agent does not loop goodbyes."""

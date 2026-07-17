@@ -94,6 +94,12 @@ class AgentState:
     # see the outage discussion). closed_reason tailors the goodbye.
     case_closed: bool = False
     closed_reason: str | None = None  # "resolved" | "outage" | "declined"
+    # Hypotheses the telemetry has already disproved (a fix ran and did NOT restore
+    # the line). The engine never re-tries these, so a failed fix leads to the NEXT
+    # likely cause instead of straight to a ticket. `pivoted_from` carries the just-
+    # rejected one for ONE reply, so the agent can say out loud that it is rethinking.
+    failed_hypotheses: list[str] = field(default_factory=list)
+    pivoted_from: str | None = None
     # An active outage was reported for the caller's street. This does NOT close the
     # case (the caller still asks "when fixed? / compensation?") — it switches the
     # agent into a restricted mode: answer outage follow-ups, no more diagnosis.

@@ -614,6 +614,18 @@ class ReactAgent:
                     "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
                     "sutaikink."
                 )
+        # Just rejected a hypothesis and switched: let the caller HEAR the rethink, so
+        # a failed first attempt reads as an engineer working the problem (we have a
+        # Plan B) rather than a script that silently restarts.
+        if s.pivoted_from and not s.case_closed:
+            old = _DIAGNOSIS_LT.get(s.pivoted_from, s.pivoted_from)
+            facts.append(
+                f"- PERSIGALVOJIMAS: bandėme priežastį „{old}“ ir tai NEPADĖJO "
+                "(telemetrija). Pradėk atsakymą tuo, žmogiškai ir trumpai: kad tai "
+                "nepadėjo, vadinasi priežastis kita, ir ką dabar tikrini. Tada tęsk "
+                "pagal ŠĮ ŽINGSNĮ. NEapsimesk, kad ankstesnio bandymo nebuvo, ir "
+                "NEkartok jo."
+            )
         # Active resolution strategy: inject ONLY the current step's playbook
         # section (never the whole doc — a streaming model would run several steps
         # ahead). This is the "what to do NOW" for the step the engine is on.
@@ -854,6 +866,28 @@ class ReactAgent:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
 
+    def _reject_and_rediagnose(self, r: dict) -> bool:
+        """The fix ran but the line is still down: reject THIS hypothesis and look for
+        another one before giving up.
+
+        Re-reads telemetry through the normal path so state.diagnosis and the strategy
+        pivot both update (the pivot skips anything already in failed_hypotheses).
+        Returns True when a genuinely NEW strategy took over — the agent has a Plan B
+        and says so (see `pivoted_from`); False when nothing new is left, so the caller
+        escalates. Without this the FIRST failed fix ended in a ticket even when the
+        telemetry had started pointing at a different fault."""
+        s = self.state
+        verdict = r.get("verdict")
+        if verdict and verdict not in s.failed_hypotheses:
+            s.failed_hypotheses.append(verdict)
+        s.diagnosis.pop("network", None)  # let ensure_diagnosed re-read the line
+        self.ensure_diagnosed()
+        new = (s.resolution or {}).get("verdict")
+        if new and new != verdict and new not in s.failed_hypotheses:
+            s.pivoted_from = verdict  # narrate the rethink once, then clear
+            return True
+        return False
+
     def _route_to(self, r: dict, target: str) -> None:
         """Apply a routing target: the 'resolve'/'end' terminals close the case; any
         other id is a real step to advance to. Centralises terminal handling so every
@@ -896,7 +930,11 @@ class ReactAgent:
             else:
                 r["restored_denials"] = int(r.get("restored_denials", 0)) + 1
                 if r["restored_denials"] >= 2:
-                    self._goto_step(r, "escalate")
+                    # The bind has not taken after waiting. Don't register yet: reject
+                    # this hypothesis and see whether the telemetry now points at a
+                    # different fault. Only escalate when there is no Plan B.
+                    if not self._reject_and_rediagnose(r):
+                        self._goto_step(r, "escalate")
                 # else: stay, reassure it may take a couple of minutes (see hint)
             return
         # unclear -> stay on confirm_restored, re-ask
@@ -927,6 +965,7 @@ class ReactAgent:
         """After the agent replies while on a strategy step, record that the step's
         message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)
         has now been presented — so the caller's NEXT reply advances the walker."""
+        self.state.pivoted_from = None  # the rethink has now been said — say it once
         r = self.state.resolution
         if not r:
             return
@@ -1185,7 +1224,9 @@ class ReactAgent:
                 from .resolution import get_strategy
 
                 strat = get_strategy(v.get("reason"))
-                if strat is not None:
+                # Never pivot back into a hypothesis the telemetry already disproved —
+                # that is how a re-diagnose after a failed fix would loop forever.
+                if strat is not None and strat.verdict not in self.state.failed_hypotheses:
                     prev = (self.state.resolution or {}).get("verdict")
                     if prev != strat.verdict:  # new or pivoted
                         self.state.resolution = {
