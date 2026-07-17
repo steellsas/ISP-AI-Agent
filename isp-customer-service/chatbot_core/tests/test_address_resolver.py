@@ -185,6 +185,28 @@ class TestApartmentAndContracts:
         assert r["success"] is True
         assert r["customer_id"] == "CUST102"
 
+    def test_single_flat_still_requires_the_caller_to_say_it(self, resolver):
+        """Žeimių g. 12 has ONE contract, in a flat. It must NOT resolve on
+        street+house: filling the apartment in from the DB would reveal a part the
+        caller never said (address probing). Ask for it instead."""
+        r = resolver(city="Ginkūnai", street="Žeimių", house_number="12")
+        assert r["success"] is False
+        assert r["customer_id"] is None
+        assert r["resolution"]["apartment"]["status"] == "required"
+        assert "buto" in r["hint"]
+        assert "12-6" not in r["hint"]  # the flat number is not leaked
+
+    def test_single_flat_resolves_once_the_caller_says_it(self, resolver):
+        r = resolver(city="Ginkūnai", street="Žeimių", house_number="12", apartment_number="6")
+        assert r["success"] is True
+        assert r["customer_id"] == "CUST109"
+
+    def test_house_without_a_flat_resolves_as_is(self, resolver):
+        """A private house has no apartment to reveal -> street+house is enough."""
+        r = resolver(city="Bubiai", street="Aušros", house_number="8")
+        assert r["success"] is True
+        assert r["customer_id"] == "CUST110"
+
     def test_wrong_apartment(self, resolver):
         r = resolver(city="Šiauliai", street="Dainų", house_number="5", apartment_number="99")
         assert r["resolution"]["apartment"]["status"] == "not_found"

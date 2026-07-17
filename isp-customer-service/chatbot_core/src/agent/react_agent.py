@@ -463,28 +463,32 @@ class ReactAgent:
                 f"identification (no 'Radau sutartį', no house/apartment). If they name a "
                 f"DIFFERENT street, drop this and ask for the address."
             )
-        # Phone cross-check: the caller named the SAME street their number is
-        # registered at. Offer the account's full address to confirm so they need
-        # not dictate the house/apartment (spoken numbers are STT-fragile — the
-        # top cause of failed identification on the phone).
+        # Phone account: the caller's number is in the DB. Offer its registered
+        # address FIRST (before asking them to dictate anything) — the number is
+        # already tied to that address, so it reveals nothing new and saves the
+        # STT-fragile spoken house/apartment. Fires until they name a DIFFERENT
+        # street (then they are calling about someone else's address — case B).
         if (
             not s.customer_id
             and not s.preflight_outage
             and s.phone_candidate
             and s.phone_candidate.get("street")
-            and s.profile.street.value
-            and s.profile.street.value == s.phone_candidate.get("street")
+            and (
+                not s.profile.street.value
+                or s.profile.street.value == s.phone_candidate.get("street")
+            )
         ):
             c = s.phone_candidate
             flat = f", butas {c['apartment']}" if c.get("apartment") else ""
             flat_arg = f", apartment_number='{c['apartment']}'" if c.get("apartment") else ""
             facts.append(
-                f"- PHONE MATCH: the caller's number is registered at {c['address']} and "
-                f"they just named that street. Offer the FULL address to confirm — "
-                f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?" — do NOT make them '
-                f"dictate the house/apartment. On yes, call resolve_address(city='{c['city']}', "
-                f"street='{c['street']}', house_number='{c['house']}'{flat_arg}) to identify. "
-                f"If they say a DIFFERENT house/flat, take that instead."
+                f"- PHONE ACCOUNT: the caller's number is registered at {c['address']}. "
+                f"Offer THIS address FIRST, before asking them to dictate anything: "
+                f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?". On yes, call '
+                f"resolve_address(city='{c['city']}', street='{c['street']}', "
+                f"house_number='{c['house']}'{flat_arg}) to identify, then diagnose. If they "
+                f"say a DIFFERENT address (someone else's — that is allowed), ask them to "
+                f"state the address where the fault is and take THAT."
             )
         # DB-grounded verdict on the accumulated address (set in the prefill).
         if self._db_address_note and not s.customer_id:
@@ -537,11 +541,28 @@ class ReactAgent:
                 if self._repeated_verbatim
                 else ""
             )
-            facts.append(
-                "- Praeitas klausimas liko be atsakymo. NEKARTOK jo pažodžiui — trumpai "
-                "pasakyk „Atsiprašau, neišgirdau“ ir paprašyk pakartoti TIK trūkstamą "
-                "dalį (pvz. gatvės pavadinimą)." + extra
-            )
+            if s.last_heard:
+                # We DID hear them — we just could not use it. Never say "neišgirdau"
+                # here: reflect the actual words and name the part that is unclear, so
+                # the caller knows they were heard and what exactly to repeat.
+                facts.append(
+                    f"- NESUPRATAU (girdėjau!): klientas ką tik pasakė „{s.last_heard}“, bet "
+                    "iš to nepavyko paimti, ko reikia. NESAKYK „neišgirdau“ — pasakyk, ką "
+                    "girdėjai ir ko NEsupratai, ir paprašyk pakartoti TIK tą dalį: "
+                    "„Girdžiu „…“, bet nesupratau gatvės — pakartokite ją, prašau.“ Jei "
+                    "klientas iš tikrųjų kalba APIE KĄ KITA (klausia ko nors, tikslinasi) — "
+                    "atsakyk į TAI, o ne kartok savo klausimą." + extra
+                )
+            else:
+                # Silence. The caller may just be listening or thinking, so do NOT
+                # apologise at them — "neišgirdau" after they said nothing reads as if
+                # THEY failed. Leave the pause; simply ask for what is needed.
+                facts.append(
+                    "- TYLA (klientas nieko nepasakė): NESAKYK „neišgirdau“ — jis gali "
+                    "tiesiog klausytis ar galvoti. Ramiai, be atsiprašinėjimo, paklausk "
+                    "to, ko reikia (pvz. gatvės), arba pasitikslink „Ar mane girdite?“. "
+                    "Neskubėk." + extra
+                )
         # Raw-buffer reconciliation: once we're stuck AND still unidentified, hand
         # the LLM EVERYTHING the caller said so far. VAD/STT splits and garbles
         # spoken numbers ("šešiasdešimt" -> "šešias dešimt" -> a fragment that
@@ -1463,6 +1484,7 @@ class ReactAgent:
         # slot/problem filled THIS turn counts as progress and clears the counter.
         self._turn_start_key = self._progress_key()
 
+        self.state.last_heard = (user_input or "").strip()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
@@ -1689,6 +1711,7 @@ class ReactAgent:
         # this turn counts as progress and clears the counter).
         self._turn_start_key = self._progress_key()
 
+        self.state.last_heard = (user_input or "").strip()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
