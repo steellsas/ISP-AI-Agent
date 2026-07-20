@@ -654,11 +654,20 @@ class ReactAgent:
                     "švelniai grįžk prie to, ko prašei. Nekartok savo klausimo neatsakęs."
                 )
             elif s.last_intent == INTENT_CONFUSED:
-                facts.append(
-                    "- KLIENTAS NESUPRATO: NEkartok tų pačių žodžių. Paaiškink kitaip ir "
-                    "smulkiau — pasakyk, KUR pažiūrėti ir kaip tai atrodo, ir suskaidyk "
-                    "į mažesnį žingsnį."
-                )
+                if s.step_confusions >= 2:
+                    facts.append(
+                        "- VIS DAR NESUPRANTA (jau 2+ kartus): nustok aiškinti tą patį. "
+                        "Paimk MAŽIAUSIĄ įmanomą dalį — vieną fizinį veiksmą, kurį "
+                        "galima padaryti per sekundę („Ar matote dėžutę su lemputėmis? "
+                        "Tiesiog pasakykite taip ar ne“) — ir eik po vieną tokį. Jei ir "
+                        "tai nepavyksta, pasiūlyk užregistruoti, kad atvyktų technikas."
+                    )
+                else:
+                    facts.append(
+                        "- KLIENTAS NESUPRATO: NEkartok tų pačių žodžių. Suskaidyk šį "
+                        "žingsnį į MAŽESNĮ — pirma nuvesk, KUR pažiūrėti ir kaip tai "
+                        "atrodo, ir paprašyk tik to vieno dalyko."
+                    )
             if s.awaiting_turns >= 3:
                 facts.append(
                     "- ILGAI LAUKIAM: praėjo keli ėjimai be pastūmėjimo. Pasitikslink "
@@ -1004,11 +1013,17 @@ class ReactAgent:
         )
 
         s = self.state
+        from .resolution import INTENT_CONFUSED
+
         intent = s.last_intent or INTENT_UNKNOWN
         if intent in (INTENT_ANSWER, INTENT_DONE):
             s.awaiting = None
             s.awaiting_turns = 0
+            s.step_confusions = 0  # they got past this one
             return True
+        if intent == INTENT_CONFUSED:
+            # Each "I don't follow" on the SAME step earns a smaller piece of it.
+            s.step_confusions += 1
         # Still waiting on the same thing — count the turns so the agent can check in
         # ("ar pavyksta?") instead of silently re-asking the same sentence.
         s.awaiting = (

@@ -455,6 +455,18 @@ class TestTurnHolding:
             agent._advance_resolution(reply)
             assert agent.state.resolution["step"] == "dr_offer_bridge"
 
+    def test_repeated_confusion_breaks_the_step_down(self, monkeypatch):
+        agent = self._at_step(monkeypatch, "dr_lights")
+        agent._advance_resolution("nesuprantu ko norit")
+        assert agent.state.step_confusions == 1
+        assert "NESUPRATO" in (agent._state_facts_block() or "")
+        agent._advance_resolution("vis tiek nesuprantu")
+        assert agent.state.step_confusions == 2
+        assert "MAŽIAUSIĄ" in (agent._state_facts_block() or "")  # finest breakdown
+        # a real answer clears it and moves on
+        agent._advance_resolution("nedega")
+        assert agent.state.step_confusions == 0
+
     def test_waiting_turns_accumulate_for_a_check_in(self, monkeypatch):
         agent = self._at_step(monkeypatch, "dr_plug_pc")
         for _ in range(3):

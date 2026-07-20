@@ -135,6 +135,10 @@ class AgentState:
     #   None | "client_answer" | "client_action" | "system_check"
     awaiting: str | None = None
     awaiting_turns: int = 0
+    # How many times the caller has said they do not follow THIS step. Each time the
+    # agent breaks the same instruction into a smaller piece instead of repeating it.
+    # (clarity_level changes the WORDS; this changes the SIZE of the step.)
+    step_confusions: int = 0
     # How the caller's last turn was classified (see resolution.detect_turn_intent).
     # Only "answer"/"done" may advance a step — everything else holds the walker.
     last_intent: str = ""
