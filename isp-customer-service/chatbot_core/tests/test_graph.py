@@ -348,6 +348,51 @@ class TestIdentifyThenDiagnoseSameTurn:
         assert "DIAGNOZĖ" not in out
 
 
+class TestTurnHolding:
+    """Only a real answer or a completed action advances the walker. Everything else
+    holds it — this is what stopped the agent running ahead of the caller."""
+
+    def _at_step(self, monkeypatch, step_id, reason="no_mac_observed"):
+        import agent.react_agent as ra
+
+        agent = ra.ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": step_id,
+            "asked": True,
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: reason)
+        return agent
+
+    def test_in_progress_waits_instead_of_checking(self, monkeypatch):
+        # Observed: "atsinešiu kompiuterį" advanced the step, so the engine read the
+        # line before anything was plugged in and concluded the bridge had failed.
+        agent = self._at_step(monkeypatch, "dr_plug_pc")
+        agent._advance_resolution("Gerai, atsinešiu kompiuterį, pajungsiu.")
+        assert agent.state.resolution["step"] == "dr_plug_pc"  # held
+        assert agent.state.awaiting == "client_action"
+
+    def test_done_advances(self, monkeypatch):
+        agent = self._at_step(monkeypatch, "dr_plug_pc")
+        agent._advance_resolution("įkišau")
+        assert agent.state.resolution["step"] != "dr_plug_pc"
+        assert agent.state.awaiting is None
+
+    def test_question_and_confusion_hold(self, monkeypatch):
+        for reply in ("o kiek tai kainuos?", "nesuprantu, kas tas kabelis"):
+            agent = self._at_step(monkeypatch, "dr_offer_bridge")
+            agent._advance_resolution(reply)
+            assert agent.state.resolution["step"] == "dr_offer_bridge"
+
+    def test_waiting_turns_accumulate_for_a_check_in(self, monkeypatch):
+        agent = self._at_step(monkeypatch, "dr_plug_pc")
+        for _ in range(3):
+            agent._advance_resolution("tuoj, ieškau")
+        assert agent.state.awaiting_turns == 3
+        assert "ILGAI LAUKIAM" in (agent._state_facts_block() or "")
+
+
 class TestBridgeSeesDevice:
     """The bridge binds only once telemetry SEES the device the caller plugged in —
     binding blindly when the cable is in the wrong socket fails confusingly."""

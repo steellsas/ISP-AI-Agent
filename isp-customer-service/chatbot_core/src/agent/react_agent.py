@@ -614,6 +614,35 @@ class ReactAgent:
                     "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
                     "sutaikink."
                 )
+        # The turn did not move the conversation on. Say WHY, so the agent responds to
+        # what the caller actually did instead of re-asking the same sentence.
+        if s.awaiting and not s.case_closed:
+            from .resolution import INTENT_CONFUSED, INTENT_IN_PROGRESS, INTENT_QUESTION
+
+            if s.last_intent == INTENT_IN_PROGRESS:
+                facts.append(
+                    "- KLIENTAS DAR DARO: jis sakė, kad tuoj/eina/atsineš — dar NEatliko. "
+                    "Trumpai patvirtink, kad palauksi („Gerai, palauksiu — pasakykite, "
+                    "kai būsite pasiruošęs“) ir LAUK. NEkartok instrukcijos, NEtark, kad "
+                    "nepavyko, ir NEeik toliau."
+                )
+            elif s.last_intent == INTENT_QUESTION:
+                facts.append(
+                    "- KLIENTAS PAKLAUSĖ: pirma ATSAKYK į jo klausimą paprastai, tada "
+                    "švelniai grįžk prie to, ko prašei. Nekartok savo klausimo neatsakęs."
+                )
+            elif s.last_intent == INTENT_CONFUSED:
+                facts.append(
+                    "- KLIENTAS NESUPRATO: NEkartok tų pačių žodžių. Paaiškink kitaip ir "
+                    "smulkiau — pasakyk, KUR pažiūrėti ir kaip tai atrodo, ir suskaidyk "
+                    "į mažesnį žingsnį."
+                )
+            if s.awaiting_turns >= 3:
+                facts.append(
+                    "- ILGAI LAUKIAM: praėjo keli ėjimai be pastūmėjimo. Pasitikslink "
+                    "žmogiškai, kaip sekasi ir kur jis dabar („Ar pavyksta rasti? Gal "
+                    "pasakykite, ką matote“), arba pasiūlyk registruoti gedimą."
+                )
         # The caller told us they do not follow the jargon — repeating the same words
         # louder does not help. Give the model plain, visual equivalents to use.
         if s.clarity_level == "basic" and not s.case_closed:
@@ -844,9 +873,19 @@ class ReactAgent:
         r = self.state.resolution
         if not r or self.state.case_closed:
             return
+        # Derive the intent from THIS call's input rather than trusting it was set
+        # earlier — the walker must not depend on the caller's ordering.
+        from .resolution import detect_turn_intent
+
+        self.state.last_intent = detect_turn_intent(user_input)
         strat = get_strategy(r.get("verdict"))
         step = strat.step(r.get("step", "")) if strat else None
         if step is None:
+            return
+        # What KIND of turn was this? Only a real answer or a completed action may move
+        # the conversation. "Einu prie routerio", a question, confusion or silence all
+        # HOLD the step — the agent responds to them instead of running ahead.
+        if not self._turn_may_advance(step):
             return
         # confirm_restored blends the caller's word with a fresh telemetry read.
         if step.id == "confirm_restored":
@@ -885,6 +924,42 @@ class ReactAgent:
         if key is None:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
+
+    def _turn_may_advance(self, step) -> bool:
+        """May the caller's turn move the walker forward?
+
+        Only a real ANSWER or a completed action does. "Einu prie routerio" is work in
+        progress, a question needs answering, confusion needs a finer explanation, and
+        silence needs waiting — none of them mean the step is finished. Before this,
+        every non-answer fell through to "repeat the question", which is how the agent
+        ran ahead of the caller (it read a plugged-in-yet? check before they had
+        plugged anything in) and repeated itself six turns running.
+
+        Unknown is deliberately treated as an ANSWER only for CONFIRM steps, where a
+        detector still has to agree — elsewhere it holds. Safe default: wait and ask."""
+        from .resolution import (
+            INTENT_ANSWER,
+            INTENT_DONE,
+            INTENT_IN_PROGRESS,
+            INTENT_UNKNOWN,
+            StepKind,
+        )
+
+        s = self.state
+        intent = s.last_intent or INTENT_UNKNOWN
+        if intent in (INTENT_ANSWER, INTENT_DONE):
+            s.awaiting = None
+            s.awaiting_turns = 0
+            return True
+        # Still waiting on the same thing — count the turns so the agent can check in
+        # ("ar pavyksta?") instead of silently re-asking the same sentence.
+        s.awaiting = (
+            "client_action"
+            if (intent == INTENT_IN_PROGRESS or step.kind is StepKind.INSTRUCT)
+            else "client_answer"
+        )
+        s.awaiting_turns += 1
+        return False
 
     def _advance_see_device(self, r: dict) -> None:
         """Bridge check: after the caller plugs a computer into the wall cable, does the
@@ -1612,6 +1687,9 @@ class ReactAgent:
         self._turn_start_key = self._progress_key()
 
         self.state.last_heard = (user_input or "").strip()
+        from .resolution import detect_turn_intent
+
+        self.state.last_intent = detect_turn_intent(user_input)
         self._maybe_raise_clarity(user_input)
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
@@ -1840,6 +1918,9 @@ class ReactAgent:
         self._turn_start_key = self._progress_key()
 
         self.state.last_heard = (user_input or "").strip()
+        from .resolution import detect_turn_intent
+
+        self.state.last_intent = detect_turn_intent(user_input)
         self._maybe_raise_clarity(user_input)
         if user_input:
             self.tracer.emit("user_turn", text=user_input)

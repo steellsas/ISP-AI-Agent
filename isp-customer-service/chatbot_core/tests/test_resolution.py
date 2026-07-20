@@ -182,6 +182,29 @@ class TestRegistry:
         assert detect_lights("užsidegė lemputės") == "yes"
         assert detect_lights("nežinau") is None
 
+    def test_turn_intent_classifier(self):
+        from agent.resolution import detect_turn_intent as f
+
+        # Only these two may move the walker.
+        assert f("mėlyname lizde") == "answer"
+        assert f("taip") == "answer"
+        assert f("nedega") == "answer"
+        assert f("padariau") == "done"
+        assert f("įkišau") == "done"
+        # These must HOLD it.
+        assert f("Gerai, atsinešiu kompiuterį") == "in_progress"
+        assert f("tuoj pažiūrėsiu") == "in_progress"
+        assert f("o kiek tai kainuos?") == "question"
+        assert f("nesuprantu kas tas WAN") == "confused"
+        assert f("") == "silence"
+
+    def test_still_broken_is_an_answer_not_progress(self):
+        # "vis dar neveikia" is a real answer to "does it work?" — it must not be read
+        # as work in progress, or the verify step would never settle.
+        from agent.resolution import detect_turn_intent
+
+        assert detect_turn_intent("vis dar neveikia") == "answer"
+
     def test_confusion_detector(self):
         from agent.resolution import detect_confusion
 

@@ -344,15 +344,29 @@ _DEAD_ROUTER = Strategy(
     rag_doc="troubleshooting/internet_mires_routeris_tiltas",
     steps=(
         Step(
+            id="dr_intro",
+            kind=StepKind.CONFIRM,
+            detector="yes_no",
+            rag_section=0,  # "### Žingsnis 0: Paaiškinti, ką matome"
+            hint=(
+                "Do NOT start ordering them about. First explain what YOU can see and "
+                "what it likely means — the internet reaches the flat but the line does "
+                "not see their device, so it is usually no power, an unplugged cable, or "
+                "a dead router — and ASK whether it suits them to check it together now. "
+                "Wait for their answer. If they cannot (not home, busy), do not push: "
+                "offer to register the fault or to call back."
+            ),
+            on={"yes": "dr_lights", "no": "escalate"},
+        ),
+        Step(
             id="dr_lights",
             kind=StepKind.CONFIRM,
             detector="lights",
-            rag_section=0,  # "### Žingsnis 1: Ar routeris turi maitinimą"
+            rag_section=1,  # "### Žingsnis 1: Nuvesti prie routerio"
             hint=(
-                "The line is healthy but nothing is connected on it. Say plainly that "
-                "the internet reaches the flat but their router is not showing up, then "
-                "ask ONE thing and wait: is ANY light on the router lit? Do not guess "
-                "the answer."
+                "They agreed. First take them TO the device, then ask ONE thing: ask "
+                "them to find the router (the box the internet cable goes into) and, "
+                "once there, whether ANY light is lit. Do not guess the answer."
             ),
             on={"yes": "dr_cable", "no": "dr_power"},
         ),
@@ -360,7 +374,7 @@ _DEAD_ROUTER = Strategy(
             id="dr_power",
             kind=StepKind.CONFIRM,
             detector="lights",
-            rag_section=1,  # "### Žingsnis 2: Maitinimas ir kabelis"
+            rag_section=2,  # "### Žingsnis 2: Maitinimas ir kabelis"
             hint=(
                 "No lights at all. ONE instruction, then wait: check the power lead is "
                 "firmly in the socket and in the router, try another socket — and ask "
@@ -371,7 +385,7 @@ _DEAD_ROUTER = Strategy(
         Step(
             id="dr_cable",
             kind=StepKind.INSTRUCT,
-            rag_section=1,
+            rag_section=2,
             goto="dr_recheck",
             hint=(
                 "It has power but the line does not see it. ONE instruction, then wait: "
@@ -383,7 +397,7 @@ _DEAD_ROUTER = Strategy(
             id="dr_recheck",
             kind=StepKind.CONFIRM,
             detector="restored",
-            rag_section=5,  # "### Žingsnis 6: Patikrinti, ar atsirado internetas"
+            rag_section=8,  # "### Žingsnis 6: Patikrinti, ar atsirado internetas"
             hint=(
                 "Ask whether the internet is back now. If yes -> resolved. If not, the "
                 "router is likely dead — move on to offering the temporary bridge."
@@ -394,7 +408,7 @@ _DEAD_ROUTER = Strategy(
             id="dr_offer_bridge",
             kind=StepKind.CONFIRM,
             detector="have_device",
-            rag_section=2,  # "### Žingsnis 3: Pasiūlyti laikiną tiltą"
+            rag_section=3,  # "### Žingsnis 3: Pasiūlyti laikiną tiltą"
             hint=(
                 "The router still shows no life. Explain simply that the internet does "
                 "reach the flat, so you can give them a TEMPORARY fix, and ask ONE "
@@ -407,7 +421,7 @@ _DEAD_ROUTER = Strategy(
         Step(
             id="dr_pick_cable",
             kind=StepKind.INSTRUCT,
-            rag_section=3,  # "### Žingsnis 4a: Kurį kabelį imti"
+            rag_section=4,  # "### Žingsnis 4a: Kurį kabelį imti"
             goto="dr_plug_pc",
             hint=(
                 "Make sure they take the RIGHT cable — this is where people go wrong. "
@@ -420,7 +434,7 @@ _DEAD_ROUTER = Strategy(
         Step(
             id="dr_plug_pc",
             kind=StepKind.INSTRUCT,
-            rag_section=4,  # "### Žingsnis 4b: Įkišti į kompiuterį"
+            rag_section=5,  # "### Žingsnis 4b: Įkišti į kompiuterį"
             goto="dr_see_device",
             hint=(
                 "ONE instruction, then wait: plug that cable into the computer's network "
@@ -432,7 +446,7 @@ _DEAD_ROUTER = Strategy(
         Step(
             id="dr_see_device",
             kind=StepKind.VERIFY,
-            rag_section=5,  # "### Žingsnis 5: Ar matome įrenginį linijoje"
+            rag_section=6,  # "### Žingsnis 5: Ar matome įrenginį linijoje"
             hint=(
                 "The engine re-reads the line to see whether the newly connected device "
                 "actually shows up. If it does NOT, the cable is in the wrong socket or "
@@ -444,7 +458,7 @@ _DEAD_ROUTER = Strategy(
             kind=StepKind.ACTION,
             tools=frozenset({"update_mac"}),
             tool_actions=("update_mac",),
-            rag_section=6,  # "### Žingsnis 6: Pririšti kompiuterį"
+            rag_section=7,  # "### Žingsnis 6: Pririšti kompiuterį"
             hint=(
                 "We can now SEE their computer on the line. The engine binds it silently "
                 "— you do NOT call the tool. Announce it: 'Matau jūsų kompiuterį "
@@ -456,13 +470,25 @@ _DEAD_ROUTER = Strategy(
             id="dr_verify",
             kind=StepKind.CONFIRM,
             detector="restored",
-            rag_section=7,  # "### Žingsnis 7: Patikrinti, ar atsirado internetas"
+            rag_section=8,  # "### Žingsnis 7: Patikrinti, ar atsirado internetas"
             hint=(
-                "Ask whether the internet is now up on that computer. If yes -> say it "
-                "is a TEMPORARY fix until they get a new router, and to call back so we "
-                "bind the new one. If no -> register the fault."
+                "Ask whether the internet is now up on that computer. If yes: say "
+                "plainly that this is TEMPORARY (that one computer only), that the "
+                "router is dead and needs replacing, and go register the fault for it. "
+                "If no -> register too. Either way the caller leaves with a registration."
             ),
-            on={"yes": "resolve", "no": "escalate"},
+            on={"yes": "dr_register_router", "no": "escalate"},
+        ),
+        Step(
+            id="dr_register_router",
+            kind=StepKind.ESCALATE,
+            tools=frozenset({"create_ticket"}),
+            hint=(
+                "The bridge works, but their router is dead. Register that ('gedimo "
+                "registracija' — sugedęs routeris, reikia keisti), tell them colleagues "
+                "will be in touch, and that once they have a new router they should call "
+                "so we bind it and the whole home works again."
+            ),
         ),
         Step(
             id="escalate",
@@ -834,6 +860,86 @@ _CONFUSED = (
     "paaiškinkite",
     "paaiskinkite",
 )
+
+
+# --- Turn intent -------------------------------------------------------------
+# What KIND of turn the caller just took. Only ANSWER and DONE may advance a step;
+# everything else holds the walker where it is. Without this every non-answer
+# ("einu prie routerio", "nesuprantu", "o kiek kainuos?") collapsed into "repeat the
+# question", and the agent ran ahead of the caller.
+INTENT_ANSWER = "answer"  # a real answer to what we asked -> route it
+INTENT_IN_PROGRESS = "in_progress"  # "einu / atsinešiu / tuoj" -> wait, do NOT check
+INTENT_DONE = "done"  # "padariau / įkišau" -> the action completed
+INTENT_QUESTION = "question"  # asking us something -> answer it, stay
+INTENT_CONFUSED = "confused"  # does not follow -> explain finer, stay
+INTENT_SILENCE = "silence"  # nothing usable -> wait, do not scold
+INTENT_UNKNOWN = "unknown"  # safe default: hold and ask, never advance
+
+_IN_PROGRESS = (
+    "einu",
+    "eisiu",
+    "nueisiu",
+    "atsineš",
+    "atsines",
+    "tuoj",
+    "tuojau",
+    "palauk",
+    "sekundėl",
+    "sekundel",
+    "minutėl",
+    "minutel",
+    "bandau",
+    "bandysiu",
+    "darau",
+    "darysiu",
+    "žiūriu",
+    "ziuriu",
+    "ieškau",
+    "iesk",
+    "einam",
+)
+_DONE = (
+    "padariau",
+    "padaryta",
+    "atlikau",
+    "įkišau",
+    "ikisau",
+    "įjungiau",
+    "ijungiau",
+    "išjungiau",
+    "isjungiau",
+    "perkroviau",
+    "perjungiau",
+    "ištraukiau",
+    "istraukiau",
+    "prijungiau",
+    "pajungiau",
+    "jau",
+    "gatava",
+    "viskas",
+)
+_QUESTION = ("kiek", "kodėl", "kodel", "kada", "ar galima", "o kaip", "kur ", "kuris")
+
+
+def detect_turn_intent(text: str | None) -> str:
+    """Classify the caller's turn before the walker routes it.
+
+    Deterministic on purpose (same reasoning as the step detectors): the model
+    phrases, the engine decides whether the conversation may move. Order matters —
+    confusion and questions are checked before completion words, because "nesuprantu,
+    ką padariau" is confusion, not a completed action."""
+    if not text or not text.strip():
+        return INTENT_SILENCE
+    low = text.lower()
+    if detect_confusion(low):
+        return INTENT_CONFUSED
+    if "?" in low or any(m in low for m in _QUESTION):
+        return INTENT_QUESTION
+    if any(m in low for m in _IN_PROGRESS):
+        return INTENT_IN_PROGRESS
+    if any(m in low for m in _DONE):
+        return INTENT_DONE
+    return INTENT_ANSWER
 
 
 def detect_confusion(text: str | None) -> bool:

@@ -649,6 +649,94 @@ address, hallucinated id, premature diagnosis) are gone; a new fault type is con
 
 ---
 
+## Phase 3.6 — Resolution engine: step-by-step fault solving · *(done, PRs #44–#45 + `feat/thinking-engine`)*
+
+Voice testing after 3.5 showed the agent could identify but not *solve* well: it
+dumped whole playbooks, looped tool calls, closed on the caller's word, and never
+hung up. Built a universal **step walker** — the engine owns the procedure, the LLM
+only understands and phrases.
+
+- [x] **Strategy registry + step walker** — a verdict maps to an ordered `Step` list
+      (CONFIRM / INSTRUCT / ACTION / VERIFY / ESCALATE). Per-step tool scoping (a
+      CONFIRM exposes NO tools), per-step RAG section injection (one `### Žingsnis`
+      at a time), deterministic advancement. Adding a fault = registry entry + RAG doc
+      (`docs/PLETIMAS_GEDIMAI.md` is the recipe); a purely linear fault needs only the
+      doc (`build_linear_strategy`).
+- [x] **Engine-driven actions + telemetry verify** — `ensure_diagnosed`,
+      `ensure_action_done` (bind/reset run by the engine, never the model → no
+      single-tool loops), verdict re-read after every action. Truth comes from
+      telemetry, not the caller's word.
+- [x] **Declarative branching** — `Step.detector` + `on` routing keys with a
+      `DETECTORS` registry (yes_no / restored / scope / conn / port / lights /
+      have_device); `goto` for converging instruct chains.
+- [x] **Three fault directions on the walker** — `foreign_mac` (cable by port
+      FUNCTION → bind → verify), `healthy_to_router` (client side: all/phone/computer,
+      device-aware so a phone is never asked about cables, caller-verified since
+      telemetry is blind), `no_mac_observed` (dead router → power/cable → **B-Plan
+      bridge**: wall cable into a PC + bind = temporary internet; closes Phase 2.5
+      step 6).
+- [x] **Hypothesis rejection + rethink** — a fix that does not restore the line
+      records the cause in `failed_hypotheses`, re-diagnoses, and switches strategy if
+      the telemetry now points elsewhere; the agent says the rethink out loud instead
+      of silently restarting. Only escalates when there is no Plan B.
+- [x] **Clean call ending** — offer "ar dar kuo nors padėti?", end on a farewell (or
+      any agent goodbye, on every path), then `CloseStream` actually drops the WebRTC
+      connection (a real hang-up).
+- [x] **Identification polish** — the phone's registered address offered up front,
+      ONE confirm then straight to diagnosis, and the apartment is never filled in
+      from the DB (enforced in `resolve_address`, not the prompt).
+- [x] **Dialogue quality** — "neišgirdau" only for real silence, otherwise reflect
+      what was heard and name what was unclear; `clarity_level` switches to plain,
+      visual wording once the caller says they do not follow the jargon.
+
+---
+
+## Phase 3.7 — Conversational contract: listen, wait, think aloud · `feat/thinking-engine`
+
+**Goal:** the same helpful, unhurried consultation in EVERY fault. Voice testing
+showed the walker is correct but the *conversation* is not: the agent runs ahead of
+the caller, repeats itself when a turn is not a plain answer, and jumps to a verdict
+without saying what it sees or what a result means.
+
+> **Why structurally:** a caller's turn currently has only two fates — recognised
+> (advance) or not (repeat). "Einu prie routerio", "nesuprantu", "o kiek kainuos?"
+> and silence all collapse into "repeat the question". Two layers are missing between
+> "the caller spoke" and "the step moves": what KIND of turn this was, and what the
+> engine is WAITING for. Everything below falls out of those two.
+
+- [ ] **1. `awaiting` state + turn-intent classifier** *(the foundation)* —
+      `state.awaiting` = `None | client_answer | client_action | system_check` (+ since
+      when); `detect_turn_intent` → `answer · in_progress · done · question · confused
+      · silence · new_info`. Only `answer`/`done` advance the walker; the rest hold.
+      Classification stays deterministic (like the detectors), phrasing stays with the
+      LLM; the safe default on "unknown" is WAIT and ask, never run ahead.
+- [ ] **2. "darysiu" ≠ "padariau"** — "einu / atsinešiu / tuoj" is work in progress,
+      not completion: acknowledge and wait, and do NOT read telemetry yet (observed:
+      the bridge checked the line before the caller had plugged anything in).
+- [ ] **3. Hypothesis object** — `state.hypothesis {cause, because[], status,
+      settled_by}` + `rejected[]`, filled at the three points that already compute it
+      (diagnose → step outcome → telemetry after an action). The verdict tree stays
+      the SOURCE; the object mirrors it so the agent can narrate the whole arc,
+      including **confirmation** ("taigi dėl routerio ir nebuvo interneto") — today we
+      track only rejection. No candidate queue: ordering stays with the tree, not the
+      model.
+- [ ] **4. Narration contract in ONE place** — five always-rules (explain before
+      asking · say what each result MEANS · confirm the hypothesis aloud · do not
+      rush · never go silent then fire a solution). Step hints keep only CONTENT, tone
+      comes from the contract, so all strategies sound alike. RAG "possible causes"
+      surfaced as narration text.
+- [ ] **5. Progressive disclosure** — `intent = confused` drops to a FINER breakdown
+      of the same step (distinct from `clarity_level`, which changes the wording, not
+      the number of steps).
+
+**Falls out for free:** silence handling and "kur jūs dabar?" come from 1; the
+`system_check` wait is the socket Phase 5's async telemetry polling plugs into.
+
+**Done:** the agent explains what it sees before asking, waits for the caller to
+actually act, says what every result means, and consults the same way in every fault.
+
+---
+
 ## Phase 4 — Service & frontend
 
 - [ ] FastAPI app + `stream.mount(app)`; thin custom client

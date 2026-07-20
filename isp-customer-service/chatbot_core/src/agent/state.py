@@ -120,6 +120,15 @@ class AgentState:
     # signals they do not follow the technical wording — the agent then explains in
     # plain, visual words instead of repeating the same jargon at them.
     clarity_level: str = "standard"
+    # What the engine is blocked on this turn, and for how many turns. Same shape for
+    # a human wait and (later) a slow telemetry read, so Phase 5's async polling plugs
+    # into `system_check` without reworking the walker.
+    #   None | "client_answer" | "client_action" | "system_check"
+    awaiting: str | None = None
+    awaiting_turns: int = 0
+    # How the caller's last turn was classified (see resolution.detect_turn_intent).
+    # Only "answer"/"done" may advance a step — everything else holds the walker.
+    last_intent: str = ""
 
     # Conversation control
     is_complete: bool = False  # transport hangs up once True (final goodbye spoken)

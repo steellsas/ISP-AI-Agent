@@ -23,18 +23,32 @@ kabelis, arba routeris mirė (perdegęs maitinimo blokas / pati dėžutė).
 - Tiltas duoda internetą TIK tame viename įrenginyje - tai laikinas sprendimas.
 - Pririšimas būtinas: be jo tinklas naujo įrenginio neįleis.
 
-### Žingsnis 1: Ar routeris turi maitinimą
-Vienas klausimas, ir laukti:
-- "Pažiūrėkite, prašau, ar ant routerio dega bent viena lemputė?"
-- Dega - vadinasi maitinimas yra; problema kabeliuose (Žingsnis 2).
-- Nedega visai - Žingsnis 2 (patikrinti rozetę), tada tiltas.
+### Žingsnis 0: Paaiškinti, ką matome, ir pasiteirauti, ar patogu
+Pirma - paaiškinti situaciją paprastai ir paklausti, ar klientas gali dabar patikrinti.
+NEkomanduoti iš karto, palaukti sutikimo:
+- "Patikrinau iš mūsų pusės: internetas iki jūsų buto ateina, bet linijoje nematome
+  jūsų įrenginio. Dažniausiai tai reiškia, kad routeris neturi maitinimo, atjungtas
+  kabelis arba routeris sugedęs. Ar galėtume kartu tai patikrinti - ar dabar patogu?"
+- Sutinka - einam prie routerio (Žingsnis 1).
+- Ne namie / nepatogu / negali - NEspausti. Pasiūlyti registruoti gedimą, kad
+  susisiektų technikas, arba perskambinti, kai bus prie routerio.
+
+### Žingsnis 1: Nuvesti prie routerio ir patikrinti maitinimą
+Pirma nuvesti prie įrenginio, tada vienas klausimas, ir laukti:
+- "Tuomet pradėkim. Susiraskite, prašau, routerį - dėžutę, į kurią ateina interneto
+  kabelis. Pasakykite, kai būsite prie jo."
+- Kai prie routerio: "Pažiūrėkite, ar dega bent viena lemputė?"
+- Dega - maitinimas yra; problema kabeliuose (Žingsnis 2).
+- Nedega visai - tikrinam maitinimą (Žingsnis 2), tada tiltas.
 
 ### Žingsnis 2: Maitinimas ir kabelis
-Viena instrukcija, ir laukti:
-- "Patikrinkite, ar routerio maitinimo laidas gerai įkištas į rozetę ir į routerį.
-  Jei galite, pabandykite kitą rozetę. Pasakykite, ar užsidegė lemputės."
+Viena instrukcija, ir laukti. Neskubinti - klientui reikia laiko:
+- "Patikrinkite, ar routerio maitinimo laidas gerai įkištas į rozetę ir į patį routerį.
+  Jei galite, pabandykite kitą rozetę. Neskubėkite, palauksiu - pasakykite, ar
+  užsidegė lemputės."
 - Užsidegė - puiku, tikrinam ryšį iš naujo.
-- Neužsidegė - routeris greičiausiai sugedęs, siūlom tiltą (Žingsnis 3).
+- Neužsidegė - routeris greičiausiai sugedęs. Pasakyti tai paprastai ir aiškiai:
+  routerį reikės keisti, bet galima laikinai prijungti kitą įrenginį (Žingsnis 3).
 
 ### Žingsnis 3: Pasiūlyti laikiną tiltą
 Kai routeris neduoda gyvybės ženklų, paaiškinti paprastai ir paklausti:
@@ -74,8 +88,11 @@ Kai įrenginys matomas linijoje, variklis pririša tyliai. Agentas tik anonsuoja
 
 ### Žingsnis 7: Patikrinti, ar atsirado internetas
 - "Ar kompiuteryje internetas jau atsirado?"
-- Atsirado - laikinas sprendimas veikia. Priminti: tai laikina, iki naujo routerio;
-  gavęs naują routerį, tegu skambina - pririšim jį.
+- Atsirado - laikinas sprendimas veikia. Pasakyti aiškiai:
+  1. tai LAIKINA - internetas veikia tik tame viename kompiuteryje;
+  2. routeris sugedęs, jį reikės pakeisti;
+  3. **užregistruoti gedimą** dėl sugedusio routerio, kad kolegos susisiektų;
+  4. gavęs naują routerį, tegu skambina - pririšim jį ir veiks visame name.
 - Neatsirado - registruoti gedimą technikui.
 
 ## Kada registruoti (ESCALATE)
