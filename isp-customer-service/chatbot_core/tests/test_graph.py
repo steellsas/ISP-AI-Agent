@@ -348,6 +348,42 @@ class TestIdentifyThenDiagnoseSameTurn:
         assert "DIAGNOZĖ" not in out
 
 
+class TestBridgeSeesDevice:
+    """The bridge binds only once telemetry SEES the device the caller plugged in —
+    binding blindly when the cable is in the wrong socket fails confusingly."""
+
+    def _at_plug(self, monkeypatch, reason):
+        import agent.react_agent as ra
+
+        agent = ra.ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "dr_plug_pc",
+            "asked": True,
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: reason)
+        return agent
+
+    def test_device_seen_goes_to_bind(self, monkeypatch):
+        agent = self._at_plug(monkeypatch, "foreign_mac")  # anything but no_mac_observed
+        agent._advance_resolution("įkišiau")
+        assert agent.state.resolution["step"] == "dr_bind"
+        assert agent.state.resolution["device_seen"] is True
+
+    def test_not_seen_walks_back_to_the_cable(self, monkeypatch):
+        agent = self._at_plug(monkeypatch, "no_mac_observed")  # still nothing on the line
+        agent._advance_resolution("įkišiau")
+        assert agent.state.resolution["step"] == "dr_pick_cable"  # wrong cable — retry
+        assert agent.state.resolution["device_seen"] is False
+
+    def test_second_failure_escalates(self, monkeypatch):
+        agent = self._at_plug(monkeypatch, "no_mac_observed")
+        agent.state.resolution["plug_retries"] = 1  # already tried once
+        agent._advance_resolution("įkišiau")
+        assert agent.state.resolution["step"] == "escalate"
+
+
 class TestHypothesisRejection:
     """A fix that does not restore the line rejects THAT hypothesis and looks for the
     next one — the agent has a Plan B instead of registering at the first failure."""

@@ -393,26 +393,50 @@ _DEAD_ROUTER = Strategy(
         Step(
             id="dr_offer_bridge",
             kind=StepKind.CONFIRM,
-            detector="yes_no",
+            detector="have_device",
             rag_section=2,  # "### Žingsnis 3: Pasiūlyti laikiną tiltą"
             hint=(
                 "The router still shows no life. Explain simply that the internet does "
                 "reach the flat, so you can give them a TEMPORARY fix, and ask ONE "
-                "thing: do they have a computer you could plug the wall cable into? "
-                "(A phone/tablet cannot take a cable — if that is all they have, this "
-                "is not possible.)"
+                "thing: do they have a computer (or another router) you could plug the "
+                "wall cable into? (A phone/tablet cannot take a cable.) If they say they "
+                "will fetch one, that is a YES — wait for them, do not re-ask."
             ),
-            on={"yes": "dr_plug_pc", "no": "escalate"},
+            on={"yes": "dr_pick_cable", "no": "escalate"},
+        ),
+        Step(
+            id="dr_pick_cable",
+            kind=StepKind.INSTRUCT,
+            rag_section=3,  # "### Žingsnis 4a: Kurį kabelį imti"
+            goto="dr_plug_pc",
+            hint=(
+                "Make sure they take the RIGHT cable — this is where people go wrong. "
+                "ONE instruction, then wait: the cable that comes from the wall (the "
+                "provider's) and is now in the router's internet port — ask them to "
+                "unplug THAT one from the router and tell you when it is in their hand. "
+                "Not the power lead, not a cable between the router and a device."
+            ),
         ),
         Step(
             id="dr_plug_pc",
             kind=StepKind.INSTRUCT,
-            rag_section=3,  # "### Žingsnis 4: Prijungti kabelį prie kompiuterio"
-            goto="dr_bind",
+            rag_section=4,  # "### Žingsnis 4b: Įkišti į kompiuterį"
+            goto="dr_see_device",
             hint=(
-                "ONE instruction, then wait: unplug the cable coming from the wall out "
-                "of the router and plug it straight into the computer's network socket; "
-                "say when done."
+                "ONE instruction, then wait: plug that cable into the computer's network "
+                "socket (the one the same plug fits, on the back/side) until it clicks, "
+                "and say when done. If they say it does not fit or they cannot find it, "
+                "help with WHERE to look — do not move on."
+            ),
+        ),
+        Step(
+            id="dr_see_device",
+            kind=StepKind.VERIFY,
+            rag_section=5,  # "### Žingsnis 5: Ar matome įrenginį linijoje"
+            hint=(
+                "The engine re-reads the line to see whether the newly connected device "
+                "actually shows up. If it does NOT, the cable is in the wrong socket or "
+                "not seated — walk that back calmly, do not bind blindly."
             ),
         ),
         Step(
@@ -420,18 +444,19 @@ _DEAD_ROUTER = Strategy(
             kind=StepKind.ACTION,
             tools=frozenset({"update_mac"}),
             tool_actions=("update_mac",),
-            rag_section=4,  # "### Žingsnis 5: Pririšti kompiuterį"
+            rag_section=6,  # "### Žingsnis 6: Pririšti kompiuterį"
             hint=(
-                "The engine binds the computer silently — you do NOT call the tool. "
-                "Announce it: 'Dabar pririšiu jūsų kompiuterį prie tinklo — turėtų "
-                "atsirasti internetas. Palaukite akimirką.' Do not ask yet if it works."
+                "We can now SEE their computer on the line. The engine binds it silently "
+                "— you do NOT call the tool. Announce it: 'Matau jūsų kompiuterį "
+                "linijoje. Dabar pririšiu jį prie tinklo — turėtų atsirasti internetas. "
+                "Palaukite akimirką.' Do not ask yet if it works."
             ),
         ),
         Step(
             id="dr_verify",
             kind=StepKind.CONFIRM,
             detector="restored",
-            rag_section=5,  # "### Žingsnis 6: Patikrinti, ar atsirado internetas"
+            rag_section=7,  # "### Žingsnis 7: Patikrinti, ar atsirado internetas"
             hint=(
                 "Ask whether the internet is now up on that computer. If yes -> say it "
                 "is a TEMPORARY fix until they get a new router, and to call back so we "
@@ -686,7 +711,26 @@ def detect_port(text: str | None) -> str | None:
 
 
 # "Are any lights on?" — NO is tested first because "nedega" contains "dega".
-_LIGHTS_NO = ("nedega", "nešviečia", "nesviecia", "nemirksi", "tamsu", "jokių", "jokia")
+# STT mangles these badly ("nedega" -> "nedaga"/"neusidaga"), and a stuck detector
+# here made the agent repeat the same question six times. Keep the NO markers loose.
+_LIGHTS_NO = (
+    "nedega",
+    "nedaga",
+    "neusidaga",
+    "neužsidega",
+    "neuzsidega",
+    "neišdegė",
+    "neisdege",
+    "nešviečia",
+    "nesviecia",
+    "nemirksi",
+    "tamsu",
+    "jokių",
+    "jokia",
+    "niekas",
+    "vis tiek ne",
+    "negyv",
+)
 _LIGHTS_YES = ("dega", "šviečia", "sviecia", "mirksi", "užsidegė", "uzsidege", "žalia", "raudona")
 
 
@@ -698,6 +742,33 @@ def detect_lights(text: str | None) -> str | None:
     if any(m in low for m in _LIGHTS_NO) or re.search(r"\bne\b", low):
         return "no"
     if any(m in low for m in _LIGHTS_YES):
+        return "yes"
+    return None
+
+
+_DEVICE_YES = (
+    "turiu",
+    "yra",
+    "kompiuter",
+    "nešiojam",
+    "nesiojam",
+    "router",
+    "atsineš",
+    "atsines",
+    "pajung",
+    "prijung",
+)
+
+
+def detect_have_device(text: str | None) -> str | None:
+    """Route "do you have a computer / another router we could plug into?". Naming or
+    fetching one is a yes ("atsinešiu kompiuterį"), which a bare yes/no reader missed."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _NEG) or re.search(r"\bne\b", low) or "neturiu" in low:
+        return "no"
+    if any(m in low for m in _DEVICE_YES) or any(m in low for m in _POS):
         return "yes"
     return None
 
@@ -721,6 +792,7 @@ DETECTORS = {
     "conn": detect_conn,
     "port": detect_port,
     "lights": detect_lights,
+    "have_device": detect_have_device,
 }
 
 

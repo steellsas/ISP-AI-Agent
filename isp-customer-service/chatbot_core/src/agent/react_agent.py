@@ -852,11 +852,19 @@ class ReactAgent:
         if step.id == "confirm_restored":
             self._advance_restored(r, user_input)
             return
+        # Bridge: did the device they just plugged in actually appear on the line?
+        if step.id == "dr_see_device":
+            self._advance_see_device(r)
+            return
         # A guided instruction / the bind announce: advance on ANY reply, once it was
         # presented last turn — to an explicit goto if set, else the next step in order.
         if step.kind in (StepKind.INSTRUCT, StepKind.ACTION):
             if r.get("asked"):
                 self._route_to(r, step.goto or next_step_id(strat, step.id, None))
+                # An engine-owned VERIFY needs no caller input — resolve it NOW so the
+                # same reply can act on the reading instead of asking a dead question.
+                if r.get("step") == "dr_see_device":
+                    self._advance_see_device(r)
             return
         if step.kind != StepKind.CONFIRM:
             return
@@ -877,6 +885,23 @@ class ReactAgent:
         if key is None:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
+
+    def _advance_see_device(self, r: dict) -> None:
+        """Bridge check: after the caller plugs a computer into the wall cable, does the
+        line actually SEE a device? Telemetry answers this, not the caller — binding
+        blindly when the cable is in the wrong socket would fail confusingly. Seen ->
+        bind; not seen after two tries -> the cable is wrong, walk it back."""
+        reason = self._fresh_diagnose_reason()
+        seen = reason != "no_mac_observed"  # any other verdict means a device is there
+        r["device_seen"] = seen
+        if seen:
+            self._goto_step(r, "dr_bind")
+            return
+        r["plug_retries"] = int(r.get("plug_retries", 0)) + 1
+        if r["plug_retries"] >= 2:
+            self._goto_step(r, "escalate")
+        else:
+            self._goto_step(r, "dr_pick_cable")  # wrong cable/socket — try again
 
     def _reject_and_rediagnose(self, r: dict) -> bool:
         """The fix ran but the line is still down: reject THIS hypothesis and look for

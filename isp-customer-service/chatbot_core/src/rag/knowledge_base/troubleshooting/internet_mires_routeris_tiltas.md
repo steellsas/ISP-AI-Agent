@@ -46,18 +46,33 @@ Kai routeris neduoda gyvybės ženklų, paaiškinti paprastai ir paklausti:
 - Neturi (tik telefonas) - tiltas negalimas, registruoti gedimą ir paaiškinti, kad
   reikės naujo routerio.
 
-### Žingsnis 4: Prijungti kabelį prie kompiuterio
+### Žingsnis 4a: Kurį kabelį imti
+Čia dažniausiai klystama - įsitikinti, kad ima TĄ kabelį. Viena instrukcija, ir laukti:
+- "Raskite kabelį, kuris ateina iš sienos ir dabar įkištas į routerio interneto lizdą.
+  Ištraukite jį iš routerio. Pasakykite, kai turėsite jį rankoje."
+- NE maitinimo laidas (tas eina į rozetę). NE kabelis tarp routerio ir įrenginio.
+- Jei klientas nerimauja ar nesupranta - paaiškinti, kad tai tas pats laidas, kuriuo
+  internetas ateina į butą.
+
+### Žingsnis 4b: Įkišti į kompiuterį
 Viena instrukcija, ir laukti:
-- "Ištraukite kabelį, kuris ateina iš sienos, iš routerio ir įkiškite jį tiesiai į
-  kompiuterio tinklo lizdą. Pasakykite, kai padarysite."
-- (Tas pats kabelis, kuris buvo routerio interneto lizde.)
+- "Dabar įkiškite tą kabelį į kompiuterio tinklo lizdą - jis kompiuterio gale arba
+  šone, toks pat lizdas, kaip routeryje. Įkiškite iki spragtelėjimo ir pasakykite,
+  kai padarysite."
+- Jei sako, kad netelpa ar neranda - padėti, KUR ieškoti, o ne eiti toliau.
 
-### Žingsnis 5: Pririšti kompiuterį (update_mac)
-Variklis pririša tyliai. Agentas tik anonsuoja:
-- "Dabar pririšiu jūsų kompiuterį prie tinklo - turėtų atsirasti internetas. Palaukite
-  akimirką."
+### Žingsnis 5: Ar matome įrenginį linijoje (telemetrija)
+Variklis pats patikrina liniją - kliento klausti nereikia:
+- Matome įrenginį - puiku, einam pririšti (Žingsnis 6).
+- NEmatome - vadinasi kabelis ne tame lizde arba neįkištas iki galo. Ramiai grįžti prie
+  kabelio (Žingsnis 4a), NEpririšinėti aklai. Po antro nesėkmingo bandymo - registruoti.
 
-### Žingsnis 6: Patikrinti, ar atsirado internetas
+### Žingsnis 6: Pririšti kompiuterį (update_mac)
+Kai įrenginys matomas linijoje, variklis pririša tyliai. Agentas tik anonsuoja:
+- "Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo - turėtų atsirasti
+  internetas. Palaukite akimirką."
+
+### Žingsnis 7: Patikrinti, ar atsirado internetas
 - "Ar kompiuteryje internetas jau atsirado?"
 - Atsirado - laikinas sprendimas veikia. Priminti: tai laikina, iki naujo routerio;
   gavęs naują routerį, tegu skambina - pririšim jį.

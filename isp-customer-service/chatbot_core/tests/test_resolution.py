@@ -164,8 +164,12 @@ class TestRegistry:
         s = get_strategy("no_mac_observed")
         assert s is not None and s.verdict == "no_mac_observed"
         # bridge only reachable via "yes, I have a computer"; a phone user escalates.
-        assert next_step_id(s, "dr_offer_bridge", "yes") == "dr_plug_pc"
+        # It starts by making sure they take the RIGHT cable, then plug it in.
+        assert next_step_id(s, "dr_offer_bridge", "yes") == "dr_pick_cable"
         assert next_step_id(s, "dr_offer_bridge", "no") == "escalate"
+        assert s.step("dr_pick_cable").goto == "dr_plug_pc"
+        # …and the line must SEE the device before we bind it.
+        assert s.step("dr_plug_pc").goto == "dr_see_device"
         # power fix that works resolves; that fails moves to the bridge offer.
         assert next_step_id(s, "dr_recheck", "yes") == "resolve"
         assert next_step_id(s, "dr_recheck", "no") == "dr_offer_bridge"
