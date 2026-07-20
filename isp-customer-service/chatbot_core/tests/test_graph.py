@@ -348,6 +348,76 @@ class TestIdentifyThenDiagnoseSameTurn:
         assert "DIAGNOZĖ" not in out
 
 
+class TestHypothesisObject:
+    """The verdict tree decides; the hypothesis mirrors it so the agent can narrate the
+    arc — including CONFIRMATION, which we could not say before (only rejection was
+    tracked)."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def _diagnose(self, agent, reason):
+        agent._update_state_from_observation(
+            "diagnose_connection",
+            json.dumps({"success": True, "verdict": {"reason": reason, "side": "x", "group": "B"}}),
+        )
+
+    def test_verdict_opens_a_belief_with_its_reason(self):
+        agent = self._agent()
+        agent.state.customer_id = "CUST009"
+        self._diagnose(agent, "no_mac_observed")
+
+        h = agent.state.hypothesis
+        assert h["cause"] == "no_mac_observed"
+        assert h["status"] == "testing"
+        assert h["because"]  # seeded with what the telemetry showed
+
+    def test_a_working_fix_confirms_it(self):
+        agent = self._agent()
+        agent.state.customer_id = "CUST009"
+        self._diagnose(agent, "no_mac_observed")
+        agent._route_to(agent.state.resolution, "resolve")
+
+        assert agent.state.hypothesis["status"] == "confirmed"
+        assert "PASITVIRTINO" in (agent._state_facts_block() or "")
+
+    def test_rejected_causes_are_remembered_and_not_re_offered(self, monkeypatch):
+        import agent.react_agent as ra
+
+        agent = self._agent()
+        agent.state.customer_id = "CUST105"
+        agent.state.hypothesis = {
+            "cause": "foreign_mac",
+            "because": ["linijoje kitas įrenginys"],
+            "status": "testing",
+            "settled_by": None,
+        }
+        agent.state.resolution = {
+            "verdict": "foreign_mac",
+            "step": "confirm_restored",
+            "asked": True,
+            "restored_denials": 1,
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: "foreign_mac")
+        monkeypatch.setattr(
+            ra,
+            "execute_tool",
+            lambda n, a: json.dumps(
+                {
+                    "success": True,
+                    "verdict": {"reason": "healthy_to_router", "side": "x", "group": "B7"},
+                }
+            ),
+        )
+        agent._advance_resolution("vis dar neveikia")
+
+        assert [x["cause"] for x in agent.state.rejected_hypotheses] == ["foreign_mac"]
+        assert agent.state.hypothesis["cause"] == "healthy_to_router"  # a new belief
+        assert "JAU ATMESTA" in (agent._state_facts_block() or "")
+
+
 class TestTurnHolding:
     """Only a real answer or a completed action advances the walker. Everything else
     holds it — this is what stopped the agent running ahead of the caller."""

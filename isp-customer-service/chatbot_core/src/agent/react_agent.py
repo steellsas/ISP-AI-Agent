@@ -614,6 +614,28 @@ class ReactAgent:
                     "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
                     "sutaikink."
                 )
+        # What we believe and why — so the agent reasons out loud instead of issuing
+        # orders, and can CONFIRM the cause at the end ("taigi dėl X ir nebuvo").
+        h = s.hypothesis
+        if h:
+            because = "; ".join(h["because"])
+            if h["status"] == "confirmed":
+                facts.append(
+                    f"- HIPOTEZĖ PASITVIRTINO: „{_DIAGNOSIS_LT.get(h['cause'], h['cause'])}“ "
+                    f"({h['settled_by']}). Trumpai pasakyk klientui, kad būtent dėl to ir "
+                    "neveikė — jam svarbu suprasti, kas buvo."
+                )
+            elif h["status"] == "testing":
+                facts.append(
+                    f"- KO DABAR IEŠKAU: „{_DIAGNOSIS_LT.get(h['cause'], h['cause'])}“. "
+                    f"Kuo remiuosi: {because}. Kai tinka, pasakyk tai savais žodžiais "
+                    "(„matau X, todėl manau, kad Y“) — bet trumpai ir ne kas ėjimą."
+                )
+        if s.rejected_hypotheses and not s.case_closed:
+            ruled = ", ".join(
+                _DIAGNOSIS_LT.get(x["cause"], x["cause"]) for x in s.rejected_hypotheses
+            )
+            facts.append(f"- JAU ATMESTA (nebesiūlyk ir nebetikrink): {ruled}.")
         # The turn did not move the conversation on. Say WHY, so the agent responds to
         # what the caller actually did instead of re-asking the same sentence.
         if s.awaiting and not s.case_closed:
@@ -925,6 +947,42 @@ class ReactAgent:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
 
+    # --- Hypothesis: what we believe is wrong, and why -----------------------
+    # The verdict tree decides; these just record the belief so the agent can narrate
+    # the arc. Evidence comes from telemetry, never from parsing the caller.
+
+    def _open_hypothesis(self, reason: str | None) -> None:
+        """A fresh verdict = a new belief. Seeds it with what the telemetry showed."""
+        if not reason:
+            return
+        h = self.state.hypothesis
+        if h and h.get("cause") == reason and h.get("status") == "testing":
+            return  # same belief, still being tested — keep its evidence
+        self.state.hypothesis = {
+            "cause": reason,
+            "because": [_DIAGNOSIS_LT.get(reason, reason)],
+            "status": "testing",
+            "settled_by": None,
+        }
+
+    def _note_evidence(self, text: str) -> None:
+        """Add something the ENGINE learned (a telemetry read, a check outcome)."""
+        h = self.state.hypothesis
+        if h and text and text not in h["because"]:
+            h["because"].append(text)
+
+    def _settle_hypothesis(self, status: str, settled_by: str) -> None:
+        """Close the belief: confirmed (the fix worked / the cause was proven) or
+        rejected (it did not hold). Rejected ones are remembered so the engine never
+        re-tries them and the agent can say what it already ruled out."""
+        h = self.state.hypothesis
+        if not h or h.get("status") != "testing":
+            return
+        h["status"] = status
+        h["settled_by"] = settled_by
+        if status == "rejected":
+            self.state.rejected_hypotheses.append({"cause": h["cause"], "settled_by": settled_by})
+
     def _turn_may_advance(self, step) -> bool:
         """May the caller's turn move the walker forward?
 
@@ -969,6 +1027,11 @@ class ReactAgent:
         reason = self._fresh_diagnose_reason()
         seen = reason != "no_mac_observed"  # any other verdict means a device is there
         r["device_seen"] = seen
+        self._note_evidence(
+            "prijungtas įrenginys matomas linijoje"
+            if seen
+            else "įrenginio linijoje vis dar nematyti"
+        )
         if seen:
             self._goto_step(r, "dr_bind")
             return
@@ -992,6 +1055,7 @@ class ReactAgent:
         verdict = r.get("verdict")
         if verdict and verdict not in s.failed_hypotheses:
             s.failed_hypotheses.append(verdict)
+        self._settle_hypothesis("rejected", "po veiksmo ryšys neatsistatė (telemetrija)")
         s.diagnosis.pop("network", None)  # let ensure_diagnosed re-read the line
         self.ensure_diagnosed()
         new = (s.resolution or {}).get("verdict")
@@ -1007,6 +1071,9 @@ class ReactAgent:
         if target == "resolve":
             self.state.case_closed = True
             self.state.closed_reason = "resolved"
+            # The fix worked, so the cause we were testing was the right one — the
+            # agent can now say so ("taigi dėl X ir nebuvo interneto").
+            self._settle_hypothesis("confirmed", "sutvarkius problema dingo")
         elif target == "end":
             self.state.case_closed = True
             self.state.closed_reason = self.state.closed_reason or "declined"
@@ -1033,6 +1100,7 @@ class ReactAgent:
         if outcome == Outcome.YES:
             self.state.case_closed = True
             self.state.closed_reason = "resolved"
+            self._settle_hypothesis("confirmed", "klientas patvirtino, kad veikia")
             return
         if outcome == Outcome.NO:
             if fixed:
@@ -1330,6 +1398,9 @@ class ReactAgent:
                     "reason": v.get("reason"),
                     "signals": v.get("signals"),
                 }
+                # A verdict IS a hypothesis — record what we now believe and why, so
+                # the agent can say it aloud and later report how it settled.
+                self._open_hypothesis(v.get("reason"))
                 # Activate / re-evaluate the resolution strategy for this verdict
                 # (dynamic pivot: a re-diagnose with a different verdict switches
                 # strategy). None = generic inform/instruct flow.

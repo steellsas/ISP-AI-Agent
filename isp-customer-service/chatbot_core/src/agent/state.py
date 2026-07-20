@@ -94,11 +94,20 @@ class AgentState:
     # see the outage discussion). closed_reason tailors the goodbye.
     case_closed: bool = False
     closed_reason: str | None = None  # "resolved" | "outage" | "declined"
-    # Hypotheses the telemetry has already disproved (a fix ran and did NOT restore
-    # the line). The engine never re-tries these, so a failed fix leads to the NEXT
-    # likely cause instead of straight to a ticket. `pivoted_from` carries the just-
-    # rejected one for ONE reply, so the agent can say out loud that it is rethinking.
+    # What we currently believe is wrong, and why. The verdict tree stays the SOURCE
+    # (it decides); this mirrors it so the agent can narrate the whole arc — "manau X,
+    # nes Y" -> "pasitvirtino / nepasitvirtino, nes Z". Evidence comes from telemetry,
+    # not from parsing the caller.
+    #   {"cause": str, "because": [str], "status": testing|confirmed|rejected,
+    #    "settled_by": str | None}
+    hypothesis: dict[str, Any] | None = None
+    # Causes the telemetry has already disproved (a fix ran and did NOT restore the
+    # line). The engine never re-tries these, so a failed fix leads to the NEXT likely
+    # cause instead of straight to a ticket.
     failed_hypotheses: list[str] = field(default_factory=list)
+    rejected_hypotheses: list[dict[str, Any]] = field(default_factory=list)
+    # Carries the just-rejected cause for ONE reply, so the agent says the rethink out
+    # loud instead of silently restarting.
     pivoted_from: str | None = None
     # An active outage was reported for the caller's street. This does NOT close the
     # case (the caller still asks "when fixed? / compensation?") — it switches the
