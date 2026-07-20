@@ -410,11 +410,12 @@ _DEAD_ROUTER = Strategy(
             detector="have_device",
             rag_section=3,  # "### Žingsnis 3: Pasiūlyti laikiną tiltą"
             hint=(
-                "The router still shows no life. Explain simply that the internet does "
-                "reach the flat, so you can give them a TEMPORARY fix, and ask ONE "
-                "thing: do they have a computer (or another router) you could plug the "
-                "wall cable into? (A phone/tablet cannot take a cable.) If they say they "
-                "will fetch one, that is a YES — wait for them, do not re-ask."
+                "The router looks dead. In ONE short sentence say so and ask whether "
+                "they have a computer — you could run the internet through it for now. "
+                "A COMPUTER IS ENOUGH: 'neturiu kito routerio, tik kompiuterį' is a YES. "
+                "Never tell them internet is impossible while they have a computer. "
+                "(A phone/tablet cannot take a cable.) 'I'll fetch it' is also a yes — "
+                "wait, do not re-ask."
             ),
             on={"yes": "dr_pick_cable", "no": "escalate"},
         ),
@@ -786,13 +787,31 @@ _DEVICE_YES = (
 )
 
 
+_USABLE_DEVICE = ("kompiuter", "nešiojam", "nesiojam", "laptop", "router", "kompas")
+
+
 def detect_have_device(text: str | None) -> str | None:
-    """Route "do you have a computer / another router we could plug into?". Naming or
-    fetching one is a yes ("atsinešiu kompiuterį"), which a bare yes/no reader missed."""
+    """Route "do you have a computer / another router we could plug into?".
+
+    Read CLAUSE BY CLAUSE: "neturiu kito routerio, aš tik kompiuterį turiu" is a YES —
+    a computer is exactly what the bridge needs. Scanning the whole sentence for
+    "neturiu" answered NO and told the caller nothing could be done, with a usable
+    machine sitting right there."""
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _NEG) or re.search(r"\bne\b", low) or "neturiu" in low:
+    clauses = [c for c in re.split(r"[,;]| bet | tačiau ", low) if c.strip()]
+    saw_device_clause = False
+    for c in clauses:
+        if not any(d in c for d in _USABLE_DEVICE):
+            continue
+        saw_device_clause = True
+        if "neturiu" not in c and "nėra" not in c and not re.search(r"\bne\b", c):
+            return "yes"  # a device named without being denied — that is enough
+    if saw_device_clause:
+        return "no"  # every device they mentioned was denied
+    # No device named at all — fall back to a plain yes/no, denial first.
+    if any(m in low for m in _NEG) or "neturiu" in low or re.search(r"\bne\b", low):
         return "no"
     if any(m in low for m in _DEVICE_YES) or any(m in low for m in _POS):
         return "yes"

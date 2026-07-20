@@ -51,14 +51,13 @@ Viena instrukcija, ir laukti. Neskubinti - klientui reikia laiko:
   routerį reikės keisti, bet galima laikinai prijungti kitą įrenginį (Žingsnis 3).
 
 ### Žingsnis 3: Pasiūlyti laikiną tiltą
-Kai routeris neduoda gyvybės ženklų, paaiškinti paprastai ir paklausti:
-- "Panašu, kad routeris sugedęs. Internetas iki jūsų buto ateina, tad galiu duoti
-  laikiną sprendimą: jei turite kompiuterį, kabelį iš sienos galima įkišti tiesiai į
-  jį - internetas veiks tame kompiuteryje, kol įsigysite naują routerį. Ar turite
-  kompiuterį, prie kurio galėtume prijungti?"
-- Turi kompiuterį - Žingsnis 4.
-- Neturi (tik telefonas) - tiltas negalimas, registruoti gedimą ir paaiškinti, kad
-  reikės naujo routerio.
+Trumpai - viena mintis ir klausimas:
+- "Panašu, kad routeris sugedęs. Ar turite kompiuterį? Galėčiau laikinai paleisti
+  internetą per jį."
+- **Turi kompiuterį (arba kitą routerį) - tiltas GALIMAS**, einam į Žingsnį 4a.
+  SVARBU: net jei sako "neturiu kito routerio, turiu tik kompiuterį" - kompiuterio
+  UŽTENKA. Niekada nesakyk, kad interneto duoti negalima, kai kompiuteris yra.
+- Neturi nieko (tik telefonas) - tiltas negalimas, registruoti gedimą.
 
 ### Žingsnis 4a: Kurį kabelį imti
 Čia dažniausiai klystama - įsitikinti, kad ima TĄ kabelį. Viena instrukcija, ir laukti:

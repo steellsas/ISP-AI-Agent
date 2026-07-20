@@ -182,6 +182,20 @@ class TestRegistry:
         assert detect_lights("užsidegė lemputės") == "yes"
         assert detect_lights("nežinau") is None
 
+    def test_have_device_reads_clause_by_clause(self):
+        """A computer is what the bridge needs. Observed: "neturiu kito routerio, tik
+        kompiuterį turiu" was read as NO (the sentence contains "neturiu"), and the
+        agent told the caller internet was impossible with a usable machine to hand."""
+        from agent.resolution import detect_have_device as f
+
+        assert f("Aš neturiu kito routerio, aš tik kompiuterį turiu.") == "yes"
+        assert f("turiu kompiuterį") == "yes"
+        assert f("atsinešiu kompiuterį") == "yes"
+        # genuine no
+        assert f("neturiu kompiuterio") == "no"
+        assert f("neturiu nieko") == "no"
+        assert f("ne, turiu tik telefoną") == "no"  # a phone cannot take a cable
+
     def test_turn_intent_classifier(self):
         from agent.resolution import detect_turn_intent as f
 
