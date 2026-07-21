@@ -338,6 +338,32 @@ class TestIdentifyThenDiagnoseSameTurn:
         assert "DIAGNOZĖ" in out["message"]
         assert "gedimų nėra" in out["message"]  # explicit: do not invent the outage line
 
+    def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):
+        """Regression: the tool loop augmented BEFORE committing customer_id, so
+        _augment_resolve_result saw no id, skipped diagnosis, and the strategy never
+        activated — the whole dead-router walk fell back to free-form LLM (step=None
+        for the entire call). Drive the actual loop (no pre-set id) and require the
+        strategy to be live afterwards."""
+        from types import SimpleNamespace
+
+        agent = self._agent()
+        call = SimpleNamespace(
+            id="c1",
+            type="function",
+            function=SimpleNamespace(
+                name="resolve_address",
+                arguments=json.dumps(
+                    {"city": "Šiauliai", "street": "Vilniaus g.", "house_number": "29"}
+                ),
+            ),
+        )
+        agent._execute_tool_calls(SimpleNamespace(content=None, tool_calls=[call]))
+
+        assert agent.state.customer_id == "CUST009"
+        assert agent.state.resolution is not None  # strategy live, not None
+        assert agent.state.resolution["verdict"] == "no_mac_observed"
+        assert agent.state.hypothesis["cause"] == "no_mac_observed"
+
     def test_failed_resolve_does_not_diagnose(self, db_connection):
         from agent.tools import execute_tool
 

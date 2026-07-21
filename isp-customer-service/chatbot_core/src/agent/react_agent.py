@@ -1702,17 +1702,23 @@ class ReactAgent:
             gate = self._gate_tool(name, args)
             if gate is not None:
                 observation, tool_ms = gate, 0
+                self._update_state_from_observation(name, observation)
             else:
                 _t = time.perf_counter()
                 observation = execute_tool(name, args)
                 tool_ms = round((time.perf_counter() - _t) * 1000.0)
+                # Commit state BEFORE augmenting: resolve_address sets customer_id
+                # here, and the augment then diagnoses in the same turn (it read a
+                # not-yet-committed id and skipped, so the strategy never activated —
+                # the whole dead-router walk fell back to free-form LLM). _update reads
+                # only raw tool fields, never the ones augment adds, so the order is safe.
+                self._update_state_from_observation(name, observation)
                 observation = self._augment_tool_result(name, observation)
 
             self.state.messages.append(
                 {"role": "tool", "tool_call_id": tc.id, "content": observation}
             )
             self._trace_tool_result(name, observation, tool_ms)
-            self._update_state_from_observation(name, observation)
             self.state.add_observation(observation)
             executed.append({"name": name, "arguments": args, "observation": observation})
         return executed
