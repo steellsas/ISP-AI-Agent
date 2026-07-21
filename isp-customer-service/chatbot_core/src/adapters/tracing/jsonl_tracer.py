@@ -166,6 +166,17 @@ class JsonlFileTracer:
                         lines.append(
                             f"   . VERDICT {e.get('group')} {e.get('action')} {e.get('reason')}"
                         )
+                    elif t == "node":
+                        lines.append(f"   > NODE {e.get('node')}")
+                    elif t == "llm_input":
+                        f = (e.get("facts") or "").strip()
+                        lines.append(
+                            f"   $ LLM node={e.get('node')} tools={e.get('tools')} "
+                            f"history={e.get('history_msgs')}msgs"
+                        )
+                        for fl in f.splitlines():
+                            if fl.strip():
+                                lines.append(f"       facts| {fl.strip()}")
                     elif t == "decision":
                         bits = f"intent={e.get('intent')} {e.get('action')} " + (
                             f"{e.get('from_step')}->{e.get('to')}"

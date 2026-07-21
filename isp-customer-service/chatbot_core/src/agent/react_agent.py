@@ -23,6 +23,7 @@ Usage:
 
 import json
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -268,6 +269,7 @@ class ReactAgent:
         # (the legacy single-agent behaviour).
         self._active_tool_names: frozenset[str] | None = None
         self._node_prompt: str | None = None
+        self._active_node: str | None = None  # which graph node is running (debug)
 
         # Repeat-guard bookkeeping (set per turn). _turn_start_key snapshots the
         # progress fields at the start of a turn so the finalizer can tell whether
@@ -339,6 +341,21 @@ class ReactAgent:
         # Add new user input if provided
         if user_input:
             messages.append({"role": "user", "content": user_input})
+
+        # Debug: what the LLM actually SEES this turn — the dynamic facts block is
+        # where "why did it say that" lives. Off by default (would bloat the trace);
+        # DEBUG_LLM=1 turns it on. The stable system prompt is omitted (it never
+        # changes); full messages only when DEBUG_LLM=full.
+        if os.environ.get("DEBUG_LLM"):
+            payload: dict[str, Any] = {
+                "node": self._active_node,
+                "facts": facts,
+                "tools": sorted(t["function"]["name"] for t in self._scoped_tools_schema()),
+                "history_msgs": len(messages) - 1,
+            }
+            if os.environ.get("DEBUG_LLM") == "full":
+                payload["messages"] = messages
+            self.tracer.emit("llm_input", **payload)
 
         return messages
 

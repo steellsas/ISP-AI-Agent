@@ -67,10 +67,14 @@ def build_turn_graph(engine: Any):
     checkpointed with MemorySaver (thread_id = session_id).
     """
 
-    def _run_node(state: TurnState, allowed_tools, node_prompt) -> TurnState:
+    def _run_node(state: TurnState, allowed_tools, node_prompt, node: str) -> TurnState:
         """Stream the reply tokens out via the LangGraph stream writer (a no-op
         under .invoke(), live under .stream(stream_mode='custom')) while collecting
         the full reply for the checkpoint. LangGraph stays the orchestrator."""
+        # Which node handled this turn — the router's choice, made explicit in the
+        # trace instead of inferred (feeds the DEBUG_LLM payload too).
+        engine._active_node = node
+        engine.tracer.emit("node", node=node, customer_id=engine.state.customer_id)
         writer = get_stream_writer()
         parts: list[str] = []
         for token in engine.run_turn_scoped_stream(
@@ -81,7 +85,7 @@ def build_turn_graph(engine: Any):
         return {"reply": "".join(parts)}
 
     def address_validation(state: TurnState) -> TurnState:
-        result = _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT)
+        result = _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT, "address_validation")
         # resolve_address may have identified the caller mid-turn, and the engine then
         # diagnosed + activated a strategy in the same reply (see
         # _augment_resolve_result). Mark that step presented so the caller's next
@@ -104,7 +108,7 @@ def build_turn_graph(engine: Any):
         # the model only PHRASES the verified result (no model-invoked update_mac,
         # so no single-tool loop and no "nepririštas, dabar pririšiu" after binding).
         engine.ensure_action_done()
-        result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
+        result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT, "diagnosis")
         engine._mark_step_presented()
         return result
 
@@ -113,7 +117,7 @@ def build_turn_graph(engine: Any):
         # second closing turn, ends the call (is_complete) so the agent does not loop
         # goodbyes. The transport plays this last reply and then stops responding.
         engine._maybe_finish(state.get("user_input"))
-        return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT)
+        return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT, "closing")
 
     def route(state: TurnState) -> str:
         # Deterministic. case_closed wins (END stage); then identified -> diagnosis,
