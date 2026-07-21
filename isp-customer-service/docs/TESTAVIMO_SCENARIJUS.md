@@ -1,4 +1,4 @@
-# Testavimo scenarijus (balso demo)
+# Balso testavimo scenarijus (su dialogu)
 
 ## Paruošimas
 ```powershell
@@ -8,142 +8,143 @@ uv run python scripts/setup_db.py; uv run python scripts/seed_data.py
 $env:CALLER_PHONE="+3706002XXXX"
 uv run python chatbot_core/voice_demo.py
 ```
-- Kiekvienam scenarijui paleisk voice_demo **iš naujo** (švari sesija).
-- **Prieš KIEKVIENĄ testą, kuris keičia DB** (MAC pririšimas, tiltas) — perkrauk DB.
-- ⚠️ Prieš `pytest` **uždaryk voice_demo** (laiko DB failą).
-- Terminale matyti `voice turn | heard='...'` — ką realiai išgirdo STT.
+- Kiekvienam scenarijui — voice_demo **iš naujo**.
+- Prieš MAC (B) ir tiltą (D) — **perkrauk DB**.
+- „Tu:" = ką sakai balsu · „Agentas turi:" = ko tikimės (ne pažodžiui).
 
 ---
 
-## Klientų kartografija (telefonas → adresas → gedimas)
+# 1 scenarijus — MAC pririšimas, keičiau routerį
+**Telefonas:** `+37060020105` (Tilžės g. 60-7)
 
-| # | Telefonas | Adresas (ką sakyti) | Gedimas | Vedlys |
-|---|---|---|---|---|
-| 1 | +37060020105 | **Tilžės gatvė 60, butas 7** | MAC pririšimas | ✅ |
-| 2 | +37060020109 | **Žeimių gatvė 12, butas 6** (Ginkūnai) | kliento pusė | ✅ |
-| 3 | +37060012353 | **Vilniaus gatvė 29** (be buto) | miręs routeris | ✅ |
-| 4 | +37060012345 | **Tilžės gatvė 12, butas 5** | miręs routeris | ✅ |
-| 5 | +37060020101 | **Tilžės gatvė 60, butas 3** | skola | — |
-| 6 | +37060020102 | **Dainų gatvė 5, butas 5** | avarija | — |
-| 7 | +37060020106 | **Vilniaus gatvė 31, butas 2** | DHCP (factory reset) | — |
-| 8 | +37060020104 | **S. Dariaus ir S. Girėno g. 25, butas 45** | linija krito | — |
-| 9 | +37060020103 | **Žemaitės gatvė 14, butas 2** | tiekėjo mazgas | — |
-| 10 | +37060020110 | **Aušros gatvė 8** (Bubiai, be buto) | kliento pusė | ✅ |
+| Tu | Agentas turi |
+|---|---|
+| „Labas, neveikia internetas" | pasiūlyti adresą: „Ar skambinate dėl Tilžės 60, butas 7?" |
+| „Taip" | patvirtinti + **iškart** pasakyti radinį: „Matau, kad linijoje kitas įrenginys… ar keitėte routerį?" |
+| „Taip, keičiau routerį" | „Dabar pririšiu jūsų įrenginį, palaukite…" (pririša) → „Ar internetas jau atsirado?" |
+| „Taip, atsirado" | pasakyti, kad **dėl to ir nebuvo** („taigi keitus routerį…") + „Ar dar kuo nors padėti?" |
+| „Ne, ačiū" | „Geros dienos!" → **atsijungia** |
+
+**Tikrinu:** ✅ nepaklausė adreso 2 kartus · pririšo 1 kartą · patvirtino priežastį · atsijungė
 
 ---
 
-## A. Identifikacija (tikrinti KIEKVIENAME skambutyje)
+# 2 scenarijus — MAC, nieko nekeičiau (kabelis)
+**Telefonas:** `+37060020105` (⚠️ perkrauk DB pirma)
 
-**A1. Žinomas nr — siūlo adresą pats**
-> `+37060020105` → „neveikia internetas"
-> ✅ agentas: **„Ar skambinate dėl Tilžės 60, butas 7?"** → „taip" → **iškart diagnozė**
-> ❌ NE: neprašo diktuoti; NE du konfirmai; NE „ar šiuo adresu neveikia?"
+| Tu | Agentas turi |
+|---|---|
+| „neveikia internetas" | „Ar skambinate dėl Tilžės 60, butas 7?" |
+| „Taip" | „…ar keitėte routerį?" |
+| „Nieko nekeičiau" | klausti lizdo: „į kokį lizdą kabelis — interneto (WAN) ar kitą (LAN)?" |
+| „Į LAN" | „Ištraukite ir įkiškite į WAN lizdą, pasakykite kai padarysite" |
+| „Padariau" | pririša → „Ar atsirado?" → taip → išspręsta |
 
-**A2. Kitas abonentas (šeimos narys)**
-> `+37060020105` → siūlo 60-7 → **„ne, dėl Tilžės 60, butas 3"**
-> ✅ turi rasti **60-3** (skolininką), NE 60-7
-
-**A3. Butas neatskleidžiamas**
-> `+37060020109` → siūlo Žeimių 12-6 → **„ne"** → prašo adreso → sakyk tik **„Žeimių gatvė 12"**
-> ✅ turi **paklausti buto**, NE pasakyti „12-6"
-> Pasakyk klaidingą **„butas 5"** → „Buto 5 nerandu — perklausk" (neatskleidžia teisingo)
+**Tikrinu:** ✅ klausia pagal funkciją (ne spalvą) · jei sakysi neaiškiai („nežinau") — **kartoja klausimą, neskuba**
 
 ---
 
-## B. MAC pririšimas (+37060020105, Tilžės 60-7) ⚠️ perkrauk DB
+# 3 scenarijus — kitas abonentas (šeimos narys)
+**Telefonas:** `+37060020105`
 
-**B1. Keičiau routerį**
-> „neveikia" → adresas → „ar keitėte įrenginį?" → **„keičiau routerį"**
-> → pririša (**vieną kartą**) → „ar atsirado internetas?" → **„taip"** → išspręsta
-> ✅ **„taip" turi užbaigti** (anksčiau nesuprasdavo ir registruodavo tiketą)
+| Tu | Agentas turi |
+|---|---|
+| „neveikia internetas" | „Ar skambinate dėl Tilžės 60, butas 7?" |
+| **„Ne, dėl Tilžės 60, butas 3"** | paimti **60-3** (ne 60-7): „Radau Tilžės 60-3…" → **skola** |
 
-**B2. Nieko nekeičiau → kabelis**
-> „ar keitėte?" → **„nieko nekeičiau"** → „į kokį lizdą — interneto (WAN) ar kitą (LAN)?"
-> → **„į LAN"** → „perjunkite į WAN" → „padariau" → pririša → „atsirado"
-> ✅ klausia pagal **funkciją**, ne spalvą; neaiškus atsakymas („tai", „alo") → **kartoja**
-
-**B3. Persigalvojimas (NAUJA)**
-> B1 eiga, bet po pririšimo **2× „vis dar neveikia"**
-> ✅ turi **persigalvoti garsiai**: „pririšau, bet neatsistatė — vadinasi priežastis kita…"
-> ✅ ir **tęsti kita kryptimi**, NE iškart registruoti tiketą
+**Tikrinu:** ✅ NErado 60-7 (telefono) · rado 60-3 (pasakytą)
 
 ---
 
-## C. Kliento pusė (+37060020109, Žeimių 12-6)
+# 4 scenarijus — miręs routeris → tiltas (NAUJAS, svarbiausias)
+**Telefonas:** `+37060012353` (Vilniaus g. 29) ⚠️ perkrauk DB
 
-**C1. Visi įrenginiai**
-> „visuose neveikia" → „perkraukite routerį, 10 sek" → „perkroviau" → „ar veikia?" → „taip" ✅
+| Tu | Agentas turi |
+|---|---|
+| „Labas, neveikia internetas" | „Ar skambinate dėl Vilniaus 29?" |
+| „Taip" | **paaiškinti ką mato**: „iš tiekėjo pusės viskas gerai, bet linijoje nematome jūsų įrenginio — gali būti routeris ar kabelis. Ar galim patikrinti?" |
+| „Taip, galiu" | nuvesti: „susiraskite routerį… ar dega lemputės?" |
+| „Nedega" | „patikrinkite maitinimą, kitą rozetę…" |
+| „Vis tiek nedega" | **hipotezė**: „panašu routeris sugedęs. Ar turite kompiuterį?" |
+| **„Neturiu kito routerio, tik kompiuterį"** | **TILTAS galimas** (ne „negalima"!): „gerai, galiu laikinai per kompiuterį" |
+| „gerai" | „ištraukite kabelį iš sienos iš routerio, pasakykite kai turėsite" |
+| „turiu rankoje" | „įkiškite į kompiuterio lizdą, pasakykite kai padarysite" |
+| „įkišau" | **mato įrenginį** → „Matau jūsų kompiuterį, pririšiu…" → „Ar atsirado?" |
+| „Taip" | **laikina** + registruoja: „veiks tik kompiuteryje, routerį reikės keisti, užregistravau" |
 
-**C2. Tik telefonas — JOKIO kabelio**
-> **„tik telefone"** → „ar WiFi įjungtas, prisijungę prie savo tinklo?" → „patikrinau"
-> → „pamirškite tinklą, prisijunkite iš naujo" → „padariau" → „ar veikia?" → **„neveikia"** → registruoja
-> ✅ telefonui **niekada** nesiūlo kabelio
-
-**C3. Nepasakyta, kuriame įrenginyje (NAUJA)**
-> **„tik viename"** (nesakyk kuriame)
-> ✅ turi **paklausti „kuriame įrenginyje?"**, NE spėti kompiuterio/laido
-
-**C4. Kompiuteris laidu**
-> „tik kompiuteryje" → „laidu ar WiFi?" → „laidu" → „patikrinkite laidą" → „ar veikia?"
-
----
-
-## D. Miręs routeris — tiltas (NAUJA, +37060012353, Vilniaus 29) ⚠️ perkrauk DB
-
-**D1. Tiltas į kompiuterį**
-> „neveikia internetas" → adresas → **„ar dega lemputės ant routerio?"** → **„nedega"**
-> → „patikrinkite maitinimą, kitą rozetę" → **„vis tiek nedega"**
-> → ✅ **siūlo tiltą**: „internetas iki buto ateina… ar turite kompiuterį?"
-> → **„taip, turiu"** → „įkiškite kabelį iš sienos tiesiai į kompiuterį" → „padariau"
-> → pririša → „ar atsirado?" → **„taip"** → ✅ pasako, kad tai **laikina**, iki naujo routerio
-
-**D2. Tik telefonas → registruoja**
-> ta pati eiga, bet **„ne, turiu tik telefoną"** → ✅ registruoja (kabelio telefonui nesiūlo)
-
-**D3. Maitinimas padėjo**
-> „nedega" → maitinimas → **„užsidegė lemputės"** → kabelis → „ar veikia?" → „taip" → išspręsta (be tilto)
+**Tikrinu:** ✅ paaiškino prieš prašydamas · nuvedė prie routerio · „tik kompiuterį" = **tiltas** · pamatė įrenginį prieš pririšdamas · pasakė kad laikina + tiketas
 
 ---
 
-## E. Informaciniai
+# 5 scenarijus — neskubėjimas („darysiu" ≠ „padariau")
+**Telefonas:** `+37060012353` (kaip 4, bet stabtelk)
 
-| Scenarijus | Telefonas / adresas | Laukiama |
-|---|---|---|
-| **Skola** | +37060020101 / Tilžės 60-3 | ✅ apie skolą **iškart** (be klausimų apie įrenginius) |
-| **Avarija** | +37060020102 / Dainų 5-5 | „rajone avarija, numatomas laikas" |
-| **DHCP** | +37060020106 / Vilniaus 31-2 | veda DHCP nustatyti |
-| **Linija krito** | +37060020104 / S. Dariaus ir S. Girėno 25-45 | maitinimas/laidai → registruoti |
-| **Tiekėjo mazgas** | +37060020103 / Žemaitės 14-2 | registruoja (tiekėjo gedimas) |
+| Tu | Agentas turi |
+|---|---|
+| …iki „ar turite kompiuterį?" | |
+| **„Sekundėlę, atsinešiu kompiuterį"** | **„Gerai, palauksiu — pasakykite, kai būsite pasiruošęs"** (NEeina toliau, NEtikrina) |
+| (patylėk kelias sek.) | tyli arba ramiai pasitikslina |
+| „Gerai, atsinešiau" | tęsia |
 
----
-
-## F. Dialogo kokybė (tikrinti visur)
-
-**F1. Nesuprantu žargono (NAUJA)**
-> bet kur pasakyk **„nesuprantu, kas tas WAN"** / „neišmanau"
-> ✅ turi paaiškinti **vaizdžiai**: „lizdas, į kurį įkištas kabelis iš sienos, dažnai pažymėtas Internet"
-> ✅ ir **toliau visą pokalbį** kalbėti paprastai (nebegrįžti į žargoną)
-
-**F2. Neaiškiai pakalbėk** (murmėk)
-> ✅ „Girdžiu „…", bet nesupratau gatvės — pakartokite ją"
-> ❌ NE sausas „Atsiprašau, neišgirdau"
-
-**F3. Patylėk** (nieko nesakyk)
-> ✅ tyli arba ramiai paklausia; ❌ NE priekaištauja „neišgirdau"
-
-**F4. Paklausk ko kito** („o kiek kainuoja?")
-> ✅ atsako į TAI, nekartoja savo klausimo
+**Tikrinu:** ✅ „atsinešiu" → **laukė** (nešoko tikrinti) · nenukirto tylos priekaištu
 
 ---
 
-## G. Užbaigimas
-> po išsprendimo: „Ar dar kuo nors galiu padėti?" → **„ne, ačiū"**
-> ✅ **vienas** atsisveikinimas → **ryšys atsijungia**; atsisveikinimas nusigroja **pilnai**
+# 6 scenarijus — nesupratimas (smulkinimas + paprasta kalba)
+**Telefonas:** `+37060012353`
+
+| Tu | Agentas turi |
+|---|---|
+| …„ar dega lemputės ant routerio?" | |
+| **„Nesuprantu, kas tas routeris"** | paaiškinti **vaizdžiai**: „dėžutė su lemputėmis, į kurią ateina interneto kabelis" |
+| **„Vis tiek nesuprantu"** | dar **smulkiau**: „ar matote kur nors dėžutę su mažomis lemputėmis? Tiesiog taip ar ne" |
+| „a, radau" | tęsia paprasta kalba visą pokalbį |
+
+**Tikrinu:** ✅ nekartojo to paties · skaidė smulkiau · toliau kalbėjo be žargono
 
 ---
 
-## Bendra — ką stebėti
-- Nėra kilpų / „negaliu apdoroti užklausos"
-- Vedimas **po vieną sakinį**, laukia atsakymo
-- Neatskleidžia to, ko klientas nesakė (butas, adresas)
-- Neimprovizuoja instrukcijų (jokių „lempučių telefone")
+# 7 scenarijus — persigalvojimas (hipotezės atmetimas)
+**Telefonas:** `+37060020105` ⚠️ perkrauk DB
+
+| Tu | Agentas turi |
+|---|---|
+| „neveikia" → adresas → „keičiau routerį" | pririša → „ar atsirado?" |
+| **„Vis dar neveikia"** | nuraminti („gali užtrukti"), paprašyti patikrinti dar |
+| **„Ne, tikrai neveikia"** | **persigalvoti garsiai**: „pririšau, bet neatsistatė — vadinasi priežastis kita…" → tęsti kita kryptimi arba registruoti |
+
+**Tikrinu:** ✅ **nešoko iškart** į tiketą · pasakė, kad persigalvoja
+
+---
+
+# 8 scenarijus — informaciniai (greiti)
+| Kas | Telefonas | Adresas | Agentas turi |
+|---|---|---|---|
+| **Skola** | +37060020101 | Tilžės 60-3 | apie skolą **iškart**, kaip apmokėti (be klausimų apie įrenginius) |
+| **Avarija** | +37060020102 | Dainų 5-5 | „rajone avarija, numatomas laikas…" |
+| **DHCP** | +37060020106 | Vilniaus 31-2 | veda routerio nustatymus |
+| **Linija krito** | +37060020104 | S. Dariaus ir S. Girėno 25-45 | maitinimas/laidai → registruoti |
+
+---
+
+# 9 scenarijus — kliento pusė (telefonas)
+**Telefonas:** `+37060020109` (Žeimių g. 12-6)
+
+| Tu | Agentas turi |
+|---|---|
+| „neveikia" → „Žeimių 12, butas 6?" → „taip" | „ryšys iki routerio veikia, problema namuose… visuose ar viename?" |
+| **„Tik viename"** | **paklausti KURIAME** (ne spėti kompiuterio) |
+| „telefone" | WiFi patikra (**jokio kabelio!**): „ar WiFi įjungtas, prisijungę prie savo tinklo?" |
+| „patikrinau" | „pamirškite tinklą, prisijunkite iš naujo" → „ar veikia?" |
+
+**Tikrinu:** ✅ paklausė kurio įrenginio · telefonui NESIŪLĖ kabelio
+
+---
+
+## Bendra — ką stebėti visur
+- **Vienodas tonas** visose kryptyse (paaiškina → veda → patikrina)
+- **Trumpi atsakymai** (ne pastraipos)
+- **Neskuba**, laukia kliento
+- **Mąsto garsiai** (matau X → manau Y → pasitvirtino/ne)
+- Nebėra „nėra gedimų jūsų rajone", pakartotinio namo klausimo
+- Terminale: `voice turn | heard='...'` — ką realiai išgirdo
