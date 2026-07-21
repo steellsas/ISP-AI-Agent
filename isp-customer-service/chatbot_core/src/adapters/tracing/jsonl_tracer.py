@@ -166,11 +166,29 @@ class JsonlFileTracer:
                         lines.append(
                             f"   . VERDICT {e.get('group')} {e.get('action')} {e.get('reason')}"
                         )
+                    elif t == "decision":
+                        bits = f"intent={e.get('intent')} {e.get('action')} " + (
+                            f"{e.get('from_step')}->{e.get('to')}"
+                        )
+                        if e.get("awaiting"):
+                            bits += f" awaiting={e.get('awaiting')}"
+                        if e.get("hypothesis"):
+                            bits += f" hyp={e.get('hypothesis')}/{e.get('hyp_status')}"
+                        lines.append(f"   ? DECISION {bits}")
                     elif t == "case":
+                        extra = ""
+                        if e.get("step"):
+                            extra += f" step={e.get('step')}"
+                        if e.get("awaiting"):
+                            extra += f" awaiting={e.get('awaiting')}"
+                        if e.get("hypothesis"):
+                            extra += f" hyp={e.get('hypothesis')}"
+                        if e.get("clarity"):
+                            extra += f" clarity={e.get('clarity')}"
                         lines.append(
                             f"   = CASE problem={e.get('problem')} "
                             f"customer={e.get('customer_id')} addr={e.get('address')} "
-                            f"symptoms={e.get('symptoms')} diag={e.get('diagnosis')}"
+                            f"symptoms={e.get('symptoms')} diag={e.get('diagnosis')}{extra}"
                         )
                     elif t == "voice_latency":
                         lines.append(

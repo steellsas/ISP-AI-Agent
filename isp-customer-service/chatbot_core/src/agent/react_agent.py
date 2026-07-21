@@ -881,6 +881,41 @@ class ReactAgent:
         return ran
 
     def _advance_resolution(self, user_input: str | None) -> None:
+        """Walk the strategy from the caller's reply, then trace WHY it moved (or did
+        not) — the decision record is what makes a failed call debuggable."""
+        r = self.state.resolution
+        before = r.get("step") if r else None
+        self._walk_resolution(user_input)
+        self._emit_decision(before)
+
+    def _emit_decision(self, before: str | None) -> None:
+        """One line per strategy turn: what the caller's turn was read as, where the
+        walker went (or that it HELD), and the live hypothesis. This is the 'why' the
+        raw reply never showed — e.g. step=None means no strategy is active at all."""
+        s = self.state
+        r = s.resolution
+        after = r.get("step") if r else None
+        if before is None and after is None:
+            return  # no strategy in play — nothing to explain
+        if s.case_closed:
+            action, dest = "close", s.closed_reason
+        elif after == before:
+            action, dest = "hold", after
+        else:
+            action, dest = "advance", after
+        h = s.hypothesis or {}
+        self.tracer.emit(
+            "decision",
+            intent=s.last_intent or None,
+            awaiting=s.awaiting,
+            action=action,
+            from_step=before,
+            to=dest,
+            hypothesis=h.get("cause"),
+            hyp_status=h.get("status"),
+        )
+
+    def _walk_resolution(self, user_input: str | None) -> None:
         """Generic step-by-step walker over the active strategy, from the caller's
         reply. Uniform for all fault types:
 
@@ -2186,6 +2221,8 @@ class ReactAgent:
         )
         if not (s.problem_type or s.customer_id or diag or s.symptoms):
             return
+        r = s.resolution or {}
+        h = s.hypothesis or {}
         self.tracer.emit(
             "case",
             problem=s.problem_type,
@@ -2193,6 +2230,11 @@ class ReactAgent:
             address=s.customer_address,
             symptoms=(", ".join(f"{k}={v}" for k, v in s.symptoms.items()) or None),
             diagnosis=diag,
+            # Decision state — the "where are we / why" that a raw reply hides.
+            step=r.get("step"),
+            awaiting=s.awaiting,
+            clarity=s.clarity_level if s.clarity_level != "standard" else None,
+            hypothesis=(f"{h.get('cause')}:{h.get('status')}" if h else None),
         )
 
     def _reply(self, text: str) -> str:
