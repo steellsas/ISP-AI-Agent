@@ -8,6 +8,7 @@ Run tests:
     pytest tests/test_rag.py -v  # specific file
 """
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -18,6 +19,13 @@ import pytest
 src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
+
+# Unit tests run DETERMINISTICALLY: the LLM classifier (Phase 3.8 perceive node) is
+# off by default here, so the walker falls back to the keyword detectors the unit
+# tests actually assert on — no live LLM call per yes/no confirm. The classifier's
+# ON behaviour is covered by the behavioural eval harness (agent/eval), not units.
+# `setdefault` lets a dev opt in with CLASSIFIER=on when specifically testing it.
+os.environ.setdefault("CLASSIFIER", "off")
 
 
 # =============================================================================

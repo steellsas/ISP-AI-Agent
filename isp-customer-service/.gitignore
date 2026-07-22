@@ -84,3 +84,5 @@ Thumbs.db
 # Eval harness run artifacts (regenerable, absolute paths)
 eval_baseline.json
 eval_baseline.txt
+eval_after_classifier.json
+eval_after_classifier.txt

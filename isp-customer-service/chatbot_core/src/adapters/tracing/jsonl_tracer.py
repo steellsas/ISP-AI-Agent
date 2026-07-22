@@ -177,6 +177,12 @@ class JsonlFileTracer:
                         for fl in f.splitlines():
                             if fl.strip():
                                 lines.append(f"       facts| {fl.strip()}")
+                    elif t == "classify":
+                        lines.append(
+                            f"   ~ CLASSIFY {e.get('detector')} step={e.get('step')} "
+                            f"-> {e.get('label')} conf={e.get('confidence')} "
+                            f"inconsistent={e.get('inconsistent')}"
+                        )
                     elif t == "decision":
                         bits = f"intent={e.get('intent')} {e.get('action')} " + (
                             f"{e.get('from_step')}->{e.get('to')}"

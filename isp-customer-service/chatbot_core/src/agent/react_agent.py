@@ -946,7 +946,6 @@ class ReactAgent:
         This is what leads the caller one step at a time instead of dumping the
         whole playbook, and stops the model binding a device they never confirmed."""
         from .resolution import (
-            DETECTORS,
             StepKind,
             confirms_device_change,
             get_strategy,
@@ -1000,13 +999,47 @@ class ReactAgent:
         # diagnose turn is the address confirmation, not an answer to this step.
         if not r.get("asked"):
             return
-        # Read the reply with THIS step's detector (yes_no by default) into a routing
-        # key, then route. An unclear reply stays on the step and re-asks.
-        detect = DETECTORS.get(step.detector or "yes_no", DETECTORS["yes_no"])
-        key = detect(user_input)
+        # Read the reply into a routing key, then route. An unclear reply stays on the
+        # step and re-asks. For yes/no confirms the LLM classifier leads (it understands
+        # meaning, not just keywords — fixes the dr_intro desync); the keyword detector
+        # is the fallback. Other detectors stay keyword-only for now (Phase 3.8 slice 1).
+        key = self._detect_confirm(step, user_input)
         if key is None:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
+
+    def _detect_confirm(self, step, user_input: str | None):
+        """Route a CONFIRM reply to a key. yes/no steps: LLM classifier first (meaning),
+        keyword detector as fallback on 'unclear' or classifier failure. This is the
+        PERCEIVE sensor — it only READS the reply; the walker still decides + routes."""
+        from .resolution import DETECTORS, Outcome
+
+        detector_name = step.detector or "yes_no"
+        keyword = DETECTORS.get(detector_name, DETECTORS["yes_no"])
+
+        if detector_name == "yes_no" and os.getenv("CLASSIFIER", "on").lower() != "off":
+            try:
+                from .classifier import classify_yes_no
+
+                obs = classify_yes_no(step.hint or "", user_input or "", model=self.config.model)
+                if obs is not None:
+                    self.tracer.emit(
+                        "classify",
+                        detector="yes_no",
+                        step=step.id,
+                        label=obs.label,
+                        inconsistent=obs.internally_inconsistent,
+                        confidence=obs.confidence,
+                        text=user_input,
+                    )
+                    if obs.label == "yes":
+                        return Outcome.YES
+                    if obs.label == "no":
+                        return Outcome.NO
+                    # 'unclear' → let the keyword detector try before we hold + re-ask.
+            except Exception as e:  # a classifier hiccup must never stall the turn
+                logger.warning(f"classifier path failed, using keyword detector: {e}")
+        return keyword(user_input)
 
     # --- Hypothesis: what we believe is wrong, and why -----------------------
     # The verdict tree decides; these just record the belief so the agent can narrate
