@@ -946,7 +946,23 @@ class ReactAgent:
         net = s.diagnosis.get("network") or {}
         sig = net.get("signals") or {}
         r = s.resolution or {}
-        lines = [f'KLIENTAS KĄ TIK PASAKĖ: "{user_input or ""}" (intent={s.last_intent or "?"})']
+        lines: list[str] = []
+        # Recent dialogue so the solver knows WHERE in the procedure it is (which steps
+        # already happened) instead of re-reasoning from scratch each turn.
+        recent = [
+            m
+            for m in s.messages
+            if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
+        ][-8:]
+        if recent:
+            convo = "\n".join(
+                f"{'Klientas' if m['role'] == 'user' else 'Agentas'}: {m['content']}"
+                for m in recent
+            )
+            lines.append(f"POKALBIS IKI ŠIOL:\n{convo}\n")
+        lines.append(
+            f'KLIENTAS KĄ TIK PASAKĖ: "{user_input or ""}" (intent={s.last_intent or "?"})'
+        )
         if h:
             because = "; ".join(h.get("because", []) or [])
             lines.append(f"HIPOTEZĖ: {h.get('cause')} (status={h.get('status')}); nes: {because}")
@@ -969,6 +985,16 @@ class ReactAgent:
         lines.append(
             f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.awaiting}"
         )
+        # The full procedure for this fault (the solver reasons over the WHOLE playbook to
+        # pick the next action — unlike the narrator, which sees one isolated step).
+        if r.get("verdict"):
+            from .playbook import full_doc
+            from .resolution import get_strategy
+
+            strat = get_strategy(r.get("verdict"))
+            doc = full_doc(strat.rag_doc) if strat and strat.rag_doc else None
+            if doc:
+                lines.append(f"\nPROCEDŪRA (playbook — sek ja, kad vestum srautą):\n{doc}")
         return "\n".join(lines)
 
     def _shadow_solve(self, user_input: str | None) -> None:
