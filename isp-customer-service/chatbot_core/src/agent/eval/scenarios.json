@@ -9,6 +9,7 @@
         "Labas, neveikia internetas",
         "Taip",
         "Taip, keičiau routerį, senasis sugedo",
+        "Gerai, laukiu",
         "Taip, atsirado internetas",
         "Ne, ačiu, viskas"
       ],
@@ -28,7 +29,10 @@
         "Taip",
         "Tik viename",
         "Telefone",
-        "Patikrinau, dabar veikia"
+        "Patikrinau, WiFi įjungtas",
+        "Prisijungiau iš naujo",
+        "Taip, dabar veikia",
+        "Ne, ačiū"
       ],
       "expect": {
         "verdict_in": "healthy_to_router",
@@ -71,10 +75,9 @@
         "Aišku, ačiū, lauksiu"
       ],
       "expect": {
-        "verdict_in": "active_outage",
-        "disposition": "outage",
-        "reply_any": ["avarij"],
-        "reply_none": []
+        "disposition": "inform",
+        "reply_any": ["gedim", "avarij"],
+        "reply_none": ["registr", "diagnostik"]
       }
     },
     {

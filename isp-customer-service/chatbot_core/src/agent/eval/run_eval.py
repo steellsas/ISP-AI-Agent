@@ -84,6 +84,19 @@ def _rebuild_db(attempts: int = 3) -> None:
             )
 
 
+def _close_db() -> None:
+    """Release the process-held SQLite connection so the NEXT scenario's rebuild can
+    delete the file. Without this, the AgentSession from scenario N keeps the DB open
+    and scenario N+1's `db_path.unlink()` hits WinError 32 (file in use)."""
+    try:
+        from database import connection as dbconn
+
+        if dbconn._db_connection is not None:
+            dbconn._db_connection.close()
+    except Exception:
+        pass
+
+
 def _load_scenarios() -> list[dict]:
     data = json.loads(SCENARIOS_PATH.read_text(encoding="utf-8"))
     return [s for s in data["scenarios"] if isinstance(s, dict) and "id" in s]
@@ -117,6 +130,7 @@ def _run_scenario(scn: dict) -> dict:
     st = session.state
     trace_path = session.tracer.path if hasattr(session.tracer, "path") else None
     session.end_session(outcome="eval")
+    _close_db()  # free the file handle before the next scenario's DB rebuild
 
     return {
         "replies": replies,
