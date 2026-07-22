@@ -1,0 +1,97 @@
+{
+  "_doc": "Golden Dataset for the conversation eval harness (Phase 3.8 step 0). Each scenario drives AgentSession text-to-text with scripted CLIENT turns and hard-scores the resulting STATE + replies. The LLM only phrases; verdict/walker are deterministic given these turns, so state outcomes are stable. Checks: verdict_in (expected verdict seen), disposition (resolved|ticket|outage|open), reply_any (>=1 reply contains), reply_none (no reply contains — regression guard for known bugs). Scenarios flagged 'known_bug' are EXPECTED to fail now and turn green after the Phase 3.8 fix.",
+  "scenarios": [
+    {
+      "id": "S1_foreign_mac_changed_router",
+      "phone": "+37060020105",
+      "desc": "MAC pririšimas — klientas keitė routerį (foreign_mac -> bind -> resolved)",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Taip, keičiau routerį, senasis sugedo",
+        "Taip, atsirado internetas",
+        "Ne, ačiu, viskas"
+      ],
+      "expect": {
+        "verdict_in": "foreign_mac",
+        "disposition": "resolved",
+        "reply_any": ["pririš"],
+        "reply_none": []
+      }
+    },
+    {
+      "id": "S9_client_side_phone_wifi",
+      "phone": "+37060020109",
+      "desc": "Kliento pusė, telefonas — turi klausti KURIO įrenginio, telefonui NESIŪLYTI kabelio",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Tik viename",
+        "Telefone",
+        "Patikrinau, dabar veikia"
+      ],
+      "expect": {
+        "verdict_in": "healthy_to_router",
+        "disposition": "resolved",
+        "reply_any": ["įrenginy", "telefon"],
+        "reply_none": ["kabel", "laid"]
+      }
+    },
+    {
+      "id": "S4_dead_router_bridge_KNOWN_BUG",
+      "phone": "+37060012353",
+      "desc": "Miręs routeris -> tiltas. Prijungus PC ir telemetrijai nepasikeitus, NEGALIMA kaltinti routerio maitinimo — turi sakyti kad įrenginys nematomas / nepririštas",
+      "known_bug": true,
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Galėtume kartu patikrinti",
+        "Ne, nešviečia jokia lemputė",
+        "Vis tiek nedega",
+        "Neturiu kito routerio, tik kompiuterį",
+        "Gerai",
+        "Turiu kabelį rankoje",
+        "Įkišau į kompiuterį",
+        "Ryšys yra, bet interneto nėra"
+      ],
+      "expect": {
+        "verdict_in": "no_mac_observed",
+        "disposition": "any",
+        "reply_any": ["kompiuter"],
+        "reply_none": ["routeris negauna maitinimo", "routerio gedimas", "maitinimo bloko"]
+      }
+    },
+    {
+      "id": "S8_outage_inform",
+      "phone": "+37060020102",
+      "desc": "Masinė avarija -> informuoti + ETA, be tiketo",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Aišku, ačiū, lauksiu"
+      ],
+      "expect": {
+        "verdict_in": "active_outage",
+        "disposition": "outage",
+        "reply_any": ["avarij"],
+        "reply_none": []
+      }
+    },
+    {
+      "id": "S8_billing_inform",
+      "phone": "+37060020101",
+      "desc": "Skola -> informuoti kaip apmokėti, be diagnostikos, be tiketo",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Aišku, ačiū"
+      ],
+      "expect": {
+        "verdict_in": "billing_suspended",
+        "disposition": "inform",
+        "reply_any": ["apmok", "sąskait", "skol"],
+        "reply_none": []
+      }
+    }
+  ]
+}

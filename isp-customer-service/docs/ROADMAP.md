@@ -737,6 +737,94 @@ actually act, says what every result means, and consults the same way in every f
 
 ---
 
+## Phase 3.8 — Thinking agent on rails: perceive → solve → act · `feat/thinking-agent`
+
+**Goal:** move the diagnostic *reasoning* out of hardcoded Python (verdict tree +
+`Step` walker + keyword detectors) into an editable knowledge layer driven by ONE
+decision-maker, WITHOUT losing determinism/safety. The engine constrains the ACTION
+space (allowed actions + guardrails); it no longer dictates HOW the agent thinks.
+
+> **Why:** voice traces showed the walker is a decision-tree executor with narration,
+> not a thinking agent. Two independent readers (keyword detector + narrating LLM)
+> DESYNC — an undetected "yes" freezes the step while the model drifts ahead, then a
+> later "no" misroutes to escalate (trace `20260721-142904`). The hypothesis is a
+> *mirror* of the verdict, so the agent cannot revise its belief from dialogue or
+> catch a telemetry↔client contradiction (the "no lights / wrong device" bug,
+> `20260721-143433`). Root cause = architecture, not prompt.
+
+> **Design docs (the full spec):**
+> - `docs/ARCHITEKTUROS_LINIJA.md` — the frozen / policy / knowledge line (every
+>   element sorted).
+> - `docs/ARCHITEKTUROS_SCHEMA.md` — current (decision-tree executor) vs. proposed
+>   (perceive → solve → act loop) flow.
+> - `docs/MASTANTIS_AGENTAS_SPEC.md` — full contract: classifier output, solver JSON
+>   schema, allowed `next_action` enum, gate validation + bailout, conflict matrix,
+>   transparency/bridging rules, migration + eval.
+
+**Principles (locked):**
+- **Determinism bounds ACTIONS, not THINKING.** 🔒 mechanism (tools, telemetry read,
+  guardrail enforcement, safety-action execution) · ⚙️ policy (`policy.yaml`: auth,
+  tool-scoping, thresholds) · 📚 knowledge (RAG/prompts: interpretation, playbooks,
+  conflict matrix).
+- **Cognitive divergence, action convergence.** `current_hypothesis` = free string
+  (may exceed the verdict-tree vocabulary — e.g. "looking at the ONT, not the router");
+  `next_action` = strict enum. The gate validates only the action; an unknown
+  hypothesis reaching a safety tool is REJECTED without a mapping.
+- **Single decision-maker.** Classifier = sensor (returns a `Candidate Observation`,
+  never writes state); solver = the only decider (structured output); narrator =
+  executor (phrases the decided step, prompt-isolated). No two readers → no desync.
+- **Verdict tree stays 🔒 as a *candidate cause + confidence* provider (a strong
+  prior), NOT the final word.** The solver may confirm / refine / override it from
+  dialogue. Interpretation-as-final-decision moves to 📚.
+- **Safety unchanged.** MAC bind / ticket / close are executed by code; the LLM only
+  proposes. Auth gate + apartment-never-from-DB enforced in code.
+
+**Build order:**
+- [ ] **0. Eval harness (PREREQUISITE — no reasoning change lands before this).**
+  Two levels: (a) **Golden Dataset** — the 9 scripted scenarios (`docs/TESTAVIMO_SCENARIJUS.md`)
+  + the found bugs as fixed regression scenarios, driven text-to-text through
+  `AgentSession`, hard-scored (verdict / action / step reached). Runs in seconds,
+  deterministic, on every `.md`/code change. (b) **LLM-actor (fuzzing)** — an LLM plays
+  a persona ("irate senior, non-standard Lithuanian, mislabels the lights") to surface
+  new phrasings; findings become new Golden scenarios; LLM-as-judge for contract
+  adherence.
+- [ ] **1. Classifier node (perceive)** — client text → `Candidate Observation`
+  `{candidate_observation, intent, internally_inconsistent, confidence}`; contextual
+  (told the expected answer space); does NOT write state. Same Claude (variant A;
+  Haiku classifier possible later). Keyword detectors kept as a fallback on classifier
+  failure.
+- [ ] **2. Solver node (decide)** — reads knowledge (interpretation + playbooks +
+  conflict matrix) + hypothesis + observation + telemetry/prior; emits the strict JSON
+  (`current_hypothesis`, `confidence`, `conflict_detected`, `hypothesis_changed`,
+  `reason_for_change`, `next_action`, `playbook_step`, `narrator_instruction`).
+- [ ] **3. Gate (validate + safeguard)** — Pydantic schema validation; action-enum
+  check; unknown-hypothesis-to-safety-tool rejection; safety actions executed by code;
+  **bailout counter** (`confidence < 0.4` ×3 OR `cycles_in_same_step > 3` → generic
+  ticket). Thresholds in ⚙️ `policy.yaml`.
+- [ ] **4. Narrator transparency/bridging (📚, buildable now)** — `hypothesis_changed`
+  → mandatory one-sentence explanation; explicit transition (never ask B without
+  resolving A); direction-NEUTRAL fillers only before the decision. Conflict matrix
+  with **fact authority** (telemetry wins for line/session facts; client wins for
+  physical-room facts).
+- [ ] **5. Shadow mode on ONE direction (dead router / bridge)** — splitter: walker
+  (master) answers the caller; solver (shadow) decides in parallel, logged as a
+  `shadow_decision` event in the existing `JsonlFileTracer` (not BigQuery). Cut-over
+  when 100 real calls show 0 safety violations + auto agreement measured, with
+  human/judge review of the disagreements (the valuable signal).
+- [ ] **6. Cut over the piloted direction, then widen** one fault at a time.
+
+**Deferred dependencies (follow-up, not blocking):** async telemetry (<150 ms) +
+mid-turn TTS filler for the "speak-then-fetch" latency mask; `TRANSFER_TO_HUMAN`
+(only `create_ticket` exists now); variant B (merge solver+narrator) only if latency
+demands it.
+
+**Done:** the diagnostic reasoning is editable knowledge behind one decision-maker;
+desync is structurally impossible; the agent revises its hypothesis from dialogue and
+catches telemetry↔client contradictions; safety and testability are preserved via the
+gate + eval harness.
+
+---
+
 ## Phase 4 — Service & frontend
 
 - [ ] FastAPI app + `stream.mount(app)`; thin custom client
@@ -882,3 +970,9 @@ never degrades consultation quality — the core "pro" safety net.
       (1.2) typed slots, (1.3) tool-access gate, (1.4) NLU extraction, (2) latency
       masking (filler + streaming TTS port), (3) LangGraph migration (nodes +
       MemorySaver). Async / fast-slow split / AEC deferred to Phase 5.
+- [ ] **Next:** Phase 3.8 · Thinking agent on rails (`feat/thinking-agent`) —
+      START with step 0, the **eval harness** (Golden Dataset from the 9 voice
+      scenarios + found bugs, driven text-to-text through `AgentSession`, hard-scored),
+      the prerequisite before any reasoning change. Design: `docs/MASTANTIS_AGENTAS_SPEC.md`
+      (+ `ARCHITEKTUROS_LINIJA.md`, `ARCHITEKTUROS_SCHEMA.md`). Then classifier →
+      solver → gate → narrator bridging → shadow mode on the dead-router direction.
