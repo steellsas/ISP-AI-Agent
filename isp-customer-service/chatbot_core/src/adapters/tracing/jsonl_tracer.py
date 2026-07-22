@@ -183,6 +183,20 @@ class JsonlFileTracer:
                             f"-> {e.get('label')} conf={e.get('confidence')} "
                             f"inconsistent={e.get('inconsistent')}"
                         )
+                    elif t == "shadow_decision":
+                        sv = e.get("solver") or {}
+                        if sv:
+                            lines.append(
+                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: "
+                                f"{sv.get('next_action')} | hyp={sv.get('current_hypothesis')} "
+                                f"conf={sv.get('confidence')} conflict={sv.get('conflict_detected')}"
+                            )
+                            if sv.get("narrator_instruction"):
+                                lines.append(f"       solver.say| {sv['narrator_instruction']}")
+                        else:
+                            lines.append(
+                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: (no decision)"
+                            )
                     elif t == "decision":
                         bits = f"intent={e.get('intent')} {e.get('action')} " + (
                             f"{e.get('from_step')}->{e.get('to')}"

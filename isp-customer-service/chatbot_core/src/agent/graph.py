@@ -102,6 +102,10 @@ def build_turn_graph(engine: Any):
         # plain yes/no advances next turn.
         engine.ensure_diagnosed()
         engine._advance_resolution(state.get("user_input"))
+        # Solver runs in SHADOW (Phase 3.8 step 2): logs its decision next to the
+        # walker's move for comparison; never drives the reply. No-op unless
+        # SOLVER_SHADOW=on.
+        engine._shadow_solve(state.get("user_input"))
         # If the caller's reply advanced us onto an ACTION step (e.g. bind_mac after
         # they confirmed the device change), run it deterministically BEFORE the LLM
         # narrates — the engine binds + resets + re-verifies and sets case_closed, so

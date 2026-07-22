@@ -932,6 +932,66 @@ class ReactAgent:
             hyp_status=h.get("status"),
         )
 
+    # --- Solver (Phase 3.8 step 2): shadow only ------------------------------
+    # Runs the reasoning solver ALONGSIDE the walker and logs its decision next to the
+    # walker's move, so we can compare on real calls before it ever drives a reply.
+    # Gated by SOLVER_SHADOW (default off) — it adds one LLM call per diagnosis turn.
+
+    def _build_solver_context(self, user_input: str | None) -> str:
+        """Compact situation snapshot the solver reasons over: the live hypothesis, the
+        raw telemetry facts (line-side truth), the caller's latest turn, and where the
+        walker currently is."""
+        s = self.state
+        h = s.hypothesis or {}
+        net = s.diagnosis.get("network") or {}
+        sig = net.get("signals") or {}
+        r = s.resolution or {}
+        lines = [f'KLIENTAS KĄ TIK PASAKĖ: "{user_input or ""}" (intent={s.last_intent or "?"})']
+        if h:
+            because = "; ".join(h.get("because", []) or [])
+            lines.append(f"HIPOTEZĖ: {h.get('cause')} (status={h.get('status')}); nes: {because}")
+        if net.get("reason"):
+            lines.append(f"TELEMETRIJOS KANDIDATAS (verdict tree): {net.get('reason')}")
+        if sig:
+            keys = (
+                "port_link",
+                "switch_status",
+                "observed_mac",
+                "registered_mac",
+                "crc_error_rate",
+                "dhcp_status",
+                "incident",
+                "billing_suspended",
+            )
+            facts = ", ".join(f"{k}={sig.get(k)}" for k in keys if sig.get(k) is not None)
+            if facts:
+                lines.append(f"TELEMETRIJA (signalai): {facts}")
+        lines.append(
+            f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.awaiting}"
+        )
+        return "\n".join(lines)
+
+    def _shadow_solve(self, user_input: str | None) -> None:
+        """SHADOW: compute the solver's decision and log it next to the walker's move.
+        Never drives the reply. No-op unless SOLVER_SHADOW=on and a strategy is active."""
+        if os.getenv("SOLVER_SHADOW", "off").lower() != "on":
+            return
+        if not self.state.resolution or self.state.case_closed:
+            return
+        try:
+            from .solver import solve
+
+            decision = solve(self._build_solver_context(user_input), model=self.config.model)
+            r = self.state.resolution or {}
+            self.tracer.emit(
+                "shadow_decision",
+                walker_verdict=r.get("verdict"),
+                walker_step=r.get("step"),
+                solver=(decision.model_dump() if decision else None),
+            )
+        except Exception as e:  # shadow must never affect the live turn
+            logger.warning(f"shadow solver failed: {e}")
+
     def _walk_resolution(self, user_input: str | None) -> None:
         """Generic step-by-step walker over the active strategy, from the caller's
         reply. Uniform for all fault types:
