@@ -4,13 +4,29 @@
 ```powershell
 cd "C:\Users\steel\turing_projects\AI engenearing\ISP-AI-Agent\isp-customer-service"
 $env:PYTHONIOENCODING="utf-8"; chcp 65001
-uv run python scripts/setup_db.py; uv run python scripts/seed_data.py
+uv run python scripts/setup_db.py; uv run python scripts/seed_data.py   # perkrauna DB
 $env:CALLER_PHONE="+3706002XXXX"
 uv run python chatbot_core/voice_demo.py
 ```
 - Kiekvienam scenarijui — voice_demo **iš naujo**.
-- Prieš MAC (B) ir tiltą (D) — **perkrauk DB**.
+- **Prieš MAC (1,2,7) ir tiltą (4,5,6) — perkrauk DB** (`setup_db.py; seed_data.py`), nes
+  pririšimas/tiltas mutuoja DB.
 - „Tu:" = ką sakai balsu · „Agentas turi:" = ko tikimės (ne pažodžiui).
+
+### Jungikliai (env) — žr. „Simuliacijos" apačioje
+- `SIMULATE_BRIDGE` — tilto įrenginio imitacija. **voice_demo įjungia automatiškai**, nieko daryti nereikia.
+- `CLASSIFIER` — LLM yes/no supratimas. **Įjungtas pagal nutylėjimą.** Išjungti: `$env:CLASSIFIER="off"`.
+- `SOLVER_SHADOW` — sprendėjas shadow'e (loginа greta walker'io, **nevairuoja**). Įjungti stebėjimui: `$env:SOLVER_SHADOW="on"`.
+
+## ⭐ Ką testuoti PIRMA (šios sesijos pakeitimai)
+1. **4 scenarijus (miręs routeris → tiltas)** — didžiausias pokytis: dr_intro desync fix
+   + tiltas dabar realiai **pamato įrenginį ir pririša** (imitacija). Būtinas.
+2. **1 scenarijus (MAC, keičiau routerį)** — yes/no dabar tvarko LLM klasifikatorius; pasakyk
+   patvirtinimą **netipiškai** („galėtume", „gerai, bandom") — turi suprasti, ne užstrigti.
+3. **9 scenarijus (kliento pusė)** — regresijos patikra (telefonui nesiūlo kabelio).
+4. **Tiltelio/prieštaravimo elgesys** (nauja narratoriaus taisyklė): 4 scenarijuje, jei sakai
+   „dega raudona lemputė", agentas turi **paaiškinti minties poslinkį** prieš kitą klausimą
+   ir, esant telemetrija↔klientas prieštaravimui, **persiklausti**, ne aklai kaltinti routerį.
 
 ---
 
@@ -69,10 +85,15 @@ uv run python chatbot_core/voice_demo.py
 | **„Neturiu kito routerio, tik kompiuterį"** | **TILTAS galimas** (ne „negalima"!): „gerai, galiu laikinai per kompiuterį" |
 | „gerai" | „ištraukite kabelį iš sienos iš routerio, pasakykite kai turėsite" |
 | „turiu rankoje" | „įkiškite į kompiuterio lizdą, pasakykite kai padarysite" |
-| „įkišau" | **mato įrenginį** → „Matau jūsų kompiuterį, pririšiu…" → „Ar atsirado?" |
+| „įkišau" | **mato įrenginį** (imitacija) → „Matau jūsų kompiuterį, pririšiu…" (pririša) → „Ar atsirado?" |
 | „Taip" | **laikina** + registruoja: „veiks tik kompiuteryje, routerį reikės keisti, užregistravau" |
 
-**Tikrinu:** ✅ paaiškino prieš prašydamas · nuvedė prie routerio · „tik kompiuterį" = **tiltas** · pamatė įrenginį prieš pririšdamas · pasakė kad laikina + tiketas
+**Tikrinu:** ✅ paaiškino prieš prašydamas · nuvedė prie routerio · „tik kompiuterį" = **tiltas** · pamatė įrenginį prieš pririšdamas (imitacija veikia) · pririšo · pasakė kad laikina + tiketas
+
+**Variantas — prieštaravimas (nauja tiltelio taisyklė):** vietoj „nedega" pasakyk **„dega
+raudona lemputė"**. Telemetrija rodo, kad linija tvarkoj — agentas turi **paaiškinti poslinkį**
+(„sistema rodo, kad ryšys ateina — įtariu, žiūrite ne į tą dėžutę") ir **persiklausti**, NE aklai
+kaltinti routerį. *(Reikia `SOLVER_SHADOW=on`, jei nori matyti ir sprendėjo mąstymą trace'e.)*
 
 ---
 
@@ -146,5 +167,46 @@ uv run python chatbot_core/voice_demo.py
 - **Trumpi atsakymai** (ne pastraipos)
 - **Neskuba**, laukia kliento
 - **Mąsto garsiai** (matau X → manau Y → pasitvirtino/ne)
+- **Tiltelis** (nauja): keisdamas įtarimą, vienu sakiniu pasako KODĖL prieš kitą klausimą;
+  neužduoda klausimo B neatmetęs/nepatvirtinęs A
+- **Prieštaravimas** (nauja): kai klientas sako tai, kas prieštarauja telemetrijai, **persiklausia**,
+  o ne aklai patiki ar aklai atmeta
+- **Netipiškas „taip/ne"** (klasifikatorius): „galėtume", „gerai, bandom", „ką daryti?" — supranta
 - Nebėra „nėra gedimų jūsų rajone", pakartotinio namo klausimo
 - Terminale: `voice turn | heard='...'` — ką realiai išgirdo
+
+---
+
+## Simuliacijos (demo mutuoja mock DB, kad srautas būtų tikroviškas)
+
+Realioj sistemoj šiuos veiksmus atlieka tinklo įranga; deme jie **keičia seed DB**, kad
+pakartotinė diagnostika rodytų realų pokytį (ne tik agentas „sako", kad padarė).
+
+| Simuliacija | Ką daro | Kada suveikia | Jungiklis |
+|---|---|---|---|
+| **Kabelio → PC prijungimas** (tiltas) | nustato porto `observed_mac` į kompiuterio MAC → diagnostika pamato įrenginį (nepririštą) | kai klientas patvirtina įkišęs PC (dr_see_device) | `SIMULATE_BRIDGE` (voice_demo įjungia automatiškai; prod = OFF) |
+| **MAC pririšimas** (`update_mac`) | `equipment_mac ← observed_mac`, DHCP ok, lease atnaujinta → diagnostika rodo sveika | pririšimo žingsnyje (variklis, ne LLM) | visada (stub) |
+| **Porto perkrovimas** (`reset_port`) | atnaujina porto sesiją (po pririšimo) | po `update_mac` | visada (stub) |
+| **DB perkrovimas** | grąžina pradinę seed būseną | rankiniu būdu tarp scenarijų | `setup_db.py; seed_data.py` |
+
+**Kaip imituoti kabelio prijungimą rankiniu būdu** (pvz. atskiram testui, be pilno pokalbio):
+```powershell
+# įjungta pagal nutylėjimą voice_demo; jei paleidi savo skriptą — nustatyk:
+$env:SIMULATE_BRIDGE="on"
+```
+Variklis pats iškviečia imitaciją, kai pasiekiamas `dr_see_device` žingsnis (t.y. klientas ką
+tik pasakė „įkišau"). Nereikia nieko kviesti ranka — tik `SIMULATE_BRIDGE=on` (voice_demo tai daro).
+
+**Stebėjimas (trace):** `logs/sessions/<id>.jsonl` (+ `.txt`). Naudingi įvykiai:
+`CLASSIFY` (yes/no supratimas), `DECISION` (walker žingsnis), `SHADOW` (sprendėjas vs walker,
+jei `SOLVER_SHADOW=on`), `tool_call simulate_bridge_connect / update_mac / reset_port`.
+
+### Būsimos simuliacijos (dar nėra — reikės, plečiant kryptis)
+- **Wi-Fi modulio atkūrimas** (DHCP/Factory-Reset kryptis) — nustatyti `dhcp_status='ok'` po
+  kliento veiksmų, kad DHCP kryptis (Vilniaus 31-2) irgi verifikuotų.
+- **CRC/laido pagerėjimas** — sumažinti `crc_error_rate` po laido perjungimo (B5 kryptis).
+- **Kaimyno mazgo atstatymas** — `switch_status='active'` po „avarijos" (B3), kad matytųsi atsistatymas.
+
+Šablonas visoms: naujas `*_sim` stub `port_actions.py`, ne-registruotas helper `tools.py`,
+variklio kvietimas atitinkamame žingsnyje, gated env jungikliu (prod = OFF). Žr.
+`connect_bridge_device` kaip pavyzdį.
