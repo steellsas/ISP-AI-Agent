@@ -270,6 +270,11 @@ class ReactAgent:
         self._active_tool_names: frozenset[str] | None = None
         self._node_prompt: str | None = None
         self._active_node: str | None = None  # which graph node is running (debug)
+        # Shadow-solver safeguard counters (Phase 3.8 step 3) — fed to the gate.
+        self._solver_prev_step: str | None = None
+        self._solver_cycles = 0
+        self._solver_low_conf = 0
+        self._solver_internal_hops = 0
 
         # Repeat-guard bookkeeping (set per turn). _turn_start_key snapshots the
         # progress fields at the start of a turn so the finalizer can tell whether
@@ -1005,15 +1010,45 @@ class ReactAgent:
         if not self.state.resolution or self.state.case_closed:
             return
         try:
+            from .gate import DEFAULT_POLICY, INTERNAL_ACTIONS, gate
+            from .resolution import STRATEGIES
             from .solver import solve
 
             decision = solve(self._build_solver_context(user_input), model=self.config.model)
             r = self.state.resolution or {}
+            step = r.get("step")
+
+            # Counters the gate reasons over (owned here so the gate stays pure). Track
+            # them even in shadow so the bailout/loop safeguards are exercised for real.
+            self._solver_cycles = self._solver_cycles + 1 if step == self._solver_prev_step else 0
+            self._solver_prev_step = step
+            conf = decision.confidence if decision else 0.0
+            self._solver_low_conf = (
+                self._solver_low_conf + 1 if conf < DEFAULT_POLICY["confidence_floor"] else 0
+            )
+            if decision and decision.next_action in INTERNAL_ACTIONS:
+                self._solver_internal_hops += 1
+            else:
+                self._solver_internal_hops = 0
+
+            result = gate(
+                decision,
+                known_hypotheses=set(STRATEGIES),
+                low_conf_streak=self._solver_low_conf,
+                cycles_in_step=self._solver_cycles,
+                internal_hops=self._solver_internal_hops,
+            )
             self.tracer.emit(
                 "shadow_decision",
                 walker_verdict=r.get("verdict"),
-                walker_step=r.get("step"),
+                walker_step=step,
                 solver=(decision.model_dump() if decision else None),
+                gate={
+                    "action": result.action,
+                    "accepted": result.accepted,
+                    "bailout": result.bailout,
+                    "reason": result.reason,
+                },
             )
         except Exception as e:  # shadow must never affect the live turn
             logger.warning(f"shadow solver failed: {e}")

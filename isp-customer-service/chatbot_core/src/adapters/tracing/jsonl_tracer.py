@@ -185,17 +185,29 @@ class JsonlFileTracer:
                         )
                     elif t == "shadow_decision":
                         sv = e.get("solver") or {}
+                        g = e.get("gate") or {}
+                        gate_txt = ""
+                        if g:
+                            flag = (
+                                "bailout"
+                                if g.get("bailout")
+                                else ("ok" if g.get("accepted") else "override")
+                            )
+                            gate_txt = f"  =>GATE {g.get('action')} [{flag}]"
+                            if g.get("reason"):
+                                gate_txt += f" ({g['reason']})"
                         if sv:
                             lines.append(
                                 f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: "
                                 f"{sv.get('next_action')} | hyp={sv.get('current_hypothesis')} "
                                 f"conf={sv.get('confidence')} conflict={sv.get('conflict_detected')}"
+                                f"{gate_txt}"
                             )
                             if sv.get("narrator_instruction"):
                                 lines.append(f"       solver.say| {sv['narrator_instruction']}")
                         else:
                             lines.append(
-                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: (no decision)"
+                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: (no decision){gate_txt}"
                             )
                     elif t == "decision":
                         bits = f"intent={e.get('intent')} {e.get('action')} " + (
