@@ -840,6 +840,39 @@ DETECTORS = {
     "have_device": detect_have_device,
 }
 
+# What each detector's routing keys MEAN, in plain Lithuanian. The keys are abstract
+# (yes/no/all/phone…) so the LLM classifier cannot map a reply to them without knowing
+# the meaning — passing these glosses is what lets it pick "no" for "nedega jokia
+# lemputė" while refusing to force "yes" onto "susiradau routerį" (→ unclear, hold).
+DETECTOR_GLOSSES: dict[str, dict[str, str]] = {
+    "yes_no": {"yes": "sutinka / patvirtina / taip", "no": "atsisako / neigia / ne"},
+    "lights": {
+        "yes": "ant įrenginio dega bent viena lemputė",
+        "no": "nedega jokia lemputė",
+    },
+    "restored": {
+        "yes": "internetas dabar veikia / atsirado",
+        "no": "internetas vis dar neveikia",
+    },
+    "scope": {
+        "all": "neveikia visuose namų įrenginiuose",
+        "phone": "neveikia tik telefone ar planšetėje",
+        "computer": "neveikia tik kompiuteryje",
+    },
+    "conn": {
+        "wifi": "įrenginys jungiasi per WiFi (bevielį)",
+        "wired": "įrenginys jungiasi laidu",
+    },
+    "port": {
+        "wan": "kabelis įkištas į interneto (WAN) lizdą",
+        "lan": "kabelis įkištas į kitą (LAN) lizdą",
+    },
+    "have_device": {
+        "yes": "klientas turi kompiuterį arba kitą routerį",
+        "no": "klientas neturi jokio kito įrenginio",
+    },
+}
+
 
 _FAREWELL = (
     "viso gero",

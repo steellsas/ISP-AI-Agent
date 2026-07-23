@@ -1086,6 +1086,27 @@ class ReactAgent:
         step = strat.step(r.get("step", "")) if strat else None
         if step is None:
             return
+        # A strong device-change signal advances confirm_change before it is even asked
+        # (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that step —
+        # elsewhere "kompiuteris" is a scope answer, not a device change. Runs before the
+        # intent gate: a clear pre-answer should move regardless of turn phrasing.
+        if step.id == "confirm_change" and confirms_device_change(user_input):
+            self._route_to(r, next_step_id(strat, step.id, "yes"))
+            return
+        # ASKED generic CONFIRM (yes/no, lights, scope, restored, …): the LLM classifier
+        # reads the answer AND whether it IS an answer in one call — so a confident answer
+        # advances even when the brittle keyword turn-intent would veto it (observed:
+        # "gerai, bandau… nė viena lemputė neužsidegė" was read as in_progress and froze
+        # dr_power). The keyword detector + intent gate below stay as the fallback.
+        if (
+            step.kind is StepKind.CONFIRM
+            and r.get("asked")
+            and step.on
+            and step.id != "confirm_restored"
+            and os.getenv("CLASSIFIER", "on").lower() != "off"
+        ):
+            if self._classify_confirm_and_route(step, strat, user_input):
+                return
         # What KIND of turn was this? Only a real answer or a completed action may move
         # the conversation. "Einu prie routerio", a question, confusion or silence all
         # HOLD the step — the agent responds to them instead of running ahead.
@@ -1116,62 +1137,70 @@ class ReactAgent:
             return
         if step.kind != StepKind.CONFIRM:
             return
-        # A strong device-change signal advances confirm_change before it is asked
-        # (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that
-        # step — elsewhere "kompiuteris" is a scope answer, not a device change.
-        if step.id == "confirm_change" and confirms_device_change(user_input):
-            self._route_to(r, next_step_id(strat, step.id, "yes"))
-            return
         # Otherwise route only once the question was asked — a bare "taip" on the
         # diagnose turn is the address confirmation, not an answer to this step.
         if not r.get("asked"):
             return
-        # Read the reply into a routing key, then route. An unclear reply stays on the
-        # step and re-asks. For yes/no confirms the LLM classifier leads (it understands
-        # meaning, not just keywords — fixes the dr_intro desync); the keyword detector
-        # is the fallback. Other detectors stay keyword-only for now (Phase 3.8 slice 1).
+        # Keyword fallback (classifier off / unsure): read the reply into a routing key.
         key = self._detect_confirm(step, user_input)
         if key is None:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
 
-    def _detect_confirm(self, step, user_input: str | None):
-        """Route a CONFIRM reply to a key. yes/no steps: LLM classifier first (meaning),
-        keyword detector as fallback on 'unclear' or classifier failure. This is the
-        PERCEIVE sensor — it only READS the reply; the walker still decides + routes."""
-        from .resolution import DETECTORS, Outcome
+    def _last_agent_question(self) -> str | None:
+        """The last thing the agent actually said — the real question the caller is
+        answering (a better classifier context than the English step hint)."""
+        for m in reversed(self.state.messages):
+            if m.get("role") == "assistant" and (m.get("content") or "").strip():
+                return m["content"]
+        return None
+
+    def _classify_confirm_and_route(self, step, strat, user_input: str | None) -> bool:
+        """Classifier-led routing for an asked CONFIRM step. One LLM call reads BOTH the
+        answer (into a routing key) and whether it IS an answer. A confident answer
+        advances the walker (overriding a brittle keyword turn-intent); anything unsure
+        returns False → the keyword detector + intent gate handle it. Sensor only."""
+        from .classifier import classify_step
+        from .resolution import DETECTOR_GLOSSES, next_step_id
 
         detector_name = step.detector or "yes_no"
-        keyword = DETECTORS.get(detector_name, DETECTORS["yes_no"])
+        glosses = DETECTOR_GLOSSES.get(detector_name, {})
+        # {routing key -> plain-language meaning} so the classifier chooses by MEANING,
+        # not by the abstract key name; unglossed keys fall back to the key itself.
+        options = {str(k): glosses.get(str(k), str(k)) for k in step.on}
+        question = self._last_agent_question() or step.hint or ""
+        obs = classify_step(question, user_input or "", options, model=self.config.model)
+        if obs is None:
+            self._trace_note("classifier", f"{step.detector or 'yes_no'}: no result → keyword")
+            return False
+        answered = obs.is_answer and obs.label in step.on and obs.confidence >= 0.5
+        self.tracer.emit(
+            "classify",
+            detector=step.detector or "yes_no",
+            step=step.id,
+            label=obs.label,
+            is_answer=obs.is_answer,
+            confidence=obs.confidence,
+            inconsistent=obs.internally_inconsistent,
+            text=user_input,
+            routed_by=("classifier" if answered else "keyword"),
+        )
+        if answered:
+            self.state.awaiting = None
+            self.state.awaiting_turns = 0
+            self.state.step_confusions = 0
+            self.state.last_intent = "answer"
+            self._route_to(self.state.resolution, next_step_id(strat, step.id, obs.label))
+            return True
+        return False
 
-        if detector_name == "yes_no" and os.getenv("CLASSIFIER", "on").lower() != "off":
-            try:
-                from .classifier import classify_yes_no
+    def _detect_confirm(self, step, user_input: str | None):
+        """Keyword FALLBACK detector for a CONFIRM reply — used when the classifier is off
+        or unsure (the classifier-led path is _classify_confirm_and_route). Returns a
+        routing key or None."""
+        from .resolution import DETECTORS
 
-                obs = classify_yes_no(step.hint or "", user_input or "", model=self.config.model)
-                # Always log the classifier's outcome (decided / unclear / no-result), so a
-                # review sees whether the classifier or the keyword fallback made the call.
-                self.tracer.emit(
-                    "classify",
-                    detector="yes_no",
-                    step=step.id,
-                    label=(obs.label if obs else "none"),
-                    inconsistent=(obs.internally_inconsistent if obs else None),
-                    confidence=(obs.confidence if obs else None),
-                    text=user_input,
-                    routed_by=("classifier" if obs and obs.label in ("yes", "no") else "keyword"),
-                )
-                if obs is not None:
-                    if obs.label == "yes":
-                        return Outcome.YES
-                    if obs.label == "no":
-                        return Outcome.NO
-                    # 'unclear' → let the keyword detector try before we hold + re-ask.
-                else:
-                    self._trace_note("classifier", "no result → keyword fallback")
-            except Exception as e:  # a classifier hiccup must never stall the turn
-                logger.warning(f"classifier path failed, using keyword detector: {e}")
-                self._trace_note("classifier", f"exception → keyword fallback: {e}")
+        keyword = DETECTORS.get(step.detector or "yes_no", DETECTORS["yes_no"])
         return keyword(user_input)
 
     # --- Hypothesis: what we believe is wrong, and why -----------------------

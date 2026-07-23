@@ -180,8 +180,8 @@ class JsonlFileTracer:
                     elif t == "classify":
                         lines.append(
                             f"   ~ CLASSIFY {e.get('detector')} step={e.get('step')} "
-                            f"-> {e.get('label')} conf={e.get('confidence')} "
-                            f"inconsistent={e.get('inconsistent')} by={e.get('routed_by')}"
+                            f"-> {e.get('label')} answer={e.get('is_answer')} "
+                            f"conf={e.get('confidence')} by={e.get('routed_by')}"
                         )
                     elif t == "error":
                         lvl = (e.get("level") or "warn").upper()
