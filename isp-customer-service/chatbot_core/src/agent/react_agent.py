@@ -1052,6 +1052,7 @@ class ReactAgent:
             )
         except Exception as e:  # shadow must never affect the live turn
             logger.warning(f"shadow solver failed: {e}")
+            self._trace_note("solver_shadow", str(e))
 
     def _walk_resolution(self, user_input: str | None) -> None:
         """Generic step-by-step walker over the active strategy, from the caller's
@@ -1148,23 +1149,29 @@ class ReactAgent:
                 from .classifier import classify_yes_no
 
                 obs = classify_yes_no(step.hint or "", user_input or "", model=self.config.model)
+                # Always log the classifier's outcome (decided / unclear / no-result), so a
+                # review sees whether the classifier or the keyword fallback made the call.
+                self.tracer.emit(
+                    "classify",
+                    detector="yes_no",
+                    step=step.id,
+                    label=(obs.label if obs else "none"),
+                    inconsistent=(obs.internally_inconsistent if obs else None),
+                    confidence=(obs.confidence if obs else None),
+                    text=user_input,
+                    routed_by=("classifier" if obs and obs.label in ("yes", "no") else "keyword"),
+                )
                 if obs is not None:
-                    self.tracer.emit(
-                        "classify",
-                        detector="yes_no",
-                        step=step.id,
-                        label=obs.label,
-                        inconsistent=obs.internally_inconsistent,
-                        confidence=obs.confidence,
-                        text=user_input,
-                    )
                     if obs.label == "yes":
                         return Outcome.YES
                     if obs.label == "no":
                         return Outcome.NO
                     # 'unclear' → let the keyword detector try before we hold + re-ask.
+                else:
+                    self._trace_note("classifier", "no result → keyword fallback")
             except Exception as e:  # a classifier hiccup must never stall the turn
                 logger.warning(f"classifier path failed, using keyword detector: {e}")
+                self._trace_note("classifier", f"exception → keyword fallback: {e}")
         return keyword(user_input)
 
     # --- Hypothesis: what we believe is wrong, and why -----------------------
@@ -1264,6 +1271,7 @@ class ReactAgent:
                 self._note_evidence("klientas prijungė įrenginį — matomas linijoje (simuliuota)")
         except Exception as e:  # pragma: no cover - best-effort
             logger.warning(f"bridge connection sim failed: {e}")
+            self._trace_note("bridge_sim", str(e))
 
     def _advance_see_device(self, r: dict) -> None:
         """Bridge check: after the caller plugs a computer into the wall cable, does the
@@ -1925,6 +1933,7 @@ class ReactAgent:
                 args = json.loads(raw_args)
             except json.JSONDecodeError:
                 logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
+                self._trace_note("tool_args", f"{name}: bad JSON args {raw_args!r}")
                 args = {}
 
             logger.info(f"[AGENT] Tool call: {name}")
@@ -2049,6 +2058,7 @@ class ReactAgent:
                 )
             except Exception as e:
                 logger.error(f"LLM stream error: {e}")
+                self._trace_note("llm_stream", str(e), level="error")
                 yield self.config.error_message
                 return
 
@@ -2142,6 +2152,7 @@ class ReactAgent:
 
         except Exception as e:
             logger.error(f"LLM error: {e}")
+            self._trace_note("llm", str(e), level="error")
             return {
                 "thought": f"LLM Error: {e}",
                 "action": "error",
@@ -2432,6 +2443,25 @@ class ReactAgent:
             clarity=s.clarity_level if s.clarity_level != "standard" else None,
             hypothesis=(f"{h.get('cause')}:{h.get('status')}" if h else None),
         )
+
+    def _trace_note(self, where: str, detail: str, level: str = "warn") -> None:
+        """Record a behaviour-affecting failure/fallback INTO the trace (not only the
+        console log), stamped with the current state (node/step/awaiting), so a call
+        review shows WHY the agent behaved as it did — a swallowed classifier/solver/tool
+        error no longer disappears from the JSONL. Best-effort; never raises."""
+        try:
+            r = self.state.resolution or {}
+            self.tracer.emit(
+                "error",
+                level=level,
+                where=where,
+                detail=(detail or "")[:300],
+                node=self._active_node,
+                step=r.get("step"),
+                awaiting=self.state.awaiting,
+            )
+        except Exception:  # pragma: no cover - tracing must never break the turn
+            pass
 
     def _reply(self, text: str) -> str:
         """Emit the customer-facing reply (with repeat-guard bookkeeping) and return it."""

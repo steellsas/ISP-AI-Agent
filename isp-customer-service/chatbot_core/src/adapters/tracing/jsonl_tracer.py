@@ -181,7 +181,13 @@ class JsonlFileTracer:
                         lines.append(
                             f"   ~ CLASSIFY {e.get('detector')} step={e.get('step')} "
                             f"-> {e.get('label')} conf={e.get('confidence')} "
-                            f"inconsistent={e.get('inconsistent')}"
+                            f"inconsistent={e.get('inconsistent')} by={e.get('routed_by')}"
+                        )
+                    elif t == "error":
+                        lvl = (e.get("level") or "warn").upper()
+                        lines.append(
+                            f"   !! {lvl} [{e.get('where')}] node={e.get('node')} "
+                            f"step={e.get('step')} awaiting={e.get('awaiting')}: {e.get('detail')}"
                         )
                     elif t == "shadow_decision":
                         sv = e.get("solver") or {}
