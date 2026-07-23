@@ -17,6 +17,23 @@ uv run python chatbot_core/voice_demo.py
 - `SIMULATE_BRIDGE` — tilto įrenginio imitacija. **voice_demo įjungia automatiškai**, nieko daryti nereikia.
 - `CLASSIFIER` — LLM yes/no supratimas. **Įjungtas pagal nutylėjimą.** Išjungti: `$env:CLASSIFIER="off"`.
 - `SOLVER_SHADOW` — sprendėjas shadow'e (loginа greta walker'io, **nevairuoja**). Įjungti stebėjimui: `$env:SOLVER_SHADOW="on"`.
+- `LOG_LEVEL` — konsolės loggeris. Numatyta `INFO`. **Testuojant naudok `DEBUG`** — matysi maršrutizavimą, klasifikatoriaus/solverio fallback'us, tool kvietimus ir prarytas klaidas realiu laiku (be PII).
+- `DEBUG_LLM` — `1` prideda `llm_input` (ką LLM gauna: faktų blokas); `full` — visas žinučių sąrašas. Naudoti taškiniam gilinimuisi (daug teksto).
+
+### Testavimas su ĮJUNGTU loggeriu (rekomenduojama)
+```powershell
+cd "C:\Users\steel\turing_projects\AI engenearing\ISP-AI-Agent\isp-customer-service"
+$env:PYTHONIOENCODING="utf-8"; chcp 65001
+uv run python scripts/setup_db.py; uv run python scripts/seed_data.py
+
+$env:LOG_LEVEL="DEBUG"        # konsolė rodo eigą + klaidas realiu laiku
+$env:SOLVER_SHADOW="on"       # matyti ir sprendėjo mąstymą (shadow, nevairuoja)
+$env:CALLER_PHONE="+37060012353"    # miręs routeris (svarbiausias testas)
+uv run python chatbot_core/voice_demo.py
+```
+- Konsolėje realiu laiku: `... INFO agent.react_agent:...` maršrutas + `WARNING/ERROR` fallback'ai/klaidos (telefonai užmaskuoti).
+- Tas pats + struktūrizuota istorija lieka `logs/sessions/<id>.jsonl` (`.txt`) po skambučio.
+- Nori tyliau? `$env:LOG_LEVEL="INFO"` (arba `WARNING` — tik klaidos).
 
 ## ⭐ Ką testuoti PIRMA (šios sesijos pakeitimai)
 1. **4 scenarijus (miręs routeris → tiltas)** — didžiausias pokytis: dr_intro desync fix

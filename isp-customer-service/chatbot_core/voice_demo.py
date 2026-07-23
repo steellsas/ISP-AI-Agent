@@ -52,6 +52,28 @@ try:
 except Exception:  # .env is optional; OS environment is the fallback
     pass
 
+# Console logging controlled by LOG_LEVEL (default INFO). LOG_LEVEL=DEBUG surfaces every
+# module's output — routing, classifier/solver fallbacks, tool calls, swallowed errors —
+# on the console ALONGSIDE the JSONL trace, which is what you want during a test round.
+# The module loggers just propagate, so configuring the root handler here is enough.
+import logging as _logging
+
+_LEVEL = getattr(_logging, os.environ.get("LOG_LEVEL", "INFO").upper(), _logging.INFO)
+_logging.basicConfig(
+    level=_LEVEL,
+    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d %(message)s",
+    stream=sys.stdout,
+)
+# Force the level even if some import already installed a root handler (then basicConfig
+# is a no-op) — otherwise LOG_LEVEL=DEBUG would silently have no effect.
+_logging.getLogger().setLevel(_LEVEL)
+try:  # keep phone numbers redacted in the console too (GDPR), same as the trace
+    from utils import install_pii_redaction
+
+    install_pii_redaction()
+except Exception:
+    pass
+
 LANGUAGE = "lt"
 
 # Defaults are not critical — every knob is overridable per run via env.
