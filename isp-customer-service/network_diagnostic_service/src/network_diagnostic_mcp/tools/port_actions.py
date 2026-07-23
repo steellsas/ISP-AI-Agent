@@ -170,6 +170,28 @@ def connect_bridge_device(db: DatabaseConnection, customer_id: str) -> dict[str,
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
+def disconnect_bridge_device(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
+    """SIMULATED (demo/test): the caller UNPLUGGED the bridge device — clear observed_mac
+    so the line shows no device again (no_mac_observed). Lets a tester repeat the bridge
+    flow without a full DB rebuild."""
+    logger.info(f"[SIM] Disconnecting bridge device for customer: {customer_id}")
+    try:
+        with db.transaction() as cursor:
+            cursor.execute(
+                "UPDATE ports SET observed_mac = NULL, last_checked = datetime('now') "
+                "WHERE customer_id = ?",
+                (customer_id,),
+            )
+        return {
+            "success": True,
+            "customer_id": customer_id,
+            "message": "Įrenginys atjungtas nuo linijos (simuliuota).",
+        }
+    except Exception as e:
+        logger.error(f"Error in disconnect_bridge_device: {e}", exc_info=True)
+        return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
 def reset_customer_port(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     SIMULATED: bounce the customer's switch port / session.

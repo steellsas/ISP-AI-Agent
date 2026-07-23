@@ -206,13 +206,26 @@ pakartotinė diagnostika rodytų realų pokytį (ne tik agentas „sako", kad pa
 | **Porto perkrovimas** (`reset_port`) | atnaujina porto sesiją (po pririšimo) | po `update_mac` | visada (stub) |
 | **DB perkrovimas** | grąžina pradinę seed būseną | rankiniu būdu tarp scenarijų | `setup_db.py; seed_data.py` |
 
-**Kaip imituoti kabelio prijungimą rankiniu būdu** (pvz. atskiram testui, be pilno pokalbio):
+**Du būdai imituoti kabelio prijungimą:**
+
+**(a) Automatinis (numatytas).** Variklis pats iškviečia imitaciją, kai pasiekiamas
+`dr_see_device` žingsnis (klientas ką tik pasakė „įkišau"). Nieko daryti nereikia —
+`SIMULATE_BRIDGE=on` (voice_demo įjungia).
+
+**(b) Rankinis — TU paleidi „įkišau kabelį" (realistiškesnis).** Balso teste, ANTRAME
+terminale, paleidi komandą tada, kai „fiziškai" prijungi PC. Tinklo tools pamato naują
+MAC, ir agentas kitą telemetrijos skaitymą pasako „Matau jūsų kompiuterį, pririšiu":
 ```powershell
-# įjungta pagal nutylėjimą voice_demo; jei paleidi savo skriptą — nustatyk:
-$env:SIMULATE_BRIDGE="on"
+# voice_demo paleisk su IŠJUNGTU auto-fire, kad TAVO komanda būtų trigeris:
+$env:SIMULATE_BRIDGE="off"
+uv run python chatbot_core/voice_demo.py
+
+# ── antrame terminale, kai pokalbyje „įkiši" PC: ──
+uv run python scripts/sim_plug_cable.py +37060012353     # telefonu (arba CUST009)
+uv run python scripts/sim_plug_cable.py +37060012353 --unplug   # atjungti (kartoti testą)
 ```
-Variklis pats iškviečia imitaciją, kai pasiekiamas `dr_see_device` žingsnis (t.y. klientas ką
-tik pasakė „įkišau"). Nereikia nieko kviesti ranka — tik `SIMULATE_BRIDGE=on` (voice_demo tai daro).
+Komanda parodo naują `observed_mac` + `verdict=foreign_mac` — tą patį pamatys agentas.
+DB dalinamas failas, tad kito proceso įrašas matomas voice_demo diagnostikai iškart.
 
 **Stebėjimas (trace):** `logs/sessions/<id>.jsonl` (+ `.txt`). Naudingi įvykiai:
 `CLASSIFY` (yes/no supratimas), `DECISION` (walker žingsnis), `SHADOW` (sprendėjas vs walker,

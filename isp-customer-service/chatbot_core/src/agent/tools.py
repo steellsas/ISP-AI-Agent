@@ -806,6 +806,25 @@ def simulate_bridge_connect(customer_id: str) -> dict:
         return {"success": False, "error": "action_error", "message": f"{e}"}
 
 
+def simulate_bridge_disconnect(customer_id: str) -> dict:
+    """SIMULATED (demo/test): clear the bridge device from the line (undo a plug-in).
+    Not a registered Tool — used by the manual test command / re-test setup."""
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID required.",
+        }
+    try:
+        db = get_db()
+        from network_diagnostic_mcp.tools.port_actions import disconnect_bridge_device
+
+        return disconnect_bridge_device(db, customer_id)
+    except Exception as e:
+        logger.error(f"Error in simulate_bridge_disconnect: {e}", exc_info=True)
+        return {"success": False, "error": "action_error", "message": f"{e}"}
+
+
 def check_outages(area: str = None, customer_id: str = None) -> dict:
     """
     Check for active outages or planned works in an area.
