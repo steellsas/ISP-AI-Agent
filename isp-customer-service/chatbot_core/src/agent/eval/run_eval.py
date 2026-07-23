@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -48,6 +49,9 @@ SCENARIOS_PATH = _EVAL_DIR / "scenarios.json"
 
 # --- .env (LLM keys) — the harness drives the REAL model, like voice_demo ---------
 def _load_env() -> None:
+    # The eval drives simulated calls end-to-end: enable the dead-router bridge device
+    # simulation so the bridge can VERIFY + bind (like the update_mac/reset_port stubs).
+    os.environ.setdefault("SIMULATE_BRIDGE", "on")
     try:
         from dotenv import load_dotenv
     except ImportError:

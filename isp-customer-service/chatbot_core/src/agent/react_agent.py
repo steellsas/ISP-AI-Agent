@@ -1106,6 +1106,11 @@ class ReactAgent:
                 # An engine-owned VERIFY needs no caller input — resolve it NOW so the
                 # same reply can act on the reading instead of asking a dead question.
                 if r.get("step") == "dr_see_device":
+                    # The caller just confirmed plugging the PC into the wall cable. In the
+                    # demo the mock DB won't change on its own, so (behind SIMULATE_BRIDGE)
+                    # reflect that physical action before we read the line — otherwise the
+                    # bridge could never VERIFY. Production sees the real device instead.
+                    self._simulate_bridge_connection()
                     self._advance_see_device(r)
             return
         if step.kind != StepKind.CONFIRM:
@@ -1239,6 +1244,26 @@ class ReactAgent:
         )
         s.awaiting_turns += 1
         return False
+
+    def _simulate_bridge_connection(self) -> None:
+        """DEMO/TEST only (SIMULATE_BRIDGE=on): reflect the caller plugging a PC into the
+        wall cable by making an unbound device appear on the line, so the bridge can
+        VERIFY it. Off by default → production never fakes a device (the real one appears
+        on its own). Best-effort: a failure just leaves the line unchanged."""
+        if os.getenv("SIMULATE_BRIDGE", "off").lower() != "on":
+            return
+        cid = self.state.customer_id
+        if not cid:
+            return
+        try:
+            from .tools import simulate_bridge_connect
+
+            res = simulate_bridge_connect(cid)
+            self.tracer.emit("tool_call", name="simulate_bridge_connect", args={"customer_id": cid})
+            if isinstance(res, dict) and res.get("success"):
+                self._note_evidence("klientas prijungė įrenginį — matomas linijoje (simuliuota)")
+        except Exception as e:  # pragma: no cover - best-effort
+            logger.warning(f"bridge connection sim failed: {e}")
 
     def _advance_see_device(self, r: dict) -> None:
         """Bridge check: after the caller plugs a computer into the wall cable, does the

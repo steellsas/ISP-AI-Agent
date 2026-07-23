@@ -55,6 +55,10 @@ except Exception:  # .env is optional; OS environment is the fallback
 LANGUAGE = "lt"
 
 # Defaults are not critical — every knob is overridable per run via env.
+# The demo runs the simulated stubs (update_mac/reset_port), so enable the dead-router
+# bridge device simulation too — otherwise the mock DB never shows the plugged-in PC and
+# the bridge cannot verify. Production leaves it off (the real device appears on its own).
+os.environ.setdefault("SIMULATE_BRIDGE", "on")
 CALLER_PHONE = os.environ.get("CALLER_PHONE", "+37060020105")
 ASR_BACKEND = os.environ.get("ASR_BACKEND", "groq").lower()  # groq | local
 TTS_ENGINE = os.environ.get("TTS_ENGINE", "edge").lower()  # edge (neural) | gtts
