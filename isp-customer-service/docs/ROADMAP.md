@@ -779,8 +779,8 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
 - **Safety unchanged.** MAC bind / ticket / close are executed by code; the LLM only
   proposes. Auth gate + apartment-never-from-DB enforced in code.
 
-**Build order:**
-- [ ] **0. Eval harness (PREREQUISITE — no reasoning change lands before this).**
+**Build order:**  *(steps 0–4 done on `feat/thinking-engine`; 476 unit + eval 16/16)*
+- [x] **0. Eval harness (PREREQUISITE — no reasoning change lands before this).**
   Two levels: (a) **Golden Dataset** — the 9 scripted scenarios (`docs/TESTAVIMO_SCENARIJUS.md`)
   + the found bugs as fixed regression scenarios, driven text-to-text through
   `AgentSession`, hard-scored (verdict / action / step reached). Runs in seconds,
@@ -788,25 +788,25 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
   a persona ("irate senior, non-standard Lithuanian, mislabels the lights") to surface
   new phrasings; findings become new Golden scenarios; LLM-as-judge for contract
   adherence.
-- [ ] **1. Classifier node (perceive)** — client text → `Candidate Observation`
+- [x] **1. Classifier node (perceive)** — client text → `Candidate Observation`
   `{candidate_observation, intent, internally_inconsistent, confidence}`; contextual
   (told the expected answer space); does NOT write state. Same Claude (variant A;
   Haiku classifier possible later). Keyword detectors kept as a fallback on classifier
   failure.
-- [ ] **2. Solver node (decide)** — reads knowledge (interpretation + playbooks +
+- [x] **2. Solver node (decide)** — reads knowledge (interpretation + playbooks +
   conflict matrix) + hypothesis + observation + telemetry/prior; emits the strict JSON
   (`current_hypothesis`, `confidence`, `conflict_detected`, `hypothesis_changed`,
   `reason_for_change`, `next_action`, `playbook_step`, `narrator_instruction`).
-- [ ] **3. Gate (validate + safeguard)** — Pydantic schema validation; action-enum
+- [x] **3. Gate (validate + safeguard)** — Pydantic schema validation; action-enum
   check; unknown-hypothesis-to-safety-tool rejection; safety actions executed by code;
   **bailout counter** (`confidence < 0.4` ×3 OR `cycles_in_same_step > 3` → generic
   ticket). Thresholds in ⚙️ `policy.yaml`.
-- [ ] **4. Narrator transparency/bridging (📚, buildable now)** — `hypothesis_changed`
+- [x] **4. Narrator transparency/bridging (📚, buildable now)** — `hypothesis_changed`
   → mandatory one-sentence explanation; explicit transition (never ask B without
   resolving A); direction-NEUTRAL fillers only before the decision. Conflict matrix
   with **fact authority** (telemetry wins for line/session facts; client wins for
   physical-room facts).
-- [ ] **5. Shadow mode on ONE direction (dead router / bridge)** — splitter: walker
+- [~] **5. Shadow mode on ONE direction (dead router / bridge)** — shadow BUILT (solver+gate log alongside the walker via SOLVER_SHADOW); cut-over pending. — splitter: walker
   (master) answers the caller; solver (shadow) decides in parallel, logged as a
   `shadow_decision` event in the existing `JsonlFileTracer` (not BigQuery). Cut-over
   when 100 real calls show 0 safety violations + auto agreement measured, with
