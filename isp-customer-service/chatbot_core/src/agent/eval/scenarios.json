@@ -42,10 +42,9 @@
       }
     },
     {
-      "id": "S4_dead_router_bridge_KNOWN_BUG",
+      "id": "S4_dead_router_bridge",
       "phone": "+37060012353",
-      "desc": "Miręs routeris -> tiltas. Prijungus PC ir telemetrijai nepasikeitus, NEGALIMA kaltinti routerio maitinimo — turi sakyti kad įrenginys nematomas / nepririštas",
-      "known_bug": true,
+      "desc": "Miręs routeris -> tiltas. Prijungus PC ir telemetrijai nepasikeitus, NEGALIMA kaltinti routerio maitinimo — turi sakyti kad įrenginys nematomas / nepririštas. (Buvęs known_bug — dr_intro desync fix jį uždarė; dabar must-pass regresijos sargas.)",
       "turns": [
         "Labas, neveikia internetas",
         "Taip",

@@ -86,3 +86,7 @@ eval_baseline.json
 eval_baseline.txt
 eval_after_classifier.json
 eval_after_classifier.txt
+
+# All eval harness run artifacts
+eval_*.json
+eval_*.txt

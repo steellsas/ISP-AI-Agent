@@ -30,11 +30,14 @@ Each scenario = `{id, phone, desc, turns[], expect{}}`. Checks (only those prese
 
 ## `known_bug` scenarios
 Flagged `known_bug: true` encode a fault found in voice testing. They are **expected to
-fail now** (shown as `xfail`, exit code stays 0) and turn **green** once the Phase 3.8
-fix lands — so the bug can never silently return. Current known bug:
-`S4_dead_router_bridge_KNOWN_BUG` — after the PC is plugged in and telemetry is unchanged,
-the agent must not blame the router's power; it must say the device is not visible / not
-bound. (Confirmed captured: reply leaks "routeris negauna maitinimo".)
+fail now** (shown as `xfail`, exit code stays 0) and turn **green** once the fix lands —
+so the bug can never silently return. Once a known bug is fixed and stably green, PROMOTE
+it (drop the flag) so a future regression fails the suite instead of hiding as `xfail`.
+
+There are currently no open known bugs. `S4_dead_router_bridge` was the first — the
+agent blamed the router's power after the PC was plugged in — and the Phase 3.8 dr_intro
+desync fix (the walker/narration were desynced; a later "ne" misrouted to escalate)
+closed it. It is now a must-pass regression guard.
 
 ## Exit code
 `0` = no UNEXPECTED failures (known_bug scenarios may fail). `1` = a scenario that
