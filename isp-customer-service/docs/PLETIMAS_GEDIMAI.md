@@ -12,25 +12,44 @@ augtų be variklio perrašymo.
 | Dalis | Kur gyvena | Ką aprašo |
 |---|---|---|
 | **Turinys** | RAG dokas (`rag/knowledge_base/troubleshooting/*.md`) | ką sakyti klientui, po sakinį (`### Žingsnis N`) |
-| **Skeletas** | `resolution.py` → `Strategy` registre | kokie žingsniai, jų tipai, kur šakojasi |
-| **Atpažinimas** | **`agent/knowledge/faults.yaml`** (📄 be kodo) → `DETECTOR_GLOSSES` fallback | ką reiškia kiekvienas žingsnio atsakymas (**ką detektinti**) |
+| **Tikslas · procedūra · atpažinimas** | **`agent/knowledge/faults.yaml`** 📄 (be kodo) | kaip atpažinti problemą · kokie žingsniai ir kur šakojasi · ką reiškia kiekvienas atsakymas |
+| **Mechanizmas + sauga** | kodas (`resolution.py` fallback, tool'ai, vartai) | ką LEIDŽIAMA daryti, veiksmų vykdymas |
 
 ### 📄 Gedimo manifestas — `agent/knowledge/faults.yaml`
-Deklaratyvus sluoksnis (Phase 3.8): kiekvienam gedimui — `playbook` (RAG dokas),
-`purpose_triggers` (kaip atpažinti, kad tai KLIENTO problema) ir `steps` su **per-žingsnį
-atsakymų REIKŠMĖMIS**. Klasifikatorius skaito jas pirmiausia, todėl **žingsnio klausimo
-performulavimas ar naujo atsakymo pridėjimas = failo redagavimas, ne kodas.**
+Deklaratyvus sluoksnis (Phase 3.8). Dvi dalys, nes atsako į skirtingus klausimus:
+
+**`problems:`** — skambučio TIKSLAS (ką praneša KLIENTAS). Tvarka svarbi: konkretesnė
+problema prieš platesnę.
 ```yaml
-no_mac_observed:
-  playbook: troubleshooting/internet_mires_routeris_tiltas
-  purpose_triggers: ["neveikia internetas", "routeris nedega"]
-  steps:
-    dr_power:
-      "yes": "patikrinus maitinimą lemputės užsidegė"
-      "no": "net ir patikrinus maitinimą lemputės vis tiek nedega"
+problems:
+  internet_slow: {triggers: ["lėtai", "stringa", "buferiuoja"]}
+  internet_down: {triggers: ["neveikia", "nėra interneto"]}
 ```
-> Manifestas privalo atitikti strategiją — `tests/test_faults.py` tai tikrina (dreifo sargas).
-> Blogas/trūkstamas įrašas nenulaužia agento: krenta į `DETECTOR_GLOSSES` kode.
+
+**`faults:`** — PRIEŽASTIS ir kaip ją spręsti: `problem`, `playbook` ir **visa procedūra**
+(žingsniai su `kind`, `detector`, `on` maršrutu, `rag_section`, `hint`) + `answers` =
+ką kiekvienas maršruto raktas REIŠKIA (ką klasifikatorius turi atpažinti).
+```yaml
+faults:
+  no_mac_observed:
+    problem: internet_down
+    playbook: troubleshooting/internet_mires_routeris_tiltas
+    steps:
+      - id: dr_power
+        kind: confirm
+        detector: lights
+        rag_section: 2
+        on: {"yes": dr_cable, "no": dr_offer_bridge}
+        answers:
+          "yes": "patikrinus maitinimą lemputės užsidegė"
+          "no": "net ir patikrinus maitinimą lemputės vis tiek nedega"
+```
+**Todėl:** naujas žingsnis, pakeista tvarka, performuluotas klausimas ar naujas atsakymas
+= **failo redagavimas, ne kodas.**
+
+> `get_strategy` ima manifestą pirmiausia; `STRATEGIES` kode lieka fallback'u.
+> `tests/test_faults.py` tikrina EKVIVALENTIŠKUMĄ (manifestas privalo atkurti tas pačias
+> strategijas) — dreifas neįmanomas tyliai. Blogas/trūkstamas įrašas nenulaužia agento.
 
 Žingsnių tipai (`StepKind`):
 - **INSTRUCT** — duok VIENĄ nurodymą, laukk (klientas kažką padaro). Turinys iš RAG.
