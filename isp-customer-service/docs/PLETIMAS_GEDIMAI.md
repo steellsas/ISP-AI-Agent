@@ -13,7 +13,24 @@ augtų be variklio perrašymo.
 |---|---|---|
 | **Turinys** | RAG dokas (`rag/knowledge_base/troubleshooting/*.md`) | ką sakyti klientui, po sakinį (`### Žingsnis N`) |
 | **Skeletas** | `resolution.py` → `Strategy` registre | kokie žingsniai, jų tipai, kur šakojasi |
-| **Atpažinimas** | `resolution.py` → detektoriai + `DETECTORS` | kliento atsakymą → maršruto raktas |
+| **Atpažinimas** | **`agent/knowledge/faults.yaml`** (📄 be kodo) → `DETECTOR_GLOSSES` fallback | ką reiškia kiekvienas žingsnio atsakymas (**ką detektinti**) |
+
+### 📄 Gedimo manifestas — `agent/knowledge/faults.yaml`
+Deklaratyvus sluoksnis (Phase 3.8): kiekvienam gedimui — `playbook` (RAG dokas),
+`purpose_triggers` (kaip atpažinti, kad tai KLIENTO problema) ir `steps` su **per-žingsnį
+atsakymų REIKŠMĖMIS**. Klasifikatorius skaito jas pirmiausia, todėl **žingsnio klausimo
+performulavimas ar naujo atsakymo pridėjimas = failo redagavimas, ne kodas.**
+```yaml
+no_mac_observed:
+  playbook: troubleshooting/internet_mires_routeris_tiltas
+  purpose_triggers: ["neveikia internetas", "routeris nedega"]
+  steps:
+    dr_power:
+      "yes": "patikrinus maitinimą lemputės užsidegė"
+      "no": "net ir patikrinus maitinimą lemputės vis tiek nedega"
+```
+> Manifestas privalo atitikti strategiją — `tests/test_faults.py` tai tikrina (dreifo sargas).
+> Blogas/trūkstamas įrašas nenulaužia agento: krenta į `DETECTOR_GLOSSES` kode.
 
 Žingsnių tipai (`StepKind`):
 - **INSTRUCT** — duok VIENĄ nurodymą, laukk (klientas kažką padaro). Turinys iš RAG.

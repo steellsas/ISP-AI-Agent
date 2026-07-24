@@ -816,10 +816,27 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
         the gate validates + executes safety actions by code, the narrator speaks
         `narrator_instruction`. Fix context freshness (solve AFTER re-diagnose). Walker stays
         default + for all other directions. Validate against the eval before widening.
-  - [ ] **5b. Detection semantics INTO the RAG** — each `### Žingsnis` lists its expected
-        answers so the classifier/solver reads "what to detect" from the playbook, not from
-        `DETECTOR_GLOSSES` / `step.on` in code. Endgame: a new fault / new step is a `.md`
-        edit only, no code.
+  - [ ] **5b. Detection semantics INTO the knowledge** — each step declares its expected
+        answers so the classifier/solver reads "what to detect" from the fault definition,
+        not from `DETECTOR_GLOSSES` / `step.on` in code.
+  - [ ] **5c. Purpose + signals per fault** — the call's PURPOSE ("lėtai veikia" vs
+        "neveikia") and WHICH telemetry to gather come from the fault definition too, so a
+        new fault does not touch `nlu._PROBLEM_KEYWORDS` or `verdict.gather_signals`.
+  - [ ] **5d. Identification as knowledge** — what to ask, in what order, how to handle a
+        correction / a different address / a family member lives in a file, not the prompt
+        body. (The GUARDS stay code: identity gate, "apartment never from the DB", street
+        must match what was said — security boundaries must not depend on editable text.)
+
+  **Target artefacts (the "no code for a new fault" contract):**
+  - `agent/faults/faults.yaml` — per fault: `id`, `purpose_triggers`, `playbook` (the RAG
+    doc), `steps` (each with its routing keys + plain-language MEANING = what to detect),
+    `signals` to gather, `allowed_actions`.
+  - `rag/knowledge_base/troubleshooting/<fault>.md` — the WORDING (`### Žingsnis N`).
+  - `policy.yaml` — who may be served, thresholds, per-stage tools.
+  - **Stays code:** tool implementations, telemetry reads, the gate//guard ENFORCEMENT,
+    executing bind/ticket/close. Knowledge says WHAT to do; code guarantees what CANNOT be
+    done. A new fault = a manifest entry + a playbook + seed + an eval scenario; a new
+    physical capability (e.g. a speed test) still adds a tool once.
 - [ ] **6. Widen** — cut over the remaining directions one fault at a time; retire the
   walker steps for each as it goes. **North star: a UNIVERSAL solver that resolves any
   fault exactly as the RAG domain knowledge instructs — the algorithm and the checks live

@@ -1,0 +1,69 @@
+# Fault definitions — DECLARATIVE knowledge, not code (Phase 3.8 step 5b/5c).
+#
+# A new fault should be an entry HERE + a playbook .md + seed data + an eval scenario —
+# no Python change. What lives here:
+#   playbook         — the RAG doc holding the WORDING of each step
+#   purpose_triggers — how to recognise that THIS is the caller's problem
+#   steps            — per step: each routing key and its plain-language MEANING, i.e.
+#                      WHAT TO DETECT in the caller's answer. The classifier reads these
+#                      (falling back to the generic per-detector glosses in code), so the
+#                      meanings can be tuned per step without touching the detectors.
+#
+# The engine still owns SAFETY (which actions may run, the identity gate, executing a
+# bind/ticket/close). Knowledge says what to do; code guarantees what cannot be done.
+
+faults:
+  foreign_mac:
+    playbook: troubleshooting/internet_pakeistas_routeris_mac
+    purpose_triggers: ["neveikia internetas", "nėra interneto", "dingo internetas"]
+    steps:
+      confirm_change:
+        "yes": "klientas keitė routerį arba prijungė naują įrenginį"
+        "no": "klientas nieko nekeitė ir nieko naujo neprijungė"
+      cable_check:
+        wan: "kabelis įkištas į interneto (WAN) lizdą"
+        lan: "kabelis įkištas į kitą (LAN) lizdą"
+      client_side:
+        "yes": "internetas dabar veikia"
+        "no": "internetas vis dar neveikia"
+
+  healthy_to_router:
+    playbook: troubleshooting/kliento_puse_internetas
+    purpose_triggers: ["neveikia internetas", "neveikia wifi", "nėra ryšio"]
+    steps:
+      cs_scope:
+        all: "neveikia visuose namų įrenginiuose"
+        phone: "neveikia tik telefone ar planšetėje"
+        computer: "neveikia tik kompiuteryje"
+      cs_verify_all:
+        "yes": "po perkrovimo internetas veikia"
+        "no": "po perkrovimo internetas vis tiek neveikia"
+      cs_conn:
+        wired: "įrenginys prijungtas laidu"
+        wifi: "įrenginys jungiasi per WiFi (bevielį)"
+      cs_verify_dev:
+        "yes": "tame įrenginyje internetas dabar veikia"
+        "no": "tame įrenginyje internetas vis tiek neveikia"
+
+  no_mac_observed:
+    playbook: troubleshooting/internet_mires_routeris_tiltas
+    purpose_triggers: ["neveikia internetas", "nėra interneto", "routeris nedega"]
+    steps:
+      dr_intro:
+        "yes": "sutinka dabar kartu patikrinti (patogu, gali)"
+        "no": "negali arba nenori dabar tikrinti (ne namie, nepatogu)"
+      dr_lights:
+        "yes": "ant routerio dega bent viena lemputė"
+        "no": "nedega nė viena lemputė"
+      dr_power:
+        "yes": "patikrinus maitinimą lemputės užsidegė"
+        "no": "net ir patikrinus maitinimą / kitą rozetę lemputės vis tiek nedega"
+      dr_recheck:
+        "yes": "internetas atsirado po kabelio patikrinimo"
+        "no": "internetas vis tiek neatsirado"
+      dr_offer_bridge:
+        "yes": "klientas turi kompiuterį arba kitą routerį, kurį galima prijungti"
+        "no": "klientas neturi jokio kito įrenginio (tik telefoną)"
+      dr_verify:
+        "yes": "prijungtame kompiuteryje internetas dabar veikia"
+        "no": "prijungtame kompiuteryje interneto vis tiek nėra"

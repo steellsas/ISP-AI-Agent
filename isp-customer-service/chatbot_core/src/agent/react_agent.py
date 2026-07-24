@@ -1296,13 +1296,21 @@ class ReactAgent:
         advances the walker (overriding a brittle keyword turn-intent); anything unsure
         returns False → the keyword detector + intent gate handle it. Sensor only."""
         from .classifier import classify_step
+        from .faults import step_options
         from .resolution import DETECTOR_GLOSSES, next_step_id
 
         detector_name = step.detector or "yes_no"
+        # WHAT TO DETECT comes from the fault definition first (knowledge/faults.yaml —
+        # per-step, so it can be worded precisely for THIS check), falling back to the
+        # generic per-detector glosses in code. A reworded check is a file edit, not code.
+        declared = step_options((self.state.resolution or {}).get("verdict"), step.id)
         glosses = DETECTOR_GLOSSES.get(detector_name, {})
-        # {routing key -> plain-language meaning} so the classifier chooses by MEANING,
-        # not by the abstract key name; unglossed keys fall back to the key itself.
-        options = {str(k): glosses.get(str(k), str(k)) for k in step.on}
+        options: dict[str, str] = {}
+        for raw in step.on:
+            # Some steps key `on` by the Outcome enum — str(Outcome.YES) is "Outcome.YES",
+            # so take .value to get the real routing key ("yes") the classifier must return.
+            key = str(getattr(raw, "value", raw))
+            options[key] = (declared or {}).get(key) or glosses.get(key, key)
         question = self._last_agent_question() or step.hint or ""
         obs = classify_step(question, user_input or "", options, model=self.config.model)
         if obs is None:
