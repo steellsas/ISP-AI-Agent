@@ -44,6 +44,13 @@ class TestStreetAndNumbers:
         assert r.house == "5"
         assert r.apartment == "5"
 
+    def test_apartment_marker_tolerates_long_vowel_stt(self):
+        # STT often writes "būtos"/"būto" for "butas"; the accented ū must still match the
+        # "but" marker, else the caller's flat is silently dropped (observed live bug).
+        for marker in ("būtos", "būto", "buto"):
+            r = _extract(f"Tilžės 60 {marker} 3")
+            assert r.house == "60" and r.apartment == "3", marker
+
     def test_spoken_tens_units_become_house(self):
         r = _extract("Tilžės keturiasdešimt keturi")
         assert r.street == "Tilžės g."

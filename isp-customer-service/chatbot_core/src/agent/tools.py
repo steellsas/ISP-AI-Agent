@@ -1089,12 +1089,29 @@ def create_ticket(
 
         from crm_mcp.tools.tickets import create_ticket as crm_create_ticket
 
+        # The DB column `ticket_type` has a strict CHECK constraint; the model's free-text
+        # `problem_type` (e.g. "equipment_replacement") would violate it and fail the INSERT
+        # (database_error). Coerce to a valid type — anything not already valid becomes
+        # `technician_visit` (every ticket here results in a worker contacting the customer)
+        # — and keep the model's original wording in the details so nothing is lost.
+        valid_ticket_types = {
+            "network_issue",
+            "resolved",
+            "technician_visit",
+            "customer_not_found",
+            "no_service_area",
+        }
+        ticket_type = problem_type if problem_type in valid_ticket_types else "technician_visit"
+        details = problem_description or ""
+        if problem_type not in valid_ticket_types and problem_type:
+            details = f"[{problem_type}] {details}".strip()
+
         args = {
             "customer_id": customer_id,
-            "ticket_type": problem_type,
+            "ticket_type": ticket_type,
             "priority": priority,
-            "summary": problem_description[:100] if problem_description else "Support request",
-            "details": problem_description,
+            "summary": (details[:100] if details else "Support request"),
+            "details": details,
             "troubleshooting_steps": notes or "",
         }
 
