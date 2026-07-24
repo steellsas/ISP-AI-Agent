@@ -61,7 +61,7 @@
         "verdict_in": "no_mac_observed",
         "disposition": "any",
         "reply_any": ["kompiuter"],
-        "reply_none": ["routeris negauna maitinimo", "routerio gedimas", "maitinimo bloko"]
+        "tool_used": ["update_mac"]
       }
     },
     {

@@ -136,6 +136,7 @@ def _run_scenario(scn: dict) -> dict:
     session.end_session(outcome="eval")
     _close_db()  # free the file handle before the next scenario's DB rebuild
 
+    tools = _tools_in_trace(trace_path)
     return {
         "replies": replies,
         "verdicts_seen": verdicts_seen,
@@ -143,15 +144,18 @@ def _run_scenario(scn: dict) -> dict:
         "closed_reason": st.closed_reason,
         "customer_id": st.customer_id,
         "outage_reported": getattr(st, "outage_reported", False),
-        "ticket_created": _ticket_in_trace(trace_path),
+        "ticket_created": "create_ticket" in tools,
+        "tools_used": tools,
         "trace": str(trace_path) if trace_path else None,
     }
 
 
-def _ticket_in_trace(trace_path: Path | None) -> bool:
-    """A create_ticket tool_call in the session's JSONL trace = a fault was registered."""
+def _tools_in_trace(trace_path: Path | None) -> set[str]:
+    """The set of tool_call names in the session's JSONL trace (create_ticket, update_mac,
+    …) — lets a scenario assert an action actually ran, not just that the reply sounded right."""
+    tools: set[str] = set()
     if not trace_path or not Path(trace_path).exists():
-        return False
+        return tools
     for line in Path(trace_path).read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -159,9 +163,9 @@ def _ticket_in_trace(trace_path: Path | None) -> bool:
             e = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if e.get("type") == "tool_call" and e.get("name") == "create_ticket":
-            return True
-    return False
+        if e.get("type") == "tool_call" and e.get("name"):
+            tools.add(e["name"])
+    return tools
 
 
 def _disposition(ev: dict) -> str:
@@ -210,6 +214,12 @@ def _score(scn: dict, ev: dict) -> list[tuple[str, bool, str]]:
         ok = not leaked
         detail = "clean" if ok else f"LEAKED (bug): {leaked}"
         checks.append(("reply_none", ok, detail))
+
+    # tool_used = each listed tool_call must have actually run (an ACTION, not just words —
+    # e.g. the bridge must really bind the MAC, not merely say it will).
+    for tool in exp.get("tool_used", []):
+        ok = tool in ev["tools_used"]
+        checks.append((f"tool_used:{tool}", ok, "ran" if ok else "NOT CALLED"))
 
     return checks
 
