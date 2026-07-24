@@ -52,9 +52,35 @@ try:
 except Exception:  # .env is optional; OS environment is the fallback
     pass
 
+# Console logging controlled by LOG_LEVEL (default INFO). LOG_LEVEL=DEBUG surfaces every
+# module's output — routing, classifier/solver fallbacks, tool calls, swallowed errors —
+# on the console ALONGSIDE the JSONL trace, which is what you want during a test round.
+# The module loggers just propagate, so configuring the root handler here is enough.
+import logging as _logging
+
+_LEVEL = getattr(_logging, os.environ.get("LOG_LEVEL", "INFO").upper(), _logging.INFO)
+_logging.basicConfig(
+    level=_LEVEL,
+    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d %(message)s",
+    stream=sys.stdout,
+)
+# Force the level even if some import already installed a root handler (then basicConfig
+# is a no-op) — otherwise LOG_LEVEL=DEBUG would silently have no effect.
+_logging.getLogger().setLevel(_LEVEL)
+try:  # keep phone numbers redacted in the console too (GDPR), same as the trace
+    from utils import install_pii_redaction
+
+    install_pii_redaction()
+except Exception:
+    pass
+
 LANGUAGE = "lt"
 
 # Defaults are not critical — every knob is overridable per run via env.
+# The demo runs the simulated stubs (update_mac/reset_port), so enable the dead-router
+# bridge device simulation too — otherwise the mock DB never shows the plugged-in PC and
+# the bridge cannot verify. Production leaves it off (the real device appears on its own).
+os.environ.setdefault("SIMULATE_BRIDGE", "on")
 CALLER_PHONE = os.environ.get("CALLER_PHONE", "+37060020105")
 ASR_BACKEND = os.environ.get("ASR_BACKEND", "groq").lower()  # groq | local
 TTS_ENGINE = os.environ.get("TTS_ENGINE", "edge").lower()  # edge (neural) | gtts
@@ -182,7 +208,7 @@ def main() -> None:
         record_dir=record_dir,
         started_talking_threshold=float(os.environ.get("VAD_STARTED", "0.3")),
         speech_threshold=float(os.environ.get("VAD_SPEECH", "0.3")),
-        audio_chunk_duration=float(os.environ.get("VAD_CHUNK", "1.5")),
+        audio_chunk_duration=float(os.environ.get("VAD_CHUNK", "2.5")),
         # Barge-in OFF by default: without echo cancellation the agent's own
         # voice cuts it off mid-sentence. VOICE_BARGE_IN=1 to re-enable.
         can_interrupt=os.environ.get("VOICE_BARGE_IN", "0") == "1",

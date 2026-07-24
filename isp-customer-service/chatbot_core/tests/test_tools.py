@@ -193,6 +193,21 @@ class TestCreateTicket:
         assert result["success"] == True
         assert "ticket_id" in result
 
+    def test_create_ticket_coerces_freetext_type(self, db_connection, sample_customer_id):
+        """A free-text problem_type (e.g. 'equipment_replacement') must NOT crash the INSERT
+        on the ticket_type CHECK constraint — it is coerced to a valid type (observed live
+        database_error on the dead-router replacement ticket)."""
+        from agent.tools import create_ticket
+
+        result = create_ticket(
+            customer_id=sample_customer_id,
+            problem_type="equipment_replacement",
+            problem_description="Sugedęs routeris, reikia keisti",
+            priority="high",
+        )
+        assert result["success"] is True
+        assert "ticket_id" in result
+
     def test_create_ticket_missing_customer(self, db_connection):
         """Should handle invalid customer."""
         from agent.tools import create_ticket

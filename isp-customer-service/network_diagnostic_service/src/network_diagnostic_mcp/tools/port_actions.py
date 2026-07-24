@@ -115,6 +115,83 @@ def bind_port_mac(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
 
 
+# A clearly-synthetic "computer" MAC for the demo bridge — unregistered, so a diagnose
+# after connecting sees a device on the line that is NOT the bound one (foreign_mac),
+# exactly what the bridge verify + bind step expects.
+_BRIDGE_DEVICE_MAC = "de:ad:be:ef:00:01"
+
+
+def connect_bridge_device(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
+    """
+    SIMULATED (demo/test ONLY): the caller plugged a device (PC) straight into the wall
+    cable, so a new, unbound MAC now appears on the line.
+
+    In production the OSS/telemetry sees the real device when it is physically connected;
+    there is nothing to simulate and this is never called. In the demo the mock DB does
+    not change on its own, so the dead-router bridge could never VERIFY the plugged-in
+    device. This sets observed_mac (leaving the registered equipment_mac untouched) so a
+    subsequent diagnose returns foreign_mac — a device is seen but not bound — which the
+    bridge then binds. Guarded by the engine behind SIMULATE_BRIDGE so it can never fake
+    a device in production.
+    """
+    logger.info(f"[SIM] Connecting bridge device on line for customer: {customer_id}")
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT port_id FROM ports WHERE customer_id = ?",
+                (customer_id,),
+            )
+            port = cursor.fetchone()
+        if not port:
+            return {
+                "success": False,
+                "error": "no_port_found",
+                "message": "Klientui nerastas tinklo portas.",
+            }
+        port = dict(port)
+        with db.transaction() as cursor:
+            cursor.execute(
+                """
+                UPDATE ports
+                SET observed_mac = ?, status = 'up', last_checked = datetime('now')
+                WHERE port_id = ?
+                """,
+                (_BRIDGE_DEVICE_MAC, port["port_id"]),
+            )
+        logger.info(f"[SIM] Bridge device {_BRIDGE_DEVICE_MAC} now visible for {customer_id}")
+        return {
+            "success": True,
+            "customer_id": customer_id,
+            "observed_mac": _BRIDGE_DEVICE_MAC,
+            "message": "Įrenginys matomas linijoje (simuliuota) — galima pririšti.",
+        }
+    except Exception as e:
+        logger.error(f"Error in connect_bridge_device: {e}", exc_info=True)
+        return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
+def disconnect_bridge_device(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
+    """SIMULATED (demo/test): the caller UNPLUGGED the bridge device — clear observed_mac
+    so the line shows no device again (no_mac_observed). Lets a tester repeat the bridge
+    flow without a full DB rebuild."""
+    logger.info(f"[SIM] Disconnecting bridge device for customer: {customer_id}")
+    try:
+        with db.transaction() as cursor:
+            cursor.execute(
+                "UPDATE ports SET observed_mac = NULL, last_checked = datetime('now') "
+                "WHERE customer_id = ?",
+                (customer_id,),
+            )
+        return {
+            "success": True,
+            "customer_id": customer_id,
+            "message": "Įrenginys atjungtas nuo linijos (simuliuota).",
+        }
+    except Exception as e:
+        logger.error(f"Error in disconnect_bridge_device: {e}", exc_info=True)
+        return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
 def reset_customer_port(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
     """
     SIMULATED: bounce the customer's switch port / session.

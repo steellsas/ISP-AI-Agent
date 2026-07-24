@@ -84,12 +84,28 @@ class TestClientSideDetectors:
         assert detect_scope("nešiojamas neveikia") == "computer"
         assert detect_scope("nežinau") is None
 
+    def test_one_device_unnamed_is_not_guessed(self):
+        # "just one" without naming it must NOT be read as a computer — guessing sent
+        # a phone user down the cable branch. Stay unclear and ask which device.
+        assert detect_scope("tik viename") is None
+        assert detect_scope("viename įrenginyje") is None
+
+    def test_tv_needs_a_word_boundary(self):
+        assert detect_scope("tik tv") == "phone"
+        assert detect_scope("viskas tvarkinga") is None  # "tv" inside a word
+
     def test_conn_wired_vs_wifi(self):
         assert detect_conn("laidu") == "wired"
         assert detect_conn("kabeliu prijungtas") == "wired"
         assert detect_conn("per wifi") == "wifi"
         assert detect_conn("belaidžiu") == "wifi"
         assert detect_conn("nežinau") is None
+
+    def test_conn_reads_stt_shorthand_and_wireless_devices(self):
+        # Observed: "Telefonas prijungtas per WF" fell through -> the agent improvised.
+        assert detect_conn("Telefonas prijungtas per WF") == "wifi"
+        assert detect_conn("vaifajumi") == "wifi"
+        assert detect_conn("planšetėje") == "wifi"  # a phone/tablet can only be wireless
 
 
 class TestClientSideStrategy:
@@ -143,6 +159,72 @@ class TestRegistry:
     def test_unknown_verdict_is_none(self):
         assert get_strategy("billing_suspended") is None  # inform verdict, no strategy
         assert get_strategy(None) is None
+
+    def test_dead_router_strategy_registered(self):
+        s = get_strategy("no_mac_observed")
+        assert s is not None and s.verdict == "no_mac_observed"
+        # bridge only reachable via "yes, I have a computer"; a phone user escalates.
+        # It starts by making sure they take the RIGHT cable, then plug it in.
+        assert next_step_id(s, "dr_offer_bridge", "yes") == "dr_pick_cable"
+        assert next_step_id(s, "dr_offer_bridge", "no") == "escalate"
+        assert s.step("dr_pick_cable").goto == "dr_plug_pc"
+        # …and the line must SEE the device before we bind it.
+        assert s.step("dr_plug_pc").goto == "dr_see_device"
+        # power fix that works resolves; that fails moves to the bridge offer.
+        assert next_step_id(s, "dr_recheck", "yes") == "resolve"
+        assert next_step_id(s, "dr_recheck", "no") == "dr_offer_bridge"
+
+    def test_lights_detector(self):
+        from agent.resolution import detect_lights
+
+        assert detect_lights("nedega") == "no"
+        assert detect_lights("dega žalia") == "yes"
+        assert detect_lights("užsidegė lemputės") == "yes"
+        assert detect_lights("nežinau") is None
+
+    def test_have_device_reads_clause_by_clause(self):
+        """A computer is what the bridge needs. Observed: "neturiu kito routerio, tik
+        kompiuterį turiu" was read as NO (the sentence contains "neturiu"), and the
+        agent told the caller internet was impossible with a usable machine to hand."""
+        from agent.resolution import detect_have_device as f
+
+        assert f("Aš neturiu kito routerio, aš tik kompiuterį turiu.") == "yes"
+        assert f("turiu kompiuterį") == "yes"
+        assert f("atsinešiu kompiuterį") == "yes"
+        # genuine no
+        assert f("neturiu kompiuterio") == "no"
+        assert f("neturiu nieko") == "no"
+        assert f("ne, turiu tik telefoną") == "no"  # a phone cannot take a cable
+
+    def test_turn_intent_classifier(self):
+        from agent.resolution import detect_turn_intent as f
+
+        # Only these two may move the walker.
+        assert f("mėlyname lizde") == "answer"
+        assert f("taip") == "answer"
+        assert f("nedega") == "answer"
+        assert f("padariau") == "done"
+        assert f("įkišau") == "done"
+        # These must HOLD it.
+        assert f("Gerai, atsinešiu kompiuterį") == "in_progress"
+        assert f("tuoj pažiūrėsiu") == "in_progress"
+        assert f("o kiek tai kainuos?") == "question"
+        assert f("nesuprantu kas tas WAN") == "confused"
+        assert f("") == "silence"
+
+    def test_still_broken_is_an_answer_not_progress(self):
+        # "vis dar neveikia" is a real answer to "does it work?" — it must not be read
+        # as work in progress, or the verify step would never settle.
+        from agent.resolution import detect_turn_intent
+
+        assert detect_turn_intent("vis dar neveikia") == "answer"
+
+    def test_confusion_detector(self):
+        from agent.resolution import detect_confusion
+
+        assert detect_confusion("nesuprantu kas tas WAN") is True
+        assert detect_confusion("neišmanau apie tai") is True
+        assert detect_confusion("taip, mėlyname") is False
 
     def test_client_side_strategy_registered(self):
         s = get_strategy("healthy_to_router")

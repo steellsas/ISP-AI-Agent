@@ -51,6 +51,13 @@ def _load_doc(rag_doc: str) -> str | None:
         return None
 
 
+def full_doc(rag_doc: str) -> str | None:
+    """The ENTIRE playbook text. The walker injects ONE step at a time (so a narrating
+    model cannot run ahead), but the SOLVER reasons over the whole procedure to pick the
+    next action — it needs the full doc, not a single section."""
+    return _load_doc(rag_doc)
+
+
 def get_step(rag_doc: str, index: int) -> str | None:
     """The `index`-th (0-based) `### Žingsnis` section of a KB playbook, or None
     if the doc is missing or the index is out of range."""

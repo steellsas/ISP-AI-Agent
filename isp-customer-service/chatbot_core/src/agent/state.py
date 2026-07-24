@@ -94,6 +94,21 @@ class AgentState:
     # see the outage discussion). closed_reason tailors the goodbye.
     case_closed: bool = False
     closed_reason: str | None = None  # "resolved" | "outage" | "declined"
+    # What we currently believe is wrong, and why. The verdict tree stays the SOURCE
+    # (it decides); this mirrors it so the agent can narrate the whole arc — "manau X,
+    # nes Y" -> "pasitvirtino / nepasitvirtino, nes Z". Evidence comes from telemetry,
+    # not from parsing the caller.
+    #   {"cause": str, "because": [str], "status": testing|confirmed|rejected,
+    #    "settled_by": str | None}
+    hypothesis: dict[str, Any] | None = None
+    # Causes the telemetry has already disproved (a fix ran and did NOT restore the
+    # line). The engine never re-tries these, so a failed fix leads to the NEXT likely
+    # cause instead of straight to a ticket.
+    failed_hypotheses: list[str] = field(default_factory=list)
+    rejected_hypotheses: list[dict[str, Any]] = field(default_factory=list)
+    # Carries the just-rejected cause for ONE reply, so the agent says the rethink out
+    # loud instead of silently restarting.
+    pivoted_from: str | None = None
     # An active outage was reported for the caller's street. This does NOT close the
     # case (the caller still asks "when fixed? / compensation?") — it switches the
     # agent into a restricted mode: answer outage follow-ups, no more diagnosis.
@@ -110,6 +125,23 @@ class AgentState:
     # the agent say "nesupratau: girdžiu <...>" instead of a blanket "neišgirdau",
     # and never reflect words from an earlier turn as if they were just said.
     last_heard: str = ""
+    # "standard" | "basic". Raised (and kept) for the rest of the call once the caller
+    # signals they do not follow the technical wording — the agent then explains in
+    # plain, visual words instead of repeating the same jargon at them.
+    clarity_level: str = "standard"
+    # What the engine is blocked on this turn, and for how many turns. Same shape for
+    # a human wait and (later) a slow telemetry read, so Phase 5's async polling plugs
+    # into `system_check` without reworking the walker.
+    #   None | "client_answer" | "client_action" | "system_check"
+    awaiting: str | None = None
+    awaiting_turns: int = 0
+    # How many times the caller has said they do not follow THIS step. Each time the
+    # agent breaks the same instruction into a smaller piece instead of repeating it.
+    # (clarity_level changes the WORDS; this changes the SIZE of the step.)
+    step_confusions: int = 0
+    # How the caller's last turn was classified (see resolution.detect_turn_intent).
+    # Only "answer"/"done" may advance a step — everything else holds the walker.
+    last_intent: str = ""
 
     # Conversation control
     is_complete: bool = False  # transport hangs up once True (final goodbye spoken)

@@ -166,11 +166,78 @@ class JsonlFileTracer:
                         lines.append(
                             f"   . VERDICT {e.get('group')} {e.get('action')} {e.get('reason')}"
                         )
+                    elif t == "node":
+                        lines.append(f"   > NODE {e.get('node')}")
+                    elif t == "llm_input":
+                        f = (e.get("facts") or "").strip()
+                        lines.append(
+                            f"   $ LLM node={e.get('node')} tools={e.get('tools')} "
+                            f"history={e.get('history_msgs')}msgs"
+                        )
+                        for fl in f.splitlines():
+                            if fl.strip():
+                                lines.append(f"       facts| {fl.strip()}")
+                    elif t == "classify":
+                        lines.append(
+                            f"   ~ CLASSIFY {e.get('detector')} step={e.get('step')} "
+                            f"-> {e.get('label')} answer={e.get('is_answer')} "
+                            f"conf={e.get('confidence')} by={e.get('routed_by')}"
+                        )
+                    elif t == "error":
+                        lvl = (e.get("level") or "warn").upper()
+                        lines.append(
+                            f"   !! {lvl} [{e.get('where')}] node={e.get('node')} "
+                            f"step={e.get('step')} awaiting={e.get('awaiting')}: {e.get('detail')}"
+                        )
+                    elif t == "shadow_decision":
+                        sv = e.get("solver") or {}
+                        g = e.get("gate") or {}
+                        gate_txt = ""
+                        if g:
+                            flag = (
+                                "bailout"
+                                if g.get("bailout")
+                                else ("ok" if g.get("accepted") else "override")
+                            )
+                            gate_txt = f"  =>GATE {g.get('action')} [{flag}]"
+                            if g.get("reason"):
+                                gate_txt += f" ({g['reason']})"
+                        if sv:
+                            lines.append(
+                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: "
+                                f"{sv.get('next_action')} | hyp={sv.get('current_hypothesis')} "
+                                f"conf={sv.get('confidence')} conflict={sv.get('conflict_detected')}"
+                                f"{gate_txt}"
+                            )
+                            if sv.get("narrator_instruction"):
+                                lines.append(f"       solver.say| {sv['narrator_instruction']}")
+                        else:
+                            lines.append(
+                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: (no decision){gate_txt}"
+                            )
+                    elif t == "decision":
+                        bits = f"intent={e.get('intent')} {e.get('action')} " + (
+                            f"{e.get('from_step')}->{e.get('to')}"
+                        )
+                        if e.get("awaiting"):
+                            bits += f" awaiting={e.get('awaiting')}"
+                        if e.get("hypothesis"):
+                            bits += f" hyp={e.get('hypothesis')}/{e.get('hyp_status')}"
+                        lines.append(f"   ? DECISION {bits}")
                     elif t == "case":
+                        extra = ""
+                        if e.get("step"):
+                            extra += f" step={e.get('step')}"
+                        if e.get("awaiting"):
+                            extra += f" awaiting={e.get('awaiting')}"
+                        if e.get("hypothesis"):
+                            extra += f" hyp={e.get('hypothesis')}"
+                        if e.get("clarity"):
+                            extra += f" clarity={e.get('clarity')}"
                         lines.append(
                             f"   = CASE problem={e.get('problem')} "
                             f"customer={e.get('customer_id')} addr={e.get('address')} "
-                            f"symptoms={e.get('symptoms')} diag={e.get('diagnosis')}"
+                            f"symptoms={e.get('symptoms')} diag={e.get('diagnosis')}{extra}"
                         )
                     elif t == "voice_latency":
                         lines.append(

@@ -67,10 +67,14 @@ def build_turn_graph(engine: Any):
     checkpointed with MemorySaver (thread_id = session_id).
     """
 
-    def _run_node(state: TurnState, allowed_tools, node_prompt) -> TurnState:
+    def _run_node(state: TurnState, allowed_tools, node_prompt, node: str) -> TurnState:
         """Stream the reply tokens out via the LangGraph stream writer (a no-op
         under .invoke(), live under .stream(stream_mode='custom')) while collecting
         the full reply for the checkpoint. LangGraph stays the orchestrator."""
+        # Which node handled this turn — the router's choice, made explicit in the
+        # trace instead of inferred (feeds the DEBUG_LLM payload too).
+        engine._active_node = node
+        engine.tracer.emit("node", node=node, customer_id=engine.state.customer_id)
         writer = get_stream_writer()
         parts: list[str] = []
         for token in engine.run_turn_scoped_stream(
@@ -81,7 +85,13 @@ def build_turn_graph(engine: Any):
         return {"reply": "".join(parts)}
 
     def address_validation(state: TurnState) -> TurnState:
-        return _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT)
+        result = _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT, "address_validation")
+        # resolve_address may have identified the caller mid-turn, and the engine then
+        # diagnosed + activated a strategy in the same reply (see
+        # _augment_resolve_result). Mark that step presented so the caller's next
+        # answer advances the walker instead of being read as a stray yes/no.
+        engine._mark_step_presented()
+        return result
 
     def diagnosis(state: TurnState) -> TurnState:
         # Deterministic driver: diagnose ONCE on entering the stage (before the LLM
@@ -91,14 +101,29 @@ def build_turn_graph(engine: Any):
         # confirm connecting a device); after the reply, mark the question asked so a
         # plain yes/no advances next turn.
         engine.ensure_diagnosed()
+        # Phase 3.8 step 5a: for a piloted direction (behind SOLVER_DRIVE), the SOLVER runs
+        # the turn end-to-end and returns the reply; the walker + LLM narrator are skipped.
+        # None => not driving (flag off / other direction) => fall through to the walker.
+        driven = engine.solver_drive_turn(state.get("user_input"))
+        if driven is not None:
+            engine._active_node = "diagnosis"
+            engine.tracer.emit(
+                "node", node="diagnosis_solver", customer_id=engine.state.customer_id
+            )
+            get_stream_writer()(driven)
+            return {"reply": driven}
         engine._advance_resolution(state.get("user_input"))
+        # Solver runs in SHADOW (Phase 3.8 step 2): logs its decision next to the
+        # walker's move for comparison; never drives the reply. No-op unless
+        # SOLVER_SHADOW=on.
+        engine._shadow_solve(state.get("user_input"))
         # If the caller's reply advanced us onto an ACTION step (e.g. bind_mac after
         # they confirmed the device change), run it deterministically BEFORE the LLM
         # narrates — the engine binds + resets + re-verifies and sets case_closed, so
         # the model only PHRASES the verified result (no model-invoked update_mac,
         # so no single-tool loop and no "nepririštas, dabar pririšiu" after binding).
         engine.ensure_action_done()
-        result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT)
+        result = _run_node(state, None, _DIAGNOSIS_NODE_PROMPT, "diagnosis")
         engine._mark_step_presented()
         return result
 
@@ -107,7 +132,7 @@ def build_turn_graph(engine: Any):
         # second closing turn, ends the call (is_complete) so the agent does not loop
         # goodbyes. The transport plays this last reply and then stops responding.
         engine._maybe_finish(state.get("user_input"))
-        return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT)
+        return _run_node(state, CLOSING_TOOLS, _CLOSING_NODE_PROMPT, "closing")
 
     def route(state: TurnState) -> str:
         # Deterministic. case_closed wins (END stage); then identified -> diagnosis,

@@ -649,6 +649,194 @@ address, hallucinated id, premature diagnosis) are gone; a new fault type is con
 
 ---
 
+## Phase 3.6 — Resolution engine: step-by-step fault solving · *(done, PRs #44–#45 + `feat/thinking-engine`)*
+
+Voice testing after 3.5 showed the agent could identify but not *solve* well: it
+dumped whole playbooks, looped tool calls, closed on the caller's word, and never
+hung up. Built a universal **step walker** — the engine owns the procedure, the LLM
+only understands and phrases.
+
+- [x] **Strategy registry + step walker** — a verdict maps to an ordered `Step` list
+      (CONFIRM / INSTRUCT / ACTION / VERIFY / ESCALATE). Per-step tool scoping (a
+      CONFIRM exposes NO tools), per-step RAG section injection (one `### Žingsnis`
+      at a time), deterministic advancement. Adding a fault = registry entry + RAG doc
+      (`docs/PLETIMAS_GEDIMAI.md` is the recipe); a purely linear fault needs only the
+      doc (`build_linear_strategy`).
+- [x] **Engine-driven actions + telemetry verify** — `ensure_diagnosed`,
+      `ensure_action_done` (bind/reset run by the engine, never the model → no
+      single-tool loops), verdict re-read after every action. Truth comes from
+      telemetry, not the caller's word.
+- [x] **Declarative branching** — `Step.detector` + `on` routing keys with a
+      `DETECTORS` registry (yes_no / restored / scope / conn / port / lights /
+      have_device); `goto` for converging instruct chains.
+- [x] **Three fault directions on the walker** — `foreign_mac` (cable by port
+      FUNCTION → bind → verify), `healthy_to_router` (client side: all/phone/computer,
+      device-aware so a phone is never asked about cables, caller-verified since
+      telemetry is blind), `no_mac_observed` (dead router → power/cable → **B-Plan
+      bridge**: wall cable into a PC + bind = temporary internet; closes Phase 2.5
+      step 6).
+- [x] **Hypothesis rejection + rethink** — a fix that does not restore the line
+      records the cause in `failed_hypotheses`, re-diagnoses, and switches strategy if
+      the telemetry now points elsewhere; the agent says the rethink out loud instead
+      of silently restarting. Only escalates when there is no Plan B.
+- [x] **Clean call ending** — offer "ar dar kuo nors padėti?", end on a farewell (or
+      any agent goodbye, on every path), then `CloseStream` actually drops the WebRTC
+      connection (a real hang-up).
+- [x] **Identification polish** — the phone's registered address offered up front,
+      ONE confirm then straight to diagnosis, and the apartment is never filled in
+      from the DB (enforced in `resolve_address`, not the prompt).
+- [x] **Dialogue quality** — "neišgirdau" only for real silence, otherwise reflect
+      what was heard and name what was unclear; `clarity_level` switches to plain,
+      visual wording once the caller says they do not follow the jargon.
+
+---
+
+## Phase 3.7 — Conversational contract: listen, wait, think aloud · `feat/thinking-engine`
+
+**Goal:** the same helpful, unhurried consultation in EVERY fault. Voice testing
+showed the walker is correct but the *conversation* is not: the agent runs ahead of
+the caller, repeats itself when a turn is not a plain answer, and jumps to a verdict
+without saying what it sees or what a result means.
+
+> **Why structurally:** a caller's turn currently has only two fates — recognised
+> (advance) or not (repeat). "Einu prie routerio", "nesuprantu", "o kiek kainuos?"
+> and silence all collapse into "repeat the question". Two layers are missing between
+> "the caller spoke" and "the step moves": what KIND of turn this was, and what the
+> engine is WAITING for. Everything below falls out of those two.
+
+- [ ] **1. `awaiting` state + turn-intent classifier** *(the foundation)* —
+      `state.awaiting` = `None | client_answer | client_action | system_check` (+ since
+      when); `detect_turn_intent` → `answer · in_progress · done · question · confused
+      · silence · new_info`. Only `answer`/`done` advance the walker; the rest hold.
+      Classification stays deterministic (like the detectors), phrasing stays with the
+      LLM; the safe default on "unknown" is WAIT and ask, never run ahead.
+- [ ] **2. "darysiu" ≠ "padariau"** — "einu / atsinešiu / tuoj" is work in progress,
+      not completion: acknowledge and wait, and do NOT read telemetry yet (observed:
+      the bridge checked the line before the caller had plugged anything in).
+- [ ] **3. Hypothesis object** — `state.hypothesis {cause, because[], status,
+      settled_by}` + `rejected[]`, filled at the three points that already compute it
+      (diagnose → step outcome → telemetry after an action). The verdict tree stays
+      the SOURCE; the object mirrors it so the agent can narrate the whole arc,
+      including **confirmation** ("taigi dėl routerio ir nebuvo interneto") — today we
+      track only rejection. No candidate queue: ordering stays with the tree, not the
+      model.
+- [ ] **4. Narration contract in ONE place** — five always-rules (explain before
+      asking · say what each result MEANS · confirm the hypothesis aloud · do not
+      rush · never go silent then fire a solution). Step hints keep only CONTENT, tone
+      comes from the contract, so all strategies sound alike. RAG "possible causes"
+      surfaced as narration text.
+- [ ] **5. Progressive disclosure** — `intent = confused` drops to a FINER breakdown
+      of the same step (distinct from `clarity_level`, which changes the wording, not
+      the number of steps).
+
+**Falls out for free:** silence handling and "kur jūs dabar?" come from 1; the
+`system_check` wait is the socket Phase 5's async telemetry polling plugs into.
+
+**Done:** the agent explains what it sees before asking, waits for the caller to
+actually act, says what every result means, and consults the same way in every fault.
+
+---
+
+## Phase 3.8 — Thinking agent on rails: perceive → solve → act · `feat/thinking-agent`
+
+**Goal:** move the diagnostic *reasoning* out of hardcoded Python (verdict tree +
+`Step` walker + keyword detectors) into an editable knowledge layer driven by ONE
+decision-maker, WITHOUT losing determinism/safety. The engine constrains the ACTION
+space (allowed actions + guardrails); it no longer dictates HOW the agent thinks.
+
+> **Why:** voice traces showed the walker is a decision-tree executor with narration,
+> not a thinking agent. Two independent readers (keyword detector + narrating LLM)
+> DESYNC — an undetected "yes" freezes the step while the model drifts ahead, then a
+> later "no" misroutes to escalate (trace `20260721-142904`). The hypothesis is a
+> *mirror* of the verdict, so the agent cannot revise its belief from dialogue or
+> catch a telemetry↔client contradiction (the "no lights / wrong device" bug,
+> `20260721-143433`). Root cause = architecture, not prompt.
+
+> **Design docs (the full spec):**
+> - `docs/ARCHITEKTUROS_LINIJA.md` — the frozen / policy / knowledge line (every
+>   element sorted).
+> - `docs/ARCHITEKTUROS_SCHEMA.md` — current (decision-tree executor) vs. proposed
+>   (perceive → solve → act loop) flow.
+> - `docs/MASTANTIS_AGENTAS_SPEC.md` — full contract: classifier output, solver JSON
+>   schema, allowed `next_action` enum, gate validation + bailout, conflict matrix,
+>   transparency/bridging rules, migration + eval.
+
+**Principles (locked):**
+- **Determinism bounds ACTIONS, not THINKING.** 🔒 mechanism (tools, telemetry read,
+  guardrail enforcement, safety-action execution) · ⚙️ policy (`policy.yaml`: auth,
+  tool-scoping, thresholds) · 📚 knowledge (RAG/prompts: interpretation, playbooks,
+  conflict matrix).
+- **Cognitive divergence, action convergence.** `current_hypothesis` = free string
+  (may exceed the verdict-tree vocabulary — e.g. "looking at the ONT, not the router");
+  `next_action` = strict enum. The gate validates only the action; an unknown
+  hypothesis reaching a safety tool is REJECTED without a mapping.
+- **Single decision-maker.** Classifier = sensor (returns a `Candidate Observation`,
+  never writes state); solver = the only decider (structured output); narrator =
+  executor (phrases the decided step, prompt-isolated). No two readers → no desync.
+- **Verdict tree stays 🔒 as a *candidate cause + confidence* provider (a strong
+  prior), NOT the final word.** The solver may confirm / refine / override it from
+  dialogue. Interpretation-as-final-decision moves to 📚.
+- **Safety unchanged.** MAC bind / ticket / close are executed by code; the LLM only
+  proposes. Auth gate + apartment-never-from-DB enforced in code.
+
+**Build order:**  *(steps 0–4 done on `feat/thinking-engine`; 476 unit + eval 16/16)*
+- [x] **0. Eval harness (PREREQUISITE — no reasoning change lands before this).**
+  Two levels: (a) **Golden Dataset** — the 9 scripted scenarios (`docs/TESTAVIMO_SCENARIJUS.md`)
+  + the found bugs as fixed regression scenarios, driven text-to-text through
+  `AgentSession`, hard-scored (verdict / action / step reached). Runs in seconds,
+  deterministic, on every `.md`/code change. (b) **LLM-actor (fuzzing)** — an LLM plays
+  a persona ("irate senior, non-standard Lithuanian, mislabels the lights") to surface
+  new phrasings; findings become new Golden scenarios; LLM-as-judge for contract
+  adherence.
+- [x] **1. Classifier node (perceive)** — client text → `Candidate Observation`
+  `{candidate_observation, intent, internally_inconsistent, confidence}`; contextual
+  (told the expected answer space); does NOT write state. Same Claude (variant A;
+  Haiku classifier possible later). Keyword detectors kept as a fallback on classifier
+  failure.
+- [x] **2. Solver node (decide)** — reads knowledge (interpretation + playbooks +
+  conflict matrix) + hypothesis + observation + telemetry/prior; emits the strict JSON
+  (`current_hypothesis`, `confidence`, `conflict_detected`, `hypothesis_changed`,
+  `reason_for_change`, `next_action`, `playbook_step`, `narrator_instruction`).
+- [x] **3. Gate (validate + safeguard)** — Pydantic schema validation; action-enum
+  check; unknown-hypothesis-to-safety-tool rejection; safety actions executed by code;
+  **bailout counter** (`confidence < 0.4` ×3 OR `cycles_in_same_step > 3` → generic
+  ticket). Thresholds in ⚙️ `policy.yaml`.
+- [x] **4. Narrator transparency/bridging (📚, buildable now)** — `hypothesis_changed`
+  → mandatory one-sentence explanation; explicit transition (never ask B without
+  resolving A); direction-NEUTRAL fillers only before the decision. Conflict matrix
+  with **fact authority** (telemetry wins for line/session facts; client wins for
+  physical-room facts).
+- [~] **5. Shadow mode on ONE direction (dead router / bridge)** — shadow BUILT (solver+gate log alongside the walker via SOLVER_SHADOW); cut-over in progress. — splitter: walker
+  (master) answers the caller; solver (shadow) decides in parallel, logged as a
+  `shadow_decision` event in the existing `JsonlFileTracer` (not BigQuery). Cut-over
+  when 100 real calls show 0 safety violations + auto agreement measured, with
+  human/judge review of the disagreements (the valuable signal).
+  - [ ] **5a. Solver DRIVES one direction** (behind `SOLVER_DRIVE`, dead-router first):
+        the solver reads the RAG playbook + dialogue + FRESH telemetry, decides next_action,
+        the gate validates + executes safety actions by code, the narrator speaks
+        `narrator_instruction`. Fix context freshness (solve AFTER re-diagnose). Walker stays
+        default + for all other directions. Validate against the eval before widening.
+  - [ ] **5b. Detection semantics INTO the RAG** — each `### Žingsnis` lists its expected
+        answers so the classifier/solver reads "what to detect" from the playbook, not from
+        `DETECTOR_GLOSSES` / `step.on` in code. Endgame: a new fault / new step is a `.md`
+        edit only, no code.
+- [ ] **6. Widen** — cut over the remaining directions one fault at a time; retire the
+  walker steps for each as it goes. **North star: a UNIVERSAL solver that resolves any
+  fault exactly as the RAG domain knowledge instructs — the algorithm and the checks live
+  in the playbook, the engine only enforces safety + executes.**
+
+**Deferred dependencies (follow-up, not blocking):** async telemetry (<150 ms) +
+mid-turn TTS filler for the "speak-then-fetch" latency mask; `TRANSFER_TO_HUMAN`
+(only `create_ticket` exists now); variant B (merge solver+narrator) only if latency
+demands it.
+
+**Done:** the diagnostic reasoning is editable knowledge behind one decision-maker;
+desync is structurally impossible; the agent revises its hypothesis from dialogue and
+catches telemetry↔client contradictions; safety and testability are preserved via the
+gate + eval harness.
+
+---
+
 ## Phase 4 — Service & frontend
 
 - [ ] FastAPI app + `stream.mount(app)`; thin custom client
@@ -794,3 +982,9 @@ never degrades consultation quality — the core "pro" safety net.
       (1.2) typed slots, (1.3) tool-access gate, (1.4) NLU extraction, (2) latency
       masking (filler + streaming TTS port), (3) LangGraph migration (nodes +
       MemorySaver). Async / fast-slow split / AEC deferred to Phase 5.
+- [ ] **Next:** Phase 3.8 · Thinking agent on rails (`feat/thinking-agent`) —
+      START with step 0, the **eval harness** (Golden Dataset from the 9 voice
+      scenarios + found bugs, driven text-to-text through `AgentSession`, hard-scored),
+      the prerequisite before any reasoning change. Design: `docs/MASTANTIS_AGENTAS_SPEC.md`
+      (+ `ARCHITEKTUROS_LINIJA.md`, `ARCHITEKTUROS_SCHEMA.md`). Then classifier →
+      solver → gate → narrator bridging → shadow mode on the dead-router direction.

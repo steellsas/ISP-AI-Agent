@@ -25,6 +25,14 @@ _TOKEN_RE = re.compile(r"(?P<num>\d+[^\W\d_]?)|(?P<word>[^\W\d_]+)", re.UNICODE)
 _STREET_THRESHOLD = 0.75
 _CITY_THRESHOLD = 0.85
 
+# Lithuanian diacritics → base letters, for tolerant marker matching (STT often writes
+# the long-vowel form: "būtos" for "butas"). Used only for keyword prefixes, not values.
+_LT_DEACCENT = str.maketrans("ąčęėįšųūž", "aceeisuuz")
+
+
+def _deaccent_lt(word: str) -> str:
+    return word.translate(_LT_DEACCENT)
+
 
 @dataclass
 class AddressReading:
@@ -109,11 +117,13 @@ def extract_address(
 
     nums = [(i, v) for i, (k, v) in enumerate(seq) if k == "num"]
 
-    # apartment = first number after a "but*" marker word
+    # apartment = first number after a "but*" marker word. De-accent the word first so
+    # STT long-vowel spellings ("būtos", "būto") still match the "but" marker — observed:
+    # "Tilžės 60 būtos 3" left apartment=None, so the caller's flat was silently ignored.
     apt = None
     apt_i = None
     for i, (k, v) in enumerate(seq):
-        if k == "word" and v.lower().startswith("but"):
+        if k == "word" and _deaccent_lt(v.lower()).startswith("but"):
             nxt = next(((j, nv) for j, nv in nums if j > i), None)
             if nxt:
                 apt_i, apt = nxt

@@ -48,7 +48,7 @@ class FastRTCVoiceTransport:
         record_dir: str | Path | None = None,
         started_talking_threshold: float = 0.3,
         speech_threshold: float = 0.3,
-        audio_chunk_duration: float = 1.5,
+        audio_chunk_duration: float = 2.5,
         can_interrupt: bool = False,
         play_filler: bool = False,
         stream_playback: bool = True,
@@ -70,10 +70,12 @@ class FastRTCVoiceTransport:
                 To tolerate a longer mid-address pause, RAISE audio_chunk_duration,
                 not this. (Regression fixed: 0.7 > 0.6 chunk truncated every turn.)
             audio_chunk_duration: VAD window (s). Larger = tolerates longer pauses
-                mid-address before ending the turn (at the cost of a bit more
-                latency deciding the caller finished). 1.0 lets "Tilžės gatvė 60 …
-                butas 3" land as ONE utterance.
-            audio_chunk_duration: VAD processing chunk size (s).
+                mid-sentence before ending the turn (at the cost of a bit more
+                latency deciding the caller finished). 1.5 still cut people off
+                while they were describing the fault — turns came back as 2–7
+                character fragments ("Dabar.", "Galime.", "D.") because a pause to
+                think ended the turn. 2.5 lets someone tell a whole sentence, which
+                a consultation needs more than it needs a fast reply.
             can_interrupt: barge-in. FastRTC defaults this to True, but without
                 acoustic echo cancellation the agent's own voice (and room noise)
                 re-triggers the VAD and CUTS THE AGENT OFF mid-sentence. Default

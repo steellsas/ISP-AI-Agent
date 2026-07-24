@@ -779,6 +779,52 @@ def reset_port(customer_id: str) -> dict:
         }
 
 
+def simulate_bridge_connect(customer_id: str) -> dict:
+    """SIMULATED (demo/test): make the plugged-in bridge device appear on the line.
+
+    Deliberately NOT registered as an agent Tool — the LLM must never invoke it. The
+    engine calls it directly (behind SIMULATE_BRIDGE) when the caller confirms plugging a
+    PC into the wall cable, so the demo's mock DB reflects the physical action and the
+    bridge can VERIFY + bind. In production the real device appears on its own.
+    """
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID required.",
+        }
+    try:
+        db = get_db()
+        from network_diagnostic_mcp.tools.port_actions import connect_bridge_device
+
+        return connect_bridge_device(db, customer_id)
+    except ImportError as e:
+        logger.error(f"Bridge-connect sim unavailable: {e}")
+        return {"success": False, "error": "service_unavailable", "message": "unavailable"}
+    except Exception as e:
+        logger.error(f"Error in simulate_bridge_connect: {e}", exc_info=True)
+        return {"success": False, "error": "action_error", "message": f"{e}"}
+
+
+def simulate_bridge_disconnect(customer_id: str) -> dict:
+    """SIMULATED (demo/test): clear the bridge device from the line (undo a plug-in).
+    Not a registered Tool — used by the manual test command / re-test setup."""
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID required.",
+        }
+    try:
+        db = get_db()
+        from network_diagnostic_mcp.tools.port_actions import disconnect_bridge_device
+
+        return disconnect_bridge_device(db, customer_id)
+    except Exception as e:
+        logger.error(f"Error in simulate_bridge_disconnect: {e}", exc_info=True)
+        return {"success": False, "error": "action_error", "message": f"{e}"}
+
+
 def check_outages(area: str = None, customer_id: str = None) -> dict:
     """
     Check for active outages or planned works in an area.
@@ -1043,12 +1089,29 @@ def create_ticket(
 
         from crm_mcp.tools.tickets import create_ticket as crm_create_ticket
 
+        # The DB column `ticket_type` has a strict CHECK constraint; the model's free-text
+        # `problem_type` (e.g. "equipment_replacement") would violate it and fail the INSERT
+        # (database_error). Coerce to a valid type — anything not already valid becomes
+        # `technician_visit` (every ticket here results in a worker contacting the customer)
+        # — and keep the model's original wording in the details so nothing is lost.
+        valid_ticket_types = {
+            "network_issue",
+            "resolved",
+            "technician_visit",
+            "customer_not_found",
+            "no_service_area",
+        }
+        ticket_type = problem_type if problem_type in valid_ticket_types else "technician_visit"
+        details = problem_description or ""
+        if problem_type not in valid_ticket_types and problem_type:
+            details = f"[{problem_type}] {details}".strip()
+
         args = {
             "customer_id": customer_id,
-            "ticket_type": problem_type,
+            "ticket_type": ticket_type,
             "priority": priority,
-            "summary": problem_description[:100] if problem_description else "Support request",
-            "details": problem_description,
+            "summary": (details[:100] if details else "Support request"),
+            "details": details,
             "troubleshooting_steps": notes or "",
         }
 

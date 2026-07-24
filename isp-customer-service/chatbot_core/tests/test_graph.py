@@ -134,12 +134,12 @@ class TestRouting:
 
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()
-        session.state.customer_id = "CUST001"  # identified, healthy -> no strategy
+        session.state.customer_id = "CUST104"  # link_down_local -> no strategy registered
 
         names = self._run_turn_capture_tools(session, "taip")
 
-        # Healthy line -> no resolution strategy -> the diagnosis node keeps the
-        # full toolset (diagnose available; lookup kept for a re-resolve).
+        # A verdict with no strategy -> the diagnosis node keeps the full toolset
+        # (diagnose available; lookup kept for a re-resolve).
         assert "diagnose_connection" in names
         assert "resolve_address" in names
 
@@ -304,6 +304,290 @@ class TestEngineDrivenAction:
         agent._mark_step_presented()
         agent._advance_resolution("padariau")
         assert agent.state.resolution["step"] == "bind_mac"
+
+
+class TestIdentifyThenDiagnoseSameTurn:
+    """resolve_address identifies -> the engine diagnoses in the SAME turn, so one
+    reply confirms the address AND delivers the finding. Without this the
+    identification turn has nothing to say and the model improvises ("nėra žinomų
+    gedimų", "kokie įrenginiai prijungti?") — or the caller goes quiet and it stalls."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def test_resolve_triggers_diagnosis_and_carries_the_finding(self, db_connection):
+        from agent.tools import execute_tool
+
+        agent = self._agent()
+        obs = execute_tool(
+            "resolve_address",
+            {
+                "city": "Šiauliai",
+                "street": "Tilžės g.",
+                "house_number": "60",
+                "apartment_number": "3",
+            },
+        )
+        agent.state.customer_id = "CUST101"  # committed by resolve_address
+        out = json.loads(agent._augment_tool_result("resolve_address", obs))
+
+        # The verdict is now in state AND spelled out for the model to voice.
+        assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
+        assert "DIAGNOZĖ" in out["message"]
+        assert "gedimų nėra" in out["message"]  # explicit: do not invent the outage line
+
+    def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):
+        """Regression: the tool loop augmented BEFORE committing customer_id, so
+        _augment_resolve_result saw no id, skipped diagnosis, and the strategy never
+        activated — the whole dead-router walk fell back to free-form LLM (step=None
+        for the entire call). Drive the actual loop (no pre-set id) and require the
+        strategy to be live afterwards."""
+        from types import SimpleNamespace
+
+        agent = self._agent()
+        call = SimpleNamespace(
+            id="c1",
+            type="function",
+            function=SimpleNamespace(
+                name="resolve_address",
+                arguments=json.dumps(
+                    {"city": "Šiauliai", "street": "Vilniaus g.", "house_number": "29"}
+                ),
+            ),
+        )
+        agent._execute_tool_calls(SimpleNamespace(content=None, tool_calls=[call]))
+
+        assert agent.state.customer_id == "CUST009"
+        assert agent.state.resolution is not None  # strategy live, not None
+        assert agent.state.resolution["verdict"] == "no_mac_observed"
+        assert agent.state.hypothesis["cause"] == "no_mac_observed"
+
+    def test_failed_resolve_does_not_diagnose(self, db_connection):
+        from agent.tools import execute_tool
+
+        agent = self._agent()
+        obs = execute_tool("resolve_address", {"street": "Tilžės g."})  # no house -> no hit
+        out = agent._augment_tool_result("resolve_address", obs)
+        assert agent.state.diagnosis == {}
+        assert "DIAGNOZĖ" not in out
+
+
+class TestHypothesisObject:
+    """The verdict tree decides; the hypothesis mirrors it so the agent can narrate the
+    arc — including CONFIRMATION, which we could not say before (only rejection was
+    tracked)."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="unknown")
+
+    def _diagnose(self, agent, reason):
+        agent._update_state_from_observation(
+            "diagnose_connection",
+            json.dumps({"success": True, "verdict": {"reason": reason, "side": "x", "group": "B"}}),
+        )
+
+    def test_verdict_opens_a_belief_with_its_reason(self):
+        agent = self._agent()
+        agent.state.customer_id = "CUST009"
+        self._diagnose(agent, "no_mac_observed")
+
+        h = agent.state.hypothesis
+        assert h["cause"] == "no_mac_observed"
+        assert h["status"] == "testing"
+        assert h["because"]  # seeded with what the telemetry showed
+
+    def test_a_working_fix_confirms_it(self):
+        agent = self._agent()
+        agent.state.customer_id = "CUST009"
+        self._diagnose(agent, "no_mac_observed")
+        agent._route_to(agent.state.resolution, "resolve")
+
+        assert agent.state.hypothesis["status"] == "confirmed"
+        assert "PASITVIRTINO" in (agent._state_facts_block() or "")
+
+    def test_rejected_causes_are_remembered_and_not_re_offered(self, monkeypatch):
+        import agent.react_agent as ra
+
+        agent = self._agent()
+        agent.state.customer_id = "CUST105"
+        agent.state.hypothesis = {
+            "cause": "foreign_mac",
+            "because": ["linijoje kitas įrenginys"],
+            "status": "testing",
+            "settled_by": None,
+        }
+        agent.state.resolution = {
+            "verdict": "foreign_mac",
+            "step": "confirm_restored",
+            "asked": True,
+            "restored_denials": 1,
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: "foreign_mac")
+        monkeypatch.setattr(
+            ra,
+            "execute_tool",
+            lambda n, a: json.dumps(
+                {
+                    "success": True,
+                    "verdict": {"reason": "healthy_to_router", "side": "x", "group": "B7"},
+                }
+            ),
+        )
+        agent._advance_resolution("vis dar neveikia")
+
+        assert [x["cause"] for x in agent.state.rejected_hypotheses] == ["foreign_mac"]
+        assert agent.state.hypothesis["cause"] == "healthy_to_router"  # a new belief
+        assert "JAU ATMESTA" in (agent._state_facts_block() or "")
+
+
+class TestTurnHolding:
+    """Only a real answer or a completed action advances the walker. Everything else
+    holds it — this is what stopped the agent running ahead of the caller."""
+
+    def _at_step(self, monkeypatch, step_id, reason="no_mac_observed"):
+        import agent.react_agent as ra
+
+        agent = ra.ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": step_id,
+            "asked": True,
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: reason)
+        return agent
+
+    def test_in_progress_waits_instead_of_checking(self, monkeypatch):
+        # Observed: "atsinešiu kompiuterį" advanced the step, so the engine read the
+        # line before anything was plugged in and concluded the bridge had failed.
+        agent = self._at_step(monkeypatch, "dr_plug_pc")
+        agent._advance_resolution("Gerai, atsinešiu kompiuterį, pajungsiu.")
+        assert agent.state.resolution["step"] == "dr_plug_pc"  # held
+        assert agent.state.awaiting == "client_action"
+
+    def test_done_advances(self, monkeypatch):
+        agent = self._at_step(monkeypatch, "dr_plug_pc")
+        agent._advance_resolution("įkišau")
+        assert agent.state.resolution["step"] != "dr_plug_pc"
+        assert agent.state.awaiting is None
+
+    def test_question_and_confusion_hold(self, monkeypatch):
+        for reply in ("o kiek tai kainuos?", "nesuprantu, kas tas kabelis"):
+            agent = self._at_step(monkeypatch, "dr_offer_bridge")
+            agent._advance_resolution(reply)
+            assert agent.state.resolution["step"] == "dr_offer_bridge"
+
+    def test_repeated_confusion_breaks_the_step_down(self, monkeypatch):
+        agent = self._at_step(monkeypatch, "dr_lights")
+        agent._advance_resolution("nesuprantu ko norit")
+        assert agent.state.step_confusions == 1
+        assert "NESUPRATO" in (agent._state_facts_block() or "")
+        agent._advance_resolution("vis tiek nesuprantu")
+        assert agent.state.step_confusions == 2
+        assert "MAŽIAUSIĄ" in (agent._state_facts_block() or "")  # finest breakdown
+        # a real answer clears it and moves on
+        agent._advance_resolution("nedega")
+        assert agent.state.step_confusions == 0
+
+    def test_waiting_turns_accumulate_for_a_check_in(self, monkeypatch):
+        agent = self._at_step(monkeypatch, "dr_plug_pc")
+        for _ in range(3):
+            agent._advance_resolution("tuoj, ieškau")
+        assert agent.state.awaiting_turns == 3
+        assert "ILGAI LAUKIAM" in (agent._state_facts_block() or "")
+
+
+class TestBridgeSeesDevice:
+    """The bridge binds only once telemetry SEES the device the caller plugged in —
+    binding blindly when the cable is in the wrong socket fails confusingly."""
+
+    def _at_plug(self, monkeypatch, reason):
+        import agent.react_agent as ra
+
+        agent = ra.ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "dr_plug_pc",
+            "asked": True,
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: reason)
+        return agent
+
+    def test_device_seen_goes_to_bind(self, monkeypatch):
+        agent = self._at_plug(monkeypatch, "foreign_mac")  # anything but no_mac_observed
+        agent._advance_resolution("įkišiau")
+        assert agent.state.resolution["step"] == "dr_bind"
+        assert agent.state.resolution["device_seen"] is True
+
+    def test_not_seen_walks_back_to_the_cable(self, monkeypatch):
+        agent = self._at_plug(monkeypatch, "no_mac_observed")  # still nothing on the line
+        agent._advance_resolution("įkišiau")
+        assert agent.state.resolution["step"] == "dr_pick_cable"  # wrong cable — retry
+        assert agent.state.resolution["device_seen"] is False
+
+    def test_second_failure_escalates(self, monkeypatch):
+        agent = self._at_plug(monkeypatch, "no_mac_observed")
+        agent.state.resolution["plug_retries"] = 1  # already tried once
+        agent._advance_resolution("įkišiau")
+        assert agent.state.resolution["step"] == "escalate"
+
+
+class TestHypothesisRejection:
+    """A fix that does not restore the line rejects THAT hypothesis and looks for the
+    next one — the agent has a Plan B instead of registering at the first failure."""
+
+    def _at_restored(self, monkeypatch, telemetry_after):
+        import agent.react_agent as ra
+
+        agent = ra.ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST105"
+        agent.state.resolution = {
+            "verdict": "foreign_mac",
+            "step": "confirm_restored",
+            "asked": True,
+            "restored_denials": 1,  # one denial already: the next one decides
+        }
+        monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: "foreign_mac")
+        monkeypatch.setattr(
+            ra,
+            "execute_tool",
+            lambda n, args: json.dumps(
+                {"success": True, "verdict": {"reason": telemetry_after, "side": "x", "group": "B"}}
+            ),
+        )
+        return agent
+
+    def test_new_verdict_switches_strategy_and_flags_the_rethink(self, monkeypatch):
+        agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
+        agent._advance_resolution("vis dar neveikia")
+
+        assert agent.state.failed_hypotheses == ["foreign_mac"]
+        assert agent.state.resolution["verdict"] == "healthy_to_router"  # Plan B
+        assert agent.state.resolution["step"] == "cs_scope"
+        assert agent.state.pivoted_from == "foreign_mac"  # narrate it once
+
+    def test_same_verdict_has_no_plan_b_so_it_escalates(self, monkeypatch):
+        agent = self._at_restored(monkeypatch, telemetry_after="foreign_mac")
+        agent._advance_resolution("vis dar neveikia")
+
+        assert agent.state.failed_hypotheses == ["foreign_mac"]
+        assert agent.state.resolution["step"] == "escalate"
+        assert agent.state.pivoted_from is None
+
+    def test_rethink_is_voiced_once_then_cleared(self, monkeypatch):
+        agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
+        agent._advance_resolution("vis dar neveikia")
+
+        facts = agent._state_facts_block() or ""
+        assert "PERSIGALVOJIMAS" in facts
+        agent._mark_step_presented()  # the reply carried it
+        assert agent.state.pivoted_from is None
+        assert "PERSIGALVOJIMAS" not in (agent._state_facts_block() or "")
 
 
 class TestClosing:

@@ -236,8 +236,9 @@ _CLIENT_SIDE = Strategy(
             hint=(
                 "Ask ONE short question and WAIT: does it fail on all devices or just "
                 "one? Do NOT reflect or guess their answer — never say 'girdžiu, "
-                "visuose' or 'telefone' until THEY said it. If you did not clearly hear "
-                "the answer, say 'Atsiprašau, neišgirdau' and ask the same again."
+                "visuose' or 'telefone' until THEY said it. If they say just ONE device "
+                "but do not name it, ask WHICH device ('Kuriame įrenginyje?') — never "
+                "assume a computer. If the answer was unclear, ask the same again."
             ),
             on={"all": "cs_reboot", "phone": "cs_wifi", "computer": "cs_conn"},
         ),
@@ -333,9 +334,180 @@ _CLIENT_SIDE = Strategy(
     ),
 )
 
+# B6 — the line is healthy but NO device is seen on it: the router is off, unplugged
+# or dead. Try power/cables first (cheapest), and if the router is really dead offer
+# the BRIDGE: the incoming cable straight into a computer + bind its MAC = temporary
+# internet on that one machine until they get a new router. A phone/tablet cannot take
+# a cable, so no computer -> register.
+_DEAD_ROUTER = Strategy(
+    verdict="no_mac_observed",
+    rag_doc="troubleshooting/internet_mires_routeris_tiltas",
+    steps=(
+        Step(
+            id="dr_intro",
+            kind=StepKind.CONFIRM,
+            detector="yes_no",
+            rag_section=0,  # "### Žingsnis 0: Paaiškinti, ką matome"
+            hint=(
+                "Do NOT start ordering them about. First explain what YOU can see and "
+                "what it likely means — the internet reaches the flat but the line does "
+                "not see their device, so it is usually no power, an unplugged cable, or "
+                "a dead router — and ASK whether it suits them to check it together now. "
+                "Wait for their answer. If they cannot (not home, busy), do not push: "
+                "offer to register the fault or to call back."
+            ),
+            on={"yes": "dr_lights", "no": "escalate"},
+        ),
+        Step(
+            id="dr_lights",
+            kind=StepKind.CONFIRM,
+            detector="lights",
+            rag_section=1,  # "### Žingsnis 1: Nuvesti prie routerio"
+            hint=(
+                "They agreed. First take them TO the device, then ask ONE thing: ask "
+                "them to find the router (the box the internet cable goes into) and, "
+                "once there, whether ANY light is lit. Do not guess the answer."
+            ),
+            on={"yes": "dr_cable", "no": "dr_power"},
+        ),
+        Step(
+            id="dr_power",
+            kind=StepKind.CONFIRM,
+            detector="lights",
+            rag_section=2,  # "### Žingsnis 2: Maitinimas ir kabelis"
+            hint=(
+                "No lights at all. ONE instruction, then wait: check the power lead is "
+                "firmly in the socket and in the router, try another socket — and ask "
+                "whether any light came on now."
+            ),
+            on={"yes": "dr_cable", "no": "dr_offer_bridge"},
+        ),
+        Step(
+            id="dr_cable",
+            kind=StepKind.INSTRUCT,
+            rag_section=2,
+            goto="dr_recheck",
+            hint=(
+                "It has power but the line does not see it. ONE instruction, then wait: "
+                "reseat the cable coming from the wall into the router's internet port "
+                "and say when done."
+            ),
+        ),
+        Step(
+            id="dr_recheck",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=8,  # "### Žingsnis 6: Patikrinti, ar atsirado internetas"
+            hint=(
+                "Ask whether the internet is back now. If yes -> resolved. If not, the "
+                "router is likely dead — move on to offering the temporary bridge."
+            ),
+            on={"yes": "resolve", "no": "dr_offer_bridge"},
+        ),
+        Step(
+            id="dr_offer_bridge",
+            kind=StepKind.CONFIRM,
+            detector="have_device",
+            rag_section=3,  # "### Žingsnis 3: Pasiūlyti laikiną tiltą"
+            hint=(
+                "The router looks dead. In ONE short sentence say so and ask whether "
+                "they have a computer — you could run the internet through it for now. "
+                "A COMPUTER IS ENOUGH: 'neturiu kito routerio, tik kompiuterį' is a YES. "
+                "Never tell them internet is impossible while they have a computer. "
+                "(A phone/tablet cannot take a cable.) 'I'll fetch it' is also a yes — "
+                "wait, do not re-ask."
+            ),
+            on={"yes": "dr_pick_cable", "no": "escalate"},
+        ),
+        Step(
+            id="dr_pick_cable",
+            kind=StepKind.INSTRUCT,
+            rag_section=4,  # "### Žingsnis 4a: Kurį kabelį imti"
+            goto="dr_plug_pc",
+            hint=(
+                "Make sure they take the RIGHT cable — this is where people go wrong. "
+                "ONE instruction, then wait: the cable that comes from the wall (the "
+                "provider's) and is now in the router's internet port — ask them to "
+                "unplug THAT one from the router and tell you when it is in their hand. "
+                "Not the power lead, not a cable between the router and a device."
+            ),
+        ),
+        Step(
+            id="dr_plug_pc",
+            kind=StepKind.INSTRUCT,
+            rag_section=5,  # "### Žingsnis 4b: Įkišti į kompiuterį"
+            goto="dr_see_device",
+            hint=(
+                "ONE instruction, then wait: plug that cable into the computer's network "
+                "socket (the one the same plug fits, on the back/side) until it clicks, "
+                "and say when done. If they say it does not fit or they cannot find it, "
+                "help with WHERE to look — do not move on."
+            ),
+        ),
+        Step(
+            id="dr_see_device",
+            kind=StepKind.VERIFY,
+            rag_section=6,  # "### Žingsnis 5: Ar matome įrenginį linijoje"
+            hint=(
+                "The engine re-reads the line to see whether the newly connected device "
+                "actually shows up. If it does NOT, the cable is in the wrong socket or "
+                "not seated — walk that back calmly, do not bind blindly."
+            ),
+        ),
+        Step(
+            id="dr_bind",
+            kind=StepKind.ACTION,
+            tools=frozenset({"update_mac"}),
+            tool_actions=("update_mac",),
+            rag_section=7,  # "### Žingsnis 6: Pririšti kompiuterį"
+            hint=(
+                "We can now SEE their computer on the line. The engine binds it silently "
+                "— you do NOT call the tool. Announce it: 'Matau jūsų kompiuterį "
+                "linijoje. Dabar pririšiu jį prie tinklo — turėtų atsirasti internetas. "
+                "Palaukite akimirką.' Do not ask yet if it works."
+            ),
+        ),
+        Step(
+            id="dr_verify",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=8,  # "### Žingsnis 7: Patikrinti, ar atsirado internetas"
+            hint=(
+                "Ask whether the internet is now up on that computer. If yes: say "
+                "plainly that this is TEMPORARY (that one computer only), that the "
+                "router is dead and needs replacing, and go register the fault for it. "
+                "If no -> register too. Either way the caller leaves with a registration."
+            ),
+            on={"yes": "dr_register_router", "no": "escalate"},
+        ),
+        Step(
+            id="dr_register_router",
+            kind=StepKind.ESCALATE,
+            tools=frozenset({"create_ticket"}),
+            hint=(
+                "The bridge works, but their router is dead. Register that ('gedimo "
+                "registracija' — sugedęs routeris, reikia keisti), tell them colleagues "
+                "will be in touch, and that once they have a new router they should call "
+                "so we bind it and the whole home works again."
+            ),
+        ),
+        Step(
+            id="escalate",
+            kind=StepKind.ESCALATE,
+            tools=frozenset({"create_ticket"}),
+            hint=(
+                "The bridge is not possible (no computer / cannot connect) or it did not "
+                "help. Register the fault ('gedimo registracija') and explain they will "
+                "likely need a new router; a worker calls the next business day."
+            ),
+        ),
+    ),
+)
+
 STRATEGIES: dict[str, Strategy] = {
     "foreign_mac": _FOREIGN_MAC,
     "healthy_to_router": _CLIENT_SIDE,
+    "no_mac_observed": _DEAD_ROUTER,
 }
 
 # Verdicts whose fix is a straight, branch-free, action-free sequence: give them a
@@ -466,6 +638,9 @@ _RESTORED_NO = (
     "nesat",
 )
 _RESTORED_YES = (
+    "taip",  # the plain answer to "ar internetas atsirado?" — was missing, so a
+    "aha",  # confirmed fix looked unanswered and ended in a needless ticket
+    "jo",
     "veikia",
     "atsirad",  # atsirado internetas
     "atsistat",  # ryšys atsistatė
@@ -496,7 +671,11 @@ def detect_restored(text: str | None) -> Outcome | None:
 # --- Client-side branch detectors (healthy_to_router) ------------------------
 # "all devices or one?" — and, when one, WHICH device, because a phone/tablet can
 # only be Wi-Fi (never suggest a cable to it).
-_ONE_PHONE = ("telefon", "planšet", "planset", "mobil", "išmanij", "ismanij", "tv", "televizor")
+_WIRELESS_ONLY = ("telefon", "planšet", "planset", "mobil", "išmanij", "ismanij")
+# Devices that answer "one device, and it is wireless". "tv" needs a word boundary
+# (see _TV_RE) or it fires inside words like "tvarkinga".
+_ONE_PHONE = (*_WIRELESS_ONLY, "televizor")
+_TV_RE = re.compile(r"\btv\b")
 _ONE_COMPUTER = ("kompiuter", "kompas", "nešiojam", "nesiojam", "laptop", "stacionar")
 _ONE_MARK = ("tik ", "viename", "vienam", "vien ", "tik vien")
 _ALL_MARK = ("visuose", "visur", "visuos", "visi ", "visų", "nei viename", "niekur")
@@ -509,28 +688,29 @@ def detect_scope(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _ONE_PHONE):
+    if any(m in low for m in _ONE_PHONE) or _TV_RE.search(low):
         return "phone"
     if any(m in low for m in _ONE_COMPUTER):
         return "computer"
     if any(m in low for m in _ALL_MARK):
         return "all"
-    if any(m in low for m in _ONE_MARK):
-        return "computer"  # "tik viename" without a named device -> ask conn (computer path)
+    # "tik viename" without naming the device: do NOT guess (guessing "computer" made
+    # the agent ask a phone user about cables). Stay and ask WHICH device.
     return None
 
 
 _CONN_WIRED = ("laid", "kabel", "eternet", "ethernet", "lan")
-_CONN_WIFI = ("wifi", "wi-fi", "vaifa", "vaifai", "belaid", "bevielis", "bevielis")
+_CONN_WIFI = ("wifi", "wi-fi", "wi fi", " wf", "vaifa", "vaifai", "belaid", "bevieli")
 
 
 def detect_conn(text: str | None) -> str | None:
     """Route "wired or Wi-Fi?". Returns 'wired', 'wifi', or None. Wi-Fi is tested
-    FIRST because "belaidis" (wireless) contains "laid"."""
+    FIRST because "belaidis" (wireless) contains "laid". A phone/tablet can only be
+    wireless, so naming one answers the question."""
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _CONN_WIFI):
+    if any(m in low for m in _CONN_WIFI) or any(m in low for m in _WIRELESS_ONLY):
         return "wifi"
     if any(m in low for m in _CONN_WIRED):
         return "wired"
@@ -557,6 +737,87 @@ def detect_port(text: str | None) -> str | None:
     return None
 
 
+# "Are any lights on?" — NO is tested first because "nedega" contains "dega".
+# STT mangles these badly ("nedega" -> "nedaga"/"neusidaga"), and a stuck detector
+# here made the agent repeat the same question six times. Keep the NO markers loose.
+_LIGHTS_NO = (
+    "nedega",
+    "nedaga",
+    "neusidaga",
+    "neužsidega",
+    "neuzsidega",
+    "neišdegė",
+    "neisdege",
+    "nešviečia",
+    "nesviecia",
+    "nemirksi",
+    "tamsu",
+    "jokių",
+    "jokia",
+    "niekas",
+    "vis tiek ne",
+    "negyv",
+)
+_LIGHTS_YES = ("dega", "šviečia", "sviecia", "mirksi", "užsidegė", "uzsidege", "žalia", "raudona")
+
+
+def detect_lights(text: str | None) -> str | None:
+    """Route "is any light on the router lit?". 'yes' / 'no' / None if unclear."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _LIGHTS_NO) or re.search(r"\bne\b", low):
+        return "no"
+    if any(m in low for m in _LIGHTS_YES):
+        return "yes"
+    return None
+
+
+_DEVICE_YES = (
+    "turiu",
+    "yra",
+    "kompiuter",
+    "nešiojam",
+    "nesiojam",
+    "router",
+    "atsineš",
+    "atsines",
+    "pajung",
+    "prijung",
+)
+
+
+_USABLE_DEVICE = ("kompiuter", "nešiojam", "nesiojam", "laptop", "router", "kompas")
+
+
+def detect_have_device(text: str | None) -> str | None:
+    """Route "do you have a computer / another router we could plug into?".
+
+    Read CLAUSE BY CLAUSE: "neturiu kito routerio, aš tik kompiuterį turiu" is a YES —
+    a computer is exactly what the bridge needs. Scanning the whole sentence for
+    "neturiu" answered NO and told the caller nothing could be done, with a usable
+    machine sitting right there."""
+    if not text:
+        return None
+    low = text.lower()
+    clauses = [c for c in re.split(r"[,;]| bet | tačiau ", low) if c.strip()]
+    saw_device_clause = False
+    for c in clauses:
+        if not any(d in c for d in _USABLE_DEVICE):
+            continue
+        saw_device_clause = True
+        if "neturiu" not in c and "nėra" not in c and not re.search(r"\bne\b", c):
+            return "yes"  # a device named without being denied — that is enough
+    if saw_device_clause:
+        return "no"  # every device they mentioned was denied
+    # No device named at all — fall back to a plain yes/no, denial first.
+    if any(m in low for m in _NEG) or "neturiu" in low or re.search(r"\bne\b", low):
+        return "no"
+    if any(m in low for m in _DEVICE_YES) or any(m in low for m in _POS):
+        return "yes"
+    return None
+
+
 def _yn(text: str | None) -> str | None:
     o = detect_yes_no(text)
     return o.value if o else None
@@ -575,6 +836,41 @@ DETECTORS = {
     "scope": detect_scope,
     "conn": detect_conn,
     "port": detect_port,
+    "lights": detect_lights,
+    "have_device": detect_have_device,
+}
+
+# What each detector's routing keys MEAN, in plain Lithuanian. The keys are abstract
+# (yes/no/all/phone…) so the LLM classifier cannot map a reply to them without knowing
+# the meaning — passing these glosses is what lets it pick "no" for "nedega jokia
+# lemputė" while refusing to force "yes" onto "susiradau routerį" (→ unclear, hold).
+DETECTOR_GLOSSES: dict[str, dict[str, str]] = {
+    "yes_no": {"yes": "sutinka / patvirtina / taip", "no": "atsisako / neigia / ne"},
+    "lights": {
+        "yes": "ant įrenginio dega bent viena lemputė",
+        "no": "nedega jokia lemputė",
+    },
+    "restored": {
+        "yes": "internetas dabar veikia / atsirado",
+        "no": "internetas vis dar neveikia",
+    },
+    "scope": {
+        "all": "neveikia visuose namų įrenginiuose",
+        "phone": "neveikia tik telefone ar planšetėje",
+        "computer": "neveikia tik kompiuteryje",
+    },
+    "conn": {
+        "wifi": "įrenginys jungiasi per WiFi (bevielį)",
+        "wired": "įrenginys jungiasi laidu",
+    },
+    "port": {
+        "wan": "kabelis įkištas į interneto (WAN) lizdą",
+        "lan": "kabelis įkištas į kitą (LAN) lizdą",
+    },
+    "have_device": {
+        "yes": "klientas turi kompiuterį arba kitą routerį",
+        "no": "klientas neturi jokio kito įrenginio",
+    },
 }
 
 
@@ -595,6 +891,117 @@ _FAREWELL = (
     "iki",
     "ate",
 )
+
+
+_CONFUSED = (
+    "nesuprantu",
+    "nesupratau",
+    "kas tai",
+    "kas tas",
+    "kas ta ",
+    "ką reiškia",
+    "ka reiskia",
+    "nesigaudau",
+    "nežinau kur",
+    "nezinau kur",
+    "nežinau kas",
+    "neišmanau",
+    "neismanau",
+    "nemoku",
+    "nesu tech",
+    "paaiškinkite",
+    "paaiskinkite",
+)
+
+
+# --- Turn intent -------------------------------------------------------------
+# What KIND of turn the caller just took. Only ANSWER and DONE may advance a step;
+# everything else holds the walker where it is. Without this every non-answer
+# ("einu prie routerio", "nesuprantu", "o kiek kainuos?") collapsed into "repeat the
+# question", and the agent ran ahead of the caller.
+INTENT_ANSWER = "answer"  # a real answer to what we asked -> route it
+INTENT_IN_PROGRESS = "in_progress"  # "einu / atsinešiu / tuoj" -> wait, do NOT check
+INTENT_DONE = "done"  # "padariau / įkišau" -> the action completed
+INTENT_QUESTION = "question"  # asking us something -> answer it, stay
+INTENT_CONFUSED = "confused"  # does not follow -> explain finer, stay
+INTENT_SILENCE = "silence"  # nothing usable -> wait, do not scold
+INTENT_UNKNOWN = "unknown"  # safe default: hold and ask, never advance
+
+_IN_PROGRESS = (
+    "einu",
+    "eisiu",
+    "nueisiu",
+    "atsineš",
+    "atsines",
+    "tuoj",
+    "tuojau",
+    "palauk",
+    "sekundėl",
+    "sekundel",
+    "minutėl",
+    "minutel",
+    "bandau",
+    "bandysiu",
+    "darau",
+    "darysiu",
+    "žiūriu",
+    "ziuriu",
+    "ieškau",
+    "iesk",
+    "einam",
+)
+_DONE = (
+    "padariau",
+    "padaryta",
+    "atlikau",
+    "įkišau",
+    "ikisau",
+    "įjungiau",
+    "ijungiau",
+    "išjungiau",
+    "isjungiau",
+    "perkroviau",
+    "perjungiau",
+    "ištraukiau",
+    "istraukiau",
+    "prijungiau",
+    "pajungiau",
+    "jau",
+    "gatava",
+    "viskas",
+)
+_QUESTION = ("kiek", "kodėl", "kodel", "kada", "ar galima", "o kaip", "kur ", "kuris")
+
+
+def detect_turn_intent(text: str | None) -> str:
+    """Classify the caller's turn before the walker routes it.
+
+    Deterministic on purpose (same reasoning as the step detectors): the model
+    phrases, the engine decides whether the conversation may move. Order matters —
+    confusion and questions are checked before completion words, because "nesuprantu,
+    ką padariau" is confusion, not a completed action."""
+    if not text or not text.strip():
+        return INTENT_SILENCE
+    low = text.lower()
+    if detect_confusion(low):
+        return INTENT_CONFUSED
+    if "?" in low or any(m in low for m in _QUESTION):
+        return INTENT_QUESTION
+    if any(m in low for m in _IN_PROGRESS):
+        return INTENT_IN_PROGRESS
+    if any(m in low for m in _DONE):
+        return INTENT_DONE
+    return INTENT_ANSWER
+
+
+def detect_confusion(text: str | None) -> bool:
+    """True when the caller signals they do not follow the technical wording ("kas tas
+    WAN?", "nesuprantu", "neišmanau"). Raises the clarity level for the rest of the
+    call so the agent explains in plain, visual words instead of repeating jargon."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _CONFUSED)
 
 
 def detect_farewell(text: str | None) -> bool:
