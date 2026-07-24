@@ -62,7 +62,8 @@ class SolverDecision(BaseModel):
     )
     next_action: str = Field(description=f"one of: {', '.join(ALLOWED_ACTIONS)}")
     narrator_instruction: str = Field(
-        description="what the narrator should say to the caller (LT), tone included"
+        description="the exact words to SAY to the caller now — natural spoken Lithuanian, "
+        "empathetic, plain, ONE thing at a time (spoken verbatim when the solver drives)"
     )
 
 
@@ -85,6 +86,14 @@ _SYSTEM = (
     "port UP + a device present, caller says 'nedega nei viena lemputė' → likely looking at "
     "the wrong box → disambiguate, do NOT declare the router dead.\n"
     "- Do not reject a hypothesis on one ambiguous reply — re-confirm first.\n"
+    "- disambiguate AT MOST ONCE per point. If you already re-confirmed the device/light in "
+    "an earlier turn (see POKALBIS), do NOT disambiguate again — TRUST the caller and move "
+    "on with the playbook. Physical-room facts (which box, cable seated, a light) are the "
+    "caller's to report; once they state one, believe it.\n"
+    "- BRIDGE: when the caller says they connected the cable to the computer (or that it "
+    "now works), that is your cue to propose_fix (bind the device) — do NOT keep re-checking. "
+    "Telemetry may still show no device until the bind runs; the caller's physical action is "
+    "authoritative here.\n"
     "- FOLLOW THE PROCEDŪRA (playbook) in the context to DRIVE the flow: pick the next "
     "action that moves it forward (instruct / ask / verify / propose_fix / escalate / "
     "close as the playbook dictates). disambiguate is ONLY for a genuine telemetry↔caller "

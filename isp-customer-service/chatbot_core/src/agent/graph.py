@@ -101,6 +101,17 @@ def build_turn_graph(engine: Any):
         # confirm connecting a device); after the reply, mark the question asked so a
         # plain yes/no advances next turn.
         engine.ensure_diagnosed()
+        # Phase 3.8 step 5a: for a piloted direction (behind SOLVER_DRIVE), the SOLVER runs
+        # the turn end-to-end and returns the reply; the walker + LLM narrator are skipped.
+        # None => not driving (flag off / other direction) => fall through to the walker.
+        driven = engine.solver_drive_turn(state.get("user_input"))
+        if driven is not None:
+            engine._active_node = "diagnosis"
+            engine.tracer.emit(
+                "node", node="diagnosis_solver", customer_id=engine.state.customer_id
+            )
+            get_stream_writer()(driven)
+            return {"reply": driven}
         engine._advance_resolution(state.get("user_input"))
         # Solver runs in SHADOW (Phase 3.8 step 2): logs its decision next to the
         # walker's move for comparison; never drives the reply. No-op unless

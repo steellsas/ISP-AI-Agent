@@ -806,12 +806,24 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
   resolving A); direction-NEUTRAL fillers only before the decision. Conflict matrix
   with **fact authority** (telemetry wins for line/session facts; client wins for
   physical-room facts).
-- [~] **5. Shadow mode on ONE direction (dead router / bridge)** — shadow BUILT (solver+gate log alongside the walker via SOLVER_SHADOW); cut-over pending. — splitter: walker
+- [~] **5. Shadow mode on ONE direction (dead router / bridge)** — shadow BUILT (solver+gate log alongside the walker via SOLVER_SHADOW); cut-over in progress. — splitter: walker
   (master) answers the caller; solver (shadow) decides in parallel, logged as a
   `shadow_decision` event in the existing `JsonlFileTracer` (not BigQuery). Cut-over
   when 100 real calls show 0 safety violations + auto agreement measured, with
   human/judge review of the disagreements (the valuable signal).
-- [ ] **6. Cut over the piloted direction, then widen** one fault at a time.
+  - [ ] **5a. Solver DRIVES one direction** (behind `SOLVER_DRIVE`, dead-router first):
+        the solver reads the RAG playbook + dialogue + FRESH telemetry, decides next_action,
+        the gate validates + executes safety actions by code, the narrator speaks
+        `narrator_instruction`. Fix context freshness (solve AFTER re-diagnose). Walker stays
+        default + for all other directions. Validate against the eval before widening.
+  - [ ] **5b. Detection semantics INTO the RAG** — each `### Žingsnis` lists its expected
+        answers so the classifier/solver reads "what to detect" from the playbook, not from
+        `DETECTOR_GLOSSES` / `step.on` in code. Endgame: a new fault / new step is a `.md`
+        edit only, no code.
+- [ ] **6. Widen** — cut over the remaining directions one fault at a time; retire the
+  walker steps for each as it goes. **North star: a UNIVERSAL solver that resolves any
+  fault exactly as the RAG domain knowledge instructs — the algorithm and the checks live
+  in the playbook, the engine only enforces safety + executes.**
 
 **Deferred dependencies (follow-up, not blocking):** async telemetry (<150 ms) +
 mid-turn TTS filler for the "speak-then-fetch" latency mask; `TRANSFER_TO_HUMAN`

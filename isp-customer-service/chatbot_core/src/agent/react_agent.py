@@ -1054,6 +1054,141 @@ class ReactAgent:
             logger.warning(f"shadow solver failed: {e}")
             self._trace_note("solver_shadow", str(e))
 
+    # --- Solver DRIVES (Phase 3.8 step 5a) -----------------------------------
+    # Behind SOLVER_DRIVE (default off), for the piloted directions only, the solver runs
+    # the turn: it reads the RAG playbook + dialogue + telemetry, decides the next action,
+    # the gate validates + the engine executes safety actions by code, and the reply is the
+    # solver's spoken text. The walker stays the default and handles every other direction.
+    _SOLVER_DRIVE_VERDICTS = frozenset({"no_mac_observed"})  # pilot: dead-router / bridge
+    _DRIVE_MAX_TURNS = 14  # hard bailout — never grind the caller forever
+
+    def solver_drive_turn(self, user_input: str | None) -> str | None:
+        """Solver-driven turn. Returns the reply text, or None to fall back to the walker
+        (flag off, no strategy, not a piloted direction, or a solver failure)."""
+        if os.getenv("SOLVER_DRIVE", "off").lower() != "on":
+            return None
+        r = self.state.resolution
+        if not r or self.state.case_closed:
+            return None
+        if r.get("verdict") not in self._SOLVER_DRIVE_VERDICTS:
+            return None
+        try:
+            reply = self._drive(user_input)
+        except Exception as e:  # a solver failure falls back to the walker (no bookkeeping yet)
+            logger.error(f"solver drive failed: {e}")
+            self._trace_note("solver_drive", str(e), level="error")
+            return None
+        # Committed to driving this turn — do the same end-of-turn bookkeeping the walker
+        # path gets from run_turn_scoped: user_turn trace, dialogue history (the solver reads
+        # it next turn), and the shared reply finalisation (case snapshot + agent_reply).
+        if user_input:
+            self.state.last_heard = user_input.strip()
+            self.tracer.emit("user_turn", text=user_input)
+            self.state.messages.append({"role": "user", "content": user_input})
+        self.state.messages.append({"role": "assistant", "content": reply})
+        self._finalize_reply(reply)
+        return reply
+
+    def _drive(self, user_input: str | None) -> str:
+        from .gate import DEFAULT_POLICY, gate
+        from .resolution import STRATEGIES, detect_turn_intent
+        from .solver import solve
+
+        self.state.last_intent = detect_turn_intent(user_input)
+        self._drive_turns = getattr(self, "_drive_turns", 0) + 1
+
+        # A few internal (silent) hops are allowed — reread/pivot re-read the line — before
+        # a client-facing action is forced. Hard turn cap escalates rather than looping.
+        for _ in range(DEFAULT_POLICY["internal_hops_max"] + 1):
+            decision = solve(self._build_solver_context(user_input), model=self.config.model)
+            conf = decision.confidence if decision else 0.0
+            self._solver_low_conf = (
+                self._solver_low_conf + 1 if conf < DEFAULT_POLICY["confidence_floor"] else 0
+            )
+            forced = self._drive_turns > self._DRIVE_MAX_TURNS
+            result = gate(
+                decision,
+                known_hypotheses=set(STRATEGIES),
+                low_conf_streak=self._solver_low_conf,
+                cycles_in_step=self._DRIVE_MAX_TURNS + 1 if forced else 0,
+                internal_hops=self._solver_internal_hops,
+            )
+            action = result.action
+            self.tracer.emit(
+                "drive_decision",
+                action=action,
+                accepted=result.accepted,
+                bailout=result.bailout,
+                reason=result.reason,
+                hypothesis=(decision.current_hypothesis if decision else None),
+                confidence=conf,
+            )
+            say = (decision.narrator_instruction if decision else "").strip()
+
+            if action in ("reread_telemetry", "pivot"):
+                self._solver_internal_hops += 1
+                self._refresh_diagnosis()  # re-read the line, then decide again
+                continue
+            self._solver_internal_hops = 0
+
+            if action == "propose_fix":
+                return self._drive_propose_fix(say)
+            if action == "escalate":
+                return self._drive_escalate(decision)
+            if action == "close":
+                self.state.case_closed = True
+                self.state.closed_reason = "resolved"
+                self._settle_hypothesis("confirmed", "sprendimas suveikė (solveris)")
+                return say or "Puiku, džiaugiuosi, kad sutvarkėme!"
+            # client-facing: ask / disambiguate / instruct / verify / wait
+            return say or "Atsiprašau, ar galėtumėte pakartoti?"
+        return "Sekundėlę — patikslinkim dar kartą."
+
+    def _refresh_diagnosis(self) -> None:
+        """Re-read the line so the solver reasons over CURRENT telemetry (fixes the stale-
+        snapshot issue). Keeps the active strategy; only refreshes the signals."""
+        self.state.diagnosis.pop("network", None)
+        self.ensure_diagnosed()
+
+    def _drive_propose_fix(self, say: str) -> str:
+        """Execute the bind the solver proposed (code, not the model). In the demo, reflect
+        the just-plugged device first (no-op in production / when SIMULATE_BRIDGE is off),
+        then bind + reset + re-diagnose via the existing augment path."""
+        cid = self.state.customer_id
+        self._simulate_bridge_connection()
+        try:
+            obs = execute_tool("update_mac", {"customer_id": cid})
+            self.tracer.emit("tool_call", name="update_mac", args={"customer_id": cid})
+            self._augment_tool_result("update_mac", obs)  # chains reset_port + re-diagnose
+        except Exception as e:
+            self._trace_note("drive_propose_fix", str(e), level="error")
+        return say or "Pririšau jūsų įrenginį — internetas turėtų atsirasti. Patikrinkite."
+
+    def _drive_escalate(self, decision) -> str:
+        """Register the fault (code) and close the case; the solver's text explains it."""
+        cid = self.state.customer_id
+        cause = (decision.current_hypothesis if decision else None) or "neišspręstas gedimas"
+        try:
+            obs = execute_tool(
+                "create_ticket",
+                {
+                    "customer_id": cid,
+                    "problem_type": "technician_visit",
+                    "problem_description": cause,
+                    "priority": "high",
+                },
+            )
+            self.tracer.emit("tool_call", name="create_ticket", args={"customer_id": cid})
+            self._trace_tool_result("create_ticket", obs)
+        except Exception as e:
+            self._trace_note("drive_escalate", str(e), level="error")
+        self.state.case_closed = True
+        self.state.closed_reason = "escalated"
+        say = (decision.narrator_instruction if decision else "").strip()
+        return (
+            say or "Užregistravau gedimą — mūsų darbuotojas su jumis susisieks. Ačiū už kantrybę."
+        )
+
     def _walk_resolution(self, user_input: str | None) -> None:
         """Generic step-by-step walker over the active strategy, from the caller's
         reply. Uniform for all fault types:
