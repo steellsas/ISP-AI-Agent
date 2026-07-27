@@ -233,6 +233,47 @@ class TestReactAgentEmits:
         assert len(ends) == 1
         assert ends[0]["outcome"] == "complete"
 
+    def test_end_session_emits_call_summary_from_state(self, db_connection):
+        """Phase 3.10: every call ends with a structured summary derived from state."""
+        cap = _CaptureTracer()
+        agent = self._agent(cap)
+        agent.state.problem_type = "internet_down"
+        agent.state.customer_id = "CUST105"
+        agent.state.customer_address = "Tilžės g. 60-7, Šiauliai"
+        agent.state.caller_name = "duktė Rasa"
+        agent.state.diagnosis["network"] = {"reason": "foreign_mac", "side": "customer"}
+        agent.state.closed_reason = "resolved"
+        cap.events.clear()
+
+        agent.end_session(outcome="complete")
+
+        summary = next(e for e in cap.events if e["type"] == "call_summary")
+        assert summary["purpose"] == "internet_down"
+        assert summary["customer_id"] == "CUST105"
+        assert summary["caller_name"] == "duktė Rasa"
+        assert summary["cause"] == "foreign_mac"
+        assert summary["side"] == "customer"
+        assert summary["outcome"] == "resolved"
+        assert summary["resolved"] is True
+        # No real trace file behind the capture tracer -> no actions harvested.
+        assert summary["actions"] == []
+        # call_summary is emitted BEFORE session_end (record then close).
+        types = [e["type"] for e in cap.events]
+        assert types.index("call_summary") < types.index("session_end")
+
+    def test_call_summary_actions_read_from_trace(self, db_connection, tmp_path):
+        """`actions` are the tool names actually executed, harvested from the JSONL."""
+        from adapters.tracing.jsonl_tracer import JsonlFileTracer
+        from agent.react_agent import ReactAgent
+
+        tracer = JsonlFileTracer("callsummary-test", trace_dir=tmp_path)
+        agent = ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
+        tracer.emit("tool_call", name="diagnose_connection", args={})
+        tracer.emit("tool_call", name="update_mac", args={})
+        tracer.emit("tool_call", name="diagnose_connection", args={})  # dedup
+
+        assert agent._tools_called_this_session() == ["diagnose_connection", "update_mac"]
+
     def test_reply_emits_case_snapshot(self, db_connection):
         """_reply emits a compact case snapshot for review (Pillar A2)."""
         cap = _CaptureTracer()

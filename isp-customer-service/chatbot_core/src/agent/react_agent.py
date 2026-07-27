@@ -2135,9 +2135,14 @@ class ReactAgent:
         if self._session_ended:
             return
         self._session_ended = True
+        # Structured OUTCOME of the call, built DETERMINISTICALLY from state (Phase 3.10):
+        # why they called, the cause + side, what ran, resolved?/ticket, who called. Emitted
+        # for the record/reports; DB persistence to the conversations table is a follow-up.
+        summary = self._build_call_summary()
+        self.tracer.emit("call_summary", **summary)
         self.tracer.emit(
             "session_end",
-            outcome=outcome,
+            outcome=outcome or summary.get("outcome"),
             customer_id=self.state.customer_id,
             ticket_id=self.state.ticket_id,
             turn_count=self.state.turn_count,
@@ -2149,6 +2154,48 @@ class ReactAgent:
         export = getattr(self.tracer, "export_txt", None)
         if callable(export):
             export()
+
+    def _build_call_summary(self) -> dict:
+        """The call's outcome, derived from state — the single source for the record and
+        (later) the ticket. No LLM, no new reasoning: it only reports what the engine knows.
+        `actions` come from the tool_calls in this session's trace."""
+        s = self.state
+        net = s.diagnosis.get("network") or {}
+        h = s.hypothesis or {}
+        cause = h.get("cause") or (s.resolution or {}).get("verdict") or net.get("reason")
+        return {
+            "purpose": s.problem_type,
+            "customer_id": s.customer_id,
+            "address": s.customer_address,
+            "caller_name": s.caller_name,
+            "cause": cause,
+            "side": net.get("side"),  # provider | customer | unclear
+            "outcome": s.closed_reason,  # resolved | outage | declined | escalated | None
+            "resolved": s.closed_reason == "resolved",
+            "ticket_id": s.ticket_id,
+            "actions": self._tools_called_this_session(),
+        }
+
+    def _tools_called_this_session(self) -> list[str]:
+        """Tool names actually executed this call, read from the session's own trace
+        (single source of truth; append-only, safe to read at end)."""
+        path = getattr(self.tracer, "path", None)
+        if not path:
+            return []
+        seen: list[str] = []
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+
+            for line in _Path(path).read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                e = _json.loads(line)
+                if e.get("type") == "tool_call" and e.get("name") and e["name"] not in seen:
+                    seen.append(e["name"])
+        except Exception:  # pragma: no cover - best-effort; the summary still emits
+            pass
+        return seen
 
     def _execute_tool_calls(self, message: Any) -> list[dict]:
         """Echo the assistant tool-call message, run each tool through the gate,

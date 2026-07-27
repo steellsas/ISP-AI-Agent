@@ -58,7 +58,6 @@ class AgentState:
     preflight_outage: dict[str, Any] | None = None
 
     # Caller information (populated after customer confirms)
-    caller_name: str | None = None  # Actual caller's name
     address_confirmed: bool = False
 
     # Active resolution strategy (agent/resolution.py): {"verdict", "step"} once a

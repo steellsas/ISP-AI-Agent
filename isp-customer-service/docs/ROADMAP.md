@@ -928,12 +928,19 @@ below are built DETERMINISTICALLY from state, not from LLM free text.
       was done / what could NOT be done from state (verdict + purpose + actions + escalate
       reason). Also HARDENS the create_ticket bug we hit (LLM invented `equipment_replacement`)
       — the type comes from the verdict, not the model's wording.
-- [ ] **Persist a call record at session_end.** The `conversations` table already exists
+- [~] **Persist a call record at session_end.** The `conversations` table already exists
       (`session_id, customer_id, messages, outcome, summary, ticket_id, duration_seconds`) —
       write a structured summary there when the call ends: {purpose, cause + side,
       actions taken, resolved? / why not, ticket_id, **caller_name** if asked}. Emit a
       `call_summary` trace event too. The caller's name (state.caller_name — who was on the
       phone, not the account holder) is recorded here, never used to gate identity.
+      - [x] **Slice 1a — structured `call_summary` trace event.** `end_session` now builds
+            the summary DETERMINISTICALLY from state (`_build_call_summary`) and emits it
+            before `session_end`: purpose, cause, side, outcome, resolved?, ticket_id,
+            caller_name, and `actions` (tool names harvested from this call's own trace via
+            `_tools_called_this_session`). Rendered in the .txt export; tested (test_tracing).
+      - [ ] **Slice 1b — persist to the `conversations` table.** Add a CRM adapter
+            `save_conversation`; call it from `end_session` with the same summary + transcript.
 - [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
       reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
 

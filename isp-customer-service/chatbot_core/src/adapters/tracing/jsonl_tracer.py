@@ -244,6 +244,17 @@ class JsonlFileTracer:
                             f"   ~ asr={e.get('asr_ms')} agent={e.get('agent_ms')} "
                             f"tts={e.get('tts_ms')} total={e.get('total_ms')}ms"
                         )
+                    elif t == "call_summary":
+                        lines.append(
+                            f"=== SUMMARY purpose={e.get('purpose')} "
+                            f"cause={e.get('cause')} side={e.get('side')} "
+                            f"outcome={e.get('outcome')} resolved={e.get('resolved')}"
+                        )
+                        lines.append(
+                            f"          customer={e.get('customer_id')} "
+                            f"caller={e.get('caller_name')} ticket={e.get('ticket_id')} "
+                            f"actions={e.get('actions')}"
+                        )
                     elif t == "session_end":
                         lines.append(
                             f"--- end: {e.get('outcome')} customer={e.get('customer_id')} "
