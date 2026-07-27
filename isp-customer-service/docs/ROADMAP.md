@@ -826,10 +826,20 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
         WHICH signals to gather (`verdict.gather_signals`) and the telemetry→cause
         interpretation (`verdict.decide`) — needed only when a NEW fault needs new signals,
         so deferred behind Phase 3.9.
-  - [ ] **5d. Identification as knowledge** — what to ask, in what order, how to handle a
-        correction / a different address / a family member lives in a file, not the prompt
-        body. (The GUARDS stay code: identity gate, "apartment never from the DB", street
-        must match what was said — security boundaries must not depend on editable text.)
+  - [~] **5d. Identification as knowledge** — the procedure wording is already a file
+        (`prompts/partials/identification.md`); the DIRECTION knobs now live in
+        `agent/knowledge/identification.yaml` (`identification.py` loader, fail-soft):
+        `offer_phone_address`, `require_apartment`, and `extra_questions` — so adding an
+        extra verification question (e.g. the caller's name) is a file edit (it injects a
+        guidance line). Defaults = today's behaviour (eval 16/16, no regression). GUARDS
+        stay code: identity gate, "apartment never from the DB", street-must-match.
+        **Decision (2026-07): the caller's name is NOT verified.** We serve the contract
+        holder AND family / tenants / a neighbour or friend helping out, and we make no
+        contract changes, so a name mismatch is expected and fine — no name-match guard
+        (that would wrongly reject legitimate callers). The name is captured into
+        `state.caller_name` (distinct from the account `customer_name`) purely for the call
+        record / history — wired in Phase 3.10, never compared. (Optional later: move the
+        procedure prose into structured steps for per-step editing.)
   - [ ] **5e. Call-flow policy — separate conversation ORDER from action gating.** Today
         `graph.route()` hard-codes identify-first because diagnosis needs identity. Split
         the two: the router reads a declarative flow (`policy.yaml` / per-problem) —
@@ -921,7 +931,9 @@ below are built DETERMINISTICALLY from state, not from LLM free text.
 - [ ] **Persist a call record at session_end.** The `conversations` table already exists
       (`session_id, customer_id, messages, outcome, summary, ticket_id, duration_seconds`) —
       write a structured summary there when the call ends: {purpose, cause + side,
-      actions taken, resolved? / why not, ticket_id}. Emit a `call_summary` trace event too.
+      actions taken, resolved? / why not, ticket_id, **caller_name** if asked}. Emit a
+      `call_summary` trace event too. The caller's name (state.caller_name — who was on the
+      phone, not the account holder) is recorded here, never used to gate identity.
 - [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
       reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
 

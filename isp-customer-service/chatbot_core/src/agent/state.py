@@ -32,8 +32,15 @@ class AgentState:
 
     # Customer information (populated after find_customer)
     customer_id: str | None = None
-    customer_name: str | None = None  # Name from CRM (may differ from caller)
+    customer_name: str | None = None  # Name from CRM (the ACCOUNT holder)
     customer_address: str | None = None
+
+    # Who is actually ON THE PHONE — captured only for the call record / history, NEVER
+    # compared to the account name (we serve the holder AND family / tenants / a helper, so
+    # a mismatch is expected). The address is the identity anchor, not this. Set when the
+    # `name` extra question is enabled (identification.yaml); consumed by the call record
+    # (Phase 3.10).
+    caller_name: str | None = None
 
     # Pre-flight phone lookup result (the caller's number, resolved at the start
     # of the call). UNCONFIRMED — a candidate the agent offers for the caller to
