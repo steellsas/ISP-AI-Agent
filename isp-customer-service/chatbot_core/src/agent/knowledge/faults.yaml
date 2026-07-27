@@ -230,8 +230,8 @@ faults:
         Wait for their answer. If they cannot (not home, busy), do not push: offer to register the fault
         or to call back.'
       answers:
-        'yes': sutinka dabar kartu patikrinti (patogu, gali)
-        'no': negali arba nenori dabar tikrinti (ne namie, nepatogu)
+        'yes': sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)
+        'no': AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas
     - id: dr_lights
       kind: confirm
       detector: lights
