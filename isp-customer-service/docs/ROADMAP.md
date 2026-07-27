@@ -901,6 +901,37 @@ resolve *flawlessly and entirely from the engine* first, so a new fault is genui
 **Done:** the no-internet fault is reliable end-to-end from files on the engine; adding the
 next fault touches only `faults.yaml` + a playbook + seed + an eval scenario.
 
+---
+
+## Phase 3.10 — Call outcomes: structured ticket + call record from STATE
+
+**Why now (structural):** as the engine matures, capture the OUTCOME of every call so we can
+build client history, reports, improve the agent, and diagnose faults faster. The key
+insight: the outcome is already in STATE — `problem_type` (why they called), `resolution`
+/ `hypothesis` (the cause determined + which side, provider/client), the trace's tool_calls
+(what was done), `closed_reason` (resolved / ticket / inform / declined). So both artefacts
+below are built DETERMINISTICALLY from state, not from LLM free text.
+
+- [ ] **Ticket from state, not free text.** Populate the ticket's fault type / cause / what
+      was done / what could NOT be done from state (verdict + purpose + actions + escalate
+      reason). Also HARDENS the create_ticket bug we hit (LLM invented `equipment_replacement`)
+      — the type comes from the verdict, not the model's wording.
+- [ ] **Persist a call record at session_end.** The `conversations` table already exists
+      (`session_id, customer_id, messages, outcome, summary, ticket_id, duration_seconds`) —
+      write a structured summary there when the call ends: {purpose, cause + side,
+      actions taken, resolved? / why not, ticket_id}. Emit a `call_summary` trace event too.
+- [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
+      reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
+
+**Boundary:** the summary/ticket builder is deterministic 🔒 (reads state); the summary
+WORDING template is 📚. No new call reasoning — it only RECORDS what the engine already
+knows. Infra mostly exists (table + state fields); this wires it at the session seam.
+
+**Design note for the ongoing migration:** keep `problem_type`, `hypothesis`/`resolution`
+and `closed_reason` clean and complete in STATE — they are the single source for both the
+ticket and the call record. Anything moved to knowledge must still leave the OUTCOME
+legible in state.
+
 **Deferred dependencies (follow-up, not blocking):** async telemetry (<150 ms) +
 mid-turn TTS filler for the "speak-then-fetch" latency mask; `TRANSFER_TO_HUMAN`
 (only `create_ticket` exists now); variant B (merge solver+narrator) only if latency
