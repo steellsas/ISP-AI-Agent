@@ -923,6 +923,21 @@ below are built DETERMINISTICALLY from state, not from LLM free text.
 - [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
       reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
 
+**Ticketing is a CALL-ENDING outcome, in ONE node (design decision 2026-07).** A ticket is
+never created mid-troubleshooting — it is always part of wrapping up: either "couldn't
+solve → ticket + close" or "solved temporarily → follow-up ticket + close" (the bridge).
+So:
+- Strategies/diagnosis only DECIDE the outcome into state (`resolved` / `cant_solve` +
+  reason / `provider_fault` / `inform`); they do NOT create the ticket.
+- A single OUTCOME/closing node reads the outcome and, when needed, registers the ticket
+  DETERMINISTICALLY from state, then closes. `create_ticket` stops being an LLM-callable
+  tool mid-strategy — which also removes the premature/freelance-ticket failure (3.9 B #2).
+- A provider-side fault diagnosed with no resolution to attempt goes straight to this node
+  (ticket or inform, then close).
+- **(Later) ticket-confirmation dialogue:** collecting/confirming details with the caller
+  before filing — contact phone, extra info — is its own small dialogue, added when we
+  refine ticket registration; keep the outcome node ready for it.
+
 **Boundary:** the summary/ticket builder is deterministic 🔒 (reads state); the summary
 WORDING template is 📚. No new call reasoning — it only RECORDS what the engine already
 knows. Infra mostly exists (table + state fields); this wires it at the session seam.
