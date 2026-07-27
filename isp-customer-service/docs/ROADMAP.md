@@ -885,11 +885,13 @@ resolve *flawlessly and entirely from the engine* first, so a new fault is genui
       telemetry↔caller re-confirm (#8) works and self-correction works. Infra: 30/min rate
       limit corrupts multi-persona runs — actor retries, but proper fuzzing needs a higher
       limit or pacing.
-- [ ] **B. Fix what fuzzing found** — scoped to the dead-router/bridge direction:
-      (1) make INSTRUCT-step advancement classifier-aware (a clear "I did it" must advance,
-      like CONFIRM), (2) do not escalate the dead router before the bridge is offered/tried
-      when a device is available. Other directions unchanged. Plus contract #9/#10
-      (refocus, temporal contradiction) as fuzzing surfaces them.
+- [x] **B. Fix what fuzzing found** — dead-router/bridge, both root causes:
+      (1) INSTRUCT-step advancement is now classifier-aware, so a messy "jau įkišau"
+      advances instead of freezing dr_plug_pc (`_classify_instruct_and_advance`); (2) the
+      real #2 was dr_intro escalating on a messy/engaged reply misread as `no` — sharpened
+      its answer meanings in faults.yaml so engagement → hold/proceed and only a CLEAR
+      decline → escalate (a FILE edit). Eval 16/16, S4 binds reliably. Contract #9/#10
+      (refocus, temporal contradiction) still open — fold into C as fuzzing surfaces them.
 - [ ] **C. Solver-drive to reliable** — reach `propose_fix` reliably, stop lingering on
       `disambiguate`; extend the pilot to the other no-internet directions once each passes
       the fuzzing eval in shadow. Decide walker-retirement per direction on the numbers.
