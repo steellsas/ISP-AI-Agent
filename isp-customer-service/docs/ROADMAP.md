@@ -826,10 +826,16 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
         WHICH signals to gather (`verdict.gather_signals`) and the telemetry→cause
         interpretation (`verdict.decide`) — needed only when a NEW fault needs new signals,
         so deferred behind Phase 3.9.
-  - [ ] **5d. Identification as knowledge** — what to ask, in what order, how to handle a
-        correction / a different address / a family member lives in a file, not the prompt
-        body. (The GUARDS stay code: identity gate, "apartment never from the DB", street
-        must match what was said — security boundaries must not depend on editable text.)
+  - [~] **5d. Identification as knowledge** — the procedure wording is already a file
+        (`prompts/partials/identification.md`); the DIRECTION knobs now live in
+        `agent/knowledge/identification.yaml` (`identification.py` loader, fail-soft):
+        `offer_phone_address`, `require_apartment`, and `extra_questions` — so adding an
+        extra verification question (e.g. the caller's name) is a file edit (it injects a
+        guidance line). Defaults = today's behaviour (eval 16/16, no regression). GUARDS
+        stay code: identity gate, "apartment never from the DB", street-must-match.
+        **Follow-up (5d.2):** ENFORCING an extra question (e.g. the stated name must equal
+        the account name) is a code guard, not just a knob; and moving the procedure prose
+        itself into structured steps if we want per-step editing.
   - [ ] **5e. Call-flow policy — separate conversation ORDER from action gating.** Today
         `graph.route()` hard-codes identify-first because diagnosis needs identity. Split
         the two: the router reads a declarative flow (`policy.yaml` / per-problem) —

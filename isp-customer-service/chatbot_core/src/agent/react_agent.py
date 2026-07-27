@@ -498,8 +498,11 @@ class ReactAgent:
         def _fits(said, mine) -> bool:
             return not said or str(said).lower() == str(mine or "").lower()
 
+        from .identification import extra_questions_guidance, offer_phone_address
+
         if (
-            not s.customer_id
+            offer_phone_address()
+            and not s.customer_id
             and not s.preflight_outage
             and s.phone_candidate
             and s.phone_candidate.get("street")
@@ -522,6 +525,12 @@ class ReactAgent:
         # DB-grounded verdict on the accumulated address (set in the prefill).
         if self._db_address_note and not s.customer_id:
             facts.append(self._db_address_note)
+        # Extra verification questions declared in identification.yaml (e.g. the name),
+        # asked while still identifying. Empty by default → nothing added.
+        if not s.customer_id:
+            extra = extra_questions_guidance()
+            if extra:
+                facts.append(extra)
         if s.customer_id:
             facts.append(f"- Customer ID: {s.customer_id}")
         if s.customer_name:

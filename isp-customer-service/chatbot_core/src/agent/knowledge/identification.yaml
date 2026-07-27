@@ -1,0 +1,30 @@
+# Identification policy — DECLARATIVE knobs, not code (Phase 3.8 step 5d).
+#
+# The identification PROCEDURE wording lives in prompts/partials/identification.md; the
+# DIRECTION knobs a dev changes live here, so tuning identification (or adding an extra
+# verification question) is a file edit. The engine reads these and reflects them in the
+# identification guidance; the GUARDS stay in code and are NOT configurable here:
+#   - technical tools blocked until identity is verified (tool gate),
+#   - the apartment is never filled in from the DB (anti address-probing),
+#   - a phone-fallback account's street must match what the caller said.
+# Security boundaries must not depend on editable text.
+
+identification:
+  # Offer the caller's registered address FIRST (the number is already tied to it, so it
+  # reveals nothing new and skips STT-fragile dictation). false → always ask them to state it.
+  offer_phone_address: true
+
+  # Require the apartment to disambiguate a block of flats. The apartment is still NEVER
+  # taken from the DB — it must be spoken; this only says whether it is needed at all.
+  require_apartment: true
+
+  # EXTRA verification the agent asks + confirms before proceeding. Empty = address only.
+  # Add e.g. [name] to make identification also confirm the contract name; [name, contact_phone]
+  # to also collect a callback number. The WORDING is in `questions` below.
+  # NOTE: asking is behavioural (this file); ENFORCING a match (e.g. the name must equal the
+  # account name) is a code guard — a follow-up (5d.2), not just a knob.
+  extra_questions: []
+
+  questions:
+    name: "Ir dar patikslinsiu — kokiu vardu registruota sutartis?"
+    contact_phone: "Kokiu numeriu geriausia su jumis susisiekti, jei nutrūktų ryšys?"
