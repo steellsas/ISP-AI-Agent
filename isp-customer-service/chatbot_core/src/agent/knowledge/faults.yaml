@@ -1,0 +1,349 @@
+# Fault knowledge — DECLARATIVE, not code (Phase 3.8 step 5b/5c).
+#
+# A new fault should be an entry HERE + a playbook .md + seed data + an eval scenario.
+# Two sections, because they answer two different questions:
+#
+#   problems: — the call's PURPOSE, i.e. what the CALLER reports ("neveikia" vs "lėtai").
+#               `triggers` are matched against the utterance; ORDER MATTERS (a more
+#               specific problem must come before a broader one).
+#   faults:   — a CAUSE the telemetry can reach, and how to resolve it:
+#               `problem`   which reported problem it explains
+#               `playbook`  the RAG doc holding each step's WORDING
+#               `steps`     the procedure: id, kind, detector, routing (`on`), rag_section,
+#                           the LLM hint, and `answers` = what each routing key MEANS
+#                           (what the classifier must detect in the caller's reply).
+#
+# The engine keeps SAFETY: which actions may run, the identity gate, executing a
+# bind/ticket/close. Knowledge says what to do; code guarantees what cannot be done.
+# A missing/broken entry is fail-soft — the engine falls back to its in-code defaults.
+
+problems:
+  internet_slow:
+    triggers:
+    - lėtas
+    - lėtai
+    - lėta
+    - stringa
+    - lūžinėja
+    - buferiuoja
+  tv:
+    triggers:
+    - televizij
+    - televizor
+    - ' tv'
+    - kanalai
+    - kanalų
+  billing:
+    triggers:
+    - sąskait
+    - mokė
+    - skola
+    - kaina
+    - tarif
+  internet_down:
+    triggers:
+    - internet
+    - ryši
+    - ryšys
+    - neveikia
+    - nėra interneto
+    - wifi
+    - wi-fi
+faults:
+  foreign_mac:
+    problem: internet_down
+    playbook: troubleshooting/internet_pakeistas_routeris_mac
+    steps:
+    - id: confirm_change
+      kind: confirm
+      rag_section: 0
+      'on':
+        'yes': bind_mac
+        'no': cable_check
+      hint: 'Tell the caller plainly that the line shows a new/other device and that is why there is no
+        internet, then ask whether they recently changed or connected a device — a new router, or a PC/TV
+        plugged straight into the line (a valid temporary bridge). If YES -> we bind it. If they changed
+        NOTHING -> do NOT escalate: the line cable reaches their own flat, so the device is almost certainly
+        theirs; move on to checking how the cable is plugged (next step).'
+      answers:
+        'yes': klientas keitė routerį arba prijungė naują įrenginį
+        'no': klientas nieko nekeitė ir nieko naujo neprijungė
+    - id: cable_check
+      kind: confirm
+      detector: port
+      rag_section: 1
+      'on':
+        wan: bind_mac
+        lan: cable_reconnect
+      hint: 'The caller changed nothing, so the foreign/jumping MAC is usually a mis-plugged cable. Ask
+        ONE thing and WAIT: which port is the incoming provider cable in — the Internet/WAN port (usually
+        separate, labelled ''Internet'' or ''WAN''), or another (LAN) port? Ask by port FUNCTION, not
+        colour. Do NOT conclude ''teisingas lizdas'' until they clearly say WAN or LAN; if unclear, ask
+        again — do not rush.'
+      answers:
+        wan: kabelis įkištas į interneto (WAN) lizdą
+        lan: kabelis įkištas į kitą (LAN) lizdą
+    - id: cable_reconnect
+      kind: instruct
+      rag_section: 2
+      hint: 'The cable is in the wrong (yellow LAN) port. Give ONE instruction and wait: unplug it and
+        plug it into the blue WAN port, and say when done. Do NOT suggest rebooting — it changes nothing
+        if the cable is misplugged.'
+    - id: bind_mac
+      kind: action
+      rag_section: 3
+      tools:
+      - update_mac
+      tool_actions:
+      - update_mac
+      hint: 'The engine binds the device silently — you do NOT call the tool. Announce it naturally: ''Dabar
+        pririšiu jūsų naujai matomą įrenginį — turėtų atsirasti internetas. Palaukite akimirką.'' Do NOT
+        ask yet whether it works — that is the next step.'
+    - id: confirm_restored
+      kind: confirm
+      rag_section: 4
+      hint: The device is ALREADY bound. ASK whether the internet is back now ('ar internetas jau atsirado?')
+        and wait. Do NOT say you 'will' bind, do NOT say it is 'not yet bound', do NOT re-explain that
+        another device is on the line — that is done. Do NOT declare it fixed yourself. If not yet, reassure
+        it may take a minute or two and ask them to check again.
+    - id: client_side
+      kind: confirm
+      detector: restored
+      rag_section: 5
+      'on':
+        'yes': resolve
+        'no': escalate
+      hint: The provider side is restored (telemetry OK) but the caller still has no internet, so the
+        fault is INSIDE their home — Wi-Fi off, device settings, or the cable to the device. Guide ONE
+        simple client-side check (restart the device, check Wi-Fi is on, try a cable straight into the
+        device) and ask if it works now. If yes -> resolved; if not -> register the fault.
+      answers:
+        'yes': internetas dabar veikia
+        'no': internetas vis dar neveikia
+    - id: escalate
+      kind: escalate
+      tools:
+      - create_ticket
+      hint: Binding did not restore the line (or the in-home checks did not help). Register the fault
+        for a technician check ('gedimo registracija') — a worker will call the next business day.
+  healthy_to_router:
+    problem: internet_down
+    playbook: troubleshooting/kliento_puse_internetas
+    steps:
+    - id: cs_scope
+      kind: confirm
+      detector: scope
+      rag_section: 0
+      'on':
+        all: cs_reboot
+        phone: cs_wifi
+        computer: cs_conn
+      hint: 'Ask ONE short question and WAIT: does it fail on all devices or just one? Do NOT reflect
+        or guess their answer — never say ''girdžiu, visuose'' or ''telefone'' until THEY said it. If
+        they say just ONE device but do not name it, ask WHICH device (''Kuriame įrenginyje?'') — never
+        assume a computer. If the answer was unclear, ask the same again.'
+      answers:
+        all: neveikia visuose namų įrenginiuose
+        phone: neveikia tik telefone ar planšetėje
+        computer: neveikia tik kompiuteryje
+    - id: cs_reboot
+      kind: instruct
+      rag_section: 1
+      goto: cs_verify_all
+      hint: 'All devices are down -> the cheapest, highest-yield fix first: ask them to reboot the router
+        (unplug from the socket 10 seconds, plug back in, wait for the lights) and to tell you when it
+        is back. ONE instruction.'
+    - id: cs_verify_all
+      kind: confirm
+      detector: restored
+      rag_section: 2
+      'on':
+        'yes': resolve
+        'no': escalate
+      hint: Ask whether the internet works now. If yes -> resolved. If not, it is beyond simple self-service
+        (router/DNS/config) -> register the fault.
+      answers:
+        'yes': po perkrovimo internetas veikia
+        'no': po perkrovimo internetas vis tiek neveikia
+    - id: cs_conn
+      kind: confirm
+      detector: conn
+      rag_section: 3
+      'on':
+        wired: cs_cable
+        wifi: cs_wifi
+      hint: Only ONE computer is affected. Ask whether that computer connects by cable or by Wi-Fi. Wait.
+      answers:
+        wired: įrenginys prijungtas laidu
+        wifi: įrenginys jungiasi per WiFi (bevielį)
+    - id: cs_cable
+      kind: instruct
+      rag_section: 4
+      goto: cs_verify_dev
+      hint: 'Wired computer: ask them to check the cable between router and computer — pushed in fully
+        (a click), not damaged — and reseat it. Tell you when done. ONE instruction. (Do NOT mention cables
+        for a phone/tablet — that branch never reaches here.)'
+    - id: cs_wifi
+      kind: instruct
+      rag_section: 5
+      goto: cs_wifi2
+      hint: 'Wi-Fi device (phone/tablet/laptop): ask them to check Wi-Fi is ON and that they are connected
+        to THEIR OWN network (not a neighbour''s). ONE thing, wait.'
+    - id: cs_wifi2
+      kind: instruct
+      rag_section: 6
+      goto: cs_verify_dev
+      hint: 'Next Wi-Fi step: ask them to ''forget'' the network and reconnect with the password (watch
+        upper/lowercase), then restart the device. Tell you when done. ONE instruction.'
+    - id: cs_verify_dev
+      kind: confirm
+      detector: restored
+      rag_section: 7
+      'on':
+        'yes': resolve
+        'no': escalate
+      hint: Ask whether it works now on that device. Yes -> resolved. No -> it is beyond simple help (device
+        settings/drivers) -> register the fault.
+      answers:
+        'yes': tame įrenginyje internetas dabar veikia
+        'no': tame įrenginyje internetas vis tiek neveikia
+    - id: escalate
+      kind: escalate
+      tools:
+      - create_ticket
+      hint: The simple self-service steps did not help — the fault is deeper (router/DNS/config/device).
+        Register it ('gedimo registracija'); a worker will call the next business day.
+  no_mac_observed:
+    problem: internet_down
+    playbook: troubleshooting/internet_mires_routeris_tiltas
+    steps:
+    - id: dr_intro
+      kind: confirm
+      detector: yes_no
+      rag_section: 0
+      'on':
+        'yes': dr_lights
+        'no': escalate
+      hint: 'Do NOT start ordering them about. First explain what YOU can see and what it likely means
+        — the internet reaches the flat but the line does not see their device, so it is usually no power,
+        an unplugged cable, or a dead router — and ASK whether it suits them to check it together now.
+        Wait for their answer. If they cannot (not home, busy), do not push: offer to register the fault
+        or to call back.'
+      answers:
+        'yes': sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)
+        'no': AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas
+    - id: dr_lights
+      kind: confirm
+      detector: lights
+      rag_section: 1
+      'on':
+        'yes': dr_cable
+        'no': dr_power
+      hint: 'They agreed. First take them TO the device, then ask ONE thing: ask them to find the router
+        (the box the internet cable goes into) and, once there, whether ANY light is lit. Do not guess
+        the answer.'
+      answers:
+        'yes': ant routerio dega bent viena lemputė
+        'no': nedega nė viena lemputė
+    - id: dr_power
+      kind: confirm
+      detector: lights
+      rag_section: 2
+      'on':
+        'yes': dr_cable
+        'no': dr_offer_bridge
+      hint: 'No lights at all. ONE instruction, then wait: check the power lead is firmly in the socket
+        and in the router, try another socket — and ask whether any light came on now.'
+      answers:
+        'yes': patikrinus maitinimą lemputės užsidegė
+        'no': net ir patikrinus maitinimą / kitą rozetę lemputės vis tiek nedega
+    - id: dr_cable
+      kind: instruct
+      rag_section: 2
+      goto: dr_recheck
+      hint: 'It has power but the line does not see it. ONE instruction, then wait: reseat the cable coming
+        from the wall into the router''s internet port and say when done.'
+    - id: dr_recheck
+      kind: confirm
+      detector: restored
+      rag_section: 8
+      'on':
+        'yes': resolve
+        'no': dr_offer_bridge
+      hint: Ask whether the internet is back now. If yes -> resolved. If not, the router is likely dead
+        — move on to offering the temporary bridge.
+      answers:
+        'yes': internetas atsirado po kabelio patikrinimo
+        'no': internetas vis tiek neatsirado
+    - id: dr_offer_bridge
+      kind: confirm
+      detector: have_device
+      rag_section: 3
+      'on':
+        'yes': dr_pick_cable
+        'no': escalate
+      hint: 'The router looks dead. In ONE short sentence say so and ask whether they have a computer
+        — you could run the internet through it for now. A COMPUTER IS ENOUGH: ''neturiu kito routerio,
+        tik kompiuterį'' is a YES. Never tell them internet is impossible while they have a computer.
+        (A phone/tablet cannot take a cable.) ''I''ll fetch it'' is also a yes — wait, do not re-ask.'
+      answers:
+        'yes': klientas turi kompiuterį arba kitą routerį, kurį galima prijungti
+        'no': klientas neturi jokio kito įrenginio (tik telefoną)
+    - id: dr_pick_cable
+      kind: instruct
+      rag_section: 4
+      goto: dr_plug_pc
+      hint: 'Make sure they take the RIGHT cable — this is where people go wrong. ONE instruction, then
+        wait: the cable that comes from the wall (the provider''s) and is now in the router''s internet
+        port — ask them to unplug THAT one from the router and tell you when it is in their hand. Not
+        the power lead, not a cable between the router and a device.'
+    - id: dr_plug_pc
+      kind: instruct
+      rag_section: 5
+      goto: dr_see_device
+      hint: 'ONE instruction, then wait: plug that cable into the computer''s network socket (the one
+        the same plug fits, on the back/side) until it clicks, and say when done. If they say it does
+        not fit or they cannot find it, help with WHERE to look — do not move on.'
+    - id: dr_see_device
+      kind: verify
+      rag_section: 6
+      hint: The engine re-reads the line to see whether the newly connected device actually shows up.
+        If it does NOT, the cable is in the wrong socket or not seated — walk that back calmly, do not
+        bind blindly.
+    - id: dr_bind
+      kind: action
+      rag_section: 7
+      tools:
+      - update_mac
+      tool_actions:
+      - update_mac
+      hint: 'We can now SEE their computer on the line. The engine binds it silently — you do NOT call
+        the tool. Announce it: ''Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo — turėtų
+        atsirasti internetas. Palaukite akimirką.'' Do not ask yet if it works.'
+    - id: dr_verify
+      kind: confirm
+      detector: restored
+      rag_section: 8
+      'on':
+        'yes': dr_register_router
+        'no': escalate
+      hint: 'Ask whether the internet is now up on that computer. If yes: say plainly that this is TEMPORARY
+        (that one computer only), that the router is dead and needs replacing, and go register the fault
+        for it. If no -> register too. Either way the caller leaves with a registration.'
+      answers:
+        'yes': prijungtame kompiuteryje internetas dabar veikia
+        'no': prijungtame kompiuteryje interneto vis tiek nėra
+    - id: dr_register_router
+      kind: escalate
+      tools:
+      - create_ticket
+      hint: The bridge works, but their router is dead. Register that ('gedimo registracija' — sugedęs
+        routeris, reikia keisti), tell them colleagues will be in touch, and that once they have a new
+        router they should call so we bind it and the whole home works again.
+    - id: escalate
+      kind: escalate
+      tools:
+      - create_ticket
+      hint: The bridge is not possible (no computer / cannot connect) or it did not help. Register the
+        fault ('gedimo registracija') and explain they will likely need a new router; a worker calls the
+        next business day.

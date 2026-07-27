@@ -811,19 +811,143 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
   `shadow_decision` event in the existing `JsonlFileTracer` (not BigQuery). Cut-over
   when 100 real calls show 0 safety violations + auto agreement measured, with
   human/judge review of the disagreements (the valuable signal).
-  - [ ] **5a. Solver DRIVES one direction** (behind `SOLVER_DRIVE`, dead-router first):
-        the solver reads the RAG playbook + dialogue + FRESH telemetry, decides next_action,
-        the gate validates + executes safety actions by code, the narrator speaks
-        `narrator_instruction`. Fix context freshness (solve AFTER re-diagnose). Walker stays
-        default + for all other directions. Validate against the eval before widening.
-  - [ ] **5b. Detection semantics INTO the RAG** — each `### Žingsnis` lists its expected
-        answers so the classifier/solver reads "what to detect" from the playbook, not from
-        `DETECTOR_GLOSSES` / `step.on` in code. Endgame: a new fault / new step is a `.md`
-        edit only, no code.
+  - [x] **5a. Solver DRIVES one direction** (behind `SOLVER_DRIVE`, dead-router first):
+        the solver reads the playbook + dialogue + telemetry, decides next_action, the gate
+        validates + executes safety actions by code, the narrator speaks
+        `narrator_instruction`. Walker stays default + for all other directions.
+        *Mechanism done + measured (eval `tool_used`); decision-quality tuning (reliably
+        reach propose_fix, less disambiguate) is ongoing — see Phase 3.9.*
+  - [x] **5b. Detection semantics INTO the knowledge** — each step's `answers` in
+        `knowledge/faults.yaml` give the classifier what to detect; `DETECTOR_GLOSSES`
+        is the fallback. Equivalence-guarded.
+  - [~] **5c. Purpose + procedure + signals per fault** — PURPOSE (`problems.triggers`)
+        and the full PROCEDURE (`faults.<v>.steps`) now come from the manifest
+        (`get_strategy` / `classify_problem` read it, code is fallback). **Still code:**
+        WHICH signals to gather (`verdict.gather_signals`) and the telemetry→cause
+        interpretation (`verdict.decide`) — needed only when a NEW fault needs new signals,
+        so deferred behind Phase 3.9.
+  - [ ] **5d. Identification as knowledge** — what to ask, in what order, how to handle a
+        correction / a different address / a family member lives in a file, not the prompt
+        body. (The GUARDS stay code: identity gate, "apartment never from the DB", street
+        must match what was said — security boundaries must not depend on editable text.)
+  - [ ] **5e. Call-flow policy — separate conversation ORDER from action gating.** Today
+        `graph.route()` hard-codes identify-first because diagnosis needs identity. Split
+        the two: the router reads a declarative flow (`policy.yaml` / per-problem) —
+        `identify: before_diagnosis | at_action | none` — so the agent can go PROBLEM-FIRST
+        (understand + classify, discuss causes) and ask for identity only WHEN a technical
+        action needs it. The safety FLOOR is unchanged and stays code: the gate still blocks
+        every diagnostic/mutation tool until identity is verified, and "apartment never from
+        the DB" holds — the policy only reorders the CONVERSATION, never relaxes a guard.
+        Enables: problem-first flow, per-problem identity depth (billing vs a technical
+        fault), extra verification questions (name) declared alongside 5d.
+
+  **Target artefacts (the "no code for a new fault" contract):**
+  - `agent/faults/faults.yaml` — per fault: `id`, `purpose_triggers`, `playbook` (the RAG
+    doc), `steps` (each with its routing keys + plain-language MEANING = what to detect),
+    `signals` to gather, `allowed_actions`.
+  - `rag/knowledge_base/troubleshooting/<fault>.md` — the WORDING (`### Žingsnis N`).
+  - `policy.yaml` — who may be served, thresholds, per-stage tools.
+  - **Stays code:** tool implementations, telemetry reads, the gate//guard ENFORCEMENT,
+    executing bind/ticket/close. Knowledge says WHAT to do; code guarantees what CANNOT be
+    done. A new fault = a manifest entry + a playbook + seed + an eval scenario; a new
+    physical capability (e.g. a speed test) still adds a tool once.
 - [ ] **6. Widen** — cut over the remaining directions one fault at a time; retire the
   walker steps for each as it goes. **North star: a UNIVERSAL solver that resolves any
   fault exactly as the RAG domain knowledge instructs — the algorithm and the checks live
   in the playbook, the engine only enforces safety + executes.**
+
+---
+
+## Phase 3.9 — Perfect ONE fault as the universal template ("nėra interneto")
+
+**Decision (2026-07):** do NOT add new faults yet. Make the single "no internet" fault
+resolve *flawlessly and entirely from the engine* first, so a new fault is genuinely just
+"plug new files onto a proven engine". Widening (step 6, slow-internet, TV…) comes after.
+
+**What "perfect" means (acceptance):**
+- Every no-internet direction resolves correctly: `foreign_mac`, `healthy_to_router`,
+  `no_mac_observed` (+ bridge), and the inform paths (billing, outage, link-down).
+- Robust to REAL messy speech, not just clean scripted turns (STT noise, mixed intent,
+  the caller jumping ahead).
+- Actions actually RUN (bind / reset / ticket / close), measured by `tool_used` — no
+  "said it, didn't do it".
+- The same unhurried, human consultation in every direction (contract + bridging).
+
+**Plan (ordered):**
+- [x] **A. Fuzzing eval (LLM-actor).** `agent/eval/fuzz.py` — an LLM plays personas from
+      `fuzz_personas.json` over each no-internet direction. **Findings:** client-side and
+      foreign_mac are ROBUST under messy speech; only **dead-router / bridge is fragile** —
+      two paths to the same failure (the bridge never binds, `update_mac` never runs):
+      (1) an INSTRUCT step freezes on a messy done-signal ("Gerai, jau įkišau" read as
+      in_progress by the keyword turn-intent — the classifier fix covered CONFIRM only);
+      (2) on digression / a half-said "registruokit" the agent ESCALATES to a ticket
+      without offering the bridge though the caller has a computer. Positive: the
+      telemetry↔caller re-confirm (#8) works and self-correction works. Infra: 30/min rate
+      limit corrupts multi-persona runs — actor retries, but proper fuzzing needs a higher
+      limit or pacing.
+- [x] **B. Fix what fuzzing found** — dead-router/bridge, both root causes:
+      (1) INSTRUCT-step advancement is now classifier-aware, so a messy "jau įkišau"
+      advances instead of freezing dr_plug_pc (`_classify_instruct_and_advance`); (2) the
+      real #2 was dr_intro escalating on a messy/engaged reply misread as `no` — sharpened
+      its answer meanings in faults.yaml so engagement → hold/proceed and only a CLEAR
+      decline → escalate (a FILE edit). Eval 16/16, S4 binds reliably. Contract #9/#10
+      (refocus, temporal contradiction) still open — fold into C as fuzzing surfaces them.
+- [ ] **C. Solver-drive to reliable** — reach `propose_fix` reliably, stop lingering on
+      `disambiguate`; extend the pilot to the other no-internet directions once each passes
+      the fuzzing eval in shadow. Decide walker-retirement per direction on the numbers.
+- [ ] **D. (Enables widening) interpretation + signals → knowledge** — move
+      `verdict.gather_signals` (which signals) and `verdict.decide` (telemetry→cause) behind
+      the manifest, so the LAST code-bound pieces of a fault definition become files. Only
+      needed to make step 6 "files only"; do it once no-internet is solid.
+
+**Done:** the no-internet fault is reliable end-to-end from files on the engine; adding the
+next fault touches only `faults.yaml` + a playbook + seed + an eval scenario.
+
+---
+
+## Phase 3.10 — Call outcomes: structured ticket + call record from STATE
+
+**Why now (structural):** as the engine matures, capture the OUTCOME of every call so we can
+build client history, reports, improve the agent, and diagnose faults faster. The key
+insight: the outcome is already in STATE — `problem_type` (why they called), `resolution`
+/ `hypothesis` (the cause determined + which side, provider/client), the trace's tool_calls
+(what was done), `closed_reason` (resolved / ticket / inform / declined). So both artefacts
+below are built DETERMINISTICALLY from state, not from LLM free text.
+
+- [ ] **Ticket from state, not free text.** Populate the ticket's fault type / cause / what
+      was done / what could NOT be done from state (verdict + purpose + actions + escalate
+      reason). Also HARDENS the create_ticket bug we hit (LLM invented `equipment_replacement`)
+      — the type comes from the verdict, not the model's wording.
+- [ ] **Persist a call record at session_end.** The `conversations` table already exists
+      (`session_id, customer_id, messages, outcome, summary, ticket_id, duration_seconds`) —
+      write a structured summary there when the call ends: {purpose, cause + side,
+      actions taken, resolved? / why not, ticket_id}. Emit a `call_summary` trace event too.
+- [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
+      reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
+
+**Ticketing is a CALL-ENDING outcome, in ONE node (design decision 2026-07).** A ticket is
+never created mid-troubleshooting — it is always part of wrapping up: either "couldn't
+solve → ticket + close" or "solved temporarily → follow-up ticket + close" (the bridge).
+So:
+- Strategies/diagnosis only DECIDE the outcome into state (`resolved` / `cant_solve` +
+  reason / `provider_fault` / `inform`); they do NOT create the ticket.
+- A single OUTCOME/closing node reads the outcome and, when needed, registers the ticket
+  DETERMINISTICALLY from state, then closes. `create_ticket` stops being an LLM-callable
+  tool mid-strategy — which also removes the premature/freelance-ticket failure (3.9 B #2).
+- A provider-side fault diagnosed with no resolution to attempt goes straight to this node
+  (ticket or inform, then close).
+- **(Later) ticket-confirmation dialogue:** collecting/confirming details with the caller
+  before filing — contact phone, extra info — is its own small dialogue, added when we
+  refine ticket registration; keep the outcome node ready for it.
+
+**Boundary:** the summary/ticket builder is deterministic 🔒 (reads state); the summary
+WORDING template is 📚. No new call reasoning — it only RECORDS what the engine already
+knows. Infra mostly exists (table + state fields); this wires it at the session seam.
+
+**Design note for the ongoing migration:** keep `problem_type`, `hypothesis`/`resolution`
+and `closed_reason` clean and complete in STATE — they are the single source for both the
+ticket and the call record. Anything moved to knowledge must still leave the OUTCOME
+legible in state.
 
 **Deferred dependencies (follow-up, not blocking):** async telemetry (<150 ms) +
 mid-turn TTS filler for the "speak-then-fetch" latency mask; `TRANSFER_TO_HUMAN`

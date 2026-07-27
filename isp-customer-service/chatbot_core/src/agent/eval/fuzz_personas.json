@@ -1,0 +1,33 @@
+{
+  "_doc": "Adversarial fuzzing personas (Phase 3.9 A). An LLM plays each caller — messy, colloquial, sometimes unsure — over a fault, driven by `ground_truth` so the caller stays CONSISTENT with a real situation (except the 'contradictory' persona, which slips on purpose to test re-confirmation). This stresses the no-internet directions with realistic speech the clean Golden Dataset never exercises; the point is to FIND where the agent breaks. `expect` is the correct outcome given the ground truth.",
+  "personas": [
+    {
+      "id": "dead_router_messy",
+      "phone": "+37060012353",
+      "persona": "Vyresnio amžiaus žmogus, kalba paprastai ir nerišliai, painioja terminus, nemoka techninių žodžių, kartais nukrypsta į pašalines temas (oras, kaimynas). Nori kad internetas veiktų.",
+      "ground_truth": "Skambini dėl Vilniaus g. 29. Routeris NEDEGA nė viena lemputė. Jau bandei kitą rozetę — vis tiek nedega. Kito routerio NETURI, bet TURI kompiuterį. Sutinki daryti ką sako. Prijungus kompiuterį internetas atsiranda.",
+      "expect": { "verdict_in": "no_mac_observed", "tool_used": ["update_mac"] }
+    },
+    {
+      "id": "dead_router_contradicts",
+      "phone": "+37060012353",
+      "persona": "Skuba, atsako greitai ir nedėmesingai, todėl KARTĄ suklysta ir pasako priešingai nei yra, o kai agentas pasitikslina — pataiso. Testuojam ar agentas persiklausia, o ne aklai eina toliau.",
+      "ground_truth": "Skambini dėl Vilniaus g. 29. Routeris NEDEGA. BET vieną kartą per klaidą pasakysi kad 'dega žalia', o kai agentas nustebs / pasitikslins ('sakot dega, bet mūsų sistema...'), pataisysi: 'ai ne, atsiprašau, NEDEGA, supainiojau'. Turi kompiuterį, kito routerio ne.",
+      "expect": { "verdict_in": "no_mac_observed" }
+    },
+    {
+      "id": "client_side_phone",
+      "phone": "+37060020109",
+      "persona": "Įprastas klientas, kalba normaliai, bet ne visada tiksliai atsako iš pirmo karto.",
+      "ground_truth": "Skambini dėl Žeimių g. 12, butas 6. Internetas neveikia TIK telefone; kompiuteryje viskas gerai. Jungiesi per WiFi. Po to kai agentas paprašo pamiršti tinklą ir prisijungti iš naujo — pradeda veikti.",
+      "expect": { "verdict_in": "healthy_to_router", "disposition": "resolved" }
+    },
+    {
+      "id": "foreign_mac_changed",
+      "phone": "+37060020105",
+      "persona": "Kalba rišliai, bet iš pradžių nemini kad keitė routerį — pasako tik kai agentas paklausia.",
+      "ground_truth": "Skambini dėl Tilžės g. 60, butas 7. Prieš savaitę pakeitei routerį į naują (senas sugedo). Kai agentas pririša įrenginį — internetas atsiranda.",
+      "expect": { "verdict_in": "foreign_mac", "disposition": "resolved" }
+    }
+  ]
+}

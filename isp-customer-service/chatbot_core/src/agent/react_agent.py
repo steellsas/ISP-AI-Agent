@@ -1242,6 +1242,17 @@ class ReactAgent:
         ):
             if self._classify_confirm_and_route(step, strat, user_input):
                 return
+        # ASKED INSTRUCT: the LLM classifier decides done-vs-still-doing, so a clear "I did
+        # it" phrased messily ("Gerai, jau įkišau") advances even when the keyword
+        # turn-intent reads it as in_progress and freezes the step (observed: dr_plug_pc
+        # froze, the bridge never bound). Keyword intent gate below stays the fallback.
+        if (
+            step.kind is StepKind.INSTRUCT
+            and r.get("asked")
+            and os.getenv("CLASSIFIER", "on").lower() != "off"
+        ):
+            if self._classify_instruct_and_advance(step, strat, user_input):
+                return
         # What KIND of turn was this? Only a real answer or a completed action may move
         # the conversation. "Einu prie routerio", a question, confusion or silence all
         # HOLD the step — the agent responds to them instead of running ahead.
@@ -1259,16 +1270,7 @@ class ReactAgent:
         # presented last turn — to an explicit goto if set, else the next step in order.
         if step.kind in (StepKind.INSTRUCT, StepKind.ACTION):
             if r.get("asked"):
-                self._route_to(r, step.goto or next_step_id(strat, step.id, None))
-                # An engine-owned VERIFY needs no caller input — resolve it NOW so the
-                # same reply can act on the reading instead of asking a dead question.
-                if r.get("step") == "dr_see_device":
-                    # The caller just confirmed plugging the PC into the wall cable. In the
-                    # demo the mock DB won't change on its own, so (behind SIMULATE_BRIDGE)
-                    # reflect that physical action before we read the line — otherwise the
-                    # bridge could never VERIFY. Production sees the real device instead.
-                    self._simulate_bridge_connection()
-                    self._advance_see_device(r)
+                self._advance_instruct(r, step, strat)
             return
         if step.kind != StepKind.CONFIRM:
             return
@@ -1296,13 +1298,21 @@ class ReactAgent:
         advances the walker (overriding a brittle keyword turn-intent); anything unsure
         returns False → the keyword detector + intent gate handle it. Sensor only."""
         from .classifier import classify_step
+        from .faults import step_options
         from .resolution import DETECTOR_GLOSSES, next_step_id
 
         detector_name = step.detector or "yes_no"
+        # WHAT TO DETECT comes from the fault definition first (knowledge/faults.yaml —
+        # per-step, so it can be worded precisely for THIS check), falling back to the
+        # generic per-detector glosses in code. A reworded check is a file edit, not code.
+        declared = step_options((self.state.resolution or {}).get("verdict"), step.id)
         glosses = DETECTOR_GLOSSES.get(detector_name, {})
-        # {routing key -> plain-language meaning} so the classifier chooses by MEANING,
-        # not by the abstract key name; unglossed keys fall back to the key itself.
-        options = {str(k): glosses.get(str(k), str(k)) for k in step.on}
+        options: dict[str, str] = {}
+        for raw in step.on:
+            # Some steps key `on` by the Outcome enum — str(Outcome.YES) is "Outcome.YES",
+            # so take .value to get the real routing key ("yes") the classifier must return.
+            key = str(getattr(raw, "value", raw))
+            options[key] = (declared or {}).get(key) or glosses.get(key, key)
         question = self._last_agent_question() or step.hint or ""
         obs = classify_step(question, user_input or "", options, model=self.config.model)
         if obs is None:
@@ -1326,6 +1336,53 @@ class ReactAgent:
             self.state.step_confusions = 0
             self.state.last_intent = "answer"
             self._route_to(self.state.resolution, next_step_id(strat, step.id, obs.label))
+            return True
+        return False
+
+    def _advance_instruct(self, r: dict, step, strat) -> None:
+        """Advance a presented INSTRUCT/ACTION step to its goto (or the next step in order).
+        Shared by the keyword path and the classifier gate. The dr_see_device VERIFY is
+        engine-owned, so resolve it in the SAME turn (reflect the plug-in in the demo, then
+        read the line) instead of asking a dead question."""
+        from .resolution import next_step_id
+
+        self._route_to(r, step.goto or next_step_id(strat, step.id, None))
+        if r.get("step") == "dr_see_device":
+            self._simulate_bridge_connection()
+            self._advance_see_device(r)
+
+    def _classify_instruct_and_advance(self, step, strat, user_input: str | None) -> bool:
+        """Classifier-led advancement for an asked INSTRUCT step: did the caller actually
+        DO it, or are they still doing it / asking? A confident 'done' advances even when
+        the keyword turn-intent misreads a messy done-signal as in_progress. Anything else
+        returns False → the keyword intent gate decides. Sensor only."""
+        from .classifier import classify_step
+
+        options = {
+            "done": "klientas atliko / jau padarė tai, ko buvo prašyta",
+            "waiting": "klientas dar daro, ruošiasi, ką tik pradėjo, klausia arba nesupranta",
+        }
+        question = self._last_agent_question() or step.hint or ""
+        obs = classify_step(question, user_input or "", options, model=self.config.model)
+        if obs is None:
+            return False
+        done = obs.label == "done" and obs.confidence >= 0.5
+        self.tracer.emit(
+            "classify",
+            detector="instruct_done",
+            step=step.id,
+            label=obs.label,
+            is_answer=obs.is_answer,
+            confidence=obs.confidence,
+            text=user_input,
+            routed_by=("classifier" if done else "keyword"),
+        )
+        if done:
+            self.state.awaiting = None
+            self.state.awaiting_turns = 0
+            self.state.step_confusions = 0
+            self.state.last_intent = "done"
+            self._advance_instruct(self.state.resolution, step, strat)
             return True
         return False
 

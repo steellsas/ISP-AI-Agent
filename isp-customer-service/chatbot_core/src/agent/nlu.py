@@ -158,7 +158,19 @@ _PROBLEM_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 
 def classify_problem(text: str) -> str | None:
-    """Best-effort problem type from the utterance (keyword match), or None."""
+    """Best-effort problem type (the call's PURPOSE) from the utterance, or None.
+
+    Prefers the DECLARATIVE triggers in `knowledge/faults.yaml` — so adding a problem
+    ("lėtai veikia") is a file edit — and falls back to the table below when the manifest
+    does not match or cannot be read."""
+    try:
+        from .faults import classify_purpose
+
+        declared = classify_purpose(text)
+        if declared:
+            return declared
+    except Exception:  # pragma: no cover - defensive; never break extraction
+        pass
     low = f" {(text or '').lower()} "
     for problem, keywords in _PROBLEM_KEYWORDS:
         if any(kw in low for kw in keywords):

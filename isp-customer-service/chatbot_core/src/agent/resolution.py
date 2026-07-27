@@ -1019,8 +1019,23 @@ def detect_farewell(text: str | None) -> bool:
 
 def get_strategy(verdict: str | None) -> Strategy | None:
     """The strategy for a diagnosis verdict reason, or None if unhandled (the
-    caller falls back to the generic instruct/inform flow)."""
-    return STRATEGIES.get(verdict or "")
+    caller falls back to the generic instruct/inform flow).
+
+    Prefers the DECLARATIVE definition in `knowledge/faults.yaml` — so changing a
+    procedure (or adding a fault) is a file edit, not a code change — and falls back to
+    the in-code registry below whenever the manifest does not declare it or fails to
+    build. Imported lazily to keep the module free of a cycle."""
+    if not verdict:
+        return None
+    try:
+        from .faults import build_strategy
+
+        declared = build_strategy(verdict)
+        if declared is not None:
+            return declared
+    except Exception:  # pragma: no cover - defensive; manifest must never break a call
+        pass
+    return STRATEGIES.get(verdict)
 
 
 def verify_target(strategy: Strategy, fixed: bool) -> str | None:
