@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
+import time
 from pathlib import Path
 
 _EVAL_DIR = Path(__file__).resolve().parent
@@ -63,18 +65,24 @@ def _actor_reply(persona: str, ground_truth: str, transcript: list[tuple[str, st
         f"instrukcijos. Kai agentas aiškiai IŠSPRENDĖ arba UŽBAIGĖ pokalbį (atsisveikino), "
         f"atsakyk tik vienu žodžiu: {_END}"
     )
-    try:
-        out = llm_completion(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": f"Pokalbis iki šiol:\n{convo}\n\nTavo replika:"},
-            ],
-            temperature=0.7,
-            max_tokens=60,
-        )
-        return (out or "").strip().strip('"')
-    except Exception as e:
-        return f"<<ACTOR ERROR: {e}>>"
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"Pokalbis iki šiol:\n{convo}\n\nTavo replika:"},
+    ]
+    # The actor shares the provider's rate limit with the agent's own calls; on a
+    # rate-limit error wait the suggested time and retry, so a run does not die at turn 0.
+    for _ in range(3):
+        try:
+            out = llm_completion(messages=messages, temperature=0.7, max_tokens=60)
+            return (out or "").strip().strip('"')
+        except Exception as e:
+            msg = str(e)
+            if "rate limit" in msg.lower():
+                m = re.search(r"(\d+(?:\.\d+)?)\s*s", msg)
+                time.sleep(min(float(m.group(1)) + 1, 30) if m else 5)
+                continue
+            return f"<<ACTOR ERROR: {e}>>"
+    return f"<<ACTOR ERROR: rate limited: {msg}>>"
 
 
 def _run(persona: dict) -> dict:

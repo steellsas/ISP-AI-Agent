@@ -874,11 +874,22 @@ resolve *flawlessly and entirely from the engine* first, so a new fault is genui
 - The same unhurried, human consultation in every direction (contract + bridging).
 
 **Plan (ordered):**
-- [ ] **A. Fuzzing eval (LLM-actor).** An LLM plays varied personas ("irate senior,
-      non-standard Lithuanian, mislabels the lights, jumps ahead") over each no-internet
-      direction. This DEFINES the fix list — every gap this session was "eval too clean".
-- [ ] **B. Fix what fuzzing finds** — mostly manifest `answers` / playbook wording /
-      classifier tuning (file-level), code only where a real gap needs it.
+- [x] **A. Fuzzing eval (LLM-actor).** `agent/eval/fuzz.py` — an LLM plays personas from
+      `fuzz_personas.json` over each no-internet direction. **Findings:** client-side and
+      foreign_mac are ROBUST under messy speech; only **dead-router / bridge is fragile** —
+      two paths to the same failure (the bridge never binds, `update_mac` never runs):
+      (1) an INSTRUCT step freezes on a messy done-signal ("Gerai, jau įkišau" read as
+      in_progress by the keyword turn-intent — the classifier fix covered CONFIRM only);
+      (2) on digression / a half-said "registruokit" the agent ESCALATES to a ticket
+      without offering the bridge though the caller has a computer. Positive: the
+      telemetry↔caller re-confirm (#8) works and self-correction works. Infra: 30/min rate
+      limit corrupts multi-persona runs — actor retries, but proper fuzzing needs a higher
+      limit or pacing.
+- [ ] **B. Fix what fuzzing found** — scoped to the dead-router/bridge direction:
+      (1) make INSTRUCT-step advancement classifier-aware (a clear "I did it" must advance,
+      like CONFIRM), (2) do not escalate the dead router before the bridge is offered/tried
+      when a device is available. Other directions unchanged. Plus contract #9/#10
+      (refocus, temporal contradiction) as fuzzing surfaces them.
 - [ ] **C. Solver-drive to reliable** — reach `propose_fix` reliably, stop lingering on
       `disambiguate`; extend the pilot to the other no-internet directions once each passes
       the fuzzing eval in shadow. Decide walker-retirement per direction on the numbers.
