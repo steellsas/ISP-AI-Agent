@@ -196,3 +196,52 @@ routeris/tiltas).
 - **Žmogaus perjungimas** (`TRANSFER_TO_HUMAN`) — dabar tik `create_ticket`.
 Šie reikalingi #2 latencijos saugikliui ir pilnam bailout'ui; iki tol — loop cap + ticket.
 ```
+
+---
+
+## Agento elgesio kontraktas (mąstantis agentas)
+
+Kaip agentas turi elgtis SPRĘSDAMAS — nepriklausomai nuo gedimo. Tikslas: **mąstantis
+agentas, kurio kryptis (kaip/kada elgtis) lengvai keičiama per domeno žinias.** Kiekvienas
+elgesys turi aiškią vietą, kur nustatomas — todėl derinimas yra failo redagavimas.
+
+| # | Elgesys | Kur nustatoma | Būsena |
+|---|---|---|---|
+| 1 | **Suprasti KODĖL skambina** (kokia problema) | `problems.triggers` manifeste + klasifikatorius | ✅ |
+| 2 | **Išsiaiškinti priežastis** (telemetrija + dialogas) | verdict + solverio hipotezė/žinios | ✅ (interpretacija dar kode) |
+| 3 | **Pašalinti priežastį, jei gali** | `propose_fix`→bind/reset (vykdo kodas) | ✅ |
+| 4 | **Mąstyti garsiai + paaiškinti KĄ tikrina ir KODĖL** — klientas iškart supranta ką ir kokiu tikslu | `consultation.md` 1–3 + solverio `narrator_instruction` | ✅ |
+| 5 | **Paaiškinti priežastį** — kodėl nėra paslaugos / kodėl dabar negali padėti | `consultation.md` 4 + inform playbook'ai | ✅ |
+| 6 | **Vienodas tempas, viena mintis** | `consultation.md` 5 | ✅ |
+| 7 | **Tiltelis keičiant įtarimą** („kadangi minėjote X, tikrinam Y") | `consultation.md` 6 | ✅ |
+| 8 | **Telemetrija ↔ klientas prieštaravimas → persiklausti** | `consultation.md` 7 + conflict matrix (fakto autoritetas) | ✅ |
+| 9 | **Grąžinti prie esmės, kai klientas nukrypsta** | *(NAUJA — pridėti į kontraktą + solverio veiksmą)* | ⏳ |
+| 10 | **Laikinis prieštaravimas** — klientas anksčiau sakė X, dabar Y → „sakėte X, dabar Y — kaip iš tikrųjų?" | *(NAUJA — kontraktas + solveris skaito dialogo istoriją)* | ⏳ |
+
+### 9. Grąžinimas prie esmės (NAUJA)
+Kai klientas nukrypsta (kalba apie kitą dalyką, klausia nesusijusio), agentas **mandagiai
+patvirtina, tada grąžina** prie dabartinio žingsnio: „Suprantu. Grįžkim prie interneto —
+ar dega lemputė?" Solverio veiksmas: naujas `redirect`/`refocus` (arba `ask` su tokia
+instrukcija). Nenutraukia grubiai, bet ir nenuklysta kartu.
+
+### 10. Laikinis prieštaravimas — klientas ↔ klientas laike (NAUJA, svarbu)
+Skiriasi nuo #8 (telemetrija↔klientas). Čia klientas PATS prieštarauja sau tarp ėjimų:
+- **Situacijos skiriasi:** (a) suklydo, tada pataisė teisingai; (b) sakė teisingai, tada
+  supainiojo; (c) tikra būsena pasikeitė (perkrovė → dabar dega). Agentas NEŽINO kurios.
+- **Elgesys:** NEsirinkti tyliai. Persiklausti aiškiai: **„Prieš tai sakėte, kad nedega, o
+  dabar sakote, kad dega — kaip yra dabar?"** Tada tikėti paskutiniu PATVIRTINTU atsakymu.
+- **Iš kur agentas tai mato:** solveris jau gauna `POKALBIS IKI ŠIOL` (dialogo istoriją) —
+  reikia taisyklės, kad jis LYGINTŲ dabartinį atsakymą su ankstesniu tuo pačiu klausimu ir,
+  radęs neatitikimą, rinktųsi `disambiguate`/`ask` (ne aklai keliautų toliau).
+- Klasifikatorius jau turi `internally_inconsistent` (viename sakinyje); ČIA reikia
+  **tarp-ėjimų** nuoseklumo (dialogo istorijoje).
+
+### Kur tai gyvena (santrauka)
+- **Ką sakyti / tonas / persiklausimo formuluotės** → `consultation.md` (📚, lengvai keiti).
+- **Kada persiklausti / grąžinti / pripažinti prieštaravimą** → solverio žinios + conflict
+  matrix (📚); solveris skaito dialogo istoriją ir telemetriją.
+- **Ką LEIDŽIAMA daryti** (veiksmų aibė, saugumas) → vartai + politika (🔒/⚙️).
+
+**Tad naujo elgesio pridėjimas ar krypties keitimas = kontrakto/žinių redagavimas**, ne
+kodas — išskyrus naują VEIKSMĄ (pvz. `redirect`), kurį reikia vieną kartą įtraukti į
+leistiną `next_action` aibę.
