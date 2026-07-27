@@ -90,3 +90,7 @@ eval_after_classifier.txt
 # All eval harness run artifacts
 eval_*.json
 eval_*.txt
+
+# Fuzzing run artifacts
+fuzz_*.txt
+fuzz_*.json

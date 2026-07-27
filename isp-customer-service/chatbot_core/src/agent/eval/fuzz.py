@@ -10,11 +10,16 @@ This is the measurement that DEFINES the fix list for making the fault flawless.
 
 Non-deterministic by nature (two LLMs in a loop), so it is a FINDING generator, not a
 pass/fail gate — read the transcripts. Needs LLM keys (like the voice demo / run_eval).
+This is a RARE, on-demand dev tool — the deterministic Golden eval (run_eval.py) is the
+everyday gate. Rate-limit note: each turn makes ~3-4 LLM calls, so a free 30/min key gets
+the classifier pushed to its keyword fallback when several personas run back-to-back
+(making a run's findings unreliable). For broader fuzzing on a limited key, run ONE
+persona at a time (`--only <persona>`); the actor already retries on a rate-limit dip.
 
 Usage:
     cd chatbot_core
-    uv run python src/agent/eval/fuzz.py                       # all personas, 1 run each
-    uv run python src/agent/eval/fuzz.py --only dead_router_messy --runs 3
+    uv run python src/agent/eval/fuzz.py --only dead_router_messy --runs 3   # one at a time
+    uv run python src/agent/eval/fuzz.py                       # all personas (needs headroom)
 """
 
 from __future__ import annotations
