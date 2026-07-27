@@ -830,6 +830,16 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
         correction / a different address / a family member lives in a file, not the prompt
         body. (The GUARDS stay code: identity gate, "apartment never from the DB", street
         must match what was said — security boundaries must not depend on editable text.)
+  - [ ] **5e. Call-flow policy — separate conversation ORDER from action gating.** Today
+        `graph.route()` hard-codes identify-first because diagnosis needs identity. Split
+        the two: the router reads a declarative flow (`policy.yaml` / per-problem) —
+        `identify: before_diagnosis | at_action | none` — so the agent can go PROBLEM-FIRST
+        (understand + classify, discuss causes) and ask for identity only WHEN a technical
+        action needs it. The safety FLOOR is unchanged and stays code: the gate still blocks
+        every diagnostic/mutation tool until identity is verified, and "apartment never from
+        the DB" holds — the policy only reorders the CONVERSATION, never relaxes a guard.
+        Enables: problem-first flow, per-problem identity depth (billing vs a technical
+        fault), extra verification questions (name) declared alongside 5d.
 
   **Target artefacts (the "no code for a new fault" contract):**
   - `agent/faults/faults.yaml` — per fault: `id`, `purpose_triggers`, `playbook` (the RAG
