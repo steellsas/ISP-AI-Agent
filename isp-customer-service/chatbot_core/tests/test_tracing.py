@@ -274,6 +274,56 @@ class TestReactAgentEmits:
 
         assert agent._tools_called_this_session() == ["diagnose_connection", "update_mac"]
 
+    def test_end_session_persists_conversation_row(self, db_connection, tmp_path):
+        """Phase 3.10 slice 1b: session end writes one row to the conversations table."""
+        import json as _json
+
+        from adapters.tracing.jsonl_tracer import JsonlFileTracer
+        from agent.react_agent import ReactAgent
+
+        tracer = JsonlFileTracer("convrow-test", trace_dir=tmp_path)
+        agent = ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
+        agent.state.problem_type = "internet_down"
+        agent.state.customer_id = "CUST105"
+        agent.state.caller_name = "kaimynas Jonas"
+        agent.state.messages = [{"role": "user", "content": "labas"}]
+        agent.state.closed_reason = "resolved"
+
+        agent.end_session(outcome="resolved")
+
+        with db_connection.cursor() as cur:
+            cur.execute(
+                "SELECT customer_id, outcome, summary, messages FROM conversations "
+                "WHERE session_id = ?",
+                ("convrow-test",),
+            )
+            row = dict(cur.fetchone())
+        assert row["customer_id"] == "CUST105"
+        assert row["outcome"] == "resolved"
+        parsed = _json.loads(row["summary"])
+        assert parsed["purpose"] == "internet_down"
+        assert parsed["caller_name"] == "kaimynas Jonas"
+        assert _json.loads(row["messages"]) == [{"role": "user", "content": "labas"}]
+
+    def test_save_conversation_drops_dangling_customer_fk(self, db_connection):
+        """An unidentified/unknown customer id is stored as NULL, not lost to an FK error."""
+        from crm_mcp.tools.conversations import save_conversation
+
+        res = save_conversation(
+            db_connection,
+            {
+                "session_id": "fk-test",
+                "customer_id": "CUST_DOES_NOT_EXIST",
+                "messages": [],
+                "outcome": "escalated",
+                "summary": {"purpose": "internet_down"},
+            },
+        )
+        assert res["success"] is True
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT customer_id FROM conversations WHERE session_id = ?", ("fk-test",))
+            assert dict(cur.fetchone())["customer_id"] is None
+
     def test_reply_emits_case_snapshot(self, db_connection):
         """_reply emits a compact case snapshot for review (Pillar A2)."""
         cap = _CaptureTracer()

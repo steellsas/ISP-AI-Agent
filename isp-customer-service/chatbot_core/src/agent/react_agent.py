@@ -2150,10 +2150,33 @@ class ReactAgent:
             total_tokens=self.llm_stats.total_tokens,
             total_cost=round(self.llm_stats.total_cost, 5),
         )
+        # Persist the call record to the conversations table (Phase 3.10 slice 1b).
+        # Best-effort at the seam: a DB failure must never break call teardown.
+        self._persist_call_record(summary, outcome)
         # Write a human-readable transcript next to the JSONL, if supported.
         export = getattr(self.tracer, "export_txt", None)
         if callable(export):
             export()
+
+    def _persist_call_record(self, summary: dict, outcome: str | None) -> None:
+        """Write one row to the conversations table: the structured summary + the
+        transcript, keyed by session. Sourced entirely from state; never raises."""
+        session_id = getattr(self.tracer, "session_id", None)
+        if not session_id:
+            return  # NullTracer / no session id -> nothing to key the record on
+        try:
+            from .tools import save_call_record
+
+            save_call_record(
+                session_id,
+                customer_id=self.state.customer_id,
+                messages=self.state.messages,
+                outcome=outcome or summary.get("outcome"),
+                summary=summary,
+                ticket_id=self.state.ticket_id,
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            self._trace_note("persist_call_record", f"failed: {e}", level="warn")
 
     def _build_call_summary(self) -> dict:
         """The call's outcome, derived from state — the single source for the record and

@@ -928,7 +928,7 @@ below are built DETERMINISTICALLY from state, not from LLM free text.
       was done / what could NOT be done from state (verdict + purpose + actions + escalate
       reason). Also HARDENS the create_ticket bug we hit (LLM invented `equipment_replacement`)
       — the type comes from the verdict, not the model's wording.
-- [~] **Persist a call record at session_end.** The `conversations` table already exists
+- [x] **Persist a call record at session_end.** The `conversations` table already exists
       (`session_id, customer_id, messages, outcome, summary, ticket_id, duration_seconds`) —
       write a structured summary there when the call ends: {purpose, cause + side,
       actions taken, resolved? / why not, ticket_id, **caller_name** if asked}. Emit a
@@ -939,8 +939,12 @@ below are built DETERMINISTICALLY from state, not from LLM free text.
             before `session_end`: purpose, cause, side, outcome, resolved?, ticket_id,
             caller_name, and `actions` (tool names harvested from this call's own trace via
             `_tools_called_this_session`). Rendered in the .txt export; tested (test_tracing).
-      - [ ] **Slice 1b — persist to the `conversations` table.** Add a CRM adapter
-            `save_conversation`; call it from `end_session` with the same summary + transcript.
+      - [x] **Slice 1b — persist to the `conversations` table.** CRM adapter
+            `crm_mcp.tools.conversations.save_conversation` + `tools.save_call_record` wrapper;
+            `end_session._persist_call_record` writes one row (summary JSON + transcript +
+            outcome + ticket_id), keyed by session. Dangling customer/ticket FKs are stored
+            NULL rather than dropping the record; best-effort so a DB failure never breaks
+            teardown. Tested (row written end-to-end + FK-drop; test_tracing).
 - [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
       reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
 

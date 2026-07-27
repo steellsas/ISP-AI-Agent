@@ -1155,6 +1155,49 @@ def create_ticket(
 
 
 # =============================================================================
+# CALL RECORD (Phase 3.10) — engine-internal, NOT an LLM-callable tool
+# =============================================================================
+
+
+def save_call_record(
+    session_id: str,
+    *,
+    customer_id: str | None = None,
+    messages: list | None = None,
+    outcome: str | None = None,
+    summary: dict | None = None,
+    ticket_id: str | None = None,
+    duration_seconds: int | None = None,
+) -> dict:
+    """Persist one call record to the conversations table (Phase 3.10 slice 1b).
+
+    Called by the engine at session end, not by the model. Best-effort: a DB or
+    import failure is swallowed to an error envelope so it can never break call
+    teardown."""
+    logger.info(f"[REC] save_call_record(session_id={session_id}, customer_id={customer_id})")
+    try:
+        db = get_db()
+
+        from crm_mcp.tools.conversations import save_conversation
+
+        return save_conversation(
+            db,
+            {
+                "session_id": session_id,
+                "customer_id": customer_id,
+                "messages": messages or [],
+                "outcome": outcome,
+                "summary": summary,
+                "ticket_id": ticket_id,
+                "duration_seconds": duration_seconds,
+            },
+        )
+    except Exception as e:  # pragma: no cover - defensive; never break teardown
+        logger.error(f"Error saving call record: {e}", exc_info=True)
+        return {"success": False, "error": "call_record_failed", "message": str(e)}
+
+
+# =============================================================================
 # PING TEST TOOL
 # =============================================================================
 
