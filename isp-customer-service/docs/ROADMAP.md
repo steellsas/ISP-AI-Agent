@@ -811,17 +811,21 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
   `shadow_decision` event in the existing `JsonlFileTracer` (not BigQuery). Cut-over
   when 100 real calls show 0 safety violations + auto agreement measured, with
   human/judge review of the disagreements (the valuable signal).
-  - [ ] **5a. Solver DRIVES one direction** (behind `SOLVER_DRIVE`, dead-router first):
-        the solver reads the RAG playbook + dialogue + FRESH telemetry, decides next_action,
-        the gate validates + executes safety actions by code, the narrator speaks
-        `narrator_instruction`. Fix context freshness (solve AFTER re-diagnose). Walker stays
-        default + for all other directions. Validate against the eval before widening.
-  - [ ] **5b. Detection semantics INTO the knowledge** — each step declares its expected
-        answers so the classifier/solver reads "what to detect" from the fault definition,
-        not from `DETECTOR_GLOSSES` / `step.on` in code.
-  - [ ] **5c. Purpose + signals per fault** — the call's PURPOSE ("lėtai veikia" vs
-        "neveikia") and WHICH telemetry to gather come from the fault definition too, so a
-        new fault does not touch `nlu._PROBLEM_KEYWORDS` or `verdict.gather_signals`.
+  - [x] **5a. Solver DRIVES one direction** (behind `SOLVER_DRIVE`, dead-router first):
+        the solver reads the playbook + dialogue + telemetry, decides next_action, the gate
+        validates + executes safety actions by code, the narrator speaks
+        `narrator_instruction`. Walker stays default + for all other directions.
+        *Mechanism done + measured (eval `tool_used`); decision-quality tuning (reliably
+        reach propose_fix, less disambiguate) is ongoing — see Phase 3.9.*
+  - [x] **5b. Detection semantics INTO the knowledge** — each step's `answers` in
+        `knowledge/faults.yaml` give the classifier what to detect; `DETECTOR_GLOSSES`
+        is the fallback. Equivalence-guarded.
+  - [~] **5c. Purpose + procedure + signals per fault** — PURPOSE (`problems.triggers`)
+        and the full PROCEDURE (`faults.<v>.steps`) now come from the manifest
+        (`get_strategy` / `classify_problem` read it, code is fallback). **Still code:**
+        WHICH signals to gather (`verdict.gather_signals`) and the telemetry→cause
+        interpretation (`verdict.decide`) — needed only when a NEW fault needs new signals,
+        so deferred behind Phase 3.9.
   - [ ] **5d. Identification as knowledge** — what to ask, in what order, how to handle a
         correction / a different address / a family member lives in a file, not the prompt
         body. (The GUARDS stay code: identity gate, "apartment never from the DB", street
@@ -841,6 +845,40 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
   walker steps for each as it goes. **North star: a UNIVERSAL solver that resolves any
   fault exactly as the RAG domain knowledge instructs — the algorithm and the checks live
   in the playbook, the engine only enforces safety + executes.**
+
+---
+
+## Phase 3.9 — Perfect ONE fault as the universal template ("nėra interneto")
+
+**Decision (2026-07):** do NOT add new faults yet. Make the single "no internet" fault
+resolve *flawlessly and entirely from the engine* first, so a new fault is genuinely just
+"plug new files onto a proven engine". Widening (step 6, slow-internet, TV…) comes after.
+
+**What "perfect" means (acceptance):**
+- Every no-internet direction resolves correctly: `foreign_mac`, `healthy_to_router`,
+  `no_mac_observed` (+ bridge), and the inform paths (billing, outage, link-down).
+- Robust to REAL messy speech, not just clean scripted turns (STT noise, mixed intent,
+  the caller jumping ahead).
+- Actions actually RUN (bind / reset / ticket / close), measured by `tool_used` — no
+  "said it, didn't do it".
+- The same unhurried, human consultation in every direction (contract + bridging).
+
+**Plan (ordered):**
+- [ ] **A. Fuzzing eval (LLM-actor).** An LLM plays varied personas ("irate senior,
+      non-standard Lithuanian, mislabels the lights, jumps ahead") over each no-internet
+      direction. This DEFINES the fix list — every gap this session was "eval too clean".
+- [ ] **B. Fix what fuzzing finds** — mostly manifest `answers` / playbook wording /
+      classifier tuning (file-level), code only where a real gap needs it.
+- [ ] **C. Solver-drive to reliable** — reach `propose_fix` reliably, stop lingering on
+      `disambiguate`; extend the pilot to the other no-internet directions once each passes
+      the fuzzing eval in shadow. Decide walker-retirement per direction on the numbers.
+- [ ] **D. (Enables widening) interpretation + signals → knowledge** — move
+      `verdict.gather_signals` (which signals) and `verdict.decide` (telemetry→cause) behind
+      the manifest, so the LAST code-bound pieces of a fault definition become files. Only
+      needed to make step 6 "files only"; do it once no-internet is solid.
+
+**Done:** the no-internet fault is reliable end-to-end from files on the engine; adding the
+next fault touches only `faults.yaml` + a playbook + seed + an eval scenario.
 
 **Deferred dependencies (follow-up, not blocking):** async telemetry (<150 ms) +
 mid-turn TTS filler for the "speak-then-fetch" latency mask; `TRANSFER_TO_HUMAN`
