@@ -704,30 +704,40 @@ without saying what it sees or what a result means.
 > "the caller spoke" and "the step moves": what KIND of turn this was, and what the
 > engine is WAITING for. Everything below falls out of those two.
 
-- [ ] **1. `awaiting` state + turn-intent classifier** *(the foundation)* —
+- [x] **1. `awaiting` state + turn-intent classifier** *(the foundation)* —
       `state.awaiting` = `None | client_answer | client_action | system_check` (+ since
       when); `detect_turn_intent` → `answer · in_progress · done · question · confused
       · silence · new_info`. Only `answer`/`done` advance the walker; the rest hold.
       Classification stays deterministic (like the detectors), phrasing stays with the
       LLM; the safe default on "unknown" is WAIT and ask, never run ahead.
-- [ ] **2. "darysiu" ≠ "padariau"** — "einu / atsinešiu / tuoj" is work in progress,
+      *(Built during 3.8: `state.awaiting`, `detect_turn_intent`, `_turn_may_advance`
+      + the LLM step-classifier on top.)*
+- [x] **2. "darysiu" ≠ "padariau"** — "einu / atsinešiu / tuoj" is work in progress,
       not completion: acknowledge and wait, and do NOT read telemetry yet (observed:
       the bridge checked the line before the caller had plugged anything in).
-- [ ] **3. Hypothesis object** — `state.hypothesis {cause, because[], status,
+      *(Built: INTENT_IN_PROGRESS holds; INSTRUCT classifier separates done/waiting.)*
+- [x] **3. Hypothesis object** — `state.hypothesis {cause, because[], status,
       settled_by}` + `rejected[]`, filled at the three points that already compute it
       (diagnose → step outcome → telemetry after an action). The verdict tree stays
       the SOURCE; the object mirrors it so the agent can narrate the whole arc,
       including **confirmation** ("taigi dėl routerio ir nebuvo interneto") — today we
       track only rejection. No candidate queue: ordering stays with the tree, not the
-      model.
-- [ ] **4. Narration contract in ONE place** — five always-rules (explain before
-      asking · say what each result MEANS · confirm the hypothesis aloud · do not
-      rush · never go silent then fire a solution). Step hints keep only CONTENT, tone
-      comes from the contract, so all strategies sound alike. RAG "possible causes"
-      surfaced as narration text.
-- [ ] **5. Progressive disclosure** — `intent = confused` drops to a FINER breakdown
+      model. *(Built during 3.8: `hypothesis` + `failed_hypotheses` + `pivoted_from`.)*
+- [x] **4. Narration contract in ONE place** — always-rules in
+      `prompts/partials/solving.md` (explain before asking · say what each result
+      MEANS · share what you checked/did and where you see the problem · voice
+      hypothesis changes aloud · ask ONE thing then STOP and wait · reflect the
+      caller's answer before moving on). Step hints keep only CONTENT; tone comes
+      from the contract. *(feat/turn-taking-rail.)*
+- [x] **5. Progressive disclosure** — `intent = confused` drops to a FINER breakdown
       of the same step (distinct from `clarity_level`, which changes the wording, not
-      the number of steps).
+      the number of steps). *(Built: `step_confusions` + clarity_level.)*
+- [x] **6. Turn-taking rail (2026-07-28, from live calls)** — the step advances ONLY
+      after ITS question was actually posed and answered: stale "patvirtink adresą"
+      hint neutralized on identification (the activation reply states the FINDING +
+      the first step's question, never re-asks the address); deterministic INFORM
+      close (`_maybe_close_inform`) — outage/billing calls end on the caller's
+      farewell instead of looping goodbyes / re-narrating the outage.
 
 **Falls out for free:** silence handling and "kur jūs dabar?" come from 1; the
 `system_check` wait is the socket Phase 5's async telemetry polling plugs into.
@@ -981,6 +991,38 @@ demands it.
 desync is structurally impossible; the agent revises its hypothesis from dialogue and
 catches telemetry↔client contradictions; safety and testability are preserved via the
 gate + eval harness.
+
+---
+
+## Phase 3.11 — Pre-Phase-5 readiness: natural dialogue (kelias į Phase 5)
+
+**Goal (2026-07-28, from live testing):** the agent should work like a human
+consultant — listen first, understand the problem, solve step by step (already in
+place after the turn-taking rail), AND: speak short, stop when interrupted, fill
+waiting time with useful questions. This is the list to finish "daugmaž viską"
+before Phase 5 (async + telephony).
+
+- [ ] **A. Short voice replies.** Voice is not chat: 1–2 short sentences per turn,
+      no paragraphs. Tighten `style.md`/`solving.md` (voice-channel rule), and add a
+      reply-length check to the Golden eval so regressions surface. Long replies are
+      also the main TTS latency cost today (5–8 s per turn observed) — shorter
+      replies cut latency for free.
+- [ ] **B. 3.10 outcome node** *(the structural leftover — see Phase 3.10)* —
+      ticket from state + ONE closing/outcome path for every disposition
+      (resolved / escalate / inform now done for inform only). Removes the last
+      loops (ticket-consent loop closed only by bailout).
+- [ ] **C. Anamnesis during waits.** While the engine runs a check/fix (bind,
+      telemetry read), the agent asks useful history questions instead of dead air:
+      "kada pastebėjote? ar po ko nors dingo (audra, remontas, kraustymasis)?" —
+      answers land in `symptoms` and sharpen the diagnosis. First cut WITHOUT async:
+      scripted into the ACTION/VERIFY step announce ("Dabar pririšiu… o kol laukiam —
+      kada pastebėjote gedimą?"). Full version rides Phase 5 async telemetry.
+- [ ] **D. 3.8 leftovers on the universal-agent track** *(parallel, not blocking)* —
+      solver cut-over on dead-router (5/6), signals→knowledge (D). Phase 5 does not
+      depend on these, but they continue the "universal thinking agent" line.
+
+**Done:** short, natural turns; every call ends deterministically; waiting time is
+used for anamnesis; ready to lift the engine onto Phase 4/5 async infrastructure.
 
 ---
 
