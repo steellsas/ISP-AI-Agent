@@ -225,10 +225,10 @@ faults:
         'yes': dr_lights
         'no': escalate
       hint: 'Do NOT start ordering them about. First explain what YOU can see and what it likely means
-        — the internet reaches the flat but the line does not see their device, so it is usually no power,
-        an unplugged cable, or a dead router — and ASK whether it suits them to check it together now.
-        Wait for their answer. If they cannot (not home, busy), do not push: offer to register the fault
-        or to call back.'
+        — the internet reaches the flat but the line does not see their device (likely the router or its
+        cable) — and ASK whether it suits them to check it together now. VOICE: keep this to TWO short
+        sentences, do NOT enumerate every possible cause. Wait for their answer. If they cannot (not
+        home, busy), do not push: offer to register the fault or to call back.'
       answers:
         'yes': sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)
         'no': AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas
