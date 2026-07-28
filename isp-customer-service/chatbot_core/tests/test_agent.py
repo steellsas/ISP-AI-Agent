@@ -564,3 +564,40 @@ class TestPromptLoader:
         assert "+37060012345" in prompt
         assert "test_tool" in prompt
         assert "Lithuanian" in prompt
+
+
+class TestDeterministicInformClose:
+    """INFORM mode (outage/billing/no-strategy) closes deterministically on a farewell —
+    the engine, not the model, ends the call (fixes the goodbye loop observed live)."""
+
+    def _informed_agent(self):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020102")
+        agent.state.customer_id = "CUST102"
+        agent.state.diagnosis["network"] = {"group": "B2", "reason": "active_outage"}
+        agent.state.outage_reported = True
+        agent.state.resolution = None  # inform mode: no strategy to walk
+        return agent
+
+    def test_farewell_closes_outage_call(self, db_connection):
+        agent = self._informed_agent()
+        agent._maybe_close_inform("Ačiū, viso gero, sudie")
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "outage"
+        assert agent.state.is_complete is True
+
+    def test_no_farewell_keeps_call_open(self, db_connection):
+        agent = self._informed_agent()
+        agent._maybe_close_inform("O kada tiksliai sutvarkysite?")
+        assert agent.state.case_closed is False
+
+    def test_active_strategy_never_closed_here(self, db_connection):
+        """A live troubleshooting strategy belongs to the walker — a mid-flow 'ne'
+        must not end the call."""
+        agent = self._informed_agent()
+        agent.state.outage_reported = False
+        agent.state.diagnosis["network"] = {"group": "B6", "reason": "foreign_mac"}
+        agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
+        agent._maybe_close_inform("ne")
+        assert agent.state.case_closed is False

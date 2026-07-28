@@ -1625,6 +1625,35 @@ class ReactAgent:
         if detect_farewell(user_input) or s.closing_turns >= 2:
             s.is_complete = True
 
+    def _maybe_close_inform(self, user_input: str | None) -> None:
+        """Deterministic close for INFORM mode (mass outage, billing, or any verdict with
+        NO troubleshooting strategy to walk). Once the caller has been informed and
+        signals they are done — a goodbye or a plain 'no more questions' — the engine
+        closes the call ITSELF and ends it on one farewell.
+
+        Without this, closing depended on the model calling close_case, which it did not:
+        the caller said goodbye repeatedly, the call stayed open, and the diagnosis node
+        re-narrated the outage every turn (observed: 'kartoja gedimą')."""
+        s = self.state
+        if s.case_closed or not s.customer_id:
+            return
+        reason = (s.diagnosis.get("network") or {}).get("reason")
+        # INFORM mode: an outage was flagged, OR we identified + diagnosed but there is no
+        # resolution strategy to walk (active_outage, billing_suspended, generic inform).
+        # A live strategy (foreign_mac, dead-router, client_side) keeps s.resolution set
+        # and is handled by the walker instead — never closed here.
+        inform_mode = s.outage_reported or (s.resolution is None and bool(s.diagnosis))
+        if not inform_mode:
+            return
+        from .resolution import detect_farewell
+
+        if detect_farewell(user_input):
+            s.case_closed = True
+            s.closed_reason = (
+                "outage" if (s.outage_reported or reason == "active_outage") else "inform"
+            )
+            s.is_complete = True  # caller already said goodbye — end on ONE farewell
+
     def _mark_step_presented(self) -> None:
         """After the agent replies while on a strategy step, record that the step's
         message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)
@@ -1663,6 +1692,14 @@ class ReactAgent:
             return observation
         d = self.state.diagnosis.get("network") or {}
         gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+        # The address was JUST confirmed (that is what triggered this diagnose) — the
+        # lookup hint still says "patvirtink adresą klientui", and the narrator obeying
+        # it re-asked the ADDRESS instead of the step's question. The walker then marked
+        # the step asked, and the caller's next plain "taip" advanced a question that was
+        # never posed (observed: bound the MAC without ever asking "ar keitėte routerį?").
+        # Neutralize the stale hint: this reply must state the FINDING + THIS step's
+        # question, never the address again.
+        obs["hint"] = "Adresas JAU patvirtintas — nebeklausk adreso."
         tail = f" Iškart patikrinau ryšį — DIAGNOZĖ: {gloss}."
         r = self.state.resolution
         if r:
@@ -1673,9 +1710,10 @@ class ReactAgent:
             if step is not None and step.hint:
                 tail += f" ŠIS ŽINGSNIS: {step.hint}"
         tail += (
-            " Tame PAČIAME atsakyme trumpai patvirtink adresą IR pasakyk radinį (ar šio "
-            "žingsnio klausimą). NEklausk apie įrenginius savo iniciatyva ir NEminėk, "
-            "kad gedimų nėra."
+            " Tame PAČIAME atsakyme: vienu sakiniu pasakyk KĄ PATIKRINAI ir KUR MATAI "
+            "PROBLEMĄ (radinį), tada užduok ŠIO ŽINGSNIO klausimą ir LAUK atsakymo. "
+            "NEkartok adreso klausimo (jis ką tik patvirtintas), NEklausk apie įrenginius "
+            "savo iniciatyva, NEminėk, kad gedimų nėra."
         )
         obs["message"] = (obs.get("message", "") or "").strip() + tail
         return json.dumps(obs, ensure_ascii=False)
