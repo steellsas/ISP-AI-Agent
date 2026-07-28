@@ -191,6 +191,41 @@ kaltinti routerį. *(Reikia `SOLVER_SHADOW=on`, jei nori matyti ir sprendėjo m�
 - **Netipiškas „taip/ne"** (klasifikatorius): „galėtume", „gerai, bandom", „ką daryti?" — supranta
 - Nebėra „nėra gedimų jūsų rajone", pakartotinio namo klausimo
 - Terminale: `voice turn | heard='...'` — ką realiai išgirdo
+- **Skambučio įrašas** (nauja, 3.10): kiekvienas skambutis pasibaigus **užrašo įrašą** —
+  žr. „Skambučio įrašo patikra" žemiau. Nieko papildomai daryti nereikia; tik patikrink,
+  kad `purpose / cause / actions / ticket` atspindi, kas realiai vyko.
+
+---
+
+## Skambučio įrašo patikra (nauja, 3.10)
+
+Pasibaigus skambučiui variklis **deterministiškai** (be LLM) užrašo skambučio santrauką:
+- į trace'ą kaip `call_summary` (matoma `logs/sessions/<id>.txt` eilutėje `=== SUMMARY …`);
+- į DB `conversations` lentelę (santrauka JSON + transkriptas + outcome + ticket_id).
+
+Ką tikrinti po kelių scenarijų (santrauka turi atitikti realią eigą):
+
+| Laukas | Iš kur | Ko tikėtis |
+|---|---|---|
+| `purpose` | `problem_type` | kodėl skambino (internet_down, billing…) |
+| `cause` / `side` | hipotezė / diagnozė | priežastis + pusė (customer/provider/unclear) |
+| `actions` | to skambučio tool_call'ai | ką realiai darė (`update_mac`, `reset_port`, `simulate_bridge_connect`…) |
+| `resolved` / `outcome` | `closed_reason` | ar išspręsta; jei ne — kodėl |
+| `ticket_id` / `caller_name` | state | tiketas (jei buvo) · skambinusiojo vardas (jei klausta) |
+
+`.txt` eksporte (greitas būdas):
+```powershell
+# paskutinio skambučio santrauka:
+Get-Content (Get-ChildItem logs\sessions\*.txt | Sort-Object LastWriteTime | Select-Object -Last 1) | Select-String "=== SUMMARY","actions="
+```
+DB (visos šios dienos santraukos):
+```powershell
+uv run python -c "import sqlite3,json; c=sqlite3.connect('database/isp_database.db'); c.row_factory=sqlite3.Row; [print(r['session_id'][-8:], r['customer_id'], r['outcome'], (json.loads(r['summary']) if r['summary'] else {}).get('actions')) for r in c.execute('SELECT * FROM conversations ORDER BY timestamp DESC LIMIT 10')]"
+```
+
+> Pastaba: skambinusiojo **vardo** klausimas (5d) pagal nutylėjimą **išjungtas**
+> (`identification.yaml: extra_questions: []`), tad `caller_name` bus `None`, nebent įjungsi.
+> Vardas — tik įrašui/istorijai, **niekada** ne tapatybės tikrinimui.
 
 ---
 
