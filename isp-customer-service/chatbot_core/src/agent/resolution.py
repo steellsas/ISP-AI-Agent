@@ -172,9 +172,11 @@ _FOREIGN_MAC = Strategy(
             rag_section=3,  # "### Žingsnis 3: Pririšti įrenginį"
             hint=(
                 "The engine binds the device silently — you do NOT call the tool. "
-                "Announce it naturally: 'Dabar pririšiu jūsų naujai matomą įrenginį — "
-                "turėtų atsirasti internetas. Palaukite akimirką.' Do NOT ask yet "
-                "whether it works — that is the next step."
+                "Announce it WITH the anamnesis question (fill the wait instead of dead "
+                "air — Phase 3.11 C), as ONE utterance: 'Dabar pririšiu jūsų naujai "
+                "matomą įrenginį — turėtų atsirasti internetas. O kol laukiam — kada "
+                "pastebėjote, kad dingo internetas?' Do NOT ask yet whether it works — "
+                "that is the next step; their history answer just goes on the record."
             ),
         ),
         Step(

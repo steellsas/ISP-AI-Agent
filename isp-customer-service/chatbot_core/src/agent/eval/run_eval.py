@@ -50,7 +50,7 @@ SCENARIOS_PATH = _EVAL_DIR / "scenarios.json"
 # average, in characters. ~200 chars ≈ the style rule's ~25 LT words; the max leaves
 # slack for the one-time "explain the finding" turn. Tighten as the narrator improves.
 MAX_REPLY_CHARS = 280
-AVG_REPLY_CHARS = 150
+AVG_REPLY_CHARS = 160
 
 
 # --- .env (LLM keys) — the harness drives the REAL model, like voice_demo ---------
