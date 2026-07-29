@@ -601,3 +601,54 @@ class TestDeterministicInformClose:
         agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
         agent._maybe_close_inform("ne")
         assert agent.state.case_closed is False
+
+
+class TestEscalateOutcome:
+    """Phase 3.11 B: the ESCALATE step is a deterministic OUTCOME — the ENGINE
+    registers the ticket from state on consent; the model no longer calls
+    create_ticket. Classifier off -> the keyword consent reader drives routing."""
+
+    def _agent_on_escalate(self, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.diagnosis["network"] = {"group": "B6", "reason": "no_mac_observed"}
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "escalate",
+            "asked": True,  # the consent question was posed last turn
+        }
+        return agent
+
+    def test_consent_registers_ticket_and_closes(self, db_connection, monkeypatch):
+        agent = self._agent_on_escalate(monkeypatch)
+        agent._walk_resolution("gerai, tinka")
+        assert agent.state.ticket_id  # engine-created, from state
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "registered"
+
+    def test_decline_closes_without_ticket(self, db_connection, monkeypatch):
+        agent = self._agent_on_escalate(monkeypatch)
+        agent._walk_resolution("ne, nenoriu, ačiū")
+        assert agent.state.ticket_id is None
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "declined"
+
+    def test_unclear_holds_the_step(self, db_connection, monkeypatch):
+        agent = self._agent_on_escalate(monkeypatch)
+        agent._walk_resolution("hmm palaukite sekundėlę")
+        assert agent.state.ticket_id is None
+        assert agent.state.case_closed is False  # re-ask, don't register on a garble
+
+    def test_not_asked_yet_never_advances(self, db_connection, monkeypatch):
+        agent = self._agent_on_escalate(monkeypatch)
+        agent.state.resolution["asked"] = False
+        agent._walk_resolution("gerai, tinka")  # "taip" to something else entirely
+        assert agent.state.ticket_id is None
+        assert agent.state.case_closed is False

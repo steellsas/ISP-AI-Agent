@@ -970,8 +970,13 @@ So:
 - A provider-side fault diagnosed with no resolution to attempt goes straight to this node
   (ticket or inform, then close).
 - **(Later) ticket-confirmation dialogue:** collecting/confirming details with the caller
-  before filing — contact phone, extra info — is its own small dialogue, added when we
-  refine ticket registration; keep the outcome node ready for it.
+  before filing is its own small dialogue, added when we refine ticket registration;
+  keep the outcome node ready for it. MUST collect (2026-07-29): **contact phone to
+  reach the person** — the caller may be on a company phone, a private number, or the
+  DB number may be outdated, so always ASK, never assume caller-ID/DB; **contact
+  person** (who to talk to — may differ from the account holder); **what the problem
+  is** (short, from state); and a **comment** with when they can be called (hours) and
+  any extra notes.
 
 **Boundary:** the summary/ticket builder is deterministic 🔒 (reads state); the summary
 WORDING template is 📚. No new call reasoning — it only RECORDS what the engine already

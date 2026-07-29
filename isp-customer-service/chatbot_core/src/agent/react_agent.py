@@ -1262,6 +1262,15 @@ class ReactAgent:
         ):
             if self._classify_instruct_and_advance(step, strat, user_input):
                 return
+        # ESCALATE = deterministic OUTCOME (Phase 3.11 B). The step is a call-ending
+        # consent question ("užregistruosiu gedimą — ar tinka?"): the ENGINE registers
+        # the ticket from STATE on consent and closes; a decline closes without a
+        # ticket. create_ticket is no longer an LLM-callable tool mid-strategy, so the
+        # model can neither freelance a ticket nor loop the consent question (observed
+        # live: 4× "ar tinka?" — the ticket only landed via the gate bailout).
+        if step.kind is StepKind.ESCALATE:
+            self._advance_escalate(r, step, user_input)
+            return
         # What KIND of turn was this? Only a real answer or a completed action may move
         # the conversation. "Einu prie routerio", a question, confusion or silence all
         # HOLD the step — the agent responds to them instead of running ahead.
@@ -1603,6 +1612,84 @@ class ReactAgent:
             return
         # unclear -> stay on confirm_restored, re-ask
 
+    def _advance_escalate(self, r: dict, step, user_input: str | None) -> None:
+        """Deterministic OUTCOME for an ESCALATE step (Phase 3.11 B). Once the consent
+        question was posed (asked), the caller's reply decides:
+          consent  -> the ENGINE registers the ticket from STATE and closes,
+          decline  -> close WITHOUT a ticket (closed_reason='declined'),
+          unclear  -> hold; the narrator re-asks (stuck-guard still backstops).
+        The LLM only phrases — it can no longer call create_ticket itself."""
+        if not r.get("asked"):
+            return  # consent question not posed yet — narrator asks it this turn
+        from .classifier import classify_step
+        from .resolution import detect_ticket_consent
+
+        label = detect_ticket_consent(user_input)
+        routed_by = "keyword"
+        # Keyword miss -> LLM classifier (same order as CONFIRM steps: the model reads
+        # messy phrasing the wordlist can't — "na jo, tebūnie", garbled STT).
+        if label is None and os.getenv("CLASSIFIER", "on").lower() != "off":
+            obs = classify_step(
+                self._last_agent_question() or str(step.hint or ""),
+                user_input or "",
+                {
+                    "yes": "sutinka, kad užregistruotume gedimą (pritaria, sako gerai/tinka)",
+                    "no": "AIŠKIAI atsisako registracijos — NE šiaip nerišlus atsakymas",
+                },
+                model=self.config.model,
+            )
+            if obs is not None and obs.is_answer and obs.confidence >= 0.5:
+                label = obs.label
+                routed_by = "classifier"
+        self.tracer.emit(
+            "classify",
+            detector="ticket_consent",
+            step=step.id,
+            label=label,
+            is_answer=label is not None,
+            confidence=1.0 if label else 0.0,
+            text=user_input,
+            routed_by=routed_by,
+        )
+        if label == "yes":
+            self._register_ticket_from_state(step)
+            self.state.case_closed = True
+            self.state.closed_reason = "registered"
+        elif label == "no":
+            self.state.case_closed = True
+            self.state.closed_reason = "declined"
+        # unclear -> stay; the step's question is re-asked
+
+    def _register_ticket_from_state(self, step) -> None:
+        """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
+        cause from the hypothesis/verdict, actions from this call's trace — never from
+        the model's free text (which once invented an invalid ticket_type). Idempotent:
+        an existing ticket is never duplicated. Best-effort: a failure is traced and the
+        close still proceeds (the call record keeps the outcome)."""
+        s = self.state
+        if s.ticket_id or not s.customer_id:
+            return
+        cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
+        gloss = _DIAGNOSIS_LT.get(cause, cause or "nenustatyta")
+        details = f"Gedimas: {s.problem_type or 'internetas'} — {gloss}."
+        if step.id == "dr_register_router":
+            details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
+        actions = self._tools_called_this_session()
+        args = {
+            "customer_id": s.customer_id,
+            "problem_type": "technician_visit",
+            "problem_description": details,
+            "priority": "high",
+            "notes": ("Atlikta: " + ", ".join(actions)) if actions else "",
+        }
+        try:
+            self.tracer.emit("tool_call", name="create_ticket", args={"customer_id": s.customer_id})
+            obs = execute_tool("create_ticket", args)
+            self._trace_tool_result("create_ticket", obs)
+            self._update_state_from_observation("create_ticket", obs)  # sets ticket_id
+        except Exception as e:  # pragma: no cover - defensive
+            self._trace_note("register_ticket", str(e), level="error")
+
     def _goto_step(self, r: dict, next_id: str) -> None:
         """Move the strategy to `next_id`. When the step actually changes, clear the
         'asked' flag so the NEXT step (e.g. a second CONFIRM like check_cable) waits
@@ -1670,6 +1757,7 @@ class ReactAgent:
             StepKind.CONFIRM,
             StepKind.INSTRUCT,
             StepKind.ACTION,
+            StepKind.ESCALATE,  # the consent question ("ar tinka?") — Phase 3.11 B
         ):
             r["asked"] = True
 

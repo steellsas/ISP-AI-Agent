@@ -124,30 +124,71 @@ faults:
         'no': internetas vis dar neveikia
     - id: escalate
       kind: escalate
-      tools:
-      - create_ticket
+      tools: []
       hint: Binding did not restore the line (or the in-home checks did not help). Register the fault
         for a technician check ('gedimo registracija') — a worker will call the next business day.
   healthy_to_router:
     problem: internet_down
     playbook: troubleshooting/kliento_puse_internetas
     steps:
+    # Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
+    # "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has
+    # its OWN route, so the classifier never guesses a device from "tik viename".
     - id: cs_scope
       kind: confirm
       detector: scope
       rag_section: 0
       'on':
         all: cs_reboot
-        phone: cs_wifi
-        computer: cs_conn
+        one: cs_which
+        phone: cs_cross_phone
+        computer: cs_cross_computer
       hint: 'Ask ONE short question and WAIT: does it fail on all devices or just one? Do NOT reflect
         or guess their answer — never say ''girdžiu, visuose'' or ''telefone'' until THEY said it. If
-        they say just ONE device but do not name it, ask WHICH device (''Kuriame įrenginyje?'') — never
-        assume a computer. If the answer was unclear, ask the same again.'
+        the answer was unclear, ask the same again.'
       answers:
-        all: neveikia visuose namų įrenginiuose
-        phone: neveikia tik telefone ar planšetėje
-        computer: neveikia tik kompiuteryje
+        all: sako, kad internetas neveikia VISUOSE įrenginiuose
+        one: sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame
+        phone: AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')
+        computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
+    - id: cs_which
+      kind: confirm
+      detector: scope
+      rag_section: 0
+      'on':
+        phone: cs_wifi
+        computer: cs_conn
+      hint: 'They said only ONE device is down but did not name it. Ask WHICH device (''Kuriame įrenginyje
+        — telefone, kompiuteryje?'') and WAIT. Never assume.'
+      answers:
+        phone: telefonas ar planšetė
+        computer: kompiuteris ar nešiojamas
+    # The caller NAMED a device before the scope was known ("telefone nėra interneto").
+    # Cross-check whether the others work — all down means the router path instead.
+    - id: cs_cross_phone
+      kind: confirm
+      detector: restored
+      rag_section: 0
+      'on':
+        'yes': cs_wifi
+        'no': cs_reboot
+      hint: 'They said the PHONE has no internet. Cross-check ONE thing: do the other home devices have
+        internet? Others work -> the fault is on the phone; others down too -> whole-home path.'
+      answers:
+        'yes': kituose įrenginiuose internetas VEIKIA
+        'no': kituose įrenginiuose interneto irgi NĖRA
+    - id: cs_cross_computer
+      kind: confirm
+      detector: restored
+      rag_section: 0
+      'on':
+        'yes': cs_conn
+        'no': cs_reboot
+      hint: 'They said the COMPUTER has no internet. Cross-check ONE thing: do the other home devices
+        have internet? Others work -> the fault is on the computer; others down too -> whole-home path.'
+      answers:
+        'yes': kituose įrenginiuose internetas VEIKIA
+        'no': kituose įrenginiuose interneto irgi NĖRA
     - id: cs_reboot
       kind: instruct
       rag_section: 1
@@ -211,8 +252,7 @@ faults:
         'no': tame įrenginyje internetas vis tiek neveikia
     - id: escalate
       kind: escalate
-      tools:
-      - create_ticket
+      tools: []
       hint: The simple self-service steps did not help — the fault is deeper (router/DNS/config/device).
         Register it ('gedimo registracija'); a worker will call the next business day.
   no_mac_observed:
@@ -340,15 +380,13 @@ faults:
         'no': prijungtame kompiuteryje interneto vis tiek nėra
     - id: dr_register_router
       kind: escalate
-      tools:
-      - create_ticket
+      tools: []
       hint: The bridge works, but their router is dead. Register that ('gedimo registracija' — sugedęs
         routeris, reikia keisti), tell them colleagues will be in touch, and that once they have a new
         router they should call so we bind it and the whole home works again.
     - id: escalate
       kind: escalate
-      tools:
-      - create_ticket
+      tools: []
       hint: The bridge is not possible (no computer / cannot connect) or it did not help. Register the
         fault ('gedimo registracija') and explain they will likely need a new router; a worker calls the
         next business day.
