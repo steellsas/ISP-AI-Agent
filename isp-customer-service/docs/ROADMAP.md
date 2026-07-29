@@ -934,10 +934,9 @@ insight: the outcome is already in STATE — `problem_type` (why they called), `
 (what was done), `closed_reason` (resolved / ticket / inform / declined). So both artefacts
 below are built DETERMINISTICALLY from state, not from LLM free text.
 
-- [ ] **Ticket from state, not free text.** Populate the ticket's fault type / cause / what
-      was done / what could NOT be done from state (verdict + purpose + actions + escalate
-      reason). Also HARDENS the create_ticket bug we hit (LLM invented `equipment_replacement`)
-      — the type comes from the verdict, not the model's wording.
+- [x] **Ticket from state, not free text.** `_register_ticket_from_state` (Phase 3.11 B):
+      cause from hypothesis/verdict, actions from this call's trace, type technician_visit
+      — never the model's wording. The engine registers it at the ESCALATE outcome.
 - [x] **Persist a call record at session_end.** The `conversations` table already exists
       (`session_id, customer_id, messages, outcome, summary, ticket_id, duration_seconds`) —
       write a structured summary there when the call ends: {purpose, cause + side,
@@ -1007,21 +1006,20 @@ place after the turn-taking rail), AND: speak short, stop when interrupted, fill
 waiting time with useful questions. This is the list to finish "daugmaž viską"
 before Phase 5 (async + telephony).
 
-- [ ] **A. Short voice replies.** Voice is not chat: 1–2 short sentences per turn,
-      no paragraphs. Tighten `style.md`/`solving.md` (voice-channel rule), and add a
-      reply-length check to the Golden eval so regressions surface. Long replies are
-      also the main TTS latency cost today (5–8 s per turn observed) — shorter
-      replies cut latency for free.
-- [ ] **B. 3.10 outcome node** *(the structural leftover — see Phase 3.10)* —
-      ticket from state + ONE closing/outcome path for every disposition
-      (resolved / escalate / inform now done for inform only). Removes the last
-      loops (ticket-consent loop closed only by bailout).
-- [ ] **C. Anamnesis during waits.** While the engine runs a check/fix (bind,
-      telemetry read), the agent asks useful history questions instead of dead air:
-      "kada pastebėjote? ar po ko nors dingo (audra, remontas, kraustymasis)?" —
-      answers land in `symptoms` and sharpen the diagnosis. First cut WITHOUT async:
-      scripted into the ACTION/VERIFY step announce ("Dabar pririšiu… o kol laukiam —
-      kada pastebėjote gedimą?"). Full version rides Phase 5 async telemetry.
+- [x] **A. Short voice replies.** reply_len auto-check in the Golden eval (max ≤ 280
+      chars, avg ≤ 160 per scenario) + dr_intro trimmed to two sentences (no cause
+      enumeration). Long replies were also the main TTS latency cost (5–8 s per turn
+      observed) — shorter replies cut latency for free.
+- [x] **B. 3.10 outcome node.** ESCALATE is a deterministic OUTCOME: the ENGINE
+      registers the ticket from STATE on the caller's consent (consent → registered,
+      decline → closed without a ticket, unclear → re-ask); create_ticket removed from
+      the model's tools mid-strategy. PLUS scope split for any answer order (cs_scope →
+      all / one→cs_which / named device→cs_cross_* cross-check) — the classifier never
+      guesses a device again.
+- [x] **C. Anamnesis during waits.** The bind announce (foreign_mac bind_mac +
+      dead-router dr_bind) carries ONE history question in the same utterance ("O kol
+      laukiam — kada pastebėjote, kad dingo internetas?"). Full version rides Phase 5
+      async telemetry.
 - [ ] **D. 3.8 leftovers on the universal-agent track** *(parallel, not blocking)* —
       solver cut-over on dead-router (5/6), signals→knowledge (D). Phase 5 does not
       depend on these, but they continue the "universal thinking agent" line.
