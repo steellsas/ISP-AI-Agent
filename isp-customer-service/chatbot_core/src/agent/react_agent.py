@@ -742,6 +742,10 @@ class ReactAgent:
                 if step.rag_section is not None:
                     section = get_step(strat.rag_doc, step.rag_section)
                     if section:
+                        # Observability: WHICH knowledge chunk feeds THIS step (the
+                        # trace otherwise never shows the RAG injection — only
+                        # DEBUG_LLM did, with far too much noise).
+                        self._emit_rag_injection(strat.rag_doc, step.rag_section, step.id, section)
                         facts.append(
                             "- PLAYBOOK — your INTERNAL guidance for THIS step (Lithuanian "
                             "content). Act on it, do NOT read it to the caller verbatim, "
@@ -1301,6 +1305,17 @@ class ReactAgent:
         if key is None:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
+
+    def _emit_rag_injection(self, doc: str | None, section: int, step_id: str, text: str) -> None:
+        """Emit a `rag` trace event when a playbook section is injected for a step —
+        deduped on (doc, section, step) so the multi-call turn (LLM + tool follow-up)
+        logs it once, and a step change logs the new section."""
+        key = (doc, section, step_id)
+        if getattr(self, "_last_rag_key", None) == key:
+            return
+        self._last_rag_key = key
+        preview = " ".join((text or "").split())[:90]
+        self.tracer.emit("rag", doc=doc, section=section, step=step_id, preview=preview)
 
     def _last_agent_question(self) -> str | None:
         """The last thing the agent actually said — the real question the caller is
