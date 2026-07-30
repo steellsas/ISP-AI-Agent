@@ -267,6 +267,10 @@ class ReactAgent:
         # Activation arc (Phase 3.11 #5): True between "tuoj patikrinsiu + anamnezės
         # klausimas" and the turn that actually narrates the finding + step question.
         self._finding_pending = False
+        # Per-turn guards (set in _pre_turn_guards): address-offer commit veto note and
+        # the one-turn "identification reopened" note.
+        self._addr_confirm_note: str | None = None
+        self._reopen_note = False
 
         # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
         # tools exposed to the model and add a focused prompt. None = unrestricted
@@ -472,6 +476,17 @@ class ReactAgent:
         """
         s = self.state
         facts: list[str] = []
+        # Per-turn guards (deterministic, set in _pre_turn_guards) lead the block —
+        # they override the model's own reading of the last reply.
+        if getattr(self, "_addr_confirm_note", None):
+            facts.append(self._addr_confirm_note)
+        if getattr(self, "_reopen_note", False) and not s.customer_id:
+            facts.append(
+                "- KLIENTAS PATIKSLINO: skambina dėl KITO adreso nei buvo nustatyta. "
+                "Atsiprašyk vienu sakiniu ir paprašyk pasakyti adresą, dėl kurio "
+                "skambina (jei jau pasakė — žr. HEARD ADDRESS ir naudok jį). Ankstesnio "
+                "adreso ir jo diagnozės NEBEminėk."
+            )
         # Proactive mass-outage (the ONE time the phone is used up front): if the
         # caller's street has an active outage, inform immediately instead of
         # identifying. Leads the block so it drives the FIRST reply. Reveals only
@@ -580,11 +595,20 @@ class ReactAgent:
                 )
         # Repeat-guard nudge (scaled): the caller's last reply did not advance us.
         # Don't loop the same question — acknowledge, narrow, then change tactic.
-        if s.stuck_count >= 2:
+        # The account-code tactic belongs to IDENTIFICATION only — once the customer is
+        # known it leaked into late-call narration ("Gal turite abonento kodą?" right
+        # after registering a ticket, observed live).
+        if s.stuck_count >= 2 and not s.customer_id:
             facts.append(
                 "- STRIGTI: to paties klausimo NEBEKARTOK. Pakeisk taktiką — pasiūlyk "
                 "abonento kodą („Gal turite abonento kodą nuo sąskaitos?“) arba "
                 "užregistruok problemą atskambinimui."
+            )
+        elif s.stuck_count >= 2:
+            facts.append(
+                "- STRIGTI: to paties klausimo NEBEKARTOK. Perfrazuok kitaip arba "
+                "pasiūlyk užregistruoti gedimą (technikas susisieks). NEklausk abonento "
+                "kodo — klientas jau identifikuotas."
             )
         elif s.stuck_count == 1:
             extra = (
@@ -1297,6 +1321,36 @@ class ReactAgent:
             if detect_restored(user_input) is Outcome.YES:
                 self._route_to(r, next_step_id(strat, step.id, "yes"))
                 return
+        # Refusal / explicit ticket demand ends troubleshooting in a REGISTRATION
+        # (policy 2026-07-30). A clear DEMAND ("įregistruokit gedimą") IS the consent —
+        # register now and close, with the reason on the ticket. A softer refusal
+        # ("nedarysiu", "nesu namuose") routes to the escalate step, whose consent
+        # question doubles as the polite clarification ("užregistruosiu — ar tinka?").
+        # Observed live: the caller demanded a ticket 3×, the narrator promised it 5×,
+        # and the walker held cable_check forever — no route existed.
+        if step.kind is not StepKind.ESCALATE:
+            from .resolution import detect_refuse_or_ticket
+
+            rt = detect_refuse_or_ticket(user_input)
+            if rt is not None and strat.step("escalate") is not None:
+                r["escalate_reason"] = (
+                    "Klientas paprašė registracijos."
+                    if rt == "demand"
+                    else "Neišspręsta — klientas atsisakė tęsti tikrinimą."
+                )
+                self._goto_step(r, "escalate")
+                self.tracer.emit(
+                    "decision",
+                    intent="refuse_or_ticket",
+                    action=rt,
+                    from_step=step.id,
+                    to="escalate",
+                )
+                if rt == "demand":
+                    self._register_ticket_from_state(strat.step("escalate"))
+                    self.state.case_closed = True
+                    self.state.closed_reason = "registered"
+                return
         # ASKED generic CONFIRM (yes/no, lights, scope, restored, …): the LLM classifier
         # reads the answer AND whether it IS an answer in one call — so a confident answer
         # advances even when the brittle keyword turn-intent would veto it (observed:
@@ -1372,6 +1426,77 @@ class ReactAgent:
         self._last_rag_key = key
         preview = " ".join((text or "").split())[:90]
         self.tracer.emit("rag", doc=doc, section=section, step=step_id, preview=preview)
+
+    def _pre_turn_guards(self, user_input: str) -> None:
+        """Deterministic per-turn guards, run BEFORE the LLM sees the turn.
+
+        (1) Address-offer reply guard: a reply to "Ar skambinate dėl X?" commits the
+            account ONLY on a CLEAN yes — a garbled/mixed reply ("Taip, nebija" = STT
+            mangle of a denial) vetoes the commit and the agent re-asks (observed live:
+            wrong apartment's debt read to the caller).
+        (2) Reopen identification: an already-identified caller says they are calling
+            about a DIFFERENT address -> drop the identity and ask for the address
+            again instead of carrying on about the wrong account."""
+        s = self.state
+        self._addr_confirm_note = None
+        self._reopen_note = False
+        if not user_input:
+            return
+        if not s.customer_id:
+            q = (self._last_agent_question() or "").lower()
+            if "skambinate dėl" in q or "dėl šio adreso" in q or "adreso skambinate" in q:
+                from .resolution import detect_address_confirm
+
+                verdict = detect_address_confirm(user_input)
+                if verdict != "yes":
+                    self._addr_confirm_note = (
+                        "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI nepatvirtino "
+                        "pasiūlyto adreso (girdisi neigimas ar neaiškumas). NEkviesk "
+                        "resolve_address su pasiūlytu adresu. Jei klientas įvardijo KITĄ "
+                        "adresą (žr. HEARD ADDRESS) — naudok TĄ. Kitu atveju mandagiai "
+                        "perklausk: „Atsiprašau, nesupratau — dėl kokio adreso skambinate?“"
+                    )
+                    self._trace_note(
+                        "address_confirm",
+                        f"offer not confirmed (verdict={verdict}); veto commit",
+                        level="warn",
+                    )
+        elif not s.case_closed:
+            from .resolution import detect_address_correction
+
+            if detect_address_correction(user_input):
+                self._reopen_identification(user_input)
+
+    def _reopen_identification(self, user_input: str) -> None:
+        """The caller corrected the address AFTER identification — drop the identity and
+        every per-account conclusion; keep only the conversation. The router sends the
+        next turn back to address_validation (customer_id is None again)."""
+        s = self.state
+        self._trace_note(
+            "reopen_identity",
+            f"caller says a DIFFERENT address; dropping {s.customer_id}",
+            level="warn",
+        )
+        s.customer_id = None
+        s.customer_name = None
+        s.customer_address = None
+        s.address_confirmed = False
+        s.resolution = None
+        s.diagnosis.clear()
+        s.hypothesis = None
+        s.failed_hypotheses.clear()
+        s.rejected_hypotheses.clear()
+        s.pivoted_from = None
+        s.outage_reported = False
+        from .slots import ClientProfileState
+
+        s.profile = ClientProfileState()
+        self._db_address_note = None
+        self._finding_pending = False
+        # Re-extract address parts from THIS utterance (the correction often carries
+        # the new address: "ne, skambinu dėl Dainų 5").
+        self._prefill_slots_from_text(user_input)
+        self._reopen_note = True
 
     def _last_agent_question(self) -> str | None:
         """The last thing the agent actually said — the real question the caller is
@@ -1772,6 +1897,11 @@ class ReactAgent:
         details = f"Gedimas: {s.problem_type or 'internetas'} — {gloss}."
         if step.id == "dr_register_router":
             details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
+        # Why it was not solved (refusal / demand / not home) — recorded on the ticket
+        # so the technician knows the context (policy 2026-07-30).
+        reason_note = (s.resolution or {}).get("escalate_reason")
+        if reason_note:
+            details += f" {reason_note}"
         actions = self._tools_called_this_session()
         args = {
             "customer_id": s.customer_id,
@@ -2559,6 +2689,7 @@ class ReactAgent:
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
+            self._pre_turn_guards(user_input)
 
         # Deterministic backstop (before the LLM, so it works with streaming) once a
         # genuine repeat loop has escalated.
@@ -2793,6 +2924,7 @@ class ReactAgent:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
             self._prefill_slots_from_text(user_input)
+            self._pre_turn_guards(user_input)
 
         # Deterministic backstop before the LLM, once a genuine repeat loop escalated.
         backstop = self._stuck_backstop()

@@ -343,9 +343,11 @@ faults:
       kind: instruct
       rag_section: 5
       goto: dr_see_device
-      hint: 'ONE instruction, then wait: plug that cable into the computer''s network socket (the one
-        the same plug fits, on the back/side) until it clicks, and say when done. If they say it does
-        not fit or they cannot find it, help with WHERE to look — do not move on.'
+      hint: 'ONE instruction, then wait: plug that cable into the COMPUTER''s network socket (the one
+        the same plug fits, on the back/side) until it clicks, and say when done. NEVER say to plug it
+        back into the router — the whole point is bypassing the dead router (observed: the narrator
+        told the caller ''atgal į routerio lizdą''). If they say it does not fit or they cannot find
+        it, help with WHERE to look — do not move on.'
     - id: dr_see_device
       kind: verify
       rag_section: 6

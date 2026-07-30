@@ -490,10 +490,11 @@ _DEAD_ROUTER = Strategy(
             rag_section=5,  # "### Žingsnis 4b: Įkišti į kompiuterį"
             goto="dr_see_device",
             hint=(
-                "ONE instruction, then wait: plug that cable into the computer's network "
+                "ONE instruction, then wait: plug that cable into the COMPUTER's network "
                 "socket (the one the same plug fits, on the back/side) until it clicks, "
-                "and say when done. If they say it does not fit or they cannot find it, "
-                "help with WHERE to look — do not move on."
+                "and say when done. NEVER say to plug it back into the router — the whole "
+                "point is bypassing the dead router. If they say it does not fit or they "
+                "cannot find it, help with WHERE to look — do not move on."
             ),
         ),
         Step(
@@ -1102,6 +1103,106 @@ _CONSENT_NO = (
     "ne ačiū",
     "ne aciu",
 )
+
+
+def detect_address_confirm(text: str | None) -> str | None:
+    """Read the reply to an address OFFER ("Ar skambinate dėl X?") without trusting a
+    bare leading "taip": 'yes' only when the confirmation is CLEAN, 'no' when they
+    deny / name another address, None when mixed or garbled (-> re-ask, never commit).
+
+    Live bug this guards: STT turned "ne, 60-7" into "Taip, nebija" — the model saw
+    "Taip…" and committed the WRONG apartment. Problem words ("neveikia", "nėra
+    interneto") are not denials; any OTHER "ne-" token alongside a "taip" is."""
+    if not text or not text.strip():
+        return None
+    low = text.lower()
+    if any(m in low for m in _ADDR_NO):
+        return "no"
+    ne_tokens = [
+        t
+        for t in re.findall(r"\bne\w*", low)
+        # the PROBLEM being negated is not an address denial:
+        if not t.startswith(
+            ("neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber")
+        )
+    ]
+    has_yes = any(
+        m in low for m in ("taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo")
+    )
+    if ne_tokens:
+        return "no" if not has_yes else None  # mixed "taip…ne…" garble -> re-ask
+    return "yes" if has_yes else None
+
+
+_ADDR_NO = (
+    "ne dėl",
+    "ne del",
+    "ne tas adres",
+    "ne to adres",
+    "ne tuo adres",
+    "kitas adres",
+    "kito adres",
+    "kitu adres",
+    "kitas butas",
+    "kito buto",
+    "kitam bute",
+    "ne šit",
+    "ne sit",
+)
+
+
+def detect_address_correction(text: str | None) -> bool:
+    """True when an ALREADY-identified caller says they are calling about a different
+    address ("tai ne dėl to adreso skambinu", "kitas butas") — the engine must reopen
+    identification instead of carrying on about the wrong account (observed live)."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _ADDR_NO)
+
+
+# Refusal to troubleshoot / explicit demand for a registration. Either way the
+# troubleshooting ENDS in a registration (policy 2026-07-30): a clear DEMAND registers
+# immediately (the demand IS the consent); a softer refusal routes to the escalate
+# step whose consent question doubles as the polite clarification.
+_TICKET_DEMAND = (
+    "registruok",
+    "įregistruok",
+    "iregistruok",
+    "užregistruok",
+    "uzregistruok",
+    "iškviesk",
+    "iskviesk",
+    "kvieskit",
+    "atsiųsk technik",
+    "atsiusk technik",
+    "tegul atvažiuoj",
+    "tegul atvaziuoj",
+)
+_TICKET_REFUSE = (
+    "nedarysiu",
+    "nedarysim",
+    "nenoriu daryti",
+    "nenoriu tikrinti",
+    "nenoriu nieko",
+    "neturiu laiko",
+    "nesu namuose",
+    "ne namie",
+    "negaliu dabar",
+    "nenam",  # STT garbles of "nedarysiu / ne namie" ("nenamosiu")
+)
+
+
+def detect_refuse_or_ticket(text: str | None) -> str | None:
+    """'demand' (register it, now) / 'refuse' (won't troubleshoot) / None."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _TICKET_DEMAND):
+        return "demand"
+    if any(m in low for m in _TICKET_REFUSE):
+        return "refuse"
+    return None
 
 
 def detect_ticket_consent(text: str | None) -> str | None:

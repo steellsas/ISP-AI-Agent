@@ -715,3 +715,84 @@ class TestRestoredPreAnswer:
 
         assert agent.state.case_closed is True
         assert agent.state.closed_reason == "resolved"
+
+
+class TestAddressGuards:
+    """Round-3 live bugs: a garbled reply must not commit the offered address, and a
+    post-identification correction must reopen identification."""
+
+    def test_garbled_taip_nebija_is_not_a_confirm(self):
+        from agent.resolution import detect_address_confirm
+
+        assert detect_address_confirm("Taip, nebija") is None  # mixed -> re-ask
+        assert detect_address_confirm("Taip, tvirtinu") == "yes"
+        assert detect_address_confirm("Ne, dėl kito adreso") == "no"
+        # Problem words are not denials: "neveikia" alongside taip still confirms.
+        assert detect_address_confirm("Taip, neveikia internetas dėl to adreso") == "yes"
+
+    def test_pre_turn_guard_vetoes_commit(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020101")
+        agent.state.messages.append(
+            {"role": "assistant", "content": "Ar skambinate dėl Tilžės g. 60, butas 3?"}
+        )
+        agent._pre_turn_guards("Taip, nebija")
+        assert agent._addr_confirm_note is not None  # veto: do not resolve the offer
+        facts = agent._state_facts_block()
+        assert facts and "NEPATVIRTINTAS" in facts
+
+    def test_correction_reopens_identification(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020101")
+        agent.state.customer_id = "CUST101"
+        agent.state.customer_address = "Šiauliai, Tilžės g. 60-3"
+        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent._pre_turn_guards("Tai ne dėl to adresų skambinu")
+        assert agent.state.customer_id is None  # identity dropped
+        assert agent.state.diagnosis == {}  # per-account conclusions dropped
+        assert agent._reopen_note is True
+
+
+class TestRefuseOrTicket:
+    """A refusal / explicit ticket demand ends troubleshooting in a registration."""
+
+    def _agent_mid_flow(self, monkeypatch, step="cable_check"):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060020105")
+        agent.state.customer_id = "CUST105"
+        agent.state.problem_type = "internet_down"
+        agent.state.hypothesis = {"cause": "foreign_mac", "status": "testing"}
+        agent.state.resolution = {"verdict": "foreign_mac", "step": step, "asked": True}
+        return agent
+
+    def test_demand_registers_immediately(self, db_connection, monkeypatch):
+        agent = self._agent_mid_flow(monkeypatch)
+        agent._walk_resolution("Nieko nedarysiu, įregistruokit gedimą")
+        assert agent.state.ticket_id
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "registered"
+
+    def test_refuse_routes_to_escalate_consent(self, db_connection, monkeypatch):
+        agent = self._agent_mid_flow(monkeypatch)
+        agent._walk_resolution("Aš nenamosiu")  # garbled refusal
+        r = agent.state.resolution
+        assert r["step"] == "escalate"  # polite consent question comes next
+        assert agent.state.ticket_id is None  # not registered yet — clarify first
+        assert "atsisakė" in r["escalate_reason"]
+
+
+class TestAddressSpeech:
+    def test_spoken_address_form(self):
+        from agent.voice_pipeline import normalize_lt_address_speech as n
+
+        assert n("Ar skambinate dėl Tilžės g. 60-7?") == (
+            "Ar skambinate dėl Tilžės gatvė, namas 60, butas 7?"
+        )
+        assert n("Radau: Žeimių g. 12, butas 6") == "Radau: Žeimių gatvė 12, butas 6"
+        assert n("Jokio adreso čia nėra") == "Jokio adreso čia nėra"
