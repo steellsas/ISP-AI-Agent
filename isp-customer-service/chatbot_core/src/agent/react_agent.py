@@ -556,6 +556,15 @@ class ReactAgent:
             )
         elif s.case_closed:
             facts.append(f"- Byla UŽDARYTA (priežastis: {s.closed_reason or 'resolved'}).")
+            # Engine-registered ticket (consent-free ESCALATE): the narrator ANNOUNCES
+            # the registration — it must not ask permission or offer to register again.
+            if s.closed_reason == "registered" and s.ticket_id:
+                facts.append(
+                    "- UŽREGISTRUOTA: gedimas jau užregistruotas (variklis tai padarė). "
+                    "Pasakyk vienu sakiniu: užregistravau gedimą, kolegos susisieks ir "
+                    "detaliau paaiškins. NEklausk sutikimo, NEsiūlyk registruoti dar "
+                    "kartą, neskaityk ticket ID."
+                )
             # Just resolved: confirm briefly, then OFFER one more thing and WAIT — do
             # NOT sign off yet (the engine ends the call once the caller declines).
             if s.closed_reason == "resolved" and s.resolution:
@@ -897,7 +906,20 @@ class ReactAgent:
 
         strat = get_strategy(r.get("verdict"))
         step = strat.step(r.get("step", "")) if strat else None
-        if step is None or step.kind != StepKind.ACTION:
+        if step is None:
+            return False
+        # Auto-register ESCALATE (consent=False, e.g. dr_register_router after a working
+        # bridge): the registration is a NECESSITY, not an offer — the engine registers
+        # ON ARRIVAL and closes; the narrator only ANNOUNCES it ("užregistravau...,
+        # kolegos susisieks ir detaliau paaiškins"). Asking permission here misread a
+        # non-consent reply as a decline and the caller left WITHOUT the ticket they
+        # were promised (observed live).
+        if step.kind is StepKind.ESCALATE and not step.consent:
+            self._register_ticket_from_state(step)
+            s.case_closed = True
+            s.closed_reason = "registered"
+            return True
+        if step.kind != StepKind.ACTION:
             return False
         if r.get("action_done"):
             return False  # already ran this action; the walker advances it next turn
@@ -1241,6 +1263,17 @@ class ReactAgent:
         if step.id == "confirm_change" and confirms_device_change(user_input):
             self._route_to(r, next_step_id(strat, step.id, "yes"))
             return
+        # A clear "atsirado / veikia" pre-answers a restored CONFIRM before it was even
+        # asked — often fused with the goodbye ("yra internetas, ačiū, viso gero"). Route
+        # the YES so the resolve is RECORDED instead of the call dying unclosed on the
+        # hangup (observed live: resolved Wi-Fi call left outcome=None). Only the clear
+        # affirmative pre-answers; a "no" still waits for the step's own question.
+        if step.detector == "restored" and not r.get("asked"):
+            from .resolution import Outcome, detect_restored
+
+            if detect_restored(user_input) is Outcome.YES:
+                self._route_to(r, next_step_id(strat, step.id, "yes"))
+                return
         # ASKED generic CONFIRM (yes/no, lights, scope, restored, …): the LLM classifier
         # reads the answer AND whether it IS an answer in one call — so a confident answer
         # advances even when the brittle keyword turn-intent would veto it (observed:
@@ -1417,7 +1450,11 @@ class ReactAgent:
             self.state.last_intent = "done"
             self._advance_instruct(self.state.resolution, step, strat)
             return True
-        return False
+        # Classifier VETO: it confidently read "still doing / asking / confused" — HOLD
+        # the step this turn, do not let the looser keyword intent gate advance on a
+        # garble read as a plain 'answer' (observed live: dr_cable advanced while the
+        # caller was still asking WHICH cable goes WHERE).
+        return obs.label == "waiting" and obs.confidence >= 0.5
 
     def _detect_confirm(self, step, user_input: str | None):
         """Keyword FALLBACK detector for a CONFIRM reply — used when the classifier is off
@@ -1634,6 +1671,8 @@ class ReactAgent:
           decline  -> close WITHOUT a ticket (closed_reason='declined'),
           unclear  -> hold; the narrator re-asks (stuck-guard still backstops).
         The LLM only phrases — it can no longer call create_ticket itself."""
+        if not step.consent:
+            return  # auto-register step — ensure_action_done handles it on arrival
         if not r.get("asked"):
             return  # consent question not posed yet — narrator asks it this turn
         from .classifier import classify_step

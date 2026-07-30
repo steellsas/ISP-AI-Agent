@@ -67,6 +67,11 @@ class Step:
     # INSTRUCT/ACTION only: explicit next step (overrides fall-through), so two
     # instruct chains can converge on the same verify step.
     goto: str = ""
+    # ESCALATE only: ask the caller's consent before registering (default). False =
+    # the registration is a NECESSITY, not an offer (e.g. dr_register_router after a
+    # working bridge — the router IS dead): the engine registers on arrival and the
+    # narrator only ANNOUNCES it ("užregistravau, kolegos susisieks ir paaiškins").
+    consent: bool = True
 
 
 @dataclass(frozen=True)
@@ -532,11 +537,13 @@ _DEAD_ROUTER = Strategy(
             id="dr_register_router",
             kind=StepKind.ESCALATE,
             tools=frozenset(),  # engine registers the ticket (Phase 3.11 B), not the model
+            consent=False,  # a necessity, not an offer — the engine registers on arrival
             hint=(
-                "The bridge works, but their router is dead. Register that ('gedimo "
-                "registracija' — sugedęs routeris, reikia keisti), tell them colleagues "
-                "will be in touch, and that once they have a new router they should call "
-                "so we bind it and the whole home works again."
+                "The bridge works, but their router is dead. The ENGINE has ALREADY "
+                "registered the fault — ANNOUNCE it, do not ask permission: "
+                "'Užregistravau gedimą dėl sugedusio routerio — kolegos susisieks ir "
+                "detaliau paaiškins.' Add that the internet works on this computer for "
+                "now, and once they have a new router they should call so we bind it."
             ),
         ),
         Step(
@@ -946,6 +953,12 @@ _FAREWELL = (
     "nebereikia",
     "iki",
     "ate",
+    # STT garbles of "viso gero / viso labo" heard in live calls — a farewell must
+    # still close the call when whisper mangles the vowels.
+    "visą gerą",
+    "visa gera",
+    "visą gera",
+    "viso gera",
 )
 
 
@@ -1078,6 +1091,8 @@ _CONSENT_YES = (
     "uzregistruok",
     "darykit",
     "darykite",
+    "lauksiu",  # "lauksiu skambučio" = expects the registration — consent, not decline
+    "lauksim",
 )
 _CONSENT_NO = (
     "nenoriu",

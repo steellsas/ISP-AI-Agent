@@ -124,6 +124,7 @@ def build_strategy(verdict: str):
                     detector=str(raw.get("detector", "")),
                     on={str(k): str(v) for k, v in (raw.get("on") or {}).items()},
                     goto=str(raw.get("goto", "")),
+                    consent=bool(raw.get("consent", True)),
                 )
             )
         return Strategy(

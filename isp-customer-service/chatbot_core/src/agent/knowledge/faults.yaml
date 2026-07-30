@@ -285,8 +285,9 @@ faults:
         (the box the internet cable goes into) and, once there, whether ANY light is lit. Do not guess
         the answer.'
       answers:
-        'yes': ant routerio dega bent viena lemputė
-        'no': nedega nė viena lemputė
+        'yes': AIŠKIAI sako, kad dega / šviečia / mirksi bent viena lemputė — be jokio neiginio
+        'no': sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-" šaknimi — „nede",
+          „neda", „nedega gan viena" — neiginys visada reiškia NEDEGA)
     - id: dr_power
       kind: confirm
       detector: lights
@@ -381,9 +382,11 @@ faults:
     - id: dr_register_router
       kind: escalate
       tools: []
-      hint: The bridge works, but their router is dead. Register that ('gedimo registracija' — sugedęs
-        routeris, reikia keisti), tell them colleagues will be in touch, and that once they have a new
-        router they should call so we bind it and the whole home works again.
+      consent: false
+      hint: 'The bridge works, but their router is dead. The ENGINE has ALREADY registered the fault —
+        ANNOUNCE it, do not ask permission: ''Užregistravau gedimą dėl sugedusio routerio — kolegos
+        susisieks ir detaliau paaiškins.'' Add that the internet works on this computer for now, and
+        once they have a new router they should call so we bind it.'
     - id: escalate
       kind: escalate
       tools: []

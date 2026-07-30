@@ -652,3 +652,66 @@ class TestEscalateOutcome:
         agent._walk_resolution("gerai, tinka")  # "taip" to something else entirely
         assert agent.state.ticket_id is None
         assert agent.state.case_closed is False
+
+
+class TestAutoRegisterEscalate:
+    """consent=False ESCALATE (dr_register_router): the registration is a necessity —
+    the engine registers ON ARRIVAL and closes; no consent question, no misread."""
+
+    def test_arrival_registers_and_closes(self, db_connection, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_register_router"}
+
+        ran = agent.ensure_action_done()
+
+        assert ran is True
+        assert agent.state.ticket_id
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "registered"
+
+    def test_lauksiu_skambucio_is_consent_not_decline(self):
+        from agent.resolution import detect_ticket_consent
+
+        assert detect_ticket_consent("Lauksiu skambučio, ačiū") == "yes"
+
+    def test_farewell_stt_garbles_close(self):
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Neturiu, neturiu, visą gerą") is True
+        assert detect_farewell("visa gera, ačiū") is True
+
+
+class TestRestoredPreAnswer:
+    """A clear 'atsirado / veikia' fused with the goodbye pre-answers the restored
+    CONFIRM before it was asked — the resolve gets RECORDED instead of the call dying
+    unclosed on the hangup (observed live: resolved Wi-Fi call left outcome=None)."""
+
+    def test_restored_yes_advances_unasked_verify(self, db_connection, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060020109")
+        agent.state.customer_id = "CUST109"
+        agent.state.problem_type = "internet_down"
+        agent.state.diagnosis["network"] = {"group": "B7", "reason": "healthy_to_router"}
+        agent.state.hypothesis = {"cause": "healthy_to_router", "status": "testing"}
+        agent.state.resolution = {
+            "verdict": "healthy_to_router",
+            "step": "cs_verify_dev",
+            "asked": False,  # the question was never posed — caller pre-answered
+        }
+
+        agent._walk_resolution("Įjungta, yra internetas, ačiū, atsirado. Viso gero.")
+
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "resolved"
