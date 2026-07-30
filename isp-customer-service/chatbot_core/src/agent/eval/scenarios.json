@@ -7,8 +7,9 @@
       "desc": "MAC pririšimas — klientas keitė routerį (foreign_mac -> bind -> resolved)",
       "turns": [
         "Labas, neveikia internetas",
-        "Taip",
         "Prieš valandą dingo, po nieko ypatingo",
+        "Taip",
+        "Gerai, laukiu",
         "Taip, keičiau routerį, senasis sugedo",
         "Gerai, laukiu",
         "Taip, atsirado internetas",
@@ -17,7 +18,9 @@
       "expect": {
         "verdict_in": "foreign_mac",
         "disposition": "resolved",
-        "reply_any": ["pririš"],
+        "reply_any": [
+          "pririš"
+        ],
         "reply_none": []
       }
     },
@@ -27,8 +30,9 @@
       "desc": "Kliento pusė, telefonas — turi klausti KURIO įrenginio, telefonui NESIŪLYTI kabelio",
       "turns": [
         "Labas, neveikia internetas",
-        "Taip",
         "Vakar vakare pastebėjau",
+        "Taip",
+        "Gerai, laukiu",
         "Tik viename",
         "Telefone",
         "Patikrinau, WiFi įjungtas",
@@ -39,8 +43,14 @@
       "expect": {
         "verdict_in": "healthy_to_router",
         "disposition": "resolved",
-        "reply_any": ["įrenginy", "telefon"],
-        "reply_none": ["kabel", "laid"]
+        "reply_any": [
+          "įrenginy",
+          "telefon"
+        ],
+        "reply_none": [
+          "kabel",
+          "laid"
+        ]
       }
     },
     {
@@ -49,8 +59,9 @@
       "desc": "Miręs routeris -> tiltas. Prijungus PC ir telemetrijai nepasikeitus, NEGALIMA kaltinti routerio maitinimo — turi sakyti kad įrenginys nematomas / nepririštas. (Buvęs known_bug — dr_intro desync fix jį uždarė; dabar must-pass regresijos sargas.)",
       "turns": [
         "Labas, neveikia internetas",
-        "Taip",
         "Šįryt dingo, po audros",
+        "Taip",
+        "Gerai, laukiu",
         "Galėtume kartu patikrinti",
         "Ne, nešviečia jokia lemputė",
         "Vis tiek nedega",
@@ -63,8 +74,12 @@
       "expect": {
         "verdict_in": "no_mac_observed",
         "disposition": "any",
-        "reply_any": ["kompiuter"],
-        "tool_used": ["update_mac"]
+        "reply_any": [
+          "kompiuter"
+        ],
+        "tool_used": [
+          "update_mac"
+        ]
       }
     },
     {
@@ -73,13 +88,20 @@
       "desc": "Masinė avarija -> informuoti + ETA, be tiketo",
       "turns": [
         "Labas, neveikia internetas",
+        "Vakar pastebėjau",
         "Taip",
         "Aišku, ačiū, lauksiu"
       ],
       "expect": {
         "disposition": "inform",
-        "reply_any": ["gedim", "avarij"],
-        "reply_none": ["registr", "diagnostik"]
+        "reply_any": [
+          "gedim",
+          "avarij"
+        ],
+        "reply_none": [
+          "registr",
+          "diagnostik"
+        ]
       }
     },
     {
@@ -88,13 +110,18 @@
       "desc": "Skola -> informuoti kaip apmokėti, be diagnostikos, be tiketo",
       "turns": [
         "Labas, neveikia internetas",
+        "Vakar pastebėjau",
         "Taip",
         "Aišku, ačiū"
       ],
       "expect": {
         "verdict_in": "billing_suspended",
         "disposition": "inform",
-        "reply_any": ["apmok", "sąskait", "skol"],
+        "reply_any": [
+          "apmok",
+          "sąskait",
+          "skol"
+        ],
         "reply_none": []
       }
     }

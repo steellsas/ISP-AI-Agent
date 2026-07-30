@@ -673,7 +673,11 @@ class ReactAgent:
         # made the agent re-narrate the solved problem ("dar nepririštas") every
         # turn. Past the bind, the step's own hint is the single source of truth.
         past_action = bool(s.resolution) and "telemetry_fixed" in (s.resolution or {})
-        if not past_action:
+        # Activation turn of the arc: the reply must be ONLY the wait announce — the
+        # DIAGNOSTIKA fact here made the model blurt the finding a turn early despite
+        # the defer instruction. The finding surfaces NEXT turn (RADINYS).
+        activation_turn = self._finding_pending and self._active_node == "address_validation"
+        if not past_action and not activation_turn:
             for domain, d in s.diagnosis.items():
                 gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
                 facts.append(
@@ -684,7 +688,11 @@ class ReactAgent:
                 )
         # What we believe and why — so the agent reasons out loud instead of issuing
         # orders, and can CONFIRM the cause at the end ("taigi dėl X ir nebuvo").
+        # Suppressed on the arc's activation turn like DIAGNOSTIKA — it leaked the
+        # finding a turn early ("KO DABAR IEŠKAU: …" -> the model narrated it).
         h = s.hypothesis
+        if h and activation_turn:
+            h = None
         if h:
             because = "; ".join(h["because"])
             if h["status"] == "confirmed":
@@ -783,11 +791,12 @@ class ReactAgent:
                 d = s.diagnosis.get("network") or {}
                 gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
                 facts.append(
-                    "- RADINYS (dar nepasakytas): klientas ką tik atsakė apie gedimo "
-                    "pradžią — trumpai priimk atsakymą (pora žodžių), tada pasakyk "
-                    f"RADINĮ: patikrinau — {gloss}. Pridėk, kad galime pabandyti "
-                    "sutvarkyti kartu dabar, ir užduok ŠIO ŽINGSNIO klausimą. Vienas "
-                    "klausimas, be instrukcijų sąrašo."
+                    "- RADINYS (dar nepasakytas): patikra baigta — dabar aptark "
+                    f"rezultatą. Pasakyk RADINĮ: patikrinau — {gloss}; vienu sakiniu "
+                    "kas tai gali būti, ir pasiūlyk pabandyti sutvarkyti kartu dabar "
+                    "(ŠIO ŽINGSNIO klausimas atlieka „ar darome?“ vaidmenį). Vienas "
+                    "klausimas, be instrukcijų sąrašo. Jei klientas atsisakys — "
+                    "registruosim gedimą (variklis tuo pasirūpins)."
                 )
             # Step facts are suppressed on the ACTIVATION turn (see above) — the defer
             # instruction alone drives that reply.
@@ -2026,12 +2035,11 @@ class ReactAgent:
         if self.state.resolution:
             self._finding_pending = True
             tail = (
-                " Diagnozė jau atlikta TYLIAI (rezultato dar NESAKYK!). Šiame atsakyme: "
-                "trumpai patvirtink, kad radai adresą, pasakyk 'Tuoj patikrinsiu, kokia "
-                "situacija jūsų adresu', ir užduok VIENĄ anamnezės klausimą: 'O kol "
-                "tikrinu — kada pastebėjote, kad dingo internetas? Gal po ko nors — "
-                "audros, remonto?' NIEKO daugiau: jokio radinio, jokių instrukcijų, "
-                "NEkartok adreso klausimo."
+                " Diagnozė jau atlikta TYLIAI (rezultato dar NESAKYK!). Šiame atsakyme "
+                "TIK laukimo pranešimas: 'Šiuo adresu patikrinsiu situaciją iš tiekėjo "
+                "pusės — palaukite akimirką.' NIEKO daugiau: jokio radinio, jokių "
+                "instrukcijų, jokių klausimų (anamnezės klausimas jau buvo pokalbio "
+                "pradžioje — NEkartok), NEkartok adreso klausimo."
             )
         else:
             tail = (
@@ -2406,6 +2414,20 @@ class ReactAgent:
         except Exception:  # pragma: no cover - best-effort
             pass
 
+        # Address-evidence gate: only scan the turn for an address when it plausibly
+        # CONTAINS one — a digit or an address word in the utterance, or the agent just
+        # asked for the address. Without this, fuzzy street matching read an ADDRESS out
+        # of the anamnesis answer ("po AUDROS" -> "Aušros g.") and the bogus street slot
+        # blocked the phone-address offer, derailing identification (observed).
+        low = (text or "").lower()
+        has_addr_evidence = any(ch.isdigit() for ch in low) or any(
+            w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
+        )
+        if not has_addr_evidence:
+            q = (self._last_agent_question() or "").lower()
+            asked_address = any(w in q for w in ("adres", "gatv", "namo", "numer", "but"))
+            if not asked_address:
+                return  # no address in sight — do not fuzzy-match one into the slots
         try:
             from .nlu import extract_address, load_registry
             from .slots import SlotStatus
