@@ -1387,15 +1387,17 @@ class ReactAgent:
         advances the walker (overriding a brittle keyword turn-intent); anything unsure
         returns False → the keyword detector + intent gate handle it. Sensor only."""
         from .classifier import classify_step
+        from .detectors import glosses as detector_glosses
         from .faults import step_options
-        from .resolution import DETECTOR_GLOSSES, next_step_id
+        from .resolution import next_step_id
 
         detector_name = step.detector or "yes_no"
         # WHAT TO DETECT comes from the fault definition first (knowledge/faults.yaml —
         # per-step, so it can be worded precisely for THIS check), falling back to the
-        # generic per-detector glosses in code. A reworded check is a file edit, not code.
+        # universal per-detector glosses (knowledge/detectors.yaml, code as last
+        # resort). A reworded check is a file edit, not code.
         declared = step_options((self.state.resolution or {}).get("verdict"), step.id)
-        glosses = DETECTOR_GLOSSES.get(detector_name, {})
+        glosses = detector_glosses(detector_name)
         options: dict[str, str] = {}
         for raw in step.on:
             # Some steps key `on` by the Outcome enum — str(Outcome.YES) is "Outcome.YES",
@@ -1460,18 +1462,10 @@ class ReactAgent:
         the keyword turn-intent misreads a messy done-signal as in_progress. Anything else
         returns False → the keyword intent gate decides. Sensor only."""
         from .classifier import classify_step
+        from .detectors import glosses as detector_glosses
 
-        options = {
-            "done": (
-                "klientas atliko / jau padarė tai, ko buvo prašyta, ARBA praneša "
-                "REZULTATĄ po veiksmo ('įkišau', 'ryšys yra, bet interneto nėra', "
-                "'vis tiek neveikia') — rezultato pranešimas reiškia, kad veiksmas atliktas"
-            ),
-            "waiting": (
-                "klientas dar daro, ruošiasi, ką tik pradėjo, klausia KAIP atlikti, "
-                "arba nesupranta instrukcijos"
-            ),
-        }
+        # Meanings come from knowledge/detectors.yaml (file-editable), code fallback.
+        options = detector_glosses("instruct_done")
         question = self._last_agent_question() or step.hint or ""
         obs = classify_step(question, user_input or "", options, model=self.config.model)
         if obs is None:
@@ -1727,6 +1721,7 @@ class ReactAgent:
         if not r.get("asked"):
             return  # consent question not posed yet — narrator asks it this turn
         from .classifier import classify_step
+        from .detectors import glosses as detector_glosses
         from .resolution import detect_ticket_consent
 
         label = detect_ticket_consent(user_input)
@@ -1737,10 +1732,8 @@ class ReactAgent:
             obs = classify_step(
                 self._last_agent_question() or str(step.hint or ""),
                 user_input or "",
-                {
-                    "yes": "sutinka, kad užregistruotume gedimą (pritaria, sako gerai/tinka)",
-                    "no": "AIŠKIAI atsisako registracijos — NE šiaip nerišlus atsakymas",
-                },
+                # Meanings from knowledge/detectors.yaml (file-editable), code fallback.
+                detector_glosses("ticket_consent"),
                 model=self.config.model,
             )
             if obs is not None and obs.is_answer and obs.confidence >= 0.5:

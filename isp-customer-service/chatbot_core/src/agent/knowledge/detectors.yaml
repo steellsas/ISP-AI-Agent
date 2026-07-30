@@ -1,0 +1,62 @@
+# Universal detector glosses — DECLARATIVE perception meanings (Phase 3.11).
+#
+# WHAT the caller's answers MEAN for each detector TYPE, in plain Lithuanian, handed
+# to the LLM step-classifier as the option definitions. Priority when classifying a
+# step: the step's own `answers:` in faults.yaml (most specific) → THIS file (the
+# detector's universal meaning) → the code defaults (fallback of last resort).
+#
+# Refining how the agent UNDERSTANDS callers is an edit HERE (or in a step's
+# `answers:`), never in code. The code keeps only the MECHANISM: hold on unclear,
+# the done-over-waiting veto hierarchy, carry-through, bailout — those guarantees
+# do not change when flows are added or reworded.
+#
+# Editing rules of thumb (learned from live calls):
+#   - Spell out negation garbles: STT mangles "nedega" into "nede"/"neda" — a "ne-"
+#     root must always read as the negative.
+#   - Reporting a RESULT after an action ("įkišau", "ryšys yra, bet interneto nėra")
+#     means the action was DONE — not "still doing".
+#   - Engagement is consent: "lauksiu skambučio" accepts the registration.
+
+detectors:
+  yes_no:
+    'yes': sutinka / patvirtina / taip
+    'no': atsisako / neigia / ne
+
+  lights:
+    'yes': AIŠKIAI sako, kad dega / šviečia / mirksi bent viena lemputė — be jokio neiginio
+    'no': sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-" šaknimi —
+      „nede", „neda" — neiginys visada reiškia NEDEGA)
+
+  restored:
+    'yes': internetas dabar veikia / atsirado
+    'no': internetas vis dar neveikia
+
+  scope:
+    all: sako, kad internetas neveikia VISUOSE įrenginiuose
+    one: sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame
+    phone: AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')
+    computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
+
+  conn:
+    wifi: įrenginys jungiasi per WiFi (bevielį)
+    wired: įrenginys jungiasi laidu
+
+  port:
+    wan: kabelis įkištas į interneto (WAN) lizdą
+    lan: kabelis įkištas į kitą (LAN) lizdą
+
+  have_device:
+    'yes': klientas turi kompiuterį arba kitą routerį
+    'no': klientas neturi jokio kito įrenginio
+
+  instruct_done:
+    done: klientas atliko / jau padarė tai, ko buvo prašyta, ARBA praneša REZULTATĄ po
+      veiksmo ('įkišau', 'ryšys yra, bet interneto nėra', 'vis tiek neveikia') — rezultato
+      pranešimas reiškia, kad veiksmas atliktas
+    waiting: klientas dar daro, ruošiasi, ką tik pradėjo, klausia KAIP atlikti, arba
+      nesupranta instrukcijos
+
+  ticket_consent:
+    'yes': sutinka, kad užregistruotume gedimą (pritaria, sako gerai/tinka, arba laukia
+      skambučio — 'lauksiu skambučio' irgi yra sutikimas)
+    'no': AIŠKIAI atsisako registracijos — NE šiaip nerišlus atsakymas
