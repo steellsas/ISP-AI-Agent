@@ -96,11 +96,10 @@ faults:
       - update_mac
       tool_actions:
       - update_mac
-      hint: 'The engine binds the device silently — you do NOT call the tool. Announce it WITH the
-        anamnesis question (fill the wait instead of dead air), as ONE utterance: ''Dabar pririšiu jūsų
-        naujai matomą įrenginį — turėtų atsirasti internetas. O kol laukiam — kada pastebėjote, kad
-        dingo internetas?'' Do NOT ask yet whether it works — that is the next step; their history
-        answer just goes on the record.'
+      hint: 'The engine binds the device silently — you do NOT call the tool. Announce it naturally:
+        ''Dabar pririšiu jūsų naujai matomą įrenginį — turėtų atsirasti internetas. Palaukite
+        akimirką.'' Do NOT ask yet whether it works — that is the next step. (The anamnesis question
+        was already asked at the START of the call — do not repeat it here.)'
     - id: confirm_restored
       kind: confirm
       rag_section: 4
@@ -361,11 +360,9 @@ faults:
       tool_actions:
       - update_mac
       hint: 'We can now SEE their computer on the line. The engine binds it silently — you do NOT call
-        the tool. Announce it WITH the anamnesis question (fill the wait instead of dead air), as ONE
-        utterance: ''Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo — turėtų atsirasti
-        internetas. O kol laukiam — kada pastebėjote, kad dingo internetas?'' Do not ask yet if it
-        works — their history answer just goes on the record; next turn continue with the restore
-        check.'
+        the tool. Announce it: ''Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo — turėtų
+        atsirasti internetas. Palaukite akimirką.'' Do not ask yet if it works. (The anamnesis question
+        was already asked at the START of the call — do not repeat it here.)'
     - id: dr_verify
       kind: confirm
       detector: restored

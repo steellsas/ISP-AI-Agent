@@ -264,6 +264,10 @@ class ReactAgent:
         # on the first user turn so construction stays DB-free where possible).
         self._registry: tuple[list[str], list[str]] | None = None
 
+        # Activation arc (Phase 3.11 #5): True between "tuoj patikrinsiu + anamnezės
+        # klausimas" and the turn that actually narrates the finding + step question.
+        self._finding_pending = False
+
         # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
         # tools exposed to the model and add a focused prompt. None = unrestricted
         # (the legacy single-agent behaviour).
@@ -745,9 +749,28 @@ class ReactAgent:
             from .playbook import get_step
             from .resolution import get_strategy
 
+            # Arc turn (diagnosis node): the previous reply said "tuoj patikrinsiu" and
+            # asked the anamnesis question — THIS reply delivers the deferred finding:
+            # acknowledge their answer, state what the check showed, say we can try to
+            # fix it together, then ask this step's question. (On the ACTIVATION turn
+            # itself — address_validation — nothing is injected: the defer instruction
+            # alone drives that reply; step facts overrode it when present.)
+            if self._finding_pending and self._active_node != "address_validation":
+                d = s.diagnosis.get("network") or {}
+                gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+                facts.append(
+                    "- RADINYS (dar nepasakytas): klientas ką tik atsakė apie gedimo "
+                    "pradžią — trumpai priimk atsakymą (pora žodžių), tada pasakyk "
+                    f"RADINĮ: patikrinau — {gloss}. Pridėk, kad galime pabandyti "
+                    "sutvarkyti kartu dabar, ir užduok ŠIO ŽINGSNIO klausimą. Vienas "
+                    "klausimas, be instrukcijų sąrašo."
+                )
+            # Step facts are suppressed on the ACTIVATION turn (see above) — the defer
+            # instruction alone drives that reply.
+            suppress_step = self._finding_pending and self._active_node == "address_validation"
             strat = get_strategy(s.resolution.get("verdict"))
             step = strat.step(s.resolution.get("step", "")) if strat else None
-            if step is not None:
+            if step is not None and not suppress_step:
                 if step.rag_section is not None:
                     section = get_step(strat.rag_doc, step.rag_section)
                     if section:
@@ -1325,7 +1348,7 @@ class ReactAgent:
         # presented last turn — to an explicit goto if set, else the next step in order.
         if step.kind in (StepKind.INSTRUCT, StepKind.ACTION):
             if r.get("asked"):
-                self._advance_instruct(r, step, strat)
+                self._advance_instruct(r, step, strat, user_input)
             return
         if step.kind != StepKind.CONFIRM:
             return
@@ -1405,17 +1428,31 @@ class ReactAgent:
             return True
         return False
 
-    def _advance_instruct(self, r: dict, step, strat) -> None:
+    def _advance_instruct(self, r: dict, step, strat, user_input: str | None = None) -> None:
         """Advance a presented INSTRUCT/ACTION step to its goto (or the next step in order).
         Shared by the keyword path and the classifier gate. The dr_see_device VERIFY is
         engine-owned, so resolve it in the SAME turn (reflect the plug-in in the demo, then
         read the line) instead of asking a dead question."""
-        from .resolution import next_step_id
+        from .resolution import Outcome, detect_restored, next_step_id
 
         self._route_to(r, step.goto or next_step_id(strat, step.id, None))
         if r.get("step") == "dr_see_device":
             self._simulate_bridge_connection()
             self._advance_see_device(r)
+            return
+        # Carry-through pre-answer: the utterance that completed the instruction often
+        # already reports the outcome ("prisijungiau iš naujo — jau veikia"). If we just
+        # landed on a restored CONFIRM and the SAME reply carries a clear YES, route it
+        # now — otherwise that answer dies unheard and the caller's NEXT turn (often a
+        # farewell, "Ne, ačiū") gets misread as the verify answer (observed live:
+        # resolved call routed to escalate).
+        new_step = strat.step(r.get("step", "")) if strat else None
+        if (
+            new_step is not None
+            and new_step.detector == "restored"
+            and detect_restored(user_input) is Outcome.YES
+        ):
+            self._route_to(r, next_step_id(strat, new_step.id, "yes"))
 
     def _classify_instruct_and_advance(self, step, strat, user_input: str | None) -> bool:
         """Classifier-led advancement for an asked INSTRUCT step: did the caller actually
@@ -1425,8 +1462,15 @@ class ReactAgent:
         from .classifier import classify_step
 
         options = {
-            "done": "klientas atliko / jau padarė tai, ko buvo prašyta",
-            "waiting": "klientas dar daro, ruošiasi, ką tik pradėjo, klausia arba nesupranta",
+            "done": (
+                "klientas atliko / jau padarė tai, ko buvo prašyta, ARBA praneša "
+                "REZULTATĄ po veiksmo ('įkišau', 'ryšys yra, bet interneto nėra', "
+                "'vis tiek neveikia') — rezultato pranešimas reiškia, kad veiksmas atliktas"
+            ),
+            "waiting": (
+                "klientas dar daro, ruošiasi, ką tik pradėjo, klausia KAIP atlikti, "
+                "arba nesupranta instrukcijos"
+            ),
         }
         question = self._last_agent_question() or step.hint or ""
         obs = classify_step(question, user_input or "", options, model=self.config.model)
@@ -1448,13 +1492,20 @@ class ReactAgent:
             self.state.awaiting_turns = 0
             self.state.step_confusions = 0
             self.state.last_intent = "done"
-            self._advance_instruct(self.state.resolution, step, strat)
+            self._advance_instruct(self.state.resolution, step, strat, user_input)
             return True
         # Classifier VETO: it confidently read "still doing / asking / confused" — HOLD
         # the step this turn, do not let the looser keyword intent gate advance on a
         # garble read as a plain 'answer' (observed live: dr_cable advanced while the
-        # caller was still asking WHICH cable goes WHERE).
-        return obs.label == "waiting" and obs.confidence >= 0.5
+        # caller was still asking WHICH cable goes WHERE). EXCEPT an explicit keyword
+        # DONE ("padariau", "patikrinau") — that outranks a soft classifier 'waiting'
+        # (observed: "Patikrinau, WiFi įjungtas" held as waiting and the resolve slipped
+        # a turn). The veto is for ambiguous answers only.
+        if obs.label == "waiting" and obs.confidence >= 0.5:
+            from .resolution import INTENT_DONE, detect_turn_intent
+
+            return detect_turn_intent(user_input) != INTENT_DONE
+        return False
 
     def _detect_confirm(self, step, user_input: str | None):
         """Keyword FALLBACK detector for a CONFIRM reply — used when the classifier is off
@@ -1814,6 +1865,9 @@ class ReactAgent:
             StepKind.ESCALATE,  # the consent question ("ar tinka?") — Phase 3.11 B
         ):
             r["asked"] = True
+            # The finding (+ this step's question) has now been narrated — the
+            # activation arc is complete (Phase 3.11 #5).
+            self._finding_pending = False
 
     def _augment_resolve_result(self, observation: str) -> str:
         """Identification just landed — diagnose in the SAME turn.
@@ -1836,27 +1890,33 @@ class ReactAgent:
         gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
         # The address was JUST confirmed (that is what triggered this diagnose) — the
         # lookup hint still says "patvirtink adresą klientui", and the narrator obeying
-        # it re-asked the ADDRESS instead of the step's question. The walker then marked
-        # the step asked, and the caller's next plain "taip" advanced a question that was
-        # never posed (observed: bound the MAC without ever asking "ar keitėte routerį?").
-        # Neutralize the stale hint: this reply must state the FINDING + THIS step's
-        # question, never the address again.
+        # it re-asked the ADDRESS instead of moving on. Neutralize the stale hint.
         obs["hint"] = "Adresas JAU patvirtintas — nebeklausk adreso."
-        tail = f" Iškart patikrinau ryšį — DIAGNOZĖ: {gloss}."
-        r = self.state.resolution
-        if r:
-            from .resolution import get_strategy
-
-            strat = get_strategy(r.get("verdict"))
-            step = strat.step(r.get("step", "")) if strat else None
-            if step is not None and step.hint:
-                tail += f" ŠIS ŽINGSNIS: {step.hint}"
-        tail += (
-            " Tame PAČIAME atsakyme: vienu sakiniu pasakyk KĄ PATIKRINAI ir KUR MATAI "
-            "PROBLEMĄ (radinį), tada užduok ŠIO ŽINGSNIO klausimą ir LAUK atsakymo. "
-            "NEkartok adreso klausimo (jis ką tik patvirtintas), NEklausk apie įrenginius "
-            "savo iniciatyva, NEminėk, kad gedimų nėra."
-        )
+        # Activation arc (Phase 3.11 #5, Andrius' spec): for a TROUBLESHOOTABLE fault
+        # (a strategy activated) the finding is NOT blurted in the same breath as the
+        # address confirm. This reply says "tuoj patikrinsiu, kokia situacija" and asks
+        # the ANAMNESIS question (when did it break / after what) — useful history AT
+        # THE START, filling the "checking" wait. The NEXT turn acknowledges the answer
+        # and delivers the finding + this step's question (see FINDING-PENDING facts).
+        # INFORM verdicts (billing/outage — nothing to troubleshoot) keep the immediate
+        # delivery: that news is urgent and anamnesis would be pointless.
+        if self.state.resolution:
+            self._finding_pending = True
+            tail = (
+                " Diagnozė jau atlikta TYLIAI (rezultato dar NESAKYK!). Šiame atsakyme: "
+                "trumpai patvirtink, kad radai adresą, pasakyk 'Tuoj patikrinsiu, kokia "
+                "situacija jūsų adresu', ir užduok VIENĄ anamnezės klausimą: 'O kol "
+                "tikrinu — kada pastebėjote, kad dingo internetas? Gal po ko nors — "
+                "audros, remonto?' NIEKO daugiau: jokio radinio, jokių instrukcijų, "
+                "NEkartok adreso klausimo."
+            )
+        else:
+            tail = (
+                f" Iškart patikrinau ryšį — DIAGNOZĖ: {gloss}. Tame PAČIAME atsakyme: "
+                "vienu sakiniu pasakyk KĄ PATIKRINAI ir KUR MATAI PROBLEMĄ (radinį). "
+                "NEkartok adreso klausimo (jis ką tik patvirtintas), NEklausk apie "
+                "įrenginius savo iniciatyva, NEminėk, kad gedimų nėra."
+            )
         obs["message"] = (obs.get("message", "") or "").strip() + tail
         return json.dumps(obs, ensure_ascii=False)
 
