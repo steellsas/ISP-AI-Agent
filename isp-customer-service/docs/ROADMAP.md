@@ -1024,6 +1024,30 @@ before Phase 5 (async + telephony).
       solver cut-over on dead-router (5/6), signals→knowledge (D). Phase 5 does not
       depend on these, but they continue the "universal thinking agent" line.
 
+### Block architecture (agreed 2026-07-31): identifikavimas | supratimas | sprendimas + mąstytojas
+
+The agent is three BLOCKS joined by the THINKER (solver): IDENTIFIKAVIMAS returns an
+identified customer; PROBLEMOS SUPRATIMAS builds the ANALYSIS (telemetry + what the
+CALLER said — anamnesis); PROBLEMOS SPRENDIMAS walks the strategy to a fix or a
+registration. The mąstytojas decides the transitions and owns the hypothesis.
+
+- [x] **Step 1 — separate identification from diagnosis (arc v3).** The engine
+      diagnoses silently right after the identity commits (state-only); the same reply
+      narrates "Patikrinsiu būseną šiuo adresu… Patikrinau: [rezultatas]" — one reply,
+      no dead-air ack turn, no deferred-finding vacuum (a hidden finding made the model
+      hallucinate a router story for a debtor). Dictated correction addresses are
+      accepted directly (echo + resolve, no extra confirm round). When Phase 5 async
+      telemetry lands, announce and result naturally split into two real turns.
+- [ ] **Step 2 — the ANALYSIS object.** `state.analysis`: telemetry verdict + signals
+      + structured caller anamnesis {when noticed, trigger, or "doesn't know" — e.g.
+      "vakar veikė, šiandien ne"} + symptoms + caller claims. Hypothesis `because`
+      cites BOTH sources; analysis feeds the call record and the ticket.
+- [ ] **Step 3 — the mąstytojas joins the blocks.** The solver (already reasoning in
+      shadow) takes over the BLOCK TRANSITIONS: identification done → this is my
+      understanding → solving via this path / pivoting. Behind SOLVER_DRIVE, one
+      direction first (dead router already piloted); the graph router stays as the
+      deterministic backstop. Continues the 3.8 cut-over line.
+
 **Done:** short, natural turns; every call ends deterministically; waiting time is
 used for anamnesis; ready to lift the engine onto Phase 4/5 async infrastructure.
 
