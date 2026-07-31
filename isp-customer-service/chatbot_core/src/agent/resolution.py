@@ -1188,6 +1188,9 @@ _TICKET_REFUSE = (
     "nenoriu nieko",
     "neturiu laiko",
     "nesu namuose",
+    "ne namuose",  # "nepatogu, ne namuose" (observed live — must offer registration)
+    "nebūsiu nam",
+    "nebusiu nam",
     "ne namie",
     "negaliu dabar",
     "nenam",  # STT garbles of "nedarysiu / ne namie" ("nenamosiu")

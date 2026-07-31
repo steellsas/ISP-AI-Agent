@@ -38,3 +38,19 @@ identification:
     name: "O kaip į jus kreiptis — koks jūsų vardas?"
     caller: "O su kuo kalbu — koks jūsų vardas? Ar jūs sutartį sudaręs asmuo?"
     contact_phone: "Kokiu numeriu geriausia su jumis susisiekti, jei nutrūktų ryšys?"
+
+  # SCRIPTED identification replies (2026-07-31): the mechanical ladder turns are
+  # COMPOSED by the ENGINE from these phrases — the LLM kept reordering/skipping them
+  # (promised a check without the result, relapsed into confirm rounds, skipped the
+  # caller question). Editing the wording is an edit HERE; {placeholders} are filled
+  # from state. Scope: IDENTIFICATION ONLY — troubleshooting and free dialogue stay
+  # with the LLM, and an off-script caller turn (a question) falls back to the LLM.
+  phrases:
+    anamnesis_question: "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, pavyzdžiui, audros ar remonto?"
+    address_offer: "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?"
+    address_ask: "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, kuriuo neveikia internetas."
+    echo_address: "Supratau — {adresas}."
+    check_result: "Patikrinau ryšį iki jūsų buto. {zinia}"
+    billing_extra: "Apmokėjus sąskaitą, paslauga bus įjungta."
+    anything_else: "Ar dar kuo galiu padėti?"
+    thanks: "Ačiū!"

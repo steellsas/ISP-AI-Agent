@@ -271,6 +271,9 @@ class ReactAgent:
         # Identification ladder: True while the check result is deferred behind the
         # caller-intro question ("su kuo kalbu?"); cleared once the result is narrated.
         self._result_pending = False
+        # Set when the ENGINE just committed the identity this turn — the scripted
+        # ladder reply then opens with the address echo.
+        self._just_identified = False
         # INFORM arc: the news (billing/outage) was already delivered once — the JAU
         # PRANEŠTA marker stops the model re-reading it every turn.
         self._news_told = False
@@ -1458,11 +1461,37 @@ class ReactAgent:
         # out in THIS turn's reply (see the RESULT facts directive).
         if s.customer_id and self._result_pending and not s.caller_name:
             from .identification import detect_caller_relation
-            from .resolution import detect_farewell
+            from .resolution import detect_farewell, detect_turn_intent
 
+            if detect_turn_intent(user_input) == "question":
+                return  # off-script — the LLM answers; the ladder re-asks next turn
             if not detect_farewell(user_input):
-                s.caller_name = user_input.strip()[:120]
-                s.caller_relation = detect_caller_relation(user_input)
+                # Wait/consent-only replies are NOT a name ("Taip.", "Laukiu, laukiu"
+                # were captured as names live) — record "nenurodyta" and move on.
+                tokens = [t.strip(".,!?") for t in user_input.lower().split()]
+                _NOT_A_NAME = {
+                    "taip",
+                    "ne",
+                    "gerai",
+                    "laukiu",
+                    "aha",
+                    "mhm",
+                    "jo",
+                    "ačiū",
+                    "aciu",
+                    "ok",
+                    "okey",
+                    "nesu",
+                    "na",
+                    "nu",
+                    "tai",
+                }
+                if tokens and all(t in _NOT_A_NAME for t in tokens if t):
+                    s.caller_name = "nenurodyta"
+                    s.caller_relation = "unknown"
+                else:
+                    s.caller_name = user_input.strip()[:120]
+                    s.caller_relation = detect_caller_relation(user_input)
                 self.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
             return
         if not s.customer_id:
@@ -1471,6 +1500,30 @@ class ReactAgent:
                 from .resolution import detect_address_confirm
 
                 verdict = detect_address_confirm(user_input)
+                if verdict == "yes" and s.phone_candidate and s.phone_candidate.get("street"):
+                    # Clean YES to the phone-address OFFER: the ENGINE commits the
+                    # identity from the candidate parts right now (the model's own
+                    # resolve-then-narrate path kept relapsing into confirm rounds
+                    # and skipping the caller question — observed live). The scripted
+                    # ladder reply asks WHO is calling next.
+                    c = s.phone_candidate
+                    p = s.profile
+                    from .slots import SlotStatus
+
+                    p.street.propose(c["street"], 1.0, SlotStatus.HEARD)
+                    p.house.propose(str(c.get("house") or ""), 1.0, SlotStatus.HEARD)
+                    if c.get("apartment"):
+                        p.apartment.propose(str(c["apartment"]), 1.0, SlotStatus.HEARD)
+                    if c.get("city"):
+                        p.city.propose(str(c["city"]), 1.0, SlotStatus.HEARD)
+                    if self._engine_resolve_from_slots():
+                        self._trace_note("address_confirm", "offer confirmed; engine resolve")
+                        self._just_identified = True
+                        from .identification import ask_caller
+
+                        if ask_caller() and not s.caller_name:
+                            self._result_pending = True
+                    return
                 if verdict != "yes":
                     # Direct accept (arc v3.1): the caller DICTATED a full other address
                     # in this very turn (NLU heard street+house clearly) — the ENGINE
@@ -1479,17 +1532,32 @@ class ReactAgent:
                     # then relapsed into a redundant confirm round). The reply then
                     # echoes the address and continues per the identification ladder.
                     p = self.state.profile
+                    # Street/city inherit from the OFFERED address when the correction
+                    # names only the house/flat ("Ne, dėl 60 buto 3" — same street;
+                    # observed live: the engine path did not fire without this).
+                    if not p.street.value and p.house.value and s.phone_candidate:
+                        from .slots import SlotStatus
+
+                        if s.phone_candidate.get("street"):
+                            p.street.propose(s.phone_candidate["street"], 0.9, SlotStatus.HEARD)
+                        if not p.city.value and s.phone_candidate.get("city"):
+                            p.city.propose(str(s.phone_candidate["city"]), 0.9, SlotStatus.HEARD)
                     if p.street.value and p.house.value:
                         self._trace_note(
                             "address_confirm",
                             "offer corrected with a full dictated address; engine resolve",
                         )
                         if self._engine_resolve_from_slots():
+                            self._just_identified = True
+                            from .identification import ask_caller
+
+                            if ask_caller() and not s.caller_name:
+                                self._result_pending = True
                             self._addr_confirm_note = (
                                 "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
                                 f"adresas {s.customer_address}. Atsakymo pradžioje "
                                 "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
-                                "pagal žemiau esančią kryptį." + self._result_narration_tail()
+                                "pagal žemiau esančią kryptį."
                             )
                         else:
                             self._addr_confirm_note = (
@@ -2813,6 +2881,13 @@ class ReactAgent:
             yield self._apply_backstop(backstop)
             return
 
+        # Scripted identification-ladder reply (engine-composed, LLM skipped) — the
+        # mechanical turns only; off-script turns fall through to the LLM.
+        scripted = self._identification_scripted_reply(user_input)
+        if scripted is not None:
+            yield self._emit_scripted_reply(scripted)
+            return
+
         max_calls = self.config.max_tool_calls_per_response
         tool_rounds = 0
         while tool_rounds < max_calls:
@@ -3046,6 +3121,11 @@ class ReactAgent:
         if backstop is not None:
             return self._apply_backstop(backstop)
 
+        # Scripted identification-ladder reply (engine-composed, LLM skipped).
+        scripted = self._identification_scripted_reply(user_input)
+        if scripted is not None:
+            return self._emit_scripted_reply(scripted)
+
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response
         tool_calls = 0
@@ -3149,6 +3229,79 @@ class ReactAgent:
         if is_q:
             self.state.last_question = reply
         self.tracer.emit("stuck", count=self.state.stuck_count, repeated=repeat)
+
+    def _identification_scripted_reply(self, user_input: str | None) -> str | None:
+        """Deterministic identification-ladder replies (2026-07-31, IDENTIFICATION
+        ONLY): the mechanical turns are COMPOSED by the engine from the phrases in
+        identification.yaml — the LLM repeatedly reordered or skipped them (promised
+        a check without the result, relapsed into confirm rounds, skipped the caller
+        question, captured 'Taip.' as a name). An off-script caller turn (a question)
+        returns None so the LLM answers it; the ladder resumes next turn. Solving and
+        free dialogue never come here."""
+        s = self.state
+        if s.case_closed:
+            return None
+        from .identification import caller_question, offer_phone_address, phrase
+        from .resolution import detect_turn_intent
+
+        if user_input and detect_turn_intent(user_input) == "question":
+            return None  # off-script — the LLM answers; guards kept the ladder state
+        # INTAKE (not yet identified): the anamnesis question and the address
+        # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
+        # whole ladder by a turn (observed in eval).
+        if not s.customer_id:
+            p = s.profile
+            has_addr = bool(p.street.value or p.house.value)
+            if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
+                s.anamnesis_asked = True
+                return phrase("anamnesis_question")
+            if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
+                s.anamnesis_raw = user_input.strip()[:200]
+                self.tracer.emit("anamnesis", text=s.anamnesis_raw)
+                c = s.phone_candidate
+                if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
+                    flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+                    return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
+                return phrase("address_ask")
+            return None
+        if not self._result_pending:
+            return None
+        if not s.caller_name:
+            # The caller-intro question turn (with the address echo on a fresh commit).
+            parts = []
+            if self._just_identified and s.customer_address:
+                parts.append(phrase("echo_address", adresas=s.customer_address))
+            self._just_identified = False
+            parts.append(caller_question())
+            return " ".join(p for p in parts if p)
+        # The caller introduced themselves — deliver the deferred result. INFORM
+        # verdicts are fully mechanical; a strategy result (finding + step question)
+        # stays with the LLM (returns None; the REZULTATO facts directive drives it).
+        if s.resolution is not None:
+            return None
+        d = s.diagnosis.get("network") or {}
+        reason = d.get("reason")
+        zinia = _DIAGNOSIS_LT.get(reason, reason or "")
+        if not zinia:
+            return None
+        zinia = zinia[0].upper() + zinia[1:]  # sentence-cased after "…iki jūsų buto."
+        bits = [phrase("thanks"), phrase("check_result", zinia=zinia + ".")]
+        if reason == "billing_suspended":
+            bits.append(phrase("billing_extra"))
+        bits.append(phrase("anything_else"))
+        self._result_pending = False
+        self._news_told = True
+        return " ".join(b for b in bits if b)
+
+    def _emit_scripted_reply(self, text: str) -> str:
+        """Bookkeeping for an engine-composed reply (mirrors _apply_backstop)."""
+        self.state.messages.append({"role": "assistant", "content": text})
+        if self._is_question(text):
+            self.state.last_question = text
+        self._emit_case()
+        self.tracer.emit("scripted", where="identification")
+        self.tracer.emit("agent_reply", text=text)
+        return text
 
     def _apply_backstop(self, backstop: tuple[str, bool]) -> str:
         """Emit a deterministic backstop reply (manages the counter itself so a

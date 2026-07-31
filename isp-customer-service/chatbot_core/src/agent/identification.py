@@ -71,6 +71,35 @@ def caller_question() -> str:
     return str(q) if q else _CALLER_QUESTION_DEFAULT
 
 
+# Scripted identification phrases — engine-composed replies (see the yaml note).
+_PHRASES_DEFAULTS: dict[str, str] = {
+    "anamnesis_question": (
+        "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, "
+        "pavyzdžiui, audros ar remonto?"
+    ),
+    "address_offer": "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?",
+    "address_ask": (
+        "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, "
+        "kuriuo neveikia internetas."
+    ),
+    "echo_address": "Supratau — {adresas}.",
+    "check_result": "Patikrinau ryšį iki jūsų buto. {zinia}",
+    "billing_extra": "Apmokėjus sąskaitą, paslauga bus įjungta.",
+    "anything_else": "Ar dar kuo galiu padėti?",
+    "thanks": "Ačiū!",
+}
+
+
+def phrase(key: str, **fmt: str) -> str:
+    """A scripted identification phrase (file first, code default), with the
+    {placeholders} filled. Unknown key returns '' (fail-soft)."""
+    raw = (_cfg().get("phrases") or {}).get(key) or _PHRASES_DEFAULTS.get(key, "")
+    try:
+        return str(raw).format(**fmt)
+    except Exception:  # a bad placeholder edit must not break the call
+        return str(raw)
+
+
 _RELATION_MARKS: dict[str, tuple[str, ...]] = {
     "holder": ("sutart", "savinink", "mano vardu", "aš sudariau", "as sudariau"),
     "family": (

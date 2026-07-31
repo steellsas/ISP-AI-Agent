@@ -73,7 +73,7 @@ class TestTurnThroughGraph:
             ),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            reply = session.handle_turn("neveikia internetas")
+            reply = session.handle_turn("neveikia internetas Vilniaus gatvėje 29")
 
         assert reply == "Pasakykite adresą."
         # State still lives in (and is shared with) the underlying engine.
@@ -122,7 +122,7 @@ class TestRouting:
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()  # customer_id stays None
 
-        names = self._run_turn_capture_tools(session, "neveikia internetas")
+        names = self._run_turn_capture_tools(session, "neveikia internetas Vilniaus gatvėje 29")
 
         assert names <= set(LOOKUP_TOOLS)
         # The structural gate: diagnostics simply aren't on the table here.

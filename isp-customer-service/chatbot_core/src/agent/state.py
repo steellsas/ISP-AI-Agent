@@ -83,6 +83,11 @@ class AgentState:
     # Problem tracking
     problem_type: str | None = None  # internet, tv, phone, billing
     problem_description: str | None = None
+    # Intake anamnesis (identification block, 2026-07-31): the ONE history question
+    # ("kada pastebėjote, po ko dingo?") is asked once, engine-scripted; the caller's
+    # raw answer is kept for the ANALYSIS (Step 2) and the call record.
+    anamnesis_asked: bool = False
+    anamnesis_raw: str | None = None
 
     # Diagnostic findings (case state), namespaced BY DOMAIN so new fault families
     # (iptv, voip…) attach additively without touching the base flow:
