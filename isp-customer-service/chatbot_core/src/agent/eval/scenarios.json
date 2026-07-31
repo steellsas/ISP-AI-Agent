@@ -88,7 +88,6 @@
       "desc": "Masinė avarija -> informuoti + ETA, be tiketo",
       "turns": [
         "Labas, neveikia internetas",
-        "Vakar pastebėjau",
         "Taip",
         "Aišku, ačiū, lauksiu"
       ],
@@ -112,6 +111,7 @@
         "Labas, neveikia internetas",
         "Vakar pastebėjau",
         "Taip",
+        "Gerai",
         "Aišku, ačiū"
       ],
       "expect": {

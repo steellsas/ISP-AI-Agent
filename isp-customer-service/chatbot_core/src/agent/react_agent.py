@@ -271,6 +271,9 @@ class ReactAgent:
         # the one-turn "identification reopened" note.
         self._addr_confirm_note: str | None = None
         self._reopen_note = False
+        # INFORM arc: the news (billing/outage) was already delivered once — the JAU
+        # PRANEŠTA marker stops the model re-reading it every turn.
+        self._news_told = False
 
         # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
         # tools exposed to the model and add a focused prompt. None = unrestricted
@@ -774,6 +777,26 @@ class ReactAgent:
                 "pagal ŠĮ ŽINGSNĮ. NEapsimesk, kad ankstesnio bandymo nebuvo, ir "
                 "NEkartok jo."
             )
+        # INFORM arc (no strategy — billing/outage): the previous reply said
+        # "patikrinsiu, palaukite"; THIS reply delivers the news ONCE, short and
+        # complete. Afterwards the JAU PRANEŠTA marker stops the model re-reading the
+        # same news every turn (observed live: "sustabdyta dėl skolos" said 3×).
+        if s.resolution is None and s.diagnosis and not s.case_closed:
+            if self._finding_pending and self._active_node != "address_validation":
+                d = s.diagnosis.get("network") or {}
+                gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+                facts.append(
+                    f"- ŽINIA (dar nepasakyta): patikra baigta — pasakyk VIENĄ kartą, "
+                    f"trumpai: {gloss}. Jei tai skola — BŪTINAI pridėk: „apmokėjus "
+                    "sąskaitą, paslauga bus įjungta“. Tada paklausk „Ar dar kuo galiu "
+                    "padėti?“ ir daugiau šios žinios NEBEKARTOK."
+                )
+            elif getattr(self, "_news_told", False):
+                facts.append(
+                    "- ŽINIA JAU PASAKYTA: nebekartok „patikrinau / sustabdyta / "
+                    "avarija“ teksto. Atsakyk į kliento klausimą, arba paklausk „Ar dar "
+                    "kuo galiu padėti?“ ir užbaik pokalbį."
+                )
         # Active resolution strategy: inject ONLY the current step's playbook
         # section (never the whole doc — a streaming model would run several steps
         # ahead). This is the "what to do NOW" for the step the engine is on.
@@ -1502,6 +1525,7 @@ class ReactAgent:
         s.profile = ClientProfileState()
         self._db_address_note = None
         self._finding_pending = False
+        self._news_told = False  # a new address may carry different news
         # Re-extract address parts from THIS utterance (the correction often carries
         # the new address: "ne, skambinu dėl Dainų 5").
         self._prefill_slots_from_text(user_input)
@@ -1985,6 +2009,12 @@ class ReactAgent:
         self.state.pivoted_from = None  # the rethink has now been said — say it once
         r = self.state.resolution
         if not r:
+            # INFORM arc (no strategy): the diagnosis-node reply just delivered the
+            # news — close the pending window and remember it was told, so the JAU
+            # PRANEŠTA marker stops any re-reading of the same news.
+            if self._finding_pending and self._active_node != "address_validation":
+                self._finding_pending = False
+                self._news_told = True
             return
         from .resolution import StepKind, get_strategy
 
@@ -2018,36 +2048,21 @@ class ReactAgent:
             return observation
         if not self.ensure_diagnosed():
             return observation
-        d = self.state.diagnosis.get("network") or {}
-        gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
         # The address was JUST confirmed (that is what triggered this diagnose) — the
         # lookup hint still says "patvirtink adresą klientui", and the narrator obeying
         # it re-asked the ADDRESS instead of moving on. Neutralize the stale hint.
         obs["hint"] = "Adresas JAU patvirtintas — nebeklausk adreso."
-        # Activation arc (Phase 3.11 #5, Andrius' spec): for a TROUBLESHOOTABLE fault
-        # (a strategy activated) the finding is NOT blurted in the same breath as the
-        # address confirm. This reply says "tuoj patikrinsiu, kokia situacija" and asks
-        # the ANAMNESIS question (when did it break / after what) — useful history AT
-        # THE START, filling the "checking" wait. The NEXT turn acknowledges the answer
-        # and delivers the finding + this step's question (see FINDING-PENDING facts).
-        # INFORM verdicts (billing/outage — nothing to troubleshoot) keep the immediate
-        # delivery: that news is urgent and anamnesis would be pointless.
-        if self.state.resolution:
-            self._finding_pending = True
-            tail = (
-                " Diagnozė jau atlikta TYLIAI (rezultato dar NESAKYK!). Šiame atsakyme "
-                "TIK laukimo pranešimas: 'Šiuo adresu patikrinsiu situaciją iš tiekėjo "
-                "pusės — palaukite akimirką.' NIEKO daugiau: jokio radinio, jokių "
-                "instrukcijų, jokių klausimų (anamnezės klausimas jau buvo pokalbio "
-                "pradžioje — NEkartok), NEkartok adreso klausimo."
-            )
-        else:
-            tail = (
-                f" Iškart patikrinau ryšį — DIAGNOZĖ: {gloss}. Tame PAČIAME atsakyme: "
-                "vienu sakiniu pasakyk KĄ PATIKRINAI ir KUR MATAI PROBLEMĄ (radinį). "
-                "NEkartok adreso klausimo (jis ką tik patvirtintas), NEklausk apie "
-                "įrenginius savo iniciatyva, NEminėk, kad gedimų nėra."
-            )
+        # Arc v2 (2026-07-31): the wait announce applies to EVERY verdict — inform
+        # (billing/outage) included. The activation reply is ONLY "patikrinsiu šiuo
+        # adresu — palaukite"; the news/finding lands NEXT turn (RADINYS / ŽINIA facts).
+        self._finding_pending = True
+        tail = (
+            " Diagnozė jau atlikta TYLIAI (rezultato dar NESAKYK!). Šiame atsakyme "
+            "TIK laukimo pranešimas: 'Šiuo adresu patikrinsiu situaciją iš tiekėjo "
+            "pusės — palaukite akimirką.' NIEKO daugiau: jokio radinio, jokių "
+            "instrukcijų, jokių klausimų (anamnezės klausimas jau buvo pokalbio "
+            "pradžioje — NEkartok), NEkartok adreso klausimo."
+        )
         obs["message"] = (obs.get("message", "") or "").strip() + tail
         return json.dumps(obs, ensure_ascii=False)
 

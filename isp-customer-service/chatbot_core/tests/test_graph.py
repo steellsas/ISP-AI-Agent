@@ -333,10 +333,12 @@ class TestIdentifyThenDiagnoseSameTurn:
         agent.state.customer_id = "CUST101"  # committed by resolve_address
         out = json.loads(agent._augment_tool_result("resolve_address", obs))
 
-        # The verdict is now in state AND spelled out for the model to voice.
+        # Arc v2: the diagnosis runs SILENTLY (verdict in state), but the activation
+        # reply is ONLY the wait announce — the news itself lands next turn.
         assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
-        assert "DIAGNOZĖ" in out["message"]
-        assert "gedimų nėra" in out["message"]  # explicit: do not invent the outage line
+        assert agent._finding_pending is True
+        assert "palaukite" in out["message"].lower()
+        assert "NESAKYK" in out["message"]  # the finding must NOT be blurted here
 
     def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):
         """Regression: the tool loop augmented BEFORE committing customer_id, so
