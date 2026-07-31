@@ -86,14 +86,11 @@ def build_turn_graph(engine: Any):
 
     def address_validation(state: TurnState) -> TurnState:
         result = _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT, "address_validation")
-        # resolve_address may have identified the caller mid-turn and diagnosed in the
-        # same reply. Activation arc (Phase 3.11 #5): for a troubleshootable fault that
-        # reply only says "tuoj patikrinsiu" + the ANAMNESIS question — the step's own
-        # question comes NEXT turn (finding-pending), so the step must NOT be marked
-        # asked here or the anamnesis answer would advance a never-posed question.
-        # Inform verdicts (no strategy) have no step to mark either way.
-        if not engine._finding_pending:
-            engine._mark_step_presented()
+        # resolve_address may have identified the caller mid-turn; arc v3: the same
+        # reply then narrates "patikrinsiu… patikrinau: [rezultatas]" + the first
+        # step's question — mark the step presented so the caller's next answer
+        # advances the walker.
+        engine._mark_step_presented()
         return result
 
     def diagnosis(state: TurnState) -> TurnState:

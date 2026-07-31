@@ -264,9 +264,6 @@ class ReactAgent:
         # on the first user turn so construction stays DB-free where possible).
         self._registry: tuple[list[str], list[str]] | None = None
 
-        # Activation arc (Phase 3.11 #5): True between "tuoj patikrinsiu + anamnezės
-        # klausimas" and the turn that actually narrates the finding + step question.
-        self._finding_pending = False
         # Per-turn guards (set in _pre_turn_guards): address-offer commit veto note and
         # the one-turn "identification reopened" note.
         self._addr_confirm_note: str | None = None
@@ -676,11 +673,7 @@ class ReactAgent:
         # made the agent re-narrate the solved problem ("dar nepririštas") every
         # turn. Past the bind, the step's own hint is the single source of truth.
         past_action = bool(s.resolution) and "telemetry_fixed" in (s.resolution or {})
-        # Activation turn of the arc: the reply must be ONLY the wait announce — the
-        # DIAGNOSTIKA fact here made the model blurt the finding a turn early despite
-        # the defer instruction. The finding surfaces NEXT turn (RADINYS).
-        activation_turn = self._finding_pending and self._active_node == "address_validation"
-        if not past_action and not activation_turn:
+        if not past_action:
             for domain, d in s.diagnosis.items():
                 gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
                 facts.append(
@@ -691,11 +684,7 @@ class ReactAgent:
                 )
         # What we believe and why — so the agent reasons out loud instead of issuing
         # orders, and can CONFIRM the cause at the end ("taigi dėl X ir nebuvo").
-        # Suppressed on the arc's activation turn like DIAGNOSTIKA — it leaked the
-        # finding a turn early ("KO DABAR IEŠKAU: …" -> the model narrated it).
         h = s.hypothesis
-        if h and activation_turn:
-            h = None
         if h:
             because = "; ".join(h["because"])
             if h["status"] == "confirmed":
@@ -777,21 +766,11 @@ class ReactAgent:
                 "pagal ŠĮ ŽINGSNĮ. NEapsimesk, kad ankstesnio bandymo nebuvo, ir "
                 "NEkartok jo."
             )
-        # INFORM arc (no strategy — billing/outage): the previous reply said
-        # "patikrinsiu, palaukite"; THIS reply delivers the news ONCE, short and
-        # complete. Afterwards the JAU PRANEŠTA marker stops the model re-reading the
-        # same news every turn (observed live: "sustabdyta dėl skolos" said 3×).
+        # INFORM (no strategy — billing/outage): the news went out in the activation
+        # reply (arc v3). The JAU PRANEŠTA marker stops the model re-reading the same
+        # news every turn (observed live: "sustabdyta dėl skolos" said 3×).
         if s.resolution is None and s.diagnosis and not s.case_closed:
-            if self._finding_pending and self._active_node != "address_validation":
-                d = s.diagnosis.get("network") or {}
-                gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
-                facts.append(
-                    f"- ŽINIA (dar nepasakyta): patikra baigta — pasakyk VIENĄ kartą, "
-                    f"trumpai: {gloss}. Jei tai skola — BŪTINAI pridėk: „apmokėjus "
-                    "sąskaitą, paslauga bus įjungta“. Tada paklausk „Ar dar kuo galiu "
-                    "padėti?“ ir daugiau šios žinios NEBEKARTOK."
-                )
-            elif getattr(self, "_news_told", False):
+            if getattr(self, "_news_told", False):
                 facts.append(
                     "- ŽINIA JAU PASAKYTA: nebekartok „patikrinau / sustabdyta / "
                     "avarija“ teksto. Atsakyk į kliento klausimą, arba paklausk „Ar dar "
@@ -804,29 +783,9 @@ class ReactAgent:
             from .playbook import get_step
             from .resolution import get_strategy
 
-            # Arc turn (diagnosis node): the previous reply said "tuoj patikrinsiu" and
-            # asked the anamnesis question — THIS reply delivers the deferred finding:
-            # acknowledge their answer, state what the check showed, say we can try to
-            # fix it together, then ask this step's question. (On the ACTIVATION turn
-            # itself — address_validation — nothing is injected: the defer instruction
-            # alone drives that reply; step facts overrode it when present.)
-            if self._finding_pending and self._active_node != "address_validation":
-                d = s.diagnosis.get("network") or {}
-                gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
-                facts.append(
-                    "- RADINYS (dar nepasakytas): patikra baigta — dabar aptark "
-                    f"rezultatą. Pasakyk RADINĮ: patikrinau — {gloss}; vienu sakiniu "
-                    "kas tai gali būti, ir pasiūlyk pabandyti sutvarkyti kartu dabar "
-                    "(ŠIO ŽINGSNIO klausimas atlieka „ar darome?“ vaidmenį). Vienas "
-                    "klausimas, be instrukcijų sąrašo. Jei klientas atsisakys — "
-                    "registruosim gedimą (variklis tuo pasirūpins)."
-                )
-            # Step facts are suppressed on the ACTIVATION turn (see above) — the defer
-            # instruction alone drives that reply.
-            suppress_step = self._finding_pending and self._active_node == "address_validation"
             strat = get_strategy(s.resolution.get("verdict"))
             step = strat.step(s.resolution.get("step", "")) if strat else None
-            if step is not None and not suppress_step:
+            if step is not None:
                 if step.rag_section is not None:
                     section = get_step(strat.rag_doc, step.rag_section)
                     if section:
@@ -1481,18 +1440,37 @@ class ReactAgent:
 
                 verdict = detect_address_confirm(user_input)
                 if verdict != "yes":
-                    self._addr_confirm_note = (
-                        "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI nepatvirtino "
-                        "pasiūlyto adreso (girdisi neigimas ar neaiškumas). NEkviesk "
-                        "resolve_address su pasiūlytu adresu. Jei klientas įvardijo KITĄ "
-                        "adresą (žr. HEARD ADDRESS) — naudok TĄ. Kitu atveju mandagiai "
-                        "perklausk: „Atsiprašau, nesupratau — dėl kokio adreso skambinate?“"
-                    )
-                    self._trace_note(
-                        "address_confirm",
-                        f"offer not confirmed (verdict={verdict}); veto commit",
-                        level="warn",
-                    )
+                    # Direct accept (arc v3): the caller DICTATED a full other address
+                    # in this very turn (NLU heard street+house clearly) — take it
+                    # straight away, no extra "ar dėl šio adreso?" round: echo it and
+                    # resolve. A partial/garbled correction still gets the re-ask.
+                    p = self.state.profile
+                    if p.street.value and p.house.value:
+                        self._addr_confirm_note = (
+                            "- KLIENTAS PASAKĖ KITĄ ADRESĄ (aiškiai — žr. HEARD "
+                            "ADDRESS): IŠKART kviesk resolve_address su tomis dalimis. "
+                            "NEklausk „ar dėl šio adreso?“ — atsakyme tik pakartok "
+                            "adresą („Supratau — <adresas>.“) ir tęsk su patikros "
+                            "rezultatu."
+                        )
+                        self._trace_note(
+                            "address_confirm",
+                            "offer corrected with a full dictated address; direct accept",
+                        )
+                    else:
+                        self._addr_confirm_note = (
+                            "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI "
+                            "nepatvirtino pasiūlyto adreso (girdisi neigimas ar "
+                            "neaiškumas). NEkviesk resolve_address su pasiūlytu adresu. "
+                            "Jei klientas įvardijo KITĄ adresą (žr. HEARD ADDRESS) — "
+                            "naudok TĄ. Kitu atveju mandagiai perklausk: „Atsiprašau, "
+                            "nesupratau — dėl kokio adreso skambinate?“"
+                        )
+                        self._trace_note(
+                            "address_confirm",
+                            f"offer not confirmed (verdict={verdict}); veto commit",
+                            level="warn",
+                        )
         elif not s.case_closed:
             from .resolution import detect_address_correction
 
@@ -1524,7 +1502,6 @@ class ReactAgent:
 
         s.profile = ClientProfileState()
         self._db_address_note = None
-        self._finding_pending = False
         self._news_told = False  # a new address may carry different news
         # Re-extract address parts from THIS utterance (the correction often carries
         # the new address: "ne, skambinu dėl Dainų 5").
@@ -2009,12 +1986,6 @@ class ReactAgent:
         self.state.pivoted_from = None  # the rethink has now been said — say it once
         r = self.state.resolution
         if not r:
-            # INFORM arc (no strategy): the diagnosis-node reply just delivered the
-            # news — close the pending window and remember it was told, so the JAU
-            # PRANEŠTA marker stops any re-reading of the same news.
-            if self._finding_pending and self._active_node != "address_validation":
-                self._finding_pending = False
-                self._news_told = True
             return
         from .resolution import StepKind, get_strategy
 
@@ -2027,9 +1998,6 @@ class ReactAgent:
             StepKind.ESCALATE,  # the consent question ("ar tinka?") — Phase 3.11 B
         ):
             r["asked"] = True
-            # The finding (+ this step's question) has now been narrated — the
-            # activation arc is complete (Phase 3.11 #5).
-            self._finding_pending = False
 
     def _augment_resolve_result(self, observation: str) -> str:
         """Identification just landed — diagnose in the SAME turn.
@@ -2052,17 +2020,33 @@ class ReactAgent:
         # lookup hint still says "patvirtink adresą klientui", and the narrator obeying
         # it re-asked the ADDRESS instead of moving on. Neutralize the stale hint.
         obs["hint"] = "Adresas JAU patvirtintas — nebeklausk adreso."
-        # Arc v2 (2026-07-31): the wait announce applies to EVERY verdict — inform
-        # (billing/outage) included. The activation reply is ONLY "patikrinsiu šiuo
-        # adresu — palaukite"; the news/finding lands NEXT turn (RADINYS / ŽINIA facts).
-        self._finding_pending = True
-        tail = (
-            " Diagnozė jau atlikta TYLIAI (rezultato dar NESAKYK!). Šiame atsakyme "
-            "TIK laukimo pranešimas: 'Šiuo adresu patikrinsiu situaciją iš tiekėjo "
-            "pusės — palaukite akimirką.' NIEKO daugiau: jokio radinio, jokių "
-            "instrukcijų, jokių klausimų (anamnezės klausimas jau buvo pokalbio "
-            "pradžioje — NEkartok), NEkartok adreso klausimo."
-        )
+        # Arc v3 (2026-07-31, Andrius' variant 1): identification is SEPARATE from
+        # diagnosis — the engine has already diagnosed silently (state-only), and this
+        # ONE reply narrates the check announce AND its real result in sequence:
+        # "Patikrinsiu būseną šiuo adresu… Patikrinau: [rezultatas]." No caller-ack
+        # turn (a told-to-wait caller stays silent -> dead air), and no deferred-finding
+        # vacuum for the model to hallucinate into (observed: it invented a router
+        # story for a debtor). When async telemetry lands (Phase 5), the announce and
+        # the result naturally split into two real turns.
+        d = self.state.diagnosis.get("network") or {}
+        gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+        if self.state.resolution:
+            tail = (
+                f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
+                "tvarka: (1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) trumpai "
+                "pasakyk rezultatą ir kas tai greičiausiai yra, (3) užduok ŠIO ŽINGSNIO "
+                "klausimą (jis atlieka „ar darome?“ vaidmenį). NEkartok adreso klausimo, "
+                "NEkartok anamnezės klausimo, jokių instrukcijų sąrašo — vienas klausimas."
+            )
+        else:
+            self._news_told = True  # the news goes out in THIS reply — never repeat it
+            tail = (
+                f" Patikra atlikta. ŽINIA: {gloss}. Šiame VIENAME atsakyme, šia tvarka: "
+                "(1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) pasakyk žinią "
+                "VIENĄ kartą trumpai (jei skola — BŪTINAI pridėk: „apmokėjus sąskaitą, "
+                "paslauga bus įjungta“), (3) paklausk „Ar dar kuo galiu padėti?“. "
+                "NEkartok adreso klausimo ir daugiau šios žinios NEBEKARTOK."
+            )
         obs["message"] = (obs.get("message", "") or "").strip() + tail
         return json.dumps(obs, ensure_ascii=False)
 
