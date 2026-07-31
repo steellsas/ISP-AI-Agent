@@ -333,13 +333,17 @@ class TestIdentifyThenDiagnoseSameTurn:
         agent.state.customer_id = "CUST101"  # committed by resolve_address
         out = json.loads(agent._augment_tool_result("resolve_address", obs))
 
-        # Arc v3: identification is separate from diagnosis — the engine diagnosed
-        # SILENTLY (verdict in state), and this ONE reply narrates the check announce
-        # AND its REAL result ("Patikrinsiu… Patikrinau: [žinia]"). No vacuum for the
-        # model to hallucinate into, no caller-ack turn.
+        # Arc v3 + identification ladder: the engine diagnosed SILENTLY (verdict in
+        # state); the reply first finishes identification with the caller-intro
+        # question ("su kuo kalbu?") — the result is deferred one turn behind it.
         assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
-        assert "Patikrinsiu būseną" in out["message"]
-        assert "ŽINIA" in out["message"]  # the real result rides in the same reply
+        assert "su kuo kalbu" in out["message"].lower()
+        assert agent._result_pending is True
+        # Once the caller introduces themselves, the tail delivers the real result.
+        agent.state.caller_name = "Jonas"
+        tail = agent._result_narration_tail()
+        assert "Patikrinsiu būseną" in tail
+        assert "ŽINIA" in tail
         assert agent._news_told is True  # inform news marked told — never repeated
 
     def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):

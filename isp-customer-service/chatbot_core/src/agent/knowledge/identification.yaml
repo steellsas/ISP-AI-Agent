@@ -18,6 +18,12 @@ identification:
   # taken from the DB — it must be spoken; this only says whether it is needed at all.
   require_apartment: true
 
+  # Ask WHO is calling once the address is confirmed (2026-07-31, Andrius): the name
+  # + relation to the contract strengthen identification confidence and land in the
+  # call record ("kas skambino"). STILL not an identity gate — we serve the holder AND
+  # family / tenants / helpers, a mismatch is expected and never blocks (5d rule).
+  ask_caller: true
+
   # EXTRA things the agent asks while identifying. Empty = address only.
   # Add e.g. [name] to also ask the CALLER's name; [name, contact_phone] to also collect a
   # callback number. The WORDING is in `questions` below.
@@ -30,4 +36,5 @@ identification:
 
   questions:
     name: "O kaip į jus kreiptis — koks jūsų vardas?"
+    caller: "O su kuo kalbu — koks jūsų vardas? Ar jūs sutartį sudaręs asmuo?"
     contact_phone: "Kokiu numeriu geriausia su jumis susisiekti, jei nutrūktų ryšys?"

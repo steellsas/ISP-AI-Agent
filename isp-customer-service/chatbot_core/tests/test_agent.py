@@ -796,3 +796,55 @@ class TestAddressSpeech:
         )
         assert n("Radau: Žeimių g. 12, butas 6") == "Radau: Žeimių gatvė 12, butas 6"
         assert n("Jokio adreso čia nėra") == "Jokio adreso čia nėra"
+
+
+class TestIdentificationLadder:
+    """2026-07-31: identification ends with WHO-is-calling (record, never a gate);
+    the check result is deferred one turn behind that question. A clearly dictated
+    correction address is resolved by the ENGINE (no LLM tool hesitancy)."""
+
+    def test_caller_intro_captured_and_result_released(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020101")
+        agent.state.customer_id = "CUST101"
+        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent._result_pending = True  # the caller question was posed last reply
+
+        agent._pre_turn_guards("Ona, aš žmona sutartį sudariusio")
+
+        assert agent.state.caller_name == "Ona, aš žmona sutartį sudariusio"
+        assert agent.state.caller_relation == "family"
+        # The RESULT directive now renders (deferred news released this turn).
+        facts = agent._state_facts_block()
+        assert facts and "REZULTATO PRISTATYMAS" in facts
+
+    def test_relation_keywords(self):
+        from agent.identification import detect_caller_relation
+
+        assert detect_caller_relation("Jonas, taip, aš sutartį sudaręs") == "holder"
+        assert detect_caller_relation("Petras, nuomininkas") == "tenant"
+        assert detect_caller_relation("kaimynas, padedu senolei") == "helper"
+        assert detect_caller_relation("mmm") == "unknown"
+
+    def test_engine_resolves_dictated_correction(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020105")  # phone = 60-7 account
+        agent.state.messages.append(
+            {"role": "assistant", "content": "Ar skambinate dėl Tilžės g. 60, butas 7?"}
+        )
+        agent._prefill_slots_from_text("Ne, skambinu dėl Tilžės gatvės 60 buto 3")
+        agent._pre_turn_guards("Ne, skambinu dėl Tilžės gatvės 60 buto 3")
+
+        # The ENGINE committed the corrected identity and diagnosed silently.
+        assert agent.state.customer_id == "CUST101"
+        assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
+        # The reply is steered by the identified-note (ladder: caller question next).
+        assert agent._addr_confirm_note and "IDENTIFIKUOTA" in agent._addr_confirm_note
+        assert agent._result_pending is True
+
+    def test_farewell_garble_visai_gero(self):
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Ne visai gero") is True

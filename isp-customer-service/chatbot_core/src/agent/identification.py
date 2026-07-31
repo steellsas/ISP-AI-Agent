@@ -27,9 +27,12 @@ _PATH = Path(__file__).resolve().parent / "knowledge" / "identification.yaml"
 _DEFAULTS: dict[str, Any] = {
     "offer_phone_address": True,
     "require_apartment": True,
+    "ask_caller": True,
     "extra_questions": [],
     "questions": {},
 }
+
+_CALLER_QUESTION_DEFAULT = "O su kuo kalbu — koks jūsų vardas? Ar jūs sutartį sudaręs asmuo?"
 
 
 @lru_cache(maxsize=1)
@@ -55,6 +58,61 @@ def offer_phone_address() -> bool:
 
 def require_apartment() -> bool:
     return bool(_cfg().get("require_apartment", True))
+
+
+def ask_caller() -> bool:
+    """Ask WHO is calling (name + relation to the contract) once the address is
+    confirmed — for the call record and identification confidence, never a gate."""
+    return bool(_cfg().get("ask_caller", True))
+
+
+def caller_question() -> str:
+    q = (_cfg().get("questions") or {}).get("caller")
+    return str(q) if q else _CALLER_QUESTION_DEFAULT
+
+
+_RELATION_MARKS: dict[str, tuple[str, ...]] = {
+    "holder": ("sutart", "savinink", "mano vardu", "aš sudariau", "as sudariau"),
+    "family": (
+        "vyras",
+        "žmona",
+        "zmona",
+        "vaikas",
+        "sūnus",
+        "sunus",
+        "dukt",
+        "dukra",
+        "mama",
+        "tėv",
+        "tev",
+        "brolis",
+        "sesuo",
+        "šeim",
+        "seim",
+    ),
+    "tenant": ("nuominink", "nuomoju", "nuomuoju"),
+    "helper": ("kaimyn", "padedu", "padėti", "padeti", "draug"),
+}
+
+
+def detect_caller_relation(text: str | None) -> str:
+    """Keyword-read the caller's relation to the contract from their intro. Record
+    + confidence signal only — never a gate."""
+    if not text:
+        return "unknown"
+    low = text.lower()
+    # Relation words WIN over a contract mention: "žmona sutartį sudariusio" names the
+    # HOLDER'S wife — the caller is family, even though "sutart..." appears.
+    for rel in ("family", "tenant", "helper"):
+        if any(m in low for m in _RELATION_MARKS[rel]):
+            return rel
+    if any(m in low for m in ("ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar")):
+        return "other"  # explicitly not the holder, relation unstated
+    if any(m in low for m in _RELATION_MARKS["holder"]):
+        return "holder"
+    if any(m in low for m in ("taip", "aš", "as ")):
+        return "holder"  # a plain yes to "ar jūs sutartį sudaręs asmuo?"
+    return "unknown"
 
 
 def extra_questions_guidance() -> str | None:

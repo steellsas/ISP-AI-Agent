@@ -41,6 +41,10 @@ class AgentState:
     # `name` extra question is enabled (identification.yaml); consumed by the call record
     # (Phase 3.10).
     caller_name: str | None = None
+    # Relation to the contract, keyword-read from the caller's intro ("holder" /
+    # "family" / "tenant" / "helper" / "unknown"). Record + confidence signal only —
+    # NEVER a gate (5d rule: a mismatch is expected and fine).
+    caller_relation: str | None = None
 
     # Pre-flight phone lookup result (the caller's number, resolved at the start
     # of the call). UNCONFIRMED — a candidate the agent offers for the caller to

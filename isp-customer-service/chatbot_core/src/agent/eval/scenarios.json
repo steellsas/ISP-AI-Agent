@@ -9,6 +9,7 @@
         "Labas, neveikia internetas",
         "Prieš valandą dingo, po nieko ypatingo",
         "Taip",
+        "Jonas, taip, aš sutartį sudaręs",
         "Taip, keičiau routerį, senasis sugedo",
         "Gerai, laukiu",
         "Taip, atsirado internetas",
@@ -31,6 +32,7 @@
         "Labas, neveikia internetas",
         "Vakar vakare pastebėjau",
         "Taip",
+        "Ona, aš žmona sutartį sudariusio",
         "Tik viename",
         "Telefone",
         "Patikrinau, WiFi įjungtas",
@@ -59,6 +61,7 @@
         "Labas, neveikia internetas",
         "Šįryt dingo, po audros",
         "Taip",
+        "Giedrius, taip, mano sutartis",
         "Galėtume kartu patikrinti",
         "Ne, nešviečia jokia lemputė",
         "Vis tiek nedega",
@@ -108,6 +111,7 @@
         "Labas, neveikia internetas",
         "Vakar pastebėjau",
         "Taip",
+        "Petras, nuomininkas",
         "Aišku, ačiū"
       ],
       "expect": {

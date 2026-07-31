@@ -268,6 +268,9 @@ class ReactAgent:
         # the one-turn "identification reopened" note.
         self._addr_confirm_note: str | None = None
         self._reopen_note = False
+        # Identification ladder: True while the check result is deferred behind the
+        # caller-intro question ("su kuo kalbu?"); cleared once the result is narrated.
+        self._result_pending = False
         # INFORM arc: the news (billing/outage) was already delivered once — the JAU
         # PRANEŠTA marker stops the model re-reading it every turn.
         self._news_told = False
@@ -673,7 +676,22 @@ class ReactAgent:
         # made the agent re-narrate the solved problem ("dar nepririštas") every
         # turn. Past the bind, the step's own hint is the single source of truth.
         past_action = bool(s.resolution) and "telemetry_fixed" in (s.resolution or {})
-        if not past_action:
+        # Identification ladder's last rung: the caller-intro question is OWED (asked
+        # this reply) — the deferred check result comes next turn, so the finding facts
+        # are suppressed to keep the model from blurting it alongside the question.
+        caller_pending = bool(s.customer_id) and self._result_pending and not s.caller_name
+        if caller_pending:
+            from .identification import caller_question
+
+            facts.append(
+                "- IDENTIFIKACIJOS PABAIGA: patikra atlikta, bet rezultato dar "
+                f"NESAKYK. Šiame atsakyme TIK klausimas: „{caller_question()}“. "
+                "Jokio rezultato, jokių instrukcijų."
+            )
+        elif s.customer_id and self._result_pending and s.caller_name:
+            # The caller introduced themselves — deliver the deferred result NOW.
+            facts.append("- REZULTATO PRISTATYMAS:" + self._result_narration_tail())
+        if not past_action and not caller_pending:
             for domain, d in s.diagnosis.items():
                 gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
                 facts.append(
@@ -684,7 +702,7 @@ class ReactAgent:
                 )
         # What we believe and why — so the agent reasons out loud instead of issuing
         # orders, and can CONFIRM the cause at the end ("taigi dėl X ir nebuvo").
-        h = s.hypothesis
+        h = None if caller_pending else s.hypothesis
         if h:
             because = "; ".join(h["because"])
             if h["status"] == "confirmed":
@@ -785,7 +803,8 @@ class ReactAgent:
 
             strat = get_strategy(s.resolution.get("verdict"))
             step = strat.step(s.resolution.get("step", "")) if strat else None
-            if step is not None:
+            # Step facts wait while the caller-intro question is owed (see above).
+            if step is not None and not caller_pending:
                 if step.rag_section is not None:
                     section = get_step(strat.rag_doc, step.rag_section)
                     if section:
@@ -1433,6 +1452,19 @@ class ReactAgent:
         self._reopen_note = False
         if not user_input:
             return
+        # (0) Caller-intro capture: the previous reply asked WHO is calling (the
+        # identification ladder's last rung) — record the answer verbatim (for the
+        # RECORD, 5d rule) + a keyword relation read. The deferred check result goes
+        # out in THIS turn's reply (see the RESULT facts directive).
+        if s.customer_id and self._result_pending and not s.caller_name:
+            from .identification import detect_caller_relation
+            from .resolution import detect_farewell
+
+            if not detect_farewell(user_input):
+                s.caller_name = user_input.strip()[:120]
+                s.caller_relation = detect_caller_relation(user_input)
+                self.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
+            return
         if not s.customer_id:
             q = (self._last_agent_question() or "").lower()
             if "skambinate dėl" in q or "dėl šio adreso" in q or "adreso skambinate" in q:
@@ -1440,23 +1472,31 @@ class ReactAgent:
 
                 verdict = detect_address_confirm(user_input)
                 if verdict != "yes":
-                    # Direct accept (arc v3): the caller DICTATED a full other address
-                    # in this very turn (NLU heard street+house clearly) — take it
-                    # straight away, no extra "ar dėl šio adreso?" round: echo it and
-                    # resolve. A partial/garbled correction still gets the re-ask.
+                    # Direct accept (arc v3.1): the caller DICTATED a full other address
+                    # in this very turn (NLU heard street+house clearly) — the ENGINE
+                    # resolves + diagnoses it RIGHT NOW (asking the model to call the
+                    # tool proved unreliable: it narrated "patikrinsiu" without acting,
+                    # then relapsed into a redundant confirm round). The reply then
+                    # echoes the address and continues per the identification ladder.
                     p = self.state.profile
                     if p.street.value and p.house.value:
-                        self._addr_confirm_note = (
-                            "- KLIENTAS PASAKĖ KITĄ ADRESĄ (aiškiai — žr. HEARD "
-                            "ADDRESS): IŠKART kviesk resolve_address su tomis dalimis. "
-                            "NEklausk „ar dėl šio adreso?“ — atsakyme tik pakartok "
-                            "adresą („Supratau — <adresas>.“) ir tęsk su patikros "
-                            "rezultatu."
-                        )
                         self._trace_note(
                             "address_confirm",
-                            "offer corrected with a full dictated address; direct accept",
+                            "offer corrected with a full dictated address; engine resolve",
                         )
+                        if self._engine_resolve_from_slots():
+                            self._addr_confirm_note = (
+                                "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
+                                f"adresas {s.customer_address}. Atsakymo pradžioje "
+                                "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
+                                "pagal žemiau esančią kryptį." + self._result_narration_tail()
+                            )
+                        else:
+                            self._addr_confirm_note = (
+                                "- KLIENTAS PASAKĖ KITĄ ADRESĄ, bet jo patikrinti "
+                                "nepavyko (žr. HEARD ADDRESS) — patikslink trūkstamą "
+                                "dalį arba paprašyk pakartoti."
+                            )
                     else:
                         self._addr_confirm_note = (
                             "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI "
@@ -1476,6 +1516,32 @@ class ReactAgent:
 
             if detect_address_correction(user_input):
                 self._reopen_identification(user_input)
+
+    def _engine_resolve_from_slots(self) -> bool:
+        """Deterministic identification commit from clearly-heard slots: the ENGINE
+        calls resolve_address (+ the silent diagnose) itself — no LLM tool-call
+        hesitancy, no confirm-round relapse. True when a customer committed."""
+        p = self.state.profile
+        args: dict[str, str] = {
+            "street": str(p.street.value),
+            "house_number": str(p.house.value),
+        }
+        if p.apartment.value:
+            args["apartment_number"] = str(p.apartment.value)
+        if p.city.value:
+            args["city"] = str(p.city.value)
+        try:
+            obs = execute_tool("resolve_address", args)
+        except Exception as e:  # pragma: no cover - best-effort
+            self._trace_note("engine_resolve", str(e), level="error")
+            return False
+        self.tracer.emit("tool_call", name="resolve_address", args=args)
+        self._trace_tool_result("resolve_address", obs)
+        self._update_state_from_observation("resolve_address", obs)
+        if not self.state.customer_id:
+            return False
+        self.ensure_diagnosed()
+        return True
 
     def _reopen_identification(self, user_input: str) -> None:
         """The caller corrected the address AFTER identification — drop the identity and
@@ -1503,6 +1569,7 @@ class ReactAgent:
         s.profile = ClientProfileState()
         self._db_address_note = None
         self._news_told = False  # a new address may carry different news
+        self._result_pending = False
         # Re-extract address parts from THIS utterance (the correction often carries
         # the new address: "ne, skambinu dėl Dainų 5").
         self._prefill_slots_from_text(user_input)
@@ -1984,6 +2051,17 @@ class ReactAgent:
         message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)
         has now been presented — so the caller's NEXT reply advances the walker."""
         self.state.pivoted_from = None  # the rethink has now been said — say it once
+        s = self.state
+        # Identification ladder bookkeeping: while the caller-intro question is owed,
+        # the strategy step's question was NOT asked this reply — do not mark it. Once
+        # the caller introduced themselves and the RESULT was narrated, the deferral
+        # closes (inform news counted as told).
+        if s.customer_id and self._result_pending:
+            if not s.caller_name:
+                return  # the reply asked WHO is calling — nothing else was presented
+            self._result_pending = False
+            if s.resolution is None:
+                self._news_told = True
         r = self.state.resolution
         if not r:
             return
@@ -2028,27 +2106,42 @@ class ReactAgent:
         # vacuum for the model to hallucinate into (observed: it invented a router
         # story for a debtor). When async telemetry lands (Phase 5), the announce and
         # the result naturally split into two real turns.
+        obs["message"] = (obs.get("message", "") or "").strip() + self._result_narration_tail()
+        return json.dumps(obs, ensure_ascii=False)
+
+    def _result_narration_tail(self) -> str:
+        """The narration directive once the identity has committed and the silent
+        diagnose ran. Identification LADDER (2026-07-31): if the caller-intro question
+        is still owed (WHO is calling — name + relation, for the record), ask THAT
+        first and hold the result one turn (_result_pending); otherwise narrate the
+        check announce + the REAL result in this one reply (arc v3)."""
+        from .identification import ask_caller, caller_question
+
+        if ask_caller() and not self.state.caller_name:
+            self._result_pending = True
+            return (
+                " Identifikacijos pabaiga: patikra atlikta TYLIAI, bet rezultato dar "
+                f"NESAKYK. Šiame atsakyme TIK: „{caller_question()}“ (galima trumpai "
+                "patvirtinti adresą prieš klausimą). Jokio rezultato, jokių instrukcijų."
+            )
         d = self.state.diagnosis.get("network") or {}
         gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
         if self.state.resolution:
-            tail = (
+            return (
                 f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
                 "tvarka: (1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) trumpai "
                 "pasakyk rezultatą ir kas tai greičiausiai yra, (3) užduok ŠIO ŽINGSNIO "
                 "klausimą (jis atlieka „ar darome?“ vaidmenį). NEkartok adreso klausimo, "
                 "NEkartok anamnezės klausimo, jokių instrukcijų sąrašo — vienas klausimas."
             )
-        else:
-            self._news_told = True  # the news goes out in THIS reply — never repeat it
-            tail = (
-                f" Patikra atlikta. ŽINIA: {gloss}. Šiame VIENAME atsakyme, šia tvarka: "
-                "(1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) pasakyk žinią "
-                "VIENĄ kartą trumpai (jei skola — BŪTINAI pridėk: „apmokėjus sąskaitą, "
-                "paslauga bus įjungta“), (3) paklausk „Ar dar kuo galiu padėti?“. "
-                "NEkartok adreso klausimo ir daugiau šios žinios NEBEKARTOK."
-            )
-        obs["message"] = (obs.get("message", "") or "").strip() + tail
-        return json.dumps(obs, ensure_ascii=False)
+        self._news_told = True  # the news goes out in THIS reply — never repeat it
+        return (
+            f" Patikra atlikta. ŽINIA: {gloss}. Šiame VIENAME atsakyme, šia tvarka: "
+            "(1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) pasakyk žinią "
+            "VIENĄ kartą trumpai (jei skola — BŪTINAI pridėk: „apmokėjus sąskaitą, "
+            "paslauga bus įjungta“), (3) paklausk „Ar dar kuo galiu padėti?“. "
+            "NEkartok adreso klausimo ir daugiau šios žinios NEBEKARTOK."
+        )
 
     def _augment_tool_result(self, name: str, observation: str) -> str:
         """Deterministic post-action chaining + telemetry verification (B6 strategy).
@@ -2575,6 +2668,7 @@ class ReactAgent:
             "customer_id": s.customer_id,
             "address": s.customer_address,
             "caller_name": s.caller_name,
+            "caller_relation": s.caller_relation,
             "cause": cause,
             "side": net.get("side"),  # provider | customer | unclear
             "outcome": s.closed_reason,  # resolved | outage | declined | escalated | None

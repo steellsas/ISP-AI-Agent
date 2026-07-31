@@ -959,6 +959,7 @@ _FAREWELL = (
     "visa gera",
     "visą gera",
     "viso gera",
+    "visai ger",  # "Ne visai gero" = garbled "ne, viso gero" (observed live)
 )
 
 
