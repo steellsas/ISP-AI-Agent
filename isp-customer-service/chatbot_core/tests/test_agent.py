@@ -848,3 +848,99 @@ class TestIdentificationLadder:
         from agent.resolution import detect_farewell
 
         assert detect_farewell("Ne visai gero") is True
+
+
+class TestVoiceGuardsRound5:
+    """2026-08-03 live round: garbles must not close calls or climb steps."""
+
+    def test_long_ne_sentence_is_not_a_farewell(self):
+        from agent.resolution import detect_farewell
+
+        # This exact garble hung up on the caller mid-ladder (observed live).
+        assert detect_farewell("Ne, mano vardas Tomas, aš esu kaimynas") is False
+        assert detect_farewell("Ne, ačiū") is True  # short goodbyes still work
+        assert detect_farewell("viso gero") is True
+
+    def test_backchannel_holds_asking_steps(self, db_connection, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "dr_offer_bridge",
+            "asked": True,
+        }
+
+        agent._walk_resolution("T.")  # was read as "yes, I have a computer" live
+        assert agent.state.resolution["step"] == "dr_offer_bridge"  # held
+        agent._walk_resolution("Mhm.")
+        assert agent.state.resolution["step"] == "dr_offer_bridge"  # held
+
+    def test_caller_intro_with_stt_question_mark_is_captured(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020101")
+        agent.state.customer_id = "CUST101"
+        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent._result_pending = True
+
+        agent._pre_turn_guards("Tomas? Ne, mano vardas Tomas, aš esu kaimynas.")
+        assert agent.state.caller_name is not None  # captured, not skipped as a question
+        assert agent.state.caller_relation == "helper"
+
+    def test_inform_close_gated_until_news_told(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020101")
+        agent.state.customer_id = "CUST101"
+        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent._result_pending = True  # ladder still open, news NOT delivered
+
+        agent._maybe_close_inform("viso gero")
+        assert agent.state.case_closed is False  # must NOT hang up before informing
+
+    def test_farewell_mid_strategy_confirms_then_registers(self, db_connection, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+
+        agent._pre_turn_guards("viso gero")  # mid-troubleshooting goodbye
+        assert agent._end_confirm_pending is True
+        assert agent.state.case_closed is False  # clarify first, never hang up
+        reply = agent._identification_scripted_reply("viso gero")
+        assert reply and "tikrai norite baigti" in reply
+
+        agent._pre_turn_guards("taip, baikim")  # confirmed -> outcome: registration
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "registered"
+        assert agent.state.ticket_id
+
+    def test_farewell_mid_strategy_declined_resumes(self, db_connection, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+
+        agent._pre_turn_guards("viso gero")
+        agent._pre_turn_guards("ne ne, tęskime")  # changed their mind
+        assert agent.state.case_closed is False
+        assert agent._end_confirm_pending is False
+        agent._walk_resolution("ne ne, tęskime")  # held one turn, not misrouted
+        assert agent.state.resolution["step"] == "dr_lights"

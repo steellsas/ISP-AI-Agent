@@ -1024,6 +1024,19 @@ before Phase 5 (async + telephony).
       solver cut-over on dead-router (5/6), signals→knowledge (D). Phase 5 does not
       depend on these, but they continue the "universal thinking agent" line.
 
+### Operating philosophy (2026-08-03, Andrius): after-hours helper, humans take over via tickets
+
+The agent SOLVES only what the knowledge describes; everything else ends HONESTLY:
+- provider-side fault -> ticket immediately;
+- described fault, attempt failed -> ticket with WHAT was tried + the hypotheses
+  (Bandyta/atmesta on the ticket details);
+- UNDESCRIBED fault -> no invented procedures: tell the caller this is beyond what
+  can be solved right now, register a ticket marked as an unknown fault. (Routing for
+  unknown faults to be added when the first such flows are defined.)
+A farewell mid-process is a signal to CLARIFY ("ar tikrai norite baigti? galiu
+užregistruoti"), never a hang-up trigger; deterministic closes only after the
+business is done (news delivered / resolved / registered).
+
 ### Block architecture (agreed 2026-07-31): identifikavimas | supratimas | sprendimas + mąstytojas
 
 The agent is three BLOCKS joined by the THINKER (solver): IDENTIFIKAVIMAS returns an

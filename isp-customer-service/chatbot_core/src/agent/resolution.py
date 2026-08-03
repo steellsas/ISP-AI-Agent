@@ -951,8 +951,8 @@ _FAREWELL = (
     "pakaks",
     "ne ačiū",
     "nebereikia",
-    "iki",
-    "ate",
+    # NOTE: "iki" and "ate" are NOT in this substring list — they hide inside
+    # "neveIKIa"/"ATEina"; detect_farewell checks them as whole words instead.
     # STT garbles of "viso gero / viso labo" heard in live calls — a farewell must
     # still close the call when whisper mangles the vowels.
     "visą gerą",
@@ -1228,14 +1228,51 @@ def detect_ticket_consent(text: str | None) -> str | None:
 def detect_farewell(text: str | None) -> bool:
     """True when, after the case is closed, the caller signals they are done — a
     goodbye or a plain 'no' to 'anything else?'. Used to end the call so the agent
-    does not loop goodbyes. A 'no' that carries a new question/topic does NOT count."""
+    does not loop goodbyes. A 'no' that carries a new question/topic does NOT count.
+    The bare-"ne"/"viskas" fallback fires only on SHORT utterances (<=3 words): a long
+    sentence containing "ne" is content, not a goodbye ("Ne, mano vardas Tomas, aš
+    esu kaimynas" was read as a farewell and hung up on the caller — observed live)."""
     if not text:
         return False
     low = text.lower()
-    if any(m in low for m in _FAREWELL):
+    tokens = {t.strip(".,!?…") for t in low.split()}
+    # "iki"/"ate" must match as WHOLE WORDS — as substrings they hide inside
+    # "neveIKIa" / "ATEina" and read a fault report as a goodbye (caught by tests
+    # the moment farewell started being checked on every turn).
+    if any(m in low for m in _FAREWELL) or tokens & {"iki", "ate"}:
         return True
-    has_followup = any(w in low for w in ("klausim", "dar ", "bet ", "problem", "taip"))
-    return not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)
+    has_followup = any(
+        w in low
+        for w in ("klausim", "dar ", "bet ", "problem", "taip", "tęs", "tes", "toliau", "nebaik")
+    )
+    short = len(low.split()) <= 3
+    return short and not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)
+
+
+# Bare backchannels / one-letter STT crumbs — acknowledgement noises, NOT answers.
+# Treating them as answers advanced steps through garbage (observed: "T." was read
+# as "yes, I have a computer"; "Mhm." advanced two INSTRUCT steps).
+_BACKCHANNEL = frozenset({"mhm", "aha", "m", "t", "hm", "mm", "nu", "na", "e", "a"})
+
+
+def is_backchannel(text: str | None) -> bool:
+    """True for a bare acknowledgement noise / one-letter crumb — hold, don't route."""
+    if not text:
+        return False
+    tokens = [t.strip(".,!?…") for t in text.lower().split()]
+    tokens = [t for t in tokens if t]
+    return bool(tokens) and all(t in _BACKCHANNEL for t in tokens)
+
+
+def is_real_question(text: str | None) -> bool:
+    """A QUESTION by its words, not by punctuation — STT sticks '?' onto rising
+    intonation ("Tomas?"), which is not the caller asking us something."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _QUESTION) or any(
+        low.startswith(w) for w in ("kas ", "kaip ", "kam ", "kodėl", "kodel", "negi")
+    )
 
 
 def get_strategy(verdict: str | None) -> Strategy | None:

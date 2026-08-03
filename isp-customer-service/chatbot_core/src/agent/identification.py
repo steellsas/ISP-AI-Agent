@@ -87,6 +87,10 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     "billing_extra": "Apmokėjus sąskaitą, paslauga bus įjungta.",
     "anything_else": "Ar dar kuo galiu padėti?",
     "thanks": "Ačiū!",
+    "confirm_end": (
+        "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, "
+        "kad kolegos su jumis susisiektų."
+    ),
 }
 
 

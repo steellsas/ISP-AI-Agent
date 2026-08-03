@@ -274,6 +274,10 @@ class ReactAgent:
         # Set when the ENGINE just committed the identity this turn — the scripted
         # ladder reply then opens with the address echo.
         self._just_identified = False
+        # Farewell-mid-process clarify contract (2026-08-03): the confirm question is
+        # pending / the walker holds one turn after the caller decides to continue.
+        self._end_confirm_pending = False
+        self._resume_hold = False
         # INFORM arc: the news (billing/outage) was already delivered once — the JAU
         # PRANEŠTA marker stops the model re-reading it every turn.
         self._news_told = False
@@ -1307,6 +1311,11 @@ class ReactAgent:
         r = self.state.resolution
         if not r or self.state.case_closed:
             return
+        # One-turn hold after the caller declined to end the call — their "ne,
+        # tęskime" answers the confirm-end question, not the current step.
+        if self._resume_hold:
+            self._resume_hold = False
+            return
         # Derive the intent from THIS call's input rather than trusting it was set
         # earlier — the walker must not depend on the caller's ordering.
         from .resolution import detect_turn_intent
@@ -1323,6 +1332,18 @@ class ReactAgent:
         if step.id == "confirm_change" and confirms_device_change(user_input):
             self._route_to(r, next_step_id(strat, step.id, "yes"))
             return
+        # Backchannel guard: a bare "Mhm." / one-letter STT crumb is an acknowledgement,
+        # not an answer — HOLD asking steps instead of routing garbage (observed: "T."
+        # entered the bridge path as "yes, I have a computer"; "Mhm." climbed two
+        # INSTRUCT steps). ACTION steps still advance — their announce needs no answer.
+        if step.kind in (StepKind.CONFIRM, StepKind.INSTRUCT):
+            from .resolution import is_backchannel
+
+            if is_backchannel(user_input):
+                self.tracer.emit(
+                    "decision", intent="backchannel", action="hold", from_step=step.id, to=step.id
+                )
+                return
         # A clear "atsirado / veikia" pre-answers a restored CONFIRM before it was even
         # asked — often fused with the goodbye ("yra internetas, ačiū, viso gero"). Route
         # the YES so the resolve is RECORDED instead of the call dying unclosed on the
@@ -1455,15 +1476,56 @@ class ReactAgent:
         self._reopen_note = False
         if not user_input:
             return
+        # (-1) Farewell mid-process is a signal to CLARIFY, never to close (policy
+        # 2026-08-03): "viso gero" heard during identification / troubleshooting /
+        # before the news gets ONE confirm question; only the confirmation ends the
+        # call — through the outcome (registration when a strategy is active).
+        from .resolution import detect_farewell, detect_ticket_consent
+
+        if self._end_confirm_pending and not s.case_closed:
+            self._end_confirm_pending = False
+            if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
+                if s.resolution is not None:
+                    from .resolution import get_strategy
+
+                    strat = get_strategy(s.resolution.get("verdict"))
+                    esc = strat.step("escalate") if strat else None
+                    s.resolution["escalate_reason"] = "Klientas nutraukė pokalbį."
+                    if esc is not None:
+                        self._register_ticket_from_state(esc)
+                    s.case_closed = True
+                    s.closed_reason = "registered" if s.ticket_id else "declined"
+                else:
+                    s.case_closed = True
+                    s.closed_reason = "declined"
+                self.tracer.emit("decision", intent="end_confirmed", action="close")
+            else:
+                # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
+                # is not misrouted as a step answer; resume next turn.
+                self._resume_hold = True
+                self.tracer.emit("decision", intent="end_declined", action="resume")
+            return
+        mid_process = not s.case_closed and (
+            not s.customer_id
+            or s.resolution is not None
+            or self._result_pending
+            or (bool(s.diagnosis) and not (self._news_told or s.outage_reported))
+        )
+        if mid_process and detect_farewell(user_input):
+            self._end_confirm_pending = True
+            self.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
+            return
         # (0) Caller-intro capture: the previous reply asked WHO is calling (the
         # identification ladder's last rung) — record the answer verbatim (for the
         # RECORD, 5d rule) + a keyword relation read. The deferred check result goes
         # out in THIS turn's reply (see the RESULT facts directive).
         if s.customer_id and self._result_pending and not s.caller_name:
             from .identification import detect_caller_relation
-            from .resolution import detect_farewell, detect_turn_intent
+            from .resolution import detect_farewell, is_real_question
 
-            if detect_turn_intent(user_input) == "question":
+            # Question by WORDS only — STT sticks "?" onto rising intonation
+            # ("Tomas? Ne, mano vardas Tomas…" is the ANSWER, not a question).
+            if is_real_question(user_input):
                 return  # off-script — the LLM answers; the ladder re-asks next turn
             if not detect_farewell(user_input):
                 # Wait/consent-only replies are NOT a name ("Taip.", "Laukiu, laukiu"
@@ -1638,6 +1700,8 @@ class ReactAgent:
         self._db_address_note = None
         self._news_told = False  # a new address may carry different news
         self._result_pending = False
+        self._end_confirm_pending = False
+        self._resume_hold = False
         # Re-extract address parts from THIS utterance (the correction often carries
         # the new address: "ne, skambinu dėl Dainų 5").
         self._prefill_slots_from_text(user_input)
@@ -1758,18 +1822,15 @@ class ReactAgent:
             self.state.last_intent = "done"
             self._advance_instruct(self.state.resolution, step, strat, user_input)
             return True
-        # Classifier VETO: it confidently read "still doing / asking / confused" — HOLD
-        # the step this turn, do not let the looser keyword intent gate advance on a
-        # garble read as a plain 'answer' (observed live: dr_cable advanced while the
-        # caller was still asking WHICH cable goes WHERE). EXCEPT an explicit keyword
-        # DONE ("padariau", "patikrinau") — that outranks a soft classifier 'waiting'
-        # (observed: "Patikrinau, WiFi įjungtas" held as waiting and the resolve slipped
-        # a turn). The veto is for ambiguous answers only.
-        if obs.label == "waiting" and obs.confidence >= 0.5:
-            from .resolution import INTENT_DONE, detect_turn_intent
+        # Classifier VETO: the classifier RAN and did NOT say "done" (waiting OR
+        # unclear) — HOLD the step unless the keyword intent is an explicit DONE
+        # ("padariau", "patikrinau"), which outranks a soft classifier read (observed:
+        # "Patikrinau, WiFi įjungtas" held as waiting slipped the resolve a turn).
+        # Unclear included: the loose any-'answer' keyword path had advanced INSTRUCT
+        # steps on garbage ("Įsitikimu, kad tai yra neturis" climbed dr_plug_pc live).
+        from .resolution import INTENT_DONE, detect_turn_intent
 
-            return detect_turn_intent(user_input) != INTENT_DONE
-        return False
+        return detect_turn_intent(user_input) != INTENT_DONE
 
     def _detect_confirm(self, step, user_input: str | None):
         """Keyword FALLBACK detector for a CONFIRM reply — used when the classifier is off
@@ -2047,6 +2108,15 @@ class ReactAgent:
         reason_note = (s.resolution or {}).get("escalate_reason")
         if reason_note:
             details += f" {reason_note}"
+        # What was already TRIED and ruled out — the human taking over must not redo
+        # it (after-hours philosophy 2026-08-03: the agent attempts, a person takes
+        # over via the ticket with the full attempt history).
+        tried = list(s.failed_hypotheses) + [
+            x.get("cause") for x in s.rejected_hypotheses if x.get("cause")
+        ]
+        if tried:
+            glosses = ", ".join(_DIAGNOSIS_LT.get(c, c) for c in dict.fromkeys(tried))
+            details += f" Bandyta/atmesta: {glosses}."
         actions = self._tools_called_this_session()
         args = {
             "customer_id": s.customer_id,
@@ -2096,6 +2166,14 @@ class ReactAgent:
         re-narrated the outage every turn (observed: 'kartoja gedimą')."""
         s = self.state
         if s.case_closed or not s.customer_id:
+            return
+        # Farewell may close the INFORM call only after the BUSINESS is done: the
+        # identification ladder finished AND the news actually delivered. A garbled
+        # mid-ladder "Ne, mano vardas Tomas…" matched the loose farewell heuristic and
+        # HUNG UP on the caller before they ever heard the debt (observed live).
+        # An OUTAGE report counts as the news told — it is delivered the moment
+        # outage_reported flips (a different path than the billing script).
+        if self._result_pending or not (self._news_told or s.outage_reported):
             return
         reason = (s.diagnosis.get("network") or {}).get("reason")
         # INFORM mode: an outage was flagged, OR we identified + diagnosed but there is no
@@ -3242,9 +3320,12 @@ class ReactAgent:
         if s.case_closed:
             return None
         from .identification import caller_question, offer_phone_address, phrase
-        from .resolution import detect_turn_intent
+        from .resolution import is_real_question
 
-        if user_input and detect_turn_intent(user_input) == "question":
+        # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
+        if self._end_confirm_pending:
+            return phrase("confirm_end")
+        if user_input and is_real_question(user_input):
             return None  # off-script — the LLM answers; guards kept the ladder state
         # INTAKE (not yet identified): the anamnesis question and the address
         # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
