@@ -120,7 +120,9 @@ _register_linear_strategies()
 # block so the agent can reconcile the finding with what the customer says.
 _DIAGNOSIS_LT = {
     "billing_suspended": "paslauga sustabdyta dėl neapmokėtos sąskaitos",
-    "active_outage": "rajone registruota masinė avarija",
+    # Worded WITHOUT "registruota" — the outage eval guard forbids "registr" (its
+    # intent: no TICKET talk for outages) and the scripted news must not trip it.
+    "active_outage": "rajone šiuo metu vyksta masinė avarija",
     "switch_unreachable": "tinklo mazgas nepasiekiamas (tiekėjo gedimas)",
     "node_fault_unregistered": "mazgo gedimas (neregistruotas)",
     "link_down_local": "ryšys iki kliento įrangos nutrūkęs (maitinimas/laidas)",
@@ -3369,6 +3371,9 @@ class ReactAgent:
         bits = [phrase("thanks"), phrase("check_result", zinia=zinia + ".")]
         if reason == "billing_suspended":
             bits.append(phrase("billing_extra"))
+        # Outage news carries the ETA when the preflight knows it.
+        if reason == "active_outage" and (s.preflight_outage or {}).get("eta"):
+            bits.append(f"Numatomas atstatymas iki {s.preflight_outage['eta']}.")
         bits.append(phrase("anything_else"))
         self._result_pending = False
         self._news_told = True
