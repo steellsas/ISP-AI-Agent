@@ -88,6 +88,10 @@ class AgentState:
     # raw answer is kept for the ANALYSIS (Step 2) and the call record.
     anamnesis_asked: bool = False
     anamnesis_raw: str | None = None
+    # Keyword-read from the raw answer (nlu.extract_anamnesis): when it broke and an
+    # optional trigger event — the caller's half of the ANALYSIS (Step 2).
+    anamnesis_when: str | None = None
+    anamnesis_trigger: str | None = None
 
     # Diagnostic findings (case state), namespaced BY DOMAIN so new fault families
     # (iptv, voip…) attach additively without touching the base flow:

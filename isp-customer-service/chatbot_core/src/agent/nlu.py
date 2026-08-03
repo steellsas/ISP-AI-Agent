@@ -229,3 +229,48 @@ def load_registry(db) -> tuple[list[str], list[str]]:
     streets = [f"{r['street_name']} {r['street_type'] or 'g.'}".strip() for r in rows]
     localities = sorted({r["city"] for r in rows})
     return streets, localities
+
+
+# --- Anamnesis reading (Step 2, the ANALYSIS object) -------------------------------
+# The intake question is "kada pastebėjote, kad dingo — gal po ko nors?"; the answer
+# carries WHEN it broke and an optional TRIGGER event. Keyword-read, best-effort —
+# the raw text is kept alongside either way.
+
+_ANAMN_WHEN: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ką tik", ("ką tik", "ka tik", "dabar dingo", "prieš minutę", "pries minute")),
+    ("šiandien", ("šiandien", "siandien", "šįryt", "siryt", "ryte")),
+    ("vakar", ("vakar",)),
+    (
+        "prieš kelias dienas",
+        ("prieš kelias", "pries kelias", "užvakar", "uzvakar", "kelios dienos"),
+    ),
+    ("prieš valandą", ("prieš valand", "pries valand")),
+)
+
+_ANAMN_TRIGGER: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("audra", ("audr", "udra", "žaib", "zaib", "perkūn", "perkun")),
+    ("elektros dingimas", ("elektr", "šviesos ding", "sviesos ding")),
+    ("remontas", ("remont",)),
+    ("kraustymasis", ("kraust", "persikraust")),
+    ("įrangos keitimas", ("keičiau", "keiciau", "pakeič", "pakeic", "prijungiau")),
+)
+
+
+def extract_anamnesis(text: str | None) -> dict:
+    """{'when': str|None, 'trigger': str|None} from the intake anamnesis answer.
+    'nežino' is a valid reading: an explicit "nežinau" with no other signal."""
+    out: dict = {"when": None, "trigger": None}
+    if not text:
+        return out
+    low = text.lower()
+    for label, marks in _ANAMN_WHEN:
+        if any(m in low for m in marks):
+            out["when"] = label
+            break
+    for label, marks in _ANAMN_TRIGGER:
+        if any(m in low for m in marks):
+            out["trigger"] = label
+            break
+    if out["when"] is None and ("nežin" in low or "nezin" in low):
+        out["when"] = "nežino"
+    return out

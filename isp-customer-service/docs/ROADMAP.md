@@ -1051,10 +1051,11 @@ registration. The mąstytojas decides the transitions and owns the hypothesis.
       hallucinate a router story for a debtor). Dictated correction addresses are
       accepted directly (echo + resolve, no extra confirm round). When Phase 5 async
       telemetry lands, announce and result naturally split into two real turns.
-- [ ] **Step 2 — the ANALYSIS object.** `state.analysis`: telemetry verdict + signals
-      + structured caller anamnesis {when noticed, trigger, or "doesn't know" — e.g.
-      "vakar veikė, šiandien ne"} + symptoms + caller claims. Hypothesis `because`
-      cites BOTH sources; analysis feeds the call record and the ticket.
+- [x] **Step 2 — the ANALYSIS object.** nlu.extract_anamnesis reads the intake
+      answer into {when, trigger, "nežino"}; state carries anamnesis_raw/when/trigger;
+      the hypothesis `because` cites BOTH sides ("telemetrija rodo X; klientas sako
+      dingo šiandien, po: audra"); the call summary and the ticket carry the
+      anamnesis ("Klientas: dingo vakar, po: audra").
 - [ ] **Step 3 — the mąstytojas joins the blocks.** The solver (already reasoning in
       shadow) takes over the BLOCK TRANSITIONS: identification done → this is my
       understanding → solving via this path / pivoting. Behind SOLVER_DRIVE, one

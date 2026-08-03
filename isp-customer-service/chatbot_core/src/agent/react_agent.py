@@ -1854,9 +1854,22 @@ class ReactAgent:
         h = self.state.hypothesis
         if h and h.get("cause") == reason and h.get("status") == "testing":
             return  # same belief, still being tested — keep its evidence
+        # The ANALYSIS fuses BOTH sides (Step 2): telemetry is the first evidence,
+        # the caller's anamnesis (when it broke / after what) the second — so the
+        # agent reasons and narrates from the full picture ("telemetrija rodo X, o
+        # klientas sako dingo po audros").
+        because = [_DIAGNOSIS_LT.get(reason, reason)]
+        s = self.state
+        if s.anamnesis_when or s.anamnesis_trigger:
+            bits = []
+            if s.anamnesis_when:
+                bits.append(f"dingo {s.anamnesis_when}")
+            if s.anamnesis_trigger:
+                bits.append(f"po: {s.anamnesis_trigger}")
+            because.append("klientas sako " + ", ".join(bits))
         self.state.hypothesis = {
             "cause": reason,
-            "because": [_DIAGNOSIS_LT.get(reason, reason)],
+            "because": because,
             "status": "testing",
             "settled_by": None,
         }
@@ -2103,6 +2116,15 @@ class ReactAgent:
         cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
         gloss = _DIAGNOSIS_LT.get(cause, cause or "nenustatyta")
         details = f"Gedimas: {s.problem_type or 'internetas'} — {gloss}."
+        # The caller's anamnesis rides on the ticket — the human sees WHEN it broke
+        # and after what, not just the telemetry verdict (Step 2 analysis).
+        if s.anamnesis_when or s.anamnesis_trigger or s.anamnesis_raw:
+            bits = []
+            if s.anamnesis_when:
+                bits.append(f"dingo {s.anamnesis_when}")
+            if s.anamnesis_trigger:
+                bits.append(f"po: {s.anamnesis_trigger}")
+            details += f" Klientas: {', '.join(bits) if bits else s.anamnesis_raw}."
         if step.id == "dr_register_router":
             details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
         # Why it was not solved (refusal / demand / not home) — recorded on the ticket
@@ -2817,6 +2839,11 @@ class ReactAgent:
             "address": s.customer_address,
             "caller_name": s.caller_name,
             "caller_relation": s.caller_relation,
+            "anamnesis": (
+                {"raw": s.anamnesis_raw, "when": s.anamnesis_when, "trigger": s.anamnesis_trigger}
+                if s.anamnesis_raw
+                else None
+            ),
             "cause": cause,
             "side": net.get("side"),  # provider | customer | unclear
             "outcome": s.closed_reason,  # resolved | outage | declined | escalated | None
@@ -3340,7 +3367,17 @@ class ReactAgent:
                 return phrase("anamnesis_question")
             if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
                 s.anamnesis_raw = user_input.strip()[:200]
-                self.tracer.emit("anamnesis", text=s.anamnesis_raw)
+                from .nlu import extract_anamnesis
+
+                read = extract_anamnesis(s.anamnesis_raw)
+                s.anamnesis_when = read.get("when")
+                s.anamnesis_trigger = read.get("trigger")
+                self.tracer.emit(
+                    "anamnesis",
+                    text=s.anamnesis_raw,
+                    when=s.anamnesis_when,
+                    trigger=s.anamnesis_trigger,
+                )
                 c = s.phone_candidate
                 if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
                     flat = f", butas {c['apartment']}" if c.get("apartment") else ""

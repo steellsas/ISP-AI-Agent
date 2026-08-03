@@ -944,3 +944,51 @@ class TestVoiceGuardsRound5:
         assert agent._end_confirm_pending is False
         agent._walk_resolution("ne ne, tęskime")  # held one turn, not misrouted
         assert agent.state.resolution["step"] == "dr_lights"
+
+
+class TestAnalysisStep2:
+    """Step 2 — the ANALYSIS object: the caller's anamnesis is read, fuses into the
+    hypothesis evidence, and rides on the record and the ticket."""
+
+    def test_extract_anamnesis_readings(self):
+        from agent.nlu import extract_anamnesis
+
+        r = extract_anamnesis("Šįryt dingo, po audros")
+        assert r == {"when": "šiandien", "trigger": "audra"}
+        assert extract_anamnesis("Nežinau, dingo ir viskas")["when"] == "nežino"
+        assert extract_anamnesis("Vakar dar veikė")["when"] == "vakar"
+
+    def test_hypothesis_cites_both_sides(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.anamnesis_when = "šiandien"
+        agent.state.anamnesis_trigger = "audra"
+        agent._open_hypothesis("no_mac_observed")
+
+        because = " ".join(agent.state.hypothesis["because"])
+        assert "klientas sako" in because and "audra" in because
+
+    def test_ticket_carries_anamnesis(self, db_connection, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_when = "vakar"
+        agent.state.anamnesis_trigger = "audra"
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_register_router"}
+
+        agent.ensure_action_done()  # consent-free registration on arrival
+
+        assert agent.state.ticket_id
+        import sqlite3
+
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            details = dict(cur.fetchone())["details"]
+        assert "Klientas: dingo vakar, po: audra" in details
