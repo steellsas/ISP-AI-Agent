@@ -91,6 +91,7 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, "
         "kad kolegos su jumis susisiektų."
     ),
+    "goodbye": "Ačiū, kad paskambinote. Geros dienos!",
 }
 
 

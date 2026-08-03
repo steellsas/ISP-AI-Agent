@@ -2215,6 +2215,9 @@ class ReactAgent:
                 "outage" if (s.outage_reported or reason == "active_outage") else "inform"
             )
             s.is_complete = True  # caller already said goodbye — end on ONE farewell
+            # Observability: the close moment was invisible in the trace (this made a
+            # stuck-close analysis needlessly hard) — record it.
+            self.tracer.emit("decision", intent="inform_close", action="close", to=s.closed_reason)
 
     def _mark_step_presented(self) -> None:
         """After the agent replies while on a strategy step, record that the step's
@@ -3384,6 +3387,37 @@ class ReactAgent:
                     return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
                 return phrase("address_ask")
             return None
+        # WRAP-UP after the news (inform mode): the business is DONE — any further
+        # turn that is not a question/wants-more wraps up DETERMINISTICALLY. Garbled
+        # goodbyes ("Nusigaro" = "viso gero") had the model loop "nesupratau,
+        # pakartokite" after a delivered debt notice (observed live: the caller could
+        # not end the call).
+        if (
+            s.resolution is None
+            and (self._news_told or s.outage_reported)
+            and not self._result_pending
+        ):
+            low = (user_input or "").lower()
+            wants_more = any(
+                m in low
+                for m in (
+                    "klausim",
+                    "palauk",
+                    "dar ",
+                    "noriu",
+                    "minut",
+                    "sekund",
+                    "o kod",
+                    "o kiek",
+                )
+            )
+            if wants_more:
+                return None  # they want something else — the LLM handles it
+            s.case_closed = True
+            s.closed_reason = "outage" if s.outage_reported else "inform"
+            s.is_complete = True
+            self.tracer.emit("decision", intent="wrap_up", action="close", to=s.closed_reason)
+            return phrase("goodbye")
         if not self._result_pending:
             return None
         if not s.caller_name:

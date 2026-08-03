@@ -992,3 +992,35 @@ class TestAnalysisStep2:
             cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
             details = dict(cur.fetchone())["details"]
         assert "Klientas: dingo vakar, po: audra" in details
+
+
+class TestScriptedWrapUp:
+    """After the inform news, ANY non-question turn wraps up deterministically —
+    a garbled goodbye ("Nusigaro") had looped 'nesupratau, pakartokite' forever."""
+
+    def _informed(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020101")
+        agent.state.customer_id = "CUST101"
+        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent._news_told = True
+        return agent
+
+    def test_garbled_goodbye_wraps_up(self, db_connection):
+        agent = self._informed(db_connection)
+        reply = agent._identification_scripted_reply("Nusigaro.")
+        assert reply and "Ačiū, kad paskambinote" in reply
+        assert agent.state.case_closed is True
+        assert agent.state.closed_reason == "inform"
+        assert agent.state.is_complete is True
+
+    def test_question_after_news_goes_to_llm(self, db_connection):
+        agent = self._informed(db_connection)
+        assert agent._identification_scripted_reply("O kiek turiu sumokėti?") is None
+        assert agent.state.case_closed is False
+
+    def test_wants_more_goes_to_llm(self, db_connection):
+        agent = self._informed(db_connection)
+        assert agent._identification_scripted_reply("Palaukite, dar turiu klausimą") is None
+        assert agent.state.case_closed is False
