@@ -1072,6 +1072,19 @@ class ReactAgent:
         if h:
             because = "; ".join(h.get("because", []) or [])
             lines.append(f"HIPOTEZĖ: {h.get('cause')} (status={h.get('status')}); nes: {because}")
+        # The ANALYSIS (Step 2): the caller's half of the picture — the thinker reasons
+        # from BOTH sides, not telemetry alone.
+        if s.anamnesis_raw:
+            bits = [f'žodžiais: "{s.anamnesis_raw}"']
+            if s.anamnesis_when:
+                bits.append(f"dingo {s.anamnesis_when}")
+            if s.anamnesis_trigger:
+                bits.append(f"po: {s.anamnesis_trigger}")
+            lines.append("ANAMNEZĖ (klientas): " + "; ".join(bits))
+        if s.symptoms:
+            lines.append("SIMPTOMAI: " + ", ".join(f"{k}={v}" for k, v in s.symptoms.items()))
+        if s.caller_name:
+            lines.append(f"SKAMBINA: {s.caller_name} (ryšys su sutartimi: {s.caller_relation})")
         if net.get("reason"):
             lines.append(f"TELEMETRIJOS KANDIDATAS (verdict tree): {net.get('reason')}")
         if sig:
@@ -1164,15 +1177,27 @@ class ReactAgent:
     _DRIVE_MAX_TURNS = 14  # hard bailout — never grind the caller forever
 
     def solver_drive_turn(self, user_input: str | None) -> str | None:
-        """Solver-driven turn. Returns the reply text, or None to fall back to the walker
-        (flag off, no strategy, not a piloted direction, or a solver failure)."""
-        if os.getenv("SOLVER_DRIVE", "off").lower() != "on":
+        """Solver-driven turn — the MĄSTYTOJAS drives the piloted directions (Step 3,
+        default ON since 2026-08-03; SOLVER_DRIVE=off reverts to the walker). Returns
+        the reply text, or None to fall back to the walker (no strategy, not a piloted
+        direction, a solver failure — or DETERMINISTIC MECHANICS in progress: the
+        identification ladder, the clarify contract and the wrap-up stay engine-owned,
+        the thinker never overrides them)."""
+        if os.getenv("SOLVER_DRIVE", "on").lower() != "on":
             return None
         r = self.state.resolution
         if not r or self.state.case_closed:
             return None
         if r.get("verdict") not in self._SOLVER_DRIVE_VERDICTS:
             return None
+        # Engine mechanics first: while the ladder / clarify flow owns the turn, the
+        # thinker waits (scripted replies and guards are deterministic territory).
+        if self._result_pending or self._end_confirm_pending or self._resume_hold:
+            return None
+        from .identification import ask_caller
+
+        if ask_caller() and not self.state.caller_name:
+            return None  # identification ladder not finished yet
         try:
             reply = self._drive(user_input)
         except Exception as e:  # a solver failure falls back to the walker (no bookkeeping yet)

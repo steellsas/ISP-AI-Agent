@@ -1024,3 +1024,46 @@ class TestScriptedWrapUp:
         agent = self._informed(db_connection)
         assert agent._identification_scripted_reply("Palaukite, dar turiu klausimą") is None
         assert agent.state.case_closed is False
+
+
+class TestThinkerBoundaries:
+    """Step 3 — the mąstytojas drives piloted directions but NEVER overrides the
+    deterministic mechanics (ladder, clarify contract, wrap-up)."""
+
+    def _agent(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.caller_name = "Jonas"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        return agent
+
+    def test_defers_while_ladder_open(self, db_connection, monkeypatch):
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(db_connection)
+        agent._result_pending = True  # caller-intro / result still owed
+        assert agent.solver_drive_turn("taip") is None
+
+    def test_defers_while_end_confirm_pending(self, db_connection, monkeypatch):
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(db_connection)
+        agent._end_confirm_pending = True
+        assert agent.solver_drive_turn("taip") is None
+
+    def test_defers_until_caller_intro_done(self, db_connection, monkeypatch):
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(db_connection)
+        agent.state.caller_name = None  # ladder's last rung not done
+        assert agent.solver_drive_turn("taip") is None
+
+    def test_off_switch_reverts_to_walker(self, db_connection, monkeypatch):
+        monkeypatch.setenv("SOLVER_DRIVE", "off")
+        agent = self._agent(db_connection)
+        assert agent.solver_drive_turn("taip") is None
+
+    def test_non_piloted_direction_falls_back(self, db_connection, monkeypatch):
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(db_connection)
+        agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
+        assert agent.solver_drive_turn("taip") is None

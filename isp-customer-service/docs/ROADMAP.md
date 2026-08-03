@@ -1056,11 +1056,14 @@ registration. The mąstytojas decides the transitions and owns the hypothesis.
       the hypothesis `because` cites BOTH sides ("telemetrija rodo X; klientas sako
       dingo šiandien, po: audra"); the call summary and the ticket carry the
       anamnesis ("Klientas: dingo vakar, po: audra").
-- [ ] **Step 3 — the mąstytojas joins the blocks.** The solver (already reasoning in
-      shadow) takes over the BLOCK TRANSITIONS: identification done → this is my
-      understanding → solving via this path / pivoting. Behind SOLVER_DRIVE, one
-      direction first (dead router already piloted); the graph router stays as the
-      deterministic backstop. Continues the 3.8 cut-over line.
+- [x] **Step 3 — the mąstytojas joins the blocks (first direction live).**
+      SOLVER_DRIVE is ON by default: the solver drives the dead-router direction
+      (S4 eval: 8/9 diagnosis turns solver-driven, gate-bounded), reasoning over the
+      FULL ANALYSIS (hypothesis + anamnesis + symptoms + caller + telemetry). It
+      NEVER overrides the deterministic mechanics — the identification ladder, the
+      clarify contract and the wrap-up stay engine-owned; the graph router remains
+      the backstop (SOLVER_DRIVE=off reverts). Next: widen direction by direction
+      (3.8 #6).
 
 **Done:** short, natural turns; every call ends deterministically; waiting time is
 used for anamnesis; ready to lift the engine onto Phase 4/5 async infrastructure.
