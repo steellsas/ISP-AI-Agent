@@ -56,3 +56,7 @@ identification:
     thanks: "Ačiū!"
     confirm_end: "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, kad kolegos su jumis susisiektų."
     goodbye: "Ačiū, kad paskambinote. Geros dienos!"
+    ticket_intro: "Registruoju gedimą — {priezastis}."
+    ticket_phone: "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
+    ticket_hours: "Gerai. O kada patogiausia jums skambinti?"
+    ticket_done: "Užregistravau gedimą. Susisieksime numeriu {nr}, skambinti galima {val}. Ar dar kuo galiu padėti?"

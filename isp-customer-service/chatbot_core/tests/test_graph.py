@@ -161,6 +161,30 @@ class TestRouting:
         assert "update_mac" not in names  # bind only exposed after confirm (bind_mac)
         assert "check_outages" not in names  # the looped tool in the failing trace
 
+    def test_ticket_dialogue_routes_to_ticket_node_with_no_tools(self, db_connection):
+        # Mid-dialogue turns run in the dedicated ticket_registration node: the
+        # walker/solver stay frozen and the LLM (off-script question only) has NO
+        # tools. A scripted turn would skip the LLM, so ask a question.
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="+37060012353", engine="graph")
+        session.greeting()
+        session.state.customer_id = "CUST009"
+        session.state.problem_type = "internet_down"
+        engine = session._agent
+        engine.state.hypothesis = {
+            "cause": "no_mac_observed",
+            "status": "testing",
+            "because": ["linijoje nematomas įrenginys"],
+        }
+        engine.state.resolution = {"verdict": "no_mac_observed", "step": "escalate", "asked": True}
+        engine._begin_ticket_dialogue(None)
+
+        names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
+
+        assert names == set()  # TICKET_TOOLS is empty — structurally no mutations
+        assert engine._ticket_stage == "phone"  # the stage held; answer comes next turn
+
     def test_closed_session_routes_to_closing_with_no_tools(self, db_connection):
         from agent.session import AgentSession
 

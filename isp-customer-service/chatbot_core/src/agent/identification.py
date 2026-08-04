@@ -92,6 +92,15 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "kad kolegos su jumis susisiektų."
     ),
     "goodbye": "Ačiū, kad paskambinote. Geros dienos!",
+    "ticket_intro": "Registruoju gedimą — {priezastis}.",
+    "ticket_phone": (
+        "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
+    ),
+    "ticket_hours": "Gerai. O kada patogiausia jums skambinti?",
+    "ticket_done": (
+        "Užregistravau gedimą. Susisieksime numeriu {nr}, skambinti galima {val}. "
+        "Ar dar kuo galiu padėti?"
+    ),
 }
 
 
@@ -147,6 +156,65 @@ def detect_caller_relation(text: str | None) -> str:
     if any(m in low for m in ("taip", "aš", "as ")):
         return "holder"  # a plain yes to "ar jūs sutartį sudaręs asmuo?"
     return "unknown"
+
+
+# Words that are never a NAME in an intro sentence ("Taip. Mano vardas Andrius.
+# Taip, aš sutartį sudaręs asmuo." landed VERBATIM in the ticket's Kontaktas field
+# — observed live 2026-08-04). Lowercase; sentence-leading fillers included.
+_NAME_STOP = {
+    "taip",
+    "ne",
+    "gerai",
+    "čia",
+    "cia",
+    "aš",
+    "as",
+    "mano",
+    "vardas",
+    "vardu",
+    "esu",
+    "yra",
+    "labas",
+    "laba",
+    "diena",
+    "sveiki",
+    "sutartį",
+    "sutarti",
+    "sudaręs",
+    "sudares",
+    "sudariusi",
+    "asmuo",
+    "žmona",
+    "zmona",
+    "vyras",
+    "sūnus",
+    "sunus",
+    "dukra",
+    "nuomininkas",
+    "nuomininkė",
+    "kaimynas",
+    "kaimynė",
+}
+
+_NAME_WORD = r"[A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+"
+
+
+def extract_caller_name(text: str | None) -> str | None:
+    """Pull the bare NAME out of an intro sentence — "Mano vardas Andrius" -> "Andrius".
+    The pattern after "vardas/vardu" wins; otherwise the first capitalized token that
+    is not a filler. None when nothing name-like is found (caller stays verbatim-less;
+    the capture records "nenurodyta" via its own filter)."""
+    if not text:
+        return None
+    import re as _re
+
+    m = _re.search(rf"vard(?:as|u)(?:\s+yra)?\s+({_NAME_WORD})", text, _re.IGNORECASE)
+    if m:
+        return m.group(1).capitalize()
+    for tok in _re.findall(_NAME_WORD, text):
+        if tok.lower() not in _NAME_STOP and len(tok) >= 3:
+            return tok
+    return None
 
 
 def extra_questions_guidance() -> str | None:

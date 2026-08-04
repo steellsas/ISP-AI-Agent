@@ -43,6 +43,11 @@ LOOKUP_TOOLS = frozenset(
 # address; the agent can only say a short goodbye.
 CLOSING_TOOLS: frozenset[str] = frozenset()
 
+# Ticket-registration stage: NO tools — the engine collects the contacts and
+# creates the ticket deterministically; the node's LLM only answers off-script
+# questions ("kokiu numeriu?") between the scripted stage questions.
+TICKET_TOOLS: frozenset[str] = frozenset()
+
 # Per-stage prompts (dynamic prompting): each stage loads ONLY its own focused
 # rules from prompts/*.txt, so the model is not diluted by the whole call's
 # instructions. The shared contract + tools live in the system prompt; the dynamic
@@ -51,6 +56,7 @@ CLOSING_TOOLS: frozenset[str] = frozenset()
 _ADDRESS_NODE_PROMPT = load_node_prompt("stages/identification")
 _DIAGNOSIS_NODE_PROMPT = load_node_prompt("stages/diagnosis")
 _CLOSING_NODE_PROMPT = load_node_prompt("stages/closing")
+_TICKET_NODE_PROMPT = load_node_prompt("stages/ticket")
 
 
 class TurnState(TypedDict, total=False):
@@ -132,6 +138,14 @@ def build_turn_graph(engine: Any):
         engine._mark_step_presented()
         return result
 
+    def ticket_registration(state: TurnState) -> TurnState:
+        # The engine owns the dialogue: guards capture the stage answers, the
+        # scripted ladder asks/announces, _finish_ticket_dialogue registers. The
+        # walker/solver machinery is NOT run here — the strategy is frozen where
+        # it escalated. The LLM (no tools, small prompt) speaks only on an
+        # off-script question, guided by the TIKETO DIALOGAS facts line.
+        return _run_node(state, TICKET_TOOLS, _TICKET_NODE_PROMPT, "ticket_registration")
+
     def closing(state: TurnState) -> TurnState:
         # Decide whether to hang up: a farewell / "no more" from the caller, or a
         # second closing turn, ends the call (is_complete) so the agent does not loop
@@ -145,21 +159,29 @@ def build_turn_graph(engine: Any):
         # and each AgentSession has its own engine + graph, so this is per-session.)
         if engine.state.case_closed:
             return "closing"
+        # Mid-ticket-dialogue turns go to the dedicated node: diagnosis narration
+        # must not compete with the contact questions (live: the LLM claimed
+        # "užregistravau…" while the dialogue had not even asked for the number).
+        if engine._ticket_stage:
+            return "ticket_registration"
         return "diagnosis" if engine.state.customer_id else "address_validation"
 
     builder = StateGraph(TurnState)
     builder.add_node("address_validation", address_validation)
     builder.add_node("diagnosis", diagnosis)
+    builder.add_node("ticket_registration", ticket_registration)
     builder.add_node("closing", closing)
     builder.set_conditional_entry_point(
         route,
         {
             "address_validation": "address_validation",
             "diagnosis": "diagnosis",
+            "ticket_registration": "ticket_registration",
             "closing": "closing",
         },
     )
     builder.add_edge("address_validation", END)
     builder.add_edge("diagnosis", END)
+    builder.add_edge("ticket_registration", END)
     builder.add_edge("closing", END)
     return builder.compile(checkpointer=MemorySaver())
