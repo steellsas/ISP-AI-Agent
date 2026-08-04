@@ -704,30 +704,40 @@ without saying what it sees or what a result means.
 > "the caller spoke" and "the step moves": what KIND of turn this was, and what the
 > engine is WAITING for. Everything below falls out of those two.
 
-- [ ] **1. `awaiting` state + turn-intent classifier** *(the foundation)* —
+- [x] **1. `awaiting` state + turn-intent classifier** *(the foundation)* —
       `state.awaiting` = `None | client_answer | client_action | system_check` (+ since
       when); `detect_turn_intent` → `answer · in_progress · done · question · confused
       · silence · new_info`. Only `answer`/`done` advance the walker; the rest hold.
       Classification stays deterministic (like the detectors), phrasing stays with the
       LLM; the safe default on "unknown" is WAIT and ask, never run ahead.
-- [ ] **2. "darysiu" ≠ "padariau"** — "einu / atsinešiu / tuoj" is work in progress,
+      *(Built during 3.8: `state.awaiting`, `detect_turn_intent`, `_turn_may_advance`
+      + the LLM step-classifier on top.)*
+- [x] **2. "darysiu" ≠ "padariau"** — "einu / atsinešiu / tuoj" is work in progress,
       not completion: acknowledge and wait, and do NOT read telemetry yet (observed:
       the bridge checked the line before the caller had plugged anything in).
-- [ ] **3. Hypothesis object** — `state.hypothesis {cause, because[], status,
+      *(Built: INTENT_IN_PROGRESS holds; INSTRUCT classifier separates done/waiting.)*
+- [x] **3. Hypothesis object** — `state.hypothesis {cause, because[], status,
       settled_by}` + `rejected[]`, filled at the three points that already compute it
       (diagnose → step outcome → telemetry after an action). The verdict tree stays
       the SOURCE; the object mirrors it so the agent can narrate the whole arc,
       including **confirmation** ("taigi dėl routerio ir nebuvo interneto") — today we
       track only rejection. No candidate queue: ordering stays with the tree, not the
-      model.
-- [ ] **4. Narration contract in ONE place** — five always-rules (explain before
-      asking · say what each result MEANS · confirm the hypothesis aloud · do not
-      rush · never go silent then fire a solution). Step hints keep only CONTENT, tone
-      comes from the contract, so all strategies sound alike. RAG "possible causes"
-      surfaced as narration text.
-- [ ] **5. Progressive disclosure** — `intent = confused` drops to a FINER breakdown
+      model. *(Built during 3.8: `hypothesis` + `failed_hypotheses` + `pivoted_from`.)*
+- [x] **4. Narration contract in ONE place** — always-rules in
+      `prompts/partials/solving.md` (explain before asking · say what each result
+      MEANS · share what you checked/did and where you see the problem · voice
+      hypothesis changes aloud · ask ONE thing then STOP and wait · reflect the
+      caller's answer before moving on). Step hints keep only CONTENT; tone comes
+      from the contract. *(feat/turn-taking-rail.)*
+- [x] **5. Progressive disclosure** — `intent = confused` drops to a FINER breakdown
       of the same step (distinct from `clarity_level`, which changes the wording, not
-      the number of steps).
+      the number of steps). *(Built: `step_confusions` + clarity_level.)*
+- [x] **6. Turn-taking rail (2026-07-28, from live calls)** — the step advances ONLY
+      after ITS question was actually posed and answered: stale "patvirtink adresą"
+      hint neutralized on identification (the activation reply states the FINDING +
+      the first step's question, never re-asks the address); deterministic INFORM
+      close (`_maybe_close_inform`) — outage/billing calls end on the caller's
+      farewell instead of looping goodbyes / re-narrating the outage.
 
 **Falls out for free:** silence handling and "kur jūs dabar?" come from 1; the
 `system_check` wait is the socket Phase 5's async telemetry polling plugs into.
@@ -924,16 +934,26 @@ insight: the outcome is already in STATE — `problem_type` (why they called), `
 (what was done), `closed_reason` (resolved / ticket / inform / declined). So both artefacts
 below are built DETERMINISTICALLY from state, not from LLM free text.
 
-- [ ] **Ticket from state, not free text.** Populate the ticket's fault type / cause / what
-      was done / what could NOT be done from state (verdict + purpose + actions + escalate
-      reason). Also HARDENS the create_ticket bug we hit (LLM invented `equipment_replacement`)
-      — the type comes from the verdict, not the model's wording.
-- [ ] **Persist a call record at session_end.** The `conversations` table already exists
+- [x] **Ticket from state, not free text.** `_register_ticket_from_state` (Phase 3.11 B):
+      cause from hypothesis/verdict, actions from this call's trace, type technician_visit
+      — never the model's wording. The engine registers it at the ESCALATE outcome.
+- [x] **Persist a call record at session_end.** The `conversations` table already exists
       (`session_id, customer_id, messages, outcome, summary, ticket_id, duration_seconds`) —
       write a structured summary there when the call ends: {purpose, cause + side,
       actions taken, resolved? / why not, ticket_id, **caller_name** if asked}. Emit a
       `call_summary` trace event too. The caller's name (state.caller_name — who was on the
       phone, not the account holder) is recorded here, never used to gate identity.
+      - [x] **Slice 1a — structured `call_summary` trace event.** `end_session` now builds
+            the summary DETERMINISTICALLY from state (`_build_call_summary`) and emits it
+            before `session_end`: purpose, cause, side, outcome, resolved?, ticket_id,
+            caller_name, and `actions` (tool names harvested from this call's own trace via
+            `_tools_called_this_session`). Rendered in the .txt export; tested (test_tracing).
+      - [x] **Slice 1b — persist to the `conversations` table.** CRM adapter
+            `crm_mcp.tools.conversations.save_conversation` + `tools.save_call_record` wrapper;
+            `end_session._persist_call_record` writes one row (summary JSON + transcript +
+            outcome + ticket_id), keyed by session. Dangling customer/ticket FKs are stored
+            NULL rather than dropping the record; best-effort so a DB failure never breaks
+            teardown. Tested (row written end-to-end + FK-drop; test_tracing).
 - [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
       reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
 
@@ -949,8 +969,13 @@ So:
 - A provider-side fault diagnosed with no resolution to attempt goes straight to this node
   (ticket or inform, then close).
 - **(Later) ticket-confirmation dialogue:** collecting/confirming details with the caller
-  before filing — contact phone, extra info — is its own small dialogue, added when we
-  refine ticket registration; keep the outcome node ready for it.
+  before filing is its own small dialogue, added when we refine ticket registration;
+  keep the outcome node ready for it. MUST collect (2026-07-29): **contact phone to
+  reach the person** — the caller may be on a company phone, a private number, or the
+  DB number may be outdated, so always ASK, never assume caller-ID/DB; **contact
+  person** (who to talk to — may differ from the account holder); **what the problem
+  is** (short, from state); and a **comment** with when they can be called (hours) and
+  any extra notes.
 
 **Boundary:** the summary/ticket builder is deterministic 🔒 (reads state); the summary
 WORDING template is 📚. No new call reasoning — it only RECORDS what the engine already
@@ -970,6 +995,78 @@ demands it.
 desync is structurally impossible; the agent revises its hypothesis from dialogue and
 catches telemetry↔client contradictions; safety and testability are preserved via the
 gate + eval harness.
+
+---
+
+## Phase 3.11 — Pre-Phase-5 readiness: natural dialogue (kelias į Phase 5)
+
+**Goal (2026-07-28, from live testing):** the agent should work like a human
+consultant — listen first, understand the problem, solve step by step (already in
+place after the turn-taking rail), AND: speak short, stop when interrupted, fill
+waiting time with useful questions. This is the list to finish "daugmaž viską"
+before Phase 5 (async + telephony).
+
+- [x] **A. Short voice replies.** reply_len auto-check in the Golden eval (max ≤ 280
+      chars, avg ≤ 160 per scenario) + dr_intro trimmed to two sentences (no cause
+      enumeration). Long replies were also the main TTS latency cost (5–8 s per turn
+      observed) — shorter replies cut latency for free.
+- [x] **B. 3.10 outcome node.** ESCALATE is a deterministic OUTCOME: the ENGINE
+      registers the ticket from STATE on the caller's consent (consent → registered,
+      decline → closed without a ticket, unclear → re-ask); create_ticket removed from
+      the model's tools mid-strategy. PLUS scope split for any answer order (cs_scope →
+      all / one→cs_which / named device→cs_cross_* cross-check) — the classifier never
+      guesses a device again.
+- [x] **C. Anamnesis during waits.** The bind announce (foreign_mac bind_mac +
+      dead-router dr_bind) carries ONE history question in the same utterance ("O kol
+      laukiam — kada pastebėjote, kad dingo internetas?"). Full version rides Phase 5
+      async telemetry.
+- [ ] **D. 3.8 leftovers on the universal-agent track** *(parallel, not blocking)* —
+      solver cut-over on dead-router (5/6), signals→knowledge (D). Phase 5 does not
+      depend on these, but they continue the "universal thinking agent" line.
+
+### Operating philosophy (2026-08-03, Andrius): after-hours helper, humans take over via tickets
+
+The agent SOLVES only what the knowledge describes; everything else ends HONESTLY:
+- provider-side fault -> ticket immediately;
+- described fault, attempt failed -> ticket with WHAT was tried + the hypotheses
+  (Bandyta/atmesta on the ticket details);
+- UNDESCRIBED fault -> no invented procedures: tell the caller this is beyond what
+  can be solved right now, register a ticket marked as an unknown fault. (Routing for
+  unknown faults to be added when the first such flows are defined.)
+A farewell mid-process is a signal to CLARIFY ("ar tikrai norite baigti? galiu
+užregistruoti"), never a hang-up trigger; deterministic closes only after the
+business is done (news delivered / resolved / registered).
+
+### Block architecture (agreed 2026-07-31): identifikavimas | supratimas | sprendimas + mąstytojas
+
+The agent is three BLOCKS joined by the THINKER (solver): IDENTIFIKAVIMAS returns an
+identified customer; PROBLEMOS SUPRATIMAS builds the ANALYSIS (telemetry + what the
+CALLER said — anamnesis); PROBLEMOS SPRENDIMAS walks the strategy to a fix or a
+registration. The mąstytojas decides the transitions and owns the hypothesis.
+
+- [x] **Step 1 — separate identification from diagnosis (arc v3).** The engine
+      diagnoses silently right after the identity commits (state-only); the same reply
+      narrates "Patikrinsiu būseną šiuo adresu… Patikrinau: [rezultatas]" — one reply,
+      no dead-air ack turn, no deferred-finding vacuum (a hidden finding made the model
+      hallucinate a router story for a debtor). Dictated correction addresses are
+      accepted directly (echo + resolve, no extra confirm round). When Phase 5 async
+      telemetry lands, announce and result naturally split into two real turns.
+- [x] **Step 2 — the ANALYSIS object.** nlu.extract_anamnesis reads the intake
+      answer into {when, trigger, "nežino"}; state carries anamnesis_raw/when/trigger;
+      the hypothesis `because` cites BOTH sides ("telemetrija rodo X; klientas sako
+      dingo šiandien, po: audra"); the call summary and the ticket carry the
+      anamnesis ("Klientas: dingo vakar, po: audra").
+- [x] **Step 3 — the mąstytojas joins the blocks (first direction live).**
+      SOLVER_DRIVE is ON by default: the solver drives the dead-router direction
+      (S4 eval: 8/9 diagnosis turns solver-driven, gate-bounded), reasoning over the
+      FULL ANALYSIS (hypothesis + anamnesis + symptoms + caller + telemetry). It
+      NEVER overrides the deterministic mechanics — the identification ladder, the
+      clarify contract and the wrap-up stay engine-owned; the graph router remains
+      the backstop (SOLVER_DRIVE=off reverts). Next: widen direction by direction
+      (3.8 #6).
+
+**Done:** short, natural turns; every call ends deterministically; waiting time is
+used for anamnesis; ready to lift the engine onto Phase 4/5 async infrastructure.
 
 ---
 

@@ -18,6 +18,12 @@ identification:
   # taken from the DB — it must be spoken; this only says whether it is needed at all.
   require_apartment: true
 
+  # Ask WHO is calling once the address is confirmed (2026-07-31, Andrius): the name
+  # + relation to the contract strengthen identification confidence and land in the
+  # call record ("kas skambino"). STILL not an identity gate — we serve the holder AND
+  # family / tenants / helpers, a mismatch is expected and never blocks (5d rule).
+  ask_caller: true
+
   # EXTRA things the agent asks while identifying. Empty = address only.
   # Add e.g. [name] to also ask the CALLER's name; [name, contact_phone] to also collect a
   # callback number. The WORDING is in `questions` below.
@@ -30,4 +36,23 @@ identification:
 
   questions:
     name: "O kaip į jus kreiptis — koks jūsų vardas?"
+    caller: "O su kuo kalbu — koks jūsų vardas? Ar jūs sutartį sudaręs asmuo?"
     contact_phone: "Kokiu numeriu geriausia su jumis susisiekti, jei nutrūktų ryšys?"
+
+  # SCRIPTED identification replies (2026-07-31): the mechanical ladder turns are
+  # COMPOSED by the ENGINE from these phrases — the LLM kept reordering/skipping them
+  # (promised a check without the result, relapsed into confirm rounds, skipped the
+  # caller question). Editing the wording is an edit HERE; {placeholders} are filled
+  # from state. Scope: IDENTIFICATION ONLY — troubleshooting and free dialogue stay
+  # with the LLM, and an off-script caller turn (a question) falls back to the LLM.
+  phrases:
+    anamnesis_question: "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, pavyzdžiui, audros ar remonto?"
+    address_offer: "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?"
+    address_ask: "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, kuriuo neveikia internetas."
+    echo_address: "Supratau — {adresas}."
+    check_result: "Patikrinau ryšį iki jūsų buto. {zinia}"
+    billing_extra: "Apmokėjus sąskaitą, paslauga bus įjungta."
+    anything_else: "Ar dar kuo galiu padėti?"
+    thanks: "Ačiū!"
+    confirm_end: "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, kad kolegos su jumis susisiektų."
+    goodbye: "Ačiū, kad paskambinote. Geros dienos!"

@@ -96,9 +96,10 @@ faults:
       - update_mac
       tool_actions:
       - update_mac
-      hint: 'The engine binds the device silently — you do NOT call the tool. Announce it naturally: ''Dabar
-        pririšiu jūsų naujai matomą įrenginį — turėtų atsirasti internetas. Palaukite akimirką.'' Do NOT
-        ask yet whether it works — that is the next step.'
+      hint: 'The engine binds the device silently — you do NOT call the tool. Announce it naturally:
+        ''Dabar pririšiu jūsų naujai matomą įrenginį — turėtų atsirasti internetas. Palaukite
+        akimirką.'' Do NOT ask yet whether it works — that is the next step. (The anamnesis question
+        was already asked at the START of the call — do not repeat it here.)'
     - id: confirm_restored
       kind: confirm
       rag_section: 4
@@ -122,30 +123,71 @@ faults:
         'no': internetas vis dar neveikia
     - id: escalate
       kind: escalate
-      tools:
-      - create_ticket
+      tools: []
       hint: Binding did not restore the line (or the in-home checks did not help). Register the fault
         for a technician check ('gedimo registracija') — a worker will call the next business day.
   healthy_to_router:
     problem: internet_down
     playbook: troubleshooting/kliento_puse_internetas
     steps:
+    # Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
+    # "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has
+    # its OWN route, so the classifier never guesses a device from "tik viename".
     - id: cs_scope
       kind: confirm
       detector: scope
       rag_section: 0
       'on':
         all: cs_reboot
-        phone: cs_wifi
-        computer: cs_conn
+        one: cs_which
+        phone: cs_cross_phone
+        computer: cs_cross_computer
       hint: 'Ask ONE short question and WAIT: does it fail on all devices or just one? Do NOT reflect
         or guess their answer — never say ''girdžiu, visuose'' or ''telefone'' until THEY said it. If
-        they say just ONE device but do not name it, ask WHICH device (''Kuriame įrenginyje?'') — never
-        assume a computer. If the answer was unclear, ask the same again.'
+        the answer was unclear, ask the same again.'
       answers:
-        all: neveikia visuose namų įrenginiuose
-        phone: neveikia tik telefone ar planšetėje
-        computer: neveikia tik kompiuteryje
+        all: sako, kad internetas neveikia VISUOSE įrenginiuose
+        one: sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame
+        phone: AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')
+        computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
+    - id: cs_which
+      kind: confirm
+      detector: scope
+      rag_section: 0
+      'on':
+        phone: cs_wifi
+        computer: cs_conn
+      hint: 'They said only ONE device is down but did not name it. Ask WHICH device (''Kuriame įrenginyje
+        — telefone, kompiuteryje?'') and WAIT. Never assume.'
+      answers:
+        phone: telefonas ar planšetė
+        computer: kompiuteris ar nešiojamas
+    # The caller NAMED a device before the scope was known ("telefone nėra interneto").
+    # Cross-check whether the others work — all down means the router path instead.
+    - id: cs_cross_phone
+      kind: confirm
+      detector: restored
+      rag_section: 0
+      'on':
+        'yes': cs_wifi
+        'no': cs_reboot
+      hint: 'They said the PHONE has no internet. Cross-check ONE thing: do the other home devices have
+        internet? Others work -> the fault is on the phone; others down too -> whole-home path.'
+      answers:
+        'yes': kituose įrenginiuose internetas VEIKIA
+        'no': kituose įrenginiuose interneto irgi NĖRA
+    - id: cs_cross_computer
+      kind: confirm
+      detector: restored
+      rag_section: 0
+      'on':
+        'yes': cs_conn
+        'no': cs_reboot
+      hint: 'They said the COMPUTER has no internet. Cross-check ONE thing: do the other home devices
+        have internet? Others work -> the fault is on the computer; others down too -> whole-home path.'
+      answers:
+        'yes': kituose įrenginiuose internetas VEIKIA
+        'no': kituose įrenginiuose interneto irgi NĖRA
     - id: cs_reboot
       kind: instruct
       rag_section: 1
@@ -209,8 +251,7 @@ faults:
         'no': tame įrenginyje internetas vis tiek neveikia
     - id: escalate
       kind: escalate
-      tools:
-      - create_ticket
+      tools: []
       hint: The simple self-service steps did not help — the fault is deeper (router/DNS/config/device).
         Register it ('gedimo registracija'); a worker will call the next business day.
   no_mac_observed:
@@ -225,10 +266,10 @@ faults:
         'yes': dr_lights
         'no': escalate
       hint: 'Do NOT start ordering them about. First explain what YOU can see and what it likely means
-        — the internet reaches the flat but the line does not see their device, so it is usually no power,
-        an unplugged cable, or a dead router — and ASK whether it suits them to check it together now.
-        Wait for their answer. If they cannot (not home, busy), do not push: offer to register the fault
-        or to call back.'
+        — the internet reaches the flat but the line does not see their device (likely the router or its
+        cable) — and ASK whether it suits them to check it together now. VOICE: keep this to TWO short
+        sentences, do NOT enumerate every possible cause. Wait for their answer. If they cannot (not
+        home, busy), do not push: offer to register the fault or to call back.'
       answers:
         'yes': sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)
         'no': AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas
@@ -243,8 +284,9 @@ faults:
         (the box the internet cable goes into) and, once there, whether ANY light is lit. Do not guess
         the answer.'
       answers:
-        'yes': ant routerio dega bent viena lemputė
-        'no': nedega nė viena lemputė
+        'yes': AIŠKIAI sako, kad dega / šviečia / mirksi bent viena lemputė — be jokio neiginio
+        'no': sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-" šaknimi — „nede",
+          „neda", „nedega gan viena" — neiginys visada reiškia NEDEGA)
     - id: dr_power
       kind: confirm
       detector: lights
@@ -301,9 +343,11 @@ faults:
       kind: instruct
       rag_section: 5
       goto: dr_see_device
-      hint: 'ONE instruction, then wait: plug that cable into the computer''s network socket (the one
-        the same plug fits, on the back/side) until it clicks, and say when done. If they say it does
-        not fit or they cannot find it, help with WHERE to look — do not move on.'
+      hint: 'ONE instruction, then wait: plug that cable into the COMPUTER''s network socket (the one
+        the same plug fits, on the back/side) until it clicks, and say when done. NEVER say to plug it
+        back into the router — the whole point is bypassing the dead router (observed: the narrator
+        told the caller ''atgal į routerio lizdą''). If they say it does not fit or they cannot find
+        it, help with WHERE to look — do not move on.'
     - id: dr_see_device
       kind: verify
       rag_section: 6
@@ -319,7 +363,8 @@ faults:
       - update_mac
       hint: 'We can now SEE their computer on the line. The engine binds it silently — you do NOT call
         the tool. Announce it: ''Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo — turėtų
-        atsirasti internetas. Palaukite akimirką.'' Do not ask yet if it works.'
+        atsirasti internetas. Palaukite akimirką.'' Do not ask yet if it works. (The anamnesis question
+        was already asked at the START of the call — do not repeat it here.)'
     - id: dr_verify
       kind: confirm
       detector: restored
@@ -335,15 +380,15 @@ faults:
         'no': prijungtame kompiuteryje interneto vis tiek nėra
     - id: dr_register_router
       kind: escalate
-      tools:
-      - create_ticket
-      hint: The bridge works, but their router is dead. Register that ('gedimo registracija' — sugedęs
-        routeris, reikia keisti), tell them colleagues will be in touch, and that once they have a new
-        router they should call so we bind it and the whole home works again.
+      tools: []
+      consent: false
+      hint: 'The bridge works, but their router is dead. The ENGINE has ALREADY registered the fault —
+        ANNOUNCE it, do not ask permission: ''Užregistravau gedimą dėl sugedusio routerio — kolegos
+        susisieks ir detaliau paaiškins.'' Add that the internet works on this computer for now, and
+        once they have a new router they should call so we bind it.'
     - id: escalate
       kind: escalate
-      tools:
-      - create_ticket
+      tools: []
       hint: The bridge is not possible (no computer / cannot connect) or it did not help. Register the
         fault ('gedimo registracija') and explain they will likely need a new router; a worker calls the
         next business day.

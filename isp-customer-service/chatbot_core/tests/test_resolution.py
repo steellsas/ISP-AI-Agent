@@ -85,10 +85,13 @@ class TestClientSideDetectors:
         assert detect_scope("nežinau") is None
 
     def test_one_device_unnamed_is_not_guessed(self):
-        # "just one" without naming it must NOT be read as a computer — guessing sent
-        # a phone user down the cable branch. Stay unclear and ask which device.
-        assert detect_scope("tik viename") is None
-        assert detect_scope("viename įrenginyje") is None
+        # "just one" without naming it must NOT be read as a device — guessing once sent
+        # a phone user down the cable branch. Phase 3.11: it routes to the explicit
+        # WHICH-device step ('one' -> cs_which) instead of holding on None.
+        assert detect_scope("tik viename") == "one"
+        assert detect_scope("viename įrenginyje") == "one"
+        # "nei viename" (= none work = ALL down) must not be misread as one.
+        assert detect_scope("nei viename neveikia") == "all"
 
     def test_tv_needs_a_word_boundary(self):
         assert detect_scope("tik tv") == "phone"
@@ -112,10 +115,23 @@ class TestClientSideStrategy:
     def setup_method(self):
         self.s = get_strategy("healthy_to_router")
 
-    def test_scope_routes_three_ways(self):
+    def test_scope_routes_four_ways(self):
+        # Phase 3.11 universality: every answer order has its own route — all,
+        # one-unnamed (-> ask which), or a named device (-> cross-check the others).
         assert next_step_id(self.s, "cs_scope", "all") == "cs_reboot"
-        assert next_step_id(self.s, "cs_scope", "phone") == "cs_wifi"
-        assert next_step_id(self.s, "cs_scope", "computer") == "cs_conn"
+        assert next_step_id(self.s, "cs_scope", "one") == "cs_which"
+        assert next_step_id(self.s, "cs_scope", "phone") == "cs_cross_phone"
+        assert next_step_id(self.s, "cs_scope", "computer") == "cs_cross_computer"
+
+    def test_which_and_cross_check_routes(self):
+        # cs_which: scope already known (one) — a named device goes straight to its branch.
+        assert next_step_id(self.s, "cs_which", "phone") == "cs_wifi"
+        assert next_step_id(self.s, "cs_which", "computer") == "cs_conn"
+        # cross-check: others work -> device branch; others down too -> whole-home path.
+        assert next_step_id(self.s, "cs_cross_phone", "yes") == "cs_wifi"
+        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_reboot"
+        assert next_step_id(self.s, "cs_cross_computer", "yes") == "cs_conn"
+        assert next_step_id(self.s, "cs_cross_computer", "no") == "cs_reboot"
 
     def test_reboot_verify_resolves_or_escalates(self):
         assert next_step_id(self.s, "cs_reboot", None) == "cs_verify_all"  # fall through
@@ -132,8 +148,12 @@ class TestClientSideStrategy:
         assert self.s.step("cs_wifi2").goto == "cs_verify_dev"
 
     def test_phone_branch_never_reaches_cable(self):
-        # A phone routes straight to Wi-Fi — the cable step is unreachable from it.
-        assert next_step_id(self.s, "cs_scope", "phone") == "cs_wifi"
+        # A phone can only reach Wi-Fi or the whole-home path — the cable step stays
+        # unreachable from every phone route (scope -> cross-check -> wifi/reboot).
+        assert next_step_id(self.s, "cs_scope", "phone") == "cs_cross_phone"
+        assert next_step_id(self.s, "cs_cross_phone", "yes") == "cs_wifi"
+        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_reboot"
+        assert next_step_id(self.s, "cs_which", "phone") == "cs_wifi"
         assert self.s.step("cs_wifi").goto == "cs_wifi2"
 
 
@@ -256,7 +276,9 @@ class TestRegistry:
         assert s.step("confirm_restored").tools == frozenset()  # asks the caller only
         assert s.step("client_side").tools == frozenset()  # asks the caller only
         assert "update_mac" in s.step("bind_mac").tools
-        assert "create_ticket" in s.step("escalate").tools
+        # Phase 3.11 B: the ENGINE registers the ticket deterministically from state —
+        # create_ticket is no longer exposed to the model on the escalate step.
+        assert s.step("escalate").tools == frozenset()
 
 
 class TestForeignMacSequence:

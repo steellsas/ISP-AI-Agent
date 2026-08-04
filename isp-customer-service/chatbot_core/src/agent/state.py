@@ -41,6 +41,10 @@ class AgentState:
     # `name` extra question is enabled (identification.yaml); consumed by the call record
     # (Phase 3.10).
     caller_name: str | None = None
+    # Relation to the contract, keyword-read from the caller's intro ("holder" /
+    # "family" / "tenant" / "helper" / "unknown"). Record + confidence signal only —
+    # NEVER a gate (5d rule: a mismatch is expected and fine).
+    caller_relation: str | None = None
 
     # Pre-flight phone lookup result (the caller's number, resolved at the start
     # of the call). UNCONFIRMED — a candidate the agent offers for the caller to
@@ -58,7 +62,6 @@ class AgentState:
     preflight_outage: dict[str, Any] | None = None
 
     # Caller information (populated after customer confirms)
-    caller_name: str | None = None  # Actual caller's name
     address_confirmed: bool = False
 
     # Active resolution strategy (agent/resolution.py): {"verdict", "step"} once a
@@ -80,6 +83,15 @@ class AgentState:
     # Problem tracking
     problem_type: str | None = None  # internet, tv, phone, billing
     problem_description: str | None = None
+    # Intake anamnesis (identification block, 2026-07-31): the ONE history question
+    # ("kada pastebėjote, po ko dingo?") is asked once, engine-scripted; the caller's
+    # raw answer is kept for the ANALYSIS (Step 2) and the call record.
+    anamnesis_asked: bool = False
+    anamnesis_raw: str | None = None
+    # Keyword-read from the raw answer (nlu.extract_anamnesis): when it broke and an
+    # optional trigger event — the caller's half of the ANALYSIS (Step 2).
+    anamnesis_when: str | None = None
+    anamnesis_trigger: str | None = None
 
     # Diagnostic findings (case state), namespaced BY DOMAIN so new fault families
     # (iptv, voip…) attach additively without touching the base flow:

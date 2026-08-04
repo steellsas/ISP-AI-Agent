@@ -73,7 +73,7 @@ class TestTurnThroughGraph:
             ),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            reply = session.handle_turn("neveikia internetas")
+            reply = session.handle_turn("neveikia internetas Vilniaus gatvėje 29")
 
         assert reply == "Pasakykite adresą."
         # State still lives in (and is shared with) the underlying engine.
@@ -122,7 +122,7 @@ class TestRouting:
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()  # customer_id stays None
 
-        names = self._run_turn_capture_tools(session, "neveikia internetas")
+        names = self._run_turn_capture_tools(session, "neveikia internetas Vilniaus gatvėje 29")
 
         assert names <= set(LOOKUP_TOOLS)
         # The structural gate: diagnostics simply aren't on the table here.
@@ -333,10 +333,18 @@ class TestIdentifyThenDiagnoseSameTurn:
         agent.state.customer_id = "CUST101"  # committed by resolve_address
         out = json.loads(agent._augment_tool_result("resolve_address", obs))
 
-        # The verdict is now in state AND spelled out for the model to voice.
+        # Arc v3 + identification ladder: the engine diagnosed SILENTLY (verdict in
+        # state); the reply first finishes identification with the caller-intro
+        # question ("su kuo kalbu?") — the result is deferred one turn behind it.
         assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
-        assert "DIAGNOZĖ" in out["message"]
-        assert "gedimų nėra" in out["message"]  # explicit: do not invent the outage line
+        assert "su kuo kalbu" in out["message"].lower()
+        assert agent._result_pending is True
+        # Once the caller introduces themselves, the tail delivers the real result.
+        agent.state.caller_name = "Jonas"
+        tail = agent._result_narration_tail()
+        assert "Patikrinsiu būseną" in tail
+        assert "ŽINIA" in tail
+        assert agent._news_told is True  # inform news marked told — never repeated
 
     def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):
         """Regression: the tool loop augmented BEFORE committing customer_id, so

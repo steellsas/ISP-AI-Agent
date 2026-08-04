@@ -1,7 +1,5 @@
-<<include: partials/style>>
+<<include: partials/style_core>>
 
-<<include: partials/consultation>>
-
-<<include: partials/understanding>>
+<<include: partials/consultation_core>>
 
 <<include: partials/solving>>

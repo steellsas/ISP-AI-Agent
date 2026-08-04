@@ -86,10 +86,10 @@ def build_turn_graph(engine: Any):
 
     def address_validation(state: TurnState) -> TurnState:
         result = _run_node(state, LOOKUP_TOOLS, _ADDRESS_NODE_PROMPT, "address_validation")
-        # resolve_address may have identified the caller mid-turn, and the engine then
-        # diagnosed + activated a strategy in the same reply (see
-        # _augment_resolve_result). Mark that step presented so the caller's next
-        # answer advances the walker instead of being read as a stray yes/no.
+        # resolve_address may have identified the caller mid-turn; arc v3: the same
+        # reply then narrates "patikrinsiu… patikrinau: [rezultatas]" + the first
+        # step's question — mark the step presented so the caller's next answer
+        # advances the walker.
         engine._mark_step_presented()
         return result
 
@@ -101,6 +101,11 @@ def build_turn_graph(engine: Any):
         # confirm connecting a device); after the reply, mark the question asked so a
         # plain yes/no advances next turn.
         engine.ensure_diagnosed()
+        # Deterministic close for INFORM mode (outage / billing / no-strategy): if the
+        # caller was already informed and now says goodbye, close here so the reply is a
+        # single farewell — not another re-narration of the outage. Runs before narration
+        # so the facts block reflects the closed state this turn.
+        engine._maybe_close_inform(state.get("user_input"))
         # Phase 3.8 step 5a: for a piloted direction (behind SOLVER_DRIVE), the SOLVER runs
         # the turn end-to-end and returns the reply; the walker + LLM narrator are skipped.
         # None => not driving (flag off / other direction) => fall through to the walker.

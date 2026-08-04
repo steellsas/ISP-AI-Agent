@@ -120,7 +120,9 @@ _register_linear_strategies()
 # block so the agent can reconcile the finding with what the customer says.
 _DIAGNOSIS_LT = {
     "billing_suspended": "paslauga sustabdyta dėl neapmokėtos sąskaitos",
-    "active_outage": "rajone registruota masinė avarija",
+    # Worded WITHOUT "registruota" — the outage eval guard forbids "registr" (its
+    # intent: no TICKET talk for outages) and the scripted news must not trip it.
+    "active_outage": "rajone šiuo metu vyksta masinė avarija",
     "switch_unreachable": "tinklo mazgas nepasiekiamas (tiekėjo gedimas)",
     "node_fault_unregistered": "mazgo gedimas (neregistruotas)",
     "link_down_local": "ryšys iki kliento įrangos nutrūkęs (maitinimas/laidas)",
@@ -263,6 +265,26 @@ class ReactAgent:
         # Streets/localities registry for deterministic NLU prefill (loaded lazily
         # on the first user turn so construction stays DB-free where possible).
         self._registry: tuple[list[str], list[str]] | None = None
+
+        # Per-turn guards (set in _pre_turn_guards): address-offer commit veto note and
+        # the one-turn "identification reopened" note.
+        self._addr_confirm_note: str | None = None
+        self._reopen_note = False
+        # Identification ladder: True while the check result is deferred behind the
+        # caller-intro question ("su kuo kalbu?"); cleared once the result is narrated.
+        self._result_pending = False
+        # Set when the ENGINE just committed the identity this turn — the scripted
+        # ladder reply then opens with the address echo.
+        self._just_identified = False
+        # Farewell-mid-process clarify contract (2026-08-03): the confirm question is
+        # pending / the walker holds one turn after the caller decides to continue.
+        self._end_confirm_pending = False
+        self._resume_hold = False
+        # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
+        self._bridge_bound = False
+        # INFORM arc: the news (billing/outage) was already delivered once — the JAU
+        # PRANEŠTA marker stops the model re-reading it every turn.
+        self._news_told = False
 
         # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
         # tools exposed to the model and add a focused prompt. None = unrestricted
@@ -468,6 +490,17 @@ class ReactAgent:
         """
         s = self.state
         facts: list[str] = []
+        # Per-turn guards (deterministic, set in _pre_turn_guards) lead the block —
+        # they override the model's own reading of the last reply.
+        if getattr(self, "_addr_confirm_note", None):
+            facts.append(self._addr_confirm_note)
+        if getattr(self, "_reopen_note", False) and not s.customer_id:
+            facts.append(
+                "- KLIENTAS PATIKSLINO: skambina dėl KITO adreso nei buvo nustatyta. "
+                "Atsiprašyk vienu sakiniu ir paprašyk pasakyti adresą, dėl kurio "
+                "skambina (jei jau pasakė — žr. HEARD ADDRESS ir naudok jį). Ankstesnio "
+                "adreso ir jo diagnozės NEBEminėk."
+            )
         # Proactive mass-outage (the ONE time the phone is used up front): if the
         # caller's street has an active outage, inform immediately instead of
         # identifying. Leads the block so it drives the FIRST reply. Reveals only
@@ -556,6 +589,15 @@ class ReactAgent:
             )
         elif s.case_closed:
             facts.append(f"- Byla UŽDARYTA (priežastis: {s.closed_reason or 'resolved'}).")
+            # Engine-registered ticket (consent-free ESCALATE): the narrator ANNOUNCES
+            # the registration — it must not ask permission or offer to register again.
+            if s.closed_reason == "registered" and s.ticket_id:
+                facts.append(
+                    "- UŽREGISTRUOTA: gedimas jau užregistruotas (variklis tai padarė). "
+                    "Pasakyk vienu sakiniu: užregistravau gedimą, kolegos susisieks ir "
+                    "detaliau paaiškins. NEklausk sutikimo, NEsiūlyk registruoti dar "
+                    "kartą, neskaityk ticket ID."
+                )
             # Just resolved: confirm briefly, then OFFER one more thing and WAIT — do
             # NOT sign off yet (the engine ends the call once the caller declines).
             if s.closed_reason == "resolved" and s.resolution:
@@ -567,11 +609,20 @@ class ReactAgent:
                 )
         # Repeat-guard nudge (scaled): the caller's last reply did not advance us.
         # Don't loop the same question — acknowledge, narrow, then change tactic.
-        if s.stuck_count >= 2:
+        # The account-code tactic belongs to IDENTIFICATION only — once the customer is
+        # known it leaked into late-call narration ("Gal turite abonento kodą?" right
+        # after registering a ticket, observed live).
+        if s.stuck_count >= 2 and not s.customer_id:
             facts.append(
                 "- STRIGTI: to paties klausimo NEBEKARTOK. Pakeisk taktiką — pasiūlyk "
                 "abonento kodą („Gal turite abonento kodą nuo sąskaitos?“) arba "
                 "užregistruok problemą atskambinimui."
+            )
+        elif s.stuck_count >= 2:
+            facts.append(
+                "- STRIGTI: to paties klausimo NEBEKARTOK. Perfrazuok kitaip arba "
+                "pasiūlyk užregistruoti gedimą (technikas susisieks). NEklausk abonento "
+                "kodo — klientas jau identifikuotas."
             )
         elif s.stuck_count == 1:
             extra = (
@@ -636,7 +687,22 @@ class ReactAgent:
         # made the agent re-narrate the solved problem ("dar nepririštas") every
         # turn. Past the bind, the step's own hint is the single source of truth.
         past_action = bool(s.resolution) and "telemetry_fixed" in (s.resolution or {})
-        if not past_action:
+        # Identification ladder's last rung: the caller-intro question is OWED (asked
+        # this reply) — the deferred check result comes next turn, so the finding facts
+        # are suppressed to keep the model from blurting it alongside the question.
+        caller_pending = bool(s.customer_id) and self._result_pending and not s.caller_name
+        if caller_pending:
+            from .identification import caller_question
+
+            facts.append(
+                "- IDENTIFIKACIJOS PABAIGA: patikra atlikta, bet rezultato dar "
+                f"NESAKYK. Šiame atsakyme TIK klausimas: „{caller_question()}“. "
+                "Jokio rezultato, jokių instrukcijų."
+            )
+        elif s.customer_id and self._result_pending and s.caller_name:
+            # The caller introduced themselves — deliver the deferred result NOW.
+            facts.append("- REZULTATO PRISTATYMAS:" + self._result_narration_tail())
+        if not past_action and not caller_pending:
             for domain, d in s.diagnosis.items():
                 gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
                 facts.append(
@@ -647,7 +713,7 @@ class ReactAgent:
                 )
         # What we believe and why — so the agent reasons out loud instead of issuing
         # orders, and can CONFIRM the cause at the end ("taigi dėl X ir nebuvo").
-        h = s.hypothesis
+        h = None if caller_pending else s.hypothesis
         if h:
             because = "; ".join(h["because"])
             if h["status"] == "confirmed":
@@ -729,6 +795,16 @@ class ReactAgent:
                 "pagal ŠĮ ŽINGSNĮ. NEapsimesk, kad ankstesnio bandymo nebuvo, ir "
                 "NEkartok jo."
             )
+        # INFORM (no strategy — billing/outage): the news went out in the activation
+        # reply (arc v3). The JAU PRANEŠTA marker stops the model re-reading the same
+        # news every turn (observed live: "sustabdyta dėl skolos" said 3×).
+        if s.resolution is None and s.diagnosis and not s.case_closed:
+            if getattr(self, "_news_told", False):
+                facts.append(
+                    "- ŽINIA JAU PASAKYTA: nebekartok „patikrinau / sustabdyta / "
+                    "avarija“ teksto. Atsakyk į kliento klausimą, arba paklausk „Ar dar "
+                    "kuo galiu padėti?“ ir užbaik pokalbį."
+                )
         # Active resolution strategy: inject ONLY the current step's playbook
         # section (never the whole doc — a streaming model would run several steps
         # ahead). This is the "what to do NOW" for the step the engine is on.
@@ -738,10 +814,15 @@ class ReactAgent:
 
             strat = get_strategy(s.resolution.get("verdict"))
             step = strat.step(s.resolution.get("step", "")) if strat else None
-            if step is not None:
+            # Step facts wait while the caller-intro question is owed (see above).
+            if step is not None and not caller_pending:
                 if step.rag_section is not None:
                     section = get_step(strat.rag_doc, step.rag_section)
                     if section:
+                        # Observability: WHICH knowledge chunk feeds THIS step (the
+                        # trace otherwise never shows the RAG injection — only
+                        # DEBUG_LLM did, with far too much noise).
+                        self._emit_rag_injection(strat.rag_doc, step.rag_section, step.id, section)
                         facts.append(
                             "- PLAYBOOK — your INTERNAL guidance for THIS step (Lithuanian "
                             "content). Act on it, do NOT read it to the caller verbatim, "
@@ -893,7 +974,20 @@ class ReactAgent:
 
         strat = get_strategy(r.get("verdict"))
         step = strat.step(r.get("step", "")) if strat else None
-        if step is None or step.kind != StepKind.ACTION:
+        if step is None:
+            return False
+        # Auto-register ESCALATE (consent=False, e.g. dr_register_router after a working
+        # bridge): the registration is a NECESSITY, not an offer — the engine registers
+        # ON ARRIVAL and closes; the narrator only ANNOUNCES it ("užregistravau...,
+        # kolegos susisieks ir detaliau paaiškins"). Asking permission here misread a
+        # non-consent reply as a decline and the caller left WITHOUT the ticket they
+        # were promised (observed live).
+        if step.kind is StepKind.ESCALATE and not step.consent:
+            self._register_ticket_from_state(step)
+            s.case_closed = True
+            s.closed_reason = "registered"
+            return True
+        if step.kind != StepKind.ACTION:
             return False
         if r.get("action_done"):
             return False  # already ran this action; the walker advances it next turn
@@ -980,6 +1074,19 @@ class ReactAgent:
         if h:
             because = "; ".join(h.get("because", []) or [])
             lines.append(f"HIPOTEZĖ: {h.get('cause')} (status={h.get('status')}); nes: {because}")
+        # The ANALYSIS (Step 2): the caller's half of the picture — the thinker reasons
+        # from BOTH sides, not telemetry alone.
+        if s.anamnesis_raw:
+            bits = [f'žodžiais: "{s.anamnesis_raw}"']
+            if s.anamnesis_when:
+                bits.append(f"dingo {s.anamnesis_when}")
+            if s.anamnesis_trigger:
+                bits.append(f"po: {s.anamnesis_trigger}")
+            lines.append("ANAMNEZĖ (klientas): " + "; ".join(bits))
+        if s.symptoms:
+            lines.append("SIMPTOMAI: " + ", ".join(f"{k}={v}" for k, v in s.symptoms.items()))
+        if s.caller_name:
+            lines.append(f"SKAMBINA: {s.caller_name} (ryšys su sutartimi: {s.caller_relation})")
         if net.get("reason"):
             lines.append(f"TELEMETRIJOS KANDIDATAS (verdict tree): {net.get('reason')}")
         if sig:
@@ -1072,15 +1179,47 @@ class ReactAgent:
     _DRIVE_MAX_TURNS = 14  # hard bailout — never grind the caller forever
 
     def solver_drive_turn(self, user_input: str | None) -> str | None:
-        """Solver-driven turn. Returns the reply text, or None to fall back to the walker
-        (flag off, no strategy, not a piloted direction, or a solver failure)."""
-        if os.getenv("SOLVER_DRIVE", "off").lower() != "on":
+        """Solver-driven turn — the MĄSTYTOJAS drives the piloted directions (Step 3,
+        default ON since 2026-08-03; SOLVER_DRIVE=off reverts to the walker). Returns
+        the reply text, or None to fall back to the walker (no strategy, not a piloted
+        direction, a solver failure — or DETERMINISTIC MECHANICS in progress: the
+        identification ladder, the clarify contract and the wrap-up stay engine-owned,
+        the thinker never overrides them)."""
+        if os.getenv("SOLVER_DRIVE", "on").lower() != "on":
             return None
         r = self.state.resolution
         if not r or self.state.case_closed:
             return None
         if r.get("verdict") not in self._SOLVER_DRIVE_VERDICTS:
             return None
+        # Engine mechanics first: while the ladder / clarify flow owns the turn, the
+        # thinker waits (scripted replies and guards are deterministic territory).
+        if self._result_pending or self._end_confirm_pending or self._resume_hold:
+            return None
+        from .identification import ask_caller
+
+        if ask_caller() and not self.state.caller_name:
+            return None  # identification ladder not finished yet
+        # Distrust-loop bailout (deterministic): the solver repeated itself or kept
+        # re-confirming ("disambiguate") turn after turn despite clear answers — the
+        # prompt rule did not hold it (observed live: 6x "patikrinkime dar kartą…";
+        # in eval: 6/8 turns of variously-worded disambiguate). The promised backstop
+        # takes over: the DETERMINISTIC WALKER resumes this direction for the rest of
+        # the call; its own guards (stuck counter, escalate) handle the endgame.
+        if getattr(self, "_drive_disabled", False):
+            return None
+        if getattr(self, "_drive_repeats", 0) >= 2:
+            self._drive_disabled = True
+            self._drive_repeats = 0
+            self._drive_last_reply = None
+            self.tracer.emit(
+                "drive_decision",
+                action="bailout_to_walker",
+                accepted=False,
+                reason="distrust loop (repeat/disambiguate streak)",
+            )
+            self._trace_note("solver_drive", "distrust loop — walker resumes", level="warn")
+            return None  # the walker takes this and every following turn
         try:
             reply = self._drive(user_input)
         except Exception as e:  # a solver failure falls back to the walker (no bookkeeping yet)
@@ -1106,10 +1245,32 @@ class ReactAgent:
         self.state.last_intent = detect_turn_intent(user_input)
         self._drive_turns = getattr(self, "_drive_turns", 0) + 1
 
+        context = self._build_solver_context(user_input)
+        # Anti-repeat nudge: last reply repeated an earlier one — tell the solver the
+        # answer is already GIVEN and it must take a DIFFERENT next step.
+        if getattr(self, "_drive_repeats", 0) >= 1:
+            context += (
+                "\nSVARBU: tavo praėjęs klausimas KARTOJOSI, o klientas jau atsakė ir "
+                "patvirtino. PRIIMK tą atsakymą kaip faktą ir ženk KITĄ žingsnį (kita "
+                "hipotezė, pasiūlymas ar registracija) — to paties NEBEKLAUSK."
+            )
         # A few internal (silent) hops are allowed — reread/pivot re-read the line — before
         # a client-facing action is forced. Hard turn cap escalates rather than looping.
         for _ in range(DEFAULT_POLICY["internal_hops_max"] + 1):
-            decision = solve(self._build_solver_context(user_input), model=self.config.model)
+            decision = solve(context, model=self.config.model)
+            # Normalize the free-form hypothesis to the ACTIVE direction before the
+            # gate: the solver words the same belief freely ("routeris sugedęs,
+            # nes…"), and the gate then blocked the direction's OWN fix as a
+            # "mutation on unmapped hypothesis" — the announced bind never ran
+            # (observed: "pririšiu" spoken, update_mac not called). Working the SAME
+            # fault in other words is not a new hypothesis; a real pivot names a
+            # DIFFERENT known cause, which stays gated.
+            if decision is not None and decision.current_hypothesis not in STRATEGIES:
+                decision = decision.model_copy(
+                    update={
+                        "current_hypothesis": (self.state.resolution or {}).get("verdict") or ""
+                    }
+                )
             conf = decision.confidence if decision else 0.0
             self._solver_low_conf = (
                 self._solver_low_conf + 1 if conf < DEFAULT_POLICY["confidence_floor"] else 0
@@ -1119,7 +1280,12 @@ class ReactAgent:
                 decision,
                 known_hypotheses=set(STRATEGIES),
                 low_conf_streak=self._solver_low_conf,
-                cycles_in_step=self._DRIVE_MAX_TURNS + 1 if forced else 0,
+                # The REAL per-question cycle count (the same-reply streak) — with a
+                # flat 0 here the gate's stuck detector was blind and the solver
+                # looped one question 6x (observed live).
+                cycles_in_step=(
+                    self._DRIVE_MAX_TURNS + 1 if forced else getattr(self, "_drive_repeats", 0)
+                ),
                 internal_hops=self._solver_internal_hops,
             )
             action = result.action
@@ -1133,6 +1299,10 @@ class ReactAgent:
                 confidence=conf,
             )
             say = (decision.narrator_instruction if decision else "").strip()
+            # Never SPEAK an instruction whose action the gate overrode — the words
+            # would promise what will not run ("pririšiu" with the bind blocked).
+            if decision is not None and not result.accepted:
+                say = ""
 
             if action in ("reread_telemetry", "pivot"):
                 self._solver_internal_hops += 1
@@ -1141,7 +1311,7 @@ class ReactAgent:
             self._solver_internal_hops = 0
 
             if action == "propose_fix":
-                return self._drive_propose_fix(say)
+                return self._drive_propose_fix(say, user_input)
             if action == "escalate":
                 return self._drive_escalate(decision)
             if action == "close":
@@ -1149,8 +1319,27 @@ class ReactAgent:
                 self.state.closed_reason = "resolved"
                 self._settle_hypothesis("confirmed", "sprendimas suveikė (solveris)")
                 return say or "Puiku, džiaugiuosi, kad sutvarkėme!"
-            # client-facing: ask / disambiguate / instruct / verify / wait
-            return say or "Atsiprašau, ar galėtumėte pakartoti?"
+            # client-facing: ask / disambiguate / instruct / verify / wait — track the
+            # DISTRUST streak so the next turn's nudge/gate/bailout see the loop:
+            # a verbatim repeat OR consecutive disambiguates (any wording) count.
+            defaults = {
+                "verify": "Patikrinkite, prašau, ar internetas jau atsirado.",
+                "wait": "Gerai, palauksiu — pasakykite, kai būsite pasiruošę.",
+            }
+            reply = say or defaults.get(action, "Atsiprašau, ar galėtumėte pakartoti?")
+            norm = " ".join(reply.lower().split())
+            repeated = norm == getattr(self, "_drive_last_reply", None)
+            re_disambiguate = (
+                action == "disambiguate"
+                and getattr(self, "_drive_last_action", None) == "disambiguate"
+            )
+            if repeated or re_disambiguate:
+                self._drive_repeats = getattr(self, "_drive_repeats", 0) + 1
+            else:
+                self._drive_repeats = 0
+            self._drive_last_reply = norm
+            self._drive_last_action = action
+            return reply
         return "Sekundėlę — patikslinkim dar kartą."
 
     def _refresh_diagnosis(self) -> None:
@@ -1159,44 +1348,95 @@ class ReactAgent:
         self.state.diagnosis.pop("network", None)
         self.ensure_diagnosed()
 
-    def _drive_propose_fix(self, say: str) -> str:
-        """Execute the bind the solver proposed (code, not the model). In the demo, reflect
-        the just-plugged device first (no-op in production / when SIMULATE_BRIDGE is off),
-        then bind + reset + re-diagnose via the existing augment path."""
+    def _drive_propose_fix(self, say: str, user_input: str | None) -> str:
+        """Execute the bind the solver proposed — under DISCIPLINE (Andrius,
+        2026-08-04): a change runs ONLY when the client actually DID the work and
+        thereby agreed to it. The solver anticipated the playbook's ending and had the
+        engine bind FOUR turns early (before the caller even said they own a computer
+        — observed live). Preconditions, in order:
+          1. the caller's CURRENT turn reports a completed plug-in ("įkišau…"), OR the
+             line already OBSERVES a device (production: it shows up on its own);
+             otherwise -> no tools, keep instructing;
+          2. never twice — a completed bind is recorded and not repeated;
+          3. after the (demo) simulation, bind only if a device is actually observed —
+             never bind blind."""
+        from .resolution import detect_plugged
+
         cid = self.state.customer_id
+        if getattr(self, "_bridge_bound", False):
+            return say or "Įrenginys jau pririštas — patikrinkite, ar internetas atsirado."
+
+        def _device_visible() -> bool:
+            # The tool's verdict envelope carries no signals — device presence is read
+            # from the REASON: "no_mac_observed" = the line still sees nothing; any
+            # other verdict (foreign_mac after the plug-in) = a device is there.
+            try:
+                d = json.loads(execute_tool("diagnose_connection", {"customer_id": cid}))
+                return ((d.get("verdict") or {}).get("reason")) != "no_mac_observed"
+            except Exception:  # pragma: no cover - best-effort read
+                return False
+
+        if not detect_plugged(user_input) and not _device_visible():
+            # The work is not done yet — the fix must WAIT for the client.
+            self.tracer.emit(
+                "drive_decision", action="fix_deferred", accepted=False, reason="not plugged yet"
+            )
+            return "Kai prijungsite kabelį prie kompiuterio, pasakykite — tada pririšiu įrenginį."
         self._simulate_bridge_connection()
+        # Bind only when the line ACTUALLY sees a device now (never blind).
+        if not _device_visible():
+            self.tracer.emit(
+                "drive_decision", action="fix_deferred", accepted=False, reason="no device observed"
+            )
+            return (
+                "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
+                "kabelis įkištas iki galo, ir pasakykite."
+            )
         try:
             obs = execute_tool("update_mac", {"customer_id": cid})
             self.tracer.emit("tool_call", name="update_mac", args={"customer_id": cid})
             self._augment_tool_result("update_mac", obs)  # chains reset_port + re-diagnose
+            self._bridge_bound = True
         except Exception as e:
             self._trace_note("drive_propose_fix", str(e), level="error")
-        return say or "Pririšau jūsų įrenginį — internetas turėtų atsirasti. Patikrinkite."
+        return (
+            say
+            or "Matau jūsų kompiuterį linijoje — pririšau. Patikrinkite, ar internetas atsirado."
+        )
 
     def _drive_escalate(self, decision) -> str:
-        """Register the fault (code) and close the case; the solver's text explains it."""
-        cid = self.state.customer_id
-        cause = (decision.current_hypothesis if decision else None) or "neišspręstas gedimas"
-        try:
-            obs = execute_tool(
-                "create_ticket",
-                {
-                    "customer_id": cid,
-                    "problem_type": "technician_visit",
-                    "problem_description": cause,
-                    "priority": "high",
-                },
+        """Register the fault and close — through the SAME state-built ticket machinery
+        as everywhere else (its ad-hoc create_ticket used to write a raw verdict key as
+        the details, lose ticket_id from the record, and then ASK permission for a
+        ticket it had already created — observed live). The announce is deterministic:
+        the ticket exists, so the words state a fact, never ask."""
+        from .resolution import get_strategy
+
+        s = self.state
+        r = s.resolution or {}
+        strat = get_strategy(r.get("verdict"))
+        # The bridge already restored internet on the PC -> this is the
+        # register-router shape (temporary bridge note rides on the ticket).
+        bridged = bool(r.get("telemetry_fixed")) or getattr(self, "_bridge_bound", False)
+        step = None
+        if strat is not None:
+            step = strat.step("dr_register_router") if bridged else strat.step("escalate")
+            if step is None:
+                step = strat.step("escalate")
+        if not r.get("escalate_reason"):
+            r["escalate_reason"] = "Sprendimas telefonu nepavyko."
+        if step is not None:
+            self._register_ticket_from_state(step)
+        s.case_closed = True
+        s.closed_reason = "registered" if s.ticket_id else "escalated"
+        # Deterministic announce — a fact, not a request for permission.
+        say = "Užregistravau gedimą — kolegos susisieks ir detaliau paaiškins."
+        if bridged:
+            say += (
+                " Internetas kol kas veiks per kompiuterį; kai turėsite naują routerį, "
+                "paskambinkite — pririšime, ir veiks visi namai."
             )
-            self.tracer.emit("tool_call", name="create_ticket", args={"customer_id": cid})
-            self._trace_tool_result("create_ticket", obs)
-        except Exception as e:
-            self._trace_note("drive_escalate", str(e), level="error")
-        self.state.case_closed = True
-        self.state.closed_reason = "escalated"
-        say = (decision.narrator_instruction if decision else "").strip()
-        return (
-            say or "Užregistravau gedimą — mūsų darbuotojas su jumis susisieks. Ačiū už kantrybę."
-        )
+        return say
 
     def _walk_resolution(self, user_input: str | None) -> None:
         """Generic step-by-step walker over the active strategy, from the caller's
@@ -1221,6 +1461,11 @@ class ReactAgent:
         r = self.state.resolution
         if not r or self.state.case_closed:
             return
+        # One-turn hold after the caller declined to end the call — their "ne,
+        # tęskime" answers the confirm-end question, not the current step.
+        if self._resume_hold:
+            self._resume_hold = False
+            return
         # Derive the intent from THIS call's input rather than trusting it was set
         # earlier — the walker must not depend on the caller's ordering.
         from .resolution import detect_turn_intent
@@ -1237,6 +1482,59 @@ class ReactAgent:
         if step.id == "confirm_change" and confirms_device_change(user_input):
             self._route_to(r, next_step_id(strat, step.id, "yes"))
             return
+        # Backchannel guard: a bare "Mhm." / one-letter STT crumb is an acknowledgement,
+        # not an answer — HOLD asking steps instead of routing garbage (observed: "T."
+        # entered the bridge path as "yes, I have a computer"; "Mhm." climbed two
+        # INSTRUCT steps). ACTION steps still advance — their announce needs no answer.
+        if step.kind in (StepKind.CONFIRM, StepKind.INSTRUCT):
+            from .resolution import is_backchannel
+
+            if is_backchannel(user_input):
+                self.tracer.emit(
+                    "decision", intent="backchannel", action="hold", from_step=step.id, to=step.id
+                )
+                return
+        # A clear "atsirado / veikia" pre-answers a restored CONFIRM before it was even
+        # asked — often fused with the goodbye ("yra internetas, ačiū, viso gero"). Route
+        # the YES so the resolve is RECORDED instead of the call dying unclosed on the
+        # hangup (observed live: resolved Wi-Fi call left outcome=None). Only the clear
+        # affirmative pre-answers; a "no" still waits for the step's own question.
+        if step.detector == "restored" and not r.get("asked"):
+            from .resolution import Outcome, detect_restored
+
+            if detect_restored(user_input) is Outcome.YES:
+                self._route_to(r, next_step_id(strat, step.id, "yes"))
+                return
+        # Refusal / explicit ticket demand ends troubleshooting in a REGISTRATION
+        # (policy 2026-07-30). A clear DEMAND ("įregistruokit gedimą") IS the consent —
+        # register now and close, with the reason on the ticket. A softer refusal
+        # ("nedarysiu", "nesu namuose") routes to the escalate step, whose consent
+        # question doubles as the polite clarification ("užregistruosiu — ar tinka?").
+        # Observed live: the caller demanded a ticket 3×, the narrator promised it 5×,
+        # and the walker held cable_check forever — no route existed.
+        if step.kind is not StepKind.ESCALATE:
+            from .resolution import detect_refuse_or_ticket
+
+            rt = detect_refuse_or_ticket(user_input)
+            if rt is not None and strat.step("escalate") is not None:
+                r["escalate_reason"] = (
+                    "Klientas paprašė registracijos."
+                    if rt == "demand"
+                    else "Neišspręsta — klientas atsisakė tęsti tikrinimą."
+                )
+                self._goto_step(r, "escalate")
+                self.tracer.emit(
+                    "decision",
+                    intent="refuse_or_ticket",
+                    action=rt,
+                    from_step=step.id,
+                    to="escalate",
+                )
+                if rt == "demand":
+                    self._register_ticket_from_state(strat.step("escalate"))
+                    self.state.case_closed = True
+                    self.state.closed_reason = "registered"
+                return
         # ASKED generic CONFIRM (yes/no, lights, scope, restored, …): the LLM classifier
         # reads the answer AND whether it IS an answer in one call — so a confident answer
         # advances even when the brittle keyword turn-intent would veto it (observed:
@@ -1262,6 +1560,15 @@ class ReactAgent:
         ):
             if self._classify_instruct_and_advance(step, strat, user_input):
                 return
+        # ESCALATE = deterministic OUTCOME (Phase 3.11 B). The step is a call-ending
+        # consent question ("užregistruosiu gedimą — ar tinka?"): the ENGINE registers
+        # the ticket from STATE on consent and closes; a decline closes without a
+        # ticket. create_ticket is no longer an LLM-callable tool mid-strategy, so the
+        # model can neither freelance a ticket nor loop the consent question (observed
+        # live: 4× "ar tinka?" — the ticket only landed via the gate bailout).
+        if step.kind is StepKind.ESCALATE:
+            self._advance_escalate(r, step, user_input)
+            return
         # What KIND of turn was this? Only a real answer or a completed action may move
         # the conversation. "Einu prie routerio", a question, confusion or silence all
         # HOLD the step — the agent responds to them instead of running ahead.
@@ -1279,7 +1586,7 @@ class ReactAgent:
         # presented last turn — to an explicit goto if set, else the next step in order.
         if step.kind in (StepKind.INSTRUCT, StepKind.ACTION):
             if r.get("asked"):
-                self._advance_instruct(r, step, strat)
+                self._advance_instruct(r, step, strat, user_input)
             return
         if step.kind != StepKind.CONFIRM:
             return
@@ -1292,6 +1599,264 @@ class ReactAgent:
         if key is None:
             return
         self._route_to(r, next_step_id(strat, step.id, key))
+
+    def _emit_rag_injection(self, doc: str | None, section: int, step_id: str, text: str) -> None:
+        """Emit a `rag` trace event when a playbook section is injected for a step —
+        deduped on (doc, section, step) so the multi-call turn (LLM + tool follow-up)
+        logs it once, and a step change logs the new section."""
+        key = (doc, section, step_id)
+        if getattr(self, "_last_rag_key", None) == key:
+            return
+        self._last_rag_key = key
+        preview = " ".join((text or "").split())[:90]
+        self.tracer.emit("rag", doc=doc, section=section, step=step_id, preview=preview)
+
+    def _pre_turn_guards(self, user_input: str) -> None:
+        """Deterministic per-turn guards, run BEFORE the LLM sees the turn.
+
+        (1) Address-offer reply guard: a reply to "Ar skambinate dėl X?" commits the
+            account ONLY on a CLEAN yes — a garbled/mixed reply ("Taip, nebija" = STT
+            mangle of a denial) vetoes the commit and the agent re-asks (observed live:
+            wrong apartment's debt read to the caller).
+        (2) Reopen identification: an already-identified caller says they are calling
+            about a DIFFERENT address -> drop the identity and ask for the address
+            again instead of carrying on about the wrong account."""
+        s = self.state
+        self._addr_confirm_note = None
+        self._reopen_note = False
+        if not user_input:
+            return
+        # (-1) Farewell mid-process is a signal to CLARIFY, never to close (policy
+        # 2026-08-03): "viso gero" heard during identification / troubleshooting /
+        # before the news gets ONE confirm question; only the confirmation ends the
+        # call — through the outcome (registration when a strategy is active).
+        from .resolution import detect_farewell, detect_ticket_consent
+
+        if self._end_confirm_pending and not s.case_closed:
+            self._end_confirm_pending = False
+            if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
+                if s.resolution is not None:
+                    from .resolution import get_strategy
+
+                    strat = get_strategy(s.resolution.get("verdict"))
+                    esc = strat.step("escalate") if strat else None
+                    s.resolution["escalate_reason"] = "Klientas nutraukė pokalbį."
+                    if esc is not None:
+                        self._register_ticket_from_state(esc)
+                    s.case_closed = True
+                    s.closed_reason = "registered" if s.ticket_id else "declined"
+                else:
+                    s.case_closed = True
+                    s.closed_reason = "declined"
+                self.tracer.emit("decision", intent="end_confirmed", action="close")
+            else:
+                # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
+                # is not misrouted as a step answer; resume next turn.
+                self._resume_hold = True
+                self.tracer.emit("decision", intent="end_declined", action="resume")
+            return
+        mid_process = not s.case_closed and (
+            not s.customer_id
+            or s.resolution is not None
+            or self._result_pending
+            or (bool(s.diagnosis) and not (self._news_told or s.outage_reported))
+        )
+        if mid_process and detect_farewell(user_input):
+            self._end_confirm_pending = True
+            self.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
+            return
+        # (0) Caller-intro capture: the previous reply asked WHO is calling (the
+        # identification ladder's last rung) — record the answer verbatim (for the
+        # RECORD, 5d rule) + a keyword relation read. The deferred check result goes
+        # out in THIS turn's reply (see the RESULT facts directive).
+        if s.customer_id and self._result_pending and not s.caller_name:
+            from .identification import detect_caller_relation
+            from .resolution import detect_farewell, is_real_question
+
+            # Question by WORDS only — STT sticks "?" onto rising intonation
+            # ("Tomas? Ne, mano vardas Tomas…" is the ANSWER, not a question).
+            if is_real_question(user_input):
+                return  # off-script — the LLM answers; the ladder re-asks next turn
+            if not detect_farewell(user_input):
+                # Wait/consent-only replies are NOT a name ("Taip.", "Laukiu, laukiu"
+                # were captured as names live) — record "nenurodyta" and move on.
+                tokens = [t.strip(".,!?") for t in user_input.lower().split()]
+                _NOT_A_NAME = {
+                    "taip",
+                    "ne",
+                    "gerai",
+                    "laukiu",
+                    "aha",
+                    "mhm",
+                    "jo",
+                    "ačiū",
+                    "aciu",
+                    "ok",
+                    "okey",
+                    "nesu",
+                    "na",
+                    "nu",
+                    "tai",
+                }
+                if tokens and all(t in _NOT_A_NAME for t in tokens if t):
+                    s.caller_name = "nenurodyta"
+                    s.caller_relation = "unknown"
+                else:
+                    s.caller_name = user_input.strip()[:120]
+                    s.caller_relation = detect_caller_relation(user_input)
+                self.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
+            return
+        if not s.customer_id:
+            q = (self._last_agent_question() or "").lower()
+            if "skambinate dėl" in q or "dėl šio adreso" in q or "adreso skambinate" in q:
+                from .resolution import detect_address_confirm
+
+                verdict = detect_address_confirm(user_input)
+                if verdict == "yes" and s.phone_candidate and s.phone_candidate.get("street"):
+                    # Clean YES to the phone-address OFFER: the ENGINE commits the
+                    # identity from the candidate parts right now (the model's own
+                    # resolve-then-narrate path kept relapsing into confirm rounds
+                    # and skipping the caller question — observed live). The scripted
+                    # ladder reply asks WHO is calling next.
+                    c = s.phone_candidate
+                    p = s.profile
+                    from .slots import SlotStatus
+
+                    p.street.propose(c["street"], 1.0, SlotStatus.HEARD)
+                    p.house.propose(str(c.get("house") or ""), 1.0, SlotStatus.HEARD)
+                    if c.get("apartment"):
+                        p.apartment.propose(str(c["apartment"]), 1.0, SlotStatus.HEARD)
+                    if c.get("city"):
+                        p.city.propose(str(c["city"]), 1.0, SlotStatus.HEARD)
+                    if self._engine_resolve_from_slots():
+                        self._trace_note("address_confirm", "offer confirmed; engine resolve")
+                        self._just_identified = True
+                        from .identification import ask_caller
+
+                        if ask_caller() and not s.caller_name:
+                            self._result_pending = True
+                    return
+                if verdict != "yes":
+                    # Direct accept (arc v3.1): the caller DICTATED a full other address
+                    # in this very turn (NLU heard street+house clearly) — the ENGINE
+                    # resolves + diagnoses it RIGHT NOW (asking the model to call the
+                    # tool proved unreliable: it narrated "patikrinsiu" without acting,
+                    # then relapsed into a redundant confirm round). The reply then
+                    # echoes the address and continues per the identification ladder.
+                    p = self.state.profile
+                    # Street/city inherit from the OFFERED address when the correction
+                    # names only the house/flat ("Ne, dėl 60 buto 3" — same street;
+                    # observed live: the engine path did not fire without this).
+                    if not p.street.value and p.house.value and s.phone_candidate:
+                        from .slots import SlotStatus
+
+                        if s.phone_candidate.get("street"):
+                            p.street.propose(s.phone_candidate["street"], 0.9, SlotStatus.HEARD)
+                        if not p.city.value and s.phone_candidate.get("city"):
+                            p.city.propose(str(s.phone_candidate["city"]), 0.9, SlotStatus.HEARD)
+                    if p.street.value and p.house.value:
+                        self._trace_note(
+                            "address_confirm",
+                            "offer corrected with a full dictated address; engine resolve",
+                        )
+                        if self._engine_resolve_from_slots():
+                            self._just_identified = True
+                            from .identification import ask_caller
+
+                            if ask_caller() and not s.caller_name:
+                                self._result_pending = True
+                            self._addr_confirm_note = (
+                                "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
+                                f"adresas {s.customer_address}. Atsakymo pradžioje "
+                                "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
+                                "pagal žemiau esančią kryptį."
+                            )
+                        else:
+                            self._addr_confirm_note = (
+                                "- KLIENTAS PASAKĖ KITĄ ADRESĄ, bet jo patikrinti "
+                                "nepavyko (žr. HEARD ADDRESS) — patikslink trūkstamą "
+                                "dalį arba paprašyk pakartoti."
+                            )
+                    else:
+                        self._addr_confirm_note = (
+                            "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI "
+                            "nepatvirtino pasiūlyto adreso (girdisi neigimas ar "
+                            "neaiškumas). NEkviesk resolve_address su pasiūlytu adresu. "
+                            "Jei klientas įvardijo KITĄ adresą (žr. HEARD ADDRESS) — "
+                            "naudok TĄ. Kitu atveju mandagiai perklausk: „Atsiprašau, "
+                            "nesupratau — dėl kokio adreso skambinate?“"
+                        )
+                        self._trace_note(
+                            "address_confirm",
+                            f"offer not confirmed (verdict={verdict}); veto commit",
+                            level="warn",
+                        )
+        elif not s.case_closed:
+            from .resolution import detect_address_correction
+
+            if detect_address_correction(user_input):
+                self._reopen_identification(user_input)
+
+    def _engine_resolve_from_slots(self) -> bool:
+        """Deterministic identification commit from clearly-heard slots: the ENGINE
+        calls resolve_address (+ the silent diagnose) itself — no LLM tool-call
+        hesitancy, no confirm-round relapse. True when a customer committed."""
+        p = self.state.profile
+        args: dict[str, str] = {
+            "street": str(p.street.value),
+            "house_number": str(p.house.value),
+        }
+        if p.apartment.value:
+            args["apartment_number"] = str(p.apartment.value)
+        if p.city.value:
+            args["city"] = str(p.city.value)
+        try:
+            obs = execute_tool("resolve_address", args)
+        except Exception as e:  # pragma: no cover - best-effort
+            self._trace_note("engine_resolve", str(e), level="error")
+            return False
+        self.tracer.emit("tool_call", name="resolve_address", args=args)
+        self._trace_tool_result("resolve_address", obs)
+        self._update_state_from_observation("resolve_address", obs)
+        if not self.state.customer_id:
+            return False
+        self.ensure_diagnosed()
+        return True
+
+    def _reopen_identification(self, user_input: str) -> None:
+        """The caller corrected the address AFTER identification — drop the identity and
+        every per-account conclusion; keep only the conversation. The router sends the
+        next turn back to address_validation (customer_id is None again)."""
+        s = self.state
+        self._trace_note(
+            "reopen_identity",
+            f"caller says a DIFFERENT address; dropping {s.customer_id}",
+            level="warn",
+        )
+        s.customer_id = None
+        s.customer_name = None
+        s.customer_address = None
+        s.address_confirmed = False
+        s.resolution = None
+        s.diagnosis.clear()
+        s.hypothesis = None
+        s.failed_hypotheses.clear()
+        s.rejected_hypotheses.clear()
+        s.pivoted_from = None
+        s.outage_reported = False
+        from .slots import ClientProfileState
+
+        s.profile = ClientProfileState()
+        self._db_address_note = None
+        self._news_told = False  # a new address may carry different news
+        self._result_pending = False
+        self._end_confirm_pending = False
+        self._resume_hold = False
+        self._bridge_bound = False  # a different account starts clean
+        # Re-extract address parts from THIS utterance (the correction often carries
+        # the new address: "ne, skambinu dėl Dainų 5").
+        self._prefill_slots_from_text(user_input)
+        self._reopen_note = True
 
     def _last_agent_question(self) -> str | None:
         """The last thing the agent actually said — the real question the caller is
@@ -1307,15 +1872,17 @@ class ReactAgent:
         advances the walker (overriding a brittle keyword turn-intent); anything unsure
         returns False → the keyword detector + intent gate handle it. Sensor only."""
         from .classifier import classify_step
+        from .detectors import glosses as detector_glosses
         from .faults import step_options
-        from .resolution import DETECTOR_GLOSSES, next_step_id
+        from .resolution import next_step_id
 
         detector_name = step.detector or "yes_no"
         # WHAT TO DETECT comes from the fault definition first (knowledge/faults.yaml —
         # per-step, so it can be worded precisely for THIS check), falling back to the
-        # generic per-detector glosses in code. A reworded check is a file edit, not code.
+        # universal per-detector glosses (knowledge/detectors.yaml, code as last
+        # resort). A reworded check is a file edit, not code.
         declared = step_options((self.state.resolution or {}).get("verdict"), step.id)
-        glosses = DETECTOR_GLOSSES.get(detector_name, {})
+        glosses = detector_glosses(detector_name)
         options: dict[str, str] = {}
         for raw in step.on:
             # Some steps key `on` by the Outcome enum — str(Outcome.YES) is "Outcome.YES",
@@ -1348,17 +1915,31 @@ class ReactAgent:
             return True
         return False
 
-    def _advance_instruct(self, r: dict, step, strat) -> None:
+    def _advance_instruct(self, r: dict, step, strat, user_input: str | None = None) -> None:
         """Advance a presented INSTRUCT/ACTION step to its goto (or the next step in order).
         Shared by the keyword path and the classifier gate. The dr_see_device VERIFY is
         engine-owned, so resolve it in the SAME turn (reflect the plug-in in the demo, then
         read the line) instead of asking a dead question."""
-        from .resolution import next_step_id
+        from .resolution import Outcome, detect_restored, next_step_id
 
         self._route_to(r, step.goto or next_step_id(strat, step.id, None))
         if r.get("step") == "dr_see_device":
             self._simulate_bridge_connection()
             self._advance_see_device(r)
+            return
+        # Carry-through pre-answer: the utterance that completed the instruction often
+        # already reports the outcome ("prisijungiau iš naujo — jau veikia"). If we just
+        # landed on a restored CONFIRM and the SAME reply carries a clear YES, route it
+        # now — otherwise that answer dies unheard and the caller's NEXT turn (often a
+        # farewell, "Ne, ačiū") gets misread as the verify answer (observed live:
+        # resolved call routed to escalate).
+        new_step = strat.step(r.get("step", "")) if strat else None
+        if (
+            new_step is not None
+            and new_step.detector == "restored"
+            and detect_restored(user_input) is Outcome.YES
+        ):
+            self._route_to(r, next_step_id(strat, new_step.id, "yes"))
 
     def _classify_instruct_and_advance(self, step, strat, user_input: str | None) -> bool:
         """Classifier-led advancement for an asked INSTRUCT step: did the caller actually
@@ -1366,11 +1947,10 @@ class ReactAgent:
         the keyword turn-intent misreads a messy done-signal as in_progress. Anything else
         returns False → the keyword intent gate decides. Sensor only."""
         from .classifier import classify_step
+        from .detectors import glosses as detector_glosses
 
-        options = {
-            "done": "klientas atliko / jau padarė tai, ko buvo prašyta",
-            "waiting": "klientas dar daro, ruošiasi, ką tik pradėjo, klausia arba nesupranta",
-        }
+        # Meanings come from knowledge/detectors.yaml (file-editable), code fallback.
+        options = detector_glosses("instruct_done")
         question = self._last_agent_question() or step.hint or ""
         obs = classify_step(question, user_input or "", options, model=self.config.model)
         if obs is None:
@@ -1391,9 +1971,17 @@ class ReactAgent:
             self.state.awaiting_turns = 0
             self.state.step_confusions = 0
             self.state.last_intent = "done"
-            self._advance_instruct(self.state.resolution, step, strat)
+            self._advance_instruct(self.state.resolution, step, strat, user_input)
             return True
-        return False
+        # Classifier VETO: the classifier RAN and did NOT say "done" (waiting OR
+        # unclear) — HOLD the step unless the keyword intent is an explicit DONE
+        # ("padariau", "patikrinau"), which outranks a soft classifier read (observed:
+        # "Patikrinau, WiFi įjungtas" held as waiting slipped the resolve a turn).
+        # Unclear included: the loose any-'answer' keyword path had advanced INSTRUCT
+        # steps on garbage ("Įsitikimu, kad tai yra neturis" climbed dr_plug_pc live).
+        from .resolution import INTENT_DONE, detect_turn_intent
+
+        return detect_turn_intent(user_input) != INTENT_DONE
 
     def _detect_confirm(self, step, user_input: str | None):
         """Keyword FALLBACK detector for a CONFIRM reply — used when the classifier is off
@@ -1415,9 +2003,22 @@ class ReactAgent:
         h = self.state.hypothesis
         if h and h.get("cause") == reason and h.get("status") == "testing":
             return  # same belief, still being tested — keep its evidence
+        # The ANALYSIS fuses BOTH sides (Step 2): telemetry is the first evidence,
+        # the caller's anamnesis (when it broke / after what) the second — so the
+        # agent reasons and narrates from the full picture ("telemetrija rodo X, o
+        # klientas sako dingo po audros").
+        because = [_DIAGNOSIS_LT.get(reason, reason)]
+        s = self.state
+        if s.anamnesis_when or s.anamnesis_trigger:
+            bits = []
+            if s.anamnesis_when:
+                bits.append(f"dingo {s.anamnesis_when}")
+            if s.anamnesis_trigger:
+                bits.append(f"po: {s.anamnesis_trigger}")
+            because.append("klientas sako " + ", ".join(bits))
         self.state.hypothesis = {
             "cause": reason,
-            "because": [_DIAGNOSIS_LT.get(reason, reason)],
+            "because": because,
             "status": "testing",
             "settled_by": None,
         }
@@ -1603,6 +2204,108 @@ class ReactAgent:
             return
         # unclear -> stay on confirm_restored, re-ask
 
+    def _advance_escalate(self, r: dict, step, user_input: str | None) -> None:
+        """Deterministic OUTCOME for an ESCALATE step (Phase 3.11 B). Once the consent
+        question was posed (asked), the caller's reply decides:
+          consent  -> the ENGINE registers the ticket from STATE and closes,
+          decline  -> close WITHOUT a ticket (closed_reason='declined'),
+          unclear  -> hold; the narrator re-asks (stuck-guard still backstops).
+        The LLM only phrases — it can no longer call create_ticket itself."""
+        if not step.consent:
+            return  # auto-register step — ensure_action_done handles it on arrival
+        if not r.get("asked"):
+            return  # consent question not posed yet — narrator asks it this turn
+        from .classifier import classify_step
+        from .detectors import glosses as detector_glosses
+        from .resolution import detect_ticket_consent
+
+        label = detect_ticket_consent(user_input)
+        routed_by = "keyword"
+        # Keyword miss -> LLM classifier (same order as CONFIRM steps: the model reads
+        # messy phrasing the wordlist can't — "na jo, tebūnie", garbled STT).
+        if label is None and os.getenv("CLASSIFIER", "on").lower() != "off":
+            obs = classify_step(
+                self._last_agent_question() or str(step.hint or ""),
+                user_input or "",
+                # Meanings from knowledge/detectors.yaml (file-editable), code fallback.
+                detector_glosses("ticket_consent"),
+                model=self.config.model,
+            )
+            if obs is not None and obs.is_answer and obs.confidence >= 0.5:
+                label = obs.label
+                routed_by = "classifier"
+        self.tracer.emit(
+            "classify",
+            detector="ticket_consent",
+            step=step.id,
+            label=label,
+            is_answer=label is not None,
+            confidence=1.0 if label else 0.0,
+            text=user_input,
+            routed_by=routed_by,
+        )
+        if label == "yes":
+            self._register_ticket_from_state(step)
+            self.state.case_closed = True
+            self.state.closed_reason = "registered"
+        elif label == "no":
+            self.state.case_closed = True
+            self.state.closed_reason = "declined"
+        # unclear -> stay; the step's question is re-asked
+
+    def _register_ticket_from_state(self, step) -> None:
+        """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
+        cause from the hypothesis/verdict, actions from this call's trace — never from
+        the model's free text (which once invented an invalid ticket_type). Idempotent:
+        an existing ticket is never duplicated. Best-effort: a failure is traced and the
+        close still proceeds (the call record keeps the outcome)."""
+        s = self.state
+        if s.ticket_id or not s.customer_id:
+            return
+        cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
+        gloss = _DIAGNOSIS_LT.get(cause, cause or "nenustatyta")
+        details = f"Gedimas: {s.problem_type or 'internetas'} — {gloss}."
+        # The caller's anamnesis rides on the ticket — the human sees WHEN it broke
+        # and after what, not just the telemetry verdict (Step 2 analysis).
+        if s.anamnesis_when or s.anamnesis_trigger or s.anamnesis_raw:
+            bits = []
+            if s.anamnesis_when:
+                bits.append(f"dingo {s.anamnesis_when}")
+            if s.anamnesis_trigger:
+                bits.append(f"po: {s.anamnesis_trigger}")
+            details += f" Klientas: {', '.join(bits) if bits else s.anamnesis_raw}."
+        if step.id == "dr_register_router":
+            details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
+        # Why it was not solved (refusal / demand / not home) — recorded on the ticket
+        # so the technician knows the context (policy 2026-07-30).
+        reason_note = (s.resolution or {}).get("escalate_reason")
+        if reason_note:
+            details += f" {reason_note}"
+        # What was already TRIED and ruled out — the human taking over must not redo
+        # it (after-hours philosophy 2026-08-03: the agent attempts, a person takes
+        # over via the ticket with the full attempt history).
+        tried = list(s.failed_hypotheses) + [
+            x.get("cause") for x in s.rejected_hypotheses if x.get("cause")
+        ]
+        if tried:
+            glosses = ", ".join(_DIAGNOSIS_LT.get(c, c) for c in dict.fromkeys(tried))
+            details += f" Bandyta/atmesta: {glosses}."
+        actions = self._tools_called_this_session()
+        args = {
+            "customer_id": s.customer_id,
+            "problem_type": "technician_visit",
+            "problem_description": details,
+            "priority": "high",
+            "notes": ("Atlikta: " + ", ".join(actions)) if actions else "",
+        }
+        try:
+            self.tracer.emit("tool_call", name="create_ticket", args={"customer_id": s.customer_id})
+            obs = execute_tool("create_ticket", args)
+            self._trace_tool_result("create_ticket", obs)
+            self._update_state_from_observation("create_ticket", obs)  # sets ticket_id
+        except Exception as e:  # pragma: no cover - defensive
+            self._trace_note("register_ticket", str(e), level="error")
+
     def _goto_step(self, r: dict, next_id: str) -> None:
         """Move the strategy to `next_id`. When the step actually changes, clear the
         'asked' flag so the NEXT step (e.g. a second CONFIRM like check_cable) waits
@@ -1625,11 +2328,62 @@ class ReactAgent:
         if detect_farewell(user_input) or s.closing_turns >= 2:
             s.is_complete = True
 
+    def _maybe_close_inform(self, user_input: str | None) -> None:
+        """Deterministic close for INFORM mode (mass outage, billing, or any verdict with
+        NO troubleshooting strategy to walk). Once the caller has been informed and
+        signals they are done — a goodbye or a plain 'no more questions' — the engine
+        closes the call ITSELF and ends it on one farewell.
+
+        Without this, closing depended on the model calling close_case, which it did not:
+        the caller said goodbye repeatedly, the call stayed open, and the diagnosis node
+        re-narrated the outage every turn (observed: 'kartoja gedimą')."""
+        s = self.state
+        if s.case_closed or not s.customer_id:
+            return
+        # Farewell may close the INFORM call only after the BUSINESS is done: the
+        # identification ladder finished AND the news actually delivered. A garbled
+        # mid-ladder "Ne, mano vardas Tomas…" matched the loose farewell heuristic and
+        # HUNG UP on the caller before they ever heard the debt (observed live).
+        # An OUTAGE report counts as the news told — it is delivered the moment
+        # outage_reported flips (a different path than the billing script).
+        if self._result_pending or not (self._news_told or s.outage_reported):
+            return
+        reason = (s.diagnosis.get("network") or {}).get("reason")
+        # INFORM mode: an outage was flagged, OR we identified + diagnosed but there is no
+        # resolution strategy to walk (active_outage, billing_suspended, generic inform).
+        # A live strategy (foreign_mac, dead-router, client_side) keeps s.resolution set
+        # and is handled by the walker instead — never closed here.
+        inform_mode = s.outage_reported or (s.resolution is None and bool(s.diagnosis))
+        if not inform_mode:
+            return
+        from .resolution import detect_farewell
+
+        if detect_farewell(user_input):
+            s.case_closed = True
+            s.closed_reason = (
+                "outage" if (s.outage_reported or reason == "active_outage") else "inform"
+            )
+            s.is_complete = True  # caller already said goodbye — end on ONE farewell
+            # Observability: the close moment was invisible in the trace (this made a
+            # stuck-close analysis needlessly hard) — record it.
+            self.tracer.emit("decision", intent="inform_close", action="close", to=s.closed_reason)
+
     def _mark_step_presented(self) -> None:
         """After the agent replies while on a strategy step, record that the step's
         message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)
         has now been presented — so the caller's NEXT reply advances the walker."""
         self.state.pivoted_from = None  # the rethink has now been said — say it once
+        s = self.state
+        # Identification ladder bookkeeping: while the caller-intro question is owed,
+        # the strategy step's question was NOT asked this reply — do not mark it. Once
+        # the caller introduced themselves and the RESULT was narrated, the deferral
+        # closes (inform news counted as told).
+        if s.customer_id and self._result_pending:
+            if not s.caller_name:
+                return  # the reply asked WHO is calling — nothing else was presented
+            self._result_pending = False
+            if s.resolution is None:
+                self._news_told = True
         r = self.state.resolution
         if not r:
             return
@@ -1641,6 +2395,7 @@ class ReactAgent:
             StepKind.CONFIRM,
             StepKind.INSTRUCT,
             StepKind.ACTION,
+            StepKind.ESCALATE,  # the consent question ("ar tinka?") — Phase 3.11 B
         ):
             r["asked"] = True
 
@@ -1661,24 +2416,54 @@ class ReactAgent:
             return observation
         if not self.ensure_diagnosed():
             return observation
+        # The address was JUST confirmed (that is what triggered this diagnose) — the
+        # lookup hint still says "patvirtink adresą klientui", and the narrator obeying
+        # it re-asked the ADDRESS instead of moving on. Neutralize the stale hint.
+        obs["hint"] = "Adresas JAU patvirtintas — nebeklausk adreso."
+        # Arc v3 (2026-07-31, Andrius' variant 1): identification is SEPARATE from
+        # diagnosis — the engine has already diagnosed silently (state-only), and this
+        # ONE reply narrates the check announce AND its real result in sequence:
+        # "Patikrinsiu būseną šiuo adresu… Patikrinau: [rezultatas]." No caller-ack
+        # turn (a told-to-wait caller stays silent -> dead air), and no deferred-finding
+        # vacuum for the model to hallucinate into (observed: it invented a router
+        # story for a debtor). When async telemetry lands (Phase 5), the announce and
+        # the result naturally split into two real turns.
+        obs["message"] = (obs.get("message", "") or "").strip() + self._result_narration_tail()
+        return json.dumps(obs, ensure_ascii=False)
+
+    def _result_narration_tail(self) -> str:
+        """The narration directive once the identity has committed and the silent
+        diagnose ran. Identification LADDER (2026-07-31): if the caller-intro question
+        is still owed (WHO is calling — name + relation, for the record), ask THAT
+        first and hold the result one turn (_result_pending); otherwise narrate the
+        check announce + the REAL result in this one reply (arc v3)."""
+        from .identification import ask_caller, caller_question
+
+        if ask_caller() and not self.state.caller_name:
+            self._result_pending = True
+            return (
+                " Identifikacijos pabaiga: patikra atlikta TYLIAI, bet rezultato dar "
+                f"NESAKYK. Šiame atsakyme TIK: „{caller_question()}“ (galima trumpai "
+                "patvirtinti adresą prieš klausimą). Jokio rezultato, jokių instrukcijų."
+            )
         d = self.state.diagnosis.get("network") or {}
         gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
-        tail = f" Iškart patikrinau ryšį — DIAGNOZĖ: {gloss}."
-        r = self.state.resolution
-        if r:
-            from .resolution import get_strategy
-
-            strat = get_strategy(r.get("verdict"))
-            step = strat.step(r.get("step", "")) if strat else None
-            if step is not None and step.hint:
-                tail += f" ŠIS ŽINGSNIS: {step.hint}"
-        tail += (
-            " Tame PAČIAME atsakyme trumpai patvirtink adresą IR pasakyk radinį (ar šio "
-            "žingsnio klausimą). NEklausk apie įrenginius savo iniciatyva ir NEminėk, "
-            "kad gedimų nėra."
+        if self.state.resolution:
+            return (
+                f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
+                "tvarka: (1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) trumpai "
+                "pasakyk rezultatą ir kas tai greičiausiai yra, (3) užduok ŠIO ŽINGSNIO "
+                "klausimą (jis atlieka „ar darome?“ vaidmenį). NEkartok adreso klausimo, "
+                "NEkartok anamnezės klausimo, jokių instrukcijų sąrašo — vienas klausimas."
+            )
+        self._news_told = True  # the news goes out in THIS reply — never repeat it
+        return (
+            f" Patikra atlikta. ŽINIA: {gloss}. Šiame VIENAME atsakyme, šia tvarka: "
+            "(1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) pasakyk žinią "
+            "VIENĄ kartą trumpai (jei skola — BŪTINAI pridėk: „apmokėjus sąskaitą, "
+            "paslauga bus įjungta“), (3) paklausk „Ar dar kuo galiu padėti?“. "
+            "NEkartok adreso klausimo ir daugiau šios žinios NEBEKARTOK."
         )
-        obs["message"] = (obs.get("message", "") or "").strip() + tail
-        return json.dumps(obs, ensure_ascii=False)
 
     def _augment_tool_result(self, name: str, observation: str) -> str:
         """Deterministic post-action chaining + telemetry verification (B6 strategy).
@@ -2043,6 +2828,20 @@ class ReactAgent:
         except Exception:  # pragma: no cover - best-effort
             pass
 
+        # Address-evidence gate: only scan the turn for an address when it plausibly
+        # CONTAINS one — a digit or an address word in the utterance, or the agent just
+        # asked for the address. Without this, fuzzy street matching read an ADDRESS out
+        # of the anamnesis answer ("po AUDROS" -> "Aušros g.") and the bogus street slot
+        # blocked the phone-address offer, derailing identification (observed).
+        low = (text or "").lower()
+        has_addr_evidence = any(ch.isdigit() for ch in low) or any(
+            w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
+        )
+        if not has_addr_evidence:
+            q = (self._last_agent_question() or "").lower()
+            asked_address = any(w in q for w in ("adres", "gatv", "namo", "numer", "but"))
+            if not asked_address:
+                return  # no address in sight — do not fuzzy-match one into the slots
         try:
             from .nlu import extract_address, load_registry
             from .slots import SlotStatus
@@ -2135,9 +2934,14 @@ class ReactAgent:
         if self._session_ended:
             return
         self._session_ended = True
+        # Structured OUTCOME of the call, built DETERMINISTICALLY from state (Phase 3.10):
+        # why they called, the cause + side, what ran, resolved?/ticket, who called. Emitted
+        # for the record/reports; DB persistence to the conversations table is a follow-up.
+        summary = self._build_call_summary()
+        self.tracer.emit("call_summary", **summary)
         self.tracer.emit(
             "session_end",
-            outcome=outcome,
+            outcome=outcome or summary.get("outcome"),
             customer_id=self.state.customer_id,
             ticket_id=self.state.ticket_id,
             turn_count=self.state.turn_count,
@@ -2145,10 +2949,81 @@ class ReactAgent:
             total_tokens=self.llm_stats.total_tokens,
             total_cost=round(self.llm_stats.total_cost, 5),
         )
+        # Persist the call record to the conversations table (Phase 3.10 slice 1b).
+        # Best-effort at the seam: a DB failure must never break call teardown.
+        self._persist_call_record(summary, outcome)
         # Write a human-readable transcript next to the JSONL, if supported.
         export = getattr(self.tracer, "export_txt", None)
         if callable(export):
             export()
+
+    def _persist_call_record(self, summary: dict, outcome: str | None) -> None:
+        """Write one row to the conversations table: the structured summary + the
+        transcript, keyed by session. Sourced entirely from state; never raises."""
+        session_id = getattr(self.tracer, "session_id", None)
+        if not session_id:
+            return  # NullTracer / no session id -> nothing to key the record on
+        try:
+            from .tools import save_call_record
+
+            save_call_record(
+                session_id,
+                customer_id=self.state.customer_id,
+                messages=self.state.messages,
+                outcome=outcome or summary.get("outcome"),
+                summary=summary,
+                ticket_id=self.state.ticket_id,
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            self._trace_note("persist_call_record", f"failed: {e}", level="warn")
+
+    def _build_call_summary(self) -> dict:
+        """The call's outcome, derived from state — the single source for the record and
+        (later) the ticket. No LLM, no new reasoning: it only reports what the engine knows.
+        `actions` come from the tool_calls in this session's trace."""
+        s = self.state
+        net = s.diagnosis.get("network") or {}
+        h = s.hypothesis or {}
+        cause = h.get("cause") or (s.resolution or {}).get("verdict") or net.get("reason")
+        return {
+            "purpose": s.problem_type,
+            "customer_id": s.customer_id,
+            "address": s.customer_address,
+            "caller_name": s.caller_name,
+            "caller_relation": s.caller_relation,
+            "anamnesis": (
+                {"raw": s.anamnesis_raw, "when": s.anamnesis_when, "trigger": s.anamnesis_trigger}
+                if s.anamnesis_raw
+                else None
+            ),
+            "cause": cause,
+            "side": net.get("side"),  # provider | customer | unclear
+            "outcome": s.closed_reason,  # resolved | outage | declined | escalated | None
+            "resolved": s.closed_reason == "resolved",
+            "ticket_id": s.ticket_id,
+            "actions": self._tools_called_this_session(),
+        }
+
+    def _tools_called_this_session(self) -> list[str]:
+        """Tool names actually executed this call, read from the session's own trace
+        (single source of truth; append-only, safe to read at end)."""
+        path = getattr(self.tracer, "path", None)
+        if not path:
+            return []
+        seen: list[str] = []
+        try:
+            import json as _json
+            from pathlib import Path as _Path
+
+            for line in _Path(path).read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                e = _json.loads(line)
+                if e.get("type") == "tool_call" and e.get("name") and e["name"] not in seen:
+                    seen.append(e["name"])
+        except Exception:  # pragma: no cover - best-effort; the summary still emits
+            pass
+        return seen
 
     def _execute_tool_calls(self, message: Any) -> list[dict]:
         """Echo the assistant tool-call message, run each tool through the gate,
@@ -2256,12 +3131,20 @@ class ReactAgent:
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
+            self._pre_turn_guards(user_input)
 
         # Deterministic backstop (before the LLM, so it works with streaming) once a
         # genuine repeat loop has escalated.
         backstop = self._stuck_backstop()
         if backstop is not None:
             yield self._apply_backstop(backstop)
+            return
+
+        # Scripted identification-ladder reply (engine-composed, LLM skipped) — the
+        # mechanical turns only; off-script turns fall through to the LLM.
+        scripted = self._identification_scripted_reply(user_input)
+        if scripted is not None:
+            yield self._emit_scripted_reply(scripted)
             return
 
         max_calls = self.config.max_tool_calls_per_response
@@ -2490,11 +3373,17 @@ class ReactAgent:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
             self._prefill_slots_from_text(user_input)
+            self._pre_turn_guards(user_input)
 
         # Deterministic backstop before the LLM, once a genuine repeat loop escalated.
         backstop = self._stuck_backstop()
         if backstop is not None:
             return self._apply_backstop(backstop)
+
+        # Scripted identification-ladder reply (engine-composed, LLM skipped).
+        scripted = self._identification_scripted_reply(user_input)
+        if scripted is not None:
+            return self._emit_scripted_reply(scripted)
 
         # Normal LLM flow
         max_calls = max_tool_calls or self.config.max_tool_calls_per_response
@@ -2599,6 +3488,126 @@ class ReactAgent:
         if is_q:
             self.state.last_question = reply
         self.tracer.emit("stuck", count=self.state.stuck_count, repeated=repeat)
+
+    def _identification_scripted_reply(self, user_input: str | None) -> str | None:
+        """Deterministic identification-ladder replies (2026-07-31, IDENTIFICATION
+        ONLY): the mechanical turns are COMPOSED by the engine from the phrases in
+        identification.yaml — the LLM repeatedly reordered or skipped them (promised
+        a check without the result, relapsed into confirm rounds, skipped the caller
+        question, captured 'Taip.' as a name). An off-script caller turn (a question)
+        returns None so the LLM answers it; the ladder resumes next turn. Solving and
+        free dialogue never come here."""
+        s = self.state
+        if s.case_closed:
+            return None
+        from .identification import caller_question, offer_phone_address, phrase
+        from .resolution import is_real_question
+
+        # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
+        if self._end_confirm_pending:
+            return phrase("confirm_end")
+        if user_input and is_real_question(user_input):
+            return None  # off-script — the LLM answers; guards kept the ladder state
+        # INTAKE (not yet identified): the anamnesis question and the address
+        # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
+        # whole ladder by a turn (observed in eval).
+        if not s.customer_id:
+            p = s.profile
+            has_addr = bool(p.street.value or p.house.value)
+            if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
+                s.anamnesis_asked = True
+                return phrase("anamnesis_question")
+            if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
+                s.anamnesis_raw = user_input.strip()[:200]
+                from .nlu import extract_anamnesis
+
+                read = extract_anamnesis(s.anamnesis_raw)
+                s.anamnesis_when = read.get("when")
+                s.anamnesis_trigger = read.get("trigger")
+                self.tracer.emit(
+                    "anamnesis",
+                    text=s.anamnesis_raw,
+                    when=s.anamnesis_when,
+                    trigger=s.anamnesis_trigger,
+                )
+                c = s.phone_candidate
+                if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
+                    flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+                    return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
+                return phrase("address_ask")
+            return None
+        # WRAP-UP after the news (inform mode): the business is DONE — any further
+        # turn that is not a question/wants-more wraps up DETERMINISTICALLY. Garbled
+        # goodbyes ("Nusigaro" = "viso gero") had the model loop "nesupratau,
+        # pakartokite" after a delivered debt notice (observed live: the caller could
+        # not end the call).
+        if (
+            s.resolution is None
+            and (self._news_told or s.outage_reported)
+            and not self._result_pending
+        ):
+            low = (user_input or "").lower()
+            wants_more = any(
+                m in low
+                for m in (
+                    "klausim",
+                    "palauk",
+                    "dar ",
+                    "noriu",
+                    "minut",
+                    "sekund",
+                    "o kod",
+                    "o kiek",
+                )
+            )
+            if wants_more:
+                return None  # they want something else — the LLM handles it
+            s.case_closed = True
+            s.closed_reason = "outage" if s.outage_reported else "inform"
+            s.is_complete = True
+            self.tracer.emit("decision", intent="wrap_up", action="close", to=s.closed_reason)
+            return phrase("goodbye")
+        if not self._result_pending:
+            return None
+        if not s.caller_name:
+            # The caller-intro question turn (with the address echo on a fresh commit).
+            parts = []
+            if self._just_identified and s.customer_address:
+                parts.append(phrase("echo_address", adresas=s.customer_address))
+            self._just_identified = False
+            parts.append(caller_question())
+            return " ".join(p for p in parts if p)
+        # The caller introduced themselves — deliver the deferred result. INFORM
+        # verdicts are fully mechanical; a strategy result (finding + step question)
+        # stays with the LLM (returns None; the REZULTATO facts directive drives it).
+        if s.resolution is not None:
+            return None
+        d = s.diagnosis.get("network") or {}
+        reason = d.get("reason")
+        zinia = _DIAGNOSIS_LT.get(reason, reason or "")
+        if not zinia:
+            return None
+        zinia = zinia[0].upper() + zinia[1:]  # sentence-cased after "…iki jūsų buto."
+        bits = [phrase("thanks"), phrase("check_result", zinia=zinia + ".")]
+        if reason == "billing_suspended":
+            bits.append(phrase("billing_extra"))
+        # Outage news carries the ETA when the preflight knows it.
+        if reason == "active_outage" and (s.preflight_outage or {}).get("eta"):
+            bits.append(f"Numatomas atstatymas iki {s.preflight_outage['eta']}.")
+        bits.append(phrase("anything_else"))
+        self._result_pending = False
+        self._news_told = True
+        return " ".join(b for b in bits if b)
+
+    def _emit_scripted_reply(self, text: str) -> str:
+        """Bookkeeping for an engine-composed reply (mirrors _apply_backstop)."""
+        self.state.messages.append({"role": "assistant", "content": text})
+        if self._is_question(text):
+            self.state.last_question = text
+        self._emit_case()
+        self.tracer.emit("scripted", where="identification")
+        self.tracer.emit("agent_reply", text=text)
+        return text
 
     def _apply_backstop(self, backstop: tuple[str, bool]) -> str:
         """Emit a deterministic backstop reply (manages the counter itself so a

@@ -1,6 +1,4 @@
-<<include: partials/style>>
-
-<<include: partials/consultation>>
+<<include: partials/style_core>>
 
 <<include: partials/region>>
 

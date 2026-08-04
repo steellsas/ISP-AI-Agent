@@ -67,6 +67,11 @@ class Step:
     # INSTRUCT/ACTION only: explicit next step (overrides fall-through), so two
     # instruct chains can converge on the same verify step.
     goto: str = ""
+    # ESCALATE only: ask the caller's consent before registering (default). False =
+    # the registration is a NECESSITY, not an offer (e.g. dr_register_router after a
+    # working bridge — the router IS dead): the engine registers on arrival and the
+    # narrator only ANNOUNCES it ("užregistravau, kolegos susisieks ir paaiškins").
+    consent: bool = True
 
 
 @dataclass(frozen=True)
@@ -174,7 +179,8 @@ _FOREIGN_MAC = Strategy(
                 "The engine binds the device silently — you do NOT call the tool. "
                 "Announce it naturally: 'Dabar pririšiu jūsų naujai matomą įrenginį — "
                 "turėtų atsirasti internetas. Palaukite akimirką.' Do NOT ask yet "
-                "whether it works — that is the next step."
+                "whether it works — that is the next step. (The anamnesis question was "
+                "already asked at the START of the call — do not repeat it here.)"
             ),
         ),
         Step(
@@ -209,7 +215,7 @@ _FOREIGN_MAC = Strategy(
         Step(
             id="escalate",
             kind=StepKind.ESCALATE,
-            tools=frozenset({"create_ticket"}),
+            tools=frozenset(),  # engine registers the ticket (Phase 3.11 B), not the model
             hint=(
                 "Binding did not restore the line (or the in-home checks did not help). "
                 "Register the fault for a technician check ('gedimo registracija') — a "
@@ -228,6 +234,10 @@ _CLIENT_SIDE = Strategy(
     verdict="healthy_to_router",
     rag_doc="troubleshooting/kliento_puse_internetas",
     steps=(
+        # Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
+        # "tik viename" (device unnamed), or straight "telefone neveikia". Each gets its
+        # OWN route, so the classifier never has to guess a device from "tik viename"
+        # (observed: it guessed "computer" and the agent asked a phone user about cables).
         Step(
             id="cs_scope",
             kind=StepKind.CONFIRM,
@@ -236,11 +246,53 @@ _CLIENT_SIDE = Strategy(
             hint=(
                 "Ask ONE short question and WAIT: does it fail on all devices or just "
                 "one? Do NOT reflect or guess their answer — never say 'girdžiu, "
-                "visuose' or 'telefone' until THEY said it. If they say just ONE device "
-                "but do not name it, ask WHICH device ('Kuriame įrenginyje?') — never "
-                "assume a computer. If the answer was unclear, ask the same again."
+                "visuose' or 'telefone' until THEY said it. If the answer was unclear, "
+                "ask the same again."
             ),
-            on={"all": "cs_reboot", "phone": "cs_wifi", "computer": "cs_conn"},
+            on={
+                "all": "cs_reboot",
+                "one": "cs_which",  # said ONE but did not name it -> ask which
+                "phone": "cs_cross_phone",  # named the device outright -> cross-check scope
+                "computer": "cs_cross_computer",
+            },
+        ),
+        Step(
+            id="cs_which",
+            kind=StepKind.CONFIRM,
+            detector="scope",
+            rag_section=0,
+            hint=(
+                "They said only ONE device is down but did not name it. Ask WHICH device "
+                "('Kuriame įrenginyje — telefone, kompiuteryje?') and WAIT. Never assume."
+            ),
+            on={"phone": "cs_wifi", "computer": "cs_conn"},
+        ),
+        # The caller NAMED a device before the scope was known ("telefone nėra
+        # interneto"). Cross-check whether the others work — if everything is down it is
+        # the router path, not a device-specific one.
+        Step(
+            id="cs_cross_phone",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=0,
+            hint=(
+                "They said the PHONE has no internet. Cross-check ONE thing: do the "
+                "other home devices have internet? If others work -> the fault is on the "
+                "phone; if others are down too -> whole-home path."
+            ),
+            on={"yes": "cs_wifi", "no": "cs_reboot"},
+        ),
+        Step(
+            id="cs_cross_computer",
+            kind=StepKind.CONFIRM,
+            detector="restored",
+            rag_section=0,
+            hint=(
+                "They said the COMPUTER has no internet. Cross-check ONE thing: do the "
+                "other home devices have internet? If others work -> the fault is on the "
+                "computer; if others are down too -> whole-home path."
+            ),
+            on={"yes": "cs_conn", "no": "cs_reboot"},
         ),
         Step(
             id="cs_reboot",
@@ -324,7 +376,7 @@ _CLIENT_SIDE = Strategy(
         Step(
             id="escalate",
             kind=StepKind.ESCALATE,
-            tools=frozenset({"create_ticket"}),
+            tools=frozenset(),  # engine registers the ticket (Phase 3.11 B), not the model
             hint=(
                 "The simple self-service steps did not help — the fault is deeper "
                 "(router/DNS/config/device). Register it ('gedimo registracija'); a "
@@ -438,10 +490,11 @@ _DEAD_ROUTER = Strategy(
             rag_section=5,  # "### Žingsnis 4b: Įkišti į kompiuterį"
             goto="dr_see_device",
             hint=(
-                "ONE instruction, then wait: plug that cable into the computer's network "
+                "ONE instruction, then wait: plug that cable into the COMPUTER's network "
                 "socket (the one the same plug fits, on the back/side) until it clicks, "
-                "and say when done. If they say it does not fit or they cannot find it, "
-                "help with WHERE to look — do not move on."
+                "and say when done. NEVER say to plug it back into the router — the whole "
+                "point is bypassing the dead router. If they say it does not fit or they "
+                "cannot find it, help with WHERE to look — do not move on."
             ),
         ),
         Step(
@@ -483,18 +536,20 @@ _DEAD_ROUTER = Strategy(
         Step(
             id="dr_register_router",
             kind=StepKind.ESCALATE,
-            tools=frozenset({"create_ticket"}),
+            tools=frozenset(),  # engine registers the ticket (Phase 3.11 B), not the model
+            consent=False,  # a necessity, not an offer — the engine registers on arrival
             hint=(
-                "The bridge works, but their router is dead. Register that ('gedimo "
-                "registracija' — sugedęs routeris, reikia keisti), tell them colleagues "
-                "will be in touch, and that once they have a new router they should call "
-                "so we bind it and the whole home works again."
+                "The bridge works, but their router is dead. The ENGINE has ALREADY "
+                "registered the fault — ANNOUNCE it, do not ask permission: "
+                "'Užregistravau gedimą dėl sugedusio routerio — kolegos susisieks ir "
+                "detaliau paaiškins.' Add that the internet works on this computer for "
+                "now, and once they have a new router they should call so we bind it."
             ),
         ),
         Step(
             id="escalate",
             kind=StepKind.ESCALATE,
-            tools=frozenset({"create_ticket"}),
+            tools=frozenset(),  # engine registers the ticket (Phase 3.11 B), not the model
             hint=(
                 "The bridge is not possible (no computer / cannot connect) or it did not "
                 "help. Register the fault ('gedimo registracija') and explain they will "
@@ -534,7 +589,8 @@ def build_linear_strategy(verdict: str, rag_doc: str, n_steps: int) -> Strategy:
             on={"yes": "resolve", "no": "escalate"},
         )
     )
-    steps.append(Step(id="escalate", kind=StepKind.ESCALATE, tools=frozenset({"create_ticket"})))
+    # Engine registers the ticket (Phase 3.11 B), not the model — no tool exposed.
+    steps.append(Step(id="escalate", kind=StepKind.ESCALATE, tools=frozenset()))
     return Strategy(verdict=verdict, rag_doc=rag_doc, steps=tuple(steps))
 
 
@@ -679,6 +735,8 @@ _TV_RE = re.compile(r"\btv\b")
 _ONE_COMPUTER = ("kompiuter", "kompas", "nešiojam", "nesiojam", "laptop", "stacionar")
 _ONE_MARK = ("tik ", "viename", "vienam", "vien ", "tik vien")
 _ALL_MARK = ("visuose", "visur", "visuos", "visi ", "visų", "nei viename", "niekur")
+# "one device, unnamed" — routes to the WHICH-device step (cs_which), never a guess.
+_ONE_MARK = ("viename", "vienam", "tik vien", "viena")
 
 
 def detect_scope(text: str | None) -> str | None:
@@ -694,8 +752,12 @@ def detect_scope(text: str | None) -> str | None:
         return "computer"
     if any(m in low for m in _ALL_MARK):
         return "all"
-    # "tik viename" without naming the device: do NOT guess (guessing "computer" made
-    # the agent ask a phone user about cables). Stay and ask WHICH device.
+    # "tik viename" WITHOUT naming the device: scope answered, device not — route to
+    # the WHICH-device step ('one'), never guess a device (guessing "computer" once
+    # made the agent ask a phone user about cables). Checked AFTER _ALL_MARK so "nei
+    # viename" (= none work = all down) is not misread as one.
+    if any(m in low for m in _ONE_MARK):
+        return "one"
     return None
 
 
@@ -855,9 +917,10 @@ DETECTOR_GLOSSES: dict[str, dict[str, str]] = {
         "no": "internetas vis dar neveikia",
     },
     "scope": {
-        "all": "neveikia visuose namų įrenginiuose",
-        "phone": "neveikia tik telefone ar planšetėje",
-        "computer": "neveikia tik kompiuteryje",
+        "all": "sako, kad internetas neveikia VISUOSE įrenginiuose",
+        "one": "sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame",
+        "phone": "AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')",
+        "computer": "AIŠKIAI įvardija kompiuterį ar nešiojamą",
     },
     "conn": {
         "wifi": "įrenginys jungiasi per WiFi (bevielį)",
@@ -888,8 +951,15 @@ _FAREWELL = (
     "pakaks",
     "ne ačiū",
     "nebereikia",
-    "iki",
-    "ate",
+    # NOTE: "iki" and "ate" are NOT in this substring list — they hide inside
+    # "neveIKIa"/"ATEina"; detect_farewell checks them as whole words instead.
+    # STT garbles of "viso gero / viso labo" heard in live calls — a farewell must
+    # still close the call when whisper mangles the vowels.
+    "visą gerą",
+    "visa gera",
+    "visą gera",
+    "viso gera",
+    "visai ger",  # "Ne visai gero" = garbled "ne, viso gero" (observed live)
 )
 
 
@@ -1004,17 +1074,218 @@ def detect_confusion(text: str | None) -> bool:
     return any(m in low for m in _CONFUSED)
 
 
-def detect_farewell(text: str | None) -> bool:
-    """True when, after the case is closed, the caller signals they are done — a
-    goodbye or a plain 'no' to 'anything else?'. Used to end the call so the agent
-    does not loop goodbyes. A 'no' that carries a new question/topic does NOT count."""
+# Ticket-registration consent (Phase 3.11 B): the ESCALATE step asks "užregistruosiu
+# gedimą — ar tinka?" and the ENGINE registers on consent. Vocabulary differs from the
+# device-change confirm (tinka/gerai/sutinku vs keičiau), so it needs its own reader.
+_CONSENT_YES = (
+    "taip",
+    "tinka",
+    "gerai",
+    "sutinku",
+    "sutariam",
+    "sutinkam",
+    "jo",
+    "aha",
+    "mhm",
+    "registruok",
+    "užregistruok",
+    "uzregistruok",
+    "darykit",
+    "darykite",
+    "lauksiu",  # "lauksiu skambučio" = expects the registration — consent, not decline
+    "lauksim",
+)
+_CONSENT_NO = (
+    "nenoriu",
+    "nereikia",
+    "atsisak",
+    "neregistruok",
+    "nedarykit",
+    "ne ačiū",
+    "ne aciu",
+)
+
+
+def detect_address_confirm(text: str | None) -> str | None:
+    """Read the reply to an address OFFER ("Ar skambinate dėl X?") without trusting a
+    bare leading "taip": 'yes' only when the confirmation is CLEAN, 'no' when they
+    deny / name another address, None when mixed or garbled (-> re-ask, never commit).
+
+    Live bug this guards: STT turned "ne, 60-7" into "Taip, nebija" — the model saw
+    "Taip…" and committed the WRONG apartment. Problem words ("neveikia", "nėra
+    interneto") are not denials; any OTHER "ne-" token alongside a "taip" is."""
+    if not text or not text.strip():
+        return None
+    low = text.lower()
+    if any(m in low for m in _ADDR_NO):
+        return "no"
+    ne_tokens = [
+        t
+        for t in re.findall(r"\bne\w*", low)
+        # the PROBLEM being negated is not an address denial:
+        if not t.startswith(
+            ("neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber")
+        )
+    ]
+    has_yes = any(
+        m in low for m in ("taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo")
+    )
+    if ne_tokens:
+        return "no" if not has_yes else None  # mixed "taip…ne…" garble -> re-ask
+    return "yes" if has_yes else None
+
+
+_ADDR_NO = (
+    "ne dėl",
+    "ne del",
+    "ne tas adres",
+    "ne to adres",
+    "ne tuo adres",
+    "kitas adres",
+    "kito adres",
+    "kitu adres",
+    "kitas butas",
+    "kito buto",
+    "kitam bute",
+    "ne šit",
+    "ne sit",
+)
+
+
+def detect_address_correction(text: str | None) -> bool:
+    """True when an ALREADY-identified caller says they are calling about a different
+    address ("tai ne dėl to adreso skambinu", "kitas butas") — the engine must reopen
+    identification instead of carrying on about the wrong account (observed live)."""
     if not text:
         return False
     low = text.lower()
-    if any(m in low for m in _FAREWELL):
+    return any(m in low for m in _ADDR_NO)
+
+
+# Refusal to troubleshoot / explicit demand for a registration. Either way the
+# troubleshooting ENDS in a registration (policy 2026-07-30): a clear DEMAND registers
+# immediately (the demand IS the consent); a softer refusal routes to the escalate
+# step whose consent question doubles as the polite clarification.
+_TICKET_DEMAND = (
+    "registruok",
+    "įregistruok",
+    "iregistruok",
+    "užregistruok",
+    "uzregistruok",
+    "iškviesk",
+    "iskviesk",
+    "kvieskit",
+    "atsiųsk technik",
+    "atsiusk technik",
+    "tegul atvažiuoj",
+    "tegul atvaziuoj",
+)
+_TICKET_REFUSE = (
+    "nedarysiu",
+    "nedarysim",
+    "nenoriu daryti",
+    "nenoriu tikrinti",
+    "nenoriu nieko",
+    "neturiu laiko",
+    "nesu namuose",
+    "ne namuose",  # "nepatogu, ne namuose" (observed live — must offer registration)
+    "nebūsiu nam",
+    "nebusiu nam",
+    "ne namie",
+    "negaliu dabar",
+    "nenam",  # STT garbles of "nedarysiu / ne namie" ("nenamosiu")
+)
+
+
+def detect_refuse_or_ticket(text: str | None) -> str | None:
+    """'demand' (register it, now) / 'refuse' (won't troubleshoot) / None."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _TICKET_DEMAND):
+        return "demand"
+    if any(m in low for m in _TICKET_REFUSE):
+        return "refuse"
+    return None
+
+
+_PLUGGED = ("įkišau", "ikisau", "prijungiau", "pajungiau", "įjungiau", "ijungiau", "sujungiau")
+
+
+def detect_plugged(text: str | None) -> bool:
+    """True when the caller reports a COMPLETED plug-in ("įkišau į kompiuterį") — the
+    discipline gate for a bind: the change runs only after the client actually did
+    the work (and thereby agreed to it), never on the solver's anticipation."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _PLUGGED)
+
+
+def detect_ticket_consent(text: str | None) -> str | None:
+    """'yes' / 'no' / None from the caller's reply to "užregistruosiu gedimą — ar
+    tinka?". Denials win; a bare "ne" is a decline; anything unclear returns None so
+    the step holds and re-asks instead of registering on a garble."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _CONSENT_NO):
+        return "no"
+    if re.search(r"\bne\b", low):
+        return "no"
+    if any(m in low for m in _CONSENT_YES):
+        return "yes"
+    return None
+
+
+def detect_farewell(text: str | None) -> bool:
+    """True when, after the case is closed, the caller signals they are done — a
+    goodbye or a plain 'no' to 'anything else?'. Used to end the call so the agent
+    does not loop goodbyes. A 'no' that carries a new question/topic does NOT count.
+    The bare-"ne"/"viskas" fallback fires only on SHORT utterances (<=3 words): a long
+    sentence containing "ne" is content, not a goodbye ("Ne, mano vardas Tomas, aš
+    esu kaimynas" was read as a farewell and hung up on the caller — observed live)."""
+    if not text:
+        return False
+    low = text.lower()
+    tokens = {t.strip(".,!?…") for t in low.split()}
+    # "iki"/"ate" must match as WHOLE WORDS — as substrings they hide inside
+    # "neveIKIa" / "ATEina" and read a fault report as a goodbye (caught by tests
+    # the moment farewell started being checked on every turn).
+    if any(m in low for m in _FAREWELL) or tokens & {"iki", "ate"}:
         return True
-    has_followup = any(w in low for w in ("klausim", "dar ", "bet ", "problem", "taip"))
-    return not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)
+    has_followup = any(
+        w in low
+        for w in ("klausim", "dar ", "bet ", "problem", "taip", "tęs", "tes", "toliau", "nebaik")
+    )
+    short = len(low.split()) <= 3
+    return short and not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)
+
+
+# Bare backchannels / one-letter STT crumbs — acknowledgement noises, NOT answers.
+# Treating them as answers advanced steps through garbage (observed: "T." was read
+# as "yes, I have a computer"; "Mhm." advanced two INSTRUCT steps).
+_BACKCHANNEL = frozenset({"mhm", "aha", "m", "t", "hm", "mm", "nu", "na", "e", "a"})
+
+
+def is_backchannel(text: str | None) -> bool:
+    """True for a bare acknowledgement noise / one-letter crumb — hold, don't route."""
+    if not text:
+        return False
+    tokens = [t.strip(".,!?…") for t in text.lower().split()]
+    tokens = [t for t in tokens if t]
+    return bool(tokens) and all(t in _BACKCHANNEL for t in tokens)
+
+
+def is_real_question(text: str | None) -> bool:
+    """A QUESTION by its words, not by punctuation — STT sticks '?' onto rising
+    intonation ("Tomas?"), which is not the caller asking us something."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _QUESTION) or any(
+        low.startswith(w) for w in ("kas ", "kaip ", "kam ", "kodėl", "kodel", "negi")
+    )
 
 
 def get_strategy(verdict: str | None) -> Strategy | None:

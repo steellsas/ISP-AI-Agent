@@ -151,10 +151,19 @@ class JsonlFileTracer:
                     elif t == "agent_reply":
                         lines.append(f"AGENT: {e.get('text')}")
                     elif t == "nlu":
+                        # Only render when something was actually extracted — an
+                        # all-None line every turn was ~40% noise in the transcript.
+                        # The JSONL keeps every event either way.
+                        if any(e.get(k) for k in ("street", "house", "apartment", "city")):
+                            lines.append(
+                                f"   . nlu problem={e.get('problem')} street={e.get('street')} "
+                                f"house={e.get('house')} apt={e.get('apartment')} "
+                                f"city={e.get('city')} conf={e.get('confidence')}"
+                            )
+                    elif t == "rag":
                         lines.append(
-                            f"   . nlu problem={e.get('problem')} street={e.get('street')} "
-                            f"house={e.get('house')} apt={e.get('apartment')} "
-                            f"city={e.get('city')} conf={e.get('confidence')}"
+                            f"   # RAG {e.get('doc')} §{e.get('section')} "
+                            f'[{e.get("step")}] "{e.get("preview")}"'
                         )
                     elif t == "tool_call":
                         lines.append(f"   . tool {e.get('name')} {e.get('args')}")
@@ -243,6 +252,17 @@ class JsonlFileTracer:
                         lines.append(
                             f"   ~ asr={e.get('asr_ms')} agent={e.get('agent_ms')} "
                             f"tts={e.get('tts_ms')} total={e.get('total_ms')}ms"
+                        )
+                    elif t == "call_summary":
+                        lines.append(
+                            f"=== SUMMARY purpose={e.get('purpose')} "
+                            f"cause={e.get('cause')} side={e.get('side')} "
+                            f"outcome={e.get('outcome')} resolved={e.get('resolved')}"
+                        )
+                        lines.append(
+                            f"          customer={e.get('customer_id')} "
+                            f"caller={e.get('caller_name')} ticket={e.get('ticket_id')} "
+                            f"actions={e.get('actions')}"
                         )
                     elif t == "session_end":
                         lines.append(

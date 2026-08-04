@@ -46,6 +46,12 @@ if str(_SRC_DIR) not in sys.path:
 
 SCENARIOS_PATH = _EVAL_DIR / "scenarios.json"
 
+# Voice-length caps (Phase 3.11 A): the single longest reply and the per-scenario
+# average, in characters. ~200 chars ≈ the style rule's ~25 LT words; the max leaves
+# slack for the one-time "explain the finding" turn. Tighten as the narrator improves.
+MAX_REPLY_CHARS = 280
+AVG_REPLY_CHARS = 160
+
 
 # --- .env (LLM keys) — the harness drives the REAL model, like voice_demo ---------
 def _load_env() -> None:
@@ -220,6 +226,22 @@ def _score(scn: dict, ev: dict) -> list[tuple[str, bool, str]]:
     for tool in exp.get("tool_used", []):
         ok = tool in ev["tools_used"]
         checks.append((f"tool_used:{tool}", ok, "ran" if ok else "NOT CALLED"))
+
+    # Voice-length guard (Phase 3.11 A) — runs on EVERY scenario automatically. Voice is
+    # not chat: a paragraph is unlistenable and is also the main TTS latency cost. Caps
+    # the single longest reply and the scenario average (chars ≈ the style rule's ~25
+    # words with slack for the one-time "explain the finding" turn).
+    lens = [len(r) for r in ev["replies"] if r]
+    if lens:
+        mx, avg = max(lens), sum(lens) // len(lens)
+        ok = mx <= MAX_REPLY_CHARS and avg <= AVG_REPLY_CHARS
+        checks.append(
+            (
+                "reply_len",
+                ok,
+                f"max={mx} avg={avg} (cap max<={MAX_REPLY_CHARS} avg<={AVG_REPLY_CHARS})",
+            )
+        )
 
     return checks
 
