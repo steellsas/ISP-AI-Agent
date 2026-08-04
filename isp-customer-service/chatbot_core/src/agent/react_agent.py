@@ -1198,6 +1198,26 @@ class ReactAgent:
 
         if ask_caller() and not self.state.caller_name:
             return None  # identification ladder not finished yet
+        # Distrust-loop bailout (deterministic): the solver repeated itself or kept
+        # re-confirming ("disambiguate") turn after turn despite clear answers — the
+        # prompt rule did not hold it (observed live: 6x "patikrinkime dar kartą…";
+        # in eval: 6/8 turns of variously-worded disambiguate). The promised backstop
+        # takes over: the DETERMINISTIC WALKER resumes this direction for the rest of
+        # the call; its own guards (stuck counter, escalate) handle the endgame.
+        if getattr(self, "_drive_disabled", False):
+            return None
+        if getattr(self, "_drive_repeats", 0) >= 2:
+            self._drive_disabled = True
+            self._drive_repeats = 0
+            self._drive_last_reply = None
+            self.tracer.emit(
+                "drive_decision",
+                action="bailout_to_walker",
+                accepted=False,
+                reason="distrust loop (repeat/disambiguate streak)",
+            )
+            self._trace_note("solver_drive", "distrust loop — walker resumes", level="warn")
+            return None  # the walker takes this and every following turn
         try:
             reply = self._drive(user_input)
         except Exception as e:  # a solver failure falls back to the walker (no bookkeeping yet)
@@ -1223,10 +1243,32 @@ class ReactAgent:
         self.state.last_intent = detect_turn_intent(user_input)
         self._drive_turns = getattr(self, "_drive_turns", 0) + 1
 
+        context = self._build_solver_context(user_input)
+        # Anti-repeat nudge: last reply repeated an earlier one — tell the solver the
+        # answer is already GIVEN and it must take a DIFFERENT next step.
+        if getattr(self, "_drive_repeats", 0) >= 1:
+            context += (
+                "\nSVARBU: tavo praėjęs klausimas KARTOJOSI, o klientas jau atsakė ir "
+                "patvirtino. PRIIMK tą atsakymą kaip faktą ir ženk KITĄ žingsnį (kita "
+                "hipotezė, pasiūlymas ar registracija) — to paties NEBEKLAUSK."
+            )
         # A few internal (silent) hops are allowed — reread/pivot re-read the line — before
         # a client-facing action is forced. Hard turn cap escalates rather than looping.
         for _ in range(DEFAULT_POLICY["internal_hops_max"] + 1):
-            decision = solve(self._build_solver_context(user_input), model=self.config.model)
+            decision = solve(context, model=self.config.model)
+            # Normalize the free-form hypothesis to the ACTIVE direction before the
+            # gate: the solver words the same belief freely ("routeris sugedęs,
+            # nes…"), and the gate then blocked the direction's OWN fix as a
+            # "mutation on unmapped hypothesis" — the announced bind never ran
+            # (observed: "pririšiu" spoken, update_mac not called). Working the SAME
+            # fault in other words is not a new hypothesis; a real pivot names a
+            # DIFFERENT known cause, which stays gated.
+            if decision is not None and decision.current_hypothesis not in STRATEGIES:
+                decision = decision.model_copy(
+                    update={
+                        "current_hypothesis": (self.state.resolution or {}).get("verdict") or ""
+                    }
+                )
             conf = decision.confidence if decision else 0.0
             self._solver_low_conf = (
                 self._solver_low_conf + 1 if conf < DEFAULT_POLICY["confidence_floor"] else 0
@@ -1236,7 +1278,12 @@ class ReactAgent:
                 decision,
                 known_hypotheses=set(STRATEGIES),
                 low_conf_streak=self._solver_low_conf,
-                cycles_in_step=self._DRIVE_MAX_TURNS + 1 if forced else 0,
+                # The REAL per-question cycle count (the same-reply streak) — with a
+                # flat 0 here the gate's stuck detector was blind and the solver
+                # looped one question 6x (observed live).
+                cycles_in_step=(
+                    self._DRIVE_MAX_TURNS + 1 if forced else getattr(self, "_drive_repeats", 0)
+                ),
                 internal_hops=self._solver_internal_hops,
             )
             action = result.action
@@ -1250,6 +1297,10 @@ class ReactAgent:
                 confidence=conf,
             )
             say = (decision.narrator_instruction if decision else "").strip()
+            # Never SPEAK an instruction whose action the gate overrode — the words
+            # would promise what will not run ("pririšiu" with the bind blocked).
+            if decision is not None and not result.accepted:
+                say = ""
 
             if action in ("reread_telemetry", "pivot"):
                 self._solver_internal_hops += 1
@@ -1266,8 +1317,27 @@ class ReactAgent:
                 self.state.closed_reason = "resolved"
                 self._settle_hypothesis("confirmed", "sprendimas suveikė (solveris)")
                 return say or "Puiku, džiaugiuosi, kad sutvarkėme!"
-            # client-facing: ask / disambiguate / instruct / verify / wait
-            return say or "Atsiprašau, ar galėtumėte pakartoti?"
+            # client-facing: ask / disambiguate / instruct / verify / wait — track the
+            # DISTRUST streak so the next turn's nudge/gate/bailout see the loop:
+            # a verbatim repeat OR consecutive disambiguates (any wording) count.
+            defaults = {
+                "verify": "Patikrinkite, prašau, ar internetas jau atsirado.",
+                "wait": "Gerai, palauksiu — pasakykite, kai būsite pasiruošę.",
+            }
+            reply = say or defaults.get(action, "Atsiprašau, ar galėtumėte pakartoti?")
+            norm = " ".join(reply.lower().split())
+            repeated = norm == getattr(self, "_drive_last_reply", None)
+            re_disambiguate = (
+                action == "disambiguate"
+                and getattr(self, "_drive_last_action", None) == "disambiguate"
+            )
+            if repeated or re_disambiguate:
+                self._drive_repeats = getattr(self, "_drive_repeats", 0) + 1
+            else:
+                self._drive_repeats = 0
+            self._drive_last_reply = norm
+            self._drive_last_action = action
+            return reply
         return "Sekundėlę — patikslinkim dar kartą."
 
     def _refresh_diagnosis(self) -> None:

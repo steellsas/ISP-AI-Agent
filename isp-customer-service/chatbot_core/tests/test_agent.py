@@ -1067,3 +1067,22 @@ class TestThinkerBoundaries:
         agent = self._agent(db_connection)
         agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
         assert agent.solver_drive_turn("taip") is None
+
+
+class TestDriveRepeatBailout:
+    """The thinker asked the SAME thing twice despite answers -> deterministic
+    bailout to the registration offer (observed live: 6x verbatim loop)."""
+
+    def test_distrust_loop_hands_wheel_to_walker(self, db_connection, monkeypatch):
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.caller_name = "Andrius"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_power"}
+        agent._drive_repeats = 2  # repeat/disambiguate streak already observed
+
+        assert agent.solver_drive_turn("tikrai niekas nedega") is None  # walker resumes
+        assert agent._drive_disabled is True  # thinker benched for the rest of the call
+        assert agent.solver_drive_turn("nedega") is None  # and stays benched
