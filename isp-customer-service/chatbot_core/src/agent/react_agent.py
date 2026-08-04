@@ -1706,17 +1706,26 @@ class ReactAgent:
                 self._ticket_stage = "done"
                 return
             if self._ticket_stage == "phone":
+                from .resolution import is_backchannel
+
                 digits = re.sub(r"[^\d+]", "", user_input)
+                clean = user_input.strip().strip(" .?!,")
                 if len(re.sub(r"\D", "", digits)) >= 6:
                     s.contact_phone = digits[:20]
-                elif detect_ticket_consent(user_input) == "yes":
-                    s.contact_phone = s.caller_phone  # "tiks šis" — the number they call from
+                elif detect_ticket_consent(user_input) == "yes" or is_backchannel(user_input):
+                    # "tiks šis" / a garbled yes ("T." — STT of "Taip", observed
+                    # live as tel. on the ticket) — the number they call from.
+                    s.contact_phone = s.caller_phone
+                elif len(clean) < 4:
+                    s.contact_phone = s.caller_phone  # too short to mean anything else
                 else:
-                    s.contact_phone = user_input.strip()[:60]
+                    s.contact_phone = clean[:60]
                 self.tracer.emit("decision", intent="ticket_dialogue", action="phone_captured")
                 self._ticket_stage = "hours"
             else:
-                s.contact_hours = user_input.strip()[:80]
+                # Strip trailing STT punctuation — "Bet kada?" landed on the ticket
+                # (and in the announce) with the question mark.
+                s.contact_hours = user_input.strip().strip(" .?!,")[:80]
                 self.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
                 self._ticket_stage = "done"
             return
@@ -2418,9 +2427,9 @@ class ReactAgent:
         self._register_ticket_from_state(step)
         s.case_closed = True
         s.closed_reason = "registered" if s.ticket_id else "declined"
-        return (
-            phrase("ticket_done", nr=self._fmt_phone(s.contact_phone), val=s.contact_hours) + note
-        )
+        val = s.contact_hours
+        val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
+        return phrase("ticket_done", nr=self._fmt_phone(s.contact_phone), val=val) + note
 
     def _register_ticket_from_state(self, step) -> None:
         """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
@@ -2436,7 +2445,8 @@ class ReactAgent:
         details = f"Gedimas: {s.problem_type or 'internetas'} — {gloss}."
         need = _TICKET_NEED_LT.get(cause)
         if need:
-            details += f" Reikalinga: {need}."
+            # Sentence-cased as its own sentence — "Reikalinga: reikalingas…" doubled up.
+            details += f" {need[0].upper()}{need[1:]}."
         # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
         if s.contact_phone or s.caller_name:
             kas = s.caller_name or "skambinęs asmuo"

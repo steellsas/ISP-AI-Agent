@@ -1282,6 +1282,18 @@ class TestTicketDialogue:
         assert "+370 600 12353" in reply
         assert "bet kada" in reply
 
+    def test_garbled_yes_and_stt_punctuation_stay_off_the_ticket(self, db_connection, monkeypatch):
+        # Live: STT "T." (of "Taip") became tel. "T." and "Bet kada?" kept the "?"
+        # on the ticket and in the announce.
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._pre_turn_guards("T.")
+        assert agent.state.contact_phone == "+37060012353"  # backchannel yes -> caller-ID
+        agent._pre_turn_guards("Bet kada?")
+        assert agent.state.contact_hours == "Bet kada"
+        reply = agent._identification_scripted_reply("Bet kada?")
+        assert "skambinti galima bet kada." in reply
+
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
