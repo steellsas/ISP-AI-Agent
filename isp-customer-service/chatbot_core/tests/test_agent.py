@@ -1086,3 +1086,72 @@ class TestDriveRepeatBailout:
         assert agent.solver_drive_turn("tikrai niekas nedega") is None  # walker resumes
         assert agent._drive_disabled is True  # thinker benched for the rest of the call
         assert agent.solver_drive_turn("nedega") is None  # and stays benched
+
+
+class TestBindDiscipline:
+    """2026-08-04 (Andrius): a change runs ONLY when the client did the work and
+    agreed — the solver had the engine bind FOUR turns early, and its escalate
+    wrote a raw verdict key as the ticket and lost ticket_id from the record."""
+
+    def _driving_agent(self, monkeypatch, simulate="on"):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "SIMULATE_BRIDGE", simulate)
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.caller_name = "Andrius"
+        agent.state.anamnesis_when = "vakar"
+        agent.state.anamnesis_trigger = "audra"
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        return agent
+
+    def test_fix_deferred_until_plugged(self, db_connection, monkeypatch):
+        agent = self._driving_agent(monkeypatch)
+        reply = agent._drive_propose_fix("Pririšu dabar!", "gerai, tuoj bandysiu")
+        assert "Kai prijungsite" in reply  # no premature action, no solver promise
+        assert agent._bridge_bound is False
+
+    def test_plugged_report_binds_once(self, db_connection, monkeypatch):
+        # Tools are FAKED so the shared session DB is not mutated (a real bind here
+        # flipped CUST009 healthy and broke a later ordering-dependent graph test).
+        import json as _json
+
+        agent = self._driving_agent(monkeypatch)
+        calls = []
+
+        def fake_execute(name, args):
+            calls.append(name)
+            if name == "diagnose_connection":
+                # After the (noop) simulation the line "sees" the plugged PC.
+                reason = "foreign_mac" if "simulated" in calls else "no_mac_observed"
+                return _json.dumps({"success": True, "verdict": {"reason": reason}})
+            return _json.dumps({"success": True})
+
+        monkeypatch.setattr("agent.react_agent.execute_tool", fake_execute)
+        monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: calls.append("simulated"))
+        monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
+
+        reply = agent._drive_propose_fix("", "Įkišau į kompiuterį")
+        assert agent._bridge_bound is True
+        assert "update_mac" in calls  # the bind actually ran
+        assert "pririš" in reply.lower() or "atsirado" in reply.lower()
+        # Never twice.
+        again = agent._drive_propose_fix("", "įkišau dar kartą")
+        assert "jau pririštas" in again
+        assert calls.count("update_mac") == 1
+
+    def test_drive_escalate_uses_state_ticket(self, db_connection, monkeypatch):
+        agent = self._driving_agent(monkeypatch)
+        say = agent._drive_escalate(None)
+        assert agent.state.ticket_id  # recorded on the call, not lost
+        assert agent.state.closed_reason == "registered"
+        assert "Užregistravau" in say and "leisti" not in say  # a fact, not a request
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            details = dict(cur.fetchone())["details"]
+        assert "dingo vakar" in details and "audra" in details  # anamnesis rides along

@@ -1209,6 +1209,19 @@ def detect_refuse_or_ticket(text: str | None) -> str | None:
     return None
 
 
+_PLUGGED = ("įkišau", "ikisau", "prijungiau", "pajungiau", "įjungiau", "ijungiau", "sujungiau")
+
+
+def detect_plugged(text: str | None) -> bool:
+    """True when the caller reports a COMPLETED plug-in ("įkišau į kompiuterį") — the
+    discipline gate for a bind: the change runs only after the client actually did
+    the work (and thereby agreed to it), never on the solver's anticipation."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _PLUGGED)
+
+
 def detect_ticket_consent(text: str | None) -> str | None:
     """'yes' / 'no' / None from the caller's reply to "užregistruosiu gedimą — ar
     tinka?". Denials win; a bare "ne" is a decline; anything unclear returns None so

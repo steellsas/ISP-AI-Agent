@@ -280,6 +280,8 @@ class ReactAgent:
         # pending / the walker holds one turn after the caller decides to continue.
         self._end_confirm_pending = False
         self._resume_hold = False
+        # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
+        self._bridge_bound = False
         # INFORM arc: the news (billing/outage) was already delivered once — the JAU
         # PRANEŠTA marker stops the model re-reading it every turn.
         self._news_told = False
@@ -1309,7 +1311,7 @@ class ReactAgent:
             self._solver_internal_hops = 0
 
             if action == "propose_fix":
-                return self._drive_propose_fix(say)
+                return self._drive_propose_fix(say, user_input)
             if action == "escalate":
                 return self._drive_escalate(decision)
             if action == "close":
@@ -1346,44 +1348,95 @@ class ReactAgent:
         self.state.diagnosis.pop("network", None)
         self.ensure_diagnosed()
 
-    def _drive_propose_fix(self, say: str) -> str:
-        """Execute the bind the solver proposed (code, not the model). In the demo, reflect
-        the just-plugged device first (no-op in production / when SIMULATE_BRIDGE is off),
-        then bind + reset + re-diagnose via the existing augment path."""
+    def _drive_propose_fix(self, say: str, user_input: str | None) -> str:
+        """Execute the bind the solver proposed — under DISCIPLINE (Andrius,
+        2026-08-04): a change runs ONLY when the client actually DID the work and
+        thereby agreed to it. The solver anticipated the playbook's ending and had the
+        engine bind FOUR turns early (before the caller even said they own a computer
+        — observed live). Preconditions, in order:
+          1. the caller's CURRENT turn reports a completed plug-in ("įkišau…"), OR the
+             line already OBSERVES a device (production: it shows up on its own);
+             otherwise -> no tools, keep instructing;
+          2. never twice — a completed bind is recorded and not repeated;
+          3. after the (demo) simulation, bind only if a device is actually observed —
+             never bind blind."""
+        from .resolution import detect_plugged
+
         cid = self.state.customer_id
+        if getattr(self, "_bridge_bound", False):
+            return say or "Įrenginys jau pririštas — patikrinkite, ar internetas atsirado."
+
+        def _device_visible() -> bool:
+            # The tool's verdict envelope carries no signals — device presence is read
+            # from the REASON: "no_mac_observed" = the line still sees nothing; any
+            # other verdict (foreign_mac after the plug-in) = a device is there.
+            try:
+                d = json.loads(execute_tool("diagnose_connection", {"customer_id": cid}))
+                return ((d.get("verdict") or {}).get("reason")) != "no_mac_observed"
+            except Exception:  # pragma: no cover - best-effort read
+                return False
+
+        if not detect_plugged(user_input) and not _device_visible():
+            # The work is not done yet — the fix must WAIT for the client.
+            self.tracer.emit(
+                "drive_decision", action="fix_deferred", accepted=False, reason="not plugged yet"
+            )
+            return "Kai prijungsite kabelį prie kompiuterio, pasakykite — tada pririšiu įrenginį."
         self._simulate_bridge_connection()
+        # Bind only when the line ACTUALLY sees a device now (never blind).
+        if not _device_visible():
+            self.tracer.emit(
+                "drive_decision", action="fix_deferred", accepted=False, reason="no device observed"
+            )
+            return (
+                "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
+                "kabelis įkištas iki galo, ir pasakykite."
+            )
         try:
             obs = execute_tool("update_mac", {"customer_id": cid})
             self.tracer.emit("tool_call", name="update_mac", args={"customer_id": cid})
             self._augment_tool_result("update_mac", obs)  # chains reset_port + re-diagnose
+            self._bridge_bound = True
         except Exception as e:
             self._trace_note("drive_propose_fix", str(e), level="error")
-        return say or "Pririšau jūsų įrenginį — internetas turėtų atsirasti. Patikrinkite."
+        return (
+            say
+            or "Matau jūsų kompiuterį linijoje — pririšau. Patikrinkite, ar internetas atsirado."
+        )
 
     def _drive_escalate(self, decision) -> str:
-        """Register the fault (code) and close the case; the solver's text explains it."""
-        cid = self.state.customer_id
-        cause = (decision.current_hypothesis if decision else None) or "neišspręstas gedimas"
-        try:
-            obs = execute_tool(
-                "create_ticket",
-                {
-                    "customer_id": cid,
-                    "problem_type": "technician_visit",
-                    "problem_description": cause,
-                    "priority": "high",
-                },
+        """Register the fault and close — through the SAME state-built ticket machinery
+        as everywhere else (its ad-hoc create_ticket used to write a raw verdict key as
+        the details, lose ticket_id from the record, and then ASK permission for a
+        ticket it had already created — observed live). The announce is deterministic:
+        the ticket exists, so the words state a fact, never ask."""
+        from .resolution import get_strategy
+
+        s = self.state
+        r = s.resolution or {}
+        strat = get_strategy(r.get("verdict"))
+        # The bridge already restored internet on the PC -> this is the
+        # register-router shape (temporary bridge note rides on the ticket).
+        bridged = bool(r.get("telemetry_fixed")) or getattr(self, "_bridge_bound", False)
+        step = None
+        if strat is not None:
+            step = strat.step("dr_register_router") if bridged else strat.step("escalate")
+            if step is None:
+                step = strat.step("escalate")
+        if not r.get("escalate_reason"):
+            r["escalate_reason"] = "Sprendimas telefonu nepavyko."
+        if step is not None:
+            self._register_ticket_from_state(step)
+        s.case_closed = True
+        s.closed_reason = "registered" if s.ticket_id else "escalated"
+        # Deterministic announce — a fact, not a request for permission.
+        say = "Užregistravau gedimą — kolegos susisieks ir detaliau paaiškins."
+        if bridged:
+            say += (
+                " Internetas kol kas veiks per kompiuterį; kai turėsite naują routerį, "
+                "paskambinkite — pririšime, ir veiks visi namai."
             )
-            self.tracer.emit("tool_call", name="create_ticket", args={"customer_id": cid})
-            self._trace_tool_result("create_ticket", obs)
-        except Exception as e:
-            self._trace_note("drive_escalate", str(e), level="error")
-        self.state.case_closed = True
-        self.state.closed_reason = "escalated"
-        say = (decision.narrator_instruction if decision else "").strip()
-        return (
-            say or "Užregistravau gedimą — mūsų darbuotojas su jumis susisieks. Ačiū už kantrybę."
-        )
+        return say
 
     def _walk_resolution(self, user_input: str | None) -> None:
         """Generic step-by-step walker over the active strategy, from the caller's
@@ -1799,6 +1852,7 @@ class ReactAgent:
         self._result_pending = False
         self._end_confirm_pending = False
         self._resume_hold = False
+        self._bridge_bound = False  # a different account starts clean
         # Re-extract address parts from THIS utterance (the correction often carries
         # the new address: "ne, skambinu dėl Dainų 5").
         self._prefill_slots_from_text(user_input)
