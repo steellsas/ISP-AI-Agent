@@ -826,7 +826,7 @@ class TestIdentificationLadder:
 
         agent._pre_turn_guards("Ona, aš žmona sutartį sudariusio")
 
-        assert agent.state.caller_name == "Ona, aš žmona sutartį sudariusio"
+        assert agent.state.caller_name == "Ona"  # the NAME, not the sentence
         assert agent.state.caller_relation == "family"
         # The RESULT directive now renders (deferred news released this turn).
         facts = agent._state_facts_block()
@@ -1192,7 +1192,11 @@ class TestTicketDialogue:
         agent.state.caller_name = "Andrius"
         agent.state.caller_relation = "holder"
         agent.state.anamnesis_when = "vakar"
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.hypothesis = {
+            "cause": "no_mac_observed",
+            "status": "testing",
+            "because": ["linijoje nematomas įrenginys"],
+        }
         agent.state.resolution = {"verdict": "no_mac_observed", "step": "escalate", "asked": True}
         return agent
 
@@ -1238,3 +1242,62 @@ class TestTicketDialogue:
         assert agent.state.contact_phone == "+37060012353"
         assert agent.state.contact_hours == "bet kada"
         assert agent.state.ticket_id
+
+    def test_intro_announces_cause_once(self, db_connection, monkeypatch):
+        # The FIRST stage reply carries "Registruoju gedimą — {priežastis}"; a
+        # re-ask does not repeat the intro.
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        first = agent._identification_scripted_reply(None)
+        assert "Registruoju gedimą" in first and "maršrutizatorius" in first
+        assert "Kokiu telefono numeriu" in first
+        again = agent._ticket_stage_reply()
+        assert "Registruoju gedimą" not in again  # intro said once
+
+    def test_question_mid_dialogue_goes_to_llm_and_stage_holds(self, db_connection, monkeypatch):
+        # "Bet kada galima skambinti?" is the caller ASKING — live it was captured
+        # verbatim as the HOURS answer and landed on the ticket. It must divert to
+        # the LLM (scripted None) and the stage must not advance.
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._pre_turn_guards("taip, tiks šis")
+        assert agent._ticket_stage == "hours"
+        agent._pre_turn_guards("Tu sakė, užregistravai jau. Bet kada galima skambinti?")
+        assert agent._ticket_stage == "hours"  # held, not captured
+        assert agent.state.contact_hours is None
+        assert agent._identification_scripted_reply("Bet kada galima skambinti?") is None
+        facts = agent._state_facts_block()
+        assert facts and "TIKETO DIALOGAS" in facts and "kada patogiausia" in facts
+        # A plain answer next turn still lands.
+        agent._ticket_offscript = False
+        agent._pre_turn_guards("bet kada")
+        assert agent.state.contact_hours == "bet kada"
+
+    def test_done_announce_repeats_number_and_hours(self, db_connection, monkeypatch):
+        # "Kokiu numeriu?" was asked twice live and got a goodbye — the announce
+        # now repeats the number + hours so the question never arises.
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        reply = _complete_ticket_dialogue(agent)
+        assert "+370 600 12353" in reply
+        assert "bet kada" in reply
+
+    def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._pre_turn_guards("ne, nereikia registruoti nieko")
+        assert agent._ticket_stage == "cancelled"
+        reply = agent._identification_scripted_reply("ne, nereikia registruoti nieko")
+        assert "neregistruoju" in reply
+        assert agent.state.ticket_id is None
+        assert agent.state.case_closed and agent.state.closed_reason == "declined"
+
+    def test_escalate_arrival_starts_dialogue_even_with_consent_step(
+        self, db_connection, monkeypatch
+    ):
+        # Live 2026-08-04: arrival at a consent ESCALATE was narrated by the LLM
+        # ("užregistravau…" before anything happened). Arrival now begins the
+        # dialogue deterministically the same turn, consent step or not.
+        agent = self._agent_at_consent(monkeypatch)
+        assert agent.ensure_action_done() is True
+        assert agent._ticket_stage == "phone"

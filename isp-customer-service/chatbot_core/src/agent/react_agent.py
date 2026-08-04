@@ -134,6 +134,14 @@ _DIAGNOSIS_LT = {
     "no_port_data": "nėra prievado duomenų",
 }
 
+# WHY the ticket is needed, in the caller's words — spoken in the dialogue intro
+# ("Registruoju gedimą — reikalingas naujas maršrutizatorius.") and written on the
+# ticket. Falls back to the _DIAGNOSIS_LT gloss for causes without a need phrase.
+_TICKET_NEED_LT = {
+    "no_mac_observed": "reikalingas naujas maršrutizatorius",
+    "link_down_local": "reikia patikrinti liniją iki jūsų buto",
+}
+
 # Repeat-guard: politeness/acknowledgement words stripped before comparing two
 # questions, so "Atsiprašau, ar galėtumėte ..." matches "Ar galėtumėte ..." as a
 # verbatim re-ask instead of looking different because of the prefix.
@@ -288,6 +296,10 @@ class ReactAgent:
         # the ticket from once the dialogue completes.
         self._ticket_stage: str | None = None
         self._ticket_ctx: dict | None = None
+        # This turn's utterance is an off-script QUESTION during the dialogue
+        # ("kokiu numeriu?") — the ticket node's LLM answers it (with the pending
+        # stage question re-asked); the stage does not advance.
+        self._ticket_offscript = False
         # INFORM arc: the news (billing/outage) was already delivered once — the JAU
         # PRANEŠTA marker stops the model re-reading it every turn.
         self._news_told = False
@@ -496,6 +508,22 @@ class ReactAgent:
         """
         s = self.state
         facts: list[str] = []
+        # Ticket-dialogue off-script turn: the caller asked something instead of
+        # answering the stage question — give the LLM the answers it may need and
+        # the EXACT question to re-ask. Leads the block; nothing else competes.
+        if self._ticket_stage in ("phone", "hours"):
+            from .identification import phrase
+
+            pending = (
+                phrase("ticket_phone") if self._ticket_stage == "phone" else phrase("ticket_hours")
+            )
+            facts.append(
+                "- TIKETO DIALOGAS: registruojame gedimą (priežastis: "
+                f"{self._ticket_need()}). Skambinančiojo numeris: "
+                f"{self._fmt_phone(s.caller_phone) or 'nežinomas'}. Tiketas DAR "
+                "neužregistruotas — nesakyk „užregistravau“. Atsakyk į kliento "
+                f"klausimą VIENU sakiniu ir būtinai pakartok klausimą: „{pending}“"
+            )
         # Per-turn guards (deterministic, set in _pre_turn_guards) lead the block —
         # they override the model's own reading of the last reply.
         if getattr(self, "_addr_confirm_note", None):
@@ -988,7 +1016,12 @@ class ReactAgent:
         # kolegos susisieks ir detaliau paaiškins"). Asking permission here misread a
         # non-consent reply as a decline and the caller left WITHOUT the ticket they
         # were promised (observed live).
-        if step.kind is StepKind.ESCALATE and not step.consent:
+        # ESCALATE arrival (consented or not) begins the ticket dialogue THE SAME
+        # TURN — deterministically. Leaving the arrival to the LLM narrator had it
+        # claim "užregistravau…" before anything was registered and before the
+        # contact questions (observed live 2026-08-04). The dialogue's intro
+        # announces the registration; an explicit refusal during it still declines.
+        if step.kind is StepKind.ESCALATE:
             self._begin_ticket_dialogue(step)  # contacts first, then register+close
             return True
         if step.kind != StepKind.ACTION:
@@ -1434,15 +1467,13 @@ class ReactAgent:
         # Contacts first (2026-08-04): the dialogue collects the number + hours, then
         # _finish_ticket_dialogue registers and closes. The bridged note rides on the
         # final announce via the ctx.
-        from .identification import phrase
-
         self._begin_ticket_dialogue(step)
         if self._ticket_ctx is not None and bridged:
             self._ticket_ctx["note"] = (
                 " Internetas kol kas veiks per kompiuterį; kai turėsite naują routerį, "
                 "paskambinkite — pririšime, ir veiks visi namai."
             )
-        return phrase("ticket_phone")
+        return self._ticket_stage_reply()
 
     def _walk_resolution(self, user_input: str | None) -> None:
         """Generic step-by-step walker over the active strategy, from the caller's
@@ -1637,11 +1668,40 @@ class ReactAgent:
         if self._ticket_stage in ("phone", "hours"):
             from .resolution import detect_farewell, detect_ticket_consent
 
-            # Narrow question-escape: "kada" is an expected ANSWER word here ("bet
-            # kada"), so only unmistakably interrogative words divert to the LLM.
+            self._ticket_offscript = False
             low_q = (user_input or "").lower()
-            if any(m in low_q for m in ("kodėl", "kodel", "kiek", "kam ", "kas čia", "kas cia")):
-                return  # off-script — the LLM answers; the stage re-asks next turn
+            # A QUESTION diverts to the ticket node's LLM (it answers + re-asks the
+            # stage question) — "Bet kada galima skambinti?" was swallowed as the
+            # HOURS answer live and landed verbatim on the ticket. Bare "kada" stays
+            # an answer word ("bet kada"), so it is deliberately not in this list.
+            if any(
+                m in low_q
+                for m in (
+                    "kodėl",
+                    "kodel",
+                    "kiek",
+                    "kam ",
+                    "kas čia",
+                    "kas cia",
+                    "kokiu",
+                    "koks ",
+                    "kokia ",
+                    "galima",
+                    "ar ",
+                )
+            ):
+                self._ticket_offscript = True
+                self.tracer.emit("decision", intent="ticket_dialogue", action="question")
+                return
+            # Explicit "do not register" cancels the dialogue (their call, their
+            # choice) — the scripted reply closes with a goodbye.
+            if any(
+                m in low_q
+                for m in ("neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk")
+            ):
+                self._ticket_stage = "cancelled"
+                self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                return
             if detect_farewell(user_input):
                 self._ticket_stage = "done"
                 return
@@ -1737,7 +1797,11 @@ class ReactAgent:
                     s.caller_name = "nenurodyta"
                     s.caller_relation = "unknown"
                 else:
-                    s.caller_name = user_input.strip()[:120]
+                    # The bare NAME, not the sentence — "Taip. Mano vardas Andrius.
+                    # Taip, aš sutartį sudaręs asmuo." went on the ticket verbatim.
+                    from .identification import extract_caller_name
+
+                    s.caller_name = extract_caller_name(user_input) or user_input.strip()[:120]
                     s.caller_relation = detect_caller_relation(user_input)
                 self.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
             return
@@ -2298,8 +2362,48 @@ class ReactAgent:
         self._ticket_stage = "phone"
         self.tracer.emit("decision", intent="ticket_dialogue", action="start")
 
+    def _ticket_need(self) -> str:
+        """Human wording of WHY the ticket is needed ("reikalingas naujas
+        maršrutizatorius"), for the intro announce and the ticket itself — never
+        the raw verdict key."""
+        s = self.state
+        cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
+        need = _TICKET_NEED_LT.get(cause)
+        if need:
+            return need
+        return _DIAGNOSIS_LT.get(cause, cause or "reikalinga specialisto pagalba")
+
+    def _ticket_stage_reply(self) -> str:
+        """The scripted reply for the CURRENT dialogue stage. The first phone ask
+        carries the intro ("Registruoju gedimą — {priežastis}."), so the caller
+        hears WHAT is being registered before the contact questions."""
+        from .identification import phrase
+
+        if self._ticket_stage == "hours":
+            return phrase("ticket_hours")
+        ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+        parts = []
+        if not ctx.get("intro_done"):
+            ctx["intro_done"] = True
+            parts.append(phrase("ticket_intro", priezastis=self._ticket_need()))
+        parts.append(phrase("ticket_phone"))
+        return " ".join(parts)
+
+    @staticmethod
+    def _fmt_phone(nr: str | None) -> str:
+        """Group a dialable number for TTS ("+370 600 12353"); free text passes through."""
+        raw = (nr or "").strip()
+        digits = re.sub(r"[^\d+]", "", raw)
+        if len(re.sub(r"\D", "", digits)) < 6 or digits != raw:
+            return raw
+        if digits.startswith("+370") and len(digits) == 12:
+            return f"{digits[:4]} {digits[4:7]} {digits[7:]}"
+        return digits
+
     def _finish_ticket_dialogue(self) -> str:
-        """All contacts collected (or defaulted) — register, close, announce."""
+        """All contacts collected (or defaulted) — register, close, announce. The
+        announce repeats the number and hours back, so "kokiu numeriu?" never needs
+        asking (observed live: the caller asked twice and got a goodbye)."""
         from .identification import phrase
 
         s = self.state
@@ -2314,7 +2418,9 @@ class ReactAgent:
         self._register_ticket_from_state(step)
         s.case_closed = True
         s.closed_reason = "registered" if s.ticket_id else "declined"
-        return phrase("ticket_done") + note
+        return (
+            phrase("ticket_done", nr=self._fmt_phone(s.contact_phone), val=s.contact_hours) + note
+        )
 
     def _register_ticket_from_state(self, step) -> None:
         """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
@@ -2328,6 +2434,9 @@ class ReactAgent:
         cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
         gloss = _DIAGNOSIS_LT.get(cause, cause or "nenustatyta")
         details = f"Gedimas: {s.problem_type or 'internetas'} — {gloss}."
+        need = _TICKET_NEED_LT.get(cause)
+        if need:
+            details += f" Reikalinga: {need}."
         # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
         if s.contact_phone or s.caller_name:
             kas = s.caller_name or "skambinęs asmuo"
@@ -3574,13 +3683,22 @@ class ReactAgent:
         from .identification import caller_question, offer_phone_address, phrase
         from .resolution import is_real_question
 
-        # Ticket-confirmation dialogue: contacts before every registration.
-        if self._ticket_stage == "phone":
-            return phrase("ticket_phone")
-        if self._ticket_stage == "hours":
-            return phrase("ticket_hours")
+        # Ticket-confirmation dialogue: contacts before every registration. An
+        # off-script question falls to the ticket node's LLM (facts carry the
+        # pending stage question to re-ask); the mechanical turns stay scripted.
+        if self._ticket_stage in ("phone", "hours"):
+            if self._ticket_offscript:
+                return None
+            return self._ticket_stage_reply()
         if self._ticket_stage == "done":
             return self._finish_ticket_dialogue()
+        if self._ticket_stage == "cancelled":
+            self._ticket_stage = None
+            self._ticket_ctx = None
+            s.case_closed = True
+            s.closed_reason = "declined"
+            s.is_complete = True
+            return "Gerai — gedimo neregistruoju. " + phrase("goodbye")
         # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
         if self._end_confirm_pending:
             return phrase("confirm_end")

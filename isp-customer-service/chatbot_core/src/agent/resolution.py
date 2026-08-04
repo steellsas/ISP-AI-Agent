@@ -1040,7 +1040,19 @@ _DONE = (
     "gatava",
     "viskas",
 )
-_QUESTION = ("kiek", "kodėl", "kodel", "kada", "ar galima", "o kaip", "kur ", "kuris")
+_QUESTION = (
+    "kiek",
+    "kodėl",
+    "kodel",
+    "kada",
+    "ar galima",
+    "o kaip",
+    "kur ",
+    "kuris",
+    "kokiu",
+    "koks ",
+    "kokia ",
+)
 
 
 def detect_turn_intent(text: str | None) -> str:
