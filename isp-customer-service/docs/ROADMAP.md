@@ -1070,12 +1070,70 @@ used for anamnesis; ready to lift the engine onto Phase 4/5 async infrastructure
 
 ---
 
-## Phase 4 — Service & frontend
+## Phase 4 — Service & frontend · `feat/api-service` (agreed 2026-08-04)
 
-- [ ] FastAPI app + `stream.mount(app)`; thin custom client
-- [ ] Streamlit → debug / monitoring only
+The FastAPI host is the foundation Phase 5 builds on: the engine goes behind an
+HTTP/WS boundary now, so async/telephony later change the INTERNALS, not the
+contract. Testing scope for now: ONE call at a time (multi-call is structural —
+the session registry isolates sessions — but scale, hosting and shared-resource
+limits are deliberately re-thought later; see notes below).
 
-**Done:** voice served through your own FastAPI; Streamlit latency gone.
+**PR1 — foundation (text vertical):**
+- [ ] `chatbot_core/src/app/` skeleton (per Target structure §4): FastAPI app
+      factory, pydantic-settings config
+      (model keys, DB paths, feature flags like SOLVER_DRIVE — today scattered
+      through env), `/health`, uvicorn entry, launch.json config.
+- [ ] Session manager: `session_id → AgentSession` (graph engine) registry —
+      create / get / end, TTL cleanup for forgotten sessions, a per-session lock
+      so concurrent turns on one session cannot interleave. API async from day
+      one; the engine stays sync inside (Phase 5 swaps the inside only).
+- [ ] Tracer event-bus: every event the engine already emits (`node`,
+      `tool_call/result` + ms, `rag`, `decision`, `scripted`, `llm`
+      tokens/latency, `voice_latency`) is ALSO broadcast live to WS subscribers,
+      plus a per-turn `turn_summary` JSON (node, tools, tokens, cost, latency).
+      The jsonl trace file stays the archive format — one source of truth.
+- [ ] Text dialogue API: `POST /sessions` → `{session_id, greeting}`;
+      `POST /sessions/{id}/turns {text}` → `{reply, state}` (+ SSE token
+      stream); `DELETE /sessions/{id}` → end + call record.
+- [ ] `/ws/call/{session_id}`: typed messages — JSON = events, binary = audio
+      (audio lands in PR2); events channel live from PR1.
+- [ ] Tests: httpx lifecycle, turns, event stream, N concurrent sessions
+      (structural check only).
+
+**PR2 — voice + demo dashboard v1:**
+- [ ] Audio over the same WS: browser mic → VAD/STT → turn → TTS → audio back,
+      reusing `voice_pipeline` adapters; the local voice demo becomes an API
+      client instead of in-process.
+- [ ] Call audio recording (WAV per call next to the trace jsonl) — needed for
+      the archive zone.
+- [ ] `index.html` dashboard (single page, Tailwind + Web Audio API, served by
+      FastAPI — no build step): left = live transcript (STT/TTS), right = agent
+      "brain" (active LangGraph node, tool calls with ms, active RAG section,
+      tokens + call cost USD, latency incl. TTFT, ENGINE-vs-LLM indicator per
+      turn from `scripted`/`decision` events).
+- [ ] Honest latency: half-duplex until Phase 5 (no barge-in/AEC yet); the
+      dashboard SHOWS the real STT→LLM→TTS numbers — that is the Phase 5 pitch.
+
+**PR3 — archive & analytics:**
+- [ ] Past-call list (conversations table), full trace viewer, audio playback,
+      cost summary per call, JSON export (PDF later, cosmetics).
+
+**Vision (target demo, build incrementally — not all at once):** three-zone
+screen — live conversation | agent internals | history/analytics; single
+bidirectional WS carrying audio + events; business pitch = no hallucinations
+(deterministic-engine indicator), transparent cost, latency clock, full audit
+trail.
+
+**Deferred within Phase 4 (agreed):**
+- Config page (model switching + settings) for the demo — later, after PR3.
+- Auth, DB-backed session persistence, horizontal scaling — Phase 7.
+- Multi-call SCALE: sync engine threads, shared Groq classifier rate limit
+  (30/min across all calls), SQLite write contention (WAL), local STT/TTS
+  CPU/GPU sharing (~2–3 voice calls realistically) + WHERE to host — re-think
+  as its own step alongside Phase 5 async.
+
+**Done when:** a call runs end-to-end through FastAPI (browser client), the
+brain panel streams live events, Streamlit demoted to debug-only.
 
 ---
 

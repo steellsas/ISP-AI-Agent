@@ -1,0 +1,158 @@
+"""Phase 4 PR1 — FastAPI host: session lifecycle, turns, live event stream.
+
+The LLM is mocked (same _fake_stream pattern as test_graph); the greeting is
+hardcoded in the engine so session creation needs no model at all. TestClient
+runs the app's lifespan, so the event hub gets a real loop.
+
+Run: pytest tests/test_api.py -v
+"""
+
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+
+def _fake_message(content=None, tool_calls=None):
+    return SimpleNamespace(content=content, tool_calls=tool_calls)
+
+
+def _fake_stream(content=None):
+    def _gen(**kwargs):
+        if content:
+            yield content
+        return _fake_message(content=content)
+
+    return _gen
+
+
+@pytest.fixture()
+def client(db_connection):
+    from app.main import app
+
+    with TestClient(app) as c:
+        yield c
+
+
+def _create(client, phone="+37060012353"):
+    resp = client.post("/sessions", json={"caller_phone": phone})
+    assert resp.status_code == 201
+    return resp.json()
+
+
+class TestLifecycle:
+    def test_health(self, client):
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_create_returns_greeting(self, client):
+        data = _create(client)
+        assert data["session_id"]
+        assert "Labas" in data["greeting"]
+
+    def test_unknown_session_404(self, client):
+        assert client.post("/sessions/nope/turns", json={"text": "labas"}).status_code == 404
+        assert client.delete("/sessions/nope").status_code == 404
+
+    def test_delete_ends_session(self, client):
+        sid = _create(client)["session_id"]
+        assert client.delete(f"/sessions/{sid}").json() == {"ended": True}
+        # Gone from the registry — a second delete is a 404.
+        assert client.delete(f"/sessions/{sid}").status_code == 404
+
+
+class TestTurns:
+    def test_turn_returns_reply_and_summary(self, client):
+        sid = _create(client)["session_id"]
+        with (
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="Supratau, tikrinu."),
+            ),
+            patch(
+                "agent.react_agent.get_last_call_stats",
+                return_value={"model": "gpt-4o-mini", "input_tokens": 100, "output_tokens": 20},
+            ),
+        ):
+            # An off-script question — falls through the scripted ladder to the LLM.
+            resp = client.post(
+                f"/sessions/{sid}/turns", json={"text": "O kas jūs tokie, kokia įmonė?"}
+            )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["reply"] == "Supratau, tikrinu."
+        turn = data["turn"]
+        assert turn["nodes"]  # which graph node ran
+        assert turn["latency_ms"] >= 0
+        assert turn["engine"] in ("scripted", "llm")
+
+    def test_scripted_turn_marked_engine(self, client):
+        # The anamnesis question is engine-composed — no LLM call at all.
+        sid = _create(client)["session_id"]
+        resp = client.post(f"/sessions/{sid}/turns", json={"text": "neveikia internetas"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "kada pastebėjote" in data["reply"]
+        assert data["turn"]["engine"] == "scripted"
+        assert data["turn"]["llm_calls"] == 0
+
+    def test_sessions_are_isolated(self, client):
+        a = _create(client, phone="+37060012353")["session_id"]
+        b = _create(client, phone="+37060020101")["session_id"]
+        assert a != b
+        client.post(f"/sessions/{a}/turns", json={"text": "neveikia internetas"})
+        from app.main import manager
+
+        assert manager.get(a).session.state.problem_type == "internet_down"
+        assert manager.get(b).session.state.problem_type is None
+
+
+class TestEventStream:
+    def test_ws_receives_turn_events(self, client):
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_json({"type": "turn", "text": "neveikia internetas"})
+            seen = set()
+            reply = None
+            for _ in range(40):
+                msg = ws.receive_json()
+                seen.add(msg.get("type"))
+                if msg.get("type") == "reply":
+                    reply = msg
+                # The summary may flush after the direct reply frame — read on
+                # until both arrived.
+                if reply is not None and "turn_summary" in seen:
+                    break
+            assert reply is not None and "kada pastebėjote" in reply["reply"]
+            # The brain-panel feed: engine events arrived live on the socket.
+            assert "user_turn" in seen
+            assert "turn_summary" in seen
+
+    def test_ws_unknown_session_rejected(self, client):
+        from starlette.websockets import WebSocketDisconnect as ClientDisconnect
+
+        with pytest.raises(ClientDisconnect):
+            with client.websocket_connect("/ws/call/nope") as ws:
+                ws.receive_json()
+
+
+class TestTurnSummary:
+    def test_cost_and_tokens_aggregated(self):
+        from app.sessions import build_turn_summary
+
+        events = [
+            {"type": "node", "node": "diagnosis"},
+            {"type": "tool_call", "name": "diagnose_connection"},
+            {"type": "tool_result", "name": "diagnose_connection", "ok": True, "ms": 3},
+            {"type": "llm", "model": "gpt-4o-mini", "input_tokens": 1000, "output_tokens": 100},
+            {"type": "llm", "model": "gpt-4o-mini", "input_tokens": 2000, "output_tokens": 200},
+        ]
+        s = build_turn_summary(events, wall_ms=480)
+        assert s["nodes"] == ["diagnosis"]
+        assert s["tools"] == [{"name": "diagnose_connection", "ok": True, "ms": 3}]
+        assert s["llm_calls"] == 2 and s["input_tokens"] == 3000 and s["output_tokens"] == 300
+        # 3000*0.15/1M + 300*0.60/1M
+        assert s["cost_usd"] == pytest.approx(0.00063, rel=1e-3)
+        assert s["engine"] == "llm"

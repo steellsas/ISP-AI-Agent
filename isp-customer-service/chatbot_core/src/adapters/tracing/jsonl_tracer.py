@@ -65,6 +65,12 @@ class NullTracer:
     def emit(self, event_type: str, **fields: Any) -> None:
         return None
 
+    def add_sink(self, sink) -> None:  # parity with JsonlFileTracer
+        return None
+
+    def remove_sink(self, sink) -> None:
+        return None
+
 
 class JsonlFileTracer:
     """Append-only JSONL sink, one file per conversation."""
@@ -77,6 +83,11 @@ class JsonlFileTracer:
     ):
         self.session_id = session_id
         self._redact = redact  # None -> defer to REDACT_PII env flag
+        # Live subscribers (Phase 4 event-bus): each sink gets every scrubbed
+        # event dict right after it is written. The FILE stays the archive/source
+        # of truth; sinks feed the API's WebSocket panel. Best-effort like the
+        # file write — a broken sink never interrupts the conversation.
+        self._sinks: list = []
         directory = trace_dir or _default_trace_dir()
         try:
             directory.mkdir(parents=True, exist_ok=True)
@@ -88,6 +99,14 @@ class JsonlFileTracer:
     @property
     def path(self) -> Path | None:
         return self._path
+
+    def add_sink(self, sink) -> None:
+        """Subscribe a callable(event_dict) to every event (live feed)."""
+        self._sinks.append(sink)
+
+    def remove_sink(self, sink) -> None:
+        if sink in self._sinks:
+            self._sinks.remove(sink)
 
     def emit(self, event_type: str, **fields: Any) -> None:
         if self._path is None:
@@ -110,6 +129,12 @@ class JsonlFileTracer:
                 f.write(line + "\n")
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(f"Conversation trace write failed: {e}")
+            return
+        for sink in list(self._sinks):
+            try:
+                sink(scrubbed)
+            except Exception as e:  # pragma: no cover - defensive
+                logger.warning(f"Trace sink failed: {e}")
 
     def _scrub(self, value: Any) -> Any:
         """Recursively redact phone numbers in string values."""
