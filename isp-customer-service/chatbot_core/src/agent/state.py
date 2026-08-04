@@ -93,6 +93,12 @@ class AgentState:
     anamnesis_when: str | None = None
     anamnesis_trigger: str | None = None
 
+    # Ticket-confirmation dialogue (2026-08-04): collected right before EVERY
+    # registration — the contact number is ALWAYS asked (never assumed from
+    # caller-ID/DB), plus when it is convenient to call. Ride on the ticket.
+    contact_phone: str | None = None
+    contact_hours: str | None = None
+
     # Diagnostic findings (case state), namespaced BY DOMAIN so new fault families
     # (iptv, voip…) attach additively without touching the base flow:
     #   {"network": {group, side, action, reason, signals}}

@@ -603,6 +603,13 @@ class TestDeterministicInformClose:
         assert agent.state.case_closed is False
 
 
+def _complete_ticket_dialogue(agent):
+    """Walk the 2-question contact dialogue (2026-08-04) to the registration."""
+    agent._pre_turn_guards("taip, tiks šis")
+    agent._pre_turn_guards("bet kada")
+    return agent._identification_scripted_reply("bet kada")
+
+
 class TestEscalateOutcome:
     """Phase 3.11 B: the ESCALATE step is a deterministic OUTCOME — the ENGINE
     registers the ticket from state on consent; the model no longer calls
@@ -629,6 +636,8 @@ class TestEscalateOutcome:
     def test_consent_registers_ticket_and_closes(self, db_connection, monkeypatch):
         agent = self._agent_on_escalate(monkeypatch)
         agent._walk_resolution("gerai, tinka")
+        assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
+        _complete_ticket_dialogue(agent)
         assert agent.state.ticket_id  # engine-created, from state
         assert agent.state.case_closed is True
         assert agent.state.closed_reason == "registered"
@@ -673,6 +682,8 @@ class TestAutoRegisterEscalate:
         ran = agent.ensure_action_done()
 
         assert ran is True
+        assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
+        _complete_ticket_dialogue(agent)
         assert agent.state.ticket_id
         assert agent.state.case_closed is True
         assert agent.state.closed_reason == "registered"
@@ -774,6 +785,8 @@ class TestRefuseOrTicket:
     def test_demand_registers_immediately(self, db_connection, monkeypatch):
         agent = self._agent_mid_flow(monkeypatch)
         agent._walk_resolution("Nieko nedarysiu, įregistruokit gedimą")
+        assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
+        _complete_ticket_dialogue(agent)
         assert agent.state.ticket_id
         assert agent.state.case_closed is True
         assert agent.state.closed_reason == "registered"
@@ -922,7 +935,9 @@ class TestVoiceGuardsRound5:
         reply = agent._identification_scripted_reply("viso gero")
         assert reply and "tikrai norite baigti" in reply
 
-        agent._pre_turn_guards("taip, baikim")  # confirmed -> outcome: registration
+        agent._pre_turn_guards("taip, baikim")  # confirmed -> contacts, then registration
+        assert agent._ticket_stage == "phone"
+        _complete_ticket_dialogue(agent)
         assert agent.state.case_closed is True
         assert agent.state.closed_reason == "registered"
         assert agent.state.ticket_id
@@ -983,7 +998,8 @@ class TestAnalysisStep2:
         agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
         agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_register_router"}
 
-        agent.ensure_action_done()  # consent-free registration on arrival
+        agent.ensure_action_done()  # consent-free: contacts dialogue on arrival
+        _complete_ticket_dialogue(agent)
 
         assert agent.state.ticket_id
         import sqlite3
@@ -1147,7 +1163,9 @@ class TestBindDiscipline:
 
     def test_drive_escalate_uses_state_ticket(self, db_connection, monkeypatch):
         agent = self._driving_agent(monkeypatch)
-        say = agent._drive_escalate(None)
+        q1 = agent._drive_escalate(None)
+        assert "Kokiu telefono numeriu" in q1  # contacts dialogue first (2026-08-04)
+        say = _complete_ticket_dialogue(agent)
         assert agent.state.ticket_id  # recorded on the call, not lost
         assert agent.state.closed_reason == "registered"
         assert "Užregistravau" in say and "leisti" not in say  # a fact, not a request
@@ -1155,3 +1173,68 @@ class TestBindDiscipline:
             cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
             details = dict(cur.fetchone())["details"]
         assert "dingo vakar" in details and "audra" in details  # anamnesis rides along
+
+
+class TestTicketDialogue:
+    """2026-08-04: every registration first collects the contact number (ALWAYS
+    asked, never assumed from caller-ID/DB) and when to call — then registers with
+    the contacts on the ticket."""
+
+    def _agent_at_consent(self, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.caller_name = "Andrius"
+        agent.state.caller_relation = "holder"
+        agent.state.anamnesis_when = "vakar"
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "escalate", "asked": True}
+        return agent
+
+    def test_consent_starts_dialogue_not_immediate_ticket(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        agent._walk_resolution("gerai, tinka")
+        assert agent.state.ticket_id is None  # not yet — contacts first
+        assert agent._ticket_stage == "phone"
+        assert "Kokiu telefono numeriu" in agent._identification_scripted_reply("gerai, tinka")
+
+    def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        # Q1 answer: "tiks šis" -> the number they call from.
+        agent._pre_turn_guards("Taip, tiks šis numeris")
+        assert agent.state.contact_phone == "+37060012353"
+        assert agent._ticket_stage == "hours"
+        # Q2 answer -> hours; the scripted turn then registers + closes.
+        agent._pre_turn_guards("Po penkių vakare")
+        assert agent._ticket_stage == "done"
+        reply = agent._identification_scripted_reply("Po penkių vakare")
+        assert "Užregistravau" in reply
+        assert agent.state.ticket_id and agent.state.case_closed
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            details = dict(cur.fetchone())["details"]
+        assert "Andrius (holder), tel. +37060012353" in details
+        assert "skambinti: Po penkių vakare" in details
+
+    def test_dictated_number_captured(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._pre_turn_guards("Geriau skambinkit 8 612 34 567")
+        assert agent.state.contact_phone == "861234567"
+
+    def test_farewell_mid_dialogue_registers_with_defaults(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._pre_turn_guards("viso gero")  # done talking — defaults kick in
+        assert agent._ticket_stage == "done"
+        reply = agent._identification_scripted_reply("viso gero")
+        assert "Užregistravau" in reply
+        assert agent.state.contact_phone == "+37060012353"
+        assert agent.state.contact_hours == "bet kada"
+        assert agent.state.ticket_id

@@ -92,6 +92,15 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "kad kolegos su jumis susisiektų."
     ),
     "goodbye": "Ačiū, kad paskambinote. Geros dienos!",
+    "ticket_phone": (
+        "Užregistruosiu gedimą. Kokiu telefono numeriu su jumis susisiekti — ar tiks "
+        "tas, iš kurio skambinate?"
+    ),
+    "ticket_hours": "Gerai. O kada patogiausia jums skambinti?",
+    "ticket_done": (
+        "Užregistravau gedimą — kolegos susisieks nurodytu numeriu ir detaliau "
+        "paaiškins. Ar dar kuo galiu padėti?"
+    ),
 }
 
 
