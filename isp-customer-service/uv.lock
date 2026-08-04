@@ -606,6 +606,7 @@ source = { editable = "chatbot_core" }
 dependencies = [
     { name = "colorama" },
     { name = "faiss-cpu" },
+    { name = "fastapi" },
     { name = "isp-shared" },
     { name = "langchain" },
     { name = "langgraph" },
@@ -615,10 +616,12 @@ dependencies = [
     { name = "nest-asyncio" },
     { name = "numpy" },
     { name = "openai" },
+    { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "rank-bm25" },
     { name = "sentence-transformers" },
     { name = "streamlit" },
+    { name = "uvicorn" },
 ]
 
 [package.optional-dependencies]
@@ -634,6 +637,7 @@ requires-dist = [
     { name = "colorama", specifier = ">=0.4.6" },
     { name = "edge-tts", marker = "extra == 'voice'", specifier = ">=6.1.0" },
     { name = "faiss-cpu", specifier = ">=1.7.4" },
+    { name = "fastapi", specifier = ">=0.110.0" },
     { name = "faster-whisper", marker = "extra == 'voice'", specifier = ">=1.0.0" },
     { name = "fastrtc", marker = "extra == 'voice'", specifier = ">=0.0.34" },
     { name = "gtts", marker = "extra == 'voice'", specifier = ">=2.5.0" },
@@ -646,10 +650,12 @@ requires-dist = [
     { name = "nest-asyncio", specifier = ">=1.6.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "openai", specifier = ">=1.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.2.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "sentence-transformers", specifier = ">=2.2.0" },
     { name = "streamlit", specifier = ">=1.30.0" },
+    { name = "uvicorn", specifier = ">=0.29.0" },
 ]
 provides-extras = ["voice"]
 

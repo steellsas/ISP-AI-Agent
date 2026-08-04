@@ -21,6 +21,10 @@ dependencies = [
     "colorama>=0.4.6",
     "nest-asyncio>=1.6.0",
     "litellm>=1.80.5",
+    # Phase 4 API host
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+    "pydantic-settings>=2.2.0",
 ]
 
 # Voice slice (Phase 3) — heavy/optional, kept out of the core install so the
