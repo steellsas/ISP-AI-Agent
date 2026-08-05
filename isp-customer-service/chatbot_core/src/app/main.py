@@ -182,6 +182,25 @@ async def delete_session(session_id: str):
     return {"ended": True}
 
 
+@app.post("/admin/db/reset")
+async def db_reset():
+    """Demo helper: restore the seeded DB state between test calls. Refused
+    while a call is active — dropping tables under a live session would
+    corrupt it. Clearly abandoned sessions (a reloaded tab that never said
+    goodbye, idle 2+ min) are ended first so they cannot hold the reset
+    hostage until the TTL sweep."""
+    await manager.expire_idle(min_idle_seconds=120)
+    if manager.active_count:
+        raise HTTPException(status_code=409, detail="end active calls first")
+    from . import admin
+
+    try:
+        return await asyncio.to_thread(admin.reset_db)
+    except Exception:
+        logger.exception("db reset failed")
+        raise HTTPException(status_code=500, detail="db reset failed") from None
+
+
 @app.websocket("/ws/call/{session_id}")
 async def ws_call(ws: WebSocket, session_id: str):
     """One socket per call: tracer events stream OUT as JSON (their `type` field
