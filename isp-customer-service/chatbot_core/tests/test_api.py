@@ -201,6 +201,19 @@ class TestVoiceChannel:
         assert "Agento vidus" in resp.text
 
 
+class TestAdminReset:
+    def test_reset_refused_during_call_then_reseeds(self, client):
+        sid = _create(client)["session_id"]
+        # Dropping tables under a live call would corrupt it — refused.
+        assert client.post("/admin/db/reset").status_code == 409
+        client.delete(f"/sessions/{sid}")
+        resp = client.post("/admin/db/reset")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["reset"] is True
+        assert data["customers"] >= 10  # seeded state is back
+
+
 class TestTurnSummary:
     def test_cost_and_tokens_aggregated(self):
         from app.sessions import build_turn_summary

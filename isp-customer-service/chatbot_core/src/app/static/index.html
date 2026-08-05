@@ -80,6 +80,7 @@
   <label style="color:var(--dim);font-size:12px;display:flex;align-items:center;gap:4px">
     <input type="checkbox" id="voiceOn" checked> balsas
   </label>
+  <button id="dbReset" class="ghost" title="Atstatyti demo DB į pradinę būseną (tiketai, MAC, statusai)">♻️ DB</button>
   <span id="sid"></span>
 </header>
 <main>
@@ -190,37 +191,76 @@ function renderTurn(s){
 }
 
 /* ---------- call lifecycle ---------- */
-$("start").onclick = async () => {
-  const resp = await fetch("/sessions", {method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({caller_phone:$("phone").value||"unknown"})});
-  const data = await resp.json();
-  sid = data.session_id;
-  $("sid").textContent = sid;
-  ws = new WebSocket(`ws://${location.host}/ws/call/${sid}`);
-  ws.binaryType = "arraybuffer";
-  ws.onmessage = m => {
-    if(m.data instanceof ArrayBuffer){ playAudio(m.data); return; }
-    const e = JSON.parse(m.data);
-    if(e.type==="voice_turn"||e.type==="reply"||e.type==="error") return; // rendered via events
-    onEvent(e);
-  };
-  ws.onopen = () => {
-    setLive(true);
-    addMsg("agent", data.greeting);
-    if($("voiceOn").checked){
-      fetch(`/sessions/${sid}/greeting/audio`).then(r=>r.ok?r.arrayBuffer():null)
-        .then(b=>{ if(b) playAudio(b); }).catch(()=>{});
-      startMic();
-    }
-  };
-  ws.onclose = () => setLive(false);
-};
-$("stop").onclick = async () => {
-  stopMic();
-  if(sid) await fetch(`/sessions/${sid}`, {method:"DELETE"}).catch(()=>{});
-  if(ws) ws.close();
+function resetUI(){
+  $("chat").innerHTML=""; $("feed").innerHTML="";
+  $("node").textContent="—"; $("engineChip").style.display="none";
+  $("turnKv").textContent="—"; $("totals").textContent="—";
+  totals={in:0,out:0,cost:0,turns:0};
+}
+async function teardown(){
+  stopMic(); stopAudio();
+  if(ws){ ws.onclose=null; ws.onmessage=null; try{ws.close();}catch(e){} ws=null; }
+  if(sid){ const old=sid; sid=null;
+    await fetch(`/sessions/${old}`, {method:"DELETE"}).catch(()=>{}); }
+  $("sid").textContent="";
   setLive(false);
+}
+let starting=false;                          // survives teardown()'s setLive juggling
+$("start").onclick = async () => {
+  if(starting) return;                       // no double-start — one call per page
+  starting=true;
+  $("start").disabled=true;
+  try{
+    await teardown();                        // a previous call never bleeds in
+    resetUI();
+    let data;
+    try{
+      const resp = await fetch("/sessions", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({caller_phone:$("phone").value||"unknown"})});
+      data = await resp.json();
+    }catch(err){
+      addMsg("note","nepavyko sukurti sesijos: "+err.message);
+      $("start").disabled=false; return;
+    }
+    sid = data.session_id;
+    $("sid").textContent = sid;
+    ws = new WebSocket(`ws://${location.host}/ws/call/${sid}`);
+    ws.binaryType = "arraybuffer";
+    ws.onmessage = m => {
+      if(m.data instanceof ArrayBuffer){ playAudio(m.data); return; }
+      const e = JSON.parse(m.data);
+      if(e.type==="voice_turn"||e.type==="reply"||e.type==="error") return; // rendered via events
+      onEvent(e);
+    };
+    ws.onopen = () => {
+      setLive(true);
+      addMsg("agent", data.greeting);
+      if($("voiceOn").checked){
+        fetch(`/sessions/${sid}/greeting/audio`).then(r=>r.ok?r.arrayBuffer():null)
+          .then(b=>{ if(b) playAudio(b); }).catch(()=>{});
+        startMic();
+      }
+    };
+    ws.onclose = () => setLive(false);
+  }finally{ starting=false; }
+};
+$("stop").onclick = () => teardown();
+// A reload/close must not leak the session server-side (it would block the
+// DB reset until the TTL sweep) — keepalive lets the request outlive the page.
+window.addEventListener("beforeunload", () => {
+  if(sid) fetch(`/sessions/${sid}`, {method:"DELETE", keepalive:true}).catch(()=>{});
+});
+$("dbReset").onclick = async () => {
+  if(sid){ addMsg("note","♻️ pirma užbaikite skambutį"); return; }
+  if(!confirm("Atstatyti demo DB į pradinę būseną?")) return;
+  const r = await fetch("/admin/db/reset", {method:"POST"}).catch(()=>null);
+  if(r && r.ok){
+    const d = await r.json();
+    addMsg("note",`♻️ DB atstatyta (klientų: ${d.customers}, tiketų: ${d.tickets})`);
+  }else{
+    addMsg("note","♻️ DB atstatyti nepavyko"+(r?` (${r.status})`:""));
+  }
 };
 $("send").onclick = sendText;
 $("text").addEventListener("keydown", e=>{ if(e.key==="Enter") sendText(); });
@@ -232,13 +272,20 @@ function sendText(){
 }
 
 /* ---------- audio out (half-duplex: mic pauses while playing) ---------- */
+let currentAudio=null;
 function playAudio(buf){
+  stopAudio();
   const blob=new Blob([buf],{type:"audio/mpeg"});
   const a=new Audio(URL.createObjectURL(blob));
+  currentAudio=a;
   playing=true;
-  a.onended=()=>{ playing=false; };
-  a.onerror=()=>{ playing=false; };
-  a.play().catch(()=>{ playing=false; });
+  a.onended=()=>{ playing=false; currentAudio=null; };
+  a.onerror=()=>{ playing=false; currentAudio=null; };
+  a.play().catch(()=>{ playing=false; currentAudio=null; });
+}
+function stopAudio(){
+  if(currentAudio){ try{currentAudio.pause();}catch(e){} currentAudio=null; }
+  playing=false;
 }
 
 /* ---------- mic in: energy end-pointing -> one WAV utterance ---------- */

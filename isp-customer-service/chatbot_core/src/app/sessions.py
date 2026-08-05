@@ -169,6 +169,21 @@ class SessionManager:
         self._hub.drop(session_id)
         logger.info(f"session ended: {session_id} ({outcome})")
 
+    async def expire_idle(self, min_idle_seconds: float) -> int:
+        """End sessions idle for at least `min_idle_seconds` (proper session_end).
+        Used by the DB reset so an abandoned tab cannot block it; the TTL loop
+        remains the general sweep."""
+        cutoff = time.monotonic() - min_idle_seconds
+        ended = 0
+        for sid, ms in list(self._sessions.items()):
+            if ms.last_activity < cutoff and not ms.lock.locked():
+                try:
+                    await self.end(sid, outcome="expired")
+                    ended += 1
+                except Exception:  # pragma: no cover - defensive
+                    logger.warning(f"expire_idle failed for {sid}", exc_info=True)
+        return ended
+
     # --- TTL cleanup --------------------------------------------------------
 
     async def cleanup_loop(self) -> None:
@@ -176,13 +191,7 @@ class SessionManager:
         trace — a forgotten tab must not hold a call open forever)."""
         while True:
             await asyncio.sleep(self._settings.cleanup_interval_seconds)
-            cutoff = time.monotonic() - self._settings.session_ttl_seconds
-            for sid, ms in list(self._sessions.items()):
-                if ms.last_activity < cutoff and not ms.lock.locked():
-                    try:
-                        await self.end(sid, outcome="expired")
-                    except Exception:  # pragma: no cover - defensive
-                        logger.warning(f"TTL cleanup failed for {sid}", exc_info=True)
+            await self.expire_idle(self._settings.session_ttl_seconds)
 
     async def shutdown(self) -> None:
         for sid in list(self._sessions):
