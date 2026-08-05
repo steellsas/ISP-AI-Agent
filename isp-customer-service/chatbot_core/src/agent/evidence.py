@@ -145,6 +145,89 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     return facts
 
 
+# --- evidence spec (faults.yaml `evidence:` block, Ledger v2) -----------------
+
+
+def spec_for(verdict: str | None) -> dict[str, Any] | None:
+    """The fault's evidence spec from faults.yaml ({client, patvirtinta_kai,
+    paneigta_kai, paneigta_veda}), or None when the fault declares none
+    (fail-soft: the walker/solver flow runs as before)."""
+    if not verdict:
+        return None
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    if not isinstance(fault, dict):
+        return None
+    spec = fault.get("evidence")
+    return spec if isinstance(spec, dict) and isinstance(spec.get("client"), dict) else None
+
+
+def fault_need(verdict: str | None) -> str | None:
+    """The human wording of WHY a ticket is needed (`reikalinga:` in the file)."""
+    if not verdict:
+        return None
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    need = fault.get("reikalinga") if isinstance(fault, dict) else None
+    return str(need) if need else None
+
+
+def _cond_holds(evidence: dict[str, Any], cond: str, confirmed: bool) -> bool:
+    cond = cond.strip()
+    if cond == "patvirtinta":
+        return confirmed
+    if "=" not in cond:
+        return False
+    key, want = cond.split("=", 1)
+    entry = evidence.get(key.strip())
+    return entry is not None and not entry.get("conflict") and entry.get("value") == want.strip()
+
+
+def hypothesis_status(evidence: dict[str, Any], spec: dict[str, Any]) -> str | None:
+    """'confirmed' when ALL patvirtinta_kai hold, 'refuted' when ANY paneigta_kai
+    holds, else None (still collecting). Refute wins — a lit lamp disproves the
+    dead-router path no matter what else was gathered."""
+    if any(_cond_holds(evidence, c, False) for c in (spec.get("paneigta_kai") or [])):
+        return "refuted"
+    confirm = spec.get("patvirtinta_kai") or []
+    if confirm and all(_cond_holds(evidence, c, False) for c in confirm):
+        return "confirmed"
+    return None
+
+
+def next_missing(
+    evidence: dict[str, Any], spec: dict[str, Any], confirmed: bool
+) -> tuple[str, dict[str, Any]] | None:
+    """The FIRST evidence key (file order) that is still unknown and whose `kada`
+    conditions hold — the next question. None = nothing left to ask."""
+    for key, item in (spec.get("client") or {}).items():
+        entry = evidence.get(key)
+        if entry is not None and not entry.get("conflict"):
+            continue  # established (a conflict is settled by the clarify, not here)
+        conds = item.get("kada") or []
+        if all(_cond_holds(evidence, c, confirmed) for c in conds):
+            return key, item
+    return None
+
+
+def solution_for(evidence: dict[str, Any], verdict: str | None) -> str | None:
+    """The declared solution ('bridge' / 'ticket') whose `jei` conditions hold."""
+    if not verdict:
+        return None
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    for rule in rules or []:
+        if isinstance(rule, dict) and all(
+            _cond_holds(evidence, c, True) for c in (rule.get("jei") or [])
+        ):
+            return rule.get("tada")
+    return None
+
+
 def polarity(text: str | None) -> str | None:
     """A bare yes/no read for resolving a pending yes/no conflict ("Kaip yra iš
     tiesų?" -> "turiu" / "ne, neturiu")."""

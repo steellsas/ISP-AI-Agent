@@ -257,6 +257,46 @@ faults:
   no_mac_observed:
     problem: internet_down
     playbook: troubleshooting/internet_mires_routeris_tiltas
+    # Ledger v2 (Phase 4.5 step 2): the KNOWLEDGE form of this fault — what must
+    # be ESTABLISHED, not which step number. The engine asks the FIRST missing
+    # evidence whose `kada` conditions hold (order below = asking order);
+    # `klausimas` is the normal wording, `paprasciau` the simpler retry when the
+    # answer yields no fact. Hypothesis status is computed from the ledger:
+    # patvirtinta_kai (all hold) / paneigta_kai (any holds) -> paneigta_veda
+    # syncs the walker so a pivot never rewinds the call.
+    evidence:
+      client:
+        device_present:
+          reikia: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
+          klausimas: "Susiraskite routerį — dėžutę, į kurią ateina interneto kabelis. Pasakykite, kai būsite prie jo."
+          paprasciau: "Ieškokite nedidelės dėžutės su lemputėmis, dažnai su antenomis — į ją ateina laidas iš sienos. Radote?"
+        lights:
+          reikia: "ar dega bent viena routerio lemputė"
+          klausimas: "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+          paprasciau: "Dėžutės priekyje yra mažos švieselės. Ar nors viena šviečia arba mirksi?"
+          kada: [device_present=rado]
+        power_cable:
+          reikia: "maitinimo laidas įkištas į rozetę IR į routerį"
+          klausimas: "Patikrinkite, ar maitinimo laidas gerai įkištas į rozetę ir į patį routerį."
+          paprasciau: "Juodas laidas apvaliu antgaliu turi eiti iš dėžutės į rozetę. Ištraukite ir vėl tvirtai įkiškite abiejuose galuose."
+          kada: [lights=nedega]
+        outlet_works:
+          reikia: "rozetė veikia — pabandyta kita arba kiti įrenginiai nuo jos veikia"
+          klausimas: "Pabandykite kitą rozetę — arba pasakykite, ar kiti įrenginiai nuo tos rozetės veikia."
+          kada: [lights=nedega, power_cable=įkištas]
+        has_computer:
+          reikia: "ar yra kompiuteris laikinam tiltui"
+          klausimas: "Ar turite kompiuterį, kad galėtume laikinai paleisti internetą per jį?"
+          kada: [patvirtinta]
+      patvirtinta_kai: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
+      paneigta_kai: [lights=dega]
+      paneigta_veda: dr_cable
+    reikalinga: "reikalingas naujas maršrutizatorius"
+    sprendimai:
+    - jei: [has_computer=yes]
+      tada: bridge
+    - jei: [has_computer=no]
+      tada: ticket
     steps:
     - id: dr_intro
       kind: confirm

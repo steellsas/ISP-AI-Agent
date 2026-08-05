@@ -298,6 +298,9 @@ class ReactAgent:
         # key whose clarification is out, awaiting the settling answer.
         self._evidence_conflict: tuple[str, str, str] | None = None
         self._evidence_conflict_asked: str | None = None
+        # How many times each evidence question was asked (level 1 -> paprasciau
+        # -> give up and mark "neaišku"), so an unreadable caller never loops us.
+        self._evidence_asks: dict[str, int] = {}
         # Ticket-confirmation dialogue (2026-08-04): every registration first collects
         # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
         # None | "phone" | "hours" | "done"; ctx remembers the escalate step to build
@@ -1339,14 +1342,14 @@ class ReactAgent:
                 accepted=True,
                 reason="no device after bridge offer — deterministic",
             )
-            reply = self._drive_escalate(None)
-            if user_input:
-                self.state.last_heard = user_input.strip()
-                self.tracer.emit("user_turn", text=user_input)
-                self.state.messages.append({"role": "user", "content": user_input})
-            self.state.messages.append({"role": "assistant", "content": reply})
-            self._finalize_reply(reply)
-            return reply
+            return self._commit_driven_reply(user_input, self._drive_escalate(None))
+        # Ledger v2: the fault declares its EVIDENCE (faults.yaml) — the engine
+        # asks the first missing fact, confirms/refutes from the ledger and picks
+        # the declared solution. Deterministic; runs even after a solver bench,
+        # so there is never a "step to rewind to". None -> the solver's turn.
+        evidence_reply = self._evidence_drive(user_input)
+        if evidence_reply is not None:
+            return self._commit_driven_reply(user_input, evidence_reply)
         # Distrust-loop bailout (deterministic): the solver repeated itself or kept
         # re-confirming ("disambiguate") turn after turn despite clear answers — the
         # prompt rule did not hold it (observed live: 6x "patikrinkime dar kartą…";
@@ -1383,6 +1386,89 @@ class ReactAgent:
         self.state.messages.append({"role": "assistant", "content": reply})
         self._finalize_reply(reply)
         return reply
+
+    def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
+        """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the
+        walker path's run_turn_scoped): user_turn trace, dialogue history, shared
+        finalisation (case snapshot + agent_reply)."""
+        if user_input:
+            self.state.last_heard = user_input.strip()
+            self.tracer.emit("user_turn", text=user_input)
+            self.state.messages.append({"role": "user", "content": user_input})
+        self.state.messages.append({"role": "assistant", "content": reply})
+        self._finalize_reply(reply)
+        return reply
+
+    def _evidence_drive(self, user_input: str | None) -> str | None:
+        """Evidence-declared direction (Ledger v2): pick the next question from
+        MISSING evidence, compute the hypothesis from the ledger, and route the
+        declared solution. Returns the reply text, or None when the spec is
+        absent / the solver should take the turn (bridge instructions, refuted
+        pivot, nothing left to ask)."""
+        from .evidence import (
+            CLIENT,
+            hypothesis_status,
+            next_missing,
+            set_fact,
+            solution_for,
+            spec_for,
+        )
+
+        s = self.state
+        r = s.resolution or {}
+        spec = spec_for(r.get("verdict"))
+        if spec is None:
+            return None
+        status = hypothesis_status(s.evidence, spec)
+        if status == "refuted":
+            # A lit lamp disproves the dead-router path — sync the walker to the
+            # declared pivot step so NOTHING rewinds, then let it continue.
+            target = spec.get("paneigta_veda")
+            if target and r.get("step") != target:
+                self._goto_step(r, target)
+                self.tracer.emit(
+                    "decision", intent="evidence", action="pivot", to=target, reason="refuted"
+                )
+            return None
+        confirmed = status == "confirmed"
+        if confirmed:
+            solution = solution_for(s.evidence, r.get("verdict"))
+            if solution == "ticket":
+                self.tracer.emit(
+                    "drive_decision",
+                    action="escalate",
+                    accepted=True,
+                    reason="evidence: solution=ticket",
+                )
+                return self._drive_escalate(None)
+            if solution == "bridge":
+                return None  # the solver drives the bridge instructions (discipline guards hold)
+        missing = next_missing(s.evidence, spec, confirmed)
+        if missing is None:
+            return None
+        key, item = missing
+        asks = self._evidence_asks.get(key, 0)
+        if asks >= 2:
+            # Asked twice (normal + paprasciau), still nothing readable — record
+            # "neaišku" and move on; an unreadable caller must never loop us.
+            set_fact(s.evidence, key, "neaišku", CLIENT, s.turn_count)
+            self.tracer.emit("evidence", action="gave_up", key=key)
+            return self._evidence_drive(user_input)
+        self._evidence_asks[key] = asks + 1
+        text = (
+            item.get("klausimas")
+            if asks == 0
+            else (item.get("paprasciau") or item.get("klausimas"))
+        )
+        self.tracer.emit(
+            "drive_decision",
+            action="ask_evidence",
+            accepted=True,
+            reason=None,
+            key=key,
+            level=asks + 1,
+        )
+        return str(text)
 
     def _drive(self, user_input: str | None) -> str:
         from .gate import DEFAULT_POLICY, gate
@@ -1523,6 +1609,11 @@ class ReactAgent:
             except Exception:  # pragma: no cover - best-effort read
                 return False
 
+        # Ledger: the offer question is already answered when the ledger holds
+        # has_computer=yes — never re-ask an established fact.
+        ev_pc = self.state.evidence.get("has_computer")
+        if ev_pc is not None and ev_pc.get("value") == "yes":
+            self._drive_bridge_offered = True
         if not detect_plugged(user_input) and not _device_visible():
             # The work is not done yet — the fix must WAIT for the client. And the
             # FIRST deferral must be the actual TRANSITION + OFFER: live 2026-08-05
@@ -2576,9 +2667,11 @@ class ReactAgent:
         """Human wording of WHY the ticket is needed ("reikalingas naujas
         maršrutizatorius"), for the intro announce and the ticket itself — never
         the raw verdict key."""
+        from .evidence import fault_need
+
         s = self.state
         cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
-        need = _TICKET_NEED_LT.get(cause)
+        need = fault_need(cause) or _TICKET_NEED_LT.get(cause)  # file first, code fallback
         if need:
             return need
         return _DIAGNOSIS_LT.get(cause, cause or "reikalinga specialisto pagalba")

@@ -180,6 +180,78 @@ class TestAgentWiring:
         assert "routerio lemputės: nedega" in details
         assert "rozetė: bandyta" in details
 
+    def test_spec_and_need_load_from_faults_yaml(self):
+        from agent.evidence import fault_need, spec_for
+
+        spec = spec_for("no_mac_observed")
+        assert spec is not None
+        assert list(spec["client"]) == [
+            "device_present",
+            "lights",
+            "power_cable",
+            "outlet_works",
+            "has_computer",
+        ]
+        assert fault_need("no_mac_observed") == "reikalingas naujas maršrutizatorius"
+        assert spec_for("nesamas_verdiktas") is None
+
+    def test_evidence_drive_asks_in_order_with_kada_gates(self):
+        agent = _diagnosing_agent()
+        # Nothing known -> the first question is device_present (lights is gated).
+        q1 = agent._evidence_drive("galim patikrinti")
+        assert "Susiraskite routerį" in q1
+        agent._ingest_client_evidence("Radau tą routerio dėžutę su antena")
+        q2 = agent._evidence_drive("radau")
+        assert "bent viena lemputė" in q2
+        agent._ingest_client_evidence("Nedega nė viena lemputė")
+        q3 = agent._evidence_drive("nedega")
+        assert "maitinimo laidas" in q3
+
+    def test_unreadable_answers_escalate_wording_then_give_up(self):
+        agent = _diagnosing_agent()
+        q1 = agent._evidence_drive("x")
+        assert "Susiraskite routerį" in q1  # level 1
+        q2 = agent._evidence_drive("Kurs komentai")  # extractor got nothing
+        assert "dėžutės su lemputėmis" in q2  # paprasciau (level 2)
+        q3 = agent._evidence_drive("Vis tiek nesuprantu")
+        # Gave up on device_present -> recorded "neaišku"; lights stays gated
+        # (kada: device_present=rado), so nothing left to ask -> solver's turn.
+        assert agent.state.evidence["device_present"]["value"] == "neaišku"
+        assert q3 is None
+
+    def test_confirmed_with_no_computer_escalates_to_ticket(self):
+        agent = _diagnosing_agent()
+        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+        agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
+        agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
+        agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
+        reply = agent._evidence_drive("neturiu")
+        assert reply is not None and "Kokiu telefono numeriu" in reply
+        assert agent._ticket_stage == "phone"
+
+    def test_confirmed_with_computer_yields_to_solver_bridge(self):
+        agent = _diagnosing_agent()
+        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+        agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
+        agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
+        agent._ingest_client_evidence("Turiu kompiuterį")
+        assert agent._evidence_drive("turiu") is None  # solver drives the bridge
+
+    def test_confirmed_but_device_unknown_asks_has_computer(self):
+        agent = _diagnosing_agent()
+        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+        agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
+        agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
+        q = agent._evidence_drive("nepadėjo")
+        assert q is not None and "kompiuterį" in q
+
+    def test_refuted_syncs_walker_to_declared_step(self):
+        agent = _diagnosing_agent()
+        agent.state.resolution["step"] = "dr_intro"  # stale — the rewind trap
+        agent._ingest_client_evidence("Radau routerį, lemputės dega žaliai")
+        assert agent._evidence_drive("dega") is None
+        assert agent.state.resolution["step"] == "dr_cable"  # pivot, not rewind
+
     def test_no_ingest_during_ticket_dialogue_or_before_id(self):
         agent = _diagnosing_agent()
         agent._ticket_stage = "phone"

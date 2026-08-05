@@ -1093,6 +1093,10 @@ class TestDriveRepeatBailout:
     bailout to the registration offer (observed live: 6x verbatim loop)."""
 
     def test_distrust_loop_hands_wheel_to_walker(self, db_connection, monkeypatch):
+        # Ledger v2: while EVIDENCE is missing, the evidence engine (not the
+        # solver) asks — deterministically, bench or no bench. The distrust
+        # bailout now matters where the SOLVER actually drives: the bridge
+        # phase (evidence confirmed, has_computer=yes -> _evidence_drive None).
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         from agent.react_agent import ReactAgent
 
@@ -1100,11 +1104,29 @@ class TestDriveRepeatBailout:
         agent.state.customer_id = "CUST009"
         agent.state.caller_name = "Andrius"
         agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_power"}
+        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+        agent._ingest_client_evidence("Maitinimo laidas gerai įkištas, bandžiau kitą rozetę")
+        agent._ingest_client_evidence("Turiu kompiuterį")
         agent._drive_repeats = 2  # repeat/disambiguate streak already observed
 
-        assert agent.solver_drive_turn("tikrai niekas nedega") is None  # walker resumes
+        assert agent.solver_drive_turn("gerai gerai") is None  # walker resumes
         assert agent._drive_disabled is True  # thinker benched for the rest of the call
         assert agent.solver_drive_turn("nedega") is None  # and stays benched
+
+    def test_evidence_keeps_driving_after_solver_bench(self, db_connection, monkeypatch):
+        # The rewind trap is dead: a benched solver no longer strands the call
+        # at a stale step — missing evidence still gets asked deterministically.
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.caller_name = "Andrius"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        agent._drive_disabled = True  # solver already benched
+
+        reply = agent.solver_drive_turn("na, nežinau")
+        assert reply is not None and "Susiraskite routerį" in reply
 
 
 class TestBindDiscipline:
