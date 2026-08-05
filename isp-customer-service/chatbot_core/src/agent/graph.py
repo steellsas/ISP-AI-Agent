@@ -107,6 +107,10 @@ def build_turn_graph(engine: Any):
         # confirm connecting a device); after the reply, mark the question asked so a
         # plain yes/no advances next turn.
         engine.ensure_diagnosed()
+        # Ledger v1: the caller's utterance lands on the evidence ledger BEFORE
+        # anyone acts on it — one place, seen by both the driven and the walker
+        # path (a detected contradiction holds this turn for the clarify).
+        engine._ingest_client_evidence(state.get("user_input"))
         # Deterministic close for INFORM mode (outage / billing / no-strategy): if the
         # caller was already informed and now says goodbye, close here so the reply is a
         # single farewell — not another re-narration of the outage. Runs before narration

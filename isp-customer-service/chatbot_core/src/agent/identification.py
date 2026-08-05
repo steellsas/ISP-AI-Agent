@@ -111,6 +111,10 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "Užregistravau gedimą. Susisieksime numeriu {nr}, skambinti galima {val}. "
         "Ar dar kuo galiu padėti?"
     ),
+    "evidence_conflict": (
+        "Norėčiau patikslinti dėl „{tema}“: pirmiau supratau „{a}“, o dabar — "
+        "„{b}“. Kaip yra iš tiesų?"
+    ),
 }
 
 

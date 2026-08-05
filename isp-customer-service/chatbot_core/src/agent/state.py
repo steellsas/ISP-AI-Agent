@@ -126,6 +126,11 @@ class AgentState:
     #   {"cause": str, "because": [str], "status": testing|confirmed|rejected,
     #    "settled_by": str | None}
     hypothesis: dict[str, Any] | None = None
+    # Evidence ledger (Phase 4.5 Ledger v1): {key: {value, source, turn, history,
+    # conflict}} — telemetry facts are ground truth, client facts fill what
+    # telemetry cannot see; a contradicting client answer flags a conflict the
+    # engine clarifies. See agent/evidence.py.
+    evidence: dict[str, Any] = field(default_factory=dict)
     # Causes the telemetry has already disproved (a fix ran and did NOT restore the
     # line). The engine never re-tries these, so a failed fix leads to the NEXT likely
     # cause instead of straight to a ticket.
