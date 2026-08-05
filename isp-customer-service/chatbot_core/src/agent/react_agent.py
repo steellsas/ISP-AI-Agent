@@ -293,6 +293,11 @@ class ReactAgent:
         # The bridge OFFER was spoken (drive path) — the first fix deferral says
         # the transition + offer; later deferrals say the short wait line.
         self._drive_bridge_offered = False
+        # Evidence ledger (Ledger v1): a freshly detected client-client conflict
+        # (key, old, new) — the next scripted reply asks ONE clarification; the
+        # key whose clarification is out, awaiting the settling answer.
+        self._evidence_conflict: tuple[str, str, str] | None = None
+        self._evidence_conflict_asked: str | None = None
         # Ticket-confirmation dialogue (2026-08-04): every registration first collects
         # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
         # None | "phone" | "hours" | "done"; ctx remembers the escalate step to build
@@ -904,6 +909,16 @@ class ReactAgent:
         # user-stated address as "skambinate iš numerio, registruoto adresu ..."
         # even for callers with no account on file.
 
+        # Evidence ledger — the narrator's grounding: settled facts are never
+        # re-asked, and nothing outside the ledger may be claimed as checked.
+        if s.evidence and s.customer_id and not s.case_closed:
+            from .evidence import summary_lt
+
+            facts.append(
+                "- ĮRODYMŲ ŽURNALAS (nustatyta šį pokalbį — NEBEKLAUSK ir "
+                f"neprieštarauk): {summary_lt(s.evidence)}"
+            )
+
         if not facts:
             return None
 
@@ -1048,6 +1063,17 @@ class ReactAgent:
     def _advance_resolution(self, user_input: str | None) -> None:
         """Walk the strategy from the caller's reply, then trace WHY it moved (or did
         not) — the decision record is what makes a failed call debuggable."""
+        # Ledger: a fresh evidence conflict holds the walker THIS turn — the
+        # contradicting utterance must not double as a step answer; the scripted
+        # clarification goes out instead and the settling answer resumes.
+        if self._evidence_conflict:
+            self.tracer.emit(
+                "decision",
+                intent="evidence_conflict",
+                action="hold",
+                key=self._evidence_conflict[0],
+            )
+            return
         r = self.state.resolution
         before = r.get("step") if r else None
         self._walk_resolution(user_input)
@@ -1143,6 +1169,12 @@ class ReactAgent:
             facts = ", ".join(f"{k}={sig.get(k)}" for k in keys if sig.get(k) is not None)
             if facts:
                 lines.append(f"TELEMETRIJA (signalai): {facts}")
+        # Evidence ledger (Ledger v1): what is already ESTABLISHED — the thinker
+        # asks only for what is missing and never re-asks a settled fact.
+        if s.evidence:
+            from .evidence import summary_lt
+
+            lines.append(f"ĮRODYMŲ ŽURNALAS (nustatyta — NEBEKLAUSK): {summary_lt(s.evidence)}")
         lines.append(
             f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.awaiting}"
         )
@@ -1218,6 +1250,54 @@ class ReactAgent:
     _SOLVER_DRIVE_VERDICTS = frozenset({"no_mac_observed"})  # pilot: dead-router / bridge
     _DRIVE_MAX_TURNS = 14  # hard bailout — never grind the caller forever
 
+    def _ingest_client_evidence(self, user_input: str | None) -> None:
+        """Ledger v1: read the caller's utterance into the evidence ledger (called
+        from the diagnosis node, so BOTH the driven and the walker path see it).
+        A contradicting canonical value flags a conflict -> ONE scripted
+        clarification; the next answer for that key settles it (extraction, or a
+        bare yes/no polarity read; nothing readable -> the pending value wins so
+        the call never loops on the clarify)."""
+        s = self.state
+        if not user_input or not s.customer_id or s.case_closed or self._ticket_stage:
+            return
+        from .evidence import CLIENT, extract_client_facts, polarity, set_fact
+
+        facts = extract_client_facts(user_input)
+        turn = s.turn_count
+        # A clarify is out — settle that key first.
+        pending_key = self._evidence_conflict_asked
+        if pending_key:
+            value = facts.get(pending_key)
+            if value is None and pending_key == "has_computer":
+                value = polarity(user_input)
+            entry = s.evidence.get(pending_key)
+            if value is not None:
+                set_fact(s.evidence, pending_key, value, CLIENT, turn)
+            elif entry is not None and entry.get("conflict"):
+                # Unreadable answer — keep the LATEST stated value, stop asking.
+                set_fact(s.evidence, pending_key, entry.get("pending"), CLIENT, turn)
+            self._evidence_conflict_asked = None
+            self.tracer.emit(
+                "evidence",
+                action="conflict_resolved",
+                key=pending_key,
+                value=(s.evidence.get(pending_key) or {}).get("value"),
+            )
+            facts.pop(pending_key, None)
+        for key, value in facts.items():
+            entry = set_fact(s.evidence, key, value, CLIENT, turn)
+            if entry.get("conflict") and self._evidence_conflict is None:
+                self._evidence_conflict = (key, entry["value"], entry["pending"])
+                self.tracer.emit(
+                    "evidence",
+                    action="conflict",
+                    key=key,
+                    old=entry["value"],
+                    new=entry["pending"],
+                )
+            else:
+                self.tracer.emit("evidence", action="fact", key=key, value=value)
+
     def solver_drive_turn(self, user_input: str | None) -> str | None:
         """Solver-driven turn — the MĄSTYTOJAS drives the piloted directions (Step 3,
         default ON since 2026-08-03; SOLVER_DRIVE=off reverts to the walker). Returns
@@ -1238,6 +1318,8 @@ class ReactAgent:
             return None
         if self._ticket_stage:
             return None  # the ticket dialogue owns the turn
+        if self._evidence_conflict:
+            return None  # the scripted conflict clarification owns the turn
         from .identification import ask_caller
 
         if ask_caller() and not self.state.caller_name:
@@ -2594,6 +2676,20 @@ class ReactAgent:
             details += f" Klientas: {', '.join(bits) if bits else s.anamnesis_raw}."
         if step is not None and step.id == "dr_register_router":
             details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
+        # Ledger: what the CALLER established (client-side evidence) — the human
+        # taking over sees the checked physical facts, not just telemetry.
+        client_bits = []
+        from .evidence import CLIENT as _EV_CLIENT
+        from .evidence import LABELS as _EV_LABELS
+        from .evidence import VALUE_LT as _EV_VALUES
+
+        for key, e in s.evidence.items():
+            if e.get("source") == _EV_CLIENT and not e.get("conflict"):
+                client_bits.append(
+                    f"{_EV_LABELS.get(key, key)}: {_EV_VALUES.get(e['value'], e['value'])}"
+                )
+        if client_bits:
+            details += f" Patikrinta su klientu: {'; '.join(client_bits)}."
         # Why it was not solved (refusal / demand / not home) — recorded on the ticket
         # so the technician knows the context (policy 2026-07-30).
         reason_note = (s.resolution or {}).get("escalate_reason")
@@ -2985,6 +3081,16 @@ class ReactAgent:
                     "reason": v.get("reason"),
                     "signals": v.get("signals"),
                 }
+                # Ledger: telemetry facts are ground truth — every (re)diagnose
+                # lands on the evidence with full history (a re-check after a fix
+                # OVERWRITES the value; the caller's words never do).
+                from .evidence import TELEMETRY, set_fact
+
+                turn = self.state.turn_count
+                if v.get("reason"):
+                    set_fact(self.state.evidence, "verdict", v["reason"], TELEMETRY, turn)
+                if v.get("side"):
+                    set_fact(self.state.evidence, "side", v["side"], TELEMETRY, turn)
                 # A verdict IS a hypothesis — record what we now believe and why, so
                 # the agent can say it aloud and later report how it settled.
                 self._open_hypothesis(v.get("reason"))
@@ -3866,6 +3972,20 @@ class ReactAgent:
             s.closed_reason = "declined"
             s.is_complete = True
             return "Gerai — gedimo neregistruoju. " + phrase("goodbye")
+        # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
+        # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
+        if self._evidence_conflict:
+            from .evidence import LABELS, VALUE_LT
+
+            key, old, new = self._evidence_conflict
+            self._evidence_conflict = None
+            self._evidence_conflict_asked = key
+            return phrase(
+                "evidence_conflict",
+                tema=LABELS.get(key, key),
+                a=VALUE_LT.get(old, old),
+                b=VALUE_LT.get(new, new),
+            )
         # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
         if self._end_confirm_pending:
             return phrase("confirm_end")
