@@ -604,8 +604,11 @@ class TestDeterministicInformClose:
 
 
 def _complete_ticket_dialogue(agent):
-    """Walk the 2-question contact dialogue (2026-08-04) to the registration."""
+    """Walk the 2-question contact dialogue (2026-08-04) to the registration.
+    Each stage question must be ASKED before its answer counts (2026-08-05)."""
+    agent._identification_scripted_reply(None)  # intro + phone question
     agent._pre_turn_guards("taip, tiks šis")
+    agent._identification_scripted_reply("taip, tiks šis")  # hours question
     agent._pre_turn_guards("bet kada")
     return agent._identification_scripted_reply("bet kada")
 
@@ -1128,8 +1131,12 @@ class TestBindDiscipline:
 
     def test_fix_deferred_until_plugged(self, db_connection, monkeypatch):
         agent = self._driving_agent(monkeypatch)
-        reply = agent._drive_propose_fix("Pririšu dabar!", "gerai, tuoj bandysiu")
-        assert "Kai prijungsite" in reply  # no premature action, no solver promise
+        # First deferral = the transition + bridge OFFER (2026-08-05); later
+        # deferrals wait for the plug-in. Never a premature action either way.
+        first = agent._drive_propose_fix("Pririšu dabar!", "gerai, tuoj bandysiu")
+        assert "Ar turite kompiuterį" in first
+        again = agent._drive_propose_fix("Pririšu dabar!", "gerai, tuoj bandysiu")
+        assert "Kai prijungsite" in again
         assert agent._bridge_bound is False
 
     def test_plugged_report_binds_once(self, db_connection, monkeypatch):
@@ -1210,10 +1217,12 @@ class TestTicketDialogue:
     def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)  # asks the phone question
         # Q1 answer: "tiks šis" -> the number they call from.
         agent._pre_turn_guards("Taip, tiks šis numeris")
         assert agent.state.contact_phone == "+37060012353"
         assert agent._ticket_stage == "hours"
+        agent._identification_scripted_reply("Taip, tiks šis numeris")  # asks hours
         # Q2 answer -> hours; the scripted turn then registers + closes.
         agent._pre_turn_guards("Po penkių vakare")
         assert agent._ticket_stage == "done"
@@ -1229,6 +1238,7 @@ class TestTicketDialogue:
     def test_dictated_number_captured(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)
         agent._pre_turn_guards("Geriau skambinkit 8 612 34 567")
         assert agent.state.contact_phone == "861234567"
 
@@ -1260,8 +1270,10 @@ class TestTicketDialogue:
         # the LLM (scripted None) and the stage must not advance.
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)
         agent._pre_turn_guards("taip, tiks šis")
         assert agent._ticket_stage == "hours"
+        agent._identification_scripted_reply("taip, tiks šis")
         agent._pre_turn_guards("Tu sakė, užregistravai jau. Bet kada galima skambinti?")
         assert agent._ticket_stage == "hours"  # held, not captured
         assert agent.state.contact_hours is None
@@ -1287,12 +1299,73 @@ class TestTicketDialogue:
         # on the ticket and in the announce.
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)
         agent._pre_turn_guards("T.")
         assert agent.state.contact_phone == "+37060012353"  # backchannel yes -> caller-ID
+        agent._identification_scripted_reply("T.")
         agent._pre_turn_guards("Bet kada?")
         assert agent.state.contact_hours == "Bet kada"
         reply = agent._identification_scripted_reply("Bet kada?")
         assert "skambinti galima bet kada." in reply
+
+    def test_trigger_utterance_not_swallowed_as_phone(self, db_connection, monkeypatch):
+        # Live 2026-08-05: escalate fired mid-turn and the SAME utterance
+        # ("Neturi kompiutera") was captured as the phone number, question
+        # never asked. Answers count only after the question was asked.
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._pre_turn_guards("Neturi kompiutera")  # same-turn trigger phrase
+        assert agent.state.contact_phone is None
+        assert agent._ticket_stage == "phone"  # still waiting for its question
+        first = agent._identification_scripted_reply("Neturi kompiutera")
+        assert "Kokiu telefono numeriu" in first  # the question goes out now
+
+    def test_garbage_phone_answer_reasks_then_defaults(self, db_connection, monkeypatch):
+        # Live: "Neturi kompiutera" landed as tel. on the ticket. Now: one
+        # scripted retry; a second unclear answer defaults to caller-ID.
+        from agent.identification import phrase
+
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)  # phone asked
+        agent._pre_turn_guards("Kurs komentai")  # STT garbage
+        assert agent.state.contact_phone is None
+        reply = agent._identification_scripted_reply("Kurs komentai")
+        assert reply == phrase("ticket_phone_retry")
+        agent._pre_turn_guards("Visai nesuprantu ko klausiat")  # second garbage
+        assert agent.state.contact_phone == "+37060012353"  # caller-ID default
+        assert agent._ticket_stage == "hours"
+
+    def test_garbage_hours_answer_reasks_then_defaults(self, db_connection, monkeypatch):
+        # Live: "Kurs komentai" became "skambinti galima kurs komentai".
+        from agent.identification import phrase
+
+        agent = self._agent_at_consent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)
+        agent._pre_turn_guards("taip, tiks šis")
+        agent._identification_scripted_reply("taip, tiks šis")  # hours asked
+        agent._pre_turn_guards("Kurs komentai")
+        assert agent.state.contact_hours is None
+        reply = agent._identification_scripted_reply("Kurs komentai")
+        assert reply == phrase("ticket_hours_retry")
+        agent._pre_turn_guards("Nu nezinau visai")  # second garbage -> default
+        assert agent.state.contact_hours == "bet kada"
+        assert agent._ticket_stage == "done"
+
+    def test_first_fix_deferral_is_transition_and_offer(self, db_connection, monkeypatch):
+        # Live: solver jumped to bind-speak ("pririšiu įrenginį") with no
+        # transition — caller asked "Apie kokį kompiuterį kalbat?". The FIRST
+        # deferral now announces the dead router and OFFERS the bridge.
+        agent = self._agent_at_consent(monkeypatch)
+        monkeypatch.setattr(
+            "agent.react_agent.execute_tool",
+            lambda name, args: json.dumps({"verdict": {"reason": "no_mac_observed"}}),
+        )
+        first = agent._drive_propose_fix("", "nedega lemputės")
+        assert "routeris sugedęs" in first and "Ar turite kompiuterį" in first
+        second = agent._drive_propose_fix("", "dar nieko nedariau")
+        assert "pasakykite" in second  # the short wait line afterwards
 
     def test_no_device_after_bridge_offer_escalates_deterministically(
         self, db_connection, monkeypatch

@@ -290,6 +290,9 @@ class ReactAgent:
         self._resume_hold = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
+        # The bridge OFFER was spoken (drive path) — the first fix deferral says
+        # the transition + offer; later deferrals say the short wait line.
+        self._drive_bridge_offered = False
         # Ticket-confirmation dialogue (2026-08-04): every registration first collects
         # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
         # None | "phone" | "hours" | "done"; ctx remembers the escalate step to build
@@ -1439,10 +1442,21 @@ class ReactAgent:
                 return False
 
         if not detect_plugged(user_input) and not _device_visible():
-            # The work is not done yet — the fix must WAIT for the client.
+            # The work is not done yet — the fix must WAIT for the client. And the
+            # FIRST deferral must be the actual TRANSITION + OFFER: live 2026-08-05
+            # the solver jumped straight to bind-speak ("pririšiu įrenginį") without
+            # ever saying the router is dead or asking about a computer — the caller
+            # answered "Apie kokį kompiuterį kalbat?".
             self.tracer.emit(
                 "drive_decision", action="fix_deferred", accepted=False, reason="not plugged yet"
             )
+            if not getattr(self, "_drive_bridge_offered", False):
+                self._drive_bridge_offered = True
+                return (
+                    "Panašu, kad routeris sugedęs — telefonu jo neprikelsime. Galiu "
+                    "laikinai paleisti internetą per kompiuterį, kol gausite naują "
+                    "routerį. Ar turite kompiuterį?"
+                )
             return "Kai prijungsite kabelį prie kompiuterio, pasakykite — tada pririšiu įrenginį."
         self._simulate_bridge_connection()
         # Bind only when the line ACTUALLY sees a device now (never blind).
@@ -1728,27 +1742,79 @@ class ReactAgent:
             if detect_farewell(user_input):
                 self._ticket_stage = "done"
                 return
+            ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+            # An answer counts ONLY after its question was actually ASKED. The
+            # dialogue can begin mid-turn (escalate fires while processing the
+            # caller's utterance) — live 2026-08-05 the TRIGGER phrase "Neturi
+            # kompiutera" was swallowed as the phone number.
+            if not ctx.get(f"{self._ticket_stage}_asked"):
+                return
+            clean = user_input.strip().strip(" .?!,")
             if self._ticket_stage == "phone":
                 from .resolution import is_backchannel
 
                 digits = re.sub(r"[^\d+]", "", user_input)
-                clean = user_input.strip().strip(" .?!,")
                 if len(re.sub(r"\D", "", digits)) >= 6:
                     s.contact_phone = digits[:20]
                 elif detect_ticket_consent(user_input) == "yes" or is_backchannel(user_input):
                     # "tiks šis" / a garbled yes ("T." — STT of "Taip", observed
                     # live as tel. on the ticket) — the number they call from.
                     s.contact_phone = s.caller_phone
-                elif len(clean) < 4:
-                    s.contact_phone = s.caller_phone  # too short to mean anything else
+                elif ctx.get("phone_retry"):
+                    # Second unclear answer — default to the caller-ID and move on.
+                    s.contact_phone = s.caller_phone
                 else:
-                    s.contact_phone = clean[:60]
+                    # Not a number, not a yes — the agent SAYS what it needs and
+                    # re-asks ONCE ("understand the answer, re-ask when it is not
+                    # one" — 2026-08-05); garbage never lands on the ticket.
+                    ctx["phone_retry"] = True
+                    ctx["ask_retry"] = "phone"
+                    self.tracer.emit("decision", intent="ticket_dialogue", action="phone_retry")
+                    return
                 self.tracer.emit("decision", intent="ticket_dialogue", action="phone_captured")
                 self._ticket_stage = "hours"
             else:
+                low_h = clean.lower()
+                plausible = bool(re.search(r"\d", low_h)) or any(
+                    m in low_h
+                    for m in (
+                        "bet kada",
+                        "bet kad",
+                        "kada nor",
+                        "visada",
+                        "ryt",
+                        "vakar",
+                        "val",
+                        "darbo",
+                        "diena",
+                        "dien",
+                        "po ",
+                        "iki ",
+                        "nuo ",
+                        "savait",
+                        "pirmad",
+                        "antrad",
+                        "trečiad",
+                        "treciad",
+                        "ketvirtad",
+                        "penktad",
+                        "šeštad",
+                        "sestad",
+                        "sekmad",
+                        "dabar",
+                        "šiandien",
+                        "siandien",
+                    )
+                )
+                if not plausible and not ctx.get("hours_retry"):
+                    ctx["hours_retry"] = True
+                    ctx["ask_retry"] = "hours"
+                    self.tracer.emit("decision", intent="ticket_dialogue", action="hours_retry")
+                    return
                 # Strip trailing STT punctuation — "Bet kada?" landed on the ticket
-                # (and in the announce) with the question mark.
-                s.contact_hours = user_input.strip().strip(" .?!,")[:80]
+                # (and in the announce) with the question mark. Second unclear
+                # answer defaults to "bet kada" (spoken back in the announce).
+                s.contact_hours = clean[:80] if plausible else "bet kada"
                 self.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
                 self._ticket_stage = "done"
             return
@@ -2409,6 +2475,7 @@ class ReactAgent:
         self.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
         if self._ticket_ctx is not None:
             self._ticket_ctx["intro_done"] = True  # the claim already announced it
+            self._ticket_ctx["phone_asked"] = True  # appended below — answers count
         return " " + phrase("ticket_phone")
 
     def _begin_ticket_dialogue(self, step) -> None:
@@ -2436,17 +2503,26 @@ class ReactAgent:
 
     def _ticket_stage_reply(self) -> str:
         """The scripted reply for the CURRENT dialogue stage. The first phone ask
-        carries the intro ("Registruoju gedimą — {priežastis}."), so the caller
-        hears WHAT is being registered before the contact questions."""
+        carries the intro (phone solving is over -> registering, and WHY), so the
+        caller hears the transition before the contact questions. Marks the stage
+        question as ASKED — only then does the capture accept an answer — and
+        speaks the retry phrasing after an unclear answer."""
         from .identification import phrase
 
-        if self._ticket_stage == "hours":
-            return phrase("ticket_hours")
         ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+        retry = ctx.pop("ask_retry", None)
+        if retry == "phone":
+            return phrase("ticket_phone_retry")
+        if retry == "hours":
+            return phrase("ticket_hours_retry")
+        if self._ticket_stage == "hours":
+            ctx["hours_asked"] = True
+            return phrase("ticket_hours")
         parts = []
         if not ctx.get("intro_done"):
             ctx["intro_done"] = True
             parts.append(phrase("ticket_intro", priezastis=self._ticket_need()))
+        ctx["phone_asked"] = True
         parts.append(phrase("ticket_phone"))
         return " ".join(parts)
 

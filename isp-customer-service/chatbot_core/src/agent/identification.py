@@ -92,11 +92,21 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "kad kolegos su jumis susisiektų."
     ),
     "goodbye": "Ačiū, kad paskambinote. Geros dienos!",
-    "ticket_intro": "Registruoju gedimą — {priezastis}.",
+    "ticket_intro": (
+        "Telefonu šio gedimo išspręsti nepavyks — {priezastis}. Registruoju gedimą meistrui."
+    ),
     "ticket_phone": (
         "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
     ),
+    "ticket_phone_retry": (
+        "Atsiprašau, nesupratau numerio. Pasakykite jį skaitmenimis arba sakykite "
+        "„tiks šis“, jei tinka numeris, iš kurio skambinate."
+    ),
     "ticket_hours": "Gerai. O kada patogiausia jums skambinti?",
+    "ticket_hours_retry": (
+        "Atsiprašau, nesupratau. Kada jums patogiausia sulaukti skambučio — "
+        "pavyzdžiui, „bet kada“ arba „po 17 valandos“?"
+    ),
     "ticket_done": (
         "Užregistravau gedimą. Susisieksime numeriu {nr}, skambinti galima {val}. "
         "Ar dar kuo galiu padėti?"
@@ -180,6 +190,8 @@ _NAME_STOP = {
     "sveiki",
     "sutartį",
     "sutarti",
+    "sutartis",
+    "sutarties",
     "sudaręs",
     "sudares",
     "sudariusi",

@@ -1221,10 +1221,10 @@ def detect_refuse_or_ticket(text: str | None) -> str | None:
     return None
 
 
+# "netur" prefix covers neturiu/neturi/neturim(e) — live 2026-08-05 the caller
+# said "Neturi kompiutera" (3rd person + garble) and "neturiu"/"netur " missed it.
 _NO_DEVICE = (
-    "neturiu",
-    "netur ",
-    "neturim",
+    "netur",
     "nėra kompiuter",
     "nera kompiuter",
     "tik telefon",
