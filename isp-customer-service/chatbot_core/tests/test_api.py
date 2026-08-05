@@ -138,6 +138,69 @@ class TestEventStream:
                 ws.receive_json()
 
 
+class _FakeASR:
+    def transcribe(self, audio, *, language=None, sample_rate=16_000):
+        return "neveikia internetas"
+
+
+class _FakeTTS:
+    def synthesize(self, text, *, language=None):
+        return b"FAKEMP3"
+
+
+class TestVoiceChannel:
+    """PR2 — binary WS frames run a full voice turn (ASR/TTS faked)."""
+
+    @pytest.fixture()
+    def voice_fakes(self, monkeypatch, tmp_path):
+        from app import voice
+
+        monkeypatch.setattr(voice, "_build_asr", lambda: _FakeASR())
+        monkeypatch.setattr(voice, "_build_tts", lambda: _FakeTTS())
+        monkeypatch.setenv("API_RECORD_DIR", str(tmp_path))
+        return tmp_path
+
+    def test_binary_frame_runs_voice_turn(self, client, voice_fakes):
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"RIFF-fake-wav-utterance")
+            payload = None
+            audio = None
+            for _ in range(60):
+                msg = ws.receive()
+                if msg.get("bytes"):
+                    audio = msg["bytes"]
+                    break  # reply audio is the last frame of the turn
+                if msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "voice_turn":
+                        payload = e
+            assert payload is not None
+            assert payload["transcript"] == "neveikia internetas"
+            assert "kada pastebėjote" in payload["reply"]  # scripted anamnesis
+            assert payload["turn"]["engine"] == "scripted"
+            assert payload["asr_ms"] >= 0 and payload["tts_ms"] >= 0
+            assert audio == b"FAKEMP3"
+        # The archive: caller WAV + agent reply audio landed next to the trace.
+        rec = voice_fakes / sid
+        assert (rec / "turn_01_user.wav").read_bytes() == b"RIFF-fake-wav-utterance"
+        assert (rec / "turn_01_agent.mp3").read_bytes() == b"FAKEMP3"
+
+    def test_greeting_audio_endpoint(self, client, voice_fakes):
+        sid = _create(client)["session_id"]
+        resp = client.get(f"/sessions/{sid}/greeting/audio")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("audio/")
+        assert resp.content == b"FAKEMP3"
+
+    def test_dashboard_served(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "Agento vidus" in resp.text
+
+
 class TestTurnSummary:
     def test_cost_and_tokens_aggregated(self):
         from app.sessions import build_turn_summary

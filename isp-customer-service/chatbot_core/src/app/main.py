@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sys
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Entry-point path setup (same pattern as streamlit_ui / voice demo): make
 # `agent.*` importable whether launched via `src.app.main` or `app.main`.
@@ -29,9 +32,17 @@ _SHARED = _SRC.parents[1] / "shared" / "src"
 if _SHARED.exists() and str(_SHARED) not in sys.path:  # pragma: no cover
     sys.path.insert(0, str(_SHARED))
 
+# Load the project .env (LLM/ASR keys) like the voice demo does — OS env wins.
+try:  # pragma: no cover - environment plumbing
+    from utils import load_env
+
+    load_env()
+except Exception:
+    pass
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from .config import ApiSettings
@@ -71,6 +82,15 @@ class CreateSessionRequest(BaseModel):
 
 class TurnRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2000)
+
+
+_STATIC = Path(__file__).resolve().parent / "static"
+
+
+@app.get("/", include_in_schema=False)
+async def dashboard():
+    """The demo dashboard (single self-contained page, no build step)."""
+    return FileResponse(_STATIC / "index.html")
 
 
 @app.get("/health")
@@ -128,6 +148,31 @@ async def post_turn_stream(session_id: str, req: TurnRequest):
     return StreamingResponse(_gen(), media_type="text/event-stream")
 
 
+@app.get("/sessions/{session_id}/greeting/audio")
+async def greeting_audio(session_id: str):
+    """Synthesized opening line — the browser plays it right after the call
+    starts (the WS voice path only speaks from the first caller utterance on)."""
+    try:
+        ms = manager.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="unknown session") from None
+    from fastapi.responses import Response
+
+    from . import voice
+
+    def _synth() -> bytes:
+        # The greeting TEXT already went out at create — synthesize that stored
+        # line; calling session.greeting() again would run a whole new turn.
+        return voice.synthesize_text(ms.greeting)
+
+    try:
+        audio = await asyncio.to_thread(_synth)
+    except Exception:
+        logger.exception("greeting audio failed")
+        raise HTTPException(status_code=503, detail="voice unavailable") from None
+    return Response(content=audio, media_type="audio/mpeg")
+
+
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
     try:
@@ -161,13 +206,33 @@ async def ws_call(ws: WebSocket, session_id: str):
     pump = asyncio.create_task(_pump_events())
     try:
         while True:
-            msg = await ws.receive_json()
-            if msg.get("type") == "turn" and msg.get("text"):
+            frame = await ws.receive()
+            if frame.get("type") == "websocket.disconnect":
+                break
+            # Binary frame = ONE complete caller utterance (WAV, client-side
+            # end-pointing) -> full voice turn; the reply audio returns as the
+            # next binary frame right after its voice_turn JSON.
+            if frame.get("bytes"):
                 try:
-                    result = await manager.turn(session_id, str(msg["text"]))
+                    payload, reply_audio = await manager.voice_turn(session_id, frame["bytes"])
                 except SessionNotFound:
                     break
-                await ws.send_json({"type": "reply", **result})
+                except Exception:  # voice deps missing / ASR failure — keep the socket
+                    logger.exception("voice turn failed")
+                    await ws.send_json({"type": "error", "detail": "voice turn failed"})
+                    continue
+                await ws.send_json(payload)
+                if reply_audio:
+                    await ws.send_bytes(reply_audio)
+                continue
+            if frame.get("text"):
+                msg = json.loads(frame["text"])
+                if msg.get("type") == "turn" and msg.get("text"):
+                    try:
+                        result = await manager.turn(session_id, str(msg["text"]))
+                    except SessionNotFound:
+                        break
+                    await ws.send_json({"type": "reply", **result})
     except WebSocketDisconnect:
         pass
     finally:

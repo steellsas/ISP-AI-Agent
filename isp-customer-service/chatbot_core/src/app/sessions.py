@@ -35,6 +35,8 @@ class ManagedSession:
     last_activity: float = field(default_factory=time.monotonic)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     turn_count: int = 0
+    voice: Any = None  # VoicePipeline, attached lazily on the first audio frame
+    greeting: str = ""  # the opening line (for the greeting-audio endpoint)
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
@@ -104,7 +106,9 @@ class SessionManager:
 
         session, greeting = await asyncio.to_thread(_start)
         sid = session.session_id
-        self._sessions[sid] = ManagedSession(session=session, caller_phone=caller_phone)
+        self._sessions[sid] = ManagedSession(
+            session=session, caller_phone=caller_phone, greeting=greeting
+        )
         logger.info(f"session created: {sid}")
         return {"session_id": sid, "greeting": greeting}
 
@@ -137,6 +141,25 @@ class SessionManager:
                 "turn": summary,
                 "is_complete": ms.session.is_complete,
             }
+
+    async def voice_turn(self, session_id: str, audio: bytes) -> tuple[dict[str, Any], bytes]:
+        """One caller utterance (WAV bytes) -> (voice_turn payload + turn summary,
+        reply audio). Same lock/summary discipline as text turns."""
+        from . import voice  # lazy: keeps ASR/TTS adapter imports off the API import path
+
+        ms = self.get(session_id)
+        async with ms.lock:
+            ms.last_activity = time.monotonic()
+            mark = self._hub.mark(session_id)
+            t0 = time.perf_counter()
+            payload, reply_audio = await asyncio.to_thread(voice.run_voice_turn, ms, audio)
+            wall_ms = int((time.perf_counter() - t0) * 1000)
+            ms.turn_count += 1
+            ms.last_activity = time.monotonic()
+            summary = build_turn_summary(self._hub.events_since(session_id, mark), wall_ms)
+            ms.session.tracer.emit("turn_summary", **summary)
+            payload["turn"] = summary
+            return payload, reply_audio
 
     async def end(self, session_id: str, outcome: str = "client_closed") -> None:
         ms = self._sessions.pop(session_id, None)
