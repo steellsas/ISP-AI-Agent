@@ -1294,6 +1294,64 @@ class TestTicketDialogue:
         reply = agent._identification_scripted_reply("Bet kada?")
         assert "skambinti galima bet kada." in reply
 
+    def test_no_device_after_bridge_offer_escalates_deterministically(
+        self, db_connection, monkeypatch
+    ):
+        # Live 2026-08-05: "Neturiu." after "Ar turite kompiuterį?" sent the
+        # solver into a 6x disambiguate streak and a walker rewind. The answer
+        # is ENGINE territory now: escalate the same turn, no solver involved.
+        import os
+
+        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
+        agent = self._agent_at_consent(monkeypatch)
+        agent.state.resolution["step"] = "dr_offer_bridge"
+        agent.state.messages.append(
+            {
+                "role": "assistant",
+                "content": (
+                    "Panašu, kad routeris sugedęs. Ar turite kompiuterį, kad galėtume "
+                    "laikinai paleisti internetą per jį?"
+                ),
+            }
+        )
+        reply = agent.solver_drive_turn("Neturiu, internetą naudoju tik telefonu.")
+        assert reply is not None and "Kokiu telefono numeriu" in reply
+        assert agent._ticket_stage == "phone"
+
+    def test_registration_claim_without_ticket_starts_dialogue(self, db_connection, monkeypatch):
+        # Live 2026-08-05: narrator said "Užregistravau gedimą…", ticket_id None,
+        # caller hung up trusting it. The claim now pulls the real dialogue in.
+        agent = self._agent_at_consent(monkeypatch)
+        extra = agent._registration_claim_guard(
+            "Supratau. Užregistravau gedimą, kolegos susisieks su jumis."
+        )
+        assert extra and "Kokiu telefono numeriu" in extra
+        assert agent._ticket_stage == "phone"
+        # Honest replies pass untouched.
+        agent2 = self._agent_at_consent(monkeypatch)
+        assert agent2._registration_claim_guard("Patikrinkime lemputes.") is None
+
+    def test_hangup_mid_strategy_registers_safety_ticket(self, db_connection, monkeypatch):
+        # Live 2026-08-05: the call ended via the UI button mid-strategy — no
+        # ticket, despite a promised registration. end_session now registers
+        # from state with the interruption on the record.
+        agent = self._agent_at_consent(monkeypatch)
+        agent.end_session(outcome="client_closed")
+        assert agent.state.ticket_id
+        assert agent.state.closed_reason == "registered"
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            details = dict(cur.fetchone())["details"]
+        assert "Pokalbis nutrūko" in details
+        assert "+37060012353" in details  # caller-ID default contact
+
+    def test_hangup_after_resolved_call_registers_nothing(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        agent.state.case_closed = True
+        agent.state.closed_reason = "resolved"
+        agent.end_session(outcome="client_closed")
+        assert agent.state.ticket_id is None
+
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
