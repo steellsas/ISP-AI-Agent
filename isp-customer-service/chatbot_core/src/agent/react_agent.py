@@ -1239,6 +1239,29 @@ class ReactAgent:
 
         if ask_caller() and not self.state.caller_name:
             return None  # identification ladder not finished yet
+        # Discipline rule (2026-08-05): "no device" after the bridge OFFER is
+        # ENGINE territory — with nothing to bridge through, the only solutions
+        # are ticket-shaped, so escalate NOW. Left to the solver, this answer
+        # spawned a disambiguate streak ("patikrinkime dar kartą…" x6) and,
+        # after the bailout, a full walker rewind to dr_intro (observed live).
+        from .resolution import detect_no_device
+
+        last_q = (self._last_agent_question() or "").lower()
+        if "kompiuter" in last_q and detect_no_device(user_input):
+            self.tracer.emit(
+                "drive_decision",
+                action="escalate",
+                accepted=True,
+                reason="no device after bridge offer — deterministic",
+            )
+            reply = self._drive_escalate(None)
+            if user_input:
+                self.state.last_heard = user_input.strip()
+                self.tracer.emit("user_turn", text=user_input)
+                self.state.messages.append({"role": "user", "content": user_input})
+            self.state.messages.append({"role": "assistant", "content": reply})
+            self._finalize_reply(reply)
+            return reply
         # Distrust-loop bailout (deterministic): the solver repeated itself or kept
         # re-confirming ("disambiguate") turn after turn despite clear answers — the
         # prompt rule did not hold it (observed live: 6x "patikrinkime dar kartą…";
@@ -2359,6 +2382,35 @@ class ReactAgent:
             self.state.closed_reason = "declined"
         # unclear -> stay; the step's question is re-asked
 
+    def _registration_claim_guard(self, content: str) -> str | None:
+        """The LLM narrator CLAIMED a registration that never happened (observed
+        live 2026-08-05: "Užregistravau gedimą…" at dr_recheck, ticket_id None,
+        the caller hung up trusting it). Words may not outrun the engine: when a
+        claim is detected with no ticket and no dialogue running, the contact
+        dialogue begins NOW and its phone question is APPENDED to the reply —
+        the promise becomes the process. Returns the appended text or None."""
+        s = self.state
+        low = (content or "").lower()
+        if not any(m in low for m in ("užregistrav", "uzregistrav", "registruoju gedim")):
+            return None
+        if s.ticket_id or self._ticket_stage or s.case_closed or not s.customer_id:
+            return None
+        if s.resolution is None:
+            return None
+        from .identification import phrase
+        from .resolution import get_strategy
+
+        strat = get_strategy(s.resolution.get("verdict"))
+        esc = strat.step("escalate") if strat else None
+        s.resolution.setdefault("escalate_reason", "Sprendimas telefonu nepavyko.")
+        self._begin_ticket_dialogue(esc)
+        if self._ticket_stage != "phone":
+            return None  # could not start (defensive) — nothing to append
+        self.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
+        if self._ticket_ctx is not None:
+            self._ticket_ctx["intro_done"] = True  # the claim already announced it
+        return " " + phrase("ticket_phone")
+
     def _begin_ticket_dialogue(self, step) -> None:
         """Start the ticket-confirmation dialogue (2026-08-04): before ANY
         registration the agent collects the contact number (ALWAYS asked — the
@@ -3124,6 +3176,27 @@ class ReactAgent:
         if self._session_ended:
             return
         self._session_ended = True
+        # Hang-up safety net (2026-08-05): the call ended MID-STRATEGY with no
+        # ticket — the problem is not solved and nobody would follow up (observed
+        # live: registration promised, caller hung up via the UI button, ticket
+        # never created). Register from state with the interruption on the
+        # record; contacts default to the caller-ID number. After-hours
+        # philosophy: a human takes over through the ticket.
+        s = self.state
+        if s.customer_id and not s.ticket_id and not s.case_closed and s.resolution is not None:
+            from .resolution import get_strategy
+
+            s.resolution.setdefault("escalate_reason", "Pokalbis nutrūko — klientas padėjo ragelį.")
+            if not s.contact_phone:
+                s.contact_phone = s.caller_phone
+            if not s.contact_hours:
+                s.contact_hours = "bet kada"
+            strat = get_strategy(s.resolution.get("verdict"))
+            esc = strat.step("escalate") if strat else None
+            self._register_ticket_from_state(esc)
+            if s.ticket_id:
+                s.closed_reason = "registered"
+                self.tracer.emit("decision", intent="hangup_net", action="register")
         # Structured OUTCOME of the call, built DETERMINISTICALLY from state (Phase 3.10):
         # why they called, the cause + side, what ran, resolved?/ticket, who called. Emitted
         # for the record/reports; DB persistence to the conversations table is a follow-up.
@@ -3391,6 +3464,14 @@ class ReactAgent:
             # The final reply text was already streamed via `yield from`; persist it
             # to history and run end-of-turn bookkeeping (no extra yield).
             self.state.messages.append({"role": "assistant", "content": content})
+            # Registration-claim guard: the narrator said "užregistravau" with no
+            # ticket behind it — the contact dialogue starts NOW and its first
+            # question rides on the same reply, so the claim becomes true.
+            extra = self._registration_claim_guard(content)
+            if extra:
+                content += extra
+                self.state.messages[-1]["content"] = content
+                yield extra
             self._finalize_reply(content)
             return
 

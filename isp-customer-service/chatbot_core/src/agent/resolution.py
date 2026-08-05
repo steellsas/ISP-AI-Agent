@@ -1221,6 +1221,33 @@ def detect_refuse_or_ticket(text: str | None) -> str | None:
     return None
 
 
+_NO_DEVICE = (
+    "neturiu",
+    "netur ",
+    "neturim",
+    "nėra kompiuter",
+    "nera kompiuter",
+    "tik telefon",
+    "vien telefon",
+    "tik su telefon",
+    "negaliu prijungti",
+    "negaliu pasijungti",
+)
+
+
+def detect_no_device(text: str | None) -> bool:
+    """The caller has NO device to bridge through ("neturiu kompiuterio", "tik
+    telefonas"). Meaningful only right after the bridge OFFER — the caller
+    checks the question context. Discipline rule 2026-08-05: this answer routes
+    to the TICKET deterministically; the thinker may not wander back to
+    re-checks (observed live: 6x disambiguate after "Neturiu.", then a full
+    walker rewind to dr_intro)."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _NO_DEVICE)
+
+
 _PLUGGED = ("įkišau", "ikisau", "prijungiau", "pajungiau", "įjungiau", "ijungiau", "sujungiau")
 
 

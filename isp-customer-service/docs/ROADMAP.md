@@ -1137,6 +1137,68 @@ brain panel streams live events, Streamlit demoted to debug-only.
 
 ---
 
+## Phase 4.5 — Analizės variklis: evidence ledger (spec agreed 2026-08-05)
+
+The agent's core skill: extract the SAME required information while ADAPTING
+the conversation to the caller's level. Position in the flow = what is KNOWN,
+not which step number — a benched solver can then never rewind a call
+(observed live: bailout at dr_offer_bridge rewound the walker to dr_intro and
+re-asked lights/power/cable the caller had already done).
+
+**Design (three layers):**
+- **Evidence ledger (`state.evidence`)** — facts with SOURCE and history.
+  Telemetry facts (from tools: line_to_flat, mac_observed, port…) are ground
+  truth — words never overwrite them; client facts cover only what telemetry
+  cannot see (lights, cables, devices at home). Conflicting client answers
+  append + flag (never silently overwrite) → deterministic clarify quoting
+  both ("sakėte X, dabar Y — kaip yra iš tiesų?"). Client-vs-telemetry
+  conflict: telemetry wins, said politely.
+- **Fault description in faults.yaml** = diagnosis criteria (telemetry +
+  client evidence needed, per-line "what must be established"), confirm rule,
+  and solution paths. One file block per fault — adding a fault is a file
+  edit. Unclear-cause faults (no clear evidence either way) — separate branch
+  later; honest ticket with everything collected.
+- **Extraction pass** — one small-prompt LLM call per caller turn (diagnosis
+  stage only, v1): input = ledger + missing evidence + utterance; output =
+  extracted facts + contradictions. Sees the whole conversation, so info
+  offered out-of-order still lands. CONSOLIDATES the per-detector classifiers
+  (yes_no, lights, instruct_done…) — net LLM-call count stays ~flat.
+
+**Invariant vs adaptation:** WHAT to establish is fixed (file); HOW to ask
+adapts to the caller (LLM narrator + clarity levels per evidence item:
+"patikrinkite maitinimą" → "juodas laidas apvaliu antgaliu į rozetę…").
+Conversations differ; the ledger does not.
+
+**findings node:** when the ledger confirms/refutes the hypothesis, the graph
+enters a findings node — engine decides WHEN and supplies WHAT (checked facts,
+assumption, solution options, what we cannot do now); the LLM words it (small
+prompt, no scripted sentence). Guards keep it honest ("užregistravau" without
+ticket_id is impossible; nothing outside FINDINGS can be said). Scripted
+replies remain ONLY for mechanical commits (address confirm, ticket contact
+questions).
+
+**One-way doors:** hypothesis confirmed → solutions only (bridge if a device
+exists, else ticket). Questions are generated from MISSING evidence, so
+"going back" has nothing to go back to.
+
+**Quick fixes shipped ahead of the ledger (2026-08-05):**
+- [x] "No device" after the bridge offer → deterministic escalate (engine
+      rule; the thinker is not consulted)
+- [x] Registration-claim guard: a narrated "užregistravau" with no ticket
+      starts the REAL contact dialogue on the same reply
+- [x] Hang-up safety net: session end mid-strategy with no ticket registers
+      one from state ("Pokalbis nutrūko" on the record, caller-ID contact)
+
+**Steps:**
+- [ ] Ledger v1 on no_mac_observed: state.evidence + extraction call +
+      conflict clarify + questions from missing evidence (rewind class dies)
+- [ ] findings node + guards
+- [ ] Generalize: evidence blocks for all faults.yaml faults; retire
+      per-detector classifiers where extraction covers them
+- [ ] Clarity levels per evidence item (adaptation ladder in the file)
+
+---
+
 ## Phase 5 — Realtime & telephony
 
 - [ ] **Async conversation engine** — `run_until_response` → async generator;
