@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -38,9 +39,12 @@ class ManagedSession:
     voice: Any = None  # VoicePipeline, attached lazily on the first audio frame
     greeting: str = ""  # the opening line (for the greeting-audio endpoint)
     # Barge-in (Phase 5 PR2): set by the WS reader when the caller interrupts —
-    # the streaming turn stops SENDING further chunks (the sync engine still
-    # finishes in its thread; true mid-generation cancel is the async PR).
+    # the streaming turn stops SENDING further chunks immediately.
     interrupt: asyncio.Event = field(default_factory=asyncio.Event)
+    # PR3: the ENGINE-side stop — checked between sentences in the worker
+    # thread; closing the token stream stops the LLM generation itself and
+    # triggers the engine's ask-rollback (threading.Event: cross-thread safe).
+    cancel: threading.Event = field(default_factory=threading.Event)
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
@@ -184,6 +188,7 @@ class SessionManager:
 
             t0 = time.perf_counter()
             ms.interrupt.clear()
+            ms.cancel.clear()
             task = asyncio.create_task(
                 asyncio.to_thread(voice.run_voice_turn_stream, ms, audio, on_chunk)
             )

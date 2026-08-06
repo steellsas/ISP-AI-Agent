@@ -107,7 +107,10 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
     first_ms: int | None = None
     reply_audio = bytearray()
     chunks = 0
-    for chunk in pipeline.stream_turn(audio):
+    # PR3: the barge-in cancel reaches the ENGINE — checked between sentences;
+    # the token stream closes (LLM generation stops) and the ask-bookkeeping
+    # rolls back via the session hook.
+    for chunk in pipeline.stream_turn(audio, should_stop=ms.cancel.is_set):
         if not chunk:
             continue
         if first_ms is None:
@@ -121,7 +124,8 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         "ttfa_ms": first_ms,
         "total_ms": round((time.perf_counter() - t0) * 1000),
         "is_complete": ms.session.is_complete,
-        "dropped": chunks == 0 and not ms.session.is_complete,
+        "cancelled": ms.cancel.is_set(),
+        "dropped": chunks == 0 and not ms.session.is_complete and not ms.cancel.is_set(),
     }
     if os.environ.get("API_RECORD_AUDIO", "1") != "0":
         try:

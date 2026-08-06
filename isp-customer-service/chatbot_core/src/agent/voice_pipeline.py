@@ -199,7 +199,13 @@ class VoicePipeline:
             tts_ms=tts_ms,
         )
 
-    def stream_turn(self, audio: bytes, *, sample_rate: int = 16_000) -> Iterator[bytes]:
+    def stream_turn(
+        self,
+        audio: bytes,
+        *,
+        sample_rate: int = 16_000,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> Iterator[bytes]:
         """
         Run one turn and STREAM the reply audio in chunks (one per sentence) so the
         transport can start playing before the whole reply is rendered (Pillar C2b).
@@ -208,6 +214,11 @@ class VoicePipeline:
         `asr` / `voice_latency` trace events (tts_ms here = time-to-first-audio,
         the metric that matters for streaming). Falls back to a single
         synthesize() blob if the TTS cannot stream. A noise turn yields nothing.
+
+        `should_stop` (Phase 5 PR3, barge-in): checked between sentences — when
+        it turns True the agent token stream is CLOSED (the LLM generation stops
+        with it), and the session's on_turn_cancelled hook gets the text that was
+        actually synthesized, so the engine rolls its ask-bookkeeping back.
         """
         t0 = time.perf_counter()
         raw_transcript = self._asr.transcribe(
@@ -255,11 +266,19 @@ class VoicePipeline:
         if callable(agent_stream):
             from src.adapters.tts.sentences import pop_sentence
 
+            # On cancel the ENGINE does its own bookkeeping (the same flag stops
+            # its token loop — see ReactAgent.request_cancel); here we only stop
+            # SYNTHESIZING, so no half-sentence audio goes out after the barge-in.
             buf = ""
-            for token in agent_stream(transcript):
+            gen = agent_stream(transcript)
+            for token in gen:
+                if should_stop is not None and should_stop():
+                    return
                 buf += token
                 sentence, buf = pop_sentence(buf)
                 while sentence:
+                    if should_stop is not None and should_stop():
+                        return
                     chunk = self._tts.synthesize(
                         normalize_lt_address_speech(sentence), language=self._language
                     )

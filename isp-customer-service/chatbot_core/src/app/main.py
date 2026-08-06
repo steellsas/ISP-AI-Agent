@@ -321,7 +321,9 @@ async def ws_call(ws: WebSocket, session_id: str):
                     # quietly. Traced, so the panel + archive show the interruption.
                     try:
                         ms = manager.get(session_id)
-                        ms.interrupt.set()
+                        ms.interrupt.set()  # stop forwarding audio NOW
+                        ms.cancel.set()  # stop synthesizing further sentences
+                        ms.session.request_cancel()  # stop the LLM generation itself
                         ms.session.tracer.emit("barge_in")
                     except SessionNotFound:
                         break
