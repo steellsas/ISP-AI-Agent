@@ -161,6 +161,42 @@ class SessionManager:
             payload["turn"] = summary
             return payload, reply_audio
 
+    async def voice_turn_stream(self, session_id: str, audio: bytes, send_bytes) -> dict[str, Any]:
+        """Streaming voice turn (Phase 5 PR1): audio chunks are forwarded to
+        `send_bytes` (an async callable, e.g. ws.send_bytes) AS THEY ARE
+        SYNTHESIZED — the engine runs in a worker thread, chunks hop to the loop
+        through a queue. Returns the done payload + turn summary."""
+        from . import voice  # lazy: keeps ASR/TTS adapter imports off the API import path
+
+        ms = self.get(session_id)
+        async with ms.lock:
+            ms.last_activity = time.monotonic()
+            mark = self._hub.mark(session_id)
+            loop = asyncio.get_running_loop()
+            q: asyncio.Queue = asyncio.Queue()
+
+            def on_chunk(b: bytes) -> None:  # worker thread -> loop
+                loop.call_soon_threadsafe(q.put_nowait, b)
+
+            t0 = time.perf_counter()
+            task = asyncio.create_task(
+                asyncio.to_thread(voice.run_voice_turn_stream, ms, audio, on_chunk)
+            )
+            task.add_done_callback(lambda _t: q.put_nowait(None))  # runs on the loop
+            while True:
+                chunk = await q.get()
+                if chunk is None:
+                    break
+                await send_bytes(chunk)
+            payload = task.result()  # re-raises a worker failure
+            wall_ms = int((time.perf_counter() - t0) * 1000)
+            ms.turn_count += 1
+            ms.last_activity = time.monotonic()
+            summary = build_turn_summary(self._hub.events_since(session_id, mark), wall_ms)
+            ms.session.tracer.emit("turn_summary", **summary)
+            payload["turn"] = summary
+            return payload
+
     async def end(self, session_id: str, outcome: str = "client_closed") -> None:
         ms = self._sessions.pop(session_id, None)
         if ms is None:

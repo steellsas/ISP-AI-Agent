@@ -288,7 +288,18 @@ async def ws_call(ws: WebSocket, session_id: str):
             # end-pointing) -> full voice turn; the reply audio returns as the
             # next binary frame right after its voice_turn JSON.
             if frame.get("bytes"):
+                import os as _os
+
                 try:
+                    if _os.getenv("VOICE_STREAM", "on").lower() == "on":
+                        # Phase 5 PR1: chunks stream out DURING the turn (the
+                        # agent speaks after the first sentence); the done JSON
+                        # with TTFA + turn summary follows the last chunk.
+                        payload = await manager.voice_turn_stream(
+                            session_id, frame["bytes"], ws.send_bytes
+                        )
+                        await ws.send_json(payload)
+                        continue
                     payload, reply_audio = await manager.voice_turn(session_id, frame["bytes"])
                 except SessionNotFound:
                     break

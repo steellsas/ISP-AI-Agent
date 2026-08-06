@@ -93,6 +93,49 @@ def synthesize_text(text: str) -> bytes:
     return _build_tts().synthesize(normalize_lt_address_speech(text), language=_LANGUAGE)
 
 
+def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[str, Any]:
+    """Phase 5 PR1 — STREAMING voice turn: the reply's audio is delivered
+    sentence-by-sentence via on_chunk(bytes) (called from this worker thread)
+    the moment each sentence's TTS is done, so the agent starts SPEAKING after
+    the first sentence instead of after the whole reply. Returns the done
+    payload (TTFA = utterance received -> first audio chunk). Recording still
+    captures the full reply (chunks concatenated)."""
+    import time
+
+    pipeline = get_pipeline(ms)
+    t0 = time.perf_counter()
+    first_ms: int | None = None
+    reply_audio = bytearray()
+    chunks = 0
+    for chunk in pipeline.stream_turn(audio):
+        if not chunk:
+            continue
+        if first_ms is None:
+            first_ms = round((time.perf_counter() - t0) * 1000)
+        chunks += 1
+        reply_audio.extend(chunk)
+        on_chunk(bytes(chunk))
+    payload = {
+        "type": "voice_turn_done",
+        "chunks": chunks,
+        "ttfa_ms": first_ms,
+        "total_ms": round((time.perf_counter() - t0) * 1000),
+        "is_complete": ms.session.is_complete,
+        "dropped": chunks == 0 and not ms.session.is_complete,
+    }
+    if os.environ.get("API_RECORD_AUDIO", "1") != "0":
+        try:
+            d = _record_dir(ms.session.session_id)
+            d.mkdir(parents=True, exist_ok=True)
+            stem = f"turn_{ms.turn_count + 1:02d}"
+            (d / f"{stem}_user.wav").write_bytes(audio)
+            if reply_audio:
+                (d / f"{stem}_agent.mp3").write_bytes(bytes(reply_audio))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning(f"audio recording failed: {e}")
+    return payload
+
+
 def run_voice_turn(ms: ManagedSession, audio: bytes) -> tuple[dict[str, Any], bytes]:
     """One utterance -> (voice_turn payload, reply audio bytes). Sync — the WS
     handler runs it in a worker thread. Recording is best-effort: the call must
