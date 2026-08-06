@@ -201,6 +201,117 @@ class TestVoiceChannel:
         assert "Agento vidus" in resp.text
 
 
+class TestArchive:
+    """PR3 — past-call records: list, detail (trace + stats), audio, safety."""
+
+    @pytest.fixture()
+    def archived_call(self, client, monkeypatch, tmp_path):
+        # A full lifecycle with the trace + recordings under tmp: create ->
+        # scripted turn -> delete (writes the conversations row + jsonl).
+        monkeypatch.setenv("TRACE_DIR", str(tmp_path))
+        monkeypatch.setenv("API_RECORD_DIR", str(tmp_path))
+        sid = _create(client)["session_id"]
+        client.post(f"/sessions/{sid}/turns", json={"text": "neveikia internetas"})
+        (tmp_path / sid).mkdir()
+        (tmp_path / sid / "turn_01_user.wav").write_bytes(b"RIFFwav")
+        client.delete(f"/sessions/{sid}")
+        return sid
+
+    def test_list_contains_archived_call(self, archived_call, client):
+        calls = client.get("/calls").json()["calls"]
+        assert any(c["session_id"] == archived_call for c in calls)
+        row = next(c for c in calls if c["session_id"] == archived_call)
+        assert row["purpose"] == "internet_down"
+
+    def test_detail_has_transcript_events_audio_stats(self, archived_call, client):
+        resp = client.get(f"/calls/{archived_call}")
+        assert resp.status_code == 200
+        d = resp.json()
+        assert any("kada pastebėjote" in (m["text"] or "") for m in d["transcript"])
+        # Caller lines from SCRIPTED turns come from the trace — the message
+        # history misses them (engine appends user turns only on the LLM path).
+        assert any(
+            m["role"] == "user" and "neveikia internetas" in m["text"] for m in d["transcript"]
+        )
+        assert any(e.get("type") == "session_end" for e in d["events"])
+        assert d["audio"] == ["turn_01_user.wav"]
+        assert d["stats"]["llm_calls"] == 0  # scripted call — and cost 0
+        assert d["stats"]["cost_usd"] == 0
+
+    def test_audio_served_and_path_safe(self, archived_call, client):
+        ok = client.get(f"/calls/{archived_call}/audio/turn_01_user.wav")
+        assert ok.status_code == 200 and ok.content == b"RIFFwav"
+        assert client.get(f"/calls/{archived_call}/audio/..%2Fsecret.wav").status_code == 404
+        assert client.get(f"/calls/{archived_call}/audio/nope.wav").status_code == 404
+        assert client.get("/calls/..%2F..%2Fetc/audio/x.wav").status_code == 404
+
+    def test_unknown_call_404(self, client):
+        assert client.get("/calls/nonexistent-session-id").status_code == 404
+
+
+class TestConfigPage:
+    """Config page (Phase 4): whitelist edits, live application, persistence.
+    NOTE: admin auth required before public hosting (agreed 2026-08-06)."""
+
+    @pytest.fixture(autouse=True)
+    def _persist_tmp(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "cfg.json"))
+        self.persist = tmp_path / "cfg.json"
+
+    def test_get_lists_settings_with_values_and_scopes(self, client):
+        items = client.get("/admin/config").json()["settings"]
+        keys = {i["key"] for i in items}
+        assert {"agent_model", "SOLVER_DRIVE", "ASR_BACKEND", "TTS_VOICE"} <= keys
+        for i in items:
+            assert i["value"] in i["options"] or i["key"] == "agent_model"
+            assert i["scope"] in ("immediate", "new_calls")
+
+    def test_put_applies_env_and_persists(self, client, monkeypatch):
+        import json as _json
+        import os
+
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        resp = client.put("/admin/config", json={"SOLVER_DRIVE": "off"})
+        assert resp.status_code == 200
+        assert os.environ["SOLVER_DRIVE"] == "off"
+        assert _json.loads(self.persist.read_text(encoding="utf-8"))["SOLVER_DRIVE"] == "off"
+        client.put("/admin/config", json={"SOLVER_DRIVE": "on"})  # restore
+
+    def test_put_model_reaches_agent_config(self, client):
+        from agent.config import get_config
+
+        before = get_config().model
+        try:
+            client.put("/admin/config", json={"agent_model": "gpt-4o"})
+            assert get_config().model == "gpt-4o"
+        finally:
+            client.put("/admin/config", json={"agent_model": before})
+
+    def test_put_voice_key_clears_adapter_caches(self, client, monkeypatch):
+        from app import voice
+
+        monkeypatch.setattr(voice, "_build_tts", voice._build_tts)  # real cached fn
+        voice._build_tts.cache_clear()
+        resp = client.put("/admin/config", json={"TTS_VOICE": "lt-LT-OnaNeural"})
+        assert resp.status_code == 200
+        assert voice._build_tts.cache_info().currsize == 0
+        client.put("/admin/config", json={"TTS_VOICE": "lt-LT-LeonasNeural"})
+
+    def test_put_rejects_unknown_key_and_bad_value(self, client):
+        assert client.put("/admin/config", json={"OPENAI_API_KEY": "x"}).status_code == 400
+        assert client.put("/admin/config", json={"TTS_ENGINE": "elevenlabs"}).status_code == 400
+
+    def test_persisted_overrides_reapplied(self, client, monkeypatch):
+        import os
+
+        self.persist.write_text('{"SIMULATE_BRIDGE": "on"}', encoding="utf-8")
+        monkeypatch.delenv("SIMULATE_BRIDGE", raising=False)
+        from app import runtime_config
+
+        runtime_config.load_persisted()
+        assert os.environ["SIMULATE_BRIDGE"] == "on"
+
+
 class TestAdminReset:
     def test_reset_refused_during_call_then_reseeds(self, client):
         sid = _create(client)["session_id"]

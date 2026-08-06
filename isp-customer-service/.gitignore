@@ -94,3 +94,4 @@ eval_*.txt
 # Fuzzing run artifacts
 fuzz_*.txt
 fuzz_*.json
+chatbot_core/.api_config.json

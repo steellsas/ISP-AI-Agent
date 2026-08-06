@@ -57,6 +57,10 @@ manager = SessionManager(hub, settings)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     hub.set_loop(asyncio.get_running_loop())
+    # Restore config-page overrides (hosted demo keeps settings across restarts).
+    from . import runtime_config
+
+    runtime_config.load_persisted()
     cleanup = asyncio.create_task(manager.cleanup_loop())
     try:
         yield
@@ -180,6 +184,58 @@ async def delete_session(session_id: str):
     except SessionNotFound:
         raise HTTPException(status_code=404, detail="unknown session") from None
     return {"ended": True}
+
+
+@app.get("/calls")
+async def calls_list(limit: int = 50):
+    """Archive zone: newest-first past-call records (conversations table)."""
+    from . import archive
+
+    return {"calls": await asyncio.to_thread(archive.list_calls, limit)}
+
+
+@app.get("/calls/{session_id}")
+async def calls_detail(session_id: str):
+    """One call: record + transcript + full event trace + audio list + stats.
+    Doubles as the JSON export (save the response)."""
+    from . import archive
+
+    detail = await asyncio.to_thread(archive.call_detail, session_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="unknown call")
+    return detail
+
+
+@app.get("/calls/{session_id}/audio/{filename}")
+async def calls_audio(session_id: str, filename: str):
+    """One turn's recording (caller wav / agent mp3), path-validated."""
+    from . import archive
+
+    path = archive.audio_path(session_id, filename)
+    if path is None:
+        raise HTTPException(status_code=404, detail="unknown recording")
+    media = "audio/mpeg" if path.suffix == ".mp3" else "audio/wav"
+    return FileResponse(path, media_type=media)
+
+
+@app.get("/admin/config")
+async def config_get():
+    """The editable demo settings with live values + scopes. NOTE (agreed
+    2026-08-06): before public hosting, /admin/* must sit behind admin auth —
+    model switching is a sensitive surface."""
+    from . import runtime_config
+
+    return {"settings": runtime_config.current()}
+
+
+@app.put("/admin/config")
+async def config_put(changes: dict[str, str]):
+    from . import runtime_config
+
+    try:
+        return {"settings": await asyncio.to_thread(runtime_config.apply, changes)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
 
 
 @app.post("/admin/db/reset")
