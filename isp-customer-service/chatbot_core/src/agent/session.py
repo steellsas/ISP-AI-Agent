@@ -129,6 +129,12 @@ class AgentSession:
             {"user_input": text}, self._graph_config, stream_mode="custom"
         )
 
+    def request_cancel(self) -> None:
+        """Barge-in (Phase 5 PR3): stop the running streaming turn — the engine's
+        token loop closes the LLM stream and re-asks the interrupted question.
+        Thread-safe; no-op when no turn is running."""
+        self._agent.request_cancel()
+
     # --- Read-only views for transports / debug UIs ------------------------
     # Exposed as properties (not the agent itself) so callers depend on this
     # surface, not on ReactAgent internals.

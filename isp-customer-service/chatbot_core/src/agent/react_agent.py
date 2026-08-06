@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import time
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
@@ -298,6 +299,14 @@ class ReactAgent:
         # key whose clarification is out, awaiting the settling answer.
         self._evidence_conflict: tuple[str, str, str] | None = None
         self._evidence_conflict_asked: str | None = None
+        # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
+        # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
+        # stream closes mid-generation and the cancelled-turn bookkeeping runs
+        # (partial reply recorded, interrupted question re-asked). LangGraph
+        # runs the node to completion in the background, so an outer
+        # generator-close never reaches this loop — the flag is the only
+        # reliable cancel path (verified 2026-08-06).
+        self._cancel_requested = False
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -1411,6 +1420,28 @@ class ReactAgent:
         self._finalize_reply(reply)
         return reply
 
+    def request_cancel(self) -> None:
+        """Ask the running streaming turn to stop (thread-safe: a bool flip).
+        Checked between tokens; a no-op when no turn is running (the flag is
+        reset at the next turn's start)."""
+        self._cancel_requested = True
+
+    def on_turn_cancelled(self, spoken_text: str) -> None:
+        """Barge-in cut the reply mid-generation (Phase 5 PR3): record what the
+        caller ACTUALLY heard and roll the ask-bookkeeping back, so an
+        interrupted question is re-asked instead of silently counting as asked
+        (the sequence lives in STATE, and the state must match the ears)."""
+        s = self.state
+        spoken = (spoken_text or "").strip()
+        s.messages.append({"role": "assistant", "content": (spoken + " —") if spoken else "—"})
+        if s.resolution is not None:
+            s.resolution["asked"] = False  # the walker re-asks its step question
+        # An evidence ask that never fully went out must not escalate the wording.
+        key = getattr(self, "_evidence_last_ask_key", None)
+        if key and self._evidence_asks.get(key, 0) > 0:
+            self._evidence_asks[key] -= 1
+        self.tracer.emit("turn_cancelled", spoken=spoken[:160])
+
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
         """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the
         walker path's run_turn_scoped): user_turn trace, dialogue history, shared
@@ -1479,6 +1510,7 @@ class ReactAgent:
             self.tracer.emit("evidence", action="gave_up", key=key)
             return self._evidence_drive(user_input)
         self._evidence_asks[key] = asks + 1
+        self._evidence_last_ask_key = key  # for the barge-in cancel rollback
         text = (
             item.get("klausimas")
             if asks == 0
@@ -3707,6 +3739,7 @@ class ReactAgent:
         # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
         # slot/problem filled THIS turn counts as progress and clears the counter.
         self._turn_start_key = self._progress_key()
+        self._cancel_requested = False  # a stale barge-in never cancels a NEW turn
 
         self.state.last_heard = (user_input or "").strip()
         from .resolution import detect_turn_intent
@@ -3746,7 +3779,10 @@ class ReactAgent:
                 user_input = None
 
             try:
-                message = yield from stream_tool_completion(
+                # Manual consumption instead of `yield from`: the cancel flag is
+                # checked BETWEEN TOKENS — closing the inner generator closes the
+                # LLM HTTP stream, so the generation itself stops (PR3).
+                inner = stream_tool_completion(
                     messages=messages,
                     tools=self._scoped_tools_schema(),
                     tool_choice="auto",
@@ -3754,6 +3790,21 @@ class ReactAgent:
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
                 )
+                streamed: list[str] = []
+                while True:
+                    try:
+                        token = next(inner)
+                    except StopIteration as done:
+                        message = done.value
+                        break
+                    if self._cancel_requested:
+                        with suppress(Exception):
+                            inner.close()
+                        self.on_turn_cancelled("".join(streamed))
+                        return
+                    if isinstance(token, str):
+                        streamed.append(token)
+                    yield token
             except Exception as e:
                 logger.error(f"LLM stream error: {e}")
                 self._trace_note("llm_stream", str(e), level="error")

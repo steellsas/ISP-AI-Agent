@@ -758,6 +758,75 @@ class TestAnalysisStep2:
         assert "Klientas: dingo vakar, po: audra" in details
 
 
+class TestBargeInCancel:
+    """Phase 5 PR3: request_cancel stops the LLM generation ITSELF (the token
+    loop closes the HTTP stream) and rolls the ask-bookkeeping back, so the
+    interrupted question is re-asked. LangGraph never propagates an outer
+    generator-close into the node (verified 2026-08-06) — the flag is the only
+    reliable path."""
+
+    def test_cancel_mid_generation_closes_llm_stream(self, db_connection):
+        import time as _t
+
+        closed = {"v": False}
+
+        def slow_stream(**kwargs):
+            def _gen():
+                try:
+                    for i in range(50):
+                        _t.sleep(0.02)
+                        yield f"tok{i} "
+                    return _fake_message(content="pilnas atsakymas")
+                except GeneratorExit:
+                    closed["v"] = True
+                    raise
+
+            return _gen()
+
+        from agent.session import AgentSession
+
+        with (
+            patch("agent.react_agent.stream_tool_completion", side_effect=slow_stream),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            s = AgentSession(caller_phone="unknown", engine="graph")
+            s.greeting()
+            tokens = []
+            for tok in s.handle_turn_stream("O kas jūs tokie?"):
+                tokens.append(tok)
+                if len(tokens) == 3:
+                    s.request_cancel()  # barge-in lands mid-generation
+            assert closed["v"] is True  # the LLM stream was CLOSED, not drained
+            assert len(tokens) < 50  # generation stopped early
+            # The partial reply is on the record, marked as cut off.
+            assert s.state.messages[-1]["role"] == "assistant"
+            assert s.state.messages[-1]["content"].endswith("—")
+
+    def test_cancel_rollback_reasks_interrupted_question(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+        agent._evidence_asks["lights"] = 1
+        agent._evidence_last_ask_key = "lights"
+
+        agent.on_turn_cancelled("Pažiūrėkite, ar dega bent")
+
+        assert agent.state.resolution["asked"] is False  # the walker re-asks
+        assert agent._evidence_asks["lights"] == 0  # wording level not escalated
+        assert agent.state.messages[-1]["content"].startswith("Pažiūrėkite")
+
+    def test_stale_cancel_never_kills_the_next_turn(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.request_cancel()  # interrupt raced past the turn's end
+        reply = agent._identification_scripted_reply("Labadiena!")
+        assert reply  # scripted path unaffected
+        assert agent._cancel_requested is True  # cleared only at a STREAM turn start
+
+
 class TestSmallTalkBeforeProblem:
     """Live 2026-08-06: "Labadiena!" fell to the LLM, which offered the address
     BEFORE any problem was stated; the ladder then re-offered it (duplicate).
