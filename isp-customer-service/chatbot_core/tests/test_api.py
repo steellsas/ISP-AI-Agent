@@ -160,7 +160,11 @@ class TestVoiceChannel:
         monkeypatch.setenv("API_RECORD_DIR", str(tmp_path))
         return tmp_path
 
-    def test_binary_frame_runs_voice_turn(self, client, voice_fakes):
+    def test_binary_frame_runs_voice_turn(self, client, voice_fakes, monkeypatch):
+        # The NON-streaming contract (VOICE_STREAM=off): one voice_turn JSON,
+        # then the whole reply as one blob. The streaming default is covered by
+        # test_streaming_voice_turn_chunks_then_done.
+        monkeypatch.setenv("VOICE_STREAM", "off")
         sid = _create(client)["session_id"]
         with client.websocket_connect(f"/ws/call/{sid}") as ws:
             ws.send_bytes(b"RIFF-fake-wav-utterance")
@@ -187,6 +191,39 @@ class TestVoiceChannel:
         rec = voice_fakes / sid
         assert (rec / "turn_01_user.wav").read_bytes() == b"RIFF-fake-wav-utterance"
         assert (rec / "turn_01_agent.mp3").read_bytes() == b"FAKEMP3"
+
+    def test_streaming_voice_turn_chunks_then_done(self, client, voice_fakes, monkeypatch):
+        # Phase 5 PR1: the reply audio arrives sentence-by-sentence AS BINARY
+        # FRAMES while the turn runs; the done JSON (TTFA + turn summary)
+        # follows the last chunk. The scripted anamnesis reply is 2 sentences
+        # -> 2 chunks with the fake TTS.
+        monkeypatch.setenv("VOICE_STREAM", "on")
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"RIFF-fake-wav-utterance")
+            chunks = []
+            done = None
+            for _ in range(80):
+                msg = ws.receive()
+                if msg.get("bytes"):
+                    chunks.append(msg["bytes"])
+                elif msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "voice_turn_done":
+                        done = e
+                        break
+            assert len(chunks) >= 2  # sentence-by-sentence, not one blob
+            assert all(c == b"FAKEMP3" for c in chunks)
+            assert done is not None
+            assert done["chunks"] == len(chunks)
+            assert isinstance(done["ttfa_ms"], int)
+            assert done["turn"]["engine"] == "scripted"
+        # Recording: the full reply is the concatenated chunks.
+        rec = voice_fakes / sid
+        assert rec.joinpath("turn_01_user.wav").read_bytes() == b"RIFF-fake-wav-utterance"
+        assert rec.joinpath("turn_01_agent.mp3").read_bytes() == b"FAKEMP3" * len(chunks)
 
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]

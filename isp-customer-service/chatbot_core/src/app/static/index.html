@@ -318,8 +318,14 @@ $("start").onclick = async () => {
     ws = new WebSocket(`ws://${location.host}/ws/call/${sid}`);
     ws.binaryType = "arraybuffer";
     ws.onmessage = m => {
-      if(m.data instanceof ArrayBuffer){ playAudio(m.data); return; }
+      if(m.data instanceof ArrayBuffer){ enqueueAudio(m.data); return; }
       const e = JSON.parse(m.data);
+      if(e.type==="voice_turn_done"){
+        if(e.ttfa_ms!=null)
+          $("turnKv").insertAdjacentHTML("beforeend",
+            `<span>⚡ TTFA <b>${e.ttfa_ms}</b> ms</span><span>🔊 ${e.chunks} sak.</span>`);
+        return;
+      }
       if(e.type==="voice_turn"||e.type==="reply"||e.type==="error") return; // rendered via events
       onEvent(e);
     };
@@ -361,19 +367,28 @@ function sendText(){
   $("text").value="";
 }
 
-/* ---------- audio out (half-duplex: mic pauses while playing) ---------- */
-let currentAudio=null;
-function playAudio(buf){
-  stopAudio();
-  const blob=new Blob([buf],{type:"audio/mpeg"});
-  const a=new Audio(URL.createObjectURL(blob));
-  currentAudio=a;
+/* ---------- audio out: CHUNK QUEUE (streaming voice, Phase 5 PR1) ----------
+   Sentence chunks arrive while the turn is still running — they queue and play
+   back-to-back; `playing` stays true (half-duplex mic hold) until the queue
+   drains. A single blob (greeting) is just a one-chunk queue. */
+let currentAudio=null, audioQueue=[];
+function playAudio(buf){ enqueueAudio(buf); }
+function enqueueAudio(buf){
+  audioQueue.push(buf);
   playing=true;
-  a.onended=()=>{ playing=false; currentAudio=null; };
-  a.onerror=()=>{ playing=false; currentAudio=null; };
-  a.play().catch(()=>{ playing=false; currentAudio=null; });
+  if(!currentAudio) playNext();
+}
+function playNext(){
+  const buf=audioQueue.shift();
+  if(buf===undefined){ playing=false; currentAudio=null; return; }
+  const a=new Audio(URL.createObjectURL(new Blob([buf],{type:"audio/mpeg"})));
+  currentAudio=a;
+  a.onended=()=>{ currentAudio=null; playNext(); };
+  a.onerror=()=>{ currentAudio=null; playNext(); };
+  a.play().catch(()=>{ currentAudio=null; playNext(); });
 }
 function stopAudio(){
+  audioQueue=[];
   if(currentAudio){ try{currentAudio.pause();}catch(e){} currentAudio=null; }
   playing=false;
 }

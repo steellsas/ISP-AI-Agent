@@ -97,6 +97,13 @@ SCHEMA: list[dict[str, Any]] = [
         "scope": "immediate",
         "kind": "env",
     },
+    {
+        "key": "VOICE_STREAM",
+        "label": "Srautinis kalbėjimas (sakinys po sakinio)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
 ]
 
 _BY_KEY = {item["key"]: item for item in SCHEMA}
