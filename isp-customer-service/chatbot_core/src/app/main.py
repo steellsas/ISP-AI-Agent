@@ -279,41 +279,53 @@ async def ws_call(ws: WebSocket, session_id: str):
             await ws.send_json(event)
 
     pump = asyncio.create_task(_pump_events())
+    # Voice turns run as a BACKGROUND task (Phase 5 PR2): the reader loop keeps
+    # receiving, so an {"type":"interrupt"} can land WHILE the reply streams.
+    turn_task: asyncio.Task | None = None
+
+    async def _run_voice_turn(data: bytes) -> None:
+        import os as _os
+
+        try:
+            if _os.getenv("VOICE_STREAM", "on").lower() == "on":
+                payload = await manager.voice_turn_stream(session_id, data, ws.send_bytes)
+                await ws.send_json(payload)
+                return
+            payload, reply_audio = await manager.voice_turn(session_id, data)
+            await ws.send_json(payload)
+            if reply_audio:
+                await ws.send_bytes(reply_audio)
+        except SessionNotFound:
+            pass
+        except Exception:  # voice deps missing / ASR failure — keep the socket
+            logger.exception("voice turn failed")
+            with suppress(Exception):
+                await ws.send_json({"type": "error", "detail": "voice turn failed"})
+
     try:
         while True:
             frame = await ws.receive()
             if frame.get("type") == "websocket.disconnect":
                 break
             # Binary frame = ONE complete caller utterance (WAV, client-side
-            # end-pointing) -> full voice turn; the reply audio returns as the
-            # next binary frame right after its voice_turn JSON.
+            # end-pointing) -> a full voice turn in the background.
             if frame.get("bytes"):
-                import os as _os
-
-                try:
-                    if _os.getenv("VOICE_STREAM", "on").lower() == "on":
-                        # Phase 5 PR1: chunks stream out DURING the turn (the
-                        # agent speaks after the first sentence); the done JSON
-                        # with TTFA + turn summary follows the last chunk.
-                        payload = await manager.voice_turn_stream(
-                            session_id, frame["bytes"], ws.send_bytes
-                        )
-                        await ws.send_json(payload)
-                        continue
-                    payload, reply_audio = await manager.voice_turn(session_id, frame["bytes"])
-                except SessionNotFound:
-                    break
-                except Exception:  # voice deps missing / ASR failure — keep the socket
-                    logger.exception("voice turn failed")
-                    await ws.send_json({"type": "error", "detail": "voice turn failed"})
-                    continue
-                await ws.send_json(payload)
-                if reply_audio:
-                    await ws.send_bytes(reply_audio)
+                if turn_task is not None and not turn_task.done():
+                    continue  # one voice turn at a time; extra frames are dropped
+                turn_task = asyncio.create_task(_run_voice_turn(frame["bytes"]))
                 continue
             if frame.get("text"):
                 msg = json.loads(frame["text"])
-                if msg.get("type") == "turn" and msg.get("text"):
+                if msg.get("type") == "interrupt":
+                    # Barge-in: stop feeding audio NOW; the engine thread finishes
+                    # quietly. Traced, so the panel + archive show the interruption.
+                    try:
+                        ms = manager.get(session_id)
+                        ms.interrupt.set()
+                        ms.session.tracer.emit("barge_in")
+                    except SessionNotFound:
+                        break
+                elif msg.get("type") == "turn" and msg.get("text"):
                     try:
                         result = await manager.turn(session_id, str(msg["text"]))
                     except SessionNotFound:
@@ -325,6 +337,11 @@ async def ws_call(ws: WebSocket, session_id: str):
         pump.cancel()
         with suppress(asyncio.CancelledError):
             await pump
+        if turn_task is not None and not turn_task.done():
+            # The socket is gone — let the engine thread finish its bookkeeping,
+            # but nothing more will be sent (send failures are swallowed above).
+            with suppress(Exception):
+                await turn_task
         hub.unsubscribe(session_id, q)
 
 
