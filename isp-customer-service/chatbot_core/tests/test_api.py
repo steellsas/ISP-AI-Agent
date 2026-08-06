@@ -201,6 +201,54 @@ class TestVoiceChannel:
         assert "Agento vidus" in resp.text
 
 
+class TestArchive:
+    """PR3 — past-call records: list, detail (trace + stats), audio, safety."""
+
+    @pytest.fixture()
+    def archived_call(self, client, monkeypatch, tmp_path):
+        # A full lifecycle with the trace + recordings under tmp: create ->
+        # scripted turn -> delete (writes the conversations row + jsonl).
+        monkeypatch.setenv("TRACE_DIR", str(tmp_path))
+        monkeypatch.setenv("API_RECORD_DIR", str(tmp_path))
+        sid = _create(client)["session_id"]
+        client.post(f"/sessions/{sid}/turns", json={"text": "neveikia internetas"})
+        (tmp_path / sid).mkdir()
+        (tmp_path / sid / "turn_01_user.wav").write_bytes(b"RIFFwav")
+        client.delete(f"/sessions/{sid}")
+        return sid
+
+    def test_list_contains_archived_call(self, archived_call, client):
+        calls = client.get("/calls").json()["calls"]
+        assert any(c["session_id"] == archived_call for c in calls)
+        row = next(c for c in calls if c["session_id"] == archived_call)
+        assert row["purpose"] == "internet_down"
+
+    def test_detail_has_transcript_events_audio_stats(self, archived_call, client):
+        resp = client.get(f"/calls/{archived_call}")
+        assert resp.status_code == 200
+        d = resp.json()
+        assert any("kada pastebėjote" in (m["text"] or "") for m in d["transcript"])
+        # Caller lines from SCRIPTED turns come from the trace — the message
+        # history misses them (engine appends user turns only on the LLM path).
+        assert any(
+            m["role"] == "user" and "neveikia internetas" in m["text"] for m in d["transcript"]
+        )
+        assert any(e.get("type") == "session_end" for e in d["events"])
+        assert d["audio"] == ["turn_01_user.wav"]
+        assert d["stats"]["llm_calls"] == 0  # scripted call — and cost 0
+        assert d["stats"]["cost_usd"] == 0
+
+    def test_audio_served_and_path_safe(self, archived_call, client):
+        ok = client.get(f"/calls/{archived_call}/audio/turn_01_user.wav")
+        assert ok.status_code == 200 and ok.content == b"RIFFwav"
+        assert client.get(f"/calls/{archived_call}/audio/..%2Fsecret.wav").status_code == 404
+        assert client.get(f"/calls/{archived_call}/audio/nope.wav").status_code == 404
+        assert client.get("/calls/..%2F..%2Fetc/audio/x.wav").status_code == 404
+
+    def test_unknown_call_404(self, client):
+        assert client.get("/calls/nonexistent-session-id").status_code == 404
+
+
 class TestAdminReset:
     def test_reset_refused_during_call_then_reseeds(self, client):
         sid = _create(client)["session_id"]

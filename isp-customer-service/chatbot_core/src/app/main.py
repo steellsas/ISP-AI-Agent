@@ -182,6 +182,38 @@ async def delete_session(session_id: str):
     return {"ended": True}
 
 
+@app.get("/calls")
+async def calls_list(limit: int = 50):
+    """Archive zone: newest-first past-call records (conversations table)."""
+    from . import archive
+
+    return {"calls": await asyncio.to_thread(archive.list_calls, limit)}
+
+
+@app.get("/calls/{session_id}")
+async def calls_detail(session_id: str):
+    """One call: record + transcript + full event trace + audio list + stats.
+    Doubles as the JSON export (save the response)."""
+    from . import archive
+
+    detail = await asyncio.to_thread(archive.call_detail, session_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="unknown call")
+    return detail
+
+
+@app.get("/calls/{session_id}/audio/{filename}")
+async def calls_audio(session_id: str, filename: str):
+    """One turn's recording (caller wav / agent mp3), path-validated."""
+    from . import archive
+
+    path = archive.audio_path(session_id, filename)
+    if path is None:
+        raise HTTPException(status_code=404, detail="unknown recording")
+    media = "audio/mpeg" if path.suffix == ".mp3" else "audio/wav"
+    return FileResponse(path, media_type=media)
+
+
 @app.post("/admin/db/reset")
 async def db_reset():
     """Demo helper: restore the seeded DB state between test calls. Refused
