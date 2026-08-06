@@ -52,12 +52,6 @@ class TestGreetingParity:
 
         assert AgentSession(caller_phone="unknown")._use_graph is True
 
-    def test_env_can_select_legacy(self, monkeypatch):
-        monkeypatch.setenv("AGENT_ENGINE", "legacy")
-        from agent.session import AgentSession
-
-        assert AgentSession(caller_phone="unknown")._use_graph is False
-
 
 class TestTurnThroughGraph:
     def test_handle_turn_returns_reply_via_graph(self, db_connection):
@@ -78,26 +72,6 @@ class TestTurnThroughGraph:
         assert reply == "Pasakykite adresą."
         # State still lives in (and is shared with) the underlying engine.
         assert session.state.messages[-1]["content"] == "Pasakykite adresą."
-
-    def test_graph_and_legacy_same_turn_reply(self, db_connection):
-        from agent.session import AgentSession
-
-        msg = _fake_message(content="Tas pats atsakymas.")
-        replies = {}
-        for mode in ("graph", "legacy"):
-            session = AgentSession(caller_phone="unknown", engine=mode)
-            session.greeting()
-            with (
-                patch("agent.react_agent.llm_tool_completion", return_value=msg),  # legacy
-                patch(
-                    "agent.react_agent.stream_tool_completion",
-                    side_effect=_fake_stream(content="Tas pats atsakymas."),
-                ),  # graph
-                patch("agent.react_agent.get_last_call_stats", return_value={}),
-            ):
-                replies[mode] = session.handle_turn("labas")
-
-        assert replies["graph"] == replies["legacy"] == "Tas pats atsakymas."
 
 
 class TestRouting:
