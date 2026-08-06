@@ -5,6 +5,8 @@ These tests verify that tools work correctly and return expected data.
 Run: pytest tests/test_tools.py -v
 """
 
+import json
+
 
 class TestFindCustomer:
     """Tests for find_customer tool."""
@@ -269,3 +271,157 @@ class TestToolsRegistry:
         assert (
             len(REAL_TOOLS) == 11
         )  # resolve_address, find_customer, diagnose_connection, check_network_status, update_mac, reset_port, check_outages, run_ping_test, search_knowledge, create_ticket, close_case
+
+
+class TestSeedNetworkStatus:
+    """Seed-data guards folded in from the retired test_scenarios.py (2026-08-05):
+    the UNIQUE per-customer behaviours of check_network_status / find_customer
+    over the demo seeds. Lookup/outage/ticket mechanics are covered above —
+    these lock the seeded FAULT SHAPES the demo and evals rely on."""
+
+    def _status(self, customer_id):
+        from agent.tools import check_network_status
+
+        return check_network_status(customer_id=customer_id)
+
+    def test_cust001_healthy_baseline(self, db_connection):
+        result = self._status("CUST001")
+        assert result["port_status"] == "up"
+        assert result["ip_assigned"] is True
+        assert result["overall_status"] == "healthy"
+
+    def test_cust002_area_outage_flag(self, db_connection):
+        from agent.tools import check_outages
+
+        result = check_outages(customer_id="CUST002")
+        assert result.get("affected") is True or len(result.get("active_outages", [])) > 0
+
+    def test_cust004_port_down(self, db_connection):
+        result = self._status("CUST004")
+        assert result["port_status"] == "down"
+        assert result["overall_status"] == "issues_detected"
+
+    def test_cust005_has_tv_service(self, db_connection):
+        from agent.tools import find_customer
+
+        result = find_customer(phone="+37060012349")
+        assert any("tv" in str(s).lower() for s in result.get("active_services", []))
+
+    def test_cust006_no_ip(self, db_connection):
+        result = self._status("CUST006")
+        assert result["ip_assigned"] is False
+        assert result["overall_status"] == "issues_detected"
+
+    def test_cust007_suspended_account(self, db_connection):
+        from agent.tools import find_customer
+
+        assert find_customer(phone="+37060012351")["status"] == "suspended"
+
+    def test_cust008_packet_loss(self, db_connection):
+        result = self._status("CUST008")
+        assert result.get("packet_loss", {}).get("has_packet_loss") is True
+        assert result["overall_status"] == "issues_detected"
+
+    def test_empty_phone_lookup_fails_cleanly(self, db_connection):
+        from agent.tools import find_customer
+
+        assert find_customer(phone="")["success"] is False
+
+
+# Moved from test_agent.py (2026-08-05 cleanup): tool schema/validation
+# belongs with the tools component, not the conversation engine.
+class TestToolDescriptions:
+    """Tests for tool descriptions generation."""
+
+    def test_get_tools_description(self):
+        """Should generate valid tools description."""
+        from agent.tools import get_tools_description
+
+        description = get_tools_description()
+
+        assert isinstance(description, str)
+        assert "find_customer" in description
+        assert "search_knowledge" in description
+        assert len(description) > 100
+
+    def test_tools_description_has_parameters(self):
+        """Tools description should include parameters."""
+        from agent.tools import get_tools_description
+
+        description = get_tools_description()
+
+        assert "phone" in description.lower()
+        assert "query" in description.lower()
+        assert "customer_id" in description.lower()
+
+
+class TestToolValidation:
+    """Tests for Tool.validate_arguments() and execute_tool() guarding."""
+
+    def _tools_by_name(self):
+        from agent.tools import REAL_TOOLS
+
+        return {t.name: t for t in REAL_TOOLS}
+
+    def test_validate_drops_unknown(self):
+        """Unknown argument keys are dropped (with warning) and validation passes."""
+        find_customer = self._tools_by_name()["find_customer"]
+
+        cleaned, error = find_customer.validate_arguments({"phone": "+37060012345", "bogus": "x"})
+
+        assert error is None
+        assert cleaned == {"phone": "+37060012345"}  # 'bogus' dropped
+        assert "bogus" not in cleaned
+
+    def test_validate_missing_required(self):
+        """Missing a required parameter returns a structured error, no cleaned args."""
+        search_knowledge = self._tools_by_name()["search_knowledge"]
+
+        cleaned, error = search_knowledge.validate_arguments({})
+
+        assert cleaned == {}
+        assert error is not None
+        assert error["error"] == "invalid_arguments"
+        assert error["tool"] == "search_knowledge"
+        assert error["missing_required"] == ["query"]
+
+    def test_validate_coerces_scalar_to_string(self):
+        """A scalar passed where a string is declared is coerced to str."""
+        check_network_status = self._tools_by_name()["check_network_status"]
+
+        cleaned, error = check_network_status.validate_arguments({"customer_id": 123})
+
+        assert error is None
+        assert cleaned == {"customer_id": "123"}
+        assert isinstance(cleaned["customer_id"], str)
+
+    def test_validate_non_dict_arguments(self):
+        """Non-dict arguments are rejected with a structured error."""
+        find_customer = self._tools_by_name()["find_customer"]
+
+        cleaned, error = find_customer.validate_arguments("not a dict")
+
+        assert cleaned == {}
+        assert error is not None
+        assert error["error"] == "invalid_arguments"
+
+    def test_execute_tool_missing_required_returns_error(self):
+        """execute_tool short-circuits on missing required args (no function call)."""
+        from agent.tools import execute_tool
+
+        # search_knowledge requires 'query'; with none, validation must stop it
+        # BEFORE touching the knowledge base.
+        observation = execute_tool("search_knowledge", {})
+        data = json.loads(observation)
+
+        assert data["error"] == "invalid_arguments"
+        assert data["missing_required"] == ["query"]
+
+    def test_execute_tool_unknown_tool(self):
+        """execute_tool returns an error for an unknown tool name."""
+        from agent.tools import execute_tool
+
+        observation = execute_tool("nonexistent_tool", {})
+        data = json.loads(observation)
+
+        assert "Unknown tool" in data["error"]
