@@ -233,13 +233,16 @@ class TestHistoryWindow:
         assert "Vilniaus g. 1, Vilnius" in facts
         assert messages[-1]["role"] == "user"  # user input stays last
 
-    def test_state_facts_block_none_when_empty(self):
-        """No facts resolved yet -> no addendum (system prompt unchanged)."""
+    def test_state_facts_block_only_guard_when_empty(self):
+        """Nothing resolved yet -> the only addendum is the pre-problem guard
+        (2026-08-06: it stops the LLM offering the address before a problem is
+        stated); the system prompt itself stays unchanged."""
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
 
-        assert agent._state_facts_block() is None
+        facts = agent._state_facts_block()
+        assert facts is not None and "PROBLEMA DAR NEPASAKYTA" in facts
         messages = agent._build_messages()
         assert messages[0]["content"] == agent.system_prompt
 
@@ -755,6 +758,38 @@ class TestAnalysisStep2:
         assert "Klientas: dingo vakar, po: audra" in details
 
 
+class TestSmallTalkBeforeProblem:
+    """Live 2026-08-06: "Labadiena!" fell to the LLM, which offered the address
+    BEFORE any problem was stated; the ladder then re-offered it (duplicate).
+    Small talk pre-problem is scripted now; the facts block guards the rest."""
+
+    def _fresh(self):
+        from agent.react_agent import ReactAgent
+
+        return ReactAgent(caller_phone="+37060012353")
+
+    def test_greeting_gets_scripted_ask_problem(self, db_connection):
+        from agent.identification import phrase
+
+        agent = self._fresh()
+        assert agent._identification_scripted_reply("Labadiena!") == phrase("ask_problem")
+        assert agent._identification_scripted_reply("Sveiki") == phrase("ask_problem")
+
+    def test_problem_statement_is_not_smalltalk(self, db_connection):
+        agent = self._fresh()
+        agent.state.problem_type = "internet_down"
+        reply = agent._identification_scripted_reply("neveikia internetas")
+        assert reply is not None and "kada pastebėjote" in reply  # anamnesis, not ask_problem
+
+    def test_facts_forbid_address_offer_before_problem(self, db_connection):
+        agent = self._fresh()
+        facts = agent._state_facts_block() or ""
+        assert "PROBLEMA DAR NEPASAKYTA" in facts
+        agent.state.problem_type = "internet_down"
+        facts2 = agent._state_facts_block() or ""
+        assert "PROBLEMA DAR NEPASAKYTA" not in facts2
+
+
 class TestScriptedWrapUp:
     """After the inform news, ANY non-question turn wraps up deterministically —
     a garbled goodbye ("Nusigaro") had looped 'nesupratau, pakartokite' forever."""
@@ -1131,6 +1166,42 @@ class TestTicketDialogue:
         second = agent._drive_propose_fix("", "dar nieko nedariau")
         assert "pasakykite" in second  # the short wait line afterwards
 
+    def test_plugged_into_computer_runs_bind_path_not_solver(self, db_connection, monkeypatch):
+        # Eval S4: "Įkišau į kompiuterį" got yet another solver disambiguate and
+        # the bind never ran. The plug-in report is ENGINE territory now — it
+        # routes to _drive_propose_fix (whose own discipline still requires the
+        # device to actually be visible before any bind).
+        import os
+
+        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
+        agent = self._agent_at_consent(monkeypatch)
+        agent.state.resolution["step"] = "dr_offer_bridge"
+        called = {}
+
+        def fake_propose(say, user_input):
+            called["ran"] = True
+            return "Pririšu įrenginį."
+
+        monkeypatch.setattr(agent, "_drive_propose_fix", fake_propose)
+        reply = agent.solver_drive_turn("Įkišau į kompiuterį")
+        assert called.get("ran") is True
+        assert reply == "Pririšu įrenginį."
+
+    def test_tik_kompiuteri_is_not_a_no_device_answer(self, db_connection, monkeypatch):
+        # "Neturiu kito routerio, tik kompiuterį" after the bridge offer must
+        # NOT escalate — the caller HAS a computer (eval S4 regression).
+        import os
+
+        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
+        agent = self._agent_at_consent(monkeypatch)
+        agent.state.messages.append(
+            {"role": "assistant", "content": "Ar turite kompiuterį, kad paleistume internetą?"}
+        )
+        agent._drive_disabled = True  # isolate: no solver LLM call
+        reply = agent.solver_drive_turn("Neturiu kito routerio, tik kompiuterį")
+        assert agent._ticket_stage is None  # no escalation fired
+        # (evidence drive may still ask its next question — that is fine)
+
     def test_no_device_after_bridge_offer_escalates_deterministically(
         self, db_connection, monkeypatch
     ):
@@ -1188,6 +1259,35 @@ class TestTicketDialogue:
         agent.state.closed_reason = "resolved"
         agent.end_session(outcome="client_closed")
         assert agent.state.ticket_id is None
+
+    def test_hangup_net_skips_when_line_is_healthy(self, db_connection, monkeypatch):
+        # Live 2026-08-06 (TKT00D19E54): the caller confirmed "veikia!" and hung
+        # up before the goodbye — the net registered a technician for a HEALTHY
+        # line. The line's current truth now decides: fresh diagnose healthy ->
+        # no ticket, closed as resolved.
+        agent = self._agent_at_consent(monkeypatch)
+        monkeypatch.setattr(
+            "agent.react_agent.execute_tool",
+            lambda name, args: json.dumps({"verdict": {"reason": "healthy_to_router"}}),
+        )
+        agent.end_session(outcome="client_closed")
+        assert agent.state.ticket_id is None
+        assert agent.state.closed_reason == "resolved"
+
+    def test_hangup_net_skips_on_recorded_fix(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        agent.state.resolution["telemetry_fixed"] = True
+        agent.end_session(outcome="client_closed")
+        assert agent.state.ticket_id is None
+        assert agent.state.closed_reason == "resolved"
+
+    def test_hangup_net_still_registers_when_fault_persists(self, db_connection, monkeypatch):
+        agent = self._agent_at_consent(monkeypatch)
+        # _agent_at_consent uses CUST009 whose seeded line still shows no_mac —
+        # the real diagnose read confirms the fault persists -> ticket.
+        agent.end_session(outcome="client_closed")
+        assert agent.state.ticket_id
+        assert agent.state.closed_reason == "registered"
 
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)

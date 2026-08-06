@@ -879,6 +879,14 @@ class ReactAgent:
                         )
                 if step.hint:
                     facts.append(f"- THIS STEP: {step.hint}")
+        # Before ANY problem is stated, identification must not run ahead: no
+        # address offers, no checks — first learn WHY they call (live: the LLM
+        # offered the address on a greeting; the ladder then re-offered it).
+        if not s.customer_id and not s.problem_type and not s.preflight_outage:
+            facts.append(
+                "- PROBLEMA DAR NEPASAKYTA: NESIŪLYK adreso ir nieko netikrinsi — "
+                "pirmiausia paklausk, kokia problema / kuo gali padėti."
+            )
         # Deterministically heard address parts (NLU Track A prefill). Surface them
         # so the model passes THESE to resolve_address instead of re-extracting
         # garbled STT (observed: NLU heard "Aušros g. 8" but the model sent
@@ -1327,15 +1335,31 @@ class ReactAgent:
 
         if ask_caller() and not self.state.caller_name:
             return None  # identification ladder not finished yet
+        # Discipline rule (2026-08-06, eval S4): a reported plug-in INTO THE
+        # COMPUTER runs the bind path deterministically — the solver answered
+        # "Įkišau į kompiuterį" with yet another disambiguate and the bind never
+        # happened. _drive_propose_fix keeps all its own discipline (device must
+        # actually be visible before any bind).
+        from .resolution import detect_no_device, detect_plugged
+
+        low_in = (user_input or "").lower()
+        if detect_plugged(user_input) and "kompiuter" in low_in:
+            reply = self._drive_propose_fix("", user_input)
+            return self._commit_driven_reply(user_input, reply)
         # Discipline rule (2026-08-05): "no device" after the bridge OFFER is
         # ENGINE territory — with nothing to bridge through, the only solutions
         # are ticket-shaped, so escalate NOW. Left to the solver, this answer
         # spawned a disambiguate streak ("patikrinkime dar kartą…" x6) and,
         # after the bailout, a full walker rewind to dr_intro (observed live).
-        from .resolution import detect_no_device
+        # The EXTRACTOR reads the answer ("Neturiu kito routerio, tik
+        # kompiuterį" is a YES — the loose detector escalated on it).
+        from .evidence import extract_client_facts
 
         last_q = (self._last_agent_question() or "").lower()
-        if "kompiuter" in last_q and detect_no_device(user_input):
+        has_pc = extract_client_facts(user_input).get("has_computer")
+        if "kompiuter" in last_q and (
+            has_pc == "no" or (has_pc is None and detect_no_device(user_input))
+        ):
             self.tracer.emit(
                 "drive_decision",
                 action="escalate",
@@ -3461,17 +3485,40 @@ class ReactAgent:
         if s.customer_id and not s.ticket_id and not s.case_closed and s.resolution is not None:
             from .resolution import get_strategy
 
-            s.resolution.setdefault("escalate_reason", "Pokalbis nutrūko — klientas padėjo ragelį.")
-            if not s.contact_phone:
-                s.contact_phone = s.caller_phone
-            if not s.contact_hours:
-                s.contact_hours = "bet kada"
-            strat = get_strategy(s.resolution.get("verdict"))
-            esc = strat.step("escalate") if strat else None
-            self._register_ticket_from_state(esc)
-            if s.ticket_id:
-                s.closed_reason = "registered"
-                self.tracer.emit("decision", intent="hangup_net", action="register")
+            # The line's CURRENT truth decides (2026-08-06): a caller who hung up
+            # right after "veikia!" must NOT get a technician ticket (observed
+            # live: TKT00D19E54 for a healthy line). A recorded fix or one fresh
+            # diagnose read showing healthy skips the net; telemetry unreachable
+            # -> register anyway (a spare ticket beats an abandoned caller).
+            solved = bool(s.resolution.get("telemetry_fixed"))
+            if not solved:
+                try:
+                    d = json.loads(
+                        execute_tool("diagnose_connection", {"customer_id": s.customer_id})
+                    )
+                    solved = ((d.get("verdict") or {}).get("reason") or "healthy_to_router") == (
+                        "healthy_to_router"
+                    )
+                except Exception:  # pragma: no cover - defensive
+                    solved = False
+            if solved:
+                s.case_closed = True
+                s.closed_reason = "resolved"
+                self.tracer.emit("decision", intent="hangup_net", action="skip_solved")
+            else:
+                s.resolution.setdefault(
+                    "escalate_reason", "Pokalbis nutrūko — klientas padėjo ragelį."
+                )
+                if not s.contact_phone:
+                    s.contact_phone = s.caller_phone
+                if not s.contact_hours:
+                    s.contact_hours = "bet kada"
+                strat = get_strategy(s.resolution.get("verdict"))
+                esc = strat.step("escalate") if strat else None
+                self._register_ticket_from_state(esc)
+                if s.ticket_id:
+                    s.closed_reason = "registered"
+                    self.tracer.emit("decision", intent="hangup_net", action="register")
         # Structured OUTCOME of the call, built DETERMINISTICALLY from state (Phase 3.10):
         # why they called, the cause + side, what ran, resolved?/ticket, who called. Emitted
         # for the record/reports; DB persistence to the conversations table is a follow-up.
@@ -4088,6 +4135,14 @@ class ReactAgent:
         # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
         # whole ladder by a turn (observed in eval).
         if not s.customer_id:
+            # Small talk BEFORE any problem is stated gets a scripted greeting-back
+            # — never the LLM (which jumped to the address offer on "Labadiena!",
+            # duplicating the ladder's own later offer; live 2026-08-06).
+            if not s.problem_type and user_input:
+                from .resolution import is_greeting
+
+                if is_greeting(user_input):
+                    return phrase("ask_problem")
             p = s.profile
             has_addr = bool(p.street.value or p.house.value)
             if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:

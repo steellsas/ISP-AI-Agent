@@ -1235,6 +1235,22 @@ _NO_DEVICE = (
 )
 
 
+_GREETING = ("laba", "labas", "sveiki", "labadien", "alio", "sveikas", "gera dien")
+
+
+def is_greeting(text: str | None) -> bool:
+    """A short greeting/small-talk opener with NO problem content ("Labadiena!").
+    Live 2026-08-06: such a turn fell to the LLM, which jumped straight to the
+    address offer BEFORE any problem was stated — the ladder then re-offered it
+    and the caller got the same question twice."""
+    if not text:
+        return False
+    low = text.lower()
+    if len(low.split()) > 4:
+        return False
+    return any(m in low for m in _GREETING)
+
+
 def detect_no_device(text: str | None) -> bool:
     """The caller has NO device to bridge through ("neturiu kompiuterio", "tik
     telefonas"). Meaningful only right after the bridge OFFER — the caller

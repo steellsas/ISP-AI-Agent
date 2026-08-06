@@ -72,6 +72,35 @@ class TestExtraction:
         assert x("Pabandžiau kitą rozetę, nepadėjo")["outlet_works"] == "bandyta"
         assert x("Radau tą routerio dėžutę su antena")["device_present"] == "rado"
 
+    def test_negation_attaches_to_the_right_noun(self):
+        # Eval S4 regression: "Neturiu KITO ROUTERIO, tik kompiuterį" was read
+        # as has_computer=no and the solution flipped to ticket instead of
+        # bridge. The negation must attach to the computer itself.
+        from agent.evidence import extract_client_facts as x
+
+        assert x("Neturiu kito routerio, tik kompiuterį")["has_computer"] == "yes"
+        assert x("Turiu tik kompiuterį")["has_computer"] == "yes"
+        assert x("Neturiu kompiuterio")["has_computer"] == "no"
+        assert x("Nėra jokio kompiuterio namuose")["has_computer"] == "no"
+
+    def test_lights_answer_implies_device_present(self):
+        # Answering about the lights means the caller is AT the device — the
+        # device_present question must not be re-asked (eval S4: it was, then
+        # given up on while the caller stood at the router).
+        from agent.evidence import extract_client_facts as x
+
+        facts = x("Ne, nešviečia jokia lemputė")
+        assert facts["lights"] == "nedega"
+        assert facts["device_present"] == "rado"
+
+    def test_real_value_replaces_gave_up_marker_without_conflict(self):
+        from agent.evidence import CLIENT, set_fact
+
+        ev = {}
+        set_fact(ev, "power_cable", "neaišku", CLIENT, 5)  # give-up marker
+        entry = set_fact(ev, "power_cable", "įkištas", CLIENT, 7)
+        assert entry["value"] == "įkištas" and entry["conflict"] is False
+
     def test_conservative_on_garble_and_unrelated(self):
         from agent.evidence import extract_client_facts as x
 

@@ -46,6 +46,7 @@ identification:
   # from state. Scope: IDENTIFICATION ONLY — troubleshooting and free dialogue stay
   # with the LLM, and an off-script caller turn (a question) falls back to the LLM.
   phrases:
+    ask_problem: "Klausau! Kuo galiu padėti — kokia problema?"
     anamnesis_question: "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, pavyzdžiui, audros ar remonto?"
     address_offer: "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?"
     address_ask: "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, kuriuo neveikia internetas."

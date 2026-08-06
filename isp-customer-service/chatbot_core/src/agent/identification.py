@@ -73,6 +73,7 @@ def caller_question() -> str:
 
 # Scripted identification phrases — engine-composed replies (see the yaml note).
 _PHRASES_DEFAULTS: dict[str, str] = {
+    "ask_problem": "Klausau! Kuo galiu padėti — kokia problema?",
     "anamnesis_question": (
         "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, "
         "pavyzdžiui, audros ar remonto?"

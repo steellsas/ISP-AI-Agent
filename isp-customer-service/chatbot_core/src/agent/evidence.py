@@ -70,6 +70,11 @@ def set_fact(
     # client value onto a telemetry-backed fact: words never overwrite.
     if entry["source"] == TELEMETRY:
         return entry
+    if entry["value"] == "neaišku":
+        # Our own give-up marker — any real value replaces it, no conflict.
+        entry.update(stamp)
+        entry["conflict"] = False
+        return entry
     if entry["conflict"]:
         # The clarify answer — whatever they settle on now WINS.
         entry.update(stamp)
@@ -117,13 +122,20 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
         return {}
     low = text.lower()
     facts: dict[str, str] = {}
+    # Negation must attach to the COMPUTER itself: "Neturiu KITO ROUTERIO, tik
+    # kompiuterį" is a YES (eval S4 regression: the loose "netur…kompiuter"
+    # match read it as no and the solution flipped to ticket instead of bridge).
+    import re as _re
+
     from .resolution import detect_no_device
 
-    # Negation FIRST — "neturiu kompiuterio" contains "turiu kompiuter".
-    if "kompiuter" in low and detect_no_device(low):
-        facts["has_computer"] = "no"
-    elif any(m in low for m in _HAS_PC):
-        facts["has_computer"] = "yes"
+    if "kompiuter" in low:
+        if _re.search(r"(netur\w*|nėra|nera)\s+(?:\w+\s+){0,2}kompiuter", low):
+            facts["has_computer"] = "no"
+        elif any(m in low for m in _HAS_PC) or _re.search(r"tik\s+(su\s+)?kompiuter", low):
+            facts["has_computer"] = "yes"
+        elif detect_no_device(low) and "tik" not in low:
+            facts["has_computer"] = "no"
     if "lemp" in low or "šviesel" in low or "sviesel" in low:
         if any(m in low for m in _NEG_LIGHTS):
             facts["lights"] = "nedega"
@@ -141,6 +153,12 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     if ("router" in low or "dėžut" in low or "dezut" in low) and any(
         m in low for m in ("radau", "priėjau", "priejau", "matau", "esu prie", "suradau")
     ):
+        facts["device_present"] = "rado"
+    # Domain inference: answering about the LIGHTS or the POWER CABLE means the
+    # caller is standing AT the device — device_present is implied (eval S4:
+    # "nešviečia jokia lemputė" while device_present was still being asked led
+    # to a pointless re-ask and a give-up).
+    if ("lights" in facts or "power_cable" in facts) and "device_present" not in facts:
         facts["device_present"] = "rado"
     return facts
 
