@@ -37,6 +37,10 @@ class ManagedSession:
     turn_count: int = 0
     voice: Any = None  # VoicePipeline, attached lazily on the first audio frame
     greeting: str = ""  # the opening line (for the greeting-audio endpoint)
+    # Barge-in (Phase 5 PR2): set by the WS reader when the caller interrupts —
+    # the streaming turn stops SENDING further chunks (the sync engine still
+    # finishes in its thread; true mid-generation cancel is the async PR).
+    interrupt: asyncio.Event = field(default_factory=asyncio.Event)
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
@@ -179,16 +183,27 @@ class SessionManager:
                 loop.call_soon_threadsafe(q.put_nowait, b)
 
             t0 = time.perf_counter()
+            ms.interrupt.clear()
             task = asyncio.create_task(
                 asyncio.to_thread(voice.run_voice_turn_stream, ms, audio, on_chunk)
             )
             task.add_done_callback(lambda _t: q.put_nowait(None))  # runs on the loop
+            interrupted = False
+            sent = 0
             while True:
                 chunk = await q.get()
                 if chunk is None:
                     break
+                # Barge-in: the caller spoke over the reply — swallow the rest of
+                # the chunks (the engine finishes in its thread; audio stops NOW).
+                if ms.interrupt.is_set():
+                    interrupted = True
+                    continue
                 await send_bytes(chunk)
+                sent += 1
             payload = task.result()  # re-raises a worker failure
+            payload["interrupted"] = interrupted
+            payload["chunks_sent"] = sent
             wall_ms = int((time.perf_counter() - t0) * 1000)
             ms.turn_count += 1
             ms.last_activity = time.monotonic()

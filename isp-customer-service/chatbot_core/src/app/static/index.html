@@ -201,6 +201,14 @@
       <label>Tylos pauzė iki išsiuntimo (ms)</label>
       <input type="number" id="cfgMicSil" step="100" min="400" max="2500">
     </div>
+    <div class="cfgRow">
+      <label>Barge-in (galima pertraukti agentą)</label>
+      <input type="checkbox" id="cfgBargeOn">
+    </div>
+    <div class="cfgRow">
+      <label>Pertraukimo slenkstis (ms kalbos)</label>
+      <input type="number" id="cfgBargeMs" step="100" min="300" max="2000">
+    </div>
     <div id="cfgActions">
       <button id="cfgSave">Išsaugoti</button>
       <button id="cfgClose" class="ghost">Užverti</button>
@@ -215,6 +223,7 @@ let sid=null, ws=null, playing=false;
 let totals={in:0,out:0,cost:0,turns:0};
 let audioCtx=null, micStream=null, micNode=null, micSrc=null, recording=false;
 let utter=[], speaking=false, silenceMs=0, speechMs=0, sampleRate=16000;
+let bargeMs=0, bargeSilence=0, bargeBuf=[];   // kalba agentui kalbant (barge-in)
 
 /* ---------- UI helpers ---------- */
 function addMsg(cls, text){
@@ -258,6 +267,7 @@ function onEvent(e){
         `<span>🔊 TTS <b>${e.tts_ms}</b> ms</span><span>Σ <b>${e.total_ms}</b> ms</span>`);
       break;
     case "turn_summary": renderTurn(e); break;
+    case "barge_in": feed("t-dec","⏹ BARGE-IN — klientas pertraukė"); break;
     case "session_end": addMsg("note","— skambutis baigtas —"); break;
   }
 }
@@ -413,7 +423,30 @@ async function startMic(){
     let sum=0; for(let i=0;i<ch.length;i++) sum+=ch[i]*ch[i];
     const rms=Math.sqrt(sum/ch.length);
     $("vu").firstElementChild.style.height=Math.min(100,rms*800)+"%";
-    if(playing){ speaking=false; utter=[]; return; }  // half-duplex
+    if(playing){
+      // Barge-in v1 (asimetrinis): mikrofonas KLAUSO agentui kalbant. Trumpas
+      // pliūpsnis ("aha", "taip") — backchannel, grojame toliau; kalba ilgiau
+      // už slenkstį — stabdome grojimą, pertraukiančioji kalba tampa naujo
+      // atsakymo pradžia (nė vienas žodis nedingsta).
+      if(!micCfg.bargeOn){ speaking=false; utter=[]; return; }
+      const bthr = micCfg.threshold*1.6;   // aukštesnis slenkstis prieš aidą
+      if(rms>bthr){
+        bargeMs+=frameMs; bargeSilence=0;
+        bargeBuf.push(new Float32Array(ch));
+      }else if(bargeMs>0){
+        bargeSilence+=frameMs;
+        if(bargeSilence>250){ bargeMs=0; bargeSilence=0; bargeBuf=[]; } // backchannel — atmesta
+      }
+      if(bargeMs>=micCfg.bargeMs){
+        stopAudio();
+        if(ws) ws.send(JSON.stringify({type:"interrupt"}));
+        addMsg("note","⏹ pertraukėte agentą");
+        speaking=true; speechMs=bargeMs; silenceMs=0;
+        utter=bargeBuf.slice();
+        bargeMs=0; bargeSilence=0; bargeBuf=[];
+      }
+      return;
+    }
     if(rms>micCfg.threshold){
       speaking=true; speechMs+=frameMs; silenceMs=0;
       utter.push(new Float32Array(ch));
@@ -429,6 +462,7 @@ async function startMic(){
 }
 function stopMic(){
   recording=false; $("mic").classList.remove("rec");
+  bargeMs=0; bargeSilence=0; bargeBuf=[];
   if(micNode) micNode.disconnect();
   if(micSrc) micSrc.disconnect();
   if(micStream) micStream.getTracks().forEach(t=>t.stop());
@@ -453,6 +487,8 @@ function sendUtterance(){
 const micCfg = {
   threshold: parseFloat(localStorage.getItem("micThr") || "0.012"),
   silence: parseInt(localStorage.getItem("micSil") || "900", 10),
+  bargeOn: localStorage.getItem("bargeOn") !== "0",
+  bargeMs: parseInt(localStorage.getItem("bargeMs") || "700", 10),
 };
 async function loadConfig(){
   const r = await fetch("/admin/config").catch(()=>null);
@@ -466,6 +502,8 @@ async function loadConfig(){
     `</select></div>`).join("");
   $("cfgMicThr").value = micCfg.threshold;
   $("cfgMicSil").value = micCfg.silence;
+  $("cfgBargeOn").checked = micCfg.bargeOn;
+  $("cfgBargeMs").value = micCfg.bargeMs;
 }
 $("cfgToggle").onclick = () => { $("cfgOverlay").classList.add("open"); loadConfig(); };
 $("cfgClose").onclick = () => $("cfgOverlay").classList.remove("open");
@@ -475,8 +513,12 @@ $("cfgSave").onclick = async () => {
     changes[sel.dataset.key] = sel.value;
   micCfg.threshold = parseFloat($("cfgMicThr").value) || 0.012;
   micCfg.silence = parseInt($("cfgMicSil").value, 10) || 900;
+  micCfg.bargeOn = $("cfgBargeOn").checked;
+  micCfg.bargeMs = parseInt($("cfgBargeMs").value, 10) || 700;
   localStorage.setItem("micThr", String(micCfg.threshold));
   localStorage.setItem("micSil", String(micCfg.silence));
+  localStorage.setItem("bargeOn", micCfg.bargeOn ? "1" : "0");
+  localStorage.setItem("bargeMs", String(micCfg.bargeMs));
   const r = await fetch("/admin/config", {method:"PUT",
     headers:{"Content-Type":"application/json"}, body:JSON.stringify(changes)}).catch(()=>null);
   $("cfgStatus").textContent = (r && r.ok) ? "✔ išsaugota" : "✘ klaida: "+(r?await r.text():"tinklo");

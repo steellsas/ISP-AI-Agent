@@ -225,6 +225,51 @@ class TestVoiceChannel:
         assert rec.joinpath("turn_01_user.wav").read_bytes() == b"RIFF-fake-wav-utterance"
         assert rec.joinpath("turn_01_agent.mp3").read_bytes() == b"FAKEMP3" * len(chunks)
 
+    def test_interrupt_stops_remaining_chunks(self, client, voice_fakes, monkeypatch):
+        # Phase 5 PR2 barge-in: an {"type":"interrupt"} arriving MID-STREAM stops
+        # further chunks (the engine finishes quietly); the done payload says so.
+        import time as _time
+
+        from app import voice
+
+        class _SlowTTS:
+            def synthesize(self, text, *, language=None):
+                _time.sleep(0.15)  # keep the stream alive long enough to interrupt
+                return b"FAKEMP3"
+
+        monkeypatch.setattr(voice, "_build_tts", lambda: _SlowTTS())
+        monkeypatch.setenv("VOICE_STREAM", "on")
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"RIFF-fake-wav-utterance")
+            chunks = 0
+            done = None
+            interrupted_sent = False
+            for _ in range(120):
+                msg = ws.receive()
+                if msg.get("bytes"):
+                    chunks += 1
+                    if not interrupted_sent:
+                        ws.send_text('{"type": "interrupt"}')  # spoke over the reply
+                        interrupted_sent = True
+                elif msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "voice_turn_done":
+                        done = e
+                        break
+            assert done is not None
+            assert done["interrupted"] is True
+            assert done["chunks_sent"] < done["chunks"]  # the tail was swallowed
+        # The barge-in landed on the trace (panel + archive see it).
+        import json as _json2
+        from pathlib import Path
+
+        trace = Path("../logs/sessions") / f"{sid}.jsonl"
+        events = [_json2.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
+        assert any(e.get("type") == "barge_in" for e in events)
+
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]
         resp = client.get(f"/sessions/{sid}/greeting/audio")
