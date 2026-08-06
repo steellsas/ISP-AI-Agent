@@ -57,6 +57,10 @@ manager = SessionManager(hub, settings)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     hub.set_loop(asyncio.get_running_loop())
+    # Restore config-page overrides (hosted demo keeps settings across restarts).
+    from . import runtime_config
+
+    runtime_config.load_persisted()
     cleanup = asyncio.create_task(manager.cleanup_loop())
     try:
         yield
@@ -212,6 +216,26 @@ async def calls_audio(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail="unknown recording")
     media = "audio/mpeg" if path.suffix == ".mp3" else "audio/wav"
     return FileResponse(path, media_type=media)
+
+
+@app.get("/admin/config")
+async def config_get():
+    """The editable demo settings with live values + scopes. NOTE (agreed
+    2026-08-06): before public hosting, /admin/* must sit behind admin auth —
+    model switching is a sensitive surface."""
+    from . import runtime_config
+
+    return {"settings": runtime_config.current()}
+
+
+@app.put("/admin/config")
+async def config_put(changes: dict[str, str]):
+    from . import runtime_config
+
+    try:
+        return {"settings": await asyncio.to_thread(runtime_config.apply, changes)}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
 
 
 @app.post("/admin/db/reset")

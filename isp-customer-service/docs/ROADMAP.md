@@ -1125,7 +1125,10 @@ bidirectional WS carrying audio + events; business pitch = no hallucinations
 trail.
 
 **Deferred within Phase 4 (agreed):**
-- Config page (model switching + settings) for the demo — later, after PR3.
+- Config-page ADMIN AUTH (Andrius 2026-08-06): model switching and setting
+  changes are a sensitive surface — before the demo is HOSTED anywhere
+  public, /admin/* and the config page must sit behind authorized-admin
+  login. Decide together with the hosting setup (Phase 5/7 boundary).
 - Auth, DB-backed session persistence, horizontal scaling — Phase 7.
 - Multi-call SCALE: sync engine threads, shared Groq classifier rate limit
   (30/min across all calls), SQLite write contention (WAL), local STT/TTS
