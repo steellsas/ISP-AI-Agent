@@ -1332,15 +1332,40 @@ def is_backchannel(text: str | None) -> bool:
     return bool(tokens) and all(t in _BACKCHANNEL for t in tokens)
 
 
+_QUESTION_TOKENS = {
+    "kiek",
+    "kodėl",
+    "kodel",
+    "kada",
+    "kur",
+    "kuris",
+    "kuri",
+    "koks",
+    "kokia",
+    "kokie",
+    "kokiu",
+    "kokią",
+    "kokio",
+    "kam",
+    "kaip",
+    "negi",
+}
+
+
 def is_real_question(text: str | None) -> bool:
     """A QUESTION by its words, not by punctuation — STT sticks '?' onto rising
-    intonation ("Tomas?"), which is not the caller asking us something."""
+    intonation ("Tomas?"), which is not the caller asking us something. Token
+    based (2026-08-07): "Aš skola kokia." closed the call because the old
+    substring list required "kokia " with a trailing space."""
     if not text:
         return False
     low = text.lower()
-    return any(m in low for m in _QUESTION) or any(
+    if any(m in low for m in _QUESTION) or any(
         low.startswith(w) for w in ("kas ", "kaip ", "kam ", "kodėl", "kodel", "negi")
-    )
+    ):
+        return True
+    tokens = [t.strip(".,!?") for t in low.split()]
+    return any(t in _QUESTION_TOKENS for t in tokens)
 
 
 def get_strategy(verdict: str | None) -> Strategy | None:

@@ -1,0 +1,22 @@
+# ŽINOMI ATSAKYMAI šalutiniams klausimams (side_topic node, 2026-08-07).
+# Nauja tema = naujas įrašas ČIA, ne kodas. `raktazodziai` — substring match
+# (mažosiomis) prieš kliento frazę; sutapus, `atsakymas` paduodamas LLM'ui kaip
+# VIENINTELIS leidžiamas turinys tuo klausimu. Nesutapus niekam — agentas
+# mandagiai pasako, kad tai ne jo sritis, ir grįžta prie gedimo.
+
+faq:
+  - tema: kaina
+    raktazodziai: [kainuo, kaina, mokam, mokėti, moketi, sumokė, apmokestin]
+    atsakymas: "Skambutis ir gedimo sprendimas telefonu nieko nekainuoja. Jei prireiktų meistro vizito — kolegos prieš tai pasakys įkainius."
+  - tema: skolos_suma
+    raktazodziai: [skol, sąskait, saskait, suma]
+    atsakymas: "Tikslios sumos aš nematau — ją rasite savitarnoje arba pasakys kolegos iš buhalterijos. Matau tik, kad paslauga sustabdyta dėl neapmokėtos sąskaitos."
+  - tema: kiek_uztruks
+    raktazodziai: [užtruks, uztruks, ilgai, greitai sutvarky]
+    atsakymas: "Telefonu patikrinimas trunka kelias minutes. Jei reikės meistro — kolegos susisieks ir suderins laiką, dažniausiai kitą darbo dieną."
+  - tema: meistras
+    raktazodziai: [meistr, technik, atvažiuo, atvaziuo, vizit]
+    atsakymas: "Meistrą registruoju tik jei telefonu išspręsti nepavyks — pirmiausia pabandykime kartu, dažnai pavyksta be vizito."
+  - tema: darbo_laikas
+    raktazodziai: [darbo laik, kada dirbat, iki keliu, iki kelių]
+    atsakymas: "Konsultacijos telefonu — visą parą; meistrai lanko darbo dienomis darbo valandomis."
