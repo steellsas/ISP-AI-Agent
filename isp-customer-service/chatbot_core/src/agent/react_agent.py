@@ -1495,14 +1495,15 @@ class ReactAgent:
 
     def on_turn_cancelled(self, spoken_text: str) -> None:
         """Barge-in cut the reply mid-generation (Phase 5 PR3): record what the
-        caller ACTUALLY heard and roll the ask-bookkeeping back, so an
-        interrupted question is re-asked instead of silently counting as asked
-        (the sequence lives in STATE, and the state must match the ears)."""
+        caller ACTUALLY heard. The ask-bookkeeping is deliberately NOT rolled
+        back (review 2026-08-07): the NEXT turn decides — an early answer
+        ("taip, dega raudona!") routes normally, a question goes through
+        side_topic with the anchor, and an unclear reply holds -> the question
+        re-asks naturally. A blanket re-ask made the agent feel robotic when
+        callers interrupted BECAUSE they had already understood."""
         s = self.state
         spoken = (spoken_text or "").strip()
         s.messages.append({"role": "assistant", "content": (spoken + " —") if spoken else "—"})
-        if s.resolution is not None:
-            s.resolution["asked"] = False  # the walker re-asks its step question
         # An evidence ask that never fully went out must not escalate the wording.
         key = getattr(self, "_evidence_last_ask_key", None)
         if key and self._evidence_asks.get(key, 0) > 0:
@@ -2340,6 +2341,22 @@ class ReactAgent:
         s.rejected_hypotheses.clear()
         s.pivoted_from = None
         s.outage_reported = False
+        # Ledger + its machinery (review 2026-08-07): the EVIDENCE belongs to the
+        # dropped account — stale telemetry facts (the old verdict!) must never
+        # survive an address correction. The ticket dialogue, ask counters and
+        # deviation streak reset with it; the thinker gets a clean slate too.
+        s.evidence.clear()
+        self._evidence_asks.clear()
+        self._evidence_last_ask_key = None
+        self._evidence_conflict = None
+        self._evidence_conflict_asked = None
+        self._side_topic_this_turn = False
+        self._side_topic_turns = 0
+        self._ticket_stage = None
+        self._ticket_ctx = None
+        self._drive_bridge_offered = False
+        self._drive_disabled = False
+        self._drive_repeats = 0
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()
@@ -3821,6 +3838,14 @@ class ReactAgent:
             self._prefill_slots_from_text(user_input)
             self._pre_turn_guards(user_input)
 
+        # The caller's utterance goes on the history for EVERY reply path
+        # (review 2026-08-07): scripted turns used to skip it, so the LLM
+        # narrator later saw a conversation with holes and re-asked answered
+        # questions. One append, up front — the LLM loop below no longer does it.
+        if user_input:
+            self.state.messages.append({"role": "user", "content": user_input})
+            user_input = None
+
         # Deterministic backstop (before the LLM, so it works with streaming) once a
         # genuine repeat loop has escalated.
         backstop = self._stuck_backstop()
@@ -3830,7 +3855,7 @@ class ReactAgent:
 
         # Scripted identification-ladder reply (engine-composed, LLM skipped) — the
         # mechanical turns only; off-script turns fall through to the LLM.
-        scripted = self._identification_scripted_reply(user_input)
+        scripted = self._identification_scripted_reply(self.state.last_heard)
         if scripted is not None:
             yield self._emit_scripted_reply(scripted)
             return
@@ -3843,10 +3868,9 @@ class ReactAgent:
                 yield self.config.max_turns_message
                 return
 
-            messages = self._build_messages(user_input)
-            if user_input:
-                self.state.messages.append({"role": "user", "content": user_input})
-                user_input = None
+            # The user message is already on the history (appended up front, so
+            # scripted turns record it too); the prompt builds from history.
+            messages = self._build_messages(None)
 
             try:
                 # Manual consumption instead of `yield from`: the cancel flag is

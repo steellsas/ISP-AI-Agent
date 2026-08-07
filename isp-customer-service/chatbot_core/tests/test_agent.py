@@ -860,6 +860,78 @@ class TestSideTopicNode:
         assert "su kuo kalbu" in reply
 
 
+class TestReviewGaps:
+    """2026-08-07 architecture review fixes."""
+
+    def test_reopen_clears_evidence_and_dialogue_state(self, db_connection, monkeypatch):
+        # Stale-state bomb: after an address correction the OLD account's
+        # telemetry facts (the verdict!) survived in the ledger.
+        import os
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+        agent._update_state_from_observation(
+            "diagnose_connection",
+            json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}}),
+        )
+        agent._begin_ticket_dialogue(None)
+        agent._side_topic_turns = 2
+        assert agent.state.evidence and agent._ticket_stage == "phone"
+
+        agent._reopen_identification("skambinu dėl kito adreso — Dainų 5")
+
+        assert agent.state.evidence == {}
+        assert agent._ticket_stage is None and agent._ticket_ctx is None
+        assert agent._evidence_asks == {} and agent._evidence_conflict is None
+        assert agent._side_topic_turns == 0
+        assert agent.state.customer_id is None  # identity dropped as before
+
+    def test_scripted_turn_lands_user_message_on_history(self, db_connection):
+        # The LLM narrator used to see holes: scripted turns never appended the
+        # caller's utterance, so later turns re-asked answered questions.
+        from agent.session import AgentSession
+
+        s = AgentSession(caller_phone="+37060012353", engine="graph")
+        s.greeting()
+        reply = s.handle_turn("neveikia internetas")  # scripted anamnesis, no LLM
+        assert "kada pastebėjote" in reply
+        roles = [(m["role"], m.get("content")) for m in s.state.messages]
+        assert ("user", "neveikia internetas") in roles
+        assert roles[-1][0] == "assistant" and "kada pastebėjote" in roles[-1][1]
+
+    def test_llm_turn_appends_user_exactly_once(self, db_connection):
+        from unittest.mock import patch as _patch
+
+        from agent.session import AgentSession
+
+        def _stream(**kwargs):
+            def _gen():
+                yield "Atsakau."
+                return _fake_message(content="Atsakau.")
+
+            return _gen()
+
+        s = AgentSession(caller_phone="+37060012353", engine="graph")
+        s.greeting()
+        with (
+            _patch("agent.react_agent.stream_tool_completion", side_effect=_stream),
+            _patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            s.handle_turn("O kas jūs tokie, kokia įmonė?")  # off-script -> LLM
+        count = sum(
+            1
+            for m in s.state.messages
+            if m.get("role") == "user" and m.get("content") == "O kas jūs tokie, kokia įmonė?"
+        )
+        assert count == 1  # pre-append did not double with the LLM loop
+
+
 class TestBargeInCancel:
     """Phase 5 PR3: request_cancel stops the LLM generation ITSELF (the token
     loop closes the HTTP stream) and rolls the ask-bookkeeping back, so the
@@ -904,7 +976,11 @@ class TestBargeInCancel:
             assert s.state.messages[-1]["role"] == "assistant"
             assert s.state.messages[-1]["content"].endswith("—")
 
-    def test_cancel_rollback_reasks_interrupted_question(self, db_connection):
+    def test_cancel_keeps_asked_so_early_answers_route(self, db_connection):
+        # Review 2026-08-07: callers interrupt BECAUSE they understood — a
+        # blanket asked=False re-asked the question they just answered. The
+        # flags stay; the NEXT turn decides (answer routes / question anchors /
+        # unclear holds and re-asks naturally).
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
@@ -915,9 +991,10 @@ class TestBargeInCancel:
 
         agent.on_turn_cancelled("Pažiūrėkite, ar dega bent")
 
-        assert agent.state.resolution["asked"] is False  # the walker re-asks
+        assert agent.state.resolution["asked"] is True  # early answer will route
         assert agent._evidence_asks["lights"] == 0  # wording level not escalated
         assert agent.state.messages[-1]["content"].startswith("Pažiūrėkite")
+        assert agent.state.messages[-1]["content"].endswith("—")
 
     def test_stale_cancel_never_kills_the_next_turn(self, db_connection):
         from agent.react_agent import ReactAgent
