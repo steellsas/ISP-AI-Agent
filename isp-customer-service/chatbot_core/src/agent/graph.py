@@ -57,6 +57,7 @@ _ADDRESS_NODE_PROMPT = load_node_prompt("stages/identification")
 _DIAGNOSIS_NODE_PROMPT = load_node_prompt("stages/diagnosis")
 _CLOSING_NODE_PROMPT = load_node_prompt("stages/closing")
 _TICKET_NODE_PROMPT = load_node_prompt("stages/ticket")
+_SIDE_TOPIC_PROMPT = load_node_prompt("stages/side_topic")
 
 
 class TurnState(TypedDict, total=False):
@@ -111,6 +112,12 @@ def build_turn_graph(engine: Any):
         # anyone acts on it — one place, seen by both the driven and the walker
         # path (a detected contradiction holds this turn for the clarify).
         engine._ingest_client_evidence(state.get("user_input"))
+        # Side-topic node (2026-08-07): a deviation FREEZES the engine for the
+        # turn — no walker/solver/action runs on side chatter; the LLM answers
+        # from the FAQ facts and returns the caller to the anchor. The 3rd
+        # consecutive deviation is a scripted frame (composed in the engine).
+        if engine.classify_side_topic(state.get("user_input")):
+            return _run_node(state, frozenset(), _SIDE_TOPIC_PROMPT, "side_topic")
         # Deterministic close for INFORM mode (outage / billing / no-strategy): if the
         # caller was already informed and now says goodbye, close here so the reply is a
         # single farewell — not another re-narration of the outage. Runs before narration

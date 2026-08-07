@@ -307,6 +307,11 @@ class ReactAgent:
         # generator-close never reaches this loop — the flag is the only
         # reliable cancel path (verified 2026-08-06).
         self._cancel_requested = False
+        # Side-topic node (2026-08-07): an off-fault QUESTION during analysis /
+        # solving freezes the engine for the turn (nothing advances on side
+        # chatter); the 3rd consecutive deviation gets the scripted frame.
+        self._side_topic_this_turn = False
+        self._side_topic_turns = 0
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -528,6 +533,22 @@ class ReactAgent:
         """
         s = self.state
         facts: list[str] = []
+        # Side-topic turn (deviation): the ONLY permitted content is the FAQ hit
+        # (or an honest "not my area"), then the RETURN ANCHOR — the engine's
+        # exact pending question. Leads the block; nothing else competes.
+        if self._side_topic_this_turn:
+            from .faq import match as faq_match
+
+            hits = faq_match(s.last_heard)
+            zinios = " ".join(f"[{e.get('tema')}] {e['atsakymas']}" for e in hits) or (
+                "(šiai temai ŽINOMO ATSAKYMO NĖRA — mandagiai pasakyk, kad tai ne tavo sritis)"
+            )
+            facts.append(
+                "- NUKRYPIMAS NUO GEDIMO: klientas klausia šalutinio dalyko. Atsakyk "
+                f"VIENU-DVIEM sakiniais TIK pagal ŽINOMUS ATSAKYMUS: {zinios} "
+                "NIEKO neišgalvok (jokių sumų, terminų, pažadų). Tada BŪTINAI "
+                f"grįžk prie gedimo — pakartok: „{self.anchor_text()}“"
+            )
         # Ticket-dialogue off-script turn: the caller asked something instead of
         # answering the stage question — give the LLM the answers it may need and
         # the EXACT question to re-ask. Leads the block; nothing else competes.
@@ -1340,6 +1361,17 @@ class ReactAgent:
             return None  # the ticket dialogue owns the turn
         if self._evidence_conflict:
             return None  # the scripted conflict clarification owns the turn
+        if self._side_topic_this_turn:
+            return None  # the side_topic node owns the turn (answer + anchor)
+        # POLICY turns never belong to the thinker (2026-08-07: a refusal
+        # ("neturiu laiko") got a solver `wait`→`close` and the call ended with
+        # NO ticket, bypassing the refuse→registration policy; a goodbye
+        # mid-strategy must go through the end-confirm). Returning None hands
+        # the turn to the walker + guards, which own those policies.
+        from .resolution import detect_farewell, detect_refuse_or_ticket
+
+        if detect_farewell(user_input) or detect_refuse_or_ticket(user_input) is not None:
+            return None
         from .identification import ask_caller
 
         if ask_caller() and not self.state.caller_name:
@@ -1425,6 +1457,41 @@ class ReactAgent:
         Checked between tokens; a no-op when no turn is running (the flag is
         reset at the next turn's start)."""
         self._cancel_requested = True
+
+    def anchor_text(self) -> str:
+        """The exact place to return to after a deviation — the engine's LAST
+        asked question (deterministic), never the LLM's memory of it."""
+        q = (self.state.last_question or "").strip()
+        return q if q else "Ar tęsiame gedimo sprendimą?"
+
+    def classify_side_topic(self, user_input: str | None) -> bool:
+        """Is THIS turn a deviation (a real question with no usable facts)
+        during analysis/solving? Sets the per-turn flag + the streak; a
+        productive turn resets the streak. Mechanics turns (ticket dialogue,
+        conflict clarify, end-confirm) are never deviations — their owners
+        handle them."""
+        from .evidence import extract_client_facts
+        from .resolution import is_real_question
+
+        s = self.state
+        self._side_topic_this_turn = False
+        if not user_input or not s.customer_id or s.case_closed or self._ticket_stage:
+            return False
+        if self._evidence_conflict or self._end_confirm_pending or self._resume_hold:
+            return False
+        if not is_real_question(user_input):
+            self._side_topic_turns = 0
+            return False
+        if extract_client_facts(user_input):
+            # An informative interruption ANSWERS things — not a deviation.
+            self._side_topic_turns = 0
+            return False
+        self._side_topic_this_turn = True
+        self._side_topic_turns += 1
+        self.tracer.emit(
+            "decision", intent="side_topic", action="enter", streak=self._side_topic_turns
+        )
+        return True
 
     def on_turn_cancelled(self, spoken_text: str) -> None:
         """Barge-in cut the reply mid-generation (Phase 5 PR3): record what the
@@ -2003,6 +2070,9 @@ class ReactAgent:
                 self.tracer.emit("decision", intent="ticket_dialogue", action="phone_captured")
                 self._ticket_stage = "hours"
             else:
+                # STT sticks "?" mid-string too ("Bet kada? Bet kurio laiko?") —
+                # scrub ALL question/exclamation marks before the ticket/announce.
+                clean = re.sub(r"\s+", " ", re.sub(r"[?!]", " ", clean)).strip(" .,")
                 low_h = clean.lower()
                 plausible = bool(re.search(r"\d", low_h)) or any(
                     m in low_h
@@ -4163,6 +4233,18 @@ class ReactAgent:
             s.closed_reason = "declined"
             s.is_complete = True
             return "Gerai — gedimo neregistruoju. " + phrase("goodbye")
+        # Side-topic FRAME (3rd consecutive deviation): the LLM answered twice
+        # and the caller keeps drifting — the return is scripted now. With a
+        # CONFIRMED hypothesis the frame is the solve-together-or-technician
+        # choice (Andrius 2026-08-07: maximise solving by phone).
+        if self._side_topic_this_turn and self._side_topic_turns >= 3:
+            self._side_topic_turns = 0
+            from .evidence import hypothesis_status, spec_for
+
+            spec = spec_for((s.resolution or {}).get("verdict"))
+            if spec is not None and hypothesis_status(s.evidence, spec) == "confirmed":
+                return phrase("solve_or_ticket")
+            return phrase("back_to_issue", inkaras=self.anchor_text())
         # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
         # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
         if self._evidence_conflict:
@@ -4229,7 +4311,7 @@ class ReactAgent:
             and not self._result_pending
         ):
             low = (user_input or "").lower()
-            wants_more = any(
+            wants_more = is_real_question(user_input) or any(
                 m in low
                 for m in (
                     "klausim",
@@ -4238,12 +4320,11 @@ class ReactAgent:
                     "noriu",
                     "minut",
                     "sekund",
-                    "o kod",
-                    "o kiek",
+                    "skol",
                 )
             )
             if wants_more:
-                return None  # they want something else — the LLM handles it
+                return None  # a question / wants something — the LLM handles it
             s.case_closed = True
             s.closed_reason = "outage" if s.outage_reported else "inform"
             s.is_complete = True
@@ -4252,10 +4333,14 @@ class ReactAgent:
         if not self._result_pending:
             return None
         if not s.caller_name:
-            # The caller-intro question turn (with the address echo on a fresh commit).
+            # The caller-intro question turn (with the address echo on a fresh
+            # commit) + the CHECKING cue — the engine resolves/diagnoses silently
+            # here, and without the cue the caller thinks nothing started
+            # (live 2026-08-07: "nepasako, kad patikrins").
             parts = []
             if self._just_identified and s.customer_address:
                 parts.append(phrase("echo_address", adresas=s.customer_address))
+                parts.append(phrase("checking_note"))
             self._just_identified = False
             parts.append(caller_question())
             return " ".join(p for p in parts if p)

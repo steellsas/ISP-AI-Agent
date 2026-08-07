@@ -758,6 +758,108 @@ class TestAnalysisStep2:
         assert "Klientas: dingo vakar, po: audra" in details
 
 
+class TestSideTopicNode:
+    """2026-08-07: 'kiek kainuos?' was asked twice and ignored (the evidence
+    drive has no question path); 'Aš skola kokia.' closed the call. Deviations
+    now freeze the engine, answer from the FAQ and return to the anchor."""
+
+    def _diagnosing(self, monkeypatch):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+        agent.state.last_question = "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+        return agent
+
+    def test_question_freezes_engine_and_flags_side_topic(self, db_connection, monkeypatch):
+        agent = self._diagnosing(monkeypatch)
+        assert agent.classify_side_topic("O kiek man tai kainuos?") is True
+        assert agent.solver_drive_turn("O kiek man tai kainuos?") is None  # thinker yields
+        agent._advance_resolution("O kiek man tai kainuos?")
+        assert agent.state.resolution["step"] == "dr_lights"  # frozen, not advanced
+
+    def test_side_facts_carry_faq_and_anchor(self, db_connection, monkeypatch):
+        agent = self._diagnosing(monkeypatch)
+        agent.state.last_heard = "O kiek man tai kainuos?"
+        agent.classify_side_topic("O kiek man tai kainuos?")
+        facts = agent._state_facts_block()
+        assert "NUKRYPIMAS" in facts
+        assert "nieko nekainuoja" in facts  # faq.yaml hit rides in
+        assert "dega bent viena lemputė" in facts  # the return anchor
+
+    def test_unknown_topic_gets_not_my_area_directive(self, db_connection, monkeypatch):
+        agent = self._diagnosing(monkeypatch)
+        agent.state.last_heard = "O koks rytoj oras Šiauliuose?"
+        agent.classify_side_topic("O koks rytoj oras Šiauliuose?")
+        facts = agent._state_facts_block()
+        assert "ATSAKYMO NĖRA" in facts
+
+    def test_third_deviation_is_scripted_frame(self, db_connection, monkeypatch):
+        from agent.identification import phrase
+
+        agent = self._diagnosing(monkeypatch)
+        for q in ("O kiek kainuos?", "O koks oras?", "O kur jūsų ofisas?"):
+            agent.classify_side_topic(q)
+        reply = agent._identification_scripted_reply("O kur jūsų ofisas?")
+        assert reply == phrase(
+            "back_to_issue",
+            inkaras="Pažiūrėkite, ar ant routerio dega bent viena lemputė.",
+        )
+
+    def test_third_deviation_with_confirmed_hypothesis_offers_choice(
+        self, db_connection, monkeypatch
+    ):
+        from agent.identification import phrase
+
+        agent = self._diagnosing(monkeypatch)
+        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+        agent._ingest_client_evidence("Laidas įkištas, bandžiau kitą rozetę")
+        for q in ("O kiek kainuos?", "O koks oras?", "O kur jūsų ofisas?"):
+            agent.classify_side_topic(q)
+        reply = agent._identification_scripted_reply("O kur jūsų ofisas?")
+        assert reply == phrase("solve_or_ticket")
+
+    def test_informative_interruption_is_not_a_deviation(self, db_connection, monkeypatch):
+        agent = self._diagnosing(monkeypatch)
+        agent._side_topic_turns = 2
+        assert agent.classify_side_topic("Kur ta lemputė? Nedega nė viena lemputė") is False
+        assert agent._side_topic_turns == 0  # productive turn resets the streak
+
+    def test_refusal_and_farewell_yield_to_walker_policies(self, db_connection, monkeypatch):
+        import os
+
+        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
+        agent = self._diagnosing(monkeypatch)
+        # "neturiu laiko" got a solver wait->close and NO ticket live — the
+        # thinker must hand policy turns to the walker + guards.
+        assert agent.solver_drive_turn("Pala, aš nieko nedarysiu, neturiu laiko") is None
+        assert agent.solver_drive_turn("gerai, viso gero") is None
+
+    def test_hours_scrubbed_of_inner_question_marks(self, db_connection, monkeypatch):
+        agent = self._diagnosing(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)
+        agent._pre_turn_guards("taip, tiks šis")
+        agent._identification_scripted_reply("taip, tiks šis")
+        agent._pre_turn_guards("Bet kada? Bet kurio laiko?")
+        assert agent.state.contact_hours == "Bet kada Bet kurio laiko"
+
+    def test_checking_cue_spoken_on_identity_commit(self, db_connection, monkeypatch):
+        agent = self._diagnosing(monkeypatch)
+        agent.state.resolution = None
+        agent.state.customer_address = "Šiauliai, Vilniaus g. 29"
+        agent._just_identified = True
+        agent._result_pending = True
+        reply = agent._identification_scripted_reply(None)
+        assert "Tuoj patikrinsiu ryšį" in reply
+        assert "su kuo kalbu" in reply
+
+
 class TestBargeInCancel:
     """Phase 5 PR3: request_cancel stops the LLM generation ITSELF (the token
     loop closes the HTTP stream) and rolls the ask-bookkeeping back, so the

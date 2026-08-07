@@ -116,6 +116,11 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "Norėčiau patikslinti dėl „{tema}“: pirmiau supratau „{a}“, o dabar — "
         "„{b}“. Kaip yra iš tiesų?"
     ),
+    "back_to_issue": "Grįžkime prie jūsų gedimo. {inkaras}",
+    "solve_or_ticket": (
+        "Grįžkime prie gedimo — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
+    ),
+    "checking_note": "Tuoj patikrinsiu ryšį iki jūsų buto.",
 }
 
 
