@@ -312,6 +312,9 @@ class ReactAgent:
         # chatter); the 3rd consecutive deviation gets the scripted frame.
         self._side_topic_this_turn = False
         self._side_topic_turns = 0
+        # The understanding pass' read of the CURRENT turn (None = pass skipped
+        # or failed -> keyword fallback ran instead).
+        self._last_understanding: dict | None = None
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -565,6 +568,21 @@ class ReactAgent:
                 "neužregistruotas — nesakyk „užregistravau“. Atsakyk į kliento "
                 f"klausimą VIENU sakiniu ir būtinai pakartok klausimą: „{pending}“"
             )
+        # Understanding-pass directives (2026-08-10): the acknowledgement makes
+        # the caller feel HEARD; the confusion note turns re-asks into
+        # re-EXPLANATIONS aimed at what was actually not understood.
+        u = getattr(self, "_last_understanding", None)
+        if u is not None and not self._side_topic_this_turn and not s.case_closed:
+            if u.get("supratau"):
+                facts.append(
+                    f"- PATVIRTINK, ką supratai, puse sakinio („{u['supratau']}“) — "
+                    "tada tęsk vienu kitu klausimu/žingsniu."
+                )
+            if u.get("tipas") == "nesupratimas" and u.get("neaiskumas"):
+                facts.append(
+                    f"- KLIENTAS NESUPRATO: {u['neaiskumas']} — paaiškink KITAIS "
+                    "žodžiais, paprasčiau, buitiškai; to paties sakinio nekartok."
+                )
         # Per-turn guards (deterministic, set in _pre_turn_guards) lead the block —
         # they override the model's own reading of the last reply.
         if getattr(self, "_addr_confirm_note", None):
@@ -1303,7 +1321,64 @@ class ReactAgent:
             return
         from .evidence import CLIENT, extract_client_facts, polarity, set_fact
 
-        facts = extract_client_facts(user_input)
+        # SUPRATIMO pass'as (2026-08-10): the primary sensor — one small-model
+        # call reads the reply IN CONTEXT (pending question, fault needs,
+        # ledger, history). Any failure -> the deterministic keyword layer
+        # below, so the call never stalls on a model hiccup.
+        facts: dict[str, str] | None = None
+        self._last_understanding = None
+        from . import understand as _und
+
+        if _und.enabled():
+            from .evidence import spec_for, summary_lt
+
+            spec = spec_for((s.resolution or {}).get("verdict"))
+            needs = (
+                "; ".join(
+                    f"{k}: {item.get('reikia', '')}"
+                    for k, item in (spec.get("client") or {}).items()
+                )
+                if spec
+                else ""
+            )
+            u = _und.understand(
+                user_input,
+                anchor=self.anchor_text(),
+                needs=needs,
+                ledger_summary=summary_lt(s.evidence) if s.evidence else "",
+                history_tail=[m for m in s.messages[-5:] if m.get("role") in ("user", "assistant")],
+                model=self.config.model,
+            )
+            if u is not None:
+                self._last_understanding = u
+                facts = dict(u["faktai"])
+                self.tracer.emit(
+                    "understand",
+                    tipas=u["tipas"],
+                    supratau=u["supratau"],
+                    neaiskumas=u["neaiskumas"],
+                    pasitikejimas=u["pasitikejimas"],
+                    faktai=u["faktai"],
+                )
+        if facts is None:
+            facts = extract_client_facts(user_input)
+        # The JUST-ASKED evidence question gives short answers their meaning:
+        # "Radau." to "Radote?" (no noun -> the general extractor is blind)
+        # became a give-up live 2026-08-10. Context read fills ONLY the pending
+        # key, and only when the general pass found nothing for it.
+        pending = getattr(self, "_evidence_last_ask_key", None)
+        pending_entry = s.evidence.get(pending) if pending else None
+        if (
+            self._last_understanding is None  # fallback layer only — the pass has context
+            and pending
+            and pending not in facts
+            and (pending_entry is None or pending_entry.get("value") == "neaišku")
+        ):
+            from .evidence import read_pending_answer
+
+            value = read_pending_answer(pending, user_input)
+            if value is not None:
+                facts[pending] = value
         turn = s.turn_count
         # A clarify is out — settle that key first.
         pending_key = self._evidence_conflict_asked
@@ -1325,6 +1400,8 @@ class ReactAgent:
                 value=(s.evidence.get(pending_key) or {}).get("value"),
             )
             facts.pop(pending_key, None)
+        if pending and pending in facts:
+            self._evidence_last_ask_key = None  # answered — later "taip" maps to nothing old
         for key, value in facts.items():
             entry = set_fact(s.evidence, key, value, CLIENT, turn)
             if entry.get("conflict") and self._evidence_conflict is None:
@@ -1478,6 +1555,20 @@ class ReactAgent:
         if not user_input or not s.customer_id or s.case_closed or self._ticket_stage:
             return False
         if self._evidence_conflict or self._end_confirm_pending or self._resume_hold:
+            return False
+        # The understanding pass judged this turn IN CONTEXT — trust its tipas
+        # over the keyword heuristics (a fault question "kur ta lemputė?" is an
+        # atsakymas-with-confusion, not a deviation).
+        u = getattr(self, "_last_understanding", None)
+        if u is not None:
+            if u["tipas"] in ("klausimas", "nukrypimas") and not u["faktai"]:
+                self._side_topic_this_turn = True
+                self._side_topic_turns += 1
+                self.tracer.emit(
+                    "decision", intent="side_topic", action="enter", streak=self._side_topic_turns
+                )
+                return True
+            self._side_topic_turns = 0
             return False
         if not is_real_question(user_input):
             self._side_topic_turns = 0

@@ -494,6 +494,7 @@ async function loadConfig(){
   const r = await fetch("/admin/config").catch(()=>null);
   if(!r || !r.ok){ $("cfgStatus").textContent="nepavyko užkrauti"; return; }
   const items = (await r.json()).settings;
+  window._cfgLoaded = Object.fromEntries(items.map(it => [it.key, String(it.value)]));
   $("cfgServer").innerHTML = items.map(it =>
     `<div class="cfgRow"><label>${it.label}</label>`+
     `<span class="scope">${it.scope==="immediate"?"iškart":"naujiems skambučiams"}</span>`+
@@ -508,9 +509,13 @@ async function loadConfig(){
 $("cfgToggle").onclick = () => { $("cfgOverlay").classList.add("open"); loadConfig(); };
 $("cfgClose").onclick = () => $("cfgOverlay").classList.remove("open");
 $("cfgSave").onclick = async () => {
+  // Only CHANGED keys go to the server: a full snapshot would be persisted as
+  // overrides and re-applied on startup, clobbering env set elsewhere
+  // (observed: CLASSIFIER=on leaked into the deterministic test suite).
   const changes = {};
   for(const sel of $("cfgServer").querySelectorAll("select[data-key]"))
-    changes[sel.dataset.key] = sel.value;
+    if(!window._cfgLoaded || window._cfgLoaded[sel.dataset.key] !== sel.value)
+      changes[sel.dataset.key] = sel.value;
   micCfg.threshold = parseFloat($("cfgMicThr").value) || 0.012;
   micCfg.silence = parseInt($("cfgMicSil").value, 10) || 900;
   micCfg.bargeOn = $("cfgBargeOn").checked;

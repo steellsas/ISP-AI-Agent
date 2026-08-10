@@ -104,6 +104,13 @@ SCHEMA: list[dict[str, Any]] = [
         "scope": "immediate",
         "kind": "env",
     },
+    {
+        "key": "UNDERSTAND",
+        "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
 ]
 
 _BY_KEY = {item["key"]: item for item in SCHEMA}

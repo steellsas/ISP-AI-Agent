@@ -281,6 +281,43 @@ class TestAgentWiring:
         assert agent._evidence_drive("dega") is None
         assert agent.state.resolution["step"] == "dr_cable"  # pivot, not rewind
 
+    def test_pending_key_gives_short_answers_meaning(self):
+        # Live 2026-08-10 (T1): "Radau." to "Radote?" carried no noun -> the
+        # general extractor was blind -> give-up despite a clear answer.
+        agent = _diagnosing_agent()
+        agent._evidence_asks["device_present"] = 2
+        agent._evidence_last_ask_key = "device_present"
+        agent._ingest_client_evidence("Radau.")
+        assert agent.state.evidence["device_present"]["value"] == "rado"
+        assert agent._evidence_last_ask_key is None  # answered — context consumed
+
+    def test_pending_lights_reads_garbled_negation(self):
+        # "Ne daganiai 1." (STT of "nedega nė viena") had no 'lemp' word — with
+        # the lights question pending it now reads as nedega instead of falling
+        # to the stale walker's yes/no classifier (which escalated on it).
+        agent = _diagnosing_agent()
+        agent._evidence_last_ask_key = "lights"
+        agent._ingest_client_evidence("Ne daganiai 1.")
+        assert agent.state.evidence["lights"]["value"] == "nedega"
+
+    def test_pending_read_overwrites_gave_up_marker(self):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = _diagnosing_agent()
+        set_fact(agent.state.evidence, "device_present", "neaišku", CLIENT, 3)
+        agent._evidence_last_ask_key = "device_present"
+        agent._ingest_client_evidence("Taip, radau tą dėžutę")
+        assert agent.state.evidence["device_present"]["value"] == "rado"
+
+    def test_pending_read_never_hijacks_other_facts(self):
+        # A rich utterance that the general extractor understands wins — the
+        # pending context only fills the gap when nothing was extracted.
+        agent = _diagnosing_agent()
+        agent._evidence_last_ask_key = "device_present"
+        agent._ingest_client_evidence("Radau routerį, lemputės dega žaliai")
+        assert agent.state.evidence["device_present"]["value"] == "rado"
+        assert agent.state.evidence["lights"]["value"] == "dega"
+
     def test_no_ingest_during_ticket_dialogue_or_before_id(self):
         agent = _diagnosing_agent()
         agent._ticket_stage = "phone"
