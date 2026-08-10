@@ -1317,6 +1317,11 @@ class ReactAgent:
         bare yes/no polarity read; nothing readable -> the pending value wins so
         the call never loops on the clarify)."""
         s = self.state
+        # Stale-understanding hygiene (2026-08-10): the acknowledgement directive
+        # leaked a PREVIOUS turn's "supratau" into the ticket dialogue's reply
+        # ("Routeris sugedęs, laukiame naujo. Gerai. O kada…"). Every turn starts
+        # with a clean read — the early-returns below must not keep the old one.
+        self._last_understanding = None
         if not user_input or not s.customer_id or s.case_closed or self._ticket_stage:
             return
         from .evidence import CLIENT, extract_client_facts, polarity, set_fact
@@ -2095,11 +2100,59 @@ class ReactAgent:
 
             self._ticket_offscript = False
             low_q = (user_input or "").lower()
-            # A QUESTION diverts to the ticket node's LLM (it answers + re-asks the
-            # stage question) — "Bet kada galima skambinti?" was swallowed as the
-            # HOURS answer live and landed verbatim on the ticket. Bare "kada" stays
-            # an answer word ("bet kada"), so it is deliberately not in this list.
-            if any(
+            ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+            # SUPRATIMO pass'as pirmiau (2026-08-10, Andrius): caller phrasing
+            # cannot be predicted — "Bet kada galima per pietus iš ryto" IS an
+            # hours answer, but "galima" sat on the keyword question list and
+            # diverted it. The model reads the answer against THIS question;
+            # keyword logic below stays as the fallback when it is unavailable.
+            und_handled = False
+            from . import understand as _und
+
+            if _und.enabled():
+                ut = _und.understand_ticket(
+                    user_input,
+                    stage=self._ticket_stage,
+                    anchor=(s.last_question or ""),
+                    model=self.config.model,
+                )
+                if ut is not None:
+                    und_handled = True
+                    if ut["tipas"] == "klausimas":
+                        self._ticket_offscript = True
+                        self.tracer.emit("decision", intent="ticket_dialogue", action="question")
+                        return
+                    if ut["tipas"] == "atsisakymas":
+                        self._ticket_stage = "cancelled"
+                        self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                        return
+                    if not ctx.get(f"{self._ticket_stage}_asked"):
+                        return  # trigger-swallow guard (question not asked yet)
+                    value = ut.get("reiksme")
+                    if value:
+                        if self._ticket_stage == "phone":
+                            digits = re.sub(r"\D", "", value)
+                            if value == "tas_pats":
+                                s.contact_phone = s.caller_phone
+                            elif len(digits) >= 6:
+                                s.contact_phone = re.sub(r"[^\d+]", "", value)[:20]
+                            else:
+                                value = None  # not a usable number — keyword/retry path
+                            if value is not None:
+                                self.tracer.emit(
+                                    "decision", intent="ticket_dialogue", action="phone_captured"
+                                )
+                                self._ticket_stage = "hours"
+                                return
+                        else:
+                            s.contact_hours = re.sub(r"[?!]", " ", value).strip(" .,")[:80]
+                            self.tracer.emit(
+                                "decision", intent="ticket_dialogue", action="hours_captured"
+                            )
+                            self._ticket_stage = "done"
+                            return
+                    # No reiksme — fall through to the keyword/retry machinery.
+            if not und_handled and any(
                 m in low_q
                 for m in (
                     "kodėl",
@@ -2115,12 +2168,14 @@ class ReactAgent:
                     "ar ",
                 )
             ):
+                # Keyword question-divert (fallback only): the pass, when it ran,
+                # already said this is NOT a question.
                 self._ticket_offscript = True
                 self.tracer.emit("decision", intent="ticket_dialogue", action="question")
                 return
             # Explicit "do not register" cancels the dialogue (their call, their
             # choice) — the scripted reply closes with a goodbye.
-            if any(
+            if not und_handled and any(
                 m in low_q
                 for m in ("neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk")
             ):
@@ -2130,7 +2185,6 @@ class ReactAgent:
             if detect_farewell(user_input):
                 self._ticket_stage = "done"
                 return
-            ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
             # An answer counts ONLY after its question was actually ASKED. The
             # dialogue can begin mid-turn (escalate fires while processing the
             # caller's utterance) — live 2026-08-05 the TRIGGER phrase "Neturi
@@ -3918,6 +3972,10 @@ class ReactAgent:
         # slot/problem filled THIS turn counts as progress and clears the counter.
         self._turn_start_key = self._progress_key()
         self._cancel_requested = False  # a stale barge-in never cancels a NEW turn
+        # Ticket-node turns skip the diagnosis ingest — without this, the
+        # PREVIOUS turn's "supratau" directive leaks into their replies.
+        if self._ticket_stage:
+            self._last_understanding = None
 
         self.state.last_heard = (user_input or "").strip()
         from .resolution import detect_turn_intent

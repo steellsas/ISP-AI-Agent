@@ -75,6 +75,116 @@ class TestUnderstandModule:
             )
 
 
+class TestHallucinationGuards:
+    """Live 2026-08-10: a question came back with FIVE facts the caller never
+    said — the ledger was poisoned and two phantom clarifies followed."""
+
+    def _raw(self, faktai, tipas="atsakymas", conf=0.9):
+        return {
+            "faktai": faktai,
+            "tipas": tipas,
+            "supratau": "x",
+            "neaiskumas": "",
+            "pasitikejimas": conf,
+        }
+
+    def test_question_turns_never_carry_facts(self):
+        from agent import understand
+
+        raw = self._raw(
+            {"device_present": "nerado", "lights": "nedega", "has_computer": "no"},
+            tipas="klausimas",
+        )
+        with patch("src.services.llm.client.llm_json_completion", return_value=raw):
+            u = understand.understand(
+                "Galim patikrinti, ką man daryti toliau?", anchor="x", needs="", ledger_summary=""
+            )
+        assert u["faktai"] == {}  # a question does not STATE facts
+        assert u["tipas"] == "klausimas"
+
+    def test_low_confidence_facts_dropped(self):
+        from agent import understand
+
+        raw = self._raw({"lights": "nedega"}, conf=0.4)
+        with patch("src.services.llm.client.llm_json_completion", return_value=raw):
+            u = understand.understand("mmm nu gal", anchor="x", needs="", ledger_summary="")
+        assert u["faktai"] == {}
+
+    def test_confident_answer_facts_kept(self):
+        from agent import understand
+
+        raw = self._raw({"lights": "nedega"}, conf=0.9)
+        with patch("src.services.llm.client.llm_json_completion", return_value=raw):
+            u = understand.understand("nedega nė viena", anchor="x", needs="", ledger_summary="")
+        assert u["faktai"] == {"lights": "nedega"}
+
+
+class TestTicketUnderstanding:
+    """The ticket dialogue reads answers through the pass too (Andrius
+    2026-08-10): "Bet kada galima per pietus iš ryto" IS an hours answer —
+    the keyword list diverted it on "galima" and the hours defaulted."""
+
+    def _ticket_agent(self, monkeypatch, stage="hours"):
+        agent = _diagnosing_agent(monkeypatch)
+        agent._begin_ticket_dialogue(None)
+        agent._identification_scripted_reply(None)  # asks phone
+        if stage == "hours":
+            agent._pre_turn_guards("taip, tiks šis")  # keyword consent (pass mocked off below)
+            agent._identification_scripted_reply("taip, tiks šis")  # asks hours
+        return agent
+
+    def test_hours_with_galima_captured_not_diverted(self, db_connection, monkeypatch):
+        agent = self._ticket_agent(monkeypatch, stage="hours")
+        with patch(
+            "agent.understand.understand_ticket",
+            return_value={"reiksme": "per pietus arba ryte", "tipas": "atsakymas"},
+        ):
+            agent._pre_turn_guards("Bet kada galima per pietus iš ryto")
+        assert agent.state.contact_hours == "per pietus arba ryte"
+        assert agent._ticket_stage == "done"
+
+    def test_phone_tas_pats_via_pass(self, db_connection, monkeypatch):
+        agent = self._ticket_agent(monkeypatch, stage="phone")
+        with patch(
+            "agent.understand.understand_ticket",
+            return_value={"reiksme": "tas_pats", "tipas": "atsakymas"},
+        ):
+            agent._pre_turn_guards("Stengiai tas, iš kurios kambinu")
+        assert agent.state.contact_phone == "+37060012353"
+        assert agent._ticket_stage == "hours"
+
+    def test_real_question_still_diverts(self, db_connection, monkeypatch):
+        agent = self._ticket_agent(monkeypatch, stage="hours")
+        with patch(
+            "agent.understand.understand_ticket",
+            return_value={"reiksme": None, "tipas": "klausimas"},
+        ):
+            agent._pre_turn_guards("O kodėl turiu laukti skambučio?")
+        assert agent._ticket_offscript is True
+        assert agent.state.contact_hours is None
+
+    def test_pass_failure_falls_back_to_keywords(self, db_connection, monkeypatch):
+        agent = self._ticket_agent(monkeypatch, stage="hours")
+        with patch("agent.understand.understand_ticket", return_value=None):
+            agent._pre_turn_guards("po 17 valandos")
+        assert agent.state.contact_hours == "po 17 valandos"  # keyword plausibility path
+
+    def test_stale_supratau_cleared_on_ticket_turns(self, db_connection, monkeypatch):
+        agent = self._ticket_agent(monkeypatch, stage="hours")
+        agent._last_understanding = {"supratau": "Routeris sugedęs", "tipas": "atsakymas"}
+        # The stream turn entry clears it for ticket-node turns.
+        gen = agent.run_turn_scoped_stream("bet kada", frozenset(), None)
+        with patch(
+            "agent.understand.understand_ticket",
+            return_value={"reiksme": "bet kada", "tipas": "atsakymas"},
+        ):
+            reply = "".join(gen)
+        assert agent._last_understanding is None
+        assert "Užregistravau" in reply  # dialogue completed
+        facts = agent._state_facts_block() or ""
+        assert "Routeris sugedęs" not in facts
+
+
 class TestUnderstandWiring:
     def test_understanding_facts_land_on_ledger(self, db_connection, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
