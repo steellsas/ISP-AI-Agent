@@ -63,7 +63,9 @@ def _system(anchor: str, needs: str, ledger: str) -> str:
         f"- faktai: TIK šie raktai ir reikšmės: {allowed}. Rašyk tik tai, ką "
         "klientas REALIAI pasakė (tiesiogiai ar iš konteksto: „Radau.“ atsakant į "
         "„Radote?“ = device_present: rado; „ne daganiai viena“ laukiant lempučių = "
-        "lights: nedega). NIEKO nespėk.\n"
+        "lights: nedega). Jei klientas fakto TIESIOGIAI nepasakė — rakto NEDĖK; "
+        "TUŠČIAS faktai {} yra normalus ir dažnas atsakymas. Vienoje frazėje "
+        "beveik niekada nebūna daugiau nei 1–2 faktai.\n"
         "- tipas: atsakymas (atsako į klausimą, kad ir dalinai); klausimas "
         "(klausia mūsų — apie gedimą AR šalutinio); nukrypimas (kalba ne apie "
         "gedimą, neklausia); nesupratimas (sako, kad nesupranta / neranda / "
@@ -110,13 +112,79 @@ def understand(
             for k, v in raw_facts.items():
                 if k in _ALLOWED and str(v) in _ALLOWED[k]:
                     facts[k] = str(v)
+        confidence = float(data.get("pasitikejimas") or 0.5)
+        # Hallucination guards (live 2026-08-10: "Galim patikrinti, ką man
+        # reikia daryti?" came back with FIVE facts the caller never said,
+        # poisoning the ledger and forcing two phantom clarifies):
+        # a question/confusion does not STATE facts, and low-confidence facts
+        # are worse than no facts — the deterministic layers cover the gap.
+        if tipas not in ("atsakymas", "prieštaravimas") or confidence < 0.6:
+            facts = {}
         return {
             "faktai": facts,
             "tipas": tipas,
             "supratau": str(data.get("supratau") or "")[:200],
             "neaiskumas": str(data.get("neaiskumas") or "")[:200],
-            "pasitikejimas": float(data.get("pasitikejimas") or 0.5),
+            "pasitikejimas": confidence,
         }
     except Exception as e:  # any failure -> deterministic fallback
         logger.warning(f"understand pass failed: {e}")
+        return None
+
+
+def understand_ticket(
+    utterance: str, *, stage: str, anchor: str, model: str | None = None
+) -> dict[str, Any] | None:
+    """Read one TICKET-DIALOGUE answer (stage: 'phone' | 'hours') in context —
+    predicting caller phrasing is impossible ("Bet kada galima per pietus iš
+    ryto" is an HOURS answer, not a question). Returns
+    {"reiksme": str|None, "tipas": "atsakymas|klausimas|atsisakymas|kita"};
+    None on any failure -> the keyword logic decides as before."""
+    if not utterance or not utterance.strip() or stage not in ("phone", "hours"):
+        return None
+    if stage == "phone":
+        task = (
+            "Klausėme, KOKIU TELEFONO NUMERIU susisiekti. reiksme: skaitmenys be "
+            'tarpų, ARBA "tas_pats" jei sako, kad tinka numeris, iš kurio '
+            "skambina (pvz. „tinka tas“, „šitas gerai“, „iš kurio skambinu“), "
+            "ARBA null jei atsakymo nėra."
+        )
+    else:
+        task = (
+            "Klausėme, KADA PATOGIAUSIA SKAMBINTI. reiksme: laikas žmogaus kalba, "
+            "sunormalintas (pvz. „bet kada“, „po 17 val“, „per pietus arba ryte“, "
+            "„darbo dienomis iki 15“), ARBA null jei atsakymo nėra."
+        )
+    try:
+        from src.services.llm.client import llm_json_completion
+
+        data = llm_json_completion(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "Tu skaitai KLIENTO atsakymą registruojant gedimą (lietuvių "
+                        "kalba, STT tekstas gali būti darkytas — spręsk pagal prasmę). "
+                        f"AGENTO KLAUSIMAS: „{anchor}“\n{task}\n"
+                        'Grąžink TIK JSON: {"reiksme": ... arba null, "tipas": '
+                        '"atsakymas|klausimas|atsisakymas|kita"}\n'
+                        "- tipas=klausimas: klientas KLAUSIA mūsų, o ne atsako.\n"
+                        "- tipas=atsisakymas: nenori registracijos.\n"
+                        "- NIEKO neišgalvok: nesant atsakymo reiksme=null."
+                    ),
+                },
+                {"role": "user", "content": utterance[:300]},
+            ],
+            model=model,
+        )
+        if not isinstance(data, dict):
+            return None
+        tipas = str(data.get("tipas") or "kita").lower()
+        if tipas not in ("atsakymas", "klausimas", "atsisakymas", "kita"):
+            tipas = "kita"
+        reiksme = data.get("reiksme")
+        reiksme = str(reiksme)[:80].strip() if reiksme not in (None, "", "null") else None
+        return {"reiksme": reiksme, "tipas": tipas}
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"understand_ticket failed: {e}")
         return None
