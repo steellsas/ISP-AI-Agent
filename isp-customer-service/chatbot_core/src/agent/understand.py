@@ -46,8 +46,17 @@ def enabled() -> bool:
     return os.getenv("UNDERSTAND", "on").lower() == "on"
 
 
-def _system(anchor: str, needs: str, ledger: str) -> str:
-    allowed = "; ".join(f"{k}: {sorted(v)}" for k, v in _ALLOWED.items())
+def _merged_allowed(extra: dict[str, set[str]] | None) -> dict[str, set[str]]:
+    """Built-in keys + whatever the fault's evidence spec declares via
+    `atsakymai` (universal: a NEW fault extends the vocabulary by file edit)."""
+    merged = {k: set(v) for k, v in _ALLOWED.items()}
+    for k, vals in (extra or {}).items():
+        merged[k] = merged.get(k, set()) | {str(v) for v in vals}
+    return merged
+
+
+def _system(anchor: str, needs: str, ledger: str, allowed_map: dict[str, set[str]]) -> str:
+    allowed = "; ".join(f"{k}: {sorted(v)}" for k, v in allowed_map.items())
     return (
         "Tu skaitai KLIENTO atsakymą lietuviškame ISP pagalbos skambutyje. STT "
         "tekstas gali būti darkytas — spręsk pagal PRASMĘ ir kontekstą, ne pagal "
@@ -66,12 +75,17 @@ def _system(anchor: str, needs: str, ledger: str) -> str:
         "lights: nedega). Jei klientas fakto TIESIOGIAI nepasakė — rakto NEDĖK; "
         "TUŠČIAS faktai {} yra normalus ir dažnas atsakymas. Vienoje frazėje "
         "beveik niekada nebūna daugiau nei 1–2 faktai.\n"
-        "- tipas: atsakymas (atsako į klausimą, kad ir dalinai); klausimas "
-        "(klausia mūsų — apie gedimą AR šalutinio); nukrypimas (kalba ne apie "
-        "gedimą, neklausia); nesupratimas (sako, kad nesupranta / neranda / "
-        "nežino kaip); prieštaravimas (paneigia, ką sakė anksčiau pagal KAS JAU "
-        "ŽINOMA).\n"
-        "- supratau: trumpa santrauka agentui atspindėti klientui (lietuviškai).\n"
+        "- tipas: atsakymas (atsako į klausimą, kad ir dalinai — PVZ.: „Galim "
+        "patikrinti“ = atsakymas-sutikimas; „Dabar esu prie routerio“ = "
+        "atsakymas; „baltas su antena, keturi lizdai“ atsakant apie routerį = "
+        "atsakymas); klausimas (klientas KLAUSIA mūsų — sakinyje yra klausimas "
+        "MUMS, ne šiaip svarstymas); nukrypimas (kalba ne apie gedimą ir "
+        "neklausia); nesupratimas (sako, kad nesupranta / neranda / nežino "
+        "kaip); prieštaravimas (paneigia, ką sakė anksčiau pagal KAS JAU "
+        "ŽINOMA). Abejojant tarp atsakymo ir klausimo — rinkis ATSAKYMĄ.\n"
+        "- supratau: trumpa santrauka agentui atspindėti klientui (lietuviškai). "
+        "Jei supratau teigia faktą (pvz. „klientas rado routerį“) — tas faktas "
+        "PRIVALO būti ir faktai lauke.\n"
         "- neaiskumas: pildyk tik kai tipas=nesupratimas — KO konkrečiai nesuprato."
     )
 
@@ -84,15 +98,17 @@ def understand(
     ledger_summary: str,
     history_tail: list[dict[str, str]] | None = None,
     model: str | None = None,
+    allowed_extra: dict[str, set[str]] | None = None,
 ) -> dict[str, Any] | None:
     """Read one caller turn. None on any failure -> keyword fallback."""
     if not utterance or not utterance.strip():
         return None
+    allowed_map = _merged_allowed(allowed_extra)
     try:
         from src.services.llm.client import llm_json_completion
 
         messages: list[dict[str, str]] = [
-            {"role": "system", "content": _system(anchor, needs, ledger_summary)}
+            {"role": "system", "content": _system(anchor, needs, ledger_summary, allowed_map)}
         ]
         for m in (history_tail or [])[-4:]:
             role = "assistant" if m.get("role") == "assistant" else "user"
@@ -110,7 +126,7 @@ def understand(
         facts: dict[str, str] = {}
         if isinstance(raw_facts, dict):
             for k, v in raw_facts.items():
-                if k in _ALLOWED and str(v) in _ALLOWED[k]:
+                if k in allowed_map and str(v) in allowed_map[k]:
                     facts[k] = str(v)
         confidence = float(data.get("pasitikejimas") or 0.5)
         # Hallucination guards (live 2026-08-10: "Galim patikrinti, ką man
@@ -145,9 +161,10 @@ def understand_ticket(
     if stage == "phone":
         task = (
             "Klausėme, KOKIU TELEFONO NUMERIU susisiekti. reiksme: skaitmenys be "
-            'tarpų, ARBA "tas_pats" jei sako, kad tinka numeris, iš kurio '
-            "skambina (pvz. „tinka tas“, „šitas gerai“, „iš kurio skambinu“), "
-            "ARBA null jei atsakymo nėra."
+            'tarpų, ARBA "tas_pats" TIK kai klientas AIŠKIAI patvirtina, kad '
+            "tinka numeris, iš kurio skambina (pvz. „tinka tas“, „šitas gerai“, "
+            "„iš kurio skambinu“). Darkytas / neaiškus / nesusijęs tekstas -> "
+            "null (tada agentas perklaus — tai saugu)."
         )
     else:
         task = (
