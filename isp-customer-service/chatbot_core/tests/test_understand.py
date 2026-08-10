@@ -119,6 +119,66 @@ class TestHallucinationGuards:
         assert u["faktai"] == {"lights": "nedega"}
 
 
+class TestRound2Fixes:
+    """2026-08-10 round 2: template capture, uncorroborated side entries,
+    supplement reads, anchor trimming — each LLM field now has a deterministic
+    backer (corroboration / supplement / safe default)."""
+
+    def test_side_entry_requires_corroboration(self, db_connection, monkeypatch):
+        # "Galim dabar patikrinti" got tipas=klausimas and froze the engine —
+        # no question word, no FAQ hit -> the single sensor may not decide.
+        agent = _diagnosing_agent(monkeypatch)
+        agent._last_understanding = _canned(tipas="klausimas", supratau="nori patikrinti")
+        assert agent.classify_side_topic("Galim dabar patikrinti") is False
+        assert agent._side_topic_this_turn is False
+
+    def test_side_entry_allowed_with_question_word(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        agent._last_understanding = _canned(tipas="klausimas", supratau="klausia kainos")
+        assert agent.classify_side_topic("O kiek man tai kainuos?") is True
+
+    def test_side_entry_allowed_with_faq_keyword(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        agent._last_understanding = _canned(tipas="klausimas", supratau="klausia apie meistrą")
+        assert agent.classify_side_topic("Man atrodo reikės meistro vizito") is True
+
+    def test_supplement_fills_pending_key_on_empty_answer_facts(self, db_connection, monkeypatch):
+        # "…sakiau, kad RADAU" came back tipas=atsakymas with faktai={} — the
+        # pending-context read now SUPPLEMENTS instead of only falling back.
+        agent = _diagnosing_agent(monkeypatch)
+        agent._evidence_asks["device_present"] = 2
+        agent._evidence_last_ask_key = "device_present"
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(tipas="atsakymas", supratau="klientas rado routerį"),
+        ):
+            agent._ingest_client_evidence("Atsiprašau, tik sakiau, kad radau")
+        assert agent.state.evidence["device_present"]["value"] == "rado"
+
+    def test_spec_declared_atsakymai_win(self, db_connection, monkeypatch):
+        # faults.yaml may declare per-key answer marks — universal for new faults.
+        from agent.evidence import read_pending_answer
+
+        item = {"atsakymai": {"nerado": ["nerasiu niekaip"]}}
+        assert read_pending_answer("device_present", "nerasiu niekaip čia", item) == "nerado"
+
+    def test_anchor_is_the_question_sentence_only(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        agent.state.last_question = (
+            "Patikrinau: internetas iki buto ateina, bet nematome įrenginio. "
+            "Dažniausiai tai routeris. Ar patogu dabar patikrinti kartu?"
+        )
+        assert agent.anchor_text() == "Ar patogu dabar patikrinti kartu?"
+
+    def test_side_facts_carry_deterministic_topic(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        agent.state.last_heard = "O kiek man tai kainuos?"
+        agent._last_understanding = _canned(tipas="klausimas", supratau="klausia kainos")
+        agent.classify_side_topic("O kiek man tai kainuos?")
+        facts = agent._state_facts_block()
+        assert "Kliento tema: kaina" in facts  # from the FAQ hit, not a template
+
+
 class TestTicketUnderstanding:
     """The ticket dialogue reads answers through the pass too (Andrius
     2026-08-10): "Bet kada galima per pietus iš ryto" IS an hours answer —

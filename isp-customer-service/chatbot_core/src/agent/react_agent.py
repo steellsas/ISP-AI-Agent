@@ -546,11 +546,21 @@ class ReactAgent:
             zinios = " ".join(f"[{e.get('tema')}] {e['atsakymas']}" for e in hits) or (
                 "(šiai temai ŽINOMO ATSAKYMO NĖRA — mandagiai pasakyk, kad tai ne tavo sritis)"
             )
+            # The topic is DETERMINISTIC when the FAQ matched — the model once
+            # copied a prompt example ("Klausiate apie kainą") for topics the
+            # caller never raised; naming the real topic removes the template.
+            tema = str(hits[0].get("tema", "")).replace("_", " ") if hits else ""
+            tema_line = (
+                f"Kliento tema: {tema}. "
+                if tema
+                else "Temą įvardink iš PASKUTINĖS kliento frazės — jokių kitų temų. "
+            )
             facts.append(
-                "- NUKRYPIMAS NUO GEDIMO: klientas klausia šalutinio dalyko. Atsakyk "
-                f"VIENU-DVIEM sakiniais TIK pagal ŽINOMUS ATSAKYMUS: {zinios} "
-                "NIEKO neišgalvok (jokių sumų, terminų, pažadų). Tada BŪTINAI "
-                f"grįžk prie gedimo — pakartok: „{self.anchor_text()}“"
+                "- NUKRYPIMAS NUO GEDIMO: klientas klausia šalutinio dalyko. "
+                f"{tema_line}Atsakyk VIENU-DVIEM sakiniais TIK pagal ŽINOMUS "
+                f"ATSAKYMUS: {zinios} NIEKO neišgalvok (jokių sumų, terminų, "
+                f"pažadų). Tada BŪTINAI grįžk prie gedimo — pakartok: "
+                f"„{self.anchor_text()}“"
             )
         # Ticket-dialogue off-script turn: the caller asked something instead of
         # answering the stage question — give the LLM the answers it may need and
@@ -1346,6 +1356,11 @@ class ReactAgent:
                 if spec
                 else ""
             )
+            allowed_extra = {
+                k: set((item.get("atsakymai") or {}).keys())
+                for k, item in ((spec.get("client") or {}) if spec else {}).items()
+                if item.get("atsakymai")
+            }
             u = _und.understand(
                 user_input,
                 anchor=self.anchor_text(),
@@ -1353,6 +1368,7 @@ class ReactAgent:
                 ledger_summary=summary_lt(s.evidence) if s.evidence else "",
                 history_tail=[m for m in s.messages[-5:] if m.get("role") in ("user", "assistant")],
                 model=self.config.model,
+                allowed_extra=allowed_extra,
             )
             if u is not None:
                 self._last_understanding = u
@@ -1373,15 +1389,23 @@ class ReactAgent:
         # key, and only when the general pass found nothing for it.
         pending = getattr(self, "_evidence_last_ask_key", None)
         pending_entry = s.evidence.get(pending) if pending else None
+        u_tipas = (self._last_understanding or {}).get("tipas")
+        # SUPPLEMENT, not just fallback (2026-08-10 round 2): the pass returned
+        # tipas=atsakymas with an empty faktai for "…sakiau, kad RADAU" and the
+        # key was given up on. When the pass failed OR answered without the
+        # pending key, the deterministic context read fills that ONE key —
+        # conservative marks + the conflict machinery guard against misreads.
         if (
-            self._last_understanding is None  # fallback layer only — the pass has context
+            (self._last_understanding is None or u_tipas == "atsakymas")
             and pending
             and pending not in facts
             and (pending_entry is None or pending_entry.get("value") == "neaišku")
         ):
-            from .evidence import read_pending_answer
+            from .evidence import read_pending_answer, spec_for
 
-            value = read_pending_answer(pending, user_input)
+            spec = spec_for((s.resolution or {}).get("verdict"))
+            spec_item = (spec.get("client") or {}).get(pending) if spec else None
+            value = read_pending_answer(pending, user_input, spec_item)
             if value is not None:
                 facts[pending] = value
         turn = s.turn_count
@@ -1542,9 +1566,15 @@ class ReactAgent:
 
     def anchor_text(self) -> str:
         """The exact place to return to after a deviation — the engine's LAST
-        asked question (deterministic), never the LLM's memory of it."""
+        asked question (deterministic), never the LLM's memory of it. Trimmed
+        to the QUESTION sentence only: anchoring the whole reply re-read a long
+        announce back at the caller (live 2026-08-10)."""
         q = (self.state.last_question or "").strip()
-        return q if q else "Ar tęsiame gedimo sprendimą?"
+        if not q:
+            return "Ar tęsiame gedimo sprendimą?"
+        sentences = re.split(r"(?<=[.!?])\s+", q)
+        questions = [x for x in sentences if x.strip().endswith("?")]
+        return (questions[-1] if questions else sentences[-1]).strip()
 
     def classify_side_topic(self, user_input: str | None) -> bool:
         """Is THIS turn a deviation (a real question with no usable facts)
@@ -1561,18 +1591,33 @@ class ReactAgent:
             return False
         if self._evidence_conflict or self._end_confirm_pending or self._resume_hold:
             return False
-        # The understanding pass judged this turn IN CONTEXT — trust its tipas
-        # over the keyword heuristics (a fault question "kur ta lemputė?" is an
-        # atsakymas-with-confusion, not a deviation).
+        # The understanding pass judged this turn IN CONTEXT — but its tipas is
+        # ONE model field, and side_topic FREEZES the engine, so a single sensor
+        # may not decide alone (live 2026-08-10: "Galim dabar patikrinti" got
+        # tipas=klausimas and the answer was answered with a price non-sequitur).
+        # CORROBORATION rule: enter only when a deterministic signal agrees —
+        # a question word in the text or a FAQ keyword hit.
         u = getattr(self, "_last_understanding", None)
         if u is not None:
             if u["tipas"] in ("klausimas", "nukrypimas") and not u["faktai"]:
-                self._side_topic_this_turn = True
-                self._side_topic_turns += 1
-                self.tracer.emit(
-                    "decision", intent="side_topic", action="enter", streak=self._side_topic_turns
-                )
-                return True
+                from .faq import match as faq_match
+
+                corroborated = is_real_question(user_input) or bool(faq_match(user_input))
+                if corroborated:
+                    self._side_topic_this_turn = True
+                    self._side_topic_turns += 1
+                    self.tracer.emit(
+                        "decision",
+                        intent="side_topic",
+                        action="enter",
+                        streak=self._side_topic_turns,
+                    )
+                    return True
+                # The model felt a deviation but the text carries no question —
+                # treat as an on-topic turn (the evidence/solver flow continues).
+                self.tracer.emit("decision", intent="side_topic", action="uncorroborated")
+                self._side_topic_turns = 0
+                return False
             self._side_topic_turns = 0
             return False
         if not is_real_question(user_input):
@@ -2118,6 +2163,12 @@ class ReactAgent:
                 )
                 if ut is not None:
                     und_handled = True
+                    self.tracer.emit(
+                        "understand_ticket",
+                        stage=self._ticket_stage,
+                        tipas=ut["tipas"],
+                        reiksme=ut.get("reiksme"),
+                    )
                     if ut["tipas"] == "klausimas":
                         self._ticket_offscript = True
                         self.tracer.emit("decision", intent="ticket_dialogue", action="question")

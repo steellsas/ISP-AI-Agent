@@ -300,13 +300,19 @@ _PENDING_ANSWERS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
 }
 
 
-def read_pending_answer(key: str, text: str | None) -> str | None:
-    """Interpret a short utterance as the answer to the PENDING evidence key.
-    Used only when the general extractor found nothing — the question context
-    resolves what a bare "Radau." / "Ne" means."""
+def read_pending_answer(key: str, text: str | None, spec_item: dict | None = None) -> str | None:
+    """Interpret a short utterance as the answer to the PENDING evidence key —
+    the question context resolves what a bare "Radau." / "Ne" means. UNIVERSAL:
+    a fault may declare its own `atsakymai: {reikšmė: [požymiai]}` on the
+    evidence item in faults.yaml (checked FIRST), so newly added faults get
+    this mechanic by file edit; the built-in map covers the piloted keys."""
     if not text:
         return None
     low = text.lower().strip()
+    if spec_item:
+        for value, marks in (spec_item.get("atsakymai") or {}).items():
+            if isinstance(marks, list | tuple) and any(str(m).lower() in low for m in marks):
+                return str(value)
     for value, marks in _PENDING_ANSWERS.get(key, []):
         if any(m in low for m in marks):
             return value

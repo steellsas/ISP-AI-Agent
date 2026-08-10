@@ -270,6 +270,11 @@ faults:
           reikia: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
           klausimas: "Susiraskite routerį — dėžutę, į kurią ateina interneto kabelis. Pasakykite, kai būsite prie jo."
           paprasciau: "Ieškokite nedidelės dėžutės su lemputėmis, dažnai su antenomis — į ją ateina laidas iš sienos. Radote?"
+          # atsakymai: kaip trumpi/darkyti atsakymai skaitomi, kai KĄ TIK klaustas
+          # ŠITAS klausimas (universalu — naujas gedimas deklaruoja savus čia pat).
+          atsakymai:
+            rado: [radau, suradau, taip, matau, "stoviu prie", priėjau, priejau]
+            nerado: [nerandu, neradau, "nėra tokios", nematau, nerasiu]
         lights:
           reikia: "ar dega bent viena routerio lemputė"
           klausimas: "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
