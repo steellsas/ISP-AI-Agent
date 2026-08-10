@@ -1314,7 +1314,14 @@ def detect_farewell(text: str | None) -> bool:
         for w in ("klausim", "dar ", "bet ", "problem", "taip", "tęs", "tes", "toliau", "nebaik")
     )
     short = len(low.split()) <= 3
-    return short and not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)
+    if not (short and not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)):
+        return False
+    # The bare-"ne" fallback must be a PURE decline — every token a known
+    # closing word. "Ne daganiai 1." (STT of "nedega nė viena") fast-forwarded
+    # the ticket dialogue to done-with-defaults (observed live 2026-08-10):
+    # unknown content words mean the caller is SAYING something, not leaving.
+    _CLOSING = {"ne", "viskas", "ačiū", "aciu", "gerai", "jau", "tiek", "nieko", ""}
+    return all(t in _CLOSING for t in tokens)
 
 
 # Bare backchannels / one-letter STT crumbs — acknowledgement noises, NOT answers.

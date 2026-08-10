@@ -860,6 +860,21 @@ class TestSideTopicNode:
         assert "su kuo kalbu" in reply
 
 
+class TestFarewellPurity:
+    def test_garbled_content_with_ne_is_not_a_farewell(self, db_connection):
+        # Live 2026-08-10: "Ne daganiai 1." (=nedega nė viena) fast-forwarded
+        # the ticket dialogue to done-with-defaults. The bare-"ne" fallback now
+        # requires EVERY token to be a known closing word.
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Ne daganiai 1.") is False
+        assert detect_farewell("Ne viena") is False
+        assert detect_farewell("Ne.") is True
+        assert detect_farewell("Ne, ačiū") is True
+        assert detect_farewell("viskas gerai") is True
+        assert detect_farewell("viso gero") is True
+
+
 class TestReviewGaps:
     """2026-08-07 architecture review fixes."""
 

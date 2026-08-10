@@ -246,6 +246,73 @@ def solution_for(evidence: dict[str, Any], verdict: str | None) -> str | None:
     return None
 
 
+# Context reads for the JUST-ASKED evidence key (2026-08-10): a bare "Radau."
+# to "Radote?" carries no noun, so the general extractor (which demands one)
+# finds nothing — and a clear answer became a give-up. When the engine knows
+# WHICH question is pending, short answers read against THAT key only.
+_PENDING_ANSWERS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
+    "device_present": [
+        (
+            "rado",
+            (
+                "radau",
+                "radome",
+                "suradau",
+                "taip",
+                "yra",
+                "matau",
+                "priėjau",
+                "priejau",
+                "stoviu prie",
+            ),
+        ),
+    ],
+    "lights": [
+        # Negation first — "nedega" contains "dega".
+        (
+            "nedega",
+            (
+                "nedega",
+                "ne dega",
+                "nešvie",
+                "nesvie",
+                "jokia",
+                "nė viena",
+                "ne viena",
+                "ne,",
+                "ne ",
+            ),
+        ),
+        ("mirksi", ("mirksi", "mirkčioja", "mirkcioja")),
+        ("dega", ("dega", "šviečia", "sviecia", "taip")),
+    ],
+    "power_cable": [
+        ("atjungtas", ("atjungt", "ištraukt", "istraukt", "nepajungt", "ne,", "ne ")),
+        ("įkištas", ("įkišt", "ikist", "pajungt", "prijungt", "gerai", "taip", "tvirtai")),
+    ],
+    "outlet_works": [
+        ("bandyta", ("bandž", "bandz", "band", "taip", "kita", "veikia", "perjung")),
+    ],
+    "has_computer": [
+        ("no", ("netur", "nėra", "nera", "ne,", "ne ")),
+        ("yes", ("turiu", "turim", "taip", "yra")),
+    ],
+}
+
+
+def read_pending_answer(key: str, text: str | None) -> str | None:
+    """Interpret a short utterance as the answer to the PENDING evidence key.
+    Used only when the general extractor found nothing — the question context
+    resolves what a bare "Radau." / "Ne" means."""
+    if not text:
+        return None
+    low = text.lower().strip()
+    for value, marks in _PENDING_ANSWERS.get(key, []):
+        if any(m in low for m in marks):
+            return value
+    return None
+
+
 def polarity(text: str | None) -> str | None:
     """A bare yes/no read for resolving a pending yes/no conflict ("Kaip yra iš
     tiesų?" -> "turiu" / "ne, neturiu")."""

@@ -28,7 +28,11 @@ def _fake_stream(content=None):
 
 
 @pytest.fixture()
-def client(db_connection):
+def client(db_connection, monkeypatch, tmp_path):
+    # Isolate the runtime-config overrides file: the app lifespan re-applies it
+    # to os.environ GLOBALLY, so a real .api_config.json (written by a live
+    # config-page session) leaked CLASSIFIER=on into the deterministic suite.
+    monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "api_config.json"))
     from app.main import app
 
     with TestClient(app) as c:
@@ -335,10 +339,13 @@ class TestConfigPage:
     """Config page (Phase 4): whitelist edits, live application, persistence.
     NOTE: admin auth required before public hosting (agreed 2026-08-06)."""
 
-    @pytest.fixture(autouse=True)
-    def _persist_tmp(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "cfg.json"))
-        self.persist = tmp_path / "cfg.json"
+    @property
+    def persist(self):
+        # The client fixture isolates API_CONFIG_FILE per test — use ITS path.
+        import os
+        from pathlib import Path
+
+        return Path(os.environ["API_CONFIG_FILE"])
 
     def test_get_lists_settings_with_values_and_scopes(self, client):
         items = client.get("/admin/config").json()["settings"]
