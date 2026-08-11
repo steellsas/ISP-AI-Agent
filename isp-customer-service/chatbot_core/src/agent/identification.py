@@ -123,6 +123,13 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     "checking_note": "Tuoj patikrinsiu ryšį iki jūsų buto.",
     "findings_announce": ("Ką patikrinome: {faktai}. Panašu — {priezastis}. Galime: {sprendimai}."),
     "negation_clarify": ("Norėjau patikslinti — išgirdau „ne“. {klausimas}"),
+    "done_report_clarify": ("Supratau — patikrinote. {klausimas}"),
+    "facts_recap": ("Pasitikslinu, ar teisingai supratau: {faktai}. Ar taip?"),
+    "refute_confirm": (
+        "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
+    ),
+    "reask_reason": ("Paklausiu dar kartą, nes noriu būti tikras dėl „{tema}“. {klausimas}"),
+    "repeat_ack": ("Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "),
     "escalate_clarify": (
         "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ),

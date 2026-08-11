@@ -132,6 +132,29 @@ objekto niekada nevaro vienpusių durų:
 Pirmas įrodymo klausimas neša ir „KODĖL tikrinam" (`kodel` iš `faults.yaml`) —
 klientas girdi, kam prašoma („pagal lemputes matysime, ar gauna maitinimą").
 
+**Pasitikslinti, o ne kurti (2026-08-11, 3 ratas):**
+
+- **„Patikrinau" be rezultato** („Mhm, patikrinau") — supratimo pass'o
+  sugalvota reikšmė laukiamam raktui atmetama, jei jos nepatvirtina paties
+  ištarimo požymiai; agentas padėkoja ir klausia, KĄ rado (`ka_radote` iš
+  gedimo failo): „Supratau — patikrinote. O kaip radote — laidas buvo
+  įkištas tvirtai, ar atsilaisvinęs?"
+- **Faktų suvestinės checkpoint'as**: pirmą kartą pasitvirtinus hipotezei,
+  prieš išvadą agentas PERSKAITO faktus atgal — „Pasitikslinu, ar teisingai
+  supratau: lemputės nedega; laidas įkištas; rozetė bandyta. Ar taip?" —
+  klaidingai išgirstas faktas pataisomas čia, o ne po klaidingo sprendimo.
+- **Paneigimo checkpoint'as**: kliento žodžiais (ne telemetrija) paremtas
+  hipotezės paneigimas prieš pivot'ą pasitikslinamas vieną kartą — apsauga
+  nuo pirmalaikio atmetimo dėl STT darkymo.
+- **Perklausimas su priežastimi** (garsus mąstymas): antras to paties rakto
+  klausimas prasideda „Paklausiu dar kartą, nes noriu būti tikras dėl …" —
+  klientas girdi, KODĖL agentas kartojasi.
+- **Žingsnio klausimo galiojimas**: walker'io žingsnio atsakymų skaitymas
+  galioja tik ~3 apsikeitimus po klausimo — pasenęs klausimas (varikliui
+  perėmus vairą) nebeperskaito naujų replikų kaip savo atsakymų.
+- **„Iki" — ne atsisveikinimas**, kai tai prielinksnis („iki galo", „iki 17
+  valandos"): atsisveikinimu laikomas tik savarankiškas „iki".
+
 ## 6. SPRENDIMAS — vienpusės durys
 
 ```mermaid

@@ -286,6 +286,9 @@ faults:
           kodel: "Pagal lemputes matysime, ar routeris išvis gauna maitinimą."
           paprasciau: "Dėžutės priekyje yra mažos švieselės. Ar nors viena šviečia arba mirksi?"
           patikslinimas: "Norėjau patikslinti — ar nė viena lemputė nedega, ar tiesiog nematote, kur žiūrėti?"
+          # ka_radote — kai klientas sako TIK „patikrinau“ be rezultato: agentas
+          # padėkoja ir paklausia, KĄ rado (2026-08-11, „pasitikslinti, o ne kurti“).
+          ka_radote: "Ar dega bent viena lemputė, ar nė viena?"
           kada: [device_present=rado]
         power_cable:
           reikia: "maitinimo laidas įkištas į rozetę IR į routerį"
@@ -293,12 +296,14 @@ faults:
           kodel: "Atsilaisvinęs laidas — dažniausia priežastis, kodėl routeris negauna srovės."
           paprasciau: "Juodas laidas apvaliu antgaliu turi eiti iš dėžutės į rozetę. Ištraukite ir vėl tvirtai įkiškite abiejuose galuose."
           patikslinimas: "Norėjau patikslinti — ar laidas neįkištas, ar negalite dabar patikrinti?"
+          ka_radote: "O kaip radote — ar laidas buvo įkištas tvirtai, ar atsilaisvinęs?"
           kada: [lights=nedega]
         outlet_works:
           reikia: "rozetė veikia — pabandyta kita arba kiti įrenginiai nuo jos veikia"
           klausimas: "Pabandykite kitą rozetę — arba pasakykite, ar kiti įrenginiai nuo tos rozetės veikia."
           kodel: "Taip atskirsime, ar sugedusi rozetė, ar pats routeris."
           patikslinimas: "Norėjau patikslinti — ar kita rozetė nepadėjo, ar negalite jos išbandyti?"
+          ka_radote: "Ar iš kitos rozetės lemputės užsidegė, ar ne?"
           kada: [lights=nedega, power_cable=įkištas]
         has_computer:
           reikia: "ar yra kompiuteris laikinam tiltui"

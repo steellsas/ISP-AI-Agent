@@ -254,7 +254,10 @@ class TestAgentWiring:
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
         agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
         agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
-        reply = agent._evidence_drive("neturiu")
+        # Round 3: the first confirmed moment READS THE FACTS BACK first.
+        recap = agent._evidence_drive("neturiu")
+        assert recap is not None and "Pasitikslinu" in recap
+        reply = agent._evidence_drive("taip, teisingai")
         assert reply is not None and "Kokiu telefono numeriu" in reply
         assert agent._ticket_stage == "phone"
 
@@ -264,21 +267,28 @@ class TestAgentWiring:
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
         agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
         agent._ingest_client_evidence("Turiu kompiuterį")
-        assert agent._evidence_drive("turiu") is None  # solver drives the bridge
+        recap = agent._evidence_drive("turiu")  # round 3: recap checkpoint first
+        assert recap is not None and "Pasitikslinu" in recap
+        assert agent._evidence_drive("taip") is None  # then solver drives the bridge
 
     def test_confirmed_but_device_unknown_asks_has_computer(self):
         agent = _diagnosing_agent()
         agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
         agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
-        q = agent._evidence_drive("nepadėjo")
+        recap = agent._evidence_drive("nepadėjo")  # round 3: recap checkpoint first
+        assert recap is not None and "Pasitikslinu" in recap
+        q = agent._evidence_drive("taip, viskas taip")
         assert q is not None and "kompiuterį" in q
 
     def test_refuted_syncs_walker_to_declared_step(self):
         agent = _diagnosing_agent()
         agent.state.resolution["step"] = "dr_intro"  # stale — the rewind trap
         agent._ingest_client_evidence("Radau routerį, lemputės dega žaliai")
-        assert agent._evidence_drive("dega") is None
+        # Round 3: a client-stated refute gets ONE confirm question first.
+        confirm = agent._evidence_drive("dega")
+        assert confirm is not None and "keičia išvadą" in confirm
+        assert agent._evidence_drive("taip, tikrai dega") is None
         assert agent.state.resolution["step"] == "dr_cable"  # pivot, not rewind
 
     def test_pending_key_gives_short_answers_meaning(self):

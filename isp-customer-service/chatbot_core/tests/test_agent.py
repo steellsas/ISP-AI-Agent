@@ -554,6 +554,50 @@ class TestHearingAgent:
         assert agent.state.case_closed is False
         assert agent._resume_fix_note is True
 
+    # --- round 3 (live 2026-08-11, call 3) ------------------------------------
+
+    def test_iki_is_a_preposition_not_a_goodbye(self):
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Pajungtas iki galo.") is False  # killed a live bridge
+        assert detect_farewell("Iki 17 valandos") is False  # ticket-hours answer
+        assert detect_farewell("Iki šau.") is False  # STT of "Įkišau"
+        assert detect_farewell("Iki!") is True
+        assert detect_farewell("iki pasimatymo") is True
+        assert detect_farewell("viso gero, iki") is True
+
+    def test_bare_done_report_detector(self):
+        from agent.resolution import is_bare_done_report
+
+        assert is_bare_done_report("Mhm, patikrinau.")
+        assert is_bare_done_report("Jau padariau")
+        assert not is_bare_done_report("Patikrinau, laidas įkištas")
+        assert not is_bare_done_report("Nedega nė viena")
+
+    def test_plugged_detector_survives_stt_garbles(self):
+        from agent.resolution import detect_plugged
+
+        assert detect_plugged("Jau pajungiu.")  # missed live, instruction repeated 3×
+        assert detect_plugged("Pajangių kompiuterį.")
+        assert detect_plugged("Aš jau pajungiau kabelį")
+        assert not detect_plugged("tuoj pajungsiu")  # future tense — not done yet
+
+    def test_stale_step_question_reads_no_answers(self, db_connection, monkeypatch):
+        # dr_intro presented ~15 turns earlier consumed "Dar interneto nėra."
+        # as its own "no" -> escalate -> ticket (three live calls in a row).
+        agent = self._agent(monkeypatch)
+        agent.state.resolution["asked_at"] = 0
+        agent.state.messages.extend({"role": "user", "content": f"turn {i}"} for i in range(8))
+        agent._walk_resolution("Ne.")
+        assert agent.state.resolution["step"] == "dr_intro"  # held — question too old
+        assert agent._ticket_stage is None
+
+    def test_fresh_step_question_still_routes(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent.state.resolution["asked_at"] = len(agent.state.messages)
+        agent._walk_resolution("nieko nedarysiu, įregistruokit gedimą")
+        assert agent._ticket_stage == "phone"  # refuse/demand path unaffected
+
     def test_on_task_question_stays_with_the_flow(self, db_connection, monkeypatch):
         # "Kur jungti tą kabelį į kompiuterį?" is a question ABOUT the current
         # instruction — side_topic answered it with "tai nėra mano sritis" live.
@@ -1306,6 +1350,7 @@ class TestDriveRepeatBailout:
         agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas, bandžiau kitą rozetę")
         agent._ingest_client_evidence("Turiu kompiuterį")
+        agent._recap_state = "done"  # recap checkpoint tested elsewhere (round 3)
         agent._drive_repeats = 2  # repeat/disambiguate streak already observed
 
         assert agent.solver_drive_turn("gerai gerai") is None  # walker resumes
