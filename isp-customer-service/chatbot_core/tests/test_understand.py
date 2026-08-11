@@ -251,6 +251,30 @@ class TestContradictionCorroboration:
         e = agent.state.evidence["lights"]
         assert e["conflict"] is True  # keywords agree -> the clarify machinery runs
 
+    def test_flip_corroborated_by_key_own_markers(self, db_connection, monkeypatch):
+        # Live 2026-08-11: ledger had power_cable=atjungtas (from "routeris
+        # neturi maitinimo"); the caller then answered "Tai ikištas" WITHOUT
+        # the topic word "laidas" — the general extractor saw no cable topic
+        # and the TRUE update was dropped, so the hypothesis never confirmed
+        # and the findings announce never fired. The key's OWN answer markers
+        # (read_pending_answer) now corroborate the flip.
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(
+                faktai={"power_cable": "atjungtas"}, supratau="routeris be maitinimo"
+            ),
+        ):
+            agent._ingest_client_evidence("routeris neturi maitinimo")
+        assert agent.state.evidence["power_cable"]["value"] == "atjungtas"
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"power_cable": "įkištas"}, supratau="laidas įkištas"),
+        ):
+            agent._ingest_client_evidence("Tai ikištas, viskas gerai")  # STT dropped į
+        e = agent.state.evidence["power_cable"]
+        assert e["conflict"] is True  # accepted -> ONE clarify settles it
+
 
 class TestTicketUnderstanding:
     """The ticket dialogue reads answers through the pass too (Andrius

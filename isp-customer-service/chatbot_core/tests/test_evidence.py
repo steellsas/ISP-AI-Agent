@@ -327,3 +327,30 @@ class TestAgentWiring:
         agent2.state.customer_id = None
         agent2._ingest_client_evidence("Nedega lemputės")
         assert agent2.state.evidence == {}
+
+
+class TestFoldedAndNegationAwareReaders:
+    """Round 2 (live 2026-08-11): STT drops diacritics ("Tai ikištas",
+    "razetė") and glues negations ("Neniauturiu" = "ne, neturiu") — the
+    deterministic readers must survive both."""
+
+    def test_negation_prefixed_positive_mark_is_not_a_yes(self):
+        from agent.evidence import polarity, read_pending_answer
+
+        # "Neniauturiu." landed has_computer=yes live (substring "turiu").
+        assert polarity("Neniauturiu.") != "yes"
+        assert read_pending_answer("has_computer", "Neniauturiu.") != "yes"
+        # Clean answers still read.
+        assert polarity("Turiu kompiuterį") == "yes"
+        assert polarity("Ne, neturiu") == "no"
+        assert read_pending_answer("has_computer", "turiu") == "yes"
+
+    def test_diacritics_folded_matching(self):
+        from agent.evidence import extract_client_facts, read_pending_answer
+
+        assert read_pending_answer("power_cable", "Tai ikistas, viskas gerai") == "įkištas"
+        assert extract_client_facts("laidas ikistas tvirtai")["power_cable"] == "įkištas"
+        assert (
+            extract_client_facts("kiti irenginiai nuo tos razetes veikia")["outlet_works"]
+            == "bandyta"
+        )

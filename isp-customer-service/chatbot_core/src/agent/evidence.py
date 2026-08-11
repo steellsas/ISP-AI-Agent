@@ -106,6 +106,32 @@ def summary_lt(evidence: dict[str, Any]) -> str:
 
 # --- deterministic client-fact extraction (v1) --------------------------------
 
+# STT routinely drops Lithuanian diacritics ("Tai ikištas", "razetė") — every
+# keyword match here folds BOTH sides so a dropped nosinė never hides a fact
+# (live 2026-08-11: "įkištas" heard without į failed the flip corroboration).
+_FOLD = str.maketrans("ąčęėįšųūž", "aceeisuuz")
+
+
+def _fold(text: str) -> str:
+    return text.lower().translate(_FOLD)
+
+
+def _mark_hit(low_folded: str, mark: str) -> bool:
+    """Folded substring match with a NEGATION-PREFIX guard: a positive mark
+    found only inside a word that itself starts with "ne" is a NO, not a yes
+    ("Neniauturiu" — STT of "ne, neturiu" — contains "turiu"; live 2026-08-11
+    it landed has_computer=yes while the caller said no). Marks that ARE
+    negations ("netur") and multi-word marks skip the guard."""
+    m = _fold(mark)
+    if m not in low_folded:
+        return False
+    if m.startswith("ne") or " " in m:
+        return True
+    return any(
+        m in tok and not tok.startswith("ne") for tok in low_folded.replace(",", " ").split()
+    )
+
+
 _NEG_LIGHTS = ("nedega", "ne dega", "nei viena", "nė viena", "ne viena", "jokia lemp", "nešvie")
 _POS_LIGHTS = ("dega", "šviečia", "sviecia", "žiba", "ziba")
 _HAS_PC = ("turiu kompiuter", "yra kompiuter", "turim kompiuter", "kompiuteris yra", "turiu pc")
@@ -117,10 +143,10 @@ _CABLE_OUT = ("nepajungt", "neprijungt", "atjungt", "ištraukt", "istraukt", "i�
 def extract_client_facts(text: str | None) -> dict[str, str]:
     """Keyword-read canonical facts from one caller utterance. Deliberately
     conservative: no match -> no fact (never guesses). Negations first —
-    "nedega" contains "dega"."""
+    "nedega" contains "dega". All matching on diacritics-folded text."""
     if not text:
         return {}
-    low = text.lower()
+    low = _fold(text)
     facts: dict[str, str] = {}
     # Negation must attach to the COMPUTER itself: "Neturiu KITO ROUTERIO, tik
     # kompiuterį" is a YES (eval S4 regression: the loose "netur…kompiuter"
@@ -130,28 +156,29 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     from .resolution import detect_no_device
 
     if "kompiuter" in low:
-        if _re.search(r"(netur\w*|nėra|nera)\s+(?:\w+\s+){0,2}kompiuter", low):
+        if _re.search(r"(netur\w*|nera)\s+(?:\w+\s+){0,2}kompiuter", low):
             facts["has_computer"] = "no"
-        elif any(m in low for m in _HAS_PC) or _re.search(r"tik\s+(su\s+)?kompiuter", low):
+        elif any(_mark_hit(low, m) for m in _HAS_PC) or _re.search(r"tik\s+(su\s+)?kompiuter", low):
             facts["has_computer"] = "yes"
         elif detect_no_device(low) and "tik" not in low:
             facts["has_computer"] = "no"
-    if "lemp" in low or "šviesel" in low or "sviesel" in low:
-        if any(m in low for m in _NEG_LIGHTS):
+    if "lemp" in low or "sviesel" in low:
+        if any(_fold(m) in low for m in _NEG_LIGHTS):
             facts["lights"] = "nedega"
-        elif "mirksi" in low or "mirkčioja" in low:
+        elif "mirksi" in low or "mirkcioja" in low:
             facts["lights"] = "mirksi"
-        elif any(m in low for m in _POS_LIGHTS):
+        elif any(_mark_hit(low, m) for m in _POS_LIGHTS):
             facts["lights"] = "dega"
-    if any(w in low for w in _CABLE_WORDS):
-        if any(m in low for m in _CABLE_OUT):
+    if any(_fold(w) in low for w in _CABLE_WORDS):
+        if any(_fold(m) in low for m in _CABLE_OUT):
             facts["power_cable"] = "atjungtas"
-        elif any(m in low for m in _CABLE_IN):
+        elif any(_mark_hit(low, m) for m in _CABLE_IN):
             facts["power_cable"] = "įkištas"
-    if "rozet" in low and any(m in low for m in ("kit", "band", "perjung")):
+    # "razet" — the STT routinely hears "rozetė" as "razetė" (both live calls).
+    if ("rozet" in low or "razet" in low) and any(m in low for m in ("kit", "band", "perjung")):
         facts["outlet_works"] = "bandyta"
-    if ("router" in low or "dėžut" in low or "dezut" in low) and any(
-        m in low for m in ("radau", "priėjau", "priejau", "matau", "esu prie", "suradau")
+    if ("router" in low or "dezut" in low) and any(
+        _fold(m) in low for m in ("radau", "priėjau", "matau", "esu prie", "suradau")
     ):
         facts["device_present"] = "rado"
     # Domain inference: answering about the LIGHTS or the POWER CABLE means the
@@ -344,28 +371,30 @@ def read_pending_answer(key: str, text: str | None, spec_item: dict | None = Non
     the question context resolves what a bare "Radau." / "Ne" means. UNIVERSAL:
     a fault may declare its own `atsakymai: {reikšmė: [požymiai]}` on the
     evidence item in faults.yaml (checked FIRST), so newly added faults get
-    this mechanic by file edit; the built-in map covers the piloted keys."""
+    this mechanic by file edit; the built-in map covers the piloted keys.
+    Matching is diacritics-folded with the negation-prefix guard (_mark_hit)."""
     if not text:
         return None
-    low = text.lower().strip()
+    low = _fold(text.strip())
     if spec_item:
         for value, marks in (spec_item.get("atsakymai") or {}).items():
-            if isinstance(marks, list | tuple) and any(str(m).lower() in low for m in marks):
+            if isinstance(marks, list | tuple) and any(_mark_hit(low, str(m)) for m in marks):
                 return str(value)
     for value, marks in _PENDING_ANSWERS.get(key, []):
-        if any(m in low for m in marks):
+        if any(_mark_hit(low, m) for m in marks):
             return value
     return None
 
 
 def polarity(text: str | None) -> str | None:
     """A bare yes/no read for resolving a pending yes/no conflict ("Kaip yra iš
-    tiesų?" -> "turiu" / "ne, neturiu")."""
+    tiesų?" -> "turiu" / "ne, neturiu"). Negation-prefix aware: a "turiu"
+    buried in a "ne…"-word is a NO."""
     if not text:
         return None
-    low = text.lower()
-    if any(m in low for m in ("netur", "neturi", "ne,", "ne ", "nėra", "nera")):
+    low = _fold(text)
+    if any(m in low for m in ("netur", "ne,", "ne ", "nera")):
         return "no"
-    if any(m in low for m in ("turiu", "turim", "taip", "yra")):
+    if any(_mark_hit(low, m) for m in ("turiu", "turim", "taip", "yra")):
         return "yes"
     return None

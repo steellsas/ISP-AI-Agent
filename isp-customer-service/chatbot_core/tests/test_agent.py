@@ -517,6 +517,58 @@ class TestHearingAgent:
         assert agent._ticket_stage == "phone"  # resumed, not cancelled
         assert "numeriu" in agent._ticket_stage_reply()  # stage re-asks
 
+    # --- round 2 (live 2026-08-11, call 2) ------------------------------------
+
+    def test_end_confirm_answer_never_routes_the_walker(self, db_connection, monkeypatch):
+        # "Iki šau." (STT of "Įkišau") triggered confirm-end; the answer "Ne,
+        # nenoriu" (= don't END) then advanced stale dr_intro -> escalate ->
+        # ticket. The walker holds while the confirm-end answer is unread.
+        agent = self._agent(monkeypatch)
+        agent._end_confirm_pending = True
+        agent._walk_resolution("Ne, nenoriu.")
+        assert agent.state.resolution["step"] == "dr_intro"
+        assert agent._ticket_stage is None
+
+    def test_ticket_refusal_with_solving_content_returns_to_fix(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent._pre_turn_guards("Neregistruokite, pajunkim tą kompiuterį")
+        assert agent._ticket_stage is None  # dialogue dropped…
+        assert agent.state.case_closed is False  # …but the call stays OPEN
+        assert agent._resume_fix_note is True  # narrator returns to the fix
+
+    def test_cancel_confirm_answer_with_solving_content_returns_to_fix(
+        self, db_connection, monkeypatch
+    ):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {
+            "phone_asked": True,
+            "intro_done": True,
+            "cancel_confirm_asked": True,
+            "cancel_confirm_out": True,
+        }
+        agent._pre_turn_guards("Ne, tai mes pajunkim tą kompiuterį. Aš jungiu kabelį.")
+        assert agent._ticket_stage is None
+        assert agent.state.case_closed is False
+        assert agent._resume_fix_note is True
+
+    def test_on_task_question_stays_with_the_flow(self, db_connection, monkeypatch):
+        # "Kur jungti tą kabelį į kompiuterį?" is a question ABOUT the current
+        # instruction — side_topic answered it with "tai nėra mano sritis" live.
+        agent = self._agent(monkeypatch)
+        agent.state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Dabar įkiškite tą kabelį į kompiuterio tinklo lizdą — "
+                "pasakykite, kai padarysite.",
+            }
+        )
+        assert agent.classify_side_topic("Kur jungti tą kabelį į kompiuterį?") is False
+        # An off-task FAQ question still goes to the side node.
+        assert agent.classify_side_topic("O kiek kainuos meistras?") is True
+
 
 class TestAutoRegisterEscalate:
     """consent=False ESCALATE (dr_register_router): the registration is a necessity —

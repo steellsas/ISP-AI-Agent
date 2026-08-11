@@ -323,6 +323,9 @@ class ReactAgent:
         # pending = the scripted choice question goes out this turn.
         self._escalate_clarify_asked = False
         self._escalate_clarify_pending = False
+        # Ticket refusal with solving content: one-turn narrator directive to
+        # say "neregistruoju" and return to the last fix instruction.
+        self._resume_fix_note = False
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -585,6 +588,16 @@ class ReactAgent:
                 f"{self._fmt_phone(s.caller_phone) or 'nežinomas'}. Tiketas DAR "
                 "neužregistruotas — nesakyk „užregistravau“. Atsakyk į kliento "
                 f"klausimą VIENU sakiniu ir būtinai pakartok klausimą: „{pending}“"
+            )
+        # Ticket refusal WITH solving content (2026-08-11): the dialogue was
+        # dropped, the call stays OPEN — the reply returns to the fix.
+        if getattr(self, "_resume_fix_note", False):
+            self._resume_fix_note = False
+            facts.append(
+                "- KLIENTAS ATSISAKĖ REGISTRACIJOS IR NORI TĘSTI SPRENDIMĄ: pasakyk "
+                "vienu sakiniu, kad meistro neregistruoji, ir GRĮŽK prie paskutinės "
+                "sprendimo instrukcijos — pakartok ją arba atsakyk į kliento "
+                "klausimą apie ją. Pokalbio NEbaik."
             )
         # Understanding-pass directives (2026-08-10): the acknowledgement makes
         # the caller feel HEARD; the confusion note turns re-asks into
@@ -1457,6 +1470,17 @@ class ReactAgent:
                     and entry.get("value") != facts[key]
                     and kw.get(key) != facts[key]
                 ):
+                    # Second corroboration source (live 2026-08-11): the general
+                    # extractor needs the TOPIC word in the sentence ("laidas"),
+                    # but the caller answers "Tai įkištas" without naming it —
+                    # the pass already says the utterance is ABOUT this key, so
+                    # the key's OWN answer markers corroborate the flip too.
+                    from .evidence import read_pending_answer, spec_for
+
+                    spec = spec_for((s.resolution or {}).get("verdict"))
+                    spec_item = (spec.get("client") or {}).get(key) if spec else None
+                    if read_pending_answer(key, user_input, spec_item) == facts[key]:
+                        continue
                     self.tracer.emit(
                         "evidence", action="uncorroborated_flip_dropped", key=key, value=facts[key]
                     )
@@ -1638,6 +1662,13 @@ class ReactAgent:
             if u["tipas"] in ("klausimas", "nukrypimas") and not u["faktai"]:
                 from .faq import match as faq_match
 
+                # A question ABOUT the current instruction is NOT a deviation
+                # (live 2026-08-11: "Kur jungti tą kabelį į kompiuterį?" got
+                # "tai nėra mano sritis"). FAQ topics stay side topics.
+                if not faq_match(user_input) and self._on_task_question(user_input):
+                    self.tracer.emit("decision", intent="side_topic", action="on_task")
+                    self._side_topic_turns = 0
+                    return False
                 corroborated = is_real_question(user_input) or bool(faq_match(user_input))
                 if corroborated:
                     self._side_topic_this_turn = True
@@ -1663,12 +1694,36 @@ class ReactAgent:
             # An informative interruption ANSWERS things — not a deviation.
             self._side_topic_turns = 0
             return False
+        from .faq import match as faq_match
+
+        if not faq_match(user_input) and self._on_task_question(user_input):
+            self.tracer.emit("decision", intent="side_topic", action="on_task")
+            self._side_topic_turns = 0
+            return False
         self._side_topic_this_turn = True
         self._side_topic_turns += 1
         self.tracer.emit(
             "decision", intent="side_topic", action="enter", streak=self._side_topic_turns
         )
         return True
+
+    def _on_task_question(self, user_input: str | None) -> bool:
+        """The 'deviation' shares content words with the agent's LAST reply —
+        it is a question ABOUT the current instruction ("Kur jungti tą
+        kabelį?"), not a side topic; the solver/narrator answers it in place.
+        Folded prefix-overlap (≥5 chars) so inflections and dropped diacritics
+        still match ("jungti" ~ "prijungsite", "kabelį" ~ "kabelio")."""
+        last = self._last_agent_question() or ""
+        if not last or not user_input:
+            return False
+        from .evidence import _fold
+
+        last_f = _fold(last)
+        for tok in _fold(user_input).replace("?", " ").replace(",", " ").split():
+            tok = tok.strip(".!?")
+            if len(tok) >= 5 and tok[:5] in last_f:
+                return True
+        return False
 
     def on_turn_cancelled(self, spoken_text: str) -> None:
         """Barge-in cut the reply mid-generation (Phase 5 PR3): record what the
@@ -2106,6 +2161,16 @@ class ReactAgent:
         if self._resume_hold:
             self._resume_hold = False
             return
+        # The confirm-end question is OUT and unanswered — in the graph's turn
+        # order the walker runs BEFORE the guard that reads its answer, so this
+        # reply belongs to that question, not the step (live 2026-08-11: "Ne,
+        # nenoriu" — i.e. don't END — advanced stale dr_intro -> escalate ->
+        # ticket). Hold; _pre_turn_guards resumes or closes this same turn.
+        if self._end_confirm_pending:
+            self.tracer.emit(
+                "decision", intent="answer", action="hold", reason="end_confirm_pending"
+            )
+            return
         # Derive the intent from THIS call's input rather than trusting it was set
         # earlier — the walker must not depend on the caller's ordering.
         from .resolution import detect_turn_intent
@@ -2301,6 +2366,11 @@ class ReactAgent:
             if ctx.pop("cancel_confirm_out", False):
                 from .resolution import is_bare_negation
 
+                # "Ne, tai pajunkim tą kompiuterį" refuses the TICKET, not the
+                # help — back to solving, never back to the phone question.
+                if self._wants_to_keep_solving(user_input):
+                    self._abort_ticket_to_solving()
+                    return
                 if is_bare_negation(user_input) or any(
                     m in low_q for m in ("neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu")
                 ):
@@ -2340,6 +2410,11 @@ class ReactAgent:
                         self.tracer.emit("decision", intent="ticket_dialogue", action="question")
                         return
                     if ut["tipas"] == "atsisakymas":
+                        # Refusal WITH solving content skips the confirm — the
+                        # caller told us what they want: keep fixing.
+                        if self._wants_to_keep_solving(user_input):
+                            self._abort_ticket_to_solving()
+                            return
                         # One confirm round before the one-way door (2026-08-11):
                         # "Ne." to "ar tiks šis numeris?" may mean "kitu numeriu",
                         # not "neregistruokite" — clarify before dropping the
@@ -2410,6 +2485,9 @@ class ReactAgent:
                 m in low_q
                 for m in ("neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk")
             ):
+                if self._wants_to_keep_solving(user_input):
+                    self._abort_ticket_to_solving()
+                    return
                 if ctx.get("cancel_confirm_asked"):
                     self._ticket_stage = "cancelled"
                     self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
@@ -2742,6 +2820,7 @@ class ReactAgent:
         self._pending_announce = ""
         self._escalate_clarify_asked = False
         self._escalate_clarify_pending = False
+        self._resume_fix_note = False
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()
@@ -3237,6 +3316,45 @@ class ReactAgent:
         if need:
             return need
         return _DIAGNOSIS_LT.get(cause, cause or "reikalinga specialisto pagalba")
+
+    _CONTINUE_SOLVING_MARKS = (
+        "jung",  # jungiu / pajunkim / prijunkite
+        "kompiuter",
+        "kabel",
+        "bandom",
+        "bandyk",
+        "pabandy",
+        "tikrin",
+        "tęs",
+        "tes ",
+        "teskim",
+        "toliau",
+        "darom",
+        "spręs",
+        "spres",
+    )
+
+    def _wants_to_keep_solving(self, user_input: str | None) -> bool:
+        """A ticket refusal that CARRIES solving content ("Ne, tai mes pajunkim
+        tą kompiuterį…") — the caller is refusing the REGISTRATION, not the
+        help. Live 2026-08-11: this was read as plain refusal, the dialogue
+        resumed the phone question and the call closed registered while the
+        caller was still asking for the bridge."""
+        from .evidence import extract_client_facts
+
+        low = (user_input or "").lower()
+        return bool(extract_client_facts(user_input)) or any(
+            m in low for m in self._CONTINUE_SOLVING_MARKS
+        )
+
+    def _abort_ticket_to_solving(self) -> None:
+        """Drop the ticket dialogue WITHOUT closing the call and hand the turn
+        back to solving — the narrator says so and re-anchors the last
+        instruction (directive consumed in the facts block)."""
+        self._ticket_stage = None
+        self._ticket_ctx = None
+        self._resume_fix_note = True
+        self.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
 
     def _ticket_stage_reply(self) -> str:
         """The scripted reply for the CURRENT dialogue stage. The first phone ask
