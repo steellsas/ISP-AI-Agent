@@ -162,6 +162,10 @@ class TestVoiceChannel:
         monkeypatch.setattr(voice, "_build_asr", lambda: _FakeASR())
         monkeypatch.setattr(voice, "_build_tts", lambda: _FakeTTS())
         monkeypatch.setenv("API_RECORD_DIR", str(tmp_path))
+        # Traces to tmp too: the interrupt test reads the session's jsonl, and
+        # a cwd-relative "../logs" path broke on CI (pytest runs from the repo
+        # root there, from chatbot_core/ locally).
+        monkeypatch.setenv("TRACE_DIR", str(tmp_path))
         return tmp_path
 
     def test_binary_frame_runs_voice_turn(self, client, voice_fakes, monkeypatch):
@@ -266,11 +270,11 @@ class TestVoiceChannel:
             assert done is not None
             assert done["interrupted"] is True
             assert done["chunks_sent"] < done["chunks"]  # the tail was swallowed
-        # The barge-in landed on the trace (panel + archive see it).
+        # The barge-in landed on the trace (panel + archive see it). TRACE_DIR
+        # points at tmp (voice_fakes) — no cwd-relative paths (broke on CI).
         import json as _json2
-        from pathlib import Path
 
-        trace = Path("../logs/sessions") / f"{sid}.jsonl"
+        trace = voice_fakes / f"{sid}.jsonl"
         events = [_json2.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
         assert any(e.get("type") == "barge_in" for e in events)
 
