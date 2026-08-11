@@ -122,6 +122,14 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     ),
     "checking_note": "Tuoj patikrinsiu ryšį iki jūsų buto.",
     "findings_announce": ("Ką patikrinome: {faktai}. Panašu — {priezastis}. Galime: {sprendimai}."),
+    "negation_clarify": ("Norėjau patikslinti — išgirdau „ne“. {klausimas}"),
+    "escalate_clarify": (
+        "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
+    ),
+    "ticket_cancel_confirm": (
+        "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau "
+        "registruoti meistrą. Registruoti, ar tikrai nereikia?"
+    ),
 }
 
 

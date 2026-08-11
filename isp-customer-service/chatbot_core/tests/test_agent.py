@@ -411,6 +411,113 @@ class TestEscalateOutcome:
         assert agent.state.case_closed is False
 
 
+class TestHearingAgent:
+    """2026-08-11 live fix: a barge-in-truncated "Ne." (meant "ne, nedega…") was
+    read by the STALE dr_intro yes/no as "won't check" → escalate → ticket →
+    dead call. Ownership: an open evidence question owns the reply; a bare
+    negation CLARIFIES instead of driving one-way doors (escalate, ticket
+    cancel); first evidence asks explain WHY (kodel from faults.yaml)."""
+
+    def _agent(self, monkeypatch, step="dr_intro", asked=True):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.diagnosis["network"] = {"group": "B6", "reason": "no_mac_observed"}
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": step,
+            "asked": asked,
+        }
+        return agent
+
+    def test_bare_negation_detector(self):
+        from agent.resolution import is_bare_negation
+
+        assert is_bare_negation("Ne.")
+        assert is_bare_negation("Ne, nežinau.")
+        assert not is_bare_negation("Ne, nedega nei viena")  # carries an object
+        assert not is_bare_negation("ne, nenoriu, ačiū")  # a real refusal
+        assert not is_bare_negation("Gerai")
+        assert not is_bare_negation(None)
+
+    def test_walker_holds_while_evidence_question_open(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._evidence_last_ask_key = "power_cable"
+        agent._evidence_asks["power_cable"] = 1
+        agent._walk_resolution("Ne.")  # the fatal live turn
+        assert agent.state.resolution["step"] == "dr_intro"  # held, not escalate
+        assert agent._ticket_stage is None
+
+    def test_open_question_negation_gets_fault_file_clarify(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._evidence_last_ask_key = "power_cable"
+        agent._evidence_asks["power_cable"] = 1
+        reply = agent._identification_scripted_reply("Ne.")
+        assert reply is not None and "neįkištas" in reply  # patikslinimas wording
+
+    def test_drive_negation_clarify_replaces_reask(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = self._agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
+        agent._evidence_last_ask_key = "power_cable"
+        agent._evidence_asks["power_cable"] = 1
+        reply = agent._evidence_drive("Ne.")
+        assert reply is not None and "neįkištas" in reply
+
+    def test_kodel_rides_on_first_evidence_ask(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = self._agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        reply = agent._evidence_drive("radau")
+        assert reply is not None and "lemputė" in reply
+        assert "maitinimą" in reply  # the kodel sentence
+
+    def test_bare_ne_to_escalate_clarifies_once_then_escalates(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._walk_resolution("Ne.")  # keyword "no" routes dr_intro -> escalate
+        assert agent.state.resolution["step"] == "dr_intro"  # blocked — clarify instead
+        assert agent._escalate_clarify_pending is True
+        reply = agent._identification_scripted_reply("Ne.")
+        assert reply is not None and "registruoju meistrą" in reply
+        agent._walk_resolution("Ne.")  # repeated no IS a real no
+        assert agent.state.resolution["step"] == "escalate"
+
+    def test_rich_refusal_still_escalates_directly(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._walk_resolution("Nieko nedarysiu, įregistruokit gedimą")
+        assert agent._ticket_stage == "phone"  # refuse/demand path untouched
+
+    def test_ticket_cancel_needs_one_confirm(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent._pre_turn_guards("Neregistruokite nieko")
+        assert agent._ticket_stage == "phone"  # not cancelled yet
+        reply = agent._ticket_stage_reply()
+        assert "tikrai nereikia" in reply  # the confirm question went out
+        agent._pre_turn_guards("nereikia")
+        assert agent._ticket_stage == "cancelled"  # confirmed refusal cancels
+
+    def test_ticket_cancel_confirm_can_resume(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent._pre_turn_guards("Neregistruokite nieko")
+        agent._ticket_stage_reply()  # confirm question goes out
+        agent._pre_turn_guards("gerai, registruokite vis dėlto")
+        assert agent._ticket_stage == "phone"  # resumed, not cancelled
+        assert "numeriu" in agent._ticket_stage_reply()  # stage re-asks
+
+
 class TestAutoRegisterEscalate:
     """consent=False ESCALATE (dr_register_router): the registration is a necessity —
     the engine registers ON ARRIVAL and closes; no consent question, no misread."""
@@ -1555,9 +1662,14 @@ class TestTicketDialogue:
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
+        # Cancelling is a one-way door (2026-08-11): the first refusal gets ONE
+        # confirm question; only the confirmed refusal cancels and closes.
         agent._pre_turn_guards("ne, nereikia registruoti nieko")
+        assert agent._ticket_stage == "phone"
+        assert "tikrai nereikia" in agent._ticket_stage_reply()
+        agent._pre_turn_guards("nereikia")
         assert agent._ticket_stage == "cancelled"
-        reply = agent._identification_scripted_reply("ne, nereikia registruoti nieko")
+        reply = agent._identification_scripted_reply("nereikia")
         assert "neregistruoju" in reply
         assert agent.state.ticket_id is None
         assert agent.state.case_closed and agent.state.closed_reason == "declined"

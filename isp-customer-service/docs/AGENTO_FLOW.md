@@ -115,6 +115,23 @@ flowchart TD
 NEperrašo; kliento prieštaravimas — vėliava + patikslinimas; „neaišku" po dviejų
 nesuprastų klausimų — judam toliau, jokių kilpų.
 
+**Klausimo NUOSAVYBĖ ir plikas „ne" (2026-08-11):** kol variklio įrodymo
+klausimas ATVIRAS (išsiųstas, atsakymo dar nėra), atsakymai skaitomi TIK prieš
+jį — pasenęs walker'io žingsnio klausimas ėjimo nebesuvalgo (gyvai: barge-in
+nukirpo „ne, nedega…" iki „Ne.", o prieš 6 ėjimus klaustas „ar patogu tikrinti?"
+perskaitė jį kaip atsisakymą → tiketas → miręs skambutis). Plikas „ne" be
+objekto niekada nevaro vienpusių durų:
+
+- prie atviro įrodymo klausimo → patikslinimas iš gedimo failo (`patikslinimas`
+  per raktą: „ar laidas neįkištas, ar negalite dabar patikrinti?");
+- vedantis į `escalate` be supratimo pass'o pritarimo → VIENĄ kartą klausiama
+  „sprendžiame kartu ar registruoju meistrą?"; pakartotas „ne" — tikras „ne";
+- tiketo atšaukimas → VIENAS patvirtinimo klausimas („registruoti, ar tikrai
+  nereikia?") prieš uždarant be tiketo.
+
+Pirmas įrodymo klausimas neša ir „KODĖL tikrinam" (`kodel` iš `faults.yaml`) —
+klientas girdi, kam prašoma („pagal lemputes matysime, ar gauna maitinimą").
+
 ## 6. SPRENDIMAS — vienpusės durys
 
 ```mermaid

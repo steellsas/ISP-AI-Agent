@@ -319,6 +319,10 @@ class ReactAgent:
         # moment; stashed when the reply comes from another layer that turn.
         self._findings_announced = False
         self._pending_announce = ""
+        # Bare-"ne" escalate clarify (2026-08-11): asked at most once per case;
+        # pending = the scripted choice question goes out this turn.
+        self._escalate_clarify_asked = False
+        self._escalate_clarify_pending = False
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -1695,6 +1699,39 @@ class ReactAgent:
         self._finalize_reply(reply)
         return reply
 
+    def _evidence_question_open(self) -> str | None:
+        """The evidence key whose question is OUT and still unanswered — the one
+        question the caller is actually answering right now. The ingest clears
+        the pending key the moment a fact lands on it, so a non-None here means
+        this turn's reply did NOT read as an answer to it."""
+        key = getattr(self, "_evidence_last_ask_key", None)
+        if not key:
+            return None
+        entry = self.state.evidence.get(key)
+        if entry is not None and entry.get("value") not in (None, "neaišku"):
+            return None
+        return key
+
+    def _negation_clarify_reply(self, key: str) -> str | None:
+        """Scripted clarify for a bare-"ne" reply to the open evidence question
+        (Andrius 2026-08-11: clarify what the "ne" refers to instead of acting).
+        Wording comes from the fault file (`patikslinimas` per key) so every fault
+        can name its own two readings; generic phrase as fallback. Counts as an
+        ask — the give-up cap still ends an unreadable loop."""
+        from .evidence import spec_for
+        from .identification import phrase
+
+        if self._evidence_asks.get(key, 0) >= 2:
+            return None  # already asked twice — let the drive give up, not loop
+        spec = spec_for((self.state.resolution or {}).get("verdict")) or {}
+        item = (spec.get("client") or {}).get(key) or {}
+        self._evidence_asks[key] = self._evidence_asks.get(key, 0) + 1
+        self.tracer.emit("evidence", action="negation_clarify", key=key)
+        return str(
+            item.get("patikslinimas")
+            or phrase("negation_clarify", klausimas=str(item.get("klausimas") or ""))
+        ).strip()
+
     def _evidence_drive(self, user_input: str | None) -> str | None:
         """Evidence-declared direction (Ledger v2): pick the next question from
         MISSING evidence, compute the hypothesis from the ledger, and route the
@@ -1715,6 +1752,9 @@ class ReactAgent:
         spec = spec_for(r.get("verdict"))
         if spec is None:
             return None
+        # Captured BEFORE any new ask below overwrites it: was a question already
+        # out when the caller spoke? Needed for the bare-"ne" clarify.
+        pending_before = self._evidence_question_open()
         status = hypothesis_status(s.evidence, spec)
         if status == "refuted":
             # A lit lamp disproves the dead-router path — sync the walker to the
@@ -1780,6 +1820,10 @@ class ReactAgent:
             # "neaišku" and move on; an unreadable caller must never loop us.
             set_fact(s.evidence, key, "neaišku", CLIENT, s.turn_count)
             self.tracer.emit("evidence", action="gave_up", key=key)
+            if getattr(self, "_evidence_last_ask_key", None) == key:
+                # A given-up key must not read as an OPEN question forever —
+                # the walker's ownership gate keys off this.
+                self._evidence_last_ask_key = None
             inner = self._evidence_drive(user_input)
             if inner is None:
                 if announce:
@@ -1793,6 +1837,22 @@ class ReactAgent:
             if asks == 0
             else (item.get("paprasciau") or item.get("klausimas"))
         )
+        # The caller hears WHY we ask before what to press (Andrius 2026-08-11:
+        # "kad klientas žinotų kodėl prašo to ar kito") — once, on the first ask.
+        if asks == 0 and item.get("kodel"):
+            text = f"{text} {item['kodel']}"
+        # Bare "Ne." to THIS key's open question: the no has no object — clarify
+        # what is denied instead of re-asking the same words (live 2026-08-11).
+        if pending_before == key:
+            from .resolution import is_bare_negation
+
+            if is_bare_negation(user_input):
+                from .identification import phrase
+
+                text = item.get("patikslinimas") or phrase(
+                    "negation_clarify", klausimas=str(item.get("klausimas") or "")
+                )
+                self.tracer.emit("evidence", action="negation_clarify", key=key)
         self.tracer.emit(
             "drive_decision",
             action="ask_evidence",
@@ -2113,6 +2173,23 @@ class ReactAgent:
                 if rt == "demand":
                     self._begin_ticket_dialogue(strat.step("escalate"))
                 return
+        # Question OWNERSHIP (live 2026-08-11): while the evidence drive has an OPEN
+        # question, that is the question the caller is answering — the walker's own
+        # step question may be MANY turns stale. A barge-in-truncated "Ne." (meant:
+        # "ne, nedega…") was read by the stale dr_intro yes/no as "won't check
+        # together" → escalate → ticket → dead call. The asked-step routing below
+        # (classify + keyword) must not consume such a reply; explicit refusals and
+        # restored pre-answers were already handled above.
+        if self._evidence_question_open():
+            self.tracer.emit(
+                "decision",
+                intent="answer",
+                action="hold",
+                from_step=step.id,
+                to=step.id,
+                reason="evidence_question_open",
+            )
+            return
         # ASKED generic CONFIRM (yes/no, lights, scope, restored, …): the LLM classifier
         # reads the answer AND whether it IS an answer in one call — so a confident answer
         # advances even when the brittle keyword turn-intent would veto it (observed:
@@ -2176,6 +2253,8 @@ class ReactAgent:
         key = self._detect_confirm(step, user_input)
         if key is None:
             return
+        if self._block_uncorroborated_escalate(step, strat, key, user_input):
+            return  # clarify goes out instead; the step holds
         self._route_to(r, next_step_id(strat, step.id, key))
 
     def _emit_rag_injection(self, doc: str | None, section: int, step_id: str, text: str) -> None:
@@ -2214,6 +2293,25 @@ class ReactAgent:
             self._ticket_offscript = False
             low_q = (user_input or "").lower()
             ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+            # Cancel-confirm answer (2026-08-11): the previous reply asked
+            # "registruoti, ar tikrai nereikia?" — read THIS turn against that
+            # question only. Live, a bare "Ne." (a barge-in crumb) cancelled the
+            # ticket AND closed the call in one breath; cancelling is a one-way
+            # door, so it now takes a confirmed refusal.
+            if ctx.pop("cancel_confirm_out", False):
+                from .resolution import is_bare_negation
+
+                if is_bare_negation(user_input) or any(
+                    m in low_q for m in ("neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu")
+                ):
+                    self._ticket_stage = "cancelled"
+                    self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                    return
+                # Anything else resumes the registration — the stage re-asks.
+                self.tracer.emit(
+                    "decision", intent="ticket_dialogue", action="cancel_confirm_resumed"
+                )
+                return
             # SUPRATIMO pass'as pirmiau (2026-08-10, Andrius): caller phrasing
             # cannot be predicted — "Bet kada galima per pietus iš ryto" IS an
             # hours answer, but "galima" sat on the keyword question list and
@@ -2242,8 +2340,21 @@ class ReactAgent:
                         self.tracer.emit("decision", intent="ticket_dialogue", action="question")
                         return
                     if ut["tipas"] == "atsisakymas":
-                        self._ticket_stage = "cancelled"
-                        self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                        # One confirm round before the one-way door (2026-08-11):
+                        # "Ne." to "ar tiks šis numeris?" may mean "kitu numeriu",
+                        # not "neregistruokite" — clarify before dropping the
+                        # ticket the caller was just promised.
+                        if ctx.get("cancel_confirm_asked"):
+                            self._ticket_stage = "cancelled"
+                            self.tracer.emit(
+                                "decision", intent="ticket_dialogue", action="cancelled"
+                            )
+                            return
+                        ctx["cancel_confirm_asked"] = True
+                        ctx["ask_cancel_confirm"] = True
+                        self.tracer.emit(
+                            "decision", intent="ticket_dialogue", action="cancel_confirm"
+                        )
                         return
                     if not ctx.get(f"{self._ticket_stage}_asked"):
                         return  # trigger-swallow guard (question not asked yet)
@@ -2293,13 +2404,19 @@ class ReactAgent:
                 self.tracer.emit("decision", intent="ticket_dialogue", action="question")
                 return
             # Explicit "do not register" cancels the dialogue (their call, their
-            # choice) — the scripted reply closes with a goodbye.
+            # choice) — after ONE confirm round; the scripted reply closes with a
+            # goodbye only on the confirmed refusal.
             if not und_handled and any(
                 m in low_q
                 for m in ("neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk")
             ):
-                self._ticket_stage = "cancelled"
-                self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                if ctx.get("cancel_confirm_asked"):
+                    self._ticket_stage = "cancelled"
+                    self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                    return
+                ctx["cancel_confirm_asked"] = True
+                ctx["ask_cancel_confirm"] = True
+                self.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm")
                 return
             if detect_farewell(user_input):
                 self._ticket_stage = "done"
@@ -2623,6 +2740,8 @@ class ReactAgent:
         self._drive_repeats = 0
         self._findings_announced = False
         self._pending_announce = ""
+        self._escalate_clarify_asked = False
+        self._escalate_clarify_pending = False
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()
@@ -2644,6 +2763,38 @@ class ReactAgent:
             if m.get("role") == "assistant" and (m.get("content") or "").strip():
                 return m["content"]
         return None
+
+    def _block_uncorroborated_escalate(self, step, strat, label, user_input: str | None) -> bool:
+        """A bare "Ne."-style reply about to route the walker into ESCALATE — a
+        one-way door to the ticket dialogue — needs a second source agreeing it
+        really is a refusal (the understanding pass reading a confident answer).
+        Without it, ask the solve-or-ticket clarify ONCE instead and hold
+        (Andrius 2026-08-11: clarify what the "ne" means, never rush the
+        conclusion). A repeated no on the next turn escalates normally."""
+        from .resolution import StepKind, is_bare_negation, next_step_id
+
+        target = next_step_id(strat, step.id, label)
+        tstep = strat.step(target) if strat and target else None
+        if tstep is None or tstep.kind is not StepKind.ESCALATE:
+            return False
+        if not is_bare_negation(user_input):
+            return False
+        if getattr(self, "_escalate_clarify_asked", False):
+            return False  # clarified once already — a repeated no is a real no
+        u = getattr(self, "_last_understanding", None)
+        if u is not None and u.get("tipas") == "atsakymas" and (u.get("pasitikejimas") or 0) >= 0.6:
+            return False  # two sources agree on the refusal — escalate may proceed
+        self._escalate_clarify_asked = True
+        self._escalate_clarify_pending = True
+        self.tracer.emit(
+            "decision",
+            intent="answer",
+            action="clarify",
+            from_step=step.id,
+            to=target,
+            reason="bare negation, no corroboration",
+        )
+        return True
 
     def _classify_confirm_and_route(self, step, strat, user_input: str | None) -> bool:
         """Classifier-led routing for an asked CONFIRM step. One LLM call reads BOTH the
@@ -2686,6 +2837,8 @@ class ReactAgent:
             routed_by=("classifier" if answered else "keyword"),
         )
         if answered:
+            if self._block_uncorroborated_escalate(step, strat, obs.label, user_input):
+                return True  # clarify goes out instead; the step holds
             self.state.awaiting = None
             self.state.awaiting_turns = 0
             self.state.step_confusions = 0
@@ -3094,6 +3247,9 @@ class ReactAgent:
         from .identification import phrase
 
         ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+        if ctx.pop("ask_cancel_confirm", None):
+            ctx["cancel_confirm_out"] = True
+            return phrase("ticket_cancel_confirm")
         retry = ctx.pop("ask_retry", None)
         if retry == "phone":
             return phrase("ticket_phone_retry")
@@ -4556,6 +4712,22 @@ class ReactAgent:
         # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
         if self._end_confirm_pending:
             return phrase("confirm_end")
+        # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
+        # the solve-or-register choice instead of crossing the one-way door
+        # (2026-08-11). The next turn routes normally: a repeated no escalates.
+        if getattr(self, "_escalate_clarify_pending", False):
+            self._escalate_clarify_pending = False
+            return phrase("escalate_clarify")
+        # Bare "ne" while the evidence drive's question is open, on the WALKER
+        # path (farewell/refuse-shaped turns land here; the drive words its own
+        # clarify): say what the "ne" could mean instead of acting on it.
+        from .resolution import is_bare_negation
+
+        open_key = self._evidence_question_open()
+        if open_key and is_bare_negation(user_input):
+            clarify = self._negation_clarify_reply(open_key)
+            if clarify:
+                return clarify
         if user_input and is_real_question(user_input):
             return None  # off-script — the LLM answers; guards kept the ladder state
         # INTAKE (not yet identified): the anamnesis question and the address

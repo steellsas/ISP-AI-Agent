@@ -1339,6 +1339,38 @@ def is_backchannel(text: str | None) -> bool:
     return bool(tokens) and all(t in _BACKCHANNEL for t in tokens)
 
 
+_NEGATION_TOKENS = {
+    "ne",
+    "nė",
+    "nea",
+    "nėra",
+    "nera",
+    "nežinau",
+    "nezinau",
+    "nematau",
+    "nieko",
+    "niekas",
+}
+
+
+def is_bare_negation(text: str | None) -> bool:
+    """A short negation-only reply ("Ne.", "Ne, nežinau.") — a NO without an object.
+    It says nothing about WHAT is denied: the pending check, the whole process, or
+    a truncated "ne(dega)…" after a barge-in (live 2026-08-11: exactly that "Ne."
+    was read as "won't check together" and killed the call with a cancelled
+    ticket). Such a reply may answer a clarify question, never drive a destructive
+    transition on its own."""
+    if not text:
+        return False
+    tokens = [t.strip(".,!?…") for t in text.lower().split()]
+    tokens = [t for t in tokens if t]
+    if not tokens or len(tokens) > 3:
+        return False
+    return any(t in _NEGATION_TOKENS for t in tokens) and all(
+        t in _NEGATION_TOKENS or len(t) <= 2 for t in tokens
+    )
+
+
 _QUESTION_TOKENS = {
     "kiek",
     "kodėl",

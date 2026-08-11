@@ -270,6 +270,9 @@ faults:
           reikia: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
           klausimas: "Susiraskite routerį — dėžutę, į kurią ateina interneto kabelis. Pasakykite, kai būsite prie jo."
           paprasciau: "Ieškokite nedidelės dėžutės su lemputėmis, dažnai su antenomis — į ją ateina laidas iš sienos. Radote?"
+          # patikslinimas — kai atsakymas buvo plikas „ne“ be objekto: įvardijami
+          # abu galimi perskaitymai, klientas pasirenka (2026-08-11, Andrius).
+          patikslinimas: "Norėjau patikslinti — ar nerandate routerio, ar radote, bet kažkas kita negerai?"
           # atsakymai: kaip trumpi/darkyti atsakymai skaitomi, kai KĄ TIK klaustas
           # ŠITAS klausimas (universalu — naujas gedimas deklaruoja savus čia pat).
           atsakymai:
@@ -278,20 +281,29 @@ faults:
         lights:
           reikia: "ar dega bent viena routerio lemputė"
           klausimas: "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+          # kodel — pasakoma kartu su PIRMU klausimu, kad klientas žinotų, kam to
+          # reikia (2026-08-11, Andrius: paaiškinti ką tikrinam ir kodėl).
+          kodel: "Pagal lemputes matysime, ar routeris išvis gauna maitinimą."
           paprasciau: "Dėžutės priekyje yra mažos švieselės. Ar nors viena šviečia arba mirksi?"
+          patikslinimas: "Norėjau patikslinti — ar nė viena lemputė nedega, ar tiesiog nematote, kur žiūrėti?"
           kada: [device_present=rado]
         power_cable:
           reikia: "maitinimo laidas įkištas į rozetę IR į routerį"
           klausimas: "Patikrinkite, ar maitinimo laidas gerai įkištas į rozetę ir į patį routerį."
+          kodel: "Atsilaisvinęs laidas — dažniausia priežastis, kodėl routeris negauna srovės."
           paprasciau: "Juodas laidas apvaliu antgaliu turi eiti iš dėžutės į rozetę. Ištraukite ir vėl tvirtai įkiškite abiejuose galuose."
+          patikslinimas: "Norėjau patikslinti — ar laidas neįkištas, ar negalite dabar patikrinti?"
           kada: [lights=nedega]
         outlet_works:
           reikia: "rozetė veikia — pabandyta kita arba kiti įrenginiai nuo jos veikia"
           klausimas: "Pabandykite kitą rozetę — arba pasakykite, ar kiti įrenginiai nuo tos rozetės veikia."
+          kodel: "Taip atskirsime, ar sugedusi rozetė, ar pats routeris."
+          patikslinimas: "Norėjau patikslinti — ar kita rozetė nepadėjo, ar negalite jos išbandyti?"
           kada: [lights=nedega, power_cable=įkištas]
         has_computer:
           reikia: "ar yra kompiuteris laikinam tiltui"
           klausimas: "Ar turite kompiuterį, kad galėtume laikinai paleisti internetą per jį?"
+          patikslinimas: "Norėjau patikslinti — ar neturite kompiuterio, ar tiesiog nenorite bandyti per jį?"
           kada: [patvirtinta]
       patvirtinta_kai: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
       paneigta_kai: [lights=dega]
