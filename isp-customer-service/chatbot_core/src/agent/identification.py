@@ -121,6 +121,7 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "Grįžkime prie gedimo — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ),
     "checking_note": "Tuoj patikrinsiu ryšį iki jūsų buto.",
+    "findings_announce": ("Ką patikrinome: {faktai}. Panašu — {priezastis}. Galime: {sprendimai}."),
 }
 
 
