@@ -67,3 +67,4 @@ identification:
     back_to_issue: "Grįžkime prie jūsų gedimo. {inkaras}"
     solve_or_ticket: "Grįžkime prie gedimo — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     checking_note: "Tuoj patikrinsiu ryšį iki jūsų buto."
+    findings_announce: "Ką patikrinome: {faktai}. Panašu — {priezastis}. Galime: {sprendimai}."

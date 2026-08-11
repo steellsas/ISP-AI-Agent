@@ -181,6 +181,45 @@ def spec_for(verdict: str | None) -> dict[str, Any] | None:
     return spec if isinstance(spec, dict) and isinstance(spec.get("client"), dict) else None
 
 
+def fault_isvada(verdict: str | None) -> str | None:
+    """How to ANNOUNCE the confirmed hypothesis ("Panašu — {isvada}") —
+    `isvada:` in faults.yaml; falls back to `reikalinga`."""
+    if not verdict:
+        return None
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    if not isinstance(fault, dict):
+        return None
+    return str(fault.get("isvada") or fault.get("reikalinga") or "") or None
+
+
+def solution_descriptions(verdict: str | None) -> list[str]:
+    """Human wording of the declared solutions (`aprasymas` on each sprendimai
+    entry; the bare `tada` key as fallback) — feeds the findings announce."""
+    if not verdict:
+        return []
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    out = []
+    for rule in rules or []:
+        if isinstance(rule, dict):
+            out.append(str(rule.get("aprasymas") or rule.get("tada") or "").strip())
+    return [x for x in out if x]
+
+
+def client_facts_lt(evidence: dict[str, Any]) -> str:
+    """Only the CLIENT-established, conflict-free facts, human-worded — the
+    "ką patikrinome kartu" part of the findings announce."""
+    bits = []
+    for key, e in evidence.items():
+        if e.get("source") == CLIENT and not e.get("conflict") and e.get("value") != "neaišku":
+            bits.append(f"{LABELS.get(key, key)}: {VALUE_LT.get(e['value'], e['value'])}")
+    return "; ".join(bits)
+
+
 def fault_need(verdict: str | None) -> str | None:
     """The human wording of WHY a ticket is needed (`reikalinga:` in the file)."""
     if not verdict:

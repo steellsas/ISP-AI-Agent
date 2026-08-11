@@ -179,6 +179,79 @@ class TestRound2Fixes:
         assert "Kliento tema: kaina" in facts  # from the FAQ hit, not a template
 
 
+class TestFindingsAnnounce:
+    """2026-08-10: the confirmed moment jumped straight to 'Ar turite
+    kompiuterį?' — the caller must first HEAR what was checked, the conclusion
+    and the options. Composed from the ledger + faults.yaml (universal)."""
+
+    def _confirmed_agent(self, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+            agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
+            agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
+        return agent
+
+    def test_announce_precedes_first_solution_question(self, db_connection, monkeypatch):
+        agent = self._confirmed_agent(monkeypatch)
+        reply = agent._evidence_drive("nepadėjo")
+        assert reply is not None
+        assert "Ką patikrinome" in reply
+        assert "nedega" in reply  # the ledger facts, human-worded
+        assert "routeris sugedęs" in reply  # isvada from faults.yaml
+        assert "laikinai paleisti internetą per kompiuterį" in reply  # aprasymas
+        assert "kompiuterį" in reply.split("Galime:")[-1]  # then the question
+
+    def test_announce_spoken_once(self, db_connection, monkeypatch):
+        agent = self._confirmed_agent(monkeypatch)
+        first = agent._evidence_drive("nepadėjo")
+        second = agent._evidence_drive("dar kartą")
+        assert "Ką patikrinome" in first
+        assert second is None or "Ką patikrinome" not in second
+
+    def test_announce_prefixes_immediate_ticket(self, db_connection, monkeypatch):
+        agent = self._confirmed_agent(monkeypatch)
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
+        reply = agent._evidence_drive("neturiu")
+        assert reply is not None
+        assert "Ką patikrinome" in reply
+        assert "Kokiu telefono numeriu" in reply  # ticket dialogue follows
+
+
+class TestContradictionCorroboration:
+    def test_uncorroborated_flip_dropped(self, db_connection, monkeypatch):
+        # "Neturi kompiuterio" hallucinated device_present=nerado against a
+        # settled "rado" — the keyword layer sees no such flip -> dropped.
+        agent = _diagnosing_agent(monkeypatch)
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Radau routerį prie lango")
+        assert agent.state.evidence["device_present"]["value"] == "rado"
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(
+                faktai={"device_present": "nerado", "has_computer": "no"},
+                supratau="klientas neturi kompiuterio",
+            ),
+        ):
+            agent._ingest_client_evidence("Neturi kompiuterio.")
+        e = agent.state.evidence["device_present"]
+        assert e["value"] == "rado" and e["conflict"] is False  # phantom died
+        assert agent.state.evidence["has_computer"]["value"] == "no"  # real fact landed
+
+    def test_corroborated_flip_still_opens_conflict(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Nedega nė viena lemputė")
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"lights": "dega"}, supratau="lemputė užsidegė"),
+        ):
+            agent._ingest_client_evidence("O, dabar lemputė dega!")
+        e = agent.state.evidence["lights"]
+        assert e["conflict"] is True  # keywords agree -> the clarify machinery runs
+
+
 class TestTicketUnderstanding:
     """The ticket dialogue reads answers through the pass too (Andrius
     2026-08-10): "Bet kada galima per pietus iš ryto" IS an hours answer —

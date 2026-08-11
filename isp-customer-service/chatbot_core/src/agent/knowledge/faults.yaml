@@ -297,11 +297,17 @@ faults:
       paneigta_kai: [lights=dega]
       paneigta_veda: dr_cable
     reikalinga: "reikalingas naujas maršrutizatorius"
+    # isvada — kaip PASKELBTI patvirtintą hipotezę žmogui ("Panašu — {isvada}");
+    # aprasymas prie sprendimo — kaip jį pasiūlyti. Abu skaitomi findings
+    # paskelbimo šablono (identification.yaml: findings_announce).
+    isvada: "routeris sugedęs — telefonu jo neprikelsime"
     sprendimai:
     - jei: [has_computer=yes]
       tada: bridge
+      aprasymas: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
     - jei: [has_computer=no]
       tada: ticket
+      aprasymas: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
     steps:
     - id: dr_intro
       kind: confirm

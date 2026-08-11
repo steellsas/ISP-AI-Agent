@@ -315,6 +315,10 @@ class ReactAgent:
         # The understanding pass' read of the CURRENT turn (None = pass skipped
         # or failed -> keyword fallback ran instead).
         self._last_understanding: dict | None = None
+        # Findings announce: spoken ONCE at the first confirmed-hypothesis
+        # moment; stashed when the reply comes from another layer that turn.
+        self._findings_announced = False
+        self._pending_announce = ""
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -1431,6 +1435,28 @@ class ReactAgent:
             facts.pop(pending_key, None)
         if pending and pending in facts:
             self._evidence_last_ask_key = None  # answered — later "taip" maps to nothing old
+        # Contradiction corroboration (2026-08-10): an LLM fact that FLIPS an
+        # already-established ledger entry needs the keyword extractor to read
+        # the same flip from the utterance — otherwise it is dropped and the
+        # established fact stands ("Neturi kompiuterio" hallucinated
+        # device_present=nerado against a settled "rado" and forced a phantom
+        # clarify). New facts (no entry yet) are accepted as before.
+        if self._last_understanding is not None and facts:
+            kw = extract_client_facts(user_input)
+            for key in list(facts):
+                entry = s.evidence.get(key)
+                if (
+                    entry is not None
+                    and entry.get("source") == CLIENT
+                    and not entry.get("conflict")
+                    and entry.get("value") not in ("neaišku",)
+                    and entry.get("value") != facts[key]
+                    and kw.get(key) != facts[key]
+                ):
+                    self.tracer.emit(
+                        "evidence", action="uncorroborated_flip_dropped", key=key, value=facts[key]
+                    )
+                    del facts[key]
         for key, value in facts.items():
             entry = set_fact(s.evidence, key, value, CLIENT, turn)
             if entry.get("conflict") and self._evidence_conflict is None:
@@ -1547,6 +1573,12 @@ class ReactAgent:
             logger.error(f"solver drive failed: {e}")
             self._trace_note("solver_drive", str(e), level="error")
             return None
+        # The findings announce stashed by the evidence layer rides on the
+        # solver's first reply (the bridge path returns None to hand over).
+        pending_announce = getattr(self, "_pending_announce", "")
+        if pending_announce:
+            reply = pending_announce + reply
+            self._pending_announce = ""
         # Committed to driving this turn — do the same end-of-turn bookkeeping the walker
         # path gets from run_turn_scoped: user_turn trace, dialogue history (the solver reads
         # it next turn), and the shared reply finalisation (case snapshot + agent_reply).
@@ -1695,6 +1727,31 @@ class ReactAgent:
                 )
             return None
         confirmed = status == "confirmed"
+        # FINDINGS announce (2026-08-10): the FIRST confirmed moment is the
+        # transition the caller must HEAR — what we checked together, the
+        # conclusion, the options — before any solution question. Composed
+        # deterministically from the ledger + the fault's file (isvada,
+        # sprendimai aprasymai), so every newly declared fault gets it free.
+        announce = ""
+        if confirmed and not getattr(self, "_findings_announced", False):
+            self._findings_announced = True
+            from .evidence import client_facts_lt, fault_isvada, solution_descriptions
+            from .identification import phrase
+
+            faktai_lt = client_facts_lt(s.evidence)
+            isvada = fault_isvada(r.get("verdict")) or self._ticket_need()
+            sprendimai = solution_descriptions(r.get("verdict"))
+            if faktai_lt and isvada:
+                announce = (
+                    phrase(
+                        "findings_announce",
+                        faktai=faktai_lt,
+                        priezastis=isvada,
+                        sprendimai=" ARBA ".join(sprendimai) if sprendimai else "—",
+                    )
+                    + " "
+                )
+                self.tracer.emit("decision", intent="findings", action="announce")
         if confirmed:
             solution = solution_for(s.evidence, r.get("verdict"))
             if solution == "ticket":
@@ -1704,11 +1761,17 @@ class ReactAgent:
                     accepted=True,
                     reason="evidence: solution=ticket",
                 )
-                return self._drive_escalate(None)
+                return announce + self._drive_escalate(None)
             if solution == "bridge":
-                return None  # the solver drives the bridge instructions (discipline guards hold)
+                # The solver drives the bridge instructions — the announce rides
+                # on ITS first reply (stashed; committed in solver_drive_turn).
+                if announce:
+                    self._pending_announce = announce
+                return None
         missing = next_missing(s.evidence, spec, confirmed)
         if missing is None:
+            if announce:
+                self._pending_announce = announce
             return None
         key, item = missing
         asks = self._evidence_asks.get(key, 0)
@@ -1717,7 +1780,12 @@ class ReactAgent:
             # "neaišku" and move on; an unreadable caller must never loop us.
             set_fact(s.evidence, key, "neaišku", CLIENT, s.turn_count)
             self.tracer.emit("evidence", action="gave_up", key=key)
-            return self._evidence_drive(user_input)
+            inner = self._evidence_drive(user_input)
+            if inner is None:
+                if announce:
+                    self._pending_announce = announce
+                return None
+            return announce + inner
         self._evidence_asks[key] = asks + 1
         self._evidence_last_ask_key = key  # for the barge-in cancel rollback
         text = (
@@ -1733,7 +1801,7 @@ class ReactAgent:
             key=key,
             level=asks + 1,
         )
-        return str(text)
+        return announce + str(text)
 
     def _drive(self, user_input: str | None) -> str:
         from .gate import DEFAULT_POLICY, gate
@@ -2553,6 +2621,8 @@ class ReactAgent:
         self._drive_bridge_offered = False
         self._drive_disabled = False
         self._drive_repeats = 0
+        self._findings_announced = False
+        self._pending_announce = ""
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()
