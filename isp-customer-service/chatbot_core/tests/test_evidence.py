@@ -220,6 +220,7 @@ class TestAgentWiring:
             "power_cable",
             "outlet_works",
             "has_computer",
+            "lan_active",  # bridge-fail ladder only (kada: [tilto_fazeje])
         ]
         assert fault_need("no_mac_observed") == "reikalingas naujas maršrutizatorius"
         assert spec_for("nesamas_verdiktas") is None

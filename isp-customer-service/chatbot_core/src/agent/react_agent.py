@@ -336,6 +336,10 @@ class ReactAgent:
         # remembered across turns — the bind gate no longer demands the plug
         # verb in THIS turn's utterance.
         self._bridge_plug_reported = False
+        # Bridge-failure ladder (round 5): 0 = cable re-check, 1 = the LAN
+        # question went out, 2 = escalate with the attempt on the ticket.
+        self._bridge_fail_stage = 0
+        self._bridge_fail_note: str | None = None
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -1277,6 +1281,14 @@ class ReactAgent:
             from .evidence import summary_lt
 
             lines.append(f"ĮRODYMŲ ŽURNALAS (nustatyta — NEBEKLAUSK): {summary_lt(s.evidence)}")
+        # Bridge-phase anchor (2026-08-12): after the plug report the solver
+        # kept sliding back to router/power questions — the router is HISTORY.
+        if getattr(self, "_bridge_plug_reported", False):
+            lines.append(
+                "TILTO FAZĖ: routeris jau pripažintas sugedusiu ir kabelis PERKIŠTAS į "
+                "kompiuterį — apie routerio lemputes/maitinimą NEBEKLAUSK. Darbas dabar: "
+                "kompiuterio prijungimas (linijos matomumas, kompiuterio LAN būsena)."
+            )
         lines.append(
             f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.awaiting}"
         )
@@ -2287,10 +2299,7 @@ class ReactAgent:
             self.tracer.emit(
                 "drive_decision", action="fix_deferred", accepted=False, reason="no device observed"
             )
-            return (
-                "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
-                "kabelis įkištas iki galo, ir pasakykite."
-            )
+            return self._bridge_fail_step()
         try:
             obs = execute_tool("update_mac", {"customer_id": cid})
             self.tracer.emit("tool_call", name="update_mac", args={"customer_id": cid})
@@ -2302,6 +2311,53 @@ class ReactAgent:
             say
             or "Matau jūsų kompiuterį linijoje — pririšau. Patikrinkite, ar internetas atsirado."
         )
+
+    def _bridge_fail_step(self) -> str:
+        """The plug is REPORTED but telemetry still sees nothing — a declared
+        failure ladder instead of the same re-check forever (Andrius
+        2026-08-12): (1) say the line does not see the device, re-check the
+        cable; (2) check the COMPUTER's network card (lan_active — the answer
+        lands on the ledger); (3) name the possible incoming-cable problem and
+        register the technician, with what-was-tried on the ticket."""
+        from .evidence import LABELS, VALUE_LT, fault_bridge_fail, spec_for
+
+        verdict = (self.state.resolution or {}).get("verdict")
+        stage = getattr(self, "_bridge_fail_stage", 0)
+        if stage == 0:
+            self._bridge_fail_stage = 1
+            return (
+                "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
+                "kabelis įkištas iki galo, ir pasakykite."
+            )
+        if stage == 1:
+            self._bridge_fail_stage = 2
+            spec = spec_for(verdict) or {}
+            item = (spec.get("client") or {}).get("lan_active") or {}
+            # The answer reads against THIS key (pending machinery, universal).
+            self._evidence_last_ask_key = "lan_active"
+            self._evidence_asks["lan_active"] = self._evidence_asks.get("lan_active", 0) + 1
+            self.tracer.emit("drive_decision", action="bridge_fail_lan_check", accepted=True)
+            return str(
+                item.get("klausimas")
+                or "Tinkle vis dar nesimato jūsų įrenginio. Ar kompiuterio tinklo (LAN) "
+                "ryšys rodomas kaip aktyvus?"
+            )
+        # Stage 2+: LAN answered (or unreadable) and the line is still empty —
+        # the technician takes it from here; the attempt goes on the ticket.
+        texts = fault_bridge_fail(verdict)
+        lan = (self.state.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
+        self._bridge_fail_note = (
+            texts.get("prierasas")
+            or "Laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: {lan})."
+        ).format(lan=VALUE_LT.get(lan, lan))
+        self.tracer.emit(
+            "drive_decision",
+            action="bridge_fail_escalate",
+            accepted=True,
+            reason=f"{LABELS.get('lan_active')}: {lan}",
+        )
+        pastaba = texts.get("pastaba") or "Įrenginio linijoje vis dar nesimato."
+        return pastaba + " " + self._drive_escalate(None)
 
     def _drive_escalate(self, decision) -> str:
         """Register the fault and close — through the SAME state-built ticket machinery
@@ -3030,6 +3086,8 @@ class ReactAgent:
         self._refute_state = ""
         self._done_report_key = None
         self._bridge_plug_reported = False
+        self._bridge_fail_stage = 0
+        self._bridge_fail_note = None
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()
@@ -3652,6 +3710,11 @@ class ReactAgent:
         if need:
             # Sentence-cased as its own sentence — "Reikalinga: reikalingas…" doubled up.
             details += f" {need[0].upper()}{need[1:]}."
+        # Bridge attempt outcome (2026-08-12): the technician reads WHAT was
+        # already tried — "pajungti PC nepavyko (LAN aktyvus)" changes what
+        # they bring and check first.
+        if getattr(self, "_bridge_fail_note", None):
+            details += f" {self._bridge_fail_note}"
         # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
         if s.contact_phone or s.caller_name:
             kas = s.caller_name or "skambinęs asmuo"

@@ -651,6 +651,40 @@ class TestHearingAgent:
         assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
         assert agent.state.resolution["step"] == "dr_plug_pc"  # …AT the bridge
 
+    # --- round 5 (2026-08-12): bridge-failure ladder ---------------------------
+
+    def test_bridge_fail_ladder_lan_check_then_technician(self, db_connection, monkeypatch):
+        # Plug reported, telemetry never shows the device (no simulation):
+        # (1) say the line sees nothing + cable re-check, (2) the LAN question,
+        # (3) incoming-cable note + technician, attempt on the ticket.
+        agent = self._agent(monkeypatch)
+        agent.state.caller_name = "Andrius"
+        agent._bridge_plug_reported = True
+        agent._drive_bridge_offered = True
+        r1 = agent._drive_propose_fix("", "pajungiau kabelį")
+        assert "nematome jūsų kompiuterio" in r1
+        r2 = agent._drive_propose_fix("", "vis dar nieko")
+        assert "LAN" in r2  # the computer's network card, not the router
+        assert agent._evidence_last_ask_key == "lan_active"
+        agent._ingest_client_evidence("Nerodo nieko, neaktyvus")
+        assert agent.state.evidence["lan_active"]["value"] == "neaktyvus"
+        r3 = agent._drive_propose_fix("", "ir dabar nieko")
+        assert "kabeliu" in r3  # the possible incoming-cable problem is NAMED
+        assert "Kokiu telefono numeriu" in r3  # technician registration begins
+        assert "NEPAVYKO" in (agent._bridge_fail_note or "")
+        _complete_ticket_dialogue(agent)
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            details = dict(cur.fetchone())["details"]
+        assert "NEPAVYKO" in details and "neaktyvus" in details
+
+    def test_lan_pending_answers(self):
+        from agent.evidence import read_pending_answer
+
+        assert read_pending_answer("lan_active", "Rodo, kad aktyvus") == "aktyvus"
+        assert read_pending_answer("lan_active", "Nerodo nieko") == "neaktyvus"
+        assert read_pending_answer("lan_active", "dega lemputė prie lizdo") == "aktyvus"
+
     def test_on_task_question_stays_with_the_flow(self, db_connection, monkeypatch):
         # "Kur jungti tą kabelį į kompiuterį?" is a question ABOUT the current
         # instruction — side_topic answered it with "tai nėra mano sritis" live.

@@ -152,6 +152,38 @@ async def post_turn_stream(session_id: str, req: TurnRequest):
     return StreamingResponse(_gen(), media_type="text/event-stream")
 
 
+@app.post("/sessions/{session_id}/simulate-plug")
+async def simulate_plug(session_id: str, unplug: bool = False):
+    """DEMO: the tester presses the button the moment the CALLER would
+    physically plug the wall cable into a PC — an unbound device appears on
+    the demo line (?unplug=true clears it). Manual by design (Andrius
+    2026-08-12): no keyword auto-simulation; the human plays the physical
+    world, the agent only ever reads telemetry."""
+    try:
+        ms = manager.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="unknown session") from None
+    cid = ms.session.state.customer_id
+    if not cid:
+        raise HTTPException(status_code=409, detail="caller not identified yet")
+    from agent.tools import simulate_bridge_connect, simulate_bridge_disconnect
+
+    fn = simulate_bridge_disconnect if unplug else simulate_bridge_connect
+    res = await asyncio.to_thread(fn, cid)
+    hub.publish(
+        session_id,
+        {
+            "type": "sim_plug",
+            "unplug": unplug,
+            "ok": bool(res.get("success")),
+            "message": res.get("message", ""),
+        },
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=502, detail=res.get("message") or "simulation failed")
+    return {"ok": True, "customer_id": cid, "unplug": unplug}
+
+
 @app.get("/sessions/{session_id}/greeting/audio")
 async def greeting_audio(session_id: str):
     """Synthesized opening line — the browser plays it right after the call

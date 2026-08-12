@@ -310,10 +310,27 @@ faults:
           klausimas: "Ar turite kompiuterį, kad galėtume laikinai paleisti internetą per jį?"
           patikslinimas: "Norėjau patikslinti — ar neturite kompiuterio, ar tiesiog nenorite bandyti per jį?"
           kada: [patvirtinta]
+        lan_active:
+          # Tilto NESĖKMĖS kelias (2026-08-12): kabelis įkištas, o telemetrija
+          # įrenginio nemato — tikrinama kompiuterio tinklo plokštė. `kada` gate
+          # variklio automatiškai NIEKADA netenkinamas (klausimą užduoda tik
+          # tilto nesėkmės laiptai _drive_propose_fix viduje).
+          reikia: "ar kompiuterio tinklo (LAN) ryšys aktyvus prijungus kabelį"
+          klausimas: "Tinkle vis dar nesimato jūsų įrenginio. Pažiūrėkite kompiuteryje — ar tinklo (LAN) ryšys rodomas kaip aktyvus, ar dega lemputė prie tinklo lizdo?"
+          atsakymai:
+            neaktyvus: [neaktyv, nedega, nerodo, "nėra", nera, "ne,", "ne "]
+            aktyvus: [aktyv, veikia, dega, rodo, taip, yra]
+          kada: [tilto_fazeje]
       patvirtinta_kai: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
       paneigta_kai: [lights=dega]
       paneigta_veda: dr_cable
     reikalinga: "reikalingas naujas maršrutizatorius"
+    # Tilto nesėkmės pabaiga (2026-08-12, Andrius): LAN patikrintas, įrenginio
+    # linijoje vis tiek nesimato — garsiai pasakoma galima kabelio problema ir
+    # registruojamas meistras; prierašas nugula ant tiketo.
+    tiltas_nepavyko:
+      pastaba: "Įrenginio linijoje vis dar nesimato — gali būti problema ir su ateinančiu kabeliu. Telefonu to nebeišspręsime."
+      prierasas: "Laikinai pajungti internetą per kompiuterį NEPAVYKO (kompiuterio LAN: {lan}) — įrenginio linijoje nesimato, galima atvedimo kabelio problema."
     # isvada — kaip PASKELBTI patvirtintą hipotezę žmogui ("Panašu — {isvada}");
     # aprasymas prie sprendimo — kaip jį pasiūlyti. Abu skaitomi findings
     # paskelbimo šablono (identification.yaml: findings_announce).

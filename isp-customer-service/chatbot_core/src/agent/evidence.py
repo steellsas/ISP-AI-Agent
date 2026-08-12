@@ -33,6 +33,7 @@ LABELS = {
     "power_cable": "maitinimo laidas",
     "outlet_works": "rozetė",
     "device_present": "routeris surastas",
+    "lan_active": "kompiuterio LAN ryšys",
     "verdict": "telemetrijos diagnozė",
     "side": "gedimo pusė",
 }
@@ -47,6 +48,8 @@ VALUE_LT = {
     "atjungtas": "atjungtas",
     "bandyta": "bandyta",
     "rado": "rado",
+    "aktyvus": "aktyvus",
+    "neaktyvus": "neaktyvus",
 }
 
 
@@ -247,6 +250,19 @@ def client_facts_lt(evidence: dict[str, Any]) -> str:
     return "; ".join(bits)
 
 
+def fault_bridge_fail(verdict: str | None) -> dict[str, str]:
+    """The fault's declared bridge-failure texts (`tiltas_nepavyko:` in
+    faults.yaml): `pastaba` spoken to the caller before the technician
+    registration, `prierasas` appended to the ticket details."""
+    if not verdict:
+        return {}
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    d = fault.get("tiltas_nepavyko") if isinstance(fault, dict) else None
+    return d if isinstance(d, dict) else {}
+
+
 def fault_need(verdict: str | None) -> str | None:
     """The human wording of WHY a ticket is needed (`reikalinga:` in the file)."""
     if not verdict:
@@ -381,6 +397,10 @@ _PENDING_ANSWERS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
     "has_computer": [
         ("no", ("netur", "nėra", "nera", "ne,", "ne ")),
         ("yes", ("turiu", "turim", "taip", "yra")),
+    ],
+    "lan_active": [
+        ("neaktyvus", ("neaktyv", "nedega", "nerodo", "nėra", "nera", "ne,", "ne ")),
+        ("aktyvus", ("aktyv", "veikia", "dega", "rodo", "taip", "yra")),
     ],
 }
 

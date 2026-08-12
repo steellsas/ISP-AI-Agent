@@ -37,6 +37,10 @@ _ALLOWED = {
     "power_cable": {"įkištas", "atjungtas"},
     "outlet_works": {"bandyta", "neveikia"},
     "has_computer": {"yes", "no"},
+    # Bridge phase (2026-08-12): the COMPUTER's network state after the cable
+    # was replugged — without this key, "rodo LAN veikia" landed on the ROUTER
+    # lights and dragged the call back to a buried hypothesis (live).
+    "lan_active": {"aktyvus", "neaktyvus"},
 }
 
 

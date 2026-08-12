@@ -155,6 +155,25 @@ klientas girdi, kam prašoma („pagal lemputes matysime, ar gauna maitinimą").
 - **„Iki" — ne atsisveikinimas**, kai tai prielinksnis („iki galo", „iki 17
   valandos"): atsisveikinimu laikomas tik savarankiškas „iki".
 
+**Tilto nesėkmės laiptai (2026-08-12, 5 ratas):** kabelis perkištas, o
+telemetrija įrenginio nemato — deklaruotas planas vietoj amžino „ar gerai
+įkišote?":
+
+1. pasakoma tiesiai: „linijoje dar nematome jūsų kompiuterio" + kabelio
+   patikra (vieną kartą);
+2. kompiuterio tinklo plokštės klausimas (`lan_active` raktas faults.yaml,
+   atsakymas gula į žurnalą);
+3. jei LAN patikrintas, o įrenginio vis tiek nesimato — įvardijama galima
+   ATEINANČIO kabelio problema ir registruojamas meistras; ant tiketo —
+   prierašas „laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: …)"
+   (`tiltas_nepavyko` blokas faults.yaml).
+
+Solver'is tilto fazėje gauna inkarą „routeris — istorija, apie jį nebeklausk";
+supratimo pass'as moka `lan_active`, tad „rodo LAN veikia" nebekrenta ant
+routerio lempučių. Demo valdymas: dashboard'e mygtukas **„🔌 Įkišti kabelį"**
+— testuotojas paspaudžia tą akimirką, kai klientas fiziškai įkištų kabelį
+(jokio automatinio suveikimo pagal raktažodį; `SIMULATE_BRIDGE` lieka off).
+
 ## 6. SPRENDIMAS — vienpusės durys
 
 ```mermaid
