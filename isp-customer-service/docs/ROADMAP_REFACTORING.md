@@ -109,8 +109,7 @@ Taisyklės (kad nereikėtų perdaryti):
       etalonai (po kelis kiekvienam verdiktui: `foreign_mac`, `healthy_to_router`,
       `no_mac_observed`, + outage, billing, stuck→eskalacija, side-topic, barge-in).
       Šaltiniai: `demo_scenarios.md`, `agent/eval/`, esami `tests/test_agent.py` atvejai.
-- [ ] `AGENT_ENGINE=v2` reikšmė `session.py` (šalia esamų `graph`/`legacy`) —
-      kol kas rodo į tuščią v2 grafą
+- [x] `AGENT_ENGINE=v2` reikšmė `session.py` (šalia esamų `graph`/`legacy`)
 - **DoD:** auksiniai testai žali su senuoju varikliu; jungiklis veikia.
 
 ### R1 — State migracija  ← **DABARTINIS ETAPAS**
@@ -120,20 +119,23 @@ Taisyklės (kad nereikėtų perdaryti):
       kad abu varikliai migracijos metu dalintųsi ta pačia būsena
 - [x] Testai `tests/test_graph_v2_state.py`: pilnas legacy↔v2 round-trip,
       JSON serializacija (checkpointer'io parengtis), slot guard'ų išlikimas
-- [ ] `SqliteSaver` (arba `AsyncSqliteSaver`) vietoj `MemorySaver`;
-      `thread_id=session_id` jau yra (`session.py:68`)
-- [ ] Time-travel smoke testas: `graph.get_state_history()` grąžina turn'ų seką
-- **DoD:** GraphState serializuojasi be nuostolių; checkpointai rašomi į SQLite.
+- [x] `SqliteSaver` vietoj `MemorySaver` (`graph_v2/checkpoint.py`,
+      `logs/graph_checkpoints.sqlite`; `thread_id=session_id`)
+- [x] Time-travel smoke testas: `graph.get_state_history()` grąžina turn'ų seką;
+      būsena išgyvena grafo perkūrimą virš to paties db failo
+- **DoD:** GraphState serializuojasi be nuostolių; checkpointai rašomi į SQLite. ✔
 
 ### R2 — Ploni wrapper'iai (elgesys IDENTIŠKAS)
 
-- [ ] `graph_v2/graph.py`: visi mazgai iš 2 skyriaus schemos, bet kiekvienas kol kas
-      tik kviečia esamą `ReactAgent` metodą (žr. žemėlapį §4)
+- [x] `graph_v2/graph.py`: 4 stadijos mazgai atskiruose failuose, kiekvienas kol kas
+      kviečia esamus `ReactAgent` metodus (paritetas su `agent/graph.py` — testuota:
+      greeting, reply, lookup-only tool gate); `route_entry` — gryna funkcija virš
+      GraphState (`ticket_stage` promotintas į state, sinchronizuojamas kas turn'ą)
 - [ ] `side_topic` — tikras mazgas (dabar sub-kvietimas `diagnosis` viduje)
-- [ ] Diagnozės subgrafo griaučiai: 9 žingsnių seka iš `graph.py:103-150` tampa
-      mazgais su paprastomis briaunomis (dar be guard'ų perkėlimo)
-- [ ] Token streaming per `get_stream_writer()` veikia iš subgrafo mazgų
-- [ ] `request_cancel` (barge-in) kelias pasiekia v2 variklį
+- [ ] Diagnozės subgrafo griaučiai: 9 žingsnių seka iš `nodes/diagnosis/__init__.py`
+      tampa mazgais su paprastomis briaunomis (dar be guard'ų perkėlimo)
+- [ ] Token streaming per `get_stream_writer()` patikrintas gyvu balso skambučiu
+- [ ] `request_cancel` (barge-in) kelias patikrintas gyvu balso skambučiu
 - **DoD:** auksiniai testai žali su `AGENT_ENGINE=v2`; trace'ai rodo tuos pačius
   `node` įvykius; elgesio skirtumų nėra.
 
@@ -255,3 +257,8 @@ normaliu vardu (be `_`); jei ne — į TurnScratch.
 - **2026-08-12** — planas sudarytas (architektūros auditas: grafas/state, voice/latency,
   RAG, promptai/tools). Sukurta šaka `refactor/langgraph-v2`. R1 pradžia:
   `graph_v2/state.py` (`GraphState` + `TurnScratch` + legacy tilteliai) ir testai.
+- **2026-08-12 (2)** — R1 užbaigta + R2 branduolys: `SqliteSaver` checkpointeris,
+  grynas `route_entry`, `runtime.py` (narrate + sync_updates strangler siūlė),
+  4 ploni mazgai atskiruose failuose, `AGENT_ENGINE=v2` jungiklis.
+  Pariteto/checkpointo/time-travel testai (18) žali. Liko R2: gyvo balso
+  patikra (streaming + barge-in), auksiniai scenarijai (R0 skola).

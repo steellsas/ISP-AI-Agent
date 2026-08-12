@@ -49,7 +49,9 @@ class GraphState(BaseModel):
     """The single source of truth for a call, checkpointable end-to-end."""
 
     # --- call / identity -------------------------------------------------
-    caller_phone: str
+    # Default (unlike the legacy dataclass) so LangGraph can initialize the
+    # state channels before the session seeds the real number on first invoke.
+    caller_phone: str = "unknown"
     messages: list[dict[str, str]] = Field(default_factory=list)
     profile: ClientProfileState = Field(default_factory=ClientProfileState)
     customer_id: str | None = None
@@ -105,6 +107,12 @@ class GraphState(BaseModel):
     turn_count: int = 0
     max_turns: int = 20
     ticket_id: str | None = None
+
+    # --- promoted engine flags (roadmap §6: outlive a turn -> real fields) ---
+    # Mirrors engine._ticket_stage while the legacy engine owns the ticket
+    # dialogue; the entry router needs it to route mid-dialogue turns.
+    # None | "phone" | "hours" | "done" | "cancelled"
+    ticket_stage: str | None = None
 
     # --- per-turn scratch (not history — see module docstring) --------------
     turn: TurnScratch = Field(default_factory=TurnScratch)

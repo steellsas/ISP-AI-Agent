@@ -1,19 +1,29 @@
 """
 Ticket node — the scripted 2-question contact dialogue before registration.
 
-Migrates here (roadmap §4): ReactAgent._begin/_finish_ticket_dialogue,
-_ticket_stage_reply, _ticket_need, _abort_ticket_to_solving,
-_wants_to_keep_solving. Ticket creation itself stays deterministic in the
-executor (register from STATE, never by the model).
+R2 thin wrapper: ports ticket_registration() from agent/graph.py verbatim —
+the engine owns the dialogue (guards capture answers, the scripted ladder
+asks, _finish_ticket_dialogue registers); the LLM (no tools) speaks only on
+an off-script question.
 
-R3 note: _ticket_stage / _ticket_ctx are promoted to GraphState fields
-(they outlive a turn — roadmap §6).
+R3 migrates here (roadmap §4): _begin/_finish_ticket_dialogue,
+_ticket_stage_reply, _ticket_need, _abort_ticket_to_solving,
+_wants_to_keep_solving; _ticket_ctx promotes to GraphState.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
+from ..router import TICKET_REGISTRATION
+from ..runtime import TICKET_NODE_PROMPT, TICKET_TOOLS, narrate, sync_updates
 from ..state import GraphState
 
 
-def ticket_node(state: GraphState) -> GraphState:
-    raise NotImplementedError("R2: thin wrapper over the legacy ticket dialogue")
+def make_ticket_node(engine: Any):
+    def ticket_node(state: GraphState) -> dict[str, Any]:
+        user_input = state.turn.user_input
+        reply = narrate(engine, user_input, TICKET_TOOLS, TICKET_NODE_PROMPT, TICKET_REGISTRATION)
+        return sync_updates(engine, user_input=user_input, reply=reply)
+
+    return ticket_node

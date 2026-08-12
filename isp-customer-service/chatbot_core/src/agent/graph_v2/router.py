@@ -1,16 +1,17 @@
 """
 Router — every routing decision of the v2 graph lives in THIS file.
 
-R2 scope (docs/ROADMAP_REFACTORING.md §3): port `route()` from agent/graph.py
-unchanged — deterministic priority: case_closed -> closing, ticket stage ->
-ticket, customer_id -> diagnosis, else identification. side_topic becomes a
-real route target (today it is a sub-call inside diagnosis).
-
-R3 scope: the walker guard chain (roadmap §5) migrates here group by group as
-conditional-edge functions for the diagnosis subgraph.
-
 Rules: routing functions are PURE — they read GraphState and return a node
-name; no LLM calls, no tools, no mutation.
+name; no LLM calls, no tools, no mutation. GraphState is synced from the
+engine at the end of every node (runtime.sync_updates), so the entry router
+sees exactly what the legacy route() saw live on the engine.
+
+Node names keep the legacy spelling ("address_validation",
+"ticket_registration") for trace/test parity; renaming is a deliberate later
+commit, not a side effect of the migration.
+
+R3 scope: the walker guard chain (docs/ROADMAP_REFACTORING.md §5) migrates
+here group by group as conditional-edge functions for the diagnosis subgraph.
 """
 
 from __future__ import annotations
@@ -18,13 +19,24 @@ from __future__ import annotations
 from .state import GraphState
 
 # Node names — the single place they are spelled out.
-IDENTIFICATION = "identification"
+ADDRESS_VALIDATION = "address_validation"
 DIAGNOSIS = "diagnosis"
 SIDE_TOPIC = "side_topic"
-TICKET = "ticket"
+TICKET_REGISTRATION = "ticket_registration"
 CLOSING = "closing"
+
+ENTRY_TARGETS = (ADDRESS_VALIDATION, DIAGNOSIS, TICKET_REGISTRATION, CLOSING)
 
 
 def route_entry(state: GraphState) -> str:
-    """Conditional entry point (ports agent/graph.py route())."""
-    raise NotImplementedError("R2: port route() from agent/graph.py")
+    """Deterministic entry routing (ports agent/graph.py route() unchanged).
+
+    Priority: case_closed wins (END stage); a mid-ticket-dialogue turn goes to
+    the dedicated node so diagnosis narration cannot compete with the contact
+    questions; then identified -> diagnosis, else keep identifying.
+    """
+    if state.case_closed:
+        return CLOSING
+    if state.ticket_stage:
+        return TICKET_REGISTRATION
+    return DIAGNOSIS if state.customer_id else ADDRESS_VALIDATION
