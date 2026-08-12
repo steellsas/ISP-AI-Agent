@@ -318,12 +318,16 @@ faults:
     # aprasymas prie sprendimo — kaip jį pasiūlyti. Abu skaitomi findings
     # paskelbimo šablono (identification.yaml: findings_announce).
     isvada: "routeris sugedęs — telefonu jo neprikelsime"
+    # zingsnis — walker'io žingsnis, į kurį grįžtama, jei solveris nušalinamas
+    # vidury sprendimo (bailout sync, 2026-08-11) — niekada ne į seną dr_intro.
     sprendimai:
     - jei: [has_computer=yes]
       tada: bridge
+      zingsnis: dr_plug_pc
       aprasymas: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
     - jei: [has_computer=no]
       tada: ticket
+      zingsnis: escalate
       aprasymas: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
     steps:
     - id: dr_intro

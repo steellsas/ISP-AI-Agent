@@ -312,6 +312,25 @@ def solution_for(evidence: dict[str, Any], verdict: str | None) -> str | None:
     return None
 
 
+def solution_step(evidence: dict[str, Any], verdict: str | None) -> str | None:
+    """The walker STEP declared on the matching sprendimai rule (`zingsnis` in
+    faults.yaml) — where the flow RESUMES if the solver is benched
+    mid-solution (live 2026-08-11: a bailout landed on a long-stale dr_intro
+    and improvised into a ticket one step from a working bridge)."""
+    if not verdict:
+        return None
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    for rule in rules or []:
+        if isinstance(rule, dict) and all(
+            _cond_holds(evidence, c, True) for c in (rule.get("jei") or [])
+        ):
+            return rule.get("zingsnis")
+    return None
+
+
 # Context reads for the JUST-ASKED evidence key (2026-08-10): a bare "Radau."
 # to "Radote?" carries no noun, so the general extractor (which demands one)
 # finds nothing — and a clear answer became a give-up. When the engine knows

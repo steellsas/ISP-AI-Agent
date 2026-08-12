@@ -598,6 +598,59 @@ class TestHearingAgent:
         agent._walk_resolution("nieko nedarysiu, įregistruokit gedimą")
         assert agent._ticket_stage == "phone"  # refuse/demand path unaffected
 
+    # --- round 4 (live 2026-08-11, call 4: bind never ran) --------------------
+
+    def test_plug_report_reads_context_not_one_sentence(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent.state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Dabar įkiškite tą kabelį į kompiuterio tinklo lizdą — "
+                "pasakykite, kai padarysite.",
+            }
+        )
+        assert agent._plug_report("Ikišau, ikišau, laukiu internetą.") is True
+        assert agent._plug_report("Taip, jis įkištas iki galo.") is True  # passive
+        assert agent._plug_report("Pririškite tada.") is True  # explicit bind ask
+        assert agent._plug_report("dar neprijungiau, sekundėlę") is False  # negation
+        # The SAME words during the power-cable phase are NOT a bind report.
+        agent.state.messages[-1] = {
+            "role": "assistant",
+            "content": "Patikrinkite, ar maitinimo laidas gerai įkištas į rozetę.",
+        }
+        assert agent._plug_report("Įkišau gerai.") is False
+
+    def test_plug_report_memory_unlocks_the_bind_gate(self, db_connection, monkeypatch):
+        # "Įkišau, laukiu" three turns ago — the gate demanded the verb in THIS
+        # turn's utterance and kept repeating "Kai prijungsite…" (live).
+        agent = self._agent(monkeypatch)
+        agent._bridge_plug_reported = True
+        agent._drive_bridge_offered = True
+        reply = agent._drive_propose_fix("", "taip, viskas padaryta, laukiu")
+        assert "Kai prijungsite" not in reply  # no more deferral on wording
+        assert agent._bridge_bound or "nematome" in reply  # bind ran (or line check)
+
+    def test_bailout_lands_on_declared_solution_step(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(monkeypatch)
+        for k, v in (
+            ("device_present", "rado"),
+            ("lights", "nedega"),
+            ("power_cable", "įkištas"),
+            ("outlet_works", "bandyta"),
+            ("has_computer", "yes"),
+        ):
+            set_fact(agent.state.evidence, k, v, CLIENT, 1)
+        agent.state.caller_name = "Andrius"
+        agent._recap_state = "done"
+        agent._findings_announced = True
+        agent._drive_bridge_offered = True
+        agent._drive_repeats = 2  # distrust streak observed
+        assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
+        assert agent.state.resolution["step"] == "dr_plug_pc"  # …AT the bridge
+
     def test_on_task_question_stays_with_the_flow(self, db_connection, monkeypatch):
         # "Kur jungti tą kabelį į kompiuterį?" is a question ABOUT the current
         # instruction — side_topic answered it with "tai nėra mano sritis" live.

@@ -1284,13 +1284,14 @@ def detect_plugged(text: str | None) -> bool:
     """True when the caller reports a COMPLETED plug-in ("įkišau į kompiuterį") — the
     discipline gate for a bind: the change runs only after the client actually did
     the work (and thereby agreed to it), never on the solver's anticipation.
-    Diacritics-folded (STT drops nosinės)."""
+    Diacritics-folded (STT drops nosinės); negation-prefix aware ("dar
+    NEprijungiau" is not a report)."""
     if not text:
         return False
-    from .evidence import _fold
+    from .evidence import _fold, _mark_hit
 
     low = _fold(text)
-    return any(_fold(m) in low for m in _PLUGGED)
+    return any(_mark_hit(low, m) for m in _PLUGGED)
 
 
 def detect_ticket_consent(text: str | None) -> str | None:

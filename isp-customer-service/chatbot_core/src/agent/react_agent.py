@@ -332,6 +332,10 @@ class ReactAgent:
         self._recap_state = ""
         self._refute_state = ""
         self._done_report_key: str | None = None
+        # Plug-report memory (round 4): the caller's completed-plug report,
+        # remembered across turns — the bind gate no longer demands the plug
+        # verb in THIS turn's utterance.
+        self._bridge_plug_reported = False
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -613,7 +617,9 @@ class ReactAgent:
             if u.get("supratau"):
                 facts.append(
                     f"- PATVIRTINK, ką supratai, puse sakinio („{u['supratau']}“) — "
-                    "tada tęsk vienu kitu klausimu/žingsniu."
+                    "tada tęsk vienu kitu klausimu/žingsniu. KREIPKIS į klientą "
+                    "(„Supratau — …“), niekada nekalbėk apie jį trečiuoju asmeniu "
+                    "(NE „Klientas sutinka…“)."
                 )
             if u.get("tipas") == "nesupratimas" and u.get("neaiskumas"):
                 facts.append(
@@ -1578,11 +1584,15 @@ class ReactAgent:
         # COMPUTER runs the bind path deterministically — the solver answered
         # "Įkišau į kompiuterį" with yet another disambiguate and the bind never
         # happened. _drive_propose_fix keeps all its own discipline (device must
-        # actually be visible before any bind).
-        from .resolution import detect_no_device, detect_plugged
+        # actually be visible before any bind). Round 4 (2026-08-11): the report
+        # is read IN CONTEXT (_plug_report) and REMEMBERED — "Įkišau, laukiu"
+        # without the word "kompiuteris" counted for nothing and the bind never
+        # ran while the caller kept repeating they had done it.
+        from .resolution import detect_no_device
 
         low_in = (user_input or "").lower()
-        if detect_plugged(user_input) and "kompiuter" in low_in:
+        if self._plug_report(user_input):
+            self._bridge_plug_reported = True
             reply = self._drive_propose_fix("", user_input)
             return self._commit_driven_reply(user_input, reply)
         # Discipline rule (2026-08-05): "no device" after the bridge OFFER is
@@ -1632,6 +1642,27 @@ class ReactAgent:
                 reason="distrust loop (repeat/disambiguate streak)",
             )
             self._trace_note("solver_drive", "distrust loop — walker resumes", level="warn")
+            # Ledger-position sync (round 4, 2026-08-11): a mid-bridge bailout
+            # resumed at a long-stale dr_intro and improvised into a ticket one
+            # step from a working bridge. With a CONFIRMED hypothesis the walker
+            # lands on the solution step the fault file declares (`zingsnis`).
+            from .evidence import hypothesis_status, solution_step, spec_for
+            from .resolution import get_strategy
+
+            r = self.state.resolution or {}
+            spec = spec_for(r.get("verdict"))
+            if spec and hypothesis_status(self.state.evidence, spec) == "confirmed":
+                target = solution_step(self.state.evidence, r.get("verdict"))
+                strat = get_strategy(r.get("verdict"))
+                if target and strat and strat.step(target) and r.get("step") != target:
+                    self._goto_step(r, target)
+                    self.tracer.emit(
+                        "decision",
+                        intent="evidence",
+                        action="pivot",
+                        to=target,
+                        reason="bailout sync",
+                    )
             return None  # the walker takes this and every following turn
         try:
             reply = self._drive(user_input)
@@ -1655,6 +1686,31 @@ class ReactAgent:
         self.state.messages.append({"role": "assistant", "content": reply})
         self._finalize_reply(reply)
         return reply
+
+    def _plug_report(self, user_input: str | None) -> bool:
+        """A completed plug-into-computer report, read IN CONTEXT: when the
+        agent's LAST question was about the computer cable, the plug verb alone
+        suffices — the caller need not repeat the word "kompiuteris". Live
+        2026-08-11: "Įkišau, laukiu", "įkištas iki galo" (passive) and
+        "pririškite tada" (an explicit bind request!) all failed the
+        same-sentence rule and the bind never ran."""
+        if not user_input:
+            return False
+        from .evidence import _fold
+        from .resolution import detect_plugged
+
+        low = _fold(user_input)
+        last_q = _fold(self._last_agent_question() or "")
+        if "kompiuter" not in low and "kompiuter" not in last_q:
+            return False  # not the bridge context — a cable reseat is not a bind
+        if detect_plugged(user_input):
+            return True
+        from .evidence import _mark_hit
+
+        if _mark_hit(low, "pririsk"):  # "pririškite tada" — asks for the bind itself
+            return True
+        # Passive done-forms answering the plug instruction.
+        return any(_mark_hit(low, m) for m in ("įkištas", "prijungtas", "pajungtas"))
 
     def request_cancel(self) -> None:
         """Ask the running streaming turn to stop (thread-safe: a bool flip).
@@ -2201,7 +2257,14 @@ class ReactAgent:
         ev_pc = self.state.evidence.get("has_computer")
         if ev_pc is not None and ev_pc.get("value") == "yes":
             self._drive_bridge_offered = True
-        if not detect_plugged(user_input) and not _device_visible():
+        # Plug-report MEMORY (round 4, 2026-08-11): the report is remembered
+        # across turns — the caller said "Įkišau, laukiu" three turns ago and
+        # kept being asked to plug in because each NEW turn no longer contained
+        # the plug verb. detect_plugged alone keeps the pre-round-4 unlock (the
+        # solver only proposes the fix in the bridge phase).
+        if self._plug_report(user_input) or detect_plugged(user_input):
+            self._bridge_plug_reported = True
+        if not getattr(self, "_bridge_plug_reported", False) and not _device_visible():
             # The work is not done yet — the fix must WAIT for the client. And the
             # FIRST deferral must be the actual TRANSITION + OFFER: live 2026-08-05
             # the solver jumped straight to bind-speak ("pririšiu įrenginį") without
@@ -2966,6 +3029,7 @@ class ReactAgent:
         self._recap_state = ""
         self._refute_state = ""
         self._done_report_key = None
+        self._bridge_plug_reported = False
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()
