@@ -198,6 +198,18 @@ sprendimas — suvienodinti import root'ą visame projekte.
 
 ### R5 — Plečiamumas ir persona
 
+Principas (Andrius, 2026-08-12): **kodas = mechanika, failai = elgsena.**
+Viskas, ką agentas SAKO ar KO KLAUSIA, turi būti redaguojama failuose be
+programavimo; kode lieka tik varikliukas (walker, gate, ledger, verdiktas).
+
+- [ ] Sensorių promptai → failai: solver.py `_SYSTEM`, understand.py ir
+      classifier.py sisteminiai promptai dabar Python string'uose — perkelti į
+      `prompts/sensors/*.md` (tas pats include mechanizmas kaip naratoriaus)
+- [ ] Guard'ų slenksčiai (re-ask bandymai, restored_denials riba, drive cap,
+      gate DEFAULT_POLICY) → konfigūracijos failas
+- [ ] Raktažodžių sąrašai (glossary, goodbye, continue-solving marks) → YAML
+      šalia faults.yaml
+
 - [ ] **Gedimų paketai (fault packs):** deklaratyvus formatas — YAML
       (simptomai → reikalingi įrodymai → hipotezės sąlygos → testai → fix'ai →
       eskalacija) + KB markdown žingsniai. `resolution.py` strategijos GENERUOJAMOS
