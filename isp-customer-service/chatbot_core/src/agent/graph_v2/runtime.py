@@ -49,9 +49,10 @@ def narrate(engine: Any, user_input: str | None, allowed_tools, node_prompt: str
 
 def sync_updates(engine: Any, *, user_input: str | None, reply: str | None) -> dict[str, Any]:
     """Snapshot engine.state (+ promoted flags) into graph-state updates."""
+    # ticket_stage rides along automatically: it is an AgentState field since its
+    # R3 promotion, so the legacy-field loop covers it.
     updates: dict[str, Any] = {
         name: copy.deepcopy(getattr(engine.state, name)) for name in _LEGACY_FIELDS
     }
-    updates["ticket_stage"] = getattr(engine, "_ticket_stage", None)
     updates["turn"] = TurnScratch(user_input=user_input, reply=reply)
     return updates

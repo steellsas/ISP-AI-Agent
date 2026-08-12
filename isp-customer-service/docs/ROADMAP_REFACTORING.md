@@ -162,9 +162,18 @@ Taisyklės (kad nereikėtų perdaryti):
       `_maybe_finish` / `_maybe_close_inform` / `_maybe_end_on_goodbye` →
       `agent/closing_flow.py`; `ReactAgent` liko ploni delegatai (legacy
       variklis nepaliestas), v2 mazgai kviečia modulį tiesiogiai.
+- [x] **Antroji metodų migracija — ticket grupė** (2026-08-12):
+      `_begin/_finish_ticket_dialogue`, `_ticket_stage_reply`, `_ticket_need`,
+      `_abort_ticket_to_solving`, `_wants_to_keep_solving`, `_fmt_phone`,
+      `_registration_claim_guard` → `agent/ticket_flow.py`; žodynėliai
+      `_DIAGNOSIS_LT`/`_TICKET_NEED_LT` → `agent/glossary.py`.
+      **`ticket_stage` promotintas į `AgentState`** (variklio `_ticket_stage`
+      liko property) — checkpointinamas, abu router'iai skaito tą patį šaltinį.
+      PASTABA: `_ticket_ctx` NEpromotintas — laiko gyvą `Step` objektą; reikia
+      step-id adresavimo prieš keliant į checkpointinamą state.
 - [ ] Kiti metodų perkėlimai pagal žemėlapį §4 (kiekvienas — atskiras commit'as):
-      ticket grupė → executor/ticket, identifikacijos skriptas, narrator
-      pagalbininkai, evidence drive
+      identifikacijos skriptas, narrator pagalbininkai, evidence drive,
+      `_register_ticket_from_state` → executor
 - [ ] 15 walker guard'ų (§5) virsta conditional edges / routing funkcijomis —
       perkeliame po 2–3, ne visus iš karto
 - [ ] Efemeriniai `_flag'ai` (§6) → `TurnScratch` arba lieka mazgo lokalūs

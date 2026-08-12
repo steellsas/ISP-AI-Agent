@@ -108,9 +108,8 @@ class GraphState(BaseModel):
     max_turns: int = 20
     ticket_id: str | None = None
 
-    # --- promoted engine flags (roadmap §6: outlive a turn -> real fields) ---
-    # Mirrors engine._ticket_stage while the legacy engine owns the ticket
-    # dialogue; the entry router needs it to route mid-dialogue turns.
+    # Promoted engine flag (roadmap §6), now an AgentState field too — the
+    # engine's _ticket_stage property writes it, so it syncs via _LEGACY_FIELDS.
     # None | "phone" | "hours" | "done" | "cancelled"
     ticket_stage: str | None = None
 

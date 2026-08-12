@@ -181,6 +181,12 @@ class AgentState:
 
     # Ticket info (if created)
     ticket_id: str | None = None
+    # Ticket-confirmation dialogue stage (R3 promotion of engine._ticket_stage,
+    # docs/ROADMAP_REFACTORING.md §6): None | "phone" | "hours" | "done" |
+    # "cancelled". The engine's scripted ladder owns transitions; routers read it
+    # (legacy route() via the engine property, v2 route_entry via GraphState) to
+    # send mid-dialogue turns to the ticket node.
+    ticket_stage: str | None = None
 
     def add_observation(self, observation: str):
         """Add tool observation to history."""

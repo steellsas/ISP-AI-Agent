@@ -107,31 +107,9 @@ def _register_linear_strategies() -> None:
 
 _register_linear_strategies()
 
-# Short Lithuanian gloss for each verdict reason, surfaced in the case-state facts
-# block so the agent can reconcile the finding with what the customer says.
-_DIAGNOSIS_LT = {
-    "billing_suspended": "paslauga sustabdyta dėl neapmokėtos sąskaitos",
-    # Worded WITHOUT "registruota" — the outage eval guard forbids "registr" (its
-    # intent: no TICKET talk for outages) and the scripted news must not trip it.
-    "active_outage": "rajone šiuo metu vyksta masinė avarija",
-    "switch_unreachable": "tinklo mazgas nepasiekiamas (tiekėjo gedimas)",
-    "node_fault_unregistered": "mazgo gedimas (neregistruotas)",
-    "link_down_local": "ryšys iki kliento įrangos nutrūkęs (maitinimas/laidas)",
-    "foreign_mac": "linijoje matomas kitas įrenginys (MAC) nei registruota",
-    "crc_errors": "linijos klaidos (CRC) — kabelio/jungties problema",
-    "dhcp_silent": "įranga negauna IP (DHCP tyli) — galbūt po gamyklinio atstatymo",
-    "no_mac_observed": "linijoje nematoma jokio įrenginio",
-    "healthy_to_router": "tinklas iki routerio veikia — problema kliento pusėje",
-    "no_port_data": "nėra prievado duomenų",
-}
-
-# WHY the ticket is needed, in the caller's words — spoken in the dialogue intro
-# ("Registruoju gedimą — reikalingas naujas maršrutizatorius.") and written on the
-# ticket. Falls back to the _DIAGNOSIS_LT gloss for causes without a need phrase.
-_TICKET_NEED_LT = {
-    "no_mac_observed": "reikalingas naujas maršrutizatorius",
-    "link_down_local": "reikia patikrinti liniją iki jūsų buto",
-}
+# Verdict glossaries moved to glossary.py (R3); aliases keep call sites working.
+from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: E402
+from .glossary import TICKET_NEED_LT as _TICKET_NEED_LT  # noqa: E402
 
 # Repeat-guard: politeness/acknowledgement words stripped before comparing two
 # questions, so "Atsiprašau, ar galėtumėte ..." matches "Ar galėtumėte ..." as a
@@ -339,7 +317,7 @@ class ReactAgent:
         # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
         # None | "phone" | "hours" | "done"; ctx remembers the escalate step to build
         # the ticket from once the dialogue completes.
-        self._ticket_stage: str | None = None
+        # _ticket_stage lives on AgentState (see the property below) — no init needed.
         self._ticket_ctx: dict | None = None
         # This turn's utterance is an off-script QUESTION during the dialogue
         # ("kokiu numeriu?") — the ticket node's LLM answers it (with the pending
@@ -389,6 +367,17 @@ class ReactAgent:
             logger.info("Using REAL tools")
         else:
             logger.warning("Using MOCK tools")
+
+    @property
+    def _ticket_stage(self) -> str | None:
+        """Promoted to AgentState.ticket_stage (R3, roadmap §6): the state owns
+        the value (checkpointed, read by the v2 entry router); this property
+        keeps every existing engine call site working unchanged."""
+        return self.state.ticket_stage
+
+    @_ticket_stage.setter
+    def _ticket_stage(self, value: str | None) -> None:
+        self.state.ticket_stage = value
 
     def get_stats(self) -> dict:
         """Get accumulated LLM statistics."""
@@ -3645,166 +3634,57 @@ class ReactAgent:
             self.state.closed_reason = "declined"
         # unclear -> stay; the step's question is re-asked
 
-    def _registration_claim_guard(self, content: str) -> str | None:
-        """The LLM narrator CLAIMED a registration that never happened (observed
-        live 2026-08-05: "Užregistravau gedimą…" at dr_recheck, ticket_id None,
-        the caller hung up trusting it). Words may not outrun the engine: when a
-        claim is detected with no ticket and no dialogue running, the contact
-        dialogue begins NOW and its phone question is APPENDED to the reply —
-        the promise becomes the process. Returns the appended text or None."""
-        s = self.state
-        low = (content or "").lower()
-        if not any(m in low for m in ("užregistrav", "uzregistrav", "registruoju gedim")):
-            return None
-        if s.ticket_id or self._ticket_stage or s.case_closed or not s.customer_id:
-            return None
-        if s.resolution is None:
-            return None
-        from .identification import phrase
-        from .resolution import get_strategy
+    # Ticket-dialogue flow moved to ticket_flow.py (R3, roadmap §4) — thin
+    # delegates keep every internal call site and test working unchanged.
 
-        strat = get_strategy(s.resolution.get("verdict"))
-        esc = strat.step("escalate") if strat else None
-        s.resolution.setdefault("escalate_reason", "Sprendimas telefonu nepavyko.")
-        self._begin_ticket_dialogue(esc)
-        if self._ticket_stage != "phone":
-            return None  # could not start (defensive) — nothing to append
-        self.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
-        if self._ticket_ctx is not None:
-            self._ticket_ctx["intro_done"] = True  # the claim already announced it
-            self._ticket_ctx["phone_asked"] = True  # appended below — answers count
-        return " " + phrase("ticket_phone")
+    def _registration_claim_guard(self, content: str) -> str | None:
+        """Delegates to ticket_flow.registration_claim_guard (R3 extraction)."""
+        from .ticket_flow import registration_claim_guard
+
+        return registration_claim_guard(self, content)
 
     def _begin_ticket_dialogue(self, step) -> None:
-        """Start the ticket-confirmation dialogue (2026-08-04): before ANY
-        registration the agent collects the contact number (ALWAYS asked — the
-        caller may be on a company/other phone, or the DB number stale) and when
-        it is convenient to call. The scripted ladder asks; once complete,
-        _finish_ticket_dialogue registers with the contacts on the ticket."""
-        if self.state.ticket_id or self._ticket_stage:
-            return  # already registered / already collecting
-        self._ticket_ctx = {"step": step}
-        self._ticket_stage = "phone"
-        self.tracer.emit("decision", intent="ticket_dialogue", action="start")
+        """Delegates to ticket_flow.begin_ticket_dialogue (R3 extraction)."""
+        from .ticket_flow import begin_ticket_dialogue
+
+        begin_ticket_dialogue(self, step)
 
     def _ticket_need(self) -> str:
-        """Human wording of WHY the ticket is needed ("reikalingas naujas
-        maršrutizatorius"), for the intro announce and the ticket itself — never
-        the raw verdict key."""
-        from .evidence import fault_need
+        """Delegates to ticket_flow.ticket_need (R3 extraction)."""
+        from .ticket_flow import ticket_need
 
-        s = self.state
-        cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
-        need = fault_need(cause) or _TICKET_NEED_LT.get(cause)  # file first, code fallback
-        if need:
-            return need
-        return _DIAGNOSIS_LT.get(cause, cause or "reikalinga specialisto pagalba")
-
-    _CONTINUE_SOLVING_MARKS = (
-        "jung",  # jungiu / pajunkim / prijunkite
-        "kompiuter",
-        "kabel",
-        "bandom",
-        "bandyk",
-        "pabandy",
-        "tikrin",
-        "tęs",
-        "tes ",
-        "teskim",
-        "toliau",
-        "darom",
-        "spręs",
-        "spres",
-    )
+        return ticket_need(self)
 
     def _wants_to_keep_solving(self, user_input: str | None) -> bool:
-        """A ticket refusal that CARRIES solving content ("Ne, tai mes pajunkim
-        tą kompiuterį…") — the caller is refusing the REGISTRATION, not the
-        help. Live 2026-08-11: this was read as plain refusal, the dialogue
-        resumed the phone question and the call closed registered while the
-        caller was still asking for the bridge."""
-        from .evidence import extract_client_facts
+        """Delegates to ticket_flow.wants_to_keep_solving (R3 extraction)."""
+        from .ticket_flow import wants_to_keep_solving
 
-        low = (user_input or "").lower()
-        return bool(extract_client_facts(user_input)) or any(
-            m in low for m in self._CONTINUE_SOLVING_MARKS
-        )
+        return wants_to_keep_solving(self, user_input)
 
     def _abort_ticket_to_solving(self) -> None:
-        """Drop the ticket dialogue WITHOUT closing the call and hand the turn
-        back to solving — the narrator says so and re-anchors the last
-        instruction (directive consumed in the facts block)."""
-        self._ticket_stage = None
-        self._ticket_ctx = None
-        self._resume_fix_note = True
-        self.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
+        """Delegates to ticket_flow.abort_ticket_to_solving (R3 extraction)."""
+        from .ticket_flow import abort_ticket_to_solving
+
+        abort_ticket_to_solving(self)
 
     def _ticket_stage_reply(self) -> str:
-        """The scripted reply for the CURRENT dialogue stage. The first phone ask
-        carries the intro (phone solving is over -> registering, and WHY), so the
-        caller hears the transition before the contact questions. Marks the stage
-        question as ASKED — only then does the capture accept an answer — and
-        speaks the retry phrasing after an unclear answer."""
-        from .identification import phrase
+        """Delegates to ticket_flow.ticket_stage_reply (R3 extraction)."""
+        from .ticket_flow import ticket_stage_reply
 
-        ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
-        if ctx.pop("ask_cancel_confirm", None):
-            ctx["cancel_confirm_out"] = True
-            return phrase("ticket_cancel_confirm")
-        retry = ctx.pop("ask_retry", None)
-        if retry == "phone":
-            return phrase("ticket_phone_retry")
-        if retry == "hours":
-            return phrase("ticket_hours_retry")
-        if self._ticket_stage == "hours":
-            ctx["hours_asked"] = True
-            return phrase("ticket_hours")
-        parts = []
-        if not ctx.get("intro_done"):
-            ctx["intro_done"] = True
-            # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
-            # the internet just came back (live 2026-08-12). The intro then
-            # states the success and registers the ROUTER replacement.
-            if getattr(self, "_bridge_bound", False):
-                parts.append(phrase("ticket_intro_bridge"))
-            else:
-                parts.append(phrase("ticket_intro", priezastis=self._ticket_need()))
-        ctx["phone_asked"] = True
-        parts.append(phrase("ticket_phone"))
-        return " ".join(parts)
+        return ticket_stage_reply(self)
 
     @staticmethod
     def _fmt_phone(nr: str | None) -> str:
-        """Group a dialable number for TTS ("+370 600 12353"); free text passes through."""
-        raw = (nr or "").strip()
-        digits = re.sub(r"[^\d+]", "", raw)
-        if len(re.sub(r"\D", "", digits)) < 6 or digits != raw:
-            return raw
-        if digits.startswith("+370") and len(digits) == 12:
-            return f"{digits[:4]} {digits[4:7]} {digits[7:]}"
-        return digits
+        """Delegates to ticket_flow.fmt_phone (R3 extraction)."""
+        from .ticket_flow import fmt_phone
+
+        return fmt_phone(nr)
 
     def _finish_ticket_dialogue(self) -> str:
-        """All contacts collected (or defaulted) — register, close, announce. The
-        announce repeats the number and hours back, so "kokiu numeriu?" never needs
-        asking (observed live: the caller asked twice and got a goodbye)."""
-        from .identification import phrase
+        """Delegates to ticket_flow.finish_ticket_dialogue (R3 extraction)."""
+        from .ticket_flow import finish_ticket_dialogue
 
-        s = self.state
-        if not s.contact_phone:
-            s.contact_phone = s.caller_phone  # default: the number they call from
-        if not s.contact_hours:
-            s.contact_hours = "bet kada"
-        step = (self._ticket_ctx or {}).get("step")
-        note = (self._ticket_ctx or {}).get("note") or ""
-        self._ticket_stage = None
-        self._ticket_ctx = None
-        self._register_ticket_from_state(step)
-        s.case_closed = True
-        s.closed_reason = "registered" if s.ticket_id else "declined"
-        val = s.contact_hours
-        val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
-        return phrase("ticket_done", nr=self._fmt_phone(s.contact_phone), val=val) + note
+        return finish_ticket_dialogue(self)
 
     def _register_ticket_from_state(self, step) -> None:
         """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
