@@ -1897,302 +1897,50 @@ class ReactAgent:
         self._finalize_reply(reply)
         return reply
 
-    def _revive_gave_up_key(self, spec: dict) -> str | None:
-        """ONE second chance for a given-up key that BLOCKS confirmation
-        (Andrius 2026-08-12): 'neaišku' on a patvirtinta-required key froze the
-        hypothesis forever. At the dead-end moment the agent asks it once more,
-        plainly and with the reason; the answer lands through the pending
-        machinery (the give-up marker is replaceable by design). Never loops —
-        one revival per key per call."""
-        from .evidence import LABELS
-        from .identification import phrase
+    # Evidence-drive flow moved to evidence_drive.py (R3, roadmap §4) — thin
+    # delegates keep every internal call site and test working unchanged.
 
-        ev = self.state.evidence
-        for cond in spec.get("patvirtinta_kai") or []:
-            if "=" not in cond:
-                continue
-            key = cond.split("=", 1)[0].strip()
-            entry = ev.get(key)
-            if entry is None or entry.get("value") != "neaišku":
-                continue
-            if key in getattr(self, "_revived_keys", set()):
-                continue
-            self._revived_keys = getattr(self, "_revived_keys", set()) | {key}
-            item = (spec.get("client") or {}).get(key) or {}
-            self._evidence_last_ask_key = key
-            self.tracer.emit("evidence", action="revive_ask", key=key)
-            return phrase(
-                "reask_reason",
-                tema=LABELS.get(key, key),
-                klausimas=str(item.get("patikslinimas") or item.get("klausimas") or ""),
-            )
-        return None
+    def _revive_gave_up_key(self, spec: dict) -> str | None:
+        """Delegates to evidence_drive.revive_gave_up_key (R3 extraction)."""
+        from .evidence_drive import revive_gave_up_key
+
+        return revive_gave_up_key(self, spec)
 
     def _maybe_facts_recap(self) -> str | None:
-        """Recap-and-confirm CHECKPOINT (Andrius 2026-08-11: 'pasitikslinti, o
-        ne kurti'): the first confirmed moment first READS BACK what the caller
-        told us — a misheard fact gets corrected here instead of driving a
-        wrong solution. Asked once; whatever the answer, the flow moves on next
-        turn (corrections land through the normal ingest/conflict machinery)."""
-        state = getattr(self, "_recap_state", "")
-        if state == "done":
-            return None
-        if state == "pending":
-            self._recap_state = "done"
-            self.tracer.emit("decision", intent="facts_recap", action="answered")
-            return None
-        from .evidence import client_facts_lt
-        from .identification import phrase
+        """Delegates to evidence_drive.maybe_facts_recap (R3 extraction)."""
+        from .evidence_drive import maybe_facts_recap
 
-        faktai = client_facts_lt(self.state.evidence)
-        if not faktai:
-            self._recap_state = "done"
-            return None
-        self._recap_state = "pending"
-        self.tracer.emit("decision", intent="facts_recap", action="ask")
-        return phrase("facts_recap", faktai=faktai)
+        return maybe_facts_recap(self)
 
     def _refuting_client_fact(self, spec: dict) -> tuple[str, str] | None:
-        """The CLIENT-stated fact that currently refutes the hypothesis — the
-        one worth double-checking before pivoting (telemetry needs no confirm)."""
-        from .evidence import CLIENT, _cond_holds
+        """Delegates to evidence_drive.refuting_client_fact (R3 extraction)."""
+        from .evidence_drive import refuting_client_fact
 
-        ev = self.state.evidence
-        for cond in spec.get("paneigta_kai") or []:
-            if "=" in cond and _cond_holds(ev, cond, False):
-                key = cond.split("=", 1)[0].strip()
-                entry = ev.get(key)
-                if entry is not None and entry.get("source") == CLIENT:
-                    return key, str(entry.get("value"))
-        return None
+        return refuting_client_fact(self, spec)
 
     def _maybe_refute_confirm(self, spec: dict) -> str | None:
-        """One confirm question before abandoning the hypothesis on a
-        CLIENT-stated fact (Andrius 2026-08-11: guard against premature
-        rejection — STT garbles flip facts). 'Taip' -> pivot proceeds; a
-        correction lands via ingest and un-refutes on its own."""
-        state = getattr(self, "_refute_state", "")
-        if state == "done":
-            return None
-        if state == "pending":
-            self._refute_state = "done"
-            self.tracer.emit("decision", intent="refute_confirm", action="answered")
-            return None
-        kv = self._refuting_client_fact(spec)
-        if kv is None:
-            self._refute_state = "done"  # telemetry-backed — trust it
-            return None
-        key, value = kv
-        from .evidence import LABELS, VALUE_LT
-        from .identification import phrase
+        """Delegates to evidence_drive.maybe_refute_confirm (R3 extraction)."""
+        from .evidence_drive import maybe_refute_confirm
 
-        self._refute_state = "pending"
-        self.tracer.emit("decision", intent="refute_confirm", action="ask", key=key)
-        return phrase(
-            "refute_confirm",
-            tema=LABELS.get(key, key),
-            reiksme=VALUE_LT.get(value, value),
-        )
+        return maybe_refute_confirm(self, spec)
 
     def _evidence_question_open(self) -> str | None:
-        """The evidence key whose question is OUT and still unanswered — the one
-        question the caller is actually answering right now. The ingest clears
-        the pending key the moment a fact lands on it, so a non-None here means
-        this turn's reply did NOT read as an answer to it."""
-        key = getattr(self, "_evidence_last_ask_key", None)
-        if not key:
-            return None
-        entry = self.state.evidence.get(key)
-        if entry is not None and entry.get("value") not in (None, "neaišku"):
-            return None
-        return key
+        """Delegates to evidence_drive.evidence_question_open (R3 extraction)."""
+        from .evidence_drive import evidence_question_open
+
+        return evidence_question_open(self)
 
     def _negation_clarify_reply(self, key: str) -> str | None:
-        """Scripted clarify for a bare-"ne" reply to the open evidence question
-        (Andrius 2026-08-11: clarify what the "ne" refers to instead of acting).
-        Wording comes from the fault file (`patikslinimas` per key) so every fault
-        can name its own two readings; generic phrase as fallback. Counts as an
-        ask — the give-up cap still ends an unreadable loop."""
-        from .evidence import spec_for
-        from .identification import phrase
+        """Delegates to evidence_drive.negation_clarify_reply (R3 extraction)."""
+        from .evidence_drive import negation_clarify_reply
 
-        if self._evidence_asks.get(key, 0) >= 2:
-            return None  # already asked twice — let the drive give up, not loop
-        spec = spec_for((self.state.resolution or {}).get("verdict")) or {}
-        item = (spec.get("client") or {}).get(key) or {}
-        self._evidence_asks[key] = self._evidence_asks.get(key, 0) + 1
-        self.tracer.emit("evidence", action="negation_clarify", key=key)
-        return str(
-            item.get("patikslinimas")
-            or phrase("negation_clarify", klausimas=str(item.get("klausimas") or ""))
-        ).strip()
+        return negation_clarify_reply(self, key)
 
     def _evidence_drive(self, user_input: str | None) -> str | None:
-        """Evidence-declared direction (Ledger v2): pick the next question from
-        MISSING evidence, compute the hypothesis from the ledger, and route the
-        declared solution. Returns the reply text, or None when the spec is
-        absent / the solver should take the turn (bridge instructions, refuted
-        pivot, nothing left to ask)."""
-        from .evidence import (
-            CLIENT,
-            hypothesis_status,
-            next_missing,
-            set_fact,
-            solution_for,
-            spec_for,
-        )
+        """Delegates to evidence_drive.evidence_drive (R3 extraction)."""
+        from .evidence_drive import evidence_drive
 
-        s = self.state
-        r = s.resolution or {}
-        spec = spec_for(r.get("verdict"))
-        if spec is None:
-            return None
-        # Captured BEFORE any new ask below overwrites it: was a question already
-        # out when the caller spoke? Needed for the bare-"ne" clarify.
-        pending_before = self._evidence_question_open()
-        status = hypothesis_status(s.evidence, spec)
-        if status == "refuted":
-            # One confirm question before the pivot when the refuting fact came
-            # from the CALLER's words — STT garbles flip facts (2026-08-11).
-            refute_reply = self._maybe_refute_confirm(spec)
-            if refute_reply is not None:
-                return refute_reply
-            # A lit lamp disproves the dead-router path — sync the walker to the
-            # declared pivot step so NOTHING rewinds, then let it continue.
-            target = spec.get("paneigta_veda")
-            if target and r.get("step") != target:
-                self._goto_step(r, target)
-                self.tracer.emit(
-                    "decision", intent="evidence", action="pivot", to=target, reason="refuted"
-                )
-            return None
-        confirmed = status == "confirmed"
-        # FINDINGS announce (2026-08-10): the FIRST confirmed moment is the
-        # transition the caller must HEAR — what we checked together, the
-        # conclusion, the options — before any solution question. Composed
-        # deterministically from the ledger + the fault's file (isvada,
-        # sprendimai aprasymai), so every newly declared fault gets it free.
-        announce = ""
-        if confirmed and not getattr(self, "_findings_announced", False):
-            # Recap checkpoint FIRST: read the gathered facts back and let the
-            # caller confirm or correct before any conclusion is announced.
-            recap = self._maybe_facts_recap()
-            if recap is not None:
-                return recap
-            self._findings_announced = True
-            from .evidence import client_facts_lt, fault_isvada, solution_descriptions
-            from .identification import phrase
-
-            faktai_lt = client_facts_lt(s.evidence)
-            isvada = fault_isvada(r.get("verdict")) or self._ticket_need()
-            sprendimai = solution_descriptions(r.get("verdict"))
-            if faktai_lt and isvada:
-                announce = (
-                    phrase(
-                        "findings_announce",
-                        faktai=faktai_lt,
-                        priezastis=isvada,
-                        sprendimai=" ARBA ".join(sprendimai) if sprendimai else "—",
-                    )
-                    + " "
-                )
-                self.tracer.emit("decision", intent="findings", action="announce")
-        if confirmed:
-            solution = solution_for(s.evidence, r.get("verdict"))
-            if solution == "ticket":
-                self.tracer.emit(
-                    "drive_decision",
-                    action="escalate",
-                    accepted=True,
-                    reason="evidence: solution=ticket",
-                )
-                return announce + self._drive_escalate(None)
-            if solution == "bridge":
-                # The solver drives the bridge instructions — the announce rides
-                # on ITS first reply (stashed; committed in solver_drive_turn).
-                if announce:
-                    self._pending_announce = announce
-                return None
-        missing = next_missing(s.evidence, spec, confirmed)
-        if missing is None:
-            # Nothing left to ask but no confirmation either — a given-up key
-            # ("neaišku") may be BLOCKING it forever (live 2026-08-12: the
-            # frozen hypothesis dropped the call to solver improvisation).
-            # ONE direct revival per key, then genuinely hand over.
-            if not confirmed:
-                revival = self._revive_gave_up_key(spec)
-                if revival is not None:
-                    return revival
-            if announce:
-                self._pending_announce = announce
-            return None
-        key, item = missing
-        asks = self._evidence_asks.get(key, 0)
-        if asks >= 2:
-            # Asked twice (normal + paprasciau), still nothing readable — record
-            # "neaišku" and move on; an unreadable caller must never loop us.
-            set_fact(s.evidence, key, "neaišku", CLIENT, s.turn_count)
-            self.tracer.emit("evidence", action="gave_up", key=key)
-            if getattr(self, "_evidence_last_ask_key", None) == key:
-                # A given-up key must not read as an OPEN question forever —
-                # the walker's ownership gate keys off this.
-                self._evidence_last_ask_key = None
-            inner = self._evidence_drive(user_input)
-            if inner is None:
-                if announce:
-                    self._pending_announce = announce
-                return None
-            return announce + inner
-        self._evidence_asks[key] = asks + 1
-        self._evidence_last_ask_key = key  # for the barge-in cancel rollback
-        text = (
-            item.get("klausimas")
-            if asks == 0
-            else (item.get("paprasciau") or item.get("klausimas"))
-        )
-        # The caller hears WHY we ask before what to press (Andrius 2026-08-11:
-        # "kad klientas žinotų kodėl prašo to ar kito") — once, on the first ask.
-        if asks == 0 and item.get("kodel"):
-            text = f"{text} {item['kodel']}"
-        # Re-ask says WHY it repeats (garsus mąstymas, Andrius 2026-08-11): the
-        # caller hears the agent is unsure about the SAME thing, not deaf.
-        if asks == 1:
-            from .evidence import LABELS
-            from .identification import phrase
-
-            text = phrase("reask_reason", tema=LABELS.get(key, key), klausimas=str(text))
-        # Bare "Ne." to THIS key's open question: the no has no object — clarify
-        # what is denied instead of re-asking the same words (live 2026-08-11).
-        if pending_before == key:
-            from .resolution import is_bare_negation
-
-            if is_bare_negation(user_input):
-                from .identification import phrase
-
-                text = item.get("patikslinimas") or phrase(
-                    "negation_clarify", klausimas=str(item.get("klausimas") or "")
-                )
-                self.tracer.emit("evidence", action="negation_clarify", key=key)
-            # DONE-report without a result ("Mhm, patikrinau") — acknowledge the
-            # work and ask WHAT was found (ka_radote from faults.yaml).
-            if getattr(self, "_done_report_key", None) == key:
-                from .identification import phrase
-
-                self._done_report_key = None
-                text = phrase(
-                    "done_report_clarify",
-                    klausimas=str(item.get("ka_radote") or item.get("klausimas") or ""),
-                )
-                self.tracer.emit("evidence", action="done_report_clarify", key=key)
-        self.tracer.emit(
-            "drive_decision",
-            action="ask_evidence",
-            accepted=True,
-            reason=None,
-            key=key,
-            level=asks + 1,
-        )
-        return announce + str(text)
+        return evidence_drive(self, user_input)
 
     def _drive(self, user_input: str | None) -> str:
         from .gate import DEFAULT_POLICY, gate
@@ -3027,67 +2775,10 @@ class ReactAgent:
         return True
 
     def _reopen_identification(self, user_input: str) -> None:
-        """The caller corrected the address AFTER identification — drop the identity and
-        every per-account conclusion; keep only the conversation. The router sends the
-        next turn back to address_validation (customer_id is None again)."""
-        s = self.state
-        self._trace_note(
-            "reopen_identity",
-            f"caller says a DIFFERENT address; dropping {s.customer_id}",
-            level="warn",
-        )
-        s.customer_id = None
-        s.customer_name = None
-        s.customer_address = None
-        s.address_confirmed = False
-        s.resolution = None
-        s.diagnosis.clear()
-        s.hypothesis = None
-        s.failed_hypotheses.clear()
-        s.rejected_hypotheses.clear()
-        s.pivoted_from = None
-        s.outage_reported = False
-        # Ledger + its machinery (review 2026-08-07): the EVIDENCE belongs to the
-        # dropped account — stale telemetry facts (the old verdict!) must never
-        # survive an address correction. The ticket dialogue, ask counters and
-        # deviation streak reset with it; the thinker gets a clean slate too.
-        s.evidence.clear()
-        self._evidence_asks.clear()
-        self._evidence_last_ask_key = None
-        self._evidence_conflict = None
-        self._evidence_conflict_asked = None
-        self._side_topic_this_turn = False
-        self._side_topic_turns = 0
-        self._ticket_stage = None
-        self._ticket_ctx = None
-        self._drive_bridge_offered = False
-        self._drive_disabled = False
-        self._drive_repeats = 0
-        self._findings_announced = False
-        self._pending_announce = ""
-        self._escalate_clarify_asked = False
-        self._escalate_clarify_pending = False
-        self._resume_fix_note = False
-        self._recap_state = ""
-        self._refute_state = ""
-        self._done_report_key = None
-        self._bridge_plug_reported = False
-        self._bridge_fail_stage = 0
-        self._bridge_fail_note = None
-        self._revived_keys = set()
-        from .slots import ClientProfileState
+        """Delegates to identification_flow.reopen_identification (R3 extraction)."""
+        from .identification_flow import reopen_identification
 
-        s.profile = ClientProfileState()
-        self._db_address_note = None
-        self._news_told = False  # a new address may carry different news
-        self._result_pending = False
-        self._end_confirm_pending = False
-        self._resume_hold = False
-        self._bridge_bound = False  # a different account starts clean
-        # Re-extract address parts from THIS utterance (the correction often carries
-        # the new address: "ne, skambinu dėl Dainų 5").
-        self._prefill_slots_from_text(user_input)
-        self._reopen_note = True
+        reopen_identification(self, user_input)
 
     def _last_agent_question(self) -> str | None:
         """The last thing the agent actually said — the real question the caller is
@@ -4078,54 +3769,9 @@ class ReactAgent:
         address for confirmation without a tool round-trip. Stored as an
         UNCONFIRMED candidate (anchor rule), never as a confirmed customer.
         """
-        phone = self.state.caller_phone
-        if not phone or phone == "unknown":
-            return
-        self.state.preflight_done = True
-        try:
-            result = json.loads(execute_tool("find_customer", {"phone": phone}))
-        except Exception:
-            return
-        if not result.get("success"):
-            self.tracer.emit("preflight", found=False)
-            return
-        addresses = result.get("addresses") or []
-        primary = next(
-            (a for a in addresses if a.get("is_primary")),
-            addresses[0] if addresses else {},
-        )
-        self.state.phone_candidate = {
-            "customer_id": result.get("customer_id"),
-            "name": result.get("name"),
-            "address": primary.get("full_address"),
-            # Structured parts for the phone cross-check: if the caller names this
-            # street, offer the full address to confirm instead of making them
-            # dictate the house/apartment (spoken numbers are STT-fragile).
-            "city": primary.get("city"),
-            "street": primary.get("street"),
-            "house": primary.get("house_number"),
-            "apartment": primary.get("apartment_number"),
-        }
-        self.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
+        from .identification_flow import preflight_phone
 
-        # Proactive mass-outage awareness (roadmap 6b): if this caller's street
-        # has an active outage, remember it so the FIRST reply can inform right
-        # away — no full identification needed (everyone at that street is down).
-        try:
-            outage = json.loads(
-                execute_tool("check_outages", {"customer_id": result.get("customer_id")})
-            )
-        except Exception:
-            return
-        if outage.get("affected") and outage.get("active_outages"):
-            first = outage["active_outages"][0]
-            eta = first.get("estimated_resolution") or ""
-            self.state.preflight_outage = {
-                "street": first.get("street"),
-                "eta": eta[11:16] if len(eta) >= 16 else eta,  # HH:MM, voice-friendly
-                "description": first.get("description"),
-            }
-            self.tracer.emit("preflight_outage", street=first.get("street"))
+        preflight_phone(self)
 
     def _prefill_slots_from_text(self, text: str) -> None:
         """Deterministic NLU Track A: extract the address from the caller's turn and
@@ -4136,89 +3782,9 @@ class ReactAgent:
         LLM. Proposed as HEARD; resolve_address upgrades a confirmed hit to
         RESOLVED. Best-effort: any failure (DB, import) silently no-ops the turn.
         """
-        # Raw utterance buffer: keep every caller turn verbatim so nothing is lost
-        # when VAD/STT splits an utterance into fragments. Feeds the LLM
-        # reconciliation fact when the deterministic slots stall (see
-        # _state_facts_block), and the future async silent re-processing.
-        if text and text.strip():
-            self.state.heard_utterances.append(text.strip())
+        from .identification_flow import prefill_slots_from_text
 
-        # Problem classification (R1) — independent of the registry/DB, so it runs
-        # even if address extraction fails. A revisable hypothesis: a clearer later
-        # statement overrides (docs/pokalbio_variklis.md §12.2).
-        try:
-            from .nlu import classify_problem, extract_symptoms
-
-            problem = classify_problem(text)
-            if problem:
-                self.state.problem_type = problem
-            # Revisable: a clearer later mention overrides an earlier reading.
-            self.state.symptoms.update(extract_symptoms(text))
-        except Exception:  # pragma: no cover - best-effort
-            pass
-
-        # Address-evidence gate: only scan the turn for an address when it plausibly
-        # CONTAINS one — a digit or an address word in the utterance, or the agent just
-        # asked for the address. Without this, fuzzy street matching read an ADDRESS out
-        # of the anamnesis answer ("po AUDROS" -> "Aušros g.") and the bogus street slot
-        # blocked the phone-address offer, derailing identification (observed).
-        low = (text or "").lower()
-        has_addr_evidence = any(ch.isdigit() for ch in low) or any(
-            w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
-        )
-        if not has_addr_evidence:
-            q = (self._last_agent_question() or "").lower()
-            asked_address = any(w in q for w in ("adres", "gatv", "namo", "numer", "but"))
-            if not asked_address:
-                return  # no address in sight — do not fuzzy-match one into the slots
-        try:
-            from .nlu import extract_address, load_registry
-            from .slots import SlotStatus
-            from .tools import get_db
-
-            if self._registry is None:
-                self._registry = load_registry(get_db())
-            streets, localities = self._registry
-            reading = extract_address(text, streets, localities)
-        except Exception:  # pragma: no cover - best-effort, never break a turn
-            logger.debug("NLU prefill failed", exc_info=True)
-            return
-
-        p = self.state.profile
-        conf = reading.street_confidence or 0.6
-        if reading.city:
-            p.city.propose(reading.city, conf, SlotStatus.HEARD)
-        if reading.street:
-            p.street.propose(reading.street, conf, SlotStatus.HEARD)
-        if reading.house:
-            p.house.propose(reading.house, conf, SlotStatus.HEARD)
-        if reading.apartment:
-            p.apartment.propose(reading.apartment, conf, SlotStatus.HEARD)
-
-        # If the caller names a DIFFERENT street than the pre-flight outage was
-        # for, that outage is not theirs — drop it so its proactive instruction
-        # stops polluting the rest of the call (observed: the agent kept
-        # apologising and re-mentioning the outage after the caller switched
-        # streets).
-        if (
-            reading.street
-            and self.state.preflight_outage
-            and reading.street != self.state.preflight_outage.get("street")
-        ):
-            self.state.preflight_outage = None
-
-        self.tracer.emit(
-            "nlu",
-            problem=self.state.problem_type,
-            city=reading.city,
-            street=reading.street,
-            house=reading.house,
-            apartment=reading.apartment,
-            confidence=round(reading.street_confidence, 2),
-        )
-
-        # DB-ground everything heard so far (any order, across fragments).
-        self._revalidate_accumulated_address()
+        prefill_slots_from_text(self, text)
 
     def _revalidate_accumulated_address(self) -> None:
         """Check the ACCUMULATED address slots against the DB every turn and stash
@@ -4232,31 +3798,9 @@ class ReactAgent:
         "Dainų ar Dailės?", "Namo 6 … nerandu"). Read-only: the id is committed only
         when the agent confirms with the caller (anchor rule), never here.
         """
-        self._db_address_note = None
-        s = self.state
-        if s.customer_id or not s.profile.street.value:
-            return
-        p = s.profile
-        args: dict[str, str] = {"street": p.street.value}
-        if p.city.value:
-            args["city"] = p.city.value
-        if p.house.value:
-            args["house_number"] = p.house.value
-        if p.apartment.value:
-            args["apartment_number"] = p.apartment.value
-        try:
-            res = json.loads(execute_tool("resolve_address", args))
-        except Exception:  # pragma: no cover - best-effort, never break a turn
-            return
-        hint = res.get("hint")
-        if hint:
-            self._db_address_note = (
-                f"- DB CHECK (everything heard so far → {args}): {hint} "
-                "Act on THIS (the DB), not on the last thing you misheard; if it is a "
-                "match, confirm that exact address; if a part is missing/unclear, ask "
-                "only for it. Do NOT read out a list of street names for the caller to "
-                "pick from — if the street is unclear, ask them to repeat it."
-            )
+        from .identification_flow import revalidate_accumulated_address
+
+        revalidate_accumulated_address(self)
 
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
@@ -4908,176 +4452,9 @@ class ReactAgent:
         question, captured 'Taip.' as a name). An off-script caller turn (a question)
         returns None so the LLM answers it; the ladder resumes next turn. Solving and
         free dialogue never come here."""
-        s = self.state
-        if s.case_closed:
-            return None
-        from .identification import caller_question, offer_phone_address, phrase
-        from .resolution import is_real_question
+        from .identification_flow import identification_scripted_reply
 
-        # Ticket-confirmation dialogue: contacts before every registration. An
-        # off-script question falls to the ticket node's LLM (facts carry the
-        # pending stage question to re-ask); the mechanical turns stay scripted.
-        if self._ticket_stage in ("phone", "hours"):
-            if self._ticket_offscript:
-                return None
-            return self._ticket_stage_reply()
-        if self._ticket_stage == "done":
-            return self._finish_ticket_dialogue()
-        if self._ticket_stage == "cancelled":
-            self._ticket_stage = None
-            self._ticket_ctx = None
-            s.case_closed = True
-            s.closed_reason = "declined"
-            s.is_complete = True
-            return "Gerai — gedimo neregistruoju. " + phrase("goodbye")
-        # Side-topic FRAME (3rd consecutive deviation): the LLM answered twice
-        # and the caller keeps drifting — the return is scripted now. With a
-        # CONFIRMED hypothesis the frame is the solve-together-or-technician
-        # choice (Andrius 2026-08-07: maximise solving by phone).
-        if self._side_topic_this_turn and self._side_topic_turns >= 3:
-            self._side_topic_turns = 0
-            from .evidence import hypothesis_status, spec_for
-
-            spec = spec_for((s.resolution or {}).get("verdict"))
-            if spec is not None and hypothesis_status(s.evidence, spec) == "confirmed":
-                return phrase("solve_or_ticket")
-            return phrase("back_to_issue", inkaras=self.anchor_text())
-        # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
-        # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
-        if self._evidence_conflict:
-            from .evidence import LABELS, VALUE_LT
-
-            key, old, new = self._evidence_conflict
-            self._evidence_conflict = None
-            self._evidence_conflict_asked = key
-            return phrase(
-                "evidence_conflict",
-                tema=LABELS.get(key, key),
-                a=VALUE_LT.get(old, old),
-                b=VALUE_LT.get(new, new),
-            )
-        # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
-        if self._end_confirm_pending:
-            return phrase("confirm_end")
-        # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
-        # the solve-or-register choice instead of crossing the one-way door
-        # (2026-08-11). The next turn routes normally: a repeated no escalates.
-        if getattr(self, "_escalate_clarify_pending", False):
-            self._escalate_clarify_pending = False
-            return phrase("escalate_clarify")
-        # Bare "ne" while the evidence drive's question is open, on the WALKER
-        # path (farewell/refuse-shaped turns land here; the drive words its own
-        # clarify): say what the "ne" could mean instead of acting on it.
-        from .resolution import is_bare_negation
-
-        open_key = self._evidence_question_open()
-        if open_key and is_bare_negation(user_input):
-            clarify = self._negation_clarify_reply(open_key)
-            if clarify:
-                return clarify
-        if user_input and is_real_question(user_input):
-            return None  # off-script — the LLM answers; guards kept the ladder state
-        # INTAKE (not yet identified): the anamnesis question and the address
-        # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
-        # whole ladder by a turn (observed in eval).
-        if not s.customer_id:
-            # Small talk BEFORE any problem is stated gets a scripted greeting-back
-            # — never the LLM (which jumped to the address offer on "Labadiena!",
-            # duplicating the ladder's own later offer; live 2026-08-06).
-            if not s.problem_type and user_input:
-                from .resolution import is_greeting
-
-                if is_greeting(user_input):
-                    return phrase("ask_problem")
-            p = s.profile
-            has_addr = bool(p.street.value or p.house.value)
-            if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
-                s.anamnesis_asked = True
-                return phrase("anamnesis_question")
-            if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
-                s.anamnesis_raw = user_input.strip()[:200]
-                from .nlu import extract_anamnesis
-
-                read = extract_anamnesis(s.anamnesis_raw)
-                s.anamnesis_when = read.get("when")
-                s.anamnesis_trigger = read.get("trigger")
-                self.tracer.emit(
-                    "anamnesis",
-                    text=s.anamnesis_raw,
-                    when=s.anamnesis_when,
-                    trigger=s.anamnesis_trigger,
-                )
-                c = s.phone_candidate
-                if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
-                    flat = f", butas {c['apartment']}" if c.get("apartment") else ""
-                    return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
-                return phrase("address_ask")
-            return None
-        # WRAP-UP after the news (inform mode): the business is DONE — any further
-        # turn that is not a question/wants-more wraps up DETERMINISTICALLY. Garbled
-        # goodbyes ("Nusigaro" = "viso gero") had the model loop "nesupratau,
-        # pakartokite" after a delivered debt notice (observed live: the caller could
-        # not end the call).
-        if (
-            s.resolution is None
-            and (self._news_told or s.outage_reported)
-            and not self._result_pending
-        ):
-            low = (user_input or "").lower()
-            wants_more = is_real_question(user_input) or any(
-                m in low
-                for m in (
-                    "klausim",
-                    "palauk",
-                    "dar ",
-                    "noriu",
-                    "minut",
-                    "sekund",
-                    "skol",
-                )
-            )
-            if wants_more:
-                return None  # a question / wants something — the LLM handles it
-            s.case_closed = True
-            s.closed_reason = "outage" if s.outage_reported else "inform"
-            s.is_complete = True
-            self.tracer.emit("decision", intent="wrap_up", action="close", to=s.closed_reason)
-            return phrase("goodbye")
-        if not self._result_pending:
-            return None
-        if not s.caller_name:
-            # The caller-intro question turn (with the address echo on a fresh
-            # commit) + the CHECKING cue — the engine resolves/diagnoses silently
-            # here, and without the cue the caller thinks nothing started
-            # (live 2026-08-07: "nepasako, kad patikrins").
-            parts = []
-            if self._just_identified and s.customer_address:
-                parts.append(phrase("echo_address", adresas=s.customer_address))
-                parts.append(phrase("checking_note"))
-            self._just_identified = False
-            parts.append(caller_question())
-            return " ".join(p for p in parts if p)
-        # The caller introduced themselves — deliver the deferred result. INFORM
-        # verdicts are fully mechanical; a strategy result (finding + step question)
-        # stays with the LLM (returns None; the REZULTATO facts directive drives it).
-        if s.resolution is not None:
-            return None
-        d = s.diagnosis.get("network") or {}
-        reason = d.get("reason")
-        zinia = _DIAGNOSIS_LT.get(reason, reason or "")
-        if not zinia:
-            return None
-        zinia = zinia[0].upper() + zinia[1:]  # sentence-cased after "…iki jūsų buto."
-        bits = [phrase("thanks"), phrase("check_result", zinia=zinia + ".")]
-        if reason == "billing_suspended":
-            bits.append(phrase("billing_extra"))
-        # Outage news carries the ETA when the preflight knows it.
-        if reason == "active_outage" and (s.preflight_outage or {}).get("eta"):
-            bits.append(f"Numatomas atstatymas iki {s.preflight_outage['eta']}.")
-        bits.append(phrase("anything_else"))
-        self._result_pending = False
-        self._news_told = True
-        return " ".join(b for b in bits if b)
+        return identification_scripted_reply(self, user_input)
 
     def _emit_scripted_reply(self, text: str) -> str:
         """Bookkeeping for an engine-composed reply (mirrors _apply_backstop)."""
