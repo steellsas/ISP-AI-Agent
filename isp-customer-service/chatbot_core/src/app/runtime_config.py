@@ -42,6 +42,17 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "agent_model",
     },
     {
+        # AgentSession reads AGENT_ENGINE at construction, so the switch takes
+        # effect on the NEXT call — running calls keep their engine. "graph" =
+        # legacy LangGraph, "v2" = graph_v2 (docs/ROADMAP_REFACTORING.md),
+        # "legacy" = direct ReactAgent loop (rollback).
+        "key": "AGENT_ENGINE",
+        "label": "Orkestravimo variklis (graph → v2)",
+        "options": ["graph", "v2", "legacy"],
+        "scope": "new_calls",
+        "kind": "env",
+    },
+    {
         "key": "CLASSIFIER",
         "label": "LLM klasifikatorius (atsakymų skaitymas)",
         "options": ["on", "off"],

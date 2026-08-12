@@ -62,6 +62,25 @@ class TestRouteEntryPure:
         assert route_entry(state) == "closing"
 
 
+class TestRuntimeConfigSwitch:
+    def test_agent_engine_knob_reaches_new_sessions(self, tmp_path, monkeypatch):
+        """The dashboard knob (PUT /admin/config AGENT_ENGINE=v2) must flip the
+        engine for the NEXT session."""
+        from agent.session import AgentSession
+        from app import runtime_config
+
+        monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "cfg.json"))
+        monkeypatch.delenv("AGENT_ENGINE", raising=False)
+
+        runtime_config.apply({"AGENT_ENGINE": "v2"})
+        try:
+            session = AgentSession(caller_phone="unknown")
+            assert session._engine_mode == "v2"
+            assert session.greeting()  # the v2 graph actually runs
+        finally:
+            monkeypatch.delenv("AGENT_ENGINE", raising=False)
+
+
 class TestParityWithLegacy:
     def test_greeting_matches_legacy_and_graph(self, tmp_path):
         from agent.session import AgentSession
