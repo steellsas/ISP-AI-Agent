@@ -171,9 +171,17 @@ Taisyklės (kad nereikėtų perdaryti):
       liko property) — checkpointinamas, abu router'iai skaito tą patį šaltinį.
       PASTABA: `_ticket_ctx` NEpromotintas — laiko gyvą `Step` objektą; reikia
       step-id adresavimo prieš keliant į checkpointinamą state.
-- [ ] Kiti metodų perkėlimai pagal žemėlapį §4 (kiekvienas — atskiras commit'as):
-      identifikacijos skriptas, narrator pagalbininkai, evidence drive,
-      `_register_ticket_from_state` → executor
+- [x] **4–9 bangos** (2026-08-12): `evidence_drive.py` (Ledger v2 drive),
+      `identification_flow.py` (preflight, NLU prefill, DB re-check, reopen,
+      skriptinis ladder), `executor_flow.py` (tool gate, tool-call ciklas,
+      ticket registracija, bridge sim), `solver_flow.py` (kontekstas, drive
+      ciklas, bind disciplina, failure ladder), `walker_flow.py` (20 metodų:
+      diagnose-once, walker, advance šeima, hipotezių buhalterija),
+      `perception_flow.py` (ingest, side-topic, pre-turn guards),
+      `narrator_flow.py` (žinučių statyba, KNOWN FACTS blokas, tool scoping,
+      playbook injekcija, observation→state). Visur ploni delegatai
+      `ReactAgent` viduje; vidiniai kvietimai per delegavimo siūlę
+      (`engine._x`), kad test patch'ai ir subklasės veiktų.
 - [x] **Trečioji banga — walker guard'ai** (2026-08-12): 9 guard'ai (2 prelude +
       7 step) iškelti į `agent/walker_guards.py` kaip įvardintos funkcijos su
       UŽŠALDYTA eilės tvarka (testas fiksuoja seką); `_walk_resolution` liko
@@ -182,9 +190,13 @@ Taisyklės (kad nereikėtų perdaryti):
       (escalate/restored/see_device/instruct/confirm keyword) liko walker'yje —
       tai mechanika, ne guard'ai. Ateity guard'ai taps v2 subgrafo edges.
 - [ ] Efemeriniai `_flag'ai` (§6) → `TurnScratch` arba lieka mazgo lokalūs
-- [ ] `react_agent.py` traukiasi iki LLM kvietimo + naratoriaus pagalbininkų
-- **DoD:** `react_agent.py` < ~1500 eil.; visa maršrutizacija matoma grafe;
-  auksiniai testai žali.
+      (atidėta — flag'ai dabar aiškiai matomi flow moduliuose)
+- [x] `react_agent.py` susitraukė iki **1533 eil.** (nuo ~5500): liko LLM
+      ciklas (step/stream/run_until_response), repeat guard, reply
+      finalizacija, call record ir delegatai
+- **DoD:** `react_agent.py` < ~1500 eil. (~pasiekta: 1533); maršrutizacija
+  matoma grafe + guard'ai įvardinti; auksiniai testai žali. ✔ (2026-08-12:
+  717 unit testų, paritetas 7/7 po KIEKVIENOS bangos)
 
 **Rasta migruojant (technical debt):** procese gyvena DU modulių medžiai —
 `services.llm.*` ir `src.services.llm.*` (skirtingi import root'ai), kiekvienas
