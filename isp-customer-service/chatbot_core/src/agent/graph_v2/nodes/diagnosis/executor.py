@@ -1,17 +1,26 @@
 """
-Executor node — the ONLY place tools run and tickets are registered.
+Executor node — deterministic ACTION/ESCALATE execution before narration.
 
-Migrates here (roadmap §4): ReactAgent.ensure_action_done, _gate_tool,
-_execute_tool_calls, _register_ticket_from_state, _simulate_bridge_connection.
-Keeps the deterministic guarantees: tool access gate (not_identified /
-id_mismatch / city_only / not_fixed) and STATE-driven idempotent ticket
-creation.
+Thin wrapper over ensure_action_done: an ACTION step reached by the caller's
+reply runs deterministically BEFORE the LLM narrates — the engine binds +
+resets + re-verifies and sets case_closed, so the model only PHRASES the
+verified result (no model-invoked update_mac).
+
+R3 follow-up (roadmap §4): _gate_tool, _execute_tool_calls and
+_register_ticket_from_state migrate here so this file is the ONLY place tools
+run and tickets are registered.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 from ...state import GraphState
 
 
-def executor_node(state: GraphState) -> GraphState:
-    raise NotImplementedError("R2: thin wrapper over ensure_action_done + tool gate")
+def make_executor_node(engine: Any):
+    def executor_node(state: GraphState) -> dict[str, Any]:
+        engine.ensure_action_done()
+        return {}
+
+    return executor_node

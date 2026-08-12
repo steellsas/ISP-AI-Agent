@@ -62,6 +62,122 @@ class TestRouteEntryPure:
         assert route_entry(state) == "closing"
 
 
+class FakeEngine:
+    """Records the engine-call order so subgraph wiring is testable without LLM/DB."""
+
+    def __init__(self, side_topic=False, driven=None):
+        from agent.state import AgentState
+
+        self.state = AgentState(caller_phone="unknown")
+        self.state.customer_id = "CUST-T"
+        self.calls = []
+        self._side = side_topic
+        self._driven = driven
+        self._ticket_stage = None
+        self._active_node = None
+        self._result_pending = False
+        self._news_told = False
+        self.session_id = "fake-session"
+        self.tracer = SimpleNamespace(emit=lambda *a, **k: None)
+
+    def ensure_diagnosed(self):
+        self.calls.append("diagnose")
+
+    def _ingest_client_evidence(self, user_input):
+        self.calls.append("ingest")
+
+    def classify_side_topic(self, user_input):
+        self.calls.append("classify")
+        return self._side
+
+    def solver_drive_turn(self, user_input):
+        self.calls.append("solver")
+        return self._driven
+
+    def _advance_resolution(self, user_input):
+        self.calls.append("walker")
+
+    def _shadow_solve(self, user_input):
+        self.calls.append("shadow")
+
+    def ensure_action_done(self):
+        self.calls.append("action")
+
+    def run_turn_scoped_stream(self, user_input, allowed_tools, node_prompt):
+        self.calls.append("narrate")
+        yield "ok-"
+        yield "reply"
+
+    def _mark_step_presented(self):
+        self.calls.append("mark")
+
+
+def _fake_graph(engine):
+    from agent.graph_v2.graph import build_graph
+    from langgraph.checkpoint.memory import MemorySaver
+
+    return build_graph(engine, MemorySaver())
+
+
+def _diag_input():
+    from agent.graph_v2.state import TurnScratch
+
+    return {
+        "caller_phone": "unknown",
+        "customer_id": "CUST-T",
+        "turn": TurnScratch(user_input="neveikia internetas"),
+    }
+
+
+_CFG = {"configurable": {"thread_id": "t-subgraph"}}
+
+
+class TestDiagnosisSubgraph:
+    """The legacy 9-step pipeline order must survive the split into subgraph nodes."""
+
+    def test_normal_path_keeps_legacy_call_order(self):
+        engine = FakeEngine()
+        out = _fake_graph(engine).invoke(_diag_input(), _CFG)
+        assert engine.calls == [
+            "diagnose",
+            "ingest",
+            "classify",
+            "solver",
+            "walker",
+            "shadow",
+            "action",
+            "narrate",
+            "mark",
+        ]
+        assert out["turn"].reply == "ok-reply"
+
+    def test_side_topic_freezes_the_engine(self):
+        engine = FakeEngine(side_topic=True)
+        out = _fake_graph(engine).invoke(_diag_input(), _CFG)
+        # No close-inform/solver/walker/action on side chatter — only the frozen narration.
+        assert engine.calls == ["diagnose", "ingest", "classify", "narrate"]
+        assert out["turn"].reply == "ok-reply"
+
+    def test_solver_drive_skips_walker_and_narrator(self):
+        engine = FakeEngine(driven="Atsakau pats.")
+        out = _fake_graph(engine).invoke(_diag_input(), _CFG)
+        assert engine.calls == ["diagnose", "ingest", "classify", "solver"]
+        assert out["turn"].reply == "Atsakau pats."
+
+    def test_tokens_stream_out_of_the_subgraph(self):
+        """The voice pipeline consumes stream_mode='custom' — narrator tokens
+        emitted INSIDE the subgraph must surface on the parent stream. Mirrors
+        AgentSession.handle_turn_stream's v2 path (subgraphs=True + unwrap)."""
+        engine = FakeEngine()
+        chunks = [
+            chunk
+            for _ns, chunk in _fake_graph(engine).stream(
+                _diag_input(), _CFG, stream_mode="custom", subgraphs=True
+            )
+        ]
+        assert chunks == ["ok-", "reply"]
+
+
 class TestRuntimeConfigSwitch:
     def test_agent_engine_knob_reaches_new_sessions(self, tmp_path, monkeypatch):
         """The dashboard knob (PUT /admin/config AGENT_ENGINE=v2) must flip the

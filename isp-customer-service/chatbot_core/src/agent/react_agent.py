@@ -83,18 +83,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# When the agent's reply contains one of these, the call is over — end it (hang up)
-# no matter which path produced the goodbye. Kept to clear terminal farewells so a
-# mid-conversation "gero" never trips it.
-_GOODBYE_MARKERS = (
-    "geros dienos",
-    "geros jums dienos",
-    "gražios dienos",
-    "gero vakaro",
-    "gražaus vakaro",
-    "viso gero",
-    "viso labo",
-)
+# Closing rules moved to closing_flow.py (R3, docs/ROADMAP_REFACTORING.md §4);
+# the alias keeps existing imports/tests working during the migration.
 
 
 def _register_linear_strategies() -> None:
@@ -3909,58 +3899,16 @@ class ReactAgent:
         r["step"] = next_id
 
     def _maybe_finish(self, user_input: str | None) -> None:
-        """In the closing stage, decide whether to end the call. The case is already
-        closed; the agent offered "ar dar kuo nors padėti?". If the caller says a
-        goodbye / "no", or we have lingered a second closing turn, set is_complete so
-        the transport hangs up — no endless goodbyes."""
-        s = self.state
-        if not s.case_closed or s.is_complete:
-            return
-        s.closing_turns += 1
-        from .resolution import detect_farewell
+        """Delegates to closing_flow.maybe_finish (R3 extraction)."""
+        from .closing_flow import maybe_finish
 
-        if detect_farewell(user_input) or s.closing_turns >= 2:
-            s.is_complete = True
+        maybe_finish(self, user_input)
 
     def _maybe_close_inform(self, user_input: str | None) -> None:
-        """Deterministic close for INFORM mode (mass outage, billing, or any verdict with
-        NO troubleshooting strategy to walk). Once the caller has been informed and
-        signals they are done — a goodbye or a plain 'no more questions' — the engine
-        closes the call ITSELF and ends it on one farewell.
+        """Delegates to closing_flow.maybe_close_inform (R3 extraction)."""
+        from .closing_flow import maybe_close_inform
 
-        Without this, closing depended on the model calling close_case, which it did not:
-        the caller said goodbye repeatedly, the call stayed open, and the diagnosis node
-        re-narrated the outage every turn (observed: 'kartoja gedimą')."""
-        s = self.state
-        if s.case_closed or not s.customer_id:
-            return
-        # Farewell may close the INFORM call only after the BUSINESS is done: the
-        # identification ladder finished AND the news actually delivered. A garbled
-        # mid-ladder "Ne, mano vardas Tomas…" matched the loose farewell heuristic and
-        # HUNG UP on the caller before they ever heard the debt (observed live).
-        # An OUTAGE report counts as the news told — it is delivered the moment
-        # outage_reported flips (a different path than the billing script).
-        if self._result_pending or self._ticket_stage or not (self._news_told or s.outage_reported):
-            return
-        reason = (s.diagnosis.get("network") or {}).get("reason")
-        # INFORM mode: an outage was flagged, OR we identified + diagnosed but there is no
-        # resolution strategy to walk (active_outage, billing_suspended, generic inform).
-        # A live strategy (foreign_mac, dead-router, client_side) keeps s.resolution set
-        # and is handled by the walker instead — never closed here.
-        inform_mode = s.outage_reported or (s.resolution is None and bool(s.diagnosis))
-        if not inform_mode:
-            return
-        from .resolution import detect_farewell
-
-        if detect_farewell(user_input):
-            s.case_closed = True
-            s.closed_reason = (
-                "outage" if (s.outage_reported or reason == "active_outage") else "inform"
-            )
-            s.is_complete = True  # caller already said goodbye — end on ONE farewell
-            # Observability: the close moment was invisible in the trace (this made a
-            # stuck-close analysis needlessly hard) — record it.
-            self.tracer.emit("decision", intent="inform_close", action="close", to=s.closed_reason)
+        maybe_close_inform(self, user_input)
 
     def _mark_step_presented(self) -> None:
         """After the agent replies while on a strategy step, record that the step's
@@ -5397,16 +5345,10 @@ class ReactAgent:
             self.state.clarity_level = "basic"
 
     def _maybe_end_on_goodbye(self, text: str) -> None:
-        """Catch-all hang-up: if the agent JUST said a terminal goodbye — on ANY path
-        (resolved, registered, declined, or the stuck backstop) — end the call so the
-        transport stops instead of looping the goodbye. Covers the cases the
-        case_closed/closing flow misses (e.g. the model says 'geros dienos' on a stuck
-        turn without close_case ever firing)."""
-        if self.state.is_complete or not text:
-            return
-        low = text.lower()
-        if any(m in low for m in _GOODBYE_MARKERS):
-            self.state.is_complete = True
+        """Delegates to closing_flow.maybe_end_on_goodbye (R3 extraction)."""
+        from .closing_flow import maybe_end_on_goodbye
+
+        maybe_end_on_goodbye(self, text)
 
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the

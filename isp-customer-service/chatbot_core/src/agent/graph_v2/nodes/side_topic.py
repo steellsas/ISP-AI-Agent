@@ -1,15 +1,25 @@
 """
-Side-topic node — a REAL node in v2 (today: a sub-call inside diagnosis).
+Side-topic node — the frozen-engine deviation answer inside diagnosis.
 
-Migrates here (roadmap §4): the frozen-engine side answer (FAQ facts, no
-tools) + the mandatory verbatim anchor-question repeat; the 3rd consecutive
-deviation goes scripted (back_to_issue / solve_or_ticket).
+The engine is already frozen for this turn (classify_side_topic returned True
+in the diagnose node): no tools, the LLM answers ONLY from the FAQ facts and
+must end by repeating the anchor question verbatim. The 3rd consecutive
+deviation is a scripted frame composed in the engine.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
+from ..router import SIDE_TOPIC
+from ..runtime import SIDE_TOPIC_PROMPT, narrate, sync_updates
 from ..state import GraphState
 
 
-def side_topic_node(state: GraphState) -> GraphState:
-    raise NotImplementedError("R2: thin wrapper over the legacy side-topic reply")
+def make_side_topic_node(engine: Any):
+    def side_topic_node(state: GraphState) -> dict[str, Any]:
+        user_input = state.turn.user_input
+        reply = narrate(engine, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
+        return sync_updates(engine, user_input=user_input, reply=reply)
+
+    return side_topic_node

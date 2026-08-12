@@ -1,19 +1,27 @@
 """
 Walker node — deterministic strategy step walking (HOLD / advance / goto).
 
-Migrates here (roadmap §4): ReactAgent._walk_resolution, every _advance_*,
-_detect_confirm, _route_to, _goto_step, _turn_may_advance. The step sequencer
-(next_step_id, detectors) stays pure in agent/resolution.py.
+Thin wrapper: _advance_resolution (the walker with its 15-guard chain) plus
+_shadow_solve (solver logging next to the walker's move, SOLVER_SHADOW only).
 
-The 15-guard chain (roadmap §5) does NOT move into this file — each guard
-becomes a conditional-edge function in router.py, ported in groups of 2-3
-with golden tests between groups.
+R3 follow-up (roadmap §5): the guard chain migrates out of
+ReactAgent._walk_resolution into walker-module functions in groups of 2-3,
+with golden parity runs between groups. The step sequencer (next_step_id,
+detectors) stays pure in agent/resolution.py.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 from ...state import GraphState
 
 
-def walker_node(state: GraphState) -> GraphState:
-    raise NotImplementedError("R2: thin wrapper over _walk_resolution")
+def make_walker_node(engine: Any):
+    def walker_node(state: GraphState) -> dict[str, Any]:
+        user_input = state.turn.user_input
+        engine._advance_resolution(user_input)
+        engine._shadow_solve(user_input)
+        return {}
+
+    return walker_node

@@ -159,6 +159,16 @@ class AgentSession:
         if not self._use_graph:
             yield self._agent.run_until_response(text)
             return
+        if self._engine_mode == "v2":
+            # The diagnosis stage is a SUBGRAPH in v2 — custom writer events only
+            # surface with subgraphs=True, which wraps every chunk in a
+            # (namespace, chunk) pair; unwrap so transports keep receiving raw
+            # tokens exactly like the legacy graph emitted them.
+            for _ns, chunk in self._graph.stream(
+                self._graph_input(text), self._graph_config, stream_mode="custom", subgraphs=True
+            ):
+                yield chunk
+            return
         yield from self._graph.stream(
             self._graph_input(text), self._graph_config, stream_mode="custom"
         )

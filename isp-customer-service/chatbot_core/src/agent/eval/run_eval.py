@@ -66,6 +66,11 @@ def _load_env() -> None:
     # The eval drives simulated calls end-to-end: enable the dead-router bridge device
     # simulation so the bridge can VERIFY + bind (like the update_mac/reset_port stubs).
     os.environ.setdefault("SIMULATE_BRIDGE", "on")
+    # LangSmith ingest 429s (monthly quota) flooded the eval output and added
+    # latency — the harness scores state, not cloud traces; hard-off here wins
+    # over whatever .env says (load_dotenv below never overrides existing env).
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    os.environ["LANGSMITH_TRACING"] = "false"
     try:
         from dotenv import load_dotenv
     except ImportError:
@@ -120,19 +125,36 @@ def _load_scenarios() -> list[dict]:
     return [s for s in data["scenarios"] if isinstance(s, dict) and "id" in s]
 
 
+def _bump_rate_limits() -> None:
+    """Raise the LLM rate limiter for eval runs — on EVERY loaded copy of the module.
+
+    The limiter is a process-global singleton tuned for ONE live call (30/min,
+    100/session); an eval drives many back-to-back sessions, so without a reset
+    the session counter overflows mid-suite and the minute window throttles the
+    understand/classifier passes — degrading the very flows being scored.
+
+    The module can be loaded under TWO names in one process ('services.llm.…'
+    via this script's sys.path root and 'src.services.llm.…' via the app's
+    package prefix), each with its own singleton — bumping only one left the
+    agent chain still checking a 30/min limiter (observed). Bump every copy.
+    """
+    import importlib
+
+    for name in ("services.llm.rate_limiter", "src.services.llm.rate_limiter"):
+        try:
+            mod = sys.modules.get(name) or importlib.import_module(name)
+        except ImportError:
+            continue
+        mod.reset_rate_limiter()
+        mod.get_rate_limiter().update_limits(max_per_minute=300, max_per_session=1000)
+
+
 # --- Run one scenario -------------------------------------------------------------
 def _run_scenario(scn: dict, engine: str | None = None) -> dict:
     """Drive the scripted turns; snapshot state each turn; return the raw evidence."""
     from agent.session import AgentSession
-    from services.llm.rate_limiter import get_rate_limiter, reset_rate_limiter
 
-    # The limiter is a process-global singleton tuned for ONE live call (30/min,
-    # 100/session). An eval run drives many back-to-back sessions in one process,
-    # so without a reset the session counter overflows mid-suite and the minute
-    # window throttles the understand/classifier passes — degrading the very
-    # flows being scored (observed: later scenarios ran with understand=off).
-    reset_rate_limiter()
-    get_rate_limiter().update_limits(max_per_minute=300, max_per_session=1000)
+    _bump_rate_limits()
 
     session = AgentSession(caller_phone=scn["phone"], language="lt", engine=engine)
     replies: list[str] = []

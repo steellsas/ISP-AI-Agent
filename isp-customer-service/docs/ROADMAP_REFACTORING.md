@@ -153,14 +153,29 @@ Taisyklės (kad nereikėtų perdaryti):
 
 ### R3 — Logikos perkėlimas (po vieną metodą, po vieną guard'ą)
 
-- [ ] Metodai iš `react_agent.py` keliauja į mazgų modulius pagal žemėlapį §4;
-      kiekvienas perkėlimas — atskiras commit'as su žaliais testais
+- [x] **Diagnozės subgrafas** (2026-08-12): 9 žingsnių in-node seka tapo tikrais
+      mazgais su conditional edges — `diag_diagnose` → (side_topic? / solver
+      driven?) → `diag_walker` → `diag_executor` → `diag_narrator`. Variklio
+      kvietimų TVARKA identiška (unit testas fiksuoja seką); token streaming iš
+      subgrafo veikia per `subgraphs=True` + unwrap `session.handle_turn_stream`.
+- [x] **Pirmoji metodų migracija — closing grupė** (šablonas kitoms):
+      `_maybe_finish` / `_maybe_close_inform` / `_maybe_end_on_goodbye` →
+      `agent/closing_flow.py`; `ReactAgent` liko ploni delegatai (legacy
+      variklis nepaliestas), v2 mazgai kviečia modulį tiesiogiai.
+- [ ] Kiti metodų perkėlimai pagal žemėlapį §4 (kiekvienas — atskiras commit'as):
+      ticket grupė → executor/ticket, identifikacijos skriptas, narrator
+      pagalbininkai, evidence drive
 - [ ] 15 walker guard'ų (§5) virsta conditional edges / routing funkcijomis —
       perkeliame po 2–3, ne visus iš karto
 - [ ] Efemeriniai `_flag'ai` (§6) → `TurnScratch` arba lieka mazgo lokalūs
 - [ ] `react_agent.py` traukiasi iki LLM kvietimo + naratoriaus pagalbininkų
 - **DoD:** `react_agent.py` < ~1500 eil.; visa maršrutizacija matoma grafe;
   auksiniai testai žali.
+
+**Rasta migruojant (technical debt):** procese gyvena DU modulių medžiai —
+`services.llm.*` ir `src.services.llm.*` (skirtingi import root'ai), kiekvienas
+su savo singleton'ais (rate limiter!). Eval'as dabar kelia abu; ilgalaikis
+sprendimas — suvienodinti import root'ą visame projekte.
 
 ### R4 — Smegenys ant naujų griaučių
 

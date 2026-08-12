@@ -40,3 +40,28 @@ def route_entry(state: GraphState) -> str:
     if state.ticket_stage:
         return TICKET_REGISTRATION
     return DIAGNOSIS if state.customer_id else ADDRESS_VALIDATION
+
+
+# --- Diagnosis subgraph (R3): node names + routing -------------------------
+
+DIAG_DIAGNOSE = "diag_diagnose"
+DIAG_SIDE_TOPIC = "diag_side_topic"
+DIAG_SOLVER_GATE = "diag_solver_gate"
+DIAG_WALKER = "diag_walker"
+DIAG_EXECUTOR = "diag_executor"
+DIAG_NARRATOR = "diag_narrator"
+
+
+def route_after_diagnose(state: GraphState) -> str:
+    """A corroborated deviation FREEZES the engine for the turn: the side-topic
+    node answers from FAQ facts and returns to the anchor — no walker/solver/
+    action runs on side chatter. The flag is set by the diagnose node (the
+    classification call mutates engine counters, so it cannot live here)."""
+    return DIAG_SIDE_TOPIC if state.turn.side_topic_active else DIAG_SOLVER_GATE
+
+
+def route_after_solver_gate(state: GraphState) -> str:
+    """A non-None turn.reply means the solver owned the whole turn (SOLVER_DRIVE)
+    — the walker and the LLM narrator are skipped, exactly like the legacy
+    in-node early return."""
+    return "end" if state.turn.reply is not None else DIAG_WALKER

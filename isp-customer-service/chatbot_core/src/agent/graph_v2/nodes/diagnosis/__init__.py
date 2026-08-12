@@ -1,59 +1,65 @@
 """
-Diagnosis stage.
+Diagnosis subgraph — the legacy 9-step in-node pipeline made explicit (R3).
 
-R2 thin wrapper (make_diagnosis_node): ports diagnosis() from agent/graph.py
-verbatim — the 9-step engine pipeline runs inside one node for now:
-ensure_diagnosed -> ingest evidence -> side-topic freeze -> inform-close ->
-solver drive -> walker -> shadow solve -> deterministic action -> narration.
+    diag_diagnose ──(side_topic_active?)──> diag_side_topic ──> END
+          │
+          └──> diag_solver_gate ──(turn.reply set? = solver drove)──> END
+                     │
+                     └──> diag_walker ──> diag_executor ──> diag_narrator ──> END
 
-R3 target: this pipeline becomes an explicit subgraph over the sibling files
-(diagnose.py, solver_gate.py, evidence_drive.py, walker.py, executor.py,
-narrator.py) with the walker guard chain (roadmap §5) as conditional edges.
+Engine-call ORDER is identical to the legacy diagnosis() node — only the
+control flow moved from Python if/returns into graph edges, so every branch
+is now visible, checkpointed and individually testable. Assembly only; the
+logic lives in the sibling node files and router.py.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from langgraph.config import get_stream_writer
+from langgraph.graph import END, StateGraph
 
-from ...router import DIAGNOSIS, SIDE_TOPIC
-from ...runtime import DIAGNOSIS_NODE_PROMPT, SIDE_TOPIC_PROMPT, narrate, sync_updates
+from ...router import (
+    DIAG_DIAGNOSE,
+    DIAG_EXECUTOR,
+    DIAG_NARRATOR,
+    DIAG_SIDE_TOPIC,
+    DIAG_SOLVER_GATE,
+    DIAG_WALKER,
+    route_after_diagnose,
+    route_after_solver_gate,
+)
 from ...state import GraphState
+from ..side_topic import make_side_topic_node
+from .diagnose import make_diagnose_node
+from .executor import make_executor_node
+from .narrator import make_narrator_node
+from .solver_gate import make_solver_gate_node
+from .walker import make_walker_node
 
 
-def make_diagnosis_node(engine: Any):
-    def diagnosis_node(state: GraphState) -> dict[str, Any]:
-        user_input = state.turn.user_input
-        # Deterministic driver: diagnose ONCE on entering the stage, so the
-        # verdict + resolution strategy no longer depend on the model.
-        engine.ensure_diagnosed()
-        # Ledger v1: the caller's utterance lands on the evidence ledger BEFORE
-        # anyone acts on it.
-        engine._ingest_client_evidence(user_input)
-        # A deviation FREEZES the engine for the turn — no walker/solver/action
-        # on side chatter; the LLM answers from FAQ facts and returns to the anchor.
-        if engine.classify_side_topic(user_input):
-            reply = narrate(engine, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
-            return sync_updates(engine, user_input=user_input, reply=reply)
-        # Deterministic close for INFORM mode (outage / billing / no-strategy).
-        engine._maybe_close_inform(user_input)
-        # Piloted direction (SOLVER_DRIVE): the solver owns the whole turn.
-        driven = engine.solver_drive_turn(user_input)
-        if driven is not None:
-            engine._active_node = DIAGNOSIS
-            engine.tracer.emit(
-                "node", node="diagnosis_solver", customer_id=engine.state.customer_id
-            )
-            get_stream_writer()(driven)
-            return sync_updates(engine, user_input=user_input, reply=driven)
-        engine._advance_resolution(user_input)
-        engine._shadow_solve(user_input)
-        # An ACTION step reached by the caller's reply runs deterministically
-        # BEFORE the LLM narrates — the model only phrases the verified result.
-        engine.ensure_action_done()
-        reply = narrate(engine, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS)
-        engine._mark_step_presented()
-        return sync_updates(engine, user_input=user_input, reply=reply)
-
-    return diagnosis_node
+def make_diagnosis_graph(engine: Any):
+    """Compile the diagnosis subgraph (no checkpointer — inherits the parent's)."""
+    builder = StateGraph(GraphState)
+    builder.add_node(DIAG_DIAGNOSE, make_diagnose_node(engine))
+    builder.add_node(DIAG_SIDE_TOPIC, make_side_topic_node(engine))
+    builder.add_node(DIAG_SOLVER_GATE, make_solver_gate_node(engine))
+    builder.add_node(DIAG_WALKER, make_walker_node(engine))
+    builder.add_node(DIAG_EXECUTOR, make_executor_node(engine))
+    builder.add_node(DIAG_NARRATOR, make_narrator_node(engine))
+    builder.set_entry_point(DIAG_DIAGNOSE)
+    builder.add_conditional_edges(
+        DIAG_DIAGNOSE,
+        route_after_diagnose,
+        {DIAG_SIDE_TOPIC: DIAG_SIDE_TOPIC, DIAG_SOLVER_GATE: DIAG_SOLVER_GATE},
+    )
+    builder.add_conditional_edges(
+        DIAG_SOLVER_GATE,
+        route_after_solver_gate,
+        {"end": END, DIAG_WALKER: DIAG_WALKER},
+    )
+    builder.add_edge(DIAG_WALKER, DIAG_EXECUTOR)
+    builder.add_edge(DIAG_EXECUTOR, DIAG_NARRATOR)
+    builder.add_edge(DIAG_SIDE_TOPIC, END)
+    builder.add_edge(DIAG_NARRATOR, END)
+    return builder.compile()
