@@ -83,6 +83,53 @@
       }
     },
     {
+      "id": "S3_switch_unreachable_inform",
+      "phone": "+37060020103",
+      "desc": "Switch nepasiekiamas (avarija neregistruota) — tiekėjo gedimas, informuoti ir uždaryti be tiketo",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar vakare dingo, po nieko ypatingo",
+        "Taip",
+        "Egidijus, mano sutartis",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "switch_unreachable",
+        "disposition": "inform",
+        "reply_any": [
+          "nepasiekiam",
+          "tiekėjo",
+          "gedim"
+        ],
+        "reply_none": []
+      }
+    },
+    {
+      "id": "S1v_side_topic_deviation",
+      "phone": "+37060020105",
+      "desc": "Foreign_mac flow su nukrypimu (ar skambutis kainuoja?) — FAQ atsakymas + grįžimas prie inkaro, baigtis nesikeičia",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Prieš valandą dingo, po nieko ypatingo",
+        "Taip",
+        "Jonas, taip, aš sutartį sudaręs",
+        "O sakykite, ar šitas skambutis man kainuos?",
+        "Taip, keičiau routerį, senasis sugedo",
+        "Gerai, laukiu",
+        "Taip, atsirado internetas",
+        "Ne, ačiu, viskas"
+      ],
+      "expect": {
+        "verdict_in": "foreign_mac",
+        "disposition": "resolved",
+        "reply_any": [
+          "nekainuoja",
+          "nemokam"
+        ],
+        "reply_none": []
+      }
+    },
+    {
       "id": "S8_outage_inform",
       "phone": "+37060020102",
       "desc": "Masinė avarija -> informuoti + ETA, be tiketo",

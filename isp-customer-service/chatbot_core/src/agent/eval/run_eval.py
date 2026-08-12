@@ -25,6 +25,14 @@ Usage (needs LLM API keys in .env — like the voice demo):
     uv run python src/agent/eval/run_eval.py --only S1_foreign_mac_changed_router
     uv run python src/agent/eval/run_eval.py --no-db          # skip DB rebuild (faster reruns)
     uv run python src/agent/eval/run_eval.py --json report.json
+    uv run python src/agent/eval/run_eval.py --engine v2      # run on the graph_v2 engine
+    uv run python src/agent/eval/run_eval.py --compare graph,v2   # engine parity diff
+
+Engine parity (--compare, docs/ROADMAP_REFACTORING.md R0/R2): each scenario runs
+once per engine (fresh DB each run) and the STATE outcomes are diffed — verdicts,
+disposition, closed_reason, customer_id, tools used. Reply TEXT is not diffed
+(the live LLM rephrases between runs); the deterministic state trajectory is the
+parity contract.
 """
 
 from __future__ import annotations
@@ -113,11 +121,20 @@ def _load_scenarios() -> list[dict]:
 
 
 # --- Run one scenario -------------------------------------------------------------
-def _run_scenario(scn: dict) -> dict:
+def _run_scenario(scn: dict, engine: str | None = None) -> dict:
     """Drive the scripted turns; snapshot state each turn; return the raw evidence."""
     from agent.session import AgentSession
+    from services.llm.rate_limiter import get_rate_limiter, reset_rate_limiter
 
-    session = AgentSession(caller_phone=scn["phone"], language="lt")
+    # The limiter is a process-global singleton tuned for ONE live call (30/min,
+    # 100/session). An eval run drives many back-to-back sessions in one process,
+    # so without a reset the session counter overflows mid-suite and the minute
+    # window throttles the understand/classifier passes — degrading the very
+    # flows being scored (observed: later scenarios ran with understand=off).
+    reset_rate_limiter()
+    get_rate_limiter().update_limits(max_per_minute=300, max_per_session=1000)
+
+    session = AgentSession(caller_phone=scn["phone"], language="lt", engine=engine)
     replies: list[str] = []
     verdicts_seen: set[str] = set()
 
@@ -277,11 +294,72 @@ def _print_report(results: list[dict]) -> int:
     return 1 if hard_fails else 0
 
 
+# --- Engine parity (--compare) -----------------------------------------------------
+# The deterministic outcome fields two engines must agree on. Replies are excluded
+# on purpose — the live LLM rephrases between runs.
+_PARITY_FIELDS = ("verdicts_seen", "case_closed", "closed_reason", "customer_id", "tools_used")
+
+
+def _parity_diff(a: dict, b: dict) -> list[str]:
+    diffs = []
+    for field in _PARITY_FIELDS:
+        va, vb = a[field], b[field]
+        if isinstance(va, set):
+            va, vb = sorted(va), sorted(vb)
+        if va != vb:
+            diffs.append(f"{field}: {va!r} != {vb!r}")
+    da, db = _disposition(a), _disposition(b)
+    if da != db:
+        diffs.append(f"disposition: {da!r} != {db!r}")
+    return diffs
+
+
+def _run_compare(scenarios: list[dict], engines: list[str], rebuild: bool) -> int:
+    print(f"\n{'=' * 78}\nENGINE PARITY — {engines[0]} vs {engines[1]}\n{'=' * 78}")
+    hard_fails = 0
+    for scn in scenarios:
+        evs = {}
+        for engine in engines:
+            if rebuild:
+                _rebuild_db()
+            print(f"... {scn['id']} on engine={engine}", flush=True)
+            evs[engine] = _run_scenario(scn, engine=engine)
+        diffs = _parity_diff(evs[engines[0]], evs[engines[1]])
+        per_engine = {
+            eng: [(n, ok) for n, ok, _ in _score(scn, ev) if n != "reply_len"]
+            for eng, ev in evs.items()
+        }
+        scn_ok = not diffs and all(ok for checks in per_engine.values() for _, ok in checks)
+        known = scn.get("known_bug", False)
+        if not scn_ok and not known:
+            hard_fails += 1
+        head = "PASS" if scn_ok else ("xfail" if known else "FAIL")
+        print(f"[{head}] {scn['id']}")
+        for d in diffs:
+            print(f"         DIFF {d}")
+        for eng, checks in per_engine.items():
+            bad = [n for n, ok in checks if not ok]
+            if bad:
+                print(f"         {eng}: failed checks {bad}")
+    print(f"\n  parity failures: {hard_fails}\n")
+    return 1 if hard_fails else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Conversation eval — Golden Dataset")
     ap.add_argument("--only", help="run a single scenario by id")
     ap.add_argument("--no-db", action="store_true", help="skip DB rebuild between scenarios")
     ap.add_argument("--json", help="write the raw report to this path")
+    ap.add_argument(
+        "--engine",
+        choices=["graph", "v2", "legacy"],
+        help="orchestration engine for the run (default: AGENT_ENGINE env / graph)",
+    )
+    ap.add_argument(
+        "--compare",
+        metavar="A,B",
+        help="run every scenario under two engines (e.g. graph,v2) and diff state outcomes",
+    )
     args = ap.parse_args()
 
     _load_env()
@@ -292,12 +370,19 @@ def main() -> int:
             print(f"No scenario with id '{args.only}'")
             return 2
 
+    if args.compare:
+        engines = [e.strip() for e in args.compare.split(",")]
+        if len(engines) != 2 or not all(e in ("graph", "v2", "legacy") for e in engines):
+            print("--compare expects two of: graph, v2, legacy (e.g. --compare graph,v2)")
+            return 2
+        return _run_compare(scenarios, engines, rebuild=not args.no_db)
+
     results = []
     for scn in scenarios:
         if not args.no_db:
             _rebuild_db()
         print(f"... running {scn['id']} (phone={scn['phone']})", flush=True)
-        ev = _run_scenario(scn)
+        ev = _run_scenario(scn, engine=args.engine)
         checks = _score(scn, ev)
         results.append({"scn": scn, "ev": ev, "checks": checks})
 

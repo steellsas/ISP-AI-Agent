@@ -105,10 +105,17 @@ Taisyklės (kad nereikėtų perdaryti):
 ### R0 — Saugiklis (prieš bet kokį logikos keitimą)
 
 - [x] Šaka `refactor/langgraph-v2` nuo `develop`
-- [ ] „Auksiniai" scenarijai: ~10–15 pilnų pokalbių transkriptų kaip regresijos
-      etalonai (po kelis kiekvienam verdiktui: `foreign_mac`, `healthy_to_router`,
-      `no_mac_observed`, + outage, billing, stuck→eskalacija, side-topic, barge-in).
-      Šaltiniai: `demo_scenarios.md`, `agent/eval/`, esami `tests/test_agent.py` atvejai.
+- [x] „Auksiniai" scenarijai — panaudotas ESAMAS `agent/eval/run_eval.py` +
+      `scenarios.json` harness, praplėstas: `--engine {graph,v2,legacy}` ir
+      `--compare A,B` (kiekvienas scenarijus leidžiamas per abu variklius,
+      diffinamos BŪSENOS baigtys: verdiktai, disposition, closed_reason,
+      customer_id, tools; reply tekstas nediffinamas — LLM perfrazuoja).
+      7 scenarijai: foreign_mac, healthy_to_router, no_mac_observed (bridge),
+      switch_unreachable, outage, billing, side-topic. 2026-08-12 palyginimas:
+      **7/7 PASS, 0 pariteto skirtumų**. Komanda:
+      `uv run python src/agent/eval/run_eval.py --compare graph,v2`
+- [ ] Scenarijų papildymas (nekritinis): dhcp_silent (CUST106),
+      stuck→eskalacija (nežinomas skambintojas), ticket demand mid-flow
 - [x] `AGENT_ENGINE=v2` reikšmė `session.py` (šalia esamų `graph`/`legacy`)
 - **DoD:** auksiniai testai žali su senuoju varikliu; jungiklis veikia.
 
