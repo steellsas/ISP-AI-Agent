@@ -340,6 +340,8 @@ class ReactAgent:
         # question went out, 2 = escalate with the attempt on the ticket.
         self._bridge_fail_stage = 0
         self._bridge_fail_note: str | None = None
+        # Given-up keys already revived once (round 6) — never a second time.
+        self._revived_keys: set[str] = set()
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -1426,8 +1428,18 @@ class ReactAgent:
                     pasitikejimas=u["pasitikejimas"],
                     faktai=u["faktai"],
                 )
+        # The deterministic keyword layer ALWAYS runs (2026-08-12): it used to be
+        # a fallback only, so when the pass answered with EMPTY faktai (the
+        # confidence guard wipes low-confidence reads) the extractor never got a
+        # chance — "Pabandžiau kitą rozetę, kiti įrenginiai veikia" lost
+        # outlet_works and the hypothesis froze (live). Pass facts win on
+        # overlap; keywords fill the keys the pass did not provide.
+        kw_facts = extract_client_facts(user_input)
         if facts is None:
-            facts = extract_client_facts(user_input)
+            facts = kw_facts
+        else:
+            for k, v in kw_facts.items():
+                facts.setdefault(k, v)
         # The JUST-ASKED evidence question gives short answers their meaning:
         # "Radau." to "Radote?" (no noun -> the general extractor is blind)
         # became a give-up live 2026-08-10. Context read fills ONLY the pending
@@ -1663,18 +1675,25 @@ class ReactAgent:
 
             r = self.state.resolution or {}
             spec = spec_for(r.get("verdict"))
+            strat = get_strategy(r.get("verdict"))
+            target = None
             if spec and hypothesis_status(self.state.evidence, spec) == "confirmed":
                 target = solution_step(self.state.evidence, r.get("verdict"))
-                strat = get_strategy(r.get("verdict"))
-                if target and strat and strat.step(target) and r.get("step") != target:
-                    self._goto_step(r, target)
-                    self.tracer.emit(
-                        "decision",
-                        intent="evidence",
-                        action="pivot",
-                        to=target,
-                        reason="bailout sync",
-                    )
+            elif spec:
+                # UNCONFIRMED dead end (evidence exhausted, revival spent):
+                # resuming at the long-stale intro re-walked the WHOLE ladder
+                # (live 2026-08-12: power cable re-asked from scratch). The
+                # honest endgame is the registration offer.
+                target = "escalate"
+            if target and strat and strat.step(target) and r.get("step") != target:
+                self._goto_step(r, target)
+                self.tracer.emit(
+                    "decision",
+                    intent="evidence",
+                    action="pivot",
+                    to=target,
+                    reason="bailout sync",
+                )
             return None  # the walker takes this and every following turn
         try:
             reply = self._drive(user_input)
@@ -1766,6 +1785,12 @@ class ReactAgent:
         u = getattr(self, "_last_understanding", None)
         if u is not None:
             if u["tipas"] in ("klausimas", "nukrypimas") and not u["faktai"]:
+                if extract_client_facts(user_input):
+                    # The keyword layer read facts the pass missed — an
+                    # informative interruption, not a deviation (they already
+                    # landed on the ledger via the always-on supplement).
+                    self._side_topic_turns = 0
+                    return False
                 from .faq import match as faq_match
 
                 # A question ABOUT the current instruction is NOT a deviation
@@ -1859,6 +1884,37 @@ class ReactAgent:
         self.state.messages.append({"role": "assistant", "content": reply})
         self._finalize_reply(reply)
         return reply
+
+    def _revive_gave_up_key(self, spec: dict) -> str | None:
+        """ONE second chance for a given-up key that BLOCKS confirmation
+        (Andrius 2026-08-12): 'neaišku' on a patvirtinta-required key froze the
+        hypothesis forever. At the dead-end moment the agent asks it once more,
+        plainly and with the reason; the answer lands through the pending
+        machinery (the give-up marker is replaceable by design). Never loops —
+        one revival per key per call."""
+        from .evidence import LABELS
+        from .identification import phrase
+
+        ev = self.state.evidence
+        for cond in spec.get("patvirtinta_kai") or []:
+            if "=" not in cond:
+                continue
+            key = cond.split("=", 1)[0].strip()
+            entry = ev.get(key)
+            if entry is None or entry.get("value") != "neaišku":
+                continue
+            if key in getattr(self, "_revived_keys", set()):
+                continue
+            self._revived_keys = getattr(self, "_revived_keys", set()) | {key}
+            item = (spec.get("client") or {}).get(key) or {}
+            self._evidence_last_ask_key = key
+            self.tracer.emit("evidence", action="revive_ask", key=key)
+            return phrase(
+                "reask_reason",
+                tema=LABELS.get(key, key),
+                klausimas=str(item.get("patikslinimas") or item.get("klausimas") or ""),
+            )
+        return None
 
     def _maybe_facts_recap(self) -> str | None:
         """Recap-and-confirm CHECKPOINT (Andrius 2026-08-11: 'pasitikslinti, o
@@ -2047,6 +2103,14 @@ class ReactAgent:
                 return None
         missing = next_missing(s.evidence, spec, confirmed)
         if missing is None:
+            # Nothing left to ask but no confirmation either — a given-up key
+            # ("neaišku") may be BLOCKING it forever (live 2026-08-12: the
+            # frozen hypothesis dropped the call to solver improvisation).
+            # ONE direct revival per key, then genuinely hand over.
+            if not confirmed:
+                revival = self._revive_gave_up_key(spec)
+                if revival is not None:
+                    return revival
             if announce:
                 self._pending_announce = announce
             return None
@@ -2307,6 +2371,24 @@ class ReactAgent:
             self._bridge_bound = True
         except Exception as e:
             self._trace_note("drive_propose_fix", str(e), level="error")
+        # Position the walker on the VERIFY step (the step after the bind, read
+        # structurally) — the reply below asks "ar internetas atsirado?", so the
+        # caller's "jau atsistatė!" must route as RESTORED. Live 2026-08-12 the
+        # walker sat on a stale instruct step and the success died unheard: the
+        # call drifted into ticket talk over a WORKING line.
+        from .resolution import get_strategy, next_step_id
+
+        r = self.state.resolution or {}
+        strat = get_strategy(r.get("verdict"))
+        if strat and strat.step("dr_bind"):
+            target = next_step_id(strat, "dr_bind", None)
+            if strat.step(target) is not None and r.get("step") != target:
+                self._goto_step(r, target)
+                r["asked"] = True  # the verify question goes out in THIS reply
+                r["asked_at"] = len(self.state.messages) + 1
+                self.tracer.emit(
+                    "decision", intent="evidence", action="pivot", to=target, reason="bind verify"
+                )
         return (
             say
             or "Matau jūsų kompiuterį linijoje — pririšau. Patikrinkite, ar internetas atsirado."
@@ -3088,6 +3170,7 @@ class ReactAgent:
         self._bridge_plug_reported = False
         self._bridge_fail_stage = 0
         self._bridge_fail_note = None
+        self._revived_keys = set()
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()

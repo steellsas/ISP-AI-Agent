@@ -678,6 +678,51 @@ class TestHearingAgent:
             details = dict(cur.fetchone())["details"]
         assert "NEPAVYKO" in details and "neaktyvus" in details
 
+    # --- round 6 (live 2026-08-12): dead ends resolve, success is heard -------
+
+    def test_unconfirmed_bailout_goes_to_escalate_not_intro(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(monkeypatch)
+        agent.state.caller_name = "Andrius"
+        for k, v in (
+            ("device_present", "rado"),
+            ("lights", "nedega"),
+            ("power_cable", "neaišku"),  # gave up — hypothesis unconfirmable
+        ):
+            set_fact(agent.state.evidence, k, v, CLIENT, 1)
+        agent._revived_keys = {"power_cable"}  # revival already spent
+        agent._drive_repeats = 2  # distrust streak observed
+        assert agent.solver_drive_turn("nežinau ką daugiau daryti") is None
+        assert agent.state.resolution["step"] == "escalate"  # honest endgame
+
+    def test_bind_lands_walker_on_verify_and_hears_restored(self, db_connection, monkeypatch):
+        # Tools are FAKED so the shared session DB is not mutated (a real bind
+        # here flips CUST009 healthy and breaks later ordering-dependent tests).
+        import json as _json
+
+        agent = self._agent(monkeypatch)
+        agent._bridge_plug_reported = True
+        agent._drive_bridge_offered = True
+        calls = []
+
+        def fake_execute(name, args):
+            calls.append(name)
+            if name == "diagnose_connection":
+                reason = "foreign_mac" if "simulated" in calls else "no_mac_observed"
+                return _json.dumps({"success": True, "verdict": {"reason": reason}})
+            return _json.dumps({"success": True})
+
+        monkeypatch.setattr("agent.react_agent.execute_tool", fake_execute)
+        monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: calls.append("simulated"))
+        monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
+        reply = agent._drive_propose_fix("", "įkišau į kompiuterį")
+        assert "pririšau" in reply  # the bind ran
+        assert agent.state.resolution["step"] == "dr_verify"  # verify owns the next reply
+        agent._walk_resolution("Jau atsistatė, veikia internetas!")
+        assert agent.state.resolution["step"] == "dr_register_router"  # success HEARD
+
     def test_lan_pending_answers(self):
         from agent.evidence import read_pending_answer
 

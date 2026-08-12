@@ -284,6 +284,61 @@ class TestConfirmationAgent:
         assert agent.state.resolution["step"] == "dr_cable"  # paneigta_veda sync
 
 
+class TestKeywordSupplement:
+    """Round 6 (live 2026-08-12): the pass answered with EMPTY faktai (the
+    confidence guard wiped a 0.5 read) and the keyword layer never ran — the
+    golden 'kiti įrenginiai veikia nuo tos rozetės' lost outlet_works and the
+    hypothesis froze. The deterministic layer now ALWAYS supplements."""
+
+    def test_keywords_fill_what_the_pass_dropped(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={}, supratau="bandė kitą rozetę", conf=0.9),
+        ):
+            agent._ingest_client_evidence(
+                "Pabandžiau kitą rozetę, vis tiek neveikia. Kiti įrenginiai nuo tos rozetės veikia."
+            )
+        assert agent.state.evidence["outlet_works"]["value"] == "bandyta"
+
+    def test_pass_facts_win_on_overlap(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"lights": "mirksi"}, supratau="lemputė mirksi"),
+        ):
+            agent._ingest_client_evidence("Ta lemputė tai mirksi, čia dega kažkas")
+        assert agent.state.evidence["lights"]["value"] == "mirksi"  # pass, not keyword "dega"
+
+
+class TestGaveUpRevival:
+    def test_blocking_neaisku_key_gets_one_revival(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = _diagnosing_agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
+        set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 3)  # gave up
+        reply = agent._evidence_drive("nežinau")
+        assert reply is not None and "maitinimo laidas" in reply  # the revival names it
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Dabar pažiūrėjau — įkištas gerai, tvirtai")
+        assert agent.state.evidence["power_cable"]["value"] == "įkištas"
+        follow_up = agent._evidence_drive("įkištas gerai")
+        assert follow_up is not None and "rozet" in follow_up  # the plan resumes
+
+    def test_revival_happens_once_then_hands_over(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = _diagnosing_agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
+        set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 3)
+        assert agent._evidence_drive("nežinau") is not None  # revival
+        set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 4)  # still unreadable
+        assert agent._evidence_drive("nežinau") is None  # hands over, no loop
+
+
 class TestContradictionCorroboration:
     def test_uncorroborated_flip_dropped(self, db_connection, monkeypatch):
         # "Neturi kompiuterio" hallucinated device_present=nerado against a
