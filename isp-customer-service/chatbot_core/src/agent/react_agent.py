@@ -2497,10 +2497,15 @@ class ReactAgent:
           telemetry read — routed separately (_advance_restored).
 
         This is what leads the caller one step at a time instead of dumping the
-        whole playbook, and stops the model binding a device they never confirmed."""
+        whole playbook, and stops the model binding a device they never confirmed.
+
+        The pre-checks live in walker_guards.py (R3, roadmap §5) as an ordered,
+        individually-named chain; this method keeps only the mechanics — intent
+        derivation, the guard iteration and the advancement dispatch below."""
+        from . import walker_guards
         from .resolution import (
             StepKind,
-            confirms_device_change,
+            detect_turn_intent,
             get_strategy,
             next_step_id,
         )
@@ -2508,131 +2513,18 @@ class ReactAgent:
         r = self.state.resolution
         if not r or self.state.case_closed:
             return
-        # One-turn hold after the caller declined to end the call — their "ne,
-        # tęskime" answers the confirm-end question, not the current step.
-        if self._resume_hold:
-            self._resume_hold = False
-            return
-        # The confirm-end question is OUT and unanswered — in the graph's turn
-        # order the walker runs BEFORE the guard that reads its answer, so this
-        # reply belongs to that question, not the step (live 2026-08-11: "Ne,
-        # nenoriu" — i.e. don't END — advanced stale dr_intro -> escalate ->
-        # ticket). Hold; _pre_turn_guards resumes or closes this same turn.
-        if self._end_confirm_pending:
-            self.tracer.emit(
-                "decision", intent="answer", action="hold", reason="end_confirm_pending"
-            )
-            return
+        for guard in walker_guards.PRELUDE_GUARDS:
+            if guard(self, user_input):
+                return
         # Derive the intent from THIS call's input rather than trusting it was set
         # earlier — the walker must not depend on the caller's ordering.
-        from .resolution import detect_turn_intent
-
         self.state.last_intent = detect_turn_intent(user_input)
         strat = get_strategy(r.get("verdict"))
         step = strat.step(r.get("step", "")) if strat else None
         if step is None:
             return
-        # A strong device-change signal advances confirm_change before it is even asked
-        # (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that step —
-        # elsewhere "kompiuteris" is a scope answer, not a device change. Runs before the
-        # intent gate: a clear pre-answer should move regardless of turn phrasing.
-        if step.id == "confirm_change" and confirms_device_change(user_input):
-            self._route_to(r, next_step_id(strat, step.id, "yes"))
-            return
-        # Backchannel guard: a bare "Mhm." / one-letter STT crumb is an acknowledgement,
-        # not an answer — HOLD asking steps instead of routing garbage (observed: "T."
-        # entered the bridge path as "yes, I have a computer"; "Mhm." climbed two
-        # INSTRUCT steps). ACTION steps still advance — their announce needs no answer.
-        if step.kind in (StepKind.CONFIRM, StepKind.INSTRUCT):
-            from .resolution import is_backchannel
-
-            if is_backchannel(user_input):
-                self.tracer.emit(
-                    "decision", intent="backchannel", action="hold", from_step=step.id, to=step.id
-                )
-                return
-        # A clear "atsirado / veikia" pre-answers a restored CONFIRM before it was even
-        # asked — often fused with the goodbye ("yra internetas, ačiū, viso gero"). Route
-        # the YES so the resolve is RECORDED instead of the call dying unclosed on the
-        # hangup (observed live: resolved Wi-Fi call left outcome=None). Only the clear
-        # affirmative pre-answers; a "no" still waits for the step's own question.
-        if step.detector == "restored" and not r.get("asked"):
-            from .resolution import Outcome, detect_restored
-
-            if detect_restored(user_input) is Outcome.YES:
-                self._route_to(r, next_step_id(strat, step.id, "yes"))
-                return
-        # Refusal / explicit ticket demand ends troubleshooting in a REGISTRATION
-        # (policy 2026-07-30). A clear DEMAND ("įregistruokit gedimą") IS the consent —
-        # register now and close, with the reason on the ticket. A softer refusal
-        # ("nedarysiu", "nesu namuose") routes to the escalate step, whose consent
-        # question doubles as the polite clarification ("užregistruosiu — ar tinka?").
-        # Observed live: the caller demanded a ticket 3×, the narrator promised it 5×,
-        # and the walker held cable_check forever — no route existed.
-        if step.kind is not StepKind.ESCALATE:
-            from .resolution import detect_refuse_or_ticket
-
-            rt = detect_refuse_or_ticket(user_input)
-            if rt is not None and strat.step("escalate") is not None:
-                r["escalate_reason"] = (
-                    "Klientas paprašė registracijos."
-                    if rt == "demand"
-                    else "Neišspręsta — klientas atsisakė tęsti tikrinimą."
-                )
-                self._goto_step(r, "escalate")
-                self.tracer.emit(
-                    "decision",
-                    intent="refuse_or_ticket",
-                    action=rt,
-                    from_step=step.id,
-                    to="escalate",
-                )
-                if rt == "demand":
-                    self._begin_ticket_dialogue(strat.step("escalate"))
-                return
-        # Question OWNERSHIP (live 2026-08-11): while the evidence drive has an OPEN
-        # question, that is the question the caller is answering — the walker's own
-        # step question may be MANY turns stale. A barge-in-truncated "Ne." (meant:
-        # "ne, nedega…") was read by the stale dr_intro yes/no as "won't check
-        # together" → escalate → ticket → dead call. The asked-step routing below
-        # (classify + keyword) must not consume such a reply; explicit refusals and
-        # restored pre-answers were already handled above.
-        if self._evidence_question_open():
-            self.tracer.emit(
-                "decision",
-                intent="answer",
-                action="hold",
-                from_step=step.id,
-                to=step.id,
-                reason="evidence_question_open",
-            )
-            return
-        # ASKED generic CONFIRM (yes/no, lights, scope, restored, …): the LLM classifier
-        # reads the answer AND whether it IS an answer in one call — so a confident answer
-        # advances even when the brittle keyword turn-intent would veto it (observed:
-        # "gerai, bandau… nė viena lemputė neužsidegė" was read as in_progress and froze
-        # dr_power). The keyword detector + intent gate below stay as the fallback.
-        if (
-            step.kind is StepKind.CONFIRM
-            and r.get("asked")
-            and self._asked_recently(r)
-            and step.on
-            and step.id != "confirm_restored"
-            and os.getenv("CLASSIFIER", "on").lower() != "off"
-        ):
-            if self._classify_confirm_and_route(step, strat, user_input):
-                return
-        # ASKED INSTRUCT: the LLM classifier decides done-vs-still-doing, so a clear "I did
-        # it" phrased messily ("Gerai, jau įkišau") advances even when the keyword
-        # turn-intent reads it as in_progress and freezes the step (observed: dr_plug_pc
-        # froze, the bridge never bound). Keyword intent gate below stays the fallback.
-        if (
-            step.kind is StepKind.INSTRUCT
-            and r.get("asked")
-            and self._asked_recently(r)
-            and os.getenv("CLASSIFIER", "on").lower() != "off"
-        ):
-            if self._classify_instruct_and_advance(step, strat, user_input):
+        for guard in walker_guards.STEP_GUARDS:
+            if guard(self, r, strat, step, user_input):
                 return
         # ESCALATE = deterministic OUTCOME (Phase 3.11 B). The step is a call-ending
         # consent question ("užregistruosiu gedimą — ar tinka?"): the ENGINE registers

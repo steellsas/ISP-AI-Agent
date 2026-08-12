@@ -174,8 +174,13 @@ Taisyklės (kad nereikėtų perdaryti):
 - [ ] Kiti metodų perkėlimai pagal žemėlapį §4 (kiekvienas — atskiras commit'as):
       identifikacijos skriptas, narrator pagalbininkai, evidence drive,
       `_register_ticket_from_state` → executor
-- [ ] 15 walker guard'ų (§5) virsta conditional edges / routing funkcijomis —
-      perkeliame po 2–3, ne visus iš karto
+- [x] **Trečioji banga — walker guard'ai** (2026-08-12): 9 guard'ai (2 prelude +
+      7 step) iškelti į `agent/walker_guards.py` kaip įvardintos funkcijos su
+      UŽŠALDYTA eilės tvarka (testas fiksuoja seką); `_walk_resolution` liko
+      mechanika (intent, grandinės iteracija, advancement dispatch). Kontraktas:
+      guard'as grąžina True = suvartojo turn'ą. Advancement dispatch'as
+      (escalate/restored/see_device/instruct/confirm keyword) liko walker'yje —
+      tai mechanika, ne guard'ai. Ateity guard'ai taps v2 subgrafo edges.
 - [ ] Efemeriniai `_flag'ai` (§6) → `TurnScratch` arba lieka mazgo lokalūs
 - [ ] `react_agent.py` traukiasi iki LLM kvietimo + naratoriaus pagalbininkų
 - **DoD:** `react_agent.py` < ~1500 eil.; visa maršrutizacija matoma grafe;
