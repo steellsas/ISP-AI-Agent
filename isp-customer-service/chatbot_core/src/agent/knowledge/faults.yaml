@@ -270,6 +270,9 @@ faults:
           reikia: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
           klausimas: "Susiraskite routerį — dėžutę, į kurią ateina interneto kabelis. Pasakykite, kai būsite prie jo."
           paprasciau: "Ieškokite nedidelės dėžutės su lemputėmis, dažnai su antenomis — į ją ateina laidas iš sienos. Radote?"
+          # patikslinimas — kai atsakymas buvo plikas „ne“ be objekto: įvardijami
+          # abu galimi perskaitymai, klientas pasirenka (2026-08-11, Andrius).
+          patikslinimas: "Norėjau patikslinti — ar nerandate routerio, ar radote, bet kažkas kita negerai?"
           # atsakymai: kaip trumpi/darkyti atsakymai skaitomi, kai KĄ TIK klaustas
           # ŠITAS klausimas (universalu — naujas gedimas deklaruoja savus čia pat).
           atsakymai:
@@ -278,35 +281,70 @@ faults:
         lights:
           reikia: "ar dega bent viena routerio lemputė"
           klausimas: "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+          # kodel — pasakoma kartu su PIRMU klausimu, kad klientas žinotų, kam to
+          # reikia (2026-08-11, Andrius: paaiškinti ką tikrinam ir kodėl).
+          kodel: "Pagal lemputes matysime, ar routeris išvis gauna maitinimą."
           paprasciau: "Dėžutės priekyje yra mažos švieselės. Ar nors viena šviečia arba mirksi?"
+          patikslinimas: "Norėjau patikslinti — ar nė viena lemputė nedega, ar tiesiog nematote, kur žiūrėti?"
+          # ka_radote — kai klientas sako TIK „patikrinau“ be rezultato: agentas
+          # padėkoja ir paklausia, KĄ rado (2026-08-11, „pasitikslinti, o ne kurti“).
+          ka_radote: "Ar dega bent viena lemputė, ar nė viena?"
           kada: [device_present=rado]
         power_cable:
           reikia: "maitinimo laidas įkištas į rozetę IR į routerį"
           klausimas: "Patikrinkite, ar maitinimo laidas gerai įkištas į rozetę ir į patį routerį."
+          kodel: "Atsilaisvinęs laidas — dažniausia priežastis, kodėl routeris negauna srovės."
           paprasciau: "Juodas laidas apvaliu antgaliu turi eiti iš dėžutės į rozetę. Ištraukite ir vėl tvirtai įkiškite abiejuose galuose."
+          patikslinimas: "Norėjau patikslinti — ar laidas neįkištas, ar negalite dabar patikrinti?"
+          ka_radote: "O kaip radote — ar laidas buvo įkištas tvirtai, ar atsilaisvinęs?"
           kada: [lights=nedega]
         outlet_works:
           reikia: "rozetė veikia — pabandyta kita arba kiti įrenginiai nuo jos veikia"
           klausimas: "Pabandykite kitą rozetę — arba pasakykite, ar kiti įrenginiai nuo tos rozetės veikia."
+          kodel: "Taip atskirsime, ar sugedusi rozetė, ar pats routeris."
+          patikslinimas: "Norėjau patikslinti — ar kita rozetė nepadėjo, ar negalite jos išbandyti?"
+          ka_radote: "Ar iš kitos rozetės lemputės užsidegė, ar ne?"
           kada: [lights=nedega, power_cable=įkištas]
         has_computer:
           reikia: "ar yra kompiuteris laikinam tiltui"
           klausimas: "Ar turite kompiuterį, kad galėtume laikinai paleisti internetą per jį?"
+          patikslinimas: "Norėjau patikslinti — ar neturite kompiuterio, ar tiesiog nenorite bandyti per jį?"
           kada: [patvirtinta]
+        lan_active:
+          # Tilto NESĖKMĖS kelias (2026-08-12): kabelis įkištas, o telemetrija
+          # įrenginio nemato — tikrinama kompiuterio tinklo plokštė. `kada` gate
+          # variklio automatiškai NIEKADA netenkinamas (klausimą užduoda tik
+          # tilto nesėkmės laiptai _drive_propose_fix viduje).
+          reikia: "ar kompiuterio tinklo (LAN) ryšys aktyvus prijungus kabelį"
+          klausimas: "Tinkle vis dar nesimato jūsų įrenginio. Pažiūrėkite kompiuteryje — ar tinklo (LAN) ryšys rodomas kaip aktyvus, ar dega lemputė prie tinklo lizdo?"
+          atsakymai:
+            neaktyvus: [neaktyv, nedega, nerodo, "nėra", nera, "ne,", "ne "]
+            aktyvus: [aktyv, veikia, dega, rodo, taip, yra]
+          kada: [tilto_fazeje]
       patvirtinta_kai: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
       paneigta_kai: [lights=dega]
       paneigta_veda: dr_cable
     reikalinga: "reikalingas naujas maršrutizatorius"
+    # Tilto nesėkmės pabaiga (2026-08-12, Andrius): LAN patikrintas, įrenginio
+    # linijoje vis tiek nesimato — garsiai pasakoma galima kabelio problema ir
+    # registruojamas meistras; prierašas nugula ant tiketo.
+    tiltas_nepavyko:
+      pastaba: "Įrenginio linijoje vis dar nesimato — gali būti problema ir su ateinančiu kabeliu. Telefonu to nebeišspręsime."
+      prierasas: "Laikinai pajungti internetą per kompiuterį NEPAVYKO (kompiuterio LAN: {lan}) — įrenginio linijoje nesimato, galima atvedimo kabelio problema."
     # isvada — kaip PASKELBTI patvirtintą hipotezę žmogui ("Panašu — {isvada}");
     # aprasymas prie sprendimo — kaip jį pasiūlyti. Abu skaitomi findings
     # paskelbimo šablono (identification.yaml: findings_announce).
     isvada: "routeris sugedęs — telefonu jo neprikelsime"
+    # zingsnis — walker'io žingsnis, į kurį grįžtama, jei solveris nušalinamas
+    # vidury sprendimo (bailout sync, 2026-08-11) — niekada ne į seną dr_intro.
     sprendimai:
     - jei: [has_computer=yes]
       tada: bridge
+      zingsnis: dr_plug_pc
       aprasymas: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
     - jei: [has_computer=no]
       tada: ticket
+      zingsnis: escalate
       aprasymas: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
     steps:
     - id: dr_intro

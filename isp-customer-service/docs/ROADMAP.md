@@ -1202,6 +1202,38 @@ exists, else ticket). Questions are generated from MISSING evidence, so
 
 ---
 
+## Phase 4.6 — Skriptas → mąstymas: naratoriaus laisvinimo pakopos (aptarta 2026-08-12)
+
+Po 7 „hearing agent" ratų mechanika stabili, bet Andriaus diagnozė taikli:
+„agentas kalba tai, kas jam buvo nurodyta, bet negali pats išanalizuoti, ką
+žmogus pasakė". Beveik kiekvienas scripted gabalas — randas po konkrečios
+gyvos avarijos (haliucinuoti tiketai, per ankstyvas bind), tad determinizmas
+buvo sąmoninga kaina. Grąžinam LLM'ui vairo palaipsniui, kiekvieną pakopą
+tikrinant balsu + eval'u:
+
+- [ ] **A. Naratoriaus formuluojami klausimai** — variklis sprendžia KĄ
+      klausti (ledger'io raktas — šventa), LLM formuluoja KAIP pagal kontekstą
+      ir kliento kalbėseną; yaml tekstas lieka atsarga (LLM klaidos atveju) ir
+      prasmės inkaras. Taikoma ir suvestinei („Pasitikslinu…") bei išvados
+      paskelbimui. Tikslas: dingsta „to paties teksto kas skambutį" pojūtis.
+- [ ] **B. Garsus mąstymas (išvados, ne tik faktai)** — po kiekvieno ledger'io
+      įrašo naratorius įpareigojamas vienu sakiniu pasakyti IŠVADĄ: „kadangi
+      kiti įrenginiai veikia, rozetė gera — lieka pats routeris". Apibendrina
+      esamą kodel/isvada mechaniką iš faults.yaml.
+- [ ] **C. Solver'io išlaisvinimas** *(diskusijai po A+B)* — platesnė veiksmų
+      erdvė (gate'ai lieka: vienpusės durys, įrankiai, tiketai tik per variklį),
+      „patikrinkime dar kartą" ramentas apribojamas biudžetu.
+- [ ] **D. Mąstymo ciklas** *(diskusijai; už vėliavos, lyginamas eval'u)* —
+      supratimo pass'as + solver'is sulydomi į vieną apmąstymo žingsnį kas
+      ėjimą: „ką pasakė → kas iš to seka → ko trūksta → ką sakau" su
+      struktūruotu išėjimu; deterministinis sluoksnis lieka grynai saugos
+      tinklas. Kaina: +latencija, +tokenai — derinti su latencijos paketu.
+
+Eiga: A+B po `feat/hearing-agent` merge → balso patikra, ar „skripto jausmas"
+keičiasi → Andriaus klausimai apie agento struktūrą → sprendimas dėl C/D.
+
+---
+
 ## Phase 5 — Realtime & telephony
 
 - [ ] **Async conversation engine** — `run_until_response` → async generator;

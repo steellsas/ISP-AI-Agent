@@ -319,6 +319,29 @@ class ReactAgent:
         # moment; stashed when the reply comes from another layer that turn.
         self._findings_announced = False
         self._pending_announce = ""
+        # Bare-"ne" escalate clarify (2026-08-11): asked at most once per case;
+        # pending = the scripted choice question goes out this turn.
+        self._escalate_clarify_asked = False
+        self._escalate_clarify_pending = False
+        # Ticket refusal with solving content: one-turn narrator directive to
+        # say "neregistruoju" and return to the last fix instruction.
+        self._resume_fix_note = False
+        # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
+        # announce; refute confirm before a client-fact pivot; the pending-key
+        # whose done-report ("patikrinau") carried no result this turn.
+        self._recap_state = ""
+        self._refute_state = ""
+        self._done_report_key: str | None = None
+        # Plug-report memory (round 4): the caller's completed-plug report,
+        # remembered across turns — the bind gate no longer demands the plug
+        # verb in THIS turn's utterance.
+        self._bridge_plug_reported = False
+        # Bridge-failure ladder (round 5): 0 = cable re-check, 1 = the LAN
+        # question went out, 2 = escalate with the attempt on the ticket.
+        self._bridge_fail_stage = 0
+        self._bridge_fail_note: str | None = None
+        # Given-up keys already revived once (round 6) — never a second time.
+        self._revived_keys: set[str] = set()
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -582,6 +605,16 @@ class ReactAgent:
                 "neužregistruotas — nesakyk „užregistravau“. Atsakyk į kliento "
                 f"klausimą VIENU sakiniu ir būtinai pakartok klausimą: „{pending}“"
             )
+        # Ticket refusal WITH solving content (2026-08-11): the dialogue was
+        # dropped, the call stays OPEN — the reply returns to the fix.
+        if getattr(self, "_resume_fix_note", False):
+            self._resume_fix_note = False
+            facts.append(
+                "- KLIENTAS ATSISAKĖ REGISTRACIJOS IR NORI TĘSTI SPRENDIMĄ: pasakyk "
+                "vienu sakiniu, kad meistro neregistruoji, ir GRĮŽK prie paskutinės "
+                "sprendimo instrukcijos — pakartok ją arba atsakyk į kliento "
+                "klausimą apie ją. Pokalbio NEbaik."
+            )
         # Understanding-pass directives (2026-08-10): the acknowledgement makes
         # the caller feel HEARD; the confusion note turns re-asks into
         # re-EXPLANATIONS aimed at what was actually not understood.
@@ -590,7 +623,9 @@ class ReactAgent:
             if u.get("supratau"):
                 facts.append(
                     f"- PATVIRTINK, ką supratai, puse sakinio („{u['supratau']}“) — "
-                    "tada tęsk vienu kitu klausimu/žingsniu."
+                    "tada tęsk vienu kitu klausimu/žingsniu. KREIPKIS į klientą "
+                    "(„Supratau — …“), niekada nekalbėk apie jį trečiuoju asmeniu "
+                    "(NE „Klientas sutinka…“)."
                 )
             if u.get("tipas") == "nesupratimas" and u.get("neaiskumas"):
                 facts.append(
@@ -1248,6 +1283,14 @@ class ReactAgent:
             from .evidence import summary_lt
 
             lines.append(f"ĮRODYMŲ ŽURNALAS (nustatyta — NEBEKLAUSK): {summary_lt(s.evidence)}")
+        # Bridge-phase anchor (2026-08-12): after the plug report the solver
+        # kept sliding back to router/power questions — the router is HISTORY.
+        if getattr(self, "_bridge_plug_reported", False):
+            lines.append(
+                "TILTO FAZĖ: routeris jau pripažintas sugedusiu ir kabelis PERKIŠTAS į "
+                "kompiuterį — apie routerio lemputes/maitinimą NEBEKLAUSK. Darbas dabar: "
+                "kompiuterio prijungimas (linijos matomumas, kompiuterio LAN būsena)."
+            )
         lines.append(
             f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.awaiting}"
         )
@@ -1385,8 +1428,35 @@ class ReactAgent:
                     pasitikejimas=u["pasitikejimas"],
                     faktai=u["faktai"],
                 )
+        # The deterministic keyword layer ALWAYS runs (2026-08-12): it used to be
+        # a fallback only, so when the pass answered with EMPTY faktai (the
+        # confidence guard wipes low-confidence reads) the extractor never got a
+        # chance — "Pabandžiau kitą rozetę, kiti įrenginiai veikia" lost
+        # outlet_works and the hypothesis froze (live). Pass facts win on
+        # overlap; keywords fill the keys the pass did not provide.
+        kw_facts = extract_client_facts(user_input)
+        kw_disagreements: dict[str, str] = {}
         if facts is None:
-            facts = extract_client_facts(user_input)
+            facts = kw_facts
+        else:
+            for k, v in kw_facts.items():
+                if k not in facts:
+                    facts[k] = v
+                elif facts[k] != v:
+                    # The two readers DISAGREE on the SAME turn (live 2026-08-12:
+                    # the pass pinned "neveikia" on the OUTLET while keywords
+                    # read the correct "bandyta" — the silent pass win skipped
+                    # the recap and the announce). Neither wins silently: both
+                    # values go through set_fact below and the conflict clarify
+                    # settles it with the caller.
+                    kw_disagreements[k] = v
+                    self.tracer.emit(
+                        "evidence",
+                        action="reader_disagreement",
+                        key=k,
+                        pass_value=facts[k],
+                        kw_value=v,
+                    )
         # The JUST-ASKED evidence question gives short answers their meaning:
         # "Radau." to "Radote?" (no noun -> the general extractor is blind)
         # became a give-up live 2026-08-10. Context read fills ONLY the pending
@@ -1394,6 +1464,38 @@ class ReactAgent:
         pending = getattr(self, "_evidence_last_ask_key", None)
         pending_entry = s.evidence.get(pending) if pending else None
         u_tipas = (self._last_understanding or {}).get("tipas")
+        # DONE-report without a result (live 2026-08-11): "Mhm, patikrinau."
+        # says the check happened, not what it FOUND — yet the pass invented
+        # power_cable=atjungtas (echoed from the agent's own explanation) and
+        # the hypothesis never confirmed. A pass fact for the pending key on
+        # such a turn stands only if the utterance itself corroborates it
+        # (the key's markers / the keyword extractor); otherwise it is dropped
+        # and the drive asks WHAT was found ("pasitikslinti, o ne kurti").
+        self._done_report_key = None
+        if self._last_understanding is not None and pending and pending in facts:
+            from .resolution import is_bare_done_report
+
+            if is_bare_done_report(user_input) and (
+                pending_entry is None or pending_entry.get("value") == "neaišku"
+            ):
+                from .evidence import read_pending_answer as _rpa
+                from .evidence import spec_for as _spec_for
+
+                _spec = _spec_for((s.resolution or {}).get("verdict"))
+                _item = (_spec.get("client") or {}).get(pending) if _spec else None
+                corroborated = (
+                    _rpa(pending, user_input, _item) == facts[pending]
+                    or extract_client_facts(user_input).get(pending) == facts[pending]
+                )
+                if not corroborated:
+                    self.tracer.emit(
+                        "evidence",
+                        action="done_report_value_dropped",
+                        key=pending,
+                        value=facts[pending],
+                    )
+                    del facts[pending]
+                    self._done_report_key = pending
         # SUPPLEMENT, not just fallback (2026-08-10 round 2): the pass returned
         # tipas=atsakymas with an empty faktai for "…sakiau, kad RADAU" and the
         # key was given up on. When the pass failed OR answered without the
@@ -1453,6 +1555,17 @@ class ReactAgent:
                     and entry.get("value") != facts[key]
                     and kw.get(key) != facts[key]
                 ):
+                    # Second corroboration source (live 2026-08-11): the general
+                    # extractor needs the TOPIC word in the sentence ("laidas"),
+                    # but the caller answers "Tai įkištas" without naming it —
+                    # the pass already says the utterance is ABOUT this key, so
+                    # the key's OWN answer markers corroborate the flip too.
+                    from .evidence import read_pending_answer, spec_for
+
+                    spec = spec_for((s.resolution or {}).get("verdict"))
+                    spec_item = (spec.get("client") or {}).get(key) if spec else None
+                    if read_pending_answer(key, user_input, spec_item) == facts[key]:
+                        continue
                     self.tracer.emit(
                         "evidence", action="uncorroborated_flip_dropped", key=key, value=facts[key]
                     )
@@ -1470,6 +1583,22 @@ class ReactAgent:
                 )
             else:
                 self.tracer.emit("evidence", action="fact", key=key, value=value)
+        # Reader disagreements land SECOND: on a fresh key this flags the
+        # conflict (one scripted clarify settles it); if the flip guard dropped
+        # the pass value above, the keyword read simply stands as the fact.
+        for key, kw_value in kw_disagreements.items():
+            entry = set_fact(s.evidence, key, kw_value, CLIENT, turn)
+            if entry.get("conflict") and self._evidence_conflict is None:
+                self._evidence_conflict = (key, entry["value"], entry["pending"])
+                self.tracer.emit(
+                    "evidence",
+                    action="conflict",
+                    key=key,
+                    old=entry["value"],
+                    new=entry["pending"],
+                )
+            else:
+                self.tracer.emit("evidence", action="fact", key=key, value=kw_value)
 
     def solver_drive_turn(self, user_input: str | None) -> str | None:
         """Solver-driven turn — the MĄSTYTOJAS drives the piloted directions (Step 3,
@@ -1512,11 +1641,15 @@ class ReactAgent:
         # COMPUTER runs the bind path deterministically — the solver answered
         # "Įkišau į kompiuterį" with yet another disambiguate and the bind never
         # happened. _drive_propose_fix keeps all its own discipline (device must
-        # actually be visible before any bind).
-        from .resolution import detect_no_device, detect_plugged
+        # actually be visible before any bind). Round 4 (2026-08-11): the report
+        # is read IN CONTEXT (_plug_report) and REMEMBERED — "Įkišau, laukiu"
+        # without the word "kompiuteris" counted for nothing and the bind never
+        # ran while the caller kept repeating they had done it.
+        from .resolution import detect_no_device
 
         low_in = (user_input or "").lower()
-        if detect_plugged(user_input) and "kompiuter" in low_in:
+        if self._plug_report(user_input):
+            self._bridge_plug_reported = True
             reply = self._drive_propose_fix("", user_input)
             return self._commit_driven_reply(user_input, reply)
         # Discipline rule (2026-08-05): "no device" after the bridge OFFER is
@@ -1566,6 +1699,34 @@ class ReactAgent:
                 reason="distrust loop (repeat/disambiguate streak)",
             )
             self._trace_note("solver_drive", "distrust loop — walker resumes", level="warn")
+            # Ledger-position sync (round 4, 2026-08-11): a mid-bridge bailout
+            # resumed at a long-stale dr_intro and improvised into a ticket one
+            # step from a working bridge. With a CONFIRMED hypothesis the walker
+            # lands on the solution step the fault file declares (`zingsnis`).
+            from .evidence import hypothesis_status, solution_step, spec_for
+            from .resolution import get_strategy
+
+            r = self.state.resolution or {}
+            spec = spec_for(r.get("verdict"))
+            strat = get_strategy(r.get("verdict"))
+            target = None
+            if spec and hypothesis_status(self.state.evidence, spec) == "confirmed":
+                target = solution_step(self.state.evidence, r.get("verdict"))
+            elif spec:
+                # UNCONFIRMED dead end (evidence exhausted, revival spent):
+                # resuming at the long-stale intro re-walked the WHOLE ladder
+                # (live 2026-08-12: power cable re-asked from scratch). The
+                # honest endgame is the registration offer.
+                target = "escalate"
+            if target and strat and strat.step(target) and r.get("step") != target:
+                self._goto_step(r, target)
+                self.tracer.emit(
+                    "decision",
+                    intent="evidence",
+                    action="pivot",
+                    to=target,
+                    reason="bailout sync",
+                )
             return None  # the walker takes this and every following turn
         try:
             reply = self._drive(user_input)
@@ -1589,6 +1750,31 @@ class ReactAgent:
         self.state.messages.append({"role": "assistant", "content": reply})
         self._finalize_reply(reply)
         return reply
+
+    def _plug_report(self, user_input: str | None) -> bool:
+        """A completed plug-into-computer report, read IN CONTEXT: when the
+        agent's LAST question was about the computer cable, the plug verb alone
+        suffices — the caller need not repeat the word "kompiuteris". Live
+        2026-08-11: "Įkišau, laukiu", "įkištas iki galo" (passive) and
+        "pririškite tada" (an explicit bind request!) all failed the
+        same-sentence rule and the bind never ran."""
+        if not user_input:
+            return False
+        from .evidence import _fold
+        from .resolution import detect_plugged
+
+        low = _fold(user_input)
+        last_q = _fold(self._last_agent_question() or "")
+        if "kompiuter" not in low and "kompiuter" not in last_q:
+            return False  # not the bridge context — a cable reseat is not a bind
+        if detect_plugged(user_input):
+            return True
+        from .evidence import _mark_hit
+
+        if _mark_hit(low, "pririsk"):  # "pririškite tada" — asks for the bind itself
+            return True
+        # Passive done-forms answering the plug instruction.
+        return any(_mark_hit(low, m) for m in ("įkištas", "prijungtas", "pajungtas"))
 
     def request_cancel(self) -> None:
         """Ask the running streaming turn to stop (thread-safe: a bool flip).
@@ -1632,8 +1818,21 @@ class ReactAgent:
         u = getattr(self, "_last_understanding", None)
         if u is not None:
             if u["tipas"] in ("klausimas", "nukrypimas") and not u["faktai"]:
+                if extract_client_facts(user_input):
+                    # The keyword layer read facts the pass missed — an
+                    # informative interruption, not a deviation (they already
+                    # landed on the ledger via the always-on supplement).
+                    self._side_topic_turns = 0
+                    return False
                 from .faq import match as faq_match
 
+                # A question ABOUT the current instruction is NOT a deviation
+                # (live 2026-08-11: "Kur jungti tą kabelį į kompiuterį?" got
+                # "tai nėra mano sritis"). FAQ topics stay side topics.
+                if not faq_match(user_input) and self._on_task_question(user_input):
+                    self.tracer.emit("decision", intent="side_topic", action="on_task")
+                    self._side_topic_turns = 0
+                    return False
                 corroborated = is_real_question(user_input) or bool(faq_match(user_input))
                 if corroborated:
                     self._side_topic_this_turn = True
@@ -1659,12 +1858,36 @@ class ReactAgent:
             # An informative interruption ANSWERS things — not a deviation.
             self._side_topic_turns = 0
             return False
+        from .faq import match as faq_match
+
+        if not faq_match(user_input) and self._on_task_question(user_input):
+            self.tracer.emit("decision", intent="side_topic", action="on_task")
+            self._side_topic_turns = 0
+            return False
         self._side_topic_this_turn = True
         self._side_topic_turns += 1
         self.tracer.emit(
             "decision", intent="side_topic", action="enter", streak=self._side_topic_turns
         )
         return True
+
+    def _on_task_question(self, user_input: str | None) -> bool:
+        """The 'deviation' shares content words with the agent's LAST reply —
+        it is a question ABOUT the current instruction ("Kur jungti tą
+        kabelį?"), not a side topic; the solver/narrator answers it in place.
+        Folded prefix-overlap (≥5 chars) so inflections and dropped diacritics
+        still match ("jungti" ~ "prijungsite", "kabelį" ~ "kabelio")."""
+        last = self._last_agent_question() or ""
+        if not last or not user_input:
+            return False
+        from .evidence import _fold
+
+        last_f = _fold(last)
+        for tok in _fold(user_input).replace("?", " ").replace(",", " ").split():
+            tok = tok.strip(".!?")
+            if len(tok) >= 5 and tok[:5] in last_f:
+                return True
+        return False
 
     def on_turn_cancelled(self, spoken_text: str) -> None:
         """Barge-in cut the reply mid-generation (Phase 5 PR3): record what the
@@ -1695,6 +1918,136 @@ class ReactAgent:
         self._finalize_reply(reply)
         return reply
 
+    def _revive_gave_up_key(self, spec: dict) -> str | None:
+        """ONE second chance for a given-up key that BLOCKS confirmation
+        (Andrius 2026-08-12): 'neaišku' on a patvirtinta-required key froze the
+        hypothesis forever. At the dead-end moment the agent asks it once more,
+        plainly and with the reason; the answer lands through the pending
+        machinery (the give-up marker is replaceable by design). Never loops —
+        one revival per key per call."""
+        from .evidence import LABELS
+        from .identification import phrase
+
+        ev = self.state.evidence
+        for cond in spec.get("patvirtinta_kai") or []:
+            if "=" not in cond:
+                continue
+            key = cond.split("=", 1)[0].strip()
+            entry = ev.get(key)
+            if entry is None or entry.get("value") != "neaišku":
+                continue
+            if key in getattr(self, "_revived_keys", set()):
+                continue
+            self._revived_keys = getattr(self, "_revived_keys", set()) | {key}
+            item = (spec.get("client") or {}).get(key) or {}
+            self._evidence_last_ask_key = key
+            self.tracer.emit("evidence", action="revive_ask", key=key)
+            return phrase(
+                "reask_reason",
+                tema=LABELS.get(key, key),
+                klausimas=str(item.get("patikslinimas") or item.get("klausimas") or ""),
+            )
+        return None
+
+    def _maybe_facts_recap(self) -> str | None:
+        """Recap-and-confirm CHECKPOINT (Andrius 2026-08-11: 'pasitikslinti, o
+        ne kurti'): the first confirmed moment first READS BACK what the caller
+        told us — a misheard fact gets corrected here instead of driving a
+        wrong solution. Asked once; whatever the answer, the flow moves on next
+        turn (corrections land through the normal ingest/conflict machinery)."""
+        state = getattr(self, "_recap_state", "")
+        if state == "done":
+            return None
+        if state == "pending":
+            self._recap_state = "done"
+            self.tracer.emit("decision", intent="facts_recap", action="answered")
+            return None
+        from .evidence import client_facts_lt
+        from .identification import phrase
+
+        faktai = client_facts_lt(self.state.evidence)
+        if not faktai:
+            self._recap_state = "done"
+            return None
+        self._recap_state = "pending"
+        self.tracer.emit("decision", intent="facts_recap", action="ask")
+        return phrase("facts_recap", faktai=faktai)
+
+    def _refuting_client_fact(self, spec: dict) -> tuple[str, str] | None:
+        """The CLIENT-stated fact that currently refutes the hypothesis — the
+        one worth double-checking before pivoting (telemetry needs no confirm)."""
+        from .evidence import CLIENT, _cond_holds
+
+        ev = self.state.evidence
+        for cond in spec.get("paneigta_kai") or []:
+            if "=" in cond and _cond_holds(ev, cond, False):
+                key = cond.split("=", 1)[0].strip()
+                entry = ev.get(key)
+                if entry is not None and entry.get("source") == CLIENT:
+                    return key, str(entry.get("value"))
+        return None
+
+    def _maybe_refute_confirm(self, spec: dict) -> str | None:
+        """One confirm question before abandoning the hypothesis on a
+        CLIENT-stated fact (Andrius 2026-08-11: guard against premature
+        rejection — STT garbles flip facts). 'Taip' -> pivot proceeds; a
+        correction lands via ingest and un-refutes on its own."""
+        state = getattr(self, "_refute_state", "")
+        if state == "done":
+            return None
+        if state == "pending":
+            self._refute_state = "done"
+            self.tracer.emit("decision", intent="refute_confirm", action="answered")
+            return None
+        kv = self._refuting_client_fact(spec)
+        if kv is None:
+            self._refute_state = "done"  # telemetry-backed — trust it
+            return None
+        key, value = kv
+        from .evidence import LABELS, VALUE_LT
+        from .identification import phrase
+
+        self._refute_state = "pending"
+        self.tracer.emit("decision", intent="refute_confirm", action="ask", key=key)
+        return phrase(
+            "refute_confirm",
+            tema=LABELS.get(key, key),
+            reiksme=VALUE_LT.get(value, value),
+        )
+
+    def _evidence_question_open(self) -> str | None:
+        """The evidence key whose question is OUT and still unanswered — the one
+        question the caller is actually answering right now. The ingest clears
+        the pending key the moment a fact lands on it, so a non-None here means
+        this turn's reply did NOT read as an answer to it."""
+        key = getattr(self, "_evidence_last_ask_key", None)
+        if not key:
+            return None
+        entry = self.state.evidence.get(key)
+        if entry is not None and entry.get("value") not in (None, "neaišku"):
+            return None
+        return key
+
+    def _negation_clarify_reply(self, key: str) -> str | None:
+        """Scripted clarify for a bare-"ne" reply to the open evidence question
+        (Andrius 2026-08-11: clarify what the "ne" refers to instead of acting).
+        Wording comes from the fault file (`patikslinimas` per key) so every fault
+        can name its own two readings; generic phrase as fallback. Counts as an
+        ask — the give-up cap still ends an unreadable loop."""
+        from .evidence import spec_for
+        from .identification import phrase
+
+        if self._evidence_asks.get(key, 0) >= 2:
+            return None  # already asked twice — let the drive give up, not loop
+        spec = spec_for((self.state.resolution or {}).get("verdict")) or {}
+        item = (spec.get("client") or {}).get(key) or {}
+        self._evidence_asks[key] = self._evidence_asks.get(key, 0) + 1
+        self.tracer.emit("evidence", action="negation_clarify", key=key)
+        return str(
+            item.get("patikslinimas")
+            or phrase("negation_clarify", klausimas=str(item.get("klausimas") or ""))
+        ).strip()
+
     def _evidence_drive(self, user_input: str | None) -> str | None:
         """Evidence-declared direction (Ledger v2): pick the next question from
         MISSING evidence, compute the hypothesis from the ledger, and route the
@@ -1715,8 +2068,16 @@ class ReactAgent:
         spec = spec_for(r.get("verdict"))
         if spec is None:
             return None
+        # Captured BEFORE any new ask below overwrites it: was a question already
+        # out when the caller spoke? Needed for the bare-"ne" clarify.
+        pending_before = self._evidence_question_open()
         status = hypothesis_status(s.evidence, spec)
         if status == "refuted":
+            # One confirm question before the pivot when the refuting fact came
+            # from the CALLER's words — STT garbles flip facts (2026-08-11).
+            refute_reply = self._maybe_refute_confirm(spec)
+            if refute_reply is not None:
+                return refute_reply
             # A lit lamp disproves the dead-router path — sync the walker to the
             # declared pivot step so NOTHING rewinds, then let it continue.
             target = spec.get("paneigta_veda")
@@ -1734,6 +2095,11 @@ class ReactAgent:
         # sprendimai aprasymai), so every newly declared fault gets it free.
         announce = ""
         if confirmed and not getattr(self, "_findings_announced", False):
+            # Recap checkpoint FIRST: read the gathered facts back and let the
+            # caller confirm or correct before any conclusion is announced.
+            recap = self._maybe_facts_recap()
+            if recap is not None:
+                return recap
             self._findings_announced = True
             from .evidence import client_facts_lt, fault_isvada, solution_descriptions
             from .identification import phrase
@@ -1770,6 +2136,14 @@ class ReactAgent:
                 return None
         missing = next_missing(s.evidence, spec, confirmed)
         if missing is None:
+            # Nothing left to ask but no confirmation either — a given-up key
+            # ("neaišku") may be BLOCKING it forever (live 2026-08-12: the
+            # frozen hypothesis dropped the call to solver improvisation).
+            # ONE direct revival per key, then genuinely hand over.
+            if not confirmed:
+                revival = self._revive_gave_up_key(spec)
+                if revival is not None:
+                    return revival
             if announce:
                 self._pending_announce = announce
             return None
@@ -1780,6 +2154,10 @@ class ReactAgent:
             # "neaišku" and move on; an unreadable caller must never loop us.
             set_fact(s.evidence, key, "neaišku", CLIENT, s.turn_count)
             self.tracer.emit("evidence", action="gave_up", key=key)
+            if getattr(self, "_evidence_last_ask_key", None) == key:
+                # A given-up key must not read as an OPEN question forever —
+                # the walker's ownership gate keys off this.
+                self._evidence_last_ask_key = None
             inner = self._evidence_drive(user_input)
             if inner is None:
                 if announce:
@@ -1793,6 +2171,40 @@ class ReactAgent:
             if asks == 0
             else (item.get("paprasciau") or item.get("klausimas"))
         )
+        # The caller hears WHY we ask before what to press (Andrius 2026-08-11:
+        # "kad klientas žinotų kodėl prašo to ar kito") — once, on the first ask.
+        if asks == 0 and item.get("kodel"):
+            text = f"{text} {item['kodel']}"
+        # Re-ask says WHY it repeats (garsus mąstymas, Andrius 2026-08-11): the
+        # caller hears the agent is unsure about the SAME thing, not deaf.
+        if asks == 1:
+            from .evidence import LABELS
+            from .identification import phrase
+
+            text = phrase("reask_reason", tema=LABELS.get(key, key), klausimas=str(text))
+        # Bare "Ne." to THIS key's open question: the no has no object — clarify
+        # what is denied instead of re-asking the same words (live 2026-08-11).
+        if pending_before == key:
+            from .resolution import is_bare_negation
+
+            if is_bare_negation(user_input):
+                from .identification import phrase
+
+                text = item.get("patikslinimas") or phrase(
+                    "negation_clarify", klausimas=str(item.get("klausimas") or "")
+                )
+                self.tracer.emit("evidence", action="negation_clarify", key=key)
+            # DONE-report without a result ("Mhm, patikrinau") — acknowledge the
+            # work and ask WHAT was found (ka_radote from faults.yaml).
+            if getattr(self, "_done_report_key", None) == key:
+                from .identification import phrase
+
+                self._done_report_key = None
+                text = phrase(
+                    "done_report_clarify",
+                    klausimas=str(item.get("ka_radote") or item.get("klausimas") or ""),
+                )
+                self.tracer.emit("evidence", action="done_report_clarify", key=key)
         self.tracer.emit(
             "drive_decision",
             action="ask_evidence",
@@ -1905,6 +2317,13 @@ class ReactAgent:
                 self._drive_repeats = 0
             self._drive_last_reply = norm
             self._drive_last_action = action
+            if repeated:
+                # Verbatim repeat still went out — at least SAY why it repeats
+                # (Andrius 2026-08-11: the caller must hear the agent knows it
+                # is asking the same thing).
+                from .identification import phrase
+
+                reply = phrase("repeat_ack") + reply
             return reply
         return "Sekundėlę — patikslinkim dar kartą."
 
@@ -1947,7 +2366,14 @@ class ReactAgent:
         ev_pc = self.state.evidence.get("has_computer")
         if ev_pc is not None and ev_pc.get("value") == "yes":
             self._drive_bridge_offered = True
-        if not detect_plugged(user_input) and not _device_visible():
+        # Plug-report MEMORY (round 4, 2026-08-11): the report is remembered
+        # across turns — the caller said "Įkišau, laukiu" three turns ago and
+        # kept being asked to plug in because each NEW turn no longer contained
+        # the plug verb. detect_plugged alone keeps the pre-round-4 unlock (the
+        # solver only proposes the fix in the bridge phase).
+        if self._plug_report(user_input) or detect_plugged(user_input):
+            self._bridge_plug_reported = True
+        if not getattr(self, "_bridge_plug_reported", False) and not _device_visible():
             # The work is not done yet — the fix must WAIT for the client. And the
             # FIRST deferral must be the actual TRANSITION + OFFER: live 2026-08-05
             # the solver jumped straight to bind-speak ("pririšiu įrenginį") without
@@ -1970,10 +2396,7 @@ class ReactAgent:
             self.tracer.emit(
                 "drive_decision", action="fix_deferred", accepted=False, reason="no device observed"
             )
-            return (
-                "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
-                "kabelis įkištas iki galo, ir pasakykite."
-            )
+            return self._bridge_fail_step()
         try:
             obs = execute_tool("update_mac", {"customer_id": cid})
             self.tracer.emit("tool_call", name="update_mac", args={"customer_id": cid})
@@ -1981,10 +2404,75 @@ class ReactAgent:
             self._bridge_bound = True
         except Exception as e:
             self._trace_note("drive_propose_fix", str(e), level="error")
+        # Position the walker on the VERIFY step (the step after the bind, read
+        # structurally) — the reply below asks "ar internetas atsirado?", so the
+        # caller's "jau atsistatė!" must route as RESTORED. Live 2026-08-12 the
+        # walker sat on a stale instruct step and the success died unheard: the
+        # call drifted into ticket talk over a WORKING line.
+        from .resolution import get_strategy, next_step_id
+
+        r = self.state.resolution or {}
+        strat = get_strategy(r.get("verdict"))
+        if strat and strat.step("dr_bind"):
+            target = next_step_id(strat, "dr_bind", None)
+            if strat.step(target) is not None and r.get("step") != target:
+                self._goto_step(r, target)
+                r["asked"] = True  # the verify question goes out in THIS reply
+                r["asked_at"] = len(self.state.messages) + 1
+                self.tracer.emit(
+                    "decision", intent="evidence", action="pivot", to=target, reason="bind verify"
+                )
         return (
             say
             or "Matau jūsų kompiuterį linijoje — pririšau. Patikrinkite, ar internetas atsirado."
         )
+
+    def _bridge_fail_step(self) -> str:
+        """The plug is REPORTED but telemetry still sees nothing — a declared
+        failure ladder instead of the same re-check forever (Andrius
+        2026-08-12): (1) say the line does not see the device, re-check the
+        cable; (2) check the COMPUTER's network card (lan_active — the answer
+        lands on the ledger); (3) name the possible incoming-cable problem and
+        register the technician, with what-was-tried on the ticket."""
+        from .evidence import LABELS, VALUE_LT, fault_bridge_fail, spec_for
+
+        verdict = (self.state.resolution or {}).get("verdict")
+        stage = getattr(self, "_bridge_fail_stage", 0)
+        if stage == 0:
+            self._bridge_fail_stage = 1
+            return (
+                "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
+                "kabelis įkištas iki galo, ir pasakykite."
+            )
+        if stage == 1:
+            self._bridge_fail_stage = 2
+            spec = spec_for(verdict) or {}
+            item = (spec.get("client") or {}).get("lan_active") or {}
+            # The answer reads against THIS key (pending machinery, universal).
+            self._evidence_last_ask_key = "lan_active"
+            self._evidence_asks["lan_active"] = self._evidence_asks.get("lan_active", 0) + 1
+            self.tracer.emit("drive_decision", action="bridge_fail_lan_check", accepted=True)
+            return str(
+                item.get("klausimas")
+                or "Tinkle vis dar nesimato jūsų įrenginio. Ar kompiuterio tinklo (LAN) "
+                "ryšys rodomas kaip aktyvus?"
+            )
+        # Stage 2+: LAN answered (or unreadable) and the line is still empty —
+        # the technician takes it from here; the attempt goes on the ticket.
+        texts = fault_bridge_fail(verdict)
+        lan = (self.state.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
+        self._bridge_fail_note = (
+            texts.get("prierasas")
+            or "Laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: {lan})."
+        ).format(lan=VALUE_LT.get(lan, lan))
+        self.tracer.emit(
+            "drive_decision",
+            action="bridge_fail_escalate",
+            accepted=True,
+            reason=f"{LABELS.get('lan_active')}: {lan}",
+        )
+        pastaba = texts.get("pastaba") or "Įrenginio linijoje vis dar nesimato."
+        return pastaba + " " + self._drive_escalate(None)
 
     def _drive_escalate(self, decision) -> str:
         """Register the fault and close — through the SAME state-built ticket machinery
@@ -2045,6 +2533,16 @@ class ReactAgent:
         # tęskime" answers the confirm-end question, not the current step.
         if self._resume_hold:
             self._resume_hold = False
+            return
+        # The confirm-end question is OUT and unanswered — in the graph's turn
+        # order the walker runs BEFORE the guard that reads its answer, so this
+        # reply belongs to that question, not the step (live 2026-08-11: "Ne,
+        # nenoriu" — i.e. don't END — advanced stale dr_intro -> escalate ->
+        # ticket). Hold; _pre_turn_guards resumes or closes this same turn.
+        if self._end_confirm_pending:
+            self.tracer.emit(
+                "decision", intent="answer", action="hold", reason="end_confirm_pending"
+            )
             return
         # Derive the intent from THIS call's input rather than trusting it was set
         # earlier — the walker must not depend on the caller's ordering.
@@ -2113,6 +2611,23 @@ class ReactAgent:
                 if rt == "demand":
                     self._begin_ticket_dialogue(strat.step("escalate"))
                 return
+        # Question OWNERSHIP (live 2026-08-11): while the evidence drive has an OPEN
+        # question, that is the question the caller is answering — the walker's own
+        # step question may be MANY turns stale. A barge-in-truncated "Ne." (meant:
+        # "ne, nedega…") was read by the stale dr_intro yes/no as "won't check
+        # together" → escalate → ticket → dead call. The asked-step routing below
+        # (classify + keyword) must not consume such a reply; explicit refusals and
+        # restored pre-answers were already handled above.
+        if self._evidence_question_open():
+            self.tracer.emit(
+                "decision",
+                intent="answer",
+                action="hold",
+                from_step=step.id,
+                to=step.id,
+                reason="evidence_question_open",
+            )
+            return
         # ASKED generic CONFIRM (yes/no, lights, scope, restored, …): the LLM classifier
         # reads the answer AND whether it IS an answer in one call — so a confident answer
         # advances even when the brittle keyword turn-intent would veto it (observed:
@@ -2121,6 +2636,7 @@ class ReactAgent:
         if (
             step.kind is StepKind.CONFIRM
             and r.get("asked")
+            and self._asked_recently(r)
             and step.on
             and step.id != "confirm_restored"
             and os.getenv("CLASSIFIER", "on").lower() != "off"
@@ -2134,6 +2650,7 @@ class ReactAgent:
         if (
             step.kind is StepKind.INSTRUCT
             and r.get("asked")
+            and self._asked_recently(r)
             and os.getenv("CLASSIFIER", "on").lower() != "off"
         ):
             if self._classify_instruct_and_advance(step, strat, user_input):
@@ -2170,12 +2687,15 @@ class ReactAgent:
             return
         # Otherwise route only once the question was asked — a bare "taip" on the
         # diagnose turn is the address confirmation, not an answer to this step.
-        if not r.get("asked"):
+        # A STALE question (walker benched for turns) does not read answers either.
+        if not r.get("asked") or not self._asked_recently(r):
             return
         # Keyword fallback (classifier off / unsure): read the reply into a routing key.
         key = self._detect_confirm(step, user_input)
         if key is None:
             return
+        if self._block_uncorroborated_escalate(step, strat, key, user_input):
+            return  # clarify goes out instead; the step holds
         self._route_to(r, next_step_id(strat, step.id, key))
 
     def _emit_rag_injection(self, doc: str | None, section: int, step_id: str, text: str) -> None:
@@ -2214,6 +2734,30 @@ class ReactAgent:
             self._ticket_offscript = False
             low_q = (user_input or "").lower()
             ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+            # Cancel-confirm answer (2026-08-11): the previous reply asked
+            # "registruoti, ar tikrai nereikia?" — read THIS turn against that
+            # question only. Live, a bare "Ne." (a barge-in crumb) cancelled the
+            # ticket AND closed the call in one breath; cancelling is a one-way
+            # door, so it now takes a confirmed refusal.
+            if ctx.pop("cancel_confirm_out", False):
+                from .resolution import is_bare_negation
+
+                # "Ne, tai pajunkim tą kompiuterį" refuses the TICKET, not the
+                # help — back to solving, never back to the phone question.
+                if self._wants_to_keep_solving(user_input):
+                    self._abort_ticket_to_solving()
+                    return
+                if is_bare_negation(user_input) or any(
+                    m in low_q for m in ("neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu")
+                ):
+                    self._ticket_stage = "cancelled"
+                    self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                    return
+                # Anything else resumes the registration — the stage re-asks.
+                self.tracer.emit(
+                    "decision", intent="ticket_dialogue", action="cancel_confirm_resumed"
+                )
+                return
             # SUPRATIMO pass'as pirmiau (2026-08-10, Andrius): caller phrasing
             # cannot be predicted — "Bet kada galima per pietus iš ryto" IS an
             # hours answer, but "galima" sat on the keyword question list and
@@ -2242,8 +2786,26 @@ class ReactAgent:
                         self.tracer.emit("decision", intent="ticket_dialogue", action="question")
                         return
                     if ut["tipas"] == "atsisakymas":
-                        self._ticket_stage = "cancelled"
-                        self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                        # Refusal WITH solving content skips the confirm — the
+                        # caller told us what they want: keep fixing.
+                        if self._wants_to_keep_solving(user_input):
+                            self._abort_ticket_to_solving()
+                            return
+                        # One confirm round before the one-way door (2026-08-11):
+                        # "Ne." to "ar tiks šis numeris?" may mean "kitu numeriu",
+                        # not "neregistruokite" — clarify before dropping the
+                        # ticket the caller was just promised.
+                        if ctx.get("cancel_confirm_asked"):
+                            self._ticket_stage = "cancelled"
+                            self.tracer.emit(
+                                "decision", intent="ticket_dialogue", action="cancelled"
+                            )
+                            return
+                        ctx["cancel_confirm_asked"] = True
+                        ctx["ask_cancel_confirm"] = True
+                        self.tracer.emit(
+                            "decision", intent="ticket_dialogue", action="cancel_confirm"
+                        )
                         return
                     if not ctx.get(f"{self._ticket_stage}_asked"):
                         return  # trigger-swallow guard (question not asked yet)
@@ -2293,13 +2855,22 @@ class ReactAgent:
                 self.tracer.emit("decision", intent="ticket_dialogue", action="question")
                 return
             # Explicit "do not register" cancels the dialogue (their call, their
-            # choice) — the scripted reply closes with a goodbye.
+            # choice) — after ONE confirm round; the scripted reply closes with a
+            # goodbye only on the confirmed refusal.
             if not und_handled and any(
                 m in low_q
                 for m in ("neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk")
             ):
-                self._ticket_stage = "cancelled"
-                self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                if self._wants_to_keep_solving(user_input):
+                    self._abort_ticket_to_solving()
+                    return
+                if ctx.get("cancel_confirm_asked"):
+                    self._ticket_stage = "cancelled"
+                    self.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
+                    return
+                ctx["cancel_confirm_asked"] = True
+                ctx["ask_cancel_confirm"] = True
+                self.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm")
                 return
             if detect_farewell(user_input):
                 self._ticket_stage = "done"
@@ -2623,6 +3194,16 @@ class ReactAgent:
         self._drive_repeats = 0
         self._findings_announced = False
         self._pending_announce = ""
+        self._escalate_clarify_asked = False
+        self._escalate_clarify_pending = False
+        self._resume_fix_note = False
+        self._recap_state = ""
+        self._refute_state = ""
+        self._done_report_key = None
+        self._bridge_plug_reported = False
+        self._bridge_fail_stage = 0
+        self._bridge_fail_note = None
+        self._revived_keys = set()
         from .slots import ClientProfileState
 
         s.profile = ClientProfileState()
@@ -2644,6 +3225,48 @@ class ReactAgent:
             if m.get("role") == "assistant" and (m.get("content") or "").strip():
                 return m["content"]
         return None
+
+    def _asked_recently(self, r: dict) -> bool:
+        """True when the current step's question actually went out within the
+        last ~3 exchanges. Steps presented long ago (walker benched by the
+        solver/evidence drive) may not read new replies as their answers —
+        test/legacy setups without the stamp count as fresh."""
+        at = r.get("asked_at")
+        if at is None:
+            return True
+        return len(self.state.messages) - at <= 6
+
+    def _block_uncorroborated_escalate(self, step, strat, label, user_input: str | None) -> bool:
+        """A bare "Ne."-style reply about to route the walker into ESCALATE — a
+        one-way door to the ticket dialogue — needs a second source agreeing it
+        really is a refusal (the understanding pass reading a confident answer).
+        Without it, ask the solve-or-ticket clarify ONCE instead and hold
+        (Andrius 2026-08-11: clarify what the "ne" means, never rush the
+        conclusion). A repeated no on the next turn escalates normally."""
+        from .resolution import StepKind, is_bare_negation, next_step_id
+
+        target = next_step_id(strat, step.id, label)
+        tstep = strat.step(target) if strat and target else None
+        if tstep is None or tstep.kind is not StepKind.ESCALATE:
+            return False
+        if not is_bare_negation(user_input):
+            return False
+        if getattr(self, "_escalate_clarify_asked", False):
+            return False  # clarified once already — a repeated no is a real no
+        u = getattr(self, "_last_understanding", None)
+        if u is not None and u.get("tipas") == "atsakymas" and (u.get("pasitikejimas") or 0) >= 0.6:
+            return False  # two sources agree on the refusal — escalate may proceed
+        self._escalate_clarify_asked = True
+        self._escalate_clarify_pending = True
+        self.tracer.emit(
+            "decision",
+            intent="answer",
+            action="clarify",
+            from_step=step.id,
+            to=target,
+            reason="bare negation, no corroboration",
+        )
+        return True
 
     def _classify_confirm_and_route(self, step, strat, user_input: str | None) -> bool:
         """Classifier-led routing for an asked CONFIRM step. One LLM call reads BOTH the
@@ -2686,6 +3309,8 @@ class ReactAgent:
             routed_by=("classifier" if answered else "keyword"),
         )
         if answered:
+            if self._block_uncorroborated_escalate(step, strat, obs.label, user_input):
+                return True  # clarify goes out instead; the step holds
             self.state.awaiting = None
             self.state.awaiting_turns = 0
             self.state.step_confusions = 0
@@ -3085,6 +3710,45 @@ class ReactAgent:
             return need
         return _DIAGNOSIS_LT.get(cause, cause or "reikalinga specialisto pagalba")
 
+    _CONTINUE_SOLVING_MARKS = (
+        "jung",  # jungiu / pajunkim / prijunkite
+        "kompiuter",
+        "kabel",
+        "bandom",
+        "bandyk",
+        "pabandy",
+        "tikrin",
+        "tęs",
+        "tes ",
+        "teskim",
+        "toliau",
+        "darom",
+        "spręs",
+        "spres",
+    )
+
+    def _wants_to_keep_solving(self, user_input: str | None) -> bool:
+        """A ticket refusal that CARRIES solving content ("Ne, tai mes pajunkim
+        tą kompiuterį…") — the caller is refusing the REGISTRATION, not the
+        help. Live 2026-08-11: this was read as plain refusal, the dialogue
+        resumed the phone question and the call closed registered while the
+        caller was still asking for the bridge."""
+        from .evidence import extract_client_facts
+
+        low = (user_input or "").lower()
+        return bool(extract_client_facts(user_input)) or any(
+            m in low for m in self._CONTINUE_SOLVING_MARKS
+        )
+
+    def _abort_ticket_to_solving(self) -> None:
+        """Drop the ticket dialogue WITHOUT closing the call and hand the turn
+        back to solving — the narrator says so and re-anchors the last
+        instruction (directive consumed in the facts block)."""
+        self._ticket_stage = None
+        self._ticket_ctx = None
+        self._resume_fix_note = True
+        self.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
+
     def _ticket_stage_reply(self) -> str:
         """The scripted reply for the CURRENT dialogue stage. The first phone ask
         carries the intro (phone solving is over -> registering, and WHY), so the
@@ -3094,6 +3758,9 @@ class ReactAgent:
         from .identification import phrase
 
         ctx = self._ticket_ctx if self._ticket_ctx is not None else {}
+        if ctx.pop("ask_cancel_confirm", None):
+            ctx["cancel_confirm_out"] = True
+            return phrase("ticket_cancel_confirm")
         retry = ctx.pop("ask_retry", None)
         if retry == "phone":
             return phrase("ticket_phone_retry")
@@ -3105,7 +3772,13 @@ class ReactAgent:
         parts = []
         if not ctx.get("intro_done"):
             ctx["intro_done"] = True
-            parts.append(phrase("ticket_intro", priezastis=self._ticket_need()))
+            # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
+            # the internet just came back (live 2026-08-12). The intro then
+            # states the success and registers the ROUTER replacement.
+            if getattr(self, "_bridge_bound", False):
+                parts.append(phrase("ticket_intro_bridge"))
+            else:
+                parts.append(phrase("ticket_intro", priezastis=self._ticket_need()))
         ctx["phone_asked"] = True
         parts.append(phrase("ticket_phone"))
         return " ".join(parts)
@@ -3159,6 +3832,11 @@ class ReactAgent:
         if need:
             # Sentence-cased as its own sentence — "Reikalinga: reikalingas…" doubled up.
             details += f" {need[0].upper()}{need[1:]}."
+        # Bridge attempt outcome (2026-08-12): the technician reads WHAT was
+        # already tried — "pajungti PC nepavyko (LAN aktyvus)" changes what
+        # they bring and check first.
+        if getattr(self, "_bridge_fail_note", None):
+            details += f" {self._bridge_fail_note}"
         # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
         if s.contact_phone or s.caller_name:
             kas = s.caller_name or "skambinęs asmuo"
@@ -3314,6 +3992,11 @@ class ReactAgent:
             StepKind.ESCALATE,  # the consent question ("ar tinka?") — Phase 3.11 B
         ):
             r["asked"] = True
+            # Freshness stamp (2026-08-11): while the solver/evidence drive owns
+            # the turns, the walker step's question ages — three live calls were
+            # killed by a many-turns-stale dr_intro reading a reply as its own
+            # answer. The asked-step routing only trusts a RECENT question.
+            r["asked_at"] = len(self.state.messages)
 
     def _augment_resolve_result(self, observation: str) -> str:
         """Identification just landed — diagnose in the SAME turn.
@@ -4556,6 +5239,22 @@ class ReactAgent:
         # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
         if self._end_confirm_pending:
             return phrase("confirm_end")
+        # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
+        # the solve-or-register choice instead of crossing the one-way door
+        # (2026-08-11). The next turn routes normally: a repeated no escalates.
+        if getattr(self, "_escalate_clarify_pending", False):
+            self._escalate_clarify_pending = False
+            return phrase("escalate_clarify")
+        # Bare "ne" while the evidence drive's question is open, on the WALKER
+        # path (farewell/refuse-shaped turns land here; the drive words its own
+        # clarify): say what the "ne" could mean instead of acting on it.
+        from .resolution import is_bare_negation
+
+        open_key = self._evidence_question_open()
+        if open_key and is_bare_negation(user_input):
+            clarify = self._negation_clarify_reply(open_key)
+            if clarify:
+                return clarify
         if user_input and is_real_question(user_input):
             return None  # off-script — the LLM answers; guards kept the ladder state
         # INTAKE (not yet identified): the anamnesis question and the address

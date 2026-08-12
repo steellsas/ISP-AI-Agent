@@ -1264,17 +1264,34 @@ def detect_no_device(text: str | None) -> bool:
     return any(m in low for m in _NO_DEVICE)
 
 
-_PLUGGED = ("įkišau", "ikisau", "prijungiau", "pajungiau", "įjungiau", "ijungiau", "sujungiau")
+_PLUGGED = (
+    "įkišau",
+    "ikisau",
+    "prijungiau",
+    "pajungiau",
+    "įjungiau",
+    "ijungiau",
+    "sujungiau",
+    # STT-tolerant stems (live 2026-08-11: "Jau pajungiu", "Pajangių kompiuterį"
+    # were missed and the bridge instruction repeated 3×).
+    "pajungi",
+    "prijungi",
+    "pajang",
+)
 
 
 def detect_plugged(text: str | None) -> bool:
     """True when the caller reports a COMPLETED plug-in ("įkišau į kompiuterį") — the
     discipline gate for a bind: the change runs only after the client actually did
-    the work (and thereby agreed to it), never on the solver's anticipation."""
+    the work (and thereby agreed to it), never on the solver's anticipation.
+    Diacritics-folded (STT drops nosinės); negation-prefix aware ("dar
+    NEprijungiau" is not a report)."""
     if not text:
         return False
-    low = text.lower()
-    return any(m in low for m in _PLUGGED)
+    from .evidence import _fold, _mark_hit
+
+    low = _fold(text)
+    return any(_mark_hit(low, m) for m in _PLUGGED)
 
 
 def detect_ticket_consent(text: str | None) -> str | None:
@@ -1303,11 +1320,28 @@ def detect_farewell(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    tokens = {t.strip(".,!?…") for t in low.split()}
+    words = [t.strip(".,!?…") for t in low.split()]
+    tokens = set(words)
+
     # "iki"/"ate" must match as WHOLE WORDS — as substrings they hide inside
     # "neveIKIa" / "ATEina" and read a fault report as a goodbye (caught by tests
-    # the moment farewell started being checked on every turn).
-    if any(m in low for m in _FAREWELL) or tokens & {"iki", "ate"}:
+    # the moment farewell started being checked on every turn). And "iki" counts
+    # ONLY standalone — as a PREPOSITION it is content, not a goodbye: "Pajungtas
+    # IKI GALO" ended a live bridge in a ticket (2026-08-11), "iki 17 valandos"
+    # is a ticket-hours answer, "Iki šau" is STT of "Įkišau". A goodbye "iki" is
+    # the LAST word or leads a farewell phrase ("iki pasimatymo").
+    def _standalone_goodbye(word: str) -> bool:
+        for i, w in enumerate(words):
+            if w != word:
+                continue
+            nxt = words[i + 1] if i + 1 < len(words) else None
+            if nxt is None or nxt in ("pasimatymo", "viso", "gero", "ate", "iki"):
+                return True
+        return False
+
+    if any(m in low for m in _FAREWELL):
+        return True
+    if (tokens & {"iki", "ate"}) and (_standalone_goodbye("iki") or _standalone_goodbye("ate")):
         return True
     has_followup = any(
         w in low
@@ -1337,6 +1371,58 @@ def is_backchannel(text: str | None) -> bool:
     tokens = [t.strip(".,!?…") for t in text.lower().split()]
     tokens = [t for t in tokens if t]
     return bool(tokens) and all(t in _BACKCHANNEL for t in tokens)
+
+
+_NEGATION_TOKENS = {
+    "ne",
+    "nė",
+    "nea",
+    "nėra",
+    "nera",
+    "nežinau",
+    "nezinau",
+    "nematau",
+    "nieko",
+    "niekas",
+}
+
+
+_DONE_STEMS = ("patikrin", "padar", "atlik", "isband", "išband", "baig")
+_DONE_ACKS = {"mhm", "aha", "gerai", "nu", "tai", "jo", "ok", "jau", "viskas", "as", "aš"}
+
+
+def is_bare_done_report(text: str | None) -> bool:
+    """A DONE-report without a result: "Mhm, patikrinau." says the caller DID
+    the check but not WHAT they found. Live 2026-08-11 the understanding pass
+    invented the missing value (power_cable=atjungtas — echoed from the agent's
+    own explanation) and the hypothesis never confirmed. Such a turn earns an
+    acknowledge-and-ask-what-you-found clarify, never an invented fact.
+    "Patikrinau, laidas įkištas" carries content — not bare."""
+    if not text:
+        return False
+    tokens = [t.strip(".,!?…") for t in text.lower().split()]
+    tokens = [t for t in tokens if t and t not in _DONE_ACKS]
+    if not tokens or len(tokens) > 3:
+        return False
+    return all(any(t.startswith(s) for s in _DONE_STEMS) for t in tokens)
+
+
+def is_bare_negation(text: str | None) -> bool:
+    """A short negation-only reply ("Ne.", "Ne, nežinau.") — a NO without an object.
+    It says nothing about WHAT is denied: the pending check, the whole process, or
+    a truncated "ne(dega)…" after a barge-in (live 2026-08-11: exactly that "Ne."
+    was read as "won't check together" and killed the call with a cancelled
+    ticket). Such a reply may answer a clarify question, never drive a destructive
+    transition on its own."""
+    if not text:
+        return False
+    tokens = [t.strip(".,!?…") for t in text.lower().split()]
+    tokens = [t for t in tokens if t]
+    if not tokens or len(tokens) > 3:
+        return False
+    return any(t in _NEGATION_TOKENS for t in tokens) and all(
+        t in _NEGATION_TOKENS or len(t) <= 2 for t in tokens
+    )
 
 
 _QUESTION_TOKENS = {

@@ -115,6 +115,65 @@ flowchart TD
 NEperrašo; kliento prieštaravimas — vėliava + patikslinimas; „neaišku" po dviejų
 nesuprastų klausimų — judam toliau, jokių kilpų.
 
+**Klausimo NUOSAVYBĖ ir plikas „ne" (2026-08-11):** kol variklio įrodymo
+klausimas ATVIRAS (išsiųstas, atsakymo dar nėra), atsakymai skaitomi TIK prieš
+jį — pasenęs walker'io žingsnio klausimas ėjimo nebesuvalgo (gyvai: barge-in
+nukirpo „ne, nedega…" iki „Ne.", o prieš 6 ėjimus klaustas „ar patogu tikrinti?"
+perskaitė jį kaip atsisakymą → tiketas → miręs skambutis). Plikas „ne" be
+objekto niekada nevaro vienpusių durų:
+
+- prie atviro įrodymo klausimo → patikslinimas iš gedimo failo (`patikslinimas`
+  per raktą: „ar laidas neįkištas, ar negalite dabar patikrinti?");
+- vedantis į `escalate` be supratimo pass'o pritarimo → VIENĄ kartą klausiama
+  „sprendžiame kartu ar registruoju meistrą?"; pakartotas „ne" — tikras „ne";
+- tiketo atšaukimas → VIENAS patvirtinimo klausimas („registruoti, ar tikrai
+  nereikia?") prieš uždarant be tiketo.
+
+Pirmas įrodymo klausimas neša ir „KODĖL tikrinam" (`kodel` iš `faults.yaml`) —
+klientas girdi, kam prašoma („pagal lemputes matysime, ar gauna maitinimą").
+
+**Pasitikslinti, o ne kurti (2026-08-11, 3 ratas):**
+
+- **„Patikrinau" be rezultato** („Mhm, patikrinau") — supratimo pass'o
+  sugalvota reikšmė laukiamam raktui atmetama, jei jos nepatvirtina paties
+  ištarimo požymiai; agentas padėkoja ir klausia, KĄ rado (`ka_radote` iš
+  gedimo failo): „Supratau — patikrinote. O kaip radote — laidas buvo
+  įkištas tvirtai, ar atsilaisvinęs?"
+- **Faktų suvestinės checkpoint'as**: pirmą kartą pasitvirtinus hipotezei,
+  prieš išvadą agentas PERSKAITO faktus atgal — „Pasitikslinu, ar teisingai
+  supratau: lemputės nedega; laidas įkištas; rozetė bandyta. Ar taip?" —
+  klaidingai išgirstas faktas pataisomas čia, o ne po klaidingo sprendimo.
+- **Paneigimo checkpoint'as**: kliento žodžiais (ne telemetrija) paremtas
+  hipotezės paneigimas prieš pivot'ą pasitikslinamas vieną kartą — apsauga
+  nuo pirmalaikio atmetimo dėl STT darkymo.
+- **Perklausimas su priežastimi** (garsus mąstymas): antras to paties rakto
+  klausimas prasideda „Paklausiu dar kartą, nes noriu būti tikras dėl …" —
+  klientas girdi, KODĖL agentas kartojasi.
+- **Žingsnio klausimo galiojimas**: walker'io žingsnio atsakymų skaitymas
+  galioja tik ~3 apsikeitimus po klausimo — pasenęs klausimas (varikliui
+  perėmus vairą) nebeperskaito naujų replikų kaip savo atsakymų.
+- **„Iki" — ne atsisveikinimas**, kai tai prielinksnis („iki galo", „iki 17
+  valandos"): atsisveikinimu laikomas tik savarankiškas „iki".
+
+**Tilto nesėkmės laiptai (2026-08-12, 5 ratas):** kabelis perkištas, o
+telemetrija įrenginio nemato — deklaruotas planas vietoj amžino „ar gerai
+įkišote?":
+
+1. pasakoma tiesiai: „linijoje dar nematome jūsų kompiuterio" + kabelio
+   patikra (vieną kartą);
+2. kompiuterio tinklo plokštės klausimas (`lan_active` raktas faults.yaml,
+   atsakymas gula į žurnalą);
+3. jei LAN patikrintas, o įrenginio vis tiek nesimato — įvardijama galima
+   ATEINANČIO kabelio problema ir registruojamas meistras; ant tiketo —
+   prierašas „laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: …)"
+   (`tiltas_nepavyko` blokas faults.yaml).
+
+Solver'is tilto fazėje gauna inkarą „routeris — istorija, apie jį nebeklausk";
+supratimo pass'as moka `lan_active`, tad „rodo LAN veikia" nebekrenta ant
+routerio lempučių. Demo valdymas: dashboard'e mygtukas **„🔌 Įkišti kabelį"**
+— testuotojas paspaudžia tą akimirką, kai klientas fiziškai įkištų kabelį
+(jokio automatinio suveikimo pagal raktažodį; `SIMULATE_BRIDGE` lieka off).
+
 ## 6. SPRENDIMAS — vienpusės durys
 
 ```mermaid

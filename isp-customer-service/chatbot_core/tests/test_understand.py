@@ -186,6 +186,7 @@ class TestFindingsAnnounce:
 
     def _confirmed_agent(self, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
+        agent._recap_state = "done"  # recap checkpoint tested separately (round 3)
         with patch("agent.understand.understand", return_value=None):
             agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
             agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
@@ -219,6 +220,156 @@ class TestFindingsAnnounce:
         assert "Kokiu telefono numeriu" in reply  # ticket dialogue follows
 
 
+class TestConfirmationAgent:
+    """Round 3 (Andrius 2026-08-11): 'pasitikslinti, o ne kurti' — the agent
+    confirms instead of inventing; checkpoints guard wrong conclusions and
+    premature hypothesis rejection."""
+
+    def test_done_report_value_dropped_and_asked_back(self, db_connection, monkeypatch):
+        # "Mhm, patikrinau." carried NO result — the pass invented
+        # power_cable=atjungtas (echo of the agent's own explanation) and the
+        # hypothesis never confirmed (live). The value dies; the drive thanks
+        # and asks WHAT was found.
+        agent = _diagnosing_agent(monkeypatch)
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+        agent._evidence_last_ask_key = "power_cable"
+        agent._evidence_asks["power_cable"] = 1
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(
+                faktai={"power_cable": "atjungtas"}, supratau="klientas patikrino laidą", conf=0.8
+            ),
+        ):
+            agent._ingest_client_evidence("Mhm, patikrinau.")
+        assert "power_cable" not in agent.state.evidence  # invented value died
+        reply = agent._evidence_drive("Mhm, patikrinau.")
+        assert reply is not None and "Supratau — patikrinote" in reply
+        assert "laidas" in reply  # ka_radote from faults.yaml
+
+    def test_done_report_with_content_still_lands(self, db_connection, monkeypatch):
+        # "Taip ir padaryta" to the cable question DOES carry a value ("taip"
+        # is the key's own marker) — corroborated, the fact stands.
+        agent = _diagnosing_agent(monkeypatch)
+        agent._evidence_last_ask_key = "power_cable"
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"power_cable": "įkištas"}, supratau="įkišo laidą"),
+        ):
+            agent._ingest_client_evidence("Taip ir padaryta")
+        assert agent.state.evidence["power_cable"]["value"] == "įkištas"
+
+    def test_facts_recap_precedes_announce(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
+            agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
+            agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
+        first = agent._evidence_drive("nepadėjo")
+        assert first is not None and "Pasitikslinu" in first  # recap question
+        assert "nedega" in first  # reads the facts back
+        second = agent._evidence_drive("taip, teisingai")
+        assert second is not None and "Ką patikrinome" in second  # then announce
+
+    def test_refute_needs_one_confirm_before_pivot(self, db_connection, monkeypatch):
+        # A client-stated "dega" refutes the dead-router path — one confirm
+        # question before abandoning the hypothesis (STT garbles flip facts).
+        agent = _diagnosing_agent(monkeypatch)
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Radau, lemputės dega žaliai")
+        first = agent._evidence_drive("dega")
+        assert first is not None and "keičia išvadą" in first  # refute confirm
+        second = agent._evidence_drive("taip, tikrai dega")
+        assert second is None  # pivot proceeds (solver/walker takes over)
+        assert agent.state.resolution["step"] == "dr_cable"  # paneigta_veda sync
+
+
+class TestKeywordSupplement:
+    """Round 6 (live 2026-08-12): the pass answered with EMPTY faktai (the
+    confidence guard wiped a 0.5 read) and the keyword layer never ran — the
+    golden 'kiti įrenginiai veikia nuo tos rozetės' lost outlet_works and the
+    hypothesis froze. The deterministic layer now ALWAYS supplements."""
+
+    def test_keywords_fill_what_the_pass_dropped(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={}, supratau="bandė kitą rozetę", conf=0.9),
+        ):
+            agent._ingest_client_evidence(
+                "Pabandžiau kitą rozetę, vis tiek neveikia. Kiti įrenginiai nuo tos rozetės veikia."
+            )
+        assert agent.state.evidence["outlet_works"]["value"] == "bandyta"
+
+    def test_agreeing_readers_land_one_clean_fact(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"lights": "mirksi"}, supratau="lemputė mirksi"),
+        ):
+            agent._ingest_client_evidence("Ta lemputė tai mirksi")
+        e = agent.state.evidence["lights"]
+        assert e["value"] == "mirksi" and e["conflict"] is False
+
+    def test_disagreeing_readers_open_a_conflict(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"lights": "mirksi"}, supratau="lemputė mirksi"),
+        ):
+            agent._ingest_client_evidence("Lemputė dega žaliai")  # keywords read DEGA
+        e = agent.state.evidence["lights"]
+        assert e["conflict"] is True  # neither reader wins silently
+
+    def test_reader_disagreement_on_fresh_key_asks_clarify(self, db_connection, monkeypatch):
+        # Live 2026-08-12: "kiti įrenginiai veikia nuo tos rozetės, bet
+        # ROUTERIS neveikia" — the pass pinned neveikia on the OUTLET while
+        # keywords read the correct bandyta; the silent pass win skipped the
+        # recap and the announce. Now: conflict -> ONE clarify -> settled.
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"outlet_works": "neveikia"}, supratau="rozetė neveikia"),
+        ):
+            agent._ingest_client_evidence(
+                "Pabandžiau kitą rozetę — kiti įrenginiai veikia, bet routeris neveikia."
+            )
+        e = agent.state.evidence["outlet_works"]
+        assert e["conflict"] is True  # neither reader won silently
+        assert agent._evidence_conflict is not None  # the clarify goes out
+        with patch("agent.understand.understand", return_value=None):
+            reply = agent._identification_scripted_reply("na")
+        assert reply is not None and "rozetė" in reply  # "kaip yra iš tiesų?"
+
+
+class TestGaveUpRevival:
+    def test_blocking_neaisku_key_gets_one_revival(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = _diagnosing_agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
+        set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 3)  # gave up
+        reply = agent._evidence_drive("nežinau")
+        assert reply is not None and "maitinimo laidas" in reply  # the revival names it
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("Dabar pažiūrėjau — įkištas gerai, tvirtai")
+        assert agent.state.evidence["power_cable"]["value"] == "įkištas"
+        follow_up = agent._evidence_drive("įkištas gerai")
+        assert follow_up is not None and "rozet" in follow_up  # the plan resumes
+
+    def test_revival_happens_once_then_hands_over(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = _diagnosing_agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
+        set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 3)
+        assert agent._evidence_drive("nežinau") is not None  # revival
+        set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 4)  # still unreadable
+        assert agent._evidence_drive("nežinau") is None  # hands over, no loop
+
+
 class TestContradictionCorroboration:
     def test_uncorroborated_flip_dropped(self, db_connection, monkeypatch):
         # "Neturi kompiuterio" hallucinated device_present=nerado against a
@@ -250,6 +401,30 @@ class TestContradictionCorroboration:
             agent._ingest_client_evidence("O, dabar lemputė dega!")
         e = agent.state.evidence["lights"]
         assert e["conflict"] is True  # keywords agree -> the clarify machinery runs
+
+    def test_flip_corroborated_by_key_own_markers(self, db_connection, monkeypatch):
+        # Live 2026-08-11: ledger had power_cable=atjungtas (from "routeris
+        # neturi maitinimo"); the caller then answered "Tai ikištas" WITHOUT
+        # the topic word "laidas" — the general extractor saw no cable topic
+        # and the TRUE update was dropped, so the hypothesis never confirmed
+        # and the findings announce never fired. The key's OWN answer markers
+        # (read_pending_answer) now corroborate the flip.
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(
+                faktai={"power_cable": "atjungtas"}, supratau="routeris be maitinimo"
+            ),
+        ):
+            agent._ingest_client_evidence("routeris neturi maitinimo")
+        assert agent.state.evidence["power_cable"]["value"] == "atjungtas"
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"power_cable": "įkištas"}, supratau="laidas įkištas"),
+        ):
+            agent._ingest_client_evidence("Tai ikištas, viskas gerai")  # STT dropped į
+        e = agent.state.evidence["power_cable"]
+        assert e["conflict"] is True  # accepted -> ONE clarify settles it
 
 
 class TestTicketUnderstanding:

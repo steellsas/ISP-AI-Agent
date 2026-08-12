@@ -116,6 +116,7 @@
     <input type="checkbox" id="voiceOn" checked> balsas
   </label>
   <button id="dbReset" class="ghost" title="Atstatyti demo DB į pradinę būseną (tiketai, MAC, statusai)">♻️ DB</button>
+  <button id="simPlug" class="ghost" disabled title="Imituoti, kad klientas įkišo kabelį į kompiuterį — linijoje atsiranda nepririštas įrenginys">🔌 Įkišti kabelį</button>
   <button id="cfgToggle" class="ghost" title="Nustatymai">⚙️</button>
   <span id="sid"></span>
 </header>
@@ -238,7 +239,7 @@ function feed(cls, text){
 }
 function setLive(on){
   $("statusDot").className="dot"+(on?" live":"");
-  for(const id of ["stop","send","text","mic"]) $(id).disabled=!on;
+  for(const id of ["stop","send","text","mic","simPlug"]) $(id).disabled=!on;
   $("start").disabled=on; $("phone").disabled=on;
 }
 function fmtUsd(v){ return "$"+v.toFixed(4); }
@@ -367,6 +368,16 @@ $("dbReset").onclick = async () => {
   }else{
     addMsg("note","♻️ DB atstatyti nepavyko"+(r?` (${r.status})`:""));
   }
+};
+// DEMO: the tester plays the CLIENT's hands — pressing this is the moment the
+// wall cable lands in the PC (an unbound device appears on the demo line).
+// The agent learns about it only through its next telemetry read.
+$("simPlug").onclick = async () => {
+  if(!sid) return;
+  const r = await fetch(`/sessions/${sid}/simulate-plug`, {method:"POST"}).catch(()=>null);
+  if(r && r.ok){ addMsg("note","🔌 kabelis įkištas — linijoje atsiranda kompiuteris"); }
+  else if(r && r.status===409){ addMsg("note","🔌 klientas dar neidentifikuotas — palaukite adreso patvirtinimo"); }
+  else{ addMsg("note","🔌 imitacija nepavyko"+(r?` (${r.status})`:"")); }
 };
 $("send").onclick = sendText;
 $("text").addEventListener("keydown", e=>{ if(e.key==="Enter") sendText(); });

@@ -14,7 +14,7 @@ uv run python chatbot_core/voice_demo.py
 - „Tu:" = ką sakai balsu · „Agentas turi:" = ko tikimės (ne pažodžiui).
 
 ### Jungikliai (env) — žr. „Simuliacijos" apačioje
-- `SIMULATE_BRIDGE` — tilto įrenginio imitacija. **voice_demo įjungia automatiškai**, nieko daryti nereikia.
+- `SIMULATE_BRIDGE` — AUTOMATINĖ tilto imitacija pagal raktažodį (voice_demo įjungdavo). **Dashboard'e (FastAPI) NENAUDOJAMA** — nuo 2026-08-12 tiltą imituoji RANKINIU mygtuku **„🔌 Įkišti kabelį"** viršuje: paspausk tą akimirką, kai klientas fiziškai įkištų kabelį į kompiuterį (linijoje atsiranda nepririštas įrenginys; agentas tai pamato per KITĄ telemetrijos skaitymą). Nepaspaudus mygtuko agentas nueis tilto NESĖKMĖS keliu: kabelio patikra → LAN klausimas → meistras su prierašu.
 - `CLASSIFIER` — LLM yes/no supratimas. **Įjungtas pagal nutylėjimą.** Išjungti: `$env:CLASSIFIER="off"`.
 - `SOLVER_SHADOW` — sprendėjas shadow'e (loginа greta walker'io, **nevairuoja**). Įjungti stebėjimui: `$env:SOLVER_SHADOW="on"`.
 - `LOG_LEVEL` — konsolės loggeris. Numatyta `INFO`. **Testuojant naudok `DEBUG`** — matysi maršrutizavimą, klasifikatoriaus/solverio fallback'us, tool kvietimus ir prarytas klaidas realiu laiku (be PII).

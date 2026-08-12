@@ -411,6 +411,353 @@ class TestEscalateOutcome:
         assert agent.state.case_closed is False
 
 
+class TestHearingAgent:
+    """2026-08-11 live fix: a barge-in-truncated "Ne." (meant "ne, nedega…") was
+    read by the STALE dr_intro yes/no as "won't check" → escalate → ticket →
+    dead call. Ownership: an open evidence question owns the reply; a bare
+    negation CLARIFIES instead of driving one-way doors (escalate, ticket
+    cancel); first evidence asks explain WHY (kodel from faults.yaml)."""
+
+    def _agent(self, monkeypatch, step="dr_intro", asked=True):
+        import os
+
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.diagnosis["network"] = {"group": "B6", "reason": "no_mac_observed"}
+        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": step,
+            "asked": asked,
+        }
+        return agent
+
+    def test_bare_negation_detector(self):
+        from agent.resolution import is_bare_negation
+
+        assert is_bare_negation("Ne.")
+        assert is_bare_negation("Ne, nežinau.")
+        assert not is_bare_negation("Ne, nedega nei viena")  # carries an object
+        assert not is_bare_negation("ne, nenoriu, ačiū")  # a real refusal
+        assert not is_bare_negation("Gerai")
+        assert not is_bare_negation(None)
+
+    def test_walker_holds_while_evidence_question_open(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._evidence_last_ask_key = "power_cable"
+        agent._evidence_asks["power_cable"] = 1
+        agent._walk_resolution("Ne.")  # the fatal live turn
+        assert agent.state.resolution["step"] == "dr_intro"  # held, not escalate
+        assert agent._ticket_stage is None
+
+    def test_open_question_negation_gets_fault_file_clarify(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._evidence_last_ask_key = "power_cable"
+        agent._evidence_asks["power_cable"] = 1
+        reply = agent._identification_scripted_reply("Ne.")
+        assert reply is not None and "neįkištas" in reply  # patikslinimas wording
+
+    def test_drive_negation_clarify_replaces_reask(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = self._agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
+        agent._evidence_last_ask_key = "power_cable"
+        agent._evidence_asks["power_cable"] = 1
+        reply = agent._evidence_drive("Ne.")
+        assert reply is not None and "neįkištas" in reply
+
+    def test_kodel_rides_on_first_evidence_ask(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        agent = self._agent(monkeypatch)
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        reply = agent._evidence_drive("radau")
+        assert reply is not None and "lemputė" in reply
+        assert "maitinimą" in reply  # the kodel sentence
+
+    def test_bare_ne_to_escalate_clarifies_once_then_escalates(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._walk_resolution("Ne.")  # keyword "no" routes dr_intro -> escalate
+        assert agent.state.resolution["step"] == "dr_intro"  # blocked — clarify instead
+        assert agent._escalate_clarify_pending is True
+        reply = agent._identification_scripted_reply("Ne.")
+        assert reply is not None and "registruoju meistrą" in reply
+        agent._walk_resolution("Ne.")  # repeated no IS a real no
+        assert agent.state.resolution["step"] == "escalate"
+
+    def test_rich_refusal_still_escalates_directly(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent._walk_resolution("Nieko nedarysiu, įregistruokit gedimą")
+        assert agent._ticket_stage == "phone"  # refuse/demand path untouched
+
+    def test_ticket_cancel_needs_one_confirm(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent._pre_turn_guards("Neregistruokite nieko")
+        assert agent._ticket_stage == "phone"  # not cancelled yet
+        reply = agent._ticket_stage_reply()
+        assert "tikrai nereikia" in reply  # the confirm question went out
+        agent._pre_turn_guards("nereikia")
+        assert agent._ticket_stage == "cancelled"  # confirmed refusal cancels
+
+    def test_ticket_cancel_confirm_can_resume(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent._pre_turn_guards("Neregistruokite nieko")
+        agent._ticket_stage_reply()  # confirm question goes out
+        agent._pre_turn_guards("gerai, registruokite vis dėlto")
+        assert agent._ticket_stage == "phone"  # resumed, not cancelled
+        assert "numeriu" in agent._ticket_stage_reply()  # stage re-asks
+
+    # --- round 2 (live 2026-08-11, call 2) ------------------------------------
+
+    def test_end_confirm_answer_never_routes_the_walker(self, db_connection, monkeypatch):
+        # "Iki šau." (STT of "Įkišau") triggered confirm-end; the answer "Ne,
+        # nenoriu" (= don't END) then advanced stale dr_intro -> escalate ->
+        # ticket. The walker holds while the confirm-end answer is unread.
+        agent = self._agent(monkeypatch)
+        agent._end_confirm_pending = True
+        agent._walk_resolution("Ne, nenoriu.")
+        assert agent.state.resolution["step"] == "dr_intro"
+        assert agent._ticket_stage is None
+
+    def test_ticket_refusal_with_solving_content_returns_to_fix(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent._pre_turn_guards("Neregistruokite, pajunkim tą kompiuterį")
+        assert agent._ticket_stage is None  # dialogue dropped…
+        assert agent.state.case_closed is False  # …but the call stays OPEN
+        assert agent._resume_fix_note is True  # narrator returns to the fix
+
+    def test_cancel_confirm_answer_with_solving_content_returns_to_fix(
+        self, db_connection, monkeypatch
+    ):
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {
+            "phone_asked": True,
+            "intro_done": True,
+            "cancel_confirm_asked": True,
+            "cancel_confirm_out": True,
+        }
+        agent._pre_turn_guards("Ne, tai mes pajunkim tą kompiuterį. Aš jungiu kabelį.")
+        assert agent._ticket_stage is None
+        assert agent.state.case_closed is False
+        assert agent._resume_fix_note is True
+
+    # --- round 3 (live 2026-08-11, call 3) ------------------------------------
+
+    def test_iki_is_a_preposition_not_a_goodbye(self):
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Pajungtas iki galo.") is False  # killed a live bridge
+        assert detect_farewell("Iki 17 valandos") is False  # ticket-hours answer
+        assert detect_farewell("Iki šau.") is False  # STT of "Įkišau"
+        assert detect_farewell("Iki!") is True
+        assert detect_farewell("iki pasimatymo") is True
+        assert detect_farewell("viso gero, iki") is True
+
+    def test_bare_done_report_detector(self):
+        from agent.resolution import is_bare_done_report
+
+        assert is_bare_done_report("Mhm, patikrinau.")
+        assert is_bare_done_report("Jau padariau")
+        assert not is_bare_done_report("Patikrinau, laidas įkištas")
+        assert not is_bare_done_report("Nedega nė viena")
+
+    def test_plugged_detector_survives_stt_garbles(self):
+        from agent.resolution import detect_plugged
+
+        assert detect_plugged("Jau pajungiu.")  # missed live, instruction repeated 3×
+        assert detect_plugged("Pajangių kompiuterį.")
+        assert detect_plugged("Aš jau pajungiau kabelį")
+        assert not detect_plugged("tuoj pajungsiu")  # future tense — not done yet
+
+    def test_stale_step_question_reads_no_answers(self, db_connection, monkeypatch):
+        # dr_intro presented ~15 turns earlier consumed "Dar interneto nėra."
+        # as its own "no" -> escalate -> ticket (three live calls in a row).
+        agent = self._agent(monkeypatch)
+        agent.state.resolution["asked_at"] = 0
+        agent.state.messages.extend({"role": "user", "content": f"turn {i}"} for i in range(8))
+        agent._walk_resolution("Ne.")
+        assert agent.state.resolution["step"] == "dr_intro"  # held — question too old
+        assert agent._ticket_stage is None
+
+    def test_fresh_step_question_still_routes(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent.state.resolution["asked_at"] = len(agent.state.messages)
+        agent._walk_resolution("nieko nedarysiu, įregistruokit gedimą")
+        assert agent._ticket_stage == "phone"  # refuse/demand path unaffected
+
+    # --- round 4 (live 2026-08-11, call 4: bind never ran) --------------------
+
+    def test_plug_report_reads_context_not_one_sentence(self, db_connection, monkeypatch):
+        agent = self._agent(monkeypatch)
+        agent.state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Dabar įkiškite tą kabelį į kompiuterio tinklo lizdą — "
+                "pasakykite, kai padarysite.",
+            }
+        )
+        assert agent._plug_report("Ikišau, ikišau, laukiu internetą.") is True
+        assert agent._plug_report("Taip, jis įkištas iki galo.") is True  # passive
+        assert agent._plug_report("Pririškite tada.") is True  # explicit bind ask
+        assert agent._plug_report("dar neprijungiau, sekundėlę") is False  # negation
+        # The SAME words during the power-cable phase are NOT a bind report.
+        agent.state.messages[-1] = {
+            "role": "assistant",
+            "content": "Patikrinkite, ar maitinimo laidas gerai įkištas į rozetę.",
+        }
+        assert agent._plug_report("Įkišau gerai.") is False
+
+    def test_plug_report_memory_unlocks_the_bind_gate(self, db_connection, monkeypatch):
+        # "Įkišau, laukiu" three turns ago — the gate demanded the verb in THIS
+        # turn's utterance and kept repeating "Kai prijungsite…" (live).
+        agent = self._agent(monkeypatch)
+        agent._bridge_plug_reported = True
+        agent._drive_bridge_offered = True
+        reply = agent._drive_propose_fix("", "taip, viskas padaryta, laukiu")
+        assert "Kai prijungsite" not in reply  # no more deferral on wording
+        assert agent._bridge_bound or "nematome" in reply  # bind ran (or line check)
+
+    def test_bailout_lands_on_declared_solution_step(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(monkeypatch)
+        for k, v in (
+            ("device_present", "rado"),
+            ("lights", "nedega"),
+            ("power_cable", "įkištas"),
+            ("outlet_works", "bandyta"),
+            ("has_computer", "yes"),
+        ):
+            set_fact(agent.state.evidence, k, v, CLIENT, 1)
+        agent.state.caller_name = "Andrius"
+        agent._recap_state = "done"
+        agent._findings_announced = True
+        agent._drive_bridge_offered = True
+        agent._drive_repeats = 2  # distrust streak observed
+        assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
+        assert agent.state.resolution["step"] == "dr_plug_pc"  # …AT the bridge
+
+    # --- round 5 (2026-08-12): bridge-failure ladder ---------------------------
+
+    def test_bridge_fail_ladder_lan_check_then_technician(self, db_connection, monkeypatch):
+        # Plug reported, telemetry never shows the device (no simulation):
+        # (1) say the line sees nothing + cable re-check, (2) the LAN question,
+        # (3) incoming-cable note + technician, attempt on the ticket.
+        agent = self._agent(monkeypatch)
+        agent.state.caller_name = "Andrius"
+        agent._bridge_plug_reported = True
+        agent._drive_bridge_offered = True
+        r1 = agent._drive_propose_fix("", "pajungiau kabelį")
+        assert "nematome jūsų kompiuterio" in r1
+        r2 = agent._drive_propose_fix("", "vis dar nieko")
+        assert "LAN" in r2  # the computer's network card, not the router
+        assert agent._evidence_last_ask_key == "lan_active"
+        agent._ingest_client_evidence("Nerodo nieko, neaktyvus")
+        assert agent.state.evidence["lan_active"]["value"] == "neaktyvus"
+        r3 = agent._drive_propose_fix("", "ir dabar nieko")
+        assert "kabeliu" in r3  # the possible incoming-cable problem is NAMED
+        assert "Kokiu telefono numeriu" in r3  # technician registration begins
+        assert "NEPAVYKO" in (agent._bridge_fail_note or "")
+        _complete_ticket_dialogue(agent)
+        with db_connection.cursor() as cur:
+            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            details = dict(cur.fetchone())["details"]
+        assert "NEPAVYKO" in details and "neaktyvus" in details
+
+    # --- round 6 (live 2026-08-12): dead ends resolve, success is heard -------
+
+    def test_unconfirmed_bailout_goes_to_escalate_not_intro(self, db_connection, monkeypatch):
+        from agent.evidence import CLIENT, set_fact
+
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(monkeypatch)
+        agent.state.caller_name = "Andrius"
+        for k, v in (
+            ("device_present", "rado"),
+            ("lights", "nedega"),
+            ("power_cable", "neaišku"),  # gave up — hypothesis unconfirmable
+        ):
+            set_fact(agent.state.evidence, k, v, CLIENT, 1)
+        agent._revived_keys = {"power_cable"}  # revival already spent
+        agent._drive_repeats = 2  # distrust streak observed
+        assert agent.solver_drive_turn("nežinau ką daugiau daryti") is None
+        assert agent.state.resolution["step"] == "escalate"  # honest endgame
+
+    def test_bind_lands_walker_on_verify_and_hears_restored(self, db_connection, monkeypatch):
+        # Tools are FAKED so the shared session DB is not mutated (a real bind
+        # here flips CUST009 healthy and breaks later ordering-dependent tests).
+        import json as _json
+
+        agent = self._agent(monkeypatch)
+        agent._bridge_plug_reported = True
+        agent._drive_bridge_offered = True
+        calls = []
+
+        def fake_execute(name, args):
+            calls.append(name)
+            if name == "diagnose_connection":
+                reason = "foreign_mac" if "simulated" in calls else "no_mac_observed"
+                return _json.dumps({"success": True, "verdict": {"reason": reason}})
+            return _json.dumps({"success": True})
+
+        monkeypatch.setattr("agent.react_agent.execute_tool", fake_execute)
+        monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: calls.append("simulated"))
+        monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
+        reply = agent._drive_propose_fix("", "įkišau į kompiuterį")
+        assert "pririšau" in reply  # the bind ran
+        assert agent.state.resolution["step"] == "dr_verify"  # verify owns the next reply
+        agent._walk_resolution("Jau atsistatė, veikia internetas!")
+        assert agent.state.resolution["step"] == "dr_register_router"  # success HEARD
+
+    def test_ticket_intro_after_working_bridge_states_the_success(self, db_connection, monkeypatch):
+        # "Telefonu šio gedimo išspręsti nepavyks" right after the internet
+        # CAME BACK read as a failure (live 2026-08-12) — the post-bridge
+        # intro states the success and registers the router replacement.
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._bridge_bound = True
+        agent._begin_ticket_dialogue(None)
+        intro = agent._ticket_stage_reply()
+        assert "veikia per kompiuterį" in intro
+        assert "nepavyks" not in intro
+        assert "Kokiu telefono numeriu" in intro
+
+    def test_lan_pending_answers(self):
+        from agent.evidence import read_pending_answer
+
+        assert read_pending_answer("lan_active", "Rodo, kad aktyvus") == "aktyvus"
+        assert read_pending_answer("lan_active", "Nerodo nieko") == "neaktyvus"
+        assert read_pending_answer("lan_active", "dega lemputė prie lizdo") == "aktyvus"
+
+    def test_on_task_question_stays_with_the_flow(self, db_connection, monkeypatch):
+        # "Kur jungti tą kabelį į kompiuterį?" is a question ABOUT the current
+        # instruction — side_topic answered it with "tai nėra mano sritis" live.
+        agent = self._agent(monkeypatch)
+        agent.state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Dabar įkiškite tą kabelį į kompiuterio tinklo lizdą — "
+                "pasakykite, kai padarysite.",
+            }
+        )
+        assert agent.classify_side_topic("Kur jungti tą kabelį į kompiuterį?") is False
+        # An off-task FAQ question still goes to the side node.
+        assert agent.classify_side_topic("O kiek kainuos meistras?") is True
+
+
 class TestAutoRegisterEscalate:
     """consent=False ESCALATE (dr_register_router): the registration is a necessity —
     the engine registers ON ARRIVAL and closes; no consent question, no misread."""
@@ -1147,6 +1494,7 @@ class TestDriveRepeatBailout:
         agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas, bandžiau kitą rozetę")
         agent._ingest_client_evidence("Turiu kompiuterį")
+        agent._recap_state = "done"  # recap checkpoint tested elsewhere (round 3)
         agent._drive_repeats = 2  # repeat/disambiguate streak already observed
 
         assert agent.solver_drive_turn("gerai gerai") is None  # walker resumes
@@ -1555,9 +1903,14 @@ class TestTicketDialogue:
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
+        # Cancelling is a one-way door (2026-08-11): the first refusal gets ONE
+        # confirm question; only the confirmed refusal cancels and closes.
         agent._pre_turn_guards("ne, nereikia registruoti nieko")
+        assert agent._ticket_stage == "phone"
+        assert "tikrai nereikia" in agent._ticket_stage_reply()
+        agent._pre_turn_guards("nereikia")
         assert agent._ticket_stage == "cancelled"
-        reply = agent._identification_scripted_reply("ne, nereikia registruoti nieko")
+        reply = agent._identification_scripted_reply("nereikia")
         assert "neregistruoju" in reply
         assert agent.state.ticket_id is None
         assert agent.state.case_closed and agent.state.closed_reason == "declined"

@@ -405,6 +405,40 @@ class TestConfigPage:
         assert os.environ["SIMULATE_BRIDGE"] == "on"
 
 
+class TestSimulatePlug:
+    """DEMO plug button (2026-08-12): the tester plays the caller's hands —
+    POST makes an unbound device appear on the demo line; the agent only ever
+    learns about it from its next telemetry read. Manual by design (no
+    keyword auto-simulation)."""
+
+    def test_plug_before_identification_is_409(self, client):
+        sid = _create(client)["session_id"]
+        assert client.post(f"/sessions/{sid}/simulate-plug").status_code == 409
+        client.delete(f"/sessions/{sid}")
+
+    def test_plug_makes_device_visible_then_unplug_clears(self, client):
+        import json as _json
+
+        sid = _create(client)["session_id"]
+        from app.main import manager
+
+        manager.get(sid).session.state.customer_id = "CUST009"
+        resp = client.post(f"/sessions/{sid}/simulate-plug")
+        assert resp.status_code == 200 and resp.json()["ok"] is True
+        from agent.tools import execute_tool
+
+        d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST009"}))
+        assert ((d.get("verdict") or {}).get("reason")) != "no_mac_observed"
+        resp = client.post(f"/sessions/{sid}/simulate-plug", params={"unplug": "true"})
+        assert resp.status_code == 200
+        d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST009"}))
+        assert ((d.get("verdict") or {}).get("reason")) == "no_mac_observed"
+        client.delete(f"/sessions/{sid}")
+
+    def test_unknown_session_is_404(self, client):
+        assert client.post("/sessions/nope/simulate-plug").status_code == 404
+
+
 class TestAdminReset:
     def test_reset_refused_during_call_then_reseeds(self, client):
         sid = _create(client)["session_id"]

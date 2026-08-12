@@ -220,6 +220,7 @@ class TestAgentWiring:
             "power_cable",
             "outlet_works",
             "has_computer",
+            "lan_active",  # bridge-fail ladder only (kada: [tilto_fazeje])
         ]
         assert fault_need("no_mac_observed") == "reikalingas naujas maršrutizatorius"
         assert spec_for("nesamas_verdiktas") is None
@@ -254,7 +255,10 @@ class TestAgentWiring:
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
         agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
         agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
-        reply = agent._evidence_drive("neturiu")
+        # Round 3: the first confirmed moment READS THE FACTS BACK first.
+        recap = agent._evidence_drive("neturiu")
+        assert recap is not None and "Pasitikslinu" in recap
+        reply = agent._evidence_drive("taip, teisingai")
         assert reply is not None and "Kokiu telefono numeriu" in reply
         assert agent._ticket_stage == "phone"
 
@@ -264,21 +268,28 @@ class TestAgentWiring:
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
         agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
         agent._ingest_client_evidence("Turiu kompiuterį")
-        assert agent._evidence_drive("turiu") is None  # solver drives the bridge
+        recap = agent._evidence_drive("turiu")  # round 3: recap checkpoint first
+        assert recap is not None and "Pasitikslinu" in recap
+        assert agent._evidence_drive("taip") is None  # then solver drives the bridge
 
     def test_confirmed_but_device_unknown_asks_has_computer(self):
         agent = _diagnosing_agent()
         agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
         agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
-        q = agent._evidence_drive("nepadėjo")
+        recap = agent._evidence_drive("nepadėjo")  # round 3: recap checkpoint first
+        assert recap is not None and "Pasitikslinu" in recap
+        q = agent._evidence_drive("taip, viskas taip")
         assert q is not None and "kompiuterį" in q
 
     def test_refuted_syncs_walker_to_declared_step(self):
         agent = _diagnosing_agent()
         agent.state.resolution["step"] = "dr_intro"  # stale — the rewind trap
         agent._ingest_client_evidence("Radau routerį, lemputės dega žaliai")
-        assert agent._evidence_drive("dega") is None
+        # Round 3: a client-stated refute gets ONE confirm question first.
+        confirm = agent._evidence_drive("dega")
+        assert confirm is not None and "keičia išvadą" in confirm
+        assert agent._evidence_drive("taip, tikrai dega") is None
         assert agent.state.resolution["step"] == "dr_cable"  # pivot, not rewind
 
     def test_pending_key_gives_short_answers_meaning(self):
@@ -327,3 +338,30 @@ class TestAgentWiring:
         agent2.state.customer_id = None
         agent2._ingest_client_evidence("Nedega lemputės")
         assert agent2.state.evidence == {}
+
+
+class TestFoldedAndNegationAwareReaders:
+    """Round 2 (live 2026-08-11): STT drops diacritics ("Tai ikištas",
+    "razetė") and glues negations ("Neniauturiu" = "ne, neturiu") — the
+    deterministic readers must survive both."""
+
+    def test_negation_prefixed_positive_mark_is_not_a_yes(self):
+        from agent.evidence import polarity, read_pending_answer
+
+        # "Neniauturiu." landed has_computer=yes live (substring "turiu").
+        assert polarity("Neniauturiu.") != "yes"
+        assert read_pending_answer("has_computer", "Neniauturiu.") != "yes"
+        # Clean answers still read.
+        assert polarity("Turiu kompiuterį") == "yes"
+        assert polarity("Ne, neturiu") == "no"
+        assert read_pending_answer("has_computer", "turiu") == "yes"
+
+    def test_diacritics_folded_matching(self):
+        from agent.evidence import extract_client_facts, read_pending_answer
+
+        assert read_pending_answer("power_cable", "Tai ikistas, viskas gerai") == "įkištas"
+        assert extract_client_facts("laidas ikistas tvirtai")["power_cable"] == "įkištas"
+        assert (
+            extract_client_facts("kiti irenginiai nuo tos razetes veikia")["outlet_works"]
+            == "bandyta"
+        )
