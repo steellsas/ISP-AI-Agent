@@ -134,8 +134,13 @@ Taisyklės (kad nereikėtų perdaryti):
 - [ ] `side_topic` — tikras mazgas (dabar sub-kvietimas `diagnosis` viduje)
 - [ ] Diagnozės subgrafo griaučiai: 9 žingsnių seka iš `nodes/diagnosis/__init__.py`
       tampa mazgais su paprastomis briaunomis (dar be guard'ų perkėlimo)
-- [ ] Token streaming per `get_stream_writer()` patikrintas gyvu balso skambučiu
+- [x] Token streaming per `get_stream_writer()` patikrintas gyvu balso skambučiu
+      (2026-08-12: sesija 160617 — 18 checkpointų, pilna būsena + audio įrašai)
 - [ ] `request_cancel` (barge-in) kelias patikrintas gyvu balso skambučiu
+- [ ] Checkpoint serde: registruoti custom tipus (`TurnScratch`,
+      `ClientProfileState`, `SlotStatus`) — langgraph įspėja „unregistered type",
+      būsimos versijos deserializavimą blokuos (skaitymas atgal grąžina dict,
+      ne modelį)
 - **DoD:** auksiniai testai žali su `AGENT_ENGINE=v2`; trace'ai rodo tuos pačius
   `node` įvykius; elgesio skirtumų nėra.
 
