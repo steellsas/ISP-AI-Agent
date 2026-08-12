@@ -76,3 +76,4 @@ identification:
     repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
     escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"
+    ticket_intro_bridge: "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, registruoju meistrą dėl naujo routerio."

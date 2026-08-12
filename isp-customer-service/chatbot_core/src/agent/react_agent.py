@@ -1435,11 +1435,28 @@ class ReactAgent:
         # outlet_works and the hypothesis froze (live). Pass facts win on
         # overlap; keywords fill the keys the pass did not provide.
         kw_facts = extract_client_facts(user_input)
+        kw_disagreements: dict[str, str] = {}
         if facts is None:
             facts = kw_facts
         else:
             for k, v in kw_facts.items():
-                facts.setdefault(k, v)
+                if k not in facts:
+                    facts[k] = v
+                elif facts[k] != v:
+                    # The two readers DISAGREE on the SAME turn (live 2026-08-12:
+                    # the pass pinned "neveikia" on the OUTLET while keywords
+                    # read the correct "bandyta" — the silent pass win skipped
+                    # the recap and the announce). Neither wins silently: both
+                    # values go through set_fact below and the conflict clarify
+                    # settles it with the caller.
+                    kw_disagreements[k] = v
+                    self.tracer.emit(
+                        "evidence",
+                        action="reader_disagreement",
+                        key=k,
+                        pass_value=facts[k],
+                        kw_value=v,
+                    )
         # The JUST-ASKED evidence question gives short answers their meaning:
         # "Radau." to "Radote?" (no noun -> the general extractor is blind)
         # became a give-up live 2026-08-10. Context read fills ONLY the pending
@@ -1566,6 +1583,22 @@ class ReactAgent:
                 )
             else:
                 self.tracer.emit("evidence", action="fact", key=key, value=value)
+        # Reader disagreements land SECOND: on a fresh key this flags the
+        # conflict (one scripted clarify settles it); if the flip guard dropped
+        # the pass value above, the keyword read simply stands as the fact.
+        for key, kw_value in kw_disagreements.items():
+            entry = set_fact(s.evidence, key, kw_value, CLIENT, turn)
+            if entry.get("conflict") and self._evidence_conflict is None:
+                self._evidence_conflict = (key, entry["value"], entry["pending"])
+                self.tracer.emit(
+                    "evidence",
+                    action="conflict",
+                    key=key,
+                    old=entry["value"],
+                    new=entry["pending"],
+                )
+            else:
+                self.tracer.emit("evidence", action="fact", key=key, value=kw_value)
 
     def solver_drive_turn(self, user_input: str | None) -> str | None:
         """Solver-driven turn — the MĄSTYTOJAS drives the piloted directions (Step 3,
@@ -3739,7 +3772,13 @@ class ReactAgent:
         parts = []
         if not ctx.get("intro_done"):
             ctx["intro_done"] = True
-            parts.append(phrase("ticket_intro", priezastis=self._ticket_need()))
+            # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
+            # the internet just came back (live 2026-08-12). The intro then
+            # states the success and registers the ROUTER replacement.
+            if getattr(self, "_bridge_bound", False):
+                parts.append(phrase("ticket_intro_bridge"))
+            else:
+                parts.append(phrase("ticket_intro", priezastis=self._ticket_need()))
         ctx["phone_asked"] = True
         parts.append(phrase("ticket_phone"))
         return " ".join(parts)

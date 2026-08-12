@@ -137,6 +137,10 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau "
         "registruoti meistrą. Registruoti, ar tikrai nereikia?"
     ),
+    "ticket_intro_bridge": (
+        "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, "
+        "registruoju meistrą dėl naujo routerio."
+    ),
 }
 
 

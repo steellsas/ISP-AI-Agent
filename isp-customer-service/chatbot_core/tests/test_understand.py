@@ -301,14 +301,45 @@ class TestKeywordSupplement:
             )
         assert agent.state.evidence["outlet_works"]["value"] == "bandyta"
 
-    def test_pass_facts_win_on_overlap(self, db_connection, monkeypatch):
+    def test_agreeing_readers_land_one_clean_fact(self, db_connection, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
         with patch(
             "agent.understand.understand",
             return_value=_canned(faktai={"lights": "mirksi"}, supratau="lemputė mirksi"),
         ):
-            agent._ingest_client_evidence("Ta lemputė tai mirksi, čia dega kažkas")
-        assert agent.state.evidence["lights"]["value"] == "mirksi"  # pass, not keyword "dega"
+            agent._ingest_client_evidence("Ta lemputė tai mirksi")
+        e = agent.state.evidence["lights"]
+        assert e["value"] == "mirksi" and e["conflict"] is False
+
+    def test_disagreeing_readers_open_a_conflict(self, db_connection, monkeypatch):
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"lights": "mirksi"}, supratau="lemputė mirksi"),
+        ):
+            agent._ingest_client_evidence("Lemputė dega žaliai")  # keywords read DEGA
+        e = agent.state.evidence["lights"]
+        assert e["conflict"] is True  # neither reader wins silently
+
+    def test_reader_disagreement_on_fresh_key_asks_clarify(self, db_connection, monkeypatch):
+        # Live 2026-08-12: "kiti įrenginiai veikia nuo tos rozetės, bet
+        # ROUTERIS neveikia" — the pass pinned neveikia on the OUTLET while
+        # keywords read the correct bandyta; the silent pass win skipped the
+        # recap and the announce. Now: conflict -> ONE clarify -> settled.
+        agent = _diagnosing_agent(monkeypatch)
+        with patch(
+            "agent.understand.understand",
+            return_value=_canned(faktai={"outlet_works": "neveikia"}, supratau="rozetė neveikia"),
+        ):
+            agent._ingest_client_evidence(
+                "Pabandžiau kitą rozetę — kiti įrenginiai veikia, bet routeris neveikia."
+            )
+        e = agent.state.evidence["outlet_works"]
+        assert e["conflict"] is True  # neither reader won silently
+        assert agent._evidence_conflict is not None  # the clarify goes out
+        with patch("agent.understand.understand", return_value=None):
+            reply = agent._identification_scripted_reply("na")
+        assert reply is not None and "rozetė" in reply  # "kaip yra iš tiesų?"
 
 
 class TestGaveUpRevival:

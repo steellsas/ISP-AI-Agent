@@ -723,6 +723,18 @@ class TestHearingAgent:
         agent._walk_resolution("Jau atsistatė, veikia internetas!")
         assert agent.state.resolution["step"] == "dr_register_router"  # success HEARD
 
+    def test_ticket_intro_after_working_bridge_states_the_success(self, db_connection, monkeypatch):
+        # "Telefonu šio gedimo išspręsti nepavyks" right after the internet
+        # CAME BACK read as a failure (live 2026-08-12) — the post-bridge
+        # intro states the success and registers the router replacement.
+        agent = self._agent(monkeypatch, step="escalate")
+        agent._bridge_bound = True
+        agent._begin_ticket_dialogue(None)
+        intro = agent._ticket_stage_reply()
+        assert "veikia per kompiuterį" in intro
+        assert "nepavyks" not in intro
+        assert "Kokiu telefono numeriu" in intro
+
     def test_lan_pending_answers(self):
         from agent.evidence import read_pending_answer
 
