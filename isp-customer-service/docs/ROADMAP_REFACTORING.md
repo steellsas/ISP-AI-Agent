@@ -206,8 +206,15 @@ sprendimas — suvienodinti import root'ą visame projekte.
 
 ### R4 — Smegenys ant naujų griaučių
 
-- [ ] **Percepcijos suliejimas:** understand + intent + step-classifier → VIENAS
-      greito modelio kvietimas su structured output (delsa −0,5–1,5 s/turn)
+- [x] **Percepcijos suliejimas** (2026-08-13, `d7dba4a`): understand +
+      step-classifier → VIENAS kvietimas (`zingsnis` blokas, walker'is vartoja
+      cache; standalone classifier liko fallback'u, keyword'ai — paskutinė
+      linija). Promptas — `prompts/sensors/*.md`. Atsakyto žingsnio turn'as:
+      2 sensorių kvietimai → 1.
+- [x] **Error-fallback + streaming sargai** (2026-08-13, `420d781`): grafo
+      klaida nebe tyla — error trace + skriptinė frazė
+      (`phrases.turn_error`); stream kelias gavo rate-limit + connect-retry.
+- [ ] Filler WS keliui (reikia async laikmačio — kartu su srautiniu STT)
 - [ ] **Solveris — centrinis:** įjungiamas visiems verdiktams (ne tik
       `no_mac_observed`); walker tampa solverio įrankiu „vykdyk procedūrą";
       gate.py lieka saugikliu be pakeitimų
