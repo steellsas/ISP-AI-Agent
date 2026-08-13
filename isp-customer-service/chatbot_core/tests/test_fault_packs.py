@@ -232,6 +232,88 @@ class TestNarratorWordedQuestions:
         assert block and "KLAUSK DABAR" in block and "ar dega bent viena lemputė" in block
 
 
+class TestNarratorFindings:
+    """Persona (2026-08-13, dead-router live call): the findings announce was a
+    template dump ('routeris surastas: rado; lemputės: nedega...') — words FOR
+    the agent, not speech. In narrator mode the findings become a GOAL
+    directive; the off-switch keeps the scripted announce."""
+
+    def _engine(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "no_mac_observed", "step": "dr_intro"},
+                evidence={},
+                turn_count=3,
+            ),
+            _findings_announced=False,
+            _recap_state="done",
+            _evidence_last_ask_key=None,
+            _evidence_asks={},
+            _evidence_directive=None,
+            _findings_directive=None,
+            _pending_announce="",
+            _ticket_need=lambda: "",
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+
+    def _mock_confirmed(self, monkeypatch):
+        from agent import evidence as ev
+
+        monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
+        monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: "confirmed")
+        monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
+        monkeypatch.setattr(ev, "fault_isvada", lambda v: "routeris sugedęs")
+        monkeypatch.setattr(
+            ev, "solution_descriptions", lambda v: ["paleisti per kompiuterį", "meistras"]
+        )
+        monkeypatch.setattr(ev, "solution_for", lambda e, v: "bridge")
+
+    def test_findings_delegate_to_narrator(self, monkeypatch):
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        self._mock_confirmed(monkeypatch)
+        engine = self._engine()
+        assert evidence_drive(engine, "nedega") is None  # narrator takes the turn
+        d = engine._findings_directive
+        assert d and d["isvada"] == "routeris sugedęs"
+        assert "ARBA" in d["sprendimai"]
+        assert engine._findings_announced is True  # said once, never re-dumped
+
+    def test_off_switch_keeps_scripted_announce(self, monkeypatch):
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        self._mock_confirmed(monkeypatch)
+        engine = self._engine()
+        assert evidence_drive(engine, "nedega") is None  # bridge -> solver drives
+        assert engine._findings_directive is None
+        assert "Ką patikrinome" in engine._pending_announce
+
+    def test_findings_directive_lands_in_facts_block(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._findings_directive = {
+            "faktai": "routerio lemputės: nedega",
+            "isvada": "routeris sugedęs",
+            "sprendimai": "paleisti per kompiuterį ARBA meistras",
+        }
+        block = agent._state_facts_block()
+        assert block and "IŠVADOS MOMENTAS" in block and "routeris sugedęs" in block
+        assert "Pasiūlyk pasirinkimą" in block
+
+    def test_bridge_anchor_lands_in_narrator_facts(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._bridge_plug_reported = True
+        block = agent._state_facts_block()
+        assert block and "TILTO FAZĖ" in block and "NEBEKLAUSK" in block
+
+
 class TestEvidenceDeclared:
     """A variantas (2026-08-13): every internet pack declares its analysis
     knowledge — the perception vocabulary and the hypothesis logic."""

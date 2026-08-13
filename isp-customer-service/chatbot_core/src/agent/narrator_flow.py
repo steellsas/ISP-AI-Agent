@@ -625,6 +625,32 @@ def state_facts_block(engine) -> str | None:
             f"neprieštarauk): {summary_lt(s.evidence)}"
         )
 
+    # Bridge-phase anchor for the NARRATOR too (live 2026-08-13: it slid back
+    # to router questions after the cable was already replugged — the anchor
+    # existed only in the solver's context).
+    if getattr(engine, "_bridge_plug_reported", False):
+        facts.append(
+            "- TILTO FAZĖ: routeris jau pripažintas sugedusiu, kabelis PERKIŠTAS į "
+            "kompiuterį — apie routerį, jo lemputes ar maitinimą NEBEKLAUSK ir "
+            "nebegrįžk. Kalbame tik apie kompiuterio prijungimą."
+        )
+
+    # Persona: the FINDINGS moment as a goal directive — the narrator states
+    # what was established, the conclusion and the choice BRIEFLY in its own
+    # words (never the 'label: value; label: value' template dump).
+    fd = getattr(engine, "_findings_directive", None)
+    if fd:
+        spr = (
+            f" Pasiūlyk pasirinkimą ({fd['sprendimai']}) ir paklausk, kaip darome."
+            if fd.get("sprendimai")
+            else ""
+        )
+        facts.append(
+            "- IŠVADOS MOMENTAS (pasakyk savais žodžiais, TRUMPAI — 2–3 sakiniai, "
+            f"jokių sąrašų ar dvitaškių): kartu nustatėme — {fd['faktai']}. "
+            f"Išvada: {fd['isvada']}.{spr} Neišgalvok faktų."
+        )
+
     # Persona (R5c, Andrius 2026-08-13): the evidence question as a GOAL
     # directive — the narrator words it naturally in the conversation's flow
     # instead of reading the pack's scripted sentence. Hard limits keep it

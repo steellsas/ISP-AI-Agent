@@ -211,6 +211,18 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         isvada = fault_isvada(r.get("verdict")) or engine._ticket_need()
         sprendimai = solution_descriptions(r.get("verdict"))
         if faktai_lt and isvada:
+            # Persona (Andrius 2026-08-13: the template dump "Ką patikrinome:
+            # routeris surastas: rado; …" is words FOR the agent, not speech) —
+            # in narrator mode the findings go out as a GOAL directive and the
+            # narrator says them briefly in its own words.
+            if os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+                engine._findings_directive = {
+                    "faktai": faktai_lt,
+                    "isvada": isvada,
+                    "sprendimai": " ARBA ".join(sprendimai) if sprendimai else "",
+                }
+                engine.tracer.emit("decision", intent="findings", action="announce_narrator")
+                return None  # the narrator speaks the findings + the choice
             announce = (
                 phrase(
                     "findings_announce",
