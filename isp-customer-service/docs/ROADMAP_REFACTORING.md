@@ -215,10 +215,13 @@ sprendimas — suvienodinti import root'ą visame projekte.
       klaida nebe tyla — error trace + skriptinė frazė
       (`phrases.turn_error`); stream kelias gavo rate-limit + connect-retry.
 - [ ] Filler WS keliui (reikia async laikmačio — kartu su srautiniu STT)
-- [ ] **Solveris — centrinis:** įjungiamas visiems verdiktams (ne tik
-      `no_mac_observed`); walker tampa solverio įrankiu „vykdyk procedūrą";
-      gate.py lieka saugikliu be pakeitimų
-- [ ] Modelių tiering: percepcija — greitas modelis, solveris — stipresnis
+- [x] **Solveris — centrinis** (2026-08-13, `5e86ba9`+`da0d48b`): visi trys
+      paketai `vairuotojas: solveris`; analizė iš evidence žinių, sprendimai
+      `tada:walker` (žingsnių medis vykdo, sync-once), LLM solveris — spragų
+      užpildymui už gate. Pataisyta: tuščias `patvirtinta_kai` = telemetrija
+      patvirtino iš karto. Eval v2: 7/7, 29/29 checks.
+- [x] Modelių tiering: `AgentConfig.solver_model` + dashboard jungiklis
+      (kol kas None = tas pats modelis; įjungti pagal poreikį)
 - **DoD:** eval rinkinio baigtys ne blogesnės; vidutinė turn delsa išmatuojamai krito.
 
 ### R5 — Plečiamumas ir persona
