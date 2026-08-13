@@ -1,0 +1,16 @@
+# MODULIS — daugkartinė instrukcija (docs/FAULT_PACKS.md).
+# Veiksmo žingsnis be išėjimų: pririšus srautas teka į KITĄ paketo žingsnį
+# pagal eilės tvarką (paprastai — atsiradimo patikra).
+modulis: priristi_mac
+meta:
+  aprasymas: "Pririšti linijoje matomą naują įrenginį (MAC) — variklis vykdo tyliai"
+  tags: [internet, mac, veiksmas, bind]
+steps:
+- id: bind
+  kind: action
+  tools:
+  - update_mac
+  tool_actions:
+  - update_mac
+  hint: 'The engine binds the device silently — you do NOT call the tool. Announce
+    it naturally and do NOT ask yet whether it works — that is the next step.'

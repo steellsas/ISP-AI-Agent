@@ -1,0 +1,77 @@
+# GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
+verdict: foreign_mac
+meta:
+  pavadinimas: "Nėra interneto — pakeistas/prijungtas kitas įrenginys (svetimas MAC)"
+  domenas: internet
+  priklauso_nuo: []
+  tags: [internet, nera_interneto, mac, routeris, keitimas]
+problem: internet_down
+playbook: troubleshooting/internet_pakeistas_routeris_mac
+steps:
+- id: confirm_change
+  kind: confirm
+  rag_section: 0
+  'on':
+    'yes': bind_mac
+    'no': cable_check
+  hint: 'Tell the caller plainly that the line shows a new/other device and that is why there is no
+    internet, then ask whether they recently changed or connected a device — a new router, or a PC/TV
+    plugged straight into the line (a valid temporary bridge). If YES -> we bind it. If they changed
+    NOTHING -> do NOT escalate: the line cable reaches their own flat, so the device is almost certainly
+    theirs; move on to checking how the cable is plugged (next step).'
+  answers:
+    'yes': klientas keitė routerį arba prijungė naują įrenginį
+    'no': klientas nieko nekeitė ir nieko naujo neprijungė
+- id: cable_check
+  kind: confirm
+  detector: port
+  rag_section: 1
+  'on':
+    wan: bind_mac
+    lan: cable_reconnect
+  hint: 'The caller changed nothing, so the foreign/jumping MAC is usually a mis-plugged cable. Ask
+    ONE thing and WAIT: which port is the incoming provider cable in — the Internet/WAN port (usually
+    separate, labelled ''Internet'' or ''WAN''), or another (LAN) port? Ask by port FUNCTION, not
+    colour. Do NOT conclude ''teisingas lizdas'' until they clearly say WAN or LAN; if unclear, ask
+    again — do not rush.'
+  answers:
+    wan: kabelis įkištas į interneto (WAN) lizdą
+    lan: kabelis įkištas į kitą (LAN) lizdą
+- id: cable_reconnect
+  kind: instruct
+  rag_section: 2
+  hint: 'The cable is in the wrong (yellow LAN) port. Give ONE instruction and wait: unplug it and
+    plug it into the blue WAN port, and say when done. Do NOT suggest rebooting — it changes nothing
+    if the cable is misplugged.'
+- use: priristi_mac
+  kaip: bind_mac
+  rag_section: 3
+  hint: 'The engine binds the device silently — you do NOT call the tool. Announce it naturally:
+    ''Dabar pririšiu jūsų naujai matomą įrenginį — turėtų atsirasti internetas. Palaukite
+    akimirką.'' Do NOT ask yet whether it works — that is the next step. (The anamnesis question
+    was already asked at the START of the call — do not repeat it here.)'
+- id: confirm_restored
+  kind: confirm
+  rag_section: 4
+  hint: The device is ALREADY bound. ASK whether the internet is back now ('ar internetas jau atsirado?')
+    and wait. Do NOT say you 'will' bind, do NOT say it is 'not yet bound', do NOT re-explain that
+    another device is on the line — that is done. Do NOT declare it fixed yourself. If not yet, reassure
+    it may take a minute or two and ask them to check again.
+- use: patikrinti_ar_atsirado
+  kaip: client_side
+  rag_section: 5
+  'on':
+    pavyko: resolve
+    nepavyko: escalate
+  hint: The provider side is restored (telemetry OK) but the caller still has no internet, so the
+    fault is INSIDE their home — Wi-Fi off, device settings, or the cable to the device. Guide ONE
+    simple client-side check (restart the device, check Wi-Fi is on, try a cable straight into the
+    device) and ask if it works now. If yes -> resolved; if not -> register the fault.
+  answers:
+    'yes': internetas dabar veikia
+    'no': internetas vis dar neveikia
+- id: escalate
+  kind: escalate
+  tools: []
+  hint: Binding did not restore the line (or the in-home checks did not help). Register the fault
+    for a technician check ('gedimo registracija') — a worker will call the next business day.

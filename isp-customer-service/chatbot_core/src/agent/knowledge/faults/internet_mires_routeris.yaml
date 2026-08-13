@@ -1,0 +1,227 @@
+# GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
+verdict: no_mac_observed
+meta:
+  pavadinimas: "Nėra interneto — linijoje nematoma jokio įrenginio (miręs routeris / tiltas)"
+  domenas: internet
+  priklauso_nuo: []
+  tags: [internet, nera_interneto, mires_routeris, tiltas, bridge]
+problem: internet_down
+playbook: troubleshooting/internet_mires_routeris_tiltas
+# Ledger v2 (Phase 4.5 step 2): the KNOWLEDGE form of this fault — what must
+# be ESTABLISHED, not which step number. The engine asks the FIRST missing
+# evidence whose `kada` conditions hold (order below = asking order);
+# `klausimas` is the normal wording, `paprasciau` the simpler retry when the
+# answer yields no fact. Hypothesis status is computed from the ledger:
+# patvirtinta_kai (all hold) / paneigta_kai (any holds) -> paneigta_veda
+# syncs the walker so a pivot never rewinds the call.
+evidence:
+  client:
+    device_present:
+      reikia: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
+      klausimas: "Susiraskite routerį — dėžutę, į kurią ateina interneto kabelis. Pasakykite, kai būsite prie jo."
+      paprasciau: "Ieškokite nedidelės dėžutės su lemputėmis, dažnai su antenomis — į ją ateina laidas iš sienos. Radote?"
+      # patikslinimas — kai atsakymas buvo plikas „ne“ be objekto: įvardijami
+      # abu galimi perskaitymai, klientas pasirenka (2026-08-11, Andrius).
+      patikslinimas: "Norėjau patikslinti — ar nerandate routerio, ar radote, bet kažkas kita negerai?"
+      # atsakymai: kaip trumpi/darkyti atsakymai skaitomi, kai KĄ TIK klaustas
+      # ŠITAS klausimas (universalu — naujas gedimas deklaruoja savus čia pat).
+      atsakymai:
+        rado: [radau, suradau, taip, matau, "stoviu prie", priėjau, priejau]
+        nerado: [nerandu, neradau, "nėra tokios", nematau, nerasiu]
+    lights:
+      reikia: "ar dega bent viena routerio lemputė"
+      klausimas: "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+      # kodel — pasakoma kartu su PIRMU klausimu, kad klientas žinotų, kam to
+      # reikia (2026-08-11, Andrius: paaiškinti ką tikrinam ir kodėl).
+      kodel: "Pagal lemputes matysime, ar routeris išvis gauna maitinimą."
+      paprasciau: "Dėžutės priekyje yra mažos švieselės. Ar nors viena šviečia arba mirksi?"
+      patikslinimas: "Norėjau patikslinti — ar nė viena lemputė nedega, ar tiesiog nematote, kur žiūrėti?"
+      # ka_radote — kai klientas sako TIK „patikrinau“ be rezultato: agentas
+      # padėkoja ir paklausia, KĄ rado (2026-08-11, „pasitikslinti, o ne kurti“).
+      ka_radote: "Ar dega bent viena lemputė, ar nė viena?"
+      kada: [device_present=rado]
+    power_cable:
+      reikia: "maitinimo laidas įkištas į rozetę IR į routerį"
+      klausimas: "Patikrinkite, ar maitinimo laidas gerai įkištas į rozetę ir į patį routerį."
+      kodel: "Atsilaisvinęs laidas — dažniausia priežastis, kodėl routeris negauna srovės."
+      paprasciau: "Juodas laidas apvaliu antgaliu turi eiti iš dėžutės į rozetę. Ištraukite ir vėl tvirtai įkiškite abiejuose galuose."
+      patikslinimas: "Norėjau patikslinti — ar laidas neįkištas, ar negalite dabar patikrinti?"
+      ka_radote: "O kaip radote — ar laidas buvo įkištas tvirtai, ar atsilaisvinęs?"
+      kada: [lights=nedega]
+    outlet_works:
+      reikia: "rozetė veikia — pabandyta kita arba kiti įrenginiai nuo jos veikia"
+      klausimas: "Pabandykite kitą rozetę — arba pasakykite, ar kiti įrenginiai nuo tos rozetės veikia."
+      kodel: "Taip atskirsime, ar sugedusi rozetė, ar pats routeris."
+      patikslinimas: "Norėjau patikslinti — ar kita rozetė nepadėjo, ar negalite jos išbandyti?"
+      ka_radote: "Ar iš kitos rozetės lemputės užsidegė, ar ne?"
+      kada: [lights=nedega, power_cable=įkištas]
+    has_computer:
+      reikia: "ar yra kompiuteris laikinam tiltui"
+      klausimas: "Ar turite kompiuterį, kad galėtume laikinai paleisti internetą per jį?"
+      patikslinimas: "Norėjau patikslinti — ar neturite kompiuterio, ar tiesiog nenorite bandyti per jį?"
+      kada: [patvirtinta]
+    lan_active:
+      # Tilto NESĖKMĖS kelias (2026-08-12): kabelis įkištas, o telemetrija
+      # įrenginio nemato — tikrinama kompiuterio tinklo plokštė. `kada` gate
+      # variklio automatiškai NIEKADA netenkinamas (klausimą užduoda tik
+      # tilto nesėkmės laiptai _drive_propose_fix viduje).
+      reikia: "ar kompiuterio tinklo (LAN) ryšys aktyvus prijungus kabelį"
+      klausimas: "Tinkle vis dar nesimato jūsų įrenginio. Pažiūrėkite kompiuteryje — ar tinklo (LAN) ryšys rodomas kaip aktyvus, ar dega lemputė prie tinklo lizdo?"
+      atsakymai:
+        neaktyvus: [neaktyv, nedega, nerodo, "nėra", nera, "ne,", "ne "]
+        aktyvus: [aktyv, veikia, dega, rodo, taip, yra]
+      kada: [tilto_fazeje]
+  patvirtinta_kai: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
+  paneigta_kai: [lights=dega]
+  paneigta_veda: dr_cable
+reikalinga: "reikalingas naujas maršrutizatorius"
+# Tilto nesėkmės pabaiga (2026-08-12, Andrius): LAN patikrintas, įrenginio
+# linijoje vis tiek nesimato — garsiai pasakoma galima kabelio problema ir
+# registruojamas meistras; prierašas nugula ant tiketo.
+tiltas_nepavyko:
+  pastaba: "Įrenginio linijoje vis dar nesimato — gali būti problema ir su ateinančiu kabeliu. Telefonu to nebeišspręsime."
+  prierasas: "Laikinai pajungti internetą per kompiuterį NEPAVYKO (kompiuterio LAN: {lan}) — įrenginio linijoje nesimato, galima atvedimo kabelio problema."
+# isvada — kaip PASKELBTI patvirtintą hipotezę žmogui ("Panašu — {isvada}");
+# aprasymas prie sprendimo — kaip jį pasiūlyti. Abu skaitomi findings
+# paskelbimo šablono (identification.yaml: findings_announce).
+isvada: "routeris sugedęs — telefonu jo neprikelsime"
+# zingsnis — walker'io žingsnis, į kurį grįžtama, jei solveris nušalinamas
+# vidury sprendimo (bailout sync, 2026-08-11) — niekada ne į seną dr_intro.
+sprendimai:
+- jei: [has_computer=yes]
+  tada: bridge
+  zingsnis: dr_plug_pc
+  aprasymas: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
+- jei: [has_computer=no]
+  tada: ticket
+  zingsnis: escalate
+  aprasymas: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
+steps:
+- id: dr_intro
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  'on':
+    'yes': dr_lights
+    'no': escalate
+  hint: 'Do NOT start ordering them about. First explain what YOU can see and what it likely means
+    — the internet reaches the flat but the line does not see their device (likely the router or its
+    cable) — and ASK whether it suits them to check it together now. VOICE: keep this to TWO short
+    sentences, do NOT enumerate every possible cause. Wait for their answer. If they cannot (not
+    home, busy), do not push: offer to register the fault or to call back.'
+  answers:
+    'yes': sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)
+    'no': AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas
+- id: dr_lights
+  kind: confirm
+  detector: lights
+  rag_section: 1
+  'on':
+    'yes': dr_cable
+    'no': dr_power
+  hint: 'They agreed. First take them TO the device, then ask ONE thing: ask them to find the router
+    (the box the internet cable goes into) and, once there, whether ANY light is lit. Do not guess
+    the answer.'
+  answers:
+    'yes': AIŠKIAI sako, kad dega / šviečia / mirksi bent viena lemputė — be jokio neiginio
+    'no': sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-" šaknimi — „nede",
+      „neda", „nedega gan viena" — neiginys visada reiškia NEDEGA)
+- id: dr_power
+  kind: confirm
+  detector: lights
+  rag_section: 2
+  'on':
+    'yes': dr_cable
+    'no': dr_offer_bridge
+  hint: 'No lights at all. ONE instruction, then wait: check the power lead is firmly in the socket
+    and in the router, try another socket — and ask whether any light came on now.'
+  answers:
+    'yes': patikrinus maitinimą lemputės užsidegė
+    'no': net ir patikrinus maitinimą / kitą rozetę lemputės vis tiek nedega
+- id: dr_cable
+  kind: instruct
+  rag_section: 2
+  goto: dr_recheck
+  hint: 'It has power but the line does not see it. ONE instruction, then wait: reseat the cable coming
+    from the wall into the router''s internet port and say when done.'
+- use: patikrinti_ar_atsirado
+  kaip: dr_recheck
+  rag_section: 8
+  'on':
+    pavyko: resolve
+    nepavyko: dr_offer_bridge
+  hint: Ask whether the internet is back now. If yes -> resolved. If not, the router is likely dead
+    — move on to offering the temporary bridge.
+  answers:
+    'yes': internetas atsirado po kabelio patikrinimo
+    'no': internetas vis tiek neatsirado
+- id: dr_offer_bridge
+  kind: confirm
+  detector: have_device
+  rag_section: 3
+  'on':
+    'yes': dr_pick_cable
+    'no': escalate
+  hint: 'The router looks dead. In ONE short sentence say so and ask whether they have a computer
+    — you could run the internet through it for now. A COMPUTER IS ENOUGH: ''neturiu kito routerio,
+    tik kompiuterį'' is a YES. Never tell them internet is impossible while they have a computer.
+    (A phone/tablet cannot take a cable.) ''I''ll fetch it'' is also a yes — wait, do not re-ask.'
+  answers:
+    'yes': klientas turi kompiuterį arba kitą routerį, kurį galima prijungti
+    'no': klientas neturi jokio kito įrenginio (tik telefoną)
+- id: dr_pick_cable
+  kind: instruct
+  rag_section: 4
+  goto: dr_plug_pc
+  hint: 'Make sure they take the RIGHT cable — this is where people go wrong. ONE instruction, then
+    wait: the cable that comes from the wall (the provider''s) and is now in the router''s internet
+    port — ask them to unplug THAT one from the router and tell you when it is in their hand. Not
+    the power lead, not a cable between the router and a device.'
+- id: dr_plug_pc
+  kind: instruct
+  rag_section: 5
+  goto: dr_see_device
+  hint: 'ONE instruction, then wait: plug that cable into the COMPUTER''s network socket (the one
+    the same plug fits, on the back/side) until it clicks, and say when done. NEVER say to plug it
+    back into the router — the whole point is bypassing the dead router (observed: the narrator
+    told the caller ''atgal į routerio lizdą''). If they say it does not fit or they cannot find
+    it, help with WHERE to look — do not move on.'
+- id: dr_see_device
+  kind: verify
+  rag_section: 6
+  hint: The engine re-reads the line to see whether the newly connected device actually shows up.
+    If it does NOT, the cable is in the wrong socket or not seated — walk that back calmly, do not
+    bind blindly.
+- use: priristi_mac
+  kaip: dr_bind
+  rag_section: 7
+  hint: 'We can now SEE their computer on the line. The engine binds it silently — you do NOT call
+    the tool. Announce it: ''Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo — turėtų
+    atsirasti internetas. Palaukite akimirką.'' Do not ask yet if it works. (The anamnesis question
+    was already asked at the START of the call — do not repeat it here.)'
+- use: patikrinti_ar_atsirado
+  kaip: dr_verify
+  rag_section: 8
+  'on':
+    pavyko: dr_register_router
+    nepavyko: escalate
+  hint: 'Ask whether the internet is now up on that computer. If yes: say plainly that this is TEMPORARY
+    (that one computer only), that the router is dead and needs replacing, and go register the fault
+    for it. If no -> register too. Either way the caller leaves with a registration.'
+  answers:
+    'yes': prijungtame kompiuteryje internetas dabar veikia
+    'no': prijungtame kompiuteryje interneto vis tiek nėra
+- id: dr_register_router
+  kind: escalate
+  tools: []
+  consent: false
+  hint: 'The bridge works, but their router is dead. The ENGINE has ALREADY registered the fault —
+    ANNOUNCE it, do not ask permission: ''Užregistravau gedimą dėl sugedusio routerio — kolegos
+    susisieks ir detaliau paaiškins.'' Add that the internet works on this computer for now, and
+    once they have a new router they should call so we bind it.'
+- id: escalate
+  kind: escalate
+  tools: []
+  hint: The bridge is not possible (no computer / cannot connect) or it did not help. Register the
+    fault ('gedimo registracija') and explain they will likely need a new router; a worker calls the
+    next business day.

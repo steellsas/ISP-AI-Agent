@@ -1,0 +1,23 @@
+# MODULIS — daugkartinė instrukcija (docs/FAULT_PACKS.md).
+# Naudojimas pakete:  - use: patikrinti_ar_atsirado
+#                       kaip: <žingsnio id šiame gedime>
+#                       'on': { pavyko: <kur toliau>, nepavyko: <kur toliau> }
+#                       answers: { ... }   # kontekstinė formuluotė (nebūtina)
+modulis: patikrinti_ar_atsirado
+meta:
+  aprasymas: "Patikrinti su klientu, ar internetas jau atsirado"
+  tags: [internet, patikra, restored]
+isejimai: [pavyko, nepavyko]
+steps:
+- id: patikra
+  kind: confirm
+  detector: restored
+  'on':
+    'yes': pavyko
+    'no': nepavyko
+  hint: Ask whether the internet works now and WAIT for the answer. Do NOT declare
+    it fixed yourself; if not yet, reassure it may take a minute and ask them to
+    check again.
+  answers:
+    'yes': internetas dabar veikia
+    'no': internetas vis dar neveikia
