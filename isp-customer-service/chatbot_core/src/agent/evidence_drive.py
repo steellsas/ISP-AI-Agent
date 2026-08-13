@@ -236,6 +236,20 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             if announce:
                 engine._pending_announce = announce
             return None
+        if solution == "walker":
+            # R4b: the declared solution is a WALKER step — sync the walker to
+            # it and hand the turn over (the step tree executes the fix with
+            # all its existing discipline). The findings announce, if any,
+            # goes out as THIS reply; the step's own question follows next turn.
+            from .evidence import solution_step
+
+            target = solution_step(s.evidence, r.get("verdict"))
+            if target and r.get("step") != target:
+                engine._goto_step(r, target)
+                engine.tracer.emit(
+                    "decision", intent="evidence", action="pivot", to=target, reason="solution"
+                )
+            return announce or None
     missing = next_missing(s.evidence, spec, confirmed)
     if missing is None:
         # Nothing left to ask but no confirmation either — a given-up key

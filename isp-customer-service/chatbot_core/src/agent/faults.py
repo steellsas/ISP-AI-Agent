@@ -176,6 +176,14 @@ def find_by_tag(tag: str) -> list[str]:
     ]
 
 
+def driver(verdict: str | None) -> str | None:
+    """meta.vairuotojas — who drives this fault's turns: "solveris" (the
+    evidence-drive + solver own the flow) or "walker" (the step tree; default).
+    R4b rollout is PER PACK: flipping a fault to the solver is a file edit."""
+    v = fault_meta(verdict).get("vairuotojas")
+    return str(v) if v in ("solveris", "walker") else None
+
+
 def depends_on(verdict: str | None) -> list[str]:
     """meta.priklauso_nuo — upstream domains to check FIRST (mixed faults:
     'neveikia TV' whose real cause is the internet being down)."""

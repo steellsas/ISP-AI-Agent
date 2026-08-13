@@ -84,6 +84,42 @@ class TestModulesAndMeta:
         assert depends_on("nezinomas") == []
 
 
+class TestSolverMechanics:
+    """R4b mechanics — pack-declared driver + the walker solution kind. The
+    packs themselves stay walker-driven until each is flipped deliberately."""
+
+    def test_driver_defaults_to_none_for_current_packs(self):
+        from agent.faults import driver
+
+        for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
+            assert driver(verdict) is None
+
+    def test_walker_solution_syncs_step_and_hands_over(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from agent import evidence as ev
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
+        monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: "confirmed")
+        monkeypatch.setattr(ev, "solution_for", lambda e, v: "walker")
+        monkeypatch.setattr(ev, "solution_step", lambda e, v: "bind_mac")
+
+        gotos = []
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "x", "step": "a"}, evidence={}, turn_count=1
+            ),
+            _findings_announced=True,
+            _evidence_last_ask_key=None,
+            _evidence_asks={},
+            _goto_step=lambda r, t: gotos.append(t),
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        assert evidence_drive(engine, "taip") is None  # walker takes the turn
+        assert gotos == ["bind_mac"]
+
+
 class TestEvidenceDeclared:
     """A variantas (2026-08-13): every internet pack declares its analysis
     knowledge — the perception vocabulary and the hypothesis logic."""

@@ -116,7 +116,10 @@ def shadow_solve(engine: Any, user_input: str | None) -> None:
         from .resolution import STRATEGIES
         from .solver import solve
 
-        decision = solve(engine._build_solver_context(user_input), model=engine.config.model)
+        decision = solve(
+            engine._build_solver_context(user_input),
+            model=engine.config.solver_model or engine.config.model,
+        )
         r = engine.state.resolution or {}
         step = r.get("step")
 
@@ -195,7 +198,15 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     r = engine.state.resolution
     if not r or engine.state.case_closed:
         return None
-    if r.get("verdict") not in engine._SOLVER_DRIVE_VERDICTS:
+    # R4b: the PACK declares its driver (meta.vairuotojas) — the solver takes a
+    # fault when its file says so; the legacy frozenset stays the fallback for
+    # packs that declare nothing (today: no_mac_observed).
+    from .faults import driver
+
+    drv = driver(r.get("verdict"))
+    if drv == "walker":
+        return None
+    if drv != "solveris" and r.get("verdict") not in engine._SOLVER_DRIVE_VERDICTS:
         return None
     # Engine mechanics first: while the ladder / clarify flow owns the turn, the
     # thinker waits (scripted replies and guards are deterministic territory).
@@ -354,7 +365,7 @@ def drive(engine: Any, user_input: str | None) -> str:
     # A few internal (silent) hops are allowed — reread/pivot re-read the line — before
     # a client-facing action is forced. Hard turn cap escalates rather than looping.
     for _ in range(DEFAULT_POLICY["internal_hops_max"] + 1):
-        decision = solve(context, model=engine.config.model)
+        decision = solve(context, model=engine.config.solver_model or engine.config.model)
         # Normalize the free-form hypothesis to the ACTIVE direction before the
         # gate: the solver words the same belief freely ("routeris sugedęs,
         # nes…"), and the gate then blocked the direction's OWN fix as a

@@ -42,6 +42,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "agent_model",
     },
     {
+        # R4c tiering: the solver (mąstytojas) may run on a stronger model than
+        # the fast narrator/perception calls. "(kaip agento)" = same model.
+        "key": "solver_model",
+        "label": "Solverio LLM modelis (mąstytojas)",
+        "options": ["(kaip agento)", "gpt-4o", "gpt-4.1-mini", "gpt-4o-mini"],
+        "scope": "new_calls",
+        "kind": "solver_model",
+    },
+    {
         # AgentSession reads AGENT_ENGINE at construction, so the switch takes
         # effect on the NEXT call — running calls keep their engine. "graph" =
         # legacy LangGraph, "v2" = graph_v2 (docs/ROADMAP_REFACTORING.md),
@@ -132,6 +141,10 @@ def _get_value(item: dict[str, Any]) -> str:
         from agent.config import get_config
 
         return get_config().model
+    if item["kind"] == "solver_model":
+        from agent.config import get_config
+
+        return get_config().solver_model or "(kaip agento)"
     default = item["options"][0]
     if item["key"] == "CLASSIFIER":
         default = os.getenv("CLASSIFIER", "on")
@@ -160,6 +173,10 @@ def apply(changes: dict[str, str]) -> list[dict[str, Any]]:
             from agent.config import update_config
 
             update_config(model=value)
+        elif item["kind"] == "solver_model":
+            from agent.config import update_config
+
+            update_config(solver_model=None if value == "(kaip agento)" else value)
         else:
             os.environ[key] = value
             if item["kind"] == "env+voice":
