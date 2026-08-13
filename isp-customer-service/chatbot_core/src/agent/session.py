@@ -59,12 +59,12 @@ class AgentSession:
             tracer=tracer,
         )
 
-        # LangGraph plumbing (step 3.1): a one-node graph that delegates each turn
-        # to the ReactAgent above, checkpointed per session_id. Set engine/env to
-        # "legacy" to bypass the graph entirely, or "v2" for the refactored
-        # graph_v2 engine (docs/ROADMAP_REFACTORING.md — typed GraphState,
-        # SqliteSaver, one node per file; behaviour-identical thin wrappers).
-        mode = engine or os.getenv("AGENT_ENGINE", "graph")
+        # Orchestration engine (docs/ROADMAP_REFACTORING.md): "v2" is the
+        # DEFAULT since 2026-08-13 — the refactored graph_v2 engine (typed
+        # GraphState, SqliteSaver checkpoints, diagnosis subgraph, one node per
+        # file). "graph" = the pre-refactor LangGraph wrapper, "legacy" = the
+        # direct ReactAgent loop; both kept as rollback via AGENT_ENGINE.
+        mode = engine or os.getenv("AGENT_ENGINE", "v2")
         self._engine_mode = mode
         self._use_graph = mode != "legacy"
         if mode == "v2":

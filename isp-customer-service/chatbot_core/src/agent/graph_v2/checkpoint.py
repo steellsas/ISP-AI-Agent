@@ -13,13 +13,30 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 DEFAULT_DB_PATH = "logs/graph_checkpoints.sqlite"
+
+# Custom types the checkpoint serializer may (de)serialize — without this the
+# read path warned "Deserializing unregistered type … will be blocked in a
+# future version" and returned plain dicts instead of models. Both import
+# roots are listed because the project is loadable as `agent.*` and
+# `src.agent.*` (known debt — see roadmap).
+_ALLOWED: list[tuple[str, str]] = [
+    ("agent.slots", "Slot"),
+    ("agent.slots", "SlotStatus"),
+    ("agent.slots", "ClientProfileState"),
+    ("agent.graph_v2.state", "TurnScratch"),
+    ("src.agent.slots", "Slot"),
+    ("src.agent.slots", "SlotStatus"),
+    ("src.agent.slots", "ClientProfileState"),
+    ("src.agent.graph_v2.state", "TurnScratch"),
+]
 
 
 def make_checkpointer(db_path: str | Path = DEFAULT_DB_PATH) -> SqliteSaver:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path), check_same_thread=False)
-    return SqliteSaver(conn)
+    return SqliteSaver(conn, serde=JsonPlusSerializer(allowed_msgpack_modules=_ALLOWED))

@@ -47,8 +47,8 @@ SCHEMA: list[dict[str, Any]] = [
         # legacy LangGraph, "v2" = graph_v2 (docs/ROADMAP_REFACTORING.md),
         # "legacy" = direct ReactAgent loop (rollback).
         "key": "AGENT_ENGINE",
-        "label": "Orkestravimo variklis (graph → v2)",
-        "options": ["graph", "v2", "legacy"],
+        "label": "Orkestravimo variklis (v2 = numatytasis)",
+        "options": ["v2", "graph", "legacy"],
         "scope": "new_calls",
         "kind": "env",
     },

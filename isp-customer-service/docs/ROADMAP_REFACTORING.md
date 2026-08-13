@@ -144,10 +144,11 @@ Taisyklės (kad nereikėtų perdaryti):
 - [x] Token streaming per `get_stream_writer()` patikrintas gyvu balso skambučiu
       (2026-08-12: sesija 160617 — 18 checkpointų, pilna būsena + audio įrašai)
 - [ ] `request_cancel` (barge-in) kelias patikrintas gyvu balso skambučiu
-- [ ] Checkpoint serde: registruoti custom tipus (`TurnScratch`,
-      `ClientProfileState`, `SlotStatus`) — langgraph įspėja „unregistered type",
-      būsimos versijos deserializavimą blokuos (skaitymas atgal grąžina dict,
-      ne modelį)
+- [x] Checkpoint serde: custom tipai registruoti per
+      `JsonPlusSerializer(allowed_msgpack_modules=…)` (`checkpoint.py`, abu
+      import root'ai) — 0 įspėjimų, skaitymas grąžina tikrus modelius
+- [x] **v2 — NUMATYTASIS variklis** (2026-08-13): `AGENT_ENGINE` default
+      „v2"; „graph" ir „legacy" lieka rollback'ui (env / dashboard)
 - **DoD:** auksiniai testai žali su `AGENT_ENGINE=v2`; trace'ai rodo tuos pačius
   `node` įvykius; elgesio skirtumų nėra.
 
