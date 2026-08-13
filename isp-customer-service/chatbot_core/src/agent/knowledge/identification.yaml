@@ -57,6 +57,7 @@ identification:
     thanks: "Ačiū!"
     confirm_end: "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, kad kolegos su jumis susisiektų."
     goodbye: "Ačiū, kad paskambinote. Geros dienos!"
+    turn_error: "Atsiprašau, įvyko trikdis mano pusėje. Pakartokite, prašau, ką sakėte."
     ticket_intro: "Telefonu šio gedimo išspręsti nepavyks — {priezastis}. Registruoju gedimą meistrui."
     ticket_phone: "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
     ticket_phone_retry: "Atsiprašau, nesupratau numerio. Pasakykite jį skaitmenimis arba sakykite „tiks šis“, jei tinka numeris, iš kurio skambinate."

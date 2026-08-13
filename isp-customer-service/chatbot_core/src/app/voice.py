@@ -110,14 +110,35 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
     # PR3: the barge-in cancel reaches the ENGINE — checked between sentences;
     # the token stream closes (LLM generation stops) and the ask-bookkeeping
     # rolls back via the session hook.
-    for chunk in pipeline.stream_turn(audio, should_stop=ms.cancel.is_set):
-        if not chunk:
-            continue
-        if first_ms is None:
-            first_ms = round((time.perf_counter() - t0) * 1000)
-        chunks += 1
-        reply_audio.extend(chunk)
-        on_chunk(bytes(chunk))
+    turn_error = False
+    try:
+        for chunk in pipeline.stream_turn(audio, should_stop=ms.cancel.is_set):
+            if not chunk:
+                continue
+            if first_ms is None:
+                first_ms = round((time.perf_counter() - t0) * 1000)
+            chunks += 1
+            reply_audio.extend(chunk)
+            on_chunk(bytes(chunk))
+    except Exception as e:
+        # A failed graph turn must NOT be silence (live 2026-08-13: every turn
+        # after a poisoned state died mute — the caller kept talking to nothing
+        # and hung up). Trace the error and SPEAK a scripted fallback so the
+        # caller knows to retry; the next utterance starts a fresh turn.
+        turn_error = True
+        logger.exception("voice turn failed — speaking fallback")
+        try:
+            ms.session.tracer.emit("error", where="voice_turn", detail=str(e)[:300])
+            from agent.identification import phrase
+
+            fallback = phrase("turn_error")
+            fb_audio = synthesize_text(fallback) if fallback else b""
+            if fb_audio:
+                chunks += 1
+                reply_audio.extend(fb_audio)
+                on_chunk(bytes(fb_audio))
+        except Exception:  # pragma: no cover - the fallback must never raise
+            logger.exception("voice turn fallback failed")
     payload = {
         "type": "voice_turn_done",
         "chunks": chunks,
@@ -126,6 +147,7 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         "is_complete": ms.session.is_complete,
         "cancelled": ms.cancel.is_set(),
         "dropped": chunks == 0 and not ms.session.is_complete and not ms.cancel.is_set(),
+        "error": turn_error,
     }
     if os.environ.get("API_RECORD_AUDIO", "1") != "0":
         try:
