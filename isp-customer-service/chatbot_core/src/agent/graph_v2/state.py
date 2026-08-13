@@ -52,7 +52,11 @@ class GraphState(BaseModel):
     # Default (unlike the legacy dataclass) so LangGraph can initialize the
     # state channels before the session seeds the real number on first invoke.
     caller_phone: str = "unknown"
-    messages: list[dict[str, str]] = Field(default_factory=list)
+    # dict[str, Any], not dict[str, str]: assistant tool-call messages carry a
+    # `tool_calls` LIST — the narrow type poisoned the checkpoint after any LLM
+    # tool round and every following turn failed validation at graph entry
+    # (live 2026-08-13, stuck identification call).
+    messages: list[dict[str, Any]] = Field(default_factory=list)
     profile: ClientProfileState = Field(default_factory=ClientProfileState)
     customer_id: str | None = None
     customer_name: str | None = None

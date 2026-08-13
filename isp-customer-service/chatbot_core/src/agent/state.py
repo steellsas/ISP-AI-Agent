@@ -21,8 +21,12 @@ class AgentState:
     # Call identification
     caller_phone: str
 
-    # Conversation history (for LLM context)
-    messages: list[dict[str, str]] = field(default_factory=list)
+    # Conversation history (for LLM context). NOT dict[str, str]: assistant
+    # tool-call messages carry a `tool_calls` LIST and tool results ride along
+    # too — the too-narrow annotation, mirrored into GraphState, made pydantic
+    # reject the whole state at the next graph turn after any LLM tool round
+    # (live 2026-08-13: every turn after an address tool round died silently).
+    messages: list[dict[str, Any]] = field(default_factory=list)
 
     # Structured address slots (Phase 3.5) — durable, typed identification memory
     # populated from resolve_address. Additive: the existing customer_* /

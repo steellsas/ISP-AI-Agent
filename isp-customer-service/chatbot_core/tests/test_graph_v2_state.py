@@ -105,6 +105,44 @@ class TestCheckpointerReadiness:
         assert only_plain(dumped)
 
 
+class TestRealMessageShapes:
+    """The state must accept every message shape the engine ACTUALLY produces —
+    not just happy-path {role, content} strings. Live 2026-08-13: an assistant
+    tool-call message (tool_calls = LIST) passed the write, then EVERY following
+    turn died at graph entry when pydantic coerced the stored state."""
+
+    def test_tool_round_messages_survive_graph_entry_coercion(self):
+        legacy = AgentState(caller_phone="unknown")
+        legacy.messages.extend(
+            [
+                {"role": "user", "content": "Dėl Vilniaus gatvės 29."},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "resolve_address",
+                                "arguments": '{"street":"Vilniaus","house_number":"29"}',
+                            },
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "content": '{"success": true}'},
+                {"role": "assistant", "content": "Radau adresą."},
+            ]
+        )
+        v2 = GraphState.from_legacy(legacy)
+        # LangGraph re-coerces raw channel values via schema(**values) at EVERY
+        # turn entry — the exact spot the live call kept failing at.
+        coerced = GraphState(**v2.model_dump())
+        assert coerced.messages[1]["tool_calls"][0]["function"]["name"] == "resolve_address"
+        restored = GraphState.model_validate_json(v2.model_dump_json())
+        assert restored.messages == v2.messages
+
+
 class TestTurnLifecycle:
     def test_begin_turn_resets_scratch_only(self):
         v2 = GraphState.from_legacy(_populated_legacy())
