@@ -317,6 +317,22 @@ normaliu vardu (be `_`); jei ne — į TurnScratch.
   scenarijų su automatiniu „ar pasiekė teisingą baigtį per N turn'ų".
 - Delsa: `voice_latency` / `ttfa_ms` trace metrikos prieš/po R4.
 
+## 8.1 Gyvo balso testo radiniai (2026-08-13)
+
+- ✅ 1-as skambutis (foreign_mac): pilnas flow iki resolved, 3 barge-in — visi
+  atsistatė. Mechanika veikia.
+- 🐛 2-as skambutis: po LLM adreso tool rato visi tolesni turn'ai mirė tyliai —
+  `GraphState.messages` tipas buvo per siauras (`dict[str, str]`), o assistant
+  tool-call žinutė neša `tool_calls` SĄRAŠĄ; validacija sprogo kito turn'o
+  įėjime, klientas girdėjo tylą. **Pataisyta** (`5b750e3`): `dict[str, Any]` +
+  regresijos testas su realiomis tool rato žinutėmis.
+- Pamoka testams (Andrius): testuoti REALIAS state įvestis (kokių formų
+  duomenys gali susigeneruoti), ne tik laimingus kelius.
+- Atidėta sąmoningai: (a) elgsena „kai kažkas nulūžta" — dabar voice sluoksnis
+  klaidą praryja ir klientas girdi tylą; reikia error trace + atsarginės
+  frazės (spręsim atskirai); (b) identifikacijos auksiniai scenarijai —
+  darysim kartu su adreso paieškos koregavimu.
+
 ## 9. Statuso žurnalas
 
 - **2026-08-12** — planas sudarytas (architektūros auditas: grafas/state, voice/latency,
