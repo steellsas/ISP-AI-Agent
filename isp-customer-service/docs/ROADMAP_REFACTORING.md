@@ -247,9 +247,12 @@ programavimo; kode lieka tik varikliukas (walker, gate, ledger, verdiktas).
       `reikia` laukai parašyti kaip TIKSLAI — paruošti naratoriaus
       formuluotėms (Andrius 2026-08-13: klausimus formuluoja LLM iš tikslo,
       griežtas lieka tik `atsakymai` žodynas).
-- [ ] **IT specialisto persona:** paketuose „eksperto paaiškinimo" laukas
-      (kodėl taip nutinka — naratorius jį gauna), few-shot eksperto dialogai stage
-      promptuose, pasitikėjimo kalba („beveik tikrai X", „dar negaliu atmesti Y")
+- [x] **IT specialisto persona** (2026-08-13, `2e94366`): naratoriaus
+      formuluotės iš tikslų (KLAUSK DABAR direktyva iš `reikia`+`kodel`;
+      skriptai liko retry/patikslinimams ir `formuluote: skriptas`;
+      NARRATOR_QUESTIONS jungiklis dashboard'e), identity.md eksperto
+      charakteris + pasitikėjimo kalba, expert_voice few-shot diagnosis
+      prompte. Eval su gyvomis formuluotėmis: 7/7, 29/29.
 - [ ] Balso delsa: srautinis STT (daliniai transkriptai), filler įjungimas,
       retry/rate-limit streaming kelyje
 - **DoD:** naujas gedimas = YAML + MD, nulis Python; klausytojo testas
