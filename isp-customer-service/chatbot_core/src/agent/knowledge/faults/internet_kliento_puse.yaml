@@ -7,6 +7,46 @@ meta:
   tags: [internet, nera_interneto, kliento_puse, wifi, irenginys]
 problem: internet_down
 playbook: troubleshooting/kliento_puse_internetas
+# Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
+# hipotezės logika. Hipotezę patvirtina TELEMETRIJA (tinklas iki routerio
+# sveikas) — kliento faktai tarnauja analizei ir (R4b) solverio keliui.
+evidence:
+  client:
+    fail_scope:
+      reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
+      klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
+      kodel: "Jei neveikia visur — žiūrime į routerį; jei viename — į tą įrenginį."
+      paprasciau: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
+      patikslinimas: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
+      atsakymai:
+        visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
+        viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
+    fail_device:
+      reikia: "kuriame įrenginyje neveikia — telefone ar kompiuteryje"
+      klausimas: "Kuriame įrenginyje neveikia — telefone ar kompiuteryje?"
+      atsakymai:
+        telefonas: [telefon, planšet, planset, mobil]
+        kompiuteris: [kompiuter, nešiojam, nesiojam, laptop, pc]
+      kada: [fail_scope=viename]
+    connection_type:
+      reikia: "ar tas kompiuteris prijungtas laidu, ar per WiFi"
+      klausimas: "O tas kompiuteris prie interneto jungiasi laidu ar per WiFi?"
+      kodel: "Laidinei jungčiai tikrinsime kabelį, bevielei — WiFi nustatymus."
+      atsakymai:
+        laidas: [laidu, laidas, kabeliu, kabelis, "per laidą"]
+        wifi: [wifi, "wi-fi", bevielis, bevieliu, belaidžiu, belaidziu]
+      kada: [fail_device=kompiuteris]
+    rebooted:
+      reikia: "ar routeris jau perkrautas (ištrauktas iš rozetės ir įjungtas iš naujo)"
+      klausimas: "Ar bandėte perkrauti routerį — ištraukti iš rozetės, palaukti ir įjungti iš naujo?"
+      kodel: "Perkrovimas išsprendžia didžiąją dalį tokių atvejų — verta pradėti nuo jo."
+      patikslinimas: "Norėjau patikslinti — ar perkrovėte ir nepadėjo, ar dar nebandėte?"
+      atsakymai:
+        perkrautas: [perkroviau, perkrovėm, perkrovem, perleidau, "jau bandžiau", "jau bandziau"]
+        neperkrautas: [neperkroviau, nebandžiau, nebandziau, "dar ne"]
+      kada: [fail_scope=visuose]
+  patvirtinta_kai: []
+  paneigta_kai: []
 steps:
 # Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
 # "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has

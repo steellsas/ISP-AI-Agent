@@ -7,6 +7,32 @@ meta:
   tags: [internet, nera_interneto, mac, routeris, keitimas]
 problem: internet_down
 playbook: troubleshooting/internet_pakeistas_routeris_mac
+# Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
+# hipotezės logika. Žingsnių medis kol kas lieka vieninteliu vairuotoju;
+# sprendimai (tada: bind) prisijungs kartu su solverio centralizavimu (R4b).
+evidence:
+  client:
+    changed_device:
+      reikia: "ar klientas neseniai keitė routerį arba prijungė naują įrenginį prie linijos"
+      klausimas: "Ar neseniai keitėte routerį, o gal prijungėte kokį naują įrenginį prie interneto linijos?"
+      kodel: "Linijoje matome kitą įrenginį nei registruota — norime suprasti, ar tai jūsų naujas."
+      paprasciau: "Gal per paskutines dienas namuose atsirado naujas routeris, kompiuteris ar TV priedėlis, jungtas prie interneto laido?"
+      patikslinimas: "Norėjau patikslinti — ar nieko nekeitėte, ar tiesiog neprisimenat?"
+      atsakymai:
+        keite: [keičiau, keiciau, pakeičiau, pakeiciau, "naują routerį", nusipirkau, prijungiau, pajungiau, keitėm, keitem]
+        nekeite: [nekeičiau, nekeiciau, "nieko nekeit", "nieko naujo", neprijungiau, nepajungiau, "nieko nedariau"]
+    cable_port:
+      reikia: "į kurį routerio lizdą įkištas iš sienos ateinantis interneto kabelis — WAN ar LAN"
+      klausimas: "Pažiūrėkite, į kurį lizdą įkištas iš sienos ateinantis kabelis — į interneto (WAN) lizdą ar į kitą?"
+      kodel: "Jei kabelis ne tame lizde, linija mato ne tą įrenginį — tai dažniausia priežastis, kai niekas nekeista."
+      paprasciau: "Ant routerio lizdai paprastai pažymėti: vienas atskiras „Internet/WAN“, kiti — vienodi LAN. Kuriame yra laidas iš sienos?"
+      patikslinimas: "Norėjau patikslinti — ar nerandate užrašų prie lizdų, ar negalite dabar patikrinti?"
+      atsakymai:
+        wan: [wan, internet, interneto, mėlyn, melyn, atskir]
+        lan: [lan, geltona, geltoname, kitas, kitą, "prie kitų"]
+      kada: [changed_device=nekeite]
+  patvirtinta_kai: [changed_device=keite]
+  paneigta_kai: []
 steps:
 - id: confirm_change
   kind: confirm

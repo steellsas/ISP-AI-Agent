@@ -82,3 +82,41 @@ class TestModulesAndMeta:
     def test_depends_on_default_empty(self):
         assert depends_on("foreign_mac") == []
         assert depends_on("nezinomas") == []
+
+
+class TestEvidenceDeclared:
+    """A variantas (2026-08-13): every internet pack declares its analysis
+    knowledge — the perception vocabulary and the hypothesis logic."""
+
+    def test_all_three_packs_have_evidence(self):
+        from agent.evidence import spec_for
+
+        for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
+            spec = spec_for(verdict)
+            assert spec is not None, verdict
+            assert spec.get("client"), verdict
+
+    def test_foreign_mac_facts_and_confirmation(self):
+        from agent.evidence import spec_for
+
+        spec = spec_for("foreign_mac")
+        assert set(spec["client"]) == {"changed_device", "cable_port"}
+        assert spec["patvirtinta_kai"] == ["changed_device=keite"]
+        # perception vocabulary: canonical values are declared per fact
+        assert set(spec["client"]["changed_device"]["atsakymai"]) == {"keite", "nekeite"}
+
+    def test_healthy_to_router_conditional_asking(self):
+        from agent.evidence import spec_for
+
+        spec = spec_for("healthy_to_router")
+        assert spec["client"]["connection_type"]["kada"] == ["fail_device=kompiuteris"]
+        assert spec["client"]["rebooted"]["kada"] == ["fail_scope=visuose"]
+
+    def test_reikia_present_for_narrator_directives(self):
+        """`reikia` is the future narrator directive (skriptas -> mąstymas) —
+        every declared fact must state its GOAL, not only the wording."""
+        from agent.evidence import spec_for
+
+        for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
+            for key, item in spec_for(verdict)["client"].items():
+                assert item.get("reikia"), f"{verdict}.{key} be 'reikia'"
