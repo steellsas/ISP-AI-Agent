@@ -59,38 +59,37 @@ def _merged_allowed(extra: dict[str, set[str]] | None) -> dict[str, set[str]]:
     return merged
 
 
-def _system(anchor: str, needs: str, ledger: str, allowed_map: dict[str, set[str]]) -> str:
+def _system(
+    anchor: str,
+    needs: str,
+    ledger: str,
+    allowed_map: dict[str, set[str]],
+    step_options: dict[str, str] | None = None,
+) -> str:
+    """Render the merged perception prompt from prompts/sensors/*.md (R4:
+    understanding + step classification in ONE call; R5: instructions live in
+    files, code only fills the tokens)."""
+    from .prompts import load_node_prompt
+
     allowed = "; ".join(f"{k}: {sorted(v)}" for k, v in allowed_map.items())
+    step_json = ""
+    step_rules = ""
+    if step_options:
+        opts = "\n".join(f'    - "{k}": {v}' for k, v in step_options.items())
+        step_json = (
+            ', "zingsnis": {"label": "...", "is_answer": bool, '
+            '"internally_inconsistent": bool, "confidence": 0.0-1.0}'
+        )
+        step_rules = load_node_prompt("sensors/perception_step").replace("<<options>>", opts)
     return (
-        "Tu skaitai KLIENTO atsakymą lietuviškame ISP pagalbos skambutyje. STT "
-        "tekstas gali būti darkytas — spręsk pagal PRASMĘ ir kontekstą, ne pagal "
-        "raides.\n"
-        f"AGENTO PASKUTINIS KLAUSIMAS: „{anchor}“\n"
-        f"KĄ GEDIMUI REIKIA IŠSIAIŠKINTI: {needs}\n"
-        f"KAS JAU ŽINOMA: {ledger or '(nieko)'}\n"
-        "Grąžink TIK JSON:\n"
-        '{"faktai": {raktas: reikšmė, ...}, "tipas": "atsakymas|klausimas|'
-        'nukrypimas|nesupratimas|prieštaravimas", "supratau": "puse sakinio kas '
-        'suprasta", "neaiskumas": "ko klientas nesuprato arba tuščia", '
-        '"pasitikejimas": 0.0-1.0}\n'
-        f"- faktai: TIK šie raktai ir reikšmės: {allowed}. Rašyk tik tai, ką "
-        "klientas REALIAI pasakė (tiesiogiai ar iš konteksto: „Radau.“ atsakant į "
-        "„Radote?“ = device_present: rado; „ne daganiai viena“ laukiant lempučių = "
-        "lights: nedega). Jei klientas fakto TIESIOGIAI nepasakė — rakto NEDĖK; "
-        "TUŠČIAS faktai {} yra normalus ir dažnas atsakymas. Vienoje frazėje "
-        "beveik niekada nebūna daugiau nei 1–2 faktai.\n"
-        "- tipas: atsakymas (atsako į klausimą, kad ir dalinai — PVZ.: „Galim "
-        "patikrinti“ = atsakymas-sutikimas; „Dabar esu prie routerio“ = "
-        "atsakymas; „baltas su antena, keturi lizdai“ atsakant apie routerį = "
-        "atsakymas); klausimas (klientas KLAUSIA mūsų — sakinyje yra klausimas "
-        "MUMS, ne šiaip svarstymas); nukrypimas (kalba ne apie gedimą ir "
-        "neklausia); nesupratimas (sako, kad nesupranta / neranda / nežino "
-        "kaip); prieštaravimas (paneigia, ką sakė anksčiau pagal KAS JAU "
-        "ŽINOMA). Abejojant tarp atsakymo ir klausimo — rinkis ATSAKYMĄ.\n"
-        "- supratau: trumpa santrauka agentui atspindėti klientui (lietuviškai). "
-        "Jei supratau teigia faktą (pvz. „klientas rado routerį“) — tas faktas "
-        "PRIVALO būti ir faktai lauke.\n"
-        "- neaiskumas: pildyk tik kai tipas=nesupratimas — KO konkrečiai nesuprato."
+        load_node_prompt("sensors/perception")
+        .replace("<<anchor>>", anchor)
+        .replace("<<needs>>", needs)
+        .replace("<<ledger>>", ledger or "(nieko)")
+        .replace("<<allowed>>", allowed)
+        .replace("<<step_json>>", step_json)
+        .replace("<<step_rules>>", step_rules)
+        .strip()
     )
 
 
@@ -103,8 +102,15 @@ def understand(
     history_tail: list[dict[str, str]] | None = None,
     model: str | None = None,
     allowed_extra: dict[str, set[str]] | None = None,
+    step_options: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    """Read one caller turn. None on any failure -> keyword fallback."""
+    """Read one caller turn. None on any failure -> keyword fallback.
+
+    R4 perception merge: when `step_options` is given (an asked CONFIRM/INSTRUCT
+    step awaits its answer), the SAME call also classifies the reply against the
+    step's routing keys — the result rides back as `zingsnis` and replaces the
+    separate classifier.classify_step call (one LLM round-trip fewer per turn).
+    """
     if not utterance or not utterance.strip():
         return None
     allowed_map = _merged_allowed(allowed_extra)
@@ -112,7 +118,10 @@ def understand(
         from src.services.llm.client import llm_json_completion
 
         messages: list[dict[str, str]] = [
-            {"role": "system", "content": _system(anchor, needs, ledger_summary, allowed_map)}
+            {
+                "role": "system",
+                "content": _system(anchor, needs, ledger_summary, allowed_map, step_options),
+            }
         ]
         for m in (history_tail or [])[-4:]:
             role = "assistant" if m.get("role") == "assistant" else "user"
@@ -140,12 +149,26 @@ def understand(
         # are worse than no facts — the deterministic layers cover the gap.
         if tipas not in ("atsakymas", "prieštaravimas") or confidence < 0.6:
             facts = {}
+        # Merged step classification (R4): validated exactly like the standalone
+        # classifier — unknown labels are dropped so the walker falls back.
+        zingsnis: dict[str, Any] | None = None
+        raw_step = data.get("zingsnis")
+        if step_options and isinstance(raw_step, dict):
+            label = str(raw_step.get("label") or "unclear")
+            if label in set(step_options) | {"unclear"}:
+                zingsnis = {
+                    "label": label,
+                    "is_answer": bool(raw_step.get("is_answer", True)),
+                    "internally_inconsistent": bool(raw_step.get("internally_inconsistent", False)),
+                    "confidence": max(0.0, min(1.0, float(raw_step.get("confidence") or 0.5))),
+                }
         return {
             "faktai": facts,
             "tipas": tipas,
             "supratau": str(data.get("supratau") or "")[:200],
             "neaiskumas": str(data.get("neaiskumas") or "")[:200],
             "pasitikejimas": confidence,
+            "zingsnis": zingsnis,
         }
     except Exception as e:  # any failure -> deterministic fallback
         logger.warning(f"understand pass failed: {e}")

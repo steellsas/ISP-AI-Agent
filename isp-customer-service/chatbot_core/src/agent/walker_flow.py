@@ -264,6 +264,20 @@ def block_uncorroborated_escalate(engine, step, strat, label, user_input: str | 
     return True
 
 
+def _cached_perception(engine, step, user_input: str | None):
+    """The merged perception call's step read for THIS step + THIS utterance,
+    or None (walker then falls back to the standalone classifier)."""
+    cached = getattr(engine, "_perception_step", None)
+    if not cached or cached.get("step_id") != step.id or cached.get("input") != user_input:
+        return None
+    from .classifier import CandidateObservation
+
+    try:
+        return CandidateObservation(**cached["obs"])
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
 def classify_confirm_and_route(engine, step, strat, user_input: str | None) -> bool:
     """Classifier-led routing for an asked CONFIRM step. One LLM call reads BOTH the
     answer (into a routing key) and whether it IS an answer. A confident answer
@@ -274,21 +288,27 @@ def classify_confirm_and_route(engine, step, strat, user_input: str | None) -> b
     from .faults import step_options
     from .resolution import next_step_id
 
-    detector_name = step.detector or "yes_no"
-    # WHAT TO DETECT comes from the fault definition first (knowledge/faults.yaml —
-    # per-step, so it can be worded precisely for THIS check), falling back to the
-    # universal per-detector glosses (knowledge/detectors.yaml, code as last
-    # resort). A reworded check is a file edit, not code.
-    declared = step_options((engine.state.resolution or {}).get("verdict"), step.id)
-    glosses = detector_glosses(detector_name)
-    options: dict[str, str] = {}
-    for raw in step.on:
-        # Some steps key `on` by the Outcome enum — str(Outcome.YES) is "Outcome.YES",
-        # so take .value to get the real routing key ("yes") the classifier must return.
-        key = str(getattr(raw, "value", raw))
-        options[key] = (declared or {}).get(key) or glosses.get(key, key)
-    question = engine._last_agent_question() or step.hint or ""
-    obs = classify_step(question, user_input or "", options, model=engine.config.model)
+    # R4 perception merge: the understanding pass already classified this reply
+    # against THIS step's keys in the same LLM call — consume the cached read
+    # instead of a second round-trip. Fallback (cache miss / UNDERSTAND off):
+    # the standalone classifier exactly as before.
+    obs = _cached_perception(engine, step, user_input)
+    if obs is None:
+        detector_name = step.detector or "yes_no"
+        # WHAT TO DETECT comes from the fault definition first (knowledge/faults.yaml —
+        # per-step, so it can be worded precisely for THIS check), falling back to the
+        # universal per-detector glosses (knowledge/detectors.yaml, code as last
+        # resort). A reworded check is a file edit, not code.
+        declared = step_options((engine.state.resolution or {}).get("verdict"), step.id)
+        glosses = detector_glosses(detector_name)
+        options: dict[str, str] = {}
+        for raw in step.on:
+            # Some steps key `on` by the Outcome enum — str(Outcome.YES) is "Outcome.YES",
+            # so take .value to get the real routing key ("yes") the classifier must return.
+            key = str(getattr(raw, "value", raw))
+            options[key] = (declared or {}).get(key) or glosses.get(key, key)
+        question = engine._last_agent_question() or step.hint or ""
+        obs = classify_step(question, user_input or "", options, model=engine.config.model)
     if obs is None:
         engine._trace_note("classifier", f"{step.detector or 'yes_no'}: no result → keyword")
         return False
@@ -351,10 +371,13 @@ def classify_instruct_and_advance(engine, step, strat, user_input: str | None) -
     from .classifier import classify_step
     from .detectors import glosses as detector_glosses
 
-    # Meanings come from knowledge/detectors.yaml (file-editable), code fallback.
-    options = detector_glosses("instruct_done")
-    question = engine._last_agent_question() or step.hint or ""
-    obs = classify_step(question, user_input or "", options, model=engine.config.model)
+    # R4 perception merge first (cached same-call read), classifier fallback.
+    obs = _cached_perception(engine, step, user_input)
+    if obs is None:
+        # Meanings come from knowledge/detectors.yaml (file-editable), code fallback.
+        options = detector_glosses("instruct_done")
+        question = engine._last_agent_question() or step.hint or ""
+        obs = classify_step(question, user_input or "", options, model=engine.config.model)
     if obs is None:
         return False
     done = obs.label == "done" and obs.confidence >= 0.5

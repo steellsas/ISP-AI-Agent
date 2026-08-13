@@ -30,6 +30,39 @@ def execute_tool(name, args):
     return react_agent.execute_tool(name, args)
 
 
+def step_perception_options(engine: Any):
+    """(options, step) for the merged perception call — the SAME routing-key
+    meanings walker_flow.classify_confirm_and_route / classify_instruct_and_advance
+    build for the standalone classifier, computed once at perception time.
+    Returns (None, None) when no asked step awaits an answer (or CLASSIFIER=off,
+    the deterministic test mode)."""
+    from .resolution import StepKind, get_strategy
+
+    if os.getenv("CLASSIFIER", "on").lower() == "off":
+        return None, None
+    r = engine.state.resolution or {}
+    strat = get_strategy(r.get("verdict")) if r else None
+    step = strat.step(r.get("step", "")) if strat else None
+    if step is None or not r.get("asked") or not engine._asked_recently(r):
+        return None, None
+    if step.kind is StepKind.CONFIRM and step.on and step.id != "confirm_restored":
+        from .detectors import glosses as detector_glosses
+        from .faults import step_options as declared_options
+
+        declared = declared_options(r.get("verdict"), step.id)
+        glosses = detector_glosses(step.detector or "yes_no")
+        options: dict[str, str] = {}
+        for raw in step.on:
+            key = str(getattr(raw, "value", raw))
+            options[key] = (declared or {}).get(key) or glosses.get(key, key)
+        return options, step
+    if step.kind is StepKind.INSTRUCT:
+        from .detectors import glosses as detector_glosses
+
+        return detector_glosses("instruct_done"), step
+    return None, None
+
+
 def ingest_client_evidence(engine, user_input: str | None) -> None:
     """Ledger v1: read the caller's utterance into the evidence ledger (called
     from the diagnosis node, so BOTH the driven and the walker path see it).
@@ -71,6 +104,11 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
             for k, item in ((spec.get("client") or {}) if spec else {}).items()
             if item.get("atsakymai")
         }
+        # R4 perception merge: when an asked step awaits its answer, the SAME
+        # call classifies the reply against the step's routing keys — the
+        # walker consumes the cached result instead of a second LLM round-trip.
+        step_options, active_step = step_perception_options(engine)
+        engine._perception_step = None
         u = _und.understand(
             user_input,
             anchor=engine.anchor_text(),
@@ -79,10 +117,17 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
             history_tail=[m for m in s.messages[-5:] if m.get("role") in ("user", "assistant")],
             model=engine.config.model,
             allowed_extra=allowed_extra,
+            step_options=step_options,
         )
         if u is not None:
             engine._last_understanding = u
             facts = dict(u["faktai"])
+            if u.get("zingsnis") and active_step is not None:
+                engine._perception_step = {
+                    "step_id": active_step.id,
+                    "input": user_input,
+                    "obs": u["zingsnis"],
+                }
             engine.tracer.emit(
                 "understand",
                 tipas=u["tipas"],
@@ -90,6 +135,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
                 neaiskumas=u["neaiskumas"],
                 pasitikejimas=u["pasitikejimas"],
                 faktai=u["faktai"],
+                zingsnis=u.get("zingsnis"),
             )
     # The deterministic keyword layer ALWAYS runs (2026-08-12): it used to be
     # a fallback only, so when the pass answered with EMPTY faktai (the
