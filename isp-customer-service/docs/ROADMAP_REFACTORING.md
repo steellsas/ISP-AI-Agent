@@ -235,10 +235,15 @@ programavimo; kode lieka tik varikliukas (walker, gate, ledger, verdiktas).
 - [ ] Raktažodžių sąrašai (glossary, goodbye, continue-solving marks) → YAML
       šalia faults.yaml
 
-- [ ] **Gedimų paketai (fault packs):** deklaratyvus formatas — YAML
-      (simptomai → reikalingi įrodymai → hipotezės sąlygos → testai → fix'ai →
-      eskalacija) + KB markdown žingsniai. `resolution.py` strategijos GENERUOJAMOS
-      iš paketų. Migruojame 3 esamas; įrodymas — naujas gedimas pridėtas VIEN failais.
+- [x] **Gedimų paketai** (2026-08-13, `483eb8c`+`40ab897`): `knowledge/faults/`
+      (1 failas = 1 gedimas, meta/tags/domenas/priklauso_nuo), `knowledge/modules/`
+      (daugkartinės instrukcijos su `use:/kaip:/on:` kompozicija — priristi_mac,
+      patikrinti_ar_atsirado), evidence blokai VISIEMS trims (A variantas —
+      faktų žodynas + hipotezės logika; sprendimų routing'as → R4b), autoriaus
+      gidas `docs/FAULT_PACKS.md`. Ekvivalentiškumas įrodytas snapshot testu.
+      `reikia` laukai parašyti kaip TIKSLAI — paruošti naratoriaus
+      formuluotėms (Andrius 2026-08-13: klausimus formuluoja LLM iš tikslo,
+      griežtas lieka tik `atsakymai` žodynas).
 - [ ] **IT specialisto persona:** paketuose „eksperto paaiškinimo" laukas
       (kodėl taip nutinka — naratorius jį gauna), few-shot eksperto dialogai stage
       promptuose, pasitikėjimo kalba („beveik tikrai X", „dar negaliu atmesti Y")
