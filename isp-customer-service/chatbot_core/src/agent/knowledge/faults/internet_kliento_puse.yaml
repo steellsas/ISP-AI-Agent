@@ -5,6 +5,10 @@ meta:
   domenas: internet
   priklauso_nuo: []
   tags: [internet, nera_interneto, kliento_puse, wifi, irenginys]
+  # R4b (2026-08-13): pirmasis walker->solveris perjungimas. Analizės variklis
+  # klausinėja iš evidence žinių; sprendimo žingsnius vykdo žingsnių medis
+  # (sprendimai: tada:walker). Grąžinti į seną elgesį = ištrinti šią eilutę.
+  vairuotojas: solveris
 problem: internet_down
 playbook: troubleshooting/kliento_puse_internetas
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
@@ -47,6 +51,25 @@ evidence:
       kada: [fail_scope=visuose]
   patvirtinta_kai: []
   paneigta_kai: []
+# Sprendimai pagal surinktus faktus — visi vykdomi ŽINGSNIŲ MEDŽIO (tada:walker):
+# solveris nustato KUR eiti, medis žino KAIP vesti (instrukcija + patikra).
+sprendimai:
+- jei: [fail_scope=visuose]
+  tada: walker
+  zingsnis: cs_reboot
+  aprasymas: "perkrauti routerį — tai išsprendžia daugumą tokių atvejų"
+- jei: [fail_device=telefonas]
+  tada: walker
+  zingsnis: cs_wifi
+  aprasymas: "patikrinti telefono WiFi ryšį"
+- jei: [connection_type=laidas]
+  tada: walker
+  zingsnis: cs_cable
+  aprasymas: "patikrinti kabelį tarp routerio ir kompiuterio"
+- jei: [connection_type=wifi]
+  tada: walker
+  zingsnis: cs_wifi
+  aprasymas: "patikrinti kompiuterio WiFi ryšį"
 steps:
 # Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
 # "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has

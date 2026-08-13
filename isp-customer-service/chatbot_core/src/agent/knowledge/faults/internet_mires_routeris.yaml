@@ -5,6 +5,7 @@ meta:
   domenas: internet
   priklauso_nuo: []
   tags: [internet, nera_interneto, mires_routeris, tiltas, bridge]
+  vairuotojas: solveris   # nuo seno solverio pilotas — dabar deklaruota faile
 problem: internet_down
 playbook: troubleshooting/internet_mires_routeris_tiltas
 # Ledger v2 (Phase 4.5 step 2): the KNOWLEDGE form of this fault — what must

@@ -291,7 +291,13 @@ def hypothesis_status(evidence: dict[str, Any], spec: dict[str, Any]) -> str | N
     dead-router path no matter what else was gathered."""
     if any(_cond_holds(evidence, c, False) for c in (spec.get("paneigta_kai") or [])):
         return "refuted"
-    confirm = spec.get("patvirtinta_kai") or []
+    confirm = spec.get("patvirtinta_kai")
+    # An EXPLICIT empty list means "confirmed by telemetry from the start" —
+    # the client facts pick the SOLUTION, not the hypothesis (R4b packs:
+    # foreign_mac, healthy_to_router). An ABSENT key keeps the old meaning
+    # (no confirmation logic declared -> still collecting).
+    if isinstance(confirm, list) and not confirm:
+        return "confirmed"
     if confirm and all(_cond_holds(evidence, c, False) for c in confirm):
         return "confirmed"
     return None

@@ -88,11 +88,12 @@ class TestSolverMechanics:
     """R4b mechanics — pack-declared driver + the walker solution kind. The
     packs themselves stay walker-driven until each is flipped deliberately."""
 
-    def test_driver_defaults_to_none_for_current_packs(self):
+    def test_all_packs_declare_solver_driver(self):
+        # R4b flip (Andrius 2026-08-13: visus iš karto, tada testuojam)
         from agent.faults import driver
 
         for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
-            assert driver(verdict) is None
+            assert driver(verdict) == "solveris"
 
     def test_walker_solution_syncs_step_and_hands_over(self, monkeypatch):
         from types import SimpleNamespace
@@ -137,7 +138,9 @@ class TestEvidenceDeclared:
 
         spec = spec_for("foreign_mac")
         assert set(spec["client"]) == {"changed_device", "cable_port"}
-        assert spec["patvirtinta_kai"] == ["changed_device=keite"]
+        # hypothesis is a TELEMETRY fact — confirmed from the start; client
+        # facts pick the SOLUTION (sprendimai), not the hypothesis
+        assert spec["patvirtinta_kai"] == []
         # perception vocabulary: canonical values are declared per fact
         assert set(spec["client"]["changed_device"]["atsakymai"]) == {"keite", "nekeite"}
 

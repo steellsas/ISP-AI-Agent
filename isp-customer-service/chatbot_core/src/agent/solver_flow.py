@@ -273,6 +273,18 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     evidence_reply = engine._evidence_drive(user_input)
     if evidence_reply is not None:
         return engine._commit_driven_reply(user_input, evidence_reply)
+    # R4b: a confirmed hypothesis with a WALKER solution means the step tree
+    # owns the execution from here — hand every turn to the walker instead of
+    # improvising with the LLM solver (which is for gaps, not for declared paths).
+    from .evidence import hypothesis_status, solution_for, spec_for
+
+    _spec = spec_for(r.get("verdict"))
+    if (
+        _spec is not None
+        and hypothesis_status(engine.state.evidence, _spec) == "confirmed"
+        and solution_for(engine.state.evidence, r.get("verdict")) == "walker"
+    ):
+        return None  # the walker takes this and every following turn
     # Distrust-loop bailout (deterministic): the solver repeated itself or kept
     # re-confirming ("disambiguate") turn after turn despite clear answers — the
     # prompt rule did not hold it (observed live: 6x "patikrinkime dar kartą…";

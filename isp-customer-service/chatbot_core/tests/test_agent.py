@@ -1468,11 +1468,26 @@ class TestThinkerBoundaries:
         agent = self._agent(db_connection)
         assert agent.solver_drive_turn("taip") is None
 
-    def test_non_piloted_direction_falls_back(self, db_connection, monkeypatch):
+    def test_walker_declared_direction_falls_back(self, db_connection, monkeypatch):
+        # R4b: the PACK declares its driver. A verdict whose pack says walker
+        # (or declares nothing and is not in the legacy pilot set) stays with
+        # the step tree — the solver hands the turn back.
         monkeypatch.setenv("SOLVER_DRIVE", "on")
+        from agent import faults
+
+        monkeypatch.setattr(faults, "driver", lambda v: "walker")
         agent = self._agent(db_connection)
         agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
         assert agent.solver_drive_turn("taip") is None
+
+    def test_solver_declared_direction_is_driven(self, db_connection, monkeypatch):
+        # All internet packs now declare vairuotojas: solveris (2026-08-13) —
+        # the evidence engine asks the first missing fact from the pack.
+        monkeypatch.setenv("SOLVER_DRIVE", "on")
+        agent = self._agent(db_connection)
+        agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
+        reply = agent.solver_drive_turn("taip")
+        assert reply is not None and "keitėte routerį" in reply
 
 
 class TestDriveRepeatBailout:

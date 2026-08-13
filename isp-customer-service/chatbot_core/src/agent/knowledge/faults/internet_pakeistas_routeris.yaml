@@ -5,6 +5,9 @@ meta:
   domenas: internet
   priklauso_nuo: []
   tags: [internet, nera_interneto, mac, routeris, keitimas]
+  # R4b (2026-08-13): solveris vairuoja — analizė iš evidence, vykdymas per
+  # žingsnių medį (sprendimai: tada:walker). Rollback = ištrinti šią eilutę.
+  vairuotojas: solveris
 problem: internet_down
 playbook: troubleshooting/internet_pakeistas_routeris_mac
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
@@ -31,8 +34,23 @@ evidence:
         wan: [wan, internet, interneto, mėlyn, melyn, atskir]
         lan: [lan, geltona, geltoname, kitas, kitą, "prie kitų"]
       kada: [changed_device=nekeite]
-  patvirtinta_kai: [changed_device=keite]
+  # Hipotezė (linijoje kitas įrenginys) — TELEMETRIJOS faktas, patvirtinta nuo
+  # pat pradžių; kliento faktai parenka SPRENDIMĄ, ne hipotezę.
+  patvirtinta_kai: []
   paneigta_kai: []
+sprendimai:
+- jei: [changed_device=keite]
+  tada: walker
+  zingsnis: bind_mac
+  aprasymas: "pririšti jūsų naują įrenginį prie linijos"
+- jei: [changed_device=nekeite, cable_port=lan]
+  tada: walker
+  zingsnis: cable_reconnect
+  aprasymas: "perjungti kabelį į interneto (WAN) lizdą"
+- jei: [changed_device=nekeite, cable_port=wan]
+  tada: walker
+  zingsnis: bind_mac
+  aprasymas: "pririšti linijoje matomą įrenginį"
 steps:
 - id: confirm_change
   kind: confirm

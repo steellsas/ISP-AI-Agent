@@ -238,17 +238,21 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             return None
         if solution == "walker":
             # R4b: the declared solution is a WALKER step — sync the walker to
-            # it and hand the turn over (the step tree executes the fix with
-            # all its existing discipline). The findings announce, if any,
-            # goes out as THIS reply; the step's own question follows next turn.
+            # it ONCE (solution_synced marker: re-syncing every turn would drag
+            # the tree back to the solution step it has already walked past)
+            # and hand the turn over. The findings announce, if any, goes out
+            # as THIS reply; the step's own question follows next turn.
             from .evidence import solution_step
 
             target = solution_step(s.evidence, r.get("verdict"))
-            if target and r.get("step") != target:
+            if target and r.get("solution_synced") != target and r.get("step") != target:
                 engine._goto_step(r, target)
+                r["solution_synced"] = target
                 engine.tracer.emit(
                     "decision", intent="evidence", action="pivot", to=target, reason="solution"
                 )
+            elif target:
+                r.setdefault("solution_synced", target)
             return announce or None
     missing = next_missing(s.evidence, spec, confirmed)
     if missing is None:
