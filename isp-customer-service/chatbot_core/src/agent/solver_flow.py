@@ -441,10 +441,7 @@ def drive(engine: Any, user_input: str | None) -> str:
         if action == "escalate":
             return engine._drive_escalate(decision)
         if action == "close":
-            engine.state.case_closed = True
-            engine.state.closed_reason = "resolved"
-            engine._settle_hypothesis("confirmed", "sprendimas suveikė (solveris)")
-            return say or "Puiku, džiaugiuosi, kad sutvarkėme!"
+            return close_or_register(engine, say)
         # client-facing: ask / disambiguate / instruct / verify / wait — track the
         # DISTRUST streak so the next turn's nudge/gate/bailout see the loop:
         # a verbatim repeat OR consecutive disambiguates (any wording) count.
@@ -474,6 +471,28 @@ def drive(engine: Any, user_input: str | None) -> str:
             reply = phrase("repeat_ack") + reply
         return reply
     return "Sekundėlę — patikslinkim dar kartą."
+
+
+def close_or_register(engine: Any, say: str) -> str:
+    """Ticket-first close (Andrius 2026-08-13: 'esmė yra sugedęs routeris ir
+    tiketas turi būti registruotas; šalutinis — internetas laikinai'): the
+    bridge is TEMPORARY, so a solver 'close' after a successful bridge may not
+    end the call without the router-replacement registration — it becomes the
+    escalate (live: 'Aš radu internetas' -> close -> ticket=None)."""
+    r = engine.state.resolution or {}
+    bridged = bool(r.get("telemetry_fixed")) or getattr(engine, "_bridge_bound", False)
+    if bridged and not engine.state.ticket_id:
+        engine.tracer.emit(
+            "drive_decision",
+            action="escalate",
+            accepted=True,
+            reason="close overridden: bridge is temporary — register the router ticket",
+        )
+        return engine._drive_escalate(None)
+    engine.state.case_closed = True
+    engine.state.closed_reason = "resolved"
+    engine._settle_hypothesis("confirmed", "sprendimas suveikė (solveris)")
+    return say or "Puiku, džiaugiuosi, kad sutvarkėme!"
 
 
 def refresh_diagnosis(engine: Any) -> None:

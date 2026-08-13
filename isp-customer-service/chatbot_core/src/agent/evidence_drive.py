@@ -216,10 +216,13 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             # in narrator mode the findings go out as a GOAL directive and the
             # narrator says them briefly in its own words.
             if os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+                from .evidence import fault_pasiulymas
+
                 engine._findings_directive = {
                     "faktai": faktai_lt,
                     "isvada": isvada,
                     "sprendimai": " ARBA ".join(sprendimai) if sprendimai else "",
+                    "pasiulymas": fault_pasiulymas(r.get("verdict")) or "",
                 }
                 engine.tracer.emit("decision", intent="findings", action="announce_narrator")
                 return None  # the narrator speaks the findings + the choice

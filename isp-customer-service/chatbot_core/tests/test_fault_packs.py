@@ -314,6 +314,118 @@ class TestNarratorFindings:
         assert block and "TILTO FAZĖ" in block and "NEBEKLAUSK" in block
 
 
+class TestTicketFirst:
+    """2026-08-13 live call: the dead router NEEDS a registration — the bridge
+    is a convenience. Solver 'close' may not skip the ticket; a demand is
+    never a side topic; the goodbye hears the demand too."""
+
+    def test_garbled_demands_are_demands(self):
+        from agent.resolution import detect_refuse_or_ticket
+
+        assert detect_refuse_or_ticket("Išregistruoti meistrą ir paleisti internetą") == "demand"
+        assert detect_refuse_or_ticket("Dar prašau, žegistruokit gedimą") == "demand"
+        assert detect_refuse_or_ticket("Neregistruokite, bandome toliau") != "demand"
+
+    def test_demand_is_never_a_side_topic(self):
+        from types import SimpleNamespace
+
+        from agent.perception_flow import classify_side_topic
+
+        engine = SimpleNamespace(
+            state=SimpleNamespace(customer_id="C1", case_closed=False),
+            _ticket_stage=None,
+            _evidence_conflict=None,
+            _end_confirm_pending=False,
+            _resume_hold=False,
+            _side_topic_this_turn=False,
+            _side_topic_turns=0,
+            _last_understanding={"tipas": "nukrypimas", "faktai": {}},
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        assert classify_side_topic(engine, "Išregistruoti meistrą ir paleisti internetą") is False
+        assert engine._side_topic_this_turn is False
+
+    def test_solver_close_after_bridge_registers(self):
+        from types import SimpleNamespace
+
+        from agent.solver_flow import close_or_register
+
+        calls = []
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "no_mac_observed", "telemetry_fixed": True},
+                ticket_id=None,
+                case_closed=False,
+                closed_reason=None,
+            ),
+            _bridge_bound=True,
+            _drive_escalate=lambda d: calls.append("escalate") or "Užregistruosiu gedimą…",
+            _settle_hypothesis=lambda *a, **k: None,
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        reply = close_or_register(engine, "Puiku!")
+        assert calls == ["escalate"] and "gedim" in reply
+        assert engine.state.case_closed is False  # the dialogue closes it later
+
+    def test_solver_close_without_bridge_stays_a_close(self):
+        from types import SimpleNamespace
+
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "x"}, ticket_id=None, case_closed=False, closed_reason=None
+            ),
+            _bridge_bound=False,
+            _settle_hypothesis=lambda *a, **k: None,
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        from agent.solver_flow import close_or_register
+
+        assert "Puiku" in close_or_register(engine, "")
+        assert engine.state.case_closed is True
+
+    def test_pack_declares_ticket_first_offer(self):
+        from agent.evidence import fault_pasiulymas
+
+        text = fault_pasiulymas("no_mac_observed")
+        assert text and "meistr" in text and "kompiuter" in text
+
+    def test_open_goals_follow_the_ledger(self):
+        from agent.evidence import CLIENT, open_goals_lt
+
+        assert "surado routerį" in open_goals_lt({}, "no_mac_observed")
+        ev = {
+            "device_present": {"value": "rado", "source": CLIENT, "turn": 1},
+            "lights": {"value": "nedega", "source": CLIENT, "turn": 2},
+        }
+        goals = open_goals_lt(ev, "no_mac_observed")
+        assert "maitinimo laidas" in goals and "surado routerį" not in goals
+        # kada-gated keys stay hidden until eligible; engine-only gates never show
+        assert "kompiuter" not in goals and "LAN" not in goals
+
+    def test_situational_block_lands_in_narrator_facts(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST001"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        block = agent._state_facts_block()
+        assert block and "DAR AIŠKINAMĖS" in block and "grąžink" in block
+
+    def test_findings_prefer_the_pack_offer(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._findings_directive = {
+            "faktai": "routerio lemputės: nedega",
+            "isvada": "routeris sugedęs",
+            "sprendimai": "a ARBA b",
+            "pasiulymas": "Pasakyk, kad užregistruosi meistrą; pasiūlyk tiltą.",
+        }
+        block = agent._state_facts_block()
+        assert "užregistruosi meistrą" in block
+        assert "Pasiūlyk pasirinkimą" not in block
+
+
 class TestEvidenceDeclared:
     """A variantas (2026-08-13): every internet pack declares its analysis
     knowledge — the perception vocabulary and the hypothesis logic."""

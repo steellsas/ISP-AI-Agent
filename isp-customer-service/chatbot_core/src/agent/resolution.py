@@ -1191,6 +1191,11 @@ _TICKET_DEMAND = (
     "atsiusk technik",
     "tegul atvažiuoj",
     "tegul atvaziuoj",
+    # Live 2026-08-13: "Išregistruoti meistrą…" (STT of "užregistruoti") and
+    # "žegistruokit gedimą" both missed the imperative-only marks — the stem
+    # covers registruoti/registruokite and the garbled ž-/iš- variants.
+    "gistruok",
+    "gistruot",
 )
 _TICKET_REFUSE = (
     "nedarysiu",

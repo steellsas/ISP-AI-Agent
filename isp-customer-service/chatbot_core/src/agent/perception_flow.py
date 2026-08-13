@@ -340,6 +340,16 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
         return False
     if engine._evidence_conflict or engine._end_confirm_pending or engine._resume_hold:
         return False
+    # Ticket demand is NEVER a side topic (live 2026-08-13: "Išregistruoti
+    # meistrą ir paleisti internetą…" got tipas=nukrypimas and the side_topic
+    # LLM talked the caller OUT of the registration) — the demand machinery
+    # in the solving path owns this turn.
+    from .resolution import detect_refuse_or_ticket
+
+    if detect_refuse_or_ticket(user_input) == "demand":
+        engine._side_topic_turns = 0
+        engine.tracer.emit("decision", intent="side_topic", action="ticket_demand_passthrough")
+        return False
     # The understanding pass judged this turn IN CONTEXT — but its tipas is
     # ONE model field, and side_topic FREEZES the engine, so a single sensor
     # may not decide alone (live 2026-08-10: "Galim dabar patikrinti" got

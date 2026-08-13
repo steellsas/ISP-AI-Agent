@@ -57,8 +57,8 @@ evidence:
       ka_radote: "Ar iš kitos rozetės lemputės užsidegė, ar ne?"
       kada: [lights=nedega, power_cable=įkištas]
     has_computer:
-      reikia: "ar yra kompiuteris laikinam tiltui"
-      klausimas: "Ar turite kompiuterį, kad galėtume laikinai paleisti internetą per jį?"
+      reikia: "ar klientas turi kompiuterį ir nori, kad laikinai paleistume internetą per jį, kol gaus naują routerį"
+      klausimas: "Kol gausite naują routerį, galime laikinai paleisti internetą per kompiuterį. Ar turite kompiuterį?"
       patikslinimas: "Norėjau patikslinti — ar neturite kompiuterio, ar tiesiog nenorite bandyti per jį?"
       kada: [patvirtinta]
     lan_active:
@@ -86,6 +86,11 @@ tiltas_nepavyko:
 # aprasymas prie sprendimo — kaip jį pasiūlyti. Abu skaitomi findings
 # paskelbimo šablono (identification.yaml: findings_announce).
 isvada: "routeris sugedęs — telefonu jo neprikelsime"
+# pasiulymas — IŠVADOS MOMENTO scenarijus naratoriui (tiketas-pirmas, Andrius
+# 2026-08-13: "esmė yra sugedęs routeris ir tiketas turi būti registruotas;
+# šalutinis dalykas — paleisti internetą laikinai"). Meistras — ne pasirinkimas,
+# o pažadas; klientas renkasi tik laikiną internetą.
+pasiulymas: "Pasakyk, kad dėl sugedusio routerio užregistruosi meistrą — jis atveš ir pajungs naują (tai padarysime bet kokiu atveju). Tada pasiūlyk: kol laukiate, galime laikinai paleisti internetą per kompiuterį — ir paklausk, ar turi kompiuterį."
 # zingsnis — walker'io žingsnis, į kurį grįžtama, jei solveris nušalinamas
 # vidury sprendimo (bailout sync, 2026-08-11) — niekada ne į seną dr_intro.
 sprendimai:

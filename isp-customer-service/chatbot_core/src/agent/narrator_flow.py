@@ -625,6 +625,21 @@ def state_facts_block(engine) -> str | None:
             f"neprieštarauk): {summary_lt(s.evidence)}"
         )
 
+    # Situational awareness (Andrius 2026-08-13: "jei žinome, KĄ reikia
+    # išsiaiškinti, nesvarbu kokiais klausimais — svarbu tai gauti"): the
+    # still-open goals, so the narrator adapts to the conversation and pulls
+    # a wandering caller back to what is missing instead of drifting.
+    if s.customer_id and not s.case_closed and (s.resolution or {}).get("verdict"):
+        from .evidence import open_goals_lt
+
+        goals = open_goals_lt(s.evidence, s.resolution.get("verdict"))
+        if goals:
+            facts.append(
+                f"- DAR AIŠKINAMĖS (pokalbio tikslas — tai nustatyti): {goals}. "
+                "Jei klientas nuklydo nuo temos — atsakyk trumpai, primink, kur "
+                "esame, ir grąžink pokalbį prie to, kas dar neišsiaiškinta."
+            )
+
     # Bridge-phase anchor for the NARRATOR too (live 2026-08-13: it slid back
     # to router questions after the cable was already replugged — the anchor
     # existed only in the solver's context).
@@ -640,11 +655,14 @@ def state_facts_block(engine) -> str | None:
     # words (never the 'label: value; label: value' template dump).
     fd = getattr(engine, "_findings_directive", None)
     if fd:
-        spr = (
-            f" Pasiūlyk pasirinkimą ({fd['sprendimai']}) ir paklausk, kaip darome."
-            if fd.get("sprendimai")
-            else ""
-        )
+        # Ticket-first faults script their own offer (`pasiulymas` in the
+        # pack): the primary outcome first, the convenience as the question.
+        if fd.get("pasiulymas"):
+            spr = f" {fd['pasiulymas']}"
+        elif fd.get("sprendimai"):
+            spr = f" Pasiūlyk pasirinkimą ({fd['sprendimai']}) ir paklausk, kaip darome."
+        else:
+            spr = ""
         facts.append(
             "- IŠVADOS MOMENTAS (pasakyk savais žodžiais, TRUMPAI — 2–3 sakiniai, "
             f"jokių sąrašų ar dvitaškių): kartu nustatėme — {fd['faktai']}. "

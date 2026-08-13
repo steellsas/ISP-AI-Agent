@@ -261,6 +261,42 @@ def fault_isvada(verdict: str | None) -> str | None:
     return str(fault.get("isvada") or fault.get("reikalinga") or "") or None
 
 
+def fault_pasiulymas(verdict: str | None) -> str | None:
+    """The fault's OWN findings-moment offer script (`pasiulymas:` in the pack) —
+    ticket-first faults use it to frame the primary outcome (the technician)
+    before the optional convenience (the bridge). None -> the generic
+    'Pasiūlyk pasirinkimą (A ARBA B)' framing."""
+    if not verdict:
+        return None
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    if not isinstance(fault, dict):
+        return None
+    return str(fault.get("pasiulymas") or "") or None
+
+
+def open_goals_lt(evidence: dict[str, Any], verdict: str | None) -> str:
+    """The still-open goals (`reikia`) whose `kada` gates hold — the narrator's
+    situational awareness: what this conversation still has to establish.
+    Mirrors next_missing's eligibility so the list never names a question the
+    drive would not ask."""
+    spec = spec_for(verdict)
+    if not spec:
+        return ""
+    confirmed = hypothesis_status(evidence, spec) == "confirmed"
+    goals = []
+    for key, item in (spec.get("client") or {}).items():
+        entry = evidence.get(key)
+        if entry is not None and not entry.get("conflict"):
+            continue
+        if not all(_cond_holds(evidence, c, confirmed) for c in item.get("kada") or []):
+            continue
+        if item.get("reikia"):
+            goals.append(str(item["reikia"]))
+    return "; ".join(goals)
+
+
 def solution_descriptions(verdict: str | None) -> list[str]:
     """Human wording of the declared solutions (`aprasymas` on each sprendimai
     entry; the bare `tada` key as fallback) — feeds the findings announce."""

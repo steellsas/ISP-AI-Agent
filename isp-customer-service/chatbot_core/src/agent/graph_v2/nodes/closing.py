@@ -21,6 +21,23 @@ from ..state import GraphState
 def make_closing_node(engine: Any):
     def closing_node(state: GraphState) -> dict[str, Any]:
         user_input = state.turn.user_input
+        # A ticket demand at the goodbye reopens the case (live 2026-08-13:
+        # "Dar prašau, žegistruokit gedimą…" got "gražios dienos!" and the
+        # caller left with ticket=None) — the registration dialogue starts
+        # instead of the farewell.
+        from ...resolution import detect_refuse_or_ticket
+
+        s = engine.state
+        if (
+            user_input
+            and detect_refuse_or_ticket(user_input) == "demand"
+            and not s.ticket_id
+            and s.resolution is not None
+        ):
+            s.case_closed = False
+            engine.tracer.emit("decision", intent="ticket_demand", action="reopen_at_closing")
+            reply = engine._drive_escalate(None)
+            return sync_updates(engine, user_input=user_input, reply=reply)
         maybe_finish(engine, user_input)
         reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
         return sync_updates(engine, user_input=user_input, reply=reply)
