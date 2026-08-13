@@ -62,6 +62,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # Persona (R5c): evidence questions worded by the NARRATOR from the
+        # pack's goal (reikia) vs read verbatim from the script. off = rollback.
+        "key": "NARRATOR_QUESTIONS",
+        "label": "Naratoriaus formuluotės (klausimai iš tikslo)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "CLASSIFIER",
         "label": "LLM klasifikatorius (atsakymų skaitymas)",
         "options": ["on", "off"],

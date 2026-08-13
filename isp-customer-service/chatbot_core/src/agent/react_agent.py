@@ -283,6 +283,10 @@ class ReactAgent:
         # ({step_id, input, obs}) — consumed by the walker's classify guards so
         # an asked-step turn costs ONE sensor call, not two.
         self._perception_step: dict | None = None
+        # Persona (R5c): the evidence question as a narrator GOAL directive
+        # ({key, reikia, kodel, klausimas}) — set by the drive, consumed by the
+        # facts block, reset every turn at ingest.
+        self._evidence_directive: dict | None = None
         # Findings announce: spoken ONCE at the first confirmed-hypothesis
         # moment; stashed when the reply comes from another layer that turn.
         self._findings_announced = False

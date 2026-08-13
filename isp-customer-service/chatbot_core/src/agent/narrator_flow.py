@@ -625,6 +625,21 @@ def state_facts_block(engine) -> str | None:
             f"neprieštarauk): {summary_lt(s.evidence)}"
         )
 
+    # Persona (R5c, Andrius 2026-08-13): the evidence question as a GOAL
+    # directive — the narrator words it naturally in the conversation's flow
+    # instead of reading the pack's scripted sentence. Hard limits keep it
+    # safe: ONE question, this goal only, no invented facts.
+    directive = getattr(engine, "_evidence_directive", None)
+    if directive:
+        kodel = f" Kodėl tikriname: {directive['kodel']}." if directive.get("kodel") else ""
+        facts.append(
+            "- KLAUSK DABAR (savais žodžiais, natūraliai, pagal pokalbio eigą): "
+            f"išsiaiškink — {directive['reikia']}.{kodel} "
+            "Užduok TIK ŠĮ VIENĄ klausimą (viena '?'), trumpai; neišgalvok faktų "
+            "ir nesiūlyk nieko kito. Jei tinka, pradėk trumpa reakcija į tai, "
+            f"ką klientas ką tik pasakė. (Atsarginė formuluotė: „{directive['klausimas']}“)"
+        )
+
     if not facts:
         return None
 

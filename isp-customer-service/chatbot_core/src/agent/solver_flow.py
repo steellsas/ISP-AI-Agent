@@ -273,6 +273,10 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     evidence_reply = engine._evidence_drive(user_input)
     if evidence_reply is not None:
         return engine._commit_driven_reply(user_input, evidence_reply)
+    # Persona (R5c): the drive delegated the question's WORDING to the narrator
+    # (goal directive in the facts block) — hand the turn to the narrator path.
+    if getattr(engine, "_evidence_directive", None):
+        return None
     # R4b: a confirmed hypothesis with a WALKER solution means the step tree
     # owns the execution from here — hand every turn to the walker instead of
     # improvising with the LLM solver (which is for gaps, not for declared paths).

@@ -76,6 +76,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # ("Routeris sugedęs, laukiame naujo. Gerai. O kada…"). Every turn starts
     # with a clean read — the early-returns below must not keep the old one.
     engine._last_understanding = None
+    engine._evidence_directive = None  # persona: fresh narrator directive per turn
     if not user_input or not s.customer_id or s.case_closed or engine._ticket_stage:
         return
     from .evidence import CLIENT, extract_client_facts, polarity, set_fact

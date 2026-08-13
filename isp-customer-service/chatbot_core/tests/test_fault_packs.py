@@ -121,6 +121,61 @@ class TestSolverMechanics:
         assert gotos == ["bind_mac"]
 
 
+class TestNarratorWordedQuestions:
+    """Persona (R5c): the first ask becomes a narrator GOAL directive; retries
+    and formuluote:skriptas stay scripted; off-switch reverts everything."""
+
+    def _engine(self):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "no_mac_observed", "step": "dr_intro"},
+                evidence={},
+                turn_count=1,
+            ),
+            _findings_announced=True,
+            _recap_state="done",
+            _evidence_last_ask_key=None,
+            _evidence_asks={},
+            _evidence_directive=None,
+            _pending_announce="",
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+
+    def test_first_ask_delegates_to_narrator(self, monkeypatch):
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        engine = self._engine()
+        assert evidence_drive(engine, "labas") is None
+        d = engine._evidence_directive
+        assert d and d["key"] == "device_present" and d["reikia"]
+        assert engine._evidence_asks["device_present"] == 1  # ask bookkeeping intact
+
+    def test_off_switch_keeps_scripted_wording(self, monkeypatch):
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        engine = self._engine()
+        reply = evidence_drive(engine, "labas")
+        assert reply and "Susiraskite routerį" in reply
+        assert engine._evidence_directive is None
+
+    def test_directive_lands_in_facts_block(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._evidence_directive = {
+            "key": "lights",
+            "reikia": "ar dega bent viena lemputė",
+            "kodel": "matysime ar gauna srovę",
+            "klausimas": "Ar dega lemputė?",
+        }
+        block = agent._state_facts_block()
+        assert block and "KLAUSK DABAR" in block and "ar dega bent viena lemputė" in block
+
+
 class TestEvidenceDeclared:
     """A variantas (2026-08-13): every internet pack declares its analysis
     knowledge — the perception vocabulary and the hypothesis logic."""

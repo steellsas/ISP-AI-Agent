@@ -11,6 +11,7 @@ refuting fact, when to give up on a key. Functions take the engine explicitly.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 
@@ -286,6 +287,33 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         return announce + inner
     engine._evidence_asks[key] = asks + 1
     engine._evidence_last_ask_key = key  # for the barge-in cancel rollback
+    # Persona (R5c): the FIRST ask goes to the NARRATOR as a goal directive —
+    # it words the question naturally with its full persona + context. Retries,
+    # clarifies and facts with `formuluote: skriptas` stay scripted (precision
+    # beats style on a repeat). NARRATOR_QUESTIONS=off reverts everything.
+    if (
+        asks == 0
+        and os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on"
+        and str(item.get("formuluote") or "") != "skriptas"
+        and item.get("reikia")
+    ):
+        engine._evidence_directive = {
+            "key": key,
+            "reikia": str(item["reikia"]),
+            "kodel": str(item.get("kodel") or ""),
+            "klausimas": str(item.get("klausimas") or ""),
+        }
+        engine.tracer.emit(
+            "drive_decision",
+            action="ask_evidence",
+            accepted=True,
+            reason="narrator-worded",
+            key=key,
+            level=1,
+        )
+        if announce:
+            engine._pending_announce = announce
+        return None  # the narrator asks — walker holds on the open question
     text = item.get("klausimas") if asks == 0 else (item.get("paprasciau") or item.get("klausimas"))
     # The caller hears WHY we ask before what to press (Andrius 2026-08-11:
     # "kad klientas žinotų kodėl prašo to ar kito") — once, on the first ask.
