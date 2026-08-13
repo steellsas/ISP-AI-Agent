@@ -1206,16 +1206,30 @@ _TICKET_REFUSE = (
     "ne namie",
     "negaliu dabar",
     "nenam",  # STT garbles of "nedarysiu / ne namie" ("nenamosiu")
+    # Live 2026-08-13: "Nebe noriu tikrinti toliau… nebesprendžiam" — the stop
+    # words themselves were missing, so the demand path had to carry the turn.
+    "nutrauk",
+    "nebenoriu",
+    "nebe noriu",
+    "nebespren",
+    "nebespręs",
+    "nebespres",
 )
 
 
 def detect_refuse_or_ticket(text: str | None) -> str | None:
-    """'demand' (register it, now) / 'refuse' (won't troubleshoot) / None."""
+    """'demand' (register it, now) / 'refuse' (won't troubleshoot) / None.
+
+    Polarity-aware for DEMAND marks (2026-08-13): "NEregistruokite" carries the
+    'registruok' substring but is the OPPOSITE of a demand — a mark only counts
+    when the word carrying it is not itself negated."""
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _TICKET_DEMAND):
-        return "demand"
+    for token in low.split():
+        word = token.strip(".,!?…")
+        if any(m in word for m in _TICKET_DEMAND) and not word.startswith(("ne", "nebe")):
+            return "demand"
     if any(m in low for m in _TICKET_REFUSE):
         return "refuse"
     return None
@@ -1322,6 +1336,13 @@ def detect_farewell(text: str | None) -> bool:
     low = text.lower()
     words = [t.strip(".,!?…") for t in low.split()]
     tokens = set(words)
+
+    # "Ačiū, nereikia" / "nebereikia" = polite done-signal (live 2026-08-13:
+    # the thanks swallowed the refusal and the agent read it as gratitude).
+    if "?" not in low and (
+        "nebereikia" in tokens or ("nereikia" in tokens and ("ačiū" in tokens or "aciu" in tokens))
+    ):
+        return True
 
     # "iki"/"ate" must match as WHOLE WORDS — as substrings they hide inside
     # "neveIKIa" / "ATEina" and read a fault report as a goodbye (caught by tests

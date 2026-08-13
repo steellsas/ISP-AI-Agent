@@ -109,6 +109,13 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     except Exception:  # pragma: no cover - best-effort
         pass
 
+    # Phase gate (Andrius 2026-08-13): once the caller IS identified, numbers
+    # and street-like words are CONTENT ("nei 1 lemputė nedega"), never an
+    # address — stop extracting entirely; an address CORRECTION reopens
+    # identification through its own path (_reopen_identification) instead.
+    if s.customer_id:
+        return
+
     # Address-evidence gate: only scan the turn for an address when it plausibly
     # CONTAINS one — a digit or an address word in the utterance, or the agent just
     # asked for the address. Without this, fuzzy street matching read an ADDRESS out
@@ -142,9 +149,13 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         p.city.propose(reading.city, conf, SlotStatus.HEARD)
     if reading.street:
         p.street.propose(reading.street, conf, SlotStatus.HEARD)
-    if reading.house:
+    # A bare number with NO street context is not an address (Andrius
+    # 2026-08-13: STT wrote "Viena neveikia" as "1 neveikia" -> house=1 -> the
+    # LLM fuzzy-matched a street the caller never said). House/apartment land
+    # only when a street is known — said now or already in the slots.
+    if reading.house and (reading.street or p.street.value):
         p.house.propose(reading.house, conf, SlotStatus.HEARD)
-    if reading.apartment:
+    if reading.apartment and (reading.street or p.street.value):
         p.apartment.propose(reading.apartment, conf, SlotStatus.HEARD)
 
     # If the caller names a DIFFERENT street than the pre-flight outage was

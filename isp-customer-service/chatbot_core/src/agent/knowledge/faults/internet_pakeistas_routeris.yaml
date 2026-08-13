@@ -16,15 +16,23 @@ playbook: troubleshooting/internet_pakeistas_routeris_mac
 evidence:
   client:
     changed_device:
+      label: "routerio keitimas"
+      reiksmes:
+        keite: "keitė arba prijungė naują įrenginį"
+        nekeite: "nieko nekeitė"
       reikia: "ar klientas neseniai keitė routerį arba prijungė naują įrenginį prie linijos"
       klausimas: "Ar neseniai keitėte routerį, o gal prijungėte kokį naują įrenginį prie interneto linijos?"
       kodel: "Linijoje matome kitą įrenginį nei registruota — norime suprasti, ar tai jūsų naujas."
       paprasciau: "Gal per paskutines dienas namuose atsirado naujas routeris, kompiuteris ar TV priedėlis, jungtas prie interneto laido?"
       patikslinimas: "Norėjau patikslinti — ar nieko nekeitėte, ar tiesiog neprisimenat?"
       atsakymai:
-        keite: [keičiau, keiciau, pakeičiau, pakeiciau, "naują routerį", nusipirkau, prijungiau, pajungiau, keitėm, keitem]
+        keite: [keičiau, keiciau, keciau, pakeičiau, pakeiciau, "naują routerį", nusipirkau, prijungiau, pajungiau, keitėm, keitem]
         nekeite: [nekeičiau, nekeiciau, "nieko nekeit", "nieko naujo", neprijungiau, nepajungiau, "nieko nedariau"]
     cable_port:
+      label: "kabelio lizdas"
+      reiksmes:
+        wan: "interneto (WAN) lizde"
+        lan: "kitame (LAN) lizde"
       reikia: "į kurį routerio lizdą įkištas iš sienos ateinantis interneto kabelis — WAN ar LAN"
       klausimas: "Pažiūrėkite, į kurį lizdą įkištas iš sienos ateinantis kabelis — į interneto (WAN) lizdą ar į kitą?"
       kodel: "Jei kabelis ne tame lizde, linija mato ne tą įrenginį — tai dažniausia priežastis, kai niekas nekeista."

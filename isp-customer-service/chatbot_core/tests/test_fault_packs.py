@@ -121,6 +121,62 @@ class TestSolverMechanics:
         assert gotos == ["bind_mac"]
 
 
+class TestVoiceTestFixes:
+    """2026-08-13 live-call fixes: polarity, early facts, phase gating, glosses."""
+
+    def test_negated_demand_is_not_a_demand(self):
+        from agent.resolution import detect_refuse_or_ticket
+
+        assert detect_refuse_or_ticket("Neregistruokite, pajunkim kompiuterį") != "demand"
+        assert detect_refuse_or_ticket("užregistruokit gedimą") == "demand"
+
+    def test_demand_with_stop_words_keeps_the_dialogue(self):
+        from types import SimpleNamespace
+
+        from agent.ticket_flow import wants_to_keep_solving
+
+        engine = SimpleNamespace()
+        # live phrase: negated solving verbs + explicit demand -> NOT keep-solving
+        assert (
+            wants_to_keep_solving(
+                engine, "Nebe noriu tikrinti toliau, užregistruokit gedimą ir nebesprendžiam"
+            )
+            is False
+        )
+        assert wants_to_keep_solving(engine, "Ne, pajunkim tą kompiuterį") is True
+
+    def test_aciu_nereikia_is_a_farewell(self):
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Ačiū, nereikia") is True
+        assert detect_farewell("Nebereikia.") is True
+        assert detect_farewell("Ačiū") is False
+
+    def test_anamnesis_seeds_ledger_on_activation(self):
+        from types import SimpleNamespace
+
+        from agent.walker_flow import _seed_evidence_from_anamnesis
+
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                anamnesis_raw="Ką kečiau, routere?",
+                resolution={"verdict": "foreign_mac", "step": "confirm_change"},
+                evidence={},
+                turn_count=1,
+            ),
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        _seed_evidence_from_anamnesis(engine)
+        assert engine.state.evidence.get("changed_device", {}).get("value") == "keite"
+
+    def test_pack_glosses_replace_raw_keys(self):
+        from agent.evidence import gloss_label, gloss_value
+
+        assert gloss_label("changed_device") == "routerio keitimas"
+        assert gloss_value("keite") == "keitė arba prijungė naują įrenginį"
+        assert gloss_label("lights") == "routerio lemputės"  # built-ins keep working
+
+
 class TestNarratorWordedQuestions:
     """Persona (R5c): the first ask becomes a narrator GOAL directive; retries
     and formuluote:skriptas stay scripted; off-switch reverts everything."""

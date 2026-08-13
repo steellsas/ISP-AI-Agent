@@ -66,7 +66,37 @@ def ensure_diagnosed(engine) -> bool:
     engine.tracer.emit("tool_call", name="diagnose_connection", args={"customer_id": s.customer_id})
     engine._trace_tool_result("diagnose_connection", obs)
     engine._update_state_from_observation("diagnose_connection", obs)
+    _seed_evidence_from_anamnesis(engine)
     return True
+
+
+def _seed_evidence_from_anamnesis(engine) -> None:
+    """Facts the caller stated EARLY must not die in anamnesis_raw (Andrius
+    2026-08-13: 'pakeičiau routerį' answered at the ANAMNESIS question was
+    re-asked later in the fault flow). Once the verdict activates a pack, the
+    anamnesis answer is scanned against the pack's declared answer markers and
+    matching facts land on the ledger — the drive then never asks them again.
+    Only specific markers (>=5 chars) seed; generic affirmations never do."""
+    s = engine.state
+    raw = s.anamnesis_raw
+    verdict = (s.resolution or {}).get("verdict")
+    if not raw or not verdict:
+        return
+    from .evidence import CLIENT, _fold, _mark_hit, set_fact, spec_for
+
+    spec = spec_for(verdict)
+    if not spec:
+        return
+    low = _fold(raw)
+    for key, item in (spec.get("client") or {}).items():
+        if key in s.evidence:
+            continue
+        for value, marks in ((item or {}).get("atsakymai") or {}).items():
+            hits = [m for m in marks or [] if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
+            if hits:
+                set_fact(s.evidence, key, str(value), CLIENT, s.turn_count)
+                engine.tracer.emit("evidence", action="anamnesis_seed", key=key, value=str(value))
+                break
 
 
 def ensure_action_done(engine) -> bool:

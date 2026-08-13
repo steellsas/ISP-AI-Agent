@@ -92,18 +92,55 @@ def set_fact(
     return entry
 
 
+def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
+    """Pack-declared Lithuanian glosses merged over every loaded fault:
+    per-fact `label:` and per-value `reiksmes:` — so a NEW pack's facts read
+    human ('routerio keitimas: keitė įrangą'), never as raw English keys
+    (live 2026-08-13: the recap spoke 'changed_device: keite')."""
+    labels: dict[str, str] = {}
+    values: dict[str, str] = {}
+    try:
+        from .faults import _faults
+
+        for spec in _faults().values():
+            client = (
+                ((spec or {}).get("evidence") or {}).get("client")
+                if isinstance(spec, dict)
+                else None
+            )
+            for key, item in (client or {}).items():
+                if isinstance(item, dict):
+                    if item.get("label"):
+                        labels[str(key)] = str(item["label"])
+                    for v, gloss in (item.get("reiksmes") or {}).items():
+                        values[str(v)] = str(gloss)
+    except Exception:  # pragma: no cover - glosses are cosmetic, never break
+        pass
+    return labels, values
+
+
+def gloss_label(key: str) -> str:
+    labels, _ = _pack_glosses()
+    return labels.get(key) or LABELS.get(key, key)
+
+
+def gloss_value(value: Any) -> str:
+    _, values = _pack_glosses()
+    return values.get(value) or VALUE_LT.get(value, value)
+
+
 def summary_lt(evidence: dict[str, Any]) -> str:
     """One-line Lithuanian summary for the facts block / solver context /
     ticket ("lemputės: nedega; ar turite kompiuterį: KONFLIKTAS…")."""
     bits = []
     for key, e in evidence.items():
-        label = LABELS.get(key, key)
+        label = gloss_label(key)
         if e.get("conflict"):
-            a = VALUE_LT.get(e["value"], e["value"])
-            b = VALUE_LT.get(e.get("pending"), e.get("pending"))
+            a = gloss_value(e["value"])
+            b = gloss_value(e.get("pending"))
             bits.append(f"{label}: KONFLIKTAS ({a} ↔ {b})")
         else:
-            bits.append(f"{label}: {VALUE_LT.get(e['value'], e['value'])}")
+            bits.append(f"{label}: {gloss_value(e['value'])}")
     return "; ".join(bits)
 
 
@@ -246,7 +283,7 @@ def client_facts_lt(evidence: dict[str, Any]) -> str:
     bits = []
     for key, e in evidence.items():
         if e.get("source") == CLIENT and not e.get("conflict") and e.get("value") != "neaišku":
-            bits.append(f"{LABELS.get(key, key)}: {VALUE_LT.get(e['value'], e['value'])}")
+            bits.append(f"{gloss_label(key)}: {gloss_value(e['value'])}")
     return "; ".join(bits)
 
 

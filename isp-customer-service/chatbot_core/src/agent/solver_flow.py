@@ -182,8 +182,11 @@ def plug_report(engine: Any, user_input: str | None) -> bool:
 
     if _mark_hit(low, "pririsk"):  # "pririškite tada" — asks for the bind itself
         return True
-    # Passive done-forms answering the plug instruction.
-    return any(_mark_hit(low, m) for m in ("įkištas", "prijungtas", "pajungtas"))
+    # Passive done-forms answering the plug instruction (live 2026-08-13:
+    # "jungtas, LAN rodo" — STT drops the prefix — never unlocked the bind).
+    return any(
+        _mark_hit(low, m) for m in ("įkištas", "prijungtas", "pajungtas", "jungtas", "kištas")
+    )
 
 
 def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:

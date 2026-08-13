@@ -17,6 +17,10 @@ playbook: troubleshooting/kliento_puse_internetas
 evidence:
   client:
     fail_scope:
+      label: "kur neveikia"
+      reiksmes:
+        visuose: "visuose įrenginiuose"
+        viename: "tik viename įrenginyje"
       reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
       klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
       kodel: "Jei neveikia visur — žiūrime į routerį; jei viename — į tą įrenginį."
@@ -26,6 +30,10 @@ evidence:
         visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
         viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
     fail_device:
+      label: "įrenginys"
+      reiksmes:
+        telefonas: "telefone"
+        kompiuteris: "kompiuteryje"
       reikia: "kuriame įrenginyje neveikia — telefone ar kompiuteryje"
       klausimas: "Kuriame įrenginyje neveikia — telefone ar kompiuteryje?"
       atsakymai:
@@ -33,6 +41,10 @@ evidence:
         kompiuteris: [kompiuter, nešiojam, nesiojam, laptop, pc]
       kada: [fail_scope=viename]
     connection_type:
+      label: "jungimosi būdas"
+      reiksmes:
+        laidas: "laidu"
+        wifi: "per WiFi"
       reikia: "ar tas kompiuteris prijungtas laidu, ar per WiFi"
       klausimas: "O tas kompiuteris prie interneto jungiasi laidu ar per WiFi?"
       kodel: "Laidinei jungčiai tikrinsime kabelį, bevielei — WiFi nustatymus."
@@ -41,6 +53,10 @@ evidence:
         wifi: [wifi, "wi-fi", bevielis, bevieliu, belaidžiu, belaidziu]
       kada: [fail_device=kompiuteris]
     rebooted:
+      label: "routerio perkrovimas"
+      reiksmes:
+        perkrautas: "jau perkrautas"
+        neperkrautas: "dar neperkrautas"
       reikia: "ar routeris jau perkrautas (ištrauktas iš rozetės ir įjungtas iš naujo)"
       klausimas: "Ar bandėte perkrauti routerį — ištraukti iš rozetės, palaukti ir įjungti iš naujo?"
       kodel: "Perkrovimas išsprendžia didžiąją dalį tokių atvejų — verta pradėti nuo jo."

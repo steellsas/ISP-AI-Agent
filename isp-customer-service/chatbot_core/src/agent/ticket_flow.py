@@ -72,9 +72,25 @@ def wants_to_keep_solving(engine: Any, user_input: str | None) -> bool:
     resumed the phone question and the call closed registered while the
     caller was still asking for the bridge."""
     from .evidence import extract_client_facts
+    from .resolution import detect_refuse_or_ticket
+
+    # An explicit registration DEMAND is never a keep-solving signal, no matter
+    # what other words ride along ("nenoriu tikrinti toliau, UŽREGISTRUOKIT" —
+    # live 2026-08-13: 'tikrin'/'toliau' marks cancelled the demanded dialogue).
+    if detect_refuse_or_ticket(user_input) == "demand":
+        return False
 
     low = (user_input or "").lower()
-    return bool(extract_client_facts(user_input)) or any(m in low for m in CONTINUE_SOLVING_MARKS)
+    if bool(extract_client_facts(user_input)):
+        return True
+    # Polarity guard (live 2026-08-13): "nebeSPRENDžiam" matched the 'sprend'
+    # mark and cancelled the ticket dialogue the caller had just DEMANDED. A
+    # mark only counts when the word carrying it is not itself negated.
+    for token in low.split():
+        word = token.strip(".,!?…")
+        if any(m in word for m in CONTINUE_SOLVING_MARKS) and not word.startswith(("ne", "nebe")):
+            return True
+    return False
 
 
 def abort_ticket_to_solving(engine: Any) -> None:
