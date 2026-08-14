@@ -1191,11 +1191,28 @@ _TICKET_DEMAND = (
     "atsiusk technik",
     "tegul atvažiuoj",
     "tegul atvaziuoj",
-    # Live 2026-08-13: "Išregistruoti meistrą…" (STT of "užregistruoti") and
-    # "žegistruokit gedimą" both missed the imperative-only marks — the stem
-    # covers registruoti/registruokite and the garbled ž-/iš- variants.
+    # Live 2026-08-13: "žegistruokit gedimą" (STT garble) missed the exact
+    # imperative marks — the -k stem covers registruok/registruokit(e) and
+    # the ž-/iš- garbled variants. Imperatives are unconditional demands.
     "gistruok",
-    "gistruot",
+)
+# The INFINITIVE stem (registruoti/išregistruoti) appears in innocent speech
+# too — live 2026-08-14: "O jums dažnai taip skambina gedimus? Registruoti."
+# (small talk + a done-report) escalated mid-collection and the findings
+# moment never happened. It counts as a demand only next to an INTENT word.
+_TICKET_DEMAND_INF = ("gistruot",)
+_TICKET_DEMAND_INTENT = (
+    "prašau",
+    "prasau",
+    "noriu",
+    "norėč",
+    "norec",
+    "meistr",
+    "galite",
+    "galit",
+    "reikia",
+    "reikėt",
+    "reiket",
 )
 _TICKET_REFUSE = (
     "nedarysiu",
@@ -1233,7 +1250,13 @@ def detect_refuse_or_ticket(text: str | None) -> str | None:
     low = text.lower()
     for token in low.split():
         word = token.strip(".,!?…")
-        if any(m in word for m in _TICKET_DEMAND) and not word.startswith(("ne", "nebe")):
+        if word.startswith(("ne", "nebe")):
+            continue
+        if any(m in word for m in _TICKET_DEMAND):
+            return "demand"
+        if any(m in word for m in _TICKET_DEMAND_INF) and any(
+            c in low for c in _TICKET_DEMAND_INTENT
+        ):
             return "demand"
     if any(m in low for m in _TICKET_REFUSE):
         return "refuse"

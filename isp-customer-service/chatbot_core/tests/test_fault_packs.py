@@ -326,6 +326,20 @@ class TestTicketFirst:
         assert detect_refuse_or_ticket("Dar prašau, žegistruokit gedimą") == "demand"
         assert detect_refuse_or_ticket("Neregistruokite, bandome toliau") != "demand"
 
+    def test_infinitive_needs_intent(self):
+        """Live 2026-08-14: small talk with the bare infinitive escalated
+        mid-collection and the findings moment never happened."""
+        from agent.resolution import detect_refuse_or_ticket
+
+        assert (
+            detect_refuse_or_ticket(
+                "O jums dažnai taip skamina gedimus? Registruoti. Gerai, padariau tai."
+            )
+            is None
+        )
+        assert detect_refuse_or_ticket("Noriu registruoti gedimą") == "demand"
+        assert detect_refuse_or_ticket("Gal galite užregistruoti meistrą?") == "demand"
+
     def test_demand_is_never_a_side_topic(self):
         from types import SimpleNamespace
 
