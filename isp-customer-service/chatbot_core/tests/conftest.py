@@ -26,6 +26,9 @@ if str(src_path) not in sys.path:
 # ON behaviour is covered by the behavioural eval harness (agent/eval), not units.
 # `setdefault` lets a dev opt in with CLASSIFIER=on when specifically testing it.
 os.environ.setdefault("CLASSIFIER", "off")
+# Persona: narrator-worded evidence questions go through the LLM — unit tests
+# assert the SCRIPTED wording, so the deterministic mode keeps scripts on.
+os.environ.setdefault("NARRATOR_QUESTIONS", "off")
 
 
 # =============================================================================

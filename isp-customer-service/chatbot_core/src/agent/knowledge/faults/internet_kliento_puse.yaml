@@ -1,0 +1,211 @@
+# GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
+verdict: healthy_to_router
+meta:
+  pavadinimas: "Nėra interneto — tinklas iki routerio veikia, problema kliento pusėje"
+  domenas: internet
+  priklauso_nuo: []
+  tags: [internet, nera_interneto, kliento_puse, wifi, irenginys]
+  # R4b (2026-08-13): pirmasis walker->solveris perjungimas. Analizės variklis
+  # klausinėja iš evidence žinių; sprendimo žingsnius vykdo žingsnių medis
+  # (sprendimai: tada:walker). Grąžinti į seną elgesį = ištrinti šią eilutę.
+  vairuotojas: solveris
+problem: internet_down
+playbook: troubleshooting/kliento_puse_internetas
+# Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
+# hipotezės logika. Hipotezę patvirtina TELEMETRIJA (tinklas iki routerio
+# sveikas) — kliento faktai tarnauja analizei ir (R4b) solverio keliui.
+evidence:
+  client:
+    fail_scope:
+      label: "kur neveikia"
+      reiksmes:
+        visuose: "visuose įrenginiuose"
+        viename: "tik viename įrenginyje"
+      reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
+      klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
+      kodel: "Jei neveikia visur — žiūrime į routerį; jei viename — į tą įrenginį."
+      paprasciau: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
+      patikslinimas: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
+      atsakymai:
+        visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
+        viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
+    fail_device:
+      label: "įrenginys"
+      reiksmes:
+        telefonas: "telefone"
+        kompiuteris: "kompiuteryje"
+      reikia: "kuriame įrenginyje neveikia — telefone ar kompiuteryje"
+      klausimas: "Kuriame įrenginyje neveikia — telefone ar kompiuteryje?"
+      atsakymai:
+        telefonas: [telefon, planšet, planset, mobil]
+        kompiuteris: [kompiuter, nešiojam, nesiojam, laptop, pc]
+      kada: [fail_scope=viename]
+    connection_type:
+      label: "jungimosi būdas"
+      reiksmes:
+        laidas: "laidu"
+        wifi: "per WiFi"
+      reikia: "ar tas kompiuteris prijungtas laidu, ar per WiFi"
+      klausimas: "O tas kompiuteris prie interneto jungiasi laidu ar per WiFi?"
+      kodel: "Laidinei jungčiai tikrinsime kabelį, bevielei — WiFi nustatymus."
+      atsakymai:
+        laidas: [laidu, laidas, kabeliu, kabelis, "per laidą"]
+        wifi: [wifi, "wi-fi", bevielis, bevieliu, belaidžiu, belaidziu]
+      kada: [fail_device=kompiuteris]
+    rebooted:
+      label: "routerio perkrovimas"
+      reiksmes:
+        perkrautas: "jau perkrautas"
+        neperkrautas: "dar neperkrautas"
+      reikia: "ar routeris jau perkrautas (ištrauktas iš rozetės ir įjungtas iš naujo)"
+      klausimas: "Ar bandėte perkrauti routerį — ištraukti iš rozetės, palaukti ir įjungti iš naujo?"
+      kodel: "Perkrovimas išsprendžia didžiąją dalį tokių atvejų — verta pradėti nuo jo."
+      patikslinimas: "Norėjau patikslinti — ar perkrovėte ir nepadėjo, ar dar nebandėte?"
+      atsakymai:
+        perkrautas: [perkroviau, perkrovėm, perkrovem, perleidau, "jau bandžiau", "jau bandziau"]
+        neperkrautas: [neperkroviau, nebandžiau, nebandziau, "dar ne"]
+      kada: [fail_scope=visuose]
+  patvirtinta_kai: []
+  paneigta_kai: []
+# Sprendimai pagal surinktus faktus — visi vykdomi ŽINGSNIŲ MEDŽIO (tada:walker):
+# solveris nustato KUR eiti, medis žino KAIP vesti (instrukcija + patikra).
+sprendimai:
+- jei: [fail_scope=visuose]
+  tada: walker
+  zingsnis: cs_reboot
+  aprasymas: "perkrauti routerį — tai išsprendžia daugumą tokių atvejų"
+- jei: [fail_device=telefonas]
+  tada: walker
+  zingsnis: cs_wifi
+  aprasymas: "patikrinti telefono WiFi ryšį"
+- jei: [connection_type=laidas]
+  tada: walker
+  zingsnis: cs_cable
+  aprasymas: "patikrinti kabelį tarp routerio ir kompiuterio"
+- jei: [connection_type=wifi]
+  tada: walker
+  zingsnis: cs_wifi
+  aprasymas: "patikrinti kompiuterio WiFi ryšį"
+steps:
+# Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
+# "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has
+# its OWN route, so the classifier never guesses a device from "tik viename".
+- id: cs_scope
+  kind: confirm
+  detector: scope
+  rag_section: 0
+  'on':
+    all: cs_reboot
+    one: cs_which
+    phone: cs_cross_phone
+    computer: cs_cross_computer
+  hint: 'Ask ONE short question and WAIT: does it fail on all devices or just one? Do NOT reflect
+    or guess their answer — never say ''girdžiu, visuose'' or ''telefone'' until THEY said it. If
+    the answer was unclear, ask the same again.'
+  answers:
+    all: sako, kad internetas neveikia VISUOSE įrenginiuose
+    one: sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame
+    phone: AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')
+    computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
+- id: cs_which
+  kind: confirm
+  detector: scope
+  rag_section: 0
+  'on':
+    phone: cs_wifi
+    computer: cs_conn
+  hint: 'They said only ONE device is down but did not name it. Ask WHICH device (''Kuriame įrenginyje
+    — telefone, kompiuteryje?'') and WAIT. Never assume.'
+  answers:
+    phone: telefonas ar planšetė
+    computer: kompiuteris ar nešiojamas
+# The caller NAMED a device before the scope was known ("telefone nėra interneto").
+# Cross-check whether the others work — all down means the router path instead.
+- id: cs_cross_phone
+  kind: confirm
+  detector: restored
+  rag_section: 0
+  'on':
+    'yes': cs_wifi
+    'no': cs_reboot
+  hint: 'They said the PHONE has no internet. Cross-check ONE thing: do the other home devices have
+    internet? Others work -> the fault is on the phone; others down too -> whole-home path.'
+  answers:
+    'yes': kituose įrenginiuose internetas VEIKIA
+    'no': kituose įrenginiuose interneto irgi NĖRA
+- id: cs_cross_computer
+  kind: confirm
+  detector: restored
+  rag_section: 0
+  'on':
+    'yes': cs_conn
+    'no': cs_reboot
+  hint: 'They said the COMPUTER has no internet. Cross-check ONE thing: do the other home devices
+    have internet? Others work -> the fault is on the computer; others down too -> whole-home path.'
+  answers:
+    'yes': kituose įrenginiuose internetas VEIKIA
+    'no': kituose įrenginiuose interneto irgi NĖRA
+- id: cs_reboot
+  kind: instruct
+  rag_section: 1
+  goto: cs_verify_all
+  hint: 'All devices are down -> the cheapest, highest-yield fix first: ask them to reboot the router
+    (unplug from the socket 10 seconds, plug back in, wait for the lights) and to tell you when it
+    is back. ONE instruction.'
+- use: patikrinti_ar_atsirado
+  kaip: cs_verify_all
+  rag_section: 2
+  'on':
+    pavyko: resolve
+    nepavyko: escalate
+  hint: Ask whether the internet works now. If yes -> resolved. If not, it is beyond simple self-service
+    (router/DNS/config) -> register the fault.
+  answers:
+    'yes': po perkrovimo internetas veikia
+    'no': po perkrovimo internetas vis tiek neveikia
+- id: cs_conn
+  kind: confirm
+  detector: conn
+  rag_section: 3
+  'on':
+    wired: cs_cable
+    wifi: cs_wifi
+  hint: Only ONE computer is affected. Ask whether that computer connects by cable or by Wi-Fi. Wait.
+  answers:
+    wired: įrenginys prijungtas laidu
+    wifi: įrenginys jungiasi per WiFi (bevielį)
+- id: cs_cable
+  kind: instruct
+  rag_section: 4
+  goto: cs_verify_dev
+  hint: 'Wired computer: ask them to check the cable between router and computer — pushed in fully
+    (a click), not damaged — and reseat it. Tell you when done. ONE instruction. (Do NOT mention cables
+    for a phone/tablet — that branch never reaches here.)'
+- id: cs_wifi
+  kind: instruct
+  rag_section: 5
+  goto: cs_wifi2
+  hint: 'Wi-Fi device (phone/tablet/laptop): ask them to check Wi-Fi is ON and that they are connected
+    to THEIR OWN network (not a neighbour''s). ONE thing, wait.'
+- id: cs_wifi2
+  kind: instruct
+  rag_section: 6
+  goto: cs_verify_dev
+  hint: 'Next Wi-Fi step: ask them to ''forget'' the network and reconnect with the password (watch
+    upper/lowercase), then restart the device. Tell you when done. ONE instruction.'
+- use: patikrinti_ar_atsirado
+  kaip: cs_verify_dev
+  rag_section: 7
+  'on':
+    pavyko: resolve
+    nepavyko: escalate
+  hint: Ask whether it works now on that device. Yes -> resolved. No -> it is beyond simple help (device
+    settings/drivers) -> register the fault.
+  answers:
+    'yes': tame įrenginyje internetas dabar veikia
+    'no': tame įrenginyje internetas vis tiek neveikia
+- id: escalate
+  kind: escalate
+  tools: []
+  hint: The simple self-service steps did not help — the fault is deeper (router/DNS/config/device).
+    Register it ('gedimo registracija'); a worker will call the next business day.

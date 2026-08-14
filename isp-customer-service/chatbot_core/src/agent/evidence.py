@@ -92,18 +92,55 @@ def set_fact(
     return entry
 
 
+def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
+    """Pack-declared Lithuanian glosses merged over every loaded fault:
+    per-fact `label:` and per-value `reiksmes:` — so a NEW pack's facts read
+    human ('routerio keitimas: keitė įrangą'), never as raw English keys
+    (live 2026-08-13: the recap spoke 'changed_device: keite')."""
+    labels: dict[str, str] = {}
+    values: dict[str, str] = {}
+    try:
+        from .faults import _faults
+
+        for spec in _faults().values():
+            client = (
+                ((spec or {}).get("evidence") or {}).get("client")
+                if isinstance(spec, dict)
+                else None
+            )
+            for key, item in (client or {}).items():
+                if isinstance(item, dict):
+                    if item.get("label"):
+                        labels[str(key)] = str(item["label"])
+                    for v, gloss in (item.get("reiksmes") or {}).items():
+                        values[str(v)] = str(gloss)
+    except Exception:  # pragma: no cover - glosses are cosmetic, never break
+        pass
+    return labels, values
+
+
+def gloss_label(key: str) -> str:
+    labels, _ = _pack_glosses()
+    return labels.get(key) or LABELS.get(key, key)
+
+
+def gloss_value(value: Any) -> str:
+    _, values = _pack_glosses()
+    return values.get(value) or VALUE_LT.get(value, value)
+
+
 def summary_lt(evidence: dict[str, Any]) -> str:
     """One-line Lithuanian summary for the facts block / solver context /
     ticket ("lemputės: nedega; ar turite kompiuterį: KONFLIKTAS…")."""
     bits = []
     for key, e in evidence.items():
-        label = LABELS.get(key, key)
+        label = gloss_label(key)
         if e.get("conflict"):
-            a = VALUE_LT.get(e["value"], e["value"])
-            b = VALUE_LT.get(e.get("pending"), e.get("pending"))
+            a = gloss_value(e["value"])
+            b = gloss_value(e.get("pending"))
             bits.append(f"{label}: KONFLIKTAS ({a} ↔ {b})")
         else:
-            bits.append(f"{label}: {VALUE_LT.get(e['value'], e['value'])}")
+            bits.append(f"{label}: {gloss_value(e['value'])}")
     return "; ".join(bits)
 
 
@@ -224,6 +261,42 @@ def fault_isvada(verdict: str | None) -> str | None:
     return str(fault.get("isvada") or fault.get("reikalinga") or "") or None
 
 
+def fault_pasiulymas(verdict: str | None) -> str | None:
+    """The fault's OWN findings-moment offer script (`pasiulymas:` in the pack) —
+    ticket-first faults use it to frame the primary outcome (the technician)
+    before the optional convenience (the bridge). None -> the generic
+    'Pasiūlyk pasirinkimą (A ARBA B)' framing."""
+    if not verdict:
+        return None
+    from .faults import _faults
+
+    fault = _faults().get(verdict)
+    if not isinstance(fault, dict):
+        return None
+    return str(fault.get("pasiulymas") or "") or None
+
+
+def open_goals_lt(evidence: dict[str, Any], verdict: str | None) -> str:
+    """The still-open goals (`reikia`) whose `kada` gates hold — the narrator's
+    situational awareness: what this conversation still has to establish.
+    Mirrors next_missing's eligibility so the list never names a question the
+    drive would not ask."""
+    spec = spec_for(verdict)
+    if not spec:
+        return ""
+    confirmed = hypothesis_status(evidence, spec) == "confirmed"
+    goals = []
+    for key, item in (spec.get("client") or {}).items():
+        entry = evidence.get(key)
+        if entry is not None and not entry.get("conflict"):
+            continue
+        if not all(_cond_holds(evidence, c, confirmed) for c in item.get("kada") or []):
+            continue
+        if item.get("reikia"):
+            goals.append(str(item["reikia"]))
+    return "; ".join(goals)
+
+
 def solution_descriptions(verdict: str | None) -> list[str]:
     """Human wording of the declared solutions (`aprasymas` on each sprendimai
     entry; the bare `tada` key as fallback) — feeds the findings announce."""
@@ -246,7 +319,7 @@ def client_facts_lt(evidence: dict[str, Any]) -> str:
     bits = []
     for key, e in evidence.items():
         if e.get("source") == CLIENT and not e.get("conflict") and e.get("value") != "neaišku":
-            bits.append(f"{LABELS.get(key, key)}: {VALUE_LT.get(e['value'], e['value'])}")
+            bits.append(f"{gloss_label(key)}: {gloss_value(e['value'])}")
     return "; ".join(bits)
 
 
@@ -291,7 +364,13 @@ def hypothesis_status(evidence: dict[str, Any], spec: dict[str, Any]) -> str | N
     dead-router path no matter what else was gathered."""
     if any(_cond_holds(evidence, c, False) for c in (spec.get("paneigta_kai") or [])):
         return "refuted"
-    confirm = spec.get("patvirtinta_kai") or []
+    confirm = spec.get("patvirtinta_kai")
+    # An EXPLICIT empty list means "confirmed by telemetry from the start" —
+    # the client facts pick the SOLUTION, not the hypothesis (R4b packs:
+    # foreign_mac, healthy_to_router). An ABSENT key keeps the old meaning
+    # (no confirmation logic declared -> still collecting).
+    if isinstance(confirm, list) and not confirm:
+        return "confirmed"
     if confirm and all(_cond_holds(evidence, c, False) for c in confirm):
         return "confirmed"
     return None

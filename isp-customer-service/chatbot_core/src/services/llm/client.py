@@ -415,12 +415,32 @@ def stream_tool_completion(
     if top_p != 1.0:
         kwargs["top_p"] = top_p
 
+    # Guard the LIVE voice path the same way the non-streaming path is guarded
+    # (it had neither — a runaway loop could stream unmetered). Retries apply
+    # only BEFORE the first token: once text is out, a mid-stream failure must
+    # surface (replaying half a reply would double-speak it).
+    settings = get_settings()
+    get_rate_limiter().check_or_raise()
+
     start_time = time.time()
     content_parts: list[str] = []
     tc_acc: dict[int, dict] = {}
     usage = None
 
-    for chunk in litellm.completion(**kwargs):
+    stream = None
+    last_error: Exception | None = None
+    for attempt in range(settings.max_retries):
+        try:
+            stream = litellm.completion(**kwargs)
+            break
+        except Exception as e:  # connect-time failure — safe to retry
+            last_error = e
+            logger.warning(f"stream start failed (attempt {attempt + 1}): {e}")
+            time.sleep(settings.retry_delay * (attempt + 1))
+    if stream is None:
+        raise last_error  # type: ignore[misc]
+
+    for chunk in stream:
         if getattr(chunk, "usage", None):
             usage = chunk.usage
         choices = getattr(chunk, "choices", None)

@@ -1,0 +1,427 @@
+﻿{
+ "foreign_mac": {
+  "rag_doc": "troubleshooting/internet_pakeistas_routeris_mac",
+  "steps": [
+   {
+    "id": "confirm_change",
+    "kind": "confirm",
+    "detector": "",
+    "on": {
+     "yes": "bind_mac",
+     "no": "cable_check"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 0,
+    "consent": true
+   },
+   {
+    "id": "cable_check",
+    "kind": "confirm",
+    "detector": "port",
+    "on": {
+     "wan": "bind_mac",
+     "lan": "cable_reconnect"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 1,
+    "consent": true
+   },
+   {
+    "id": "cable_reconnect",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 2,
+    "consent": true
+   },
+   {
+    "id": "bind_mac",
+    "kind": "action",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [
+     "update_mac"
+    ],
+    "tool_actions": [
+     "update_mac"
+    ],
+    "rag_section": 3,
+    "consent": true
+   },
+   {
+    "id": "confirm_restored",
+    "kind": "confirm",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 4,
+    "consent": true
+   },
+   {
+    "id": "client_side",
+    "kind": "confirm",
+    "detector": "restored",
+    "on": {
+     "yes": "resolve",
+     "no": "escalate"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 5,
+    "consent": true
+   },
+   {
+    "id": "escalate",
+    "kind": "escalate",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": null,
+    "consent": true
+   }
+  ]
+ },
+ "healthy_to_router": {
+  "rag_doc": "troubleshooting/kliento_puse_internetas",
+  "steps": [
+   {
+    "id": "cs_scope",
+    "kind": "confirm",
+    "detector": "scope",
+    "on": {
+     "all": "cs_reboot",
+     "one": "cs_which",
+     "phone": "cs_cross_phone",
+     "computer": "cs_cross_computer"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 0,
+    "consent": true
+   },
+   {
+    "id": "cs_which",
+    "kind": "confirm",
+    "detector": "scope",
+    "on": {
+     "phone": "cs_wifi",
+     "computer": "cs_conn"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 0,
+    "consent": true
+   },
+   {
+    "id": "cs_cross_phone",
+    "kind": "confirm",
+    "detector": "restored",
+    "on": {
+     "yes": "cs_wifi",
+     "no": "cs_reboot"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 0,
+    "consent": true
+   },
+   {
+    "id": "cs_cross_computer",
+    "kind": "confirm",
+    "detector": "restored",
+    "on": {
+     "yes": "cs_conn",
+     "no": "cs_reboot"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 0,
+    "consent": true
+   },
+   {
+    "id": "cs_reboot",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "cs_verify_all",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 1,
+    "consent": true
+   },
+   {
+    "id": "cs_verify_all",
+    "kind": "confirm",
+    "detector": "restored",
+    "on": {
+     "yes": "resolve",
+     "no": "escalate"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 2,
+    "consent": true
+   },
+   {
+    "id": "cs_conn",
+    "kind": "confirm",
+    "detector": "conn",
+    "on": {
+     "wired": "cs_cable",
+     "wifi": "cs_wifi"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 3,
+    "consent": true
+   },
+   {
+    "id": "cs_cable",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "cs_verify_dev",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 4,
+    "consent": true
+   },
+   {
+    "id": "cs_wifi",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "cs_wifi2",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 5,
+    "consent": true
+   },
+   {
+    "id": "cs_wifi2",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "cs_verify_dev",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 6,
+    "consent": true
+   },
+   {
+    "id": "cs_verify_dev",
+    "kind": "confirm",
+    "detector": "restored",
+    "on": {
+     "yes": "resolve",
+     "no": "escalate"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 7,
+    "consent": true
+   },
+   {
+    "id": "escalate",
+    "kind": "escalate",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": null,
+    "consent": true
+   }
+  ]
+ },
+ "no_mac_observed": {
+  "rag_doc": "troubleshooting/internet_mires_routeris_tiltas",
+  "steps": [
+   {
+    "id": "dr_intro",
+    "kind": "confirm",
+    "detector": "yes_no",
+    "on": {
+     "yes": "dr_lights",
+     "no": "escalate"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 0,
+    "consent": true
+   },
+   {
+    "id": "dr_lights",
+    "kind": "confirm",
+    "detector": "lights",
+    "on": {
+     "yes": "dr_cable",
+     "no": "dr_power"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 1,
+    "consent": true
+   },
+   {
+    "id": "dr_power",
+    "kind": "confirm",
+    "detector": "lights",
+    "on": {
+     "yes": "dr_cable",
+     "no": "dr_offer_bridge"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 2,
+    "consent": true
+   },
+   {
+    "id": "dr_cable",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "dr_recheck",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 2,
+    "consent": true
+   },
+   {
+    "id": "dr_recheck",
+    "kind": "confirm",
+    "detector": "restored",
+    "on": {
+     "yes": "resolve",
+     "no": "dr_offer_bridge"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 8,
+    "consent": true
+   },
+   {
+    "id": "dr_offer_bridge",
+    "kind": "confirm",
+    "detector": "have_device",
+    "on": {
+     "yes": "dr_pick_cable",
+     "no": "escalate"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 3,
+    "consent": true
+   },
+   {
+    "id": "dr_pick_cable",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "dr_plug_pc",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 4,
+    "consent": true
+   },
+   {
+    "id": "dr_plug_pc",
+    "kind": "instruct",
+    "detector": "",
+    "on": {},
+    "goto": "dr_see_device",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 5,
+    "consent": true
+   },
+   {
+    "id": "dr_see_device",
+    "kind": "verify",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 6,
+    "consent": true
+   },
+   {
+    "id": "dr_bind",
+    "kind": "action",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [
+     "update_mac"
+    ],
+    "tool_actions": [
+     "update_mac"
+    ],
+    "rag_section": 7,
+    "consent": true
+   },
+   {
+    "id": "dr_verify",
+    "kind": "confirm",
+    "detector": "restored",
+    "on": {
+     "yes": "dr_register_router",
+     "no": "escalate"
+    },
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": 8,
+    "consent": true
+   },
+   {
+    "id": "dr_register_router",
+    "kind": "escalate",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": null,
+    "consent": false
+   },
+   {
+    "id": "escalate",
+    "kind": "escalate",
+    "detector": "",
+    "on": {},
+    "goto": "",
+    "tools": [],
+    "tool_actions": [],
+    "rag_section": null,
+    "consent": true
+   }
+  ]
+ }
+}

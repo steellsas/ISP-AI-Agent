@@ -64,6 +64,9 @@ class AgentConfig:
     # LLM Model Settings
     # =========================================================================
     model: str = "gpt-4o-mini"
+    # R4c model tiering: the SOLVER (the reasoner) may run on a stronger model
+    # than the fast narrator/perception calls. None = same as `model`.
+    solver_model: str | None = None
     temperature: float = 0.3
     max_tokens: int = 500
     top_p: float = 1.0

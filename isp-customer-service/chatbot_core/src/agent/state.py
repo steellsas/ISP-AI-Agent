@@ -21,8 +21,12 @@ class AgentState:
     # Call identification
     caller_phone: str
 
-    # Conversation history (for LLM context)
-    messages: list[dict[str, str]] = field(default_factory=list)
+    # Conversation history (for LLM context). NOT dict[str, str]: assistant
+    # tool-call messages carry a `tool_calls` LIST and tool results ride along
+    # too — the too-narrow annotation, mirrored into GraphState, made pydantic
+    # reject the whole state at the next graph turn after any LLM tool round
+    # (live 2026-08-13: every turn after an address tool round died silently).
+    messages: list[dict[str, Any]] = field(default_factory=list)
 
     # Structured address slots (Phase 3.5) — durable, typed identification memory
     # populated from resolve_address. Additive: the existing customer_* /
@@ -181,6 +185,12 @@ class AgentState:
 
     # Ticket info (if created)
     ticket_id: str | None = None
+    # Ticket-confirmation dialogue stage (R3 promotion of engine._ticket_stage,
+    # docs/ROADMAP_REFACTORING.md §6): None | "phone" | "hours" | "done" |
+    # "cancelled". The engine's scripted ladder owns transitions; routers read it
+    # (legacy route() via the engine property, v2 route_entry via GraphState) to
+    # send mid-dialogue turns to the ticket node.
+    ticket_stage: str | None = None
 
     def add_observation(self, observation: str):
         """Add tool observation to history."""
