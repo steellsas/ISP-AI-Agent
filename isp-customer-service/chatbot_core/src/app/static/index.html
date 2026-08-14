@@ -224,6 +224,10 @@ let sid=null, ws=null, playing=false;
 let totals={in:0,out:0,cost:0,turns:0};
 let audioCtx=null, micStream=null, micNode=null, micSrc=null, recording=false;
 let utter=[], speaking=false, silenceMs=0, speechMs=0, sampleRate=16000;
+// Pre-roll žiedas (2026-08-14): VAD garsą kaupė tik NUO slenksčio peržengimo,
+// tad tyli žodžio pradžia ("s-", "š-") dingdavo — laikome paskutinius ~240 ms
+// ir prišliejame prie frazės pradžios (ir barge-in atveju).
+let preBuf=[], preMs=0; const PREROLL_MS=240;
 let bargeMs=0, bargeSilence=0, bargeBuf=[];   // kalba agentui kalbant (barge-in)
 
 /* ---------- UI helpers ---------- */
@@ -433,15 +437,22 @@ async function startMic(){
     const ch = ev.inputBuffer.getChannelData(0);
     let sum=0; for(let i=0;i<ch.length;i++) sum+=ch[i]*ch[i];
     const rms=Math.sqrt(sum/ch.length);
+    // Pre-roll žiedas pildomas KIEKVIENU kadru, visose šakose (sprendimo
+    // momentu jame — ankstesni kadrai, dabartinis pridedamas žemiau).
+    const updPre = () => {
+      preBuf.push(new Float32Array(ch)); preMs+=frameMs;
+      while(preMs>PREROLL_MS && preBuf.length){ preBuf.shift(); preMs-=frameMs; }
+    };
     $("vu").firstElementChild.style.height=Math.min(100,rms*800)+"%";
     if(playing){
       // Barge-in v1 (asimetrinis): mikrofonas KLAUSO agentui kalbant. Trumpas
       // pliūpsnis ("aha", "taip") — backchannel, grojame toliau; kalba ilgiau
       // už slenkstį — stabdome grojimą, pertraukiančioji kalba tampa naujo
       // atsakymo pradžia (nė vienas žodis nedingsta).
-      if(!micCfg.bargeOn){ speaking=false; utter=[]; return; }
+      if(!micCfg.bargeOn){ speaking=false; utter=[]; updPre(); return; }
       const bthr = micCfg.threshold*1.6;   // aukštesnis slenkstis prieš aidą
       if(rms>bthr){
+        if(bargeMs===0) bargeBuf=preBuf.slice();  // pre-roll: pertraukimo pradžia nedingsta
         bargeMs+=frameMs; bargeSilence=0;
         bargeBuf.push(new Float32Array(ch));
       }else if(bargeMs>0){
@@ -456,9 +467,11 @@ async function startMic(){
         utter=bargeBuf.slice();
         bargeMs=0; bargeSilence=0; bargeBuf=[];
       }
+      updPre();
       return;
     }
     if(rms>micCfg.threshold){
+      if(!speaking) utter=preBuf.slice();       // pre-roll: žodžio pradžia nedingsta
       speaking=true; speechMs+=frameMs; silenceMs=0;
       utter.push(new Float32Array(ch));
     }else if(speaking){
@@ -469,11 +482,12 @@ async function startMic(){
         speaking=false; speechMs=0; silenceMs=0; utter=[];
       }
     }
+    updPre();
   };
 }
 function stopMic(){
   recording=false; $("mic").classList.remove("rec");
-  bargeMs=0; bargeSilence=0; bargeBuf=[];
+  bargeMs=0; bargeSilence=0; bargeBuf=[]; preBuf=[]; preMs=0;
   if(micNode) micNode.disconnect();
   if(micSrc) micSrc.disconnect();
   if(micStream) micStream.getTracks().forEach(t=>t.stop());
