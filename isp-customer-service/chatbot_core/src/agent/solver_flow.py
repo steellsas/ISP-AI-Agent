@@ -91,6 +91,11 @@ def build_solver_context(engine: Any, user_input: str | None) -> str:
     lines.append(
         f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.awaiting}"
     )
+    # Process journal (sąmoningumas №3): the transitions already walked — the
+    # thinker sees the path ("kas jau vyko"), so it never re-proposes a step
+    # the call has moved past.
+    if r.get("journal"):
+        lines.append("ŽINGSNIŲ EIGA (jau vyko): " + "; ".join(r["journal"][-8:]))
     # The full procedure for this fault (the solver reasons over the WHOLE playbook to
     # pick the next action — unlike the narrator, which sees one isolated step).
     if r.get("verdict"):

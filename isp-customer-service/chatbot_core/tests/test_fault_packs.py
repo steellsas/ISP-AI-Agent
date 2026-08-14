@@ -440,6 +440,87 @@ class TestTicketFirst:
         assert "Pasiūlyk pasirinkimą" not in block
 
 
+class TestStepAwareness:
+    """VOICE_PLAN 1 žingsnis (L1+L2): one question per turn, the step's goal
+    (`tikslas`) drives evaluative reactions, repeats come with an explanation,
+    and the solver reads the walked path from the journal."""
+
+    def test_caller_question_is_single(self):
+        from pathlib import Path
+
+        import yaml
+
+        data = yaml.safe_load(
+            (
+                Path(__file__).parents[1] / "src" / "agent" / "knowledge" / "identification.yaml"
+            ).read_text(encoding="utf-8")
+        )
+        q = data["identification"]["questions"]["caller"]
+        assert q.count("?") == 1 and "sudar" not in q
+
+    def test_tikslas_flows_through_build(self):
+        from agent.faults import build_strategy
+
+        strat = build_strategy("no_mac_observed")
+        by_id = {st.id: st for st in strat.steps}
+        assert "sutinka" in by_id["dr_intro"].tikslas
+        assert "lemput" in by_id["dr_lights"].tikslas
+        # module instance override (kaip: dr_verify) carries its own goal
+        assert "kompiuteryje internetas" in by_id["dr_verify"].tikslas
+
+    def test_goto_step_writes_the_journal(self):
+        from types import SimpleNamespace
+
+        from agent.walker_flow import goto_step
+
+        engine = SimpleNamespace(tracer=SimpleNamespace(emit=lambda *a, **k: None))
+        r = {"step": "dr_intro"}
+        goto_step(engine, r, "dr_lights")
+        goto_step(engine, r, "dr_lights")  # same step -> no duplicate entry
+        goto_step(engine, r, "dr_power")
+        assert r["journal"] == ["dr_intro→dr_lights", "dr_lights→dr_power"]
+
+    def test_facts_block_states_goal_and_repeat(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST001"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "presented": {"dr_lights": 2},
+        }
+        block = agent._state_facts_block()
+        assert "ŠIO ŽINGSNIO TIKSLAS" in block and "lemput" in block
+        assert "ŽINGSNIS KARTOJAMAS" in block
+
+    def test_first_presentation_has_no_repeat_directive(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST001"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "presented": {"dr_lights": 1},
+        }
+        block = agent._state_facts_block()
+        assert "ŽINGSNIS KARTOJAMAS" not in block
+
+    def test_solver_context_includes_the_journey(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST001"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "dr_power",
+            "journal": ["dr_intro→dr_lights", "dr_lights→dr_power"],
+        }
+        ctx = agent._build_solver_context("nedega")
+        assert "ŽINGSNIŲ EIGA" in ctx and "dr_intro→dr_lights" in ctx
+
+
 class TestEvidenceDeclared:
     """A variantas (2026-08-13): every internet pack declares its analysis
     knowledge — the perception vocabulary and the hypothesis logic."""

@@ -147,7 +147,7 @@ def _expanded_steps(verdict: str) -> tuple[dict[str, Any], ...]:
                 # Instance-level overrides: the module is generic, the CALL SITE
                 # supplies the contextual wording ("prijungtame kompiuteryje…"
                 # vs "po perkrovimo…") and the RAG section for this fault.
-                for key in ("hint", "rag_section", "answers", "detector"):
+                for key in ("hint", "rag_section", "answers", "detector", "tikslas"):
                     if raw.get(key) is not None:
                         m[key] = raw[key]
             out.append(m)
@@ -256,6 +256,7 @@ def build_strategy(verdict: str):
                     id=str(raw["id"]),
                     kind=StepKind(str(raw["kind"])),
                     hint=str(raw.get("hint", "")),
+                    tikslas=str(raw.get("tikslas", "")),
                     tools=frozenset(raw.get("tools") or ()),
                     tool_actions=tuple(raw.get("tool_actions") or ()),
                     rag_section=raw.get("rag_section"),
