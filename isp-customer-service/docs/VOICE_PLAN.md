@@ -14,8 +14,32 @@ Visi žingsniai daromi VOICE šakoje (po refactor/langgraph-v2 PR į develop).
 | 1 | L1 + L2 | Vienas klausimas per turn'ą; vertinantys patvirtinimai (pack'ų `tikslas`); žingsnio kartojimo paaiškinimas | baigta (8739d03) |
 | 2 | V1 + replay | Dinaminis Whisper prompt (klausimas + laukiami atsakymai), <0.3 s garso sargas, įrašymo manifest.jsonl, replay stendas (`chatbot_core/replay_stt.py`) | baigta (bf54f55) |
 | 3 | L3a | Išmanus barge-in: default-deny + poliariškumas + aido tekstinis filtras (`agent/barge_in.py`) | baigta (1ad7d4e) |
-| 4 | L3b | Agento „mhm" įterpimai diktavimo kontekstuose. PASTABA: dabartinis WS kelias — half-duplex (naršyklė siunčia PILNĄ frazę), serveris kliento kalbos eigos nemato — L3b reikia arba kliento pusės logikos, arba srautinio kelio (L4). Aptarti prieš darant. | — |
-| 5 | L4 | Srautinis STT + semantinis turn-taking (sprendžiam po 1–4) | — |
+| 4 | L3b | Agento „mhm" įterpimai diktavimo kontekstuose. PASTABA: dabartinis WS kelias — half-duplex (naršyklė siunčia PILNĄ frazę), serveris kliento kalbos eigos nemato — L3b reikia arba kliento pusės logikos, arba srautinio kelio (L4). Aptarti prieš darant. | ATIDĖTA (su L4) |
+| 5 | L4 | Srautinis STT + semantinis turn-taking (sprendžiam po 1–4) | ATIDĖTA (kita šaka) |
+
+## Pataisymai po gyvų testų (2026-08-14, šakos uždarymo banga)
+
+- **Barge-in žyma turn'o PRADŽIOJE** (f6da47c): garsas naršyklėje groja
+  wall-clock laiku, tad pertraukimas atkeliauja TARP serverio turn'ų — žyma
+  dabar fiksuojama sessions.py prieš pat cancel.clear(); iki tol 9/10
+  pertraukimų klasifikatorius nematė.
+- **Filler WS kelyje** (f6da47c): jei per VOICE_FILLER_AFTER_S (1.2 s) nėra
+  tikro garso — „Sekundėlę, tikrinu."; vėlinimas + finally atšaukimas saugo
+  nuo kalbėjimo į triukšmą/numestus fragmentus.
+- **Pre-roll žiedas kliente** (19eeae5): VAD kaupė garsą tik NUO slenksčio —
+  tyli žodžio pradžia („s-", „š-") dingdavo; dabar ~240 ms žiedas (micPre
+  localStorage) prišliejamas prie frazės ir pertraukimo pradžios.
+- **Voice parametrai config puslapyje**: ASR_MIN_AUDIO_S, VOICE_FILLER,
+  VOICE_FILLER_AFTER_S; kliento pusėje — micThr/micSil/bargeMs/micPre
+  (localStorage).
+
+## Atidėta po šakos uždarymo (kandidatai į L4 etapą)
+
+- Filler frazės tobulinimas (Andrius: „sekundėlę tikrinu kartais atrodo kaip
+  šiukšlė" — konfigūruojama/kontekstinė frazė arba tylus tonas).
+- Adaptyvus VAD langas pagal klausimo tipą (adresas ilgas / taip-ne trumpas).
+- Nebaigtos minties sargas (transkriptas baigiasi „ir/bet/tai…" → palaukti).
+- L3b agento pritarimai + L4 srautinis dupleksas.
 
 ## 1 žingsnio darbų sąrašas (L1+L2, paruošta įgyvendinimui)
 

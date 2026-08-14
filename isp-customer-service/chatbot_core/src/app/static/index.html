@@ -227,7 +227,8 @@ let utter=[], speaking=false, silenceMs=0, speechMs=0, sampleRate=16000;
 // Pre-roll žiedas (2026-08-14): VAD garsą kaupė tik NUO slenksčio peržengimo,
 // tad tyli žodžio pradžia ("s-", "š-") dingdavo — laikome paskutinius ~240 ms
 // ir prišliejame prie frazės pradžios (ir barge-in atveju).
-let preBuf=[], preMs=0; const PREROLL_MS=240;
+let preBuf=[], preMs=0;
+const PREROLL_MS=parseInt(localStorage.getItem("micPre")||"240",10); // derinama be kodo
 let bargeMs=0, bargeSilence=0, bargeBuf=[];   // kalba agentui kalbant (barge-in)
 
 /* ---------- UI helpers ---------- */
