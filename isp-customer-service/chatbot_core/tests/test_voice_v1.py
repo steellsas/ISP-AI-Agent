@@ -102,6 +102,65 @@ class TestDynamicContext:
         assert turn.transcript == "senas adapteris"
 
 
+class TestSmartBargeIn:
+    """L3a: what an interruption MEANS — default-deny, negation always stops,
+    backchannels/echo never derail the dialogue."""
+
+    def test_consent_stop_echo_substantive(self):
+        from agent.barge_in import classify_interruption
+
+        said = "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+        assert classify_interruption("Taip taip", said) == "consent"
+        assert classify_interruption("Gerai, mhm", said) == "consent"
+        assert classify_interruption("Ne, palaukit!", said) == "stop"
+        assert classify_interruption("Ne", said) == "stop"
+        # speakerphone echo: our own words, garbled endings
+        assert classify_interruption("ar ant routero dega lempute", said) == "echo"
+        # real content — even short — processes normally
+        assert classify_interruption("Lemputės nedega", said) == "substantive"
+        assert classify_interruption("Nu... nežinau", said) == "substantive"
+        assert classify_interruption("", said) == "substantive"
+
+    def test_fuzzy_overlap_tolerates_garbled_endings(self):
+        from agent.barge_in import token_overlap
+
+        assert token_overlap("dega lempute routero", "ar dega lemputės ant routerio?") >= 0.8
+        assert token_overlap("visai kita tema", "ar dega lemputės?") < 0.5
+
+    def test_stream_turn_consent_reanchors_instead_of_derailing(self):
+        turns = []
+
+        def transcribe(audio, **k):
+            return "Taip taip"
+
+        session = _session()
+        session.anchor_text = lambda: "Ar dega bent viena lemputė?"
+        session.handle_turn = lambda text: turns.append(text) or "NETURI BŪTI"
+        session.handle_turn_stream = None  # force the non-stream agent path
+        pipeline = VoicePipeline(session, SimpleNamespace(transcribe=transcribe), _StubTTS())
+        chunks = list(
+            pipeline.stream_turn(
+                b"\x00" * 32_000,
+                interruption=lambda t: "consent",
+            )
+        )
+        assert turns == []  # the engine never saw the backchannel
+        assert chunks == [b"AUDIO"]  # the standing question was re-spoken
+        events = dict(session.tracer.events)
+        assert events.get("barge_in", {}).get("verdict") == "consent"
+
+    def test_stream_turn_substantive_processes_normally(self):
+        session = _session()
+        session.handle_turn_stream = None
+        seen = []
+        session.handle_turn = lambda text: seen.append(text) or "atsakau"
+        pipeline = VoicePipeline(
+            session, SimpleNamespace(transcribe=lambda a, **k: "nedega lemputės"), _StubTTS()
+        )
+        chunks = list(pipeline.stream_turn(b"\x00" * 32_000, interruption=lambda t: "substantive"))
+        assert seen == ["nedega lemputės"] and chunks
+
+
 class TestSessionAsrContext:
     def test_builds_from_question_and_pending_vocabulary(self, db_connection):
         from agent.session import AgentSession

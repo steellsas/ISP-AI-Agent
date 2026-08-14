@@ -277,6 +277,7 @@ class VoicePipeline:
         *,
         sample_rate: int = 16_000,
         should_stop: Callable[[], bool] | None = None,
+        interruption: Callable[[str], str | None] | None = None,
     ) -> Iterator[bytes]:
         """
         Run one turn and STREAM the reply audio in chunks (one per sentence) so the
@@ -314,6 +315,24 @@ class VoicePipeline:
                 context=(context or "")[:160],
             )
         if dropped:
+            return
+
+        # Smart barge-in (L3a): the previous turn was cut by this utterance —
+        # a bare backchannel ("taip", "mhm") or our own speakerphone echo must
+        # NOT become a dialogue turn. Re-anchor the standing question instead;
+        # "stop"/"substantive" fall through to normal processing (default-deny).
+        verdict = interruption(transcript) if interruption is not None else None
+        if verdict is not None and tracer is not None:
+            tracer.emit("barge_in", verdict=verdict, transcript=transcript[:120])
+        if verdict in ("consent", "echo"):
+            anchor = getattr(self._session, "anchor_text", None)
+            text = anchor() if callable(anchor) else ""
+            if text:
+                chunk = self._tts.synthesize(
+                    normalize_lt_address_speech(text), language=self._language
+                )
+                if chunk:
+                    yield chunk
             return
 
         asr_ms = (t1 - t0) * 1000.0

@@ -147,6 +147,24 @@ class AgentSession:
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
 
+    def last_spoken_text(self) -> str:
+        """The agent's most recent spoken reply (echo reference for L3a) —
+        falls back to the standing question when no reply is recorded yet."""
+        try:
+            for m in reversed(self._agent.state.messages):
+                if m.get("role") == "assistant" and (m.get("content") or "").strip():
+                    return str(m["content"])
+            return self._agent.state.last_question or ""
+        except Exception:  # pragma: no cover
+            return ""
+
+    def anchor_text(self) -> str:
+        """The exact question to re-say after a swallowed backchannel turn."""
+        try:
+            return self._agent.anchor_text()
+        except Exception:  # pragma: no cover
+            return ""
+
     def greeting(self) -> str:
         """
         Return the conversation's opening message.

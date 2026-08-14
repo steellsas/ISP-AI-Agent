@@ -11,9 +11,9 @@ Visi žingsniai daromi VOICE šakoje (po refactor/langgraph-v2 PR į develop).
 
 | # | Žingsnis | Turinys | Būsena |
 |---|----------|---------|--------|
-| 1 | L1 + L2 | Vienas klausimas per turn'ą; vertinantys patvirtinimai (pack'ų `tikslas`); žingsnio kartojimo paaiškinimas | kitas |
-| 2 | V1 + replay | Dinaminis Whisper prompt (klausimas + laukiami atsakymai), <0.3 s garso sargas, ištisinis dviejų takelių įrašymas su laiko manifestu, replay stendas | — |
-| 3 | L3a | Išmanus barge-in: default-deny + poliariškumas + aido tekstinis filtras | — |
+| 1 | L1 + L2 | Vienas klausimas per turn'ą; vertinantys patvirtinimai (pack'ų `tikslas`); žingsnio kartojimo paaiškinimas | baigta (8739d03) |
+| 2 | V1 + replay | Dinaminis Whisper prompt (klausimas + laukiami atsakymai), <0.3 s garso sargas, įrašymo manifest.jsonl, replay stendas (`chatbot_core/replay_stt.py`) | baigta (bf54f55) |
+| 3 | L3a | Išmanus barge-in: default-deny + poliariškumas + aido tekstinis filtras | kitas |
 | 4 | L3b | Agento „mhm" įterpimai diktavimo kontekstuose | — |
 | 5 | L4 | Srautinis STT + semantinis turn-taking (sprendžiam po 1–4) | — |
 

@@ -107,12 +107,26 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
     first_ms: int | None = None
     reply_audio = bytearray()
     chunks = 0
+    # Smart barge-in (L3a): when THIS utterance is the one that cut the agent
+    # off mid-reply, classify it — a bare backchannel/echo re-anchors the
+    # standing question instead of derailing the dialogue (default-deny:
+    # anything unclear processes normally).
+    interruption = None
+    if bool(getattr(pipeline, "prev_cancelled", False)):
+
+        def interruption(transcript: str) -> str | None:
+            from agent.barge_in import classify_interruption
+
+            return classify_interruption(transcript, ms.session.last_spoken_text())
+
     # PR3: the barge-in cancel reaches the ENGINE — checked between sentences;
     # the token stream closes (LLM generation stops) and the ask-bookkeeping
     # rolls back via the session hook.
     turn_error = False
     try:
-        for chunk in pipeline.stream_turn(audio, should_stop=ms.cancel.is_set):
+        for chunk in pipeline.stream_turn(
+            audio, should_stop=ms.cancel.is_set, interruption=interruption
+        ):
             if not chunk:
                 continue
             if first_ms is None:
@@ -149,17 +163,36 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         "dropped": chunks == 0 and not ms.session.is_complete and not ms.cancel.is_set(),
         "error": turn_error,
     }
+    # L3a bookkeeping: remember whether THIS turn ended in a barge-in — the
+    # next utterance is then the interrupting one and gets classified.
+    pipeline.prev_cancelled = ms.cancel.is_set()
     if os.environ.get("API_RECORD_AUDIO", "1") != "0":
         try:
             d = _record_dir(ms.session.session_id)
             d.mkdir(parents=True, exist_ok=True)
             stem = f"turn_{ms.turn_count + 1:02d}"
             (d / f"{stem}_user.wav").write_bytes(audio)
+            _manifest(d, "caller", f"{stem}_user.wav")
             if reply_audio:
                 (d / f"{stem}_agent.mp3").write_bytes(bytes(reply_audio))
+                _manifest(d, "agent", f"{stem}_agent.mp3", cancelled=ms.cancel.is_set())
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(f"audio recording failed: {e}")
     return payload
+
+
+def _manifest(d: Path, side: str, filename: str, **extra: Any) -> None:
+    """Timeline entry for the replay bench (VOICE_PLAN: dviejų takelių įrašymas
+    su laiko manifestu) — best-effort append to manifest.jsonl."""
+    import json
+    import time
+
+    try:
+        entry = {"t": round(time.time(), 3), "side": side, "file": filename, **extra}
+        with open(d / "manifest.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:  # pragma: no cover - best-effort
+        logger.debug("manifest append failed", exc_info=True)
 
 
 def run_voice_turn(ms: ManagedSession, audio: bytes) -> tuple[dict[str, Any], bytes]:
@@ -184,8 +217,10 @@ def run_voice_turn(ms: ManagedSession, audio: bytes) -> tuple[dict[str, Any], by
             d.mkdir(parents=True, exist_ok=True)
             stem = f"turn_{ms.turn_count + 1:02d}"
             (d / f"{stem}_user.wav").write_bytes(audio)
+            _manifest(d, "caller", f"{stem}_user.wav")
             if turn.reply_audio:
                 (d / f"{stem}_agent.mp3").write_bytes(turn.reply_audio)
+                _manifest(d, "agent", f"{stem}_agent.mp3")
         except Exception as e:  # pragma: no cover - defensive
             logger.warning(f"audio recording failed: {e}")
     return payload, turn.reply_audio
