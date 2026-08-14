@@ -119,6 +119,34 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
 
             return classify_interruption(transcript, ms.session.last_spoken_text())
 
+    # Filler (live 2026-08-14: "spragos tarp klausimų" — tts_first 5–10 s is
+    # the LLM thinking): if no real audio is ready within VOICE_FILLER_AFTER_S,
+    # speak the cached "Sekundėlę, tikrinu." cue. The delay keeps it away from
+    # dropped noise/backchannel turns (they finish silently well under it).
+    import threading
+
+    got_audio = threading.Event()
+
+    def _maybe_filler() -> None:
+        if got_audio.is_set() or ms.cancel.is_set():
+            return
+        try:
+            fa = pipeline.filler_audio()
+            if fa and not got_audio.is_set():
+                on_chunk(bytes(fa))
+        except Exception:  # pragma: no cover - the cue must never break a turn
+            logger.debug("filler failed", exc_info=True)
+
+    filler_timer = None
+    if os.environ.get("VOICE_FILLER", "on").lower() == "on":
+        try:
+            delay = float(os.environ.get("VOICE_FILLER_AFTER_S", "1.2"))
+        except ValueError:
+            delay = 1.2
+        filler_timer = threading.Timer(delay, _maybe_filler)
+        filler_timer.daemon = True
+        filler_timer.start()
+
     # PR3: the barge-in cancel reaches the ENGINE — checked between sentences;
     # the token stream closes (LLM generation stops) and the ask-bookkeeping
     # rolls back via the session hook.
@@ -129,6 +157,9 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         ):
             if not chunk:
                 continue
+            got_audio.set()
+            if filler_timer is not None:
+                filler_timer.cancel()
             if first_ms is None:
                 first_ms = round((time.perf_counter() - t0) * 1000)
             chunks += 1
@@ -153,6 +184,10 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
                 on_chunk(bytes(fb_audio))
         except Exception:  # pragma: no cover - the fallback must never raise
             logger.exception("voice turn fallback failed")
+    finally:
+        got_audio.set()  # a silent (dropped) turn must not get a late filler
+        if filler_timer is not None:
+            filler_timer.cancel()
     payload = {
         "type": "voice_turn_done",
         "chunks": chunks,
@@ -163,9 +198,6 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         "dropped": chunks == 0 and not ms.session.is_complete and not ms.cancel.is_set(),
         "error": turn_error,
     }
-    # L3a bookkeeping: remember whether THIS turn ended in a barge-in — the
-    # next utterance is then the interrupting one and gets classified.
-    pipeline.prev_cancelled = ms.cancel.is_set()
     if os.environ.get("API_RECORD_AUDIO", "1") != "0":
         try:
             d = _record_dir(ms.session.session_id)
