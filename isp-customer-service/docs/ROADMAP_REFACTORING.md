@@ -362,3 +362,16 @@ normaliu vardu (be `_`); jei ne — į TurnScratch.
   4 ploni mazgai atskiruose failuose, `AGENT_ENGINE=v2` jungiklis.
   Pariteto/checkpointo/time-travel testai (18) žali. Liko R2: gyvo balso
   patikra (streaming + barge-in), auksiniai scenarijai (R0 skola).
+- **2026-08-13 (vakaras)** — Persona užbaigta iki galo: IŠVADOS MOMENTAS
+  (findings kaip naratoriaus direktyva vietoj šablono), TILTO FAZĖS inkaras
+  naratoriui (`484e68f`); TIKETAS-PIRMAS mirusio routerio pack'e (`pasiulymas`
+  scenarijus, solverio close negali apeiti registracijos, closing girdi
+  reikalavimą, demand ≠ side_topic) + DAR AIŠKINAMĖS situacinis blokas
+  (`f822e0d`). 758 testai, eval 29/29.
+- **2026-08-14** — Demand detektoriaus perlenkimas pataisytas (bendratis
+  „registruoti" — tik su ketinimo žodžiu, `a341ea4`). Gyvas skambutis: pilnai
+  teisingas srautas (išvada žmogiškai, meistras pažadėtas, tiltas pasiūlytas ir
+  suveikė, tiketas registruotas su pastaba). Balso natūralumo planas sutartas
+  ir užrašytas `docs/VOICE_PLAN.md` (L1–L4 lygiai, saugikliai, replay stendas).
+  SPRENDIMAS: šios šakos darbas baigtas — PR į develop; voice tobulinimai —
+  naujoje šakoje pagal VOICE_PLAN.md.
