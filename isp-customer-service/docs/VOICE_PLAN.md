@@ -13,8 +13,8 @@ Visi žingsniai daromi VOICE šakoje (po refactor/langgraph-v2 PR į develop).
 |---|----------|---------|--------|
 | 1 | L1 + L2 | Vienas klausimas per turn'ą; vertinantys patvirtinimai (pack'ų `tikslas`); žingsnio kartojimo paaiškinimas | baigta (8739d03) |
 | 2 | V1 + replay | Dinaminis Whisper prompt (klausimas + laukiami atsakymai), <0.3 s garso sargas, įrašymo manifest.jsonl, replay stendas (`chatbot_core/replay_stt.py`) | baigta (bf54f55) |
-| 3 | L3a | Išmanus barge-in: default-deny + poliariškumas + aido tekstinis filtras | kitas |
-| 4 | L3b | Agento „mhm" įterpimai diktavimo kontekstuose | — |
+| 3 | L3a | Išmanus barge-in: default-deny + poliariškumas + aido tekstinis filtras (`agent/barge_in.py`) | baigta (1ad7d4e) |
+| 4 | L3b | Agento „mhm" įterpimai diktavimo kontekstuose. PASTABA: dabartinis WS kelias — half-duplex (naršyklė siunčia PILNĄ frazę), serveris kliento kalbos eigos nemato — L3b reikia arba kliento pusės logikos, arba srautinio kelio (L4). Aptarti prieš darant. | — |
 | 5 | L4 | Srautinis STT + semantinis turn-taking (sprendžiam po 1–4) | — |
 
 ## 1 žingsnio darbų sąrašas (L1+L2, paruošta įgyvendinimui)
