@@ -72,10 +72,15 @@ class GroqWhisperASR:
         *,
         language: str | None = None,
         sample_rate: int = 16_000,
+        context: str | None = None,
     ) -> str:
-        """Return the recognised text for `audio` (WAV or raw 16-bit PCM)."""
+        """Return the recognised text for `audio` (WAV or raw 16-bit PCM).
+        `context` (VOICE_PLAN V1): per-turn dialogue biasing appended to the
+        static domain prompt."""
         if not audio:
             return ""
+
+        from .lt_text import compose_prompt
 
         wav = self._to_wav_bytes(audio, sample_rate)
         client = self._ensure_client()
@@ -83,7 +88,7 @@ class GroqWhisperASR:
             model=self._model,
             file=("audio.wav", wav, "audio/wav"),
             language=language or self._default_language,
-            prompt=self._initial_prompt or None,
+            prompt=compose_prompt(self._initial_prompt, context) or None,
             response_format="text",
         )
         text = resp if isinstance(resp, str) else getattr(resp, "text", "")

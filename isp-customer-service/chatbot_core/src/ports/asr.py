@@ -21,6 +21,12 @@ class ASRProvider(Protocol):
         *,
         language: str | None = None,
         sample_rate: int = 16_000,
+        context: str | None = None,
     ) -> str:
-        """Return the recognised text for ``audio``."""
+        """Return the recognised text for ``audio``.
+
+        ``context`` (VOICE_PLAN V1) is per-turn biasing text — the agent's last
+        question and the expected answer vocabulary — appended to the adapter's
+        static domain prompt so short/garbled replies decode toward what the
+        conversation expects. Adapters may ignore it."""
         ...

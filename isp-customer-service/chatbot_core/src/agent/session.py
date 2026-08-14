@@ -115,6 +115,38 @@ class AgentSession:
         """The ConversationTracer for this call (lets the voice pipeline log)."""
         return self._agent.tracer
 
+    def asr_context(self) -> str | None:
+        """Per-turn STT biasing context (VOICE_PLAN V1): the agent's LAST
+        question + the expected answer vocabulary of the pending evidence fact.
+        Whisper biases decoding toward prompt vocabulary, so short/garbled
+        answers ("nedaga") decode toward what the conversation expects
+        ("nedega"). Best-effort — None on any hiccup, the ASR then uses only
+        its static domain prompt."""
+        try:
+            a = self._agent
+            parts: list[str] = []
+            q = (a.state.last_question or "").strip()
+            if q:
+                parts.append(f"Klausimas: {q}")
+            words: list[str] = []
+            pending = getattr(a, "_evidence_last_ask_key", None)
+            r = a.state.resolution or {}
+            if pending and r.get("verdict"):
+                from .evidence import _PENDING_ANSWERS, spec_for
+
+                spec = spec_for(r.get("verdict"))
+                item = (spec.get("client") or {}).get(pending) if spec else None
+                for marks in ((item or {}).get("atsakymai") or {}).values():
+                    words += [str(m) for m in marks]
+                if not words:  # built-in vocabulary for the piloted keys
+                    for _value, marks in _PENDING_ANSWERS.get(pending, []):
+                        words += [str(m) for m in marks]
+            if words:
+                parts.append("Galimi atsakymai: " + ", ".join(dict.fromkeys(words)) + ".")
+            return (" ".join(parts)[:400]) or None
+        except Exception:  # pragma: no cover - biasing must never break a turn
+            return None
+
     def greeting(self) -> str:
         """
         Return the conversation's opening message.
