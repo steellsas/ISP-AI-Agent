@@ -52,6 +52,10 @@ class Step:
     id: str
     kind: StepKind
     hint: str = ""  # LT guidance shown to the LLM for THIS step only
+    # The step's GOAL in the caller's terms (`tikslas:` in the pack) — the
+    # narrator states it, evaluates the caller's move against it ("Gerai —
+    # radote" / "Ne, ne šis kabelis") and knows what "done" means here.
+    tikslas: str = ""
     tools: frozenset[str] = frozenset()  # tools the LLM may call this step
     tool_actions: tuple[str, ...] = ()  # backend tools the engine runs (ACTION)
     # 0-based index of the "### Žingsnis N" section in the strategy's RAG doc to

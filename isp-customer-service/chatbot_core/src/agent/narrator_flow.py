@@ -669,6 +669,29 @@ def state_facts_block(engine) -> str | None:
             f"Išvada: {fd['isvada']}.{spr} Neišgalvok faktų."
         )
 
+    # Step awareness (L2, VOICE_PLAN 1 žingsnis): the narrator knows the
+    # CURRENT step's goal — the reaction becomes evaluative ("Gerai — radote"
+    # / "Ne, ne šis kabelis"), not a bare "supratau"; and a REPEATED step is
+    # repeated with an explanation, never as if asked the first time.
+    _r = s.resolution or {}
+    if _r.get("verdict") and not s.case_closed:
+        from .resolution import get_strategy as _get_strategy
+
+        _strat = _get_strategy(_r.get("verdict"))
+        _step = _strat.step(_r.get("step", "")) if _strat else None
+        if _step is not None and getattr(_step, "tikslas", ""):
+            facts.append(
+                f"- ŠIO ŽINGSNIO TIKSLAS: {_step.tikslas}. Reaguodamas į kliento "
+                "atsakymą ĮVERTINK, ar tikslas pasiektas — trumpa vertinanti "
+                "reakcija („Gerai — radote“ / „Ne, ne šis kabelis“), tada tęsk."
+            )
+        if _step is not None and (_r.get("presented") or {}).get(_step.id, 0) >= 2:
+            facts.append(
+                "- ŽINGSNIS KARTOJAMAS: šio žingsnio klausimą jau uždavei — "
+                "trumpai paaiškink, KODĖL klausi dar kartą („dar kartą, nes "
+                "noriu būti tikras…“), tada klausk."
+            )
+
     # Persona (R5c, Andrius 2026-08-13): the evidence question as a GOAL
     # directive — the narrator words it naturally in the conversation's flow
     # instead of reading the pack's scripted sentence. Hard limits keep it
@@ -737,6 +760,10 @@ def mark_step_presented(engine) -> None:
         # killed by a many-turns-stale dr_intro reading a reply as its own
         # answer. The asked-step routing only trusts a RECENT question.
         r["asked_at"] = len(engine.state.messages)
+        # Presentation counter (L2): a step presented the 2nd+ time gets the
+        # ŽINGSNIS KARTOJAMAS directive — repeat WITH an explanation.
+        counts = r.setdefault("presented", {})
+        counts[step.id] = counts.get(step.id, 0) + 1
 
 
 def augment_resolve_result(engine, observation: str) -> str:

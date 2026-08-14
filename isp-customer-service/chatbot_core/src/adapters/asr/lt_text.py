@@ -39,6 +39,23 @@ _HALLUCINATION_MARKERS = (
 )
 
 
+def compose_prompt(initial: str | None, context: str | None, max_len: int = 800) -> str:
+    """Whisper prompt for one turn (VOICE_PLAN V1): the static domain prompt +
+    the DIALOGUE context (the agent's last question and expected answer words).
+    Whisper biases decoding toward prompt vocabulary, so a short garbled
+    "nedaga" decodes as "nedega" when the expected answers name it. Trimmed to
+    `max_len` chars (Whisper reads ~224 tokens of prompt) — the CONTEXT wins
+    over the domain tail when space runs out."""
+    parts = [p.strip() for p in (initial, context) if p and p.strip()]
+    if not parts:
+        return ""
+    text = " ".join(parts)
+    if len(text) > max_len and len(parts) == 2:
+        head = max_len - len(parts[1]) - 1
+        text = (parts[0][: max(head, 0)].rstrip() + " " + parts[1]).strip()
+    return text[:max_len]
+
+
 def is_asr_noise(text: str) -> bool:
     """True when an ASR result is empty or a likely silence/noise hallucination.
 

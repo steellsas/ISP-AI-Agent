@@ -36,7 +36,10 @@ identification:
 
   questions:
     name: "O kaip į jus kreiptis — koks jūsų vardas?"
-    caller: "O su kuo kalbu — koks jūsų vardas? Ar jūs sutartį sudaręs asmuo?"
+    # L1 (VOICE_PLAN 1 žingsnis): be „ar sutartį sudaręs?" uodegos — klientas
+    # atsako į pirmą klausimą ir antro neišgirsta. Ryšys su sutartimi skaitomas
+    # iš atsakymo, jei pats pasako (detect_caller_relation).
+    caller: "O su kuo kalbu — koks jūsų vardas?"
     contact_phone: "Kokiu numeriu geriausia su jumis susisiekti, jei nutrūktų ryšys?"
 
   # SCRIPTED identification replies (2026-07-31): the mechanical ladder turns are

@@ -187,6 +187,12 @@ class SessionManager:
                 loop.call_soon_threadsafe(q.put_nowait, b)
 
             t0 = time.perf_counter()
+            # L3a (live 2026-08-14): capture the barge-in flag BEFORE clearing —
+            # playback runs on wall-clock in the BROWSER, so the interruption
+            # usually lands between server turns; sampling at the old turn's end
+            # missed 9/10 interruptions and the classifier never ran.
+            if ms.voice is not None:
+                ms.voice.prev_cancelled = ms.cancel.is_set() or ms.interrupt.is_set()
             ms.interrupt.clear()
             ms.cancel.clear()
             task = asyncio.create_task(

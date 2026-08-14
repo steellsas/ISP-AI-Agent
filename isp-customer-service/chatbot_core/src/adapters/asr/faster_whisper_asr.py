@@ -94,6 +94,7 @@ class FasterWhisperASR:
         *,
         language: str | None = None,
         sample_rate: int = _WHISPER_SAMPLE_RATE,
+        context: str | None = None,
     ) -> str:
         """
         Return the recognised text for `audio`.
@@ -101,18 +102,22 @@ class FasterWhisperASR:
         `audio` is either a WAV container (RIFF header) or raw little-endian
         16-bit PCM. WAV carries its own sample rate; raw PCM uses `sample_rate`.
         Both are normalised to mono float32 @ 16 kHz for the model.
+        `context` (VOICE_PLAN V1): per-turn dialogue biasing appended to the
+        static domain prompt.
         """
 
         samples = self._to_float32_mono(audio, sample_rate)
         if samples.size == 0:
             return ""
 
+        from .lt_text import compose_prompt
+
         model = self._ensure_model()
         segments, _info = model.transcribe(
             samples,
             language=language or self._default_language,
             beam_size=self._beam_size,
-            initial_prompt=self._initial_prompt,
+            initial_prompt=compose_prompt(self._initial_prompt, context) or None,
             vad_filter=self._vad_filter,
         )
         text = " ".join(seg.text.strip() for seg in segments).strip()

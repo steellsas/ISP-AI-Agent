@@ -375,3 +375,12 @@ normaliu vardu (be `_`); jei ne — į TurnScratch.
   ir užrašytas `docs/VOICE_PLAN.md` (L1–L4 lygiai, saugikliai, replay stendas).
   SPRENDIMAS: šios šakos darbas baigtas — PR į develop; voice tobulinimai —
   naujoje šakoje pagal VOICE_PLAN.md.
+- **2026-08-14 (2)** — Balso natūralumo šaka `feature/voice-naturalness`
+  (VOICE_PLAN.md 1–3 žingsniai + uždarymo banga): vienas klausimas/turn +
+  pack'ų `tikslas` + kartojimo paaiškinimas + žingsnių žurnalas solveriui
+  (8739d03); dialogo kontekstas į Whisper prompt + trumpo garso sargas +
+  manifest + replay stendas (bf54f55); išmanus barge-in default-deny su
+  fuzzy aido filtru (1ad7d4e); barge žyma turn'o pradžioje + filler WS
+  kelyje (f6da47c); kliento pre-roll žiedas 240 ms (19eeae5); voice
+  parametrai config puslapyje. L3b/L4 atidėti (žr. VOICE_PLAN.md). Laukia
+  patvirtinamojo balso testo ir PR į develop.

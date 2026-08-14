@@ -106,6 +106,31 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env+voice",
     },
     {
+        # VOICE_PLAN V1: fragments shorter than this never reach Whisper (it
+        # hallucinates words from sub-word blips). 0 disables the guard.
+        "key": "ASR_MIN_AUDIO_S",
+        "label": "Trumpo garso sargas, s (0 = išjungta)",
+        "options": ["0.3", "0.2", "0.4", "0.5", "0"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # Latency mask: the cached "Sekundėlę, tikrinu." cue when the LLM is
+        # still thinking past the delay below.
+        "key": "VOICE_FILLER",
+        "label": "Užpildas „Sekundėlę, tikrinu“",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        "key": "VOICE_FILLER_AFTER_S",
+        "label": "Užpildo vėlinimas, s",
+        "options": ["1.2", "0.8", "1.6", "2.0"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "TTS_ENGINE",
         "label": "TTS variklis",
         "options": ["edge", "gtts"],

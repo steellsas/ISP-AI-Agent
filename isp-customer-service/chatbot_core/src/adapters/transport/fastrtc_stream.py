@@ -234,7 +234,10 @@ class FastRTCVoiceTransport:
     # --- Audio recording (opt-in: replay & offline re-test) ----------------
 
     def _save_audio(self, stem: str, data: bytes, *, kind: str, sample_rate: int = 16_000):
-        """Save one turn's audio: caller PCM -> WAV, agent reply bytes -> as-is."""
+        """Save one turn's audio: caller PCM -> WAV, agent reply bytes -> as-is.
+        Every saved file also lands in manifest.jsonl with a wall-clock stamp
+        and duration — the replay bench reconstructs the call's timeline from
+        it (VOICE_PLAN: dviejų takelių įrašymas su laiko manifestu)."""
         if self._record_dir is None or not data:
             return
         try:
@@ -245,6 +248,12 @@ class FastRTCVoiceTransport:
                     wav.setsampwidth(2)
                     wav.setframerate(sample_rate)
                     wav.writeframes(data)
+                self._manifest(
+                    stem + ".wav",
+                    side="caller",
+                    dur_s=len(data) / (2.0 * sample_rate),
+                    sample_rate=sample_rate,
+                )
             else:
                 # gTTS emits MP3. Detect MP3 (ID3 tag or any MPEG frame sync
                 # 0xFFEx — gTTS uses 0xFFF3 too, not only 0xFFFB) / WAV; else
@@ -258,8 +267,23 @@ class FastRTCVoiceTransport:
                 else:
                     ext = "mp3"
                 (self._record_dir / f"{stem}.{ext}").write_bytes(data)
+                self._manifest(f"{stem}.{ext}", side="agent")
         except Exception as e:  # pragma: no cover - best-effort
             logger.warning(f"Audio record failed ({stem}): {e}")
+
+    def _manifest(self, filename: str, *, side: str, **extra) -> None:
+        """Append one timeline entry to the record dir's manifest.jsonl."""
+        if self._record_dir is None:
+            return
+        try:
+            import json
+            import time as _time
+
+            entry = {"t": round(_time.time(), 3), "side": side, "file": filename, **extra}
+            with open(self._record_dir / "manifest.jsonl", "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:  # pragma: no cover - best-effort
+            logger.debug("manifest append failed", exc_info=True)
 
     # --- Audio bridging (pure, offline-testable) ---------------------------
 

@@ -696,4 +696,10 @@ def goto_step(engine, r: dict, next_id: str) -> None:
     for its OWN question to be asked before a plain yes/no can advance it."""
     if next_id != r.get("step"):
         r["asked"] = False
+        # Process journal (sąmoningumas №3): the walk's transitions — the
+        # solver reads WHAT already happened instead of re-deriving it.
+        journal = r.setdefault("journal", [])
+        journal.append(f"{r.get('step') or '—'}→{next_id}")
+        if len(journal) > 12:
+            del journal[:-12]
     r["step"] = next_id

@@ -17,8 +17,11 @@ later, with no change here.
 
 from __future__ import annotations
 
+import io
+import os
 import re
 import time
+import wave
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -36,6 +39,30 @@ if TYPE_CHECKING:
 _ADDR_HOUSE_FLAT = re.compile(r"\bg\.\s*(\d+)\s*-\s*(\d+)\b")
 _ADDR_HOUSE = re.compile(r"\bg\.(?=\s*\d)")
 _ADDR_ABBR = re.compile(r"\bg\.(?=\s|$)")
+
+
+def audio_duration_s(audio: bytes, sample_rate: int = 16_000) -> float | None:
+    """Best-effort duration of a WAV container or raw 16-bit mono PCM. None
+    when it cannot be read — the caller then skips the too-short guard."""
+    if not audio:
+        return 0.0
+    try:
+        if audio[:4] == b"RIFF":
+            with wave.open(io.BytesIO(audio), "rb") as w:
+                rate = w.getframerate() or sample_rate
+                return w.getnframes() / float(rate)
+        return len(audio) / (2.0 * float(sample_rate))
+    except Exception:  # pragma: no cover - guard must never break the turn
+        return None
+
+
+def _min_audio_s() -> float:
+    """Too-short-audio floor (VOICE_PLAN V1): fragments under this are DROPPED
+    before ASR — Whisper hallucinates words from sub-word blips ("Įvėtojai")."""
+    try:
+        return float(os.getenv("ASR_MIN_AUDIO_S", "0.3"))
+    except ValueError:
+        return 0.3
 
 
 def normalize_lt_address_speech(text: str) -> str:
@@ -100,6 +127,45 @@ class VoicePipeline:
         self._transcript_filter = transcript_filter
         self._noise_filter = noise_filter
 
+    def _asr_context(self) -> str | None:
+        """Per-turn STT biasing from the session (VOICE_PLAN V1); best-effort."""
+        provider = getattr(self._session, "asr_context", None)
+        if not callable(provider):
+            return None
+        try:
+            return provider()
+        except Exception:  # pragma: no cover - biasing must never break a turn
+            return None
+
+    def _transcribe(self, audio: bytes, sample_rate: int, context: str | None) -> str:
+        """Call the ASR with the dialogue context; adapters/stubs without the
+        `context` parameter keep working (TypeError -> plain call)."""
+        try:
+            return self._asr.transcribe(
+                audio, language=self._language, sample_rate=sample_rate, context=context
+            )
+        except TypeError:
+            return self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
+
+    def _too_short(self, audio: bytes, sample_rate: int, tracer) -> bool:
+        """Too-short-audio guard (VOICE_PLAN V1): sub-word blips are dropped
+        BEFORE ASR — Whisper hallucinates words from them. Traced as a dropped
+        asr event so replay/tuning sees every skipped fragment."""
+        dur = audio_duration_s(audio, sample_rate)
+        if dur is None or dur >= _min_audio_s():
+            return False
+        if tracer is not None:
+            tracer.emit(
+                "asr",
+                raw="",
+                transcript="",
+                ms=0,
+                dropped=True,
+                reason="too_short",
+                dur_s=round(dur, 2),
+            )
+        return True
+
     @property
     def session(self) -> AgentSession:
         """The underlying conversation (read-only access to state/stats)."""
@@ -135,16 +201,21 @@ class VoicePipeline:
             A `VoiceTurn` with transcript, reply text, reply audio and the
             conversation-complete flag.
         """
+        tracer = getattr(self._session, "tracer", None)
+        if self._too_short(audio, sample_rate, tracer):
+            return VoiceTurn(
+                transcript="",
+                reply_text="",
+                reply_audio=b"",
+                is_complete=self._session.is_complete,
+            )
         t0 = time.perf_counter()
-        raw_transcript = self._asr.transcribe(
-            audio, language=self._language, sample_rate=sample_rate
-        )
+        context = self._asr_context()
+        raw_transcript = self._transcribe(audio, sample_rate, context)
         transcript = raw_transcript
         if self._transcript_filter and transcript:
             transcript = self._transcript_filter(transcript)
         t1 = time.perf_counter()
-
-        tracer = getattr(self._session, "tracer", None)
 
         # Drop silence/noise hallucinations: ignore the turn, stay silent, wait
         # for real speech (answering "www.youtube.come" breaks the conversation).
@@ -157,6 +228,7 @@ class VoicePipeline:
                 transcript=transcript,
                 ms=round((t1 - t0) * 1000.0),
                 dropped=dropped,
+                context=(context or "")[:160],
             )
         if dropped:
             return VoiceTurn(
@@ -205,6 +277,7 @@ class VoicePipeline:
         *,
         sample_rate: int = 16_000,
         should_stop: Callable[[], bool] | None = None,
+        interruption: Callable[[str], str | None] | None = None,
     ) -> Iterator[bytes]:
         """
         Run one turn and STREAM the reply audio in chunks (one per sentence) so the
@@ -220,16 +293,17 @@ class VoicePipeline:
         with it), and the session's on_turn_cancelled hook gets the text that was
         actually synthesized, so the engine rolls its ask-bookkeeping back.
         """
+        tracer = getattr(self._session, "tracer", None)
+        if self._too_short(audio, sample_rate, tracer):
+            return
         t0 = time.perf_counter()
-        raw_transcript = self._asr.transcribe(
-            audio, language=self._language, sample_rate=sample_rate
-        )
+        context = self._asr_context()
+        raw_transcript = self._transcribe(audio, sample_rate, context)
         transcript = raw_transcript
         if self._transcript_filter and transcript:
             transcript = self._transcript_filter(transcript)
         t1 = time.perf_counter()
 
-        tracer = getattr(self._session, "tracer", None)
         dropped = bool(self._noise_filter and self._noise_filter(transcript))
         if tracer is not None:
             tracer.emit(
@@ -238,8 +312,27 @@ class VoicePipeline:
                 transcript=transcript,
                 ms=round((t1 - t0) * 1000.0),
                 dropped=dropped,
+                context=(context or "")[:160],
             )
         if dropped:
+            return
+
+        # Smart barge-in (L3a): the previous turn was cut by this utterance —
+        # a bare backchannel ("taip", "mhm") or our own speakerphone echo must
+        # NOT become a dialogue turn. Re-anchor the standing question instead;
+        # "stop"/"substantive" fall through to normal processing (default-deny).
+        verdict = interruption(transcript) if interruption is not None else None
+        if verdict is not None and tracer is not None:
+            tracer.emit("barge_in", verdict=verdict, transcript=transcript[:120])
+        if verdict in ("consent", "echo"):
+            anchor = getattr(self._session, "anchor_text", None)
+            text = anchor() if callable(anchor) else ""
+            if text:
+                chunk = self._tts.synthesize(
+                    normalize_lt_address_speech(text), language=self._language
+                )
+                if chunk:
+                    yield chunk
             return
 
         asr_ms = (t1 - t0) * 1000.0

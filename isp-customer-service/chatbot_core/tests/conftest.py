@@ -29,6 +29,9 @@ os.environ.setdefault("CLASSIFIER", "off")
 # Persona: narrator-worded evidence questions go through the LLM — unit tests
 # assert the SCRIPTED wording, so the deterministic mode keeps scripts on.
 os.environ.setdefault("NARRATOR_QUESTIONS", "off")
+# VOICE_PLAN V1: unit tests feed tiny fake audio bytes (b"x") — the too-short
+# guard would drop them all. Off here; the guard's own tests set it explicitly.
+os.environ.setdefault("ASR_MIN_AUDIO_S", "0")
 
 
 # =============================================================================

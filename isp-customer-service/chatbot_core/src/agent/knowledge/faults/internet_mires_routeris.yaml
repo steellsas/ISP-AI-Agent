@@ -104,6 +104,7 @@ sprendimai:
   aprasymas: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
 steps:
 - id: dr_intro
+  tikslas: "klientas sutinka kartu patikrinti dabar"
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -119,6 +120,7 @@ steps:
     'yes': sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)
     'no': AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas
 - id: dr_lights
+  tikslas: "klientas prie routerio ir aišku, ar dega bent viena lemputė"
   kind: confirm
   detector: lights
   rag_section: 1
@@ -133,6 +135,7 @@ steps:
     'no': sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-" šaknimi — „nede",
       „neda", „nedega gan viena" — neiginys visada reiškia NEDEGA)
 - id: dr_power
+  tikslas: "maitinimas ir kita rozetė patikrinti — aišku, ar lemputės užsidegė"
   kind: confirm
   detector: lights
   rag_section: 2
@@ -145,6 +148,7 @@ steps:
     'yes': patikrinus maitinimą lemputės užsidegė
     'no': net ir patikrinus maitinimą / kitą rozetę lemputės vis tiek nedega
 - id: dr_cable
+  tikslas: "interneto kabelis routeryje perkištas (ištrauktas ir vėl įkištas)"
   kind: instruct
   rag_section: 2
   goto: dr_recheck
@@ -152,6 +156,7 @@ steps:
     from the wall into the router''s internet port and say when done.'
 - use: patikrinti_ar_atsirado
   kaip: dr_recheck
+  tikslas: "aišku, ar internetas atsirado po kabelio perkišimo"
   rag_section: 8
   'on':
     pavyko: resolve
@@ -162,6 +167,7 @@ steps:
     'yes': internetas atsirado po kabelio patikrinimo
     'no': internetas vis tiek neatsirado
 - id: dr_offer_bridge
+  tikslas: "aišku, ar klientas turi kompiuterį laikinam pajungimui"
   kind: confirm
   detector: have_device
   rag_section: 3
@@ -176,6 +182,7 @@ steps:
     'yes': klientas turi kompiuterį arba kitą routerį, kurį galima prijungti
     'no': klientas neturi jokio kito įrenginio (tik telefoną)
 - id: dr_pick_cable
+  tikslas: "klientas rankoje laiko TĄ kabelį, kuris ateina iš sienos (ne maitinimo)"
   kind: instruct
   rag_section: 4
   goto: dr_plug_pc
@@ -184,6 +191,7 @@ steps:
     port — ask them to unplug THAT one from the router and tell you when it is in their hand. Not
     the power lead, not a cable between the router and a device.'
 - id: dr_plug_pc
+  tikslas: "kabelis įkištas į kompiuterio tinklo lizdą iki spragtelėjimo"
   kind: instruct
   rag_section: 5
   goto: dr_see_device
@@ -207,6 +215,7 @@ steps:
     was already asked at the START of the call — do not repeat it here.)'
 - use: patikrinti_ar_atsirado
   kaip: dr_verify
+  tikslas: "aišku, ar prijungtame kompiuteryje internetas jau veikia"
   rag_section: 8
   'on':
     pavyko: dr_register_router
