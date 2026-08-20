@@ -393,7 +393,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         has_addr = bool(p.street.value or p.house.value)
         if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
             s.anamnesis_asked = True
-            return phrase("anamnesis_question")
+            return _anamnesis_move(engine, "anamnesis", phrase("anamnesis_question"))
         # E (Andrius 2026-08-20): the follow-up rung — the caller did not know
         # WHEN it broke, so we asked when it last WORKED; the answer narrows
         # the time window for the analysis ("vakar veikė" -> broke overnight).
@@ -427,7 +427,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             # the last time the service worked, then on to the address.
             if s.anamnesis_when in (None, "nežino") and not s.anamnesis_trigger:
                 engine._anamnesis_followup = True
-                return phrase("anamnesis_last_used")
+                return _anamnesis_move(engine, "anamnesis_followup", phrase("anamnesis_last_used"))
             return _address_move(engine, s)
         return None
     # WRAP-UP after the news (inform mode): the business is DONE — any further
@@ -497,6 +497,18 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     engine._result_pending = False
     engine._news_told = True
     return " ".join(b for b in bits if b)
+
+
+def _anamnesis_move(engine, kind: str, fallback: str):
+    """Zone 3 (skriptai -> direktyvos): the anamnesis questions go to the
+    narrator — it adapts to what the caller already said (one or several
+    things asked in one breath, per the answer). Off-switch keeps the script."""
+    import os as _os
+
+    if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+        engine._ident_directive = {"kind": kind, "adresas": None, "fallback": fallback}
+        return None  # the narrator words it (facts directive)
+    return fallback
 
 
 def _address_move(engine, s):

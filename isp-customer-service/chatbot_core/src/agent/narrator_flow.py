@@ -29,6 +29,30 @@ def execute_tool(name, args):
     return react_agent.execute_tool(name, args)
 
 
+_DIRECTIVE_PROMPT: str | None = None
+
+
+def _directive_system_prompt() -> str:
+    """Persona + style only — the lean system prompt for directive turns.
+    Cached module-wide (byte-stable => provider prompt cache friendly)."""
+    global _DIRECTIVE_PROMPT
+    if _DIRECTIVE_PROMPT is None:
+        from .prompts import load_node_prompt
+
+        parts = []
+        for name in ("partials/identity", "partials/style"):
+            try:
+                parts.append(load_node_prompt(name))
+            except Exception:  # pragma: no cover - a missing partial degrades soft
+                pass
+        parts.append(
+            "Kalbi telefonu lietuviškai. Vykdyk TIK žemiau esančią KNOWN FACTS "
+            "bloko direktyvą — nieko daugiau nesiūlyk ir neklausk."
+        )
+        _DIRECTIVE_PROMPT = "\n\n".join(p for p in parts if p)
+    return _DIRECTIVE_PROMPT
+
+
 def build_messages(engine, user_input: str = None) -> list:
     """
     Build the message payload for one LLM call.
@@ -47,8 +71,18 @@ def build_messages(engine, user_input: str = None) -> list:
     system content — concatenating would mutate the system message every turn
     and bust the cache (the real cost, not the few fact tokens).
     """
-    # Stable system prefix (cacheable).
-    messages = [{"role": "system", "content": engine.system_prompt}]
+    # Stable system prefix (cacheable). DIRECTIVE turns (zones 1–3) swap in a
+    # MINIMAL persona-only prompt: the full prompt's identification/procedure
+    # partials kept overriding the directive (live 2026-08-20: the model
+    # offered the address on the anamnesis turn, straight from the procedure
+    # text) — a directive turn has exactly ONE instruction, the facts block.
+    directive_turn = bool(
+        getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None)
+    )
+    if directive_turn:
+        messages = [{"role": "system", "content": _directive_system_prompt()}]
+    else:
+        messages = [{"role": "system", "content": engine.system_prompt}]
 
     # Add recent conversation history (windowed, tool-pairing safe)
     messages.extend(engine._prune_history(engine.state.messages))
@@ -59,8 +93,13 @@ def build_messages(engine, user_input: str = None) -> list:
     if facts:
         messages.append({"role": "system", "content": facts})
 
-    # Per-node focus prompt (graph stage), if a node set one.
-    if engine._node_prompt:
+    # Per-node focus prompt (graph stage), if a node set one. Suppressed on
+    # DIRECTIVE turns (zones 1–3, live 2026-08-20): the ladder guidance in the
+    # node prompt competed with the directive and won (offered the address on
+    # the anamnesis turn) — a directive turn has exactly ONE instruction.
+    if engine._node_prompt and not (
+        getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None)
+    ):
         messages.append({"role": "system", "content": engine._node_prompt})
 
     # Add new user input if provided
@@ -98,6 +137,12 @@ def scoped_tools_schema(engine) -> list:
     # so the model narrates the close instead of looping tool calls to the limit
     # (which surfaced the 'negaliu apdoroti' fallback).
     if engine.state.case_closed:
+        return []
+    # Directive turns are SPEECH-ONLY (zones 1–3, live 2026-08-20): with tools
+    # exposed the model grabbed resolve_address on the anamnesis turn and
+    # skipped the whole ladder — the engine owns the mechanics, the narrator
+    # only words the one goal in the facts block.
+    if getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None):
         return []
     schema = engine.tools_schema
     if engine._active_tool_names is not None:
@@ -303,6 +348,11 @@ def state_facts_block(engine) -> str | None:
         and not s.preflight_outage
         and s.phone_candidate
         and s.phone_candidate.get("street")
+        # Directive turns (zones 2–3, live 2026-08-20): this block told the
+        # model to OFFER the address and it obeyed — on the anamnesis turn.
+        # The ladder decides WHEN the offer happens; the block yields.
+        and not getattr(engine, "_ident_directive", None)
+        and not getattr(engine, "_ticket_directive", None)
         and _fits(s.profile.street.value, s.phone_candidate.get("street"))
         and _fits(s.profile.house.value, s.phone_candidate.get("house"))
         and _fits(s.profile.apartment.value, s.phone_candidate.get("apartment"))
@@ -685,6 +735,21 @@ def state_facts_block(engine) -> str | None:
                 "skambinančio numerį. Patį klausimą užduok BŪTENT taip, žodis į "
                 f"žodį: „Ar skambinate dėl {idd['adresas']}?“ Daugiau klausimų "
                 "neužduok ir adreso nekeisk."
+            )
+        elif idd["kind"] == "anamnesis":
+            facts.append(
+                "- ANAMNEZĖS ŽINGSNIS (prisitaikyk prie to, ką klientas jau "
+                "pasakė — neklausk to, kas jau aišku): išsiaiškink, KADA dingo "
+                "internetas ir ar prieš tai buvo koks įvykis (audra, remontas, "
+                "kažką keitė). VIENAS trumpas klausimas. "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+            )
+        elif idd["kind"] == "anamnesis_followup":
+            facts.append(
+                "- ANAMNEZĖS ŽINGSNIS: klientas nežino, kada dingo — paklausk "
+                "TIK vieno: kada paskutinį kartą internetas TIKRAI veikė "
+                "(tai susiaurins gedimo laiko langą). "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
             )
         else:
             facts.append(

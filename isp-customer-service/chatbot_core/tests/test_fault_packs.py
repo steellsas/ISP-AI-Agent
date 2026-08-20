@@ -850,3 +850,57 @@ class TestIdentDirectives:
         reply = agent._identification_scripted_reply("Vakar po audros dingo")
         assert reply and "Ar skambinate dėl Vilniaus g. 29?" in reply
         assert agent._ident_directive is None
+
+
+class TestAnamnesisDirectives:
+    """Zone 3: the anamnesis questions go to the narrator (adaptive wording);
+    the capture ladder and the follow-up rung mechanics stay deterministic."""
+
+    def test_anamnesis_goes_to_narrator(self, db_connection, monkeypatch):
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        assert agent._identification_scripted_reply("Neveikia internetas") is None
+        assert agent.state.anamnesis_asked is True  # the flag still set
+        assert agent._ident_directive["kind"] == "anamnesis"
+        assert "ANAMNEZĖS ŽINGSNIS" in agent._state_facts_block()
+
+    def test_followup_goes_to_narrator(self, db_connection, monkeypatch):
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        assert agent._identification_scripted_reply("Nežinau, nepastebėjau") is None
+        assert agent._ident_directive["kind"] == "anamnesis_followup"
+        assert "TIKRAI veikė" in agent._state_facts_block()
+
+    def test_off_switch_keeps_scripted_anamnesis(self, db_connection, monkeypatch):
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        reply = agent._identification_scripted_reply("Neveikia internetas")
+        assert reply and "kada dingo" in reply
+        assert agent._ident_directive is None
+
+
+class TestDirectiveTurnsAreSpeechOnly:
+    """Live 2026-08-20: with tools exposed the model grabbed resolve_address on
+    the anamnesis directive turn and skipped the ladder — directive turns get
+    NO tools; the engine owns the mechanics."""
+
+    def test_no_tools_when_directive_set(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        assert agent._scoped_tools_schema()  # baseline: tools exist
+        agent._ident_directive = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
+        assert agent._scoped_tools_schema() == []
+        agent._ident_directive = None
+        agent._ticket_directive = {"kind": "hours", "fallback": "x"}
+        assert agent._scoped_tools_schema() == []
