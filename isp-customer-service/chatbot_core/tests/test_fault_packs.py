@@ -270,6 +270,50 @@ class TestNarratorFindings:
         )
         monkeypatch.setattr(ev, "solution_for", lambda e, v: "bridge")
 
+    def test_recap_delegates_to_narrator(self, monkeypatch):
+        from agent.evidence_drive import maybe_facts_recap
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        from types import SimpleNamespace
+
+        engine = SimpleNamespace(
+            state=SimpleNamespace(evidence={"lights": {"value": "nedega", "source": "client"}}),
+            _recap_state="",
+            _recap_directive=None,
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        from agent import evidence as ev
+
+        monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
+        assert maybe_facts_recap(engine) is None
+        assert engine._recap_directive and "nedega" in engine._recap_directive["faktai"]
+        assert engine._recap_state == "pending"
+
+    def test_recap_off_switch_stays_scripted(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from agent import evidence as ev
+        from agent.evidence_drive import maybe_facts_recap
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
+        engine = SimpleNamespace(
+            state=SimpleNamespace(evidence={"x": {}}),
+            _recap_state="",
+            _recap_directive=None,
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        reply = maybe_facts_recap(engine)
+        assert reply and "Pasitikslinu" in reply and engine._recap_directive is None
+
+    def test_recap_directive_lands_in_facts_block(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._recap_directive = {"faktai": "routerio lemputės: nedega"}
+        block = agent._state_facts_block()
+        assert "PASITIKSLINK" in block and "nedega" in block
+
     def test_findings_delegate_to_narrator(self, monkeypatch):
         from agent.evidence_drive import evidence_drive
 

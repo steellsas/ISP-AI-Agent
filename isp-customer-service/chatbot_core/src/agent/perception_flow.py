@@ -78,6 +78,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     engine._last_understanding = None
     engine._evidence_directive = None  # persona: fresh narrator directive per turn
     engine._findings_directive = None
+    engine._recap_directive = None
     if not user_input or not s.customer_id or s.case_closed or engine._ticket_stage:
         return
     from .evidence import CLIENT, extract_client_facts, polarity, set_fact

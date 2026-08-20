@@ -284,7 +284,11 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     # Persona (R5c): the drive delegated the question's WORDING to the narrator
     # (goal directive in the facts block) — hand the turn to the narrator path.
     # Same for the FINDINGS moment (facts + conclusion + choice, said humanly).
-    if getattr(engine, "_evidence_directive", None) or getattr(engine, "_findings_directive", None):
+    if (
+        getattr(engine, "_evidence_directive", None)
+        or getattr(engine, "_findings_directive", None)
+        or getattr(engine, "_recap_directive", None)
+    ):
         return None
     # R4b: a confirmed hypothesis with a WALKER solution means the step tree
     # owns the execution from here — hand every turn to the walker instead of

@@ -67,6 +67,15 @@ def maybe_facts_recap(engine: Any) -> str | None:
     if not faktai:
         engine._recap_state = "done"
         return None
+    # Persona (Andrius 2026-08-20: "Pasitikslinu: routeris surastas: rado; …"
+    # is the last remaining label:value dump read to a human) — in narrator
+    # mode the recap becomes a goal directive, said in the narrator's words
+    # ("Taip, jūs sakote — lemputės nedega net pakeitus rozetę, ar taip?").
+    if os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+        engine._recap_directive = {"faktai": faktai}
+        engine._recap_state = "pending"
+        engine.tracer.emit("decision", intent="facts_recap", action="ask_narrator")
+        return None  # the narrator speaks the recap
     engine._recap_state = "pending"
     engine.tracer.emit("decision", intent="facts_recap", action="ask")
     return phrase("facts_recap", faktai=faktai)
@@ -203,6 +212,8 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         recap = maybe_facts_recap(engine)
         if recap is not None:
             return recap
+        if getattr(engine, "_recap_directive", None):
+            return None  # the narrator asks the recap; findings come next turn
         engine._findings_announced = True
         from .evidence import client_facts_lt, fault_isvada, solution_descriptions
         from .identification import phrase

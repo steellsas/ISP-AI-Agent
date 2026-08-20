@@ -652,6 +652,15 @@ def state_facts_block(engine) -> str | None:
             "nebegrįžk. Kalbame tik apie kompiuterio prijungimą."
         )
 
+    # Persona: the RECAP as a goal directive — read the gathered facts back in
+    # the narrator's own words, one short sentence, never the label:value dump.
+    rd = getattr(engine, "_recap_directive", None)
+    if rd:
+        facts.append(
+            "- PASITIKSLINK (savais žodžiais, VIENU trumpu sakiniu): ar teisingai "
+            f"supratai — {rd['faktai']}. Baik klausimu „ar taip?“. Neišgalvok faktų."
+        )
+
     # Persona: the FINDINGS moment as a goal directive — the narrator states
     # what was established, the conclusion and the choice BRIEFLY in its own
     # words (never the 'label: value; label: value' template dump).
