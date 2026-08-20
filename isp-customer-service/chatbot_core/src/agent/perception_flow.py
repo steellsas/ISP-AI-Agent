@@ -80,6 +80,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     engine._findings_directive = None
     engine._recap_directive = None
     engine._ticket_directive = None
+    engine._ident_directive = None
     if not user_input or not s.customer_id or s.case_closed or engine._ticket_stage:
         return
     from .evidence import CLIENT, extract_client_facts, polarity, set_fact
@@ -447,6 +448,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
     s = engine.state
     engine._addr_confirm_note = None
     engine._addr_diag_note = None  # F2: fresh lookup diagnosis per turn
+    engine._ident_directive = None  # zone 2: ingest may not run pre-identification
     engine._reopen_note = False
     if not user_input:
         return

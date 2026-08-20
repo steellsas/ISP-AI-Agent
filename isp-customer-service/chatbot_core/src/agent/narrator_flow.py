@@ -673,6 +673,27 @@ def state_facts_block(engine) -> str | None:
             "nebegrįžk. Kalbame tik apie kompiuterio prijungimą."
         )
 
+    # Zone 2 (skriptai -> direktyvos): the transition to the ADDRESS — a smooth
+    # hand-over from the problem talk instead of a canned line. The OFFER's
+    # question core stays verbatim (the confirm guard keys off it).
+    idd = getattr(engine, "_ident_directive", None)
+    if idd:
+        if idd["kind"] == "address_offer":
+            facts.append(
+                "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
+                "pasakyk, kad patikrai reikia adreso, ir pasiūlyk adresą pagal "
+                "skambinančio numerį. Patį klausimą užduok BŪTENT taip, žodis į "
+                f"žodį: „Ar skambinate dėl {idd['adresas']}?“ Daugiau klausimų "
+                "neužduok ir adreso nekeisk."
+            )
+        else:
+            facts.append(
+                "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
+                "paaiškink, kad patikrai iki buto reikia adreso, ir paklausk TIK "
+                "adreso (viena „?“). Neišgalvok faktų. "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+            )
+
     # Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments,
     # worded by the narrator into the conversation's flow — the engine still
     # owns the stages and the capture; only the WORDING is free.

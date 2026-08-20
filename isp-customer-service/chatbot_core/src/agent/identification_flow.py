@@ -296,7 +296,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     s = engine.state
     if s.case_closed:
         return None
-    from .identification import caller_question, offer_phone_address, phrase
+    from .identification import caller_question, phrase
     from .resolution import is_real_question
 
     # Ticket-confirmation dialogue: contacts before every registration. An
@@ -409,11 +409,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             engine.tracer.emit(
                 "anamnesis", text=s.anamnesis_raw, when=s.anamnesis_when, followup=True
             )
-            c = s.phone_candidate
-            if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
-                flat = f", butas {c['apartment']}" if c.get("apartment") else ""
-                return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
-            return phrase("address_ask")
+            return _address_move(engine, s)
         if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
             s.anamnesis_raw = user_input.strip()[:200]
             from .nlu import extract_anamnesis
@@ -432,11 +428,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             if s.anamnesis_when in (None, "nežino") and not s.anamnesis_trigger:
                 engine._anamnesis_followup = True
                 return phrase("anamnesis_last_used")
-            c = s.phone_candidate
-            if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
-                flat = f", butas {c['apartment']}" if c.get("apartment") else ""
-                return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
-            return phrase("address_ask")
+            return _address_move(engine, s)
         return None
     # WRAP-UP after the news (inform mode): the business is DONE — any further
     # turn that is not a question/wants-more wraps up DETERMINISTICALLY. Garbled
@@ -505,6 +497,30 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     engine._result_pending = False
     engine._news_told = True
     return " ".join(b for b in bits if b)
+
+
+def _address_move(engine, s):
+    """Zone 2 (skriptai -> direktyvos): the transition to the address — offer
+    the phone-candidate address or ask for one. In narrator mode the moment
+    becomes a goal directive (a smooth hand-over from the problem talk); the
+    OFFER question's core stays verbatim ("Ar skambinate dėl X?") because the
+    deterministic confirm guard keys off it. Off-switch keeps the scripts."""
+    import os as _os
+
+    from .identification import offer_phone_address, phrase
+
+    c = s.phone_candidate
+    if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
+        flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+        adresas = f"{c['street']} {c.get('house')}{flat}"
+        kind, fallback = "address_offer", phrase("address_offer", adresas=adresas)
+    else:
+        adresas = None
+        kind, fallback = "address_ask", phrase("address_ask")
+    if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+        engine._ident_directive = {"kind": kind, "adresas": adresas, "fallback": fallback}
+        return None  # the narrator words the transition (facts directive)
+    return fallback
 
 
 def address_diag_note(obs: dict) -> str | None:

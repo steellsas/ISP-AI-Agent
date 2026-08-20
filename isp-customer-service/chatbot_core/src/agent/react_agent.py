@@ -290,6 +290,7 @@ class ReactAgent:
         self._findings_directive: dict | None = None
         self._recap_directive: dict | None = None
         self._ticket_directive: dict | None = None
+        self._ident_directive: dict | None = None
         # Findings announce: spoken ONCE at the first confirmed-hypothesis
         # moment; stashed when the reply comes from another layer that turn.
         self._findings_announced = False

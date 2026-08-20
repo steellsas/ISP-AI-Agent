@@ -176,7 +176,7 @@
   {
    "id": "I1_ident_offer_clean_yes",
    "phone": "+37060020105",
-   "desc": "F6: telefono adreso pasiūlymas -> švarus taip -> identifikuota (trumpos frazės)",
+   "desc": "F6: telefono adreso pasiūlymas -> švarus taip -> identifikuota (zone 2: naratoriaus perėjimas, šerdis „skambinate dėl“ privaloma)",
    "turns": [
     "Labas, neveikia internetas",
     "Vakar vakare, po audros",
@@ -189,7 +189,7 @@
     "identified": true,
     "disposition": "any",
     "reply_any": [
-     "patikrinsiu ryšį"
+     "skambinate dėl"
     ],
     "reply_none": [
      "Kad galėčiau patikrinti situaciją"

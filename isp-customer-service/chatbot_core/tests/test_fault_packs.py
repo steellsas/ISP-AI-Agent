@@ -803,3 +803,50 @@ class TestTicketDirectives:
         assert agent._identification_scripted_reply("tiks tas") is None
         assert agent._ticket_directive["kind"] == "hours"
         assert "patogiausia" in agent._state_facts_block()
+
+
+class TestIdentDirectives:
+    """Zone 2: the transition to the address becomes a narrator goal directive;
+    the OFFER question core stays verbatim (confirm guard); off reverts."""
+
+    def _agent(self, candidate=True):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        if candidate:
+            agent.state.phone_candidate = {
+                "customer_id": "CUST009",
+                "name": "Test",
+                "address": "Šiauliai, Vilniaus g. 29",
+                "street": "Vilniaus g.",
+                "house": "29",
+                "apartment": None,
+                "city": "Šiauliai",
+            }
+        return agent
+
+    def test_offer_goes_to_narrator_with_verbatim_core(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("Vakar po audros dingo")
+        assert reply is None
+        idd = agent._ident_directive
+        assert idd and idd["kind"] == "address_offer" and "Vilniaus g. 29" in idd["adresas"]
+        block = agent._state_facts_block()
+        assert "Ar skambinate dėl Vilniaus g. 29?" in block  # verbatim core kept
+
+    def test_ask_goes_to_narrator_without_candidate(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent(candidate=False)
+        assert agent._identification_scripted_reply("Vakar po audros dingo") is None
+        assert agent._ident_directive["kind"] == "address_ask"
+        assert "IDENTIFIKACIJOS ŽINGSNIS" in agent._state_facts_block()
+
+    def test_off_switch_keeps_scripted_offer(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("Vakar po audros dingo")
+        assert reply and "Ar skambinate dėl Vilniaus g. 29?" in reply
+        assert agent._ident_directive is None
