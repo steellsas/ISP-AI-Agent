@@ -244,6 +244,15 @@ def _score(scn: dict, ev: dict) -> list[tuple[str, bool, str]]:
         ok = got == want or (want == "inform" and got in ("open", "outage"))
         checks.append(("disposition", ok, f"want={want} got={got}"))
 
+    # identified = whether the call ended with a committed customer_id (F6:
+    # the identification golden set asserts BOTH directions).
+    if "identified" in exp:
+        want = bool(exp["identified"])
+        got = bool(ev.get("customer_id"))
+        checks.append(
+            ("identified", got == want, f"want={want} customer={ev.get('customer_id') or '-'}")
+        )
+
     # reply_any = at least ONE of the listed substrings appears (an OR-group / synonyms).
     any_list = exp.get("reply_any", [])
     if any_list:
