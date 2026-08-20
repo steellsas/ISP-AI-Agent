@@ -128,7 +128,8 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     "refute_confirm": (
         "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
     ),
-    "reask_reason": ("Paklausiu dar kartą, nes noriu būti tikras dėl „{tema}“. {klausimas}"),
+    "reask_reason": ("Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"),
+    "wait_ack": ("Gerai, lauksiu — pasakykite, kai būsite pasiruošę."),
     "repeat_ack": ("Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "),
     "escalate_clarify": (
         "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"

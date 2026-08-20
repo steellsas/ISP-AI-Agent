@@ -76,7 +76,10 @@ identification:
     done_report_clarify: "Supratau — patikrinote. {klausimas}"
     facts_recap: "Pasitikslinu, ar teisingai supratau: {faktai}. Ar taip?"
     refute_confirm: "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
-    reask_reason: "Paklausiu dar kartą, nes noriu būti tikras dėl „{tema}“. {klausimas}"
+    # C (2026-08-20): be vidinių etikečių („routeris surastas") klientui —
+    # trumpa žmogiška įžanga ir pats klausimas.
+    reask_reason: "Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"
+    wait_ack: "Gerai, lauksiu — pasakykite, kai būsite pasiruošę."
     repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
     escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"

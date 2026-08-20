@@ -296,6 +296,20 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         return None
     key, item = missing
     asks = engine._evidence_asks.get(key, 0)
+    # Wait signal (C, live 2026-08-20): "palaukit, ateinu" is the caller GOING
+    # to do the thing — acknowledge and WAIT; never burn a retry or hammer the
+    # question at someone who is walking to the router.
+    if asks >= 1 and user_input:
+        from .resolution import INTENT_IN_PROGRESS, detect_turn_intent
+
+        if detect_turn_intent(user_input) == INTENT_IN_PROGRESS:
+            from .identification import phrase
+
+            engine.tracer.emit(
+                "drive_decision", action="wait", accepted=True, reason="in_progress", key=key
+            )
+            reply = phrase("wait_ack")
+            return (announce + reply) if announce else reply
     if asks >= 2:
         # Asked twice (normal + paprasciau), still nothing readable — record
         # "neaišku" and move on; an unreadable caller must never loop us.

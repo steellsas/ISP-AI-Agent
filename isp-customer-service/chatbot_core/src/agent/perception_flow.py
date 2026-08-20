@@ -506,6 +506,20 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     reiksme=ut.get("reiksme"),
                 )
                 if ut["tipas"] == "klausimas":
+                    # Echo of our own offer (D, live 2026-08-20): "Ar tiks tas,
+                    # iš kurio skambinu?" repeated back with rising intonation
+                    # is CONSENT — answering it and re-asking doubled the
+                    # question. Fuzzy overlap with what we just asked decides.
+                    if engine._ticket_stage == "phone":
+                        from .barge_in import token_overlap
+
+                        if token_overlap(user_input, s.last_question or "") >= 0.8:
+                            s.contact_phone = s.caller_phone
+                            engine._ticket_stage = "hours"
+                            engine.tracer.emit(
+                                "decision", intent="ticket_dialogue", action="phone_echo_consent"
+                            )
+                            return
                     engine._ticket_offscript = True
                     engine.tracer.emit("decision", intent="ticket_dialogue", action="question")
                     return

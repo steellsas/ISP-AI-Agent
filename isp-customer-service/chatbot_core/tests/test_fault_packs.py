@@ -270,6 +270,54 @@ class TestNarratorFindings:
         )
         monkeypatch.setattr(ev, "solution_for", lambda e, v: "bridge")
 
+    def test_wait_signal_holds_instead_of_reasking(self, monkeypatch):
+        """C (2026-08-20): 'palaukit, ateinu' -> Gerai, lauksiu; no retry burn."""
+        from types import SimpleNamespace
+
+        from agent import evidence as ev
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
+        monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: None)
+        monkeypatch.setattr(
+            ev,
+            "next_missing",
+            lambda e, s, c: ("device_present", {"klausimas": "Radote routerį?"}),
+        )
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "no_mac_observed", "step": "dr_intro"},
+                evidence={},
+                turn_count=2,
+            ),
+            _findings_announced=False,
+            _recap_state="done",
+            _recap_directive=None,
+            _evidence_last_ask_key="device_present",
+            _evidence_asks={"device_present": 1},
+            _evidence_directive=None,
+            _pending_announce="",
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        reply = evidence_drive(engine, "Palaukit, tuoj ateinu.")
+        assert reply and "lauksiu" in reply.lower()
+        assert engine._evidence_asks["device_present"] == 1  # retry NOT burned
+
+    def test_reask_phrase_has_no_internal_labels(self):
+        from agent.identification import phrase
+
+        text = phrase("reask_reason", tema="routeris surastas", klausimas="Radote?")
+        assert "routeris surastas" not in text and "Radote?" in text
+
+    def test_phone_echo_is_consent(self, monkeypatch):
+        """D (2026-08-20): the caller echoing our own phone offer is a yes."""
+        from agent.barge_in import token_overlap
+
+        q = "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
+        assert token_overlap("Ar tiks tas, iš kurio skambinu?", q) >= 0.8
+        assert token_overlap("O kiek kainuoja meistras?", q) < 0.8
+
     def test_recap_delegates_to_narrator(self, monkeypatch):
         from agent.evidence_drive import maybe_facts_recap
 

@@ -351,7 +351,9 @@ class TestGaveUpRevival:
         set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
         set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 3)  # gave up
         reply = agent._evidence_drive("nežinau")
-        assert reply is not None and "maitinimo laidas" in reply  # the revival names it
+        # C 2026-08-20: reask_reason no longer reads internal labels back —
+        # the topic is still named through the patikslinimas question itself.
+        assert reply is not None and "laidas" in reply  # the revival names it
         with patch("agent.understand.understand", return_value=None):
             agent._ingest_client_evidence("Dabar pažiūrėjau — įkištas gerai, tvirtai")
         assert agent.state.evidence["power_cable"]["value"] == "įkištas"
