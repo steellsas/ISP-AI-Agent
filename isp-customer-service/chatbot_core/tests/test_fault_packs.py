@@ -754,3 +754,52 @@ class TestIdentificationF:
 
         assert phrase("address_ask") == "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
         assert "patikrinsiu ryšį" in phrase("address_offer", adresas="X")
+
+
+class TestTicketDirectives:
+    """Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments
+    become narrator goal directives; retries/cancel stay scripted; off reverts."""
+
+    def _agent(self, db_connection=None):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "escalate"}
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"step": None}
+        return agent
+
+    def test_phone_intro_goes_to_narrator(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("nepatogu, ne namuose")
+        assert reply is None  # the narrator takes the turn
+        td = agent._ticket_directive
+        assert td and td["kind"] == "phone_intro" and "numeris" in td["fallback"]
+        block = agent._state_facts_block()
+        assert "TIKETO ŽINGSNIS" in block and "registruoji meistrą" in block
+
+    def test_off_switch_keeps_scripted(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("gerai")
+        assert reply and "Ar tiks numeris" in reply
+        assert agent._ticket_directive is None
+
+    def test_retry_stays_scripted_even_in_narrator_mode(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        agent._ticket_ctx["ask_retry"] = "phone"
+        reply = agent._identification_scripted_reply("kazkas neaisku")
+        assert reply and "skaitmenimis" in reply  # precision repeat, no LLM
+        assert agent._ticket_directive is None
+
+    def test_hours_directive(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        agent._ticket_stage = "hours"
+        agent._ticket_ctx = {"step": None, "intro_done": True}
+        assert agent._identification_scripted_reply("tiks tas") is None
+        assert agent._ticket_directive["kind"] == "hours"
+        assert "patogiausia" in agent._state_facts_block()

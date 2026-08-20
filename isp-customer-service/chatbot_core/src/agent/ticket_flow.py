@@ -114,18 +114,23 @@ def ticket_stage_reply(engine: Any) -> str:
     ctx = engine._ticket_ctx if engine._ticket_ctx is not None else {}
     if ctx.pop("ask_cancel_confirm", None):
         ctx["cancel_confirm_out"] = True
+        ctx["last_kind"] = "cancel_confirm"
         return phrase("ticket_cancel_confirm")
     retry = ctx.pop("ask_retry", None)
     if retry == "phone":
+        ctx["last_kind"] = "retry_phone"
         return phrase("ticket_phone_retry")
     if retry == "hours":
+        ctx["last_kind"] = "retry_hours"
         return phrase("ticket_hours_retry")
     if engine._ticket_stage == "hours":
         ctx["hours_asked"] = True
+        ctx["last_kind"] = "hours"
         return phrase("ticket_hours")
     parts = []
     if not ctx.get("intro_done"):
         ctx["intro_done"] = True
+        ctx["last_kind"] = "phone_intro"
         # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
         # the internet just came back (live 2026-08-12). The intro then
         # states the success and registers the ROUTER replacement.
@@ -133,6 +138,8 @@ def ticket_stage_reply(engine: Any) -> str:
             parts.append(phrase("ticket_intro_bridge"))
         else:
             parts.append(phrase("ticket_intro", priezastis=ticket_need(engine)))
+    else:
+        ctx["last_kind"] = "phone"
     ctx["phone_asked"] = True
     parts.append(phrase("ticket_phone"))
     return " ".join(parts)

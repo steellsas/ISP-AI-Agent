@@ -673,6 +673,36 @@ def state_facts_block(engine) -> str | None:
             "nebegrįžk. Kalbame tik apie kompiuterio prijungimą."
         )
 
+    # Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments,
+    # worded by the narrator into the conversation's flow — the engine still
+    # owns the stages and the capture; only the WORDING is free.
+    td = getattr(engine, "_ticket_directive", None)
+    if td:
+        from .ticket_flow import ticket_need
+
+        if td["kind"] == "phone_intro":
+            if getattr(engine, "_bridge_bound", False):
+                goal = (
+                    "pranešk gerą žinią — internetas kol kas veikia per kompiuterį — "
+                    "ir kad registruoji meistrą dėl naujo routerio; paklausk TIK "
+                    "vieno: ar susisiekimui tinka numeris, iš kurio klientas skambina"
+                )
+            else:
+                goal = (
+                    f"pranešk, kad telefonu šito neišspręsim ({ticket_need(engine)}) "
+                    "ir kad registruoji meistrą; paklausk TIK vieno: ar susisiekimui "
+                    "tinka numeris, iš kurio klientas skambina"
+                )
+        elif td["kind"] == "hours":
+            goal = "paklausk TIK vieno: kada klientui patogiausia sulaukti skambučio"
+        else:
+            goal = "paklausk TIK vieno: ar susisiekimui tinka numeris, iš kurio klientas skambina"
+        facts.append(
+            f"- TIKETO ŽINGSNIS (savais žodžiais, trumpai, viena „?“): {goal}. "
+            "Neišgalvok faktų ir nieko kito nesiūlyk. "
+            f"(Atsarginė formuluotė: „{td['fallback']}“)"
+        )
+
     # Persona: the RECAP as a goal directive — read the gathered facts back in
     # the narrator's own words, one short sentence, never the label:value dump.
     rd = getattr(engine, "_recap_directive", None)

@@ -305,7 +305,22 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if engine._ticket_stage in ("phone", "hours"):
         if engine._ticket_offscript:
             return None
-        return engine._ticket_stage_reply()
+        scripted = engine._ticket_stage_reply()
+        # Zone 1 (skriptai -> direktyvos, Andrius 2026-08-20): the QUESTION
+        # moments go to the narrator as a goal directive — it words them into
+        # the conversation's flow; retries and the cancel-confirm stay
+        # scripted (precision beats style on a repeat). Off-switch reverts.
+        import os as _os
+
+        kind = (engine._ticket_ctx or {}).get("last_kind")
+        if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on" and kind in (
+            "phone_intro",
+            "phone",
+            "hours",
+        ):
+            engine._ticket_directive = {"kind": kind, "fallback": scripted}
+            return None  # the ticket node's narrator speaks (facts directive)
+        return scripted
     if engine._ticket_stage == "done":
         return engine._finish_ticket_dialogue()
     if engine._ticket_stage == "cancelled":
