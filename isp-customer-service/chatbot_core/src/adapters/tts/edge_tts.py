@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import re
 from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
@@ -44,13 +46,26 @@ class EdgeTTSProvider:
         lang = (language or self._default_language).split("-")[0].lower()
         return _VOICES.get(lang, _VOICES["lt"])
 
+    @staticmethod
+    def _rate() -> str | None:
+        """Speech rate from TTS_RATE (config page): '+10%' speaks ~10% faster —
+        information flows quicker and the voice sounds more matter-of-fact
+        (Andrius 2026-08-20). None/'+0%' = the voice's natural pace."""
+        raw = (os.getenv("TTS_RATE") or "").strip()
+        if not raw or raw in ("+0%", "0%", "0"):
+            return None
+        return raw if re.fullmatch(r"[+-]\d{1,2}%", raw) else None
+
     def _synthesize_one(self, sentence: str, voice: str) -> bytes:
         """Render one sentence to MP3 via edge-tts (async collected to bytes)."""
         import edge_tts  # deferred (optional dependency)
 
+        rate = self._rate()
+        kwargs = {"rate": rate} if rate else {}
+
         async def _collect() -> bytes:
             out = bytearray()
-            async for chunk in edge_tts.Communicate(sentence, voice).stream():
+            async for chunk in edge_tts.Communicate(sentence, voice, **kwargs).stream():
                 if chunk["type"] == "audio":
                     out.extend(chunk["data"])
             return bytes(out)

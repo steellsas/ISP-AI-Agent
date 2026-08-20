@@ -330,7 +330,7 @@ class TestNarratorFindings:
         """D (2026-08-20): the caller echoing our own phone offer is a yes."""
         from agent.barge_in import token_overlap
 
-        q = "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
+        q = "Ar tiks numeris, iš kurio skambinate? — ar tiks tas, iš kurio skambinate?"
         assert token_overlap("Ar tiks tas, iš kurio skambinu?", q) >= 0.8
         assert token_overlap("O kiek kainuoja meistras?", q) < 0.8
 

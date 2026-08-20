@@ -135,7 +135,16 @@ SCHEMA: list[dict[str, Any]] = [
         # still thinking past the delay below.
         "key": "VOICE_FILLER",
         "label": "Užpildas „Sekundėlę, tikrinu“",
-        "options": ["on", "off"],
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # Kalbėjimo greitis: '+10%' — informacija teka greičiau, tonas
+        # dalykiškesnis (Andrius 2026-08-20).
+        "key": "TTS_RATE",
+        "label": "Kalbėjimo greitis",
+        "options": ["+0%", "+10%", "+15%", "+20%", "-10%"],
         "scope": "immediate",
         "kind": "env",
     },

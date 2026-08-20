@@ -217,7 +217,7 @@ class TestFindingsAnnounce:
         reply = agent._evidence_drive("neturiu")
         assert reply is not None
         assert "Ką patikrinome" in reply
-        assert "Kokiu telefono numeriu" in reply  # ticket dialogue follows
+        assert "Ar tiks numeris" in reply  # ticket dialogue follows
 
 
 class TestConfirmationAgent:

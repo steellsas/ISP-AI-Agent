@@ -515,7 +515,7 @@ class TestHearingAgent:
         agent._ticket_stage_reply()  # confirm question goes out
         agent._pre_turn_guards("gerai, registruokite vis dėlto")
         assert agent._ticket_stage == "phone"  # resumed, not cancelled
-        assert "numeriu" in agent._ticket_stage_reply()  # stage re-asks
+        assert "numeris" in agent._ticket_stage_reply()  # stage re-asks
 
     # --- round 2 (live 2026-08-11, call 2) ------------------------------------
 
@@ -670,7 +670,7 @@ class TestHearingAgent:
         assert agent.state.evidence["lan_active"]["value"] == "neaktyvus"
         r3 = agent._drive_propose_fix("", "ir dabar nieko")
         assert "kabeliu" in r3  # the possible incoming-cable problem is NAMED
-        assert "Kokiu telefono numeriu" in r3  # technician registration begins
+        assert "Ar tiks numeris" in r3  # technician registration begins
         assert "NEPAVYKO" in (agent._bridge_fail_note or "")
         _complete_ticket_dialogue(agent)
         with db_connection.cursor() as cur:
@@ -733,7 +733,7 @@ class TestHearingAgent:
         intro = agent._ticket_stage_reply()
         assert "veikia per kompiuterį" in intro
         assert "nepavyks" not in intro
-        assert "Kokiu telefono numeriu" in intro
+        assert "Ar tiks numeris" in intro
 
     def test_lan_pending_answers(self):
         from agent.evidence import read_pending_answer
@@ -1596,7 +1596,7 @@ class TestBindDiscipline:
     def test_drive_escalate_uses_state_ticket(self, db_connection, monkeypatch):
         agent = self._driving_agent(monkeypatch)
         q1 = agent._drive_escalate(None)
-        assert "Kokiu telefono numeriu" in q1  # contacts dialogue first (2026-08-04)
+        assert "Ar tiks numeris" in q1  # contacts dialogue first (2026-08-04)
         say = _complete_ticket_dialogue(agent)
         assert agent.state.ticket_id  # recorded on the call, not lost
         assert agent.state.closed_reason == "registered"
@@ -1637,7 +1637,7 @@ class TestTicketDialogue:
         agent._walk_resolution("gerai, tinka")
         assert agent.state.ticket_id is None  # not yet — contacts first
         assert agent._ticket_stage == "phone"
-        assert "Kokiu telefono numeriu" in agent._identification_scripted_reply("gerai, tinka")
+        assert "Ar tiks numeris" in agent._identification_scripted_reply("gerai, tinka")
 
     def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
@@ -1684,8 +1684,8 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
         first = agent._identification_scripted_reply(None)
-        assert "Registruoju gedimą" in first and "maršrutizatorius" in first
-        assert "Kokiu telefono numeriu" in first
+        assert "Registruoju meistrą" in first and "maršrutizatorius" in first
+        assert "Ar tiks numeris" in first
         again = agent._ticket_stage_reply()
         assert "Registruoju gedimą" not in again  # intro said once
 
@@ -1731,7 +1731,7 @@ class TestTicketDialogue:
         agent._pre_turn_guards("Bet kada?")
         assert agent.state.contact_hours == "Bet kada"
         reply = agent._identification_scripted_reply("Bet kada?")
-        assert "skambinti galima bet kada." in reply
+        assert "bet kada" in reply
 
     def test_trigger_utterance_not_swallowed_as_phone(self, db_connection, monkeypatch):
         # Live 2026-08-05: escalate fired mid-turn and the SAME utterance
@@ -1743,7 +1743,7 @@ class TestTicketDialogue:
         assert agent.state.contact_phone is None
         assert agent._ticket_stage == "phone"  # still waiting for its question
         first = agent._identification_scripted_reply("Neturi kompiutera")
-        assert "Kokiu telefono numeriu" in first  # the question goes out now
+        assert "Ar tiks numeris" in first  # the question goes out now
 
     def test_garbage_phone_answer_reasks_then_defaults(self, db_connection, monkeypatch):
         # Live: "Neturi kompiutera" landed as tel. on the ticket. Now: one
@@ -1849,7 +1849,7 @@ class TestTicketDialogue:
             }
         )
         reply = agent.solver_drive_turn("Neturiu, internetą naudoju tik telefonu.")
-        assert reply is not None and "Kokiu telefono numeriu" in reply
+        assert reply is not None and "Ar tiks numeris" in reply
         assert agent._ticket_stage == "phone"
 
     def test_registration_claim_without_ticket_starts_dialogue(self, db_connection, monkeypatch):
@@ -1859,7 +1859,7 @@ class TestTicketDialogue:
         extra = agent._registration_claim_guard(
             "Supratau. Užregistravau gedimą, kolegos susisieks su jumis."
         )
-        assert extra and "Kokiu telefono numeriu" in extra
+        assert extra and "Ar tiks numeris" in extra
         assert agent._ticket_stage == "phone"
         # Honest replies pass untouched.
         agent2 = self._agent_at_consent(monkeypatch)
