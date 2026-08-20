@@ -270,6 +270,22 @@ class TestNarratorFindings:
         )
         monkeypatch.setattr(ev, "solution_for", lambda e, v: "bridge")
 
+    def test_anamnesis_followup_ladder(self, db_connection):
+        """E (2026-08-20): 'nežinau' -> ask when it last WORKED -> the answer
+        lands as anamnesis_when and the ladder proceeds to the address."""
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        s.problem_type = "internet_down"
+        s.anamnesis_asked = True
+        reply = agent._identification_scripted_reply("Nežinau, nepastebėjau.")
+        assert reply and "paskutinį kartą" in reply
+        reply2 = agent._identification_scripted_reply("Vakar lyg viskas veikė.")
+        assert reply2 and ("adres" in reply2.lower())
+        assert s.anamnesis_when and "vakar" in s.anamnesis_when.lower()
+        assert "paskutinį kartą veikė" in (s.anamnesis_raw or "")
+
     def test_wait_signal_holds_instead_of_reasking(self, monkeypatch):
         """C (2026-08-20): 'palaukit, ateinu' -> Gerai, lauksiu; no retry burn."""
         from types import SimpleNamespace

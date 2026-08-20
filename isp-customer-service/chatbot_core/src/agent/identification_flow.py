@@ -379,6 +379,26 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
             s.anamnesis_asked = True
             return phrase("anamnesis_question")
+        # E (Andrius 2026-08-20): the follow-up rung — the caller did not know
+        # WHEN it broke, so we asked when it last WORKED; the answer narrows
+        # the time window for the analysis ("vakar veikė" -> broke overnight).
+        if getattr(engine, "_anamnesis_followup", False) and user_input and not has_addr:
+            engine._anamnesis_followup = False
+            from .nlu import extract_anamnesis
+
+            read = extract_anamnesis(user_input)
+            s.anamnesis_when = read.get("when") or user_input.strip(" .!?,")[:80]
+            s.anamnesis_raw = (
+                f"{s.anamnesis_raw or ''} | paskutinį kartą veikė: {user_input.strip()[:80]}"
+            )
+            engine.tracer.emit(
+                "anamnesis", text=s.anamnesis_raw, when=s.anamnesis_when, followup=True
+            )
+            c = s.phone_candidate
+            if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
+                flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+                return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
+            return phrase("address_ask")
         if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
             s.anamnesis_raw = user_input.strip()[:200]
             from .nlu import extract_anamnesis
@@ -392,6 +412,11 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
                 when=s.anamnesis_when,
                 trigger=s.anamnesis_trigger,
             )
+            # E: nothing usable heard ("nežinau") — ONE follow-up rung about
+            # the last time the service worked, then on to the address.
+            if s.anamnesis_when in (None, "nežino") and not s.anamnesis_trigger:
+                engine._anamnesis_followup = True
+                return phrase("anamnesis_last_used")
             c = s.phone_candidate
             if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
                 flat = f", butas {c['apartment']}" if c.get("apartment") else ""
