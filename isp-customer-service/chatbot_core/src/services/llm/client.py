@@ -41,7 +41,9 @@ def get_model_info(model: str) -> dict:
 
     return {
         "model": model,
-        "supports_json_mode": model in json_mode_models,
+        # Groq-hosted open models (groq/openai/gpt-oss-*, groq/qwen/…) support
+        # response_format json_object across the board.
+        "supports_json_mode": model in json_mode_models or model.startswith("groq/"),
     }
 
 
@@ -70,6 +72,8 @@ def _get_api_key(provider: str) -> str | None:
 
 def _get_provider(model: str) -> str:
     """Determine provider from model name."""
+    if model.startswith("groq/"):
+        return "groq"  # litellm routes groq/<id> natively; key = GROQ_API_KEY
     if model.startswith("gpt") or model.startswith("o1"):
         return "openai"
     elif model.startswith("gemini"):

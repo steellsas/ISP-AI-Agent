@@ -51,6 +51,22 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "solver_model",
     },
     {
+        # Tempo wave (VOICE_PLAN): the perception family (understand pass +
+        # step classifier) on a FASTER model — Groq inference cuts the
+        # between-questions gap. Enum validation keeps weaker models safe.
+        "key": "PERCEPTION_MODEL",
+        "label": "Percepcijos LLM modelis (supratimas)",
+        "options": [
+            "default",
+            "groq/openai/gpt-oss-120b",
+            "groq/openai/gpt-oss-20b",
+            "groq/qwen/qwen3.6-27b",
+            "gpt-4o-mini",
+        ],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         # AgentSession reads AGENT_ENGINE at construction, so the switch takes
         # effect on the NEXT call — running calls keep their engine. "graph" =
         # legacy LangGraph, "v2" = graph_v2 (docs/ROADMAP_REFACTORING.md),

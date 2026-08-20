@@ -75,6 +75,8 @@ def classify_step(
     try:
         from src.services.llm.client import llm_json_completion
 
+        from .understand import perception_model as _perception_model
+
         data = llm_json_completion(
             messages=[
                 {"role": "system", "content": _system(options)},
@@ -84,7 +86,7 @@ def classify_step(
                     f"Kliento atsakymas: {answer}",
                 },
             ],
-            model=model,
+            model=_perception_model(model),
             temperature=0.0,
             max_tokens=150,
             validate_schema=CandidateObservation,
