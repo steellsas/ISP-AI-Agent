@@ -1169,6 +1169,20 @@ class ReactAgent:
             "resolved": s.closed_reason == "resolved",
             "ticket_id": s.ticket_id,
             "actions": self._tools_called_this_session(),
+            # F4 (Andrius 2026-08-20): a call that ended WITHOUT identification
+            # records everything that was heard — the address may have changed
+            # its name, the caller may not be the holder; a person reading the
+            # record (or the caller phoning back) can pick the thread up.
+            "identifikacija_nepavyko": (
+                {
+                    "girdeta": list(s.heard_utterances)[-6:],
+                    "gatve": s.profile.street.value,
+                    "namas": s.profile.house.value,
+                    "miestas": s.profile.city.value,
+                }
+                if not s.customer_id and s.problem_type
+                else None
+            ),
         }
 
     def _tools_called_this_session(self) -> list[str]:

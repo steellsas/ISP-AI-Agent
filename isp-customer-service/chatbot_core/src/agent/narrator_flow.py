@@ -237,6 +237,27 @@ def state_facts_block(engine) -> str | None:
     # they override the model's own reading of the last reply.
     if getattr(engine, "_addr_confirm_note", None):
         facts.append(engine._addr_confirm_note)
+    # F2: the failed lookup's per-level diagnosis — the narrator tells the
+    # caller what WAS found and asks to correct only the missing part.
+    if getattr(engine, "_addr_diag_note", None) and not s.customer_id:
+        facts.append(engine._addr_diag_note)
+    # F3 (Andrius 2026-08-20): a caller who is NOT giving the address gets ONE
+    # warm encouragement with the WHY and the hints — never an endless re-ask.
+    if (
+        not s.customer_id
+        and s.problem_type
+        and s.turn_count >= 4
+        and not s.profile.street.value
+        and not getattr(engine, "_addr_encouraged", False)
+    ):
+        engine._addr_encouraged = True
+        facts.append(
+            "- PARAGINIMAS DĖL ADRESO (vieną kartą, šiltai): paaiškink, KODĖL "
+            "adreso reikia — be jo nematai kliento linijos ir negali patikrinti "
+            "gedimo. Užuominos: sutartis gali būti kito šeimos nario vardu; "
+            "gatvės pavadinimas galėjo pasikeisti; užtenka gatvės ir namo "
+            "numerio. Paklausk, ką klientas žino."
+        )
     if getattr(engine, "_reopen_note", False) and not s.customer_id:
         facts.append(
             "- KLIENTAS PATIKSLINO: skambina dėl KITO adreso nei buvo nustatyta. "
@@ -901,6 +922,15 @@ def update_state_from_observation(engine, action: str, observation: str):
         # overwrites (slots.Slot.propose).
         if action == "resolve_address" and isinstance(obs_data.get("resolution"), dict):
             engine.state.profile.update_from_resolution(obs_data["resolution"])
+            # F2 (2026-08-20): a failed lookup speaks its DIAGNOSIS — what was
+            # found and what was not — so the caller can correct themselves
+            # ("Vilniaus gatvę randu, bet 39 numerio nematau").
+            if not obs_data.get("success"):
+                from .identification_flow import address_diag_note
+
+                engine._addr_diag_note = address_diag_note(obs_data)
+            else:
+                engine._addr_diag_note = None
 
         if action in ("find_customer", "resolve_address") and obs_data.get("success"):
             # resolve_address nests the normalized profile under `customer`;

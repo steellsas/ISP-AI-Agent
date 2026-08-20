@@ -1262,10 +1262,10 @@ class TestReviewGaps:
         s = AgentSession(caller_phone="+37060012353", engine="graph")
         s.greeting()
         reply = s.handle_turn("neveikia internetas")  # scripted anamnesis, no LLM
-        assert "kada pastebėjote" in reply
+        assert "kada dingo" in reply
         roles = [(m["role"], m.get("content")) for m in s.state.messages]
         assert ("user", "neveikia internetas") in roles
-        assert roles[-1][0] == "assistant" and "kada pastebėjote" in roles[-1][1]
+        assert roles[-1][0] == "assistant" and "kada dingo" in roles[-1][1]
 
     def test_llm_turn_appends_user_exactly_once(self, db_connection):
         from unittest.mock import patch as _patch
@@ -1389,7 +1389,7 @@ class TestSmallTalkBeforeProblem:
         agent = self._fresh()
         agent.state.problem_type = "internet_down"
         reply = agent._identification_scripted_reply("neveikia internetas")
-        assert reply is not None and "kada pastebėjote" in reply  # anamnesis, not ask_problem
+        assert reply is not None and "kada dingo" in reply  # anamnesis, not ask_problem
 
     def test_facts_forbid_address_offer_before_problem(self, db_connection):
         agent = self._fresh()

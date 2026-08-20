@@ -445,6 +445,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
         again instead of carrying on about the wrong account."""
     s = engine.state
     engine._addr_confirm_note = None
+    engine._addr_diag_note = None  # F2: fresh lookup diagnosis per turn
     engine._reopen_note = False
     if not user_input:
         return

@@ -667,3 +667,90 @@ class TestEvidenceDeclared:
         for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
             for key, item in spec_for(verdict)["client"].items():
                 assert item.get("reikia"), f"{verdict}.{key} be 'reikia'"
+
+
+class TestIdentificationF:
+    """F (2026-08-20): identifikacija kaip pokalbis — pasakyk, ką radai ir ko
+    ne; paragink su KODĖL; nesėkmę užfiksuok įraše."""
+
+    def test_diag_street_found_house_not(self):
+        from agent.identification_flow import address_diag_note
+
+        note = address_diag_note(
+            {
+                "success": False,
+                "resolution": {
+                    "city": {"status": "ok", "matched": "Šiauliai"},
+                    "street": {"status": "ok", "matched": "Vilniaus g."},
+                    "house": {"status": "not_found", "given": "39", "known_houses": [29, 31]},
+                    "apartment": {"status": "skipped"},
+                },
+            }
+        )
+        assert note and "RANDU" in note and "39" in note and "29" in note
+
+    def test_diag_street_elsewhere_and_fuzzy(self):
+        from agent.identification_flow import address_diag_note
+
+        note = address_diag_note(
+            {
+                "success": False,
+                "resolution": {
+                    "city": {"status": "ok", "matched": "Šiauliai"},
+                    "street": {
+                        "status": "not_in_city",
+                        "given": "Vilniaus g.",
+                        "found_elsewhere": [{"city": "Kuršėnai"}],
+                    },
+                    "house": {"status": "skipped"},
+                },
+            }
+        )
+        assert note and "NERANDU" in note and "Kuršėnai" in note
+        fuzzy = address_diag_note(
+            {
+                "success": False,
+                "resolution": {
+                    "city": {"status": "ok", "matched": "Šiauliai"},
+                    "street": {"status": "unclear", "fuzzy_candidates": ["Vytauto", "Vilniaus"]},
+                    "house": {"status": "skipped"},
+                },
+            }
+        )
+        assert fuzzy and "Vytauto" in fuzzy
+        assert address_diag_note({"success": False, "resolution": {}}) is None
+
+    def test_diag_note_lands_in_facts_block(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._addr_diag_note = "- ADRESO PAIEŠKOS DIAGNOZĖ: gatvę RANDU, namo NĖRA."
+        block = agent._state_facts_block()
+        assert block and "ADRESO PAIEŠKOS DIAGNOZĖ" in block
+
+    def test_encouragement_appears_once(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.turn_count = 5
+        first = agent._state_facts_block() or ""
+        second = agent._state_facts_block() or ""
+        assert "PARAGINIMAS DĖL ADRESO" in first
+        assert "PARAGINIMAS DĖL ADRESO" not in second
+
+    def test_failed_identification_lands_on_the_record(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.heard_utterances.extend(["neveikia internetas", "Vilnaus gatve kazkur"])
+        summary = agent._build_call_summary()
+        fail = summary["identifikacija_nepavyko"]
+        assert fail and "Vilnaus gatve kazkur" in fail["girdeta"]
+
+    def test_short_ladder_phrases(self):
+        from agent.identification import phrase
+
+        assert phrase("address_ask") == "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
+        assert "patikrinsiu ryšį" in phrase("address_offer", adresas="X")

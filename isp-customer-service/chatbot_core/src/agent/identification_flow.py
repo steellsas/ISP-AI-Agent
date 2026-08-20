@@ -490,3 +490,51 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     engine._result_pending = False
     engine._news_told = True
     return " ".join(b for b in bits if b)
+
+
+def address_diag_note(obs: dict) -> str | None:
+    """F2 (Andrius 2026-08-20): a FAILED address lookup must tell the caller
+    exactly what WAS found and what was not — 'Vilniaus gatvę randu, bet 39
+    numerio nematau' lets the caller correct themselves. Composed from the
+    resolver's per-level diagnosis into a narrator directive; None when there
+    is nothing more specific than the generic re-ask."""
+    res = obs.get("resolution") or {}
+    city = res.get("city") or {}
+    street = res.get("street") or {}
+    house = res.get("house") or {}
+    place = city.get("matched") or city.get("given") or ""
+    vieta = f" mieste {place}" if place else ""
+    bits: list[str] = []
+    st = street.get("status")
+    if st in ("not_found", "not_in_city"):
+        g = street.get("given") or "nurodytos gatvės"
+        line = f"gatvės „{g}“{vieta} NERANDU"
+        elsewhere = street.get("found_elsewhere") or []
+        if elsewhere:
+            kur = ", ".join(str(e.get("city") or e) for e in elsewhere[:3])
+            line += f", bet tokia gatvė yra: {kur} — paklausk, ar ne ten"
+        else:
+            line += " (gal ji vadinasi kitaip? pavadinimai keičiasi)"
+        bits.append(line)
+    elif st == "unclear" and street.get("fuzzy_candidates"):
+        cands = ", ".join(str(c) for c in street["fuzzy_candidates"][:3])
+        bits.append(f"gatvės neišgirdau tiksliai — panašios: {cands}; paklausk, kuri")
+    elif st in ("ok", "derived", "recovered") and house.get("status") == "not_found":
+        g = street.get("matched") or street.get("given") or "gatvę"
+        line = f"gatvę {g}{vieta} RANDU, bet namo {house.get('given')} numerio NĖRA"
+        known = house.get("known_houses") or []
+        if known:
+            line += f" (toje gatvėje yra: {', '.join(str(h) for h in known[:6])})"
+        line += " — paprašyk patikslinti namo numerį"
+        bits.append(line)
+    elif city.get("status") == "ambiguous":
+        alts = city.get("alternatives") or city.get("candidates") or []
+        kur = ", ".join(str(a.get("city") if isinstance(a, dict) else a) for a in alts[:3])
+        bits.append(f"tokia gatvė yra keliuose miestuose ({kur}) — paklausk, kuriame")
+    if not bits:
+        return None
+    return (
+        "- ADRESO PAIEŠKOS DIAGNOZĖ (pasakyk klientui BŪTENT tai — kas rasta ir ko "
+        "ne, savais žodžiais, trumpai — ir paprašyk patikslinti TIK trūkstamą "
+        "dalį): " + "; ".join(bits) + ". Neišgalvok adresų."
+    )

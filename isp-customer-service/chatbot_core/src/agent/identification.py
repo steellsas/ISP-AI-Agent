@@ -78,11 +78,8 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, "
         "pavyzdžiui, audros ar remonto?"
     ),
-    "address_offer": "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?",
-    "address_ask": (
-        "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, "
-        "kuriuo neveikia internetas."
-    ),
+    "address_offer": "Gerai — patikrinsiu ryšį. Ar skambinate dėl {adresas}?",
+    "address_ask": "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?",
     "echo_address": "Supratau — {adresas}.",
     "check_result": "Patikrinau ryšį iki jūsų buto. {zinia}",
     "billing_extra": "Apmokėjus sąskaitą, paslauga bus įjungta.",

@@ -50,9 +50,9 @@ identification:
   # with the LLM, and an off-script caller turn (a question) falls back to the LLM.
   phrases:
     ask_problem: "Klausau! Kuo galiu padėti — kokia problema?"
-    anamnesis_question: "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, pavyzdžiui, audros ar remonto?"
-    address_offer: "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?"
-    address_ask: "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, kuriuo neveikia internetas."
+    anamnesis_question: "Supratau. O kada dingo — gal po ko nors, tarkim audros ar remonto?"
+    address_offer: "Gerai — patikrinsiu ryšį. Ar skambinate dėl {adresas}?"
+    address_ask: "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
     echo_address: "Supratau — {adresas}."
     check_result: "Patikrinau ryšį iki jūsų buto. {zinia}"
     billing_extra: "Apmokėjus sąskaitą, paslauga bus įjungta."
