@@ -637,7 +637,9 @@ def state_facts_block(engine) -> str | None:
             facts.append(
                 f"- DAR AIŠKINAMĖS (pokalbio tikslas — tai nustatyti): {goals}. "
                 "Jei klientas nuklydo nuo temos — atsakyk trumpai, primink, kur "
-                "esame, ir grąžink pokalbį prie to, kas dar neišsiaiškinta."
+                "esame, ir grąžink pokalbį prie to, kas dar neišsiaiškinta. "
+                "Kai tikslų liko 1–2, PASAKYK klientui pažangą savais žodžiais "
+                "(pvz. „beliko patikrinti rozetę — ir bus aišku“)."
             )
 
     # Bridge-phase anchor for the NARRATOR too (live 2026-08-13: it slid back
