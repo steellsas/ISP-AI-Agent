@@ -131,6 +131,7 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     "reask_reason": ("Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"),
     "wait_ack": ("Gerai, lauksiu — pasakykite, kai būsite pasiruošę."),
     "anamnesis_last_used": ("O kada paskutinį kartą internetas tikrai veikė?"),
+    "checkin": ("Kaip sekasi — ar pavyksta?"),
     "repeat_ack": ("Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "),
     "escalate_clarify": (
         "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"

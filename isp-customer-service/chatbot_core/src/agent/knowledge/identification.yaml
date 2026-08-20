@@ -83,6 +83,8 @@ identification:
     # E (2026-08-20): antroji anamnezės pakopa, kai klientas nežino, kada dingo —
     # paskutinio veikimo laikas siaurina analizės langą („vakar veikė“ → dingo naktį).
     anamnesis_last_used: "O kada paskutinį kartą internetas tikrai veikė?"
+    # G3 (2026-08-20): aktyvus pasiteiravimas po tylos, kai klientas kažką daro.
+    checkin: "Kaip sekasi — ar pavyksta?"
     repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
     escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"

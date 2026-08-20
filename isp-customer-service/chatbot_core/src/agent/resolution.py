@@ -985,6 +985,14 @@ _CONFUSED = (
     "nesu tech",
     "paaiškinkite",
     "paaiskinkite",
+    # G1 (2026-08-20): a struggling caller ("neišeina", "nesiseka", "nežinau
+    # kaip") gets the explain-simpler path, not a repeat of the same words.
+    # NOT "nepavyko" — that is a step ROUTING answer (modules' isejimai).
+    "neišeina",
+    "neiseina",
+    "nesiseka",
+    "nežinau kaip",
+    "nezinau kaip",
 )
 
 

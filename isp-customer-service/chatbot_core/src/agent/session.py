@@ -147,6 +147,16 @@ class AgentSession:
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
 
+    def awaiting_caller(self) -> bool:
+        """True while the call is open and a question/instruction is standing —
+        the gate for the silence check-in (G3): 'Kaip sekasi?' only makes sense
+        when the caller was asked to DO or ANSWER something."""
+        try:
+            a = self._agent
+            return not a.state.case_closed and bool((a.state.last_question or "").strip())
+        except Exception:  # pragma: no cover
+            return False
+
     def last_spoken_text(self) -> str:
         """The agent's most recent spoken reply (echo reference for L3a) —
         falls back to the standing question when no reply is recorded yet."""

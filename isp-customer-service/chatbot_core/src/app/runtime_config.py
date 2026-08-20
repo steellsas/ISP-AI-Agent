@@ -147,6 +147,22 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # G3: the agent speaks first after a long caller silence while a task
+        # is standing — "Kaip sekasi, ar pavyksta?" (once per turn).
+        "key": "VOICE_CHECKIN",
+        "label": "Pasiteiravimas po tylos („Kaip sekasi?“)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        "key": "VOICE_CHECKIN_AFTER_S",
+        "label": "Pasiteiravimo vėlinimas, s",
+        "options": ["35", "20", "50", "70"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "TTS_ENGINE",
         "label": "TTS variklis",
         "options": ["edge", "gtts"],
