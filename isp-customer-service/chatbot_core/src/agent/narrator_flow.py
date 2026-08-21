@@ -383,6 +383,9 @@ def state_facts_block(engine) -> str | None:
         # The ladder decides WHEN the offer happens; the block yields.
         and not getattr(engine, "_ident_directive", None)
         and not getattr(engine, "_ticket_directive", None)
+        # Ladder order (live 2026-08-21): the offer comes AFTER the problem
+        # and the anamnesis — a garbled first utterance must not trigger it.
+        and s.problem_type
         and _fits(s.profile.street.value, s.phone_candidate.get("street"))
         and _fits(s.profile.house.value, s.phone_candidate.get("house"))
         and _fits(s.profile.apartment.value, s.phone_candidate.get("apartment"))

@@ -28,7 +28,7 @@ evidence:
       # atsakymai: kaip trumpi/darkyti atsakymai skaitomi, kai KĄ TIK klaustas
       # ŠITAS klausimas (universalu — naujas gedimas deklaruoja savus čia pat).
       atsakymai:
-        rado: [radau, suradau, taip, matau, "stoviu prie", priėjau, priejau]
+        rado: [radau, suradau, taip, matau, "stoviu prie", "prie jo", "esu prie", priėjau, priejau]
         nerado: [nerandu, neradau, "nėra tokios", nematau, nerasiu]
     lights:
       reikia: "ar dega bent viena routerio lemputė"

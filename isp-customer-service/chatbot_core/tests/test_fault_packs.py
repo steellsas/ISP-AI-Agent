@@ -951,6 +951,7 @@ class TestPrimaryGoalFrozen:
         agent._prefill_slots_from_text("Neveikia internetas")
         assert s.problem_type == "internet_down"
         s.customer_id = "CUST009"
+        s.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
         agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
         assert s.problem_type == "internet_down"  # frozen
         assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "billing"
@@ -1026,3 +1027,53 @@ class TestWalkerFollowsLedger:
         reply = evidence_drive(engine, "labas")
         assert reply and "routerį" in reply  # first fact asked (device_present)
         assert gotos == ["dr_lights"]  # pointer followed the fact
+
+
+class TestOpenerAndClosingHygiene:
+    """Live 2026-08-21: a garbled opener triggered the address offer before
+    any problem; a garble in the ticket dialogue became a 'secondary problem';
+    the closing LLM re-asked the hours after registration."""
+
+    def test_garbled_opener_asks_for_the_problem(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        r1 = agent._identification_scripted_reply("Atsikai, daro.")
+        assert r1 and "problema" in r1
+        r2 = agent._identification_scripted_reply("Mmm kažkas.")
+        assert r2 and "problema" in r2
+        assert agent._identification_scripted_reply("Nu...") is None  # then let go
+
+    def test_phone_account_block_waits_for_the_problem(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.phone_candidate = {
+            "customer_id": "CUST009",
+            "name": "T",
+            "address": "Šiauliai, Vilniaus g. 29",
+            "street": "Vilniaus g.",
+            "house": "29",
+            "apartment": None,
+            "city": "Šiauliai",
+        }
+        assert "PHONE ACCOUNT" not in (agent._state_facts_block() or "")
+        agent.state.problem_type = "internet_down"
+        assert "PHONE ACCOUNT" in (agent._state_facts_block() or "")
+
+    def test_no_secondary_problems_from_ticket_stage_garbles(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        s.problem_type = "internet_down"
+        s.customer_id = "CUST009"
+        s.resolution = {"verdict": "no_mac_observed", "step": "escalate"}
+        agent._ticket_stage = "hours"
+        agent._prefill_slots_from_text("Sąskaitos žemės gatvės klausimas")
+        assert s.secondary_problems == []
+        agent._ticket_stage = None
+        agent._prefill_slots_from_text("Žemės gatvės")  # 2 words: a garble
+        assert s.secondary_problems == []
+        agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
+        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "billing"

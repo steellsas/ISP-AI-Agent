@@ -109,7 +109,13 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
             # SECONDARY — noted, asked about at the end, listed on the ticket.
             if s.problem_type is None:
                 s.problem_type = problem
-            elif problem != s.problem_type and (s.customer_id or s.resolution is not None):
+            elif (
+                problem != s.problem_type
+                and s.resolution is not None
+                and not s.case_closed
+                and not getattr(engine, "_ticket_stage", None)
+                and len((text or "").split()) >= 3  # garbles ("Žemės gatvės") are not complaints
+            ):
                 if not any(x.get("tipas") == problem for x in s.secondary_problems):
                     s.secondary_problems.append(
                         {
@@ -404,6 +410,19 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             from .resolution import is_greeting
 
             if is_greeting(user_input):
+                return phrase("ask_problem")
+            # Live 2026-08-21: a garbled opener ("Atsikai, daro") fell to the
+            # LLM, which offered the address before any problem was stated.
+            # Ask for the problem (scripted, at most twice), then let go.
+            p_asks = getattr(engine, "_ask_problem_count", 0)
+            _has_addr0 = bool(s.profile.street.value or s.profile.house.value)
+            if (
+                p_asks < 2
+                and not _has_addr0
+                and "?" not in user_input
+                and not is_real_question(user_input)
+            ):
+                engine._ask_problem_count = p_asks + 1
                 return phrase("ask_problem")
         p = s.profile
         has_addr = bool(p.street.value or p.house.value)
