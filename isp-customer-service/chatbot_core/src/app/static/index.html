@@ -229,6 +229,9 @@ let utter=[], speaking=false, silenceMs=0, speechMs=0, sampleRate=16000;
 // ir prišliejame prie frazės pradžios (ir barge-in atveju).
 let preBuf=[], preMs=0;
 const PREROLL_MS=parseInt(localStorage.getItem("micPre")||"240",10); // derinama be kodo
+// Trumpi pritarimai (2026-08-20): 350 ms atmesdavo greitą „Taip." — 220 ms
+// praleidžia; derinama be kodo per localStorage micMinMs.
+const MIN_SPEECH_MS=parseInt(localStorage.getItem("micMinMs")||"220",10);
 let bargeMs=0, bargeSilence=0, bargeBuf=[];   // kalba agentui kalbant (barge-in)
 
 /* ---------- UI helpers ---------- */
@@ -479,7 +482,7 @@ async function startMic(){
       silenceMs+=frameMs;
       utter.push(new Float32Array(ch));
       if(silenceMs>micCfg.silence){
-        if(speechMs>350) sendUtterance();
+        if(speechMs>MIN_SPEECH_MS) sendUtterance();
         speaking=false; speechMs=0; silenceMs=0; utter=[];
       }
     }

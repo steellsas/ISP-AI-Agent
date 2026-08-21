@@ -126,7 +126,7 @@ SCHEMA: list[dict[str, Any]] = [
         # hallucinates words from sub-word blips). 0 disables the guard.
         "key": "ASR_MIN_AUDIO_S",
         "label": "Trumpo garso sargas, s (0 = išjungta)",
-        "options": ["0.3", "0.2", "0.4", "0.5", "0"],
+        "options": ["0.2", "0.3", "0.4", "0.5", "0"],
         "scope": "immediate",
         "kind": "env",
     },
