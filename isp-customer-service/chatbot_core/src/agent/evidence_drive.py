@@ -258,11 +258,31 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             )
             return announce + engine._drive_escalate(None)
         if solution == "bridge":
-            # The solver drives the bridge instructions — the announce rides
-            # on ITS first reply (stashed; committed in solver_drive_turn).
+            # Fix 2 (Andrius 2026-08-21): the bridge is WALKED through the pack's
+            # guided steps (dr_pick_cable -> dr_plug_pc -> see/bind/verify)
+            # instead of the solver's one-liner "kai prijungsite — pasakykite":
+            # the step hints say WHICH cable and WHERE, and a "kaip tai
+            # padaryti?" gets the step explained. Synced ONCE, like walker.
+            from .evidence import solution_step
+
+            target = solution_step(s.evidence, r.get("verdict"))
+            goto = getattr(engine, "_goto_step", None)
+            if (
+                target
+                and r.get("solution_synced") != target
+                and r.get("step") != target
+                and callable(goto)
+            ):
+                goto(r, target)
+                r["solution_synced"] = target
+                engine.tracer.emit(
+                    "decision", intent="evidence", action="pivot", to=target, reason="solution"
+                )
+            elif target:
+                r.setdefault("solution_synced", target)
             if announce:
                 engine._pending_announce = announce
-            return None
+            return None  # the walker owns the bridge steps from here
         if solution == "walker":
             # R4b: the declared solution is a WALKER step — sync the walker to
             # it ONCE (solution_synced marker: re-syncing every turn would drag

@@ -299,7 +299,8 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     if (
         _spec is not None
         and hypothesis_status(engine.state.evidence, _spec) == "confirmed"
-        and solution_for(engine.state.evidence, r.get("verdict")) == "walker"
+        and solution_for(engine.state.evidence, r.get("verdict")) in ("walker", "bridge")
+        and r.get("solution_synced")
     ):
         return None  # the walker takes this and every following turn
     # Distrust-loop bailout (deterministic): the solver repeated itself or kept

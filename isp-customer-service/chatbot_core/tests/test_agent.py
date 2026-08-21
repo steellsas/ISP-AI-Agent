@@ -652,7 +652,7 @@ class TestHearingAgent:
         agent._drive_bridge_offered = True
         agent._drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
-        assert agent.state.resolution["step"] == "dr_plug_pc"  # …AT the bridge
+        assert agent.state.resolution["step"] == "dr_pick_cable"  # …AT the bridge
 
     # --- round 5 (2026-08-12): bridge-failure ladder ---------------------------
 
@@ -1518,9 +1518,12 @@ class TestDriveRepeatBailout:
         agent._recap_state = "done"  # recap checkpoint tested elsewhere (round 3)
         agent._drive_repeats = 2  # repeat/disambiguate streak already observed
 
-        assert agent.solver_drive_turn("gerai gerai") is None  # walker resumes
-        assert agent._drive_disabled is True  # thinker benched for the rest of the call
-        assert agent.solver_drive_turn("nedega") is None  # and stays benched
+        # 2026-08-21 (fix 2): the bridge is WALKED through the pack's guided
+        # steps — the solver never drives it, so there is no distrust loop to
+        # bench; the evidence layer syncs the walker to the cable step instead.
+        assert agent.solver_drive_turn("gerai gerai") is None  # walker owns the bridge
+        assert agent.state.resolution.get("solution_synced") == "dr_pick_cable"
+        assert agent.solver_drive_turn("nedega") is None  # and keeps owning it
 
     def test_evidence_keeps_driving_after_solver_bench(self, db_connection, monkeypatch):
         # The rewind trap is dead: a benched solver no longer strands the call

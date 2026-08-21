@@ -129,6 +129,10 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     "wait_ack": ("Gerai, lauksiu — pasakykite, kai būsite pasiruošę."),
     "anamnesis_last_used": ("O kada paskutinį kartą internetas tikrai veikė?"),
     "checkin": ("Kaip sekasi — ar pavyksta?"),
+    "no_problem_goodbye": (
+        "Supratau. Čia interneto tiekėjo pagalba — jei kils ryšio ar paslaugos "
+        "problema, drąsiai skambinkite. Geros dienos!"
+    ),
     "bridge_bound": (
         "Patikrinau — matau jūsų kompiuterį linijoje. Pririšau, patikrinkite — "
         "internetas turėtų atsirasti."

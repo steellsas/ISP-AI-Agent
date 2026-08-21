@@ -353,6 +353,15 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
         engine._side_topic_turns = 0
         engine.tracer.emit("decision", intent="side_topic", action="ticket_demand_passthrough")
         return False
+    # How-to / help requests while an instruction or question stands are ON
+    # TASK by definition (live 2026-08-21: "O kaip tai padaryti?" at the
+    # bridge instruction got the FAQ "ne mano sritis") — the step explains.
+    if is_howto(user_input) and (
+        getattr(engine, "_evidence_last_ask_key", None) or (s.resolution or {}).get("asked")
+    ):
+        engine._side_topic_turns = 0
+        engine.tracer.emit("decision", intent="side_topic", action="on_task_howto")
+        return False
     # The understanding pass judged this turn IN CONTEXT — but its tipas is
     # ONE model field, and side_topic FREEZES the engine, so a single sensor
     # may not decide alone (live 2026-08-10: "Galim dabar patikrinti" got
@@ -414,6 +423,32 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
         "decision", intent="side_topic", action="enter", streak=engine._side_topic_turns
     )
     return True
+
+
+_HOWTO = (
+    "kaip ",
+    "kaip?",
+    "padėk",
+    "padek",
+    "nežinau kaip",
+    "nezinau kaip",
+    "kokie kabel",
+    "kokį kabel",
+    "koki kabel",
+    "kur jung",
+    "kur kišt",
+    "kur kist",
+    "ką daryti",
+    "ka daryti",
+    "paaiškink",
+    "paaiskink",
+)
+
+
+def is_howto(text: str | None) -> bool:
+    """A 'how do I do that / help me' request — about the standing task."""
+    low = f" {(text or '').lower()} "
+    return any(m in low for m in _HOWTO)
 
 
 def on_task_question(engine, user_input: str | None) -> bool:

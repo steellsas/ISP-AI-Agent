@@ -397,8 +397,9 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         clarify = engine._negation_clarify_reply(open_key)
         if clarify:
             return clarify
-    if user_input and is_real_question(user_input):
+    if user_input and is_real_question(user_input) and (s.problem_type or s.customer_id):
         return None  # off-script — the LLM answers; guards kept the ladder state
+        # (pre-problem questions fall through to the problem GATE below)
     # INTAKE (not yet identified): the anamnesis question and the address
     # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
     # whole ladder by a turn (observed in eval).
@@ -416,13 +417,32 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             # Ask for the problem (scripted, at most twice), then let go.
             p_asks = getattr(engine, "_ask_problem_count", 0)
             _has_addr0 = bool(s.profile.street.value or s.profile.house.value)
-            if (
-                p_asks < 2
-                and not _has_addr0
-                and "?" not in user_input
-                and not is_real_question(user_input)
-            ):
+            if not _has_addr0:
                 engine._ask_problem_count = p_asks + 1
+                asking = "?" in user_input or is_real_question(user_input)
+                # Problem GATE (Andrius 2026-08-21): no identification at all
+                # until a clear, in-scope problem is stated. Scripted ask x2
+                # (a question goes to the narrator), narrator directive x2
+                # ("vaikai neklauso" -> not our area, ask about connectivity),
+                # then a polite close — never an address hunt.
+                import os as _os
+
+                if p_asks >= 4:
+                    s.case_closed = True
+                    s.closed_reason = "declined"
+                    engine.tracer.emit("decision", intent="problem_gate", action="close")
+                    return phrase("no_problem_goodbye")
+                if p_asks < 2 and not asking:
+                    return phrase("ask_problem")
+                if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+                    engine._ident_directive = {
+                        "kind": "problem_gate",
+                        "adresas": None,
+                        "fallback": phrase("ask_problem"),
+                    }
+                    return None  # the narrator words it (isolated directive turn)
+                if asking:
+                    return None  # scripted mode: a question goes to the LLM
                 return phrase("ask_problem")
         p = s.profile
         has_addr = bool(p.street.value or p.house.value)

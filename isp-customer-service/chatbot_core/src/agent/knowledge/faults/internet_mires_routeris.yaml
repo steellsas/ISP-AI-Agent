@@ -101,7 +101,7 @@ pasiulymas: "Pasakyk, kad dėl sugedusio routerio užregistruosi meistrą — ji
 sprendimai:
 - jei: [has_computer=yes]
   tada: bridge
-  zingsnis: dr_plug_pc
+  zingsnis: dr_pick_cable   # vedimas nuo TEISINGO kabelio (2026-08-21)
   aprasymas: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
 - jei: [has_computer=no]
   tada: ticket

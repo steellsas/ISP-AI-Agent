@@ -153,6 +153,13 @@ def ensure_action_done(engine) -> bool:
         ran = True
     if ran:
         r["action_done"] = True  # the announce is narrated this turn; advance next
+        if "update_mac" in step.tool_actions:
+            # Only a TEMPORARY bridge marks _bridge_bound (ticket-first close,
+            # bridged intro) — foreign_mac's bind IS the fix, not a bridge.
+            from .evidence import solution_for
+
+            if solution_for(s.evidence, r.get("verdict")) == "bridge":
+                engine._bridge_bound = True
     return ran
 
 

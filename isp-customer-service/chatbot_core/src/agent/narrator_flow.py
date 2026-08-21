@@ -659,8 +659,18 @@ def state_facts_block(engine) -> str | None:
 
         strat = get_strategy(s.resolution.get("verdict"))
         step = strat.step(s.resolution.get("step", "")) if strat else None
+        # Directive isolation (live 2026-08-21): with B2 the walker pointer
+        # loads the step's hint + RAG section even while the ledger has moved
+        # on to the recap / findings — and the hint ("check the power lead,
+        # try another socket") won over the directive twice. A directive
+        # turn carries ONE instruction: no step hint, no playbook section.
+        directive_active = bool(
+            getattr(engine, "_evidence_directive", None)
+            or getattr(engine, "_recap_directive", None)
+            or getattr(engine, "_findings_directive", None)
+        )
         # Step facts wait while the caller-intro question is owed (see above).
-        if step is not None and not caller_pending:
+        if step is not None and not caller_pending and not directive_active:
             if step.rag_section is not None:
                 section = get_step(strat.rag_doc, step.rag_section)
                 if section:
@@ -777,6 +787,16 @@ def state_facts_block(engine) -> str | None:
                 "kažką keitė). VIENAS trumpas klausimas. "
                 f"(Atsarginė formuluotė: „{idd['fallback']}“)"
             )
+        elif idd["kind"] == "problem_gate":
+            facts.append(
+                "- PROBLEMOS VARTAI: klientas dar nepasakė aiškios MŪSŲ srities "
+                "problemos. Išsiaiškink, dėl kokios paslaugos skambina — internetas, "
+                "TV, telefonas ar sąskaita. Jei tema ne mūsų (pvz. „vaikai neklauso“) — "
+                "mandagiai pasakyk, kad čia interneto tiekėjo pagalba, ir paklausk, ar "
+                "yra ryšio problema. Jei klientas KLAUSIA — atsakyk vienu sakiniu ir "
+                "vėl paklausk problemos. NEKLAUSK adreso ir nieko netikrink. "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+            )
         elif idd["kind"] == "anamnesis_followup":
             facts.append(
                 "- ANAMNEZĖS ŽINGSNIS: klientas nežino, kada dingo — paklausk "
@@ -880,11 +900,29 @@ def state_facts_block(engine) -> str | None:
     directive = getattr(engine, "_evidence_directive", None)
     if directive:
         kodel = f" Kodėl tikriname: {directive['kodel']}." if directive.get("kodel") else ""
+        # The OTHER still-open goals are named as off-limits (eval 2026-08-21:
+        # asked "which device" and "laidu ar Wi-Fi" in one breath — the
+        # connection type is a later fact with its own turn).
+        kiti = ""
+        if (s.resolution or {}).get("verdict"):
+            from .evidence import open_goals_lt as _ogl
+
+            rest = [
+                g.strip()
+                for g in _ogl(s.evidence, s.resolution.get("verdict")).split(";")
+                if g.strip() and g.strip() != str(directive["reikia"]).strip()
+            ]
+            if rest:
+                kiti = (
+                    " KITŲ DALYKŲ DAR NEKLAUSK IR NEMINĖK (jiems bus savas turn'as): "
+                    + "; ".join(rest)
+                    + "."
+                )
         facts.append(
             "- KLAUSK DABAR (savais žodžiais, natūraliai, pagal pokalbio eigą): "
             f"išsiaiškink — {directive['reikia']}.{kodel} "
             "Užduok TIK ŠĮ VIENĄ klausimą (viena '?'), trumpai; neišgalvok faktų "
-            "ir nesiūlyk nieko kito. Jei tinka, pradėk trumpa reakcija į tai, "
+            f"ir nesiūlyk nieko kito.{kiti} Jei tinka, pradėk trumpa reakcija į tai, "
             f"ką klientas ką tik pasakė. (Atsarginė formuluotė: „{directive['klausimas']}“)"
         )
 

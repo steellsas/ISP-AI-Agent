@@ -191,6 +191,11 @@ def registration_claim_guard(engine: Any, content: str) -> str | None:
     low = (content or "").lower()
     if not any(m in low for m in ("užregistrav", "uzregistrav", "registruoju gedim")):
         return None
+    # A DEVICE registration ("užregistravau jūsų naują routerį prie linijos" —
+    # the MAC bind, live eval 2026-08-21) is not a fault-ticket claim: the
+    # guard fires only when the sentence is about the ticket/technician.
+    if not any(m in low for m in ("gedim", "meistr", "tiket", "koleg", "technik")):
+        return None
     if s.ticket_id or engine._ticket_stage or s.case_closed or not s.customer_id:
         return None
     if s.resolution is None:
