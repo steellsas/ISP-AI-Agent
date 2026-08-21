@@ -1,3 +1,5 @@
+import pytest
+
 """
 Tests for agent logic (without real LLM calls where possible).
 
@@ -481,6 +483,7 @@ class TestHearingAgent:
         assert reply is not None and "lemputė" in reply
         assert "maitinimą" in reply  # the kodel sentence
 
+    @pytest.mark.usefixtures("walker_driven")
     def test_bare_ne_to_escalate_clarifies_once_then_escalates(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
         agent._walk_resolution("Ne.")  # keyword "no" routes dr_intro -> escalate
@@ -795,6 +798,7 @@ class TestAutoRegisterEscalate:
         assert detect_farewell("visa gera, ačiū") is True
 
 
+@pytest.mark.usefixtures("walker_driven")
 class TestRestoredPreAnswer:
     """A clear 'atsirado / veikia' fused with the goodbye pre-answers the restored
     CONFIRM before it was asked — the resolve gets RECORDED instead of the call dying

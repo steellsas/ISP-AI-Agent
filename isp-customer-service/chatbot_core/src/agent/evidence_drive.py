@@ -325,6 +325,20 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
                 engine._pending_announce = announce
             return None
         return announce + inner
+    # B2 pointer (2026-08-21): a fact may name the walker step that carries
+    # its RAG section / hint / tikslas (`zingsnis:` on the evidence item) —
+    # the walker FOLLOWS the ledger instead of reading answers itself.
+    z = item.get("zingsnis")
+    if z and r.get("step") != z:
+        from .resolution import get_strategy
+
+        strat = get_strategy(r.get("verdict"))
+        goto = getattr(engine, "_goto_step", None)
+        if strat is not None and strat.step(str(z)) is not None and callable(goto):
+            goto(r, str(z))
+            engine.tracer.emit(
+                "decision", intent="evidence", action="pivot", to=str(z), reason="fact pointer"
+            )
     engine._evidence_asks[key] = asks + 1
     engine._evidence_last_ask_key = key  # for the barge-in cancel rollback
     # Persona (R5c): the FIRST ask goes to the NARRATOR as a goal directive —

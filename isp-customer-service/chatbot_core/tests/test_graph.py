@@ -1,3 +1,5 @@
+import pytest
+
 """
 Tests for the LangGraph orchestration plumbing (agent/graph.py, Phase 3.5 step 3.1).
 
@@ -182,6 +184,7 @@ class TestRouting:
         assert captured["tools"] == []  # closing stage is structurally tools-less
 
 
+@pytest.mark.usefixtures("walker_driven")
 class TestEngineDrivenAction:
     """The ACTION step (bind_mac) is run by the engine, not the model — so there is
     no single-tool loop and the LLM only phrases a verified outcome. After binding we
@@ -450,6 +453,7 @@ class TestHypothesisObject:
         assert "JAU ATMESTA" in (agent._state_facts_block() or "")
 
 
+@pytest.mark.usefixtures("walker_driven")
 class TestTurnHolding:
     """Only a real answer or a completed action advances the walker. Everything else
     holds it — this is what stopped the agent running ahead of the caller."""
@@ -507,6 +511,7 @@ class TestTurnHolding:
         assert "ILGAI LAUKIAM" in (agent._state_facts_block() or "")
 
 
+@pytest.mark.usefixtures("walker_driven")
 class TestBridgeSeesDevice:
     """The bridge binds only once telemetry SEES the device the caller plugged in —
     binding blindly when the cable is in the wrong socket fails confusingly."""

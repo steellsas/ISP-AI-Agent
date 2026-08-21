@@ -975,3 +975,54 @@ class TestPrimaryGoalFrozen:
 
         text = phrase("bridge_bound")
         assert "matau" in text.lower() and "pririšau" in text.lower()
+
+
+class TestWalkerFollowsLedger:
+    """B2 (Andrius 2026-08-21): one source of truth — in solver-driven packs the
+    walker reads no answers until the evidence layer hands over; facts may
+    carry a `zingsnis` pointer so RAG/hint/tikslas follow the ledger."""
+
+    def test_walker_silent_during_evidence_collection(self):
+        from types import SimpleNamespace
+
+        from agent.resolution import get_strategy
+        from agent.walker_flow import walker_owns_turn
+
+        strat = get_strategy("no_mac_observed")
+        engine = SimpleNamespace(_bridge_bound=False)
+        r = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        assert walker_owns_turn(engine, r, strat.step("dr_lights")) is False
+        assert walker_owns_turn(engine, r, strat.step("escalate")) is True
+        assert walker_owns_turn(engine, r, strat.step("dr_see_device")) is True
+        r["solution_synced"] = "dr_plug_pc"
+        assert walker_owns_turn(engine, r, strat.step("dr_plug_pc")) is True
+        engine._bridge_bound = True
+        del r["solution_synced"]
+        assert walker_owns_turn(engine, r, strat.step("dr_verify")) is True
+
+    def test_fact_pointer_moves_the_walker(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        gotos = []
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "no_mac_observed", "step": "dr_intro"},
+                evidence={},
+                turn_count=1,
+            ),
+            _findings_announced=True,
+            _recap_state="done",
+            _recap_directive=None,
+            _evidence_last_ask_key=None,
+            _evidence_asks={},
+            _evidence_directive=None,
+            _pending_announce="",
+            _goto_step=lambda r, t: (gotos.append(t), r.__setitem__("step", t)),
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        reply = evidence_drive(engine, "labas")
+        assert reply and "routerį" in reply  # first fact asked (device_present)
+        assert gotos == ["dr_lights"]  # pointer followed the fact
