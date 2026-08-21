@@ -47,21 +47,28 @@ class EdgeTTSProvider:
         return _VOICES.get(lang, _VOICES["lt"])
 
     @staticmethod
-    def _rate() -> str | None:
-        """Speech rate from TTS_RATE (config page): '+10%' speaks ~10% faster —
-        information flows quicker and the voice sounds more matter-of-fact
-        (Andrius 2026-08-20). None/'+0%' = the voice's natural pace."""
-        raw = (os.getenv("TTS_RATE") or "").strip()
+    def _pct(env_key: str) -> str | None:
+        """A validated '+N%'/'-N%' knob from the env; None = engine default."""
+        raw = (os.getenv(env_key) or "").strip()
         if not raw or raw in ("+0%", "0%", "0"):
             return None
         return raw if re.fullmatch(r"[+-]\d{1,2}%", raw) else None
 
     def _synthesize_one(self, sentence: str, voice: str) -> bytes:
-        """Render one sentence to MP3 via edge-tts (async collected to bytes)."""
+        """Render one sentence to MP3 via edge-tts (async collected to bytes).
+        TTS_RATE speeds the delivery (like video 1.1x); TTS_PITCH shifts the
+        voice — lower ('-5%') sounds more matter-of-fact/technical (Andrius
+        2026-08-20). Both from the config page, validated, engine default when
+        unset."""
         import edge_tts  # deferred (optional dependency)
 
-        rate = self._rate()
-        kwargs = {"rate": rate} if rate else {}
+        kwargs = {}
+        rate = self._pct("TTS_RATE")
+        if rate:
+            kwargs["rate"] = rate
+        pitch = (os.getenv("TTS_PITCH") or "").strip()
+        if pitch and pitch not in ("+0Hz", "0Hz", "0") and re.fullmatch(r"[+-]\d{1,3}Hz", pitch):
+            kwargs["pitch"] = pitch
 
         async def _collect() -> bytes:
             out = bytearray()

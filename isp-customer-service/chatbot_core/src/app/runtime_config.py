@@ -149,6 +149,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # Balso tonas: žemesnis (-10Hz) skamba dalykiškiau/techniškiau,
+        # aukštesnis — energingiau. Tik edge varikliui.
+        "key": "TTS_PITCH",
+        "label": "Balso tonas (žemesnis = techniškesnis)",
+        "options": ["+0Hz", "-10Hz", "-20Hz", "+10Hz"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "VOICE_FILLER_AFTER_S",
         "label": "Užpildo vėlinimas, s",
         "options": ["1.2", "0.8", "1.6", "2.0"],
