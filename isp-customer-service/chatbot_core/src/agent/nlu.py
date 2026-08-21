@@ -211,7 +211,14 @@ _SYMPTOM_KEYWORDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
 
 def extract_symptoms(text: str) -> dict[str, str]:
     """Categorical symptoms present in the utterance, e.g. {'lights': 'nedega'}."""
-    low = f" {(text or '').lower()} "
+    import re as _re
+
+    # STT splits the negation prefix ("ne dega" for "nedega") — glue a bare
+    # "ne " to the following word so polarity survives (live 2026-08-20: the
+    # SYMPTOMS line said dega while the ledger said nedega and the narrator
+    # got a contradiction). "ne," stays split — that is a real standalone no.
+    glued = _re.sub(r"\bne (?=[a-ząčęėįšųūž])", "ne", (text or "").lower())
+    low = f" {glued} "
     out: dict[str, str] = {}
     for category, options in _SYMPTOM_KEYWORDS.items():
         for value, keywords in options:

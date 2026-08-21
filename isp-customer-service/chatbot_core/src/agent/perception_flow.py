@@ -721,6 +721,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
             # is not misrouted as a step answer; resume next turn.
             engine._resume_hold = True
+            engine._resync_note = True  # C: re-anchor from the ledger, no improvising
             engine.tracer.emit("decision", intent="end_declined", action="resume")
         return
     mid_process = not s.case_closed and (

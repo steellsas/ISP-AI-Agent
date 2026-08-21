@@ -302,6 +302,7 @@ class ReactAgent:
         # Ticket refusal with solving content: one-turn narrator directive to
         # say "neregistruoju" and return to the last fix instruction.
         self._resume_fix_note = False
+        self._resync_note = False
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.

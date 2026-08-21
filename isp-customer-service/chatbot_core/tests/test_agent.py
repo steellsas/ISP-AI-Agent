@@ -1216,7 +1216,9 @@ class TestFarewellPurity:
 
         assert detect_farewell("Ne daganiai 1.") is False
         assert detect_farewell("Ne viena") is False
-        assert detect_farewell("Ne.") is True
+        # Policy 2026-08-20 (Andrius): a bare "Ne." is an ANSWER — its
+        # question owner clarifies; never a farewell.
+        assert detect_farewell("Ne.") is False
         assert detect_farewell("Ne, ačiū") is True
         assert detect_farewell("viskas gerai") is True
         assert detect_farewell("viso gero") is True

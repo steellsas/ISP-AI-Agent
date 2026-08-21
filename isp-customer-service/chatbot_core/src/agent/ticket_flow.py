@@ -100,6 +100,7 @@ def abort_ticket_to_solving(engine: Any) -> None:
     engine._ticket_stage = None
     engine._ticket_ctx = None
     engine._resume_fix_note = True
+    engine._resync_note = True  # C: re-anchor from the ledger, no improvising
     engine.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
 
 

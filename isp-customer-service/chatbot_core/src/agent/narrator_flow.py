@@ -261,6 +261,25 @@ def state_facts_block(engine) -> str | None:
             "sprendimo instrukcijos — pakartok ją arba atsakyk į kliento "
             "klausimą apie ją. Pokalbio NEbaik."
         )
+    # C (Andrius 2026-08-20): RETURN AFTER A DETOUR — the reply re-anchors from
+    # the LEDGER (kur esame, ką padarėme, kas liko / gal jau sprendimas), never
+    # improvises a fresh diagnostic (live: 'ar prijungtas prie maitinimo?' re-
+    # asked after a detour while all three facts were already established).
+    if getattr(engine, "_resync_note", False):
+        engine._resync_note = False
+        nustatyta = ""
+        if s.evidence:
+            from .evidence import summary_lt as _sum
+
+            nustatyta = _sum(s.evidence)
+        facts.append(
+            "- GRĮŽTAME PRIE SPRENDIMO (po nukrypimo): vienu sakiniu primink, kur "
+            + ("esame — nustatyta: " + nustatyta + " — " if nustatyta else "esame ")
+            + "ir tęsk NUO DABARTINIO TIKSLO pagal žemiau esančias direktyvas "
+            "(DAR AIŠKINAMĖS / IŠVADOS MOMENTAS / KLAUSK DABAR). NIEKO neklausk "
+            "iš naujo, kas jau nustatyta; jei išvada jau aiški — pasakyk ją ir "
+            "siūlyk sprendimą."
+        )
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
     # re-EXPLANATIONS aimed at what was actually not understood.

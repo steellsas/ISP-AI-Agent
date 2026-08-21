@@ -904,3 +904,36 @@ class TestDirectiveTurnsAreSpeechOnly:
         agent._ident_directive = None
         agent._ticket_directive = {"kind": "hours", "fallback": "x"}
         assert agent._scoped_tools_schema() == []
+
+
+class TestDetourResilience:
+    """Live 2026-08-20: a bare 'Ne.' read as farewell derailed the recap ->
+    findings chain and the agent re-ran diagnostics it already had."""
+
+    def test_bare_ne_is_never_a_farewell(self):
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Ne.") is False
+        assert detect_farewell("Ne") is False
+        assert detect_farewell("Ne, ačiū") is True  # real closer kept
+        assert detect_farewell("Viso gero") is True
+
+    def test_split_ne_symptom_polarity(self):
+        from agent.nlu import extract_symptoms
+
+        assert extract_symptoms("Ne 1 lemputė ne dega.").get("lights") == "nedega"
+        assert extract_symptoms("lemputės nedega").get("lights") == "nedega"
+
+    def test_resync_note_renders_once(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        from agent.evidence import CLIENT, set_fact
+
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 1)
+        agent._resync_note = True
+        block = agent._state_facts_block()
+        assert "GRĮŽTAME PRIE SPRENDIMO" in block and "nustatyta" in block
+        assert "GRĮŽTAME" not in (agent._state_facts_block() or "")  # consumed
