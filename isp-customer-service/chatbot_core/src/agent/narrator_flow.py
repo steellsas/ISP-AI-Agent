@@ -261,6 +261,17 @@ def state_facts_block(engine) -> str | None:
             "sprendimo instrukcijos — pakartok ją arba atsakyk į kliento "
             "klausimą apie ją. Pokalbio NEbaik."
         )
+    # A (2026-08-21): secondary problems — before the goodbye the agent asks
+    # back about the OTHER complaints heard mid-call ("minėjot, kad lėtai
+    # veikė — ar dabar gerai?"); they are already on the ticket.
+    if s.case_closed and getattr(s, "secondary_problems", None):
+        temos = "; ".join(f"„{x['tekstas']}“" for x in s.secondary_problems)
+        facts.append(
+            "- PAPILDOMOS PROBLEMOS (prieš atsisveikinant PASITEIRAUK): klientas "
+            f"pokalbyje minėjo: {temos}. Paklausk, ar tai dar aktualu; pasakyk, "
+            "kad meistrui perduota (jau įrašyta registracijoje)."
+        )
+
     # C (Andrius 2026-08-20): RETURN AFTER A DETOUR — the reply re-anchors from
     # the LEDGER (kur esame, ką padarėme, kas liko / gal jau sprendimas), never
     # improvises a fresh diagnostic (live: 'ar prijungtas prie maitinimo?' re-

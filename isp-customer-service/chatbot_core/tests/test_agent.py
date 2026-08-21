@@ -718,7 +718,7 @@ class TestHearingAgent:
         monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: calls.append("simulated"))
         monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
         reply = agent._drive_propose_fix("", "įkišau į kompiuterį")
-        assert "pririšau" in reply  # the bind ran
+        assert "ririšau" in reply.lower() or "Pririšau" in reply  # the bind ran
         assert agent.state.resolution["step"] == "dr_verify"  # verify owns the next reply
         agent._walk_resolution("Jau atsistatė, veikia internetas!")
         assert agent.state.resolution["step"] == "dr_register_router"  # success HEARD

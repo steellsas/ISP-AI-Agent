@@ -70,6 +70,7 @@ class GraphState(BaseModel):
 
     # --- problem / intake -------------------------------------------------
     problem_type: str | None = None
+    secondary_problems: list[dict[str, Any]] = Field(default_factory=list)
     problem_description: str | None = None
     anamnesis_asked: bool = False
     anamnesis_raw: str | None = None

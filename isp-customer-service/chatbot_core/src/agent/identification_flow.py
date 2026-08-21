@@ -103,7 +103,23 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
 
         problem = classify_problem(text)
         if problem:
-            s.problem_type = problem
+            # A (Andrius 2026-08-21): the PRIMARY goal is the caller's stated
+            # call reason and NEVER flips mid-call (an STT garble switched it
+            # to billing live). Later mentions of other problems become
+            # SECONDARY — noted, asked about at the end, listed on the ticket.
+            if s.problem_type is None:
+                s.problem_type = problem
+            elif problem != s.problem_type and (s.customer_id or s.resolution is not None):
+                if not any(x.get("tipas") == problem for x in s.secondary_problems):
+                    s.secondary_problems.append(
+                        {
+                            "tipas": problem,
+                            "tekstas": (text or "").strip()[:120],
+                            "turn": s.turn_count,
+                        }
+                    )
+            elif not s.customer_id and s.resolution is None:
+                s.problem_type = problem  # early self-correction is fine
         # Revisable: a clearer later mention overrides an earlier reading.
         s.symptoms.update(extract_symptoms(text))
     except Exception:  # pragma: no cover - best-effort

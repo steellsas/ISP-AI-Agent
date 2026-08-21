@@ -937,3 +937,41 @@ class TestDetourResilience:
         block = agent._state_facts_block()
         assert "GRĮŽTAME PRIE SPRENDIMO" in block and "nustatyta" in block
         assert "GRĮŽTAME" not in (agent._state_facts_block() or "")  # consumed
+
+
+class TestPrimaryGoalFrozen:
+    """A (2026-08-21): the primary goal never flips mid-call; other mentions
+    become secondary problems (asked at the end, listed on the ticket)."""
+
+    def test_mid_call_mention_becomes_secondary(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        agent._prefill_slots_from_text("Neveikia internetas")
+        assert s.problem_type == "internet_down"
+        s.customer_id = "CUST009"
+        agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
+        assert s.problem_type == "internet_down"  # frozen
+        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "billing"
+        # dedupe: the same type mentioned again does not duplicate
+        agent._prefill_slots_from_text("Dėl sąskaitos dar")
+        assert len(s.secondary_problems) == 1
+
+    def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        s.customer_id = "CUST009"
+        s.problem_type = "internet_down"
+        s.secondary_problems.append({"tipas": "tv", "tekstas": "TV blogai rodo", "turn": 5})
+        s.case_closed = True
+        block = agent._state_facts_block()
+        assert "PAPILDOMOS PROBLEMOS" in block and "TV blogai rodo" in block
+
+    def test_bridge_bound_phrase_states_visibility(self):
+        from agent.identification import phrase
+
+        text = phrase("bridge_bound")
+        assert "matau" in text.lower() and "pririšau" in text.lower()

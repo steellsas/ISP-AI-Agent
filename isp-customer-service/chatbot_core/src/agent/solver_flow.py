@@ -601,7 +601,12 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
             engine.tracer.emit(
                 "decision", intent="evidence", action="pivot", to=target, reason="bind verify"
             )
-    return say or "Matau jūsų kompiuterį linijoje — pririšau. Patikrinkite, ar internetas atsirado."
+    # C (Andrius 2026-08-21): the VISIBILITY status is spoken deterministically
+    # — the caller hears that we checked, that we SEE the device, and that the
+    # bind happened (the solver's own wording skipped the "matau" part live).
+    from .identification import phrase as _phrase
+
+    return _phrase("bridge_bound")
 
 
 def bridge_fail_step(engine: Any) -> str:

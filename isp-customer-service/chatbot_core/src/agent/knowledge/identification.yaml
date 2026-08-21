@@ -89,3 +89,6 @@ identification:
     escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"
     ticket_intro_bridge: "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, registruoju meistrą dėl naujo routerio."
+    # C (2026-08-21): tilto būsenos paskelbimas — klientas girdi, kad patikrinom,
+    # kad įrenginį MATOME ir kad pririšom.
+    bridge_bound: "Patikrinau — matau jūsų kompiuterį linijoje. Pririšau, patikrinkite — internetas turėtų atsirasti."

@@ -86,6 +86,9 @@ class AgentState:
 
     # Problem tracking
     problem_type: str | None = None  # internet, tv, phone, billing
+    # A (2026-08-21): the PRIMARY goal never flips mid-call; later mentions of
+    # OTHER problems land here — asked about at the end, listed on the ticket.
+    secondary_problems: list = field(default_factory=list)
     problem_description: str | None = None
     # Intake anamnesis (identification block, 2026-07-31): the ONE history question
     # ("kada pastebėjote, po ko dingo?") is asked once, engine-scripted; the caller's
@@ -218,6 +221,7 @@ class AgentState:
             "caller_name": self.caller_name,
             "address_confirmed": self.address_confirmed,
             "problem_type": self.problem_type,
+            "secondary_problems": self.secondary_problems,
             "problem_description": self.problem_description,
             "is_complete": self.is_complete,
             "turn_count": self.turn_count,
