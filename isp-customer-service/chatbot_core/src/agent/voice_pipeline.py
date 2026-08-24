@@ -190,6 +190,11 @@ class VoicePipeline:
         text = self._transcribe(audio, sample_rate, context)
         if self._transcript_filter and text:
             text = self._transcript_filter(text)
+        # Same noise gate as the turn path: a snapshot mid-word makes Whisper
+        # hallucinate ("www.youtube.come" observed on the very first probe) —
+        # an empty partial reads better than junk.
+        if text and self._noise_filter and self._noise_filter(text):
+            return ""
         return text or ""
 
     @property

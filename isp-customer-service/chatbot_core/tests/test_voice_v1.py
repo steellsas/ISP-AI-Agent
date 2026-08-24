@@ -446,3 +446,12 @@ class TestDuplexPartials:
         ms = SimpleNamespace(session=SimpleNamespace(tracer=_Recorder()), last_partial="")
         assert voice.run_voice_partial(ms, b"x") is None
         assert ms.last_partial == ""
+
+    def test_noise_hallucination_partial_is_blanked(self):
+        pipeline = VoicePipeline(
+            _session(),
+            SimpleNamespace(transcribe=lambda audio, **k: "www.youtube.come"),
+            _StubTTS(),
+            noise_filter=lambda t: "youtube" in t,
+        )
+        assert pipeline.transcribe_partial(b"\x00" * 32_000) == ""
