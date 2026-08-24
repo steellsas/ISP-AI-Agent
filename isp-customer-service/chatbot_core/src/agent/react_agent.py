@@ -288,6 +288,9 @@ class ReactAgent:
         # facts block, reset every turn at ingest.
         self._evidence_directive: dict | None = None
         self._findings_directive: dict | None = None
+        self._recap_directive: dict | None = None
+        self._ticket_directive: dict | None = None
+        self._ident_directive: dict | None = None
         # Findings announce: spoken ONCE at the first confirmed-hypothesis
         # moment; stashed when the reply comes from another layer that turn.
         self._findings_announced = False
@@ -299,6 +302,7 @@ class ReactAgent:
         # Ticket refusal with solving content: one-turn narrator directive to
         # say "neregistruoju" and return to the last fix instruction.
         self._resume_fix_note = False
+        self._resync_note = False
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.
@@ -1168,6 +1172,20 @@ class ReactAgent:
             "resolved": s.closed_reason == "resolved",
             "ticket_id": s.ticket_id,
             "actions": self._tools_called_this_session(),
+            # F4 (Andrius 2026-08-20): a call that ended WITHOUT identification
+            # records everything that was heard — the address may have changed
+            # its name, the caller may not be the holder; a person reading the
+            # record (or the caller phoning back) can pick the thread up.
+            "identifikacija_nepavyko": (
+                {
+                    "girdeta": list(s.heard_utterances)[-6:],
+                    "gatve": s.profile.street.value,
+                    "namas": s.profile.house.value,
+                    "miestas": s.profile.city.value,
+                }
+                if not s.customer_id and s.problem_type
+                else None
+            ),
         }
 
     def _tools_called_this_session(self) -> list[str]:

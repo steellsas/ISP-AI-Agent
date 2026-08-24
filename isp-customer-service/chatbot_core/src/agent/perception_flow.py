@@ -78,6 +78,9 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     engine._last_understanding = None
     engine._evidence_directive = None  # persona: fresh narrator directive per turn
     engine._findings_directive = None
+    engine._recap_directive = None
+    engine._ticket_directive = None
+    engine._ident_directive = None
     if not user_input or not s.customer_id or s.case_closed or engine._ticket_stage:
         return
     from .evidence import CLIENT, extract_client_facts, polarity, set_fact
@@ -350,6 +353,15 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
         engine._side_topic_turns = 0
         engine.tracer.emit("decision", intent="side_topic", action="ticket_demand_passthrough")
         return False
+    # How-to / help requests while an instruction or question stands are ON
+    # TASK by definition (live 2026-08-21: "O kaip tai padaryti?" at the
+    # bridge instruction got the FAQ "ne mano sritis") — the step explains.
+    if is_howto(user_input) and (
+        getattr(engine, "_evidence_last_ask_key", None) or (s.resolution or {}).get("asked")
+    ):
+        engine._side_topic_turns = 0
+        engine.tracer.emit("decision", intent="side_topic", action="on_task_howto")
+        return False
     # The understanding pass judged this turn IN CONTEXT — but its tipas is
     # ONE model field, and side_topic FREEZES the engine, so a single sensor
     # may not decide alone (live 2026-08-10: "Galim dabar patikrinti" got
@@ -413,6 +425,32 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
     return True
 
 
+_HOWTO = (
+    "kaip ",
+    "kaip?",
+    "padėk",
+    "padek",
+    "nežinau kaip",
+    "nezinau kaip",
+    "kokie kabel",
+    "kokį kabel",
+    "koki kabel",
+    "kur jung",
+    "kur kišt",
+    "kur kist",
+    "ką daryti",
+    "ka daryti",
+    "paaiškink",
+    "paaiskink",
+)
+
+
+def is_howto(text: str | None) -> bool:
+    """A 'how do I do that / help me' request — about the standing task."""
+    low = f" {(text or '').lower()} "
+    return any(m in low for m in _HOWTO)
+
+
 def on_task_question(engine, user_input: str | None) -> bool:
     """The 'deviation' shares content words with the agent's LAST reply —
     it is a question ABOUT the current instruction ("Kur jungti tą
@@ -444,6 +482,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
         again instead of carrying on about the wrong account."""
     s = engine.state
     engine._addr_confirm_note = None
+    engine._addr_diag_note = None  # F2: fresh lookup diagnosis per turn
+    engine._ident_directive = None  # zone 2: ingest may not run pre-identification
     engine._reopen_note = False
     if not user_input:
         return
@@ -505,6 +545,20 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     reiksme=ut.get("reiksme"),
                 )
                 if ut["tipas"] == "klausimas":
+                    # Echo of our own offer (D, live 2026-08-20): "Ar tiks tas,
+                    # iš kurio skambinu?" repeated back with rising intonation
+                    # is CONSENT — answering it and re-asking doubled the
+                    # question. Fuzzy overlap with what we just asked decides.
+                    if engine._ticket_stage == "phone":
+                        from .barge_in import token_overlap
+
+                        if token_overlap(user_input, s.last_question or "") >= 0.8:
+                            s.contact_phone = s.caller_phone
+                            engine._ticket_stage = "hours"
+                            engine.tracer.emit(
+                                "decision", intent="ticket_dialogue", action="phone_echo_consent"
+                            )
+                            return
                     engine._ticket_offscript = True
                     engine.tracer.emit("decision", intent="ticket_dialogue", action="question")
                     return
@@ -702,6 +756,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
             # is not misrouted as a step answer; resume next turn.
             engine._resume_hold = True
+            engine._resync_note = True  # C: re-anchor from the ledger, no improvising
             engine.tracer.emit("decision", intent="end_declined", action="resume")
         return
     mid_process = not s.case_closed and (

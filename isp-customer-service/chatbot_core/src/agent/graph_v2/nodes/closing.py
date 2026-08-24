@@ -39,6 +39,19 @@ def make_closing_node(engine: Any):
             reply = engine._drive_escalate(None)
             return sync_updates(engine, user_input=user_input, reply=reply)
         maybe_finish(engine, user_input)
+        # After a REGISTRATION the goodbye is scripted (live 2026-08-21: the
+        # closing LLM re-asked the call-back hours after the ticket was done).
+        # The LLM speaks only for a real question, or ONCE to ask back about
+        # secondary problems the caller mentioned mid-call.
+        from ...identification import phrase
+        from ...resolution import is_real_question
+
+        if s.ticket_id and not is_real_question(user_input):
+            if s.secondary_problems and not getattr(engine, "_secondary_asked", False):
+                engine._secondary_asked = True  # the facts directive carries the list
+            else:
+                reply = phrase("goodbye")
+                return sync_updates(engine, user_input=user_input, reply=reply)
         reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
         return sync_updates(engine, user_input=user_input, reply=reply)
 

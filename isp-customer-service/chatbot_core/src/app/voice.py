@@ -138,7 +138,9 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
             logger.debug("filler failed", exc_info=True)
 
     filler_timer = None
-    if os.environ.get("VOICE_FILLER", "on").lower() == "on":
+    # Default OFF (Andrius 2026-08-20: the canned cue reads as junk — natural
+    # LLM speech only; the knob stays for experiments).
+    if os.environ.get("VOICE_FILLER", "off").lower() == "on":
         try:
             delay = float(os.environ.get("VOICE_FILLER_AFTER_S", "1.2"))
         except ValueError:

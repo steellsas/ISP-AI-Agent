@@ -284,7 +284,11 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     # Persona (R5c): the drive delegated the question's WORDING to the narrator
     # (goal directive in the facts block) — hand the turn to the narrator path.
     # Same for the FINDINGS moment (facts + conclusion + choice, said humanly).
-    if getattr(engine, "_evidence_directive", None) or getattr(engine, "_findings_directive", None):
+    if (
+        getattr(engine, "_evidence_directive", None)
+        or getattr(engine, "_findings_directive", None)
+        or getattr(engine, "_recap_directive", None)
+    ):
         return None
     # R4b: a confirmed hypothesis with a WALKER solution means the step tree
     # owns the execution from here — hand every turn to the walker instead of
@@ -295,7 +299,8 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     if (
         _spec is not None
         and hypothesis_status(engine.state.evidence, _spec) == "confirmed"
-        and solution_for(engine.state.evidence, r.get("verdict")) == "walker"
+        and solution_for(engine.state.evidence, r.get("verdict")) in ("walker", "bridge")
+        and r.get("solution_synced")
     ):
         return None  # the walker takes this and every following turn
     # Distrust-loop bailout (deterministic): the solver repeated itself or kept
@@ -597,7 +602,12 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
             engine.tracer.emit(
                 "decision", intent="evidence", action="pivot", to=target, reason="bind verify"
             )
-    return say or "Matau jūsų kompiuterį linijoje — pririšau. Patikrinkite, ar internetas atsirado."
+    # C (Andrius 2026-08-21): the VISIBILITY status is spoken deterministically
+    # — the caller hears that we checked, that we SEE the device, and that the
+    # bind happened (the solver's own wording skipped the "matau" part live).
+    from .identification import phrase as _phrase
+
+    return _phrase("bridge_bound")
 
 
 def bridge_fail_step(engine: Any) -> str:

@@ -161,6 +161,71 @@ class TestSmartBargeIn:
         assert seen == ["nedega lemputės"] and chunks
 
 
+class TestPerceptionModelKnob:
+    """Tempo wave: the perception family may run on a faster (Groq) model —
+    PERCEPTION_MODEL overrides; 'default'/empty falls back to the agent model."""
+
+    def test_override_and_fallback(self, monkeypatch):
+        from agent.understand import perception_model
+
+        monkeypatch.delenv("PERCEPTION_MODEL", raising=False)
+        assert perception_model("gpt-4o-mini") == "gpt-4o-mini"
+        monkeypatch.setenv("PERCEPTION_MODEL", "default")
+        assert perception_model("gpt-4o-mini") == "gpt-4o-mini"
+        monkeypatch.setenv("PERCEPTION_MODEL", "groq/openai/gpt-oss-120b")
+        assert perception_model("gpt-4o-mini") == "groq/openai/gpt-oss-120b"
+
+    def test_understand_call_uses_the_override(self, monkeypatch):
+        from agent import understand
+        from src.services.llm import client as llm_client
+
+        seen = {}
+
+        def fake(messages=None, model=None, **k):
+            seen["model"] = model
+            return {"tipas": "atsakymas", "faktai": {}, "pasitikejimas": 0.9}
+
+        monkeypatch.setattr(llm_client, "llm_json_completion", fake)
+        monkeypatch.setenv("PERCEPTION_MODEL", "groq/openai/gpt-oss-120b")
+        u = understand.understand(
+            "nedega", anchor="Ar dega?", needs="", ledger_summary="", model="gpt-4o-mini"
+        )
+        assert u is not None and seen["model"] == "groq/openai/gpt-oss-120b"
+
+    def test_groq_provider_resolution(self):
+        from src.services.llm.client import _get_provider, get_model_info
+
+        assert _get_provider("groq/openai/gpt-oss-120b") == "groq"
+        assert get_model_info("groq/qwen/qwen3.6-27b")["supports_json_mode"] is True
+
+
+class TestCheckin:
+    """G3: the silence check-in fires only while a question stands mid-call."""
+
+    def test_awaiting_caller_gate(self, db_connection):
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="unknown")
+        a = session._agent
+        a.state.last_question = ""
+        assert session.awaiting_caller() is False
+        a.state.last_question = "Ar dega lemputė?"
+        assert session.awaiting_caller() is True
+        a.state.case_closed = True
+        assert session.awaiting_caller() is False
+
+    def test_checkin_phrase_and_confusion_markers(self):
+        from agent.identification import phrase
+        from agent.resolution import INTENT_CONFUSED, detect_turn_intent
+
+        assert "sekasi" in phrase("checkin")
+        # G1: a struggling caller gets the explain-simpler path…
+        assert detect_turn_intent("Man neišeina to padaryti") == INTENT_CONFUSED
+        assert detect_turn_intent("Nežinau kaip ten žiūrėti") == INTENT_CONFUSED
+        # …but the step ROUTING answer stays an answer, never confusion.
+        assert detect_turn_intent("Nepavyko, interneto nėra") != INTENT_CONFUSED
+
+
 class TestSessionAsrContext:
     def test_builds_from_question_and_pending_vocabulary(self, db_connection):
         from agent.session import AgentSession

@@ -44,6 +44,16 @@ _ALLOWED = {
 }
 
 
+def perception_model(fallback: str | None) -> str | None:
+    """The PERCEPTION-family model (VOICE_PLAN tempo wave): the understand
+    pass and the step classifier may run on a FASTER model than the narrator
+    (e.g. groq/openai/gpt-oss-120b — Groq inference is ~10x quicker, and the
+    perception JSON task is enum-validated, so it degrades safely). Set via
+    PERCEPTION_MODEL on the config page; 'default'/empty = the agent model."""
+    m = os.getenv("PERCEPTION_MODEL", "").strip()
+    return m if m and m != "default" else fallback
+
+
 def enabled() -> bool:
     if os.getenv("CLASSIFIER", "on").lower() == "off":
         return False  # deterministic test mode — no model calls at all
@@ -129,7 +139,7 @@ def understand(
             if content:
                 messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": utterance[:400]})
-        data = llm_json_completion(messages=messages, model=model)
+        data = llm_json_completion(messages=messages, model=perception_model(model))
         if not isinstance(data, dict):
             return None
         tipas = str(data.get("tipas") or "atsakymas").lower()
@@ -219,7 +229,7 @@ def understand_ticket(
                 },
                 {"role": "user", "content": utterance[:300]},
             ],
-            model=model,
+            model=perception_model(model),
         )
         if not isinstance(data, dict):
             return None

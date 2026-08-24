@@ -78,11 +78,8 @@ _PHRASES_DEFAULTS: dict[str, str] = {
         "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, "
         "pavyzdžiui, audros ar remonto?"
     ),
-    "address_offer": "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?",
-    "address_ask": (
-        "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, "
-        "kuriuo neveikia internetas."
-    ),
+    "address_offer": "Gerai — patikrinsiu ryšį. Ar skambinate dėl {adresas}?",
+    "address_ask": "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?",
     "echo_address": "Supratau — {adresas}.",
     "check_result": "Patikrinau ryšį iki jūsų buto. {zinia}",
     "billing_extra": "Apmokėjus sąskaitą, paslauga bus įjungta.",
@@ -128,7 +125,18 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     "refute_confirm": (
         "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
     ),
-    "reask_reason": ("Paklausiu dar kartą, nes noriu būti tikras dėl „{tema}“. {klausimas}"),
+    "reask_reason": ("Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"),
+    "wait_ack": ("Gerai, lauksiu — pasakykite, kai būsite pasiruošę."),
+    "anamnesis_last_used": ("O kada paskutinį kartą internetas tikrai veikė?"),
+    "checkin": ("Kaip sekasi — ar pavyksta?"),
+    "no_problem_goodbye": (
+        "Supratau. Čia interneto tiekėjo pagalba — jei kils ryšio ar paslaugos "
+        "problema, drąsiai skambinkite. Geros dienos!"
+    ),
+    "bridge_bound": (
+        "Patikrinau — matau jūsų kompiuterį linijoje. Pririšau, patikrinkite — "
+        "internetas turėtų atsirasti."
+    ),
     "repeat_ack": ("Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "),
     "escalate_clarify": (
         "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"

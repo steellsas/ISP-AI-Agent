@@ -67,6 +67,15 @@ def maybe_facts_recap(engine: Any) -> str | None:
     if not faktai:
         engine._recap_state = "done"
         return None
+    # Persona (Andrius 2026-08-20: "Pasitikslinu: routeris surastas: rado; …"
+    # is the last remaining label:value dump read to a human) — in narrator
+    # mode the recap becomes a goal directive, said in the narrator's words
+    # ("Taip, jūs sakote — lemputės nedega net pakeitus rozetę, ar taip?").
+    if os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+        engine._recap_directive = {"faktai": faktai}
+        engine._recap_state = "pending"
+        engine.tracer.emit("decision", intent="facts_recap", action="ask_narrator")
+        return None  # the narrator speaks the recap
     engine._recap_state = "pending"
     engine.tracer.emit("decision", intent="facts_recap", action="ask")
     return phrase("facts_recap", faktai=faktai)
@@ -203,6 +212,8 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         recap = maybe_facts_recap(engine)
         if recap is not None:
             return recap
+        if getattr(engine, "_recap_directive", None):
+            return None  # the narrator asks the recap; findings come next turn
         engine._findings_announced = True
         from .evidence import client_facts_lt, fault_isvada, solution_descriptions
         from .identification import phrase
@@ -247,11 +258,31 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             )
             return announce + engine._drive_escalate(None)
         if solution == "bridge":
-            # The solver drives the bridge instructions — the announce rides
-            # on ITS first reply (stashed; committed in solver_drive_turn).
+            # Fix 2 (Andrius 2026-08-21): the bridge is WALKED through the pack's
+            # guided steps (dr_pick_cable -> dr_plug_pc -> see/bind/verify)
+            # instead of the solver's one-liner "kai prijungsite — pasakykite":
+            # the step hints say WHICH cable and WHERE, and a "kaip tai
+            # padaryti?" gets the step explained. Synced ONCE, like walker.
+            from .evidence import solution_step
+
+            target = solution_step(s.evidence, r.get("verdict"))
+            goto = getattr(engine, "_goto_step", None)
+            if (
+                target
+                and r.get("solution_synced") != target
+                and r.get("step") != target
+                and callable(goto)
+            ):
+                goto(r, target)
+                r["solution_synced"] = target
+                engine.tracer.emit(
+                    "decision", intent="evidence", action="pivot", to=target, reason="solution"
+                )
+            elif target:
+                r.setdefault("solution_synced", target)
             if announce:
                 engine._pending_announce = announce
-            return None
+            return None  # the walker owns the bridge steps from here
         if solution == "walker":
             # R4b: the declared solution is a WALKER step — sync the walker to
             # it ONCE (solution_synced marker: re-syncing every turn would drag
@@ -285,6 +316,20 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         return None
     key, item = missing
     asks = engine._evidence_asks.get(key, 0)
+    # Wait signal (C, live 2026-08-20): "palaukit, ateinu" is the caller GOING
+    # to do the thing — acknowledge and WAIT; never burn a retry or hammer the
+    # question at someone who is walking to the router.
+    if asks >= 1 and user_input:
+        from .resolution import INTENT_IN_PROGRESS, detect_turn_intent
+
+        if detect_turn_intent(user_input) == INTENT_IN_PROGRESS:
+            from .identification import phrase
+
+            engine.tracer.emit(
+                "drive_decision", action="wait", accepted=True, reason="in_progress", key=key
+            )
+            reply = phrase("wait_ack")
+            return (announce + reply) if announce else reply
     if asks >= 2:
         # Asked twice (normal + paprasciau), still nothing readable — record
         # "neaišku" and move on; an unreadable caller must never loop us.
@@ -300,6 +345,20 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
                 engine._pending_announce = announce
             return None
         return announce + inner
+    # B2 pointer (2026-08-21): a fact may name the walker step that carries
+    # its RAG section / hint / tikslas (`zingsnis:` on the evidence item) —
+    # the walker FOLLOWS the ledger instead of reading answers itself.
+    z = item.get("zingsnis")
+    if z and r.get("step") != z:
+        from .resolution import get_strategy
+
+        strat = get_strategy(r.get("verdict"))
+        goto = getattr(engine, "_goto_step", None)
+        if strat is not None and strat.step(str(z)) is not None and callable(goto):
+            goto(r, str(z))
+            engine.tracer.emit(
+                "decision", intent="evidence", action="pivot", to=str(z), reason="fact pointer"
+            )
     engine._evidence_asks[key] = asks + 1
     engine._evidence_last_ask_key = key  # for the barge-in cancel rollback
     # Persona (R5c): the FIRST ask goes to the NARRATOR as a goal directive —

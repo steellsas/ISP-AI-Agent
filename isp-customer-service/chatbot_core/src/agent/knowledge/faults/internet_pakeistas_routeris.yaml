@@ -46,6 +46,10 @@ evidence:
   # pat pradžių; kliento faktai parenka SPRENDIMĄ, ne hipotezę.
   patvirtinta_kai: []
   paneigta_kai: []
+# pasiulymas — IŠVADOS MOMENTO scenarijus naratoriui (2026-08-21): žodis
+# „pririšiu", ne „užregistruosiu" — registravimo žodžiai reiškia TIKETĄ, o čia
+# tik įrenginio pririšimas prie linijos.
+pasiulymas: "Pasakyk, kad linijoje matome naują įrenginį — tai jų routeris. Jei klientas keitė routerį: pasakyk, kad dabar PRIRIŠI jį prie linijos (sakyk „pririšiu“, niekada „užregistruosiu“) ir paprašyk akimirką palaukti. Jei nekeitė — paklausk, į kurį lizdą įkištas kabelis iš sienos."
 sprendimai:
 - jei: [changed_device=keite]
   tada: walker

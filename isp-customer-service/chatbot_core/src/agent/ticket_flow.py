@@ -100,6 +100,7 @@ def abort_ticket_to_solving(engine: Any) -> None:
     engine._ticket_stage = None
     engine._ticket_ctx = None
     engine._resume_fix_note = True
+    engine._resync_note = True  # C: re-anchor from the ledger, no improvising
     engine.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
 
 
@@ -114,18 +115,23 @@ def ticket_stage_reply(engine: Any) -> str:
     ctx = engine._ticket_ctx if engine._ticket_ctx is not None else {}
     if ctx.pop("ask_cancel_confirm", None):
         ctx["cancel_confirm_out"] = True
+        ctx["last_kind"] = "cancel_confirm"
         return phrase("ticket_cancel_confirm")
     retry = ctx.pop("ask_retry", None)
     if retry == "phone":
+        ctx["last_kind"] = "retry_phone"
         return phrase("ticket_phone_retry")
     if retry == "hours":
+        ctx["last_kind"] = "retry_hours"
         return phrase("ticket_hours_retry")
     if engine._ticket_stage == "hours":
         ctx["hours_asked"] = True
+        ctx["last_kind"] = "hours"
         return phrase("ticket_hours")
     parts = []
     if not ctx.get("intro_done"):
         ctx["intro_done"] = True
+        ctx["last_kind"] = "phone_intro"
         # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
         # the internet just came back (live 2026-08-12). The intro then
         # states the success and registers the ROUTER replacement.
@@ -133,6 +139,8 @@ def ticket_stage_reply(engine: Any) -> str:
             parts.append(phrase("ticket_intro_bridge"))
         else:
             parts.append(phrase("ticket_intro", priezastis=ticket_need(engine)))
+    else:
+        ctx["last_kind"] = "phone"
     ctx["phone_asked"] = True
     parts.append(phrase("ticket_phone"))
     return " ".join(parts)
@@ -182,6 +190,11 @@ def registration_claim_guard(engine: Any, content: str) -> str | None:
     s = engine.state
     low = (content or "").lower()
     if not any(m in low for m in ("užregistrav", "uzregistrav", "registruoju gedim")):
+        return None
+    # A DEVICE registration ("užregistravau jūsų naują routerį prie linijos" —
+    # the MAC bind, live eval 2026-08-21) is not a fault-ticket claim: the
+    # guard fires only when the sentence is about the ticket/technician.
+    if not any(m in low for m in ("gedim", "meistr", "tiket", "koleg", "technik")):
         return None
     if s.ticket_id or engine._ticket_stage or s.case_closed or not s.customer_id:
         return None

@@ -172,3 +172,14 @@ def sample_customer_phone():
 def sample_customer_id():
     """Sample customer ID for testing."""
     return "CUST001"
+
+
+@pytest.fixture
+def walker_driven(monkeypatch):
+    """B2 (2026-08-21): walker MECHANICS tests run the pack as walker-driven —
+    in solver-driven packs the walker reads no answers until the ledger hands
+    over, which these legacy step-walking tests predate."""
+    from agent import faults
+
+    monkeypatch.setattr(faults, "driver", lambda verdict: "walker")
+    yield

@@ -51,6 +51,22 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "solver_model",
     },
     {
+        # Tempo wave (VOICE_PLAN): the perception family (understand pass +
+        # step classifier) on a FASTER model — Groq inference cuts the
+        # between-questions gap. Enum validation keeps weaker models safe.
+        "key": "PERCEPTION_MODEL",
+        "label": "Percepcijos LLM modelis (supratimas)",
+        "options": [
+            "default",
+            "groq/openai/gpt-oss-120b",
+            "groq/openai/gpt-oss-20b",
+            "groq/qwen/qwen3.6-27b",
+            "gpt-4o-mini",
+        ],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         # AgentSession reads AGENT_ENGINE at construction, so the switch takes
         # effect on the NEXT call — running calls keep their engine. "graph" =
         # legacy LangGraph, "v2" = graph_v2 (docs/ROADMAP_REFACTORING.md),
@@ -110,7 +126,7 @@ SCHEMA: list[dict[str, Any]] = [
         # hallucinates words from sub-word blips). 0 disables the guard.
         "key": "ASR_MIN_AUDIO_S",
         "label": "Trumpo garso sargas, s (0 = išjungta)",
-        "options": ["0.3", "0.2", "0.4", "0.5", "0"],
+        "options": ["0.2", "0.3", "0.4", "0.5", "0"],
         "scope": "immediate",
         "kind": "env",
     },
@@ -119,7 +135,25 @@ SCHEMA: list[dict[str, Any]] = [
         # still thinking past the delay below.
         "key": "VOICE_FILLER",
         "label": "Užpildas „Sekundėlę, tikrinu“",
-        "options": ["on", "off"],
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # Kalbėjimo greitis: '+10%' — informacija teka greičiau, tonas
+        # dalykiškesnis (Andrius 2026-08-20).
+        "key": "TTS_RATE",
+        "label": "Kalbėjimo greitis",
+        "options": ["+0%", "+10%", "+15%", "+20%", "-10%"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # Balso tonas: žemesnis (-10Hz) skamba dalykiškiau/techniškiau,
+        # aukštesnis — energingiau. Tik edge varikliui.
+        "key": "TTS_PITCH",
+        "label": "Balso tonas (žemesnis = techniškesnis)",
+        "options": ["+0Hz", "-10Hz", "-20Hz", "+10Hz"],
         "scope": "immediate",
         "kind": "env",
     },
@@ -127,6 +161,22 @@ SCHEMA: list[dict[str, Any]] = [
         "key": "VOICE_FILLER_AFTER_S",
         "label": "Užpildo vėlinimas, s",
         "options": ["1.2", "0.8", "1.6", "2.0"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # G3: the agent speaks first after a long caller silence while a task
+        # is standing — "Kaip sekasi, ar pavyksta?" (once per turn).
+        "key": "VOICE_CHECKIN",
+        "label": "Pasiteiravimas po tylos („Kaip sekasi?“)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        "key": "VOICE_CHECKIN_AFTER_S",
+        "label": "Pasiteiravimo vėlinimas, s",
+        "options": ["35", "20", "50", "70"],
         "scope": "immediate",
         "kind": "env",
     },

@@ -50,9 +50,9 @@ identification:
   # with the LLM, and an off-script caller turn (a question) falls back to the LLM.
   phrases:
     ask_problem: "Klausau! Kuo galiu padėti — kokia problema?"
-    anamnesis_question: "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, pavyzdžiui, audros ar remonto?"
-    address_offer: "Ačiū. Kad galėčiau patikrinti situaciją, ar skambinate dėl {adresas}?"
-    address_ask: "Ačiū. Kad galėčiau patikrinti situaciją iš tiekėjo pusės, pasakykite adresą, kuriuo neveikia internetas."
+    anamnesis_question: "Supratau. O kada dingo — gal po ko nors, tarkim audros ar remonto?"
+    address_offer: "Gerai — patikrinsiu ryšį. Ar skambinate dėl {adresas}?"
+    address_ask: "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
     echo_address: "Supratau — {adresas}."
     check_result: "Patikrinau ryšį iki jūsų buto. {zinia}"
     billing_extra: "Apmokėjus sąskaitą, paslauga bus įjungta."
@@ -61,12 +61,12 @@ identification:
     confirm_end: "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, kad kolegos su jumis susisiektų."
     goodbye: "Ačiū, kad paskambinote. Geros dienos!"
     turn_error: "Atsiprašau, įvyko trikdis mano pusėje. Pakartokite, prašau, ką sakėte."
-    ticket_intro: "Telefonu šio gedimo išspręsti nepavyks — {priezastis}. Registruoju gedimą meistrui."
-    ticket_phone: "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
-    ticket_phone_retry: "Atsiprašau, nesupratau numerio. Pasakykite jį skaitmenimis arba sakykite „tiks šis“, jei tinka numeris, iš kurio skambinate."
+    ticket_intro: "Telefonu neišspręsim — {priezastis}. Registruoju meistrą."
+    ticket_phone: "Ar tiks numeris, iš kurio skambinate?"
+    ticket_phone_retry: "Nesupratau numerio. Pasakykite skaitmenimis arba „tiks šis“."
     ticket_hours: "Gerai. O kada patogiausia jums skambinti?"
-    ticket_hours_retry: "Atsiprašau, nesupratau. Kada jums patogiausia sulaukti skambučio — pavyzdžiui, „bet kada“ arba „po 17 valandos“?"
-    ticket_done: "Užregistravau gedimą. Susisieksime numeriu {nr}, skambinti galima {val}. Ar dar kuo galiu padėti?"
+    ticket_hours_retry: "Nesupratau. Pavyzdžiui — „bet kada“ arba „po 17 valandos“?"
+    ticket_done: "Užregistravau. Skambinsime {nr}, {val}. Ar dar kuo padėti?"
     evidence_conflict: "Norėčiau patikslinti dėl „{tema}“: pirmiau supratau „{a}“, o dabar — „{b}“. Kaip yra iš tiesų?"
     back_to_issue: "Grįžkime prie jūsų gedimo. {inkaras}"
     solve_or_ticket: "Grįžkime prie gedimo — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
@@ -76,8 +76,21 @@ identification:
     done_report_clarify: "Supratau — patikrinote. {klausimas}"
     facts_recap: "Pasitikslinu, ar teisingai supratau: {faktai}. Ar taip?"
     refute_confirm: "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
-    reask_reason: "Paklausiu dar kartą, nes noriu būti tikras dėl „{tema}“. {klausimas}"
+    # C (2026-08-20): be vidinių etikečių („routeris surastas") klientui —
+    # trumpa žmogiška įžanga ir pats klausimas.
+    reask_reason: "Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"
+    wait_ack: "Gerai, lauksiu — pasakykite, kai būsite pasiruošę."
+    # E (2026-08-20): antroji anamnezės pakopa, kai klientas nežino, kada dingo —
+    # paskutinio veikimo laikas siaurina analizės langą („vakar veikė“ → dingo naktį).
+    anamnesis_last_used: "O kada paskutinį kartą internetas tikrai veikė?"
+    # G3 (2026-08-20): aktyvus pasiteiravimas po tylos, kai klientas kažką daro.
+    checkin: "Kaip sekasi — ar pavyksta?"
+    # Problemos vartai (2026-08-21): po kelių bandymų be aiškios mūsų srities problemos.
+    no_problem_goodbye: "Supratau. Čia interneto tiekėjo pagalba — jei kils ryšio ar paslaugos problema, drąsiai skambinkite. Geros dienos!"
     repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
     escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"
     ticket_intro_bridge: "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, registruoju meistrą dėl naujo routerio."
+    # C (2026-08-21): tilto būsenos paskelbimas — klientas girdi, kad patikrinom,
+    # kad įrenginį MATOME ir kad pririšom.
+    bridge_bound: "Patikrinau — matau jūsų kompiuterį linijoje. Pririšau, patikrinkite — internetas turėtų atsirasti."

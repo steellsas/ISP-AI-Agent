@@ -259,7 +259,7 @@ class TestAgentWiring:
         recap = agent._evidence_drive("neturiu")
         assert recap is not None and "Pasitikslinu" in recap
         reply = agent._evidence_drive("taip, teisingai")
-        assert reply is not None and "Kokiu telefono numeriu" in reply
+        assert reply is not None and "Ar tiks numeris" in reply
         assert agent._ticket_stage == "phone"
 
     def test_confirmed_with_computer_yields_to_solver_bridge(self):

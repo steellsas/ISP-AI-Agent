@@ -954,6 +954,8 @@ _FAREWELL = (
     "nieko daugiau",
     "pakaks",
     "ne ačiū",
+    "ne, ačiū",
+    "ne, aciu",
     "nebereikia",
     # NOTE: "iki" and "ate" are NOT in this substring list — they hide inside
     # "neveIKIa"/"ATEina"; detect_farewell checks them as whole words instead.
@@ -985,6 +987,14 @@ _CONFUSED = (
     "nesu tech",
     "paaiškinkite",
     "paaiskinkite",
+    # G1 (2026-08-20): a struggling caller ("neišeina", "nesiseka", "nežinau
+    # kaip") gets the explain-simpler path, not a repeat of the same words.
+    # NOT "nepavyko" — that is a step ROUTING answer (modules' isejimai).
+    "neišeina",
+    "neiseina",
+    "nesiseka",
+    "nežinau kaip",
+    "nezinau kaip",
 )
 
 
@@ -1118,6 +1128,8 @@ _CONSENT_NO = (
     "neregistruok",
     "nedarykit",
     "ne ačiū",
+    "ne, ačiū",
+    "ne, aciu",
     "ne aciu",
 )
 
@@ -1401,7 +1413,10 @@ def detect_farewell(text: str | None) -> bool:
         for w in ("klausim", "dar ", "bet ", "problem", "taip", "tęs", "tes", "toliau", "nebaik")
     )
     short = len(low.split()) <= 3
-    if not (short and not has_followup and bool(re.search(r"\bne\b", low) or "viskas" in low)):
+    # Bare "ne" is NEVER a farewell (Andrius 2026-08-20): a lone "Ne." to a
+    # standing question is an ANSWER — its owner clarifies what the "ne"
+    # means. Only "viskas"-style closers reach the pure-decline fallback.
+    if not (short and not has_followup and "viskas" in low):
         return False
     # The bare-"ne" fallback must be a PURE decline — every token a known
     # closing word. "Ne daganiai 1." (STT of "nedega nė viena") fast-forwarded

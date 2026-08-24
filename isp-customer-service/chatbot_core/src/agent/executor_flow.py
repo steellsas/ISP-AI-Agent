@@ -246,6 +246,11 @@ def register_ticket_from_state(engine: Any, step) -> None:
     if tried:
         glosses = ", ".join(DIAGNOSIS_LT.get(c, c) for c in dict.fromkeys(tried))
         details += f" Bandyta/atmesta: {glosses}."
+    # A (2026-08-21): secondary problems the caller mentioned mid-call — the
+    # technician checks them on the same visit.
+    if getattr(s, "secondary_problems", None):
+        extra = "; ".join(f"{x['tipas']}: „{x['tekstas']}“" for x in s.secondary_problems)
+        details += f" Papildomai patikrinti: {extra}."
     actions = engine._tools_called_this_session()
     args = {
         "customer_id": s.customer_id,

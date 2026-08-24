@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import re
 from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
@@ -44,13 +46,33 @@ class EdgeTTSProvider:
         lang = (language or self._default_language).split("-")[0].lower()
         return _VOICES.get(lang, _VOICES["lt"])
 
+    @staticmethod
+    def _pct(env_key: str) -> str | None:
+        """A validated '+N%'/'-N%' knob from the env; None = engine default."""
+        raw = (os.getenv(env_key) or "").strip()
+        if not raw or raw in ("+0%", "0%", "0"):
+            return None
+        return raw if re.fullmatch(r"[+-]\d{1,2}%", raw) else None
+
     def _synthesize_one(self, sentence: str, voice: str) -> bytes:
-        """Render one sentence to MP3 via edge-tts (async collected to bytes)."""
+        """Render one sentence to MP3 via edge-tts (async collected to bytes).
+        TTS_RATE speeds the delivery (like video 1.1x); TTS_PITCH shifts the
+        voice — lower ('-5%') sounds more matter-of-fact/technical (Andrius
+        2026-08-20). Both from the config page, validated, engine default when
+        unset."""
         import edge_tts  # deferred (optional dependency)
+
+        kwargs = {}
+        rate = self._pct("TTS_RATE")
+        if rate:
+            kwargs["rate"] = rate
+        pitch = (os.getenv("TTS_PITCH") or "").strip()
+        if pitch and pitch not in ("+0Hz", "0Hz", "0") and re.fullmatch(r"[+-]\d{1,3}Hz", pitch):
+            kwargs["pitch"] = pitch
 
         async def _collect() -> bytes:
             out = bytearray()
-            async for chunk in edge_tts.Communicate(sentence, voice).stream():
+            async for chunk in edge_tts.Communicate(sentence, voice, **kwargs).stream():
                 if chunk["type"] == "audio":
                     out.extend(chunk["data"])
             return bytes(out)

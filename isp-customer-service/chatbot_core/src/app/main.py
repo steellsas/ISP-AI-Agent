@@ -314,6 +314,53 @@ async def ws_call(ws: WebSocket, session_id: str):
     # Voice turns run as a BACKGROUND task (Phase 5 PR2): the reader loop keeps
     # receiving, so an {"type":"interrupt"} can land WHILE the reply streams.
     turn_task: asyncio.Task | None = None
+    checkin_task: asyncio.Task | None = None
+
+    # G3 (Andrius 2026-08-20): the agent ACCOMPANIES the caller through a task —
+    # after a turn, if the caller stays silent past the delay while a question/
+    # instruction is standing, the server SPEAKS first: "Kaip sekasi — ar
+    # pavyksta?". One check-in per turn, cancelled the moment the caller talks.
+    async def _checkin() -> None:
+        import os as _os
+
+        if _os.getenv("VOICE_CHECKIN", "on").lower() != "on":
+            return
+        try:
+            delay = float(_os.getenv("VOICE_CHECKIN_AFTER_S", "35"))
+        except ValueError:
+            delay = 35.0
+        await asyncio.sleep(delay)
+        try:
+            ms = manager.get(session_id)
+        except SessionNotFound:
+            return
+        awaiting = getattr(ms.session, "awaiting_caller", None)
+        if not callable(awaiting) or not awaiting():
+            return
+        try:
+            from agent.identification import phrase
+
+            from . import voice as voice_mod
+
+            text = phrase("checkin")
+            audio = await asyncio.to_thread(voice_mod.synthesize_text, text)
+            if audio:
+                ms.session.tracer.emit("checkin", text=text)
+                await ws.send_bytes(audio)
+                await ws.send_json({"type": "checkin", "text": text})
+        except Exception:  # pragma: no cover - a failed nudge must stay silent
+            logger.exception("checkin failed")
+
+    def _arm_checkin() -> None:
+        nonlocal checkin_task
+        if checkin_task is not None and not checkin_task.done():
+            checkin_task.cancel()
+        checkin_task = asyncio.create_task(_checkin())
+
+    def _disarm_checkin() -> None:
+        nonlocal checkin_task
+        if checkin_task is not None and not checkin_task.done():
+            checkin_task.cancel()
 
     async def _run_voice_turn(data: bytes) -> None:
         import os as _os
@@ -322,11 +369,15 @@ async def ws_call(ws: WebSocket, session_id: str):
             if _os.getenv("VOICE_STREAM", "on").lower() == "on":
                 payload = await manager.voice_turn_stream(session_id, data, ws.send_bytes)
                 await ws.send_json(payload)
+                if not payload.get("is_complete"):
+                    _arm_checkin()
                 return
             payload, reply_audio = await manager.voice_turn(session_id, data)
             await ws.send_json(payload)
             if reply_audio:
                 await ws.send_bytes(reply_audio)
+            if not payload.get("is_complete"):
+                _arm_checkin()
         except SessionNotFound:
             pass
         except Exception:  # voice deps missing / ASR failure — keep the socket
@@ -342,6 +393,7 @@ async def ws_call(ws: WebSocket, session_id: str):
             # Binary frame = ONE complete caller utterance (WAV, client-side
             # end-pointing) -> a full voice turn in the background.
             if frame.get("bytes"):
+                _disarm_checkin()  # the caller spoke — no nudge needed
                 if turn_task is not None and not turn_task.done():
                     continue  # one voice turn at a time; extra frames are dropped
                 turn_task = asyncio.create_task(_run_voice_turn(frame["bytes"]))
@@ -349,6 +401,7 @@ async def ws_call(ws: WebSocket, session_id: str):
             if frame.get("text"):
                 msg = json.loads(frame["text"])
                 if msg.get("type") == "interrupt":
+                    _disarm_checkin()  # the caller is talking over us
                     # Barge-in: stop feeding audio NOW; the engine thread finishes
                     # quietly. Traced, so the panel + archive show the interruption.
                     try:
@@ -368,6 +421,7 @@ async def ws_call(ws: WebSocket, session_id: str):
     except WebSocketDisconnect:
         pass
     finally:
+        _disarm_checkin()
         pump.cancel()
         with suppress(asyncio.CancelledError):
             await pump

@@ -103,7 +103,29 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
 
         problem = classify_problem(text)
         if problem:
-            s.problem_type = problem
+            # A (Andrius 2026-08-21): the PRIMARY goal is the caller's stated
+            # call reason and NEVER flips mid-call (an STT garble switched it
+            # to billing live). Later mentions of other problems become
+            # SECONDARY — noted, asked about at the end, listed on the ticket.
+            if s.problem_type is None:
+                s.problem_type = problem
+            elif (
+                problem != s.problem_type
+                and s.resolution is not None
+                and not s.case_closed
+                and not getattr(engine, "_ticket_stage", None)
+                and len((text or "").split()) >= 3  # garbles ("Žemės gatvės") are not complaints
+            ):
+                if not any(x.get("tipas") == problem for x in s.secondary_problems):
+                    s.secondary_problems.append(
+                        {
+                            "tipas": problem,
+                            "tekstas": (text or "").strip()[:120],
+                            "turn": s.turn_count,
+                        }
+                    )
+            elif not s.customer_id and s.resolution is None:
+                s.problem_type = problem  # early self-correction is fine
         # Revisable: a clearer later mention overrides an earlier reading.
         s.symptoms.update(extract_symptoms(text))
     except Exception:  # pragma: no cover - best-effort
@@ -296,7 +318,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     s = engine.state
     if s.case_closed:
         return None
-    from .identification import caller_question, offer_phone_address, phrase
+    from .identification import caller_question, phrase
     from .resolution import is_real_question
 
     # Ticket-confirmation dialogue: contacts before every registration. An
@@ -305,7 +327,22 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if engine._ticket_stage in ("phone", "hours"):
         if engine._ticket_offscript:
             return None
-        return engine._ticket_stage_reply()
+        scripted = engine._ticket_stage_reply()
+        # Zone 1 (skriptai -> direktyvos, Andrius 2026-08-20): the QUESTION
+        # moments go to the narrator as a goal directive — it words them into
+        # the conversation's flow; retries and the cancel-confirm stay
+        # scripted (precision beats style on a repeat). Off-switch reverts.
+        import os as _os
+
+        kind = (engine._ticket_ctx or {}).get("last_kind")
+        if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on" and kind in (
+            "phone_intro",
+            "phone",
+            "hours",
+        ):
+            engine._ticket_directive = {"kind": kind, "fallback": scripted}
+            return None  # the ticket node's narrator speaks (facts directive)
+        return scripted
     if engine._ticket_stage == "done":
         return engine._finish_ticket_dialogue()
     if engine._ticket_stage == "cancelled":
@@ -360,8 +397,9 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         clarify = engine._negation_clarify_reply(open_key)
         if clarify:
             return clarify
-    if user_input and is_real_question(user_input):
+    if user_input and is_real_question(user_input) and (s.problem_type or s.customer_id):
         return None  # off-script — the LLM answers; guards kept the ladder state
+        # (pre-problem questions fall through to the problem GATE below)
     # INTAKE (not yet identified): the anamnesis question and the address
     # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
     # whole ladder by a turn (observed in eval).
@@ -374,11 +412,59 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
 
             if is_greeting(user_input):
                 return phrase("ask_problem")
+            # Live 2026-08-21: a garbled opener ("Atsikai, daro") fell to the
+            # LLM, which offered the address before any problem was stated.
+            # Ask for the problem (scripted, at most twice), then let go.
+            p_asks = getattr(engine, "_ask_problem_count", 0)
+            _has_addr0 = bool(s.profile.street.value or s.profile.house.value)
+            if not _has_addr0:
+                engine._ask_problem_count = p_asks + 1
+                asking = "?" in user_input or is_real_question(user_input)
+                # Problem GATE (Andrius 2026-08-21): no identification at all
+                # until a clear, in-scope problem is stated. Scripted ask x2
+                # (a question goes to the narrator), narrator directive x2
+                # ("vaikai neklauso" -> not our area, ask about connectivity),
+                # then a polite close — never an address hunt.
+                import os as _os
+
+                if p_asks >= 4:
+                    s.case_closed = True
+                    s.closed_reason = "declined"
+                    engine.tracer.emit("decision", intent="problem_gate", action="close")
+                    return phrase("no_problem_goodbye")
+                if p_asks < 2 and not asking:
+                    return phrase("ask_problem")
+                if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+                    engine._ident_directive = {
+                        "kind": "problem_gate",
+                        "adresas": None,
+                        "fallback": phrase("ask_problem"),
+                    }
+                    return None  # the narrator words it (isolated directive turn)
+                if asking:
+                    return None  # scripted mode: a question goes to the LLM
+                return phrase("ask_problem")
         p = s.profile
         has_addr = bool(p.street.value or p.house.value)
         if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
             s.anamnesis_asked = True
-            return phrase("anamnesis_question")
+            return _anamnesis_move(engine, "anamnesis", phrase("anamnesis_question"))
+        # E (Andrius 2026-08-20): the follow-up rung — the caller did not know
+        # WHEN it broke, so we asked when it last WORKED; the answer narrows
+        # the time window for the analysis ("vakar veikė" -> broke overnight).
+        if getattr(engine, "_anamnesis_followup", False) and user_input and not has_addr:
+            engine._anamnesis_followup = False
+            from .nlu import extract_anamnesis
+
+            read = extract_anamnesis(user_input)
+            s.anamnesis_when = read.get("when") or user_input.strip(" .!?,")[:80]
+            s.anamnesis_raw = (
+                f"{s.anamnesis_raw or ''} | paskutinį kartą veikė: {user_input.strip()[:80]}"
+            )
+            engine.tracer.emit(
+                "anamnesis", text=s.anamnesis_raw, when=s.anamnesis_when, followup=True
+            )
+            return _address_move(engine, s)
         if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
             s.anamnesis_raw = user_input.strip()[:200]
             from .nlu import extract_anamnesis
@@ -392,11 +478,12 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
                 when=s.anamnesis_when,
                 trigger=s.anamnesis_trigger,
             )
-            c = s.phone_candidate
-            if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
-                flat = f", butas {c['apartment']}" if c.get("apartment") else ""
-                return phrase("address_offer", adresas=f"{c['street']} {c.get('house')}{flat}")
-            return phrase("address_ask")
+            # E: nothing usable heard ("nežinau") — ONE follow-up rung about
+            # the last time the service worked, then on to the address.
+            if s.anamnesis_when in (None, "nežino") and not s.anamnesis_trigger:
+                engine._anamnesis_followup = True
+                return _anamnesis_move(engine, "anamnesis_followup", phrase("anamnesis_last_used"))
+            return _address_move(engine, s)
         return None
     # WRAP-UP after the news (inform mode): the business is DONE — any further
     # turn that is not a question/wants-more wraps up DETERMINISTICALLY. Garbled
@@ -465,3 +552,87 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     engine._result_pending = False
     engine._news_told = True
     return " ".join(b for b in bits if b)
+
+
+def _anamnesis_move(engine, kind: str, fallback: str):
+    """Zone 3 (skriptai -> direktyvos): the anamnesis questions go to the
+    narrator — it adapts to what the caller already said (one or several
+    things asked in one breath, per the answer). Off-switch keeps the script."""
+    import os as _os
+
+    if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+        engine._ident_directive = {"kind": kind, "adresas": None, "fallback": fallback}
+        return None  # the narrator words it (facts directive)
+    return fallback
+
+
+def _address_move(engine, s):
+    """Zone 2 (skriptai -> direktyvos): the transition to the address — offer
+    the phone-candidate address or ask for one. In narrator mode the moment
+    becomes a goal directive (a smooth hand-over from the problem talk); the
+    OFFER question's core stays verbatim ("Ar skambinate dėl X?") because the
+    deterministic confirm guard keys off it. Off-switch keeps the scripts."""
+    import os as _os
+
+    from .identification import offer_phone_address, phrase
+
+    c = s.phone_candidate
+    if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
+        flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+        adresas = f"{c['street']} {c.get('house')}{flat}"
+        kind, fallback = "address_offer", phrase("address_offer", adresas=adresas)
+    else:
+        adresas = None
+        kind, fallback = "address_ask", phrase("address_ask")
+    if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+        engine._ident_directive = {"kind": kind, "adresas": adresas, "fallback": fallback}
+        return None  # the narrator words the transition (facts directive)
+    return fallback
+
+
+def address_diag_note(obs: dict) -> str | None:
+    """F2 (Andrius 2026-08-20): a FAILED address lookup must tell the caller
+    exactly what WAS found and what was not — 'Vilniaus gatvę randu, bet 39
+    numerio nematau' lets the caller correct themselves. Composed from the
+    resolver's per-level diagnosis into a narrator directive; None when there
+    is nothing more specific than the generic re-ask."""
+    res = obs.get("resolution") or {}
+    city = res.get("city") or {}
+    street = res.get("street") or {}
+    house = res.get("house") or {}
+    place = city.get("matched") or city.get("given") or ""
+    vieta = f" mieste {place}" if place else ""
+    bits: list[str] = []
+    st = street.get("status")
+    if st in ("not_found", "not_in_city"):
+        g = street.get("given") or "nurodytos gatvės"
+        line = f"gatvės „{g}“{vieta} NERANDU"
+        elsewhere = street.get("found_elsewhere") or []
+        if elsewhere:
+            kur = ", ".join(str(e.get("city") or e) for e in elsewhere[:3])
+            line += f", bet tokia gatvė yra: {kur} — paklausk, ar ne ten"
+        else:
+            line += " (gal ji vadinasi kitaip? pavadinimai keičiasi)"
+        bits.append(line)
+    elif st == "unclear" and street.get("fuzzy_candidates"):
+        cands = ", ".join(str(c) for c in street["fuzzy_candidates"][:3])
+        bits.append(f"gatvės neišgirdau tiksliai — panašios: {cands}; paklausk, kuri")
+    elif st in ("ok", "derived", "recovered") and house.get("status") == "not_found":
+        g = street.get("matched") or street.get("given") or "gatvę"
+        line = f"gatvę {g}{vieta} RANDU, bet namo {house.get('given')} numerio NĖRA"
+        known = house.get("known_houses") or []
+        if known:
+            line += f" (toje gatvėje yra: {', '.join(str(h) for h in known[:6])})"
+        line += " — paprašyk patikslinti namo numerį"
+        bits.append(line)
+    elif city.get("status") == "ambiguous":
+        alts = city.get("alternatives") or city.get("candidates") or []
+        kur = ", ".join(str(a.get("city") if isinstance(a, dict) else a) for a in alts[:3])
+        bits.append(f"tokia gatvė yra keliuose miestuose ({kur}) — paklausk, kuriame")
+    if not bits:
+        return None
+    return (
+        "- ADRESO PAIEŠKOS DIAGNOZĖ (pasakyk klientui BŪTENT tai — kas rasta ir ko "
+        "ne, savais žodžiais, trumpai — ir paprašyk patikslinti TIK trūkstamą "
+        "dalį): " + "; ".join(bits) + ". Neišgalvok adresų."
+    )

@@ -29,6 +29,30 @@ def execute_tool(name, args):
     return react_agent.execute_tool(name, args)
 
 
+_DIRECTIVE_PROMPT: str | None = None
+
+
+def _directive_system_prompt() -> str:
+    """Persona + style only — the lean system prompt for directive turns.
+    Cached module-wide (byte-stable => provider prompt cache friendly)."""
+    global _DIRECTIVE_PROMPT
+    if _DIRECTIVE_PROMPT is None:
+        from .prompts import load_node_prompt
+
+        parts = []
+        for name in ("partials/identity", "partials/style"):
+            try:
+                parts.append(load_node_prompt(name))
+            except Exception:  # pragma: no cover - a missing partial degrades soft
+                pass
+        parts.append(
+            "Kalbi telefonu lietuviškai. Vykdyk TIK žemiau esančią KNOWN FACTS "
+            "bloko direktyvą — nieko daugiau nesiūlyk ir neklausk."
+        )
+        _DIRECTIVE_PROMPT = "\n\n".join(p for p in parts if p)
+    return _DIRECTIVE_PROMPT
+
+
 def build_messages(engine, user_input: str = None) -> list:
     """
     Build the message payload for one LLM call.
@@ -47,8 +71,18 @@ def build_messages(engine, user_input: str = None) -> list:
     system content — concatenating would mutate the system message every turn
     and bust the cache (the real cost, not the few fact tokens).
     """
-    # Stable system prefix (cacheable).
-    messages = [{"role": "system", "content": engine.system_prompt}]
+    # Stable system prefix (cacheable). DIRECTIVE turns (zones 1–3) swap in a
+    # MINIMAL persona-only prompt: the full prompt's identification/procedure
+    # partials kept overriding the directive (live 2026-08-20: the model
+    # offered the address on the anamnesis turn, straight from the procedure
+    # text) — a directive turn has exactly ONE instruction, the facts block.
+    directive_turn = bool(
+        getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None)
+    )
+    if directive_turn:
+        messages = [{"role": "system", "content": _directive_system_prompt()}]
+    else:
+        messages = [{"role": "system", "content": engine.system_prompt}]
 
     # Add recent conversation history (windowed, tool-pairing safe)
     messages.extend(engine._prune_history(engine.state.messages))
@@ -59,8 +93,13 @@ def build_messages(engine, user_input: str = None) -> list:
     if facts:
         messages.append({"role": "system", "content": facts})
 
-    # Per-node focus prompt (graph stage), if a node set one.
-    if engine._node_prompt:
+    # Per-node focus prompt (graph stage), if a node set one. Suppressed on
+    # DIRECTIVE turns (zones 1–3, live 2026-08-20): the ladder guidance in the
+    # node prompt competed with the directive and won (offered the address on
+    # the anamnesis turn) — a directive turn has exactly ONE instruction.
+    if engine._node_prompt and not (
+        getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None)
+    ):
         messages.append({"role": "system", "content": engine._node_prompt})
 
     # Add new user input if provided
@@ -98,6 +137,12 @@ def scoped_tools_schema(engine) -> list:
     # so the model narrates the close instead of looping tool calls to the limit
     # (which surfaced the 'negaliu apdoroti' fallback).
     if engine.state.case_closed:
+        return []
+    # Directive turns are SPEECH-ONLY (zones 1–3, live 2026-08-20): with tools
+    # exposed the model grabbed resolve_address on the anamnesis turn and
+    # skipped the whole ladder — the engine owns the mechanics, the narrator
+    # only words the one goal in the facts block.
+    if getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None):
         return []
     schema = engine.tools_schema
     if engine._active_tool_names is not None:
@@ -216,6 +261,36 @@ def state_facts_block(engine) -> str | None:
             "sprendimo instrukcijos — pakartok ją arba atsakyk į kliento "
             "klausimą apie ją. Pokalbio NEbaik."
         )
+    # A (2026-08-21): secondary problems — before the goodbye the agent asks
+    # back about the OTHER complaints heard mid-call ("minėjot, kad lėtai
+    # veikė — ar dabar gerai?"); they are already on the ticket.
+    if s.case_closed and getattr(s, "secondary_problems", None):
+        temos = "; ".join(f"„{x['tekstas']}“" for x in s.secondary_problems)
+        facts.append(
+            "- PAPILDOMOS PROBLEMOS (prieš atsisveikinant PASITEIRAUK): klientas "
+            f"pokalbyje minėjo: {temos}. Paklausk, ar tai dar aktualu; pasakyk, "
+            "kad meistrui perduota (jau įrašyta registracijoje)."
+        )
+
+    # C (Andrius 2026-08-20): RETURN AFTER A DETOUR — the reply re-anchors from
+    # the LEDGER (kur esame, ką padarėme, kas liko / gal jau sprendimas), never
+    # improvises a fresh diagnostic (live: 'ar prijungtas prie maitinimo?' re-
+    # asked after a detour while all three facts were already established).
+    if getattr(engine, "_resync_note", False):
+        engine._resync_note = False
+        nustatyta = ""
+        if s.evidence:
+            from .evidence import summary_lt as _sum
+
+            nustatyta = _sum(s.evidence)
+        facts.append(
+            "- GRĮŽTAME PRIE SPRENDIMO (po nukrypimo): vienu sakiniu primink, kur "
+            + ("esame — nustatyta: " + nustatyta + " — " if nustatyta else "esame ")
+            + "ir tęsk NUO DABARTINIO TIKSLO pagal žemiau esančias direktyvas "
+            "(DAR AIŠKINAMĖS / IŠVADOS MOMENTAS / KLAUSK DABAR). NIEKO neklausk "
+            "iš naujo, kas jau nustatyta; jei išvada jau aiški — pasakyk ją ir "
+            "siūlyk sprendimą."
+        )
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
     # re-EXPLANATIONS aimed at what was actually not understood.
@@ -237,6 +312,27 @@ def state_facts_block(engine) -> str | None:
     # they override the model's own reading of the last reply.
     if getattr(engine, "_addr_confirm_note", None):
         facts.append(engine._addr_confirm_note)
+    # F2: the failed lookup's per-level diagnosis — the narrator tells the
+    # caller what WAS found and asks to correct only the missing part.
+    if getattr(engine, "_addr_diag_note", None) and not s.customer_id:
+        facts.append(engine._addr_diag_note)
+    # F3 (Andrius 2026-08-20): a caller who is NOT giving the address gets ONE
+    # warm encouragement with the WHY and the hints — never an endless re-ask.
+    if (
+        not s.customer_id
+        and s.problem_type
+        and s.turn_count >= 4
+        and not s.profile.street.value
+        and not getattr(engine, "_addr_encouraged", False)
+    ):
+        engine._addr_encouraged = True
+        facts.append(
+            "- PARAGINIMAS DĖL ADRESO (vieną kartą, šiltai): paaiškink, KODĖL "
+            "adreso reikia — be jo nematai kliento linijos ir negali patikrinti "
+            "gedimo. Užuominos: sutartis gali būti kito šeimos nario vardu; "
+            "gatvės pavadinimas galėjo pasikeisti; užtenka gatvės ir namo "
+            "numerio. Paklausk, ką klientas žino."
+        )
     if getattr(engine, "_reopen_note", False) and not s.customer_id:
         facts.append(
             "- KLIENTAS PATIKSLINO: skambina dėl KITO adreso nei buvo nustatyta. "
@@ -282,6 +378,14 @@ def state_facts_block(engine) -> str | None:
         and not s.preflight_outage
         and s.phone_candidate
         and s.phone_candidate.get("street")
+        # Directive turns (zones 2–3, live 2026-08-20): this block told the
+        # model to OFFER the address and it obeyed — on the anamnesis turn.
+        # The ladder decides WHEN the offer happens; the block yields.
+        and not getattr(engine, "_ident_directive", None)
+        and not getattr(engine, "_ticket_directive", None)
+        # Ladder order (live 2026-08-21): the offer comes AFTER the problem
+        # and the anamnesis — a garbled first utterance must not trigger it.
+        and s.problem_type
         and _fits(s.profile.street.value, s.phone_candidate.get("street"))
         and _fits(s.profile.house.value, s.phone_candidate.get("house"))
         and _fits(s.profile.apartment.value, s.phone_candidate.get("apartment"))
@@ -555,8 +659,18 @@ def state_facts_block(engine) -> str | None:
 
         strat = get_strategy(s.resolution.get("verdict"))
         step = strat.step(s.resolution.get("step", "")) if strat else None
+        # Directive isolation (live 2026-08-21): with B2 the walker pointer
+        # loads the step's hint + RAG section even while the ledger has moved
+        # on to the recap / findings — and the hint ("check the power lead,
+        # try another socket") won over the directive twice. A directive
+        # turn carries ONE instruction: no step hint, no playbook section.
+        directive_active = bool(
+            getattr(engine, "_evidence_directive", None)
+            or getattr(engine, "_recap_directive", None)
+            or getattr(engine, "_findings_directive", None)
+        )
         # Step facts wait while the caller-intro question is owed (see above).
-        if step is not None and not caller_pending:
+        if step is not None and not caller_pending and not directive_active:
             if step.rag_section is not None:
                 section = get_step(strat.rag_doc, step.rag_section)
                 if section:
@@ -637,7 +751,9 @@ def state_facts_block(engine) -> str | None:
             facts.append(
                 f"- DAR AIŠKINAMĖS (pokalbio tikslas — tai nustatyti): {goals}. "
                 "Jei klientas nuklydo nuo temos — atsakyk trumpai, primink, kur "
-                "esame, ir grąžink pokalbį prie to, kas dar neišsiaiškinta."
+                "esame, ir grąžink pokalbį prie to, kas dar neišsiaiškinta. "
+                "Kai tikslų liko 1–2, PASAKYK klientui pažangą savais žodžiais "
+                "(pvz. „beliko patikrinti rozetę — ir bus aišku“)."
             )
 
     # Bridge-phase anchor for the NARRATOR too (live 2026-08-13: it slid back
@@ -648,6 +764,91 @@ def state_facts_block(engine) -> str | None:
             "- TILTO FAZĖ: routeris jau pripažintas sugedusiu, kabelis PERKIŠTAS į "
             "kompiuterį — apie routerį, jo lemputes ar maitinimą NEBEKLAUSK ir "
             "nebegrįžk. Kalbame tik apie kompiuterio prijungimą."
+        )
+
+    # Zone 2 (skriptai -> direktyvos): the transition to the ADDRESS — a smooth
+    # hand-over from the problem talk instead of a canned line. The OFFER's
+    # question core stays verbatim (the confirm guard keys off it).
+    idd = getattr(engine, "_ident_directive", None)
+    if idd:
+        if idd["kind"] == "address_offer":
+            facts.append(
+                "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
+                "pasakyk, kad patikrai reikia adreso, ir pasiūlyk adresą pagal "
+                "skambinančio numerį. Patį klausimą užduok BŪTENT taip, žodis į "
+                f"žodį: „Ar skambinate dėl {idd['adresas']}?“ Daugiau klausimų "
+                "neužduok ir adreso nekeisk."
+            )
+        elif idd["kind"] == "anamnesis":
+            facts.append(
+                "- ANAMNEZĖS ŽINGSNIS (prisitaikyk prie to, ką klientas jau "
+                "pasakė — neklausk to, kas jau aišku): išsiaiškink, KADA dingo "
+                "internetas ir ar prieš tai buvo koks įvykis (audra, remontas, "
+                "kažką keitė). VIENAS trumpas klausimas. "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+            )
+        elif idd["kind"] == "problem_gate":
+            facts.append(
+                "- PROBLEMOS VARTAI: klientas dar nepasakė aiškios MŪSŲ srities "
+                "problemos. Išsiaiškink, dėl kokios paslaugos skambina — internetas, "
+                "TV, telefonas ar sąskaita. Jei tema ne mūsų (pvz. „vaikai neklauso“) — "
+                "mandagiai pasakyk, kad čia interneto tiekėjo pagalba, ir paklausk, ar "
+                "yra ryšio problema. Jei klientas KLAUSIA — atsakyk vienu sakiniu ir "
+                "vėl paklausk problemos. NEKLAUSK adreso ir nieko netikrink. "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+            )
+        elif idd["kind"] == "anamnesis_followup":
+            facts.append(
+                "- ANAMNEZĖS ŽINGSNIS: klientas nežino, kada dingo — paklausk "
+                "TIK vieno: kada paskutinį kartą internetas TIKRAI veikė "
+                "(tai susiaurins gedimo laiko langą). "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+            )
+        else:
+            facts.append(
+                "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
+                "paaiškink, kad patikrai iki buto reikia adreso, ir paklausk TIK "
+                "adreso (viena „?“). Neišgalvok faktų. "
+                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+            )
+
+    # Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments,
+    # worded by the narrator into the conversation's flow — the engine still
+    # owns the stages and the capture; only the WORDING is free.
+    td = getattr(engine, "_ticket_directive", None)
+    if td:
+        from .ticket_flow import ticket_need
+
+        if td["kind"] == "phone_intro":
+            if getattr(engine, "_bridge_bound", False):
+                goal = (
+                    "pranešk gerą žinią — internetas kol kas veikia per kompiuterį — "
+                    "ir kad registruoji meistrą dėl naujo routerio; paklausk TIK "
+                    "vieno: ar susisiekimui tinka numeris, iš kurio klientas skambina"
+                )
+            else:
+                goal = (
+                    f"pranešk, kad telefonu šito neišspręsim ({ticket_need(engine)}) "
+                    "ir kad registruoji meistrą; paklausk TIK vieno: ar susisiekimui "
+                    "tinka numeris, iš kurio klientas skambina"
+                )
+        elif td["kind"] == "hours":
+            goal = "paklausk TIK vieno: kada klientui patogiausia sulaukti skambučio"
+        else:
+            goal = "paklausk TIK vieno: ar susisiekimui tinka numeris, iš kurio klientas skambina"
+        facts.append(
+            f"- TIKETO ŽINGSNIS (savais žodžiais, trumpai, viena „?“): {goal}. "
+            "Neišgalvok faktų ir nieko kito nesiūlyk. "
+            f"(Atsarginė formuluotė: „{td['fallback']}“)"
+        )
+
+    # Persona: the RECAP as a goal directive — read the gathered facts back in
+    # the narrator's own words, one short sentence, never the label:value dump.
+    rd = getattr(engine, "_recap_directive", None)
+    if rd:
+        facts.append(
+            "- PASITIKSLINK (savais žodžiais, VIENU trumpu sakiniu): ar teisingai "
+            f"supratai — {rd['faktai']}. Baik klausimu „ar taip?“. Neišgalvok faktų."
         )
 
     # Persona: the FINDINGS moment as a goal directive — the narrator states
@@ -699,11 +900,29 @@ def state_facts_block(engine) -> str | None:
     directive = getattr(engine, "_evidence_directive", None)
     if directive:
         kodel = f" Kodėl tikriname: {directive['kodel']}." if directive.get("kodel") else ""
+        # The OTHER still-open goals are named as off-limits (eval 2026-08-21:
+        # asked "which device" and "laidu ar Wi-Fi" in one breath — the
+        # connection type is a later fact with its own turn).
+        kiti = ""
+        if (s.resolution or {}).get("verdict"):
+            from .evidence import open_goals_lt as _ogl
+
+            rest = [
+                g.strip()
+                for g in _ogl(s.evidence, s.resolution.get("verdict")).split(";")
+                if g.strip() and g.strip() != str(directive["reikia"]).strip()
+            ]
+            if rest:
+                kiti = (
+                    " KITŲ DALYKŲ DAR NEKLAUSK IR NEMINĖK (jiems bus savas turn'as): "
+                    + "; ".join(rest)
+                    + "."
+                )
         facts.append(
             "- KLAUSK DABAR (savais žodžiais, natūraliai, pagal pokalbio eigą): "
             f"išsiaiškink — {directive['reikia']}.{kodel} "
             "Užduok TIK ŠĮ VIENĄ klausimą (viena '?'), trumpai; neišgalvok faktų "
-            "ir nesiūlyk nieko kito. Jei tinka, pradėk trumpa reakcija į tai, "
+            f"ir nesiūlyk nieko kito.{kiti} Jei tinka, pradėk trumpa reakcija į tai, "
             f"ką klientas ką tik pasakė. (Atsarginė formuluotė: „{directive['klausimas']}“)"
         )
 
@@ -890,6 +1109,15 @@ def update_state_from_observation(engine, action: str, observation: str):
         # overwrites (slots.Slot.propose).
         if action == "resolve_address" and isinstance(obs_data.get("resolution"), dict):
             engine.state.profile.update_from_resolution(obs_data["resolution"])
+            # F2 (2026-08-20): a failed lookup speaks its DIAGNOSIS — what was
+            # found and what was not — so the caller can correct themselves
+            # ("Vilniaus gatvę randu, bet 39 numerio nematau").
+            if not obs_data.get("success"):
+                from .identification_flow import address_diag_note
+
+                engine._addr_diag_note = address_diag_note(obs_data)
+            else:
+                engine._addr_diag_note = None
 
         if action in ("find_customer", "resolve_address") and obs_data.get("success"):
             # resolve_address nests the normalized profile under `customer`;

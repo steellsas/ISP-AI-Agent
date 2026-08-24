@@ -270,6 +270,114 @@ class TestNarratorFindings:
         )
         monkeypatch.setattr(ev, "solution_for", lambda e, v: "bridge")
 
+    def test_anamnesis_followup_ladder(self, db_connection):
+        """E (2026-08-20): 'nežinau' -> ask when it last WORKED -> the answer
+        lands as anamnesis_when and the ladder proceeds to the address."""
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        s.problem_type = "internet_down"
+        s.anamnesis_asked = True
+        reply = agent._identification_scripted_reply("Nežinau, nepastebėjau.")
+        assert reply and "paskutinį kartą" in reply
+        reply2 = agent._identification_scripted_reply("Vakar lyg viskas veikė.")
+        assert reply2 and ("adres" in reply2.lower())
+        assert s.anamnesis_when and "vakar" in s.anamnesis_when.lower()
+        assert "paskutinį kartą veikė" in (s.anamnesis_raw or "")
+
+    def test_wait_signal_holds_instead_of_reasking(self, monkeypatch):
+        """C (2026-08-20): 'palaukit, ateinu' -> Gerai, lauksiu; no retry burn."""
+        from types import SimpleNamespace
+
+        from agent import evidence as ev
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
+        monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: None)
+        monkeypatch.setattr(
+            ev,
+            "next_missing",
+            lambda e, s, c: ("device_present", {"klausimas": "Radote routerį?"}),
+        )
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "no_mac_observed", "step": "dr_intro"},
+                evidence={},
+                turn_count=2,
+            ),
+            _findings_announced=False,
+            _recap_state="done",
+            _recap_directive=None,
+            _evidence_last_ask_key="device_present",
+            _evidence_asks={"device_present": 1},
+            _evidence_directive=None,
+            _pending_announce="",
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        reply = evidence_drive(engine, "Palaukit, tuoj ateinu.")
+        assert reply and "lauksiu" in reply.lower()
+        assert engine._evidence_asks["device_present"] == 1  # retry NOT burned
+
+    def test_reask_phrase_has_no_internal_labels(self):
+        from agent.identification import phrase
+
+        text = phrase("reask_reason", tema="routeris surastas", klausimas="Radote?")
+        assert "routeris surastas" not in text and "Radote?" in text
+
+    def test_phone_echo_is_consent(self, monkeypatch):
+        """D (2026-08-20): the caller echoing our own phone offer is a yes."""
+        from agent.barge_in import token_overlap
+
+        q = "Ar tiks numeris, iš kurio skambinate? — ar tiks tas, iš kurio skambinate?"
+        assert token_overlap("Ar tiks tas, iš kurio skambinu?", q) >= 0.8
+        assert token_overlap("O kiek kainuoja meistras?", q) < 0.8
+
+    def test_recap_delegates_to_narrator(self, monkeypatch):
+        from agent.evidence_drive import maybe_facts_recap
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        from types import SimpleNamespace
+
+        engine = SimpleNamespace(
+            state=SimpleNamespace(evidence={"lights": {"value": "nedega", "source": "client"}}),
+            _recap_state="",
+            _recap_directive=None,
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        from agent import evidence as ev
+
+        monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
+        assert maybe_facts_recap(engine) is None
+        assert engine._recap_directive and "nedega" in engine._recap_directive["faktai"]
+        assert engine._recap_state == "pending"
+
+    def test_recap_off_switch_stays_scripted(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from agent import evidence as ev
+        from agent.evidence_drive import maybe_facts_recap
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
+        engine = SimpleNamespace(
+            state=SimpleNamespace(evidence={"x": {}}),
+            _recap_state="",
+            _recap_directive=None,
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        reply = maybe_facts_recap(engine)
+        assert reply and "Pasitikslinu" in reply and engine._recap_directive is None
+
+    def test_recap_directive_lands_in_facts_block(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._recap_directive = {"faktai": "routerio lemputės: nedega"}
+        block = agent._state_facts_block()
+        assert "PASITIKSLINK" in block and "nedega" in block
+
     def test_findings_delegate_to_narrator(self, monkeypatch):
         from agent.evidence_drive import evidence_drive
 
@@ -559,3 +667,503 @@ class TestEvidenceDeclared:
         for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
             for key, item in spec_for(verdict)["client"].items():
                 assert item.get("reikia"), f"{verdict}.{key} be 'reikia'"
+
+
+class TestIdentificationF:
+    """F (2026-08-20): identifikacija kaip pokalbis — pasakyk, ką radai ir ko
+    ne; paragink su KODĖL; nesėkmę užfiksuok įraše."""
+
+    def test_diag_street_found_house_not(self):
+        from agent.identification_flow import address_diag_note
+
+        note = address_diag_note(
+            {
+                "success": False,
+                "resolution": {
+                    "city": {"status": "ok", "matched": "Šiauliai"},
+                    "street": {"status": "ok", "matched": "Vilniaus g."},
+                    "house": {"status": "not_found", "given": "39", "known_houses": [29, 31]},
+                    "apartment": {"status": "skipped"},
+                },
+            }
+        )
+        assert note and "RANDU" in note and "39" in note and "29" in note
+
+    def test_diag_street_elsewhere_and_fuzzy(self):
+        from agent.identification_flow import address_diag_note
+
+        note = address_diag_note(
+            {
+                "success": False,
+                "resolution": {
+                    "city": {"status": "ok", "matched": "Šiauliai"},
+                    "street": {
+                        "status": "not_in_city",
+                        "given": "Vilniaus g.",
+                        "found_elsewhere": [{"city": "Kuršėnai"}],
+                    },
+                    "house": {"status": "skipped"},
+                },
+            }
+        )
+        assert note and "NERANDU" in note and "Kuršėnai" in note
+        fuzzy = address_diag_note(
+            {
+                "success": False,
+                "resolution": {
+                    "city": {"status": "ok", "matched": "Šiauliai"},
+                    "street": {"status": "unclear", "fuzzy_candidates": ["Vytauto", "Vilniaus"]},
+                    "house": {"status": "skipped"},
+                },
+            }
+        )
+        assert fuzzy and "Vytauto" in fuzzy
+        assert address_diag_note({"success": False, "resolution": {}}) is None
+
+    def test_diag_note_lands_in_facts_block(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._addr_diag_note = "- ADRESO PAIEŠKOS DIAGNOZĖ: gatvę RANDU, namo NĖRA."
+        block = agent._state_facts_block()
+        assert block and "ADRESO PAIEŠKOS DIAGNOZĖ" in block
+
+    def test_encouragement_appears_once(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.turn_count = 5
+        first = agent._state_facts_block() or ""
+        second = agent._state_facts_block() or ""
+        assert "PARAGINIMAS DĖL ADRESO" in first
+        assert "PARAGINIMAS DĖL ADRESO" not in second
+
+    def test_failed_identification_lands_on_the_record(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.heard_utterances.extend(["neveikia internetas", "Vilnaus gatve kazkur"])
+        summary = agent._build_call_summary()
+        fail = summary["identifikacija_nepavyko"]
+        assert fail and "Vilnaus gatve kazkur" in fail["girdeta"]
+
+    def test_short_ladder_phrases(self):
+        from agent.identification import phrase
+
+        assert phrase("address_ask") == "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
+        assert "patikrinsiu ryšį" in phrase("address_offer", adresas="X")
+
+
+class TestTicketDirectives:
+    """Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments
+    become narrator goal directives; retries/cancel stay scripted; off reverts."""
+
+    def _agent(self, db_connection=None):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "escalate"}
+        agent._ticket_stage = "phone"
+        agent._ticket_ctx = {"step": None}
+        return agent
+
+    def test_phone_intro_goes_to_narrator(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("nepatogu, ne namuose")
+        assert reply is None  # the narrator takes the turn
+        td = agent._ticket_directive
+        assert td and td["kind"] == "phone_intro" and "numeris" in td["fallback"]
+        block = agent._state_facts_block()
+        assert "TIKETO ŽINGSNIS" in block and "registruoji meistrą" in block
+
+    def test_off_switch_keeps_scripted(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("gerai")
+        assert reply and "Ar tiks numeris" in reply
+        assert agent._ticket_directive is None
+
+    def test_retry_stays_scripted_even_in_narrator_mode(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        agent._ticket_ctx["ask_retry"] = "phone"
+        reply = agent._identification_scripted_reply("kazkas neaisku")
+        assert reply and "skaitmenimis" in reply  # precision repeat, no LLM
+        assert agent._ticket_directive is None
+
+    def test_hours_directive(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        agent._ticket_stage = "hours"
+        agent._ticket_ctx = {"step": None, "intro_done": True}
+        assert agent._identification_scripted_reply("tiks tas") is None
+        assert agent._ticket_directive["kind"] == "hours"
+        assert "patogiausia" in agent._state_facts_block()
+
+
+class TestIdentDirectives:
+    """Zone 2: the transition to the address becomes a narrator goal directive;
+    the OFFER question core stays verbatim (confirm guard); off reverts."""
+
+    def _agent(self, candidate=True):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        if candidate:
+            agent.state.phone_candidate = {
+                "customer_id": "CUST009",
+                "name": "Test",
+                "address": "Šiauliai, Vilniaus g. 29",
+                "street": "Vilniaus g.",
+                "house": "29",
+                "apartment": None,
+                "city": "Šiauliai",
+            }
+        return agent
+
+    def test_offer_goes_to_narrator_with_verbatim_core(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("Vakar po audros dingo")
+        assert reply is None
+        idd = agent._ident_directive
+        assert idd and idd["kind"] == "address_offer" and "Vilniaus g. 29" in idd["adresas"]
+        block = agent._state_facts_block()
+        assert "Ar skambinate dėl Vilniaus g. 29?" in block  # verbatim core kept
+
+    def test_ask_goes_to_narrator_without_candidate(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = self._agent(candidate=False)
+        assert agent._identification_scripted_reply("Vakar po audros dingo") is None
+        assert agent._ident_directive["kind"] == "address_ask"
+        assert "IDENTIFIKACIJOS ŽINGSNIS" in agent._state_facts_block()
+
+    def test_off_switch_keeps_scripted_offer(self, db_connection, monkeypatch):
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = self._agent()
+        reply = agent._identification_scripted_reply("Vakar po audros dingo")
+        assert reply and "Ar skambinate dėl Vilniaus g. 29?" in reply
+        assert agent._ident_directive is None
+
+
+class TestAnamnesisDirectives:
+    """Zone 3: the anamnesis questions go to the narrator (adaptive wording);
+    the capture ladder and the follow-up rung mechanics stay deterministic."""
+
+    def test_anamnesis_goes_to_narrator(self, db_connection, monkeypatch):
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        assert agent._identification_scripted_reply("Neveikia internetas") is None
+        assert agent.state.anamnesis_asked is True  # the flag still set
+        assert agent._ident_directive["kind"] == "anamnesis"
+        assert "ANAMNEZĖS ŽINGSNIS" in agent._state_facts_block()
+
+    def test_followup_goes_to_narrator(self, db_connection, monkeypatch):
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        assert agent._identification_scripted_reply("Nežinau, nepastebėjau") is None
+        assert agent._ident_directive["kind"] == "anamnesis_followup"
+        assert "TIKRAI veikė" in agent._state_facts_block()
+
+    def test_off_switch_keeps_scripted_anamnesis(self, db_connection, monkeypatch):
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.problem_type = "internet_down"
+        reply = agent._identification_scripted_reply("Neveikia internetas")
+        assert reply and "kada dingo" in reply
+        assert agent._ident_directive is None
+
+
+class TestDirectiveTurnsAreSpeechOnly:
+    """Live 2026-08-20: with tools exposed the model grabbed resolve_address on
+    the anamnesis directive turn and skipped the ladder — directive turns get
+    NO tools; the engine owns the mechanics."""
+
+    def test_no_tools_when_directive_set(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        assert agent._scoped_tools_schema()  # baseline: tools exist
+        agent._ident_directive = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
+        assert agent._scoped_tools_schema() == []
+        agent._ident_directive = None
+        agent._ticket_directive = {"kind": "hours", "fallback": "x"}
+        assert agent._scoped_tools_schema() == []
+
+
+class TestDetourResilience:
+    """Live 2026-08-20: a bare 'Ne.' read as farewell derailed the recap ->
+    findings chain and the agent re-ran diagnostics it already had."""
+
+    def test_bare_ne_is_never_a_farewell(self):
+        from agent.resolution import detect_farewell
+
+        assert detect_farewell("Ne.") is False
+        assert detect_farewell("Ne") is False
+        assert detect_farewell("Ne, ačiū") is True  # real closer kept
+        assert detect_farewell("Viso gero") is True
+
+    def test_split_ne_symptom_polarity(self):
+        from agent.nlu import extract_symptoms
+
+        assert extract_symptoms("Ne 1 lemputė ne dega.").get("lights") == "nedega"
+        assert extract_symptoms("lemputės nedega").get("lights") == "nedega"
+
+    def test_resync_note_renders_once(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        from agent.evidence import CLIENT, set_fact
+
+        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 1)
+        agent._resync_note = True
+        block = agent._state_facts_block()
+        assert "GRĮŽTAME PRIE SPRENDIMO" in block and "nustatyta" in block
+        assert "GRĮŽTAME" not in (agent._state_facts_block() or "")  # consumed
+
+
+class TestPrimaryGoalFrozen:
+    """A (2026-08-21): the primary goal never flips mid-call; other mentions
+    become secondary problems (asked at the end, listed on the ticket)."""
+
+    def test_mid_call_mention_becomes_secondary(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        agent._prefill_slots_from_text("Neveikia internetas")
+        assert s.problem_type == "internet_down"
+        s.customer_id = "CUST009"
+        s.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
+        assert s.problem_type == "internet_down"  # frozen
+        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "billing"
+        # dedupe: the same type mentioned again does not duplicate
+        agent._prefill_slots_from_text("Dėl sąskaitos dar")
+        assert len(s.secondary_problems) == 1
+
+    def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        s.customer_id = "CUST009"
+        s.problem_type = "internet_down"
+        s.secondary_problems.append({"tipas": "tv", "tekstas": "TV blogai rodo", "turn": 5})
+        s.case_closed = True
+        block = agent._state_facts_block()
+        assert "PAPILDOMOS PROBLEMOS" in block and "TV blogai rodo" in block
+
+    def test_bridge_bound_phrase_states_visibility(self):
+        from agent.identification import phrase
+
+        text = phrase("bridge_bound")
+        assert "matau" in text.lower() and "pririšau" in text.lower()
+
+
+class TestWalkerFollowsLedger:
+    """B2 (Andrius 2026-08-21): one source of truth — in solver-driven packs the
+    walker reads no answers until the evidence layer hands over; facts may
+    carry a `zingsnis` pointer so RAG/hint/tikslas follow the ledger."""
+
+    def test_walker_silent_during_evidence_collection(self):
+        from types import SimpleNamespace
+
+        from agent.resolution import get_strategy
+        from agent.walker_flow import walker_owns_turn
+
+        strat = get_strategy("no_mac_observed")
+        engine = SimpleNamespace(_bridge_bound=False)
+        r = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        assert walker_owns_turn(engine, r, strat.step("dr_lights")) is False
+        assert walker_owns_turn(engine, r, strat.step("escalate")) is True
+        assert walker_owns_turn(engine, r, strat.step("dr_see_device")) is True
+        r["solution_synced"] = "dr_plug_pc"
+        assert walker_owns_turn(engine, r, strat.step("dr_plug_pc")) is True
+        engine._bridge_bound = True
+        del r["solution_synced"]
+        assert walker_owns_turn(engine, r, strat.step("dr_verify")) is True
+
+    def test_fact_pointer_moves_the_walker(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        gotos = []
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                resolution={"verdict": "no_mac_observed", "step": "dr_intro"},
+                evidence={},
+                turn_count=1,
+            ),
+            _findings_announced=True,
+            _recap_state="done",
+            _recap_directive=None,
+            _evidence_last_ask_key=None,
+            _evidence_asks={},
+            _evidence_directive=None,
+            _pending_announce="",
+            _goto_step=lambda r, t: (gotos.append(t), r.__setitem__("step", t)),
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        reply = evidence_drive(engine, "labas")
+        assert reply and "routerį" in reply  # first fact asked (device_present)
+        assert gotos == ["dr_lights"]  # pointer followed the fact
+
+
+class TestOpenerAndClosingHygiene:
+    """Live 2026-08-21: a garbled opener triggered the address offer before
+    any problem; a garble in the ticket dialogue became a 'secondary problem';
+    the closing LLM re-asked the hours after registration."""
+
+    def test_garbled_opener_asks_for_the_problem(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        r1 = agent._identification_scripted_reply("Atsikai, daro.")
+        assert r1 and "problema" in r1
+        r2 = agent._identification_scripted_reply("Mmm kažkas.")
+        assert r2 and "problema" in r2
+        # scripted mode (NARRATOR_QUESTIONS=off in tests): keeps asking, then
+        # the gate closes politely on the 5th attempt
+        assert "problema" in agent._identification_scripted_reply("Nu...")
+        assert "problema" in agent._identification_scripted_reply("Eee...")
+        bye = agent._identification_scripted_reply("Mmm.")
+        assert bye and "skambinkite" in bye
+
+    def test_phone_account_block_waits_for_the_problem(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.phone_candidate = {
+            "customer_id": "CUST009",
+            "name": "T",
+            "address": "Šiauliai, Vilniaus g. 29",
+            "street": "Vilniaus g.",
+            "house": "29",
+            "apartment": None,
+            "city": "Šiauliai",
+        }
+        assert "PHONE ACCOUNT" not in (agent._state_facts_block() or "")
+        agent.state.problem_type = "internet_down"
+        assert "PHONE ACCOUNT" in (agent._state_facts_block() or "")
+
+    def test_no_secondary_problems_from_ticket_stage_garbles(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        s = agent.state
+        s.problem_type = "internet_down"
+        s.customer_id = "CUST009"
+        s.resolution = {"verdict": "no_mac_observed", "step": "escalate"}
+        agent._ticket_stage = "hours"
+        agent._prefill_slots_from_text("Sąskaitos žemės gatvės klausimas")
+        assert s.secondary_problems == []
+        agent._ticket_stage = None
+        agent._prefill_slots_from_text("Žemės gatvės")  # 2 words: a garble
+        assert s.secondary_problems == []
+        agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
+        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "billing"
+
+
+class TestLiveCall0821Fixes:
+    """Two live calls 2026-08-21: step hint/RAG overrode recap+findings (1),
+    the bridge was a one-liner and 'kaip tai padaryti?' got 'ne mano
+    sritis' (2), no problem stated -> an address hunt (3)."""
+
+    def test_directive_turn_drops_step_hint_and_playbook(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_power"}
+        plain = agent._state_facts_block() or ""
+        assert "THIS STEP" in plain
+        agent._findings_directive = {
+            "faktai": "x",
+            "isvada": "y",
+            "sprendimai": "",
+            "pasiulymas": "",
+        }
+        isolated = agent._state_facts_block() or ""
+        assert "IŠVADOS MOMENTAS" in isolated
+        assert "THIS STEP" not in isolated and "PLAYBOOK" not in isolated
+
+    def test_bridge_solution_syncs_the_walker_to_the_cable_step(self, monkeypatch):
+        from types import SimpleNamespace
+
+        from agent import evidence as ev
+        from agent.evidence_drive import evidence_drive
+
+        monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
+        monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: "confirmed")
+        monkeypatch.setattr(ev, "solution_for", lambda e, v: "bridge")
+        monkeypatch.setattr(ev, "solution_step", lambda e, v: "dr_pick_cable")
+        gotos = []
+        r = {"verdict": "no_mac_observed", "step": "dr_offer_bridge"}
+        engine = SimpleNamespace(
+            state=SimpleNamespace(resolution=r, evidence={}, turn_count=3),
+            _findings_announced=True,
+            _evidence_last_ask_key=None,
+            _evidence_asks={},
+            _goto_step=lambda rr, t: (gotos.append(t), rr.__setitem__("step", t)),
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        assert evidence_drive(engine, "turiu kompiuterį") is None
+        assert gotos == ["dr_pick_cable"] and r["solution_synced"] == "dr_pick_cable"
+
+    def test_howto_at_standing_instruction_is_on_task(self):
+        from types import SimpleNamespace
+
+        from agent.perception_flow import classify_side_topic, is_howto
+
+        assert is_howto("O kaip tai padaryti?") and is_howto("Padėkit, nežinau kaip")
+        engine = SimpleNamespace(
+            state=SimpleNamespace(
+                customer_id="C1",
+                case_closed=False,
+                resolution={"verdict": "no_mac_observed", "step": "dr_pick_cable", "asked": True},
+            ),
+            _ticket_stage=None,
+            _evidence_conflict=None,
+            _end_confirm_pending=False,
+            _resume_hold=False,
+            _side_topic_this_turn=False,
+            _side_topic_turns=0,
+            _evidence_last_ask_key=None,
+            _last_understanding={"tipas": "klausimas", "faktai": {}},
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+        )
+        assert classify_side_topic(engine, "O kaip tai padaryti?") is False
+
+    def test_problem_gate_scripted_then_directive_then_close(self, db_connection, monkeypatch):
+        from agent.react_agent import ReactAgent
+
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
+        agent = ReactAgent(caller_phone="unknown")
+        assert "problema" in agent._identification_scripted_reply("Atsikai daro")
+        assert "problema" in agent._identification_scripted_reply("Vaikai neklauso")
+        assert agent._identification_scripted_reply("Viki kur neklauso") is None
+        assert agent._ident_directive["kind"] == "problem_gate"
+        assert "PROBLEMOS VARTAI" in agent._state_facts_block()
+        assert agent._identification_scripted_reply("Kokiu problemu?") is None
+        bye = agent._identification_scripted_reply("Mendulija")
+        assert bye and "skambinkite" in bye and agent.state.case_closed

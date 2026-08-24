@@ -124,3 +124,14 @@ sprendimai:
 4. Patikra: `uv run pytest tests/test_fault_packs.py` (struktūra) ir naujas
    scenarijus `agent/eval/scenarios.json` + `run_eval.py --engine v2`.
 5. Jei keitei modulį — auksinis eval'as privalomas (paliečia visus naudotojus).
+
+## Įrenginio patikslinimas (gairė, 2026-08-20)
+
+Namuose prie linijos gali būti ne tik routeris: TV priedėlis, switch'as, kitas
+el. prietaisas. Kai gedimo faktams svarbu, KURIS įrenginys tikrinamas, pack'e
+deklaruokite patikslinimo faktą (pvz. `irenginio_tipas` su `atsakymai:
+routeris/priedelis/switch/kita` ir `patikslinimas:` klausimu) — agentas
+paklaus, o ne spės. Atsakymų skaitymo taisyklė: faktas priskiriamas tam
+objektui, apie kurį klientas kalba („kitas įrenginys veikia, o routeris ne“ →
+rozetė veikia, routeris — ne; „veikia“ apie kitą prietaisą niekada nereiškia
+routerio veikimo).

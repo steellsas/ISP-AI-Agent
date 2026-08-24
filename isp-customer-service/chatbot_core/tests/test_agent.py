@@ -1,3 +1,5 @@
+import pytest
+
 """
 Tests for agent logic (without real LLM calls where possible).
 
@@ -481,6 +483,7 @@ class TestHearingAgent:
         assert reply is not None and "lemputė" in reply
         assert "maitinimą" in reply  # the kodel sentence
 
+    @pytest.mark.usefixtures("walker_driven")
     def test_bare_ne_to_escalate_clarifies_once_then_escalates(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
         agent._walk_resolution("Ne.")  # keyword "no" routes dr_intro -> escalate
@@ -515,7 +518,7 @@ class TestHearingAgent:
         agent._ticket_stage_reply()  # confirm question goes out
         agent._pre_turn_guards("gerai, registruokite vis dėlto")
         assert agent._ticket_stage == "phone"  # resumed, not cancelled
-        assert "numeriu" in agent._ticket_stage_reply()  # stage re-asks
+        assert "numeris" in agent._ticket_stage_reply()  # stage re-asks
 
     # --- round 2 (live 2026-08-11, call 2) ------------------------------------
 
@@ -649,7 +652,7 @@ class TestHearingAgent:
         agent._drive_bridge_offered = True
         agent._drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
-        assert agent.state.resolution["step"] == "dr_plug_pc"  # …AT the bridge
+        assert agent.state.resolution["step"] == "dr_pick_cable"  # …AT the bridge
 
     # --- round 5 (2026-08-12): bridge-failure ladder ---------------------------
 
@@ -670,7 +673,7 @@ class TestHearingAgent:
         assert agent.state.evidence["lan_active"]["value"] == "neaktyvus"
         r3 = agent._drive_propose_fix("", "ir dabar nieko")
         assert "kabeliu" in r3  # the possible incoming-cable problem is NAMED
-        assert "Kokiu telefono numeriu" in r3  # technician registration begins
+        assert "Ar tiks numeris" in r3  # technician registration begins
         assert "NEPAVYKO" in (agent._bridge_fail_note or "")
         _complete_ticket_dialogue(agent)
         with db_connection.cursor() as cur:
@@ -718,7 +721,7 @@ class TestHearingAgent:
         monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: calls.append("simulated"))
         monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
         reply = agent._drive_propose_fix("", "įkišau į kompiuterį")
-        assert "pririšau" in reply  # the bind ran
+        assert "ririšau" in reply.lower() or "Pririšau" in reply  # the bind ran
         assert agent.state.resolution["step"] == "dr_verify"  # verify owns the next reply
         agent._walk_resolution("Jau atsistatė, veikia internetas!")
         assert agent.state.resolution["step"] == "dr_register_router"  # success HEARD
@@ -733,7 +736,7 @@ class TestHearingAgent:
         intro = agent._ticket_stage_reply()
         assert "veikia per kompiuterį" in intro
         assert "nepavyks" not in intro
-        assert "Kokiu telefono numeriu" in intro
+        assert "Ar tiks numeris" in intro
 
     def test_lan_pending_answers(self):
         from agent.evidence import read_pending_answer
@@ -795,6 +798,7 @@ class TestAutoRegisterEscalate:
         assert detect_farewell("visa gera, ačiū") is True
 
 
+@pytest.mark.usefixtures("walker_driven")
 class TestRestoredPreAnswer:
     """A clear 'atsirado / veikia' fused with the goodbye pre-answers the restored
     CONFIRM before it was asked — the resolve gets RECORDED instead of the call dying
@@ -1216,7 +1220,9 @@ class TestFarewellPurity:
 
         assert detect_farewell("Ne daganiai 1.") is False
         assert detect_farewell("Ne viena") is False
-        assert detect_farewell("Ne.") is True
+        # Policy 2026-08-20 (Andrius): a bare "Ne." is an ANSWER — its
+        # question owner clarifies; never a farewell.
+        assert detect_farewell("Ne.") is False
         assert detect_farewell("Ne, ačiū") is True
         assert detect_farewell("viskas gerai") is True
         assert detect_farewell("viso gero") is True
@@ -1262,10 +1268,10 @@ class TestReviewGaps:
         s = AgentSession(caller_phone="+37060012353", engine="graph")
         s.greeting()
         reply = s.handle_turn("neveikia internetas")  # scripted anamnesis, no LLM
-        assert "kada pastebėjote" in reply
+        assert "kada dingo" in reply
         roles = [(m["role"], m.get("content")) for m in s.state.messages]
         assert ("user", "neveikia internetas") in roles
-        assert roles[-1][0] == "assistant" and "kada pastebėjote" in roles[-1][1]
+        assert roles[-1][0] == "assistant" and "kada dingo" in roles[-1][1]
 
     def test_llm_turn_appends_user_exactly_once(self, db_connection):
         from unittest.mock import patch as _patch
@@ -1389,7 +1395,7 @@ class TestSmallTalkBeforeProblem:
         agent = self._fresh()
         agent.state.problem_type = "internet_down"
         reply = agent._identification_scripted_reply("neveikia internetas")
-        assert reply is not None and "kada pastebėjote" in reply  # anamnesis, not ask_problem
+        assert reply is not None and "kada dingo" in reply  # anamnesis, not ask_problem
 
     def test_facts_forbid_address_offer_before_problem(self, db_connection):
         agent = self._fresh()
@@ -1512,9 +1518,12 @@ class TestDriveRepeatBailout:
         agent._recap_state = "done"  # recap checkpoint tested elsewhere (round 3)
         agent._drive_repeats = 2  # repeat/disambiguate streak already observed
 
-        assert agent.solver_drive_turn("gerai gerai") is None  # walker resumes
-        assert agent._drive_disabled is True  # thinker benched for the rest of the call
-        assert agent.solver_drive_turn("nedega") is None  # and stays benched
+        # 2026-08-21 (fix 2): the bridge is WALKED through the pack's guided
+        # steps — the solver never drives it, so there is no distrust loop to
+        # bench; the evidence layer syncs the walker to the cable step instead.
+        assert agent.solver_drive_turn("gerai gerai") is None  # walker owns the bridge
+        assert agent.state.resolution.get("solution_synced") == "dr_pick_cable"
+        assert agent.solver_drive_turn("nedega") is None  # and keeps owning it
 
     def test_evidence_keeps_driving_after_solver_bench(self, db_connection, monkeypatch):
         # The rewind trap is dead: a benched solver no longer strands the call
@@ -1596,7 +1605,7 @@ class TestBindDiscipline:
     def test_drive_escalate_uses_state_ticket(self, db_connection, monkeypatch):
         agent = self._driving_agent(monkeypatch)
         q1 = agent._drive_escalate(None)
-        assert "Kokiu telefono numeriu" in q1  # contacts dialogue first (2026-08-04)
+        assert "Ar tiks numeris" in q1  # contacts dialogue first (2026-08-04)
         say = _complete_ticket_dialogue(agent)
         assert agent.state.ticket_id  # recorded on the call, not lost
         assert agent.state.closed_reason == "registered"
@@ -1637,7 +1646,7 @@ class TestTicketDialogue:
         agent._walk_resolution("gerai, tinka")
         assert agent.state.ticket_id is None  # not yet — contacts first
         assert agent._ticket_stage == "phone"
-        assert "Kokiu telefono numeriu" in agent._identification_scripted_reply("gerai, tinka")
+        assert "Ar tiks numeris" in agent._identification_scripted_reply("gerai, tinka")
 
     def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
@@ -1684,8 +1693,8 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
         first = agent._identification_scripted_reply(None)
-        assert "Registruoju gedimą" in first and "maršrutizatorius" in first
-        assert "Kokiu telefono numeriu" in first
+        assert "Registruoju meistrą" in first and "maršrutizatorius" in first
+        assert "Ar tiks numeris" in first
         again = agent._ticket_stage_reply()
         assert "Registruoju gedimą" not in again  # intro said once
 
@@ -1731,7 +1740,7 @@ class TestTicketDialogue:
         agent._pre_turn_guards("Bet kada?")
         assert agent.state.contact_hours == "Bet kada"
         reply = agent._identification_scripted_reply("Bet kada?")
-        assert "skambinti galima bet kada." in reply
+        assert "bet kada" in reply
 
     def test_trigger_utterance_not_swallowed_as_phone(self, db_connection, monkeypatch):
         # Live 2026-08-05: escalate fired mid-turn and the SAME utterance
@@ -1743,7 +1752,7 @@ class TestTicketDialogue:
         assert agent.state.contact_phone is None
         assert agent._ticket_stage == "phone"  # still waiting for its question
         first = agent._identification_scripted_reply("Neturi kompiutera")
-        assert "Kokiu telefono numeriu" in first  # the question goes out now
+        assert "Ar tiks numeris" in first  # the question goes out now
 
     def test_garbage_phone_answer_reasks_then_defaults(self, db_connection, monkeypatch):
         # Live: "Neturi kompiutera" landed as tel. on the ticket. Now: one
@@ -1849,7 +1858,7 @@ class TestTicketDialogue:
             }
         )
         reply = agent.solver_drive_turn("Neturiu, internetą naudoju tik telefonu.")
-        assert reply is not None and "Kokiu telefono numeriu" in reply
+        assert reply is not None and "Ar tiks numeris" in reply
         assert agent._ticket_stage == "phone"
 
     def test_registration_claim_without_ticket_starts_dialogue(self, db_connection, monkeypatch):
@@ -1859,7 +1868,7 @@ class TestTicketDialogue:
         extra = agent._registration_claim_guard(
             "Supratau. Užregistravau gedimą, kolegos susisieks su jumis."
         )
-        assert extra and "Kokiu telefono numeriu" in extra
+        assert extra and "Ar tiks numeris" in extra
         assert agent._ticket_stage == "phone"
         # Honest replies pass untouched.
         agent2 = self._agent_at_consent(monkeypatch)

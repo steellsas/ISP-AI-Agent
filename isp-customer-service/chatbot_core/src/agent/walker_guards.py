@@ -192,3 +192,13 @@ STEP_GUARDS = (
     classifier_confirm_route,
     classifier_instruct_route,
 )
+
+# B2 (2026-08-21): the guards that READ the caller's answer into a route. In
+# solver-driven packs they stay silent until the ledger hands over (see
+# walker_flow.walker_owns_turn); the policy guards above keep running.
+ANSWER_GUARDS = (
+    device_change_pre_answer,
+    restored_pre_answer,
+    classifier_confirm_route,
+    classifier_instruct_route,
+)

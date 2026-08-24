@@ -153,6 +153,13 @@ def ensure_action_done(engine) -> bool:
         ran = True
     if ran:
         r["action_done"] = True  # the announce is narrated this turn; advance next
+        if "update_mac" in step.tool_actions:
+            # Only a TEMPORARY bridge marks _bridge_bound (ticket-first close,
+            # bridged intro) — foreign_mac's bind IS the fix, not a bridge.
+            from .evidence import solution_for
+
+            if solution_for(s.evidence, r.get("verdict")) == "bridge":
+                engine._bridge_bound = True
     return ran
 
 
@@ -174,6 +181,24 @@ def advance_resolution(engine, user_input: str | None) -> None:
     before = r.get("step") if r else None
     engine._walk_resolution(user_input)
     engine._emit_decision(before)
+
+
+def walker_owns_turn(engine, r: dict, step) -> bool:
+    """B2: may the walker READ this turn's answer? Walker-driven packs: always.
+    Solver-driven packs: only once the evidence layer handed over — the
+    solution step was synced (`solution_synced`), the bridge is bound, or the
+    step is a verify/escalate outcome step (telemetry + outcome, not a
+    diagnostic fact the ledger collects)."""
+    from .faults import driver
+    from .resolution import StepKind
+
+    if driver(r.get("verdict")) != "solveris":
+        return True
+    if r.get("solution_synced") or getattr(engine, "_bridge_bound", False):
+        return True
+    if step.kind in (StepKind.ESCALATE, StepKind.VERIFY):
+        return True
+    return step.id in ("confirm_restored", "dr_see_device")
 
 
 def walk_resolution(engine, user_input: str | None) -> None:
@@ -214,9 +239,21 @@ def walk_resolution(engine, user_input: str | None) -> None:
     step = strat.step(r.get("step", "")) if strat else None
     if step is None:
         return
+    # B2 (Andrius 2026-08-21): in SOLVER-driven packs the LEDGER owns the
+    # evidence-collection phase — the walker reads NO answers until the
+    # evidence layer hands over (solution synced / bridge bound / escalate /
+    # verify steps). Two readers raced live: the stale dr_lights question ate
+    # "taip, turiu kompiuterį" as "dega" and sent the call down the healthy-
+    # router branch. One source of truth: the walker is a pointer, synced
+    # FROM the ledger, until it legitimately owns the execution.
+    owns = walker_owns_turn(engine, r, step)
     for guard in walker_guards.STEP_GUARDS:
+        if not owns and guard in walker_guards.ANSWER_GUARDS:
+            continue  # policy guards still run; answer readers stay silent
         if guard(engine, r, strat, step, user_input):
             return
+    if not owns:
+        return
     # ESCALATE = deterministic OUTCOME (Phase 3.11 B). The step is a call-ending
     # consent question ("užregistruosiu gedimą — ar tinka?"): the ENGINE registers
     # the ticket from STATE on consent and closes; a decline closes without a
