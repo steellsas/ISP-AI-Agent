@@ -1165,5 +1165,63 @@ class TestLiveCall0821Fixes:
         assert agent._ident_directive["kind"] == "problem_gate"
         assert "PROBLEMOS VARTAI" in agent._state_facts_block()
         assert agent._identification_scripted_reply("Kokiu problemu?") is None
+        assert agent._ident_directive["kind"] == "problem_gate"
         bye = agent._identification_scripted_reply("Mendulija")
         assert bye and "skambinkite" in bye and agent.state.case_closed
+
+
+class TestLiveCall0824Fixes:
+    """Live 2026-08-24: (1) the dr_register_router hint ('ALREADY registered')
+    leaked into every ticket-dialogue turn — the agent said 'užregistravau' three
+    times before create_ticket ever ran; (2) a caller who reported the cable
+    ALREADY in the computer while still on dr_pick_cable got the plug instruction
+    dictated to them anyway."""
+
+    def _ticket_agent(self, db_connection=None):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_register_router"}
+        return agent
+
+    def test_ticket_directive_suppresses_step_hint(self, db_connection):
+        agent = self._ticket_agent()
+        agent._bridge_bound = True
+        agent._ticket_directive = {"kind": "phone_intro", "fallback": "Ar tiks numeris?"}
+        block = agent._state_facts_block() or ""
+        assert "TIKETO ŽINGSNIS" in block
+        assert "THIS STEP" not in block and "PLAYBOOK" not in block
+        # The tense rule rides along: registration has NOT happened yet.
+        assert "užregistruosiu" in block and "niekada „užregistravau“" in block
+
+    def test_ident_directive_suppresses_step_hint(self, db_connection):
+        agent = self._ticket_agent()
+        agent._ident_directive = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
+        block = agent._state_facts_block() or ""
+        assert "THIS STEP" not in block and "PLAYBOOK" not in block
+
+    def test_plug_report_skips_the_dead_instruct_step(self, db_connection, monkeypatch):
+        from agent.resolution import get_strategy
+
+        agent = self._ticket_agent()
+        r = {"verdict": "no_mac_observed", "step": "dr_pick_cable", "asked": True}
+        agent.state.resolution = r
+        strat = get_strategy("no_mac_observed")
+        reached = []
+        monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: reached.append("sim"))
+        monkeypatch.setattr(agent, "_advance_see_device", lambda rr: reached.append("see"))
+        agent._advance_instruct(
+            r, strat.step("dr_pick_cable"), strat, "kabelį jau įkišau į kompiuterį"
+        )
+        assert r["step"] == "dr_see_device" and reached == ["sim", "see"]
+
+    def test_plain_done_still_advances_one_step(self, db_connection):
+        from agent.resolution import get_strategy
+
+        agent = self._ticket_agent()
+        r = {"verdict": "no_mac_observed", "step": "dr_pick_cable", "asked": True}
+        agent.state.resolution = r
+        strat = get_strategy("no_mac_observed")
+        agent._advance_instruct(r, strat.step("dr_pick_cable"), strat, "jau turiu rankoje")
+        assert r["step"] == "dr_plug_pc"

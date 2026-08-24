@@ -235,10 +235,11 @@ steps:
   kind: escalate
   tools: []
   consent: false
-  hint: 'The bridge works, but their router is dead. The ENGINE has ALREADY registered the fault —
-    ANNOUNCE it, do not ask permission: ''Užregistravau gedimą dėl sugedusio routerio — kolegos
-    susisieks ir detaliau paaiškins.'' Add that the internet works on this computer for now, and
-    once they have a new router they should call so we bind it.'
+  hint: 'The bridge works, but their router is dead. The ticket dialogue now collects the contact
+    number and call hours FIRST — the registration itself happens only at the very end (the closing
+    line announces "Užregistravau" then). Until that closing line say "užregistruosiu" (future
+    tense), NEVER "užregistravau". Add that the internet works on this computer for now, and once
+    they have a new router they should call so we bind it.'
 - id: escalate
   kind: escalate
   tools: []

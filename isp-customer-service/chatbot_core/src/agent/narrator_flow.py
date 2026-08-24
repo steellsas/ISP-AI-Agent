@@ -668,6 +668,8 @@ def state_facts_block(engine) -> str | None:
             getattr(engine, "_evidence_directive", None)
             or getattr(engine, "_recap_directive", None)
             or getattr(engine, "_findings_directive", None)
+            or getattr(engine, "_ticket_directive", None)
+            or getattr(engine, "_ident_directive", None)
         )
         # Step facts wait while the caller-intro question is owed (see above).
         if step is not None and not caller_pending and not directive_active:
@@ -838,6 +840,8 @@ def state_facts_block(engine) -> str | None:
             goal = "paklausk TIK vieno: ar susisiekimui tinka numeris, iš kurio klientas skambina"
         facts.append(
             f"- TIKETO ŽINGSNIS (savais žodžiais, trumpai, viena „?“): {goal}. "
+            "Registracija dar NEĮVYKO — jei mini ją, sakyk „užregistruosiu“ "
+            "(busimuoju laiku), niekada „užregistravau“. "
             "Neišgalvok faktų ir nieko kito nesiūlyk. "
             f"(Atsarginė formuluotė: „{td['fallback']}“)"
         )
