@@ -147,6 +147,43 @@ class AgentSession:
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
 
+    def speculate_next(self, synthesize=None) -> None:
+        """S1: prepare the branch cache for the OPEN question (background
+        thread entry — pure planning + standalone LLM/TTS, no state writes)."""
+        from .speculation import precompute
+
+        precompute(self._agent, synthesize)
+
+    def speculation_match(self, transcript: str) -> bytes | None:
+        """S1 serve gate: when the utterance maps to a prepared branch, arm the
+        injection (the engine's turn then skips the LLM) and return the cached
+        audio; None on any doubt — the normal path runs untouched."""
+        from .speculation import match
+
+        branch = match(self._agent, transcript)
+        if not branch:
+            return None
+        self._agent._injected_reply = {
+            "kind": branch["kind"],
+            "key": branch.get("key"),
+            "text": branch["text"],
+        }
+        self._last_injected_text = branch["text"]
+        return branch.get("audio") or None
+
+    def speculate_background_diagnosis(self) -> None:
+        """S2: a READ-ONLY telemetry refresh while the caller is busy — the
+        result is folded in at the next turn's start (never mid-turn)."""
+        try:
+            from .react_agent import execute_tool
+
+            cid = self._agent.state.customer_id
+            if not cid or self._agent.state.case_closed:
+                return
+            self._agent._bg_diagnosis = execute_tool("diagnose_connection", {"customer_id": cid})
+        except Exception:  # pragma: no cover - background best-effort
+            self._agent._bg_diagnosis = None
+
     def awaiting_caller(self) -> bool:
         """True while the call is open and a question/instruction is standing —
         the gate for the silence check-in (G3): 'Kaip sekasi?' only makes sense

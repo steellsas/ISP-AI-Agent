@@ -54,6 +54,12 @@ class EdgeTTSProvider:
             return None
         return raw if re.fullmatch(r"[+-]\d{1,2}%", raw) else None
 
+    # S3 (2026-08-24): repeated sentences (greeting, wait_ack, ticket
+    # questions, goodbyes) synthesize once per (text, voice, rate, pitch) —
+    # a small capped cache, ~20 KB per entry.
+    _CACHE: dict[tuple, bytes] = {}
+    _CACHE_MAX = 64
+
     def _synthesize_one(self, sentence: str, voice: str) -> bytes:
         """Render one sentence to MP3 via edge-tts (async collected to bytes).
         TTS_RATE speeds the delivery (like video 1.1x); TTS_PITCH shifts the
@@ -70,6 +76,11 @@ class EdgeTTSProvider:
         if pitch and pitch not in ("+0Hz", "0Hz", "0") and re.fullmatch(r"[+-]\d{1,3}Hz", pitch):
             kwargs["pitch"] = pitch
 
+        cache_key = (sentence, voice, kwargs.get("rate"), kwargs.get("pitch"))
+        cached = self._CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _collect() -> bytes:
             out = bytearray()
             async for chunk in edge_tts.Communicate(sentence, voice, **kwargs).stream():
@@ -77,7 +88,12 @@ class EdgeTTSProvider:
                     out.extend(chunk["data"])
             return bytes(out)
 
-        return asyncio.run(_collect())
+        audio = asyncio.run(_collect())
+        if audio:
+            if len(self._CACHE) >= self._CACHE_MAX:
+                self._CACHE.pop(next(iter(self._CACHE)))
+            self._CACHE[cache_key] = audio
+        return audio
 
     def stream(self, text: str, *, language: str | None = None) -> Iterator[bytes]:
         """Yield one MP3 blob per sentence as it is rendered."""

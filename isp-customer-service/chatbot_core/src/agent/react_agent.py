@@ -291,6 +291,11 @@ class ReactAgent:
         self._recap_directive: dict | None = None
         self._ticket_directive: dict | None = None
         self._ident_directive: dict | None = None
+        # S1 speculation (2026-08-24): the branch cache prepared while the
+        # caller was answering, and the matched reply injected past the LLM.
+        self._spec_cache: dict | None = None
+        self._injected_reply: dict | None = None
+        self._bg_diagnosis: str | None = None  # S2: background telemetry read
         # Findings announce: spoken ONCE at the first confirmed-hypothesis
         # moment; stashed when the reply comes from another layer that turn.
         self._findings_announced = False
@@ -1282,6 +1287,15 @@ class ReactAgent:
 
         self.state.last_intent = detect_turn_intent(user_input)
         self._maybe_raise_clarity(user_input)
+        # S2 (2026-08-24): a background telemetry read finished while the
+        # caller was busy — fold it in at the deterministic turn start, but
+        # ONLY as a refresh: in the solution/bridge phase, or when the fresh
+        # verdict FLIPS the story, it is discarded (live: the bg read saw the
+        # just-plugged PC, the narrative turned foreign_mac mid-bridge and the
+        # agent asked "ar keitėte routerį?" over a working bind). The solution
+        # steps (dr_see_device / dr_verify) do their own reads at the right
+        # moments.
+        self._apply_bg_diagnosis()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
@@ -1315,6 +1329,17 @@ class ReactAgent:
             self.state.turn_count += 1
             if self.state.turn_count > self.state.max_turns:
                 yield self.config.max_turns_message
+                return
+
+            # S1 speculation: a precomputed branch reply for the ACTIVE
+            # directive skips the LLM entirely — the wording was generated
+            # ahead, while the caller was still answering. Consumed only when
+            # the drive actually produced the predicted directive.
+            injected = self._consume_injected_reply()
+            if injected is not None:
+                yield injected
+                self.state.messages.append({"role": "assistant", "content": injected})
+                self._finalize_reply(injected)
                 return
 
             # The user message is already on the history (appended up front, so
@@ -1392,6 +1417,58 @@ class ReactAgent:
             return
 
         yield self.config.timeout_message
+
+    def _apply_bg_diagnosis(self) -> None:
+        """S2 gate: fold the background telemetry read in ONLY as a refresh —
+        in the solution/bridge phase, or when the fresh verdict FLIPS the
+        story, it is discarded (the solution steps read at the right moments
+        themselves)."""
+        bg = getattr(self, "_bg_diagnosis", None)
+        if not bg:
+            return
+        self._bg_diagnosis = None
+        with suppress(Exception):
+            r0 = self.state.resolution or {}
+            in_solution = bool(
+                r0.get("solution_synced")
+                or getattr(self, "_bridge_plug_reported", False)
+                or getattr(self, "_bridge_bound", False)
+            )
+            fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
+            current = r0.get("verdict")
+            if not in_solution and (not current or fresh == current):
+                self._update_state_from_observation("diagnose_connection", bg)
+                self.tracer.emit("speculation", action="bg_diagnosis_applied")
+            else:
+                self.tracer.emit("speculation", action="bg_diagnosis_discarded", fresh=fresh)
+
+    def _consume_injected_reply(self) -> str | None:
+        """S1 speculation: the precomputed reply for the ACTIVE directive (set
+        by the voice layer when the caller's answer matched a prepared
+        branch). Consumed only when the drive actually produced the predicted
+        directive — any mismatch falls back to the normal LLM path."""
+        inj = getattr(self, "_injected_reply", None)
+        if not inj:
+            return None
+        self._injected_reply = None
+        kind, key, text = inj.get("kind"), inj.get("key"), inj.get("text")
+        if not text:
+            return None
+        if kind == "evidence":
+            d = getattr(self, "_evidence_directive", None)
+            if d and d.get("key") == key:
+                self.tracer.emit("speculation", action="hit", kind=kind, key=key)
+                return str(text)
+        elif (
+            kind == "recap"
+            and getattr(self, "_recap_directive", None)
+            or kind == "findings"
+            and getattr(self, "_findings_directive", None)
+        ):
+            self.tracer.emit("speculation", action="hit", kind=kind)
+            return str(text)
+        self.tracer.emit("speculation", action="miss", kind=kind, key=key)
+        return None
 
     def step(self, user_input: str = None) -> dict[str, Any]:
         """

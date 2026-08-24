@@ -147,6 +147,20 @@ class VoicePipeline:
         except TypeError:
             return self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
 
+    def _tts_stream(self, text: str):
+        """Per-sentence TTS for a ready reply text (stream() when available)."""
+        stream = getattr(self._tts, "stream", None)
+        chunks = (
+            stream(normalize_lt_address_speech(text), language=self._language)
+            if callable(stream)
+            else iter(
+                [self._tts.synthesize(normalize_lt_address_speech(text), language=self._language)]
+            )
+        )
+        for chunk in chunks:
+            if chunk:
+                yield chunk
+
     def _too_short(self, audio: bytes, sample_rate: int, tracer) -> bool:
         """Too-short-audio guard (VOICE_PLAN V1): sub-word blips are dropped
         BEFORE ASR — Whisper hallucinates words from them. Traced as a dropped
@@ -352,6 +366,28 @@ class VoicePipeline:
                     total_ms=round(asr_ms + to_first),
                 )
             emitted = True
+
+        # S1 speculation (2026-08-24): if this utterance maps to a PREPARED
+        # branch, the engine turn still runs (all bookkeeping intact) but its
+        # reply is the injected precomputed text — and the audio comes from
+        # the cache. Mismatch anywhere -> the injection is ignored and the
+        # normal LLM+TTS path below runs untouched.
+        matcher = getattr(self._session, "speculation_match", None)
+        spec_audio = matcher(transcript) if callable(matcher) else None
+        if spec_audio:
+            gen = getattr(self._session, "handle_turn_stream", None)
+            reply = (
+                "".join(gen(transcript)) if callable(gen) else self._session.handle_turn(transcript)
+            )
+            if reply and reply == getattr(self._session, "_last_injected_text", None):
+                _emit_latency(time.perf_counter())
+                yield spec_audio
+                return
+            if reply:  # the engine chose its own reply — synthesize it normally
+                for sentence_audio in self._tts_stream(reply):
+                    _emit_latency(time.perf_counter())
+                    yield sentence_audio
+                return
 
         # Pillar C3: if the session streams the reply token by token, buffer to
         # sentence boundaries and synthesize each sentence as soon as it completes.

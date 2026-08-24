@@ -408,9 +408,23 @@ def advance_instruct(engine, r: dict, step, strat, user_input: str | None = None
     Shared by the keyword path and the classifier gate. The dr_see_device VERIFY is
     engine-owned, so resolve it in the SAME turn (reflect the plug-in in the demo, then
     read the line) instead of asking a dead question."""
-    from .resolution import Outcome, detect_restored, next_step_id
+    from .resolution import Outcome, StepKind, detect_restored, next_step_id
 
     engine._route_to(r, step.goto or next_step_id(strat, step.id, None))
+    # Skipped-ahead caller (live 2026-08-24): still on dr_pick_cable, the caller
+    # reported the cable ALREADY in the computer ("jau įkišau į kompiuterį").
+    # One advance lands on the plug step and dictates an instruction they have
+    # done. When the SAME utterance is a completed plug-into-computer report,
+    # that instruct step is done too — fall through to its goto so the verify
+    # runs this turn instead of a dead instruction.
+    skipped = strat.step(r.get("step", "")) if strat else None
+    if (
+        skipped is not None
+        and skipped.id != step.id
+        and skipped.kind in (StepKind.INSTRUCT, StepKind.ACTION)
+        and engine._plug_report(user_input)
+    ):
+        engine._route_to(r, skipped.goto or next_step_id(strat, skipped.id, None))
     if r.get("step") == "dr_see_device":
         engine._simulate_bridge_connection()
         engine._advance_see_device(r)
