@@ -115,8 +115,14 @@ def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None
         return None
     took = round((time.perf_counter() - t0) * 1000)
     ms.last_partial = text
-    ms.session.tracer.emit("partial", text=text, ms=took, audio_bytes=len(audio))
-    return {"type": "partial", "text": text, "ms": took}
+    # E2: the semantic endpoint hint rides along — the client adjusts how much
+    # trailing silence to require before cutting the turn.
+    mode, silence_ms = "normal", None
+    hint = getattr(ms.session, "endpoint_hint", None)
+    if callable(hint):
+        mode, silence_ms = hint(text)
+    ms.session.tracer.emit("partial", text=text, ms=took, audio_bytes=len(audio), endpoint=mode)
+    return {"type": "partial", "text": text, "ms": took, "endpoint": mode, "silence_ms": silence_ms}
 
 
 def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[str, Any]:

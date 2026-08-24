@@ -455,3 +455,71 @@ class TestDuplexPartials:
             noise_filter=lambda t: "youtube" in t,
         )
         assert pipeline.transcribe_partial(b"\x00" * 32_000) == ""
+
+
+class TestSemanticEndpoint:
+    """E2 duplex — the endpoint hint: slow on an unfinished thought, fast on a
+    complete expected answer / farewell, normal otherwise. Deterministic only."""
+
+    def _engine(self, pending=None, verdict=None):
+        return SimpleNamespace(
+            _evidence_last_ask_key=pending,
+            state=SimpleNamespace(resolution={"verdict": verdict} if verdict else None),
+        )
+
+    def test_trailing_conjunction_waits(self):
+        from agent.endpoint import classify_endpoint, slow_ms
+
+        mode, ms = classify_endpoint(self._engine(), "Patikrinau ir")
+        assert mode == "slow" and ms == slow_ms()
+        assert classify_endpoint(self._engine(), "Nedega, bet")[0] == "slow"
+
+    def test_trailing_comma_waits(self):
+        from agent.endpoint import classify_endpoint
+
+        assert classify_endpoint(self._engine(), "Neveikia internetas,")[0] == "slow"
+
+    def test_unfinished_outranks_mapped_answer(self):
+        from agent.endpoint import classify_endpoint
+
+        eng = self._engine(pending="lights", verdict="no_mac_observed")
+        assert classify_endpoint(eng, "Nedega, bet")[0] == "slow"
+
+    def test_complete_pending_answer_cuts_fast(self, monkeypatch):
+        from agent.endpoint import classify_endpoint
+
+        monkeypatch.setenv("ENDPOINT_FAST_MS", "250")
+        eng = self._engine(pending="lights", verdict="no_mac_observed")
+        mode, ms = classify_endpoint(eng, "Nedega nė viena.")
+        assert mode == "fast" and ms == 250
+
+    def test_farewell_cuts_fast(self):
+        from agent.endpoint import classify_endpoint, fast_ms
+
+        mode, ms = classify_endpoint(self._engine(), "Ačiū, viso gero.")
+        assert mode == "fast" and ms == fast_ms()
+
+    def test_plain_sentence_and_empty_are_normal(self):
+        from agent.endpoint import classify_endpoint
+
+        assert classify_endpoint(self._engine(), "Kažkas čia negerai") == ("normal", None)
+        assert classify_endpoint(self._engine(), "") == ("normal", None)
+        assert classify_endpoint(self._engine(), None) == ("normal", None)
+
+    def test_partial_payload_carries_the_hint(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+        ms = SimpleNamespace(
+            session=SimpleNamespace(tracer=_Recorder(), endpoint_hint=lambda text: ("fast", 350)),
+            last_partial="",
+        )
+        monkeypatch.setattr(
+            voice,
+            "get_pipeline",
+            lambda _ms: SimpleNamespace(transcribe_partial=lambda audio: "nedega"),
+        )
+        payload = voice.run_voice_partial(ms, b"\x00" * 32_000)
+        assert payload["endpoint"] == "fast" and payload["silence_ms"] == 350
+        _k, fields = ms.session.tracer.events[0]
+        assert fields["endpoint"] == "fast"

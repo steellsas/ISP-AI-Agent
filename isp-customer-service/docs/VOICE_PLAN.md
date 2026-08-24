@@ -49,7 +49,7 @@ pritarimai. Viskas už `DUPLEX=off` jungiklio (off = ankstesnė elgsena be poky�
 | Etapas | Kas | Statusas |
 |---|---|---|
 | E1 | Srautiniai pamatai: klientas kalbant siunčia frazės momentines kopijas (`"PART"`+WAV, kas PARTIAL_INTERVAL_S, ≤15 s langas); serveris veda slenkantį dalinį transkriptą (pipeline.transcribe_partial su dialogo kontekstu) → trace `partial` + gyva eilutė kliente + `ms.last_partial`. Elgsena nesikeičia — tik stebėjimas. | PADARYTA |
-| E2 | Semantinis turn-taking: turn'o pabaigos sprendimas serveryje — tyla + dalinio semantika (pilnas atsakymas per read_pending_answer → kerpam greitai; jungtukas gale / nebaigta mintis → laukiam). Deterministinės taisyklės, žodynas YAML'e. Čia ir „nebaigtos minties sargas". | — |
+| E2 | Semantinis turn-taking: serveris prie kiekvieno dalinio prideda tylos užuominą (agent/endpoint.py + knowledge/endpoint.yaml `tesiniai`): nebaigta mintis (jungtukas/kablelis gale) → slow ENDPOINT_SLOW_MS; pilnas laukiamas atsakymas (read_pending_answer) ar atsisveikinimas → fast ENDPOINT_FAST_MS; kita → normal. Klientas taiko `dynSilence` TIK einamai frazei (⏩/⏳ ženklai gyvoje eilutėje). Čia ir „nebaigtos minties sargas". | PADARYTA |
 | E3 | Backchannels (L3b): užsitęsus kliento kalbai — trumpas pritarimas iš kešo, neperimant turn'o; tik klausymo fazėje, max 1/frazę; barge-in jį ignoruoja. | — |
 | E4 | L3c nukrypimo pagalvė + poliravimas: pertraukimas ne į temą → trumpas atsakymas → grįžimas per resync direktyvą; replay stendas moka dalinius. | — |
 

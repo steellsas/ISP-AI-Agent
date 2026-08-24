@@ -235,6 +235,23 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # E2: pilnas laukiamas atsakymas dalinyje -> kerpam turn'ą po tiek
+        # tylos (vietoj kliento micSil ~900 ms).
+        "key": "ENDPOINT_FAST_MS",
+        "label": "Greitas kirpimas (pilnas atsakymas), ms",
+        "options": ["350", "250", "450", "600"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # E2: nebaigta mintis (jungtukas/kablelis gale) -> laukiam tiek tylos.
+        "key": "ENDPOINT_SLOW_MS",
+        "label": "Ilgas laukimas (nebaigta mintis), ms",
+        "options": ["1400", "1200", "1800", "2200"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],

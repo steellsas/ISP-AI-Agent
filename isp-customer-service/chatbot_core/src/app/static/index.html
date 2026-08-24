@@ -238,6 +238,10 @@ let bargeMs=0, bargeSilence=0, bargeBuf=[];   // kalba agentui kalbant (barge-in
 // serveris veda slenkantį dalinį transkriptą. Jungiklis — serverio config
 // puslapyje (DUPLEX); klientas jį pasiskaito prisijungdamas.
 let duplexOn=false, partialEveryMs=1000, partialAtMs=0;
+// E2: serverio semantinė užuomina — kiek tylos laukti iki frazės pabaigos
+// (fast = pilnas atsakymas, kerpam anksčiau; slow = nebaigta mintis, laukiam).
+// Galioja TIK einamai frazei; null = kliento numatytasis micSil.
+let dynSilence=null;
 async function loadDuplexCfg(){
   try{
     const r = await fetch("/admin/config"); const j = await r.json();
@@ -360,7 +364,11 @@ $("start").onclick = async () => {
         return;
       }
       if(e.type==="partial"){ // duplex E1: gyvas dalinis transkriptas
-        $("partialLine").textContent = e.text ? "🎧 "+e.text : "";
+        // E2: semantinė tylos užuomina einamai frazei (fast/slow/normal).
+        if(e.silence_ms){ dynSilence=e.silence_ms; }
+        else if(e.endpoint==="normal"){ dynSilence=null; }
+        const mark = e.endpoint==="fast" ? " ⏩" : (e.endpoint==="slow" ? " ⏳" : "");
+        $("partialLine").textContent = e.text ? "🎧 "+e.text+mark : "";
         return;
       }
       if(e.type==="voice_turn"||e.type==="reply"||e.type==="error") return; // rendered via events
@@ -494,7 +502,7 @@ async function startMic(){
       return;
     }
     if(rms>micCfg.threshold){
-      if(!speaking){ utter=preBuf.slice(); partialAtMs=0; } // pre-roll: žodžio pradžia nedingsta
+      if(!speaking){ utter=preBuf.slice(); partialAtMs=0; dynSilence=null; } // pre-roll: žodžio pradžia nedingsta
       speaking=true; speechMs+=frameMs; silenceMs=0;
       utter.push(new Float32Array(ch));
       // Duplex E1: momentinė kopija kas partialEveryMs (tik nuo 600 ms kalbos,
@@ -505,7 +513,7 @@ async function startMic(){
     }else if(speaking){
       silenceMs+=frameMs;
       utter.push(new Float32Array(ch));
-      if(silenceMs>micCfg.silence){
+      if(silenceMs>(dynSilence||micCfg.silence)){ // E2: semantinis tylos langas
         if(speechMs>MIN_SPEECH_MS) sendUtterance();
         speaking=false; speechMs=0; silenceMs=0; utter=[];
       }
@@ -516,7 +524,7 @@ async function startMic(){
 function stopMic(){
   recording=false; $("mic").classList.remove("rec");
   bargeMs=0; bargeSilence=0; bargeBuf=[]; preBuf=[]; preMs=0;
-  partialAtMs=0; $("partialLine").textContent="";
+  partialAtMs=0; dynSilence=null; $("partialLine").textContent="";
   if(micNode) micNode.disconnect();
   if(micSrc) micSrc.disconnect();
   if(micStream) micStream.getTracks().forEach(t=>t.stop());
@@ -535,7 +543,7 @@ function sendUtterance(){
     }
   }
   ws.send(wavEncode(pcm, sampleRate));
-  partialAtMs=0; $("partialLine").textContent="";
+  partialAtMs=0; dynSilence=null; $("partialLine").textContent="";
   addMsg("note","🎤 siunčiama…");
 }
 /* Duplex E1: frazės-iki-šiol kopija (paskutinės ≤15 s) su "PART" antrašte —

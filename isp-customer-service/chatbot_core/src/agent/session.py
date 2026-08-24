@@ -147,6 +147,17 @@ class AgentSession:
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
 
+    def endpoint_hint(self, partial_text: str) -> tuple[str, int | None]:
+        """E2 duplex: how much trailing silence the utterance-so-far deserves —
+        ("slow", ms) mid-thought, ("fast", ms) when it already IS the expected
+        answer, ("normal", None) otherwise. Best-effort, deterministic."""
+        try:
+            from .endpoint import classify_endpoint
+
+            return classify_endpoint(self._agent, partial_text)
+        except Exception:  # pragma: no cover - a hint must never break a turn
+            return ("normal", None)
+
     def speculate_next(self, synthesize=None) -> None:
         """S1: prepare the branch cache for the OPEN question (background
         thread entry — pure planning + standalone LLM/TTS, no state writes)."""
