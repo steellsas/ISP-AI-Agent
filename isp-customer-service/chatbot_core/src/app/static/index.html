@@ -130,6 +130,7 @@
       <input type="text" id="text" placeholder="…arba rašykite tekstu" disabled>
       <button id="send" disabled>Siųsti</button>
     </div>
+    <div id="partialLine" style="font-size:12px;opacity:.55;min-height:16px;padding:2px 8px;font-style:italic"></div>
   </section>
   <section id="right">
     <div class="zone-title">🧠 Agento vidus (gyvai)</div>
@@ -233,6 +234,19 @@ const PREROLL_MS=parseInt(localStorage.getItem("micPre")||"240",10); // derinama
 // praleidžia; derinama be kodo per localStorage micMinMs.
 const MIN_SPEECH_MS=parseInt(localStorage.getItem("micMinMs")||"220",10);
 let bargeMs=0, bargeSilence=0, bargeBuf=[];   // kalba agentui kalbant (barge-in)
+// L4 duplex E1: kalbant siunčiamos frazės momentinės kopijos ("PART"+WAV) —
+// serveris veda slenkantį dalinį transkriptą. Jungiklis — serverio config
+// puslapyje (DUPLEX); klientas jį pasiskaito prisijungdamas.
+let duplexOn=false, partialEveryMs=1000, partialAtMs=0;
+async function loadDuplexCfg(){
+  try{
+    const r = await fetch("/admin/config"); const j = await r.json();
+    const get = k => ((j.settings||[]).find(s=>s.key===k)||{}).value;
+    duplexOn = (get("DUPLEX")||"off")==="on";
+    const iv = parseFloat(get("PARTIAL_INTERVAL_S")||"1.0");
+    partialEveryMs = Math.max(400, (isNaN(iv)?1.0:iv)*1000);
+  }catch(e){ duplexOn=false; }
+}
 
 /* ---------- UI helpers ---------- */
 function addMsg(cls, text){
@@ -345,11 +359,16 @@ $("start").onclick = async () => {
             `<span>⚡ TTFA <b>${e.ttfa_ms}</b> ms</span><span>🔊 ${e.chunks} sak.</span>`);
         return;
       }
+      if(e.type==="partial"){ // duplex E1: gyvas dalinis transkriptas
+        $("partialLine").textContent = e.text ? "🎧 "+e.text : "";
+        return;
+      }
       if(e.type==="voice_turn"||e.type==="reply"||e.type==="error") return; // rendered via events
       onEvent(e);
     };
     ws.onopen = () => {
       setLive(true);
+      loadDuplexCfg();
       addMsg("agent", data.greeting);
       if($("voiceOn").checked){
         fetch(`/sessions/${sid}/greeting/audio`).then(r=>r.ok?r.arrayBuffer():null)
@@ -475,9 +494,14 @@ async function startMic(){
       return;
     }
     if(rms>micCfg.threshold){
-      if(!speaking) utter=preBuf.slice();       // pre-roll: žodžio pradžia nedingsta
+      if(!speaking){ utter=preBuf.slice(); partialAtMs=0; } // pre-roll: žodžio pradžia nedingsta
       speaking=true; speechMs+=frameMs; silenceMs=0;
       utter.push(new Float32Array(ch));
+      // Duplex E1: momentinė kopija kas partialEveryMs (tik nuo 600 ms kalbos,
+      // kad trumpi „Taip." nekurtų beprasmių dalinių).
+      if(duplexOn && speechMs>=600 && speechMs-partialAtMs>=partialEveryMs){
+        partialAtMs=speechMs; sendPartial();
+      }
     }else if(speaking){
       silenceMs+=frameMs;
       utter.push(new Float32Array(ch));
@@ -492,6 +516,7 @@ async function startMic(){
 function stopMic(){
   recording=false; $("mic").classList.remove("rec");
   bargeMs=0; bargeSilence=0; bargeBuf=[]; preBuf=[]; preMs=0;
+  partialAtMs=0; $("partialLine").textContent="";
   if(micNode) micNode.disconnect();
   if(micSrc) micSrc.disconnect();
   if(micStream) micStream.getTracks().forEach(t=>t.stop());
@@ -510,7 +535,30 @@ function sendUtterance(){
     }
   }
   ws.send(wavEncode(pcm, sampleRate));
+  partialAtMs=0; $("partialLine").textContent="";
   addMsg("note","🎤 siunčiama…");
+}
+/* Duplex E1: frazės-iki-šiol kopija (paskutinės ≤15 s) su "PART" antrašte —
+   serveriui tai dalinis transkriptas, ne turn'as. */
+function sendPartial(){
+  if(!ws || ws.readyState!==1) return;
+  const maxSamples=15*sampleRate;
+  const total=utter.reduce((n,a)=>n+a.length,0);
+  const take=Math.min(total, maxSamples);
+  const pcm=new Int16Array(take);
+  let o=take;
+  for(let i=utter.length-1;i>=0 && o>0;i--){
+    const a=utter[i];
+    for(let j=a.length-1;j>=0 && o>0;j--){
+      const s=Math.max(-1,Math.min(1,a[j]));
+      pcm[--o]=s<0?s*0x8000:s*0x7fff;
+    }
+  }
+  const wav=new Uint8Array(wavEncode(pcm, sampleRate));
+  const framed=new Uint8Array(4+wav.length);
+  framed[0]=0x50; framed[1]=0x41; framed[2]=0x52; framed[3]=0x54; // "PART"
+  framed.set(wav,4);
+  ws.send(framed.buffer);
 }
 /* ---------- nustatymai (config puslapis) ---------- */
 const micCfg = {

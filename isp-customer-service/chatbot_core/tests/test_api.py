@@ -200,6 +200,42 @@ class TestVoiceChannel:
         assert (rec / "turn_01_user.wav").read_bytes() == b"RIFF-fake-wav-utterance"
         assert (rec / "turn_01_agent.mp3").read_bytes() == b"FAKEMP3"
 
+    def test_partial_frame_is_a_noop_when_duplex_off(self, client, voice_fakes, monkeypatch):
+        # E1 duplex: a b"PART"-prefixed frame is a rolling-transcript snapshot,
+        # never a turn. With DUPLEX off (default) it is a complete no-op — the
+        # socket still serves a normal text turn right after.
+        monkeypatch.delenv("DUPLEX", raising=False)
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"PART" + b"RIFF-fake-wav")
+            ws.send_json({"type": "turn", "text": "neveikia internetas"})
+            reply = None
+            for _ in range(40):
+                msg = ws.receive_json()
+                if msg.get("type") == "reply":
+                    reply = msg
+                    break
+                assert msg.get("type") != "partial"  # off = nothing produced
+            assert reply is not None and "kada dingo" in reply["reply"]
+
+    def test_partial_frame_returns_rolling_transcript(self, client, voice_fakes, monkeypatch):
+        monkeypatch.setenv("DUPLEX", "on")
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"PART" + b"RIFF-fake-wav")
+            got = None
+            for _ in range(40):
+                msg = ws.receive_json()
+                if msg.get("type") == "partial":
+                    got = msg
+                    break
+            assert got is not None and got["text"] == "neveikia internetas"
+            # the snapshot ran NO agent turn — the next real turn is turn #1
+            from app.main import manager
+
+            assert manager.get(sid).turn_count == 0
+            assert manager.get(sid).last_partial == "neveikia internetas"
+
     def test_streaming_voice_turn_chunks_then_done(self, client, voice_fakes, monkeypatch):
         # Phase 5 PR1: the reply audio arrives sentence-by-sentence AS BINARY
         # FRAMES while the turn runs; the done JSON (TTFA + turn summary)

@@ -45,6 +45,9 @@ class ManagedSession:
     # thread; closing the token stream stops the LLM generation itself and
     # triggers the engine's ask-rollback (threading.Event: cross-thread safe).
     cancel: threading.Event = field(default_factory=threading.Event)
+    # E1 duplex: the latest rolling partial transcript of the utterance-so-far
+    # (trace/display in E1; the E2 endpointer reads it for the turn-cut call).
+    last_partial: str = ""
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
@@ -168,6 +171,17 @@ class SessionManager:
             ms.session.tracer.emit("turn_summary", **summary)
             payload["turn"] = summary
             return payload, reply_audio
+
+    async def voice_partial(self, session_id: str, audio: bytes) -> dict[str, Any] | None:
+        """E1 duplex: rolling partial transcript of the utterance-so-far.
+        Deliberately WITHOUT the session lock — a partial never touches engine
+        state (ASR only), and taking the lock would delay the real turn behind
+        an in-flight snapshot."""
+        from . import voice  # lazy: keeps ASR/TTS adapter imports off the API import path
+
+        ms = self.get(session_id)
+        ms.last_activity = time.monotonic()
+        return await asyncio.to_thread(voice.run_voice_partial, ms, audio)
 
     async def voice_turn_stream(self, session_id: str, audio: bytes, send_bytes) -> dict[str, Any]:
         """Streaming voice turn (Phase 5 PR1): audio chunks are forwarded to

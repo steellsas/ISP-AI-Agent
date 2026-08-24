@@ -180,6 +180,18 @@ class VoicePipeline:
             )
         return True
 
+    def transcribe_partial(self, audio: bytes, *, sample_rate: int = 16_000) -> str:
+        """E1 duplex: transcribe a GROWING utterance snapshot (the caller is
+        still speaking). Same ASR + dialogue context + LT normalization as the
+        turn path, but NO agent turn, NO state — the caller reads the result
+        from the trace. Partials are inherently jittery (Whisper changes its
+        mind on a growing window); consumers must treat them as hints only."""
+        context = self._asr_context()
+        text = self._transcribe(audio, sample_rate, context)
+        if self._transcript_filter and text:
+            text = self._transcript_filter(text)
+        return text or ""
+
     @property
     def session(self) -> AgentSession:
         """The underlying conversation (read-only access to state/stats)."""

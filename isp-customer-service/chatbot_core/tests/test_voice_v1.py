@@ -383,3 +383,66 @@ class TestBgDiagnosisGate:
         )
         agent._apply_bg_diagnosis()
         assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
+
+
+class TestDuplexPartials:
+    """L4 duplex E1 — rolling partial transcripts of the utterance-so-far:
+    trace + client display only, never a turn. Gated by DUPLEX (default off
+    keeps today's behaviour byte-for-byte)."""
+
+    def test_pipeline_partial_uses_context_and_filter_but_no_trace(self):
+        seen = {}
+
+        def transcribe(audio, *, language=None, sample_rate=16_000, context=None):
+            seen["context"] = context
+            return "ne dega lempute"
+
+        pipeline = VoicePipeline(
+            _session(context="Ar dega lemputė?"),
+            SimpleNamespace(transcribe=transcribe),
+            _StubTTS(),
+            transcript_filter=lambda t: t.upper(),
+        )
+        text = pipeline.transcribe_partial(b"\x00" * 32_000)
+        assert text == "NE DEGA LEMPUTE" and "lemput" in seen["context"]
+        # a partial is a HINT: no trace from the pipeline, no agent turn
+        assert pipeline.session.tracer.events == []
+
+    def test_off_by_default_never_builds_the_pipeline(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.delenv("DUPLEX", raising=False)
+
+        def _boom(_ms):
+            raise AssertionError("pipeline must not be built with DUPLEX off")
+
+        monkeypatch.setattr(voice, "get_pipeline", _boom)
+        assert voice.run_voice_partial(SimpleNamespace(), b"x") is None
+
+    def test_partial_traces_and_stores_for_the_endpointer(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+        tracer = _Recorder()
+        ms = SimpleNamespace(session=SimpleNamespace(tracer=tracer), last_partial="")
+        stub = SimpleNamespace(transcribe_partial=lambda audio: "einu žiūrėti routerio")
+        monkeypatch.setattr(voice, "get_pipeline", lambda _ms: stub)
+        payload = voice.run_voice_partial(ms, b"\x00" * 32_000)
+        assert payload["type"] == "partial" and payload["text"] == "einu žiūrėti routerio"
+        assert ms.last_partial == "einu žiūrėti routerio"
+        assert [k for k, _f in tracer.events] == ["partial"]
+
+    def test_partial_failure_stays_silent(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+
+        def _boom(audio):
+            raise RuntimeError("asr down")
+
+        monkeypatch.setattr(
+            voice, "get_pipeline", lambda _ms: SimpleNamespace(transcribe_partial=_boom)
+        )
+        ms = SimpleNamespace(session=SimpleNamespace(tracer=_Recorder()), last_partial="")
+        assert voice.run_voice_partial(ms, b"x") is None
+        assert ms.last_partial == ""

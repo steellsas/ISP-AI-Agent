@@ -41,6 +41,22 @@ Visi žingsniai daromi VOICE šakoje (po refactor/langgraph-v2 PR į develop).
 - Nebaigtos minties sargas (transkriptas baigiasi „ir/bet/tai…" → palaukti).
 - L3b agento pritarimai + L4 srautinis dupleksas.
 
+## L4 dupleksas (patvirtinta 2026-08-24, šaka feature/voice-duplex)
+
+Tikslas: agentas girdi KALBANT — daliniai transkriptai, semantinis turn-taking,
+pritarimai. Viskas už `DUPLEX=off` jungiklio (off = ankstesnė elgsena be pokyčių).
+
+| Etapas | Kas | Statusas |
+|---|---|---|
+| E1 | Srautiniai pamatai: klientas kalbant siunčia frazės momentines kopijas (`"PART"`+WAV, kas PARTIAL_INTERVAL_S, ≤15 s langas); serveris veda slenkantį dalinį transkriptą (pipeline.transcribe_partial su dialogo kontekstu) → trace `partial` + gyva eilutė kliente + `ms.last_partial`. Elgsena nesikeičia — tik stebėjimas. | PADARYTA |
+| E2 | Semantinis turn-taking: turn'o pabaigos sprendimas serveryje — tyla + dalinio semantika (pilnas atsakymas per read_pending_answer → kerpam greitai; jungtukas gale / nebaigta mintis → laukiam). Deterministinės taisyklės, žodynas YAML'e. Čia ir „nebaigtos minties sargas". | — |
+| E3 | Backchannels (L3b): užsitęsus kliento kalbai — trumpas pritarimas iš kešo, neperimant turn'o; tik klausymo fazėje, max 1/frazę; barge-in jį ignoruoja. | — |
+| E4 | L3c nukrypimo pagalvė + poliravimas: pertraukimas ne į temą → trumpas atsakymas → grįžimas per resync direktyvą; replay stendas moka dalinius. | — |
+
+Rizikos: Groq Whisper apkrova (partial kas ~1 s tik kalbant; jei limitai muš —
+lokalus faster-whisper daliniams); dalinių „drebėjimas" (E2 remiasi tik
+deterministiniais skaitytuvais, ne žodis-į-žodį tekstu).
+
 ## 1 žingsnio darbų sąrašas (L1+L2, paruošta įgyvendinimui)
 
 1. **Vardo klausimas be uodegos** — `knowledge/identification.yaml` frazė

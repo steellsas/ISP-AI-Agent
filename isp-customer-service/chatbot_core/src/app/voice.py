@@ -93,6 +93,32 @@ def synthesize_text(text: str) -> bytes:
     return _build_tts().synthesize(normalize_lt_address_speech(text), language=_LANGUAGE)
 
 
+def duplex_enabled() -> bool:
+    """E1 duplex master switch (config page); off = today's behaviour untouched."""
+    return os.environ.get("DUPLEX", "off").lower() == "on"
+
+
+def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
+    """E1 duplex: rolling PARTIAL transcript of the utterance-so-far. Trace +
+    client display only — never an agent turn, never state. The result is also
+    kept on the session (ms.last_partial) for the E2 endpointer."""
+    import time
+
+    if not duplex_enabled():
+        return None
+    pipeline = get_pipeline(ms)
+    t0 = time.perf_counter()
+    try:
+        text = pipeline.transcribe_partial(audio)
+    except Exception:  # a failed partial must never disturb the call
+        logger.debug("partial asr failed", exc_info=True)
+        return None
+    took = round((time.perf_counter() - t0) * 1000)
+    ms.last_partial = text
+    ms.session.tracer.emit("partial", text=text, ms=took, audio_bytes=len(audio))
+    return {"type": "partial", "text": text, "ms": took}
+
+
 def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[str, Any]:
     """Phase 5 PR1 — STREAMING voice turn: the reply's audio is delivered
     sentence-by-sentence via on_chunk(bytes) (called from this worker thread)

@@ -218,6 +218,23 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # L4 duplex E1 (2026-08-24): klientas siunčia frazės momentines kopijas
+        # dar KALBANT — serveris veda slenkantį dalinį transkriptą (E1: tik
+        # trace + ekranas; E2 ant jo statys semantinį turn-taking'ą).
+        "key": "DUPLEX",
+        "label": "Duplex (daliniai transkriptai kalbant)",
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        "key": "PARTIAL_INTERVAL_S",
+        "label": "Dalinių intervalas, s",
+        "options": ["1.0", "0.8", "1.5", "2.0"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],

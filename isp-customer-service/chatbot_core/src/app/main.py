@@ -315,6 +315,7 @@ async def ws_call(ws: WebSocket, session_id: str):
     # receiving, so an {"type":"interrupt"} can land WHILE the reply streams.
     turn_task: asyncio.Task | None = None
     checkin_task: asyncio.Task | None = None
+    partial_task: asyncio.Task | None = None
 
     # G3 (Andrius 2026-08-20): the agent ACCOMPANIES the caller through a task —
     # after a turn, if the caller stays silent past the delay while a question/
@@ -362,6 +363,21 @@ async def ws_call(ws: WebSocket, session_id: str):
         if checkin_task is not None and not checkin_task.done():
             checkin_task.cancel()
 
+    async def _run_partial(data: bytes) -> None:
+        # E1 duplex: a snapshot of the utterance-so-far — rolling transcript to
+        # the trace + client display, NEVER an agent turn. Stale snapshots
+        # (agent turn already running) are dropped.
+        if turn_task is not None and not turn_task.done():
+            return
+        try:
+            payload = await manager.voice_partial(session_id, data)
+            if payload:
+                await ws.send_json(payload)
+        except SessionNotFound:
+            pass
+        except Exception:  # a failed partial must never touch the socket state
+            logger.debug("partial failed", exc_info=True)
+
     async def _run_voice_turn(data: bytes) -> None:
         import os as _os
 
@@ -391,12 +407,19 @@ async def ws_call(ws: WebSocket, session_id: str):
             if frame.get("type") == "websocket.disconnect":
                 break
             # Binary frame = ONE complete caller utterance (WAV, client-side
-            # end-pointing) -> a full voice turn in the background.
+            # end-pointing) -> a full voice turn in the background. A frame
+            # prefixed with b"PART" is an E1 duplex partial snapshot instead
+            # (WAV after the magic) — rolling transcript, never a turn.
             if frame.get("bytes"):
+                data = frame["bytes"]
                 _disarm_checkin()  # the caller spoke — no nudge needed
+                if data[:4] == b"PART":
+                    if partial_task is None or partial_task.done():
+                        partial_task = asyncio.create_task(_run_partial(data[4:]))
+                    continue  # in-flight guard: overlapping snapshots dropped
                 if turn_task is not None and not turn_task.done():
                     continue  # one voice turn at a time; extra frames are dropped
-                turn_task = asyncio.create_task(_run_voice_turn(frame["bytes"]))
+                turn_task = asyncio.create_task(_run_voice_turn(data))
                 continue
             if frame.get("text"):
                 msg = json.loads(frame["text"])
@@ -422,6 +445,8 @@ async def ws_call(ws: WebSocket, session_id: str):
         pass
     finally:
         _disarm_checkin()
+        if partial_task is not None and not partial_task.done():
+            partial_task.cancel()
         pump.cancel()
         with suppress(asyncio.CancelledError):
             await pump
