@@ -245,3 +245,92 @@ class TestSessionAsrContext:
         session = AgentSession(caller_phone="unknown")
         session._agent.state.last_question = ""
         assert session.asr_context() is None
+
+
+class TestSpeculation:
+    """S1 (2026-08-24): branches prepared while the caller answers; served only
+    on an exact, fact-clean match — any doubt falls to the normal path."""
+
+    def _agent(self, db_connection=None):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        from agent.evidence import CLIENT, set_fact
+
+        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        agent._evidence_last_ask_key = "lights"
+        return agent
+
+    def test_plan_branches_from_the_ledger(self, db_connection):
+        from agent.speculation import plan_branches
+
+        plan = plan_branches(self._agent())
+        assert plan and plan["pending_key"] == "lights"
+        assert plan["branches"]["nedega"]["kind"] == "evidence"
+        assert plan["branches"]["nedega"]["key"] == "power_cable"
+        assert "dega" not in plan["branches"]  # refuted -> pivot path, not speculated
+
+    def test_match_gates_are_conservative(self, db_connection):
+        from agent.speculation import match
+
+        agent = self._agent()
+        base = {
+            "pending_key": "lights",
+            "verdict": "no_mac_observed",
+            "branches": {"nedega": {"kind": "evidence", "key": "power_cable", "text": "x?"}},
+        }
+        agent._spec_cache = dict(base)
+        assert match(agent, "O kiek tai kainuos?") is None  # question
+        agent._spec_cache = dict(base)
+        assert match(agent, "Nedega, bet keičiau routerį vakar") is None  # extra fact
+        agent._spec_cache = dict(base)
+        hit = match(agent, "Nedega nė viena")
+        assert hit and hit["key"] == "power_cable"
+        assert agent._spec_cache is None  # one shot
+
+    def test_injection_consumed_only_on_directive_match(self, db_connection):
+        agent = self._agent()
+        agent._injected_reply = {
+            "kind": "evidence",
+            "key": "power_cable",
+            "text": "Ar laidas įkištas?",
+        }
+        agent._evidence_directive = {
+            "key": "power_cable",
+            "reikia": "x",
+            "kodel": "",
+            "klausimas": "",
+        }
+        assert agent._consume_injected_reply() == "Ar laidas įkištas?"
+        agent._injected_reply = {"kind": "evidence", "key": "outlet_works", "text": "Ne tas?"}
+        assert agent._consume_injected_reply() is None  # directive key mismatch
+
+    def test_pipeline_serves_cached_audio_on_hit(self):
+        from types import SimpleNamespace
+
+        from agent.voice_pipeline import VoicePipeline
+
+        session = SimpleNamespace(
+            config=SimpleNamespace(language="lt"),
+            is_complete=False,
+            tracer=SimpleNamespace(emit=lambda *a, **k: None),
+            speculation_match=lambda t: b"CACHED",
+            _last_injected_text="Ar laidas įkištas?",
+            handle_turn=lambda t: "Ar laidas įkištas?",
+        )
+        pipeline = VoicePipeline(
+            session, SimpleNamespace(transcribe=lambda a, **k: "nedega"), _StubTTS()
+        )
+        chunks = list(pipeline.stream_turn(b"\x00" * 32_000))
+        assert chunks == [b"CACHED"]
+
+    def test_tts_cache_short_circuits(self, monkeypatch):
+        from src.adapters.tts.edge_tts import EdgeTTSProvider
+
+        monkeypatch.delenv("TTS_RATE", raising=False)
+        monkeypatch.delenv("TTS_PITCH", raising=False)
+        p = EdgeTTSProvider()
+        EdgeTTSProvider._CACHE[("Labas.", "lt-LT-LeonasNeural", None, None)] = b"HIT"
+        assert p._synthesize_one("Labas.", "lt-LT-LeonasNeural") == b"HIT"

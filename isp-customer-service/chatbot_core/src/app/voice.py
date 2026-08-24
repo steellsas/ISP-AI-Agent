@@ -200,6 +200,25 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         "dropped": chunks == 0 and not ms.session.is_complete and not ms.cancel.is_set(),
         "error": turn_error,
     }
+    # S1+S2 speculation (2026-08-24): while the caller does the thing we just
+    # asked, a background thread prepares the likely next replies (branch
+    # cache: standalone LLM+TTS per candidate answer) and refreshes telemetry
+    # READ-ONLY; both fold in at the next turn.
+    if (
+        os.environ.get("SPECULATION", "on").lower() == "on"
+        and not payload.get("is_complete")
+        and not ms.cancel.is_set()
+        and not turn_error
+    ):
+
+        def _speculate() -> None:
+            try:
+                ms.session.speculate_next(synthesize_text)
+                ms.session.speculate_background_diagnosis()
+            except Exception:  # pragma: no cover - background best-effort
+                logger.debug("speculation thread failed", exc_info=True)
+
+        threading.Thread(target=_speculate, daemon=True).start()
     if os.environ.get("API_RECORD_AUDIO", "1") != "0":
         try:
             d = _record_dir(ms.session.session_id)

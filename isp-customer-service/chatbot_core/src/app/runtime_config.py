@@ -158,6 +158,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # S1 (2026-08-24): šakų paruošimas kol klientas atsakinėja — atsakymas
+        # iš kešo ~0 s, kai atsakymas telpa į numatytą šaką.
+        "key": "SPECULATION",
+        "label": "Spekuliatyvus paruošimas (šakos iš anksto)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "VOICE_FILLER_AFTER_S",
         "label": "Užpildo vėlinimas, s",
         "options": ["1.2", "0.8", "1.6", "2.0"],
