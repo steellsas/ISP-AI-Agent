@@ -1288,13 +1288,14 @@ class ReactAgent:
         self.state.last_intent = detect_turn_intent(user_input)
         self._maybe_raise_clarity(user_input)
         # S2 (2026-08-24): a background telemetry read finished while the
-        # caller was busy — fold it in at the deterministic turn start.
-        bg = getattr(self, "_bg_diagnosis", None)
-        if bg:
-            self._bg_diagnosis = None
-            with suppress(Exception):
-                self._update_state_from_observation("diagnose_connection", bg)
-                self.tracer.emit("speculation", action="bg_diagnosis_applied")
+        # caller was busy — fold it in at the deterministic turn start, but
+        # ONLY as a refresh: in the solution/bridge phase, or when the fresh
+        # verdict FLIPS the story, it is discarded (live: the bg read saw the
+        # just-plugged PC, the narrative turned foreign_mac mid-bridge and the
+        # agent asked "ar keitėte routerį?" over a working bind). The solution
+        # steps (dr_see_device / dr_verify) do their own reads at the right
+        # moments.
+        self._apply_bg_diagnosis()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             self._prefill_slots_from_text(user_input)
@@ -1416,6 +1417,30 @@ class ReactAgent:
             return
 
         yield self.config.timeout_message
+
+    def _apply_bg_diagnosis(self) -> None:
+        """S2 gate: fold the background telemetry read in ONLY as a refresh —
+        in the solution/bridge phase, or when the fresh verdict FLIPS the
+        story, it is discarded (the solution steps read at the right moments
+        themselves)."""
+        bg = getattr(self, "_bg_diagnosis", None)
+        if not bg:
+            return
+        self._bg_diagnosis = None
+        with suppress(Exception):
+            r0 = self.state.resolution or {}
+            in_solution = bool(
+                r0.get("solution_synced")
+                or getattr(self, "_bridge_plug_reported", False)
+                or getattr(self, "_bridge_bound", False)
+            )
+            fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
+            current = r0.get("verdict")
+            if not in_solution and (not current or fresh == current):
+                self._update_state_from_observation("diagnose_connection", bg)
+                self.tracer.emit("speculation", action="bg_diagnosis_applied")
+            else:
+                self.tracer.emit("speculation", action="bg_diagnosis_discarded", fresh=fresh)
 
     def _consume_injected_reply(self) -> str | None:
         """S1 speculation: the precomputed reply for the ACTIVE directive (set

@@ -334,3 +334,52 @@ class TestSpeculation:
         p = EdgeTTSProvider()
         EdgeTTSProvider._CACHE[("Labas.", "lt-LT-LeonasNeural", None, None)] = b"HIT"
         assert p._synthesize_one("Labas.", "lt-LT-LeonasNeural") == b"HIT"
+
+
+class TestBgDiagnosisGate:
+    """S2 gate: the background read is a REFRESH, never a story flip — and
+    never applied in the solution/bridge phase."""
+
+    def _agent(self, events):
+        from types import SimpleNamespace
+
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        agent.tracer = SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
+        return agent
+
+    def test_flip_is_discarded(self, db_connection):
+        import json as _json
+
+        events = []
+        agent = self._agent(events)
+        agent._bg_diagnosis = _json.dumps({"success": True, "verdict": {"reason": "foreign_mac"}})
+        agent._apply_bg_diagnosis()
+        assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
+        assert agent.state.resolution["verdict"] == "no_mac_observed"
+
+    def test_same_verdict_applies(self, db_connection):
+        import json as _json
+
+        events = []
+        agent = self._agent(events)
+        agent._bg_diagnosis = _json.dumps(
+            {"success": True, "verdict": {"reason": "no_mac_observed"}}
+        )
+        agent._apply_bg_diagnosis()
+        assert any(f.get("action") == "bg_diagnosis_applied" for _k, f in events)
+
+    def test_bridge_phase_always_discards(self, db_connection):
+        import json as _json
+
+        events = []
+        agent = self._agent(events)
+        agent._bridge_bound = True
+        agent._bg_diagnosis = _json.dumps(
+            {"success": True, "verdict": {"reason": "no_mac_observed"}}
+        )
+        agent._apply_bg_diagnosis()
+        assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
