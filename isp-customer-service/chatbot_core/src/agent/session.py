@@ -163,6 +163,13 @@ class AgentSession:
         except Exception:  # pragma: no cover - a hint must never break a turn
             return ("normal", None)
 
+    def analyst_next(self) -> None:
+        """W2: the quiet analyst's background read — advisory notes for the
+        narrator's next turn (never facts, never routing)."""
+        from .analyst import run_analyst
+
+        run_analyst(self._agent)
+
     def speculate_next(self, synthesize=None) -> None:
         """S1: prepare the branch cache for the OPEN question (background
         thread entry — pure planning + standalone LLM/TTS, no state writes)."""

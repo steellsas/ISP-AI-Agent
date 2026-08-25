@@ -254,6 +254,11 @@ def run_voice_turn_stream(
             try:
                 ms.session.speculate_next(synthesize_text)
                 ms.session.speculate_background_diagnosis()
+                # W2: the quiet analyst reads the conversation in the same
+                # background window (advisory notes for the next turn).
+                analyst = getattr(ms.session, "analyst_next", None)
+                if callable(analyst):
+                    analyst()
             except Exception:  # pragma: no cover - background best-effort
                 logger.debug("speculation thread failed", exc_info=True)
 

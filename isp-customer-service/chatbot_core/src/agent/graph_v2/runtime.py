@@ -60,6 +60,12 @@ def speak_scripted(engine: Any, node: str, user_input: str | None, reply: str) -
         engine.tracer.emit("user_turn", text=user_input)
         engine.state.messages.append({"role": "user", "content": user_input})
     engine._emit_scripted_reply(reply)
+    # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
+    # END the call like an LLM one — the hang-up detector ran only on the LLM
+    # path, so every trailing garbled turn earned a fresh goodbye.
+    from ..closing_flow import maybe_end_on_goodbye
+
+    maybe_end_on_goodbye(engine, reply)
     try:
         get_stream_writer()(reply)
     except Exception:  # outside a live stream (tests / .invoke) — text is in state

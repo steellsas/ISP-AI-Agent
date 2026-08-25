@@ -263,6 +263,11 @@ class ReactAgent:
         # key whose clarification is out, awaiting the settling answer.
         self._evidence_conflict: tuple[str, str, str] | None = None
         self._evidence_conflict_asked: str | None = None
+        # W1-2 svarbos vartai: a NEW volunteered fact that flips the story is
+        # parked here until one confirm question settles it (STT garbles
+        # poison exactly these — "rozetė NEVEIKĖ" heard live for a fine outlet).
+        self._fact_confirm: tuple[str, str] | None = None
+        self._fact_confirm_asked: tuple[str, str] | None = None
         # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
         # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
         # stream closes mid-generation and the cancelled-turn bookkeeping runs
@@ -311,6 +316,12 @@ class ReactAgent:
         # D1 delivery ledger: the tail of an interrupted reply the caller never
         # HEARD — surfaced to the narrator next turn, then cleared.
         self._undelivered_tail: str | None = None
+        # W1-1: the opening already carried the anamnesis — the narrator shows
+        # it HEARD ("aišku — nuo vakar") instead of re-asking; one-shot.
+        self._opening_heard_note = False
+        # W2 tylusis analitikas: background advisory notes for the narrator's
+        # next turn (written by the bg thread, consumed once in facts).
+        self._analyst_notes: list[str] | None = None
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.

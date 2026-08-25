@@ -105,6 +105,11 @@ evidence:
       ka_radote: "Dega ar ne?"                # kai sako tik „patikrinau"
       atsakymai: { nedega: [nedega, nešviečia], dega: [dega, šviečia] }
       kada: [device_present=rado]             # klausiama tik kai sąlyga galioja
+      patikslinti: ['neveikia']               # W1-2 svarbos vartai: šios reikšmės,
+                                              # pasakytos SAVANORIŠKAI (ne atsakant į
+                                              # šio rakto klausimą), pirmiausia
+                                              # patikslinamos („ar tikrai?") — STT
+                                              # klaida čia keičia visą išvadą
   patvirtinta_kai: [lights=nedega, power_cable=įkištas]   # visos turi galioti
   paneigta_kai: [lights=dega]                              # bet kuri paneigia
   paneigta_veda: dr_cable                     # kur walker'is peršoka paneigus

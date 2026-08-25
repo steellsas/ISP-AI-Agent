@@ -32,6 +32,9 @@ os.environ.setdefault("NARRATOR_QUESTIONS", "off")
 # VOICE_PLAN V1: unit tests feed tiny fake audio bytes (b"x") — the too-short
 # guard would drop them all. Off here; the guard's own tests set it explicitly.
 os.environ.setdefault("ASR_MIN_AUDIO_S", "0")
+# W2: the quiet analyst calls an LLM from a background thread — deterministic
+# tests never want that (opt in with ANALYST=on when testing it specifically).
+os.environ.setdefault("ANALYST", "off")
 
 
 # =============================================================================

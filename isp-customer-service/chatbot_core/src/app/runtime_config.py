@@ -269,6 +269,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # W2 (2026-08-25): tylusis analitikas — fone skaito visą pokalbį ir
+        # duoda naratoriui patariamųjų pastabų (faktų ir eigos nekeičia).
+        "key": "ANALYST",
+        "label": "Tylusis analitikas (fone, patariamasis)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],

@@ -59,7 +59,9 @@ def _directive_line(kind: str, payload: dict[str, Any]) -> str:
         spr = ""
     return (
         "- IŠVADOS MOMENTAS (pasakyk savais žodžiais, TRUMPAI — 2–3 sakiniai, "
-        f"jokių sąrašų ar dvitaškių): kartu nustatėme — {payload['faktai']}. "
+        "jokių sąrašų ar dvitaškių): Registracija dar NEĮVYKO — jei ją mini, "
+        "sakyk „užregistruosiu“, niekada „užregistravau“. "
+        f"Kartu nustatėme — {payload['faktai']}. "
         f"Išvada: {payload['isvada']}.{spr} Neišgalvok faktų."
     )
 

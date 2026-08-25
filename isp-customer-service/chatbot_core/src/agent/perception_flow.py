@@ -229,6 +229,23 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         if value is not None:
             facts[pending] = value
     turn = s.turn_count
+    # W1-2 svarbos vartai — the ANSWER to a standing fact-confirm question
+    # ("Tik pasitikslinsiu — sakėte, kad rozetė neveikia?"): a yes commits the
+    # parked value; anything else drops it (a correction lands as a normal
+    # fact from THIS utterance below).
+    fca = getattr(engine, "_fact_confirm_asked", None)
+    if fca and user_input:
+        engine._fact_confirm_asked = None
+        g_key, g_value = fca
+        from .evidence import _fold, _mark_hit
+
+        low_c = _fold(user_input)
+        if any(_mark_hit(low_c, m) for m in ("taip", "tikrai", "jo", "aha", "sakiau")):
+            set_fact(s.evidence, g_key, g_value, CLIENT, turn)
+            engine.tracer.emit("evidence", action="fact_confirmed", key=g_key, value=g_value)
+            facts.pop(g_key, None)
+        else:
+            engine.tracer.emit("evidence", action="fact_withdrawn", key=g_key, value=g_value)
     # A clarify is out — settle that key first.
     pending_key = engine._evidence_conflict_asked
     if pending_key:
@@ -285,6 +302,14 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
                 )
                 del facts[key]
     for key, value in facts.items():
+        # W1-2 svarbos vartai (Andrius 2026-08-25, live: STT „rozetė NEVEIKĖ"
+        # tyliai užnuodijo žurnalą ir solveris pasiklydo): NAUJAS faktas su
+        # pack'o pažymėta `patikslinti:` reikšme, atėjęs NE kaip atsakymas į
+        # užduotą klausimą, pirma PATIKSLINAMAS — ne komituojamas. Kai
+        # skaitytuvai NESUTARIA dėl šio rakto, jį valdo konflikto mechanika
+        # (jos scriptinis klausimas — tas pats pasitikslinimas).
+        if key not in kw_disagreements and _story_flip_gate(engine, key, str(value), pending):
+            continue
         entry = set_fact(s.evidence, key, value, CLIENT, turn)
         if entry.get("conflict") and engine._evidence_conflict is None:
             engine._evidence_conflict = (key, entry["value"], entry["pending"])
@@ -313,6 +338,35 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
             )
         else:
             engine.tracer.emit("evidence", action="fact", key=key, value=kw_value)
+
+
+def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:
+    """W1-2 svarbos vartai: should this NEW volunteered fact be parked for a
+    confirm question instead of a silent commit? The pack DECLARES which
+    values deserve it (`patikslinti:` on the evidence item — file-editable,
+    like every behaviour), so only genuinely story-flipping, STT-garble-prone
+    values gate (live 2026-08-25: 'rozetė NEVEIKĖ'). True only when ALL hold:
+    no gate already open, the key is NOT the one just asked (direct answers
+    are trusted; `pending` is snapshotted by the caller — the ingest clears
+    the live attribute before the commit loop), and the ledger has no entry
+    yet (existing entries belong to the conflict machinery)."""
+    s = engine.state
+    if getattr(engine, "_fact_confirm", None) or getattr(engine, "_fact_confirm_asked", None):
+        return False
+    if key == pending:
+        return False
+    if s.evidence.get(key) is not None:
+        return False
+    from .evidence import spec_for
+
+    spec = spec_for((s.resolution or {}).get("verdict")) or {}
+    item = (spec.get("client") or {}).get(key) or {}
+    gated_values = [str(v) for v in (item.get("patikslinti") or [])]
+    if value not in gated_values:
+        return False
+    engine._fact_confirm = (key, value)
+    engine.tracer.emit("evidence", action="fact_gate", key=key, value=value)
+    return True
 
 
 def anchor_text(engine) -> str:
@@ -438,6 +492,17 @@ _HOWTO = (
     "kur jung",
     "kur kišt",
     "kur kist",
+    # W0-B (live 2026-08-25): "Kur įkišti iki galo? Nesupratau." went to the
+    # side-topic FAQ and got "ne mano sritis" — a where-question about our own
+    # instruction is ON TASK.
+    "kur įkišti",
+    "kur ikišti",
+    "kur ikisti",
+    "kur žiūrėti",
+    "kur ziureti",
+    "kur spausti",
+    "kur tas",
+    "kur ta ",
     "ką daryti",
     "ka daryti",
     "paaiškink",
@@ -608,20 +673,35 @@ def pre_turn_guards(engine, user_input: str) -> None:
                         engine._ticket_stage = "done"
                         return
                 # No reiksme — fall through to the keyword/retry machinery.
-        if not und_handled and any(
-            m in low_q
-            for m in (
-                "kodėl",
-                "kodel",
-                "kiek",
-                "kam ",
-                "kas čia",
-                "kas cia",
-                "kokiu",
-                "koks ",
-                "kokia ",
-                "galima",
-                "ar ",
+        # W0-C (live 2026-08-25): STT turned "patogiausia" into "KODĖL
+        # tokiausia skambinti nuo 17-18 val." — the question keyword diverted
+        # a perfectly good answer to the LLM and the capture never saw it.
+        # CONTENT BEATS FORM: an utterance carrying a plausible answer for the
+        # CURRENT stage is read by the capture machinery, question-shaped or not.
+        # Digits only — "Bet kada galima skambinti?" is the caller ASKING and
+        # must still divert; a garbled question-word around "nuo 17-18" is not.
+        if engine._ticket_stage == "phone":
+            _answer_content = len(re.sub(r"\D", "", user_input or "")) >= 6
+        else:
+            _answer_content = bool(re.search(r"\d", user_input or ""))
+        if (
+            not und_handled
+            and not _answer_content
+            and any(
+                m in low_q
+                for m in (
+                    "kodėl",
+                    "kodel",
+                    "kiek",
+                    "kam ",
+                    "kas čia",
+                    "kas cia",
+                    "kokiu",
+                    "koks ",
+                    "kokia ",
+                    "galima",
+                    "ar ",
+                )
             )
         ):
             # Keyword question-divert (fallback only): the pass, when it ran,

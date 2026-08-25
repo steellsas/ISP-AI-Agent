@@ -786,6 +786,18 @@ def state_facts_block(engine) -> str | None:
     # question core stays verbatim (the confirm guard keys off it).
     idd = getattr(engine, "_ident_directive", None)
     if idd:
+        # W1-1 (Andrius 2026-08-25): the opening already said WHEN it broke —
+        # the caller must HEAR they were heard, one short acknowledgement
+        # before the address ask, never a repeated "kada dingo?".
+        if getattr(engine, "_opening_heard_note", False):
+            engine._opening_heard_note = False
+            when = s.anamnesis_when or s.anamnesis_trigger or ""
+            facts.append(
+                "- KLIENTAS JAU PASAKĖ, kada dingo"
+                + (f" („{when}“)" if when else "")
+                + " — pora žodžių parodyk, kad išgirdai (pvz. „Aišku — nuo "
+                "vakar.“), ir NEKLAUSK, kada dingo."
+            )
         if idd["kind"] == "address_offer":
             facts.append(
                 "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
@@ -881,9 +893,17 @@ def state_facts_block(engine) -> str | None:
             spr = f" Pasiūlyk pasirinkimą ({fd['sprendimai']}) ir paklausk, kaip darome."
         else:
             spr = ""
+        # W0-E (live 2026-08-25): the findings turn said "Užregistravau" while
+        # create_ticket was still turns away — the tense rule rides here too.
+        tense = (
+            ""
+            if s.ticket_id
+            else " Registracija dar NEĮVYKO — jei ją mini, sakyk „užregistruosiu“, "
+            "niekada „užregistravau“."
+        )
         facts.append(
             "- IŠVADOS MOMENTAS (pasakyk savais žodžiais, TRUMPAI — 2–3 sakiniai, "
-            f"jokių sąrašų ar dvitaškių): kartu nustatėme — {fd['faktai']}. "
+            f"jokių sąrašų ar dvitaškių):{tense} kartu nustatėme — {fd['faktai']}. "
             f"Išvada: {fd['isvada']}.{spr} Neišgalvok faktų."
         )
 
@@ -941,6 +961,17 @@ def state_facts_block(engine) -> str | None:
             "Užduok TIK ŠĮ VIENĄ klausimą (viena '?'), trumpai; neišgalvok faktų "
             f"ir nesiūlyk nieko kito.{kiti} Jei tinka, pradėk trumpa reakcija į tai, "
             f"ką klientas ką tik pasakė. (Atsarginė formuluotė: „{directive['klausimas']}“)"
+        )
+
+    # W2 tylusis analitikas: advisory notes from the background read — they
+    # shape the WORDING only; on any clash the directives above win. One-shot.
+    notes = getattr(engine, "_analyst_notes", None)
+    if notes:
+        engine._analyst_notes = None
+        facts.append(
+            "- TYLIOJO ANALITIKO PASTABOS (patariamosios — faktų ir eigos "
+            "NEkeičia; jei prieštarauja aukščiau esančioms direktyvoms, "
+            "ignoruok): " + " | ".join(str(n) for n in notes[:2])
         )
 
     if not facts:

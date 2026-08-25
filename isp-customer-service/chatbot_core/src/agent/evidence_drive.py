@@ -180,6 +180,22 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
     spec = spec_for(r.get("verdict"))
     if spec is None:
         return None
+    # W1-2 svarbos vartai: a parked story-flipping fact gets its ONE confirm
+    # question before anything else — the ledger stays clean until the caller
+    # says "taip" (STT garbles poison exactly these facts).
+    fc = getattr(engine, "_fact_confirm", None)
+    if fc is not None:
+        from .evidence import LABELS, VALUE_LT
+        from .identification import phrase as _phrase
+
+        engine._fact_confirm = None
+        engine._fact_confirm_asked = fc
+        engine.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc[0])
+        return _phrase(
+            "refute_confirm",
+            tema=LABELS.get(fc[0], fc[0]),
+            reiksme=VALUE_LT.get(fc[1], fc[1]),
+        )
     # Captured BEFORE any new ask below overwrites it: was a question already
     # out when the caller spoke? Needed for the bare-"ne" clarify.
     pending_before = evidence_question_open(engine)
