@@ -562,6 +562,22 @@ def state_facts_block(engine) -> str | None:
     elif s.customer_id and engine._result_pending and s.caller_name:
         # The caller introduced themselves — deliver the deferred result NOW.
         facts.append("- REZULTATO PRISTATYMAS:" + engine._result_narration_tail())
+    # KREIPINYS (live 2026-08-25: the LLM addressed the caller "Giedriau" — the
+    # DB account holder's name for that address — while the caller had said
+    # "Andrius". The tool results carry the contract holder's name; it is
+    # ACCOUNT DATA, not a greeting, and the caller need not be the holder).
+    if s.customer_id:
+        if s.caller_name:
+            facts.append(
+                f"- KREIPINYS: klientas prisistatė „{s.caller_name}“ — kreipkis TIK "
+                "šiuo vardu arba be vardo. Sutarties savininko vardo iš sistemos "
+                "NENAUDOK kreipiniui ir garsiai neminėk."
+            )
+        else:
+            facts.append(
+                "- KREIPINYS: klientas vardo nesakė — nesikreipk vardu; sutarties "
+                "savininko vardo iš sistemos neminėk."
+            )
     if not past_action and not caller_pending:
         for domain, d in s.diagnosis.items():
             gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
