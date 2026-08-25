@@ -52,6 +52,9 @@ class ManagedSession:
     # D1 delivery ledger: how many audio chunks the client reported as FULLY
     # played when it sent the interrupt (None = no report / no interrupt).
     interrupt_played: int | None = None
+    # D2 duplex: the server-side audio front (VAD + endpoint authority),
+    # attached lazily on the first FRAM frame.
+    front: Any = None
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:

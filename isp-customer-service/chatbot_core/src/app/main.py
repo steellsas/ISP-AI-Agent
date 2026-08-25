@@ -363,6 +363,30 @@ async def ws_call(ws: WebSocket, session_id: str):
         if checkin_task is not None and not checkin_task.done():
             checkin_task.cancel()
 
+    def _front():
+        # D2: the per-call audio front (server-side VAD + endpoint authority).
+        ms = manager.get(session_id)
+        if ms.front is None:
+            from . import audio_front
+
+            ms.front = audio_front.AudioFront()
+        return ms.front
+
+    async def _run_partial_front(data: bytes, front) -> None:
+        # D2: partial on the OPEN segment — the endpoint window hint feeds back
+        # into the front, the transcript goes to the trace + client live line.
+        if turn_task is not None and not turn_task.done():
+            return
+        try:
+            payload = await manager.voice_partial(session_id, data)
+            if payload:
+                front.set_hint(payload.get("endpoint"), payload.get("silence_ms"))
+                await ws.send_json(payload)
+        except SessionNotFound:
+            pass
+        except Exception:  # a failed partial must never touch the socket state
+            logger.debug("front partial failed", exc_info=True)
+
     async def _run_partial(data: bytes) -> None:
         # E1 duplex: a snapshot of the utterance-so-far — rolling transcript to
         # the trace + client display, NEVER an agent turn. Stale snapshots
@@ -379,6 +403,7 @@ async def ws_call(ws: WebSocket, session_id: str):
             logger.debug("partial failed", exc_info=True)
 
     async def _run_voice_turn(data: bytes) -> None:
+        nonlocal turn_task
         import os as _os
 
         try:
@@ -400,6 +425,17 @@ async def ws_call(ws: WebSocket, session_id: str):
             logger.exception("voice turn failed")
             with suppress(Exception):
                 await ws.send_json({"type": "error", "detail": "voice turn failed"})
+        # D2: speech that completed WHILE this turn was busy was stashed by the
+        # audio front (the old path dropped those frames — "deaf while
+        # thinking"). Dispatch it as the next turn right away.
+        try:
+            front = getattr(manager.get(session_id), "front", None)
+            pending = front.pop_stash() if front is not None else None
+            if pending is not None:
+                _disarm_checkin()
+                turn_task = asyncio.create_task(_run_voice_turn(pending))
+        except SessionNotFound:
+            pass
 
     try:
         while True:
@@ -412,6 +448,26 @@ async def ws_call(ws: WebSocket, session_id: str):
             # (WAV after the magic) — rolling transcript, never a turn.
             if frame.get("bytes"):
                 data = frame["bytes"]
+                # D2 duplex: continuous PCM frames — the server-side audio
+                # front owns VAD + endpointing; the client no longer cuts turns.
+                if data[:4] == b"FRAM":
+                    try:
+                        front = _front()
+                    except SessionNotFound:
+                        break
+                    for action, wav in front.on_frame(data[4:]):
+                        if action == "speech":
+                            _disarm_checkin()  # the caller is talking
+                        elif action == "partial":
+                            if partial_task is None or partial_task.done():
+                                partial_task = asyncio.create_task(_run_partial_front(wav, front))
+                        elif action == "utterance":
+                            _disarm_checkin()
+                            if turn_task is not None and not turn_task.done():
+                                front.stash(wav)  # never drop caller speech
+                            else:
+                                turn_task = asyncio.create_task(_run_voice_turn(wav))
+                    continue
                 _disarm_checkin()  # the caller spoke — no nudge needed
                 if data[:4] == b"PART":
                     if partial_task is None or partial_task.done():

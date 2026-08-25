@@ -252,6 +252,23 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # D2: serverio VAD slenkstis (kliento mikrofonai skiriasi — derinti
+        # pirmo balso testo metu, jei kalba nesigirdi arba triukšmas kerta).
+        "key": "SERVER_VAD_THR",
+        "label": "Serverio VAD slenkstis",
+        "options": ["0.010", "0.006", "0.015", "0.020"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # D2: numatytasis tylos langas serverio kirpimui (be E2 užuominos).
+        "key": "SERVER_SIL_MS",
+        "label": "Serverio tylos langas, ms",
+        "options": ["900", "700", "1100", "1400"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],

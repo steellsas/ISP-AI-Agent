@@ -498,10 +498,24 @@ async function startMic(){
         stopAudio();
         if(ws) ws.send(JSON.stringify({type:"interrupt", played: turnPlayed}));
         addMsg("note","⏹ pertraukėte agentą");
-        speaking=true; speechMs=bargeMs; silenceMs=0;
-        utter=bargeBuf.slice();
+        if(duplexOn){
+          // D2: pertraukusioji kalba išsiunčiama kadrais — serveris kerpa
+          for(const b of bargeBuf) sendFrame(b);
+          speaking=false;
+        }else{
+          speaking=true; speechMs=bargeMs; silenceMs=0;
+          utter=bargeBuf.slice();
+        }
         bargeMs=0; bargeSilence=0; bargeBuf=[];
       }
+      updPre();
+      return;
+    }
+    // D2 duplex: klientas — kvailas mikrofonas. Kadrai teka į serverį NUOLAT
+    // (kol negroja agentas); serverio garso frontas pats sprendžia, kada
+    // frazė baigėsi. Kliento VAD lieka tik VU meteriui ir barge režimui.
+    if(duplexOn){
+      if(ws && ws.readyState===1) sendFrame(ch);
       updPre();
       return;
     }
@@ -509,11 +523,6 @@ async function startMic(){
       if(!speaking){ utter=preBuf.slice(); partialAtMs=0; dynSilence=null; } // pre-roll: žodžio pradžia nedingsta
       speaking=true; speechMs+=frameMs; silenceMs=0;
       utter.push(new Float32Array(ch));
-      // Duplex E1: momentinė kopija kas partialEveryMs (tik nuo 600 ms kalbos,
-      // kad trumpi „Taip." nekurtų beprasmių dalinių).
-      if(duplexOn && speechMs>=600 && speechMs-partialAtMs>=partialEveryMs){
-        partialAtMs=speechMs; sendPartial();
-      }
     }else if(speaking){
       silenceMs+=frameMs;
       utter.push(new Float32Array(ch));
@@ -550,25 +559,17 @@ function sendUtterance(){
   partialAtMs=0; dynSilence=null; turnPlayed=0; $("partialLine").textContent="";
   addMsg("note","🎤 siunčiama…");
 }
-/* Duplex E1: frazės-iki-šiol kopija (paskutinės ≤15 s) su "PART" antrašte —
-   serveriui tai dalinis transkriptas, ne turn'as. */
-function sendPartial(){
-  if(!ws || ws.readyState!==1) return;
-  const maxSamples=15*sampleRate;
-  const total=utter.reduce((n,a)=>n+a.length,0);
-  const take=Math.min(total, maxSamples);
-  const pcm=new Int16Array(take);
-  let o=take;
-  for(let i=utter.length-1;i>=0 && o>0;i--){
-    const a=utter[i];
-    for(let j=a.length-1;j>=0 && o>0;j--){
-      const s=Math.max(-1,Math.min(1,a[j]));
-      pcm[--o]=s<0?s*0x8000:s*0x7fff;
-    }
+/* D2 duplex: vienas PCM kadras su "FRAM" antrašte — serverio garso frontas
+   iš jų pats lipdo frazes (VAD + endpointing serveryje). */
+function sendFrame(ch){
+  const pcm=new Int16Array(ch.length);
+  for(let i=0;i<ch.length;i++){
+    const s=Math.max(-1,Math.min(1,ch[i]));
+    pcm[i]=s<0?s*0x8000:s*0x7fff;
   }
   const wav=new Uint8Array(wavEncode(pcm, sampleRate));
   const framed=new Uint8Array(4+wav.length);
-  framed[0]=0x50; framed[1]=0x41; framed[2]=0x52; framed[3]=0x54; // "PART"
+  framed[0]=0x46; framed[1]=0x52; framed[2]=0x41; framed[3]=0x4D; // "FRAM"
   framed.set(wav,4);
   ws.send(framed.buffer);
 }

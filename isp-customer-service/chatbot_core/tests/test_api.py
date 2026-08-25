@@ -361,6 +361,42 @@ class TestVoiceChannel:
         assert last_assistant["content"].endswith("—")
         assert tail not in last_assistant["content"]
 
+    def test_fram_stream_server_cuts_a_turn(self, client, voice_fakes, monkeypatch):
+        # D2 duplex: the client streams FRAM frames; the SERVER's audio front
+        # decides the utterance ended and runs the normal voice turn.
+        import struct as _struct
+
+        from app.audio_front import wav_bytes
+
+        monkeypatch.setenv("DUPLEX", "on")
+        monkeypatch.setenv("VOICE_STREAM", "on")
+
+        def frame(loud):
+            pcm = _struct.pack("<4096h", *([5000 if loud else 0] * 4096))
+            return b"FRAM" + wav_bytes(pcm, 16_000)
+
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            for _ in range(4):
+                ws.send_bytes(frame(loud=True))
+            for _ in range(5):  # > 900 ms of silence -> the server cuts
+                ws.send_bytes(frame(loud=False))
+            done = None
+            for _ in range(120):
+                msg = ws.receive()
+                if msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "voice_turn_done":
+                        done = e
+                        break
+            assert done is not None
+            assert done["chunks"] >= 1  # the FakeASR turn produced a spoken reply
+        # the assembled utterance landed in the archive like any voice turn
+        rec = voice_fakes / sid
+        assert rec.joinpath("turn_01_user.wav").exists()
+
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]
         resp = client.get(f"/sessions/{sid}/greeting/audio")
