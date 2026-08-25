@@ -309,6 +309,7 @@ class VoicePipeline:
         sample_rate: int = 16_000,
         should_stop: Callable[[], bool] | None = None,
         interruption: Callable[[str], str | None] | None = None,
+        transcript_override: str | None = None,
     ) -> Iterator[bytes]:
         """
         Run one turn and STREAM the reply audio in chunks (one per sentence) so the
@@ -333,28 +334,45 @@ class VoicePipeline:
         # falls back to today's assume-all-heard behaviour.
         self.last_turn_sentences: list[str] = []
         self.last_turn_aligned = True
-        if self._too_short(audio, sample_rate, tracer):
-            return
         t0 = time.perf_counter()
-        context = self._asr_context()
-        raw_transcript = self._transcribe(audio, sample_rate, context)
-        transcript = raw_transcript
-        if self._transcript_filter and transcript:
-            transcript = self._transcript_filter(transcript)
-        t1 = time.perf_counter()
+        if transcript_override:
+            # D4 ASR head-start: the last partial snapshot already covered
+            # every voiced frame of this segment — its text IS the transcript,
+            # a whole ASR round-trip is skipped. (Filters already ran on it.)
+            raw_transcript = transcript = transcript_override
+            context = None
+            t1 = time.perf_counter()
+            if tracer is not None:
+                tracer.emit(
+                    "asr",
+                    raw=raw_transcript,
+                    transcript=transcript,
+                    ms=0,
+                    dropped=False,
+                    reused=True,
+                )
+        else:
+            if self._too_short(audio, sample_rate, tracer):
+                return
+            context = self._asr_context()
+            raw_transcript = self._transcribe(audio, sample_rate, context)
+            transcript = raw_transcript
+            if self._transcript_filter and transcript:
+                transcript = self._transcript_filter(transcript)
+            t1 = time.perf_counter()
 
-        dropped = bool(self._noise_filter and self._noise_filter(transcript))
-        if tracer is not None:
-            tracer.emit(
-                "asr",
-                raw=raw_transcript,
-                transcript=transcript,
-                ms=round((t1 - t0) * 1000.0),
-                dropped=dropped,
-                context=(context or "")[:160],
-            )
-        if dropped:
-            return
+            dropped = bool(self._noise_filter and self._noise_filter(transcript))
+            if tracer is not None:
+                tracer.emit(
+                    "asr",
+                    raw=raw_transcript,
+                    transcript=transcript,
+                    ms=round((t1 - t0) * 1000.0),
+                    dropped=dropped,
+                    context=(context or "")[:160],
+                )
+            if dropped:
+                return
 
         # Smart barge-in (L3a): the previous turn was cut by this utterance —
         # a bare backchannel ("taip", "mhm") or our own speakerphone echo must

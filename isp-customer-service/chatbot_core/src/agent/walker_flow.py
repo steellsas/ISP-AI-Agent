@@ -548,6 +548,39 @@ def settle_hypothesis(engine, status: str, settled_by: str) -> None:
         engine.state.rejected_hypotheses.append({"cause": h["cause"], "settled_by": settled_by})
 
 
+def scripted_wait_ack(engine) -> str | None:
+    """D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
+    work-in-progress signal while the walker awaits a CLIENT ACTION gets the
+    scripted acknowledgement — zero LLM, zero latency. Anything richer (a
+    question, a standing directive, an announce, a detour note) falls through
+    to the narrator. Two phrases alternate so a long wait never sounds like a
+    tape loop."""
+    from .resolution import INTENT_IN_PROGRESS
+
+    s = engine.state
+    if not s.resolution or s.case_closed or getattr(engine, "_ticket_stage", None):
+        return None
+    if s.last_intent != INTENT_IN_PROGRESS or s.awaiting != "client_action":
+        return None
+    if engine._pending_announce or getattr(engine, "_evidence_conflict", None):
+        return None
+    if getattr(engine, "_resync_note", False) or getattr(engine, "_undelivered_tail", None):
+        return None
+    for attr in (
+        "_evidence_directive",
+        "_recap_directive",
+        "_findings_directive",
+        "_ticket_directive",
+        "_ident_directive",
+    ):
+        if getattr(engine, attr, None):
+            return None
+    from .identification import phrase
+
+    variant = phrase("wait_ack") if s.awaiting_turns % 2 else phrase("wait_ack_2")
+    return variant or phrase("wait_ack")
+
+
 def turn_may_advance(engine, step) -> bool:
     """May the caller's turn move the walker forward?
 

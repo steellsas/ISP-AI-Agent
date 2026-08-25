@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 _MIN_SPEECH_MS = 220  # mirrors the client's micMinMs — sub-word blips are noise
 _PRE_FRAMES = 2  # frames kept before speech onset (the word's quiet start)
 _MAX_SEGMENT_S = 30.0  # force a cut — never grow a segment unbounded
+_LONG_SPEECH_MS = 4000  # D5: a story this long earns one "Mhm" backchannel
 
 
 def _env_f(key: str, default: float) -> float:
@@ -103,11 +104,42 @@ class AudioFront:
         self._hint_window_ms: int | None = None
         # Speech that completed while a turn was busy — dispatched right after.
         self._stash_pcm = bytearray()
+        # D4 ASR head-start bookkeeping: when the LAST partial snapshot covered
+        # every voiced frame of the segment (only silence followed) and its ASR
+        # completed, the final transcript can REUSE the partial text — the cut
+        # skips a whole ASR round-trip. `last_reuse_ok` is set at cut time.
+        self._snap_speech_ms: float | None = None
+        self._snap_ok = False
+        self.last_reuse_ok = False
 
     # -- the E2 feedback loop (ws handler calls this when a partial returns) --
 
     def set_hint(self, mode: str | None, silence_ms: int | None) -> None:
         self._hint_window_ms = int(silence_ms) if mode in ("fast", "slow") and silence_ms else None
+
+    # -- D4 ASR head-start feedback (ws handler) ------------------------------
+
+    def snap_done(self) -> None:
+        """The last emitted partial snapshot's ASR completed successfully."""
+        self._snap_ok = True
+
+    def snap_skipped(self) -> None:
+        """A snapshot was dropped (partial task busy) — its text never existed,
+        so the final transcript cannot be reused for this stretch of speech."""
+        self._snap_ok = False
+
+    # -- D3 duck-then-decide --------------------------------------------------
+
+    def abort_segment(self) -> None:
+        """Drop the open segment (the ducked speech turned out to be our own
+        echo or a bare backchannel — its audio must not become a turn)."""
+        self._in_speech = False
+        self._seg = bytearray()
+        self._pre = []
+        self._speech_ms = self._sil_ms = self._since_partial_ms = 0.0
+        self._hint_window_ms = None
+        self._snap_speech_ms = None
+        self._snap_ok = False
 
     # -- busy-turn stash (never drop caller speech) ---------------------------
 
@@ -157,11 +189,18 @@ class AudioFront:
         # in speech: the segment collects EVERYTHING (speech and pauses alike)
         self._seg.extend(pcm)
         if loud:
+            prev_speech_ms = self._speech_ms
             self._speech_ms += frame_ms
             self._sil_ms = 0.0
             self._since_partial_ms += frame_ms
+            # D5 backchannel moment: once per segment, when the story crosses
+            # the long-speech line — the transport decides whether to hum.
+            if prev_speech_ms < _LONG_SPEECH_MS <= self._speech_ms:
+                actions.append(("long_speech", b""))
             if self._speech_ms >= 600 and self._since_partial_ms >= partial_interval_ms():
                 self._since_partial_ms = 0.0
+                self._snap_speech_ms = self._speech_ms  # D4: snapshot coverage
+                self._snap_ok = False  # until the ws handler confirms its ASR
                 actions.append(("partial", wav_bytes(bytes(self._seg), self._rate)))
         else:
             self._sil_ms += frame_ms
@@ -170,10 +209,15 @@ class AudioFront:
         seg_s = (len(self._seg) / 2) / self._rate
         if self._sil_ms >= window or seg_s >= _MAX_SEGMENT_S:
             if self._speech_ms >= _MIN_SPEECH_MS:
+                # D4: the final ASR may reuse the last partial's text when that
+                # snapshot covered every voiced frame (silence-only after it).
+                self.last_reuse_ok = bool(self._snap_ok and self._snap_speech_ms == self._speech_ms)
                 actions.append(("utterance", wav_bytes(bytes(self._seg), self._rate)))
             self._in_speech = False
             self._seg = bytearray()
             self._pre = []
             self._speech_ms = self._sil_ms = self._since_partial_ms = 0.0
             self._hint_window_ms = None
+            self._snap_speech_ms = None
+            self._snap_ok = False
         return actions

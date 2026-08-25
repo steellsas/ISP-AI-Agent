@@ -382,16 +382,20 @@ class TestVoiceChannel:
             for _ in range(5):  # > 900 ms of silence -> the server cuts
                 ws.send_bytes(frame(loud=False))
             done = None
+            saw_turn_start = False
             for _ in range(120):
                 msg = ws.receive()
                 if msg.get("text"):
                     import json as _json
 
                     e = _json.loads(msg["text"])
+                    if e.get("type") == "turn_start":
+                        saw_turn_start = True  # D1: the client's played reset
                     if e.get("type") == "voice_turn_done":
                         done = e
                         break
             assert done is not None
+            assert saw_turn_start
             assert done["chunks"] >= 1  # the FakeASR turn produced a spoken reply
         # the assembled utterance landed in the archive like any voice turn
         rec = voice_fakes / sid

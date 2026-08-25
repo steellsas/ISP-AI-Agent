@@ -363,6 +363,26 @@ $("start").onclick = async () => {
             `<span>⚡ TTFA <b>${e.ttfa_ms}</b> ms</span><span>🔊 ${e.chunks} sak.</span>`);
         return;
       }
+      if(e.type==="turn_start"){ turnPlayed=0; return; } // D1: skaitiklis per turn'ą
+      if(e.type==="cut_audio"){ // D3: serveris patvirtino tikrą pertraukimą
+        stopAudio(); setDuck(false);
+        if(duckTimer){ clearTimeout(duckTimer); duckTimer=null; }
+        addMsg("note","⏹ pertraukėte agentą");
+        return;
+      }
+      if(e.type==="unduck"){ // D3: aidas/pritarimas — agentas kalba toliau
+        setDuck(false);
+        if(duckTimer){ clearTimeout(duckTimer); duckTimer=null; }
+        return;
+      }
+      if(e.type==="backchannel" && e.audio){ // D5: „Mhm" ŠALIA eilės — mic
+        // toliau transliuoja, playing būsena nekinta, barge nekyla.
+        try{
+          const a=new Audio("data:audio/mpeg;base64,"+e.audio);
+          a.volume=0.9; a.play().catch(()=>{});
+        }catch(err){}
+        return;
+      }
       if(e.type==="partial"){ // duplex E1: gyvas dalinis transkriptas
         // E2: semantinė tylos užuomina einamai frazei (fast/slow/normal).
         if(e.silence_ms){ dynSilence=e.silence_ms; }
@@ -432,6 +452,13 @@ let currentAudio=null, audioQueue=[];
 // frazės — pertraukiant tai pasakome serveriui, kad variklis žinotų, ką
 // klientas realiai išgirdo (pusiau sugrotas sakinys = neišgirstas).
 let turnPlayed=0;
+// D3 duck-then-decide: pertraukimas pirmiausia PRITILDO agentą (ne nutildo);
+// serveris su ASR nusprendžia — cut_audio (tikra kalba) arba unduck (aidas).
+let ducked=false, duckTimer=null;
+function setDuck(v){
+  ducked=v;
+  if(currentAudio){ try{ currentAudio.volume = v?0.25:1.0; }catch(e){} }
+}
 function playAudio(buf){ enqueueAudio(buf); }
 function enqueueAudio(buf){
   audioQueue.push(buf);
@@ -442,6 +469,7 @@ function playNext(){
   const buf=audioQueue.shift();
   if(buf===undefined){ playing=false; currentAudio=null; return; }
   const a=new Audio(URL.createObjectURL(new Blob([buf],{type:"audio/mpeg"})));
+  a.volume = ducked?0.25:1.0; // D3: duck būsena galioja ir naujiems chunk'ams
   currentAudio=a;
   a.onended=()=>{ turnPlayed++; currentAudio=null; playNext(); };
   a.onerror=()=>{ currentAudio=null; playNext(); };
@@ -486,6 +514,12 @@ async function startMic(){
       // atsakymo pradžia (nė vienas žodis nedingsta).
       if(!micCfg.bargeOn){ speaking=false; utter=[]; updPre(); return; }
       const bthr = micCfg.threshold*1.6;   // aukštesnis slenkstis prieš aidą
+      // D3 duck-then-decide (duplex): jau pritildyta — kalba teka kadrais,
+      // kol serveris nuspręs (cut_audio arba unduck).
+      if(duplexOn && ducked){
+        if(ws && ws.readyState===1) sendFrame(ch);
+        updPre(); return;
+      }
       if(rms>bthr){
         if(bargeMs===0) bargeBuf=preBuf.slice();  // pre-roll: pertraukimo pradžia nedingsta
         bargeMs+=frameMs; bargeSilence=0;
@@ -495,14 +529,20 @@ async function startMic(){
         if(bargeSilence>250){ bargeMs=0; bargeSilence=0; bargeBuf=[]; } // backchannel — atmesta
       }
       if(bargeMs>=micCfg.bargeMs){
-        stopAudio();
-        if(ws) ws.send(JSON.stringify({type:"interrupt", played: turnPlayed}));
-        addMsg("note","⏹ pertraukėte agentą");
         if(duplexOn){
-          // D2: pertraukusioji kalba išsiunčiama kadrais — serveris kerpa
+          // D3: NE kertame, o pritildome — serveris su ASR nuspręs, ar tai
+          // tikra kalba (cut_audio), ar aidas/pritarimas (unduck).
+          setDuck(true);
+          if(ws) ws.send(JSON.stringify({type:"duck", played: turnPlayed}));
           for(const b of bargeBuf) sendFrame(b);
-          speaking=false;
+          if(duckTimer) clearTimeout(duckTimer);
+          duckTimer=setTimeout(()=>{ // serveris tyli — grąžinam garsą patys
+            if(ducked){ setDuck(false); if(ws) ws.send(JSON.stringify({type:"duck_end"})); }
+          }, 2500);
         }else{
+          stopAudio();
+          if(ws) ws.send(JSON.stringify({type:"interrupt", played: turnPlayed}));
+          addMsg("note","⏹ pertraukėte agentą");
           speaking=true; speechMs=bargeMs; silenceMs=0;
           utter=bargeBuf.slice();
         }

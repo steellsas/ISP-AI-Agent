@@ -841,6 +841,12 @@ class ReactAgent:
 
         return turn_may_advance(self, step)
 
+    def _scripted_wait_ack(self) -> str | None:
+        """Delegates to walker_flow.scripted_wait_ack (D5)."""
+        from .walker_flow import scripted_wait_ack
+
+        return scripted_wait_ack(self)
+
     def _simulate_bridge_connection(self) -> None:
         """DEMO/TEST only (SIMULATE_BRIDGE=on): reflect the caller plugging a PC into the
         wall cable by making an unbound device appear on the line, so the bridge can
@@ -1345,6 +1351,13 @@ class ReactAgent:
         scripted = self._identification_scripted_reply(self.state.last_heard)
         if scripted is not None:
             yield self._emit_scripted_reply(scripted)
+            return
+
+        # D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
+        # wait signal at a standing client action is acknowledged scripted.
+        wait = self._scripted_wait_ack()
+        if wait is not None:
+            yield self._emit_scripted_reply(wait)
             return
 
         max_calls = self.config.max_tool_calls_per_response

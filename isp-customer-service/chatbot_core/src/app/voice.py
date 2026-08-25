@@ -125,7 +125,9 @@ def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None
     return {"type": "partial", "text": text, "ms": took, "endpoint": mode, "silence_ms": silence_ms}
 
 
-def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[str, Any]:
+def run_voice_turn_stream(
+    ms: ManagedSession, audio: bytes, on_chunk, transcript: str | None = None
+) -> dict[str, Any]:
     """Phase 5 PR1 — STREAMING voice turn: the reply's audio is delivered
     sentence-by-sentence via on_chunk(bytes) (called from this worker thread)
     the moment each sentence's TTS is done, so the agent starts SPEAKING after
@@ -188,7 +190,10 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
     turn_error = False
     try:
         for chunk in pipeline.stream_turn(
-            audio, should_stop=ms.cancel.is_set, interruption=interruption
+            audio,
+            should_stop=ms.cancel.is_set,
+            interruption=interruption,
+            transcript_override=transcript,
         ):
             if not chunk:
                 continue

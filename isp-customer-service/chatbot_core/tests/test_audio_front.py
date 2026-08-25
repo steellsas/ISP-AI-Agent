@@ -112,3 +112,52 @@ class TestStash:
         pcm, _rate = pcm_from_wav(merged)
         assert pcm == struct.pack("<4h", 1, 2, 3, 4)
         assert front.pop_stash() is None
+
+
+class TestDuckAndReuse:
+    def test_abort_segment_drops_open_speech(self):
+        front = AudioFront()
+        front.on_frame(_frame(loud=True))
+        front.abort_segment()
+        acts = []
+        for _ in range(4):
+            acts += front.on_frame(_frame(loud=False))
+        assert acts == []  # the echo audio never became a turn
+
+    def test_reuse_ok_when_last_snapshot_covers_all_speech(self):
+        front = AudioFront()
+        acts = []
+        for _ in range(4):  # partial fires on the 4th frame (1024 ms)
+            acts += front.on_frame(_frame(loud=True))
+        assert [a for a, _w in acts].count("partial") == 1
+        front.snap_done()  # the ws handler confirmed its ASR
+        for _ in range(4):  # silence only — the snapshot still covers everything
+            acts += front.on_frame(_frame(loud=False))
+        assert [a for a, _w in acts].count("utterance") == 1
+        assert front.last_reuse_ok is True
+
+    def test_no_reuse_when_speech_continues_after_snapshot(self):
+        front = AudioFront()
+        for _ in range(4):
+            front.on_frame(_frame(loud=True))
+        front.snap_done()
+        front.on_frame(_frame(loud=True))  # they said MORE after the snapshot
+        for _ in range(4):
+            front.on_frame(_frame(loud=False))
+        assert front.last_reuse_ok is False
+
+    def test_no_reuse_when_snapshot_was_skipped(self):
+        front = AudioFront()
+        for _ in range(4):
+            front.on_frame(_frame(loud=True))
+        front.snap_skipped()  # partial task was busy — no text exists
+        for _ in range(4):
+            front.on_frame(_frame(loud=False))
+        assert front.last_reuse_ok is False
+
+    def test_long_speech_backchannel_moment_once(self):
+        front = AudioFront()
+        acts = []
+        for _ in range(20):  # 5120 ms of speech
+            acts += front.on_frame(_frame(loud=True))
+        assert [a for a, _w in acts].count("long_speech") == 1

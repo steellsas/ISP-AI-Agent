@@ -580,3 +580,20 @@ class TestDeliveryLedger:
         agent.apply_delivery(["Viskas.", "Gerai."], 2)
         assert agent.state.messages[-1]["content"] == "Viskas. Gerai."
         assert agent._undelivered_tail is None
+
+
+class TestAsrHeadStart:
+    """D4 — when the last partial covered the whole segment, its text IS the
+    final transcript: the ASR round-trip is skipped, trace says reused."""
+
+    def test_override_skips_the_asr(self):
+        calls = []
+        asr = SimpleNamespace(transcribe=lambda audio, **k: calls.append(1) or "nelaukta")
+        session = _session()
+        session.handle_turn_stream = lambda text: iter([f"atsakymas į: {text}"])
+        pipeline = VoicePipeline(session, asr, _StubTTS())
+        chunks = list(pipeline.stream_turn(b"\x00" * 32_000, transcript_override="nedega nė viena"))
+        assert calls == [] and len(chunks) == 1
+        asr_events = [f for k, f in session.tracer.events if k == "asr"]
+        assert asr_events[0]["reused"] is True and asr_events[0]["ms"] == 0
+        assert asr_events[0]["transcript"] == "nedega nė viena"

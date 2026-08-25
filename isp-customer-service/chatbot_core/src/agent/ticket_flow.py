@@ -157,6 +157,37 @@ def fmt_phone(nr: str | None) -> str:
     return digits
 
 
+def amend_ticket_note(engine: Any, note: str) -> bool:
+    """Post-registration correction (live 2026-08-25: the caller gave a NEW
+    call-back number after 'Užregistravau' and it vanished into the goodbye).
+    Appends the note to the registered ticket's details so the worker sees it.
+    Best-effort: False on any hiccup — the spoken acknowledgement then still
+    happens, but the trace records note_failed."""
+    tid = engine.state.ticket_id
+    if not tid or not note:
+        return False
+    try:
+        from .tools import get_db
+
+        db = get_db()
+        with db.cursor() as cursor:
+            cursor.execute("SELECT details FROM tickets WHERE ticket_id = ?", (tid,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+            details = (dict(row).get("details") or "").rstrip()
+            cursor.execute(
+                "UPDATE tickets SET details = ? WHERE ticket_id = ?",
+                (f"{details}\n[PATIKSLINTA] {note}".strip(), tid),
+            )
+        return True
+    except Exception:  # a failed note must never break the goodbye
+        import logging
+
+        logging.getLogger(__name__).warning("ticket note amend failed", exc_info=True)
+        return False
+
+
 def finish_ticket_dialogue(engine: Any) -> str:
     """All contacts collected (or defaulted) — register, close, announce. The
     announce repeats the number and hours back, so "kokiu numeriu?" never needs
