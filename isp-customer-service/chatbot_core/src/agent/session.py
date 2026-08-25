@@ -147,6 +147,11 @@ class AgentSession:
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
 
+    def apply_delivery(self, sentences: list[str], delivered: int) -> None:
+        """D1: after a barge-in, keep in history only the sentences the caller
+        actually heard; the unheard tail resurfaces via the narrator next turn."""
+        self._agent.apply_delivery(sentences, delivered)
+
     def endpoint_hint(self, partial_text: str) -> tuple[str, int | None]:
         """E2 duplex: how much trailing silence the utterance-so-far deserves —
         ("slow", ms) mid-thought, ("fast", ms) when it already IS the expected

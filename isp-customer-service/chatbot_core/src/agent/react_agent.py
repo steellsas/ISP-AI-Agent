@@ -308,6 +308,9 @@ class ReactAgent:
         # say "neregistruoju" and return to the last fix instruction.
         self._resume_fix_note = False
         self._resync_note = False
+        # D1 delivery ledger: the tail of an interrupted reply the caller never
+        # HEARD — surfaced to the narrator next turn, then cleared.
+        self._undelivered_tail: str | None = None
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.
@@ -623,6 +626,27 @@ class ReactAgent:
         if key and self._evidence_asks.get(key, 0) > 0:
             self._evidence_asks[key] -= 1
         self.tracer.emit("turn_cancelled", spoken=spoken[:160])
+
+    def apply_delivery(self, sentences: list[str], delivered: int) -> None:
+        """D1 delivery ledger (live 2026-08-25: the transcript renders before
+        the audio, so a barge-in leaves the engine believing the caller heard
+        the WHOLE reply). The transport reports how many sentences actually
+        finished playing — the history keeps only that prefix, and the unheard
+        tail is surfaced to the narrator next turn. A half-played sentence
+        counts as NOT heard (repeating it is the natural repair)."""
+        total = len(sentences)
+        delivered = max(0, min(int(delivered), total))
+        if not total or delivered >= total:
+            return
+        heard = " ".join(s.strip() for s in sentences[:delivered]).strip()
+        tail = " ".join(s.strip() for s in sentences[delivered:]).strip()
+        s = self.state
+        for msg in reversed(s.messages):
+            if msg.get("role") == "assistant":
+                msg["content"] = (heard + " —") if heard else "—"
+                break
+        self._undelivered_tail = tail or None
+        self.tracer.emit("delivery", delivered=delivered, total=total, unheard=tail[:160])
 
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
         """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the

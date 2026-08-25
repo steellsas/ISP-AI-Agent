@@ -429,10 +429,16 @@ async def ws_call(ws: WebSocket, session_id: str):
                     # quietly. Traced, so the panel + archive show the interruption.
                     try:
                         ms = manager.get(session_id)
+                        # D1 delivery ledger: the client says how many chunks
+                        # finished playing — the heard/unheard split anchor.
+                        played = msg.get("played")
+                        ms.interrupt_played = (
+                            int(played) if isinstance(played, int | float) else None
+                        )
                         ms.interrupt.set()  # stop forwarding audio NOW
                         ms.cancel.set()  # stop synthesizing further sentences
                         ms.session.request_cancel()  # stop the LLM generation itself
-                        ms.session.tracer.emit("barge_in")
+                        ms.session.tracer.emit("barge_in", played=played)
                     except SessionNotFound:
                         break
                 elif msg.get("type") == "turn" and msg.get("text"):

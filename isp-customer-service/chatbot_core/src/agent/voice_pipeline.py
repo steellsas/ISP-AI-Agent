@@ -325,6 +325,14 @@ class VoicePipeline:
         actually synthesized, so the engine rolls its ask-bookkeeping back.
         """
         tracer = getattr(self._session, "tracer", None)
+        # D1 delivery ledger: the sentence behind EVERY yielded chunk, in send
+        # order — after a barge-in the transport truncates the engine's history
+        # to what the caller actually HEARD. `aligned` goes False whenever a
+        # chunk without a matching sentence goes out (filler, error fallback,
+        # whole-reply TTS split) — then the ledger is unusable and delivery
+        # falls back to today's assume-all-heard behaviour.
+        self.last_turn_sentences: list[str] = []
+        self.last_turn_aligned = True
         if self._too_short(audio, sample_rate, tracer):
             return
         t0 = time.perf_counter()
@@ -363,6 +371,7 @@ class VoicePipeline:
                     normalize_lt_address_speech(text), language=self._language
                 )
                 if chunk:
+                    self.last_turn_sentences.append(text)
                     yield chunk
             return
 
@@ -398,9 +407,11 @@ class VoicePipeline:
             )
             if reply and reply == getattr(self._session, "_last_injected_text", None):
                 _emit_latency(time.perf_counter())
+                self.last_turn_sentences.append(reply)
                 yield spec_audio
                 return
             if reply:  # the engine chose its own reply — synthesize it normally
+                self.last_turn_aligned = False  # tts.stream splits opaquely
                 for sentence_audio in self._tts_stream(reply):
                     _emit_latency(time.perf_counter())
                     yield sentence_audio
@@ -430,6 +441,7 @@ class VoicePipeline:
                     )
                     if chunk:
                         _emit_latency(time.perf_counter())
+                        self.last_turn_sentences.append(sentence)
                         yield chunk
                     sentence, buf = pop_sentence(buf)
             tail = buf.strip()
@@ -439,6 +451,7 @@ class VoicePipeline:
                 )
                 if chunk:
                     _emit_latency(time.perf_counter())
+                    self.last_turn_sentences.append(tail)
                     yield chunk
             if not emitted and tracer is not None:
                 tracer.emit(
@@ -451,6 +464,7 @@ class VoicePipeline:
             return
 
         # Fallback (C2b): non-streaming agent -> full reply -> per-sentence TTS.
+        self.last_turn_aligned = False  # chunk<->sentence mapping unknown here
         reply_text = self._session.handle_turn(transcript)
         stream = getattr(self._tts, "stream", None)
         if callable(stream):

@@ -13,6 +13,7 @@ import asyncio
 import logging
 import threading
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -48,6 +49,9 @@ class ManagedSession:
     # E1 duplex: the latest rolling partial transcript of the utterance-so-far
     # (trace/display in E1; the E2 endpointer reads it for the turn-cut call).
     last_partial: str = ""
+    # D1 delivery ledger: how many audio chunks the client reported as FULLY
+    # played when it sent the interrupt (None = no report / no interrupt).
+    interrupt_played: int | None = None
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
@@ -229,6 +233,19 @@ class SessionManager:
             payload = task.result()  # re-raises a worker failure
             payload["interrupted"] = interrupted
             payload["chunks_sent"] = sent
+            # D1 delivery ledger: the client reported how many chunks finished
+            # playing when it barged in — truncate the engine's history to the
+            # heard prefix. Only when the pipeline's chunk<->sentence map is
+            # trustworthy (no filler/fallback chunks); otherwise keep today's
+            # assume-all-heard behaviour.
+            if interrupted:
+                played = ms.interrupt_played
+                ms.interrupt_played = None
+                sentences = list(getattr(ms.voice, "last_turn_sentences", None) or [])
+                aligned = bool(getattr(ms.voice, "last_turn_aligned", False))
+                if aligned and sentences and played is not None:
+                    with suppress(Exception):  # a repair must never fail a turn
+                        ms.session.apply_delivery(sentences, int(played))
             wall_ms = int((time.perf_counter() - t0) * 1000)
             ms.turn_count += 1
             ms.last_activity = time.monotonic()

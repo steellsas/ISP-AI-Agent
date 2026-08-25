@@ -523,3 +523,60 @@ class TestSemanticEndpoint:
         assert payload["endpoint"] == "fast" and payload["silence_ms"] == 350
         _k, fields = ms.session.tracer.events[0]
         assert fields["endpoint"] == "fast"
+
+
+class TestDeliveryLedger:
+    """D1 — the engine's history keeps only what the caller actually HEARD
+    after a barge-in; the unheard tail resurfaces once via the narrator."""
+
+    def _streaming_session(self):
+        s = _session()
+        s.handle_turn_stream = lambda text: iter(["Pirmas sakinys. ", "Antras sakinys."])
+        return s
+
+    def test_pipeline_records_sentences_aligned(self):
+        asr = SimpleNamespace(transcribe=lambda audio, **k: "labas")
+        pipeline = VoicePipeline(self._streaming_session(), asr, _StubTTS())
+        chunks = list(pipeline.stream_turn(b"\x00" * 32_000))
+        assert len(chunks) == 2
+        assert pipeline.last_turn_sentences == ["Pirmas sakinys.", "Antras sakinys."]
+        assert pipeline.last_turn_aligned is True
+
+    def test_fallback_path_marks_unaligned(self):
+        asr = SimpleNamespace(transcribe=lambda audio, **k: "labas")
+        pipeline = VoicePipeline(_session(), asr, _StubTTS())  # no handle_turn_stream
+        list(pipeline.stream_turn(b"\x00" * 32_000))
+        assert pipeline.last_turn_aligned is False
+
+    def test_apply_delivery_truncates_history_and_surfaces_tail(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.messages.append({"role": "user", "content": "neveikia"})
+        agent.state.messages.append({"role": "assistant", "content": "Pirmas. Antras. Trečias."})
+        agent.apply_delivery(["Pirmas.", "Antras.", "Trečias."], 1)
+        assert agent.state.messages[-1]["content"] == "Pirmas. —"
+        assert agent._undelivered_tail == "Antras. Trečias."
+        block = agent._state_facts_block() or ""
+        assert "PERTRAUKTA REPLIKA" in block and "Antras." in block
+        # consumed once — the note must not nag every later turn
+        assert agent._undelivered_tail is None
+        assert "PERTRAUKTA REPLIKA" not in (agent._state_facts_block() or "")
+
+    def test_apply_delivery_nothing_heard(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.messages.append({"role": "assistant", "content": "Visas tekstas."})
+        agent.apply_delivery(["Visas tekstas."], 0)
+        assert agent.state.messages[-1]["content"] == "—"
+        assert agent._undelivered_tail == "Visas tekstas."
+
+    def test_apply_delivery_all_heard_is_noop(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.messages.append({"role": "assistant", "content": "Viskas. Gerai."})
+        agent.apply_delivery(["Viskas.", "Gerai."], 2)
+        assert agent.state.messages[-1]["content"] == "Viskas. Gerai."
+        assert agent._undelivered_tail is None

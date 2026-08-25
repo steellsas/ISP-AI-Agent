@@ -165,6 +165,7 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         try:
             fa = pipeline.filler_audio()
             if fa and not got_audio.is_set():
+                pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
                 on_chunk(bytes(fa))
         except Exception:  # pragma: no cover - the cue must never break a turn
             logger.debug("filler failed", exc_info=True)
@@ -213,6 +214,7 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
             fallback = phrase("turn_error")
             fb_audio = synthesize_text(fallback) if fallback else b""
             if fb_audio:
+                pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
                 chunks += 1
                 reply_audio.extend(fb_audio)
                 on_chunk(bytes(fb_audio))

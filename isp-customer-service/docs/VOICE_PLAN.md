@@ -57,6 +57,23 @@ Rizikos: Groq Whisper apkrova (partial kas ~1 s tik kalbant; jei limitai muš �
 lokalus faster-whisper daliniams); dalinių „drebėjimas" (E2 remiasi tik
 deterministiniais skaitytuvais, ne žodis-į-žodį tekstu).
 
+## L4 architektūra: srautinis duplekso branduolys (D1–D5, patvirtinta 2026-08-25)
+
+Struktūrinis pokytis: klientas tampa kvailu mikrofonu/garsiakalbiu, visas
+intelektas (VAD, endpointing, aidas, barge, turn'ai) — serveryje, kuris
+vienintelis žino, KĄ PATS GROJA (grojimo referencija). Variklis/pack'ai/
+direktyvos nekinta. E1/E2/spekuliacija išlieka ir apibendrinami. Aido kaskada
+sąmoningai NELOPOMA sename kelyje — sprendžiasi D3 su referencija (iki tol
+balso testams — ausinės). Balso testai: po D2, tada po D3+D4+D5 kartu.
+
+| Etapas | Kas | Statusas |
+|---|---|---|
+| D1 | PRISTATYMO ŽURNALAS: pipeline įsimena kiekvieno turn'o sakinius siuntimo tvarka (last_turn_sentences/aligned); klientas skaičiuoja pilnai sugrotus chunk'us (turnPlayed) ir pertraukdamas siunčia `played`; variklio istorijoje pertraukta replika nukerpama iki girdėtos dalies (apply_delivery), negirdėta uodega — vienkartinė PERTRAUKTA REPLIKA pastaba naratoriui. Pusiau sugrotas sakinys = negirdėtas. Nestandartiniai chunk'ai (filler, klaidos fallback, neseka sakinių) → aligned=False → sena elgsena. | PADARYTA |
+| D2 | Srautas aukštyn: PCM kadrai nuolat, žiedinis buferis, serverio VAD, endpointing'as (E2 logika) tampa serverio VALDŽIA — klientas nebekerta turn'ų. Tęsinio suliejimas (<1 s po kirpimo → tas pats turn'as). | — |
+| D3 | Duck-then-decide barge + aido vartai su grojimo referencija: pirma pritildymas, ASR patvirtina tikrą kalbą → kirpimas su D1 žurnalu, arba garso grąžinimas. Aido kaskada miršta čia. | — |
+| D4 | LLM pre-startas ant stabilaus partial'o (spekuliacijos apibendrinimas) + srautinio atsako poliravimas. | — |
+| D5 | Persidengimas: backchannels (E3), off-topic pagalvė (E4), scriptinės wait/ack reakcijos be LLM. | — |
+
 ## 1 žingsnio darbų sąrašas (L1+L2, paruošta įgyvendinimui)
 
 1. **Vardo klausimas be uodegos** — `knowledge/identification.yaml` frazė

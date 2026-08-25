@@ -291,6 +291,19 @@ def state_facts_block(engine) -> str | None:
             "iš naujo, kas jau nustatyta; jei išvada jau aiški — pasakyk ją ir "
             "siūlyk sprendimą."
         )
+    # D1 delivery ledger (2026-08-25): a barge-in cut the previous reply — the
+    # caller heard only its beginning. The unheard tail is surfaced ONCE so the
+    # narrator can weave the essential part back in instead of assuming it
+    # landed (live: the agent referenced instructions the caller never heard).
+    tail = getattr(engine, "_undelivered_tail", None)
+    if tail:
+        engine._undelivered_tail = None
+        facts.append(
+            "- PERTRAUKTA REPLIKA: klientas girdėjo tik jos pradžią. NEIŠGIRDO "
+            f"šito: „{tail}“. Jei ta dalis svarbi dabartiniam tikslui — "
+            "pasakyk ją DABAR savais žodžiais (trumpai, nekartok to, ką jau "
+            "girdėjo), tada tęsk."
+        )
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
     # re-EXPLANATIONS aimed at what was actually not understood.

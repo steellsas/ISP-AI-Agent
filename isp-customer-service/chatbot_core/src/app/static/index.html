@@ -428,6 +428,10 @@ function sendText(){
    back-to-back; `playing` stays true (half-duplex mic hold) until the queue
    drains. A single blob (greeting) is just a one-chunk queue. */
 let currentAudio=null, audioQueue=[];
+// D1 pristatymo žurnalas: kiek chunk'ų PILNAI sugrota nuo mano paskutinės
+// frazės — pertraukiant tai pasakome serveriui, kad variklis žinotų, ką
+// klientas realiai išgirdo (pusiau sugrotas sakinys = neišgirstas).
+let turnPlayed=0;
 function playAudio(buf){ enqueueAudio(buf); }
 function enqueueAudio(buf){
   audioQueue.push(buf);
@@ -439,7 +443,7 @@ function playNext(){
   if(buf===undefined){ playing=false; currentAudio=null; return; }
   const a=new Audio(URL.createObjectURL(new Blob([buf],{type:"audio/mpeg"})));
   currentAudio=a;
-  a.onended=()=>{ currentAudio=null; playNext(); };
+  a.onended=()=>{ turnPlayed++; currentAudio=null; playNext(); };
   a.onerror=()=>{ currentAudio=null; playNext(); };
   a.play().catch(()=>{ currentAudio=null; playNext(); });
 }
@@ -492,7 +496,7 @@ async function startMic(){
       }
       if(bargeMs>=micCfg.bargeMs){
         stopAudio();
-        if(ws) ws.send(JSON.stringify({type:"interrupt"}));
+        if(ws) ws.send(JSON.stringify({type:"interrupt", played: turnPlayed}));
         addMsg("note","⏹ pertraukėte agentą");
         speaking=true; speechMs=bargeMs; silenceMs=0;
         utter=bargeBuf.slice();
@@ -543,7 +547,7 @@ function sendUtterance(){
     }
   }
   ws.send(wavEncode(pcm, sampleRate));
-  partialAtMs=0; dynSilence=null; $("partialLine").textContent="";
+  partialAtMs=0; dynSilence=null; turnPlayed=0; $("partialLine").textContent="";
   addMsg("note","🎤 siunčiama…");
 }
 /* Duplex E1: frazės-iki-šiol kopija (paskutinės ≤15 s) su "PART" antrašte —

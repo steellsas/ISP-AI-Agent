@@ -314,6 +314,53 @@ class TestVoiceChannel:
         events = [_json2.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
         assert any(e.get("type") == "barge_in" for e in events)
 
+    def test_interrupt_truncates_history_to_heard_prefix(self, client, voice_fakes, monkeypatch):
+        # D1 delivery ledger: the interrupt carries played=1 — only the first
+        # sentence finished playing, so the engine's last assistant message
+        # keeps just that prefix and the unheard tail waits for the narrator.
+        import time as _time
+
+        from app import voice
+
+        class _SlowTTS:
+            def synthesize(self, text, *, language=None):
+                _time.sleep(0.15)
+                return b"FAKEMP3"
+
+        monkeypatch.setattr(voice, "_build_tts", lambda: _SlowTTS())
+        monkeypatch.setenv("VOICE_STREAM", "on")
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"RIFF-fake-wav-utterance")
+            done = None
+            interrupted_sent = False
+            for _ in range(120):
+                msg = ws.receive()
+                if msg.get("bytes"):
+                    if not interrupted_sent:
+                        ws.send_text('{"type": "interrupt", "played": 1}')
+                        interrupted_sent = True
+                elif msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "voice_turn_done":
+                        done = e
+                        break
+            assert done is not None and done["interrupted"] is True
+        from app.main import manager
+
+        engine = manager.get(sid).session._agent
+        tail = engine._undelivered_tail
+        last_assistant = next(
+            m for m in reversed(engine.state.messages) if m["role"] == "assistant"
+        )
+        # something was cut: the tail is pending and the history ends with the
+        # heard-prefix marker instead of the full scripted reply
+        assert tail
+        assert last_assistant["content"].endswith("—")
+        assert tail not in last_assistant["content"]
+
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]
         resp = client.get(f"/sessions/{sid}/greeting/audio")
