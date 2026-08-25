@@ -74,7 +74,9 @@ def run_analyst(engine: Any) -> None:
             ],
             model=perception_model(engine.config.model),
             temperature=0.2,
-            max_tokens=180,
+            # Reasoning models (gpt-oss) burn tokens on hidden thinking BEFORE
+            # the answer — 180 returned an empty string (observed 2026-08-25).
+            max_tokens=700,
         )
         notes = [
             line.strip().lstrip("-•* ").strip()
