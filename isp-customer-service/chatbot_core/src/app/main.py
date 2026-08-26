@@ -417,6 +417,12 @@ async def ws_call(ws: WebSocket, session_id: str):
     async def _send_backchannel() -> None:
         # D5: a short "Mhm" while the caller tells a LONG story — played by the
         # client OUTSIDE the audio queue (mic keeps streaming, no barge state).
+        # Default OFF (Andrius 2026-08-26: canned instant approvals feel fake
+        # and disruptive — a real acknowledgement must be alive, not preset).
+        import os as _os
+
+        if _os.getenv("BACKCHANNEL", "off").lower() != "on":
+            return
         try:
             ms = manager.get(session_id)
         except SessionNotFound:

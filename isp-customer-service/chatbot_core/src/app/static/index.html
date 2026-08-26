@@ -275,6 +275,17 @@ function onEvent(e){
   switch(e.type){
     case "user_turn": addMsg("user", e.text); break;
     case "agent_reply": addMsg("agent", e.text); break;
+    case "delivery": { // D1: pertraukta — pažymim, ko klientas NEgirdėjo
+      const msgs=$("chat").querySelectorAll(".msg.agent");
+      const last=msgs[msgs.length-1];
+      if(last && e.unheard){
+        const cut=document.createElement("div");
+        cut.style.cssText="opacity:.5;font-size:12px;font-style:italic";
+        cut.textContent=`⏹ nutraukta — klientas negirdėjo: "${e.unheard}"`;
+        last.appendChild(cut);
+      }
+      break;
+    }
     case "asr":
       if(e.dropped) addMsg("note", `🎧 atmesta kaip triukšmas: "${e.raw}" (${e.ms} ms)`);
       else if(e.raw!==e.transcript) addMsg("note", `🎧 girdėta: "${e.raw}" → "${e.transcript}"`);

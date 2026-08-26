@@ -200,6 +200,7 @@ def run_voice_turn_stream(
             fa = synthesize_text(text) if text else b""
             if fa and not got_audio.is_set():
                 pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
+                ms.session.tracer.emit("interrupt_ack", text=text)
                 on_chunk(bytes(fa))
         except Exception:  # pragma: no cover - the ack must never break a turn
             logger.debug("interrupt ack failed", exc_info=True)

@@ -287,6 +287,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # Default OFF (Andrius 2026-08-26): šabloniniai „Mhm" ilgo pasakojimo
+        # metu jaučiasi dirbtinai ir trikdo — pritarimas turi būti gyvas.
+        "key": "BACKCHANNEL",
+        "label": "„Mhm“ ilgo pasakojimo metu",
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],
