@@ -74,6 +74,33 @@ balso testams — ausinės). Balso testai: po D2, tada po D3+D4+D5 kartu.
 | D4 | ASR head-start: kai po paskutinio partial'o buvo tik tyla (front snap_done, speech nepakito), galutinė transkripcija PERPANAUDOJAMA iš partial'o — turn'as praleidžia ASR ratą (~0.5–0.7 s). Pilnas LLM pre-startas / cancel-merge ATIDĖTAS: saugiam suliejimui reikia turn'o checkpoint'ų (įrankiai jau būna paleisti); praktinius atvejus dengia E2 langai + stash. | PADARYTA (siaurintas) |
 | D5 | Persidengimas ir reakcijos: backchannels („Mhm"/„Aha, klausau" po 4 s pasakojimo, 1×/segmentą, tik kai laukiam atsakymo; klientui ŠALIA grojimo eilės — mic nenutrūksta, barge nekyla); scriptinės wait/ack be LLM (wait_ack/wait_ack_2 rotacija — buvo iki 12 s tylos); UŽDARYMO FIX: scriptinės closing šakos dabar KALBA (runtime.speak_scripted — anksčiau grąžindavo tekstą be stream writer'io = mirtina tyla po registracijos), numerio patikslinimas po registracijos įrašomas į tiketą (amend_ticket_note → [PATIKSLINTA]) ir patvirtinamas balsu. Off-topic pagalvę dengia esamas resync/anchor mechanizmas. | PADARYTA |
 
+## Tolesnis planas (patvirtinta 2026-08-26, po architektūros peržiūros)
+
+Akcentas — VEIKIANTIS DEMO keliems scenarijams; produkcija apgalvojama, bet
+nedaroma anksčiau laiko. P5 (LLM pre-startas) nužemintas — pirmiau pigesni
+ir saugesni latencijos svertai.
+
+| Prio | Darbas | Būsena |
+|---|---|---|
+| 1 | Interrupt-ack: po pertraukimo, jei tikras atsakas neatėjo per ~0.8 s — trumpas kešuotas „Aha, klausau" (tik pertrauktiems turn'ams; INTERRUPT_ACK jungiklis) | — |
+| 2 | Latencijos šerdis: prompt dieta (KNOWN FACTS genėjimas, istorijos langas) + naratoriaus Groq modelio eksperimentas su LT kokybės eval vartais | — |
+| 3 | Pack'ų validatorius CI: akli galai, neegzistuojantys goto/paneigta_veda/zingsnis taikiniai, ciklai, rag_section↔MD atitikimas, atsakymų pilnumas | — |
+| 4 | Tool timeout (2 s) → {"status":"timeout"} observation + pack'ų šaka „nuotoliu nepasiekiu — fizinis patikrinimas" | — |
+| 5 | Vienkartinių notų konsolidacija į tipizuotą TurnNotes (R3 skola; checkpointinama, atsekama) | — |
+| 6 | Filler v2 — kontekstinis, tik >1.2 s, formuluotės derinamos su Andriumi (v1 išjungtas kaip „šiukšlė") | — |
+| P4 likutis | LLM modulių medžių suvienodinimas (dvigubi rate limiter'iai), sensorių promptai → failai, guard slenksčiai → config, solverio tilto legacy valymas, dr_pick_cable hint švelninimas („patvirtink-jei-atitinka") | — |
+
+### Produkcinės parengties takelis (vėliau, prie stage su linija)
+
+- TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO
+  LINIJA — SIP/PSTN integracija, 8 kHz garsas, telefonų pokalbių standartas;
+  pritaikymas planuojamas atskirame stage kartu su integracija.
+- WebRTC transportas (UDP be head-of-line, gimtasis AEC — sumažintų duck
+  poreikį; duck semantinė dalis liktų).
+- Pack'ų A/B versijos skirtingiems srautams.
+- BACKLOG IDĖJA (Andrius): pack'ų KŪRIMO pagalbininkas — ne tik validacija,
+  bet ir lengvas naujo gedimo aprašymas, galbūt pagalbinis agentas-autorius.
+
 ## 1 žingsnio darbų sąrašas (L1+L2, paruošta įgyvendinimui)
 
 1. **Vardo klausimas be uodegos** — `knowledge/identification.yaml` frazė

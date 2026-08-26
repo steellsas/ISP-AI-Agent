@@ -184,6 +184,36 @@ def run_voice_turn_stream(
         filler_timer.daemon = True
         filler_timer.start()
 
+    # P1b interrupt-ack (architektūros peržiūra 2026-08-26): the caller who CUT
+    # the agent off expects an instant sign of being heard — when the real
+    # reply is not ready within ~0.8 s, a short cached "Aha, girdžiu." goes out
+    # first. Scoped to INTERRUPTED turns only (prev_cancelled), so normal turns
+    # keep their natural silence; the D1 ledger marks the chunk sentence-less.
+    def _maybe_ack() -> None:
+        if got_audio.is_set() or ms.cancel.is_set():
+            return
+        try:
+            from agent.identification import phrase
+
+            ms.ack_count = getattr(ms, "ack_count", 0) + 1
+            text = phrase("interrupt_ack_1" if ms.ack_count % 2 else "interrupt_ack_2")
+            fa = synthesize_text(text) if text else b""
+            if fa and not got_audio.is_set():
+                pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
+                on_chunk(bytes(fa))
+        except Exception:  # pragma: no cover - the ack must never break a turn
+            logger.debug("interrupt ack failed", exc_info=True)
+
+    ack_timer = None
+    if interruption is not None and os.environ.get("INTERRUPT_ACK", "on").lower() == "on":
+        try:
+            ack_delay = float(os.environ.get("INTERRUPT_ACK_AFTER_S", "0.8"))
+        except ValueError:
+            ack_delay = 0.8
+        ack_timer = threading.Timer(ack_delay, _maybe_ack)
+        ack_timer.daemon = True
+        ack_timer.start()
+
     # PR3: the barge-in cancel reaches the ENGINE — checked between sentences;
     # the token stream closes (LLM generation stops) and the ask-bookkeeping
     # rolls back via the session hook.
@@ -200,6 +230,8 @@ def run_voice_turn_stream(
             got_audio.set()
             if filler_timer is not None:
                 filler_timer.cancel()
+            if ack_timer is not None:
+                ack_timer.cancel()
             if first_ms is None:
                 first_ms = round((time.perf_counter() - t0) * 1000)
             chunks += 1
@@ -229,6 +261,8 @@ def run_voice_turn_stream(
         got_audio.set()  # a silent (dropped) turn must not get a late filler
         if filler_timer is not None:
             filler_timer.cancel()
+        if ack_timer is not None:
+            ack_timer.cancel()
     payload = {
         "type": "voice_turn_done",
         "chunks": chunks,

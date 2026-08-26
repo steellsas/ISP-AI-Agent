@@ -322,3 +322,8 @@ Meistras mato: priežastį (hipotezė/verdiktas), ką klientas JAU patikrino
 
 Darbo tvarka sutarta 2026-08-26: P1 → P2 → (balso testas) → P3 → P4 → (balso
 testas) → P5 atskira šaka.
+
+ATNAUJINIMAS po architektūros peržiūros (2026-08-26): prioritetų lentelė ir
+produkcinės parengties takelis (telefonija/SIP, WebRTC, pack'ų A/B, pack'ų
+kūrimo pagalbininkas) — žr. VOICE_PLAN.md „Tolesnis planas“. P5 nužemintas —
+pirmiau interrupt-ack, prompt dieta ir naratoriaus modelio eksperimentas.

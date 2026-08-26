@@ -278,6 +278,15 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # P1b (2026-08-26): po pertraukimo — trumpas „Aha, girdžiu" iš kešo,
+        # jei tikras atsakas neatėjo per INTERRUPT_ACK_AFTER_S.
+        "key": "INTERRUPT_ACK",
+        "label": "Ack po pertraukimo („Aha, girdžiu“)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],
