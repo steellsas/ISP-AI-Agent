@@ -158,14 +158,19 @@ class TestW2QuietAnalyst:
         agent.state.messages.append({"role": "user", "content": "neveikia internetas"})
         return agent
 
-    def test_notes_parsed_and_consumed_once(self, db_connection, monkeypatch):
+    def test_notes_parsed_filtered_and_consumed_once(self, db_connection, monkeypatch):
         import src.services.llm.client as llm
 
         monkeypatch.setenv("ANALYST", "on")
         monkeypatch.setattr(
             llm,
             "llm_completion",
-            lambda **k: "- klientas jau pasake, kada dingo\n- OK\n- trecia pastaba ilga",
+            lambda **k: (
+                "- klientas jau pasake, kada dingo\n"
+                "- OK\n"
+                "- paprasykite kliento patikrinti maitinima\n"  # ACTION -> dropped
+                "- faktas priestarauja tam, ka klientas kartoja"
+            ),
         )
         from agent.analyst import run_analyst
 
@@ -173,10 +178,10 @@ class TestW2QuietAnalyst:
         run_analyst(agent)
         assert agent._analyst_notes == [
             "klientas jau pasake, kada dingo",
-            "trecia pastaba ilga",
+            "faktas priestarauja tam, ka klientas kartoja",
         ]
         block = agent._state_facts_block() or ""
-        assert "TYLIOJO ANALITIKO" in block
+        assert "TYLIOJO ANALITIKO" in block and "paprasykite" not in block
         assert "TYLIOJO ANALITIKO" not in (agent._state_facts_block() or "")
 
     def test_off_switch_and_ok_reply(self, db_connection, monkeypatch):

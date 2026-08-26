@@ -161,3 +161,44 @@ class TestDuckAndReuse:
         for _ in range(20):  # 5120 ms of speech
             acts += front.on_frame(_frame(loud=True))
         assert [a for a, _w in acts].count("long_speech") == 1
+
+
+class TestInterruptFastWindow:
+    """P1 (live 2026-08-26: TTFA after a duck-cut hit 6-10 s): a confirmed
+    interruption closes its segment on the FAST window; a slow hint (unfinished
+    thought) still outranks it; the flag dies with the segment."""
+
+    def test_cut_segment_closes_fast(self):
+        front = AudioFront()
+        for _ in range(3):
+            front.on_frame(_frame(loud=True))
+        front.mark_interrupt()  # the duck ruling said CUT
+        acts = front.on_frame(_frame(loud=False))  # 256 ms < 350
+        assert acts == []
+        acts = front.on_frame(_frame(loud=False))  # 512 ms >= 350
+        assert [a for a, _w in acts] == ["utterance"]
+
+    def test_slow_hint_outranks_interrupt_fast(self):
+        front = AudioFront()
+        for _ in range(3):
+            front.on_frame(_frame(loud=True))
+        front.mark_interrupt()
+        front.set_hint("slow", 1400)  # trailing conjunction — wait anyway
+        acts = []
+        for _ in range(5):  # 1280 ms < 1400
+            acts += front.on_frame(_frame(loud=False))
+        assert acts == []
+
+    def test_flag_clears_with_the_segment(self):
+        front = AudioFront()
+        for _ in range(3):
+            front.on_frame(_frame(loud=True))
+        front.mark_interrupt()
+        for _ in range(2):
+            front.on_frame(_frame(loud=False))  # fast cut fired
+        for _ in range(3):  # next segment — normal window again
+            front.on_frame(_frame(loud=True))
+        acts = []
+        for _ in range(2):  # 512 ms < 900 default
+            acts += front.on_frame(_frame(loud=False))
+        assert acts == []

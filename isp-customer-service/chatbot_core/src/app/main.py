@@ -395,17 +395,19 @@ async def ws_call(ws: WebSocket, session_id: str):
         except Exception:  # a failed partial must never touch the socket state
             logger.debug("front partial failed", exc_info=True)
 
-    def _dispatch_utterance(wav: bytes, front) -> None:
+    def _dispatch_utterance(wav: bytes, front, hint_text: str | None = None) -> None:
         # D2/D4: one place where a server-cut utterance becomes a voice turn —
         # busy turns stash (never drop speech), and when the last partial
         # covered the whole segment its text skips the final ASR round-trip.
+        # P1: the duck ruling's ASR text rides in as hint_text — an interrupted
+        # turn used to re-run the whole ASR on the exact same audio.
         nonlocal turn_task
         _disarm_checkin()
         if turn_task is not None and not turn_task.done():
             front.stash(wav)
             return
-        hint = None
-        if front.last_reuse_ok and (partial_task is None or partial_task.done()):
+        hint = hint_text
+        if hint is None and front.last_reuse_ok and (partial_task is None or partial_task.done()):
             try:
                 hint = manager.get(session_id).last_partial or None
             except SessionNotFound:
@@ -493,8 +495,14 @@ async def ws_call(ws: WebSocket, session_id: str):
                     ms.session.apply_delivery(sentences, int(played))
             ms.interrupt_played = None
             ms.session.tracer.emit("barge_in", played=played, late=True)
+        # P1: the interrupting segment closes on the FAST window, and the
+        # ruling's ASR feeds forward — the decision snapshot's text becomes
+        # the reuse candidate (partial case) or the transcript itself (final).
+        front.mark_interrupt()
+        if text:
+            front.snap_done()
         if is_final:
-            _dispatch_utterance(wav, front)
+            _dispatch_utterance(wav, front, hint_text=text or None)
         elif queued is not None:
             _dispatch_utterance(queued, front)
 

@@ -42,6 +42,27 @@ def enabled() -> bool:
     return os.getenv("ANALYST", "on").lower() == "on"
 
 
+# The three agreed note types, by their tell-tale words (diacritics-folded
+# matching below). Anything else — including action suggestions — is dropped.
+_ALLOWED_MARKS = (
+    # (1) the caller ALREADY said it — do not re-ask
+    "jau pasake", "jau sake", "jau minejo", "jau atsake", "jau patvirtino",
+    "nebeklausk", "neklausk", "jau teige", "jau nurodė", "jau nurode",
+    # (2) a fact looks wrong / contradicts what the caller keeps saying
+    "priestarau", "itartin", "nesutampa", "pasitikslin", "patikslin",
+    "galejo buti blogai isgirsta", "zurnal",
+    # (3) the caller is mixing up concepts/devices — name things clearer
+    "painioj", "ivardink", "ivardyk", "aiskiau", "supainio", "paaiskink", "turejo omenyje",
+)  # fmt: skip
+
+
+def _allowed(note: str) -> bool:
+    from .evidence import _fold
+
+    low = _fold(note)
+    return any(m in low for m in _ALLOWED_MARKS)
+
+
 def run_analyst(engine: Any) -> None:
     """One background read -> engine._analyst_notes (list[str] | None).
     Best-effort: any hiccup leaves the notes empty and the call untouched."""
@@ -83,7 +104,12 @@ def run_analyst(engine: Any) -> None:
             for line in (content or "").splitlines()
             if line.strip().lstrip("-•* ").strip()
         ]
-        notes = [n for n in notes if len(n) >= 12 and n.upper() != "OK"][:2]
+        notes = [n for n in notes if len(n) >= 12 and n.upper() != "OK"]
+        # Boundary filter (live 2026-08-26: the model suggested ACTIONS —
+        # "paprašykite patikrinti maitinimą" — which is the engine's job).
+        # Deterministic whitelist: only the three agreed note types survive —
+        # already-said, suspicious-fact, concept-confusion.
+        notes = [n for n in notes if _allowed(n)][:2]
         engine._analyst_notes = notes or None
         if notes:
             engine.tracer.emit("analyst", notes=notes)

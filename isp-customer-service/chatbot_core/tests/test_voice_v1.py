@@ -558,10 +558,10 @@ class TestDeliveryLedger:
         assert agent.state.messages[-1]["content"] == "Pirmas. —"
         assert agent._undelivered_tail == "Antras. Trečias."
         block = agent._state_facts_block() or ""
-        assert "PERTRAUKTA REPLIKA" in block and "Antras." in block
+        assert "KLIENTAS NEGIRD" in block and "Antras." in block
         # consumed once — the note must not nag every later turn
         assert agent._undelivered_tail is None
-        assert "PERTRAUKTA REPLIKA" not in (agent._state_facts_block() or "")
+        assert "KLIENTAS NEGIRD" not in (agent._state_facts_block() or "")
 
     def test_apply_delivery_nothing_heard(self, db_connection):
         from agent.react_agent import ReactAgent

@@ -299,10 +299,8 @@ def state_facts_block(engine) -> str | None:
     if tail:
         engine._undelivered_tail = None
         facts.append(
-            "- PERTRAUKTA REPLIKA: klientas girdėjo tik jos pradžią. NEIŠGIRDO "
-            f"šito: „{tail}“. Jei ta dalis svarbi dabartiniam tikslui — "
-            "pasakyk ją DABAR savais žodžiais (trumpai, nekartok to, ką jau "
-            "girdėjo), tada tęsk."
+            f"- KLIENTAS NEGIRDĖJO (pertraukė): „{tail[:160]}“ — jei svarbu, "
+            "pasakyk trumpai savais žodžiais."
         )
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
@@ -876,7 +874,13 @@ def state_facts_block(engine) -> str | None:
                     "tinka numeris, iš kurio klientas skambina"
                 )
         elif td["kind"] == "hours":
-            goal = "paklausk TIK vieno: kada klientui patogiausia sulaukti skambučio"
+            # P2 (live 2026-08-26): the LLM echoed the just-captured number
+            # back with the "is kurio skambinate" template — the number is
+            # DONE, this turn is hours only.
+            goal = (
+                "paklausk TIK vieno: kada klientui patogiausia sulaukti "
+                "skambučio. Numeris JAU užfiksuotas — jo nebeminėk ir nebeklausk"
+            )
         else:
             goal = "paklausk TIK vieno: ar susisiekimui tinka numeris, iš kurio klientas skambina"
         facts.append(
