@@ -93,7 +93,41 @@ def synthesize_text(text: str) -> bytes:
     return _build_tts().synthesize(normalize_lt_address_speech(text), language=_LANGUAGE)
 
 
-def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[str, Any]:
+def duplex_enabled() -> bool:
+    """E1 duplex master switch (config page); off = today's behaviour untouched."""
+    return os.environ.get("DUPLEX", "off").lower() == "on"
+
+
+def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
+    """E1 duplex: rolling PARTIAL transcript of the utterance-so-far. Trace +
+    client display only — never an agent turn, never state. The result is also
+    kept on the session (ms.last_partial) for the E2 endpointer."""
+    import time
+
+    if not duplex_enabled():
+        return None
+    pipeline = get_pipeline(ms)
+    t0 = time.perf_counter()
+    try:
+        text = pipeline.transcribe_partial(audio)
+    except Exception:  # a failed partial must never disturb the call
+        logger.debug("partial asr failed", exc_info=True)
+        return None
+    took = round((time.perf_counter() - t0) * 1000)
+    ms.last_partial = text
+    # E2: the semantic endpoint hint rides along — the client adjusts how much
+    # trailing silence to require before cutting the turn.
+    mode, silence_ms = "normal", None
+    hint = getattr(ms.session, "endpoint_hint", None)
+    if callable(hint):
+        mode, silence_ms = hint(text)
+    ms.session.tracer.emit("partial", text=text, ms=took, audio_bytes=len(audio), endpoint=mode)
+    return {"type": "partial", "text": text, "ms": took, "endpoint": mode, "silence_ms": silence_ms}
+
+
+def run_voice_turn_stream(
+    ms: ManagedSession, audio: bytes, on_chunk, transcript: str | None = None
+) -> dict[str, Any]:
     """Phase 5 PR1 — STREAMING voice turn: the reply's audio is delivered
     sentence-by-sentence via on_chunk(bytes) (called from this worker thread)
     the moment each sentence's TTS is done, so the agent starts SPEAKING after
@@ -133,6 +167,7 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
         try:
             fa = pipeline.filler_audio()
             if fa and not got_audio.is_set():
+                pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
                 on_chunk(bytes(fa))
         except Exception:  # pragma: no cover - the cue must never break a turn
             logger.debug("filler failed", exc_info=True)
@@ -155,7 +190,10 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
     turn_error = False
     try:
         for chunk in pipeline.stream_turn(
-            audio, should_stop=ms.cancel.is_set, interruption=interruption
+            audio,
+            should_stop=ms.cancel.is_set,
+            interruption=interruption,
+            transcript_override=transcript,
         ):
             if not chunk:
                 continue
@@ -181,6 +219,7 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
             fallback = phrase("turn_error")
             fb_audio = synthesize_text(fallback) if fallback else b""
             if fb_audio:
+                pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
                 chunks += 1
                 reply_audio.extend(fb_audio)
                 on_chunk(bytes(fb_audio))
@@ -215,6 +254,11 @@ def run_voice_turn_stream(ms: ManagedSession, audio: bytes, on_chunk) -> dict[st
             try:
                 ms.session.speculate_next(synthesize_text)
                 ms.session.speculate_background_diagnosis()
+                # W2: the quiet analyst reads the conversation in the same
+                # background window (advisory notes for the next turn).
+                analyst = getattr(ms.session, "analyst_next", None)
+                if callable(analyst):
+                    analyst()
             except Exception:  # pragma: no cover - background best-effort
                 logger.debug("speculation thread failed", exc_info=True)
 

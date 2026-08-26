@@ -200,6 +200,42 @@ class TestVoiceChannel:
         assert (rec / "turn_01_user.wav").read_bytes() == b"RIFF-fake-wav-utterance"
         assert (rec / "turn_01_agent.mp3").read_bytes() == b"FAKEMP3"
 
+    def test_partial_frame_is_a_noop_when_duplex_off(self, client, voice_fakes, monkeypatch):
+        # E1 duplex: a b"PART"-prefixed frame is a rolling-transcript snapshot,
+        # never a turn. With DUPLEX off (default) it is a complete no-op — the
+        # socket still serves a normal text turn right after.
+        monkeypatch.delenv("DUPLEX", raising=False)
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"PART" + b"RIFF-fake-wav")
+            ws.send_json({"type": "turn", "text": "neveikia internetas"})
+            reply = None
+            for _ in range(40):
+                msg = ws.receive_json()
+                if msg.get("type") == "reply":
+                    reply = msg
+                    break
+                assert msg.get("type") != "partial"  # off = nothing produced
+            assert reply is not None and "kada dingo" in reply["reply"]
+
+    def test_partial_frame_returns_rolling_transcript(self, client, voice_fakes, monkeypatch):
+        monkeypatch.setenv("DUPLEX", "on")
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"PART" + b"RIFF-fake-wav")
+            got = None
+            for _ in range(40):
+                msg = ws.receive_json()
+                if msg.get("type") == "partial":
+                    got = msg
+                    break
+            assert got is not None and got["text"] == "neveikia internetas"
+            # the snapshot ran NO agent turn — the next real turn is turn #1
+            from app.main import manager
+
+            assert manager.get(sid).turn_count == 0
+            assert manager.get(sid).last_partial == "neveikia internetas"
+
     def test_streaming_voice_turn_chunks_then_done(self, client, voice_fakes, monkeypatch):
         # Phase 5 PR1: the reply audio arrives sentence-by-sentence AS BINARY
         # FRAMES while the turn runs; the done JSON (TTFA + turn summary)
@@ -277,6 +313,93 @@ class TestVoiceChannel:
         trace = voice_fakes / f"{sid}.jsonl"
         events = [_json2.loads(line) for line in trace.read_text(encoding="utf-8").splitlines()]
         assert any(e.get("type") == "barge_in" for e in events)
+
+    def test_interrupt_truncates_history_to_heard_prefix(self, client, voice_fakes, monkeypatch):
+        # D1 delivery ledger: the interrupt carries played=1 — only the first
+        # sentence finished playing, so the engine's last assistant message
+        # keeps just that prefix and the unheard tail waits for the narrator.
+        import time as _time
+
+        from app import voice
+
+        class _SlowTTS:
+            def synthesize(self, text, *, language=None):
+                _time.sleep(0.15)
+                return b"FAKEMP3"
+
+        monkeypatch.setattr(voice, "_build_tts", lambda: _SlowTTS())
+        monkeypatch.setenv("VOICE_STREAM", "on")
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"RIFF-fake-wav-utterance")
+            done = None
+            interrupted_sent = False
+            for _ in range(120):
+                msg = ws.receive()
+                if msg.get("bytes"):
+                    if not interrupted_sent:
+                        ws.send_text('{"type": "interrupt", "played": 1}')
+                        interrupted_sent = True
+                elif msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "voice_turn_done":
+                        done = e
+                        break
+            assert done is not None and done["interrupted"] is True
+        from app.main import manager
+
+        engine = manager.get(sid).session._agent
+        tail = engine._undelivered_tail
+        last_assistant = next(
+            m for m in reversed(engine.state.messages) if m["role"] == "assistant"
+        )
+        # something was cut: the tail is pending and the history ends with the
+        # heard-prefix marker instead of the full scripted reply
+        assert tail
+        assert last_assistant["content"].endswith("—")
+        assert tail not in last_assistant["content"]
+
+    def test_fram_stream_server_cuts_a_turn(self, client, voice_fakes, monkeypatch):
+        # D2 duplex: the client streams FRAM frames; the SERVER's audio front
+        # decides the utterance ended and runs the normal voice turn.
+        import struct as _struct
+
+        from app.audio_front import wav_bytes
+
+        monkeypatch.setenv("DUPLEX", "on")
+        monkeypatch.setenv("VOICE_STREAM", "on")
+
+        def frame(loud):
+            pcm = _struct.pack("<4096h", *([5000 if loud else 0] * 4096))
+            return b"FRAM" + wav_bytes(pcm, 16_000)
+
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            for _ in range(4):
+                ws.send_bytes(frame(loud=True))
+            for _ in range(5):  # > 900 ms of silence -> the server cuts
+                ws.send_bytes(frame(loud=False))
+            done = None
+            saw_turn_start = False
+            for _ in range(120):
+                msg = ws.receive()
+                if msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "turn_start":
+                        saw_turn_start = True  # D1: the client's played reset
+                    if e.get("type") == "voice_turn_done":
+                        done = e
+                        break
+            assert done is not None
+            assert saw_turn_start
+            assert done["chunks"] >= 1  # the FakeASR turn produced a spoken reply
+        # the assembled utterance landed in the archive like any voice turn
+        rec = voice_fakes / sid
+        assert rec.joinpath("turn_01_user.wav").exists()
 
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]

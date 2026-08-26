@@ -448,6 +448,28 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         has_addr = bool(p.street.value or p.house.value)
         if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
             s.anamnesis_asked = True
+            # W1-1 (Andrius 2026-08-25): "Labą dieną, neveikia internetas —
+            # VAKAR dingo" — the opening often already carries the WHEN, and
+            # asking "o kada dingo?" right after it reads as not listening.
+            # Read the anamnesis from the opening, skip the question, and hand
+            # the narrator a show-you-heard note.
+            if user_input:
+                from .nlu import extract_anamnesis
+
+                read = extract_anamnesis(user_input)
+                if read.get("when") not in (None, "nežino") or read.get("trigger"):
+                    s.anamnesis_raw = user_input.strip()[:200]
+                    s.anamnesis_when = read.get("when")
+                    s.anamnesis_trigger = read.get("trigger")
+                    engine.tracer.emit(
+                        "anamnesis",
+                        text=s.anamnesis_raw,
+                        when=s.anamnesis_when,
+                        trigger=s.anamnesis_trigger,
+                        from_opening=True,
+                    )
+                    engine._opening_heard_note = True
+                    return _address_move(engine, s)
             return _anamnesis_move(engine, "anamnesis", phrase("anamnesis_question"))
         # E (Andrius 2026-08-20): the follow-up rung — the caller did not know
         # WHEN it broke, so we asked when it last WORKED; the answer narrows

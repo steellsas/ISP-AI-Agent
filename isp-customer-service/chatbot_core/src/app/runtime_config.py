@@ -218,6 +218,66 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # L4 duplex E1 (2026-08-24): klientas siunčia frazės momentines kopijas
+        # dar KALBANT — serveris veda slenkantį dalinį transkriptą (E1: tik
+        # trace + ekranas; E2 ant jo statys semantinį turn-taking'ą).
+        "key": "DUPLEX",
+        "label": "Duplex (daliniai transkriptai kalbant)",
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        "key": "PARTIAL_INTERVAL_S",
+        "label": "Dalinių intervalas, s",
+        "options": ["1.0", "0.8", "1.5", "2.0"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # E2: pilnas laukiamas atsakymas dalinyje -> kerpam turn'ą po tiek
+        # tylos (vietoj kliento micSil ~900 ms).
+        "key": "ENDPOINT_FAST_MS",
+        "label": "Greitas kirpimas (pilnas atsakymas), ms",
+        "options": ["350", "250", "450", "600"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # E2: nebaigta mintis (jungtukas/kablelis gale) -> laukiam tiek tylos.
+        "key": "ENDPOINT_SLOW_MS",
+        "label": "Ilgas laukimas (nebaigta mintis), ms",
+        "options": ["1400", "1200", "1800", "2200"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # D2: serverio VAD slenkstis (kliento mikrofonai skiriasi — derinti
+        # pirmo balso testo metu, jei kalba nesigirdi arba triukšmas kerta).
+        "key": "SERVER_VAD_THR",
+        "label": "Serverio VAD slenkstis",
+        "options": ["0.010", "0.006", "0.015", "0.020"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # D2: numatytasis tylos langas serverio kirpimui (be E2 užuominos).
+        "key": "SERVER_SIL_MS",
+        "label": "Serverio tylos langas, ms",
+        "options": ["900", "700", "1100", "1400"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # W2 (2026-08-25): tylusis analitikas — fone skaito visą pokalbį ir
+        # duoda naratoriui patariamųjų pastabų (faktų ir eigos nekeičia).
+        "key": "ANALYST",
+        "label": "Tylusis analitikas (fone, patariamasis)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],

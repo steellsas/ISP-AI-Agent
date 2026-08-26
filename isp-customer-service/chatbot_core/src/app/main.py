@@ -315,6 +315,13 @@ async def ws_call(ws: WebSocket, session_id: str):
     # receiving, so an {"type":"interrupt"} can land WHILE the reply streams.
     turn_task: asyncio.Task | None = None
     checkin_task: asyncio.Task | None = None
+    partial_task: asyncio.Task | None = None
+    # D3 duck-then-decide: the client DUCKED the agent's audio and is streaming
+    # the interrupting speech — one ASR-backed decision task resolves it into
+    # a real cut (cut_audio) or a false alarm (unduck).
+    duck_task: asyncio.Task | None = None
+    duck_active = False
+    pending_final: bytes | None = None  # endpoint fired while deciding
 
     # G3 (Andrius 2026-08-20): the agent ACCOMPANIES the caller through a task —
     # after a turn, if the caller stays silent past the delay while a question/
@@ -362,12 +369,165 @@ async def ws_call(ws: WebSocket, session_id: str):
         if checkin_task is not None and not checkin_task.done():
             checkin_task.cancel()
 
-    async def _run_voice_turn(data: bytes) -> None:
+    def _front():
+        # D2: the per-call audio front (server-side VAD + endpoint authority).
+        ms = manager.get(session_id)
+        if ms.front is None:
+            from . import audio_front
+
+            ms.front = audio_front.AudioFront()
+        return ms.front
+
+    async def _run_partial_front(data: bytes, front) -> None:
+        # D2: partial on the OPEN segment — the endpoint window hint feeds back
+        # into the front, the transcript goes to the trace + client live line.
+        if turn_task is not None and not turn_task.done():
+            return
+        try:
+            payload = await manager.voice_partial(session_id, data)
+            if payload:
+                front.set_hint(payload.get("endpoint"), payload.get("silence_ms"))
+                if payload.get("text"):
+                    front.snap_done()  # D4: this snapshot's text is reusable
+                await ws.send_json(payload)
+        except SessionNotFound:
+            pass
+        except Exception:  # a failed partial must never touch the socket state
+            logger.debug("front partial failed", exc_info=True)
+
+    def _dispatch_utterance(wav: bytes, front) -> None:
+        # D2/D4: one place where a server-cut utterance becomes a voice turn —
+        # busy turns stash (never drop speech), and when the last partial
+        # covered the whole segment its text skips the final ASR round-trip.
+        nonlocal turn_task
+        _disarm_checkin()
+        if turn_task is not None and not turn_task.done():
+            front.stash(wav)
+            return
+        hint = None
+        if front.last_reuse_ok and (partial_task is None or partial_task.done()):
+            try:
+                hint = manager.get(session_id).last_partial or None
+            except SessionNotFound:
+                hint = None
+        turn_task = asyncio.create_task(_run_voice_turn(wav, transcript=hint))
+
+    async def _send_backchannel() -> None:
+        # D5: a short "Mhm" while the caller tells a LONG story — played by the
+        # client OUTSIDE the audio queue (mic keeps streaming, no barge state).
+        try:
+            ms = manager.get(session_id)
+        except SessionNotFound:
+            return
+        awaiting = getattr(ms.session, "awaiting_caller", None)
+        if not callable(awaiting) or not awaiting():
+            return  # backchannel only while we WAIT for their answer
+        try:
+            import base64
+
+            from agent.identification import phrase
+
+            from . import voice as voice_mod
+
+            ms.bc_count = getattr(ms, "bc_count", 0) + 1
+            text = phrase("backchannel_1" if ms.bc_count % 2 else "backchannel_2")
+            if not text:
+                return
+            audio = await asyncio.to_thread(voice_mod.synthesize_text, text)
+            if audio:
+                ms.session.tracer.emit("backchannel", text=text)
+                await ws.send_json(
+                    {"type": "backchannel", "audio": base64.b64encode(audio).decode()}
+                )
+        except Exception:  # a failed hum must stay silent
+            logger.debug("backchannel failed", exc_info=True)
+
+    async def _duck_decide(wav: bytes, front, is_final: bool) -> None:
+        # D3: ONE ASR-backed ruling on the ducked speech. Echo of our own
+        # audio / a bare backchannel -> unduck, the agent talks on. Anything
+        # substantive (default-deny) -> a real barge-in: cut the audio and
+        # truncate history to what actually played (D1 ledger).
+        nonlocal duck_active, pending_final
+        try:
+            ms = manager.get(session_id)
+        except SessionNotFound:
+            return
+        payload = None
+        with suppress(Exception):
+            payload = await manager.voice_partial(session_id, wav)
+        text = (payload or {}).get("text") or ""
+        verdict = None
+        if text:
+            from agent.barge_in import classify_interruption
+
+            verdict = classify_interruption(text, ms.session.last_spoken_text() or "")
+        ms.session.tracer.emit(
+            "duck",
+            verdict=verdict or ("noise" if not text else "substantive"),
+            text=text[:120],
+            final=is_final,
+        )
+        queued, pending_final = pending_final, None
+        if not text or verdict in ("echo", "consent"):
+            duck_active = False
+            front.abort_segment()
+            with suppress(Exception):
+                await ws.send_json({"type": "unduck"})
+            return
+        duck_active = False
+        with suppress(Exception):
+            await ws.send_json({"type": "cut_audio"})
+        played = ms.interrupt_played  # snapshotted by the "duck" message
+        if turn_task is not None and not turn_task.done():
+            ms.interrupt.set()
+            ms.cancel.set()
+            ms.session.request_cancel()
+            ms.session.tracer.emit("barge_in", played=played)
+        else:
+            # the turn had finished — the client was playing its tail: apply
+            # the delivery split directly (voice_turn_stream is long gone).
+            sentences = list(getattr(ms.voice, "last_turn_sentences", None) or [])
+            aligned = bool(getattr(ms.voice, "last_turn_aligned", False))
+            if aligned and sentences and played is not None:
+                with suppress(Exception):
+                    ms.session.apply_delivery(sentences, int(played))
+            ms.interrupt_played = None
+            ms.session.tracer.emit("barge_in", played=played, late=True)
+        if is_final:
+            _dispatch_utterance(wav, front)
+        elif queued is not None:
+            _dispatch_utterance(queued, front)
+
+    async def _run_partial(data: bytes) -> None:
+        # E1 duplex: a snapshot of the utterance-so-far — rolling transcript to
+        # the trace + client display, NEVER an agent turn. Stale snapshots
+        # (agent turn already running) are dropped.
+        if turn_task is not None and not turn_task.done():
+            return
+        try:
+            payload = await manager.voice_partial(session_id, data)
+            if payload:
+                await ws.send_json(payload)
+        except SessionNotFound:
+            pass
+        except Exception:  # a failed partial must never touch the socket state
+            logger.debug("partial failed", exc_info=True)
+
+    async def _run_voice_turn(data: bytes, transcript: str | None = None) -> None:
+        nonlocal turn_task
         import os as _os
 
+        # D1 fix (live 2026-08-25): the client's played-counter is per turn,
+        # but the duplex path never hit its old reset point (sendUtterance) —
+        # the counter grew for the whole call and delivery truncation silently
+        # no-opped. The server now marks every turn start explicitly.
+        with suppress(Exception):
+            await ws.send_json({"type": "turn_start"})
         try:
             if _os.getenv("VOICE_STREAM", "on").lower() == "on":
-                payload = await manager.voice_turn_stream(session_id, data, ws.send_bytes)
+                payload = await manager.voice_turn_stream(
+                    session_id, data, ws.send_bytes, transcript=transcript
+                )
                 await ws.send_json(payload)
                 if not payload.get("is_complete"):
                     _arm_checkin()
@@ -384,6 +544,17 @@ async def ws_call(ws: WebSocket, session_id: str):
             logger.exception("voice turn failed")
             with suppress(Exception):
                 await ws.send_json({"type": "error", "detail": "voice turn failed"})
+        # D2: speech that completed WHILE this turn was busy was stashed by the
+        # audio front (the old path dropped those frames — "deaf while
+        # thinking"). Dispatch it as the next turn right away.
+        try:
+            front = getattr(manager.get(session_id), "front", None)
+            pending = front.pop_stash() if front is not None else None
+            if pending is not None:
+                _disarm_checkin()
+                turn_task = asyncio.create_task(_run_voice_turn(pending))
+        except SessionNotFound:
+            pass
 
     try:
         while True:
@@ -391,12 +562,49 @@ async def ws_call(ws: WebSocket, session_id: str):
             if frame.get("type") == "websocket.disconnect":
                 break
             # Binary frame = ONE complete caller utterance (WAV, client-side
-            # end-pointing) -> a full voice turn in the background.
+            # end-pointing) -> a full voice turn in the background. A frame
+            # prefixed with b"PART" is an E1 duplex partial snapshot instead
+            # (WAV after the magic) — rolling transcript, never a turn.
             if frame.get("bytes"):
+                data = frame["bytes"]
+                # D2 duplex: continuous PCM frames — the server-side audio
+                # front owns VAD + endpointing; the client no longer cuts turns.
+                if data[:4] == b"FRAM":
+                    try:
+                        front = _front()
+                    except SessionNotFound:
+                        break
+                    for action, wav in front.on_frame(data[4:]):
+                        if action == "speech":
+                            _disarm_checkin()  # the caller is talking
+                        elif action == "long_speech":
+                            if not duck_active:
+                                asyncio.create_task(_send_backchannel())
+                        elif action == "partial":
+                            if duck_active:
+                                if duck_task is None or duck_task.done():
+                                    duck_task = asyncio.create_task(_duck_decide(wav, front, False))
+                            elif partial_task is None or partial_task.done():
+                                partial_task = asyncio.create_task(_run_partial_front(wav, front))
+                            else:
+                                front.snap_skipped()  # D4: no text for this stretch
+                        elif action == "utterance":
+                            if duck_active:
+                                if duck_task is None or duck_task.done():
+                                    duck_task = asyncio.create_task(_duck_decide(wav, front, True))
+                                else:
+                                    pending_final = wav  # ruled on when decided
+                            else:
+                                _dispatch_utterance(wav, front)
+                    continue
                 _disarm_checkin()  # the caller spoke — no nudge needed
+                if data[:4] == b"PART":
+                    if partial_task is None or partial_task.done():
+                        partial_task = asyncio.create_task(_run_partial(data[4:]))
+                    continue  # in-flight guard: overlapping snapshots dropped
                 if turn_task is not None and not turn_task.done():
                     continue  # one voice turn at a time; extra frames are dropped
-                turn_task = asyncio.create_task(_run_voice_turn(frame["bytes"]))
+                turn_task = asyncio.create_task(_run_voice_turn(data))
                 continue
             if frame.get("text"):
                 msg = json.loads(frame["text"])
@@ -406,10 +614,34 @@ async def ws_call(ws: WebSocket, session_id: str):
                     # quietly. Traced, so the panel + archive show the interruption.
                     try:
                         ms = manager.get(session_id)
+                        # D1 delivery ledger: the client says how many chunks
+                        # finished playing — the heard/unheard split anchor.
+                        played = msg.get("played")
+                        ms.interrupt_played = (
+                            int(played) if isinstance(played, int | float) else None
+                        )
                         ms.interrupt.set()  # stop forwarding audio NOW
                         ms.cancel.set()  # stop synthesizing further sentences
                         ms.session.request_cancel()  # stop the LLM generation itself
-                        ms.session.tracer.emit("barge_in")
+                        ms.session.tracer.emit("barge_in", played=played)
+                    except SessionNotFound:
+                        break
+                elif msg.get("type") == "duck":
+                    # D3: the client ducked the agent — snapshot the played
+                    # count and let the ASR decision resolve it.
+                    _disarm_checkin()
+                    try:
+                        ms = manager.get(session_id)
+                    except SessionNotFound:
+                        break
+                    played = msg.get("played")
+                    ms.interrupt_played = int(played) if isinstance(played, int | float) else None
+                    duck_active = True
+                elif msg.get("type") == "duck_end":
+                    # client-side timeout: it restored the volume itself
+                    duck_active = False
+                    try:
+                        _front().abort_segment()
                     except SessionNotFound:
                         break
                 elif msg.get("type") == "turn" and msg.get("text"):
@@ -422,6 +654,8 @@ async def ws_call(ws: WebSocket, session_id: str):
         pass
     finally:
         _disarm_checkin()
+        if partial_task is not None and not partial_task.done():
+            partial_task.cancel()
         pump.cancel()
         with suppress(asyncio.CancelledError):
             await pump

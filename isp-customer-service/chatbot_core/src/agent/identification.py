@@ -127,6 +127,10 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     ),
     "reask_reason": ("Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"),
     "wait_ack": ("Gerai, lauksiu — pasakykite, kai būsite pasiruošę."),
+    "wait_ack_2": "Gerai, neskubėkite.",
+    "ticket_phone_fixed": "Užsirašiau — skambinsime numeriu {nr}.",
+    "backchannel_1": "Mhm.",
+    "backchannel_2": "Aha, klausau.",
     "anamnesis_last_used": ("O kada paskutinį kartą internetas tikrai veikė?"),
     "checkin": ("Kaip sekasi — ar pavyksta?"),
     "no_problem_goodbye": (

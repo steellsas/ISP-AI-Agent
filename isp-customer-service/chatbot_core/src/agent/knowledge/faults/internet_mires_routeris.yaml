@@ -60,6 +60,10 @@ evidence:
       patikslinimas: "Norėjau patikslinti — ar kita rozetė nepadėjo, ar negalite jos išbandyti?"
       ka_radote: "Ar iš kitos rozetės lemputės užsidegė, ar ne?"
       kada: [lights=nedega, power_cable=įkištas]
+      # W1-2 svarbos vartai (2026-08-25): "rozetė neveikia" keičia visą išvadą
+      # (elektra, ne routeris) ir dažnai būna STT klaida — prieš įrašant į
+      # žurnalą SAVANORIŠKAI pasakytą tokią reikšmę, agentas pasitikslina.
+      patikslinti: ['neveikia']
     has_computer:
       reikia: "ar klientas turi kompiuterį ir nori, kad laikinai paleistume internetą per jį, kol gaus naują routerį"
       zingsnis: dr_offer_bridge
@@ -243,6 +247,7 @@ steps:
 - id: escalate
   kind: escalate
   tools: []
-  hint: The bridge is not possible (no computer / cannot connect) or it did not help. Register the
-    fault ('gedimo registracija') and explain they will likely need a new router; a worker calls the
-    next business day.
+  hint: 'The bridge is not possible (no computer / cannot connect) or it did not help. Say you WILL
+    register the fault — "užregistruosiu" (future tense), NEVER "užregistravau": the registration
+    happens only after the contact questions, and the closing line announces it. Explain they will
+    likely need a new router; a worker calls the next business day.'

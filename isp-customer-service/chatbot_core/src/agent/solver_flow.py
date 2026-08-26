@@ -525,7 +525,6 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
       3. after the (demo) simulation, bind only if a device is actually observed —
          never bind blind."""
     from .react_agent import execute_tool
-    from .resolution import detect_plugged
 
     cid = engine.state.customer_id
     if getattr(engine, "_bridge_bound", False):
@@ -549,11 +548,36 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
     # Plug-report MEMORY (round 4, 2026-08-11): the report is remembered
     # across turns — the caller said "Įkišau, laukiu" three turns ago and
     # kept being asked to plug in because each NEW turn no longer contained
-    # the plug verb. detect_plugged alone keeps the pre-round-4 unlock (the
-    # solver only proposes the fix in the bridge phase).
-    if engine._plug_report(user_input) or detect_plugged(user_input):
+    # the plug verb. W0-A (live 2026-08-25): the raw detect_plugged fallback
+    # is GONE — a power-cable reseat ("ištraukiu, vėl įkišau") read as the
+    # bridge plug and the solver jumped to see-device checks mid-power-talk.
+    # plug_report keeps the unlock, WITH the computer-context requirement.
+    if engine._plug_report(user_input):
         engine._bridge_plug_reported = True
-    if not getattr(engine, "_bridge_plug_reported", False) and not _device_visible():
+    visible = _device_visible()
+    # W0-A: the fix may not START before the bridge was even OFFERED — with no
+    # offer, no computer on the ledger and no device on the line, a remembered
+    # "plug" was about some other cable. Reset it and make the offer first.
+    ev_pc0 = engine.state.evidence.get("has_computer")
+    if (
+        not visible
+        and not getattr(engine, "_drive_bridge_offered", False)
+        and (ev_pc0 is None or ev_pc0.get("value") != "yes")
+        # An explicit plug-into-COMPUTER report THIS turn implies they have
+        # one — the offer would be absurd ("Įkišau į kompiuterį" -> bind path).
+        and not engine._plug_report(user_input)
+    ):
+        engine._bridge_plug_reported = False
+        engine._drive_bridge_offered = True
+        engine.tracer.emit(
+            "drive_decision", action="fix_deferred", accepted=False, reason="bridge not offered"
+        )
+        return (
+            "Panašu, kad routeris sugedęs — telefonu jo neprikelsime. Galiu "
+            "laikinai paleisti internetą per kompiuterį, kol gausite naują "
+            "routerį. Ar turite kompiuterį?"
+        )
+    if not getattr(engine, "_bridge_plug_reported", False) and not visible:
         # The work is not done yet — the fix must WAIT for the client. And the
         # FIRST deferral must be the actual TRANSITION + OFFER: live 2026-08-05
         # the solver jumped straight to bind-speak ("pririšiu įrenginį") without

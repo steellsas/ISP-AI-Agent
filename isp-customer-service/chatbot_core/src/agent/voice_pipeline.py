@@ -180,6 +180,23 @@ class VoicePipeline:
             )
         return True
 
+    def transcribe_partial(self, audio: bytes, *, sample_rate: int = 16_000) -> str:
+        """E1 duplex: transcribe a GROWING utterance snapshot (the caller is
+        still speaking). Same ASR + dialogue context + LT normalization as the
+        turn path, but NO agent turn, NO state — the caller reads the result
+        from the trace. Partials are inherently jittery (Whisper changes its
+        mind on a growing window); consumers must treat them as hints only."""
+        context = self._asr_context()
+        text = self._transcribe(audio, sample_rate, context)
+        if self._transcript_filter and text:
+            text = self._transcript_filter(text)
+        # Same noise gate as the turn path: a snapshot mid-word makes Whisper
+        # hallucinate ("www.youtube.come" observed on the very first probe) —
+        # an empty partial reads better than junk.
+        if text and self._noise_filter and self._noise_filter(text):
+            return ""
+        return text or ""
+
     @property
     def session(self) -> AgentSession:
         """The underlying conversation (read-only access to state/stats)."""
@@ -292,6 +309,7 @@ class VoicePipeline:
         sample_rate: int = 16_000,
         should_stop: Callable[[], bool] | None = None,
         interruption: Callable[[str], str | None] | None = None,
+        transcript_override: str | None = None,
     ) -> Iterator[bytes]:
         """
         Run one turn and STREAM the reply audio in chunks (one per sentence) so the
@@ -308,28 +326,53 @@ class VoicePipeline:
         actually synthesized, so the engine rolls its ask-bookkeeping back.
         """
         tracer = getattr(self._session, "tracer", None)
-        if self._too_short(audio, sample_rate, tracer):
-            return
+        # D1 delivery ledger: the sentence behind EVERY yielded chunk, in send
+        # order — after a barge-in the transport truncates the engine's history
+        # to what the caller actually HEARD. `aligned` goes False whenever a
+        # chunk without a matching sentence goes out (filler, error fallback,
+        # whole-reply TTS split) — then the ledger is unusable and delivery
+        # falls back to today's assume-all-heard behaviour.
+        self.last_turn_sentences: list[str] = []
+        self.last_turn_aligned = True
         t0 = time.perf_counter()
-        context = self._asr_context()
-        raw_transcript = self._transcribe(audio, sample_rate, context)
-        transcript = raw_transcript
-        if self._transcript_filter and transcript:
-            transcript = self._transcript_filter(transcript)
-        t1 = time.perf_counter()
+        if transcript_override:
+            # D4 ASR head-start: the last partial snapshot already covered
+            # every voiced frame of this segment — its text IS the transcript,
+            # a whole ASR round-trip is skipped. (Filters already ran on it.)
+            raw_transcript = transcript = transcript_override
+            context = None
+            t1 = time.perf_counter()
+            if tracer is not None:
+                tracer.emit(
+                    "asr",
+                    raw=raw_transcript,
+                    transcript=transcript,
+                    ms=0,
+                    dropped=False,
+                    reused=True,
+                )
+        else:
+            if self._too_short(audio, sample_rate, tracer):
+                return
+            context = self._asr_context()
+            raw_transcript = self._transcribe(audio, sample_rate, context)
+            transcript = raw_transcript
+            if self._transcript_filter and transcript:
+                transcript = self._transcript_filter(transcript)
+            t1 = time.perf_counter()
 
-        dropped = bool(self._noise_filter and self._noise_filter(transcript))
-        if tracer is not None:
-            tracer.emit(
-                "asr",
-                raw=raw_transcript,
-                transcript=transcript,
-                ms=round((t1 - t0) * 1000.0),
-                dropped=dropped,
-                context=(context or "")[:160],
-            )
-        if dropped:
-            return
+            dropped = bool(self._noise_filter and self._noise_filter(transcript))
+            if tracer is not None:
+                tracer.emit(
+                    "asr",
+                    raw=raw_transcript,
+                    transcript=transcript,
+                    ms=round((t1 - t0) * 1000.0),
+                    dropped=dropped,
+                    context=(context or "")[:160],
+                )
+            if dropped:
+                return
 
         # Smart barge-in (L3a): the previous turn was cut by this utterance —
         # a bare backchannel ("taip", "mhm") or our own speakerphone echo must
@@ -346,6 +389,7 @@ class VoicePipeline:
                     normalize_lt_address_speech(text), language=self._language
                 )
                 if chunk:
+                    self.last_turn_sentences.append(text)
                     yield chunk
             return
 
@@ -381,9 +425,11 @@ class VoicePipeline:
             )
             if reply and reply == getattr(self._session, "_last_injected_text", None):
                 _emit_latency(time.perf_counter())
+                self.last_turn_sentences.append(reply)
                 yield spec_audio
                 return
             if reply:  # the engine chose its own reply — synthesize it normally
+                self.last_turn_aligned = False  # tts.stream splits opaquely
                 for sentence_audio in self._tts_stream(reply):
                     _emit_latency(time.perf_counter())
                     yield sentence_audio
@@ -413,6 +459,7 @@ class VoicePipeline:
                     )
                     if chunk:
                         _emit_latency(time.perf_counter())
+                        self.last_turn_sentences.append(sentence)
                         yield chunk
                     sentence, buf = pop_sentence(buf)
             tail = buf.strip()
@@ -422,6 +469,7 @@ class VoicePipeline:
                 )
                 if chunk:
                     _emit_latency(time.perf_counter())
+                    self.last_turn_sentences.append(tail)
                     yield chunk
             if not emitted and tracer is not None:
                 tracer.emit(
@@ -434,6 +482,7 @@ class VoicePipeline:
             return
 
         # Fallback (C2b): non-streaming agent -> full reply -> per-sentence TTS.
+        self.last_turn_aligned = False  # chunk<->sentence mapping unknown here
         reply_text = self._session.handle_turn(transcript)
         stream = getattr(self._tts, "stream", None)
         if callable(stream):

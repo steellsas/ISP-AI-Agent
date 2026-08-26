@@ -14,7 +14,7 @@ from typing import Any
 
 from ...closing_flow import maybe_finish
 from ..router import CLOSING
-from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, sync_updates
+from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, speak_scripted, sync_updates
 from ..state import GraphState
 
 
@@ -37,6 +37,10 @@ def make_closing_node(engine: Any):
             s.case_closed = False
             engine.tracer.emit("decision", intent="ticket_demand", action="reopen_at_closing")
             reply = engine._drive_escalate(None)
+            if reply:  # narrator mode leaves the intro to the LLM (directive set)
+                speak_scripted(engine, CLOSING, user_input, reply)
+                return sync_updates(engine, user_input=user_input, reply=reply)
+            reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
             return sync_updates(engine, user_input=user_input, reply=reply)
         maybe_finish(engine, user_input)
         # After a REGISTRATION the goodbye is scripted (live 2026-08-21: the
@@ -47,10 +51,31 @@ def make_closing_node(engine: Any):
         from ...resolution import is_real_question
 
         if s.ticket_id and not is_real_question(user_input):
+            # D5 (live 2026-08-25): a POST-registration contact correction
+            # ("skambinkite kitu numeriu 868…") must land on the ticket, not
+            # vanish into the goodbye — the worker would call a dead number.
+            import re as _re
+
+            digits = _re.sub(r"\D", "", user_input or "")
+            if len(digits) >= 6 and not s.is_complete:
+                from ...ticket_flow import amend_ticket_note, fmt_phone
+
+                nr = _re.sub(r"[^\d+]", "", user_input or "")[:20]
+                s.contact_phone = nr
+                noted = amend_ticket_note(engine, f"Skambinti kitu numeriu: {nr}")
+                engine.tracer.emit(
+                    "decision",
+                    intent="ticket_amend",
+                    action="phone_noted" if noted else "note_failed",
+                )
+                reply = phrase("ticket_phone_fixed", nr=fmt_phone(nr))
+                speak_scripted(engine, CLOSING, user_input, reply)
+                return sync_updates(engine, user_input=user_input, reply=reply)
             if s.secondary_problems and not getattr(engine, "_secondary_asked", False):
                 engine._secondary_asked = True  # the facts directive carries the list
             else:
                 reply = phrase("goodbye")
+                speak_scripted(engine, CLOSING, user_input, reply)
                 return sync_updates(engine, user_input=user_input, reply=reply)
         reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
         return sync_updates(engine, user_input=user_input, reply=reply)

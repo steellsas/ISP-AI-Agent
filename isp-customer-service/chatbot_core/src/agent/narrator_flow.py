@@ -291,6 +291,19 @@ def state_facts_block(engine) -> str | None:
             "iš naujo, kas jau nustatyta; jei išvada jau aiški — pasakyk ją ir "
             "siūlyk sprendimą."
         )
+    # D1 delivery ledger (2026-08-25): a barge-in cut the previous reply — the
+    # caller heard only its beginning. The unheard tail is surfaced ONCE so the
+    # narrator can weave the essential part back in instead of assuming it
+    # landed (live: the agent referenced instructions the caller never heard).
+    tail = getattr(engine, "_undelivered_tail", None)
+    if tail:
+        engine._undelivered_tail = None
+        facts.append(
+            "- PERTRAUKTA REPLIKA: klientas girdėjo tik jos pradžią. NEIŠGIRDO "
+            f"šito: „{tail}“. Jei ta dalis svarbi dabartiniam tikslui — "
+            "pasakyk ją DABAR savais žodžiais (trumpai, nekartok to, ką jau "
+            "girdėjo), tada tęsk."
+        )
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
     # re-EXPLANATIONS aimed at what was actually not understood.
@@ -549,6 +562,22 @@ def state_facts_block(engine) -> str | None:
     elif s.customer_id and engine._result_pending and s.caller_name:
         # The caller introduced themselves — deliver the deferred result NOW.
         facts.append("- REZULTATO PRISTATYMAS:" + engine._result_narration_tail())
+    # KREIPINYS (live 2026-08-25: the LLM addressed the caller "Giedriau" — the
+    # DB account holder's name for that address — while the caller had said
+    # "Andrius". The tool results carry the contract holder's name; it is
+    # ACCOUNT DATA, not a greeting, and the caller need not be the holder).
+    if s.customer_id:
+        if s.caller_name:
+            facts.append(
+                f"- KREIPINYS: klientas prisistatė „{s.caller_name}“ — kreipkis TIK "
+                "šiuo vardu arba be vardo. Sutarties savininko vardo iš sistemos "
+                "NENAUDOK kreipiniui ir garsiai neminėk."
+            )
+        else:
+            facts.append(
+                "- KREIPINYS: klientas vardo nesakė — nesikreipk vardu; sutarties "
+                "savininko vardo iš sistemos neminėk."
+            )
     if not past_action and not caller_pending:
         for domain, d in s.diagnosis.items():
             gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
@@ -773,6 +802,18 @@ def state_facts_block(engine) -> str | None:
     # question core stays verbatim (the confirm guard keys off it).
     idd = getattr(engine, "_ident_directive", None)
     if idd:
+        # W1-1 (Andrius 2026-08-25): the opening already said WHEN it broke —
+        # the caller must HEAR they were heard, one short acknowledgement
+        # before the address ask, never a repeated "kada dingo?".
+        if getattr(engine, "_opening_heard_note", False):
+            engine._opening_heard_note = False
+            when = s.anamnesis_when or s.anamnesis_trigger or ""
+            facts.append(
+                "- KLIENTAS JAU PASAKĖ, kada dingo"
+                + (f" („{when}“)" if when else "")
+                + " — pora žodžių parodyk, kad išgirdai (pvz. „Aišku — nuo "
+                "vakar.“), ir NEKLAUSK, kada dingo."
+            )
         if idd["kind"] == "address_offer":
             facts.append(
                 "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
@@ -868,9 +909,17 @@ def state_facts_block(engine) -> str | None:
             spr = f" Pasiūlyk pasirinkimą ({fd['sprendimai']}) ir paklausk, kaip darome."
         else:
             spr = ""
+        # W0-E (live 2026-08-25): the findings turn said "Užregistravau" while
+        # create_ticket was still turns away — the tense rule rides here too.
+        tense = (
+            ""
+            if s.ticket_id
+            else " Registracija dar NEĮVYKO — jei ją mini, sakyk „užregistruosiu“, "
+            "niekada „užregistravau“."
+        )
         facts.append(
             "- IŠVADOS MOMENTAS (pasakyk savais žodžiais, TRUMPAI — 2–3 sakiniai, "
-            f"jokių sąrašų ar dvitaškių): kartu nustatėme — {fd['faktai']}. "
+            f"jokių sąrašų ar dvitaškių):{tense} kartu nustatėme — {fd['faktai']}. "
             f"Išvada: {fd['isvada']}.{spr} Neišgalvok faktų."
         )
 
@@ -928,6 +977,17 @@ def state_facts_block(engine) -> str | None:
             "Užduok TIK ŠĮ VIENĄ klausimą (viena '?'), trumpai; neišgalvok faktų "
             f"ir nesiūlyk nieko kito.{kiti} Jei tinka, pradėk trumpa reakcija į tai, "
             f"ką klientas ką tik pasakė. (Atsarginė formuluotė: „{directive['klausimas']}“)"
+        )
+
+    # W2 tylusis analitikas: advisory notes from the background read — they
+    # shape the WORDING only; on any clash the directives above win. One-shot.
+    notes = getattr(engine, "_analyst_notes", None)
+    if notes:
+        engine._analyst_notes = None
+        facts.append(
+            "- TYLIOJO ANALITIKO PASTABOS (patariamosios — faktų ir eigos "
+            "NEkeičia; jei prieštarauja aukščiau esančioms direktyvoms, "
+            "ignoruok): " + " | ".join(str(n) for n in notes[:2])
         )
 
     if not facts:

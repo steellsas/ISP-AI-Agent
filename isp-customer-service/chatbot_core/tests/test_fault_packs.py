@@ -1225,3 +1225,74 @@ class TestLiveCall0824Fixes:
         strat = get_strategy("no_mac_observed")
         agent._advance_instruct(r, strat.step("dr_pick_cable"), strat, "jau turiu rankoje")
         assert r["step"] == "dr_plug_pc"
+
+
+class TestD5WaitAckAndClosing:
+    """D5 (live 2026-08-25): scripted wait acknowledgements (the LLM cost up
+    to 12 s for 'Gerai, palauksiu') and the closing fixes — the scripted
+    goodbye must SPEAK, and a post-registration number correction must land
+    on the ticket instead of vanishing."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_pick_cable"}
+        return agent
+
+    def test_wait_signal_gets_scripted_ack(self, db_connection):
+        from agent.resolution import INTENT_IN_PROGRESS
+        from agent.walker_flow import scripted_wait_ack
+
+        agent = self._agent()
+        agent.state.last_intent = INTENT_IN_PROGRESS
+        agent.state.awaiting = "client_action"
+        agent.state.awaiting_turns = 1
+        assert scripted_wait_ack(agent) == "Gerai, lauksiu — pasakykite, kai būsite pasiruošę."
+        agent.state.awaiting_turns = 2
+        assert scripted_wait_ack(agent) == "Gerai, neskubėkite."
+
+    def test_wait_ack_defers_to_directives_and_other_intents(self, db_connection):
+        from agent.resolution import INTENT_IN_PROGRESS
+        from agent.walker_flow import scripted_wait_ack
+
+        agent = self._agent()
+        agent.state.last_intent = INTENT_IN_PROGRESS
+        agent.state.awaiting = "client_action"
+        agent._evidence_directive = {"reikia": "x"}
+        assert scripted_wait_ack(agent) is None
+        agent._evidence_directive = None
+        agent.state.last_intent = "answer"
+        assert scripted_wait_ack(agent) is None
+
+    def test_closing_goodbye_is_spoken_and_number_correction_lands(self, db_connection):
+        from types import SimpleNamespace
+
+        from agent.graph_v2.nodes.closing import make_closing_node
+        from agent.tools import create_ticket
+
+        agent = self._agent()
+        res = create_ticket("CUST009", "network_issue", "routeris nedega")
+        assert res.get("success")
+        agent.state.ticket_id = res["ticket_id"]
+        agent.state.case_closed = True
+        node = make_closing_node(agent)
+        # 1) number correction: acknowledged aloud AND noted on the ticket
+        upd = node(
+            SimpleNamespace(turn=SimpleNamespace(user_input="Skambinkite kitu numeriu 868321007"))
+        )
+        assert "Užsirašiau" in upd["turn"].reply
+        assert agent.state.messages[-1]["content"] == upd["turn"].reply
+        import sqlite3
+
+        from agent.tools import get_db
+
+        with get_db().cursor() as cur:
+            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            details = dict(cur.fetchone())["details"]
+        assert "PATIKSLINTA" in details and "868321007" in details
+        # 2) a plain 'gerai' now gets the SPOKEN scripted goodbye
+        upd2 = node(SimpleNamespace(turn=SimpleNamespace(user_input="Gerai, ačiū")))
+        assert upd2["turn"].reply and "Geros dienos" in upd2["turn"].reply
+        assert agent.state.messages[-1]["content"] == upd2["turn"].reply

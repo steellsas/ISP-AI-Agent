@@ -13,6 +13,7 @@ import asyncio
 import logging
 import threading
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,6 +46,15 @@ class ManagedSession:
     # thread; closing the token stream stops the LLM generation itself and
     # triggers the engine's ask-rollback (threading.Event: cross-thread safe).
     cancel: threading.Event = field(default_factory=threading.Event)
+    # E1 duplex: the latest rolling partial transcript of the utterance-so-far
+    # (trace/display in E1; the E2 endpointer reads it for the turn-cut call).
+    last_partial: str = ""
+    # D1 delivery ledger: how many audio chunks the client reported as FULLY
+    # played when it sent the interrupt (None = no report / no interrupt).
+    interrupt_played: int | None = None
+    # D2 duplex: the server-side audio front (VAD + endpoint authority),
+    # attached lazily on the first FRAM frame.
+    front: Any = None
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
@@ -169,7 +179,20 @@ class SessionManager:
             payload["turn"] = summary
             return payload, reply_audio
 
-    async def voice_turn_stream(self, session_id: str, audio: bytes, send_bytes) -> dict[str, Any]:
+    async def voice_partial(self, session_id: str, audio: bytes) -> dict[str, Any] | None:
+        """E1 duplex: rolling partial transcript of the utterance-so-far.
+        Deliberately WITHOUT the session lock — a partial never touches engine
+        state (ASR only), and taking the lock would delay the real turn behind
+        an in-flight snapshot."""
+        from . import voice  # lazy: keeps ASR/TTS adapter imports off the API import path
+
+        ms = self.get(session_id)
+        ms.last_activity = time.monotonic()
+        return await asyncio.to_thread(voice.run_voice_partial, ms, audio)
+
+    async def voice_turn_stream(
+        self, session_id: str, audio: bytes, send_bytes, transcript: str | None = None
+    ) -> dict[str, Any]:
         """Streaming voice turn (Phase 5 PR1): audio chunks are forwarded to
         `send_bytes` (an async callable, e.g. ws.send_bytes) AS THEY ARE
         SYNTHESIZED — the engine runs in a worker thread, chunks hop to the loop
@@ -196,7 +219,7 @@ class SessionManager:
             ms.interrupt.clear()
             ms.cancel.clear()
             task = asyncio.create_task(
-                asyncio.to_thread(voice.run_voice_turn_stream, ms, audio, on_chunk)
+                asyncio.to_thread(voice.run_voice_turn_stream, ms, audio, on_chunk, transcript)
             )
             task.add_done_callback(lambda _t: q.put_nowait(None))  # runs on the loop
             interrupted = False
@@ -215,6 +238,19 @@ class SessionManager:
             payload = task.result()  # re-raises a worker failure
             payload["interrupted"] = interrupted
             payload["chunks_sent"] = sent
+            # D1 delivery ledger: the client reported how many chunks finished
+            # playing when it barged in — truncate the engine's history to the
+            # heard prefix. Only when the pipeline's chunk<->sentence map is
+            # trustworthy (no filler/fallback chunks); otherwise keep today's
+            # assume-all-heard behaviour.
+            if interrupted:
+                played = ms.interrupt_played
+                ms.interrupt_played = None
+                sentences = list(getattr(ms.voice, "last_turn_sentences", None) or [])
+                aligned = bool(getattr(ms.voice, "last_turn_aligned", False))
+                if aligned and sentences and played is not None:
+                    with suppress(Exception):  # a repair must never fail a turn
+                        ms.session.apply_delivery(sentences, int(played))
             wall_ms = int((time.perf_counter() - t0) * 1000)
             ms.turn_count += 1
             ms.last_activity = time.monotonic()

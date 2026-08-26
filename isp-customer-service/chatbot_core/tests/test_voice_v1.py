@@ -383,3 +383,217 @@ class TestBgDiagnosisGate:
         )
         agent._apply_bg_diagnosis()
         assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
+
+
+class TestDuplexPartials:
+    """L4 duplex E1 — rolling partial transcripts of the utterance-so-far:
+    trace + client display only, never a turn. Gated by DUPLEX (default off
+    keeps today's behaviour byte-for-byte)."""
+
+    def test_pipeline_partial_uses_context_and_filter_but_no_trace(self):
+        seen = {}
+
+        def transcribe(audio, *, language=None, sample_rate=16_000, context=None):
+            seen["context"] = context
+            return "ne dega lempute"
+
+        pipeline = VoicePipeline(
+            _session(context="Ar dega lemputė?"),
+            SimpleNamespace(transcribe=transcribe),
+            _StubTTS(),
+            transcript_filter=lambda t: t.upper(),
+        )
+        text = pipeline.transcribe_partial(b"\x00" * 32_000)
+        assert text == "NE DEGA LEMPUTE" and "lemput" in seen["context"]
+        # a partial is a HINT: no trace from the pipeline, no agent turn
+        assert pipeline.session.tracer.events == []
+
+    def test_off_by_default_never_builds_the_pipeline(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.delenv("DUPLEX", raising=False)
+
+        def _boom(_ms):
+            raise AssertionError("pipeline must not be built with DUPLEX off")
+
+        monkeypatch.setattr(voice, "get_pipeline", _boom)
+        assert voice.run_voice_partial(SimpleNamespace(), b"x") is None
+
+    def test_partial_traces_and_stores_for_the_endpointer(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+        tracer = _Recorder()
+        ms = SimpleNamespace(session=SimpleNamespace(tracer=tracer), last_partial="")
+        stub = SimpleNamespace(transcribe_partial=lambda audio: "einu žiūrėti routerio")
+        monkeypatch.setattr(voice, "get_pipeline", lambda _ms: stub)
+        payload = voice.run_voice_partial(ms, b"\x00" * 32_000)
+        assert payload["type"] == "partial" and payload["text"] == "einu žiūrėti routerio"
+        assert ms.last_partial == "einu žiūrėti routerio"
+        assert [k for k, _f in tracer.events] == ["partial"]
+
+    def test_partial_failure_stays_silent(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+
+        def _boom(audio):
+            raise RuntimeError("asr down")
+
+        monkeypatch.setattr(
+            voice, "get_pipeline", lambda _ms: SimpleNamespace(transcribe_partial=_boom)
+        )
+        ms = SimpleNamespace(session=SimpleNamespace(tracer=_Recorder()), last_partial="")
+        assert voice.run_voice_partial(ms, b"x") is None
+        assert ms.last_partial == ""
+
+    def test_noise_hallucination_partial_is_blanked(self):
+        pipeline = VoicePipeline(
+            _session(),
+            SimpleNamespace(transcribe=lambda audio, **k: "www.youtube.come"),
+            _StubTTS(),
+            noise_filter=lambda t: "youtube" in t,
+        )
+        assert pipeline.transcribe_partial(b"\x00" * 32_000) == ""
+
+
+class TestSemanticEndpoint:
+    """E2 duplex — the endpoint hint: slow on an unfinished thought, fast on a
+    complete expected answer / farewell, normal otherwise. Deterministic only."""
+
+    def _engine(self, pending=None, verdict=None):
+        return SimpleNamespace(
+            _evidence_last_ask_key=pending,
+            state=SimpleNamespace(resolution={"verdict": verdict} if verdict else None),
+        )
+
+    def test_trailing_conjunction_waits(self):
+        from agent.endpoint import classify_endpoint, slow_ms
+
+        mode, ms = classify_endpoint(self._engine(), "Patikrinau ir")
+        assert mode == "slow" and ms == slow_ms()
+        assert classify_endpoint(self._engine(), "Nedega, bet")[0] == "slow"
+
+    def test_trailing_comma_waits(self):
+        from agent.endpoint import classify_endpoint
+
+        assert classify_endpoint(self._engine(), "Neveikia internetas,")[0] == "slow"
+
+    def test_unfinished_outranks_mapped_answer(self):
+        from agent.endpoint import classify_endpoint
+
+        eng = self._engine(pending="lights", verdict="no_mac_observed")
+        assert classify_endpoint(eng, "Nedega, bet")[0] == "slow"
+
+    def test_complete_pending_answer_cuts_fast(self, monkeypatch):
+        from agent.endpoint import classify_endpoint
+
+        monkeypatch.setenv("ENDPOINT_FAST_MS", "250")
+        eng = self._engine(pending="lights", verdict="no_mac_observed")
+        mode, ms = classify_endpoint(eng, "Nedega nė viena.")
+        assert mode == "fast" and ms == 250
+
+    def test_farewell_cuts_fast(self):
+        from agent.endpoint import classify_endpoint, fast_ms
+
+        mode, ms = classify_endpoint(self._engine(), "Ačiū, viso gero.")
+        assert mode == "fast" and ms == fast_ms()
+
+    def test_plain_sentence_and_empty_are_normal(self):
+        from agent.endpoint import classify_endpoint
+
+        assert classify_endpoint(self._engine(), "Kažkas čia negerai") == ("normal", None)
+        assert classify_endpoint(self._engine(), "") == ("normal", None)
+        assert classify_endpoint(self._engine(), None) == ("normal", None)
+
+    def test_partial_payload_carries_the_hint(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+        ms = SimpleNamespace(
+            session=SimpleNamespace(tracer=_Recorder(), endpoint_hint=lambda text: ("fast", 350)),
+            last_partial="",
+        )
+        monkeypatch.setattr(
+            voice,
+            "get_pipeline",
+            lambda _ms: SimpleNamespace(transcribe_partial=lambda audio: "nedega"),
+        )
+        payload = voice.run_voice_partial(ms, b"\x00" * 32_000)
+        assert payload["endpoint"] == "fast" and payload["silence_ms"] == 350
+        _k, fields = ms.session.tracer.events[0]
+        assert fields["endpoint"] == "fast"
+
+
+class TestDeliveryLedger:
+    """D1 — the engine's history keeps only what the caller actually HEARD
+    after a barge-in; the unheard tail resurfaces once via the narrator."""
+
+    def _streaming_session(self):
+        s = _session()
+        s.handle_turn_stream = lambda text: iter(["Pirmas sakinys. ", "Antras sakinys."])
+        return s
+
+    def test_pipeline_records_sentences_aligned(self):
+        asr = SimpleNamespace(transcribe=lambda audio, **k: "labas")
+        pipeline = VoicePipeline(self._streaming_session(), asr, _StubTTS())
+        chunks = list(pipeline.stream_turn(b"\x00" * 32_000))
+        assert len(chunks) == 2
+        assert pipeline.last_turn_sentences == ["Pirmas sakinys.", "Antras sakinys."]
+        assert pipeline.last_turn_aligned is True
+
+    def test_fallback_path_marks_unaligned(self):
+        asr = SimpleNamespace(transcribe=lambda audio, **k: "labas")
+        pipeline = VoicePipeline(_session(), asr, _StubTTS())  # no handle_turn_stream
+        list(pipeline.stream_turn(b"\x00" * 32_000))
+        assert pipeline.last_turn_aligned is False
+
+    def test_apply_delivery_truncates_history_and_surfaces_tail(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.messages.append({"role": "user", "content": "neveikia"})
+        agent.state.messages.append({"role": "assistant", "content": "Pirmas. Antras. Trečias."})
+        agent.apply_delivery(["Pirmas.", "Antras.", "Trečias."], 1)
+        assert agent.state.messages[-1]["content"] == "Pirmas. —"
+        assert agent._undelivered_tail == "Antras. Trečias."
+        block = agent._state_facts_block() or ""
+        assert "PERTRAUKTA REPLIKA" in block and "Antras." in block
+        # consumed once — the note must not nag every later turn
+        assert agent._undelivered_tail is None
+        assert "PERTRAUKTA REPLIKA" not in (agent._state_facts_block() or "")
+
+    def test_apply_delivery_nothing_heard(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.messages.append({"role": "assistant", "content": "Visas tekstas."})
+        agent.apply_delivery(["Visas tekstas."], 0)
+        assert agent.state.messages[-1]["content"] == "—"
+        assert agent._undelivered_tail == "Visas tekstas."
+
+    def test_apply_delivery_all_heard_is_noop(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent.state.messages.append({"role": "assistant", "content": "Viskas. Gerai."})
+        agent.apply_delivery(["Viskas.", "Gerai."], 2)
+        assert agent.state.messages[-1]["content"] == "Viskas. Gerai."
+        assert agent._undelivered_tail is None
+
+
+class TestAsrHeadStart:
+    """D4 — when the last partial covered the whole segment, its text IS the
+    final transcript: the ASR round-trip is skipped, trace says reused."""
+
+    def test_override_skips_the_asr(self):
+        calls = []
+        asr = SimpleNamespace(transcribe=lambda audio, **k: calls.append(1) or "nelaukta")
+        session = _session()
+        session.handle_turn_stream = lambda text: iter([f"atsakymas į: {text}"])
+        pipeline = VoicePipeline(session, asr, _StubTTS())
+        chunks = list(pipeline.stream_turn(b"\x00" * 32_000, transcript_override="nedega nė viena"))
+        assert calls == [] and len(chunks) == 1
+        asr_events = [f for k, f in session.tracer.events if k == "asr"]
+        assert asr_events[0]["reused"] is True and asr_events[0]["ms"] == 0
+        assert asr_events[0]["transcript"] == "nedega nė viena"

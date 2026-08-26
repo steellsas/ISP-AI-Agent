@@ -130,6 +130,7 @@
       <input type="text" id="text" placeholder="…arba rašykite tekstu" disabled>
       <button id="send" disabled>Siųsti</button>
     </div>
+    <div id="partialLine" style="font-size:12px;opacity:.55;min-height:16px;padding:2px 8px;font-style:italic"></div>
   </section>
   <section id="right">
     <div class="zone-title">🧠 Agento vidus (gyvai)</div>
@@ -233,6 +234,23 @@ const PREROLL_MS=parseInt(localStorage.getItem("micPre")||"240",10); // derinama
 // praleidžia; derinama be kodo per localStorage micMinMs.
 const MIN_SPEECH_MS=parseInt(localStorage.getItem("micMinMs")||"220",10);
 let bargeMs=0, bargeSilence=0, bargeBuf=[];   // kalba agentui kalbant (barge-in)
+// L4 duplex E1: kalbant siunčiamos frazės momentinės kopijos ("PART"+WAV) —
+// serveris veda slenkantį dalinį transkriptą. Jungiklis — serverio config
+// puslapyje (DUPLEX); klientas jį pasiskaito prisijungdamas.
+let duplexOn=false, partialEveryMs=1000, partialAtMs=0;
+// E2: serverio semantinė užuomina — kiek tylos laukti iki frazės pabaigos
+// (fast = pilnas atsakymas, kerpam anksčiau; slow = nebaigta mintis, laukiam).
+// Galioja TIK einamai frazei; null = kliento numatytasis micSil.
+let dynSilence=null;
+async function loadDuplexCfg(){
+  try{
+    const r = await fetch("/admin/config"); const j = await r.json();
+    const get = k => ((j.settings||[]).find(s=>s.key===k)||{}).value;
+    duplexOn = (get("DUPLEX")||"off")==="on";
+    const iv = parseFloat(get("PARTIAL_INTERVAL_S")||"1.0");
+    partialEveryMs = Math.max(400, (isNaN(iv)?1.0:iv)*1000);
+  }catch(e){ duplexOn=false; }
+}
 
 /* ---------- UI helpers ---------- */
 function addMsg(cls, text){
@@ -345,11 +363,40 @@ $("start").onclick = async () => {
             `<span>⚡ TTFA <b>${e.ttfa_ms}</b> ms</span><span>🔊 ${e.chunks} sak.</span>`);
         return;
       }
+      if(e.type==="turn_start"){ turnPlayed=0; return; } // D1: skaitiklis per turn'ą
+      if(e.type==="cut_audio"){ // D3: serveris patvirtino tikrą pertraukimą
+        stopAudio(); setDuck(false);
+        if(duckTimer){ clearTimeout(duckTimer); duckTimer=null; }
+        addMsg("note","⏹ pertraukėte agentą");
+        return;
+      }
+      if(e.type==="unduck"){ // D3: aidas/pritarimas — agentas kalba toliau
+        setDuck(false);
+        if(duckTimer){ clearTimeout(duckTimer); duckTimer=null; }
+        return;
+      }
+      if(e.type==="backchannel" && e.audio){ // D5: „Mhm" ŠALIA eilės — mic
+        // toliau transliuoja, playing būsena nekinta, barge nekyla.
+        try{
+          const a=new Audio("data:audio/mpeg;base64,"+e.audio);
+          a.volume=0.9; a.play().catch(()=>{});
+        }catch(err){}
+        return;
+      }
+      if(e.type==="partial"){ // duplex E1: gyvas dalinis transkriptas
+        // E2: semantinė tylos užuomina einamai frazei (fast/slow/normal).
+        if(e.silence_ms){ dynSilence=e.silence_ms; }
+        else if(e.endpoint==="normal"){ dynSilence=null; }
+        const mark = e.endpoint==="fast" ? " ⏩" : (e.endpoint==="slow" ? " ⏳" : "");
+        $("partialLine").textContent = e.text ? "🎧 "+e.text+mark : "";
+        return;
+      }
       if(e.type==="voice_turn"||e.type==="reply"||e.type==="error") return; // rendered via events
       onEvent(e);
     };
     ws.onopen = () => {
       setLive(true);
+      loadDuplexCfg();
       addMsg("agent", data.greeting);
       if($("voiceOn").checked){
         fetch(`/sessions/${sid}/greeting/audio`).then(r=>r.ok?r.arrayBuffer():null)
@@ -401,6 +448,17 @@ function sendText(){
    back-to-back; `playing` stays true (half-duplex mic hold) until the queue
    drains. A single blob (greeting) is just a one-chunk queue. */
 let currentAudio=null, audioQueue=[];
+// D1 pristatymo žurnalas: kiek chunk'ų PILNAI sugrota nuo mano paskutinės
+// frazės — pertraukiant tai pasakome serveriui, kad variklis žinotų, ką
+// klientas realiai išgirdo (pusiau sugrotas sakinys = neišgirstas).
+let turnPlayed=0;
+// D3 duck-then-decide: pertraukimas pirmiausia PRITILDO agentą (ne nutildo);
+// serveris su ASR nusprendžia — cut_audio (tikra kalba) arba unduck (aidas).
+let ducked=false, duckTimer=null;
+function setDuck(v){
+  ducked=v;
+  if(currentAudio){ try{ currentAudio.volume = v?0.25:1.0; }catch(e){} }
+}
 function playAudio(buf){ enqueueAudio(buf); }
 function enqueueAudio(buf){
   audioQueue.push(buf);
@@ -411,8 +469,9 @@ function playNext(){
   const buf=audioQueue.shift();
   if(buf===undefined){ playing=false; currentAudio=null; return; }
   const a=new Audio(URL.createObjectURL(new Blob([buf],{type:"audio/mpeg"})));
+  a.volume = ducked?0.25:1.0; // D3: duck būsena galioja ir naujiems chunk'ams
   currentAudio=a;
-  a.onended=()=>{ currentAudio=null; playNext(); };
+  a.onended=()=>{ turnPlayed++; currentAudio=null; playNext(); };
   a.onerror=()=>{ currentAudio=null; playNext(); };
   a.play().catch(()=>{ currentAudio=null; playNext(); });
 }
@@ -455,6 +514,12 @@ async function startMic(){
       // atsakymo pradžia (nė vienas žodis nedingsta).
       if(!micCfg.bargeOn){ speaking=false; utter=[]; updPre(); return; }
       const bthr = micCfg.threshold*1.6;   // aukštesnis slenkstis prieš aidą
+      // D3 duck-then-decide (duplex): jau pritildyta — kalba teka kadrais,
+      // kol serveris nuspręs (cut_audio arba unduck).
+      if(duplexOn && ducked){
+        if(ws && ws.readyState===1) sendFrame(ch);
+        updPre(); return;
+      }
       if(rms>bthr){
         if(bargeMs===0) bargeBuf=preBuf.slice();  // pre-roll: pertraukimo pradžia nedingsta
         bargeMs+=frameMs; bargeSilence=0;
@@ -464,24 +529,44 @@ async function startMic(){
         if(bargeSilence>250){ bargeMs=0; bargeSilence=0; bargeBuf=[]; } // backchannel — atmesta
       }
       if(bargeMs>=micCfg.bargeMs){
-        stopAudio();
-        if(ws) ws.send(JSON.stringify({type:"interrupt"}));
-        addMsg("note","⏹ pertraukėte agentą");
-        speaking=true; speechMs=bargeMs; silenceMs=0;
-        utter=bargeBuf.slice();
+        if(duplexOn){
+          // D3: NE kertame, o pritildome — serveris su ASR nuspręs, ar tai
+          // tikra kalba (cut_audio), ar aidas/pritarimas (unduck).
+          setDuck(true);
+          if(ws) ws.send(JSON.stringify({type:"duck", played: turnPlayed}));
+          for(const b of bargeBuf) sendFrame(b);
+          if(duckTimer) clearTimeout(duckTimer);
+          duckTimer=setTimeout(()=>{ // serveris tyli — grąžinam garsą patys
+            if(ducked){ setDuck(false); if(ws) ws.send(JSON.stringify({type:"duck_end"})); }
+          }, 2500);
+        }else{
+          stopAudio();
+          if(ws) ws.send(JSON.stringify({type:"interrupt", played: turnPlayed}));
+          addMsg("note","⏹ pertraukėte agentą");
+          speaking=true; speechMs=bargeMs; silenceMs=0;
+          utter=bargeBuf.slice();
+        }
         bargeMs=0; bargeSilence=0; bargeBuf=[];
       }
       updPre();
       return;
     }
+    // D2 duplex: klientas — kvailas mikrofonas. Kadrai teka į serverį NUOLAT
+    // (kol negroja agentas); serverio garso frontas pats sprendžia, kada
+    // frazė baigėsi. Kliento VAD lieka tik VU meteriui ir barge režimui.
+    if(duplexOn){
+      if(ws && ws.readyState===1) sendFrame(ch);
+      updPre();
+      return;
+    }
     if(rms>micCfg.threshold){
-      if(!speaking) utter=preBuf.slice();       // pre-roll: žodžio pradžia nedingsta
+      if(!speaking){ utter=preBuf.slice(); partialAtMs=0; dynSilence=null; } // pre-roll: žodžio pradžia nedingsta
       speaking=true; speechMs+=frameMs; silenceMs=0;
       utter.push(new Float32Array(ch));
     }else if(speaking){
       silenceMs+=frameMs;
       utter.push(new Float32Array(ch));
-      if(silenceMs>micCfg.silence){
+      if(silenceMs>(dynSilence||micCfg.silence)){ // E2: semantinis tylos langas
         if(speechMs>MIN_SPEECH_MS) sendUtterance();
         speaking=false; speechMs=0; silenceMs=0; utter=[];
       }
@@ -492,6 +577,7 @@ async function startMic(){
 function stopMic(){
   recording=false; $("mic").classList.remove("rec");
   bargeMs=0; bargeSilence=0; bargeBuf=[]; preBuf=[]; preMs=0;
+  partialAtMs=0; dynSilence=null; $("partialLine").textContent="";
   if(micNode) micNode.disconnect();
   if(micSrc) micSrc.disconnect();
   if(micStream) micStream.getTracks().forEach(t=>t.stop());
@@ -510,7 +596,22 @@ function sendUtterance(){
     }
   }
   ws.send(wavEncode(pcm, sampleRate));
+  partialAtMs=0; dynSilence=null; turnPlayed=0; $("partialLine").textContent="";
   addMsg("note","🎤 siunčiama…");
+}
+/* D2 duplex: vienas PCM kadras su "FRAM" antrašte — serverio garso frontas
+   iš jų pats lipdo frazes (VAD + endpointing serveryje). */
+function sendFrame(ch){
+  const pcm=new Int16Array(ch.length);
+  for(let i=0;i<ch.length;i++){
+    const s=Math.max(-1,Math.min(1,ch[i]));
+    pcm[i]=s<0?s*0x8000:s*0x7fff;
+  }
+  const wav=new Uint8Array(wavEncode(pcm, sampleRate));
+  const framed=new Uint8Array(4+wav.length);
+  framed[0]=0x46; framed[1]=0x52; framed[2]=0x41; framed[3]=0x4D; // "FRAM"
+  framed.set(wav,4);
+  ws.send(framed.buffer);
 }
 /* ---------- nustatymai (config puslapis) ---------- */
 const micCfg = {

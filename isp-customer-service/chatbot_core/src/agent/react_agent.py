@@ -263,6 +263,11 @@ class ReactAgent:
         # key whose clarification is out, awaiting the settling answer.
         self._evidence_conflict: tuple[str, str, str] | None = None
         self._evidence_conflict_asked: str | None = None
+        # W1-2 svarbos vartai: a NEW volunteered fact that flips the story is
+        # parked here until one confirm question settles it (STT garbles
+        # poison exactly these — "rozetė NEVEIKĖ" heard live for a fine outlet).
+        self._fact_confirm: tuple[str, str] | None = None
+        self._fact_confirm_asked: tuple[str, str] | None = None
         # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
         # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
         # stream closes mid-generation and the cancelled-turn bookkeeping runs
@@ -308,6 +313,15 @@ class ReactAgent:
         # say "neregistruoju" and return to the last fix instruction.
         self._resume_fix_note = False
         self._resync_note = False
+        # D1 delivery ledger: the tail of an interrupted reply the caller never
+        # HEARD — surfaced to the narrator next turn, then cleared.
+        self._undelivered_tail: str | None = None
+        # W1-1: the opening already carried the anamnesis — the narrator shows
+        # it HEARD ("aišku — nuo vakar") instead of re-asking; one-shot.
+        self._opening_heard_note = False
+        # W2 tylusis analitikas: background advisory notes for the narrator's
+        # next turn (written by the bg thread, consumed once in facts).
+        self._analyst_notes: list[str] | None = None
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.
@@ -624,6 +638,27 @@ class ReactAgent:
             self._evidence_asks[key] -= 1
         self.tracer.emit("turn_cancelled", spoken=spoken[:160])
 
+    def apply_delivery(self, sentences: list[str], delivered: int) -> None:
+        """D1 delivery ledger (live 2026-08-25: the transcript renders before
+        the audio, so a barge-in leaves the engine believing the caller heard
+        the WHOLE reply). The transport reports how many sentences actually
+        finished playing — the history keeps only that prefix, and the unheard
+        tail is surfaced to the narrator next turn. A half-played sentence
+        counts as NOT heard (repeating it is the natural repair)."""
+        total = len(sentences)
+        delivered = max(0, min(int(delivered), total))
+        if not total or delivered >= total:
+            return
+        heard = " ".join(s.strip() for s in sentences[:delivered]).strip()
+        tail = " ".join(s.strip() for s in sentences[delivered:]).strip()
+        s = self.state
+        for msg in reversed(s.messages):
+            if msg.get("role") == "assistant":
+                msg["content"] = (heard + " —") if heard else "—"
+                break
+        self._undelivered_tail = tail or None
+        self.tracer.emit("delivery", delivered=delivered, total=total, unheard=tail[:160])
+
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
         """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the
         walker path's run_turn_scoped): user_turn trace, dialogue history, shared
@@ -816,6 +851,12 @@ class ReactAgent:
         from .walker_flow import turn_may_advance
 
         return turn_may_advance(self, step)
+
+    def _scripted_wait_ack(self) -> str | None:
+        """Delegates to walker_flow.scripted_wait_ack (D5)."""
+        from .walker_flow import scripted_wait_ack
+
+        return scripted_wait_ack(self)
 
     def _simulate_bridge_connection(self) -> None:
         """DEMO/TEST only (SIMULATE_BRIDGE=on): reflect the caller plugging a PC into the
@@ -1321,6 +1362,13 @@ class ReactAgent:
         scripted = self._identification_scripted_reply(self.state.last_heard)
         if scripted is not None:
             yield self._emit_scripted_reply(scripted)
+            return
+
+        # D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
+        # wait signal at a standing client action is acknowledged scripted.
+        wait = self._scripted_wait_ack()
+        if wait is not None:
+            yield self._emit_scripted_reply(wait)
             return
 
         max_calls = self.config.max_tool_calls_per_response

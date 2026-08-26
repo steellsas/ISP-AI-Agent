@@ -1,0 +1,33 @@
+# E2 semantinis turn-taking (L4 duplex) — ŽODYNAS. Mechanika: agent/endpoint.py.
+#
+# Serveris, gavęs dalinį transkriptą, pataria klientui, kiek tylos laukti iki
+# frazės pabaigos: nebaigta mintis -> laukiam ilgiau (slow), pilnas laukiamas
+# atsakymas -> kerpam greičiau (fast). Trukmės (ms) — config puslapio
+# ENDPOINT_FAST_MS / ENDPOINT_SLOW_MS.
+
+# Frazė, kurios PASKUTINIS žodis yra iš šio sąrašo, laikoma nebaigta mintimi
+# ("nedega, bet…", "patikrinau ir…") — nekerpame vidury sakinio.
+tesiniai:
+  - bet
+  - ir
+  - o
+  - tai
+  - nes
+  - kad
+  - kai
+  - arba
+  - tada
+  - dar
+  - gal
+  - nu
+  - na
+  - taigi
+  - vadinasi
+  - pavyzdžiui
+  - į
+  - iš
+  - su
+  - prie
+  - ant
+  - per
+  - apie

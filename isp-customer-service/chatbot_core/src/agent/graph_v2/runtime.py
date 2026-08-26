@@ -47,6 +47,31 @@ def narrate(engine: Any, user_input: str | None, allowed_tools, node_prompt: str
     return "".join(parts)
 
 
+def speak_scripted(engine: Any, node: str, user_input: str | None, reply: str) -> None:
+    """A SCRIPTED node reply must reach the transport too (live 2026-08-25: the
+    post-registration goodbye returned via sync_updates only — zero tokens
+    streamed — and the call ended in dead silence, three caller turns in a
+    row). Mirrors narrate()'s surface for an engine-composed line: node event,
+    history, trace, and the stream writer."""
+    engine._active_node = node
+    engine.tracer.emit("node", node=node, customer_id=engine.state.customer_id)
+    if user_input:
+        engine.state.last_heard = user_input.strip()
+        engine.tracer.emit("user_turn", text=user_input)
+        engine.state.messages.append({"role": "user", "content": user_input})
+    engine._emit_scripted_reply(reply)
+    # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
+    # END the call like an LLM one — the hang-up detector ran only on the LLM
+    # path, so every trailing garbled turn earned a fresh goodbye.
+    from ..closing_flow import maybe_end_on_goodbye
+
+    maybe_end_on_goodbye(engine, reply)
+    try:
+        get_stream_writer()(reply)
+    except Exception:  # outside a live stream (tests / .invoke) — text is in state
+        pass
+
+
 def sync_updates(engine: Any, *, user_input: str | None, reply: str | None) -> dict[str, Any]:
     """Snapshot engine.state (+ promoted flags) into graph-state updates."""
     # ticket_stage rides along automatically: it is an AgentState field since its

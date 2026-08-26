@@ -41,6 +41,39 @@ Visi žingsniai daromi VOICE šakoje (po refactor/langgraph-v2 PR į develop).
 - Nebaigtos minties sargas (transkriptas baigiasi „ir/bet/tai…" → palaukti).
 - L3b agento pritarimai + L4 srautinis dupleksas.
 
+## L4 dupleksas (patvirtinta 2026-08-24, šaka feature/voice-duplex)
+
+Tikslas: agentas girdi KALBANT — daliniai transkriptai, semantinis turn-taking,
+pritarimai. Viskas už `DUPLEX=off` jungiklio (off = ankstesnė elgsena be pokyčių).
+
+| Etapas | Kas | Statusas |
+|---|---|---|
+| E1 | Srautiniai pamatai: klientas kalbant siunčia frazės momentines kopijas (`"PART"`+WAV, kas PARTIAL_INTERVAL_S, ≤15 s langas); serveris veda slenkantį dalinį transkriptą (pipeline.transcribe_partial su dialogo kontekstu) → trace `partial` + gyva eilutė kliente + `ms.last_partial`. Elgsena nesikeičia — tik stebėjimas. | PADARYTA |
+| E2 | Semantinis turn-taking: serveris prie kiekvieno dalinio prideda tylos užuominą (agent/endpoint.py + knowledge/endpoint.yaml `tesiniai`): nebaigta mintis (jungtukas/kablelis gale) → slow ENDPOINT_SLOW_MS; pilnas laukiamas atsakymas (read_pending_answer) ar atsisveikinimas → fast ENDPOINT_FAST_MS; kita → normal. Klientas taiko `dynSilence` TIK einamai frazei (⏩/⏳ ženklai gyvoje eilutėje). Čia ir „nebaigtos minties sargas". | PADARYTA |
+| E3 | Backchannels (L3b): užsitęsus kliento kalbai — trumpas pritarimas iš kešo, neperimant turn'o; tik klausymo fazėje, max 1/frazę; barge-in jį ignoruoja. | — |
+| E4 | L3c nukrypimo pagalvė + poliravimas: pertraukimas ne į temą → trumpas atsakymas → grįžimas per resync direktyvą; replay stendas moka dalinius. | — |
+
+Rizikos: Groq Whisper apkrova (partial kas ~1 s tik kalbant; jei limitai muš —
+lokalus faster-whisper daliniams); dalinių „drebėjimas" (E2 remiasi tik
+deterministiniais skaitytuvais, ne žodis-į-žodį tekstu).
+
+## L4 architektūra: srautinis duplekso branduolys (D1–D5, patvirtinta 2026-08-25)
+
+Struktūrinis pokytis: klientas tampa kvailu mikrofonu/garsiakalbiu, visas
+intelektas (VAD, endpointing, aidas, barge, turn'ai) — serveryje, kuris
+vienintelis žino, KĄ PATS GROJA (grojimo referencija). Variklis/pack'ai/
+direktyvos nekinta. E1/E2/spekuliacija išlieka ir apibendrinami. Aido kaskada
+sąmoningai NELOPOMA sename kelyje — sprendžiasi D3 su referencija (iki tol
+balso testams — ausinės). Balso testai: po D2, tada po D3+D4+D5 kartu.
+
+| Etapas | Kas | Statusas |
+|---|---|---|
+| D1 | PRISTATYMO ŽURNALAS: pipeline įsimena kiekvieno turn'o sakinius siuntimo tvarka (last_turn_sentences/aligned); klientas skaičiuoja pilnai sugrotus chunk'us (turnPlayed) ir pertraukdamas siunčia `played`; variklio istorijoje pertraukta replika nukerpama iki girdėtos dalies (apply_delivery), negirdėta uodega — vienkartinė PERTRAUKTA REPLIKA pastaba naratoriui. Pusiau sugrotas sakinys = negirdėtas. Nestandartiniai chunk'ai (filler, klaidos fallback, neseka sakinių) → aligned=False → sena elgsena. | PADARYTA |
+| D2 | Srautas aukštyn: klientas su DUPLEX=on siunčia „FRAM"+WAV kadrus NUOLAT (kol negroja agentas); serverio garso frontas (app/audio_front.py — grynas automatas, laikas iš sample'ų) daro VAD (SERVER_VAD_THR), segmentus, partial kadenciją, semantinį kirpimą (E2 hint fast/slow arba SERVER_SIL_MS) ir NIEKADA nemeta kalbos kol turn'as užimtas (stash → kitas turn'as iškart). Kliento VAD lieka tik VU/barge. Pauzė frazėje nulina tylos laikrodį — natūralus tęsinys tame pačiame segmente (pilnas cancel-merge atidėtas į D4). | PADARYTA |
+| D3 | Duck-then-decide: pertraukimas pirma PRITILDO (klientas 25% + „duck" žinutė su played), serveris ASR'ina pritildytą segmentą ir barge_in.classify (aido fuzzy prieš last_spoken) nusprendžia: echo/consent → unduck + segmento atmetimas; kita → cut_audio + D1 nukirpimas (veikia ir turn'ui jau pasibaigus — late apply_delivery). Kliento 2.5 s auto-unduck saugiklis. | PADARYTA |
+| D4 | ASR head-start: kai po paskutinio partial'o buvo tik tyla (front snap_done, speech nepakito), galutinė transkripcija PERPANAUDOJAMA iš partial'o — turn'as praleidžia ASR ratą (~0.5–0.7 s). Pilnas LLM pre-startas / cancel-merge ATIDĖTAS: saugiam suliejimui reikia turn'o checkpoint'ų (įrankiai jau būna paleisti); praktinius atvejus dengia E2 langai + stash. | PADARYTA (siaurintas) |
+| D5 | Persidengimas ir reakcijos: backchannels („Mhm"/„Aha, klausau" po 4 s pasakojimo, 1×/segmentą, tik kai laukiam atsakymo; klientui ŠALIA grojimo eilės — mic nenutrūksta, barge nekyla); scriptinės wait/ack be LLM (wait_ack/wait_ack_2 rotacija — buvo iki 12 s tylos); UŽDARYMO FIX: scriptinės closing šakos dabar KALBA (runtime.speak_scripted — anksčiau grąžindavo tekstą be stream writer'io = mirtina tyla po registracijos), numerio patikslinimas po registracijos įrašomas į tiketą (amend_ticket_note → [PATIKSLINTA]) ir patvirtinamas balsu. Off-topic pagalvę dengia esamas resync/anchor mechanizmas. | PADARYTA |
+
 ## 1 žingsnio darbų sąrašas (L1+L2, paruošta įgyvendinimui)
 
 1. **Vardo klausimas be uodegos** — `knowledge/identification.yaml` frazė

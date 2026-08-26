@@ -66,8 +66,6 @@ class EdgeTTSProvider:
         voice — lower ('-5%') sounds more matter-of-fact/technical (Andrius
         2026-08-20). Both from the config page, validated, engine default when
         unset."""
-        import edge_tts  # deferred (optional dependency)
-
         kwargs = {}
         rate = self._pct("TTS_RATE")
         if rate:
@@ -80,6 +78,8 @@ class EdgeTTSProvider:
         cached = self._CACHE.get(cache_key)
         if cached is not None:
             return cached
+
+        import edge_tts  # deferred (optional dependency) — a cache hit needs none
 
         async def _collect() -> bytes:
             out = bytearray()
