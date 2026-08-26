@@ -322,6 +322,9 @@ class ReactAgent:
         # W2 tylusis analitikas: background advisory notes for the narrator's
         # next turn (written by the bg thread, consumed once in facts).
         self._analyst_notes: list[str] | None = None
+        # D1+ (Andrius 2026-08-26): the interrupted reply's QUESTION never
+        # sounded — the narrator must react to the caller and RE-ASK it.
+        self._unheard_question: str | None = None
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.
@@ -657,7 +660,33 @@ class ReactAgent:
                 msg["content"] = (heard + " —") if heard else "—"
                 break
         self._undelivered_tail = tail or None
-        self.tracer.emit("delivery", delivered=delivered, total=total, unheard=tail[:160])
+        # Andrius 2026-08-26: the agent must NEVER believe it asked a question
+        # the caller could not hear. When the "?" lives only in the unheard
+        # tail, the ask never happened: the pending evidence key and its ask
+        # counter roll back (the caller's next words are NOT an answer to it),
+        # the step's presented counter steps back, and the narrator gets a
+        # STRONG re-ask directive instead of the advisory tail note.
+        if "?" in tail and "?" not in heard:
+            s.last_question = None
+            key = getattr(self, "_evidence_last_ask_key", None)
+            if key:
+                if self._evidence_asks.get(key, 0) > 0:
+                    self._evidence_asks[key] -= 1
+                self._evidence_last_ask_key = None
+            r = s.resolution or {}
+            pres = r.get("presented") or {}
+            step_id = r.get("step")
+            if step_id and pres.get(step_id, 0) > 0:
+                pres[step_id] -= 1
+            self._unheard_question = tail
+            self._undelivered_tail = None  # superseded by the strong directive
+        self.tracer.emit(
+            "delivery",
+            delivered=delivered,
+            total=total,
+            unheard=tail[:160],
+            question_unheard=bool(getattr(self, "_unheard_question", None)),
+        )
 
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
         """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the

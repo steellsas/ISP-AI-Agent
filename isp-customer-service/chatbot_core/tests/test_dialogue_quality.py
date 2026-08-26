@@ -146,6 +146,52 @@ class TestW1LivingDialogue:
         assert agent._fact_confirm is None
 
 
+class TestUnheardQuestion:
+    """Andrius 2026-08-26: the agent must never believe it asked a question
+    the caller could not hear — an unheard '?' rolls the ask back and the
+    narrator reacts + re-asks."""
+
+    def _agent(self):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060012353")
+        agent.state.customer_id = "CUST009"
+        agent.state.resolution = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "presented": {"dr_lights": 1},
+        }
+        agent.state.messages.append({"role": "assistant", "content": "irrelevant"})
+        return agent
+
+    def test_unheard_question_rolls_the_ask_back(self, db_connection):
+        agent = self._agent()
+        agent.state.last_question = "Ar dega bent viena lemputė?"
+        agent._evidence_last_ask_key = "lights"
+        agent._evidence_asks = {"lights": 1}
+        agent.apply_delivery(["Gerai, kad radote.", "Ar dega bent viena lemputė?"], 1)
+        assert agent.state.last_question is None
+        assert agent._evidence_last_ask_key is None
+        assert agent._evidence_asks["lights"] == 0
+        assert agent.state.resolution["presented"]["dr_lights"] == 0
+        assert agent._unheard_question == "Ar dega bent viena lemputė?"
+        assert agent._undelivered_tail is None  # superseded by the strong note
+        block = agent._state_facts_block() or ""
+        assert "KLAUSIMAS NEIŠĖJO" in block and "lemputė" in block
+        assert "KLAUSIMAS NEIŠĖJO" not in (agent._state_facts_block() or "")
+
+    def test_heard_question_keeps_the_ask(self, db_connection):
+        agent = self._agent()
+        agent.state.last_question = "Ar dega bent viena lemputė?"
+        agent._evidence_last_ask_key = "lights"
+        agent._evidence_asks = {"lights": 1}
+        agent.apply_delivery(["Ar dega bent viena lemputė?", "Tai parodys, ar gauna srovę."], 1)
+        assert agent.state.last_question == "Ar dega bent viena lemputė?"
+        assert agent._evidence_last_ask_key == "lights"
+        assert agent._unheard_question is None
+        assert agent._undelivered_tail  # the plain advisory note stands
+
+
 class TestW2QuietAnalyst:
     """W2: background advisory notes — wording only, one-shot, off-switch."""
 

@@ -302,6 +302,17 @@ def state_facts_block(engine) -> str | None:
             f"- KLIENTAS NEGIRDĖJO (pertraukė): „{tail[:160]}“ — jei svarbu, "
             "pasakyk trumpai savais žodžiais."
         )
+    # Andrius 2026-08-26: the cut-off QUESTION never reached the caller — they
+    # were NOT answering it. React to what they said, then ask it anew.
+    uq = getattr(engine, "_unheard_question", None)
+    if uq:
+        engine._unheard_question = None
+        facts.append(
+            "- KLAUSIMAS NEIŠĖJO Į ETERĮ: klientas TAVO klausimo negirdėjo "
+            "(pertraukė anksčiau), tad jo žodžiai — NE atsakymas į jį. "
+            "Pirmiausia sureaguok į tai, ką klientas pasakė, tada užduok "
+            f"klausimą iš naujo savais žodžiais (vienas „?“): „{uq[:160]}“"
+        )
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
     # re-EXPLANATIONS aimed at what was actually not understood.
