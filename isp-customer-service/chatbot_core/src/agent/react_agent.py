@@ -666,7 +666,10 @@ class ReactAgent:
         # counter roll back (the caller's next words are NOT an answer to it),
         # the step's presented counter steps back, and the narrator gets a
         # STRONG re-ask directive instead of the advisory tail note.
-        if "?" in tail and "?" not in heard:
+        # Closing-stage chatter is exempt (live 2026-08-27): garbled farewells
+        # kept cutting the goodbye before its "?" and the re-ask machinery
+        # looped "Ar dar kuo padėti?" — a closed case never re-asks.
+        if "?" in tail and "?" not in heard and not s.case_closed:
             s.last_question = None
             key = getattr(self, "_evidence_last_ask_key", None)
             if key:

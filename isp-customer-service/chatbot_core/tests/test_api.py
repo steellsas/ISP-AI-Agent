@@ -402,6 +402,33 @@ class TestVoiceChannel:
         rec = voice_fakes / sid
         assert rec.joinpath("turn_01_user.wav").exists()
 
+    def test_completed_call_takes_no_more_turns(self, client, voice_fakes, monkeypatch):
+        # Live 2026-08-27: after "Geros dienos!" the transport kept processing
+        # garbled farewells and looped "Ar dar kuo padeti?" — a finished call
+        # ignores further audio and tells the client once to hang up.
+        monkeypatch.setenv("VOICE_STREAM", "on")
+        sid = _create(client)["session_id"]
+        from app.main import manager
+
+        manager.get(sid).session._agent.state.is_complete = True
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"RIFF-fake-wav-utterance")
+            ended = False
+            got_turn = False
+            for _ in range(20):
+                msg = ws.receive()
+                if msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "call_ended":
+                        ended = True
+                        break
+                    if e.get("type") in ("voice_turn_done", "voice_turn"):
+                        got_turn = True
+            assert ended and not got_turn
+        assert manager.get(sid).turn_count == 0  # no turn ever ran
+
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]
         resp = client.get(f"/sessions/{sid}/greeting/audio")

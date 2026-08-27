@@ -375,6 +375,11 @@ $("start").onclick = async () => {
         return;
       }
       if(e.type==="turn_start"){ turnPlayed=0; return; } // D1: skaitiklis per turn'ą
+      if(e.type==="call_ended"){ // pokalbis baigtas — mikrofonas nebeklauso
+        stopMic();
+        addMsg("note","📞 pokalbis baigtas");
+        return;
+      }
       if(e.type==="cut_audio"){ // D3: serveris patvirtino tikrą pertraukimą
         stopAudio(); setDuck(false);
         if(duckTimer){ clearTimeout(duckTimer); duckTimer=null; }

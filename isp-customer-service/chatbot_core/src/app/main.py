@@ -316,6 +316,7 @@ async def ws_call(ws: WebSocket, session_id: str):
     turn_task: asyncio.Task | None = None
     checkin_task: asyncio.Task | None = None
     partial_task: asyncio.Task | None = None
+    call_ended_sent = False
     # D3 duck-then-decide: the client DUCKED the agent's audio and is streaming
     # the interrupting speech — one ASR-backed decision task resolves it into
     # a real cut (cut_audio) or a false alarm (unduck).
@@ -394,6 +395,25 @@ async def ws_call(ws: WebSocket, session_id: str):
             pass
         except Exception:  # a failed partial must never touch the socket state
             logger.debug("front partial failed", exc_info=True)
+
+    async def _hangup_if_complete() -> bool:
+        # Live 2026-08-27: after "Geros dienos!" (is_complete) the transport
+        # kept processing turns — every garbled farewell cut the goodbye
+        # before its "?" and the re-ask machinery politely looped "Ar dar kuo
+        # padėti?" five times. A finished call takes no more turns; the client
+        # is told once to stop the mic.
+        nonlocal call_ended_sent
+        try:
+            ms = manager.get(session_id)
+        except SessionNotFound:
+            return True
+        if not ms.session.is_complete:
+            return False
+        if not call_ended_sent:
+            call_ended_sent = True
+            with suppress(Exception):
+                await ws.send_json({"type": "call_ended"})
+        return True
 
     def _dispatch_utterance(wav: bytes, front, hint_text: str | None = None) -> None:
         # D2/D4: one place where a server-cut utterance becomes a voice turn —
@@ -584,6 +604,8 @@ async def ws_call(ws: WebSocket, session_id: str):
                 # D2 duplex: continuous PCM frames — the server-side audio
                 # front owns VAD + endpointing; the client no longer cuts turns.
                 if data[:4] == b"FRAM":
+                    if await _hangup_if_complete():
+                        continue
                     try:
                         front = _front()
                     except SessionNotFound:
@@ -610,6 +632,8 @@ async def ws_call(ws: WebSocket, session_id: str):
                                     pending_final = wav  # ruled on when decided
                             else:
                                 _dispatch_utterance(wav, front)
+                    continue
+                if await _hangup_if_complete():
                     continue
                 _disarm_checkin()  # the caller spoke — no nudge needed
                 if data[:4] == b"PART":
