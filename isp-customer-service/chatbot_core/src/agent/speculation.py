@@ -40,7 +40,8 @@ def _directive_line(kind: str, payload: dict[str, Any]) -> str:
     if kind == "evidence":
         kodel = f" Kodėl tikriname: {payload['kodel']}." if payload.get("kodel") else ""
         return (
-            f"- KLAUSK DABAR: išsiaiškink — {payload['reikia']}.{kodel} "
+            f"- KLAUSK DABAR: išsiaiškink — {payload['reikia']}. Fakto DAR "
+            f"NEŽINAI — užduok klausimą, nekonstatuok.{kodel} "
             f"(Atsarginė: „{payload['klausimas']}“)"
         )
     if kind == "recap":

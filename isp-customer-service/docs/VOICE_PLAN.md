@@ -90,6 +90,16 @@ ir saugesni latencijos svertai.
 | 6 | Filler v2 — kontekstinis, tik >1.2 s, formuluotės derinamos su Andriumi (v1 išjungtas kaip „šiukšlė") | — |
 | P4 likutis | LLM modulių medžių suvienodinimas (dvigubi rate limiter'iai), sensorių promptai → failai, guard slenksčiai → config, solverio tilto legacy valymas, dr_pick_cable hint švelninimas („patvirtink-jei-atitinka") | — |
 
+### Pertraukimų banga (atidėta sąmoningai, Andrius 2026-08-27)
+
+BARGE_IN=off (numatytasis): pertraukimai laikinai išjungti — testuojama ciklo
+šerdis be duck/cut triukšmo; agentas visada pabaigia sakinį. Įjungiant —
+atskira banga su B DIZAINU (sutarta diskusijoje): pertraukimo likimą sprendžia
+KITO turn'o kliento replika — jei ji map'inasi kaip atsakymas į laukiamą raktą,
+klausimas laikytas girdėtu (faktas krenta, jokio perklausimo); jei ne —
+atsukimas + „sureaguok ir perklausk". Papildomai: consent segmento nemesti
+(ankstyvas „Taip" ant klausimo uodegos dabar priverčia kartoti).
+
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 
 - TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO

@@ -296,6 +296,16 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # Andrius 2026-08-27: pertraukimai LAIKINAI išjungti — testuojam ciklo
+        # šerdį be duck/cut triukšmo; įjungsim atskirai pertraukimų bangai
+        # (B dizainas). Off = agentas visada pabaigia sakinį.
+        "key": "BARGE_IN",
+        "label": "Pertraukimai (barge-in / duck)",
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],

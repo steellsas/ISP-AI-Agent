@@ -671,11 +671,15 @@ class ReactAgent:
         # looped "Ar dar kuo padėti?" — a closed case never re-asks.
         if "?" in tail and "?" not in heard and not s.case_closed:
             s.last_question = None
+            # The PENDING evidence key deliberately STAYS (live 2026-08-27:
+            # clearing it looped the call — the caller kept interrupting with
+            # the ANSWER, which then had no key to land on, so the fact never
+            # committed and the same question re-asked forever). Only the ask
+            # counter steps back so the wording escalation stays fair; an
+            # answer that maps still commits, a true non-answer re-asks anyway.
             key = getattr(self, "_evidence_last_ask_key", None)
-            if key:
-                if self._evidence_asks.get(key, 0) > 0:
-                    self._evidence_asks[key] -= 1
-                self._evidence_last_ask_key = None
+            if key and self._evidence_asks.get(key, 0) > 0:
+                self._evidence_asks[key] -= 1
             r = s.resolution or {}
             pres = r.get("presented") or {}
             step_id = r.get("step")

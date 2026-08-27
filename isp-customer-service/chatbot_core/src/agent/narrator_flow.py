@@ -1043,7 +1043,8 @@ def state_facts_block(engine) -> str | None:
         # ONCE in partials/directives.md (cached prefix) — the line carries
         # only the DATA of this turn's goal.
         facts.append(
-            f"- KLAUSK DABAR: išsiaiškink — {directive['reikia']}.{kodel}{kiti} "
+            f"- KLAUSK DABAR: išsiaiškink — {directive['reikia']}. Fakto DAR "
+            f"NEŽINAI — užduok klausimą, nekonstatuok.{kodel}{kiti} "
             f"(Atsarginė: „{directive['klausimas']}“)"
         )
 

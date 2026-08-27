@@ -249,6 +249,9 @@ async function loadDuplexCfg(){
     duplexOn = (get("DUPLEX")||"off")==="on";
     const iv = parseFloat(get("PARTIAL_INTERVAL_S")||"1.0");
     partialEveryMs = Math.max(400, (isNaN(iv)?1.0:iv)*1000);
+    // Pertraukimai valdomi iš config puslapio (serveris nugali localStorage):
+    // off = agentas visada pabaigia sakinį, kalba ant jo balso ignoruojama.
+    micCfg.bargeOn = (get("BARGE_IN")||"off")==="on";
   }catch(e){ duplexOn=false; }
 }
 

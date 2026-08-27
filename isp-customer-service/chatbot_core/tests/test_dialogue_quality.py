@@ -171,7 +171,10 @@ class TestUnheardQuestion:
         agent._evidence_asks = {"lights": 1}
         agent.apply_delivery(["Gerai, kad radote.", "Ar dega bent viena lemputė?"], 1)
         assert agent.state.last_question is None
-        assert agent._evidence_last_ask_key is None
+        # the pending key STAYS (live 2026-08-27: clearing it looped the call —
+        # the interrupting ANSWER had no key to land on); only the ask counter
+        # steps back.
+        assert agent._evidence_last_ask_key == "lights"
         assert agent._evidence_asks["lights"] == 0
         assert agent.state.resolution["presented"]["dr_lights"] == 0
         assert agent._unheard_question == "Ar dega bent viena lemputė?"
