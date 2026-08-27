@@ -40,7 +40,7 @@ def _directive_system_prompt() -> str:
         from .prompts import load_node_prompt
 
         parts = []
-        for name in ("partials/identity", "partials/style"):
+        for name in ("partials/identity", "partials/style", "partials/directives"):
             try:
                 parts.append(load_node_prompt(name))
             except Exception:  # pragma: no cover - a missing partial degrades soft
@@ -442,10 +442,7 @@ def state_facts_block(engine) -> str | None:
         facts.append(f"- Problem type: {s.problem_type}")
     if s.symptoms:
         parts = ", ".join(f"{k}={v}" for k, v in s.symptoms.items())
-        facts.append(
-            f"- SYMPTOMAI (kliento): {parts}. Naudok diagnozei ir klausk tik "
-            "TRŪKSTAMŲ; nepersiklausk to, ką jau žinai."
-        )
+        facts.append(f"- SYMPTOMAI (kliento): {parts}.")
     if s.ticket_id:
         facts.append(f"- Ticket: {s.ticket_id}")
     if s.case_closed and s.is_complete:
@@ -576,24 +573,14 @@ def state_facts_block(engine) -> str | None:
     # ACCOUNT DATA, not a greeting, and the caller need not be the holder).
     if s.customer_id:
         if s.caller_name:
-            facts.append(
-                f"- KREIPINYS: klientas prisistatė „{s.caller_name}“ — kreipkis TIK "
-                "šiuo vardu arba be vardo. Sutarties savininko vardo iš sistemos "
-                "NENAUDOK kreipiniui ir garsiai neminėk."
-            )
+            facts.append(f"- KREIPINYS: „{s.caller_name}“ (arba be vardo).")
         else:
-            facts.append(
-                "- KREIPINYS: klientas vardo nesakė — nesikreipk vardu; sutarties "
-                "savininko vardo iš sistemos neminėk."
-            )
+            facts.append("- KREIPINYS: vardo nežinome — nesikreipk vardu.")
     if not past_action and not caller_pending:
         for domain, d in s.diagnosis.items():
             gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
             facts.append(
-                f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): "
-                f"{gloss}. Remkis šiais radiniais; NEdiagnozuok iš naujo ir jų "
-                "neprarask. Jei klientas sako kitaip nei rodo diagnostika, švelniai "
-                "sutaikink."
+                f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): {gloss}."
             )
     # What we believe and why — so the agent reasons out loud instead of issuing
     # orders, and can CONFIRM the cause at the end ("taigi dėl X ir nebuvo").
@@ -824,19 +811,15 @@ def state_facts_block(engine) -> str | None:
             )
         if idd["kind"] == "address_offer":
             facts.append(
-                "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
-                "pasakyk, kad patikrai reikia adreso, ir pasiūlyk adresą pagal "
-                "skambinančio numerį. Patį klausimą užduok BŪTENT taip, žodis į "
-                f"žodį: „Ar skambinate dėl {idd['adresas']}?“ Daugiau klausimų "
-                "neužduok ir adreso nekeisk."
+                "- IDENTIFIKACIJOS ŽINGSNIS: pasakyk, kad patikrai reikia adreso, ir "
+                "pasiūlyk adresą pagal numerį. Klausimas žodis į žodį: "
+                f"„Ar skambinate dėl {idd['adresas']}?“ Adreso nekeisk."
             )
         elif idd["kind"] == "anamnesis":
             facts.append(
-                "- ANAMNEZĖS ŽINGSNIS (prisitaikyk prie to, ką klientas jau "
-                "pasakė — neklausk to, kas jau aišku): išsiaiškink, KADA dingo "
-                "internetas ir ar prieš tai buvo koks įvykis (audra, remontas, "
-                "kažką keitė). VIENAS trumpas klausimas. "
-                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+                "- ANAMNEZĖS ŽINGSNIS: išsiaiškink, KADA dingo internetas ir ar prieš "
+                "tai buvo koks įvykis (audra, remontas, kažką keitė) — neklausk to, "
+                f"kas jau aišku. (Atsarginė: „{idd['fallback']}“)"
             )
         elif idd["kind"] == "problem_gate":
             facts.append(
@@ -846,21 +829,17 @@ def state_facts_block(engine) -> str | None:
                 "mandagiai pasakyk, kad čia interneto tiekėjo pagalba, ir paklausk, ar "
                 "yra ryšio problema. Jei klientas KLAUSIA — atsakyk vienu sakiniu ir "
                 "vėl paklausk problemos. NEKLAUSK adreso ir nieko netikrink. "
-                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+                f"(Atsarginė: „{idd['fallback']}“)"
             )
         elif idd["kind"] == "anamnesis_followup":
             facts.append(
-                "- ANAMNEZĖS ŽINGSNIS: klientas nežino, kada dingo — paklausk "
-                "TIK vieno: kada paskutinį kartą internetas TIKRAI veikė "
-                "(tai susiaurins gedimo laiko langą). "
-                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+                "- ANAMNEZĖS ŽINGSNIS: klientas nežino, kada dingo — paklausk, kada "
+                f"paskutinį kartą internetas TIKRAI veikė. (Atsarginė: „{idd['fallback']}“)"
             )
         else:
             facts.append(
-                "- IDENTIFIKACIJOS ŽINGSNIS (sklandžiai pereik iš pokalbio, trumpai): "
-                "paaiškink, kad patikrai iki buto reikia adreso, ir paklausk TIK "
-                "adreso (viena „?“). Neišgalvok faktų. "
-                f"(Atsarginė formuluotė: „{idd['fallback']}“)"
+                "- IDENTIFIKACIJOS ŽINGSNIS: paaiškink, kad patikrai iki buto reikia "
+                f"adreso, ir paklausk TIK adreso. (Atsarginė: „{idd['fallback']}“)"
             )
 
     # Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments,
@@ -894,21 +873,15 @@ def state_facts_block(engine) -> str | None:
         else:
             goal = "paklausk TIK vieno: ar susisiekimui tinka numeris, iš kurio klientas skambina"
         facts.append(
-            f"- TIKETO ŽINGSNIS (savais žodžiais, trumpai, viena „?“): {goal}. "
-            "Registracija dar NEĮVYKO — jei mini ją, sakyk „užregistruosiu“ "
-            "(busimuoju laiku), niekada „užregistravau“. "
-            "Neišgalvok faktų ir nieko kito nesiūlyk. "
-            f"(Atsarginė formuluotė: „{td['fallback']}“)"
+            f"- TIKETO ŽINGSNIS: {goal}. Registracija dar NEĮVYKO — sakyk "
+            f"„užregistruosiu“, niekada „užregistravau“. (Atsarginė: „{td['fallback']}“)"
         )
 
     # Persona: the RECAP as a goal directive — read the gathered facts back in
     # the narrator's own words, one short sentence, never the label:value dump.
     rd = getattr(engine, "_recap_directive", None)
     if rd:
-        facts.append(
-            "- PASITIKSLINK (savais žodžiais, VIENU trumpu sakiniu): ar teisingai "
-            f"supratai — {rd['faktai']}. Baik klausimu „ar taip?“. Neišgalvok faktų."
-        )
+        facts.append(f"- PASITIKSLINK: ar teisingai supratai — {rd['faktai']}.")
 
     # Persona: the FINDINGS moment as a goal directive — the narrator states
     # what was established, the conclusion and the choice BRIEFLY in its own
@@ -932,9 +905,8 @@ def state_facts_block(engine) -> str | None:
             "niekada „užregistravau“."
         )
         facts.append(
-            "- IŠVADOS MOMENTAS (pasakyk savais žodžiais, TRUMPAI — 2–3 sakiniai, "
-            f"jokių sąrašų ar dvitaškių):{tense} kartu nustatėme — {fd['faktai']}. "
-            f"Išvada: {fd['isvada']}.{spr} Neišgalvok faktų."
+            f"- IŠVADOS MOMENTAS:{tense} kartu nustatėme — {fd['faktai']}. "
+            f"Išvada: {fd['isvada']}.{spr}"
         )
 
     # Step awareness (L2, VOICE_PLAN 1 žingsnis): the narrator knows the
@@ -985,12 +957,12 @@ def state_facts_block(engine) -> str | None:
                     + "; ".join(rest)
                     + "."
                 )
+        # Facts diet (hygiene step 2, 2026-08-27): the shared scaffold lives
+        # ONCE in partials/directives.md (cached prefix) — the line carries
+        # only the DATA of this turn's goal.
         facts.append(
-            "- KLAUSK DABAR (savais žodžiais, natūraliai, pagal pokalbio eigą): "
-            f"išsiaiškink — {directive['reikia']}.{kodel} "
-            "Užduok TIK ŠĮ VIENĄ klausimą (viena '?'), trumpai; neišgalvok faktų "
-            f"ir nesiūlyk nieko kito.{kiti} Jei tinka, pradėk trumpa reakcija į tai, "
-            f"ką klientas ką tik pasakė. (Atsarginė formuluotė: „{directive['klausimas']}“)"
+            f"- KLAUSK DABAR: išsiaiškink — {directive['reikia']}.{kodel}{kiti} "
+            f"(Atsarginė: „{directive['klausimas']}“)"
         )
 
     # W2 tylusis analitikas: advisory notes from the background read — they
