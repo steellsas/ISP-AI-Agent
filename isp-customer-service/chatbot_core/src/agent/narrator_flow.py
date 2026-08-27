@@ -92,6 +92,13 @@ def build_messages(engine, user_input: str = None) -> list:
             prefix = f"{prefix}\n\n{engine._node_prompt}"
         messages = [{"role": "system", "content": prefix}]
 
+    # Istorija v2 (hygiene step 3): when the window cut older turns, a short
+    # DETERMINISTIC summary from STATE bridges the gap — the model never sees
+    # a conversation that starts mid-air.
+    summary = history_summary(engine)
+    if summary:
+        messages.append({"role": "system", "content": summary})
+
     # Add recent conversation history (windowed, tool-pairing safe)
     messages.extend(engine._prune_history(engine.state.messages))
 
@@ -175,6 +182,81 @@ def scoped_tools_schema(engine) -> list:
                 and n not in engine._STRATEGY_ACTION_TOOLS
             ]
     return schema
+
+
+def history_summary(engine) -> str | None:
+    """Hygiene step 3 (istorija v2, Andrius 2026-08-27): when older turns fall
+    out of the window, the narrator gets a 1–2 line DETERMINISTIC summary
+    built from STATE — zero LLM cost, never hallucinates, always fresh. The
+    full transcript stays in AgentState.messages (nothing is deleted)."""
+    s = engine.state
+    if len(s.messages) <= engine.config.history_window_messages:
+        return None  # nothing was cut — no summary needed
+    bits: list[str] = []
+    if s.problem_type:
+        when = f", dingo {s.anamnesis_when}" if s.anamnesis_when else ""
+        trig = f", po: {s.anamnesis_trigger}" if s.anamnesis_trigger else ""
+        bits.append(f"Problema: {s.problem_type}{when}{trig}")
+    if s.customer_id:
+        bits.append(f"Klientas: {s.customer_address or s.customer_id}")
+    if s.caller_name:
+        bits.append(f"skambina {s.caller_name}")
+    r = s.resolution or {}
+    if r.get("verdict"):
+        from .glossary import DIAGNOSIS_LT
+
+        gloss = DIAGNOSIS_LT.get(r["verdict"], r["verdict"])
+        bits.append(f"Diagnozė: {gloss}")
+    if s.evidence:
+        from .evidence import summary_lt
+
+        est = summary_lt(s.evidence)
+        if est:
+            bits.append(f"Nustatyta: {est}")
+    if s.ticket_id:
+        bits.append(f"Tiketas: {s.ticket_id}")
+    if not bits:
+        return None
+    return (
+        "POKALBIO PRADŽIOS SANTRAUKA (senesnės replikos praleistos; faktai "
+        "galioja): " + "; ".join(bits) + "."
+    )
+
+
+_RECALL_MARKS = ("minejau", "sakiau", "kartoju", "jau aiskinau", "anksciau sakiau")
+
+
+def recall_lines(engine) -> str | None:
+    """Hygiene step 3 — the RECALL trigger: when the caller references their
+    own earlier words ("juk SAKIAU…"), the matching OLD user lines (outside
+    the window) are pulled back into the facts block for THIS turn. Pure
+    keyword overlap on folded content words — no vectors, no latency."""
+    from .evidence import _fold
+
+    s = engine.state
+    heard = _fold(s.last_heard or "")
+    if not heard or not any(m in heard for m in _RECALL_MARKS):
+        return None
+    window = engine.config.history_window_messages
+    old = s.messages[:-window] if len(s.messages) > window else []
+    old_user = [m.get("content") or "" for m in old if m.get("role") == "user"]
+    if not old_user:
+        return None
+    words = {w for w in heard.split() if len(w) >= 5}
+    scored = []
+    for text in old_user:
+        overlap = sum(1 for w in _fold(text).split() if len(w) >= 5 and w in words)
+        if overlap:
+            scored.append((overlap, text))
+    if not scored:
+        return None
+    scored.sort(key=lambda p: -p[0])
+    picks = [t[:160] for _n, t in scored[:2]]
+    quoted = " / ".join(f"„{t}“" for t in picks)
+    return (
+        "- KLIENTAS PRIMENA, KĄ SAKĖ ANKSČIAU — jo ankstesnės frazės: "
+        f"{quoted}. Atsižvelk į jas ir neprašyk kartoti."
+    )
 
 
 def prune_history(engine, messages: list) -> list:
@@ -964,6 +1046,12 @@ def state_facts_block(engine) -> str | None:
             f"- KLAUSK DABAR: išsiaiškink — {directive['reikia']}.{kodel}{kiti} "
             f"(Atsarginė: „{directive['klausimas']}“)"
         )
+
+    # Istorija v2: the caller referenced their OWN earlier words — pull the
+    # matching old lines (outside the window) back in for this turn.
+    recall = recall_lines(engine)
+    if recall:
+        facts.append(recall)
 
     # W2 tylusis analitikas: advisory notes from the background read — they
     # shape the WORDING only; on any clash the directives above win. One-shot.

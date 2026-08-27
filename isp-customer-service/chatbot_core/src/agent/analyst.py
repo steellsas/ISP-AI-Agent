@@ -32,7 +32,9 @@ _SYSTEM = (
     "šių tipų: (1) klientas JAU pasakė kažką, ko agentas gali nebeklausti; "
     "(2) žurnalo faktas įtartinas — prieštarauja tam, ką klientas kartoja "
     "(gali būti blogai išgirsta) — verta pasitikslinti; (3) klientas painioja "
-    "sąvokas ar įrenginius — įvardinti aiškiau. DRAUDŽIAMA: siūlyti diagnozę, "
+    "sąvokas ar įrenginius — įvardinti aiškiau; (4) SVARBI ankstesnė detalė, "
+    "kurios naujausioje pokalbio dalyje nebesimato — priminti agentui. "
+    "DRAUDŽIAMA: siūlyti diagnozę, "
     "kurti faktus, siūlyti veiksmus ar žingsnius, kartoti tai, kas akivaizdu. "
     "Jei vertingų pastabų nėra — parašyk tik OK."
 )
@@ -53,6 +55,8 @@ _ALLOWED_MARKS = (
     "galejo buti blogai isgirsta", "zurnal",
     # (3) the caller is mixing up concepts/devices — name things clearer
     "painioj", "ivardink", "ivardyk", "aiskiau", "supainio", "paaiskink", "turejo omenyje",
+    # (4) an important earlier detail no longer visible in the recent window
+    "pradzioje", "anksciau", "primink", "priminti", "nepamirsk",
 )  # fmt: skip
 
 
@@ -77,9 +81,12 @@ def run_analyst(engine: Any) -> None:
         from .evidence import summary_lt
         from .understand import perception_model
 
+        # Istorija v2: the analyst is the ONLY reader of the FULL transcript —
+        # the narrator's window is short, so type-4 notes (an early detail no
+        # longer visible) depend on this breadth. Capped to keep tokens sane.
         history = "\n".join(
             f"{'KLIENTAS' if m['role'] == 'user' else 'AGENTAS'}: {(m.get('content') or '')[:200]}"
-            for m in s.messages[-14:]
+            for m in s.messages[-60:]
             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
         )
         ledger = summary_lt(s.evidence) if s.evidence else "(tuščias)"
