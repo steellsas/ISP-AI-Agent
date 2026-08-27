@@ -82,7 +82,15 @@ def build_messages(engine, user_input: str = None) -> list:
     if directive_turn:
         messages = [{"role": "system", "content": _directive_system_prompt()}]
     else:
-        messages = [{"role": "system", "content": engine.system_prompt}]
+        # Prompt hygiene step 1 (Andrius 2026-08-26): the NODE prompt is
+        # static per stage — folded into the LEADING system message it joins
+        # the cacheable prefix (one stable prefix per node; providers keep
+        # several prefixes warm in parallel). It used to trail the facts
+        # block, re-sent uncached every turn.
+        prefix = engine.system_prompt
+        if engine._node_prompt:
+            prefix = f"{prefix}\n\n{engine._node_prompt}"
+        messages = [{"role": "system", "content": prefix}]
 
     # Add recent conversation history (windowed, tool-pairing safe)
     messages.extend(engine._prune_history(engine.state.messages))
@@ -92,15 +100,6 @@ def build_messages(engine, user_input: str = None) -> list:
     facts = engine._state_facts_block()
     if facts:
         messages.append({"role": "system", "content": facts})
-
-    # Per-node focus prompt (graph stage), if a node set one. Suppressed on
-    # DIRECTIVE turns (zones 1–3, live 2026-08-20): the ladder guidance in the
-    # node prompt competed with the directive and won (offered the address on
-    # the anamnesis turn) — a directive turn has exactly ONE instruction.
-    if engine._node_prompt and not (
-        getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None)
-    ):
-        messages.append({"role": "system", "content": engine._node_prompt})
 
     # Add new user input if provided
     if user_input:

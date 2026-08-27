@@ -1948,3 +1948,33 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         assert agent.ensure_action_done() is True
         assert agent._ticket_stage == "phone"
+
+
+class TestPromptPrefixHygiene:
+    """Prompt hygiene step 1 (2026-08-26): the node prompt joins the LEADING
+    system message (one byte-stable, cacheable prefix per node); the dynamic
+    facts block stays a trailing system message; directive turns keep the
+    lean persona prompt with NO node prompt."""
+
+    def test_node_prompt_folds_into_the_leading_system(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._node_prompt = "NODE-RULES-MARKER"
+        messages = agent._build_messages(user_input="Labas")
+        assert messages[0]["role"] == "system"
+        assert "NODE-RULES-MARKER" in messages[0]["content"]
+        # no trailing system message carries the node prompt any more
+        assert all("NODE-RULES-MARKER" not in m.get("content", "") for m in messages[1:])
+        # and the prefix is byte-stable across turns
+        again = agent._build_messages(user_input="Kitas")
+        assert again[0]["content"] == messages[0]["content"]
+
+    def test_directive_turn_keeps_lean_prompt_without_node_rules(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="unknown")
+        agent._node_prompt = "NODE-RULES-MARKER"
+        agent._ident_directive = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
+        messages = agent._build_messages(user_input="Labas")
+        assert all("NODE-RULES-MARKER" not in m.get("content", "") for m in messages)

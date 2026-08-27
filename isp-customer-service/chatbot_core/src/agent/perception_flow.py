@@ -979,6 +979,37 @@ def pre_turn_guards(engine, user_input: str) -> None:
                         f"offer not confirmed (verdict={verdict}); veto commit",
                         level="warn",
                     )
+        else:
+            # arc v3.2 (eval I2 2026-08-27, po prompt-prefix pertvarkos): the
+            # caller dictated or CORRECTED the address ("Ai, atsiprašau — 29
+            # namas") and the model either answered "Radau…" for a NONEXISTENT
+            # house without calling the tool, or relapsed into a confirm round.
+            # Same rule as the offer path: clearly heard street+house AND a
+            # digit in THIS utterance (an address part was just said) -> the
+            # ENGINE resolves right now; a failed resolve leaves the per-level
+            # diagnosis note (namo 39 nerandu, yra 29/31) for the narrator.
+            import re as _re
+
+            p = s.profile
+            if (
+                s.anamnesis_asked  # the address ladder is live (not the opener)
+                and p.street.value
+                and p.house.value
+                and _re.search(r"\d", user_input or "")
+            ):
+                engine._trace_note("address_ask", "dictated address; engine resolve")
+                if engine._engine_resolve_from_slots():
+                    engine._just_identified = True
+                    from .identification import ask_caller
+
+                    if ask_caller() and not s.caller_name:
+                        engine._result_pending = True
+                    engine._addr_confirm_note = (
+                        "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
+                        f"adresas {s.customer_address}. Atsakymo pradžioje "
+                        "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
+                        "pagal žemiau esančią kryptį."
+                    )
     elif not s.case_closed:
         from .resolution import detect_address_correction
 
