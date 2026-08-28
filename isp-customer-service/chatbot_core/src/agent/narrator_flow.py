@@ -655,9 +655,15 @@ def state_facts_block(engine) -> str | None:
     # ACCOUNT DATA, not a greeting, and the caller need not be the holder).
     if s.customer_id:
         if s.caller_name:
-            facts.append(f"- KREIPINYS: „{s.caller_name}“ (arba be vardo).")
+            facts.append(
+                f"- KREIPINYS: „{s.caller_name}“ (arba be vardo). Įrankių "
+                "rezultatuose matomo SUTARTIES SAVININKO vardo neminėk."
+            )
         else:
-            facts.append("- KREIPINYS: vardo nežinome — nesikreipk vardu.")
+            facts.append(
+                "- KREIPINYS: vardo nežinome — nesikreipk vardu; įrankių "
+                "rezultatuose matomo savininko vardo neminėk."
+            )
     if not past_action and not caller_pending:
         for domain, d in s.diagnosis.items():
             gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")

@@ -60,10 +60,22 @@ _ALLOWED_MARKS = (
 )  # fmt: skip
 
 
+# Action suggestions aimed at the caller are FORBIDDEN outright — the
+# blacklist beats the whitelist (live 2026-08-28: "butu naudinga PAPRASYTI
+# kliento pateikti MAC adresa" slipped through on the word "zurnalo" and the
+# narrator obeyed — asked the caller for a MAC the engine reads itself).
+_FORBIDDEN_MARKS = (
+    "paprasy", "papras", "pateikti", "paklausk", "pasiulyk", "patikrinkite",
+    "perkrauti", "perjunkite", "atjunkite", "ijunkite", "mac adres",
+)  # fmt: skip
+
+
 def _allowed(note: str) -> bool:
     from .evidence import _fold
 
     low = _fold(note)
+    if any(m in low for m in _FORBIDDEN_MARKS):
+        return False
     return any(m in low for m in _ALLOWED_MARKS)
 
 
