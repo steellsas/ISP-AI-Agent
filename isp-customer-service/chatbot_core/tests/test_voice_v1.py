@@ -597,3 +597,47 @@ class TestAsrHeadStart:
         asr_events = [f for k, f in session.tracer.events if k == "asr"]
         assert asr_events[0]["reused"] is True and asr_events[0]["ms"] == 0
         assert asr_events[0]["transcript"] == "nedega nė viena"
+
+
+class TestOverlayObservation:
+    """Duplex-hearing stage 1: overlay speech is transcribed, echo-filtered
+    against the agent's own words, traced - and the engine never sees it."""
+
+    def _ms(self, spoken, heard):
+        tracer = _Recorder()
+        return SimpleNamespace(
+            voice=SimpleNamespace(transcribe_partial=lambda audio: heard),
+            session=SimpleNamespace(tracer=tracer, last_spoken_text=lambda: spoken),
+            _tracer=tracer,
+        )
+
+    def test_own_echo_is_flagged(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+        ms = self._ms(
+            spoken="Patikrinkite, ar dega bent viena lemputė",
+            heard="ar dega bent viena lemputė",
+        )
+        payload = voice.run_overlay(ms, b"\x00" * 32_000)
+        assert payload["echo"] is True and payload["sim"] >= 0.8
+
+    def test_caller_words_pass_the_filter(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.setenv("DUPLEX", "on")
+        ms = self._ms(
+            spoken="Patikrinkite, ar dega bent viena lemputė",
+            heard="ne, dėl Vilniaus gatvės dvidešimt devyni",
+        )
+        payload = voice.run_overlay(ms, b"\x00" * 32_000)
+        assert payload["echo"] is False
+        kinds = [k for k, _f in ms._tracer.events]
+        assert kinds == ["overlay"]
+
+    def test_off_when_duplex_off(self, monkeypatch):
+        from app import voice
+
+        monkeypatch.delenv("DUPLEX", raising=False)
+        ms = self._ms("x", "y")
+        assert voice.run_overlay(ms, b"\x00" * 32_000) is None

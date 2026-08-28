@@ -125,6 +125,38 @@ def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None
     return {"type": "partial", "text": text, "ms": took, "endpoint": mode, "silence_ms": silence_ms}
 
 
+def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
+    """Duplex-hearing 1 ŽINGSNIS (Andrius 2026-08-28) — OBSERVE ONLY: speech
+    spoken OVER the agent's voice is transcribed and echo-filtered against the
+    agent's own words, then traced + shown in the transcript. The ENGINE never
+    sees it — stage 2 will hand the non-echo residue to the fact ingest once
+    the filter proves itself live."""
+    import time
+
+    if not duplex_enabled():
+        return None
+    pipeline = get_pipeline(ms)
+    t0 = time.perf_counter()
+    try:
+        text = pipeline.transcribe_partial(audio)
+    except Exception:  # an overlay must never disturb the call
+        logger.debug("overlay asr failed", exc_info=True)
+        return None
+    if not text:
+        return None
+    from agent.barge_in import token_overlap
+
+    spoken = ""
+    last = getattr(ms.session, "last_spoken_text", None)
+    if callable(last):
+        spoken = last() or ""
+    sim = round(token_overlap(text, spoken), 2) if spoken else 0.0
+    echo = sim >= 0.8
+    took = round((time.perf_counter() - t0) * 1000)
+    ms.session.tracer.emit("overlay", text=text, echo=echo, sim=sim, ms=took)
+    return {"type": "overlay", "text": text, "echo": echo, "sim": sim}
+
+
 def run_voice_turn_stream(
     ms: ManagedSession, audio: bytes, on_chunk, transcript: str | None = None
 ) -> dict[str, Any]:

@@ -429,6 +429,41 @@ class TestVoiceChannel:
             assert ended and not got_turn
         assert manager.get(sid).turn_count == 0  # no turn ever ran
 
+    def test_over_frames_observe_only(self, client, voice_fakes, monkeypatch):
+        # Duplex-hearing stage 1: speech spoken OVER the agent's voice becomes
+        # an overlay OBSERVATION (transcript + echo verdict) — never a turn.
+        import struct as _struct
+
+        from app.audio_front import wav_bytes
+
+        monkeypatch.setenv("DUPLEX", "on")
+        sid = _create(client)["session_id"]
+
+        def frame(loud):
+            pcm = _struct.pack("<4096h", *([5000 if loud else 0] * 4096))
+            return b"OVER" + wav_bytes(pcm, 16_000)
+
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            for _ in range(4):
+                ws.send_bytes(frame(loud=True))
+            for _ in range(5):
+                ws.send_bytes(frame(loud=False))
+            got = None
+            for _ in range(60):
+                msg = ws.receive()
+                if msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "overlay":
+                        got = e
+                        break
+            assert got is not None and got["text"] == "neveikia internetas"
+            assert got["echo"] is False and "sim" in got
+        from app.main import manager
+
+        assert manager.get(sid).turn_count == 0  # observation, not a turn
+
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]
         resp = client.get(f"/sessions/{sid}/greeting/audio")

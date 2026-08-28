@@ -55,6 +55,10 @@ class ManagedSession:
     # D2 duplex: the server-side audio front (VAD + endpoint authority),
     # attached lazily on the first FRAM frame.
     front: Any = None
+    # Duplex-hearing: a SEPARATE front for speech spoken over the agent's
+    # voice ("OVER" frames) — its segments become overlay observations,
+    # never turns.
+    overlay_front: Any = None
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
@@ -189,6 +193,15 @@ class SessionManager:
         ms = self.get(session_id)
         ms.last_activity = time.monotonic()
         return await asyncio.to_thread(voice.run_voice_partial, ms, audio)
+
+    async def voice_overlay(self, session_id: str, audio: bytes) -> dict[str, Any] | None:
+        """Duplex-hearing stage 1: transcribe + echo-filter speech spoken over
+        the agent's voice. Observe-only — no lock, no engine state."""
+        from . import voice  # lazy: keeps ASR/TTS adapter imports off the API import path
+
+        ms = self.get(session_id)
+        ms.last_activity = time.monotonic()
+        return await asyncio.to_thread(voice.run_overlay, ms, audio)
 
     async def voice_turn_stream(
         self, session_id: str, audio: bytes, send_bytes, transcript: str | None = None

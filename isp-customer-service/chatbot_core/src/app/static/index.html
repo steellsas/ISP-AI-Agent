@@ -402,6 +402,11 @@ $("start").onclick = async () => {
         }catch(err){}
         return;
       }
+      if(e.type==="overlay"){ // duplex-hearing: kalba agentui grojant
+        const kind = e.echo ? "🔁 aidas" : "🎙 girdėta agentui kalbant";
+        addMsg("note", `${kind} (sim ${e.sim}): "${e.text}"`);
+        return;
+      }
       if(e.type==="partial"){ // duplex E1: gyvas dalinis transkriptas
         // E2: semantinė tylos užuomina einamai frazei (fast/slow/normal).
         if(e.silence_ms){ dynSilence=e.silence_ms; }
@@ -531,7 +536,13 @@ async function startMic(){
       // pliūpsnis ("aha", "taip") — backchannel, grojame toliau; kalba ilgiau
       // už slenkstį — stabdome grojimą, pertraukiančioji kalba tampa naujo
       // atsakymo pradžia (nė vienas žodis nedingsta).
-      if(!micCfg.bargeOn){ speaking=false; utter=[]; updPre(); return; }
+      if(!micCfg.bargeOn){
+        // Duplex-hearing 1 žingsnis: kalba AGENTUI GROJANT nebemetama — teka
+        // "OVER" kadrais į serverį (stebėjimui: ASR + aido filtras + trace).
+        // Agentas NEnutildomas, turn'ai nekuriami.
+        if(duplexOn && ws && ws.readyState===1) sendFrame(ch, "OVER");
+        speaking=false; utter=[]; updPre(); return;
+      }
       const bthr = micCfg.threshold*1.6;   // aukštesnis slenkstis prieš aidą
       // D3 duck-then-decide (duplex): jau pritildyta — kalba teka kadrais,
       // kol serveris nuspręs (cut_audio arba unduck).
@@ -618,9 +629,10 @@ function sendUtterance(){
   partialAtMs=0; dynSilence=null; turnPlayed=0; $("partialLine").textContent="";
   addMsg("note","🎤 siunčiama…");
 }
-/* D2 duplex: vienas PCM kadras su "FRAM" antrašte — serverio garso frontas
-   iš jų pats lipdo frazes (VAD + endpointing serveryje). */
-function sendFrame(ch){
+/* D2 duplex: vienas PCM kadras su antrašte — serverio garso frontas iš jų
+   pats lipdo frazes. "FRAM" = normali kalba; "OVER" = kalba AGENTUI GROJANT
+   (duplex-hearing 1 žingsnis: stebėjimui, ne turn'ams). */
+function sendFrame(ch, tag){
   const pcm=new Int16Array(ch.length);
   for(let i=0;i<ch.length;i++){
     const s=Math.max(-1,Math.min(1,ch[i]));
@@ -628,7 +640,8 @@ function sendFrame(ch){
   }
   const wav=new Uint8Array(wavEncode(pcm, sampleRate));
   const framed=new Uint8Array(4+wav.length);
-  framed[0]=0x46; framed[1]=0x52; framed[2]=0x41; framed[3]=0x4D; // "FRAM"
+  const t=tag||"FRAM";
+  for(let i=0;i<4;i++) framed[i]=t.charCodeAt(i);
   framed.set(wav,4);
   ws.send(framed.buffer);
 }

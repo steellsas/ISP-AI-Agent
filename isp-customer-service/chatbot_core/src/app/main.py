@@ -321,6 +321,7 @@ async def ws_call(ws: WebSocket, session_id: str):
     # the interrupting speech — one ASR-backed decision task resolves it into
     # a real cut (cut_audio) or a false alarm (unduck).
     duck_task: asyncio.Task | None = None
+    overlay_task: asyncio.Task | None = None
     duck_active = False
     pending_final: bytes | None = None  # endpoint fired while deciding
 
@@ -378,6 +379,28 @@ async def ws_call(ws: WebSocket, session_id: str):
 
             ms.front = audio_front.AudioFront()
         return ms.front
+
+    def _overlay_front():
+        # Duplex-hearing: a separate state machine for speech spoken OVER the
+        # agent's voice — its segments become observations, never turns.
+        ms = manager.get(session_id)
+        if ms.overlay_front is None:
+            from . import audio_front
+
+            ms.overlay_front = audio_front.AudioFront()
+        return ms.overlay_front
+
+    async def _run_overlay(data: bytes) -> None:
+        # Stage 1 observe-only: transcript + echo verdict to trace and the
+        # client's transcript panel; the engine sees nothing.
+        try:
+            payload = await manager.voice_overlay(session_id, data)
+            if payload:
+                await ws.send_json(payload)
+        except SessionNotFound:
+            pass
+        except Exception:  # an overlay must never touch the socket state
+            logger.debug("overlay failed", exc_info=True)
 
     async def _run_partial_front(data: bytes, front) -> None:
         # D2: partial on the OPEN segment — the endpoint window hint feeds back
@@ -603,6 +626,20 @@ async def ws_call(ws: WebSocket, session_id: str):
                 data = frame["bytes"]
                 # D2 duplex: continuous PCM frames — the server-side audio
                 # front owns VAD + endpointing; the client no longer cuts turns.
+                if data[:4] == b"OVER":
+                    # Duplex-hearing: speech over the agent's voice — a
+                    # SEPARATE front segments it; one observation task at a
+                    # time (in-flight guard), never a turn.
+                    if await _hangup_if_complete():
+                        continue
+                    try:
+                        ofront = _overlay_front()
+                    except SessionNotFound:
+                        break
+                    for action, wav in ofront.on_frame(data[4:]):
+                        if action == "utterance" and (overlay_task is None or overlay_task.done()):
+                            overlay_task = asyncio.create_task(_run_overlay(wav))
+                    continue
                 if data[:4] == b"FRAM":
                     if await _hangup_if_complete():
                         continue
