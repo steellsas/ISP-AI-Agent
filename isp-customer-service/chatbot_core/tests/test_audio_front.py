@@ -202,3 +202,45 @@ class TestInterruptFastWindow:
         for _ in range(2):  # 512 ms < 900 default
             acts += front.on_frame(_frame(loud=False))
         assert acts == []
+
+
+class TestOverlayStitching:
+    """Duplex-hearing 1.5: long think-pauses do not chop the overlay capture,
+    and a segment started over the agent's voice continues into the next turn
+    in ONE piece."""
+
+    def test_overlay_tolerates_long_pauses(self):
+        front = AudioFront(silence_ms_override=4000)
+        for _ in range(3):
+            front.on_frame(_frame(loud=True))
+        acts = []
+        for _ in range(13):  # ~3.3 s of pause — under the 4 s overlay window
+            acts += front.on_frame(_frame(loud=False))
+        assert acts == []  # segment still open, nothing chopped
+        for _ in range(3):
+            front.on_frame(_frame(loud=True))  # the caller resumes
+        acts = []
+        for _ in range(16):  # >4 s -> now it closes
+            acts += front.on_frame(_frame(loud=False))
+        assert [a for a, _w in acts] == ["utterance"]
+
+    def test_export_open_and_adopt_head_stitch(self):
+        overlay = AudioFront(silence_ms_override=4000)
+        for _ in range(3):
+            overlay.on_frame(_frame(loud=True))  # talking over the agent
+        head = overlay.export_open()
+        assert head and not overlay._in_speech
+        main = AudioFront()
+        main.adopt_head(head)
+        acts = []
+        for _ in range(2):
+            acts += main.on_frame(_frame(loud=True))  # keeps talking
+        for _ in range(4):
+            acts += main.on_frame(_frame(loud=False))
+        utt = [w for a, w in acts if a == "utterance"]
+        assert len(utt) == 1
+        pcm, _rate = pcm_from_wav(utt[0])
+        assert len(pcm) >= len(head) + 2 * 4096 * 2  # head + the continuation
+
+    def test_export_open_empty_when_idle(self):
+        assert AudioFront().export_open() is None

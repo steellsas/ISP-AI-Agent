@@ -385,9 +385,15 @@ async def ws_call(ws: WebSocket, session_id: str):
         # agent's voice — its segments become observations, never turns.
         ms = manager.get(session_id)
         if ms.overlay_front is None:
+            import os as _os
+
             from . import audio_front
 
-            ms.overlay_front = audio_front.AudioFront()
+            try:
+                sil = int(float(_os.environ.get("OVERLAY_SIL_MS", "4000")))
+            except ValueError:
+                sil = 4000
+            ms.overlay_front = audio_front.AudioFront(silence_ms_override=sil)
         return ms.overlay_front
 
     async def _run_overlay(data: bytes) -> None:
@@ -647,6 +653,15 @@ async def ws_call(ws: WebSocket, session_id: str):
                         front = _front()
                     except SessionNotFound:
                         break
+                    # Duplex-hearing 1.5 — boundary stitching: the caller kept
+                    # talking across the playback boundary, so the overlay's
+                    # OPEN segment becomes the head of this turn's segment and
+                    # the sentence reaches the ASR in ONE piece.
+                    ofront = manager.get(session_id).overlay_front
+                    if ofront is not None:
+                        head = ofront.export_open()
+                        if head:
+                            front.adopt_head(head)
                     for action, wav in front.on_frame(data[4:]):
                         if action == "speech":
                             _disarm_checkin()  # the caller is talking

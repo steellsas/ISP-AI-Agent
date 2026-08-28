@@ -446,7 +446,9 @@ class TestVoiceChannel:
         with client.websocket_connect(f"/ws/call/{sid}") as ws:
             for _ in range(4):
                 ws.send_bytes(frame(loud=True))
-            for _ in range(5):
+            # overlay tolerates ~4 s pauses (OVERLAY_SIL_MS) — the segment
+            # closes only after that much silence
+            for _ in range(17):
                 ws.send_bytes(frame(loud=False))
             got = None
             for _ in range(60):

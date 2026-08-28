@@ -151,10 +151,33 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     if callable(last):
         spoken = last() or ""
     sim = round(token_overlap(text, spoken), 2) if spoken else 0.0
-    echo = sim >= 0.8
+    # 1.5 filter (live 2026-08-28: "Turiu kompiuterį." over "Ar turite
+    # kompiuterį?" scored sim=1.0 — answers naturally REUSE the question's
+    # vocabulary): (a) an utterance that maps to the OPEN evidence key via
+    # the deterministic reader is the CALLER'S ANSWER, whatever the overlap;
+    # (b) 1-word utterances are never auto-echo (barge_in's own guard).
+    kind = "klientas"
+    is_answer = False
+    try:
+        engine = getattr(ms.session, "_agent", None)
+        key = getattr(engine, "_evidence_last_ask_key", None) if engine else None
+        if key:
+            from agent.evidence import read_pending_answer, spec_for
+
+            spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+            item = (spec.get("client") or {}).get(key)
+            is_answer = read_pending_answer(str(key), text, item) is not None
+    except Exception:  # pragma: no cover - the filter must never break
+        pass
+    if is_answer:
+        echo, kind = False, "atsakymas"
+    elif len(text.split()) >= 2 and sim >= 0.8:
+        echo, kind = True, "aidas"
+    else:
+        echo = False
     took = round((time.perf_counter() - t0) * 1000)
-    ms.session.tracer.emit("overlay", text=text, echo=echo, sim=sim, ms=took)
-    return {"type": "overlay", "text": text, "echo": echo, "sim": sim}
+    ms.session.tracer.emit("overlay", text=text, echo=echo, sim=sim, who=kind, ms=took)
+    return {"type": "overlay", "text": text, "echo": echo, "sim": sim, "who": kind}
 
 
 def run_voice_turn_stream(
