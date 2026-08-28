@@ -325,6 +325,9 @@ class ReactAgent:
         # D1+ (Andrius 2026-08-26): the interrupted reply's QUESTION never
         # sounded — the narrator must react to the caller and RE-ASK it.
         self._unheard_question: str | None = None
+        # Duplex-hearing 2: what the caller said OVER the agent's voice —
+        # already ingested deterministically; surfaced to the narrator once.
+        self._overlay_heard: list[str] | None = None
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.
@@ -640,6 +643,21 @@ class ReactAgent:
         if key and self._evidence_asks.get(key, 0) > 0:
             self._evidence_asks[key] -= 1
         self.tracer.emit("turn_cancelled", spoken=spoken[:160])
+
+    def apply_overlay(self, texts: list[str]) -> None:
+        """Duplex-hearing 2: the caller's words spoken OVER the agent's voice
+        (echo already filtered by the transport) — deterministic fact ingest
+        through the importance gates + a one-shot narrator note. Overlay may
+        FILL facts, never steer routing."""
+        from .perception_flow import ingest_overlay
+
+        kept = [t.strip() for t in texts if t and t.strip()][:3]
+        if not kept:
+            return
+        for text in kept:
+            ingest_overlay(self, text)
+        self._overlay_heard = kept
+        self.tracer.emit("overlay_applied", texts=[t[:120] for t in kept])
 
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1 delivery ledger (live 2026-08-25: the transcript renders before

@@ -383,6 +383,17 @@ def state_facts_block(engine) -> str | None:
             f"- KLIENTAS NEGIRDĖJO (pertraukė): „{tail[:160]}“ — jei svarbu, "
             "pasakyk trumpai savais žodžiais."
         )
+    # Duplex-hearing 2: words the caller said OVER the agent's voice — the
+    # facts already landed via the deterministic ingest; the narrator just
+    # shows it HEARD ("kaip minėjot…") and never re-asks what these answered.
+    oh = getattr(engine, "_overlay_heard", None)
+    if oh:
+        engine._overlay_heard = None
+        quoted = " / ".join(f"„{t[:120]}“" for t in oh)
+        facts.append(
+            f"- KOL KALBĖJAI, KLIENTAS ĮSITERPĖ: {quoted} — atsižvelk į tai; "
+            "jei tai atsakymas į tavo klausimą, nekartok klausimo."
+        )
     # Andrius 2026-08-26: the cut-off QUESTION never reached the caller — they
     # were NOT answering it. React to what they said, then ask it anew.
     uq = getattr(engine, "_unheard_question", None)

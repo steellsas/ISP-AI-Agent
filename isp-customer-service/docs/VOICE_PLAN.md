@@ -100,6 +100,17 @@ klausimas laikytas girdėtu (faktas krenta, jokio perklausimo); jei ne —
 atsukimas + „sureaguok ir perklausk". Papildomai: consent segmento nemesti
 (ankstyvas „Taip" ant klausimo uodegos dabar priverčia kartoti).
 
+### Kelias iki demo (sutarta 2026-08-28)
+
+2 žingsnis (overlay→faktai) → latencija (A tools + B modelio eksperimentas) →
+NAUJAS PLANAVIMAS SU ANDRIUM: gedimų diegimo tvarka — kaip įvedami nauji
+gedimai, kokios informacijos ir kokio smulkumo instrukcijų reikia agentui
+produkcijai (lygiai, atsakomybės, įrankiai; FAULT_PACKS.md tampa pilnu
+onboarding gidu) → interneto gedimų scenarijų peržiūra ir tobulinimas →
+palaipsniui testai per visą ciklą (prisistatymas → tikslas → analizė →
+identifikacija → sprendimas → tiketas) → demo šlifas. Turinio banga (FAQ,
+„pakibusio routerio" pack'as) — po diegimo tvarkos diskusijos.
+
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 
 - TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO

@@ -369,6 +369,39 @@ def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:
     return True
 
 
+def ingest_overlay(engine, text: str) -> None:
+    """Duplex-hearing 2 ŽINGSNIS: deterministic-only ingest for words spoken
+    OVER the agent's voice — address slots and evidence vocabularies, through
+    the same importance gates as normal turns. No LLM pass, no turn, no
+    routing: overlay speech may only FILL facts, never steer."""
+    if not text:
+        return
+    s = engine.state
+    if not s.customer_id:
+        engine._prefill_slots_from_text(text)  # address parts said over us
+    from .evidence import CLIENT, extract_client_facts, read_pending_answer, set_fact, spec_for
+
+    facts = dict(extract_client_facts(text))
+    pending = getattr(engine, "_evidence_last_ask_key", None)
+    if pending and pending not in facts:
+        spec = spec_for((s.resolution or {}).get("verdict"))
+        item = (spec.get("client") or {}).get(pending) if spec else None
+        value = read_pending_answer(str(pending), text, item)
+        if value is not None:
+            facts[pending] = value
+    for key, value in facts.items():
+        if _story_flip_gate(engine, key, str(value), pending):
+            continue
+        entry = set_fact(s.evidence, key, value, CLIENT, s.turn_count)
+        if entry.get("conflict") and engine._evidence_conflict is None:
+            engine._evidence_conflict = (key, entry["value"], entry["pending"])
+            engine.tracer.emit(
+                "evidence", action="conflict", key=key, old=entry["value"], new=entry["pending"]
+            )
+        else:
+            engine.tracer.emit("evidence", action="fact_overlay", key=key, value=value)
+
+
 def anchor_text(engine) -> str:
     """The exact place to return to after a deviation — the engine's LAST
     asked question (deterministic), never the LLM's memory of it. Trimmed

@@ -176,6 +176,11 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     else:
         echo = False
     took = round((time.perf_counter() - t0) * 1000)
+    if not echo:
+        # Stage 2: queue for the NEXT turn's engine hand-over (capped).
+        notes = getattr(ms, "overlay_notes", None)
+        if notes is not None and len(notes) < 6:
+            notes.append(text)
     ms.session.tracer.emit("overlay", text=text, echo=echo, sim=sim, who=kind, ms=took)
     return {"type": "overlay", "text": text, "echo": echo, "sim": sim, "who": kind}
 
@@ -192,6 +197,18 @@ def run_voice_turn_stream(
     import time
 
     pipeline = get_pipeline(ms)
+    # Duplex-hearing 2: hand the queued over-the-voice words to the engine
+    # BEFORE the turn runs — facts land deterministically, the narrator gets
+    # the one-shot "kol kalbejai, klientas isiterpe" note.
+    notes = list(getattr(ms, "overlay_notes", None) or [])
+    if notes:
+        ms.overlay_notes = []
+        apply = getattr(ms.session, "apply_overlay", None)
+        if callable(apply):
+            try:
+                apply(notes)
+            except Exception:  # the hand-over must never break a turn
+                logger.debug("overlay apply failed", exc_info=True)
     t0 = time.perf_counter()
     first_ms: int | None = None
     reply_audio = bytearray()

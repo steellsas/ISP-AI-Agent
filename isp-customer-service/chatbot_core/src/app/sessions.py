@@ -59,6 +59,9 @@ class ManagedSession:
     # voice ("OVER" frames) — its segments become overlay observations,
     # never turns.
     overlay_front: Any = None
+    # Stage 2: non-echo overlay texts queued for the NEXT turn's engine
+    # hand-over (facts ingest + narrator note), then cleared.
+    overlay_notes: list = field(default_factory=list)
 
 
 def build_turn_summary(events: list[dict[str, Any]], wall_ms: int) -> dict[str, Any]:
