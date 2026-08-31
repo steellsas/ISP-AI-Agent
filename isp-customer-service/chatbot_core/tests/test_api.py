@@ -627,6 +627,46 @@ class TestSimulatePlug:
         assert client.post("/sessions/nope/simulate-plug").status_code == 404
 
 
+class TestSimulateReboot:
+    """DEMO reboot button (S6, 2026-08-31): the tester plays the caller's
+    hands — POST is the moment the router's power lead is pulled: the port
+    flaps and traffic returns. Not pressing it while claiming 'perkroviau'
+    rehearses the wrong-device case."""
+
+    def test_reboot_before_identification_is_409(self, client):
+        sid = _create(client)["session_id"]
+        assert client.post(f"/sessions/{sid}/simulate-reboot").status_code == 409
+        client.delete(f"/sessions/{sid}")
+
+    def test_reboot_flips_hung_to_healthy(self, client):
+        import json as _json
+
+        sid = _create(client)["session_id"]
+        from app.main import manager
+
+        manager.get(sid).session.state.customer_id = "CUST112"
+        from agent.tools import execute_tool, get_db
+
+        try:
+            d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST112"}))
+            assert ((d.get("verdict") or {}).get("reason")) == "router_hung"
+            resp = client.post(f"/sessions/{sid}/simulate-reboot")
+            assert resp.status_code == 200 and resp.json()["ok"] is True
+            d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST112"}))
+            assert ((d.get("verdict") or {}).get("reason")) == "healthy_to_router"
+            assert (d.get("signals") or {}).get("port_flap_recent") is True
+        finally:
+            with get_db().transaction() as cur:
+                cur.execute(
+                    "UPDATE ports SET traffic_status='none', "
+                    "last_status_change=datetime('now','-2 days') WHERE customer_id='CUST112'"
+                )
+            client.delete(f"/sessions/{sid}")
+
+    def test_unknown_session_is_404(self, client):
+        assert client.post("/sessions/nope/simulate-reboot").status_code == 404
+
+
 class TestAdminReset:
     def test_reset_refused_during_call_then_reseeds(self, client):
         sid = _create(client)["session_id"]

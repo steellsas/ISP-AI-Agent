@@ -55,7 +55,9 @@ INSERT INTO customers (customer_id, first_name, last_name, phone, email, account
 -- Village-level disambiguation: "Šiaulių rajonas" alone -> which village?
 ('CUST110', 'Kęstutis',  'Balčiūnas',    '+37060020110', 'kestutis.balciunas@gmail.com', 'AB-10110', 'active',    'DEMO ID: Aušros g. 8 (Bubiai - kurio kaimo?)'),
 -- House number with a letter: "šimtas dvidešimt du ef" (STT robustness)
-('CUST111', 'Irena',     'Mockuvienė',   '+37060020111', 'irena.mockuviene@gmail.com',   'AB-10111', 'active',    'DEMO ID: Sodo g. 122F (namo nr. su raide)');
+('CUST111', 'Irena',     'Mockuvienė',   '+37060020111', 'irena.mockuviene@gmail.com',   'AB-10111', 'active',    'DEMO ID: Sodo g. 122F (namo nr. su raide)'),
+-- S6 (B6): hung router — device visible, DHCP ok, but NO traffic; a power-cycle fixes it
+('CUST112', 'Paulius',   'Vasiliauskas', '+37060020112', 'paulius.vasiliauskas@gmail.com','AB-10112', 'active',   'DEMO S6: pakibes routeris - srauto nera, perkrovimas atstato');
 
 -- ----------------------------------------------------------------------------
 -- ADDRESSES
@@ -71,7 +73,8 @@ INSERT INTO addresses (address_id, customer_id, city, street, house_number, apar
 ('ADDR108', 'CUST108', 'Šiauliai',   'Dainų g.',                  '7',    NULL, 'Šiauliai, Dainų g. 7', TRUE),
 ('ADDR109', 'CUST109', 'Ginkūnai',   'Žeimių g.',                 '12',   '6',  'Šiaulių r., Ginkūnų k., Žeimių g. 12-6', TRUE),
 ('ADDR110', 'CUST110', 'Bubiai',     'Aušros g.',                 '8',    NULL, 'Šiaulių r., Bubių k., Aušros g. 8', TRUE),
-('ADDR111', 'CUST111', 'Vinkšnėnai', 'Sodo g.',                   '122F', NULL, 'Šiaulių r., Vinkšnėnų k., Sodo g. 122F', TRUE);
+('ADDR111', 'CUST111', 'Vinkšnėnai', 'Sodo g.',                   '122F', NULL, 'Šiaulių r., Vinkšnėnų k., Sodo g. 122F', TRUE),
+('ADDR112', 'CUST112', 'Šiauliai',   'Vilniaus g.',               '33',   '2',  'Šiauliai, Vilniaus g. 33-2', TRUE);
 
 -- ----------------------------------------------------------------------------
 -- SERVICE PLANS — internet for everyone; S1 suspended for debt
@@ -87,7 +90,8 @@ INSERT INTO service_plans (plan_id, customer_id, service_type, plan_name, speed_
 ('PLAN108', 'CUST108', 'internet', 'Internet 300 Mbps', 300, 24.99, 'active',    '2024-09-17', NULL),
 ('PLAN109', 'CUST109', 'internet', 'Internet 100 Mbps', 100, 15.99, 'active',    '2024-10-23', NULL),
 ('PLAN110', 'CUST110', 'internet', 'Internet 100 Mbps', 100, 15.99, 'active',    '2024-11-04', NULL),
-('PLAN111', 'CUST111', 'internet', 'Internet 100 Mbps', 100, 15.99, 'active',    '2024-12-11', NULL);
+('PLAN111', 'CUST111', 'internet', 'Internet 100 Mbps', 100, 15.99, 'active',    '2024-12-11', NULL),
+('PLAN112', 'CUST112', 'internet', 'Internet 300 Mbps', 300, 24.99, 'active',    '2025-01-08', NULL);
 
 -- ----------------------------------------------------------------------------
 -- EQUIPMENT — registered routers (CRM view of the world).
@@ -104,7 +108,8 @@ INSERT INTO customer_equipment (equipment_id, customer_id, equipment_type, model
 ('EQ208', 'CUST108', 'router', 'MikroTik hAP ac2',   'MT-HAP2-002108', '00:1A:2B:3C:4E:08', '2024-09-17', 'active', 'DEMO ID'),
 ('EQ209', 'CUST109', 'router', 'TP-Link Archer C6',  'TPL-C6-002109',  '00:1A:2B:3C:4E:09', '2024-10-23', 'active', 'DEMO ID'),
 ('EQ210', 'CUST110', 'router', 'TP-Link Archer C80', 'TPL-C80-002110', '00:1A:2B:3C:4E:10', '2024-11-04', 'active', 'DEMO ID'),
-('EQ211', 'CUST111', 'router', 'TP-Link Archer AX10','TPL-AX10-002111','00:1A:2B:3C:4E:11', '2024-12-11', 'active', 'DEMO ID');
+('EQ211', 'CUST111', 'router', 'TP-Link Archer AX10','TPL-AX10-002111','00:1A:2B:3C:4E:11', '2024-12-11', 'active', 'DEMO ID'),
+('EQ212', 'CUST112', 'router', 'TP-Link Archer C80', 'TPL-C80-002112', '00:1A:2B:3C:4E:12', '2025-01-08', 'active', 'DEMO S6: pakibes routeris');
 
 -- ----------------------------------------------------------------------------
 -- SWITCHES
@@ -132,6 +137,7 @@ UPDATE area_outages SET switch_id = 'SW001' WHERE outage_id = 'OUT001';
 --   S4  PORT104: link DOWN, neighbours (ports 1,3,4,5,6 on SW101) UP -> local
 --   S5a PORT105: link UP, observed_mac != registered (new router)
 --   S5b PORT106: link UP, observed_mac correct, dhcp_status no_requests
+--   S6  PORT112: link UP, MAC correct, DHCP ok, traffic NONE (hung router)
 -- ----------------------------------------------------------------------------
 INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, status, speed_mbps, duplex, vlan_id, observed_mac, crc_error_rate, dhcp_status, notes) VALUES
 ('PORT101', 'SW101', 1,  'CUST101', '00:1A:2B:3C:4E:01', 'up',   300, 'full', 20, '00:1A:2B:3C:4E:01', 0.0,  'ok',          'DEMO S1: tinklas sveikas, blokas billing lygyje'),
@@ -145,6 +151,13 @@ INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, 
 ('PORT109', 'SW103', 1,  'CUST109', '00:1A:2B:3C:4E:09', 'up',   100, 'full', 40, '00:1A:2B:3C:4E:09', 0.0,  'ok',          'DEMO ID: Ginkunai - sveikas'),
 ('PORT110', 'SW103', 2,  'CUST110', '00:1A:2B:3C:4E:10', 'up',   100, 'full', 40, '00:1A:2B:3C:4E:10', 0.0,  'ok',          'DEMO ID: Bubiai - sveikas'),
 ('PORT111', 'SW103', 3,  'CUST111', '00:1A:2B:3C:4E:11', 'up',   100, 'full', 40, '00:1A:2B:3C:4E:11', 0.0,  'ok',          'DEMO ID: Vinksnenai - sveikas');
+
+-- S6 PORT112: link UP, correct MAC, DHCP ok — but NO traffic (router hung).
+-- last_status_change is OLD on purpose: the reboot witness. The demo "Perkrauti
+-- routerį" button flips traffic to 'normal' and refreshes this timestamp (the
+-- port flap a real power-cycle produces).
+INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, status, speed_mbps, duplex, vlan_id, observed_mac, crc_error_rate, dhcp_status, traffic_status, last_status_change, notes) VALUES
+('PORT112', 'SW101', 7,  'CUST112', '00:1A:2B:3C:4E:12', 'up',   300, 'full', 20, '00:1A:2B:3C:4E:12', 0.0,  'ok', 'none', datetime('now', '-2 days'), 'DEMO S6: MAC teisingas, DHCP ok, SRAUTO NERA - pakibes routeris');
 
 -- ----------------------------------------------------------------------------
 -- IP ASSIGNMENTS — coherent with port states
@@ -161,4 +174,5 @@ INSERT INTO ip_assignments (assignment_id, customer_id, ip_address, mac_address,
 ('IP108', 'CUST108', '192.168.2.108', '00:1A:2B:3C:4E:08', 'dhcp', 'active',  'DEMO ID'),
 ('IP109', 'CUST109', '192.168.2.109', '00:1A:2B:3C:4E:09', 'dhcp', 'active',  'DEMO ID'),
 ('IP110', 'CUST110', '192.168.2.110', '00:1A:2B:3C:4E:10', 'dhcp', 'active',  'DEMO ID'),
-('IP111', 'CUST111', '192.168.2.111', '00:1A:2B:3C:4E:11', 'dhcp', 'active',  'DEMO ID');
+('IP111', 'CUST111', '192.168.2.111', '00:1A:2B:3C:4E:11', 'dhcp', 'active',  'DEMO ID'),
+('IP112', 'CUST112', '192.168.2.112', '00:1A:2B:3C:4E:12', 'dhcp', 'active',  'DEMO S6: lease dar galioja, bet srauto nera (pakibes)');

@@ -128,12 +128,57 @@ faile, persona partial.
 |---|---|---|
 | Miręs routeris (+tiltas per PC, tiketas) | internet_mires_routeris | YRA, gyvai patikrintas |
 | Pakeistas routeris (foreign_mac, pririšimas) | internet_pakeistas_routeris | YRA, gyvai patikrintas |
-| **Pakibęs routeris (perkrovimas išsprendžia, BE tiketo)** | — | **NĖRA — kuriamas pagal D klausimyną** |
+| Pakibęs routeris (perkrovimas išsprendžia, BE tiketo) | internet_pakibes_routeris | YRA (S6) — pirmoji kortelė per D klausimyną |
 | Skola / sustabdyta paslauga | billing inform | YRA |
 | Masinė avarija | outage inform | YRA |
 | Kliento pusės WiFi/įrenginys | client_side | YRA (S9) |
 
-Artimiausias darbas: (1) šiuo klausimynu atgaline data „apklausti" esamus 5
-pack'us — spragos parodys, ar klausimynas pilnas; (2) pakibusio routerio
-kortelę užpildyti KARTU su Andriumi (jis — „užsakovo technikas") — tai bus
-pirmasis pilnas proceso bandymas nuo kortelės iki veikiančio pack'o.
+Artimiausias darbas: šiuo klausimynu atgaline data „apklausti" esamus 5
+pack'us — spragos parodys, ar klausimynas pilnas.
+
+---
+
+## Užpildytos kortelės pavyzdys: pakibęs routeris (2026-08-31)
+
+Pirmoji kortelė, praėjusi visą kelią klausimynas → pack'as. Į D klausimus
+atsakė Andrius („užsakovo technikas"); numeracija = D bloko klausimai.
+
+1. **Vardas ir simptomai.** „Pakibęs routeris". Klientas: „nėra interneto" —
+   visuose įrenginiuose iškart.
+2. **Atpažinimas.** Telemetrija įrenginį MATO (linija up, MAC teisingas,
+   DHCP ok), iš tiekėjo pusės viskas gerai, bet SRAUTO NĖRA — skiriamasis
+   požymis. PANEIGIA: neveikia tik viename įrenginyje (tada problema tame
+   įrenginyje ar kelyje iki jo — WiFi/kabelis → kliento pusės gedimas).
+   Atskirti nuo: factory reset (DHCP tyli), miręs routeris (nesimato visai).
+3. **Matoma nuotoliu vs klausti kliento.** Sistema mato: registraciją,
+   matomumą, DHCP, srautą, porto mirktelėjimą. Kliento klausiama TIK: ar
+   neveikia visuose įrenginiuose; po perkrovimo — ar interneto lemputė
+   mirksi ir ar atsidaro puslapis (lempučių sistema nemato).
+4. **Tikrinimo tvarka.** Paaiškinti, ką matome → perkrauti IŠ MAITINIMO
+   (ištraukti laidą iš PATIES routerio, ~5 s, kraunasi ~1 min) → patikra.
+   Kur klientai klysta (→ žingsnių hint'ai): ištraukia prailgintuvą arba
+   spaudžia mygtuką — routeris pilnai nepersikrauna; perkrauna ne tą
+   įrenginį, kai namuose dvi panašios dėžutės.
+5. **Nuotoliniai veiksmai.** Nėra — sprendimas kliento rankomis. Telemetrija
+   tik SKAITOMA: srautas + perkrovimo liudininkas (tikras perkrovimas =
+   įrenginys dingsta iš linijos ir grįžta; „perkroviau" be dingimo =
+   perkrautas ne tas).
+6. **Sprendimo baigtys.** IŠSPRĘSTA be tiketo, kai po perkrovimo lemputė
+   mirksi + puslapis atsidaro + telemetrijoje grįžta srautas. Vienas
+   pakartojimas su patikslinimu, jei perkrovimo nesimatė.
+7. **Eskalacija.** Perkrovimas matytas, bet srautas negrįžo → kaip miręs
+   routeris. Tikete PRIVALOMA: „perkrauta iš maitinimo, neatsistatė" —
+   meistras žino vežtis keitimo įrangą.
+8. **Ribos.** Nežadėti, kad perkrovimas tikrai padės („dažniausiai
+   susitvarko"); nesiūlyti nieko giliau (nustatymai, reset mygtukas).
+9. **Kalba.** Išvada žmogiškai: „routeris tiesiog pakibo — taip nutinka,
+   po perkrovimo dažniausiai susitvarko".
+10. **Pavyzdžiai.** Auksinis scenarijus `S6_router_hung_reboot`
+    (eval/scenarios.json); demo klientas CUST112, mygtukas „🔄 Perkrauti
+    routerį" vaidina fizinį pasaulį.
+
+**KUR SUGULĖ:** `knowledge/faults/internet_pakibes_routeris.yaml`,
+`troubleshooting/internet_pakibes_routeris.md`, verdiktas `router_hung`
+(`agent/verdict.py`: srauto signalas + porto mirktelėjimo liudininkas),
+patikra `walker_flow.advance_reboot_check`, glossary įrašai, seed CUST112,
+sim mygtukas (`/simulate-reboot`).

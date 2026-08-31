@@ -77,7 +77,12 @@ class TestModulesAndMeta:
         assert meta.get("domenas") == "internet"
         assert "tiltas" in meta.get("tags", [])
         by_tag = find_by_tag("nera_interneto")
-        assert set(by_tag) == {"foreign_mac", "healthy_to_router", "no_mac_observed"}
+        assert set(by_tag) == {
+            "foreign_mac",
+            "healthy_to_router",
+            "no_mac_observed",
+            "router_hung",
+        }
 
     def test_depends_on_default_empty(self):
         assert depends_on("foreign_mac") == []

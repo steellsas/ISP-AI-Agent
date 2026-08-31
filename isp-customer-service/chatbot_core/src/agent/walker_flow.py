@@ -30,18 +30,26 @@ def execute_tool(name, args):
     return react_agent.execute_tool(name, args)
 
 
-def fresh_diagnose_reason(engine) -> str | None:
-    """Re-read telemetry now and return the verdict reason (or None on error).
-    Read-only — used to VERIFY a fix actually took before closing/acting."""
+def fresh_diagnose(engine) -> dict | None:
+    """Re-read telemetry now and return the full diagnose payload
+    ({verdict, signals}) or None on error. Read-only — used to VERIFY a fix
+    actually took before closing/acting."""
     if not engine.state.customer_id:
         return None
     try:
-        d = json.loads(
+        return json.loads(
             execute_tool("diagnose_connection", {"customer_id": engine.state.customer_id})
         )
-        return (d.get("verdict") or {}).get("reason")
     except Exception:  # pragma: no cover - best-effort
         return None
+
+
+def fresh_diagnose_reason(engine) -> str | None:
+    """The fresh verdict reason alone (or None on error)."""
+    d = fresh_diagnose(engine)
+    if not isinstance(d, dict):
+        return None
+    return (d.get("verdict") or {}).get("reason")
 
 
 def ensure_diagnosed(engine) -> bool:
@@ -272,6 +280,11 @@ def walk_resolution(engine, user_input: str | None) -> None:
     if step.id == "confirm_restored":
         engine._advance_restored(r, user_input)
         return
+    # rh_check (S6 hung router): caller's word + fresh telemetry + the reboot
+    # witness (did the device actually drop off the line?) — routed separately.
+    if step.id == "rh_check":
+        engine._advance_reboot_check(r, user_input)
+        return
     # Bridge: did the device they just plugged in actually appear on the line?
     if step.id == "dr_see_device":
         engine._advance_see_device(r)
@@ -428,6 +441,13 @@ def advance_instruct(engine, r: dict, step, strat, user_input: str | None = None
     if r.get("step") == "dr_see_device":
         engine._simulate_bridge_connection()
         engine._advance_see_device(r)
+        return
+    # rh_check (S6): an engine-owned BLEND step — never keyword-route it from
+    # the completing utterance (a false "gerai" YES sent the flow into the
+    # retry branch, eval S6). Record telemetry now; the check question goes
+    # out this turn and the caller's ANSWER decides on the next one.
+    if r.get("step") == "rh_check":
+        engine._advance_reboot_check(r, user_input)
         return
     # Carry-through pre-answer: the utterance that completed the instruction often
     # already reports the outcome ("prisijungiau iš naujo — jau veikia"). If we just
@@ -724,6 +744,77 @@ def advance_restored(engine, r: dict, user_input: str | None) -> None:
             # else: stay, reassure it may take a couple of minutes (see hint)
         return
     # unclear -> stay on confirm_restored, re-ask
+
+
+def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:
+    """S6 hung router: after the guided power-cycle, decide from the caller's
+    word AND two telemetry facts read together (Andrius 2026-08-31):
+
+      1. did TRAFFIC return (the hang cleared), and
+      2. was the reboot actually WITNESSED — a real power-cycle drops the
+         device off the line, so the port flaps (signals.port_flap_recent).
+
+    Routes:
+    - caller says it works                        -> resolved, NO ticket
+    - caller NO + traffic returned                -> the router is alive;
+                                                     the problem is on the path
+                                                     to one device (rh_device)
+    - caller NO + no flap seen                    -> the wrong thing was
+                                                     power-cycled (extension
+                                                     cord / button / a second
+                                                     router) — ONE retry with
+                                                     the clarification, then
+                                                     escalate
+    - caller NO + flap seen, traffic still gone   -> rebooted but did not
+                                                     recover — failing router,
+                                                     escalate (ticket note says
+                                                     "perkrauta, neatsistatė")
+    An unclear answer holds the step (re-ask)."""
+    from .resolution import Outcome, detect_restored
+
+    payload = fresh_diagnose(engine)
+    verdict = (payload or {}).get("verdict") or {}
+    signals = (payload or {}).get("signals") or {}
+    reason_now = verdict.get("reason")
+    telem_ok = isinstance(payload, dict) and reason_now is not None
+    r["telemetry_fixed"] = telem_ok and reason_now not in engine._UNRESOLVED_LINE_FAULTS
+    if not r.get("asked"):
+        return  # the check question goes out this turn — just record telemetry
+    outcome = detect_restored(user_input)
+    if outcome == Outcome.YES:
+        engine.state.case_closed = True
+        engine.state.closed_reason = "resolved"
+        engine._settle_hypothesis("confirmed", "po perkrovimo ryšys atsistatė")
+        return
+    if outcome != Outcome.NO:
+        return  # unclear -> stay on rh_check, re-ask
+    if r.get("telemetry_fixed"):
+        engine._note_evidence(
+            "telemetrija: srautas grįžo — linija veikia, problema įrenginio pusėje"
+        )
+        engine._goto_step(r, "rh_device")
+        return
+    flap = bool(signals.get("port_flap_recent"))
+    if telem_ok and not flap:
+        # The device never dropped off the line — no real power-cycle happened.
+        engine._note_evidence(
+            "telemetrija: įrenginys NEBUVO dingęs iš linijos — pilno perkrovimo nesimatė "
+            "(gal prailgintuvas / mygtukas / kitas įrenginys)"
+        )
+        r["reboot_retries"] = int(r.get("reboot_retries", 0)) + 1
+        if r["reboot_retries"] >= 2:
+            engine._goto_step(r, "escalate")
+        else:
+            engine._goto_step(r, "rh_reboot_retry")
+        return
+    # Rebooted (or telemetry unavailable) and still no traffic — give the other
+    # hypotheses a chance before the ticket, exactly like a failed bind.
+    if telem_ok:
+        engine._note_evidence(
+            "telemetrija: perkrovimas matytas, bet srautas negrįžo — routeris neatsistato"
+        )
+    if not engine._reject_and_rediagnose(r):
+        engine._goto_step(r, "escalate")
 
 
 def advance_escalate(engine, r: dict, step, user_input: str | None) -> None:

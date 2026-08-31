@@ -117,6 +117,7 @@
   </label>
   <button id="dbReset" class="ghost" title="Atstatyti demo DB į pradinę būseną (tiketai, MAC, statusai)">♻️ DB</button>
   <button id="simPlug" class="ghost" disabled title="Imituoti, kad klientas įkišo kabelį į kompiuterį — linijoje atsiranda nepririštas įrenginys">🔌 Įkišti kabelį</button>
+  <button id="simReboot" class="ghost" disabled title="Imituoti, kad klientas perkrovė routerį iš maitinimo — portas mirkteli ir srautas atsistato. Nepaspaudus, o pasakius „perkroviau“, agentas matys, kad įrenginys nebuvo dingęs (perkrautas ne tas)">🔄 Perkrauti routerį</button>
   <button id="cfgToggle" class="ghost" title="Nustatymai">⚙️</button>
   <span id="sid"></span>
 </header>
@@ -268,7 +269,7 @@ function feed(cls, text){
 }
 function setLive(on){
   $("statusDot").className="dot"+(on?" live":"");
-  for(const id of ["stop","send","text","mic","simPlug"]) $(id).disabled=!on;
+  for(const id of ["stop","send","text","mic","simPlug","simReboot"]) $(id).disabled=!on;
   $("start").disabled=on; $("phone").disabled=on;
 }
 function fmtUsd(v){ return "$"+v.toFixed(4); }
@@ -457,6 +458,16 @@ $("simPlug").onclick = async () => {
   if(r && r.ok){ addMsg("note","🔌 kabelis įkištas — linijoje atsiranda kompiuteris"); }
   else if(r && r.status===409){ addMsg("note","🔌 klientas dar neidentifikuotas — palaukite adreso patvirtinimo"); }
   else{ addMsg("note","🔌 imitacija nepavyko"+(r?` (${r.status})`:"")); }
+};
+// DEMO (S6): the moment the caller pulls the router's power lead — the port
+// flaps and traffic returns. NOT pressing it while saying "perkroviau" plays
+// the wrong-device case (agent sees the device never dropped off the line).
+$("simReboot").onclick = async () => {
+  if(!sid) return;
+  const r = await fetch(`/sessions/${sid}/simulate-reboot`, {method:"POST"}).catch(()=>null);
+  if(r && r.ok){ addMsg("note","🔄 routeris perkrautas — portas mirktelėjo, srautas atsistato"); }
+  else if(r && r.status===409){ addMsg("note","🔄 klientas dar neidentifikuotas — palaukite adreso patvirtinimo"); }
+  else{ addMsg("note","🔄 imitacija nepavyko"+(r?` (${r.status})`:"")); }
 };
 $("send").onclick = sendText;
 $("text").addEventListener("keydown", e=>{ if(e.key==="Enter") sendText(); });

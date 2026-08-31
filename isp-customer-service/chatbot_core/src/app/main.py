@@ -184,6 +184,37 @@ async def simulate_plug(session_id: str, unplug: bool = False):
     return {"ok": True, "customer_id": cid, "unplug": unplug}
 
 
+@app.post("/sessions/{session_id}/simulate-reboot")
+async def simulate_reboot(session_id: str):
+    """DEMO (S6 pakibęs routeris): the tester presses the button the moment the
+    CALLER would power-cycle the router — the demo line reflects the physical
+    act (traffic returns + the port flap a real reboot produces, the witness
+    the verify step reads). Manual by design, same as simulate-plug: the human
+    plays the physical world, the agent only ever reads telemetry. NOT pressing
+    it while claiming "perkroviau" is the wrong-device rehearsal."""
+    try:
+        ms = manager.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="unknown session") from None
+    cid = ms.session.state.customer_id
+    if not cid:
+        raise HTTPException(status_code=409, detail="caller not identified yet")
+    from agent.tools import simulate_router_reboot
+
+    res = await asyncio.to_thread(simulate_router_reboot, cid)
+    hub.publish(
+        session_id,
+        {
+            "type": "sim_reboot",
+            "ok": bool(res.get("success")),
+            "message": res.get("message", ""),
+        },
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=502, detail=res.get("message") or "simulation failed")
+    return {"ok": True, "customer_id": cid}
+
+
 @app.get("/sessions/{session_id}/greeting/audio")
 async def greeting_audio(session_id: str):
     """Synthesized opening line — the browser plays it right after the call

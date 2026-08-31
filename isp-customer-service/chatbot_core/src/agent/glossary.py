@@ -20,6 +20,7 @@ DIAGNOSIS_LT = {
     "crc_errors": "linijos klaidos (CRC) — kabelio/jungties problema",
     "dhcp_silent": "įranga negauna IP (DHCP tyli) — galbūt po gamyklinio atstatymo",
     "no_mac_observed": "linijoje nematoma jokio įrenginio",
+    "router_hung": "routeris matomas linijoje, bet srautas nevaikšto — greičiausiai pakibęs",
     "healthy_to_router": "tinklas iki routerio veikia — problema kliento pusėje",
     "no_port_data": "nėra prievado duomenų",
 }
@@ -30,4 +31,5 @@ DIAGNOSIS_LT = {
 TICKET_NEED_LT = {
     "no_mac_observed": "reikalingas naujas maršrutizatorius",
     "link_down_local": "reikia patikrinti liniją iki jūsų buto",
+    "router_hung": "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas",
 }

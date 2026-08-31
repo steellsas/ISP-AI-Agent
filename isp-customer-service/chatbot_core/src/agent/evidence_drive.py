@@ -160,6 +160,25 @@ def negation_clarify_reply(engine: Any, key: str) -> str | None:
     ).strip()
 
 
+def _sync_walker_solution(engine: Any, s: Any, r: dict) -> None:
+    """Sync the walker to the declared `tada: walker` solution step ONCE
+    (solution_synced marker: re-syncing every turn would drag the tree back
+    to the solution step it has already walked past) and hand the turn over
+    — the step's own hint/question goes out next."""
+    from .evidence import solution_step
+
+    target = solution_step(s.evidence, r.get("verdict"))
+    if target and r.get("solution_synced") != target and r.get("step") != target:
+        engine._goto_step(r, target)
+        r["solution_synced"] = target
+        engine.tracer.emit(
+            "decision", intent="evidence", action="pivot", to=target, reason="solution"
+        )
+    elif target:
+        r.setdefault("solution_synced", target)
+    return None
+
+
 def evidence_drive(engine: Any, user_input: str | None) -> str | None:
     """Evidence-declared direction (Ledger v2): pick the next question from
     MISSING evidence, compute the hypothesis from the ledger, and route the
@@ -181,6 +200,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
     if spec is None:
         return None
     # W1-2 svarbos vartai: a parked story-flipping fact gets its ONE confirm
+    # (see _sync_walker_solution below for the shared solution-sync mechanics)
     # question before anything else — the ledger stays clean until the caller
     # says "taip" (STT garbles poison exactly these facts).
     fc = getattr(engine, "_fact_confirm", None)
@@ -223,6 +243,18 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
     # sprendimai aprasymai), so every newly declared fault gets it free.
     announce = ""
     if confirmed and not getattr(engine, "_findings_announced", False):
+        from .evidence import solution_for as _solution_for
+
+        # A fully DETERMINED walker solution needs no findings ritual (S6
+        # pakibęs routeris, 2026-08-31): the recap+announce checkpoint exists
+        # for real decision points — the caller still choosing between
+        # solutions (bridge vs ticket). When the facts already pin a single
+        # `tada: walker` step, the ritual only delays the sync a turn (or
+        # more), the walker never takes over and the narrator improvises.
+        # The step's own hint explains the finding and instructs in ONE move.
+        if _solution_for(s.evidence, r.get("verdict")) == "walker":
+            engine._findings_announced = True
+            return _sync_walker_solution(engine, s, r)
         # Recap checkpoint FIRST: read the gathered facts back and let the
         # caller confirm or correct before any conclusion is announced.
         recap = maybe_facts_recap(engine)
@@ -301,21 +333,9 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             return None  # the walker owns the bridge steps from here
         if solution == "walker":
             # R4b: the declared solution is a WALKER step — sync the walker to
-            # it ONCE (solution_synced marker: re-syncing every turn would drag
-            # the tree back to the solution step it has already walked past)
-            # and hand the turn over. The findings announce, if any, goes out
-            # as THIS reply; the step's own question follows next turn.
-            from .evidence import solution_step
-
-            target = solution_step(s.evidence, r.get("verdict"))
-            if target and r.get("solution_synced") != target and r.get("step") != target:
-                engine._goto_step(r, target)
-                r["solution_synced"] = target
-                engine.tracer.emit(
-                    "decision", intent="evidence", action="pivot", to=target, reason="solution"
-                )
-            elif target:
-                r.setdefault("solution_synced", target)
+            # it ONCE and hand the turn over. The findings announce, if any,
+            # goes out as THIS reply; the step's question follows next turn.
+            _sync_walker_solution(engine, s, r)
             return announce or None
     missing = next_missing(s.evidence, spec, confirmed)
     if missing is None:

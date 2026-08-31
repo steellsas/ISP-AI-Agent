@@ -506,7 +506,14 @@ class ReactAgent:
     # any remaining fault is client-side (Wi-Fi/device) which telemetry can't see,
     # so that close is the caller's call.
     _UNRESOLVED_LINE_FAULTS = frozenset(
-        {"foreign_mac", "link_down_local", "dhcp_silent", "crc_errors", "no_mac_observed"}
+        {
+            "foreign_mac",
+            "link_down_local",
+            "dhcp_silent",
+            "crc_errors",
+            "no_mac_observed",
+            "router_hung",
+        }
     )
 
     def _fresh_diagnose_reason(self) -> str | None:
@@ -926,6 +933,12 @@ class ReactAgent:
         from .walker_flow import advance_see_device
 
         return advance_see_device(self, r)
+
+    def _advance_reboot_check(self, r: dict, user_input: str | None) -> None:
+        """Delegates to walker_flow.advance_reboot_check (S6 hung router)."""
+        from .walker_flow import advance_reboot_check
+
+        return advance_reboot_check(self, r, user_input)
 
     def _reject_and_rediagnose(self, r: dict) -> bool:
         """Delegates to walker_flow.reject_and_rediagnose (R3 extraction)."""

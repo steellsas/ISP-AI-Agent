@@ -806,6 +806,35 @@ def simulate_bridge_connect(customer_id: str) -> dict:
         return {"success": False, "error": "action_error", "message": f"{e}"}
 
 
+def simulate_router_reboot(customer_id: str) -> dict:
+    """SIMULATED (demo/test): the CALLER power-cycles their router (S6 hung router).
+
+    Deliberately NOT registered as an agent Tool — the LLM must never invoke it, and
+    the engine never fakes the physical world either: the tester presses the demo
+    button the moment the caller would pull the plug. Effect in the mock DB: traffic
+    restored + the port flap a real power-cycle produces (the reboot witness
+    signals.port_flap_recent reads). NOT pressing it and claiming "perkroviau" is the
+    wrong-device case — telemetry shows the device never dropped off the line.
+    """
+    if not customer_id:
+        return {
+            "success": False,
+            "error": "missing_customer_id",
+            "message": "Customer ID required.",
+        }
+    try:
+        db = get_db()
+        from network_diagnostic_mcp.tools.port_actions import reboot_router_device
+
+        return reboot_router_device(db, customer_id)
+    except ImportError as e:
+        logger.error(f"Router-reboot sim unavailable: {e}")
+        return {"success": False, "error": "service_unavailable", "message": "unavailable"}
+    except Exception as e:
+        logger.error(f"Error in simulate_router_reboot: {e}", exc_info=True)
+        return {"success": False, "error": "action_error", "message": f"{e}"}
+
+
 def simulate_bridge_disconnect(customer_id: str) -> dict:
     """SIMULATED (demo/test): clear the bridge device from the line (undo a plug-in).
     Not a registered Tool — used by the manual test command / re-test setup."""

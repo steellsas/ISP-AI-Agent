@@ -1,0 +1,126 @@
+# GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
+#
+# S6 "pakibęs routeris" — pirmoji kortelė, užpildyta pagal AGENT_ONBOARDING.md
+# D klausimyną kartu su užsakovo techniku (Andrius, 2026-08-31):
+#   simptomai: "nėra interneto" visuose įrenginiuose; telemetrija įrenginį MATO,
+#   DHCP ok, bet srauto NĖRA; interneto lemputė dega pastoviai (nemirksi).
+#   Sprendimas: perkrovimas IŠ MAITINIMO (ne mygtuku, ne prailgintuvu) — po
+#   ~1 min ryšys atsistato. Dažniausios kliento klaidos: ištraukia prailgintuvą
+#   arba spaudžia mygtuką (nepilnas perkrovimas), perkrauna ne tą įrenginį.
+#   Patikra: interneto lemputė mirksi + atsidaro puslapis + telemetrijoje
+#   grįžta srautas IR matyti, kad įrenginys buvo dingęs (port flap = perkrovimo
+#   liudininkas). Neatsistačius po perkrovimo — kaip miręs routeris: tiketas su
+#   prierašu "perkrauta, neatsistatė".
+verdict: router_hung
+meta:
+  pavadinimas: "Nėra interneto — routeris matomas, bet srautas nevaikšto (pakibęs routeris)"
+  domenas: internet
+  priklauso_nuo: []
+  tags: [internet, nera_interneto, pakibes_routeris, perkrovimas, reboot]
+  vairuotojas: solveris
+problem: internet_down
+playbook: troubleshooting/internet_pakibes_routeris
+evidence:
+  client:
+    fail_scope:
+      label: "kur neveikia"
+      reiksmes:
+        visuose: "visuose įrenginiuose"
+        viename: "tik viename įrenginyje"
+      reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
+      klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
+      kodel: "Linijoje routerį matome, bet srautas nevaikšto — jei neveikia visur, greičiausiai pakibo pats routeris; jei tik viename, problema tame įrenginyje."
+      paprasciau: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
+      patikslinimas: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
+      atsakymai:
+        visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
+        viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
+  patvirtinta_kai: []
+  paneigta_kai: []
+# reikalinga — tiketo priežastis, kai perkrovimas NEatstato (ticket_flow /
+# TICKET_NEED_LT atitikmuo šiam gedimui).
+reikalinga: "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas"
+# Sprendimai pagal surinktus faktus — vykdo ŽINGSNIŲ MEDIS (tada:walker).
+sprendimai:
+- jei: [fail_scope=visuose]
+  tada: walker
+  zingsnis: rh_reboot
+  aprasymas: "perkrauti routerį iš maitinimo — pakibęs routeris po to dažniausiai atsistato"
+- jei: [fail_scope=viename]
+  tada: walker
+  zingsnis: rh_device
+  aprasymas: "patikrinti tą įrenginį — routeris veikia, problema kelyje iki įrenginio"
+steps:
+# Perkrovimo instrukcija — kortelės šerdis. Dažniausios klaidos įaustos į hint:
+# prailgintuvas / mygtukas = nepilnas perkrovimas; du įrenginiai = perkrauna ne tą.
+- id: rh_reboot
+  kind: instruct
+  rag_section: 0
+  goto: rh_check
+  tikslas: "routeris perkrautas iš maitinimo (ištrauktas maitinimo laidas, palaukta ~5 s, įkištas atgal)"
+  hint: 'First explain in ONE short human sentence what you see (router visible, no traffic —
+    most likely hung; this happens), then ONE instruction and WAIT. VOICE: THREE short
+    sentences MAXIMUM. Do NOT echo their answer back ("Supratau — neveikia visuose...") — no
+    recap, no extra warnings (the retry step carries the clarifications). Length model — do
+    not read verbatim, but do not exceed it: "Routerį linijoje matau, bet srautas nevaikšto —
+    greičiausiai jis pakibo, taip nutinka. Ištraukite maitinimo laidą iš paties routerio,
+    palaukite 5 sekundes ir įkiškite atgal — pasikraus per minutę. Pasakykite, kai
+    padarysite."'
+# Patikra po perkrovimo — kliento žodis + telemetrija KARTU. Variklis šį žingsnį
+# sprendžia pats (advance_reboot_check): srautas grįžo / perkrovimo nesimatė
+# (port flap = liudininkas) / perkrauta bet neatsistatė — trys skirtingi keliai.
+- id: rh_check
+  kind: confirm
+  detector: restored
+  rag_section: 1
+  tikslas: "aišku, ar po perkrovimo internetas atsistatė (lemputė mirksi, puslapis atsidaro)"
+  hint: 'They rebooted. Give it about a minute, then ask TWO simple checks in one short question:
+    is the internet light BLINKING now, and does a web page open? The engine ALSO silently
+    re-reads telemetry (did traffic return; did the device actually drop off the line during the
+    reboot). Do NOT declare success yourself — wait for their answer.'
+  answers:
+    'yes': internetas atsistatė — lemputė mirksi, puslapis atsidaro, veikia
+    'no': internetas vis dar neveikia po perkrovimo
+# Kartojimas su patikslinimu (patvirtinta kortelėje: 1 bandymas) — telemetrija
+# NEMATĖ, kad įrenginys būtų dingęs, t. y. pilno perkrovimo nebuvo.
+- id: rh_reboot_retry
+  kind: instruct
+  rag_section: 2
+  goto: rh_check
+  tikslas: "routeris TIKRAI perkrautas iš paties maitinimo lizdo (ne prailgintuvas, ne mygtukas, ne kitas įrenginys)"
+  hint: 'Telemetry shows the device NEVER dropped off the line — so the router was not actually
+    power-cycled. Say it kindly, without blaming: sometimes the extension cord gets unplugged, or
+    the button is pressed, or a SECOND similar box gets rebooted. ONE clarifying instruction:
+    make sure to pull the power lead out of the router itself — the box the wall/internet cable
+    goes into — wait 5 seconds, plug back. Wait for them to say it is done.'
+# Kliento pusės kelias: neveikia tik viename įrenginyje ARBA srautas grįžo, bet
+# klientui vis dar neveikia — routeris gyvas, problema kelyje iki įrenginio.
+- id: rh_device
+  kind: instruct
+  rag_section: 3
+  goto: rh_verify_dev
+  tikslas: "patikrintas įrenginys, kuriame neveikia (WiFi įjungtas / prisijungta iš naujo / kabelis įkištas)"
+  hint: 'The router side works — the problem is on the path to ONE device. Guide ONE simple check
+    for that device and wait: Wi-Fi on and connected to their own network (reconnect if needed),
+    or the cable firmly plugged if wired. Do not mention cables for a phone/tablet.'
+- id: rh_verify_dev
+  kind: confirm
+  detector: restored
+  rag_section: 4
+  tikslas: "aišku, ar tame įrenginyje internetas jau veikia"
+  'on':
+    'yes': resolve
+    'no': escalate
+  hint: 'Ask whether it works on that device now. Yes -> resolved. No -> it is beyond simple help
+    — register the fault.'
+  answers:
+    'yes': tame įrenginyje internetas dabar veikia
+    'no': tame įrenginyje interneto vis tiek nėra
+- id: escalate
+  kind: escalate
+  tools: []
+  rag_section: 5
+  hint: 'The reboot did not bring the connection back (or the caller cannot check now) — likely a
+    failing router. Say you WILL register the fault — "užregistruosiu" (future tense), NEVER
+    "užregistravau": the registration happens only after the contact questions, and the closing
+    line announces it. The ticket note must say the router WAS power-cycled and did not recover.'

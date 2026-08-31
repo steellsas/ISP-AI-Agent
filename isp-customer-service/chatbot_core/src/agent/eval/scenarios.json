@@ -25,6 +25,32 @@
    }
   },
   {
+   "id": "S6_router_hung_reboot",
+   "phone": "+37060020112",
+   "desc": "Pakibęs routeris (srauto nėra, MAC/DHCP ok) — vedamas perkrovimas iš maitinimo, išsprendžiama telefonu BE tiketo",
+   "turns": [
+    "Labas, dingo internetas",
+    "Nuo ryto neveikia",
+    "Taip",
+    "Paulius, taip, mano sutartis",
+    "Visuose įrenginiuose",
+    "Gerai, ištraukiau iš routerio ir įkišau atgal",
+    "Mirksi, puslapis atsidaro — veikia",
+    "Ne, ačiū"
+   ],
+   "expect": {
+    "verdict_in": "router_hung",
+    "disposition": "resolved",
+    "reply_any": [
+     "perkrau",
+     "maitinimo"
+    ],
+    "reply_none": [
+     "užregistravau"
+    ]
+   }
+  },
+  {
    "id": "S9_client_side_phone_wifi",
    "phone": "+37060020109",
    "desc": "Kliento pusė, telefonas — turi klausti KURIO įrenginio, telefonui NESIŪLYTI kabelio",

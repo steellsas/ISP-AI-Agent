@@ -108,8 +108,16 @@ gedimai, kokios informacijos ir kokio smulkumo instrukcijų reikia agentui
 produkcijai (lygiai, atsakomybės, įrankiai; FAULT_PACKS.md tampa pilnu
 onboarding gidu) → interneto gedimų scenarijų peržiūra ir tobulinimas →
 palaipsniui testai per visą ciklą (prisistatymas → tikslas → analizė →
-identifikacija → sprendimas → tiketas) → demo šlifas. Turinio banga (FAQ,
-„pakibusio routerio" pack'as) — po diegimo tvarkos diskusijos.
+identifikacija → sprendimas → tiketas) → demo šlifas. Turinio banga (FAQ) —
+po diegimo tvarkos diskusijos.
+
+PADARYTA 2026-08-31: „pakibusio routerio" pack'as (S6) — pirmoji kortelė per
+AGENT_ONBOARDING D klausimyną: verdiktas `router_hung` (srauto signalas +
+porto mirktelėjimo liudininkas `port_flap_recent`), patikra
+`advance_reboot_check` (kliento žodis + srautas + ar perkrovimas MATYTAS —
+„perkroviau" be porto mirktelėjimo = perkrautas ne tas įrenginys), demo
+mygtukas „🔄 Perkrauti routerį" (/simulate-reboot, klientas CUST112),
+auksinis S6_router_hung_reboot. Eval 44/44.
 
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 

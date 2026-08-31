@@ -19,6 +19,7 @@ Split in two so the tree is unit-testable without a database:
 """
 
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,24 @@ logger = logging.getLogger(__name__)
 # Sustained CRC errors above this rate (errors/min) indicate a damaged or
 # poorly seated cable (B5) even while the link stays up.
 CRC_ERROR_THRESHOLD = 1.0
+
+# A port status flap (down->up) within this window counts as "the router WAS
+# power-cycled" (S6 hung router): a real reboot drops the device off the line,
+# so last_status_change refreshes. "Perkroviau" with a stale timestamp means
+# the wrong device (a second router) or just the extension cord was cycled.
+REBOOT_FLAP_WINDOW_S = 600
+
+
+def _flap_recent(last_status_change: str | None, window_s: int = REBOOT_FLAP_WINDOW_S) -> bool:
+    """True when the port's last status change is within the reboot window.
+    SQLite CURRENT_TIMESTAMP / datetime('now') stamps are UTC 'YYYY-MM-DD HH:MM:SS'."""
+    if not last_status_change:
+        return False
+    try:
+        ts = datetime.fromisoformat(str(last_status_change)).replace(tzinfo=UTC)
+    except ValueError:
+        return False
+    return (datetime.now(UTC) - ts).total_seconds() <= window_s
 
 
 # =============================================================================
@@ -102,6 +121,8 @@ def gather_signals(db, customer_id: str) -> dict[str, Any]:
         "observed_mac": port.get("observed_mac") if port else None,
         "crc_error_rate": port.get("crc_error_rate") if port else None,
         "dhcp_status": port.get("dhcp_status") if port else None,
+        "traffic": port.get("traffic_status") if port else None,
+        "port_flap_recent": _flap_recent(port.get("last_status_change")) if port else False,
         "neighbors_up": None,
         "neighbors_down": None,
     }
@@ -276,6 +297,25 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
                 "Routeris matomas, bet nesiunčia DHCP užklausų — tikėtinas Factory "
                 "Reset ar išsitrynusi konfigūracija. Instruktuok nustatyti DHCP "
                 "routerio valdymo skydelyje."
+            ),
+        )
+
+    # ---- Step 4, BŪSENA C tęsinys: device visible, DHCP fine, NO traffic ----
+    # S6 "pakibęs routeris": everything up to the router looks alive, but no
+    # frames flow — the router hung. A power-cycle usually clears it, so the
+    # fix is an INSTRUCT (guided reboot), not a ticket. port_flap_recent is
+    # the reboot witness the verify step reads afterwards.
+    if signals.get("traffic") == "none":
+        return _verdict(
+            side="customer",
+            group="B6",
+            action="instruct",
+            reason="router_hung",
+            agent_message=(
+                "Routeris matomas linijoje, bet srautas nevaikšto — routeris "
+                "greičiausiai pakibęs. Paaiškink žmogiškai (taip nutinka, po "
+                "perkrovimo dažniausiai susitvarko) ir vesk per perkrovimą iš "
+                "maitinimo. Tiketo kol kas nekurti."
             ),
         )
 

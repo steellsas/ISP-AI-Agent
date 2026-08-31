@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS ports (
     observed_mac TEXT,
     crc_error_rate DECIMAL(8,2),  -- CRC errors/min; >0 sustained => cable/physical fault (B5)
     dhcp_status TEXT CHECK(dhcp_status IN ('ok', 'no_requests', 'expired')),
+    -- Traffic marker (S6 "pakibęs routeris"): device visible, DHCP fine, but NO
+    -- frames flowing => router hung. In production this is an rx/tx counter
+    -- delta from SNMP; the demo seeds 'none'/'normal' per scenario.
+    -- last_status_change doubles as the REBOOT witness: a real power-cycle makes
+    -- the port flap (down->up), refreshing this timestamp — "perkroviau" with a
+    -- stale timestamp means the wrong device (or just the extension cord) was
+    -- power-cycled.
+    traffic_status TEXT DEFAULT 'normal' CHECK(traffic_status IN ('normal', 'none')),
     last_status_change TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     notes TEXT,
