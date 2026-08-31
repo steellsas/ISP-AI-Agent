@@ -322,6 +322,12 @@ class ReactAgent:
         # W2 tylusis analitikas: background advisory notes for the narrator's
         # next turn (written by the bg thread, consumed once in facts).
         self._analyst_notes: list[str] | None = None
+        # D1+ (Andrius 2026-08-26): the interrupted reply's QUESTION never
+        # sounded — the narrator must react to the caller and RE-ASK it.
+        self._unheard_question: str | None = None
+        # Duplex-hearing 2: what the caller said OVER the agent's voice —
+        # already ingested deterministically; surfaced to the narrator once.
+        self._overlay_heard: list[str] | None = None
         # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
         # announce; refute confirm before a client-fact pivot; the pending-key
         # whose done-report ("patikrinau") carried no result this turn.
@@ -500,7 +506,14 @@ class ReactAgent:
     # any remaining fault is client-side (Wi-Fi/device) which telemetry can't see,
     # so that close is the caller's call.
     _UNRESOLVED_LINE_FAULTS = frozenset(
-        {"foreign_mac", "link_down_local", "dhcp_silent", "crc_errors", "no_mac_observed"}
+        {
+            "foreign_mac",
+            "link_down_local",
+            "dhcp_silent",
+            "crc_errors",
+            "no_mac_observed",
+            "router_hung",
+        }
     )
 
     def _fresh_diagnose_reason(self) -> str | None:
@@ -638,6 +651,21 @@ class ReactAgent:
             self._evidence_asks[key] -= 1
         self.tracer.emit("turn_cancelled", spoken=spoken[:160])
 
+    def apply_overlay(self, texts: list[str]) -> None:
+        """Duplex-hearing 2: the caller's words spoken OVER the agent's voice
+        (echo already filtered by the transport) — deterministic fact ingest
+        through the importance gates + a one-shot narrator note. Overlay may
+        FILL facts, never steer routing."""
+        from .perception_flow import ingest_overlay
+
+        kept = [t.strip() for t in texts if t and t.strip()][:3]
+        if not kept:
+            return
+        for text in kept:
+            ingest_overlay(self, text)
+        self._overlay_heard = kept
+        self.tracer.emit("overlay_applied", texts=[t[:120] for t in kept])
+
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1 delivery ledger (live 2026-08-25: the transcript renders before
         the audio, so a barge-in leaves the engine believing the caller heard
@@ -657,7 +685,40 @@ class ReactAgent:
                 msg["content"] = (heard + " —") if heard else "—"
                 break
         self._undelivered_tail = tail or None
-        self.tracer.emit("delivery", delivered=delivered, total=total, unheard=tail[:160])
+        # Andrius 2026-08-26: the agent must NEVER believe it asked a question
+        # the caller could not hear. When the "?" lives only in the unheard
+        # tail, the ask never happened: the pending evidence key and its ask
+        # counter roll back (the caller's next words are NOT an answer to it),
+        # the step's presented counter steps back, and the narrator gets a
+        # STRONG re-ask directive instead of the advisory tail note.
+        # Closing-stage chatter is exempt (live 2026-08-27): garbled farewells
+        # kept cutting the goodbye before its "?" and the re-ask machinery
+        # looped "Ar dar kuo padėti?" — a closed case never re-asks.
+        if "?" in tail and "?" not in heard and not s.case_closed:
+            s.last_question = None
+            # The PENDING evidence key deliberately STAYS (live 2026-08-27:
+            # clearing it looped the call — the caller kept interrupting with
+            # the ANSWER, which then had no key to land on, so the fact never
+            # committed and the same question re-asked forever). Only the ask
+            # counter steps back so the wording escalation stays fair; an
+            # answer that maps still commits, a true non-answer re-asks anyway.
+            key = getattr(self, "_evidence_last_ask_key", None)
+            if key and self._evidence_asks.get(key, 0) > 0:
+                self._evidence_asks[key] -= 1
+            r = s.resolution or {}
+            pres = r.get("presented") or {}
+            step_id = r.get("step")
+            if step_id and pres.get(step_id, 0) > 0:
+                pres[step_id] -= 1
+            self._unheard_question = tail
+            self._undelivered_tail = None  # superseded by the strong directive
+        self.tracer.emit(
+            "delivery",
+            delivered=delivered,
+            total=total,
+            unheard=tail[:160],
+            question_unheard=bool(getattr(self, "_unheard_question", None)),
+        )
 
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
         """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the
@@ -872,6 +933,12 @@ class ReactAgent:
         from .walker_flow import advance_see_device
 
         return advance_see_device(self, r)
+
+    def _advance_reboot_check(self, r: dict, user_input: str | None) -> None:
+        """Delegates to walker_flow.advance_reboot_check (S6 hung router)."""
+        from .walker_flow import advance_reboot_check
+
+        return advance_reboot_check(self, r, user_input)
 
     def _reject_and_rediagnose(self, r: dict) -> bool:
         """Delegates to walker_flow.reject_and_rediagnose (R3 extraction)."""

@@ -131,6 +131,8 @@ _PHRASES_DEFAULTS: dict[str, str] = {
     "ticket_phone_fixed": "Užsirašiau — skambinsime numeriu {nr}.",
     "backchannel_1": "Mhm.",
     "backchannel_2": "Aha, klausau.",
+    "interrupt_ack_1": "Aha, girdžiu.",
+    "interrupt_ack_2": "Taip, klausau.",
     "anamnesis_last_used": ("O kada paskutinį kartą internetas tikrai veikė?"),
     "checkin": ("Kaip sekasi — ar pavyksta?"),
     "no_problem_goodbye": (

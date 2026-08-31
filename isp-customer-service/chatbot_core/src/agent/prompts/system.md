@@ -12,6 +12,8 @@ Customer-facing messages MUST be in {output_language}.
 
 <<include: partials/facts_integrity>>
 
+<<include: partials/directives>>
+
 ## Stage focus
 Each turn you are given the CURRENT STAGE with its own focused instructions. Follow
 them, and treat the KNOWN FACTS block as the current truth — do not re-ask what it

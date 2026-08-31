@@ -88,6 +88,10 @@ identification:
     # D5 backchannels: trumpi pritarimai ilgo kliento pasakojimo metu.
     backchannel_1: "Mhm."
     backchannel_2: "Aha, klausau."
+    # P1b interrupt-ack (2026-08-26): po pertraukimo, kol LLM mąsto — trumpas
+    # ženklas, kad išgirdome (iš TTS kešo, <1 s).
+    interrupt_ack_1: "Aha, girdžiu."
+    interrupt_ack_2: "Taip, klausau."
     # E (2026-08-20): antroji anamnezės pakopa, kai klientas nežino, kada dingo —
     # paskutinio veikimo laikas siaurina analizės langą („vakar veikė“ → dingo naktį).
     anamnesis_last_used: "O kada paskutinį kartą internetas tikrai veikė?"

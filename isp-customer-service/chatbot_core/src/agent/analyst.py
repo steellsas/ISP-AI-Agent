@@ -32,7 +32,9 @@ _SYSTEM = (
     "šių tipų: (1) klientas JAU pasakė kažką, ko agentas gali nebeklausti; "
     "(2) žurnalo faktas įtartinas — prieštarauja tam, ką klientas kartoja "
     "(gali būti blogai išgirsta) — verta pasitikslinti; (3) klientas painioja "
-    "sąvokas ar įrenginius — įvardinti aiškiau. DRAUDŽIAMA: siūlyti diagnozę, "
+    "sąvokas ar įrenginius — įvardinti aiškiau; (4) SVARBI ankstesnė detalė, "
+    "kurios naujausioje pokalbio dalyje nebesimato — priminti agentui. "
+    "DRAUDŽIAMA: siūlyti diagnozę, "
     "kurti faktus, siūlyti veiksmus ar žingsnius, kartoti tai, kas akivaizdu. "
     "Jei vertingų pastabų nėra — parašyk tik OK."
 )
@@ -40,6 +42,41 @@ _SYSTEM = (
 
 def enabled() -> bool:
     return os.getenv("ANALYST", "on").lower() == "on"
+
+
+# The three agreed note types, by their tell-tale words (diacritics-folded
+# matching below). Anything else — including action suggestions — is dropped.
+_ALLOWED_MARKS = (
+    # (1) the caller ALREADY said it — do not re-ask
+    "jau pasake", "jau sake", "jau minejo", "jau atsake", "jau patvirtino",
+    "nebeklausk", "neklausk", "jau teige", "jau nurodė", "jau nurode",
+    # (2) a fact looks wrong / contradicts what the caller keeps saying
+    "priestarau", "itartin", "nesutampa", "pasitikslin", "patikslin",
+    "galejo buti blogai isgirsta", "zurnal",
+    # (3) the caller is mixing up concepts/devices — name things clearer
+    "painioj", "ivardink", "ivardyk", "aiskiau", "supainio", "paaiskink", "turejo omenyje",
+    # (4) an important earlier detail no longer visible in the recent window
+    "pradzioje", "anksciau", "primink", "priminti", "nepamirsk",
+)  # fmt: skip
+
+
+# Action suggestions aimed at the caller are FORBIDDEN outright — the
+# blacklist beats the whitelist (live 2026-08-28: "butu naudinga PAPRASYTI
+# kliento pateikti MAC adresa" slipped through on the word "zurnalo" and the
+# narrator obeyed — asked the caller for a MAC the engine reads itself).
+_FORBIDDEN_MARKS = (
+    "paprasy", "papras", "pateikti", "paklausk", "pasiulyk", "patikrinkite",
+    "perkrauti", "perjunkite", "atjunkite", "ijunkite", "mac adres",
+)  # fmt: skip
+
+
+def _allowed(note: str) -> bool:
+    from .evidence import _fold
+
+    low = _fold(note)
+    if any(m in low for m in _FORBIDDEN_MARKS):
+        return False
+    return any(m in low for m in _ALLOWED_MARKS)
 
 
 def run_analyst(engine: Any) -> None:
@@ -56,9 +93,12 @@ def run_analyst(engine: Any) -> None:
         from .evidence import summary_lt
         from .understand import perception_model
 
+        # Istorija v2: the analyst is the ONLY reader of the FULL transcript —
+        # the narrator's window is short, so type-4 notes (an early detail no
+        # longer visible) depend on this breadth. Capped to keep tokens sane.
         history = "\n".join(
             f"{'KLIENTAS' if m['role'] == 'user' else 'AGENTAS'}: {(m.get('content') or '')[:200]}"
-            for m in s.messages[-14:]
+            for m in s.messages[-60:]
             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
         )
         ledger = summary_lt(s.evidence) if s.evidence else "(tuščias)"
@@ -83,7 +123,12 @@ def run_analyst(engine: Any) -> None:
             for line in (content or "").splitlines()
             if line.strip().lstrip("-•* ").strip()
         ]
-        notes = [n for n in notes if len(n) >= 12 and n.upper() != "OK"][:2]
+        notes = [n for n in notes if len(n) >= 12 and n.upper() != "OK"]
+        # Boundary filter (live 2026-08-26: the model suggested ACTIONS —
+        # "paprašykite patikrinti maitinimą" — which is the engine's job).
+        # Deterministic whitelist: only the three agreed note types survive —
+        # already-said, suspicious-fact, concept-confusion.
+        notes = [n for n in notes if _allowed(n)][:2]
         engine._analyst_notes = notes or None
         if notes:
             engine.tracer.emit("analyst", notes=notes)

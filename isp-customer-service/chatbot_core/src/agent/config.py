@@ -58,7 +58,7 @@ class AgentConfig:
     # AgentState.messages keeps the full transcript. Durable facts (customer,
     # problem, ticket) are re-injected from AgentState, so pruning never loses
     # resolved context. Set to 0 to disable pruning (send full history).
-    history_window_messages: int = 30
+    history_window_messages: int = 20  # istorija v2: santrauka dengia senesnius
 
     # =========================================================================
     # LLM Model Settings

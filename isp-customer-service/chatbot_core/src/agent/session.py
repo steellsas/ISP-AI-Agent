@@ -147,6 +147,11 @@ class AgentSession:
         except Exception:  # pragma: no cover - biasing must never break a turn
             return None
 
+    def apply_overlay(self, texts: list[str]) -> None:
+        """Duplex-hearing 2: hand the caller's over-the-voice words to the
+        engine (deterministic ingest + one-shot narrator note)."""
+        self._agent.apply_overlay(texts)
+
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1: after a barge-in, keep in history only the sentences the caller
         actually heard; the unheard tail resurfaces via the narrator next turn."""

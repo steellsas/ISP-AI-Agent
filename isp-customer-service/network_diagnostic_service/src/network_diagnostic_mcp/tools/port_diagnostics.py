@@ -75,6 +75,7 @@ def check_port_status(db: DatabaseConnection, customer_id: str) -> dict[str, Any
                         p.observed_mac,
                         p.crc_error_rate,
                         p.dhcp_status,
+                        p.traffic_status,
                         p.last_status_change,
                         p.last_checked,
                         s.switch_name,

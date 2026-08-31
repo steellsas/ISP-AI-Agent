@@ -125,6 +125,66 @@ def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None
     return {"type": "partial", "text": text, "ms": took, "endpoint": mode, "silence_ms": silence_ms}
 
 
+def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
+    """Duplex-hearing 1 ŽINGSNIS (Andrius 2026-08-28) — OBSERVE ONLY: speech
+    spoken OVER the agent's voice is transcribed and echo-filtered against the
+    agent's own words, then traced + shown in the transcript. The ENGINE never
+    sees it — stage 2 will hand the non-echo residue to the fact ingest once
+    the filter proves itself live."""
+    import time
+
+    if not duplex_enabled():
+        return None
+    pipeline = get_pipeline(ms)
+    t0 = time.perf_counter()
+    try:
+        text = pipeline.transcribe_partial(audio)
+    except Exception:  # an overlay must never disturb the call
+        logger.debug("overlay asr failed", exc_info=True)
+        return None
+    if not text:
+        return None
+    from agent.barge_in import token_overlap
+
+    spoken = ""
+    last = getattr(ms.session, "last_spoken_text", None)
+    if callable(last):
+        spoken = last() or ""
+    sim = round(token_overlap(text, spoken), 2) if spoken else 0.0
+    # 1.5 filter (live 2026-08-28: "Turiu kompiuterį." over "Ar turite
+    # kompiuterį?" scored sim=1.0 — answers naturally REUSE the question's
+    # vocabulary): (a) an utterance that maps to the OPEN evidence key via
+    # the deterministic reader is the CALLER'S ANSWER, whatever the overlap;
+    # (b) 1-word utterances are never auto-echo (barge_in's own guard).
+    kind = "klientas"
+    is_answer = False
+    try:
+        engine = getattr(ms.session, "_agent", None)
+        key = getattr(engine, "_evidence_last_ask_key", None) if engine else None
+        if key:
+            from agent.evidence import read_pending_answer, spec_for
+
+            spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+            item = (spec.get("client") or {}).get(key)
+            is_answer = read_pending_answer(str(key), text, item) is not None
+    except Exception:  # pragma: no cover - the filter must never break
+        pass
+    if is_answer:
+        echo, kind = False, "atsakymas"
+    elif len(text.split()) >= 2 and sim >= 0.8:
+        echo, kind = True, "aidas"
+    else:
+        echo = False
+    took = round((time.perf_counter() - t0) * 1000)
+    if not echo:
+        # Stage 2: queue for the NEXT turn's engine hand-over (capped).
+        notes = getattr(ms, "overlay_notes", None)
+        if notes is not None and len(notes) < 6:
+            notes.append(text)
+    ms.session.tracer.emit("overlay", text=text, echo=echo, sim=sim, who=kind, ms=took)
+    return {"type": "overlay", "text": text, "echo": echo, "sim": sim, "who": kind}
+
+
 def run_voice_turn_stream(
     ms: ManagedSession, audio: bytes, on_chunk, transcript: str | None = None
 ) -> dict[str, Any]:
@@ -137,6 +197,18 @@ def run_voice_turn_stream(
     import time
 
     pipeline = get_pipeline(ms)
+    # Duplex-hearing 2: hand the queued over-the-voice words to the engine
+    # BEFORE the turn runs — facts land deterministically, the narrator gets
+    # the one-shot "kol kalbejai, klientas isiterpe" note.
+    notes = list(getattr(ms, "overlay_notes", None) or [])
+    if notes:
+        ms.overlay_notes = []
+        apply = getattr(ms.session, "apply_overlay", None)
+        if callable(apply):
+            try:
+                apply(notes)
+            except Exception:  # the hand-over must never break a turn
+                logger.debug("overlay apply failed", exc_info=True)
     t0 = time.perf_counter()
     first_ms: int | None = None
     reply_audio = bytearray()
@@ -184,6 +256,37 @@ def run_voice_turn_stream(
         filler_timer.daemon = True
         filler_timer.start()
 
+    # P1b interrupt-ack (architektūros peržiūra 2026-08-26): the caller who CUT
+    # the agent off expects an instant sign of being heard — when the real
+    # reply is not ready within ~0.8 s, a short cached "Aha, girdžiu." goes out
+    # first. Scoped to INTERRUPTED turns only (prev_cancelled), so normal turns
+    # keep their natural silence; the D1 ledger marks the chunk sentence-less.
+    def _maybe_ack() -> None:
+        if got_audio.is_set() or ms.cancel.is_set():
+            return
+        try:
+            from agent.identification import phrase
+
+            ms.ack_count = getattr(ms, "ack_count", 0) + 1
+            text = phrase("interrupt_ack_1" if ms.ack_count % 2 else "interrupt_ack_2")
+            fa = synthesize_text(text) if text else b""
+            if fa and not got_audio.is_set():
+                pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
+                ms.session.tracer.emit("interrupt_ack", text=text)
+                on_chunk(bytes(fa))
+        except Exception:  # pragma: no cover - the ack must never break a turn
+            logger.debug("interrupt ack failed", exc_info=True)
+
+    ack_timer = None
+    if interruption is not None and os.environ.get("INTERRUPT_ACK", "on").lower() == "on":
+        try:
+            ack_delay = float(os.environ.get("INTERRUPT_ACK_AFTER_S", "0.8"))
+        except ValueError:
+            ack_delay = 0.8
+        ack_timer = threading.Timer(ack_delay, _maybe_ack)
+        ack_timer.daemon = True
+        ack_timer.start()
+
     # PR3: the barge-in cancel reaches the ENGINE — checked between sentences;
     # the token stream closes (LLM generation stops) and the ask-bookkeeping
     # rolls back via the session hook.
@@ -200,6 +303,8 @@ def run_voice_turn_stream(
             got_audio.set()
             if filler_timer is not None:
                 filler_timer.cancel()
+            if ack_timer is not None:
+                ack_timer.cancel()
             if first_ms is None:
                 first_ms = round((time.perf_counter() - t0) * 1000)
             chunks += 1
@@ -229,6 +334,8 @@ def run_voice_turn_stream(
         got_audio.set()  # a silent (dropped) turn must not get a late filler
         if filler_timer is not None:
             filler_timer.cancel()
+        if ack_timer is not None:
+            ack_timer.cancel()
     payload = {
         "type": "voice_turn_done",
         "chunks": chunks,

@@ -369,6 +369,39 @@ def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:
     return True
 
 
+def ingest_overlay(engine, text: str) -> None:
+    """Duplex-hearing 2 ŽINGSNIS: deterministic-only ingest for words spoken
+    OVER the agent's voice — address slots and evidence vocabularies, through
+    the same importance gates as normal turns. No LLM pass, no turn, no
+    routing: overlay speech may only FILL facts, never steer."""
+    if not text:
+        return
+    s = engine.state
+    if not s.customer_id:
+        engine._prefill_slots_from_text(text)  # address parts said over us
+    from .evidence import CLIENT, extract_client_facts, read_pending_answer, set_fact, spec_for
+
+    facts = dict(extract_client_facts(text))
+    pending = getattr(engine, "_evidence_last_ask_key", None)
+    if pending and pending not in facts:
+        spec = spec_for((s.resolution or {}).get("verdict"))
+        item = (spec.get("client") or {}).get(pending) if spec else None
+        value = read_pending_answer(str(pending), text, item)
+        if value is not None:
+            facts[pending] = value
+    for key, value in facts.items():
+        if _story_flip_gate(engine, key, str(value), pending):
+            continue
+        entry = set_fact(s.evidence, key, value, CLIENT, s.turn_count)
+        if entry.get("conflict") and engine._evidence_conflict is None:
+            engine._evidence_conflict = (key, entry["value"], entry["pending"])
+            engine.tracer.emit(
+                "evidence", action="conflict", key=key, old=entry["value"], new=entry["pending"]
+            )
+        else:
+            engine.tracer.emit("evidence", action="fact_overlay", key=key, value=value)
+
+
 def anchor_text(engine) -> str:
     """The exact place to return to after a deviation — the engine's LAST
     asked question (deterministic), never the LLM's memory of it. Trimmed
@@ -978,6 +1011,37 @@ def pre_turn_guards(engine, user_input: str) -> None:
                         "address_confirm",
                         f"offer not confirmed (verdict={verdict}); veto commit",
                         level="warn",
+                    )
+        else:
+            # arc v3.2 (eval I2 2026-08-27, po prompt-prefix pertvarkos): the
+            # caller dictated or CORRECTED the address ("Ai, atsiprašau — 29
+            # namas") and the model either answered "Radau…" for a NONEXISTENT
+            # house without calling the tool, or relapsed into a confirm round.
+            # Same rule as the offer path: clearly heard street+house AND a
+            # digit in THIS utterance (an address part was just said) -> the
+            # ENGINE resolves right now; a failed resolve leaves the per-level
+            # diagnosis note (namo 39 nerandu, yra 29/31) for the narrator.
+            import re as _re
+
+            p = s.profile
+            if (
+                s.anamnesis_asked  # the address ladder is live (not the opener)
+                and p.street.value
+                and p.house.value
+                and _re.search(r"\d", user_input or "")
+            ):
+                engine._trace_note("address_ask", "dictated address; engine resolve")
+                if engine._engine_resolve_from_slots():
+                    engine._just_identified = True
+                    from .identification import ask_caller
+
+                    if ask_caller() and not s.caller_name:
+                        engine._result_pending = True
+                    engine._addr_confirm_note = (
+                        "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
+                        f"adresas {s.customer_address}. Atsakymo pradžioje "
+                        "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
+                        "pagal žemiau esančią kryptį."
                     )
     elif not s.case_closed:
         from .resolution import detect_address_correction

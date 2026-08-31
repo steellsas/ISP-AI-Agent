@@ -40,16 +40,12 @@ def _directive_line(kind: str, payload: dict[str, Any]) -> str:
     if kind == "evidence":
         kodel = f" Kodėl tikriname: {payload['kodel']}." if payload.get("kodel") else ""
         return (
-            "- KLAUSK DABAR (savais žodžiais, natūraliai, pagal pokalbio eigą): "
-            f"išsiaiškink — {payload['reikia']}.{kodel} "
-            "Užduok TIK ŠĮ VIENĄ klausimą (viena '?'), trumpai; neišgalvok faktų "
-            f"ir nesiūlyk nieko kito. (Atsarginė formuluotė: „{payload['klausimas']}“)"
+            f"- KLAUSK DABAR: išsiaiškink — {payload['reikia']}. Fakto DAR "
+            f"NEŽINAI — užduok klausimą, nekonstatuok.{kodel} "
+            f"(Atsarginė: „{payload['klausimas']}“)"
         )
     if kind == "recap":
-        return (
-            "- PASITIKSLINK (savais žodžiais, VIENU trumpu sakiniu): ar teisingai "
-            f"supratai — {payload['faktai']}. Baik klausimu „ar taip?“. Neišgalvok faktų."
-        )
+        return f"- PASITIKSLINK: ar teisingai supratai — {payload['faktai']}."
     # findings
     if payload.get("pasiulymas"):
         spr = f" {payload['pasiulymas']}"
@@ -58,11 +54,9 @@ def _directive_line(kind: str, payload: dict[str, Any]) -> str:
     else:
         spr = ""
     return (
-        "- IŠVADOS MOMENTAS (pasakyk savais žodžiais, TRUMPAI — 2–3 sakiniai, "
-        "jokių sąrašų ar dvitaškių): Registracija dar NEĮVYKO — jei ją mini, "
-        "sakyk „užregistruosiu“, niekada „užregistravau“. "
-        f"Kartu nustatėme — {payload['faktai']}. "
-        f"Išvada: {payload['isvada']}.{spr} Neišgalvok faktų."
+        "- IŠVADOS MOMENTAS: Registracija dar NEĮVYKO — sakyk „užregistruosiu“, "
+        f"niekada „užregistravau“. Kartu nustatėme — {payload['faktai']}. "
+        f"Išvada: {payload['isvada']}.{spr}"
     )
 
 

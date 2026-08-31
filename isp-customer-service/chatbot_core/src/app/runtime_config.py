@@ -278,6 +278,34 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        # P1b (2026-08-26): po pertraukimo — trumpas „Aha, girdžiu" iš kešo,
+        # jei tikras atsakas neatėjo per INTERRUPT_ACK_AFTER_S.
+        "key": "INTERRUPT_ACK",
+        "label": "Ack po pertraukimo („Aha, girdžiu“)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # Default OFF (Andrius 2026-08-26): šabloniniai „Mhm" ilgo pasakojimo
+        # metu jaučiasi dirbtinai ir trikdo — pritarimas turi būti gyvas.
+        "key": "BACKCHANNEL",
+        "label": "„Mhm“ ilgo pasakojimo metu",
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
+        # Andrius 2026-08-27: pertraukimai LAIKINAI išjungti — testuojam ciklo
+        # šerdį be duck/cut triukšmo; įjungsim atskirai pertraukimų bangai
+        # (B dizainas). Off = agentas visada pabaigia sakinį.
+        "key": "BARGE_IN",
+        "label": "Pertraukimai (barge-in / duck)",
+        "options": ["off", "on"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "UNDERSTAND",
         "label": "Supratimo pass'as (LLM atsakymų skaitymas)",
         "options": ["on", "off"],

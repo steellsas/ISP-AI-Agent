@@ -74,6 +74,92 @@ balso testams — ausinės). Balso testai: po D2, tada po D3+D4+D5 kartu.
 | D4 | ASR head-start: kai po paskutinio partial'o buvo tik tyla (front snap_done, speech nepakito), galutinė transkripcija PERPANAUDOJAMA iš partial'o — turn'as praleidžia ASR ratą (~0.5–0.7 s). Pilnas LLM pre-startas / cancel-merge ATIDĖTAS: saugiam suliejimui reikia turn'o checkpoint'ų (įrankiai jau būna paleisti); praktinius atvejus dengia E2 langai + stash. | PADARYTA (siaurintas) |
 | D5 | Persidengimas ir reakcijos: backchannels („Mhm"/„Aha, klausau" po 4 s pasakojimo, 1×/segmentą, tik kai laukiam atsakymo; klientui ŠALIA grojimo eilės — mic nenutrūksta, barge nekyla); scriptinės wait/ack be LLM (wait_ack/wait_ack_2 rotacija — buvo iki 12 s tylos); UŽDARYMO FIX: scriptinės closing šakos dabar KALBA (runtime.speak_scripted — anksčiau grąžindavo tekstą be stream writer'io = mirtina tyla po registracijos), numerio patikslinimas po registracijos įrašomas į tiketą (amend_ticket_note → [PATIKSLINTA]) ir patvirtinamas balsu. Off-topic pagalvę dengia esamas resync/anchor mechanizmas. | PADARYTA |
 
+## Tolesnis planas (patvirtinta 2026-08-26, po architektūros peržiūros)
+
+Akcentas — VEIKIANTIS DEMO keliems scenarijams; produkcija apgalvojama, bet
+nedaroma anksčiau laiko. P5 (LLM pre-startas) nužemintas — pirmiau pigesni
+ir saugesni latencijos svertai.
+
+| Prio | Darbas | Būsena |
+|---|---|---|
+| 1 | Interrupt-ack: po pertraukimo, jei tikras atsakas neatėjo per ~0.8 s — trumpas kešuotas „Aha, klausau" (tik pertrauktiems turn'ams; INTERRUPT_ACK jungiklis) | — |
+| 2 | Latencijos šerdis: prompt dieta (KNOWN FACTS genėjimas, istorijos langas) + naratoriaus Groq modelio eksperimentas su LT kokybės eval vartais | — |
+| 3 | Pack'ų validatorius CI: akli galai, neegzistuojantys goto/paneigta_veda/zingsnis taikiniai, ciklai, rag_section↔MD atitikimas, atsakymų pilnumas | — |
+| 4 | Tool timeout (2 s) → {"status":"timeout"} observation + pack'ų šaka „nuotoliu nepasiekiu — fizinis patikrinimas" | — |
+| 5 | Vienkartinių notų konsolidacija į tipizuotą TurnNotes (R3 skola; checkpointinama, atsekama) | — |
+| 6 | Filler v2 — kontekstinis, tik >1.2 s, formuluotės derinamos su Andriumi (v1 išjungtas kaip „šiukšlė") | — |
+| P4 likutis | LLM modulių medžių suvienodinimas (dvigubi rate limiter'iai), sensorių promptai → failai, guard slenksčiai → config, solverio tilto legacy valymas, dr_pick_cable hint švelninimas („patvirtink-jei-atitinka") | — |
+
+### Pertraukimų banga (atidėta sąmoningai, Andrius 2026-08-27)
+
+BARGE_IN=off (numatytasis): pertraukimai laikinai išjungti — testuojama ciklo
+šerdis be duck/cut triukšmo; agentas visada pabaigia sakinį. Įjungiant —
+atskira banga su B DIZAINU (sutarta diskusijoje): pertraukimo likimą sprendžia
+KITO turn'o kliento replika — jei ji map'inasi kaip atsakymas į laukiamą raktą,
+klausimas laikytas girdėtu (faktas krenta, jokio perklausimo); jei ne —
+atsukimas + „sureaguok ir perklausk". Papildomai: consent segmento nemesti
+(ankstyvas „Taip" ant klausimo uodegos dabar priverčia kartoti).
+
+### Kelias iki demo (sutarta 2026-08-28)
+
+2 žingsnis (overlay→faktai) → latencija (A tools + B modelio eksperimentas) →
+NAUJAS PLANAVIMAS SU ANDRIUM: gedimų diegimo tvarka — kaip įvedami nauji
+gedimai, kokios informacijos ir kokio smulkumo instrukcijų reikia agentui
+produkcijai (lygiai, atsakomybės, įrankiai; FAULT_PACKS.md tampa pilnu
+onboarding gidu) → interneto gedimų scenarijų peržiūra ir tobulinimas →
+palaipsniui testai per visą ciklą (prisistatymas → tikslas → analizė →
+identifikacija → sprendimas → tiketas) → demo šlifas. Turinio banga (FAQ) —
+po diegimo tvarkos diskusijos.
+
+PADARYTA 2026-08-31: „pakibusio routerio" pack'as (S6) — pirmoji kortelė per
+AGENT_ONBOARDING D klausimyną: verdiktas `router_hung` (srauto signalas +
+porto mirktelėjimo liudininkas `port_flap_recent`), patikra
+`advance_reboot_check` (kliento žodis + srautas + ar perkrovimas MATYTAS —
+„perkroviau" be porto mirktelėjimo = perkrautas ne tas įrenginys), demo
+mygtukas „🔄 Perkrauti routerį" (/simulate-reboot, klientas CUST112),
+auksinis S6_router_hung_reboot. Eval 44/44.
+
+#### S6 TAISYMAI (iš gyvo 2026-08-31 skambučio 135056 — aptarta, dar NEDARYTA)
+
+Skambutis atskleidė 4 ydas; visos KETURIOS — bendros mechanikos, ne šio
+pack'o turinio (svarbi pamoka universalumui):
+
+1. EILIŠKUMAS: pirmo diagnostikos turn'o metu naratorius perskaitė žingsnio
+   hint'ą (perkrovimo instrukciją) vietoj solverio KLAUSK DABAR (fail_scope)
+   — instrukcija išėjo PRIEŠ masto klausimą. Fix: pack'e pirmas žingsnis
+   `rh_scope` (kaip kliento_puse `cs_scope`) — pradinis hint'as sutampa su
+   evidence klausimu; sprendimai sync'ina į rh_reboot kaip dabar.
+2. KONFLIKTO KILPA: „Ned." + „dega, nemirksi" sukūrė `lights` faktų
+   konfliktą (bendras žodynas), kurio tikslinimas prarijo aiškų NE
+   („Pabandžiau, nėra interneto"). Fix: konflikto clarify tik dėl raktų,
+   kuriuos AKTYVAUS pack'o evidence deklaruoja; kiti — tyliai į žurnalą.
+3. KLAIDINGAS TAIP: `detect_restored("Visos lemputės dega, bet jos
+   nemirksi") == YES` (žodis „dega") → pokalbis uždarytas kaip išspręstas.
+   Fix: rh_check atsakymą skaityti per pack'o `answers:` aprašus
+   (keyword + klasifikatorius, kaip CONFIRM žingsniuose), ne per bendrą
+   detect_restored.
+4. TELEMETRIJA = TIESOS ŠALTINIS (Andriaus pagrindinis punktas): kliento
+   TAIP uždaro tik kai telemetrija sutinka — srautas grįžo ARBA perkrovimas
+   matytas (port flap). Kitaip: „sistemoje nesimato, kad routeris būtų
+   persikrovęs — ar tikrai iš paties routerio ištraukėte?" → retry kelias.
+   Kraštas (dar NEatsakyta Andriaus): TAIP + flap matytas + srautas dar
+   negrįžęs — siūlymas uždaryti pagal žodį (žodis + liudininkas pakanka;
+   srautas gali vėluoti), bet laukiama sprendimo diskusijoje.
+Smulku (stebėti): overlay pagavo agento aidą „Dabar svarbu sužinoti." kaip
+who=klientas (trumpo fragmento token_overlap žemas) — netrukdė, bet žymė
+neteisinga.
+
+### Produkcinės parengties takelis (vėliau, prie stage su linija)
+
+- TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO
+  LINIJA — SIP/PSTN integracija, 8 kHz garsas, telefonų pokalbių standartas;
+  pritaikymas planuojamas atskirame stage kartu su integracija.
+- WebRTC transportas (UDP be head-of-line, gimtasis AEC — sumažintų duck
+  poreikį; duck semantinė dalis liktų).
+- Pack'ų A/B versijos skirtingiems srautams.
+- BACKLOG IDĖJA (Andrius): pack'ų KŪRIMO pagalbininkas — ne tik validacija,
+  bet ir lengvas naujo gedimo aprašymas, galbūt pagalbinis agentas-autorius.
+
 ## 1 žingsnio darbų sąrašas (L1+L2, paruošta įgyvendinimui)
 
 1. **Vardo klausimas be uodegos** — `knowledge/identification.yaml` frazė

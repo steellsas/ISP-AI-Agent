@@ -351,7 +351,8 @@ class TestVoiceChannel:
         from app.main import manager
 
         engine = manager.get(sid).session._agent
-        tail = engine._undelivered_tail
+        # an unheard "?" upgrades the tail into the strong re-ask directive
+        tail = engine._undelivered_tail or engine._unheard_question
         last_assistant = next(
             m for m in reversed(engine.state.messages) if m["role"] == "assistant"
         )
@@ -400,6 +401,70 @@ class TestVoiceChannel:
         # the assembled utterance landed in the archive like any voice turn
         rec = voice_fakes / sid
         assert rec.joinpath("turn_01_user.wav").exists()
+
+    def test_completed_call_takes_no_more_turns(self, client, voice_fakes, monkeypatch):
+        # Live 2026-08-27: after "Geros dienos!" the transport kept processing
+        # garbled farewells and looped "Ar dar kuo padeti?" — a finished call
+        # ignores further audio and tells the client once to hang up.
+        monkeypatch.setenv("VOICE_STREAM", "on")
+        sid = _create(client)["session_id"]
+        from app.main import manager
+
+        manager.get(sid).session._agent.state.is_complete = True
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            ws.send_bytes(b"RIFF-fake-wav-utterance")
+            ended = False
+            got_turn = False
+            for _ in range(20):
+                msg = ws.receive()
+                if msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "call_ended":
+                        ended = True
+                        break
+                    if e.get("type") in ("voice_turn_done", "voice_turn"):
+                        got_turn = True
+            assert ended and not got_turn
+        assert manager.get(sid).turn_count == 0  # no turn ever ran
+
+    def test_over_frames_observe_only(self, client, voice_fakes, monkeypatch):
+        # Duplex-hearing stage 1: speech spoken OVER the agent's voice becomes
+        # an overlay OBSERVATION (transcript + echo verdict) — never a turn.
+        import struct as _struct
+
+        from app.audio_front import wav_bytes
+
+        monkeypatch.setenv("DUPLEX", "on")
+        sid = _create(client)["session_id"]
+
+        def frame(loud):
+            pcm = _struct.pack("<4096h", *([5000 if loud else 0] * 4096))
+            return b"OVER" + wav_bytes(pcm, 16_000)
+
+        with client.websocket_connect(f"/ws/call/{sid}") as ws:
+            for _ in range(4):
+                ws.send_bytes(frame(loud=True))
+            # overlay tolerates ~4 s pauses (OVERLAY_SIL_MS) — the segment
+            # closes only after that much silence
+            for _ in range(17):
+                ws.send_bytes(frame(loud=False))
+            got = None
+            for _ in range(60):
+                msg = ws.receive()
+                if msg.get("text"):
+                    import json as _json
+
+                    e = _json.loads(msg["text"])
+                    if e.get("type") == "overlay":
+                        got = e
+                        break
+            assert got is not None and got["text"] == "neveikia internetas"
+            assert got["echo"] is False and "sim" in got
+        from app.main import manager
+
+        assert manager.get(sid).turn_count == 0  # observation, not a turn
 
     def test_greeting_audio_endpoint(self, client, voice_fakes):
         sid = _create(client)["session_id"]
@@ -560,6 +625,46 @@ class TestSimulatePlug:
 
     def test_unknown_session_is_404(self, client):
         assert client.post("/sessions/nope/simulate-plug").status_code == 404
+
+
+class TestSimulateReboot:
+    """DEMO reboot button (S6, 2026-08-31): the tester plays the caller's
+    hands — POST is the moment the router's power lead is pulled: the port
+    flaps and traffic returns. Not pressing it while claiming 'perkroviau'
+    rehearses the wrong-device case."""
+
+    def test_reboot_before_identification_is_409(self, client):
+        sid = _create(client)["session_id"]
+        assert client.post(f"/sessions/{sid}/simulate-reboot").status_code == 409
+        client.delete(f"/sessions/{sid}")
+
+    def test_reboot_flips_hung_to_healthy(self, client):
+        import json as _json
+
+        sid = _create(client)["session_id"]
+        from app.main import manager
+
+        manager.get(sid).session.state.customer_id = "CUST112"
+        from agent.tools import execute_tool, get_db
+
+        try:
+            d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST112"}))
+            assert ((d.get("verdict") or {}).get("reason")) == "router_hung"
+            resp = client.post(f"/sessions/{sid}/simulate-reboot")
+            assert resp.status_code == 200 and resp.json()["ok"] is True
+            d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST112"}))
+            assert ((d.get("verdict") or {}).get("reason")) == "healthy_to_router"
+            assert (d.get("signals") or {}).get("port_flap_recent") is True
+        finally:
+            with get_db().transaction() as cur:
+                cur.execute(
+                    "UPDATE ports SET traffic_status='none', "
+                    "last_status_change=datetime('now','-2 days') WHERE customer_id='CUST112'"
+                )
+            client.delete(f"/sessions/{sid}")
+
+    def test_unknown_session_is_404(self, client):
+        assert client.post("/sessions/nope/simulate-reboot").status_code == 404
 
 
 class TestAdminReset:

@@ -241,3 +241,61 @@ def reset_customer_port(db: DatabaseConnection, customer_id: str) -> dict[str, A
     except Exception as e:
         logger.error(f"Error in reset_customer_port: {e}", exc_info=True)
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
+def reboot_router_device(db: DatabaseConnection, customer_id: str) -> dict[str, Any]:
+    """
+    SIMULATED (demo button): the CALLER power-cycles their router.
+
+    The physical world the tester plays: the device drops off the line and
+    comes back ~1 min later with traffic flowing again. In the mock DB that is
+    one atomic effect — traffic restored, DHCP ok, and last_status_change
+    refreshed (the port flap a real power-cycle produces). That timestamp is
+    the REBOOT WITNESS the verdict reads (signals.port_flap_recent): if the
+    caller says "perkroviau" but the port never flapped, they power-cycled the
+    wrong device (second router) or just the extension cord.
+    """
+    logger.info(f"[SIM] Router power-cycle for customer: {customer_id}")
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute(
+                "SELECT port_id, traffic_status FROM ports WHERE customer_id = ?",
+                (customer_id,),
+            )
+            port = cursor.fetchone()
+
+        if not port:
+            return {
+                "success": False,
+                "error": "no_port_found",
+                "message": "Klientui nerastas tinklo portas.",
+            }
+
+        port = dict(port)
+
+        with db.transaction() as cursor:
+            cursor.execute(
+                """
+                UPDATE ports
+                SET traffic_status = 'normal',
+                    dhcp_status = 'ok',
+                    last_status_change = datetime('now'),
+                    last_checked = datetime('now')
+                WHERE port_id = ?
+                """,
+                (port["port_id"],),
+            )
+
+        logger.info(f"[SIM] Port {port['port_id']} flapped, traffic restored for {customer_id}")
+        return {
+            "success": True,
+            "customer_id": customer_id,
+            "port_id": port["port_id"],
+            "was_traffic": port.get("traffic_status"),
+            "message": ("Routeris perkrautas (simuliuota): portas mirktelėjo, srautas atsistatė."),
+        }
+
+    except Exception as e:
+        logger.error(f"Error in reboot_router_device: {e}", exc_info=True)
+        return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}

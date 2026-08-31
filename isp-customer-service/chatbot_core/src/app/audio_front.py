@@ -55,6 +55,12 @@ def partial_interval_ms() -> int:
     return int(_env_f("PARTIAL_INTERVAL_S", 1.0) * 1000)
 
 
+def interrupt_fast_ms() -> int:
+    """P1 (live 2026-08-26: TTFA po pertraukimo 6–10 s): kirtęs agentą žmogus
+    mintį jau turi — po cut'o segmentui užtenka greito tylos lango."""
+    return int(_env_f("ENDPOINT_FAST_MS", 350))
+
+
 def pcm_from_wav(frame: bytes) -> tuple[bytes, int]:
     """(pcm16le, rate) from one client frame (the fixed 44-byte header our
     client's wavEncode writes). Raises on anything that is not that layout."""
@@ -92,7 +98,12 @@ class AudioFront:
     ("utterance", wav) — the endpoint fired: run a full voice turn
     """
 
-    def __init__(self) -> None:
+    def __init__(self, silence_ms_override: int | None = None) -> None:
+        # Overlay fronts (speech over the agent's voice) tolerate LONG pauses
+        # (Andrius 2026-08-28: a 3-4 s think-pause mid-remark must not chop
+        # the capture) — they pass a large override; the main front keeps the
+        # semantic windows.
+        self._silence_ms_override = silence_ms_override
         self._rate = 16_000
         self._pre: list[bytes] = []  # last frames before speech onset
         self._seg = bytearray()  # current segment PCM (speech + trailing silence)
@@ -111,6 +122,10 @@ class AudioFront:
         self._snap_speech_ms: float | None = None
         self._snap_ok = False
         self.last_reuse_ok = False
+        # P1: the OPEN segment is a confirmed interruption — its endpoint gets
+        # the FAST window by default (a slow hint for an unfinished thought
+        # still outranks it). Cleared when the segment ends or aborts.
+        self._interrupt_fast = False
 
     # -- the E2 feedback loop (ws handler calls this when a partial returns) --
 
@@ -130,6 +145,11 @@ class AudioFront:
 
     # -- D3 duck-then-decide --------------------------------------------------
 
+    def mark_interrupt(self) -> None:
+        """P1: the duck ruling said CUT — the caller interrupted with intent,
+        so the standing segment closes on the FAST silence window."""
+        self._interrupt_fast = True
+
     def abort_segment(self) -> None:
         """Drop the open segment (the ducked speech turned out to be our own
         echo or a bare backchannel — its audio must not become a turn)."""
@@ -140,6 +160,37 @@ class AudioFront:
         self._hint_window_ms = None
         self._snap_speech_ms = None
         self._snap_ok = False
+        self._interrupt_fast = False
+
+    # -- boundary stitching (duplex-hearing 1.5) ------------------------------
+
+    def export_open(self) -> bytes | None:
+        """The OPEN segment's PCM, handed over for stitching (the caller kept
+        talking across the playback boundary) — the front resets."""
+        if not self._in_speech or not self._seg:
+            return None
+        pcm = bytes(self._seg)
+        self.abort_segment()
+        return pcm
+
+    def adopt_head(self, pcm: bytes) -> None:
+        """Continue a segment that STARTED while the agent was speaking: the
+        overlay head becomes this front's open segment, so the caller's
+        sentence reaches the ASR in ONE piece."""
+        if not pcm:
+            return
+        if self._in_speech:
+            self._seg = bytearray(pcm) + self._seg
+        else:
+            self._in_speech = True
+            self._seg = bytearray(pcm)
+            self._pre = []
+            self._sil_ms = 0.0
+            self._since_partial_ms = 0.0
+            self._hint_window_ms = None
+        self._speech_ms += (len(pcm) / 2) / self._rate * 1000.0
+        self._snap_speech_ms = None
+        self._snap_ok = False  # the head was never snapshotted — no ASR reuse
 
     # -- busy-turn stash (never drop caller speech) ---------------------------
 
@@ -205,7 +256,11 @@ class AudioFront:
         else:
             self._sil_ms += frame_ms
 
-        window = self._hint_window_ms or default_silence_ms()
+        window = (
+            self._silence_ms_override
+            or self._hint_window_ms
+            or (interrupt_fast_ms() if self._interrupt_fast else default_silence_ms())
+        )
         seg_s = (len(self._seg) / 2) / self._rate
         if self._sil_ms >= window or seg_s >= _MAX_SEGMENT_S:
             if self._speech_ms >= _MIN_SPEECH_MS:
@@ -220,4 +275,5 @@ class AudioFront:
             self._hint_window_ms = None
             self._snap_speech_ms = None
             self._snap_ok = False
+            self._interrupt_fast = False
         return actions

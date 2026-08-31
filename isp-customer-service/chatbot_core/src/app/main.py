@@ -184,6 +184,37 @@ async def simulate_plug(session_id: str, unplug: bool = False):
     return {"ok": True, "customer_id": cid, "unplug": unplug}
 
 
+@app.post("/sessions/{session_id}/simulate-reboot")
+async def simulate_reboot(session_id: str):
+    """DEMO (S6 pakibęs routeris): the tester presses the button the moment the
+    CALLER would power-cycle the router — the demo line reflects the physical
+    act (traffic returns + the port flap a real reboot produces, the witness
+    the verify step reads). Manual by design, same as simulate-plug: the human
+    plays the physical world, the agent only ever reads telemetry. NOT pressing
+    it while claiming "perkroviau" is the wrong-device rehearsal."""
+    try:
+        ms = manager.get(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=404, detail="unknown session") from None
+    cid = ms.session.state.customer_id
+    if not cid:
+        raise HTTPException(status_code=409, detail="caller not identified yet")
+    from agent.tools import simulate_router_reboot
+
+    res = await asyncio.to_thread(simulate_router_reboot, cid)
+    hub.publish(
+        session_id,
+        {
+            "type": "sim_reboot",
+            "ok": bool(res.get("success")),
+            "message": res.get("message", ""),
+        },
+    )
+    if not res.get("success"):
+        raise HTTPException(status_code=502, detail=res.get("message") or "simulation failed")
+    return {"ok": True, "customer_id": cid}
+
+
 @app.get("/sessions/{session_id}/greeting/audio")
 async def greeting_audio(session_id: str):
     """Synthesized opening line — the browser plays it right after the call
@@ -316,10 +347,12 @@ async def ws_call(ws: WebSocket, session_id: str):
     turn_task: asyncio.Task | None = None
     checkin_task: asyncio.Task | None = None
     partial_task: asyncio.Task | None = None
+    call_ended_sent = False
     # D3 duck-then-decide: the client DUCKED the agent's audio and is streaming
     # the interrupting speech — one ASR-backed decision task resolves it into
     # a real cut (cut_audio) or a false alarm (unduck).
     duck_task: asyncio.Task | None = None
+    overlay_task: asyncio.Task | None = None
     duck_active = False
     pending_final: bytes | None = None  # endpoint fired while deciding
 
@@ -378,6 +411,34 @@ async def ws_call(ws: WebSocket, session_id: str):
             ms.front = audio_front.AudioFront()
         return ms.front
 
+    def _overlay_front():
+        # Duplex-hearing: a separate state machine for speech spoken OVER the
+        # agent's voice — its segments become observations, never turns.
+        ms = manager.get(session_id)
+        if ms.overlay_front is None:
+            import os as _os
+
+            from . import audio_front
+
+            try:
+                sil = int(float(_os.environ.get("OVERLAY_SIL_MS", "4000")))
+            except ValueError:
+                sil = 4000
+            ms.overlay_front = audio_front.AudioFront(silence_ms_override=sil)
+        return ms.overlay_front
+
+    async def _run_overlay(data: bytes) -> None:
+        # Stage 1 observe-only: transcript + echo verdict to trace and the
+        # client's transcript panel; the engine sees nothing.
+        try:
+            payload = await manager.voice_overlay(session_id, data)
+            if payload:
+                await ws.send_json(payload)
+        except SessionNotFound:
+            pass
+        except Exception:  # an overlay must never touch the socket state
+            logger.debug("overlay failed", exc_info=True)
+
     async def _run_partial_front(data: bytes, front) -> None:
         # D2: partial on the OPEN segment — the endpoint window hint feeds back
         # into the front, the transcript goes to the trace + client live line.
@@ -395,17 +456,38 @@ async def ws_call(ws: WebSocket, session_id: str):
         except Exception:  # a failed partial must never touch the socket state
             logger.debug("front partial failed", exc_info=True)
 
-    def _dispatch_utterance(wav: bytes, front) -> None:
+    async def _hangup_if_complete() -> bool:
+        # Live 2026-08-27: after "Geros dienos!" (is_complete) the transport
+        # kept processing turns — every garbled farewell cut the goodbye
+        # before its "?" and the re-ask machinery politely looped "Ar dar kuo
+        # padėti?" five times. A finished call takes no more turns; the client
+        # is told once to stop the mic.
+        nonlocal call_ended_sent
+        try:
+            ms = manager.get(session_id)
+        except SessionNotFound:
+            return True
+        if not ms.session.is_complete:
+            return False
+        if not call_ended_sent:
+            call_ended_sent = True
+            with suppress(Exception):
+                await ws.send_json({"type": "call_ended"})
+        return True
+
+    def _dispatch_utterance(wav: bytes, front, hint_text: str | None = None) -> None:
         # D2/D4: one place where a server-cut utterance becomes a voice turn —
         # busy turns stash (never drop speech), and when the last partial
         # covered the whole segment its text skips the final ASR round-trip.
+        # P1: the duck ruling's ASR text rides in as hint_text — an interrupted
+        # turn used to re-run the whole ASR on the exact same audio.
         nonlocal turn_task
         _disarm_checkin()
         if turn_task is not None and not turn_task.done():
             front.stash(wav)
             return
-        hint = None
-        if front.last_reuse_ok and (partial_task is None or partial_task.done()):
+        hint = hint_text
+        if hint is None and front.last_reuse_ok and (partial_task is None or partial_task.done()):
             try:
                 hint = manager.get(session_id).last_partial or None
             except SessionNotFound:
@@ -415,6 +497,12 @@ async def ws_call(ws: WebSocket, session_id: str):
     async def _send_backchannel() -> None:
         # D5: a short "Mhm" while the caller tells a LONG story — played by the
         # client OUTSIDE the audio queue (mic keeps streaming, no barge state).
+        # Default OFF (Andrius 2026-08-26: canned instant approvals feel fake
+        # and disruptive — a real acknowledgement must be alive, not preset).
+        import os as _os
+
+        if _os.getenv("BACKCHANNEL", "off").lower() != "on":
+            return
         try:
             ms = manager.get(session_id)
         except SessionNotFound:
@@ -493,8 +581,14 @@ async def ws_call(ws: WebSocket, session_id: str):
                     ms.session.apply_delivery(sentences, int(played))
             ms.interrupt_played = None
             ms.session.tracer.emit("barge_in", played=played, late=True)
+        # P1: the interrupting segment closes on the FAST window, and the
+        # ruling's ASR feeds forward — the decision snapshot's text becomes
+        # the reuse candidate (partial case) or the transcript itself (final).
+        front.mark_interrupt()
+        if text:
+            front.snap_done()
         if is_final:
-            _dispatch_utterance(wav, front)
+            _dispatch_utterance(wav, front, hint_text=text or None)
         elif queued is not None:
             _dispatch_utterance(queued, front)
 
@@ -569,11 +663,36 @@ async def ws_call(ws: WebSocket, session_id: str):
                 data = frame["bytes"]
                 # D2 duplex: continuous PCM frames — the server-side audio
                 # front owns VAD + endpointing; the client no longer cuts turns.
+                if data[:4] == b"OVER":
+                    # Duplex-hearing: speech over the agent's voice — a
+                    # SEPARATE front segments it; one observation task at a
+                    # time (in-flight guard), never a turn.
+                    if await _hangup_if_complete():
+                        continue
+                    try:
+                        ofront = _overlay_front()
+                    except SessionNotFound:
+                        break
+                    for action, wav in ofront.on_frame(data[4:]):
+                        if action == "utterance" and (overlay_task is None or overlay_task.done()):
+                            overlay_task = asyncio.create_task(_run_overlay(wav))
+                    continue
                 if data[:4] == b"FRAM":
+                    if await _hangup_if_complete():
+                        continue
                     try:
                         front = _front()
                     except SessionNotFound:
                         break
+                    # Duplex-hearing 1.5 — boundary stitching: the caller kept
+                    # talking across the playback boundary, so the overlay's
+                    # OPEN segment becomes the head of this turn's segment and
+                    # the sentence reaches the ASR in ONE piece.
+                    ofront = manager.get(session_id).overlay_front
+                    if ofront is not None:
+                        head = ofront.export_open()
+                        if head:
+                            front.adopt_head(head)
                     for action, wav in front.on_frame(data[4:]):
                         if action == "speech":
                             _disarm_checkin()  # the caller is talking
@@ -596,6 +715,8 @@ async def ws_call(ws: WebSocket, session_id: str):
                                     pending_final = wav  # ruled on when decided
                             else:
                                 _dispatch_utterance(wav, front)
+                    continue
+                if await _hangup_if_complete():
                     continue
                 _disarm_checkin()  # the caller spoke — no nudge needed
                 if data[:4] == b"PART":

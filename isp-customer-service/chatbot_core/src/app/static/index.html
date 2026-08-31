@@ -117,6 +117,7 @@
   </label>
   <button id="dbReset" class="ghost" title="Atstatyti demo DB į pradinę būseną (tiketai, MAC, statusai)">♻️ DB</button>
   <button id="simPlug" class="ghost" disabled title="Imituoti, kad klientas įkišo kabelį į kompiuterį — linijoje atsiranda nepririštas įrenginys">🔌 Įkišti kabelį</button>
+  <button id="simReboot" class="ghost" disabled title="Imituoti, kad klientas perkrovė routerį iš maitinimo — portas mirkteli ir srautas atsistato. Nepaspaudus, o pasakius „perkroviau“, agentas matys, kad įrenginys nebuvo dingęs (perkrautas ne tas)">🔄 Perkrauti routerį</button>
   <button id="cfgToggle" class="ghost" title="Nustatymai">⚙️</button>
   <span id="sid"></span>
 </header>
@@ -249,6 +250,9 @@ async function loadDuplexCfg(){
     duplexOn = (get("DUPLEX")||"off")==="on";
     const iv = parseFloat(get("PARTIAL_INTERVAL_S")||"1.0");
     partialEveryMs = Math.max(400, (isNaN(iv)?1.0:iv)*1000);
+    // Pertraukimai valdomi iš config puslapio (serveris nugali localStorage):
+    // off = agentas visada pabaigia sakinį, kalba ant jo balso ignoruojama.
+    micCfg.bargeOn = (get("BARGE_IN")||"off")==="on";
   }catch(e){ duplexOn=false; }
 }
 
@@ -265,7 +269,7 @@ function feed(cls, text){
 }
 function setLive(on){
   $("statusDot").className="dot"+(on?" live":"");
-  for(const id of ["stop","send","text","mic","simPlug"]) $(id).disabled=!on;
+  for(const id of ["stop","send","text","mic","simPlug","simReboot"]) $(id).disabled=!on;
   $("start").disabled=on; $("phone").disabled=on;
 }
 function fmtUsd(v){ return "$"+v.toFixed(4); }
@@ -275,6 +279,17 @@ function onEvent(e){
   switch(e.type){
     case "user_turn": addMsg("user", e.text); break;
     case "agent_reply": addMsg("agent", e.text); break;
+    case "delivery": { // D1: pertraukta — pažymim, ko klientas NEgirdėjo
+      const msgs=$("chat").querySelectorAll(".msg.agent");
+      const last=msgs[msgs.length-1];
+      if(last && e.unheard){
+        const cut=document.createElement("div");
+        cut.style.cssText="opacity:.5;font-size:12px;font-style:italic";
+        cut.textContent=`⏹ nutraukta — klientas negirdėjo: "${e.unheard}"`;
+        last.appendChild(cut);
+      }
+      break;
+    }
     case "asr":
       if(e.dropped) addMsg("note", `🎧 atmesta kaip triukšmas: "${e.raw}" (${e.ms} ms)`);
       else if(e.raw!==e.transcript) addMsg("note", `🎧 girdėta: "${e.raw}" → "${e.transcript}"`);
@@ -364,6 +379,11 @@ $("start").onclick = async () => {
         return;
       }
       if(e.type==="turn_start"){ turnPlayed=0; return; } // D1: skaitiklis per turn'ą
+      if(e.type==="call_ended"){ // pokalbis baigtas — mikrofonas nebeklauso
+        stopMic();
+        addMsg("note","📞 pokalbis baigtas");
+        return;
+      }
       if(e.type==="cut_audio"){ // D3: serveris patvirtino tikrą pertraukimą
         stopAudio(); setDuck(false);
         if(duckTimer){ clearTimeout(duckTimer); duckTimer=null; }
@@ -381,6 +401,11 @@ $("start").onclick = async () => {
           const a=new Audio("data:audio/mpeg;base64,"+e.audio);
           a.volume=0.9; a.play().catch(()=>{});
         }catch(err){}
+        return;
+      }
+      if(e.type==="overlay"){ // duplex-hearing: kalba agentui grojant
+        const kind = e.echo ? "🔁 aidas" : "🎙 girdėta agentui kalbant";
+        addMsg("note", `${kind} (sim ${e.sim}): "${e.text}"`);
         return;
       }
       if(e.type==="partial"){ // duplex E1: gyvas dalinis transkriptas
@@ -433,6 +458,16 @@ $("simPlug").onclick = async () => {
   if(r && r.ok){ addMsg("note","🔌 kabelis įkištas — linijoje atsiranda kompiuteris"); }
   else if(r && r.status===409){ addMsg("note","🔌 klientas dar neidentifikuotas — palaukite adreso patvirtinimo"); }
   else{ addMsg("note","🔌 imitacija nepavyko"+(r?` (${r.status})`:"")); }
+};
+// DEMO (S6): the moment the caller pulls the router's power lead — the port
+// flaps and traffic returns. NOT pressing it while saying "perkroviau" plays
+// the wrong-device case (agent sees the device never dropped off the line).
+$("simReboot").onclick = async () => {
+  if(!sid) return;
+  const r = await fetch(`/sessions/${sid}/simulate-reboot`, {method:"POST"}).catch(()=>null);
+  if(r && r.ok){ addMsg("note","🔄 routeris perkrautas — portas mirktelėjo, srautas atsistato"); }
+  else if(r && r.status===409){ addMsg("note","🔄 klientas dar neidentifikuotas — palaukite adreso patvirtinimo"); }
+  else{ addMsg("note","🔄 imitacija nepavyko"+(r?` (${r.status})`:"")); }
 };
 $("send").onclick = sendText;
 $("text").addEventListener("keydown", e=>{ if(e.key==="Enter") sendText(); });
@@ -512,7 +547,13 @@ async function startMic(){
       // pliūpsnis ("aha", "taip") — backchannel, grojame toliau; kalba ilgiau
       // už slenkstį — stabdome grojimą, pertraukiančioji kalba tampa naujo
       // atsakymo pradžia (nė vienas žodis nedingsta).
-      if(!micCfg.bargeOn){ speaking=false; utter=[]; updPre(); return; }
+      if(!micCfg.bargeOn){
+        // Duplex-hearing 1 žingsnis: kalba AGENTUI GROJANT nebemetama — teka
+        // "OVER" kadrais į serverį (stebėjimui: ASR + aido filtras + trace).
+        // Agentas NEnutildomas, turn'ai nekuriami.
+        if(duplexOn && ws && ws.readyState===1) sendFrame(ch, "OVER");
+        speaking=false; utter=[]; updPre(); return;
+      }
       const bthr = micCfg.threshold*1.6;   // aukštesnis slenkstis prieš aidą
       // D3 duck-then-decide (duplex): jau pritildyta — kalba teka kadrais,
       // kol serveris nuspręs (cut_audio arba unduck).
@@ -599,9 +640,10 @@ function sendUtterance(){
   partialAtMs=0; dynSilence=null; turnPlayed=0; $("partialLine").textContent="";
   addMsg("note","🎤 siunčiama…");
 }
-/* D2 duplex: vienas PCM kadras su "FRAM" antrašte — serverio garso frontas
-   iš jų pats lipdo frazes (VAD + endpointing serveryje). */
-function sendFrame(ch){
+/* D2 duplex: vienas PCM kadras su antrašte — serverio garso frontas iš jų
+   pats lipdo frazes. "FRAM" = normali kalba; "OVER" = kalba AGENTUI GROJANT
+   (duplex-hearing 1 žingsnis: stebėjimui, ne turn'ams). */
+function sendFrame(ch, tag){
   const pcm=new Int16Array(ch.length);
   for(let i=0;i<ch.length;i++){
     const s=Math.max(-1,Math.min(1,ch[i]));
@@ -609,7 +651,8 @@ function sendFrame(ch){
   }
   const wav=new Uint8Array(wavEncode(pcm, sampleRate));
   const framed=new Uint8Array(4+wav.length);
-  framed[0]=0x46; framed[1]=0x52; framed[2]=0x41; framed[3]=0x4D; // "FRAM"
+  const t=tag||"FRAM";
+  for(let i=0;i<4;i++) framed[i]=t.charCodeAt(i);
   framed.set(wav,4);
   ws.send(framed.buffer);
 }
