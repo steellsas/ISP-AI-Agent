@@ -11,6 +11,13 @@
 #   grįžta srautas IR matyti, kad įrenginys buvo dingęs (port flap = perkrovimo
 #   liudininkas). Neatsistačius po perkrovimo — kaip miręs routeris: tiketas su
 #   prierašu "perkrauta, neatsistatė".
+#
+# LAUKIA TAISYMŲ (gyvas 2026-08-31 skambutis; sąrašas docs/VOICE_PLAN.md
+# "S6 TAISYMAI"): 1) rh_scope pirmas žingsnis (instrukcija ėjo prieš masto
+# klausimą), 2) svetimų raktų (lights) konfliktas nebeturi kilpuoti,
+# 3) rh_check atsakymas per pack'o answers (ne detect_restored — "dega"
+# klaidingai == TAIP), 4) TAIP uždaro tik kai telemetrija sutinka
+# (srautas grįžo ARBA flap matytas), kitaip retry.
 verdict: router_hung
 meta:
   pavadinimas: "Nėra interneto — routeris matomas, bet srautas nevaikšto (pakibęs routeris)"

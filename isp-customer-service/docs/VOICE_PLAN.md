@@ -119,6 +119,36 @@ porto mirktelėjimo liudininkas `port_flap_recent`), patikra
 mygtukas „🔄 Perkrauti routerį" (/simulate-reboot, klientas CUST112),
 auksinis S6_router_hung_reboot. Eval 44/44.
 
+#### S6 TAISYMAI (iš gyvo 2026-08-31 skambučio 135056 — aptarta, dar NEDARYTA)
+
+Skambutis atskleidė 4 ydas; visos KETURIOS — bendros mechanikos, ne šio
+pack'o turinio (svarbi pamoka universalumui):
+
+1. EILIŠKUMAS: pirmo diagnostikos turn'o metu naratorius perskaitė žingsnio
+   hint'ą (perkrovimo instrukciją) vietoj solverio KLAUSK DABAR (fail_scope)
+   — instrukcija išėjo PRIEŠ masto klausimą. Fix: pack'e pirmas žingsnis
+   `rh_scope` (kaip kliento_puse `cs_scope`) — pradinis hint'as sutampa su
+   evidence klausimu; sprendimai sync'ina į rh_reboot kaip dabar.
+2. KONFLIKTO KILPA: „Ned." + „dega, nemirksi" sukūrė `lights` faktų
+   konfliktą (bendras žodynas), kurio tikslinimas prarijo aiškų NE
+   („Pabandžiau, nėra interneto"). Fix: konflikto clarify tik dėl raktų,
+   kuriuos AKTYVAUS pack'o evidence deklaruoja; kiti — tyliai į žurnalą.
+3. KLAIDINGAS TAIP: `detect_restored("Visos lemputės dega, bet jos
+   nemirksi") == YES` (žodis „dega") → pokalbis uždarytas kaip išspręstas.
+   Fix: rh_check atsakymą skaityti per pack'o `answers:` aprašus
+   (keyword + klasifikatorius, kaip CONFIRM žingsniuose), ne per bendrą
+   detect_restored.
+4. TELEMETRIJA = TIESOS ŠALTINIS (Andriaus pagrindinis punktas): kliento
+   TAIP uždaro tik kai telemetrija sutinka — srautas grįžo ARBA perkrovimas
+   matytas (port flap). Kitaip: „sistemoje nesimato, kad routeris būtų
+   persikrovęs — ar tikrai iš paties routerio ištraukėte?" → retry kelias.
+   Kraštas (dar NEatsakyta Andriaus): TAIP + flap matytas + srautas dar
+   negrįžęs — siūlymas uždaryti pagal žodį (žodis + liudininkas pakanka;
+   srautas gali vėluoti), bet laukiama sprendimo diskusijoje.
+Smulku (stebėti): overlay pagavo agento aidą „Dabar svarbu sužinoti." kaip
+who=klientas (trumpo fragmento token_overlap žemas) — netrukdė, bet žymė
+neteisinga.
+
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 
 - TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO
