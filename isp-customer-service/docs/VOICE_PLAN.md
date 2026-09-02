@@ -149,6 +149,26 @@ Smulku (stebėti): overlay pagavo agento aidą „Dabar svarbu sužinoti." kaip
 who=klientas (trumpo fragmento token_overlap žemas) — netrukdė, bet žymė
 neteisinga.
 
+#### Darbo seka po etalono diskusijos (sutarta 2026-08-31/09-01, žr. docs/DIALOGO_ETALONAS.md)
+
+Svarbiausia dabar — VARIKLIS: ar viskas eina pagal instrukcijas (Andrius).
+Tikros linijos demo nedarome; du takeliai + juostos siaurinimo jungiklis —
+pasiruošimas vėlesnei linijos bangai.
+
+1. S6 variklio ydos (šaka fix/s6-engine-lessons) + gyvas patikros skambutis.
+2. Turn'o gramatika + `reiskia:` laukas + dviejų pusių išvados forma +
+   frazynas (vardas 3 momentai, „Malonu, X") + DI prisistatymas + sutikimo
+   įliejimas (be atskiro „ar patogu?").
+3. Anamnezės perkėlimas: atidarymo klausimas išimamas, pack'ai gauna savo
+   anamnezės klausimus (D klausimyno laukas), capture-first lieka.
+4. Pažingsninis testavimas pagal etaloną (prisistatymas → identifikacija →
+   analizė → sprendimas → tiketas/užbaigimas) + testų žemėlapio valymas
+   sluoksnis po sluoksnio (docs/TESTU_ZEMELAPIS.md).
+5. Du takeliai (agento TTS įrašymas šalia kliento WAV) + 8 kHz juostos
+   jungiklis STT stresui.
+6. Vėliau: modelių reakcijos testai, latencijos A/B, linijos banga
+   (Twilio/Telnyx adapteris — architektūra jau tinkama).
+
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 
 - TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO
