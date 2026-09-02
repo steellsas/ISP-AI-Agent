@@ -228,6 +228,50 @@ def step_options(verdict: str | None, step_id: str | None) -> dict[str, str] | N
     return None
 
 
+def problem_entry(problem: str | None) -> dict[str, Any]:
+    """The classification-catalog entry for a PROBLEM type (problems: section)."""
+    if not problem:
+        return {}
+    entry = (_doc().get("problems") or {}).get(problem)
+    return entry if isinstance(entry, dict) else {}
+
+
+def problem_politika(problem: str | None) -> str:
+    """The competence policy for a problem type: sprendzia (default) |
+    registruoja | nelieciam | pokalbis. Files declare WHAT the agent solves
+    (onboarding C blokas); code only enforces the behaviour per policy."""
+    v = problem_entry(problem).get("politika")
+    return str(v) if v in ("sprendzia", "registruoja", "nelieciam", "pokalbis") else "sprendzia"
+
+
+def problem_atsakymas(problem: str | None) -> str | None:
+    """The scripted boundary reply for a nelieciam/pokalbis type."""
+    v = problem_entry(problem).get("atsakymas")
+    return str(v) if v else None
+
+
+def problem_patvirtinimas(problem: str | None) -> str | None:
+    """The explicit-confirmation question for a medium-confidence LLM guess."""
+    v = problem_entry(problem).get("patvirtinimas")
+    return str(v) if v else None
+
+
+def problem_catalog_options() -> dict[str, str]:
+    """{type: human meaning} for the L2 LLM classifier — built from each
+    entry's `aprasymas` (+ a couple of `pavyzdziai`). Only entries WITH an
+    aprasymas participate (a triggers-only legacy entry stays L1-only)."""
+    out: dict[str, str] = {}
+    for name, entry in (_doc().get("problems") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        desc = entry.get("aprasymas")
+        if not desc:
+            continue
+        pvz = [str(x) for x in (entry.get("pavyzdziai") or [])[:2]]
+        out[str(name)] = str(desc) + (f" (pvz.: {'; '.join(pvz)})" if pvz else "")
+    return out
+
+
 def playbook(verdict: str | None) -> str | None:
     """The RAG doc holding this fault's step wording."""
     if not verdict:

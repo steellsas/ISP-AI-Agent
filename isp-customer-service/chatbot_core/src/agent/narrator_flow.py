@@ -923,12 +923,13 @@ def state_facts_block(engine) -> str | None:
         elif idd["kind"] == "problem_gate":
             facts.append(
                 "- PROBLEMOS VARTAI: klientas dar nepasakė aiškios MŪSŲ srities "
-                "problemos. Išsiaiškink, dėl kokios paslaugos skambina — internetas, "
-                "TV, telefonas ar sąskaita. Jei tema ne mūsų (pvz. „vaikai neklauso“) — "
-                "mandagiai pasakyk, kad čia interneto tiekėjo pagalba, ir paklausk, ar "
-                "yra ryšio problema. Jei klientas KLAUSIA — atsakyk vienu sakiniu ir "
-                "vėl paklausk problemos. NEKLAUSK adreso ir nieko netikrink. "
-                f"(Atsarginė: „{idd['fallback']}“)"
+                "problemos. TAVO KOMPETENCIJA: sprendi TIK interneto ir televizijos "
+                "techninius gedimus — sąskaitų, sutarčių ar kitų klausimų NESPRENDI "
+                "ir tai pasakai atvirai. Išsiaiškink, ar klientas turi interneto ar "
+                "TV bėdą. Jei tema ne tavo (sąskaita, „vaikai neklauso“) — mandagiai "
+                "įvardink ribą ir paklausk, ar yra ryšio ar TV problema. Jei klientas "
+                "KLAUSIA — atsakyk vienu sakiniu ir vėl paklausk problemos. NEKLAUSK "
+                f"adreso ir nieko netikrink. (Atsarginė: „{idd['fallback']}“)"
             )
         elif idd["kind"] == "anamnesis_followup":
             facts.append(

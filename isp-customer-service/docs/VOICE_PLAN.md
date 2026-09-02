@@ -155,6 +155,20 @@ Svarbiausia dabar — VARIKLIS: ar viskas eina pagal instrukcijas (Andrius).
 Tikros linijos demo nedarome; du takeliai + juostos siaurinimo jungiklis —
 pasiruošimas vėlesnei linijos bangai.
 
+2026-09-02: eiga perrikiuota PAGAL AGENTO FLOW (prisistatymas → problemos
+išsiaiškinimas → analizė su identifikacija → hipotezė → sprendimas) —
+kiekvienas etapas užbaigiamas pilnai. FLOW-2 KLASIFIKACIJOS BANGA PADARYTA
+(šaka fix/s6-engine-lessons): katalogas faults.yaml `problems:` (aprasymas/
+pavyzdziai/politika/atsakymas/patvirtinimas; kompetencija — TIK interneto ir
+TV techniniai gedimai), kaskada L1 trigger + L2 LLM iš konteksto
+(classify_problem_llm), patvirtinimo laiptai (0.8 commit / 0.5 klausimas
+„Ar gerai suprantu…?"), politikos sprendzia/nelieciam/pokalbis (sąskaitos —
+riba be identifikacijos; buvęs `billing` tipas → `saskaitos` nelieciam;
+skolos VERDIKTAS telemetrijoje lieka), DI atskleidimas + kompetencija
+pasisveikinime ir personoje, „neaiškaus gedimo" tiketo tipas (ticket_need be
+verdikto), L1 neigimo sargas („bėdų neturiu"). Auksiniai G1 (kontekstas be
+trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
+
 1. S6 variklio ydos (šaka fix/s6-engine-lessons) + gyvas patikros skambutis.
 2. Turn'o gramatika + `reiskia:` laukas + dviejų pusių išvados forma +
    frazynas (vardas 3 momentai, „Malonu, X") + DI prisistatymas + sutikimo

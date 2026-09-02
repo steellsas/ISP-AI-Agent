@@ -152,7 +152,7 @@ def extract_address(
 _PROBLEM_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("internet_slow", ("lėtas", "lėtai", "lėta", "stringa", "lūžinėja", "buferiuoja")),
     ("tv", ("televizij", "televizor", " tv", "kanalai", "kanalų")),
-    ("billing", ("sąskait", "mokė", "skola", "kaina", "tarif")),
+    ("saskaitos", ("sąskait", "saskait", "mokė", "skola", "kaina", "tarif")),
     ("internet_down", ("internet", "ryši", "ryšys", "neveikia", "nėra interneto", "wifi", "wi-fi")),
 )
 
@@ -163,6 +163,13 @@ def classify_problem(text: str) -> str | None:
     Prefers the DECLARATIVE triggers in `knowledge/faults.yaml` — so adding a problem
     ("lėtai veikia") is a file edit — and falls back to the table below when the manifest
     does not match or cannot be read."""
+    low = f" {(text or '').lower()} "
+    # Negation guard FIRST — before EITHER trigger layer (2026-09-02, live G2:
+    # "interneto bėdų NETURIU, tik dėl sąskaitos" committed internet_down via
+    # the bare trigger and the agent asked "kada dingo?"): a denied problem is
+    # not a problem statement.
+    if any(m in low for m in _NO_PROBLEM_MARKS):
+        return None
     try:
         from .faults import classify_purpose
 
@@ -171,11 +178,56 @@ def classify_problem(text: str) -> str | None:
             return declared
     except Exception:  # pragma: no cover - defensive; never break extraction
         pass
-    low = f" {(text or '').lower()} "
     for problem, keywords in _PROBLEM_KEYWORDS:
         if any(kw in low for kw in keywords):
             return problem
     return None
+
+
+_NO_PROBLEM_MARKS = (
+    "bėdų neturiu",
+    "bedu neturiu",
+    "problemų neturiu",
+    "problemu neturiu",
+    "neturiu bėdų",
+    "neturiu bedu",
+    "neturiu problemų",
+    "neturiu problemu",
+    "bėdų nėra",
+    "bedu nera",
+    "viskas veikia",
+)
+
+
+def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[str | None, float]:
+    """L2 of the classification cascade (DIALOGO_ETALONAS, 2026-09-02): when
+    the trigger layer catches nothing, the LLM reads the CONTEXT against the
+    file-declared catalog (aprasymas + pavyzdziai per type) — "niekas man
+    nekrauna" is internet_down without any trigger enumeration. Returns
+    (type, confidence) or (None, 0.0); the CALLER decides what a given
+    confidence earns (commit / explicit confirm / keep asking). Fail-soft:
+    any error is (None, 0.0) — the gate ladder continues as before."""
+    if not text or not text.strip():
+        return None, 0.0
+    try:
+        from .classifier import classify_step
+        from .faults import problem_catalog_options
+
+        options = problem_catalog_options()
+        if not options:
+            return None, 0.0
+        obs = classify_step(
+            "Kodėl klientas skambina į interneto/TV techninės pagalbos liniją? "
+            "Priskirk skambučio tipą pagal aprašymus.",
+            text,
+            options,
+            model=model,
+        )
+        if obs is None or not obs.is_answer or obs.label not in options:
+            return None, 0.0
+        return str(obs.label), float(obs.confidence or 0.0)
+    except Exception:  # pragma: no cover - defensive; the gate keeps working
+        return None, 0.0
 
 
 # --- Symptom extraction (A3) -------------------------------------------------
