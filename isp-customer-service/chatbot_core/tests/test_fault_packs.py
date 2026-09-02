@@ -957,12 +957,16 @@ class TestPrimaryGoalFrozen:
         assert s.problem_type == "internet_down"
         s.customer_id = "CUST009"
         s.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
-        agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
+        agent._prefill_slots_from_text("O dar televizorius man blogai rodo")
         assert s.problem_type == "internet_down"  # frozen
-        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "billing"
+        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "tv"
         # dedupe: the same type mentioned again does not duplicate
-        agent._prefill_slots_from_text("Dėl sąskaitos dar")
+        agent._prefill_slots_from_text("Tas televizorius vis dar blogai")
         assert len(s.secondary_problems) == 1
+        # Competence policy (2026-09-02): a nelieciam type (sąskaitos) never
+        # becomes a secondary TECH problem — it is not ours to put on a ticket.
+        agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
+        assert all(x["tipas"] != "saskaitos" for x in s.secondary_problems)
 
     def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
         from agent.react_agent import ReactAgent
@@ -1085,8 +1089,8 @@ class TestOpenerAndClosingHygiene:
         agent._ticket_stage = None
         agent._prefill_slots_from_text("Žemės gatvės")  # 2 words: a garble
         assert s.secondary_problems == []
-        agent._prefill_slots_from_text("O dar sąskaitos klausimas turiu")
-        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "billing"
+        agent._prefill_slots_from_text("O dar televizorius man blogai rodo")
+        assert s.secondary_problems and s.secondary_problems[0]["tipas"] == "tv"
 
 
 class TestLiveCall0821Fixes:

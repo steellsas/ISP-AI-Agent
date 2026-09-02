@@ -62,7 +62,12 @@ def ticket_need(engine: Any) -> str:
     need = fault_need(cause) or TICKET_NEED_LT.get(cause)  # file first, code fallback
     if need:
         return need
-    return DIAGNOSIS_LT.get(cause, cause or "reikalinga specialisto pagalba")
+    # No verdict at all — an in-scope fault the agent's knowledge cannot
+    # resolve. HONEST ticket type (Andrius 2026-09-02): "neaiškus gedimas" —
+    # feeds the analysis/improvement loop instead of an improvised cause.
+    if not cause:
+        return "gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei"
+    return DIAGNOSIS_LT.get(cause, cause)
 
 
 def wants_to_keep_solving(engine: Any, user_input: str | None) -> bool:

@@ -115,8 +115,8 @@ class TestClassifyProblem:
             ("internetas labai lėtas", "internet_slow"),
             ("viskas stringa ir buferiuoja", "internet_slow"),
             ("neveikia televizija", "tv"),
-            ("klausimas dėl sąskaitos", "billing"),
-            ("noriu sumokėti", "billing"),
+            ("klausimas dėl sąskaitos", "saskaitos"),
+            ("noriu sumokėti", "saskaitos"),
             ("labas, kaip sekasi", None),
         ],
     )

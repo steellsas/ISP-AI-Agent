@@ -5,8 +5,10 @@
 # LLM generates troubleshooting - we only need static messages
 # =============================================================================
 
-# Greeting (first message - hardcoded, no LLM)
-greeting: "Labas! Čia {company_name} klientų aptarnavimas. Kuo galiu padėti?"
+# Greeting (first message - hardcoded, no LLM). DI atskleidimas + kompetencija
+# (DIALOGO_ETALONAS taisyklė #1, Andrius 2026-09-01): agentas prisistato, kad
+# yra DI asistentas, ir įvardija sritį — interneto ir TV gedimai.
+greeting: "Labas! Čia {company_name}. Esu dirbtinio intelekto asistentas — padedu dėl interneto ir televizijos gedimų. Kuo galiu padėti?"
 
 # Error messages
 error: "Atsiprašau, įvyko techninė klaida. Pabandykite dar kartą."

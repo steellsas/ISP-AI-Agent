@@ -25,6 +25,48 @@
    }
   },
   {
+   "id": "G1_context_classify_no_triggers",
+   "phone": "+37060020101",
+   "desc": "L2 klasifikacija iš KONTEKSTO: 'niekas nekrauna' be trigger žodžių -> internet_down (commit arba patvirtinimas), toliau normalus billing-inform kelias",
+   "turns": [
+    "Laba diena, niekas man nekrauna nuo pat ryto, nei telefone, nei kompiuteryje",
+    "Nuo ryto neveikia, niekas nenutiko",
+    "Vakar vakare dar veikė",
+    "Taip",
+    "Petras, nuomininkas",
+    "Aišku, ačiū"
+   ],
+   "expect": {
+    "verdict_in": "billing_suspended",
+    "disposition": "inform",
+    "reply_none": [
+     "no_problem_goodbye"
+    ]
+   }
+  },
+  {
+   "id": "G2_boundary_saskaitos",
+   "phone": "+37000000000",
+   "desc": "Kompetencijų riba: sąskaitų klausimas -> agentas įvardija ribą, NEidentifikuoja, neklausia adreso, mandagiai baigia",
+   "turns": [
+    "Laba diena, norėjau paklausti, kodėl man tokia didelė sąskaita šį mėnesį",
+    "Ne, interneto bėdų neturiu, tik dėl sąskaitos",
+    "Gerai, ačiū, viso gero"
+   ],
+   "expect": {
+    "identified": false,
+    "disposition": "any",
+    "reply_any": [
+     "techninės pagalbos",
+     "sąskait"
+    ],
+    "reply_none": [
+     "skambinate dėl",
+     "adres"
+    ]
+   }
+  },
+  {
    "id": "S6_router_hung_reboot",
    "phone": "+37060020112",
    "desc": "Pakibęs routeris (srauto nėra, MAC/DHCP ok) — vedamas perkrovimas iš maitinimo, išsprendžiama telefonu BE tiketo",

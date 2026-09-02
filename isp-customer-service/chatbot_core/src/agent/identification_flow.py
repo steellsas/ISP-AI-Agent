@@ -99,9 +99,18 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # even if address extraction fails. A revisable hypothesis: a clearer later
     # statement overrides (docs/pokalbio_variklis.md §12.2).
     try:
+        from .faults import problem_politika
         from .nlu import classify_problem, extract_symptoms
 
         problem = classify_problem(text)
+        # Competence policy (2026-09-02): nelieciam/pokalbis types NEVER become
+        # the call's problem_type — the gate answers with the declared boundary
+        # phrase instead of opening identification ("kodėl tokia sąskaita?" is
+        # not a fault). Stashed one-shot for the reply layer.
+        if problem and problem_politika(problem) in ("nelieciam", "pokalbis"):
+            if s.problem_type is None:
+                engine._boundary_problem = problem
+            problem = None
         if problem:
             # A (Andrius 2026-08-21): the PRIMARY goal is the caller's stated
             # call reason and NEVER flips mid-call (an STT garble switched it
@@ -307,6 +316,94 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine._reopen_note = True
 
 
+def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
+    """Problem GATE with the classification cascade (DIALOGO_ETALONAS,
+    2026-09-02). No identification until an in-scope problem is reached:
+
+      1. a pending explicit-confirm guess: „taip" commits (problem_type set,
+         caller falls through to the intake ladder THIS turn);
+      2. an L1-recognized boundary type (nelieciam/pokalbis) gets its
+         file-declared `atsakymas` — competence stated, no identification;
+      3. L2: the LLM reads the CONTEXT against the catalog — sprendzia with
+         high confidence commits (implicit confirmation), medium asks the
+         type's `patvirtinimas` question, a boundary type answers its phrase;
+      4. otherwise the old ladder: scripted ask x2, narrator directive, and
+         only after ~5 fruitless exchanges the polite close. Reaching a
+         problem at ANY rung reopens the flow — the counter never kills a
+         conversation that is moving forward."""
+    import os as _os
+
+    from .faults import problem_atsakymas, problem_patvirtinimas, problem_politika
+    from .identification import phrase
+    from .resolution import DETECTORS, is_real_question
+
+    # 1) the caller answers last turn's "Ar gerai suprantu — …?"
+    pg = getattr(engine, "_problem_guess", None)
+    if pg is not None:
+        engine._problem_guess = None
+        if DETECTORS["yes_no"](user_input) == "yes":
+            s.problem_type = pg
+            engine.tracer.emit(
+                "decision", intent="problem_gate", action="guess_confirmed", value=pg
+            )
+            return None  # committed — the intake ladder continues this turn
+        # a "ne"/correction falls through; a NAMED problem was already read
+        # by the ingest (then this gate is not even entered)
+    # 2) boundary type recognized by the trigger layer this turn
+    bp = getattr(engine, "_boundary_problem", None)
+    if bp is not None:
+        engine._boundary_problem = None
+        engine._ask_problem_count = getattr(engine, "_ask_problem_count", 0) + 1
+        engine.tracer.emit("decision", intent="problem_gate", action="boundary", value=bp)
+        return problem_atsakymas(bp) or phrase("ask_problem")
+    p_asks = getattr(engine, "_ask_problem_count", 0)
+    engine._ask_problem_count = p_asks + 1
+    asking = "?" in user_input or is_real_question(user_input)
+    if p_asks >= 4:
+        s.case_closed = True
+        s.closed_reason = "declined"
+        engine.tracer.emit("decision", intent="problem_gate", action="close")
+        return phrase("no_problem_goodbye")
+    # 3) L2 — context classification against the file catalog
+    if _os.getenv("CLASSIFIER", "on").lower() != "off":
+        from .nlu import classify_problem_llm
+
+        label, conf = classify_problem_llm(user_input, model=engine.config.model)
+        if label:
+            pol = problem_politika(label)
+            engine.tracer.emit(
+                "decision",
+                intent="problem_gate",
+                action="llm_guess",
+                value=label,
+                reason=f"{pol}:{conf:.2f}",
+            )
+            if pol in ("sprendzia", "registruoja"):
+                if conf >= 0.8:
+                    s.problem_type = label  # implicit confirmation — the
+                    return None  # narrator acknowledges it naturally
+                if conf >= 0.5:
+                    engine._problem_guess = label
+                    q = problem_patvirtinimas(label)
+                    if q:
+                        return q
+            elif conf >= 0.5:  # nelieciam / pokalbis from context
+                return problem_atsakymas(label) or phrase("ask_problem")
+    # 4) the pre-cascade ladder
+    if p_asks < 2 and not asking:
+        return phrase("ask_problem")
+    if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
+        engine._ident_directive = {
+            "kind": "problem_gate",
+            "adresas": None,
+            "fallback": phrase("ask_problem"),
+        }
+        return None  # the narrator words it (isolated directive turn)
+    if asking:
+        return None  # scripted mode: a question goes to the LLM
+    return phrase("ask_problem")
+
+
 def identification_scripted_reply(engine: Any, user_input: str | None) -> str | None:
     """Deterministic identification-ladder replies (2026-07-31, IDENTIFICATION
     ONLY): the mechanical turns are COMPOSED by the engine from the phrases in
@@ -414,36 +511,16 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
                 return phrase("ask_problem")
             # Live 2026-08-21: a garbled opener ("Atsikai, daro") fell to the
             # LLM, which offered the address before any problem was stated.
-            # Ask for the problem (scripted, at most twice), then let go.
-            p_asks = getattr(engine, "_ask_problem_count", 0)
+            # 2026-09-02: the gate grew the L2 classification ladder — see
+            # _problem_gate_reply. A commit there (LLM guess accepted) falls
+            # THROUGH to the intake ladder the same turn: reaching a problem
+            # never ends the call, only never reaching one does.
             _has_addr0 = bool(s.profile.street.value or s.profile.house.value)
             if not _has_addr0:
-                engine._ask_problem_count = p_asks + 1
-                asking = "?" in user_input or is_real_question(user_input)
-                # Problem GATE (Andrius 2026-08-21): no identification at all
-                # until a clear, in-scope problem is stated. Scripted ask x2
-                # (a question goes to the narrator), narrator directive x2
-                # ("vaikai neklauso" -> not our area, ask about connectivity),
-                # then a polite close — never an address hunt.
-                import os as _os
-
-                if p_asks >= 4:
-                    s.case_closed = True
-                    s.closed_reason = "declined"
-                    engine.tracer.emit("decision", intent="problem_gate", action="close")
-                    return phrase("no_problem_goodbye")
-                if p_asks < 2 and not asking:
-                    return phrase("ask_problem")
-                if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
-                    engine._ident_directive = {
-                        "kind": "problem_gate",
-                        "adresas": None,
-                        "fallback": phrase("ask_problem"),
-                    }
-                    return None  # the narrator words it (isolated directive turn)
-                if asking:
-                    return None  # scripted mode: a question goes to the LLM
-                return phrase("ask_problem")
+                reply = _problem_gate_reply(engine, s, user_input)
+                if s.problem_type is None:
+                    return reply
+                # gate commit — continue to anamnesis/address this turn
         p = s.profile
         has_addr = bool(p.street.value or p.house.value)
         if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:

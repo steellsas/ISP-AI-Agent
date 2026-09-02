@@ -17,8 +17,34 @@
 # bind/ticket/close. Knowledge says what to do; code guarantees what cannot be done.
 # A missing/broken entry is fail-soft — the engine falls back to its in-code defaults.
 
+# KLASIFIKACIJOS KATALOGAS (2026-09-02, DIALOGO_ETALONAS diskusija).
+# Kaskada: L1 — `triggers` (greitoji deterministinė juosta dažniausiems;
+# į begalybę NEBEPILDOMA); L2 — LLM renkasi tipą iš `aprasymas`+`pavyzdziai`
+# KONTEKSTO, kai trigger nepagavo (problemos vartuose). Naujo tipo įdiegimas
+# = vienas šio failo blokas, jokių formuluočių enumeracijų.
+#
+#   politika:  sprendzia   - pilnas gedimo kelias (identifikacija, telemetrija…)
+#              registruoja - identifikacija + tiketas BE diagnostikos (dar nenaudojama)
+#              nelieciam   - ne agento kompetencija: `atsakymas` frazė, JOKIOS
+#                            identifikacijos, problem_type nenustatomas
+#              pokalbis    - socialinis skambutis: šiltai atsakyti, įvardinti
+#                            sritį, be identifikacijos
+#   patvirtinimas: tiesioginio patvirtinimo frazė, kai LLM spėja iš konteksto
+#              su vidutiniu pasitikėjimu („Ar gerai suprantu — …?").
+#
+# KOMPETENCIJA (Andrius 2026-09-02): agentas — IT pagalbos asistentas,
+# sprendžia TIK interneto ir TV techninius gedimus. Sąskaitų/paslaugų
+# klausimais neatsakinėja (tai NE gedimo diagnozė: skolos VERDIKTAS
+# telemetrijoje lieka — „neveikia internetas" dėl skolos toliau informuojamas).
+# Neaiški, bet mūsų srities bėda („vienas kanalas nerodo", „negaliu žaisti
+# per internetą") — NE atmetama: klasifikuojama į artimiausią tipą ir
+# gilinamasi klausimais.
 problems:
   internet_slow:
+    aprasymas: "internetas veikia, bet lėtai / stringa / trūkinėja (puslapiai krauna ilgai, video buferiuoja, žaidimai laguoja)"
+    pavyzdziai: ["baisiai lėtas internetas", "video vis stringa", "žaidimai laguoja, pingas didžiulis"]
+    politika: sprendzia
+    patvirtinimas: "Ar gerai suprantu — internetas veikia, bet per lėtai?"
     triggers:
     - lėtas
     - lėtai
@@ -27,20 +53,21 @@ problems:
     - lūžinėja
     - buferiuoja
   tv:
+    aprasymas: "televizijos gedimas — nerodo TV ar atskiri kanalai, stringa vaizdas, nėra signalo"
+    pavyzdziai: ["nerodo televizorius", "dingo kanalai", "vienas kanalas nerodo, kiti veikia"]
+    politika: sprendzia
+    patvirtinimas: "Ar gerai suprantu — bėda su televizija?"
     triggers:
     - televizij
     - televizor
     - ' tv'
     - kanalai
     - kanalų
-  billing:
-    triggers:
-    - sąskait
-    - mokė
-    - skola
-    - kaina
-    - tarif
   internet_down:
+    aprasymas: "dingo/neveikia interneto ryšys — visai nekrauna, neprisijungia, nėra ryšio (bet kuriame įrenginyje ar visuose)"
+    pavyzdziai: ["dingo internetas", "niekas man nekrauna nuo ryto", "negaliu prisijungti, vaikai pyksta"]
+    politika: sprendzia
+    patvirtinimas: "Ar gerai suprantu — dingo internetas?"
     triggers:
     - internet
     - ryši
@@ -49,6 +76,28 @@ problems:
     - nėra interneto
     - wifi
     - wi-fi
+  saskaitos:
+    aprasymas: "sąskaitų, mokėjimų, kainų, tarifų ar sutarties/plano klausimai — ne techninis gedimas"
+    pavyzdziai: ["kodėl tokia didelė sąskaita?", "noriu pakeisti planą", "kiek moku per mėnesį?"]
+    politika: nelieciam
+    atsakymas: "Esu techninės pagalbos asistentas — sąskaitų ir sutarčių klausimais nepadėsiu, kreipkitės į klientų aptarnavimą. O ar su internetu ar televizija bėdų neturite?"
+    triggers:
+    - sąskait
+    - saskait
+    - mokė
+    - skola
+    - kaina
+    - tarif
+  pokalbis:
+    aprasymas: "skambina šiaip pasikalbėti / pabendrauti / pasiskųsti su paslaugomis nesusijusiais dalykais — be techninės problemos"
+    pavyzdziai: ["nuobodu, norėjau pašnekėti", "kaimynai triukšmauja, kas man daryti?"]
+    politika: pokalbis
+    atsakymas: "Ačiū, kad paskambinote! Aš padedu dėl interneto ir televizijos gedimų — ar tokių bėdų turite?"
+  kita_ne_musu:
+    aprasymas: "su interneto/TV paslaugomis nesusijęs klausimas ar kitos įmonės reikalas"
+    pavyzdziai: ["neišveža šiukšlių", "neveikia mano skalbyklė"]
+    politika: nelieciam
+    atsakymas: "Čia, deja, nepadėsiu — esu interneto ir televizijos gedimų pagalba. O ryšio bėdų neturite?"
 # faults: persikėlė į knowledge/faults/ katalogą — VIENAS FAILAS = VIENAS GEDIMAS
 # (docs/FAULT_PACKS.md). Čia liko tik `problems` klasifikacija; katalogo paketas
 # visada nugali to paties verdikto įrašą šiame faile.
