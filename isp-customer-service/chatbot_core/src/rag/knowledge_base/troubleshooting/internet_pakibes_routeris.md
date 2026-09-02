@@ -19,16 +19,21 @@ nė karto nebuvo dingęs — perkrautas ne tas: ištrauktas prailgintuvas, paspa
 mygtukas arba perkrautas kitas (ne pagrindinis) įrenginys. Tada patiksliname ir
 kartojame VIENĄ kartą.
 
-### Žingsnis 1: Paaiškinti ir perkrauti iš maitinimo
-Pirmiausia žmogiškai paaiškinti, ką matome: routeris linijoje matomas, bet srautas
-nevaikšto — greičiausiai pakibo; taip nutinka, po perkrovimo dažniausiai susitvarko.
-Tada VIENA instrukcija ir laukti:
+### Žingsnis 1: Mastas (visi įrenginiai ar vienas)
+Pirmiausia VIENU sakiniu pasakyti, ką matome (routeris matomas, bet srautas
+nevaikšto), ir užduoti VIENĄ klausimą — dar NIEKO neinstruktuoti:
+- "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
+- Visuose → perkrovimas (Žingsnis 2). Viename → to įrenginio kelias (Žingsnis 5).
+
+### Žingsnis 2: Paaiškinti ir perkrauti iš maitinimo
+Žmogiškai paaiškinti: greičiausiai routeris pakibo; taip nutinka, po perkrovimo
+dažniausiai susitvarko. Tada VIENA instrukcija ir laukti:
 - "Ištraukite maitinimo laidą iš PATIES routerio, palaukite kokias 5 sekundes ir
   įkiškite atgal. Pasikraus maždaug per minutę — pasakykite, kai padarysite."
 - SVARBU: iš paties routerio — ne iš prailgintuvo, ne išjungimo mygtuku (taip
   routeris pilnai nepersikrauna).
 
-### Žingsnis 2: Patikra po perkrovimo
+### Žingsnis 3: Patikra po perkrovimo
 Palaukti ~1 minutę, tada VIENAS klausimas su dviem paprastais požymiais:
 - "Ar interneto lemputė dabar mirksi? Pabandykite atsidaryti kokį puslapį."
 - Variklis tuo pačiu metu tyliai perskaito telemetriją: ar grįžo srautas ir ar
@@ -36,16 +41,16 @@ Palaukti ~1 minutę, tada VIENAS klausimas su dviem paprastais požymiais:
 - Veikia → išspręsta, BE tiketo. Trumpai paaiškinti: routeris buvo pakibęs,
   po perkrovimo susitvarkė; jei pasikartotų — skambinkite.
 
-### Žingsnis 3: Patikslintas perkrovimas (vienas pakartojimas)
+### Žingsnis 4: Patikslintas perkrovimas (vienas pakartojimas)
 Kai telemetrija NEMATĖ, kad įrenginys būtų dingęs (perkrovimo nebuvo):
 - Pasakyti švelniai, nekaltinant: "Panašu, kad routeris nepersikrovė iki galo."
 - "Ar tikrai ištraukėte laidą iš PATIES routerio? Kartais ištraukiamas
   prailgintuvas arba paspaudžiamas mygtukas — tada jis pilnai nepersikrauna.
   Jei namuose yra dvi panašios dėžutės — perkraukite tą, į kurią ateina laidas
   iš sienos."
-- Po pakartojimo — vėl Žingsnis 2. Nepavykus antrą kartą → registruoti gedimą.
+- Po pakartojimo — vėl Žingsnis 3. Nepavykus antrą kartą → registruoti gedimą.
 
-### Žingsnis 4: Vienas įrenginys (routeris gyvas)
+### Žingsnis 5: Vienas įrenginys (routeris gyvas)
 Kai neveikia tik viename įrenginyje ARBA po perkrovimo srautas grįžo, bet klientui
 viename įrenginyje vis dar neveikia — problema kelyje iki to įrenginio:
 - WiFi įrenginiui: "Patikrinkite, ar įjungtas WiFi ir ar prisijungęs prie JŪSŲ
@@ -54,11 +59,11 @@ viename įrenginyje vis dar neveikia — problema kelyje iki to įrenginio:
   įkištas iki spragtelėjimo."
 - Telefonui/planšetei kabelio NESIŪLYTI.
 
-### Žingsnis 5: Patikrinti įrenginį
+### Žingsnis 6: Patikrinti įrenginį
 - "Ar tame įrenginyje internetas jau veikia?"
 - Veikia → išspręsta. Neveikia → gilesnis įrenginio gedimas → registruoti.
 
-### Žingsnis 6: Registracija (perkrauta, neatsistatė)
+### Žingsnis 7: Registracija (perkrauta, neatsistatė)
 Perkrovimas matytas, bet srautas negrįžo — tikėtina, kad routeris genda:
 - Sakyti "užregistruosiu" (būsimasis laikas) — registracija įvyksta tik po
   kontaktinių klausimų, pabaigos frazė ją paskelbia.

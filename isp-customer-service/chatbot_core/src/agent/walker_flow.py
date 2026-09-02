@@ -444,9 +444,12 @@ def advance_instruct(engine, r: dict, step, strat, user_input: str | None = None
         return
     # rh_check (S6): an engine-owned BLEND step — never keyword-route it from
     # the completing utterance (a false "gerai" YES sent the flow into the
-    # retry branch, eval S6). Record telemetry now; the check question goes
-    # out this turn and the caller's ANSWER decides on the next one.
+    # retry branch, eval S6). Reflect the claimed reboot in the demo world
+    # (SIMULATE_REBOOT, eval only — live calls use the button), record
+    # telemetry; the check question goes out this turn and the caller's
+    # ANSWER decides on the next one.
     if r.get("step") == "rh_check":
+        engine._simulate_router_reboot()
         engine._advance_reboot_check(r, user_input)
         return
     # Carry-through pre-answer: the utterance that completed the instruction often
@@ -746,6 +749,28 @@ def advance_restored(engine, r: dict, user_input: str | None) -> None:
     # unclear -> stay on confirm_restored, re-ask
 
 
+def _classify_reboot_check(engine, user_input: str | None) -> str | None:
+    """Classifier fallback for the rh_check answer when the keyword detector
+    is unsure — same order as CONFIRM steps. Meanings come from the pack's
+    `answers:` (step_options), generic reboot_check glosses as fallback."""
+    if os.getenv("CLASSIFIER", "on").lower() == "off":
+        return None
+    from .classifier import classify_step
+    from .detectors import glosses as detector_glosses
+    from .faults import step_options
+
+    options = step_options("router_hung", "rh_check") or detector_glosses("reboot_check")
+    obs = classify_step(
+        engine._last_agent_question() or "Ar interneto lemputė mirksi? Ar atsidaro puslapis?",
+        user_input or "",
+        options,
+        model=engine.config.model,
+    )
+    if obs is not None and obs.is_answer and obs.confidence >= 0.5:
+        return str(obs.label)
+    return None
+
+
 def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:
     """S6 hung router: after the guided power-cycle, decide from the caller's
     word AND two telemetry facts read together (Andrius 2026-08-31):
@@ -755,7 +780,12 @@ def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:
          device off the line, so the port flaps (signals.port_flap_recent).
 
     Routes:
-    - caller says it works                        -> resolved, NO ticket
+    - caller YES + telemetry agrees (traffic back OR the flap witnessed)
+                                                  -> resolved, NO ticket
+    - caller YES, telemetry disagrees (still hung, no flap) -> the words say
+      "works" but the system saw neither traffic nor a reboot — treat like
+      the wrong-device case: ONE retry with the clarification (VERIFICATION
+      RULE, DIALOGO_ETALONAS.md #8: vien kliento žodžio neužtenka)
     - caller NO + traffic returned                -> the router is alive;
                                                      the problem is on the path
                                                      to one device (rh_device)
@@ -769,23 +799,37 @@ def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:
                                                      recover — failing router,
                                                      escalate (ticket note says
                                                      "perkrauta, neatsistatė")
-    An unclear answer holds the step (re-ask)."""
-    from .resolution import Outcome, detect_restored
+    An unclear answer holds the step (re-ask). The answer is read by the
+    DEDICATED reboot_check detector (negation wins; "dega" alone is unclear
+    — live 2026-08-31: the generic restored vocabulary read "jos nemirksi"
+    as YES via the "jo" substring) with the classifier settling the rest
+    through the pack's `answers:` glosses."""
+    from .resolution import Outcome, detect_reboot_check
 
     payload = fresh_diagnose(engine)
     verdict = (payload or {}).get("verdict") or {}
     signals = (payload or {}).get("signals") or {}
     reason_now = verdict.get("reason")
     telem_ok = isinstance(payload, dict) and reason_now is not None
+    flap = bool(signals.get("port_flap_recent"))
     r["telemetry_fixed"] = telem_ok and reason_now not in engine._UNRESOLVED_LINE_FAULTS
     if not r.get("asked"):
         return  # the check question goes out this turn — just record telemetry
-    outcome = detect_restored(user_input)
+    outcome = detect_reboot_check(user_input)
+    if outcome is None:
+        label = _classify_reboot_check(engine, user_input)
+        outcome = {"yes": Outcome.YES, "no": Outcome.NO}.get(label or "")
     if outcome == Outcome.YES:
-        engine.state.case_closed = True
-        engine.state.closed_reason = "resolved"
-        engine._settle_hypothesis("confirmed", "po perkrovimo ryšys atsistatė")
-        return
+        # The caller's word closes ONLY with the telemetry's agreement:
+        # traffic back, the reboot witnessed, or telemetry unreachable
+        # (then the word is all we have). Still hung with no flap = neither
+        # source saw anything change -> the wrong-device retry path.
+        if r.get("telemetry_fixed") or flap or not telem_ok:
+            engine.state.case_closed = True
+            engine.state.closed_reason = "resolved"
+            engine._settle_hypothesis("confirmed", "po perkrovimo ryšys atsistatė")
+            return
+        outcome = Outcome.NO  # fall through to the no-flap retry below
     if outcome != Outcome.NO:
         return  # unclear -> stay on rh_check, re-ask
     if r.get("telemetry_fixed"):
@@ -794,7 +838,6 @@ def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:
         )
         engine._goto_step(r, "rh_device")
         return
-    flap = bool(signals.get("port_flap_recent"))
     if telem_ok and not flap:
         # The device never dropped off the line — no real power-cycle happened.
         engine._note_evidence(

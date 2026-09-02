@@ -12,12 +12,11 @@
 #   liudininkas). Neatsistačius po perkrovimo — kaip miręs routeris: tiketas su
 #   prierašu "perkrauta, neatsistatė".
 #
-# LAUKIA TAISYMŲ (gyvas 2026-08-31 skambutis; sąrašas docs/VOICE_PLAN.md
-# "S6 TAISYMAI"): 1) rh_scope pirmas žingsnis (instrukcija ėjo prieš masto
-# klausimą), 2) svetimų raktų (lights) konfliktas nebeturi kilpuoti,
-# 3) rh_check atsakymas per pack'o answers (ne detect_restored — "dega"
-# klaidingai == TAIP), 4) TAIP uždaro tik kai telemetrija sutinka
-# (srautas grįžo ARBA flap matytas), kitaip retry.
+# 2026-09-02: keturi gyvo 2026-08-31 skambučio taisymai SUDĖTI (sąrašas
+# docs/VOICE_PLAN.md "S6 TAISYMAI"): rh_scope pirmas žingsnis; svetimų
+# raktų konfliktai nebekilpuoja (variklis); rh_check skaitomas savu
+# detektoriumi (mirksi/nemirksi, neiginys laimi) + klasifikatoriumi;
+# TAIP uždaro tik telemetrijai sutinkant (srautas grįžo ARBA flap).
 verdict: router_hung
 meta:
   pavadinimas: "Nėra interneto — routeris matomas, bet srautas nevaikšto (pakibęs routeris)"
@@ -58,11 +57,34 @@ sprendimai:
   zingsnis: rh_device
   aprasymas: "patikrinti tą įrenginį — routeris veikia, problema kelyje iki įrenginio"
 steps:
+# Pirmas žingsnis = masto klausimas (2026-08-31 skambučio pamoka: pradinis
+# žingsnio hint'as turi SUTAPTI su solverio evidence klausimu — kitaip
+# naratorius perskaito instrukciją anksčiau už klausimą). Atsakymus skaito
+# LEDGER'is (fail_scope evidence, walker'is dar nevairuoja); on: čia tik
+# rodyklė, sprendimai sync'ina tą patį kelią.
+- id: rh_scope
+  kind: confirm
+  detector: scope
+  rag_section: 0
+  tikslas: "aišku, ar internetas neveikia visuose įrenginiuose, ar tik viename"
+  'on':
+    all: rh_reboot
+    one: rh_device
+    phone: rh_device
+    computer: rh_device
+  hint: 'Explain in ONE short sentence what you see — the router is visible on the line but no
+    traffic flows — then ask ONE question and WAIT: does the internet fail on ALL home devices
+    or just one? Do NOT instruct anything yet, do NOT mention rebooting.'
+  answers:
+    all: sako, kad internetas neveikia VISUOSE įrenginiuose
+    one: sako, kad neveikia tik VIENAME įrenginyje
+    phone: AIŠKIAI įvardija telefoną ar planšetę
+    computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
 # Perkrovimo instrukcija — kortelės šerdis. Dažniausios klaidos įaustos į hint:
 # prailgintuvas / mygtukas = nepilnas perkrovimas; du įrenginiai = perkrauna ne tą.
 - id: rh_reboot
   kind: instruct
-  rag_section: 0
+  rag_section: 1
   goto: rh_check
   tikslas: "routeris perkrautas iš maitinimo (ištrauktas maitinimo laidas, palaukta ~5 s, įkištas atgal)"
   hint: 'First explain in ONE short human sentence what you see (router visible, no traffic —
@@ -78,8 +100,8 @@ steps:
 # (port flap = liudininkas) / perkrauta bet neatsistatė — trys skirtingi keliai.
 - id: rh_check
   kind: confirm
-  detector: restored
-  rag_section: 1
+  detector: reboot_check
+  rag_section: 2
   tikslas: "aišku, ar po perkrovimo internetas atsistatė (lemputė mirksi, puslapis atsidaro)"
   hint: 'They rebooted. Give it about a minute, then ask TWO simple checks in one short question:
     is the internet light BLINKING now, and does a web page open? The engine ALSO silently
@@ -92,7 +114,7 @@ steps:
 # NEMATĖ, kad įrenginys būtų dingęs, t. y. pilno perkrovimo nebuvo.
 - id: rh_reboot_retry
   kind: instruct
-  rag_section: 2
+  rag_section: 3
   goto: rh_check
   tikslas: "routeris TIKRAI perkrautas iš paties maitinimo lizdo (ne prailgintuvas, ne mygtukas, ne kitas įrenginys)"
   hint: 'Telemetry shows the device NEVER dropped off the line — so the router was not actually
@@ -104,7 +126,7 @@ steps:
 # klientui vis dar neveikia — routeris gyvas, problema kelyje iki įrenginio.
 - id: rh_device
   kind: instruct
-  rag_section: 3
+  rag_section: 4
   goto: rh_verify_dev
   tikslas: "patikrintas įrenginys, kuriame neveikia (WiFi įjungtas / prisijungta iš naujo / kabelis įkištas)"
   hint: 'The router side works — the problem is on the path to ONE device. Guide ONE simple check
@@ -113,7 +135,7 @@ steps:
 - id: rh_verify_dev
   kind: confirm
   detector: restored
-  rag_section: 4
+  rag_section: 5
   tikslas: "aišku, ar tame įrenginyje internetas jau veikia"
   'on':
     'yes': resolve
@@ -126,7 +148,7 @@ steps:
 - id: escalate
   kind: escalate
   tools: []
-  rag_section: 5
+  rag_section: 6
   hint: 'The reboot did not bring the connection back (or the caller cannot check now) — likely a
     failing router. Say you WILL register the fault — "užregistruosiu" (future tense), NEVER
     "užregistravau": the registration happens only after the contact questions, and the closing

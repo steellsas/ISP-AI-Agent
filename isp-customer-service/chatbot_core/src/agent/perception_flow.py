@@ -311,33 +311,43 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         if key not in kw_disagreements and _story_flip_gate(engine, key, str(value), pending):
             continue
         entry = set_fact(s.evidence, key, value, CLIENT, turn)
-        if entry.get("conflict") and engine._evidence_conflict is None:
-            engine._evidence_conflict = (key, entry["value"], entry["pending"])
-            engine.tracer.emit(
-                "evidence",
-                action="conflict",
-                key=key,
-                old=entry["value"],
-                new=entry["pending"],
-            )
-        else:
+        if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
             engine.tracer.emit("evidence", action="fact", key=key, value=value)
     # Reader disagreements land SECOND: on a fresh key this flags the
     # conflict (one scripted clarify settles it); if the flip guard dropped
     # the pass value above, the keyword read simply stands as the fact.
     for key, kw_value in kw_disagreements.items():
         entry = set_fact(s.evidence, key, kw_value, CLIENT, turn)
-        if entry.get("conflict") and engine._evidence_conflict is None:
+        if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
+            engine.tracer.emit("evidence", action="fact", key=key, value=kw_value)
+
+
+def _conflict_to_clarify(engine, key: str, entry: dict) -> bool:
+    """A conflicting CLIENT re-reading landed on `key`. The scripted clarify
+    loop is reserved for keys the ACTIVE pack DECLARES (its own questions —
+    e.g. mires 'lights'): those genuinely flip the story, so the caller
+    settles them. An UNDECLARED key is side-chatter vocabulary (S6 live
+    2026-08-31: 'lights' dega/nedega readings while the pack's question was
+    about the internet light BLINKING — the clarify loop hijacked two turns
+    and swallowed a clear NO): it resolves SILENTLY to the newest reading,
+    history keeps both, no turn is spent. Returns True when the conflict was
+    consumed here (flagged for clarify or silently settled)."""
+    from .evidence import spec_for
+
+    spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+    if key in (spec.get("client") or {}):
+        if engine._evidence_conflict is None:
             engine._evidence_conflict = (key, entry["value"], entry["pending"])
             engine.tracer.emit(
-                "evidence",
-                action="conflict",
-                key=key,
-                old=entry["value"],
-                new=entry["pending"],
+                "evidence", action="conflict", key=key, old=entry["value"], new=entry["pending"]
             )
-        else:
-            engine.tracer.emit("evidence", action="fact", key=key, value=kw_value)
+            return True
+        return False  # declared, but another clarify already open — old behaviour
+    old = entry["value"]
+    entry["value"] = entry.pop("pending", old)
+    entry["conflict"] = False
+    engine.tracer.emit("evidence", action="conflict_silent", key=key, old=old, new=entry["value"])
+    return True
 
 
 def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:

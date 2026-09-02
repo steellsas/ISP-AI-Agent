@@ -728,6 +728,60 @@ def detect_restored(text: str | None) -> Outcome | None:
     return None
 
 
+# S6 rh_check (2026-09-02): the post-reboot check asks about the INTERNET
+# LIGHT and a web page — "dega" vocabulary must NOT read as restored (live:
+# "Visos lemputės dega, bet jos nemirksi" closed the call as resolved — the
+# generic _RESTORED_YES "jo" substring matched "jos"). Negation wins.
+_REBOOT_NO = (
+    "nemirksi",
+    "nemirks",
+    "neveikia",
+    "nevaikšto",
+    "nevaiksto",
+    "neatsidaro",
+    "neatsidarė",
+    "neatsidare",
+    "nėra internet",
+    "nera internet",
+    "pastoviai dega",
+    "dega pastoviai",
+    "vis tiek ne",
+    "vis dar ne",
+    "dar ne",
+)
+_REBOOT_YES = (
+    "mirksi",
+    "mirkčioja",
+    "mirkcioja",
+    "atsidaro",
+    "atsidarė",
+    "atsidare",
+    "veikia",
+    "atsirad",
+    "atsistat",
+    "jau yra",
+    "yra internet",
+)
+
+
+def detect_reboot_check(text: str | None) -> Outcome | None:
+    """YES/NO/None for the S6 post-reboot check ("ar lemputė mirksi?
+    pabandykite atsidaryti puslapį"). Dedicated vocabulary: NEGATION WINS
+    ("dega, bet nemirksi" = NO), plain "dega" alone is UNCLEAR (a burning
+    light is not working internet), the classifier settles the rest via the
+    pack's `answers:` glosses."""
+    if not text:
+        return None
+    low = text.lower()
+    if any(m in low for m in _REBOOT_NO):
+        return Outcome.NO
+    if re.search(r"\bne\b", low) or low.strip() in ("ne", "ne."):
+        return Outcome.NO
+    if any(m in low for m in _REBOOT_YES):
+        return Outcome.YES
+    return None
+
+
 # --- Client-side branch detectors (healthy_to_router) ------------------------
 # "all devices or one?" — and, when one, WHICH device, because a phone/tablet can
 # only be Wi-Fi (never suggest a cable to it).
@@ -896,9 +950,15 @@ def _restored(text: str | None) -> str | None:
 
 # Named detectors a CONFIRM step selects with Step.detector. Each maps the caller's
 # reply to a routing KEY (or None = unclear, stay and re-ask).
+def _reboot_check(text: str | None) -> str | None:
+    o = detect_reboot_check(text)
+    return o.value if o else None
+
+
 DETECTORS = {
     "yes_no": _yn,
     "restored": _restored,
+    "reboot_check": _reboot_check,
     "scope": detect_scope,
     "conn": detect_conn,
     "port": detect_port,
@@ -919,6 +979,10 @@ DETECTOR_GLOSSES: dict[str, dict[str, str]] = {
     "restored": {
         "yes": "internetas dabar veikia / atsirado",
         "no": "internetas vis dar neveikia",
+    },
+    "reboot_check": {
+        "yes": "po perkrovimo internetas atsistatė — lemputė MIRKSI ir/ar puslapis atsidaro",
+        "no": "po perkrovimo vis dar neveikia — lemputė nemirksi / dega pastoviai / puslapis neatsidaro",
     },
     "scope": {
         "all": "sako, kad internetas neveikia VISUOSE įrenginiuose",

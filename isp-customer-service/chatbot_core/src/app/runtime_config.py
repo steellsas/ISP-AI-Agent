@@ -108,6 +108,13 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
+        "key": "SIMULATE_REBOOT",
+        "label": "Perkrovimo simuliacija (demo DB; gyvai — mygtukas)",
+        "options": ["on", "off"],
+        "scope": "immediate",
+        "kind": "env",
+    },
+    {
         "key": "ASR_BACKEND",
         "label": "STT variklis",
         "options": ["groq", "local"],
