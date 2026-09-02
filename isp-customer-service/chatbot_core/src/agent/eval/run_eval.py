@@ -66,6 +66,7 @@ def _load_env() -> None:
     # The eval drives simulated calls end-to-end: enable the dead-router bridge device
     # simulation so the bridge can VERIFY + bind (like the update_mac/reset_port stubs).
     os.environ.setdefault("SIMULATE_BRIDGE", "on")
+    os.environ.setdefault("SIMULATE_REBOOT", "on")
     # LangSmith ingest 429s (monthly quota) flooded the eval output and added
     # latency — the harness scores state, not cloud traces; hard-off here wins
     # over whatever .env says (load_dotenv below never overrides existing env).

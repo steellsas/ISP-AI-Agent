@@ -119,7 +119,7 @@ porto mirktelėjimo liudininkas `port_flap_recent`), patikra
 mygtukas „🔄 Perkrauti routerį" (/simulate-reboot, klientas CUST112),
 auksinis S6_router_hung_reboot. Eval 44/44.
 
-#### S6 TAISYMAI (iš gyvo 2026-08-31 skambučio 135056 — aptarta, dar NEDARYTA)
+#### S6 TAISYMAI (iš gyvo 2026-08-31 skambučio 135056 — PADARYTA 2026-09-02, šaka fix/s6-engine-lessons)
 
 Skambutis atskleidė 4 ydas; visos KETURIOS — bendros mechanikos, ne šio
 pack'o turinio (svarbi pamoka universalumui):
@@ -142,9 +142,9 @@ pack'o turinio (svarbi pamoka universalumui):
    TAIP uždaro tik kai telemetrija sutinka — srautas grįžo ARBA perkrovimas
    matytas (port flap). Kitaip: „sistemoje nesimato, kad routeris būtų
    persikrovęs — ar tikrai iš paties routerio ištraukėte?" → retry kelias.
-   Kraštas (dar NEatsakyta Andriaus): TAIP + flap matytas + srautas dar
-   negrįžęs — siūlymas uždaryti pagal žodį (žodis + liudininkas pakanka;
-   srautas gali vėluoti), bet laukiama sprendimo diskusijoje.
+   Kraštas: TAIP + flap matytas + srautas dar negrįžęs — įgyvendinta pagal
+   siūlymą (žodis + liudininkas uždaro; srautas gali vėluoti). Jei Andrius
+   nuspręs kitaip — vienos eilutės pakeitimas advance_reboot_check.
 Smulku (stebėti): overlay pagavo agento aidą „Dabar svarbu sužinoti." kaip
 who=klientas (trumpo fragmento token_overlap žemas) — netrukdė, bet žymė
 neteisinga.

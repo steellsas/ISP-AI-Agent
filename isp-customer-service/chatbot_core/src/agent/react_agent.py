@@ -919,6 +919,13 @@ class ReactAgent:
 
         return scripted_wait_ack(self)
 
+    def _simulate_router_reboot(self) -> None:
+        """DEMO/TEST only (SIMULATE_REBOOT=on): delegates to
+        executor_flow.simulate_router_reboot_action (S6)."""
+        from .executor_flow import simulate_router_reboot_action
+
+        simulate_router_reboot_action(self)
+
     def _simulate_bridge_connection(self) -> None:
         """DEMO/TEST only (SIMULATE_BRIDGE=on): reflect the caller plugging a PC into the
         wall cable by making an unbound device appear on the line, so the bridge can

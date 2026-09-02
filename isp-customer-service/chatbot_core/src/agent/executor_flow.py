@@ -268,6 +268,29 @@ def register_ticket_from_state(engine: Any, step) -> None:
         engine._trace_note("register_ticket", str(e), level="error")
 
 
+def simulate_router_reboot_action(engine: Any) -> None:
+    """DEMO/TEST only (SIMULATE_REBOOT=on): reflect the caller power-cycling the
+    router (S6) — the demo port flaps and traffic returns, so the reboot-check
+    telemetry read sees what a real reboot produces. Off by default → live demo
+    calls use the „Perkrauti routerį" button instead (the human plays the
+    physical world); production sees the real flap on its own."""
+    if os.getenv("SIMULATE_REBOOT", "off").lower() != "on":
+        return
+    cid = engine.state.customer_id
+    if not cid:
+        return
+    try:
+        from .tools import simulate_router_reboot
+
+        res = simulate_router_reboot(cid)
+        engine.tracer.emit("tool_call", name="simulate_router_reboot", args={"customer_id": cid})
+        if isinstance(res, dict) and res.get("success"):
+            engine._note_evidence("klientas perkrovė routerį — portas mirktelėjo (simuliuota)")
+    except Exception as e:  # pragma: no cover - best-effort
+        logger.warning(f"router reboot sim failed: {e}")
+        engine._trace_note("reboot_sim", str(e))
+
+
 def simulate_bridge_connection(engine: Any) -> None:
     """DEMO/TEST only (SIMULATE_BRIDGE=on): reflect the caller plugging a PC into the
     wall cable by making an unbound device appear on the line, so the bridge can
