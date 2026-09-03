@@ -364,11 +364,17 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
         s.closed_reason = "declined"
         engine.tracer.emit("decision", intent="problem_gate", action="close")
         return phrase("no_problem_goodbye")
-    # 3) L2 — context classification against the file catalog
+    # 3) L2 — context classification against the file catalog. The LLM reads
+    # the ACCUMULATED tail, not just this turn (2026-09-02, Andrius: „kai
+    # informacija pasipildo, ateina supratimas" — VAD/STT splits a story into
+    # fragments, but the meaning lives across them: „Oras kažkoks netoks." +
+    # „gal dėl to neturiu interneto?" is ONE thought).
     if _os.getenv("CLASSIFIER", "on").lower() != "off":
         from .nlu import classify_problem_llm
 
-        label, conf = classify_problem_llm(user_input, model=engine.config.model)
+        tail = [u for u in getattr(s, "heard_utterances", [])[-3:] if u]
+        ctx = " ".join(tail)[-400:] or (user_input or "")
+        label, conf = classify_problem_llm(ctx, model=engine.config.model)
         if label:
             pol = problem_politika(label)
             engine.tracer.emit(

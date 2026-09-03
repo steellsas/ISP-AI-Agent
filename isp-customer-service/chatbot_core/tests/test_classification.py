@@ -155,6 +155,80 @@ class TestGateL2:
         assert reply is not None or agent._ident_directive is not None
 
 
+class TestAccumulatedContext:
+    """Sukaupto konteksto principas (Andrius 2026-09-02: „kai informacija
+    pasipildo, ateina supratimas") — VAD sukarpyta mintis klasifikuojama iš
+    replikų uodegos, ne vienos frazės."""
+
+    def test_l2_reads_the_joined_tail(self, db_connection, monkeypatch):
+        from agent import nlu
+
+        got: list = []
+
+        def _fake(text, model=None):
+            got.append(text)
+            return ("internet_down", 0.9)
+
+        monkeypatch.setenv("CLASSIFIER", "on")
+        monkeypatch.setattr(nlu, "classify_problem_llm", _fake)
+        agent = _agent()
+        agent.state.heard_utterances.extend(["Labai diena.", "Ora šiandien kažkoks netoks."])
+        agent.state.heard_utterances.append("gal dėl to neturiu interneto?")
+        agent._identification_scripted_reply("gal dėl to neturiu interneto?")
+        assert got and "netoks" in got[0] and "neturiu interneto" in got[0]
+        assert agent.state.problem_type == "internet_down"
+
+    def test_story_window_while_problem_unknown(self, db_connection):
+        from agent.endpoint import classify_endpoint, story_ms
+
+        agent = _agent()
+        # užbaigtas sakinys, bet problema dar nežinoma -> laukiam ilgiau
+        assert classify_endpoint(agent, "Oras šiandien kažkoks netoks.") == (
+            "slow",
+            story_ms(),
+        )
+        # atsisveikinimas kerpamas greitai net ir vartuose
+        assert classify_endpoint(agent, "Ačiū, viso gero")[0] == "fast"
+        # problema jau žinoma -> normalus langas
+        agent.state.problem_type = "internet_down"
+        assert classify_endpoint(agent, "Oras šiandien kažkoks netoks.") == ("normal", None)
+
+    def test_final_flush_hands_open_segment_to_engine(self, db_connection, monkeypatch):
+        from app.main import _final_flush
+
+        monkeypatch.setenv("FINAL_FLUSH", "on")
+        got: list = []
+        front = SimpleNamespace(export_open=lambda: b"\x01\x02" * 20_000, _rate=16_000)
+        ms = SimpleNamespace(
+            front=front,
+            overlay_front=None,
+            voice=SimpleNamespace(transcribe_partial=lambda wav: "gal dėl to neturiu interneto"),
+            session=SimpleNamespace(
+                tracer=SimpleNamespace(emit=lambda *a, **k: None),
+                apply_overlay=lambda texts: got.append(texts),
+            ),
+        )
+        _final_flush(ms)
+        assert got == [["gal dėl to neturiu interneto"]]
+
+    def test_final_flush_skips_noise_and_empty(self, db_connection, monkeypatch):
+        from app.main import _final_flush
+
+        monkeypatch.setenv("FINAL_FLUSH", "on")
+        got: list = []
+        ms = SimpleNamespace(
+            front=SimpleNamespace(export_open=lambda: b"\x01" * 100, _rate=16_000),
+            overlay_front=SimpleNamespace(export_open=lambda: None, _rate=16_000),
+            voice=SimpleNamespace(transcribe_partial=lambda wav: "kažkas"),
+            session=SimpleNamespace(
+                tracer=SimpleNamespace(emit=lambda *a, **k: None),
+                apply_overlay=lambda texts: got.append(texts),
+            ),
+        )
+        _final_flush(ms)
+        assert got == []
+
+
 class TestUnclearFaultTicket:
     def test_ticket_need_without_verdict_is_honest(self, db_connection):
         from agent.ticket_flow import ticket_need
