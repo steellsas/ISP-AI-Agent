@@ -23,6 +23,7 @@ DIAGNOSIS_LT = {
     "router_hung": "routeris matomas linijoje, bet srautas nevaikšto — greičiausiai pakibęs",
     "healthy_to_router": "tinklas iki routerio veikia — problema kliento pusėje",
     "no_port_data": "nėra prievado duomenų",
+    "unclear_fault": "gedimo tipas neaiškus — telefonu nenustatytas",
 }
 
 # WHY the ticket is needed, in the caller's words — spoken in the dialogue intro
@@ -40,4 +41,5 @@ TICKET_NEED_LT = {
     "no_mac_observed": "reikalingas naujas maršrutizatorius",
     "link_down_local": "reikia patikrinti liniją iki jūsų buto",
     "router_hung": "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas",
+    "unclear_fault": "gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei",
 }

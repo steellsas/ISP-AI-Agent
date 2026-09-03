@@ -74,6 +74,18 @@ def is_asr_noise(text: str) -> bool:
     # A URL is never a real spoken answer when reporting no internet.
     if "www." in low or "http" in low:
         return True
+    # Repeated-token hallucination (live 2026-09-03: cable rustling while the
+    # caller plugged it in became "Žemės gatvės gatvės gatvės" and ADVANCED an
+    # instruct step): the same word >= 3 times in a row is Whisper looping on
+    # noise, never Lithuanian speech. Short words ("ne ne ne!") are exempt —
+    # a triple "ne" is a real refusal.
+    tokens = [t for t in re.split(r"\W+", low, flags=re.UNICODE) if t]
+    run, prev = 1, None
+    for t in tokens:
+        run = run + 1 if t == prev else 1
+        prev = t
+        if run >= 3 and len(t) >= 4:
+            return True
     # Nothing but punctuation/symbols (no letters or digits) -> noise.
     return not re.search(r"[^\W_]", stripped, re.UNICODE)
 

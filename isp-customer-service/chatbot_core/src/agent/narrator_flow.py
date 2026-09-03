@@ -944,12 +944,6 @@ def state_facts_block(engine) -> str | None:
                 "Visos replikos pavyzdys: „Suprantu — dingo internetas. "
                 f"Patikrinsiu liniją — ar skambinate dėl {idd['adresas']}?“"
             )
-        elif idd["kind"] == "anamnesis":
-            facts.append(
-                "- ANAMNEZĖS ŽINGSNIS: išsiaiškink, KADA dingo internetas ir ar prieš "
-                "tai buvo koks įvykis (audra, remontas, kažką keitė) — neklausk to, "
-                f"kas jau aišku. (Atsarginė: „{idd['fallback']}“)"
-            )
         elif idd["kind"] == "problem_gate":
             facts.append(
                 "- PROBLEMOS VARTAI: klientas dar nepasakė aiškios MŪSŲ srities "
@@ -960,11 +954,6 @@ def state_facts_block(engine) -> str | None:
                 "įvardink ribą ir paklausk, ar yra ryšio ar TV problema. Jei klientas "
                 "KLAUSIA — atsakyk vienu sakiniu ir vėl paklausk problemos. NEKLAUSK "
                 f"adreso ir nieko netikrink. (Atsarginė: „{idd['fallback']}“)"
-            )
-        elif idd["kind"] == "anamnesis_followup":
-            facts.append(
-                "- ANAMNEZĖS ŽINGSNIS: klientas nežino, kada dingo — paklausk, kada "
-                f"paskutinį kartą internetas TIKRAI veikė. (Atsarginė: „{idd['fallback']}“)"
             )
         else:
             facts.append(

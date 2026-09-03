@@ -17,6 +17,27 @@ playbook: troubleshooting/internet_mires_routeris_tiltas
 # syncs the walker so a pivot never rewinds the call.
 evidence:
   client:
+    # Kontekstinė anamnezė (DIALOGO_ETALONAS #2, 2026-09-03): atidarymo „kada
+    # dingo? gal po audros?" NEBĖRA — klausimas gyvena ČIA, su telemetrijos
+    # kontekstu (verdiktas: įrenginio linijoje nesimato → elektros dingimas /
+    # laidų tvarkymas tampa diagnostiškai svarbus). Jei klientas jau minėjo
+    # (capture-first / anamnesis seed) — solveris nebeklausia.
+    ivykiai:
+      label: "įvykiai prieš dingstant"
+      reiksmes:
+        buvo: "buvo įvykis (elektra/laidai/audra)"
+        nebuvo: "nieko neįvyko"
+      reikia: "ar prieš dingstant internetui buvo koks įvykis — dingusi elektra, laidų tvarkymas, audra"
+      klausimas: "Ar neseniai buvo dingusi elektra, gal kas nors tvarkė laidus?"
+      kodel: "Jūsų įrenginio linijoje nesimato — po elektros dingimo routeris dažnai lieka neįsijungęs."
+      patikslinimas: "Norėjau patikslinti — ar buvo koks įvykis prieš dingstant internetui, ar viskas kaip visada?"
+      paprasciau: "Gal buvo dingusi šviesa, gal kas nors namuose jungė ar tvarkė laidus? Jei nieko tokio — taip ir sakykite."
+      reiskia:
+        buvo: "tai gali paaiškinti, kodėl įrenginys dingo iš linijos — patikrinsime nuo maitinimo"
+      atsakymai:
+        buvo: ["dingo elektra", "dingusi elektra", "buvo dingus", tvarkė, tvarke, remont, audra, perkūn, perkun, keitėm, keitem]
+        nebuvo: [nebuvo, "nieko neįvyko", "nieko nevyko", "viskas kaip", "ne,", "ne "]
+      zingsnis: dr_lights
     device_present:
       reikia: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
       zingsnis: dr_lights   # B2: walker rodyklė (RAG/hint/tikslas), ne skaitytuvas

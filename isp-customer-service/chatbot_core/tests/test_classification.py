@@ -229,6 +229,49 @@ class TestAccumulatedContext:
         assert got == []
 
 
+class TestPendingFallback:
+    """2026-09-03 (eval S6 flake): the pack's first question may go out from
+    the STEP HINT before the drive's ask bookkeeping — with no pending key the
+    deterministic answer read was skipped and the fact lived or died on the
+    LLM pass. Now the NEXT MISSING evidence key stands in; its conservative
+    marks still must hit."""
+
+    def test_answer_lands_without_pending_key(self, db_connection, monkeypatch):
+        from types import SimpleNamespace as NS
+        from unittest.mock import patch
+
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020112")
+        agent.state.customer_id = "CUST112"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": "router_hung", "step": "rh_scope"}
+        assert getattr(agent, "_evidence_last_ask_key", None) is None  # no ask yet
+        canned = NS(
+            tipas="atsakymas",
+            faktai={},
+            supratau="x",
+            pasitikejimas=1.0,
+            atsakymo_kokybe="pilnas",
+        )
+        with patch("agent.understand.understand", return_value=canned):
+            agent._ingest_client_evidence("Visuose įrenginiuose")
+        assert agent.state.evidence["fail_scope"]["value"] == "visuose"
+
+    def test_unrelated_utterance_commits_nothing(self, db_connection):
+        from unittest.mock import patch
+
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020112")
+        agent.state.customer_id = "CUST112"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": "router_hung", "step": "rh_scope"}
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("O kiek visa tai kainuos?")
+        assert agent.state.evidence.get("fail_scope") is None
+
+
 class TestUnclearFaultTicket:
     def test_ticket_need_without_verdict_is_honest(self, db_connection):
         from agent.ticket_flow import ticket_need
@@ -252,3 +295,64 @@ class TestCompetenceSurface:
         g = AgentConfig().greeting_message
         assert "dirbtinio intelekto" in g
         assert "televizijos" in g
+
+
+class TestNoPathTicket:
+    """Kelio-nėra taisyklė (Andrius 2026-09-03): in-scope problema +
+    identifikuotas klientas + nėra pack'o → sąžiningas „neaiškaus gedimo"
+    tiketas, ne svetimo domeno improvizacija (gyvai: TV skambutis buvo
+    vedamas per interneto WiFi klausimus)."""
+
+    def test_problem_has_path(self):
+        from agent.faults import problem_has_path
+
+        assert problem_has_path("internet_down") is True
+        assert problem_has_path("tv") is False
+        assert problem_has_path("internet_slow") is False
+        assert problem_has_path(None) is False
+
+    def test_tv_goes_to_unclear_ticket_not_internet_pack(self, db_connection):
+        agent = _agent()
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "tv"
+        assert agent.ensure_diagnosed() is True
+        r = agent.state.resolution
+        assert r["verdict"] == "unclear_fault" and r["step"] == "escalate"
+        assert agent._ticket_stage == "phone"  # dialogue began deterministically
+        from agent.ticket_flow import ticket_need
+
+        assert "neaiškus" in ticket_need(agent)
+
+    def test_internet_down_still_diagnoses(self, db_connection):
+        agent = _agent()
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.ensure_diagnosed()
+        assert (agent.state.resolution or {}).get("verdict") != "unclear_fault"
+
+
+class TestGateMaxTurns:
+    def test_knob_controls_the_close(self, db_connection, monkeypatch):
+        monkeypatch.setenv("GATE_MAX_TURNS", "2")
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = _agent()
+        r1 = agent._identification_scripted_reply("Mendulija kadulija")
+        assert not agent.state.case_closed and r1
+        r2 = agent._identification_scripted_reply("Kadulija mendulija")
+        assert agent.state.case_closed and "skambinkite" in r2
+        assert agent.state.ticket_id is None  # no customer -> no ticket, ever
+
+
+class TestRepeatedTokenNoise:
+    def test_whisper_loop_is_noise(self):
+        from src.adapters.asr.lt_text import is_asr_noise
+
+        assert is_asr_noise("Žemės gatvės gatvės gatvės") is True
+        assert is_asr_noise("Žemės gatvės gatvės gatvės interneto lizdą.") is True
+
+    def test_real_speech_is_not(self):
+        from src.adapters.asr.lt_text import is_asr_noise
+
+        assert is_asr_noise("Ne ne ne, palaukit!") is False  # short refusal exempt
+        assert is_asr_noise("Labai labai gerai") is False  # only 2 in a row
+        assert is_asr_noise("Radau routerį prie lango") is False

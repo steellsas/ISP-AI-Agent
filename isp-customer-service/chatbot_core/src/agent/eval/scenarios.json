@@ -25,6 +25,56 @@
    }
   },
   {
+   "id": "T1_tv_unclear_fault_ticket",
+   "phone": "+37060012353",
+   "desc": "Kelio-nėra taisyklė: TV gedimas (pack'o nėra) + identifikuotas klientas -> sąžiningas neaiškaus gedimo tiketas, JOKIŲ interneto žingsnių",
+   "turns": [
+    "Laba diena, televizorius nerodo nė vieno kanalo",
+    "Taip",
+    "Andrius, taip, mano sutartis",
+    "Taip, tinka šis numeris",
+    "Po pietų, nuo keturioliktos valandos",
+    "Ačiū, viso gero"
+   ],
+   "expect": {
+    "verdict_in": "unclear_fault",
+    "disposition": "ticket",
+    "reply_any": [
+     "registr"
+    ],
+    "reply_none": [
+     "lemput",
+     "WiFi",
+     "wifi",
+     "routerio"
+    ]
+   }
+  },
+  {
+   "id": "T2_nonclient_unclear_polite_close",
+   "phone": "+37000000000",
+   "desc": "Ne klientas + situacija neaiškėja: po N vartų turn'ų mandagus uždarymas BE tiketo ir BE adreso medžioklės",
+   "turns": [
+    "Sveiki",
+    "Man liūdna, norėjau šiaip pašnekėti",
+    "Na apie orus galim pakalbėti",
+    "Tai tiek žinių pas mane",
+    "Nu nieko konkretaus neturiu",
+    "Gerai jau gerai"
+   ],
+   "expect": {
+    "identified": false,
+    "disposition": "any",
+    "reply_any": [
+     "skambinkite"
+    ],
+    "reply_none": [
+     "registruoj",
+     "skambinate dėl"
+    ]
+   }
+  },
+  {
    "id": "G1_context_classify_no_triggers",
    "phone": "+37060020101",
    "desc": "L2 klasifikacija iš KONTEKSTO: 'niekas nekrauna' be trigger žodžių -> internet_down (commit arba patvirtinimas), toliau normalus billing-inform kelias",
@@ -71,8 +121,7 @@
    "phone": "+37060020112",
    "desc": "Pakibęs routeris (srauto nėra, MAC/DHCP ok) — vedamas perkrovimas iš maitinimo, išsprendžiama telefonu BE tiketo",
    "turns": [
-    "Labas, dingo internetas",
-    "Nuo ryto neveikia",
+    "Labas, dingo internetas nuo ryto",
     "Taip",
     "Paulius, taip, mano sutartis",
     "Visuose įrenginiuose",

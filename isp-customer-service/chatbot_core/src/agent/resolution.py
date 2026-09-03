@@ -563,10 +563,35 @@ _DEAD_ROUTER = Strategy(
     ),
 )
 
+# UNCLEAR FAULT (Andrius 2026-09-03): the reported problem is in-scope, the
+# caller is identified, but the agent has NO pack for it (e.g. TV today) or
+# the knowledge ran out. One honest ESCALATE: register the fault with the
+# "neaiškus gedimo tipas — perduota analizei" need — the ticket feeds the
+# analysis/improvement loop instead of a wrong-domain improvisation.
+_UNCLEAR_FAULT = Strategy(
+    verdict="unclear_fault",
+    rag_doc=None,
+    steps=(
+        Step(
+            id="escalate",
+            kind=StepKind.ESCALATE,
+            tools=frozenset(),
+            hint=(
+                "Be honest: this kind of fault cannot be checked or solved over "
+                "the phone with the tools at hand — say you WILL register it "
+                "('užregistruosiu', future tense, NEVER 'užregistravau') so a "
+                "colleague can look into it and call back. Do not improvise "
+                "diagnostics, do not walk internet steps for a TV fault."
+            ),
+        ),
+    ),
+)
+
 STRATEGIES: dict[str, Strategy] = {
     "foreign_mac": _FOREIGN_MAC,
     "healthy_to_router": _CLIENT_SIDE,
     "no_mac_observed": _DEAD_ROUTER,
+    "unclear_fault": _UNCLEAR_FAULT,
 }
 
 # Verdicts whose fix is a straight, branch-free, action-free sequence: give them a

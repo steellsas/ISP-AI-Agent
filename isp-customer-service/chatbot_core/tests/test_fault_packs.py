@@ -211,8 +211,8 @@ class TestNarratorWordedQuestions:
         engine = self._engine()
         assert evidence_drive(engine, "labas") is None
         d = engine._evidence_directive
-        assert d and d["key"] == "device_present" and d["reikia"]
-        assert engine._evidence_asks["device_present"] == 1  # ask bookkeeping intact
+        assert d and d["key"] == "ivykiai" and d["reikia"]  # contextual anamnesis first
+        assert engine._evidence_asks["ivykiai"] == 1  # ask bookkeeping intact
 
     def test_off_switch_keeps_scripted_wording(self, monkeypatch):
         from agent.evidence_drive import evidence_drive
@@ -220,7 +220,7 @@ class TestNarratorWordedQuestions:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         engine = self._engine()
         reply = evidence_drive(engine, "labas")
-        assert reply and "Susiraskite routerį" in reply
+        assert reply and "dingusi elektra" in reply  # ivykiai (kontekstinė anamnezė)
         assert engine._evidence_directive is None
 
     def test_directive_lands_in_facts_block(self, db_connection):
@@ -275,21 +275,19 @@ class TestNarratorFindings:
         )
         monkeypatch.setattr(ev, "solution_for", lambda e, v: "bridge")
 
-    def test_anamnesis_followup_ladder(self, db_connection):
-        """E (2026-08-20): 'nežinau' -> ask when it last WORKED -> the answer
-        lands as anamnesis_when and the ladder proceeds to the address."""
+    def test_no_opening_anamnesis_ladder(self, db_connection, monkeypatch):
+        """DIALOGO_ETALONAS #2 (2026-09-03): the E follow-up ladder went away
+        with the opening question — after the problem the flow goes straight
+        to the address; targeted anamnesis lives in the packs."""
         from agent.react_agent import ReactAgent
 
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         agent = ReactAgent(caller_phone="unknown")
         s = agent.state
         s.problem_type = "internet_down"
-        s.anamnesis_asked = True
         reply = agent._identification_scripted_reply("Nežinau, nepastebėjau.")
-        assert reply and "paskutinį kartą" in reply
-        reply2 = agent._identification_scripted_reply("Vakar lyg viskas veikė.")
-        assert reply2 and ("adres" in reply2.lower())
-        assert s.anamnesis_when and "vakar" in s.anamnesis_when.lower()
-        assert "paskutinį kartą veikė" in (s.anamnesis_raw or "")
+        assert reply and "adres" in reply.lower()
+        assert "paskutinį kartą" not in (reply or "")
 
     def test_wait_signal_holds_instead_of_reasking(self, monkeypatch):
         """C (2026-08-20): 'palaukit, ateinu' -> Gerai, lauksiu; no retry burn."""
@@ -819,7 +817,6 @@ class TestIdentDirectives:
 
         agent = ReactAgent(caller_phone="unknown")
         agent.state.problem_type = "internet_down"
-        agent.state.anamnesis_asked = True
         if candidate:
             agent.state.phone_candidate = {
                 "customer_id": "CUST009",
@@ -858,40 +855,40 @@ class TestIdentDirectives:
 
 
 class TestAnamnesisDirectives:
-    """Zone 3: the anamnesis questions go to the narrator (adaptive wording);
-    the capture ladder and the follow-up rung mechanics stay deterministic."""
+    """DIALOGO_ETALONAS #2 (2026-09-03): the OPENING anamnesis question is
+    GONE — the ladder goes straight to the address; capture-first keeps what
+    the opener already said; the targeted anamnesis lives in the packs."""
 
-    def test_anamnesis_goes_to_narrator(self, db_connection, monkeypatch):
+    def test_no_opening_question_straight_to_address(self, db_connection, monkeypatch):
         from agent.react_agent import ReactAgent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = ReactAgent(caller_phone="unknown")
         agent.state.problem_type = "internet_down"
         assert agent._identification_scripted_reply("Neveikia internetas") is None
-        assert agent.state.anamnesis_asked is True  # the flag still set
-        assert agent._ident_directive["kind"] == "anamnesis"
-        assert "ANAMNEZĖS ŽINGSNIS" in agent._state_facts_block()
+        assert agent.state.anamnesis_asked is True  # ladder-live marker stays
+        assert agent._ident_directive["kind"] in ("address_offer", "address_ask")
+        block = agent._state_facts_block()
+        assert "ANAMNEZĖS ŽINGSNIS" not in block
+        assert "IDENTIFIKACIJOS ŽINGSNIS" in block
 
-    def test_followup_goes_to_narrator(self, db_connection, monkeypatch):
+    def test_opening_capture_still_lands(self, db_connection, monkeypatch):
         from agent.react_agent import ReactAgent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = ReactAgent(caller_phone="unknown")
         agent.state.problem_type = "internet_down"
-        agent.state.anamnesis_asked = True
-        assert agent._identification_scripted_reply("Nežinau, nepastebėjau") is None
-        assert agent._ident_directive["kind"] == "anamnesis_followup"
-        assert "TIKRAI veikė" in agent._state_facts_block()
+        agent._identification_scripted_reply("Neveikia internetas nuo vakar, po audros")
+        assert agent.state.anamnesis_when  # capture-first read the opener
+        assert agent._opening_heard_note is True
 
-    def test_off_switch_keeps_scripted_anamnesis(self, db_connection, monkeypatch):
-        from agent.react_agent import ReactAgent
+    def test_pack_carries_the_contextual_anamnesis(self, db_connection):
+        from agent.evidence import spec_for
 
-        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
-        agent = ReactAgent(caller_phone="unknown")
-        agent.state.problem_type = "internet_down"
-        reply = agent._identification_scripted_reply("Neveikia internetas")
-        assert reply and "kada dingo" in reply
-        assert agent._ident_directive is None
+        spec = spec_for("no_mac_observed")
+        item = (spec.get("client") or {}).get("ivykiai")
+        assert item and "elektra" in item["klausimas"]
+        assert "linijoje nesimato" in item["kodel"]  # telemetrijos kontekstas
 
 
 class TestDirectiveTurnsAreSpeechOnly:
@@ -1034,7 +1031,7 @@ class TestWalkerFollowsLedger:
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         reply = evidence_drive(engine, "labas")
-        assert reply and "routerį" in reply  # first fact asked (device_present)
+        assert reply and "elektra" in reply  # first fact asked (ivykiai, 2026-09-03)
         assert gotos == ["dr_lights"]  # pointer followed the fact
 
 

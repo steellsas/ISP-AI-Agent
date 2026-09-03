@@ -185,6 +185,30 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
    retro-apklausoje). 965 testai, eval 52/52 ×2.
 3. Anamnezės perkėlimas: atidarymo klausimas išimamas, pack'ai gauna savo
    anamnezės klausimus (D klausimyno laukas), capture-first lieka.
+   PADARYTA 2026-09-03 (šaka feature/pack-anamnesis): atidarymo klausimo ir
+   E follow-up pakopos nebėra — po problemos iškart adresas (fast-path
+   skambučiai, pvz. skola, nebegaišta turn'o); capture-first + anamnesis
+   seed lieka; mires pack'as gavo kontekstinę `ivykiai` evidence („linijoje
+   nesimato — ar buvo dingusi elektra, gal kas tvarkė laidus?", su reiskia).
+   Pakeliui MECHANIKOS fix: kai pirmą pack'o klausimą užduoda žingsnio
+   hint'as (ne solverio ask), pending rakto nėra — deterministinis skaitymas
+   dabar bando VIENINTELĮ trūkstamą aktyvaus pack'o raktą (konservatyvūs
+   `atsakymai` žodynai saugo nuo klaidingų commit'ų; S6 eval flake
+   PASS/FAIL/FAIL → 4×PASS). 967 testai, eval 52/52 ×2.
+3b. KELIO-NĖRA banga (Andrius patvirtino 2026-09-03, PADARYTA tą pačią
+   dieną): (a) in-scope problema + identifikuotas klientas + nėra pack'o
+   (problem_has_path) → deterministinis „neaiškaus gedimo" tiketas
+   (unclear_fault ENGINE-ONLY strategija, ticket dialogue iškart — TV
+   nebeimprovizuoja interneto žingsnių); (b) GATE_MAX_TURNS env riba
+   (default 5) — ne klientas / neaiškėjanti situacija → mandagus uždarymas
+   BE tiketo (be customer_id tiketas mechaniškai neįmanomas); (c) auksiniai
+   T1 (TV→unclear tiketas) + T2 (ne klientas→uždarymas); (d) Whisper
+   pasikartojančio žodžio noise sargas (is_asr_noise: tas pats ≥4 raidžių
+   žodis ≥3× iš eilės = triukšmas; „ne ne ne" išimtis — gyvai „Žemės gatvės
+   gatvės gatvės" advance'ino žingsnį). 973 testai, eval 61/61 ×2.
+   UŽDARYMO ETAPUI užfiksuota (nelieciam dabar): kurtumas po „Ar dar kuo
+   padėti?" (klausimas/„sumokėjau" nuryjami), keista improvizuota paskutinė
+   replika po scripted goodbye momento.
 4. Pažingsninis testavimas pagal etaloną (prisistatymas → identifikacija →
    analizė → sprendimas → tiketas/užbaigimas) + testų žemėlapio valymas
    sluoksnis po sluoksnio (docs/TESTU_ZEMELAPIS.md).
