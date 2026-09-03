@@ -215,6 +215,7 @@ class TestAgentWiring:
         spec = spec_for("no_mac_observed")
         assert spec is not None
         assert list(spec["client"]) == [
+            "ivykiai",  # kontekstinė anamnezė (DIALOGO_ETALONAS #2, 2026-09-03)
             "device_present",
             "lights",
             "power_cable",
@@ -227,8 +228,12 @@ class TestAgentWiring:
 
     def test_evidence_drive_asks_in_order_with_kada_gates(self):
         agent = _diagnosing_agent()
-        # Nothing known -> the first question is device_present (lights is gated).
-        q1 = agent._evidence_drive("galim patikrinti")
+        # Nothing known -> the first question is the contextual anamnesis
+        # (ivykiai, 2026-09-03), then device_present (lights stays gated).
+        q0 = agent._evidence_drive("galim patikrinti")
+        assert "elektra" in q0
+        agent._ingest_client_evidence("Ne, nieko neįvyko, elektra nedingo")
+        q1 = agent._evidence_drive("nieko")
         assert "Susiraskite routerį" in q1
         agent._ingest_client_evidence("Radau tą routerio dėžutę su antena")
         q2 = agent._evidence_drive("radau")
@@ -240,14 +245,14 @@ class TestAgentWiring:
     def test_unreadable_answers_escalate_wording_then_give_up(self):
         agent = _diagnosing_agent()
         q1 = agent._evidence_drive("x")
-        assert "Susiraskite routerį" in q1  # level 1
+        assert "elektra" in q1  # level 1 (ivykiai first, 2026-09-03)
         q2 = agent._evidence_drive("Kurs komentai")  # extractor got nothing
-        assert "dėžutės su lemputėmis" in q2  # paprasciau (level 2)
+        assert "šviesa" in q2  # paprasciau (level 2)
         q3 = agent._evidence_drive("Vis tiek nesuprantu")
-        # Gave up on device_present -> recorded "neaišku"; lights stays gated
-        # (kada: device_present=rado), so nothing left to ask -> solver's turn.
-        assert agent.state.evidence["device_present"]["value"] == "neaišku"
-        assert q3 is None
+        # Gave up on ivykiai -> recorded "neaišku"; the plan moves on to the
+        # next fact (device_present) instead of stalling.
+        assert agent.state.evidence["ivykiai"]["value"] == "neaišku"
+        assert q3 is not None and "Susiraskite routerį" in q3
 
     def test_confirmed_with_no_computer_escalates_to_ticket(self):
         agent = _diagnosing_agent()

@@ -530,12 +530,16 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         p = s.profile
         has_addr = bool(p.street.value or p.house.value)
         if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
+            # DIALOGO_ETALONAS #2 (Andrius 2026-09-01/03): the OPENING
+            # anamnesis QUESTION is gone — capture-first keeps whatever the
+            # caller already said ("vakar dingo, po audros"), and the targeted
+            # anamnesis lives in the PACKS, asked with telemetry context only
+            # when the verdict needs it. A blind "kada dingo? gal po audros?"
+            # wasted a turn on every fast-path call (live 2026-09-03: the
+            # answer "kaimynai remontą darys" fed nothing — the verdict was a
+            # billing block). anamnesis_asked stays as the ladder-live marker
+            # (the deterministic address-resolve gate keys off it).
             s.anamnesis_asked = True
-            # W1-1 (Andrius 2026-08-25): "Labą dieną, neveikia internetas —
-            # VAKAR dingo" — the opening often already carries the WHEN, and
-            # asking "o kada dingo?" right after it reads as not listening.
-            # Read the anamnesis from the opening, skip the question, and hand
-            # the narrator a show-you-heard note.
             if user_input:
                 from .nlu import extract_anamnesis
 
@@ -552,42 +556,6 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
                         from_opening=True,
                     )
                     engine._opening_heard_note = True
-                    return _address_move(engine, s)
-            return _anamnesis_move(engine, "anamnesis", phrase("anamnesis_question"))
-        # E (Andrius 2026-08-20): the follow-up rung — the caller did not know
-        # WHEN it broke, so we asked when it last WORKED; the answer narrows
-        # the time window for the analysis ("vakar veikė" -> broke overnight).
-        if getattr(engine, "_anamnesis_followup", False) and user_input and not has_addr:
-            engine._anamnesis_followup = False
-            from .nlu import extract_anamnesis
-
-            read = extract_anamnesis(user_input)
-            s.anamnesis_when = read.get("when") or user_input.strip(" .!?,")[:80]
-            s.anamnesis_raw = (
-                f"{s.anamnesis_raw or ''} | paskutinį kartą veikė: {user_input.strip()[:80]}"
-            )
-            engine.tracer.emit(
-                "anamnesis", text=s.anamnesis_raw, when=s.anamnesis_when, followup=True
-            )
-            return _address_move(engine, s)
-        if s.anamnesis_asked and s.anamnesis_raw is None and user_input and not has_addr:
-            s.anamnesis_raw = user_input.strip()[:200]
-            from .nlu import extract_anamnesis
-
-            read = extract_anamnesis(s.anamnesis_raw)
-            s.anamnesis_when = read.get("when")
-            s.anamnesis_trigger = read.get("trigger")
-            engine.tracer.emit(
-                "anamnesis",
-                text=s.anamnesis_raw,
-                when=s.anamnesis_when,
-                trigger=s.anamnesis_trigger,
-            )
-            # E: nothing usable heard ("nežinau") — ONE follow-up rung about
-            # the last time the service worked, then on to the address.
-            if s.anamnesis_when in (None, "nežino") and not s.anamnesis_trigger:
-                engine._anamnesis_followup = True
-                return _anamnesis_move(engine, "anamnesis_followup", phrase("anamnesis_last_used"))
             return _address_move(engine, s)
         return None
     # WRAP-UP after the news (inform mode): the business is DONE — any further
@@ -657,18 +625,6 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     engine._result_pending = False
     engine._news_told = True
     return " ".join(b for b in bits if b)
-
-
-def _anamnesis_move(engine, kind: str, fallback: str):
-    """Zone 3 (skriptai -> direktyvos): the anamnesis questions go to the
-    narrator — it adapts to what the caller already said (one or several
-    things asked in one breath, per the answer). Off-switch keeps the script."""
-    import os as _os
-
-    if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
-        engine._ident_directive = {"kind": kind, "adresas": None, "fallback": fallback}
-        return None  # the narrator words it (facts directive)
-    return fallback
 
 
 def _address_move(engine, s):

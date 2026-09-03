@@ -231,6 +231,9 @@ class TestConfirmationAgent:
         # hypothesis never confirmed (live). The value dies; the drive thanks
         # and asks WHAT was found.
         agent = _diagnosing_agent(monkeypatch)
+        from agent.evidence import CLIENT, set_fact
+
+        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         with patch("agent.understand.understand", return_value=None):
             agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._evidence_last_ask_key = "power_cable"
@@ -347,6 +350,7 @@ class TestGaveUpRevival:
         from agent.evidence import CLIENT, set_fact
 
         agent = _diagnosing_agent(monkeypatch)
+        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
         set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
         set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 3)  # gave up
@@ -364,6 +368,7 @@ class TestGaveUpRevival:
         from agent.evidence import CLIENT, set_fact
 
         agent = _diagnosing_agent(monkeypatch)
+        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
         set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
         set_fact(agent.state.evidence, "power_cable", "neaišku", CLIENT, 3)

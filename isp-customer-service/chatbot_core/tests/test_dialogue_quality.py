@@ -86,14 +86,16 @@ class TestW1LivingDialogue:
         block = agent._state_facts_block() or ""
         assert "KLIENTAS JAU PASAKĖ" in block and "NEKLAUSK" in block
 
-    def test_opening_without_when_still_asks(self, db_connection, monkeypatch):
+    def test_opening_without_when_goes_to_address(self, db_connection, monkeypatch):
+        # etalonas #2 (2026-09-03): no opening anamnesis question — the flow
+        # goes straight to the address; targeted anamnesis lives in the packs.
         from agent.react_agent import ReactAgent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = ReactAgent(caller_phone="unknown")
         agent.state.problem_type = "internet_down"
         assert agent._identification_scripted_reply("Neveikia internetas pas mane") is None
-        assert agent._ident_directive["kind"] == "anamnesis"
+        assert agent._ident_directive["kind"] in ("address_offer", "address_ask")
 
     def _resolving_agent(self):
         from agent.react_agent import ReactAgent

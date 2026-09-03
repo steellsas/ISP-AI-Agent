@@ -185,6 +185,16 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
    retro-apklausoje). 965 testai, eval 52/52 ×2.
 3. Anamnezės perkėlimas: atidarymo klausimas išimamas, pack'ai gauna savo
    anamnezės klausimus (D klausimyno laukas), capture-first lieka.
+   PADARYTA 2026-09-03 (šaka feature/pack-anamnesis): atidarymo klausimo ir
+   E follow-up pakopos nebėra — po problemos iškart adresas (fast-path
+   skambučiai, pvz. skola, nebegaišta turn'o); capture-first + anamnesis
+   seed lieka; mires pack'as gavo kontekstinę `ivykiai` evidence („linijoje
+   nesimato — ar buvo dingusi elektra, gal kas tvarkė laidus?", su reiskia).
+   Pakeliui MECHANIKOS fix: kai pirmą pack'o klausimą užduoda žingsnio
+   hint'as (ne solverio ask), pending rakto nėra — deterministinis skaitymas
+   dabar bando VIENINTELĮ trūkstamą aktyvaus pack'o raktą (konservatyvūs
+   `atsakymai` žodynai saugo nuo klaidingų commit'ų; S6 eval flake
+   PASS/FAIL/FAIL → 4×PASS). 967 testai, eval 52/52 ×2.
 4. Pažingsninis testavimas pagal etaloną (prisistatymas → identifikacija →
    analizė → sprendimas → tiketas/užbaigimas) + testų žemėlapio valymas
    sluoksnis po sluoksnio (docs/TESTU_ZEMELAPIS.md).

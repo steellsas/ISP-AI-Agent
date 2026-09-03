@@ -229,6 +229,49 @@ class TestAccumulatedContext:
         assert got == []
 
 
+class TestPendingFallback:
+    """2026-09-03 (eval S6 flake): the pack's first question may go out from
+    the STEP HINT before the drive's ask bookkeeping — with no pending key the
+    deterministic answer read was skipped and the fact lived or died on the
+    LLM pass. Now the NEXT MISSING evidence key stands in; its conservative
+    marks still must hit."""
+
+    def test_answer_lands_without_pending_key(self, db_connection, monkeypatch):
+        from types import SimpleNamespace as NS
+        from unittest.mock import patch
+
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020112")
+        agent.state.customer_id = "CUST112"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": "router_hung", "step": "rh_scope"}
+        assert getattr(agent, "_evidence_last_ask_key", None) is None  # no ask yet
+        canned = NS(
+            tipas="atsakymas",
+            faktai={},
+            supratau="x",
+            pasitikejimas=1.0,
+            atsakymo_kokybe="pilnas",
+        )
+        with patch("agent.understand.understand", return_value=canned):
+            agent._ingest_client_evidence("Visuose įrenginiuose")
+        assert agent.state.evidence["fail_scope"]["value"] == "visuose"
+
+    def test_unrelated_utterance_commits_nothing(self, db_connection):
+        from unittest.mock import patch
+
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020112")
+        agent.state.customer_id = "CUST112"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": "router_hung", "step": "rh_scope"}
+        with patch("agent.understand.understand", return_value=None):
+            agent._ingest_client_evidence("O kiek visa tai kainuos?")
+        assert agent.state.evidence.get("fail_scope") is None
+
+
 class TestUnclearFaultTicket:
     def test_ticket_need_without_verdict_is_honest(self, db_connection):
         from agent.ticket_flow import ticket_need

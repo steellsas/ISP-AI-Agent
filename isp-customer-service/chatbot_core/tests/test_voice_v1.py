@@ -259,6 +259,7 @@ class TestSpeculation:
         agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
         from agent.evidence import CLIENT, set_fact
 
+        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
         agent._evidence_last_ask_key = "lights"
         return agent

@@ -467,6 +467,7 @@ class TestHearingAgent:
         from agent.evidence import CLIENT, set_fact
 
         agent = self._agent(monkeypatch)
+        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
         set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
         agent._evidence_last_ask_key = "power_cable"
@@ -478,6 +479,7 @@ class TestHearingAgent:
         from agent.evidence import CLIENT, set_fact
 
         agent = self._agent(monkeypatch)
+        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
         reply = agent._evidence_drive("radau")
         assert reply is not None and "lemputė" in reply
@@ -690,6 +692,7 @@ class TestHearingAgent:
         agent = self._agent(monkeypatch)
         agent.state.caller_name = "Andrius"
         for k, v in (
+            ("ivykiai", "nebuvo"),
             ("device_present", "rado"),
             ("lights", "nedega"),
             ("power_cable", "neaišku"),  # gave up — hypothesis unconfirmable
@@ -1267,11 +1270,11 @@ class TestReviewGaps:
 
         s = AgentSession(caller_phone="+37060012353", engine="graph")
         s.greeting()
-        reply = s.handle_turn("neveikia internetas")  # scripted anamnesis, no LLM
-        assert "kada dingo" in reply
+        reply = s.handle_turn("neveikia internetas")  # scripted address move, no LLM
+        assert "skambinate dėl" in reply  # etalonas #2: no opening anamnesis
         roles = [(m["role"], m.get("content")) for m in s.state.messages]
         assert ("user", "neveikia internetas") in roles
-        assert roles[-1][0] == "assistant" and "kada dingo" in roles[-1][1]
+        assert roles[-1][0] == "assistant" and "skambinate dėl" in roles[-1][1]
 
     def test_llm_turn_appends_user_exactly_once(self, db_connection):
         from unittest.mock import patch as _patch
@@ -1395,7 +1398,8 @@ class TestSmallTalkBeforeProblem:
         agent = self._fresh()
         agent.state.problem_type = "internet_down"
         reply = agent._identification_scripted_reply("neveikia internetas")
-        assert reply is not None and "kada dingo" in reply  # anamnesis, not ask_problem
+        # etalonas #2 (2026-09-03): straight to the address, not ask_problem
+        assert reply is not None and "adres" in reply.lower()
 
     def test_facts_forbid_address_offer_before_problem(self, db_connection):
         agent = self._fresh()
@@ -1538,7 +1542,7 @@ class TestDriveRepeatBailout:
         agent._drive_disabled = True  # solver already benched
 
         reply = agent.solver_drive_turn("na, nežinau")
-        assert reply is not None and "Susiraskite routerį" in reply
+        assert reply is not None and "elektra" in reply  # ivykiai first (2026-09-03)
 
 
 class TestBindDiscipline:

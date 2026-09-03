@@ -176,6 +176,25 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # became a give-up live 2026-08-10. Context read fills ONLY the pending
     # key, and only when the general pass found nothing for it.
     pending = getattr(engine, "_evidence_last_ask_key", None)
+    # 2026-09-03 (eval S6 flake): the pack's FIRST question can go out from
+    # the STEP HINT (the narrator, before the drive's own ask bookkeeping) —
+    # then _evidence_last_ask_key is still None and the deterministic answer
+    # read was skipped, leaving the fact to the LLM pass's mercy. When no ask
+    # is pending, the NEXT MISSING evidence key of the active pack stands in:
+    # its conservative `atsakymai` marks still have to hit, so an unrelated
+    # utterance commits nothing.
+    if pending is None:
+        try:
+            from .evidence import next_missing as _next_missing
+            from .evidence import spec_for as _spec_for0
+
+            _spec0 = _spec_for0((s.resolution or {}).get("verdict"))
+            if _spec0:
+                _nm = _next_missing(s.evidence, _spec0, True)
+                if _nm:
+                    pending = _nm[0]
+        except Exception:  # pragma: no cover - best-effort
+            pending = None
     pending_entry = s.evidence.get(pending) if pending else None
     u_tipas = (engine._last_understanding or {}).get("tipas")
     # DONE-report without a result (live 2026-08-11): "Mhm, patikrinau."
@@ -215,9 +234,14 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # key was given up on. When the pass failed OR answered without the
     # pending key, the deterministic context read fills that ONE key —
     # conservative marks + the conflict machinery guard against misreads.
+    # 2026-09-03 (eval S6 flake): the read no longer requires the pass to have
+    # TYPED the turn as "atsakymas" — gpt-oss occasionally mislabels a clean
+    # answer ("Visuose įrenginiuose" while fail_scope is pending) and the
+    # deterministic vocabulary hit was thrown away with it. The pack's
+    # `atsakymai` marks are the conservative floor: a hit on the PENDING key
+    # is a hit, whatever the LLM called the sentence.
     if (
-        (engine._last_understanding is None or u_tipas == "atsakymas")
-        and pending
+        pending
         and pending not in facts
         and (pending_entry is None or pending_entry.get("value") == "neaišku")
     ):

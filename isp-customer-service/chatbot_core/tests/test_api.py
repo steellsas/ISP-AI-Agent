@@ -98,7 +98,7 @@ class TestTurns:
         resp = client.post(f"/sessions/{sid}/turns", json={"text": "neveikia internetas"})
         assert resp.status_code == 200
         data = resp.json()
-        assert "kada dingo" in data["reply"]
+        assert "skambinate dėl" in data["reply"]  # etalonas #2: address, no anamnesis
         assert data["turn"]["engine"] == "scripted"
         assert data["turn"]["llm_calls"] == 0
 
@@ -129,7 +129,7 @@ class TestEventStream:
                 # until both arrived.
                 if reply is not None and "turn_summary" in seen:
                     break
-            assert reply is not None and "kada dingo" in reply["reply"]
+            assert reply is not None and "skambinate dėl" in reply["reply"]
             # The brain-panel feed: engine events arrived live on the socket.
             assert "user_turn" in seen
             assert "turn_summary" in seen
@@ -191,7 +191,7 @@ class TestVoiceChannel:
                         payload = e
             assert payload is not None
             assert payload["transcript"] == "neveikia internetas"
-            assert "kada dingo" in payload["reply"]  # scripted anamnesis
+            assert "skambinate dėl" in payload["reply"]  # scripted address move
             assert payload["turn"]["engine"] == "scripted"
             assert payload["asr_ms"] >= 0 and payload["tts_ms"] >= 0
             assert audio == b"FAKEMP3"
@@ -216,7 +216,7 @@ class TestVoiceChannel:
                     reply = msg
                     break
                 assert msg.get("type") != "partial"  # off = nothing produced
-            assert reply is not None and "kada dingo" in reply["reply"]
+            assert reply is not None and "skambinate dėl" in reply["reply"]
 
     def test_partial_frame_returns_rolling_transcript(self, client, voice_fakes, monkeypatch):
         monkeypatch.setenv("DUPLEX", "on")
@@ -505,7 +505,7 @@ class TestArchive:
         resp = client.get(f"/calls/{archived_call}")
         assert resp.status_code == 200
         d = resp.json()
-        assert any("kada dingo" in (m["text"] or "") for m in d["transcript"])
+        assert any("skambinate dėl" in (m["text"] or "") for m in d["transcript"])
         # Caller lines from SCRIPTED turns come from the trace — the message
         # history misses them (engine appends user turns only on the LLM path).
         assert any(
