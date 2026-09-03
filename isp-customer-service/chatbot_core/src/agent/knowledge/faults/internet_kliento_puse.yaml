@@ -22,6 +22,9 @@ evidence:
         visuose: "visuose įrenginiuose"
         viename: "tik viename įrenginyje"
       reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
+      reiskia:
+        visuose: "problema greičiausiai routeryje — pradėsime nuo jo perkrovimo"
+        viename: "tinklas veikia — žiūrime į tą vieną įrenginį"
       klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
       kodel: "Jei neveikia visur — žiūrime į routerį; jei viename — į tą įrenginį."
       paprasciau: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"

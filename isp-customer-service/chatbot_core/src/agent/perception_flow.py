@@ -313,6 +313,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         entry = set_fact(s.evidence, key, value, CLIENT, turn)
         if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
             engine.tracer.emit("evidence", action="fact", key=key, value=value)
+            _note_fact_meaning(engine, key, str(value))
     # Reader disagreements land SECOND: on a fresh key this flags the
     # conflict (one scripted clarify settles it); if the flip guard dropped
     # the pass value above, the keyword read simply stands as the fact.
@@ -320,6 +321,23 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         entry = set_fact(s.evidence, key, kw_value, CLIENT, turn)
         if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
             engine.tracer.emit("evidence", action="fact", key=key, value=kw_value)
+            _note_fact_meaning(engine, key, str(kw_value))
+
+
+def _note_fact_meaning(engine, key: str, value: str) -> None:
+    """Turn'o gramatikos 2 dalis (etalonas, 2026-09-03): pack'o `reiskia:`
+    laukas deklaruoja, KĄ atsakymas reiškia („dega tik pirma" → „gauna
+    maitinimą, bet nemato tinklo") — the narrator's reaction then CARRIES the
+    meaning instead of parroting the fact. One-shot note; declared per value
+    in the ACTIVE pack's evidence item, so wording is a file edit."""
+    from .evidence import LABELS, spec_for
+
+    spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+    item = (spec.get("client") or {}).get(key) or {}
+    meaning = (item.get("reiskia") or {}).get(value)
+    if meaning:
+        engine._fact_meaning = (LABELS.get(key, key), value, str(meaning))
+        engine.tracer.emit("evidence", action="fact_meaning", key=key, value=value)
 
 
 def _conflict_to_clarify(engine, key: str, entry: dict) -> bool:
@@ -935,6 +953,10 @@ def pre_turn_guards(engine, user_input: str) -> None:
 
                 s.caller_name = extract_caller_name(user_input) or user_input.strip()[:120]
                 s.caller_relation = detect_caller_relation(user_input)
+                # Frazynas (etalonas, 2026-09-03): the caller JUST introduced
+                # themselves — the next reply opens with a warm acceptance
+                # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
+                engine._name_heard = True
             engine.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
         return
     if not s.customer_id:

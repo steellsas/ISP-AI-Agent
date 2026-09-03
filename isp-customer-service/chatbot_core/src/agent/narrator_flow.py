@@ -18,6 +18,7 @@ import re  # noqa: F401
 from typing import Any  # noqa: F401
 
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
+from .glossary import PROBLEM_LT as _PROBLEM_LT
 
 logger = logging.getLogger(__name__)
 
@@ -894,6 +895,26 @@ def state_facts_block(engine) -> str | None:
     # Zone 2 (skriptai -> direktyvos): the transition to the ADDRESS — a smooth
     # hand-over from the problem talk instead of a canned line. The OFFER's
     # question core stays verbatim (the confirm guard keys off it).
+    # Turn'o gramatika (etalonas 2026-09-03): the JUST-landed answer's declared
+    # MEANING — the reaction carries it instead of parroting the fact
+    # („Vadinasi, maitinimą gauna, bet tinklo nemato."). One-shot.
+    fm = getattr(engine, "_fact_meaning", None)
+    if fm:
+        engine._fact_meaning = None
+        tema, reiksme, prasme = fm
+        facts.append(
+            f"- KĄ TIK PAAIŠKĖJO: {tema} — „{reiksme}“. TAI REIŠKIA: {prasme}. "
+            "Reakcijoje vienu sakiniu pasakyk ŠIĄ REIKŠMĘ (ne patį faktą), "
+            "tada kitas žingsnis."
+        )
+    # Frazynas: the caller JUST introduced themselves — accept warmly, once.
+    if getattr(engine, "_name_heard", False):
+        engine._name_heard = False
+        if s.caller_name and s.caller_name != "nenurodyta":
+            facts.append(
+                f"- KLIENTAS PRISISTATĖ: pradėk šiltu priėmimu — „Malonu, "
+                f"{s.caller_name}!“ (arba panašiai) — ir tęsk mintį."
+            )
     idd = getattr(engine, "_ident_directive", None)
     if idd:
         # W1-1 (Andrius 2026-08-25): the opening already said WHEN it broke —
@@ -909,10 +930,19 @@ def state_facts_block(engine) -> str | None:
                 "vakar.“), ir NEKLAUSK, kada dingo."
             )
         if idd["kind"] == "address_offer":
+            # Perėjimas BE ŠUOLIO (Andrius 2026-09-03, gyvas skambutis: po
+            # problemos iškart nuskambėjo plika šerdis be išgirdimo): pirma
+            # trumpa reakcija į tai, ką klientas KĄ TIK pasakė, tada jungtis
+            # į adresą. Šerdis lieka žodis į žodį — sargas nuo jos priklauso.
+            prob = _PROBLEM_LT.get(s.problem_type or "", "")
+            girdejimas = f" („Suprantu — {prob}.“)" if prob else ""
             facts.append(
-                "- IDENTIFIKACIJOS ŽINGSNIS: pasakyk, kad patikrai reikia adreso, ir "
-                "pasiūlyk adresą pagal numerį. Klausimas žodis į žodį: "
-                f"„Ar skambinate dėl {idd['adresas']}?“ Adreso nekeisk."
+                "- IDENTIFIKACIJOS ŽINGSNIS: pirmu TRUMPU sakiniu parodyk, kad "
+                f"išgirdai, ką klientas pasakė{girdejimas}, tada jungtis — "
+                "patikrai reikia adreso — ir klausimo šerdis ŽODIS Į ŽODĮ: "
+                f"„Ar skambinate dėl {idd['adresas']}?“ Adreso nekeisk. "
+                "Visos replikos pavyzdys: „Suprantu — dingo internetas. "
+                f"Patikrinsiu liniją — ar skambinate dėl {idd['adresas']}?“"
             )
         elif idd["kind"] == "anamnesis":
             facts.append(

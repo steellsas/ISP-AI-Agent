@@ -28,6 +28,14 @@ DIAGNOSIS_LT = {
 # WHY the ticket is needed, in the caller's words — spoken in the dialogue intro
 # ("Registruoju gedimą — reikalingas naujas maršrutizatorius.") and written on the
 # ticket. Falls back to the DIAGNOSIS_LT gloss for causes without a need phrase.
+# The caller's PROBLEM type in their own words — for acknowledgements
+# („Suprantu — dingo internetas.") before a transition. Short, human.
+PROBLEM_LT = {
+    "internet_down": "dingo internetas",
+    "internet_slow": "internetas veikia lėtai",
+    "tv": "bėda su televizija",
+}
+
 TICKET_NEED_LT = {
     "no_mac_observed": "reikalingas naujas maršrutizatorius",
     "link_down_local": "reikia patikrinti liniją iki jūsų buto",

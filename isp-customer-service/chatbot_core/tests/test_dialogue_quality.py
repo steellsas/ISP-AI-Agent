@@ -246,3 +246,63 @@ class TestW2QuietAnalyst:
         monkeypatch.setenv("ANALYST", "on")
         run_analyst(agent)
         assert calls == [1] and agent._analyst_notes is None  # OK -> no notes
+
+
+class TestTurnGrammar:
+    """Etalono 2 zingsnis (2026-09-03): reakcija nesa REIKSME (reiskia:),
+    vardo priemimas, adreso perejimas be suolio."""
+
+    def _agent(self, verdict="router_hung"):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020112")
+        agent.state.customer_id = "CUST112"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": verdict, "step": "rh_scope"}
+        return agent
+
+    def test_fact_meaning_note_is_one_shot(self, db_connection):
+        from agent.perception_flow import _note_fact_meaning
+
+        agent = self._agent()
+        _note_fact_meaning(agent, "fail_scope", "visuose")
+        block = agent._state_facts_block() or ""
+        assert "TAI REIŠKIA" in block and "pakibo pats routeris" in block
+        assert "TAI REIŠKIA" not in (agent._state_facts_block() or "")  # one-shot
+
+    def test_fact_meaning_silent_without_declaration(self, db_connection):
+        from agent.perception_flow import _note_fact_meaning
+
+        agent = self._agent(verdict="no_mac_observed")
+        _note_fact_meaning(agent, "power_cable", "įkištas")  # no reiskia declared
+        assert getattr(agent, "_fact_meaning", None) is None
+
+    def test_mires_lights_meaning_declared(self, db_connection):
+        from agent.perception_flow import _note_fact_meaning
+
+        agent = self._agent(verdict="no_mac_observed")
+        _note_fact_meaning(agent, "lights", "dega")
+        assert "linija jo nemato" in (agent._state_facts_block() or "")
+
+    def test_name_acceptance_is_one_shot(self, db_connection):
+        agent = self._agent()
+        agent.state.caller_name = "Tomas"
+        agent._name_heard = True
+        block = agent._state_facts_block() or ""
+        assert "Malonu, Tomas" in block
+        assert "Malonu" not in (agent._state_facts_block() or "")
+
+    def test_address_offer_directive_reacts_first(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        agent = ReactAgent(caller_phone="+37060020112")
+        agent.state.problem_type = "internet_down"
+        agent._ident_directive = {
+            "kind": "address_offer",
+            "adresas": "Tilžės g. 60, butas 7",
+            "fallback": "Ar skambinate dėl Tilžės g. 60, butas 7?",
+        }
+        block = agent._state_facts_block() or ""
+        assert "išgirdai" in block  # reakcija pirmiau
+        assert "Suprantu — dingo internetas" in block  # problemos aidas
+        assert "„Ar skambinate dėl Tilžės g. 60, butas 7?“" in block  # šerdis

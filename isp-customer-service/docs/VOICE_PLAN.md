@@ -170,9 +170,19 @@ verdikto), L1 neigimo sargas („bėdų neturiu"). Auksiniai G1 (kontekstas be
 trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
 
 1. S6 variklio ydos (šaka fix/s6-engine-lessons) + gyvas patikros skambutis.
+   PADARYTA (PR #75, patvirtinta gyvai).
 2. Turn'o gramatika + `reiskia:` laukas + dviejų pusių išvados forma +
    frazynas (vardas 3 momentai, „Malonu, X") + DI prisistatymas + sutikimo
    įliejimas (be atskiro „ar patogu?").
+   PADARYTA 2026-09-03 (šaka feature/context-accumulation): pack'ų
+   `reiskia:` per reikšmę → KĄ TIK PAAIŠKĖJO nota (reakcija neša REIKŠMĘ,
+   ne fakto aidą; mires lights + abu fail_scope), adreso perėjimas be
+   šuolio (address_offer direktyva: išgirdimas + jungtis + šerdis žodis į
+   žodį, PROBLEM_LT aidas), „Malonu, X" vardo priėmimo one-shot,
+   identity.md: aklaviečių draudimas + dviejų pusių išvados forma + vardo
+   3 momentai. DI prisistatymas padarytas dar flow-2 bangoje; sutikimo
+   klausimo mūsų pack'uose jau nebėra (mires dr_intro paliktas — svarstyti
+   retro-apklausoje). 965 testai, eval 52/52 ×2.
 3. Anamnezės perkėlimas: atidarymo klausimas išimamas, pack'ai gauna savo
    anamnezės klausimus (D klausimyno laukas), capture-first lieka.
 4. Pažingsninis testavimas pagal etaloną (prisistatymas → identifikacija →
