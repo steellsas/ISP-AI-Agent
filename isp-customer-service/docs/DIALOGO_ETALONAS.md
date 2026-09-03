@@ -85,6 +85,15 @@ tiekia turinį (`reiskia:` interpretacijos, klausimai, instrukcijos).
    pasikartotų — skambinkite."
 10. **Privatumo riba** (galiojo ir lieka): DB sutarties savininko vardas
     niekada negarsinamas; kreipiamasi tik skambinančiojo pasakytu vardu.
+11. **Informacija niekada nedingsta; sukauptas kontekstas pildo supratimą**
+    (Andrius 2026-09-02: „kai informacija pasipildo, ateina supratimas").
+    VAD/STT karpo kalbą į fragmentus, bet prasmė gyvena per juos: agentas
+    gali reaguoti iš karto, tačiau vėlesnis fragmentas turi PAPILDYTI
+    supratimą, ne dingti. Mechanika: heard_utterances buferis (viskas
+    saugoma), L2 klasifikacija iš replikų uodegos, STORY tylos langas kol
+    problema nežinoma (pasakojimo pauzės nekerpa minties), final flush
+    padedant ragelį (paskutiniai žodžiai į žurnalą). Galioja ir tolimesniam
+    pokalbiui — ne tik klasifikacijai.
 
 ## 4. Latencijos maskavimo lygiai
 

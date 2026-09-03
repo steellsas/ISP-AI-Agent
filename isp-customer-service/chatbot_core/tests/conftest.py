@@ -35,6 +35,12 @@ os.environ.setdefault("ASR_MIN_AUDIO_S", "0")
 # W2: the quiet analyst calls an LLM from a background thread — deterministic
 # tests never want that (opt in with ANALYST=on when testing it specifically).
 os.environ.setdefault("ANALYST", "off")
+# Final flush on ws close would fire a REAL ASR call per closed socket —
+# tests exercise it directly (test_classification), never through transport.
+os.environ.setdefault("FINAL_FLUSH", "off")
+# Story window (pre-problem pauses) = the old default in tests, so transport
+# tests' silent-frame counts keep cutting; the live default stays longer.
+os.environ.setdefault("ENDPOINT_STORY_MS", "900")
 
 
 # =============================================================================

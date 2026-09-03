@@ -462,9 +462,14 @@ class TestSemanticEndpoint:
     complete expected answer / farewell, normal otherwise. Deterministic only."""
 
     def _engine(self, pending=None, verdict=None):
+        # problem_type set: these tests probe the MID-CALL windows; the
+        # pre-problem STORY window has its own tests (test_classification).
         return SimpleNamespace(
             _evidence_last_ask_key=pending,
-            state=SimpleNamespace(resolution={"verdict": verdict} if verdict else None),
+            state=SimpleNamespace(
+                resolution={"verdict": verdict} if verdict else None,
+                problem_type="internet_down",
+            ),
         )
 
     def test_trailing_conjunction_waits(self):

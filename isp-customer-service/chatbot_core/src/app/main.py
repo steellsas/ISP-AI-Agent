@@ -320,6 +320,32 @@ async def db_reset():
         raise HTTPException(status_code=500, detail="db reset failed") from None
 
 
+def _final_flush(ms) -> None:
+    """FINAL FLUSH (2026-09-02, Andrius: „svarbu, kad nedingtų informacija"):
+    a hangup mid-sentence leaves an OPEN segment the silence window never
+    closed — the caller's last words existed only as a partial. Transcribe the
+    leftover segment(s) and hand them to the engine as overlay facts, so the
+    state/journal keeps everything that was said. Best-effort by contract.
+    FINAL_FLUSH=off disables (tests: a ws close must not fire a real ASR)."""
+    import os as _os
+
+    if _os.getenv("FINAL_FLUSH", "on").lower() == "off":
+        return
+    from .audio_front import wav_bytes
+
+    for f in (getattr(ms, "front", None), getattr(ms, "overlay_front", None)):
+        pcm = f.export_open() if f is not None else None
+        if not pcm or len(pcm) < 16_000:  # <0.5 s @ 16 kHz — noise, not words
+            continue
+        try:
+            text = ms.voice.transcribe_partial(wav_bytes(pcm, f._rate))
+        except Exception:  # a failed ASR must not disturb the cleanup
+            continue
+        if text and text.strip():
+            ms.session.tracer.emit("final_flush", text=text)
+            ms.session.apply_overlay([text.strip()])
+
+
 @app.websocket("/ws/call/{session_id}")
 async def ws_call(ws: WebSocket, session_id: str):
     """One socket per call: tracer events stream OUT as JSON (their `type` field
@@ -775,6 +801,10 @@ async def ws_call(ws: WebSocket, session_id: str):
         pass
     finally:
         _disarm_checkin()
+        try:
+            _final_flush(manager.get(session_id))
+        except Exception:
+            logger.debug("final flush failed", exc_info=True)
         if partial_task is not None and not partial_task.done():
             partial_task.cancel()
         pump.cancel()

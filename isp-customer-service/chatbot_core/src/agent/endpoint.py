@@ -71,6 +71,10 @@ def slow_ms() -> int:
     return _ms("ENDPOINT_SLOW_MS", 1400)
 
 
+def story_ms() -> int:
+    return _ms("ENDPOINT_STORY_MS", 1800)
+
+
 def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     """(mode, silence_ms) for the utterance-so-far; ("normal", None) on any
     doubt. Order matters: an unfinished thought outranks a mapped answer —
@@ -109,6 +113,17 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
 
         if detect_farewell(stripped):
             return ("fast", fast_ms())
+    except Exception:  # pragma: no cover
+        pass
+    # STORY window (2026-09-02, live: „Ora šiandien kažkoks netoks. [pauzė]
+    # gal dėl to neturiu interneto?" was cut at the pause and the agent
+    # answered half a thought): while the call's PROBLEM is not yet known the
+    # caller is TELLING a story — pauses between thoughts are natural, so the
+    # cut waits longer. Once the problem is set, answers return to the normal
+    # window.
+    try:
+        if getattr(engine.state, "problem_type", None) is None:
+            return ("slow", story_ms())
     except Exception:  # pragma: no cover
         pass
     return ("normal", None)
