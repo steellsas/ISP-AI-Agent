@@ -33,6 +33,11 @@ evidence:
     lights:
       reikia: "ar dega bent viena routerio lemputė"
       zingsnis: dr_lights
+      # reiskia — KĄ atsakymas reiškia (turn'o gramatika, 2026-09-03):
+      # naratorius reakcijoje įvardija reikšmę, ne patį faktą.
+      reiskia:
+        dega: "routeris srovę gauna, bet linija jo nemato — žiūrime į kabelį"
+        nedega: "routeris greičiausiai negauna srovės — tikriname maitinimą"
       klausimas: "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
       # kodel — pasakoma kartu su PIRMU klausimu, kad klientas žinotų, kam to
       # reikia (2026-08-11, Andrius: paaiškinti ką tikrinam ir kodėl).
