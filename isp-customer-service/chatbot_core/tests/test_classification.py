@@ -295,3 +295,64 @@ class TestCompetenceSurface:
         g = AgentConfig().greeting_message
         assert "dirbtinio intelekto" in g
         assert "televizijos" in g
+
+
+class TestNoPathTicket:
+    """Kelio-nėra taisyklė (Andrius 2026-09-03): in-scope problema +
+    identifikuotas klientas + nėra pack'o → sąžiningas „neaiškaus gedimo"
+    tiketas, ne svetimo domeno improvizacija (gyvai: TV skambutis buvo
+    vedamas per interneto WiFi klausimus)."""
+
+    def test_problem_has_path(self):
+        from agent.faults import problem_has_path
+
+        assert problem_has_path("internet_down") is True
+        assert problem_has_path("tv") is False
+        assert problem_has_path("internet_slow") is False
+        assert problem_has_path(None) is False
+
+    def test_tv_goes_to_unclear_ticket_not_internet_pack(self, db_connection):
+        agent = _agent()
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "tv"
+        assert agent.ensure_diagnosed() is True
+        r = agent.state.resolution
+        assert r["verdict"] == "unclear_fault" and r["step"] == "escalate"
+        assert agent._ticket_stage == "phone"  # dialogue began deterministically
+        from agent.ticket_flow import ticket_need
+
+        assert "neaiškus" in ticket_need(agent)
+
+    def test_internet_down_still_diagnoses(self, db_connection):
+        agent = _agent()
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.ensure_diagnosed()
+        assert (agent.state.resolution or {}).get("verdict") != "unclear_fault"
+
+
+class TestGateMaxTurns:
+    def test_knob_controls_the_close(self, db_connection, monkeypatch):
+        monkeypatch.setenv("GATE_MAX_TURNS", "2")
+        monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
+        agent = _agent()
+        r1 = agent._identification_scripted_reply("Mendulija kadulija")
+        assert not agent.state.case_closed and r1
+        r2 = agent._identification_scripted_reply("Kadulija mendulija")
+        assert agent.state.case_closed and "skambinkite" in r2
+        assert agent.state.ticket_id is None  # no customer -> no ticket, ever
+
+
+class TestRepeatedTokenNoise:
+    def test_whisper_loop_is_noise(self):
+        from src.adapters.asr.lt_text import is_asr_noise
+
+        assert is_asr_noise("Žemės gatvės gatvės gatvės") is True
+        assert is_asr_noise("Žemės gatvės gatvės gatvės interneto lizdą.") is True
+
+    def test_real_speech_is_not(self):
+        from src.adapters.asr.lt_text import is_asr_noise
+
+        assert is_asr_noise("Ne ne ne, palaukit!") is False  # short refusal exempt
+        assert is_asr_noise("Labai labai gerai") is False  # only 2 in a row
+        assert is_asr_noise("Radau routerį prie lango") is False

@@ -359,7 +359,14 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
     p_asks = getattr(engine, "_ask_problem_count", 0)
     engine._ask_problem_count = p_asks + 1
     asking = "?" in user_input or is_real_question(user_input)
-    if p_asks >= 4:
+    # N riba (Andrius 2026-09-03): ne klientas / neaiški situacija — po
+    # GATE_MAX_TURNS nevaisingų apsikeitimų mandagus uždarymas BE tiketo
+    # (tiketas be customer_id mechaniškai neįmanomas). Configurable knob.
+    try:
+        gate_max = int(_os.environ.get("GATE_MAX_TURNS", "5"))
+    except ValueError:
+        gate_max = 5
+    if p_asks + 1 >= gate_max:
         s.case_closed = True
         s.closed_reason = "declined"
         engine.tracer.emit("decision", intent="problem_gate", action="close")

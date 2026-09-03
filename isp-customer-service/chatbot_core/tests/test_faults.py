@@ -38,16 +38,26 @@ class TestDetectionMeanings:
         assert step_options(None, None) is None
 
 
+# unclear_fault is ENGINE MECHANICS (the honest no-path endgame, 2026-09-03),
+# not declarable fault knowledge — packs describe faults a company solves; the
+# fallback for a fault NOBODY declared cannot itself be a pack.
+_ENGINE_ONLY = {"unclear_fault"}
+
+
 class TestProcedureEquivalence:
     """The manifest must rebuild EXACTLY the strategies the walker used to get from code."""
 
     def test_every_code_strategy_is_declared(self):
         for verdict in STRATEGIES:
+            if verdict in _ENGINE_ONLY:
+                continue
             assert build_strategy(verdict) is not None, verdict
             assert playbook(verdict) == STRATEGIES[verdict].rag_doc, verdict
 
     def test_declared_steps_match_code_steps(self):
         for verdict, coded in STRATEGIES.items():
+            if verdict in _ENGINE_ONLY:
+                continue
             declared = build_strategy(verdict)
             assert [s.id for s in declared.steps] == [s.id for s in coded.steps], verdict
             for d, c in zip(declared.steps, coded.steps):
@@ -63,6 +73,8 @@ class TestProcedureEquivalence:
 
     def test_get_strategy_serves_the_declared_one(self):
         for verdict in STRATEGIES:
+            if verdict in _ENGINE_ONLY:
+                continue
             assert get_strategy(verdict) is build_strategy(verdict), verdict
 
     def test_unknown_verdict_has_no_strategy(self):

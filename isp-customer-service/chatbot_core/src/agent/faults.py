@@ -228,6 +228,19 @@ def step_options(verdict: str | None, step_id: str | None) -> dict[str, str] | N
     return None
 
 
+def problem_has_path(problem: str | None) -> bool:
+    """Does ANY fault pack declare a solving path for this reported problem
+    (`problem:` field)? A sprendzia-classified problem WITHOUT one is an
+    UNCLEAR fault (Andrius 2026-09-03): an identified customer gets an honest
+    'neaiškus gedimas' ticket instead of a wrong-domain improvisation (live:
+    a TV call was walked down the internet client-side pack)."""
+    if not problem:
+        return False
+    return any(
+        isinstance(spec, dict) and spec.get("problem") == problem for spec in _faults().values()
+    )
+
+
 def problem_entry(problem: str | None) -> dict[str, Any]:
     """The classification-catalog entry for a PROBLEM type (problems: section)."""
     if not problem:

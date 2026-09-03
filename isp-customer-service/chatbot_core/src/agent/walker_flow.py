@@ -67,6 +67,27 @@ def ensure_diagnosed(engine) -> bool:
         return False
     if s.diagnosis.get("network") or s.outage_reported:
         return False  # already diagnosed this stage (or an outage short-circuited it)
+    # NO-PATH rule (Andrius 2026-09-03): the reported problem is in-scope and
+    # the caller is IDENTIFIED, but no fault pack declares a path for it
+    # (e.g. TV today) — an honest "neaiškus gedimas" ticket instead of running
+    # the INTERNET telemetry and walking a wrong-domain pack (live: a TV call
+    # was led through Wi-Fi questions). The single-escalate strategy begins
+    # the ticket dialogue deterministically on arrival.
+    if s.problem_type and s.resolution is None:
+        from .faults import problem_has_path
+        from .resolution import STRATEGIES
+
+        if not problem_has_path(s.problem_type):
+            s.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+            s.diagnosis["network"] = {"reason": "unclear_fault", "skipped": True}
+            engine.tracer.emit(
+                "decision",
+                intent="no_path",
+                action="unclear_fault_ticket",
+                value=s.problem_type,
+            )
+            engine._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
+            return True
     try:
         obs = execute_tool("diagnose_connection", {"customer_id": s.customer_id})
     except Exception:  # pragma: no cover - best-effort
