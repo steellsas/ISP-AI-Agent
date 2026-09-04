@@ -362,7 +362,7 @@
   {
    "id": "I5_nonclient_only_subscribers",
    "phone": "+37000000000",
-   "desc": "Ne klientas: adresas nerandamas, kodo neturi -> pagalba tik abonentams, uždarymas BE tiketo",
+   "desc": "Ne klientas: Vilnius -> IŠKART 'abonentų nėra' (ne bandymas); toliau neaiškėja -> perspėjimas -> uždarymas 'nenustatyta vieta' BE tiketo",
    "turns": [
     "Neveikia internetas",
     "Vilnius, Gedimino prospektas 1",
@@ -375,7 +375,7 @@
     "identified": false,
     "disposition": "any",
     "reply_any": [
-     "abonentams"
+     "Šiaulių mieste"
     ],
     "reply_none": [
      "registruoj"

@@ -45,8 +45,8 @@ class TestApartmentByRegistry:
 
 
 class TestAccountCodeRung:
-    """№2/№5: adresas neaiškėja → abonento kodas → radus siūlomas adresas;
-    neradus — „tik abonentams" ir uždarymas be tiketo."""
+    """№2/№5 PERDIRBTA (gyvi T-5/T-6, 2026-09-04): pakopa — pasiūlymas, ne
+    spąstai; tikslinimas nėra bandymai; kodo režimas praleidžia turinį."""
 
     def test_extract_account_code_forms(self):
         from agent.identification_flow import _extract_account_code
@@ -57,41 +57,105 @@ class TestAccountCodeRung:
         assert _extract_account_code("Vilniaus g. 29") is None  # adresas ne kodas
         assert _extract_account_code("nežinau") is None
 
-    def _worn_out(self, agent, monkeypatch=None):
-        agent.state.problem_type = "internet_down"
-        replies = []
-        for t in ("Nežinau adreso", "Negaliu pasakyti", "Tikrai nežinau", "Na nežinau"):
-            replies.append(agent._identification_scripted_reply(t))
-        return replies
-
-    def test_rung_opens_after_limit_and_finds_customer(self, db_connection):
+    def test_code_heard_anytime_without_mode(self, db_connection):
+        """Kodas girdimas VISADA — klientas gali jį pasakyti nelaukiamas."""
         agent = _agent()
-        replies = self._worn_out(agent)
-        assert replies[-1] and "abonento kodą" in replies[-1]  # pakopa atsidarė
-        assert agent._awaiting_account_code is True
-        reply = agent._identification_scripted_reply("Mano abonento kodas AB-10104")
+        agent.state.problem_type = "internet_down"
+        agent._identification_scripted_reply("Adreso nežinau, bet turiu abonento kodą AB-10104")
         assert agent.state.phone_candidate
         assert agent.state.phone_candidate["customer_id"] == "CUST104"
-        # adresas SIŪLOMAS balsu (address_offer kelias), ne prisiimamas
-        assert agent.state.customer_id is None
+        assert agent.state.customer_id is None  # adresas SIŪLOMAS, ne prisiimamas
 
-    def test_unreadable_code_retries_then_closes(self, db_connection):
+    def test_empty_turns_warn_then_close_no_location(self, db_connection):
         agent = _agent()
-        self._worn_out(agent)
-        r1 = agent._identification_scripted_reply("O kur man jį rasti?")
-        assert r1 and "penki skaitmenys" in r1  # retry with the WHERE hint
-        r2 = agent._identification_scripted_reply("Nerandu niekur")
-        assert agent.state.case_closed
-        assert r2 and "abonentams" in r2
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True  # adreso klausimas jau nuskambėjo
+        r1 = agent._identification_scripted_reply("Nežinau adreso")
+        assert not agent.state.case_closed
+        r2 = agent._identification_scripted_reply("Negaliu pasakyti")
+        assert r2 and "negalėsiu" in r2  # PERSPĖJIMAS (su kodo užuomina)
+        agent._identification_scripted_reply("Na nežinau")
+        r4 = agent._identification_scripted_reply("Nieko nesakysiu")
+        assert agent.state.case_closed and r4 and "nenustačius" in r4
         assert agent.state.ticket_id is None
 
-    def test_explicit_no_code_closes_immediately(self, db_connection):
-        """AIŠKUS „neturiu" — atsakymas gautas, kartoti nebėra ko."""
+    def test_unrecognized_address_offers_code(self, db_connection):
+        """Turinys yra, bet registras jo visai neatpažįsta — po 2 siūlom kodą."""
         agent = _agent()
-        self._worn_out(agent)
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        agent._identification_scripted_reply("Kosmonautų alėja 7")
+        r = agent._identification_scripted_reply("Sakau — Kosmonautų alėja septyni")
+        assert r and "abonento kodą" in r
+        assert agent._awaiting_account_code is True
+
+    def test_code_mode_passes_content_through(self, db_connection):
+        """KURTUMO fix: adresas/pavardė kodo režime praleidžiami į normalią
+        eigą, o ne atsimuša į „kodas atrodo taip"."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._awaiting_account_code = True
+        from agent.identification_flow import _account_code_rung
+
+        handled, reply = _account_code_rung(agent, agent.state, "Petraitis, pasižiūrėkit pavardę")
+        assert handled is False and reply is None  # praleista — agentas klauso
+        handled, reply = _account_code_rung(agent, agent.state, "Ginkūnai, Žeimių gatvė 12")
+        assert handled is False
+        assert agent._awaiting_account_code is False  # režimas tyliai užgeso
+
+    def test_explicit_no_code_closes(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._awaiting_account_code = True
         r = agent._identification_scripted_reply("Neturiu jokio kodo")
-        assert agent.state.case_closed
-        assert r and "abonentams" in r
+        assert agent.state.case_closed and r and "abonentams" in r
+
+    def test_city_not_served_is_instant(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        r = agent._identification_scripted_reply("Vilnius, Gedimino prospektas 1")
+        assert r and "Šiaulių mieste ir rajone" in r
+        assert not agent.state.case_closed
+        assert getattr(agent, "_addr_empty_turns", 0) == 0  # ne bandymas
+
+    def test_clarifying_turns_never_count(self, db_connection):
+        """Gyva T-6: pavardės tikslinimas skaitiklių neliečia."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._last_agent_question = lambda: "Kokia pavardė, kad galėčiau patvirtinti sutartį?"
+        from agent.identification_flow import _account_code_rung
+
+        for txt in ("Tetraitos", "Petraitis", "Pet raitis sakau"):
+            handled, reply = _account_code_rung(agent, agent.state, txt)
+            assert handled is False and reply is None
+        assert getattr(agent, "_addr_empty_turns", 0) == 0
+
+
+class TestCitySuggestionWiring:
+    """Gyva T-5: „Žeimių g. yra Ginkūnuose" + kliento „taip" → miesto slotas
+    persijungia, paieška vyksta ten (tikslinimas nėra bandymai)."""
+
+    def test_confirmation_moves_the_city_slot(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._addr_city_suggestion = "Ginkūnai"
+        agent._prefill_slots_from_text("Taip, Ginkūnuose")
+        assert agent.state.profile.city.value == "Ginkūnai"
+        assert agent._addr_city_suggestion is None
+
+    def test_bare_yes_also_moves(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._addr_city_suggestion = "Ginkūnai"
+        agent._prefill_slots_from_text("Taip taip")
+        assert agent.state.profile.city.value == "Ginkūnai"
+
+    def test_other_answer_keeps_suggestion_open(self, db_connection):
+        agent = _agent()
+        agent._addr_city_suggestion = "Ginkūnai"
+        agent._prefill_slots_from_text("Palaukite, pasižiūrėsiu dokumentuose")
+        assert agent.state.profile.city.value is None
+        assert agent._addr_city_suggestion == "Ginkūnai"
 
 
 class TestReopenConfirmation:

@@ -44,10 +44,11 @@ ištarti pirmas — jei ištaria, testas raudonas.
 - **Sakyti:** „Nerodo internetas." → „Dainų gatvė 7."
 - **Laukiam:** pavardės klausimas (name dvi sutartys) → „Petraitis." → identifikuota. (Dainų g. — avarijos zona: po identifikacijos praneš apie avariją — tai normalu.)
 
-## T-7 Nežino adreso → abonento kodo pakopa → uždarymas
+## T-7 Nežino adreso → perspėjimas → uždarymas (PERDIRBTA 2026-09-04)
 - **Numeris:** unknown
-- **Sakyti:** „Neveikia internetas." → „Nežinau adreso, ne namie esu." → „Negaliu dabar pasakyt." → „Na nežinau tikrai."
-- **Laukiam (nauja №2/№5):** po ~4 bandymų agentas pasiūlo ABONENTO KODĄ; atsakius „Neturiu jokio kodo" → „jūsų rasti nepavyko — pagalba teikiama abonentams" + mandagus uždarymas BE tiketo.
+- **Sakyti:** „Neveikia internetas." → „Nežinau adreso, ne namie esu." → „Negaliu dabar pasakyt." → „Na nežinau tikrai." → „Nieko nepasakysiu."
+- **Laukiam:** po 2 tuščių — PERSPĖJIMAS („nežinodamas adreso negalėsiu nei patikrinti, nei užregistruoti — gal adresą arba abonento kodą?"); toliau nieko → mandagus uždarymas „nenustačius gedimo vietos", BE tiketo.
+- **Variantas:** bet kuriuo momentu pasakius „AB-10104" — agentas randa ir pasiūlo adresą (kodas girdimas VISADA).
 
 ## T-8 Adreso keitimas po identifikacijos — su patvirtinimu
 - **Numeris:** +37060020112 → patvirtink adresą, vardas „Paulius", ir jau ANALIZĖS metu pasakyk: „Atsiprašau, sumaišiau — iš tikrųjų skambinu dėl Tilžės gatvės 60."
@@ -63,10 +64,12 @@ ištarti pirmas — jei ištaria, testas raudonas.
 - **Sakyti:** problema → „Nepamenu tikslaus adreso, čia ne mano butas." → dar 1–2 neaiškūs → agentui pasiūlius kodą: „Turiu — A B brūkšnys dešimt šimtas keturi" (arba pažodžiui: „AB dešimt–šimtas–keturi", kodas **AB-10104**).
 - **Laukiam:** randa Vilmą Stankūnienę (S. Dariaus ir S. Girėno g. 25-45) → PASITIKSLINA adresą balsu → tęsia analizę.
 
-## T-11 Ne klientas
+## T-11 Ne klientas (PERDIRBTA 2026-09-04)
 - **Numeris:** unknown
-- **Sakyti:** problema → „Kaunas, Laisvės alėja 5." → siūlant taisyti: „Ne, tikrai Kaunas." → kodo klausimui: „Neturiu jokio kodo."
-- **Laukiam (nauja №5):** „jūsų duomenų rasti nepavyko — pagalba teikiama tik mūsų abonentams", mandagus uždarymas, BE tiketo, BE tolimesnės diagnostikos.
+- **Sakyti:** problema → „Kaunas, Laisvės alėja 5."
+- **Laukiam IŠ KARTO (ne bandymas!):** „Šiame mieste mūsų abonentų nėra — paslaugas teikiame Šiaulių mieste ir rajone. Gal adresas Šiauliuose?"
+- **Tada:** „Ne, tikrai Kaune gyvenu." → „Nieko kito neturiu." → perspėjimas → „Neturiu nei adreso, nei kodo." → uždarymas „nenustačius gedimo vietos", BE tiketo.
+- **SVARBU:** „Vilniaus gatvė 29" (Šiauliuose!) NETURI gauti šios frazės — tai gatvė, ne miestas.
 
 ## T-12 Savininko vardo patikra (privatumo testas!)
 - **Numeris:** +37060012353 (DB savininkas: Giedrius Giedraitis, Vilniaus g. 29 — ŠITO VARDO AGENTAS NETURI IŠTARTI)
@@ -78,3 +81,10 @@ ištarti pirmas — jei ištaria, testas raudonas.
 
 Po serijos: trace'ų peržiūra (Claude), radinių sąrašas, šlifas failuose/kode,
 identifikacijos testų sluoksnio žymėjimas TESTU_ZEMELAPIS.md.
+
+---
+
+## PAKARTOTI po 2026-09-04 perdirbimo (gyvos T-5/T-6 ydos sutaisytos)
+
+- **T-5R (Ginkūnai):** unknown → problema → „Šiauliai, Žeimių gatvė 12." → agentui pasiūlius Ginkūnus: „Taip, Ginkūnuose." → LAUKIAM: paieška persijungia į Ginkūnus, randa 12-6 (butas!), jokio kodo klausimo. Tikslinimas NEBĖRA „bandymai".
+- **T-6R (pavardė):** unknown → problema → „Dainų gatvė 7." → pavardei: sakyk darkytai „Tetraitis" → agentas tikslina → „Petraitis." → LAUKIAM: disambiguacija be kodo pakopos; pavardės ratas neskaičiuojamas.

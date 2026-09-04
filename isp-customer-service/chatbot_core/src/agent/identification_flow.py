@@ -174,6 +174,25 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # asked for the address. Without this, fuzzy street matching read an ADDRESS out
     # of the anamnesis answer ("po AUDROS" -> "Aušros g.") and the bogus street slot
     # blocked the phone-address offer, derailing identification (observed).
+    # Vietovės pasiūlymo VIELOS (gyva T-5, Andrius: „agentas pasiūlė ir
+    # klientas patvirtino — tikrinamas kitas regionas"): resolveris pasakė
+    # „Žeimių g. yra Ginkūnuose", klientas patvirtina (arba pamini kaimą) —
+    # miesto slotas persijungia ir kita paieška vyksta TEN, ne Šiauliuose.
+    sug = getattr(engine, "_addr_city_suggestion", None)
+    if sug and text:
+        from .evidence import _fold as _fold_sug
+        from .resolution import DETECTORS as _DET
+
+        mentioned = _fold_sug(str(sug))[:5] in _fold_sug(text)
+        if mentioned or _DET["yes_no"](text) == "yes":
+            from .slots import SlotStatus as _SS
+
+            s.profile.city.propose(str(sug), 0.95, _SS.RESOLVED)
+            engine._addr_city_suggestion = None
+            engine.tracer.emit(
+                "decision", intent="city_suggestion", action="accepted", value=str(sug)
+            )
+
     low = (text or "").lower()
     has_addr_evidence = any(ch.isdigit() for ch in low) or any(
         w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
@@ -213,13 +232,14 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # №2 (etalonas 2026-09-03): ŠIS turn'as davė adreso pažangos — abonento
     # kodo pakopos skaitiklis nulinamas (dalimis diktuojamas adresas niekada
     # neturi nuriedėti į kodo klausimą). Pažanga skaitosi tik su TIKRA adreso
-    # evidencija (skaitmuo ar adreso žodis pačioje frazėje) — fuzzy gatvė iš
-    # „Neturiu jokio KODO"→„Sodo g." nėra pažanga (gyva I5).
+    # Adreso PAŽANGA nulina pakopos skaitiklius (2026-09-04 perdirbimas:
+    # skaitliukai gyvena _account_code_rung; čia tik pažangos signalas).
     _evid = any(ch.isdigit() for ch in low) or any(
         w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
     )
     if _evid and (reading.street or reading.house or reading.apartment):
-        engine._addr_fail_turns = 0
+        engine._addr_empty_turns = 0
+        engine._addr_unrecognized = 0
 
     # If the caller names a DIFFERENT street than the pre-flight outage was
     # for, that outage is not theirs — drop it so its proactive instruction
@@ -474,82 +494,188 @@ def _extract_account_code(text: str | None) -> str | None:
     return None
 
 
+_BIG_CITIES = ("vilni", "kaun", "klaipėd", "klaiped", "panevėž", "panevez", "alyt", "marijampol")
+
+
+def _has_address_content(text: str | None) -> bool:
+    """The turn CARRIES address material (a digit, a street word, a place) —
+    such a turn is never a 'fruitless' one, whatever the resolver said."""
+    low = (text or "").lower()
+    return any(ch.isdigit() for ch in low) or any(
+        w in low
+        for w in ("gatv", " g.", "prospekt", "alėj", "alej", "aikšt", "kaim", "šiaul", "siaul")
+    )
+
+
+def _lookup_by_code(engine: Any, s: Any, code: str):
+    """find_customer(account_code) -> candidate + the aloud address offer, or
+    None when the code is not in the DB."""
+    import json as _json
+
+    from .react_agent import execute_tool
+
+    try:
+        res = _json.loads(execute_tool("find_customer", {"account_code": code}))
+    except Exception:
+        res = {}
+    if not res.get("success"):
+        engine.tracer.emit("decision", intent="account_code", action="not_found", value=code)
+        return None
+    engine._awaiting_account_code = False
+    addresses = res.get("addresses") or []
+    primary = next((a for a in addresses if a.get("is_primary")), addresses[0] if addresses else {})
+    s.phone_candidate = {
+        "customer_id": res.get("customer_id"),
+        "name": res.get("name"),
+        "address": primary.get("full_address"),
+        "city": primary.get("city"),
+        "street": primary.get("street"),
+        "house": primary.get("house_number"),
+        "apartment": primary.get("apartment_number"),
+    }
+    engine.tracer.emit("decision", intent="account_code", action="found", value=code)
+    # The address is OFFERED aloud for confirmation, never assumed.
+    return _address_move(engine, s)
+
+
 def _account_code_rung(engine: Any, s: Any, user_input: str | None):
-    """Etalonas №2/№5 (Andrius 2026-09-03): adresui neišaiškėjus per
-    IDENT_MAX_TURNS bandymų — KITAS METODAS: abonento kodas. Kodo suradus —
-    kandidatas kaip iš telefono (adresas PASIŪLOMAS patvirtinti balsu);
-    nesant nei adreso, nei kodo — „pagalba tik abonentams" ir mandagus
-    uždarymas BE tiketo. Returns (handled, reply)."""
+    """Etalonas №2/№5, PERDIRBTA po gyvų T-5/T-6 (Andrius 2026-09-04: pakopa
+    skaičiavo ir PRODUKTYVIUS patikslinimo turn'us, o kodo režimas tapo
+    kurčias — kliento adreso/pavardės patikslinimai atsimušdavo į „kodas
+    atrodo taip"). Principai:
+
+      * TIKSLINIMAS NĖRA BANDYMAI — pavardės/vietovės/diagnozės ratai
+        skaitiklių nekelia; bet koks adreso turinys tuščių skaitiklį nulina.
+      * Miestas ne zonoje (Vilnius, Kaunas…) — pasakoma IŠ KARTO, be jokių
+        skaitiklių („šiame mieste abonentų nėra — gal Šiauliuose?").
+      * Kodo režimas — PASIŪLYMAS, ne spąstai: kodas skaitomas kiekvieną
+        turn'ą; ne-kodo TURINYS praleidžiamas į normalią eigą (agentas
+        klauso!); tik AIŠKUS „neturiu kodo" veda į sąžiningą pabaigą.
+      * Nenorint sakyti adreso: 2 tušti turn'ai → PERSPĖJIMAS (be adreso nei
+        išspręsti, nei registruoti negalėsiu), dar 2 → uždarymas
+        „nenustatyta gedimo vieta".
+
+    Returns (handled, reply)."""
     import os as _os
 
     from .identification import phrase
 
-    if getattr(engine, "_awaiting_account_code", False) and user_input:
-        code = _extract_account_code(user_input)
-        if code:
-            import json as _json
-
-            from .react_agent import execute_tool
-
-            try:
-                res = _json.loads(execute_tool("find_customer", {"account_code": code}))
-            except Exception:
-                res = {}
-            if res.get("success"):
-                engine._awaiting_account_code = False
-                addresses = res.get("addresses") or []
-                primary = next(
-                    (a for a in addresses if a.get("is_primary")),
-                    addresses[0] if addresses else {},
-                )
-                s.phone_candidate = {
-                    "customer_id": res.get("customer_id"),
-                    "name": res.get("name"),
-                    "address": primary.get("full_address"),
-                    "city": primary.get("city"),
-                    "street": primary.get("street"),
-                    "house": primary.get("house_number"),
-                    "apartment": primary.get("apartment_number"),
-                }
-                engine.tracer.emit("decision", intent="account_code", action="found", value=code)
-                # The address is OFFERED aloud for confirmation, never assumed.
-                return True, _address_move(engine, s)
-            engine.tracer.emit("decision", intent="account_code", action="not_found")
-        # An EXPLICIT "kodo neturiu / nesu klientas" needs no retry — the
-        # caller answered; the honest close comes now.
-        low = (user_input or "").lower()
+    if not user_input:
+        return False, None
+    # 0) Kodas girdimas VISADA (ne tik „režime") — klientas gali jį pasakyti
+    # bet kada, taip pat po perspėjimo frazės.
+    code = _extract_account_code(user_input)
+    if code and (getattr(engine, "_awaiting_account_code", False) or "ab" in user_input.lower()):
+        reply = _lookup_by_code(engine, s, code)
+        if reply is not None:
+            return True, reply
+        if getattr(engine, "_awaiting_account_code", False):
+            return True, phrase("account_code_retry")  # perskaitėm, bet DB nerado
+    if getattr(engine, "_awaiting_account_code", False):
+        low = user_input.lower()
         explicit_no = any(
-            m in low for m in ("neturiu", "nėra jokio", "nera jokio", "nesu klientas")
+            m in low
+            for m in (
+                "neturiu",
+                "nėra jokio",
+                "nera jokio",
+                "nežinau kodo",
+                "nezinau kodo",
+                "nesu klientas",
+                "nesu abonent",
+            )
         )
-        # no readable code / lookup failed — one retry, then the honest close
-        tries = getattr(engine, "_account_code_tries", 0) + (2 if explicit_no else 1)
-        engine._account_code_tries = tries
-        if tries >= 2:
+        if explicit_no:
             s.case_closed = True
             s.closed_reason = "declined"
             engine.tracer.emit("decision", intent="account_code", action="not_client_close")
             return True, phrase("not_client_goodbye")
-        return True, phrase("account_code_retry")
-    # Should the rung OPEN? Two roads to "the address is not working out":
-    # (a) the caller gives NO address at all — fruitless no-street turns;
-    # (b) the caller gives addresses the registry keeps REJECTING (resolve
-    #     failures; live I5: a Vilnius address fuzzy-matched a Šiauliai
-    #     street and looped the diagnosis forever).
-    if s.problem_type and user_input:
-        try:
-            limit = int(_os.environ.get("IDENT_MAX_TURNS", "4"))
-        except ValueError:
-            limit = 4
-        # Kiekvienas intake turn'as be adreso PAŽANGOS skaičiuojasi (prefill
-        # nulina skaitiklį, kai turn'as davė gatvę/namą/butą — dalimis
-        # diktuojantis klientas pakopos niekada nepasiekia).
-        engine._addr_fail_turns = getattr(engine, "_addr_fail_turns", 0) + 1
-        if engine._addr_fail_turns >= limit or getattr(engine, "_addr_resolve_fails", 0) >= max(
-            2, limit - 1
-        ):
-            engine._awaiting_account_code = True
-            engine.tracer.emit("decision", intent="account_code", action="ask")
-            return True, phrase("account_code_ask")
+        # Ne kodas, o TURINYS (adresas, pavardė, pasakojimas) — praleidžiam į
+        # normalią eigą; po poros tokių turn'ų kodo režimas tyliai užgęsta.
+        grace = getattr(engine, "_code_grace", 0) + 1
+        engine._code_grace = grace
+        if grace >= 2:
+            engine._awaiting_account_code = False
+        return False, None
+    if not s.problem_type:
+        return False, None
+    # 1) Miestas ne aptarnavimo zonoje — IŠ KARTO, vieną kartą. SVARBU:
+    # „Vilniaus GATVĖ" yra Šiaulių gatvė, ne miestas — miesto žodis, po kurio
+    # eina gatvės indikatorius, yra GATVĖS pavadinimas (gyvas testų lūžis).
+    import re as _re
+
+    low = user_input.lower()
+    _city_mention = any(
+        _re.search(c + r"\w*", low) and not _re.search(c + r"\w*\s+(g\.|g\b|gatv)", low)
+        for c in _BIG_CITIES
+        if c in low
+    )
+    if (
+        _city_mention
+        and "šiaul" not in low
+        and "siaul" not in low
+        and not getattr(engine, "_city_not_served_said", False)
+    ):
+        engine._city_not_served_said = True
+        engine.tracer.emit("decision", intent="account_code", action="city_not_served")
+        return True, phrase("city_not_served")
+    # 1b) LOOP'as (Andrius: „kai loopas prasideda — galvojama apie kitus
+    # būdus"): trys TIKROS gatvės/namo paieškos nesėkmės (tikslinimai —
+    # butas/pavardė/vietovė — nesiskaito) → siūlom kodą.
+    if getattr(engine, "_addr_resolve_fails", 0) >= 3:
+        engine._addr_resolve_fails = 0
+        engine._awaiting_account_code = True
+        engine._code_grace = 0
+        engine.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
+        return True, phrase("account_code_ask")
+    # 2) Skaitikliai. TIKSLINIMO fazė (pavardės klausimas, diagnozės nota,
+    # vietovės pasiūlymas) skaitiklių NEliečia.
+    last_q = (engine._last_agent_question() or "").lower()
+    clarifying = (
+        "pavard" in last_q
+        or getattr(engine, "_addr_diag_note", None)
+        or getattr(engine, "_addr_city_suggestion", None)
+    )
+    if clarifying:
+        return False, None
+    # Skaitikliai gyvi tik kai adreso KLAUSIMAS jau nuskambėjo (eval I4:
+    # pati problemos frazė „Neveikia internetas" buvo suskaičiuota kaip
+    # tuščias bandymas ir perspėjimas iššoko per anksti).
+    if not s.anamnesis_asked:
+        return False, None
+    try:
+        limit = int(_os.environ.get("IDENT_MAX_TURNS", "4"))
+    except ValueError:
+        limit = 4
+    if _has_address_content(user_input):
+        engine._addr_empty_turns = 0
+        # Turinys yra, bet registras jo VISAI neatpažįsta (nei sloto, nei
+        # diagnozės) — po dviejų tokių siūlom kodą.
+        if not s.profile.street.value and not getattr(engine, "_addr_diag_note", None):
+            n = getattr(engine, "_addr_unrecognized", 0) + 1
+            engine._addr_unrecognized = n
+            if n >= 2:
+                engine._awaiting_account_code = True
+                engine._code_grace = 0
+                engine.tracer.emit(
+                    "decision", intent="account_code", action="ask", reason="unrecognized"
+                )
+                return True, phrase("account_code_ask")
+        else:
+            engine._addr_unrecognized = 0
+        return False, None
+    # 3) Tuščias turn'as (jokio adreso turinio): perspėjimas → uždarymas.
+    n = getattr(engine, "_addr_empty_turns", 0) + 1
+    engine._addr_empty_turns = n
+    if n == max(2, limit - 2) and not getattr(engine, "_addr_warned", False):
+        engine._addr_warned = True
+        engine.tracer.emit("decision", intent="account_code", action="warn")
+        return True, phrase("address_need_warning")
+    if n >= limit:
+        s.case_closed = True
+        s.closed_reason = "declined"
+        engine.tracer.emit("decision", intent="account_code", action="no_location_close")
+        return True, phrase("no_location_goodbye")
     return False, None
 
 

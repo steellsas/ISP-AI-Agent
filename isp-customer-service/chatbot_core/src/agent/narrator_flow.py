@@ -1292,12 +1292,34 @@ def update_state_from_observation(engine, action: str, observation: str):
                 from .identification_flow import address_diag_note
 
                 engine._addr_diag_note = address_diag_note(obs_data)
-                # №2 (etalonas 2026-09-03): kiekviena NESĖKMINGA paieška
-                # artina metodo keitimą — po kelių fiasko kopėčios pasiūlys
-                # abonento kodą, užuot sukusios adreso ratą.
-                engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
+                res_levels = obs_data.get("resolution") or {}
+                street_lvl = res_levels.get("street") or {}
+                # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
+                # Ginkūnuose" — įsimenam siūlomą vietovę; klientui patvirtinus
+                # miesto slotas persijungia (prefill vielos) ir paieška vyksta
+                # TEN. Tikslinimas NĖRA bandymas — fails nekeliam.
+                elsewhere = street_lvl.get("found_elsewhere") or []
+                if street_lvl.get("status") == "not_in_city" and elsewhere:
+                    engine._addr_city_suggestion = elsewhere[0].get("city")
+                # №2 (perdirbta 2026-09-04): nesėkme laikoma tik GATVĖS/NAMO
+                # lygmens fiasko; „trūksta buto/pavardės" ar vietovės
+                # pasiūlymas — tikslinimas, ne nesėkmė.
+                house_lvl = res_levels.get("house") or {}
+                apt_lvl = res_levels.get("apartment") or {}
+                clarification = (
+                    street_lvl.get("status") == "not_in_city"
+                    or apt_lvl.get("status") == "required"
+                    or "pavard" in str(obs_data.get("hint") or "").lower()
+                )
+                if not clarification and (
+                    street_lvl.get("status") not in (None, "ok")
+                    or house_lvl.get("status") not in (None, "ok")
+                ):
+                    engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
             else:
                 engine._addr_diag_note = None
+                engine._addr_city_suggestion = None
+                engine._addr_resolve_fails = 0
 
         if action in ("find_customer", "resolve_address") and obs_data.get("success"):
             # resolve_address nests the normalized profile under `customer`;
