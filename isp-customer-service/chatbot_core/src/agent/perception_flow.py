@@ -364,6 +364,26 @@ def _note_fact_meaning(engine, key: str, value: str) -> None:
         engine.tracer.emit("evidence", action="fact_meaning", key=key, value=value)
 
 
+def _holder_name_matches(engine, caller_name: str) -> bool:
+    """Does the caller's stated first name plausibly match the CRM account
+    holder's name? Fuzzy by 4-letter prefix (STT garbles endings). True also
+    when the holder name is unknown — no basis to challenge."""
+    from .evidence import _fold
+
+    holder = engine.state.customer_name or (engine.state.phone_candidate or {}).get("name")
+    if not holder:
+        return True
+    caller_tokens = [t for t in _fold(caller_name).split() if len(t) >= 3]
+    holder_tokens = [t for t in _fold(str(holder)).split() if len(t) >= 3]
+    if not caller_tokens or not holder_tokens:
+        return True
+    for c in caller_tokens:
+        for h in holder_tokens:
+            if c[:4] == h[:4]:
+                return True
+    return False
+
+
 def _conflict_to_clarify(engine, key: str, entry: dict) -> bool:
     """A conflicting CLIENT re-reading landed on `key`. The scripted clarify
     loop is reserved for keys the ACTIVE pack DECLARES (its own questions —
@@ -982,6 +1002,15 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
                 engine._name_heard = True
             engine.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
+            # №4 (etalonas 2026-09-03): sakosi SAVININKAS, bet vardas nesutampa
+            # su DB sutarties vardu — vienas mandagus patikslinimas, DB vardo
+            # NEgarsinant (privatumo riba). Fuzzy: STT darkymui („Andrijus" ~
+            # „Andrius") užtenka 4 raidžių prefikso sutapimo.
+            if s.caller_relation == "holder" and s.caller_name not in (None, "nenurodyta"):
+                if not _holder_name_matches(engine, s.caller_name):
+                    engine._holder_clarify_open = True
+                    engine._holder_clarify_asked = False
+                    engine.tracer.emit("decision", intent="holder_name", action="mismatch_clarify")
         return
     if not s.customer_id:
         q = (engine._last_agent_question() or "").lower()
@@ -1102,8 +1131,15 @@ def pre_turn_guards(engine, user_input: str) -> None:
     elif not s.case_closed:
         from .resolution import detect_address_correction
 
-        if detect_address_correction(user_input):
-            engine._reopen_identification(user_input)
+        if detect_address_correction(user_input) and not getattr(
+            engine, "_reopen_confirm_pending", None
+        ):
+            # Etalonas №3 (2026-09-03): PIRMA patvirtinimo klausimas, tik tada
+            # identifikacija atsidaro iš naujo — STT darkymas nebemeta pokalbio
+            # ant kito adreso be kliento „taip".
+            engine._reopen_confirm_pending = user_input
+            engine._reopen_confirm_asked = False
+            engine.tracer.emit("decision", intent="reopen_confirm", action="pending")
 
 
 def engine_resolve_from_slots(engine) -> bool:

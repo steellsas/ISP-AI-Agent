@@ -99,6 +99,16 @@ identification:
     checkin: "Kaip sekasi — ar pavyksta?"
     # Problemos vartai (2026-08-21): po kelių bandymų be aiškios mūsų srities problemos.
     no_problem_goodbye: "Supratau. Čia interneto ir televizijos gedimų pagalba — jei kils ryšio ar TV bėda, drąsiai skambinkite. Geros dienos!"
+    # Identifikacijos etalonas (Andrius 2026-09-03): adresui nepavykus ~4
+    # bandymus — KITAS METODAS: abonento kodas; jo nesant — pagalba tik
+    # abonentams ir mandagus uždarymas.
+    account_code_ask: "Pabandykime kitaip — ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
+    account_code_retry: "Kodas atrodo taip: A B brūkšnys ir penki skaitmenys, pavyzdžiui sąskaitos viršuje. Ar pavyksta jį rasti?"
+    not_client_goodbye: "Deja, jūsų duomenų mūsų sistemoje rasti nepavyko — pagalba teikiama tik mūsų abonentams. Jei esate abonentas, paskambinkite turėdami sutarties adresą ar abonento kodą. Geros dienos!"
+    # Adreso keitimas po identifikacijos — TIK su patvirtinimu (taisyklė №3).
+    reopen_confirm: "Norėčiau patikslinti — ar tikrai skambinate dėl KITO adreso, ne dėl {adresas}?"
+    # Savininko vardo patikra (taisyklė №4): DB vardo NIEKADA negarsiname.
+    holder_mismatch_clarify: "Sistemoje sutartis šiuo adresu registruota kitu vardu — gal ji sudaryta šeimos nario ar kito asmens vardu?"
     repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
     escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"

@@ -1292,6 +1292,10 @@ def update_state_from_observation(engine, action: str, observation: str):
                 from .identification_flow import address_diag_note
 
                 engine._addr_diag_note = address_diag_note(obs_data)
+                # №2 (etalonas 2026-09-03): kiekviena NESĖKMINGA paieška
+                # artina metodo keitimą — po kelių fiasko kopėčios pasiūlys
+                # abonento kodą, užuot sukusios adreso ratą.
+                engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
             else:
                 engine._addr_diag_note = None
 

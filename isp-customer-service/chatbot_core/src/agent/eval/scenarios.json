@@ -338,6 +338,73 @@
    }
   },
   {
+   "id": "I4_account_code_rescue",
+   "phone": "+37000000000",
+   "desc": "Adresas neaiškėja ~4 turn'us -> abonento kodo pakopa -> randa, adresas PASIŪLOMAS balsu, identifikuota",
+   "turns": [
+    "Neveikia internetas",
+    "Nežinau adreso, aš ne namie",
+    "Negaliu dabar pasakyti",
+    "Na tikrai neprisimenu",
+    "Mano abonento kodas AB-10104",
+    "Taip",
+    "Vilma",
+    "Ačiū, viso gero"
+   ],
+   "expect": {
+    "identified": true,
+    "disposition": "any",
+    "reply_any": [
+     "abonento kodą"
+    ]
+   }
+  },
+  {
+   "id": "I5_nonclient_only_subscribers",
+   "phone": "+37000000000",
+   "desc": "Ne klientas: adresas nerandamas, kodo neturi -> pagalba tik abonentams, uždarymas BE tiketo",
+   "turns": [
+    "Neveikia internetas",
+    "Vilnius, Gedimino prospektas 1",
+    "Tikrai Vilnius, ten gyvenu",
+    "Kito adreso neturiu",
+    "Neturiu jokio kodo",
+    "Ne, tikrai neturiu"
+   ],
+   "expect": {
+    "identified": false,
+    "disposition": "any",
+    "reply_any": [
+     "abonentams"
+    ],
+    "reply_none": [
+     "registruoj"
+    ]
+   }
+  },
+  {
+   "id": "I6_holder_name_mismatch",
+   "phone": "+37060012353",
+   "desc": "Sakosi savininkas kitu vardu -> mandagus patikslinimas BE DB vardo garsinimo (privatumo taisyklė)",
+   "turns": [
+    "Neveikia internetas",
+    "Taip",
+    "Petras, aš sutarties savininkas",
+    "Žmonos vardu sudaryta sutartis",
+    "Ne, ačiū, tiek žinot"
+   ],
+   "expect": {
+    "identified": true,
+    "disposition": "any",
+    "reply_any": [
+     "kitu vardu"
+    ],
+    "reply_none": [
+     "Giedri"
+    ]
+   }
+  },
+  {
    "id": "I3_ident_no_address_recorded",
    "phone": "+37000000000",
    "desc": "F6: klientas nežino adreso -> paraginimas su kodėl -> nesėkmė fiksuojama, pokalbis baigiasi mandagiai",

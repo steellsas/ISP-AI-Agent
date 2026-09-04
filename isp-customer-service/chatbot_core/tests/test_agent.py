@@ -855,7 +855,10 @@ class TestAddressGuards:
         facts = agent._state_facts_block()
         assert facts and "NEPATVIRTINTAS" in facts
 
-    def test_correction_reopens_identification(self, db_connection):
+    def test_correction_asks_confirmation_then_reopens(self, db_connection):
+        # Etalonas №3 (2026-09-03): a correction no longer reopens INSTANTLY —
+        # one confirmation question first; a "taip" (or a named new address)
+        # then drops the identity.
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020101")
@@ -863,7 +866,12 @@ class TestAddressGuards:
         agent.state.customer_address = "Šiauliai, Tilžės g. 60-3"
         agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent._pre_turn_guards("Tai ne dėl to adresų skambinu")
-        assert agent.state.customer_id is None  # identity dropped
+        assert agent.state.customer_id == "CUST101"  # NOT dropped yet
+        assert agent._reopen_confirm_pending
+        reply = agent._identification_scripted_reply("Tai ne dėl to adresų skambinu")
+        assert reply and "tikrai" in reply  # the confirmation question
+        agent._identification_scripted_reply("Taip, dėl kito adreso")
+        assert agent.state.customer_id is None  # identity dropped after the yes
         assert agent.state.diagnosis == {}  # per-account conclusions dropped
         assert agent._reopen_note is True
 
