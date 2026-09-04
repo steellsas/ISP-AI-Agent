@@ -217,6 +217,24 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
 6. Vėliau: modelių reakcijos testai, latencijos A/B, linijos banga
    (Twilio/Telnyx adapteris — architektūra jau tinkama).
 
+#### Identifikacijos supratimo backlog (užfiksuota 2026-09-04, Andrius)
+
+- **LT NER pre-filtras** (LitLat-BERT ar pan.): fuzzy gatvių paieška
+  leidžiama TIK NER-LOC span'uose (struktūriškai išnyksta „kodo"→„Sodo g."
+  klasės klaidos, kurias dabar dengia guard'ai), PER span'ai — vardų/pavardžių
+  gaudymui. Daryti LOKALIZACIJOS etape (kartu su lokaliu percepcijos modeliu);
+  CPU ~50–150 ms, tinka. Iki tol — deterministiniai guard'ai.
+- **PARAIDŽIUI pakopa** (Andriaus idėja): kai gatvė/miestas nesuprantami po
+  kelių bandymų (f/s, š/s garsai susilieja) — agentas paprašo paraidžiui su
+  inkaro žodžiais („K kaip Kaunas, U kaip upė…"). Mechanika: parseris ima
+  inkaro žodžių PIRMAS raides (pavienes raides Whisper darko, o žodžius
+  girdi gerai), iš prefikso siaurina registro kandidatus (2–3 raidės dažnai
+  vienareikšmės) → pasiūlo („Kuktos gatvė — taip?"). Vieta kopėčiose: adresas
+  nesuprastas ×2 → PARAIDŽIUI → vis tiek ne → abonento kodas → „tik
+  abonentams". Tinka ir pavardėms (Dainų g. 7 disambiguacija). ASR promptas
+  paraidžiui turn'e keičiamas į raidžių režimą. Daryti po gyvų T-1…T-12
+  (testai parodys dažnį ir formuluotes).
+
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 
 - TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO
