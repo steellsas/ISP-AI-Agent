@@ -216,6 +216,41 @@ class TestReopenConfirmation:
         r = agent._identification_scripted_reply("Dėl kokio adreso mes dabar bendraujame?")
         assert r and "Vilniaus g. 33-2" in r
 
+    def test_confirmed_reopen_drops_bg_and_continues_ident(self, db_connection):
+        """A-2R gyva yda: po „taip" foninis telemetrijos skaitymas atstatydavo
+        senos sąskaitos diagnozę, o identifikacija nesitęsė — dabar bg išmetamas
+        ir variklis IŠ KARTO bando naują adresą (Tilžės 60 → buto klausimas)."""
+        agent = self._identified()
+        agent.state.diagnosis["network"] = {"group": "B6", "reason": "router_hung"}
+        agent._bg_diagnosis = '{"success": true}'
+        agent.state.phone_candidate = {"customer_id": "CUST112", "street": "Vilniaus g."}
+        agent._reopen_confirm_pending = "mano adresas yra Tilžės gatvė 60"
+        agent._reopen_confirm_asked = True
+        agent._pre_turn_guards("Taip taip, dėl KITO adreso skambinu")
+        assert agent.state.customer_id is None  # sena tapatybė numesta
+        assert agent._bg_diagnosis is None  # telemetrija išmesta kartu
+        assert agent.state.diagnosis == {}  # senų išvadų nebėra
+        assert agent.state.phone_candidate is None  # senas adresas nebesiūlomas
+        assert agent.state.problem_type == "internet_down"  # problema LIEKA
+        # Tilžės 60 pabandyta iš karto → „koks butas?" nota reply sluoksniui.
+        assert agent._addr_diag_note or agent._db_address_note
+
+    def test_confirmed_reopen_commits_single_contract_address(self, db_connection):
+        """Naujas adresas be butų (Vilniaus g. 29) — po „taip" identifikacija
+        įvyksta TĄ PATĮ turn'ą, be papildomų klausimų."""
+        agent = self._identified()
+        agent._reopen_confirm_pending = "skambinu dėl Vilniaus gatvės 29"
+        agent._reopen_confirm_asked = True
+        agent._pre_turn_guards("Taip")
+        assert agent.state.customer_id == "CUST009"  # nauja sutartis prisirišo
+
+    def test_bg_diagnosis_never_applies_without_customer(self, db_connection):
+        agent = _agent()
+        agent._bg_diagnosis = '{"success": true}'
+        agent._apply_bg_diagnosis()
+        assert agent._bg_diagnosis is None
+        assert agent.state.diagnosis == {}
+
 
 class TestHolderNameCheck:
     """№4: sakosi savininkas kitu vardu → patikslinimas BE DB vardo."""

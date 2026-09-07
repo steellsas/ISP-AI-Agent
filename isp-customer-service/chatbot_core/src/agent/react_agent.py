@@ -1557,6 +1557,10 @@ class ReactAgent:
         if not bg:
             return
         self._bg_diagnosis = None
+        # A-2R (2026-09-07): be identifikuoto kliento telemetrija neturi kam
+        # priklausyti — po reopen ji atstatydavo numestos sąskaitos diagnozę.
+        if not self.state.customer_id:
+            return
         with suppress(Exception):
             r0 = self.state.resolution or {}
             in_solution = bool(

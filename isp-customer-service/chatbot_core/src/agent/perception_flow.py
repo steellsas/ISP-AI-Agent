@@ -1004,6 +1004,20 @@ def pre_turn_guards(engine, user_input: str) -> None:
             engine._reopen_identification(pending)
             if _looks_like_address(user_input):
                 engine._prefill_slots_from_text(user_input)  # atsakymas įvardija adresą
+            # A-2R (gyva 2026-09-07): naujas adresas dažnai JAU girdėtas
+            # (pending frazėje „mano adresas Tilžės 60") — identifikacija
+            # tęsiasi IŠ KARTO: variklis bando resolve; sėkmė = naujas
+            # klientas, nesėkmė palieka diagnozės notą (pvz. „koks butas?"),
+            # ir kitas klausimas yra identifikacijos, ne senos analizės.
+            p = s.profile
+            if p.street.value and p.house.value:
+                engine._trace_note("reopen_identity", "new address already heard; engine resolve")
+                if engine._engine_resolve_from_slots():
+                    engine._just_identified = True
+                    from .identification import ask_caller
+
+                    if ask_caller() and not s.caller_name:
+                        engine._result_pending = True
             return
         engine._resume_hold = True  # atsakymas skirtas ŠIAM klausimui, ne walker'iui
         if verdict == "no":

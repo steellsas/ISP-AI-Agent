@@ -330,6 +330,22 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     # survive an address correction. The ticket dialogue, ask counters and
     # deviation streak reset with it; the thinker gets a clean slate too.
     s.evidence.clear()
+    # A-2R (gyva 2026-09-07): foninis telemetrijos skaitymas priklauso METAMAI
+    # sąskaitai — po reopen jis vėl užpildavo išvalytą diagnozę/hipotezę ir
+    # narratorius toliau varė seną analizės klausimą. Išmetam kartu su viskuo.
+    engine._bg_diagnosis = None
+    # A-2R tęsinys (Andrius 2026-09-07): keičiantis adresui VISKAS prasideda iš
+    # naujo — lieka tik skambinusiojo vardas ir problema (+ kliento pasakojimas,
+    # nes jis apie TIKRĄJĄ vietą). Senojo telefono kandidatūra nebesiūloma
+    # (ladder'is vėl siūlytų numestą adresą), o identifikacijos skaitikliai ir
+    # kodo režimas grįžta į švarų lapą.
+    s.phone_candidate = None
+    engine._awaiting_account_code = False
+    engine._code_grace = 0
+    engine._addr_empty_turns = 0
+    engine._addr_unrecognized = 0
+    engine._addr_resolve_fails = 0
+    engine._addr_city_suggestion = None
     engine._evidence_asks.clear()
     engine._evidence_last_ask_key = None
     engine._evidence_conflict = None
