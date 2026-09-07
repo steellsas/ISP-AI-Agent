@@ -107,3 +107,17 @@ identifikacijos testų sluoksnio žymėjimas TESTU_ZEMELAPIS.md.
 - **A-3 Kodas po perspėjimo (gyva #3):** unknown → problema → 2 tušti atsakymai („nežinau", „negaliu pasakyt") → perspėjimas (adresas ARBA kodas) → sakyk darkytai: **„D dešimt šimtas keturi"** (arba „A. B. dešimt šimtas keturi").
   → LAUKIAM: agentas randa **Vilmą Stankūnienę** (kodo normalizacija: D10104 → AB-10104) ir pasiūlo adresą patvirtinimui.
   → Jei kodas neįskaitomas: scripted pagalba („A B brūkšnys ir penki skaitmenys, sąskaitos viršuje") — ne „nerastas" halucinacija.
+
+---
+
+## A-2R / A-3R — retestai po 2026-09-07 fix'ų (atsakymas galvoje; adresas sakomas; kodo echo)
+
+- **A-2R Patvirtinimo atsakymas girdimas:** +37060020112 → identifikuokis → analizėje: „Atsiprašau, susimaišiau — mano adresas yra Tilžės gatvė 60."
+  → klausimas „ar tikrai dėl KITO adreso?" → atsakyk: **„Taip taip, dėl kito adreso."**
+  → LAUKIAM: identifikacija atsidaro IŠ NAUJO (adreso klausimas, Tilžės 60 → buto klausimas). RAUDONA, jei agentas varo seną analizės klausimą toliau.
+  → Variantas „neaišku": į patvirtinimą atsakyk „Nu kaip čia pasakyt..." → LAUKIAM: klausimas PAKARTOJAMAS („Atsiprašau, kad kartojuosi... ar tikrai dėl KITO adreso?"), ne pamirštas.
+- **A-2R-b Adreso atskleidimas:** identifikuotas paklausk: **„Dėl kokio adreso mes dabar bendraujame?"**
+  → LAUKIAM: „Kalbame dėl adreso Šiauliai, Vilniaus g. 33-2. Jei skambinate dėl kito adreso — pasakykite." RAUDONA, jei „negaliu pasakyti".
+- **A-3R Kodo echo:** kodo pakopoje pasakyk „dešimt šimtas keturi" (10104).
+  → LAUKIAM: **„Išgirdau kodą A B 1 0 1 0 4. Radau adresą — ar skambinate dėl S. Dariaus ir S. Girėno g. 25, butas 45?"** — agentas pasako, KĄ išgirdo.
+  → Blogo kodo variantas: „A B devyni devyni devyni devyni devyni" → LAUKIAM: „Išgirdau kodą A B 9 9 9 9 9, bet tokio sistemoje nerandu..." — klientas girdi, kur klaida.
