@@ -870,7 +870,9 @@ class TestAddressGuards:
         assert agent._reopen_confirm_pending
         reply = agent._identification_scripted_reply("Tai ne dėl to adresų skambinu")
         assert reply and "tikrai" in reply  # the confirmation question
-        agent._identification_scripted_reply("Taip, dėl kito adreso")
+        # A-2 (2026-09-07): the ANSWER is read in pre_turn_guards (the turn head,
+        # before the solver/walker can consume it) — mirror the live sequence.
+        agent._pre_turn_guards("Taip, dėl kito adreso")
         assert agent.state.customer_id is None  # identity dropped after the yes
         assert agent.state.diagnosis == {}  # per-account conclusions dropped
         assert agent._reopen_note is True

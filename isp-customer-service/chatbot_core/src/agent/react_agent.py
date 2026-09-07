@@ -253,6 +253,9 @@ class ReactAgent:
         # pending / the walker holds one turn after the caller decides to continue.
         self._end_confirm_pending = False
         self._resume_hold = False
+        # A-2 (2026-09-07): deterministinė turn'o galva (prefill+guards) įvyko
+        # anksčiau šiame turn'e (diagnose mazgas) — narrate() jos nekartoja.
+        self._pre_turn_head_done = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says
@@ -1413,8 +1416,13 @@ class ReactAgent:
         self._apply_bg_diagnosis()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
-            self._prefill_slots_from_text(user_input)
-            self._pre_turn_guards(user_input)
+            # Deterministinė galva galėjo įvykti ANKSČIAU (diagnose mazgas, A-2
+            # 2026-09-07) — latch'as saugo nuo dvigubo prefill/guards vykdymo.
+            if getattr(self, "_pre_turn_head_done", False):
+                self._pre_turn_head_done = False
+            else:
+                self._prefill_slots_from_text(user_input)
+                self._pre_turn_guards(user_input)
 
         # The caller's utterance goes on the history for EVERY reply path
         # (review 2026-08-07): scripted turns used to skip it, so the LLM
@@ -1758,8 +1766,12 @@ class ReactAgent:
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
-            self._prefill_slots_from_text(user_input)
-            self._pre_turn_guards(user_input)
+            # Latch (A-2 2026-09-07): galva galėjo įvykti diagnose mazge.
+            if getattr(self, "_pre_turn_head_done", False):
+                self._pre_turn_head_done = False
+            else:
+                self._prefill_slots_from_text(user_input)
+                self._pre_turn_guards(user_input)
 
         # Deterministic backstop before the LLM, once a genuine repeat loop escalated.
         backstop = self._stuck_backstop()

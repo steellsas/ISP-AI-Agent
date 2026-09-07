@@ -983,6 +983,41 @@ def pre_turn_guards(engine, user_input: str) -> None:
             engine._resync_note = True  # C: re-anchor from the ledger, no improvising
             engine.tracer.emit("decision", intent="end_declined", action="resume")
         return
+    # A-2 (gyva 2026-09-07: „Taip taip dėl KITO adreso" atiteko walker'iui, o
+    # klausimą sudegino vėlesnis šalutinis turn'as): SAUGIKLIO klausimo
+    # atsakymas skaitomas ČIA — deterministinėje turn'o galvoje, PRIEŠ solverį/
+    # walker'į. Vieno savininko principas: paskutinis užduotas klausimas valdo
+    # turn'ą. Neaiškus atsakymas klausimo NEsudegina — vienas pakartojimas, tik
+    # tada nurašoma kaip „liekam prie esamo adreso".
+    if getattr(engine, "_reopen_confirm_pending", None) is not None and getattr(
+        engine, "_reopen_confirm_asked", False
+    ):
+        from .identification_flow import _looks_like_address
+        from .resolution import DETECTORS
+
+        pending = engine._reopen_confirm_pending
+        verdict = DETECTORS["yes_no"](user_input)
+        if verdict == "yes" or _looks_like_address(user_input):
+            engine._reopen_confirm_pending = None
+            engine._reopen_confirm_asked = False
+            engine.tracer.emit("decision", intent="reopen_confirm", action="confirmed")
+            engine._reopen_identification(pending)
+            if _looks_like_address(user_input):
+                engine._prefill_slots_from_text(user_input)  # atsakymas įvardija adresą
+            return
+        engine._resume_hold = True  # atsakymas skirtas ŠIAM klausimui, ne walker'iui
+        if verdict == "no":
+            engine._reopen_confirm_pending = None
+            engine._reopen_confirm_asked = False
+            engine.tracer.emit("decision", intent="reopen_confirm", action="declined")
+        elif getattr(engine, "_reopen_confirm_asks", 1) < 2:
+            engine._reopen_reask = True  # scripted sluoksnis pakartos klausimą
+            engine.tracer.emit("decision", intent="reopen_confirm", action="reask")
+        else:
+            engine._reopen_confirm_pending = None
+            engine._reopen_confirm_asked = False
+            engine.tracer.emit("decision", intent="reopen_confirm", action="declined_unclear")
+        return
     mid_process = not s.case_closed and (
         not s.customer_id
         or s.resolution is not None

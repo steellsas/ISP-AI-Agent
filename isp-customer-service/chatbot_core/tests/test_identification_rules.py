@@ -177,17 +177,44 @@ class TestReopenConfirmation:
         assert agent.state.customer_id == "CUST112"  # dar NEperjungta
 
     def test_yes_reopens_no_keeps(self, db_connection):
+        # Atsakymą skaito pre_turn_guards (A-2: kad solveris/walker'is jo
+        # nesuvartotų) — testas kviečia gyvą kelią.
         agent = self._identified()
         agent._reopen_confirm_pending = "dėl Tilžės g. 60"
         agent._reopen_confirm_asked = True
-        agent._identification_scripted_reply("Taip, dėl kito")
+        agent._pre_turn_guards("Taip, dėl kito")
         assert agent.state.customer_id is None  # atidaryta iš naujo
 
         agent2 = self._identified()
         agent2._reopen_confirm_pending = "dėl Tilžės g. 60"
         agent2._reopen_confirm_asked = True
-        agent2._identification_scripted_reply("Ne ne, likim prie šito")
+        agent2._pre_turn_guards("Ne ne, likim prie šito")
         assert agent2.state.customer_id == "CUST112"  # liko
+        assert agent2._reopen_confirm_pending is None
+
+    def test_unclear_answer_reasks_not_burns(self, db_connection):
+        """A-2 gyva yda: neaiškus atsakymas klausimo nebesudegina — vienas
+        pakartojimas, o walker'is tą turn'ą laikomas (hold)."""
+        agent = self._identified()
+        agent._reopen_confirm_pending = "dėl Tilžės g. 60"
+        agent._reopen_confirm_asked = True
+        agent._reopen_confirm_asks = 1
+        agent._pre_turn_guards("Nu kaip čia dabar pasakyt")
+        assert agent._reopen_confirm_pending is not None  # klausimas gyvas
+        assert agent._resume_hold is True  # walker'is nesuvartos turn'o
+        r = agent._identification_scripted_reply("Nu kaip čia dabar pasakyt")
+        assert r and "KITO adreso" in r  # pakartojimas
+        # Antras neaiškus — nurašom (liekam prie esamo), be amžino ciklo.
+        agent._pre_turn_guards("Mhm chm")
+        assert agent._reopen_confirm_pending is None
+        assert agent.state.customer_id == "CUST112"
+
+    def test_address_question_is_answered(self, db_connection):
+        """A-2b: „dėl kokio adreso mes bendraujame?" — agentas SAKO adresą
+        (patvirtintas adresas nėra paslaptis; taip klientas pagauna klaidą)."""
+        agent = self._identified()
+        r = agent._identification_scripted_reply("Dėl kokio adreso mes dabar bendraujame?")
+        assert r and "Vilniaus g. 33-2" in r
 
 
 class TestHolderNameCheck:
@@ -348,3 +375,26 @@ class TestCodeHoles:
         agent._awaiting_account_code = True
         r = agent._identification_scripted_reply("Nu, gerai, abonento kodą pasakysiu. A. B.")
         assert r and "penki skaitmenys" in r  # scripted, ne LLM haliucinacija
+
+    def test_found_code_is_echoed_with_address(self, db_connection):
+        """A-3 skaidrumas: agentas pasako, KOKĮ kodą išgirdo, ir kartu siūlo
+        adresą patvirtinimui — klientas pagauna klaidą prieš einant toliau."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._awaiting_account_code = True
+        from agent.identification_flow import _account_code_rung
+
+        handled, r = _account_code_rung(agent, agent.state, "Kodas dešimt šimtas keturi, 10104")
+        assert handled and r
+        assert "Išgirdau kodą" in r and "1 0 1 0 4" in r
+        assert "skambinate dėl" in r  # verbatim šerdis — patvirtinimo sargui
+
+    def test_missed_code_is_echoed_too(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._awaiting_account_code = True
+        from agent.identification_flow import _account_code_rung
+
+        handled, r = _account_code_rung(agent, agent.state, "AB 99999")
+        assert handled and r
+        assert "Išgirdau kodą" in r and "9 9 9 9 9" in r and "nerandu" in r

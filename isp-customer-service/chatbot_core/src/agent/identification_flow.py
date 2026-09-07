@@ -507,6 +507,12 @@ def _has_address_content(text: str | None) -> bool:
     )
 
 
+def _speak_code(code: str) -> str:
+    """TTS-draugiška kodo forma patvirtinimui: „AB-10104" → „A B 1 0 1 0 4"."""
+    digits = "".join(ch for ch in code if ch.isdigit())
+    return "A B " + " ".join(digits)
+
+
 def _lookup_by_code(engine: Any, s: Any, code: str):
     """find_customer(account_code) -> candidate + the aloud address offer, or
     None when the code is not in the DB."""
@@ -534,6 +540,17 @@ def _lookup_by_code(engine: Any, s: Any, code: str):
         "apartment": primary.get("apartment_number"),
     }
     engine.tracer.emit("decision", intent="account_code", action="found", value=code)
+    # A-3 skaidrumas (Andrius 2026-09-07): agentas PASAKO, kokį kodą išgirdo —
+    # klientas girdi mūsų veiksmą ir pagauna klaidą prieš einant toliau. Kodo
+    # kelias visada scripted (ne naratoriaus valia); šerdis „ar skambinate dėl"
+    # lieka verbatim — nuo jos raktuojasi patvirtinimo sargas.
+    from .identification import phrase as _phrase
+
+    c = s.phone_candidate
+    if c.get("street"):
+        flat = f", butas {c['apartment']}" if c.get("apartment") else ""
+        adresas = f"{c['street']} {c.get('house')}{flat}"
+        return _phrase("account_code_echo_offer", kodas=_speak_code(code), adresas=adresas)
     # The address is OFFERED aloud for confirmation, never assumed.
     return _address_move(engine, s)
 
@@ -570,7 +587,8 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         if reply is not None:
             return True, reply
         if getattr(engine, "_awaiting_account_code", False):
-            return True, phrase("account_code_retry")  # perskaitėm, bet DB nerado
+            # A-3 skaidrumas: pasakom, KĄ išgirdome — klientas mato, kur klaida.
+            return True, phrase("account_code_miss", kodas=_speak_code(code))
     if getattr(engine, "_awaiting_account_code", False):
         low = user_input.lower()
         explicit_no = any(
@@ -717,26 +735,37 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         engine._holder_clarify_asked = True
         engine.tracer.emit("decision", intent="holder_name", action="clarify_ask")
         return phrase("holder_mismatch_clarify")
+    # A-2b (Andrius 2026-09-07, gyva: „negaliu pasakyti, dėl kokio adreso"):
+    # identifikuotas klientas KLAUSIA, dėl kokio adreso kalbame — PATVIRTINTAS
+    # adresas nėra paslaptis, priešingai: taip klientas pagauna mūsų klaidą.
+    # Deterministinis atsakymas, ne LLM valia; frazė pati kviečia pasitaisyti.
+    if (
+        s.customer_id
+        and s.customer_address
+        and user_input
+        and "adres" in user_input.lower()
+        and any(k in user_input.lower() for k in ("kok", "kur"))
+        and is_real_question(user_input)
+    ):
+        engine._reopen_reask = False  # info atsakymas pakeičia pakartojimą
+        engine.tracer.emit("decision", intent="address_info", action="disclose")
+        return phrase("current_address_info", adresas=s.customer_address)
+    # Adreso keitimo klausimą UŽDUODA šis sluoksnis; ATSAKYMĄ skaito
+    # pre_turn_guards (deterministinė turn'o galva) — kad solveris/walker'is
+    # jo nesuvartotų (A-2 gyva yda). Čia liko tik ask/reask pusė.
     pending_reopen = getattr(engine, "_reopen_confirm_pending", None)
     if pending_reopen is not None:
+        adresas = s.customer_address or "dabartinio adreso"
         if not getattr(engine, "_reopen_confirm_asked", False):
             engine._reopen_confirm_asked = True
+            engine._reopen_confirm_asks = 1
             engine.tracer.emit("decision", intent="reopen_confirm", action="ask")
-            return phrase("reopen_confirm", adresas=s.customer_address or "dabartinio adreso")
-        engine._reopen_confirm_pending = None
-        engine._reopen_confirm_asked = False
-        from .resolution import DETECTORS
-
-        if user_input and (
-            DETECTORS["yes_no"](user_input) == "yes" or _looks_like_address(user_input)
-        ):
-            engine.tracer.emit("decision", intent="reopen_confirm", action="confirmed")
-            engine._reopen_identification(pending_reopen)
-            if _looks_like_address(user_input):
-                engine._prefill_slots_from_text(user_input)  # the answer names it
-            return None  # reopen note + address ladder take over next
-        engine.tracer.emit("decision", intent="reopen_confirm", action="declined")
-        return None  # stay with the current address; narrator continues
+            return phrase("reopen_confirm", adresas=adresas)
+        if getattr(engine, "_reopen_reask", False):
+            engine._reopen_reask = False
+            engine._reopen_confirm_asks = getattr(engine, "_reopen_confirm_asks", 1) + 1
+            return phrase("repeat_ack") + phrase("reopen_confirm", adresas=adresas)
+        return None  # atsakymą jau perskaitė guards; naratorius tęsia
 
     # A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" ignoruotas):
     # negalėjimo-DABAR mini-kopėčios sprendimo fazėje — STOP, išsiaiškinti KAS

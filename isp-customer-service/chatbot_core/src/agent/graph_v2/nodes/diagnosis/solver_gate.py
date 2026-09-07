@@ -31,6 +31,9 @@ def make_solver_gate_node(engine: Any):
         driven = engine.solver_drive_turn(user_input)
         if driven is None:
             return {}
+        # narrate() šį turn'ą nebevyks — deterministinės galvos latch'ą
+        # suvartojam čia, kad kito turn'o narrate jo klaidingai nepraleistų.
+        engine._pre_turn_head_done = False
         engine._active_node = DIAGNOSIS
         engine.tracer.emit("node", node="diagnosis_solver", customer_id=engine.state.customer_id)
         get_stream_writer()(driven)

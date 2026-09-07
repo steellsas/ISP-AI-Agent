@@ -112,6 +112,13 @@ identification:
     no_location_goodbye: "Suprantu. Deja, nenustačius gedimo vietos negaliu nei patikrinti, nei užregistruoti. Kai galėsite pasakyti adresą ar abonento kodą — paskambinkite, mielai padėsiu. Geros dienos!"
     # Adreso keitimas po identifikacijos — TIK su patvirtinimu (taisyklė №3).
     reopen_confirm: "Norėčiau patikslinti — ar tikrai skambinate dėl KITO adreso, ne dėl {adresas}?"
+    # A-2b (2026-09-07): patvirtintas adresas nėra paslaptis — paklaustas agentas
+    # jį pasako; frazė pati kviečia pasitaisyti, jei adresas ne tas.
+    current_address_info: "Kalbame dėl adreso {adresas}. Jei skambinate dėl kito adreso — pasakykite."
+    # A-3 skaidrumas (2026-09-07): agentas pasako, KOKĮ kodą išgirdo — ir radęs
+    # (patvirtinimui kartu su adresu), ir neradęs (klientas girdi, kur klaida).
+    account_code_echo_offer: "Išgirdau kodą {kodas}. Radau adresą — ar skambinate dėl {adresas}?"
+    account_code_miss: "Išgirdau kodą {kodas}, bet tokio sistemoje nerandu. Patikrinkite, prašau — kodas prasideda raidėmis A B ir penki skaitmenys."
     # A-banga P1 (2026-09-04): „nepatogu / negaliu dabar" — pirma išsiaiškinti
     # KAS nepatogu, tada pasiūlyti kelią (ne ignoruoti, ne iškart tiketas).
     cannot_now_clarify: "Suprantu. O kas nepatogu — ar tiesiog negalite dabar patikrinti?"
