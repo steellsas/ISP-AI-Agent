@@ -112,6 +112,11 @@ identification:
     no_location_goodbye: "Suprantu. Deja, nenustačius gedimo vietos negaliu nei patikrinti, nei užregistruoti. Kai galėsite pasakyti adresą ar abonento kodą — paskambinkite, mielai padėsiu. Geros dienos!"
     # Adreso keitimas po identifikacijos — TIK su patvirtinimu (taisyklė №3).
     reopen_confirm: "Norėčiau patikslinti — ar tikrai skambinate dėl KITO adreso, ne dėl {adresas}?"
+    # A-banga P1 (2026-09-04): „nepatogu / negaliu dabar" — pirma išsiaiškinti
+    # KAS nepatogu, tada pasiūlyti kelią (ne ignoruoti, ne iškart tiketas).
+    cannot_now_clarify: "Suprantu. O kas nepatogu — ar tiesiog negalite dabar patikrinti?"
+    cannot_now_offer: "Gerai — tada galiu užregistruoti gedimą meistrui, arba paskambinkite, kai būsite prie routerio, ir patikrinsime kartu. Kaip patogiau?"
+    callback_goodbye: "Gerai — paskambinkite, kai galėsite patikrinti, padėsime iš karto. Geros dienos!"
     # Savininko vardo patikra (taisyklė №4): DB vardo NIEKADA negarsiname.
     holder_mismatch_clarify: "Sistemoje sutartis šiuo adresu registruota kitu vardu — gal ji sudaryta šeimos nario ar kito asmens vardu?"
     repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "

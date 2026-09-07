@@ -88,3 +88,22 @@ identifikacijos testų sluoksnio žymėjimas TESTU_ZEMELAPIS.md.
 
 - **T-5R (Ginkūnai):** unknown → problema → „Šiauliai, Žeimių gatvė 12." → agentui pasiūlius Ginkūnus: „Taip, Ginkūnuose." → LAUKIAM: paieška persijungia į Ginkūnus, randa 12-6 (butas!), jokio kodo klausimo. Tikslinimas NEBĖRA „bandymai".
 - **T-6R (pavardė):** unknown → problema → „Dainų gatvė 7." → pavardei: sakyk darkytai „Tetraitis" → agentas tikslina → „Petraitis." → LAUKIAM: disambiguacija be kodo pakopos; pavardės ratas neskaičiuojamas.
+
+---
+
+## A-BANGA — retestai po 2026-09-07 (gyvi #3/#4/#6 defektai sutaisyti)
+
+- **A-1 „Ne patogu" (gyva #6):** +37060020112 → identifikuokis (T-1 eiga) → analizės metu, gavęs instrukciją (pvz., patikrinti lemputes), sakyk: **„Ne patogu."**
+  → LAUKIAM: agentas NEstumia kitos instrukcijos — klausia **„o kas nepatogu — ar tiesiog negalite dabar patikrinti?"**
+  → „Nesu namie dabar." → LAUKIAM: pasiūlymas — **tiketas meistrui ARBA perskambinti** („kaip patogiau?").
+  → Variantas A: „Registruokite meistrą." → tiketo dialogas (numeris/valandos). Variantas B: „Paskambinsiu vėliau." → mandagus atsisveikinimas „paskambinkite, kai galėsite". Variantas C: „Ai ne, viskas gerai, jau radau routerį." → kelias tęsiasi be siūlymų.
+  → RAUDONA, jei: „Ne patogu" ignoruojamas ir varoma kita instrukcija.
+
+- **A-2 Darkytas adreso keitimas (gyva #4):** +37060020112 → identifikuokis → analizės metu sakyk darkytai: **„Atsiprašau, su maišiu — mano ADARAS yra Tilžės gatvė 60."**
+  → LAUKIAM: agentas PASITIKSLINA („ar tikrai skambinate dėl KITO adreso, ne dėl Vilniaus g. 33-2?") — pats žodžiais NEpatvirtina keitimo.
+  → „Taip, Tilžės 60." → identifikacija iš naujo, buto klausimas (butai 3 ir 7).
+  → Kontrolė: paminėjus kitą gatvę BE numerio („kaimynas iš Tilžės gatvės sakė tas pats") — jokio pasitikslinimo, pokalbis tęsiasi.
+
+- **A-3 Kodas po perspėjimo (gyva #3):** unknown → problema → 2 tušti atsakymai („nežinau", „negaliu pasakyt") → perspėjimas (adresas ARBA kodas) → sakyk darkytai: **„D dešimt šimtas keturi"** (arba „A. B. dešimt šimtas keturi").
+  → LAUKIAM: agentas randa **Vilmą Stankūnienę** (kodo normalizacija: D10104 → AB-10104) ir pasiūlo adresą patvirtinimui.
+  → Jei kodas neįskaitomas: scripted pagalba („A B brūkšnys ir penki skaitmenys, sąskaitos viršuje") — ne „nerastas" halucinacija.

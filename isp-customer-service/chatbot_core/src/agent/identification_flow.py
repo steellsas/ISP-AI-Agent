@@ -590,13 +590,19 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             s.closed_reason = "declined"
             engine.tracer.emit("decision", intent="account_code", action="not_client_close")
             return True, phrase("not_client_goodbye")
+        # A-banga P3c (gyva #3: „A. B." → LLM haliucinavo „nerastas"): klientas
+        # KALBA apie kodą, bet skaitmenų neperskaitėm — scripted pagalba, ne LLM.
+        if "kod" in low:
+            engine.tracer.emit("decision", intent="account_code", action="retry_help")
+            return True, phrase("account_code_retry")
         # Ne kodas, o TURINYS (adresas, pavardė, pasakojimas) — praleidžiam į
         # normalią eigą; po poros tokių turn'ų kodo režimas tyliai užgęsta.
+        # NE return: tušti turn'ai toliau artina perspėjimo/uždarymo ribą
+        # (kodo režimas jos nebeįšaldo).
         grace = getattr(engine, "_code_grace", 0) + 1
         engine._code_grace = grace
         if grace >= 2:
             engine._awaiting_account_code = False
-        return False, None
     if not s.problem_type:
         return False, None
     # 1) Miestas ne aptarnavimo zonoje — IŠ KARTO, vieną kartą. SVARBU:
@@ -669,6 +675,10 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     engine._addr_empty_turns = n
     if n == max(2, limit - 2) and not getattr(engine, "_addr_warned", False):
         engine._addr_warned = True
+        # A-banga P3a (gyva #3): perspėjimas MINI kodą — nuo šio momento kodo
+        # klausymas įjungtas (praleidimo semantika turinį saugo).
+        engine._awaiting_account_code = True
+        engine._code_grace = 0
         engine.tracer.emit("decision", intent="account_code", action="warn")
         return True, phrase("address_need_warning")
     if n >= limit:
@@ -727,6 +737,63 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             return None  # reopen note + address ladder take over next
         engine.tracer.emit("decision", intent="reopen_confirm", action="declined")
         return None  # stay with the current address; narrator continues
+
+    # A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" ignoruotas):
+    # negalėjimo-DABAR mini-kopėčios sprendimo fazėje — STOP, išsiaiškinti KAS
+    # nepatogu, tada pasiūlyti kelią (registracija / perskambinimas / tęsiam).
+    cn_state = getattr(engine, "_cannot_now_state", None)
+    if cn_state == "asked" and user_input:
+        engine._cannot_now_state = None
+        from .resolution import DETECTORS as _DET_CN
+        from .resolution import detect_cannot_now
+
+        if detect_cannot_now(user_input) or _DET_CN["yes_no"](user_input) == "yes":
+            engine._cannot_now_state = "offered"
+            engine.tracer.emit("decision", intent="cannot_now", action="offer")
+            return phrase("cannot_now_offer")
+        engine.tracer.emit("decision", intent="cannot_now", action="resume")
+        return None  # paaiškino kitaip — tęsiam kelią (turinys jau ingest'e)
+    if cn_state == "offered" and user_input:
+        engine._cannot_now_state = None
+        engine._cannot_now_done = True
+        low_cn = user_input.lower()
+        if any(
+            m in low_cn
+            for m in ("perskambin", "paskambinsiu", "pats paskambin", "vėliau", "veliau")
+        ):
+            s.case_closed = True
+            s.closed_reason = "callback"
+            engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
+            return phrase("callback_goodbye")
+        from .resolution import DETECTORS as _DET_CN2
+        from .resolution import detect_refuse_or_ticket
+
+        if (
+            detect_refuse_or_ticket(user_input) == "demand"
+            or _DET_CN2["yes_no"](user_input) == "yes"
+            or "registr" in low_cn
+            or "meistr" in low_cn
+        ):
+            from .resolution import STRATEGIES as _STR
+
+            engine.tracer.emit("decision", intent="cannot_now", action="ticket")
+            engine._begin_ticket_dialogue(_STR["unclear_fault"].step("escalate"))
+            return None  # tiketo dialogo intro — kitas žingsnis
+        return None
+    if (
+        cn_state is None
+        and not getattr(engine, "_cannot_now_done", False)
+        and s.resolution
+        and s.customer_id
+        and not engine._ticket_stage
+        and user_input
+    ):
+        from .resolution import detect_cannot_now as _dcn
+
+        if _dcn(user_input):
+            engine._cannot_now_state = "asked"
+            engine.tracer.emit("decision", intent="cannot_now", action="clarify_ask")
+            return phrase("cannot_now_clarify")
 
     # Ticket-confirmation dialogue: contacts before every registration. An
     # off-script question falls to the ticket node's LLM (facts carry the

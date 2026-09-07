@@ -224,3 +224,127 @@ class TestHolderNameCheck:
         agent._holder_clarify_asked = True  # klausimas jau nuskambėjo
         agent._prefill_slots_from_text("Žmonos vardu sudaryta sutartis")
         assert agent.state.caller_relation != "holder"
+
+
+class TestCannotNowLadder:
+    """A-banga P1 (gyva #6 2026-09-04: „Ne patogu" ignoruotas): STOP →
+    „kas nepatogu?" → registracija / perskambinimas / tęsiam."""
+
+    def _solving(self):
+        agent = _agent()
+        agent.state.customer_id = "CUST009"
+        agent.state.problem_type = "internet_down"
+        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        return agent
+
+    def test_cannot_now_asks_what_is_wrong(self, db_connection):
+        agent = self._solving()
+        r = agent._identification_scripted_reply("Ne patogu")
+        assert r and "kas nepatogu" in r
+        assert agent._cannot_now_state == "asked"
+
+    def test_confirmed_cannot_offers_paths(self, db_connection):
+        agent = self._solving()
+        agent._cannot_now_state = "asked"
+        r = agent._identification_scripted_reply("Na, aš ne namie dabar")
+        assert r and "užregistruoti" in r and "paskambinkite" in r
+
+    def test_callback_choice_closes_politely(self, db_connection):
+        agent = self._solving()
+        agent._cannot_now_state = "offered"
+        r = agent._identification_scripted_reply("Geriau pats perskambinsiu vėliau")
+        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert r and "paskambinkite" in r
+        assert agent.state.ticket_id is None
+
+    def test_ticket_choice_starts_dialogue(self, db_connection):
+        agent = self._solving()
+        agent._cannot_now_state = "offered"
+        agent._identification_scripted_reply("Registruokite meistrą")
+        assert agent._ticket_stage == "phone"
+
+    def test_explained_otherwise_resumes(self, db_connection):
+        agent = self._solving()
+        agent._cannot_now_state = "asked"
+        r = agent._identification_scripted_reply("Ne ne, viskas gerai, jau radau routerį")
+        assert r is None  # kelias tęsiasi
+        assert agent._cannot_now_state is None
+
+    def test_in_flow_negaliu_is_not_a_signal(self, db_connection):
+        from agent.resolution import detect_cannot_now
+
+        assert detect_cannot_now("Negaliu prisijungti prie interneto") is False
+        assert detect_cannot_now("Negaliu rasti tos dėžutės") is False
+        assert detect_cannot_now("Aš negaliu jį ieškoti, dabar esu ne namuose") is True
+
+
+class TestOtherStreetSignal:
+    """A-banga P2 (gyva #4: „mano ADARAS yra Tilžės gatvė 60"): kitos registro
+    gatvės vardas + skaitmuo po identifikacijos = korekcijos kandidatas."""
+
+    def _identified(self):
+        agent = _agent()
+        agent.state.customer_id = "CUST112"
+        agent.state.problem_type = "internet_down"
+        agent.state.set_customer_info(
+            "CUST112", "Paulius Vasiliauskas", "Šiauliai, Vilniaus g. 33-2"
+        )
+        return agent
+
+    def _turn(self, agent, text):
+        # Gyva seka (react_agent ~1416): prefill, tada pre_turn_guards —
+        # reopen trigeris gyvena guards'uose, ne prefill'e.
+        agent._prefill_slots_from_text(text)
+        agent._pre_turn_guards(text)
+
+    def test_garbled_correction_triggers_confirm(self, db_connection):
+        agent = self._identified()
+        msg = "Atsiprašau su maišiu, mano adaras yra Tilžės gatvė 60"
+        self._turn(agent, msg)
+        assert agent._reopen_confirm_pending  # kandidatas užfiksuotas
+        r = agent._identification_scripted_reply(msg)
+        assert r and "KITO adreso" in r  # patvirtinimo klausimas
+
+    def test_own_street_number_is_content(self, db_connection):
+        agent = self._identified()
+        self._turn(agent, "Nei 1 lemputė nedega ant to routerio")
+        assert not getattr(agent, "_reopen_confirm_pending", None)
+
+    def test_no_digit_no_trigger(self, db_connection):
+        agent = self._identified()
+        self._turn(agent, "Kaimynas iš Tilžės gatvės sakė tas pats")
+        assert not getattr(agent, "_reopen_confirm_pending", None)
+
+
+class TestCodeHoles:
+    """A-banga P3 (gyva #3): perspėjimas įjungia klausymą; įrankis normalizuoja
+    STT kodą; „kodą mini be skaičių" gauna scripted pagalbą."""
+
+    def test_warning_arms_listening_then_bare_digits_work(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        agent._identification_scripted_reply("Nežinau adreso")
+        r = agent._identification_scripted_reply("Negaliu pasakyti")  # warn
+        assert r and "negalėsiu" in r
+        assert agent._awaiting_account_code is True
+        agent._identification_scripted_reply("10104")
+        assert agent.state.phone_candidate
+        assert agent.state.phone_candidate["customer_id"] == "CUST104"
+
+    def test_tool_normalizes_stt_garbled_code(self, db_connection):
+        import json as _json
+
+        from agent.tools import execute_tool
+
+        r = _json.loads(execute_tool("find_customer", {"account_code": "D10104"}))
+        assert r["success"] and r["customer_id"] == "CUST104"
+        r = _json.loads(execute_tool("find_customer", {"account_code": "ab 10101"}))
+        assert r["success"] and r["customer_id"] == "CUST101"
+
+    def test_code_talk_without_digits_gets_scripted_help(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._awaiting_account_code = True
+        r = agent._identification_scripted_reply("Nu, gerai, abonento kodą pasakysiu. A. B.")
+        assert r and "penki skaitmenys" in r  # scripted, ne LLM haliucinacija
