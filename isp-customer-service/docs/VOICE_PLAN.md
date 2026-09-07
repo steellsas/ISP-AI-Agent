@@ -208,7 +208,15 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
    gatvės gatvės" advance'ino žingsnį). 973 testai, eval 61/61 ×2.
    UŽDARYMO ETAPUI užfiksuota (nelieciam dabar): kurtumas po „Ar dar kuo
    padėti?" (klausimas/„sumokėjau" nuryjami), keista improvizuota paskutinė
-   replika po scripted goodbye momento.
+   replika po scripted goodbye momento. + P5 (gyva 2026-09-07): „Gerai, aš
+   paskambinsiu vėliau" TICKET dialogo viduryje neskaitomas kaip callback —
+   stadija perklausė „ar tiks numeris?"; ticket stadijoje callback frazės
+   turi vesti į callback_goodbye (kaip cannot_now laiptelyje).
+   B BANGOS DIZAINUI užfiksuota P6 (gyva 2026-09-07): viename turn'e TRYS
+   signalai („negaliu dabar" + „ne namuose" + adreso klausimas) — scripted
+   atsakė į adresą, o walker'is lygiagrečiai startavo tiketą (refuse→
+   escalate), cannot_now laiptelis nesuveikė. Klausimų registras turi turėti
+   SIGNALŲ PRIORITETUS, kai turn'as neša kelis.
 4. Pažingsninis testavimas pagal etaloną (prisistatymas → identifikacija →
    analizė → sprendimas → tiketas/užbaigimas) + testų žemėlapio valymas
    sluoksnis po sluoksnio (docs/TESTU_ZEMELAPIS.md).
@@ -234,6 +242,14 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
   abonentams". Tinka ir pavardėms (Dainų g. 7 disambiguacija). ASR promptas
   paraidžiui turn'e keičiamas į raidžių režimą. Daryti po gyvų T-1…T-12
   (testai parodys dažnį ir formuluotes).
+- **NAMAS/BUTAS žodžių inkarai slotuose** (gyva P2 2026-09-07): „6 0 būtų
+  namas, o butas 3" → namas=6; „NAMO numeris yra 60" nuėjo į BUTO slotą —
+  priskyrimas nesiklauso žodžio prie skaičiaus („namo/namas + N" → house
+  override, „butas/bute + N" → apartment). Ta pačia proga: kodo režimo tylos
+  langas (prefill return) nurijo PILNĄ diktaciją „Šiauliai, Tilžės gatvė 60,
+  butas 3" — pilna diktacija turi prabudinti adresų skaitytuvą net kodo
+  režime; ir dictated-resolve ėmė PASENUSIUS slotus (6/60) vietoj šio turn'o
+  skaitymo. Daryti kartu su paraidžiui/NER pakopa.
 
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 

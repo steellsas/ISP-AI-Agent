@@ -115,6 +115,11 @@ identification:
     # A-2b (2026-09-07): patvirtintas adresas nėra paslaptis — paklaustas agentas
     # jį pasako; frazė pati kviečia pasitaisyti, jei adresas ne tas.
     current_address_info: "Kalbame dėl adreso {adresas}. Jei skambinate dėl kito adreso — pasakykite."
+    # A-2R-b (2026-09-07): klausimas „dėl kokio adreso?" VIDURY identifikacijos —
+    # sakome girdėtą (dar nepatvirtintą) adresą; šerdis „dėl šio adreso" verbatim,
+    # nuo jos raktuojasi patvirtinimo sargas.
+    ident_address_heard: "Girdėjau adresą {adresas}, bet dar nepatvirtinau. Ar skambinate dėl šio adreso?"
+    ident_address_none: "Adreso dar nenustatėme — kaip tik jį tikslinuosi. Koks adresas, dėl kurio skambinate?"
     # A-3 skaidrumas (2026-09-07): agentas pasako, KOKĮ kodą išgirdo — ir radęs
     # (patvirtinimui kartu su adresu), ir neradęs (klientas girdi, kur klaida).
     account_code_echo_offer: "Išgirdau kodą {kodas}. Radau adresą — ar skambinate dėl {adresas}?"

@@ -235,6 +235,30 @@ class TestReopenConfirmation:
         # Tilžės 60 pabandyta iš karto → „koks butas?" nota reply sluoksniui.
         assert agent._addr_diag_note or agent._db_address_note
 
+    def test_garbled_answer_does_not_stomp_good_pending_slots(self, db_connection):
+        """P1 gyva: pending davė Tilžės 60 (conf 1.0), atsakymo darkymas
+        „Tildžiai 660-3" jo nebeperrašo — resolve eina su 60."""
+        agent = self._identified()
+        agent._reopen_confirm_pending = "mano adresas yra Tilžės gatvė 60"
+        agent._reopen_confirm_asked = True
+        agent._pre_turn_guards("Taip, dėl KITO adreso. Dėl Tildžiai 660-3.")
+        assert agent.state.profile.house.value == "60"  # ne 660
+
+    def test_address_echo_question_freezes_counters(self, db_connection):
+        """P3 gyva: „Taip." į adreso echo klausimą (net LLM'o žodžiais) —
+        tikslinimas, ne tuščias turn'as."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        agent._last_agent_question = lambda: (
+            "Taigi, adresas yra Šiauliai, Tilžės g. 60, butas 3, taip?"
+        )
+        from agent.identification_flow import _account_code_rung
+
+        handled, reply = _account_code_rung(agent, agent.state, "Taip.")
+        assert handled is False and reply is None
+        assert getattr(agent, "_addr_empty_turns", 0) == 0
+
     def test_confirmed_reopen_commits_single_contract_address(self, db_connection):
         """Naujas adresas be butų (Vilniaus g. 29) — po „taip" identifikacija
         įvyksta TĄ PATĮ turn'ą, be papildomų klausimų."""
@@ -243,6 +267,42 @@ class TestReopenConfirmation:
         agent._reopen_confirm_asked = True
         agent._pre_turn_guards("Taip")
         assert agent.state.customer_id == "CUST009"  # nauja sutartis prisirišo
+
+    def test_address_question_mid_ident_names_heard_address(self, db_connection):
+        """A-2R-b gyva: „kokiu adresu bendraujam?" PO reopen (klientas numestas,
+        adresas slotuose) — agentas sako, KĄ tikslina, ne improvizuoja."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        from agent.slots import SlotStatus
+
+        agent.state.profile.street.propose("Tilžės g.", 1.0, SlotStatus.HEARD)
+        agent.state.profile.house.propose("60", 1.0, SlotStatus.HEARD)
+        r = agent._identification_scripted_reply("Tai kokiu adresu dabar bendraujam, tikrinam?")
+        assert r and "Tilžės g. 60" in r and "dėl šio adreso" in r
+
+    def test_address_question_mid_ident_without_slots(self, db_connection):
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        r = agent._identification_scripted_reply("Galite pasakyti tikslų adresą, kur tikrinat?")
+        assert r and "nenustat" in r
+
+    def test_yes_to_heard_address_commits_from_slots(self, db_connection):
+        """„Taip" į „ar skambinate dėl šio adreso?" be telefono kandidato —
+        variklis riša iš slotų (vienos sutarties adresas prisiriša iš karto)."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        from agent.slots import SlotStatus
+
+        agent.state.profile.street.propose("Vilniaus g.", 1.0, SlotStatus.HEARD)
+        agent.state.profile.house.propose("29", 1.0, SlotStatus.HEARD)
+        agent.state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Girdėjau adresą Vilniaus g. 29, bet dar nepatvirtinau. Ar skambinate dėl šio adreso?",
+            }
+        )
+        agent._pre_turn_guards("Taip taip.")
+        assert agent.state.customer_id == "CUST009"
 
     def test_bg_diagnosis_never_applies_without_customer(self, db_connection):
         agent = _agent()

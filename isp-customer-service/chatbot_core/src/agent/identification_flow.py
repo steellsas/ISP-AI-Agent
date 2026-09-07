@@ -673,6 +673,12 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     last_q = (engine._last_agent_question() or "").lower()
     clarifying = (
         "pavard" in last_q
+        # P3 (gyva 2026-09-07): klausimas su KONKRETAUS adreso echo (taip pat
+        # LLM'o savo žodžiais — „Taigi, Tilžės g. 60, butas 3, taip?") —
+        # atsakymas „Taip." yra tikslinimas, ne tuščias turn'as. Siaurai:
+        # skaitmuo + gatvės žodis, kad „Koks adresas?" ir perspėjimas
+        # (be skaitmenų) skaitiklių neužšaldytų.
+        or (any(ch.isdigit() for ch in last_q) and ("gatv" in last_q or " g." in last_q))
         or getattr(engine, "_addr_diag_note", None)
         or getattr(engine, "_addr_city_suggestion", None)
     )
@@ -756,16 +762,27 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # adresas nėra paslaptis, priešingai: taip klientas pagauna mūsų klaidą.
     # Deterministinis atsakymas, ne LLM valia; frazė pati kviečia pasitaisyti.
     if (
-        s.customer_id
-        and s.customer_address
-        and user_input
+        user_input
         and "adres" in user_input.lower()
         and any(k in user_input.lower() for k in ("kok", "kur"))
         and is_real_question(user_input)
     ):
-        engine._reopen_reask = False  # info atsakymas pakeičia pakartojimą
-        engine.tracer.emit("decision", intent="address_info", action="disclose")
-        return phrase("current_address_info", adresas=s.customer_address)
+        if s.customer_id and s.customer_address:
+            engine._reopen_reask = False  # info atsakymas pakeičia pakartojimą
+            engine.tracer.emit("decision", intent="address_info", action="disclose")
+            return phrase("current_address_info", adresas=s.customer_address)
+        if not s.customer_id:
+            # A-2R-b tęsinys (gyva 2026-09-07): klausimas atėjo VIDURY
+            # identifikacijos (po reopen) — sakome, KĄ tikslinam: girdėtą
+            # adresą (su patvirtinimo šerdim „dėl šio adreso" — nuo jos
+            # raktuojasi confirm sargas) arba kad adreso dar neturime.
+            p = s.profile
+            if p.street.value:
+                adr = f"{p.street.value} {p.house.value or ''}".strip()
+                engine.tracer.emit("decision", intent="address_info", action="progress")
+                return phrase("ident_address_heard", adresas=adr)
+            engine.tracer.emit("decision", intent="address_info", action="none_yet")
+            return phrase("ident_address_none")
     # Adreso keitimo klausimą UŽDUODA šis sluoksnis; ATSAKYMĄ skaito
     # pre_turn_guards (deterministinė turn'o galva) — kad solveris/walker'is
     # jo nesuvartotų (A-2 gyva yda). Čia liko tik ask/reask pusė.

@@ -1002,14 +1002,17 @@ def pre_turn_guards(engine, user_input: str) -> None:
             engine._reopen_confirm_asked = False
             engine.tracer.emit("decision", intent="reopen_confirm", action="confirmed")
             engine._reopen_identification(pending)
-            if _looks_like_address(user_input):
+            # P1 (gyva 2026-09-07): pending frazė dažnai jau davė gerą adresą
+            # (conf 1.0) — atsakymo STT darkymas („Tildžiai 660-3") jo
+            # NEBEperrašo; atsakymas skaitomas tik kai adreso dar neturime.
+            p = s.profile
+            if _looks_like_address(user_input) and not (p.street.value and p.house.value):
                 engine._prefill_slots_from_text(user_input)  # atsakymas įvardija adresą
             # A-2R (gyva 2026-09-07): naujas adresas dažnai JAU girdėtas
             # (pending frazėje „mano adresas Tilžės 60") — identifikacija
             # tęsiasi IŠ KARTO: variklis bando resolve; sėkmė = naujas
             # klientas, nesėkmė palieka diagnozės notą (pvz. „koks butas?"),
             # ir kitas klausimas yra identifikacijos, ne senos analizės.
-            p = s.profile
             if p.street.value and p.house.value:
                 engine._trace_note("reopen_identity", "new address already heard; engine resolve")
                 if engine._engine_resolve_from_slots():
@@ -1130,6 +1133,20 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     if ask_caller() and not s.caller_name:
                         engine._result_pending = True
                 return
+            if verdict == "yes":
+                # A-2R-b (2026-09-07): „taip" į adreso patvirtinimą BE telefono
+                # kandidato (pvz. po reopen, kai adresas girdėtas slotuose) —
+                # variklis riša iš slotų; daugiabutis palieka buto notą.
+                p_y = s.profile
+                if p_y.street.value and p_y.house.value:
+                    engine._trace_note("address_confirm", "slots confirmed; engine resolve")
+                    if engine._engine_resolve_from_slots():
+                        engine._just_identified = True
+                        from .identification import ask_caller
+
+                        if ask_caller() and not s.caller_name:
+                            engine._result_pending = True
+                    return
             if verdict != "yes":
                 # Direct accept (arc v3.1): the caller DICTATED a full other address
                 # in this very turn (NLU heard street+house clearly) — the ENGINE
