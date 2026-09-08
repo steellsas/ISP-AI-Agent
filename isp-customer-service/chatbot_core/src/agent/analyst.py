@@ -33,8 +33,11 @@ _SYSTEM = (
     "(2) žurnalo faktas įtartinas — prieštarauja tam, ką klientas kartoja "
     "(gali būti blogai išgirsta) — verta pasitikslinti; (3) klientas painioja "
     "sąvokas ar įrenginius — įvardinti aiškiau; (4) SVARBI ankstesnė detalė, "
-    "kurios naujausioje pokalbio dalyje nebesimato — priminti agentui. "
-    "DRAUDŽIAMA: siūlyti diagnozę, "
+    "kurios naujausioje pokalbio dalyje nebesimato — priminti agentui; "
+    "(5) pokalbis NUKRYPO nuo aktyvaus klausimo — paskutiniai kliento "
+    "atsakymai nesiejami su tuo, ko agentas KLAUSĖ (žr. AKTYVUS KLAUSIMAS), "
+    "pažymėk nukrypimą (pvz. „klientas neatsako į aktyvų klausimą apie X — "
+    "pokalbis nukrypo“). DRAUDŽIAMA: siūlyti diagnozę, "
     "kurti faktus, siūlyti veiksmus ar žingsnius, kartoti tai, kas akivaizdu. "
     "Jei vertingų pastabų nėra — parašyk tik OK."
 )
@@ -57,6 +60,8 @@ _ALLOWED_MARKS = (
     "painioj", "ivardink", "ivardyk", "aiskiau", "supainio", "paaiskink", "turejo omenyje",
     # (4) an important earlier detail no longer visible in the recent window
     "pradzioje", "anksciau", "primink", "priminti", "nepamirsk",
+    # (5) C wave (2026-09-08): the conversation drifted off the ACTIVE question
+    "nukryp", "neatsako", "nesiejami su klausimu", "aktyvu klausim", "aktyvaus klausimo",
 )  # fmt: skip
 
 
@@ -103,9 +108,17 @@ def run_analyst(engine: Any) -> None:
         )
         ledger = summary_lt(s.evidence) if s.evidence else "(tuščias)"
         verdict = (s.resolution or {}).get("verdict") or "(nenustatyta)"
+        # C wave (2026-09-08): the analyst sees the QUESTION REGISTRY's active
+        # entry — the deterministic "what we are asking right now" — so the
+        # type-5 deviation note compares reality against the plan.
+        from .dialog_registry import active as _q_active
+
+        q = _q_active(engine)
+        aktyvus = f"{q.owner}/{q.key} (bandymas {q.asks})" if q is not None else "(nėra)"
         user = (
             f"POKALBIS:\n{history}\n\nŽURNALAS (deterministiniai faktai): {ledger}\n"
-            f"HIPOTEZĖ: {verdict}\n\nPastabos agentui (arba OK):"
+            f"HIPOTEZĖ: {verdict}\nAKTYVUS KLAUSIMAS (registras): {aktyvus}\n\n"
+            "Pastabos agentui (arba OK):"
         )
         content = llm_completion(
             messages=[
@@ -132,5 +145,12 @@ def run_analyst(engine: Any) -> None:
         engine._analyst_notes = notes or None
         if notes:
             engine.tracer.emit("analyst", notes=notes)
+            # C wave: the deviation note is FLAG-ONLY — a separate trace event
+            # so the deterministic layer (and the dashboards) can count it;
+            # nothing routes on it yet.
+            from .evidence import _fold as _f
+
+            if any("nukryp" in _f(n) or "neatsako" in _f(n) for n in notes):
+                engine.tracer.emit("analyst_flag", type="nukrypimas_nuo_plano")
     except Exception:  # pragma: no cover - the analyst must never break a call
         logger.debug("analyst failed", exc_info=True)

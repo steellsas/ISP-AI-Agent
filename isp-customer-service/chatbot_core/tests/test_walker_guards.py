@@ -51,7 +51,10 @@ def _strat(verdict="foreign_mac"):
 
 class TestChainOrder:
     def test_prelude_order_is_frozen(self):
+        # B perjungimas (2026-09-08): registro prioritetų guard'as PIRMAS —
+        # aukštesnio savininko klausimas valdo turn'ą prieš bet ką kitą.
         assert [g.__name__ for g in walker_guards.PRELUDE_GUARDS] == [
+            "question_priority_hold",
             "resume_hold",
             "end_confirm_pending",
         ]

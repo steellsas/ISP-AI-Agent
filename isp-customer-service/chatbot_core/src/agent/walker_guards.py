@@ -26,6 +26,27 @@ from typing import Any
 # --- prelude (no step resolved yet) -----------------------------------------
 
 
+def question_priority_hold(engine: Any, user_input: str | None) -> bool:
+    """B-wave switch (Andrius 2026-09-08): the turn belongs to the
+    HIGHEST-PRIORITY open question (safety > ident > ticket > walker). While
+    a non-walker question is open, the walker must not read the turn as its
+    step's answer — live P6: "Ne patogu" + an address question in one turn
+    had the walker start a ticket over the safety ladder. The content is not
+    lost: the evidence ingest still reads facts; the walker just holds."""
+    from .dialog_registry import OWNER_PRIORITY, active
+
+    q = active(engine)
+    if q is not None and OWNER_PRIORITY.get(q.owner, 99) < OWNER_PRIORITY["walker"]:
+        engine.tracer.emit(
+            "decision",
+            intent="answer",
+            action="hold",
+            reason=f"question_registry:{q.owner}:{q.key}",
+        )
+        return True
+    return False
+
+
 def resume_hold(engine: Any, user_input: str | None) -> bool:
     """One-turn hold after the caller declined to end the call — their "ne,
     tęskime" answers the confirm-end question, not the current step."""
@@ -47,7 +68,7 @@ def end_confirm_pending(engine: Any, user_input: str | None) -> bool:
     return False
 
 
-PRELUDE_GUARDS = (resume_hold, end_confirm_pending)
+PRELUDE_GUARDS = (question_priority_hold, resume_hold, end_confirm_pending)
 
 
 # --- step guards (ordered — see module docstring) ----------------------------

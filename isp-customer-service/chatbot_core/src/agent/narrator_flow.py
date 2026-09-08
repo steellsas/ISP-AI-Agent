@@ -1332,6 +1332,12 @@ def update_state_from_observation(engine, action: str, observation: str):
             else:
                 engine._addr_diag_note = None
                 engine._addr_city_suggestion = None
+                # B-wave registry: identification committed on ANY successful
+                # resolve (the LLM's own tool call included) — the ident
+                # question must never outlive it and freeze the walker.
+                from .dialog_registry import clear_owner as _q_clear_owner
+
+                _q_clear_owner(engine, "ident")
                 engine._addr_resolve_fails = 0
 
         if action in ("find_customer", "resolve_address") and obs_data.get("success"):

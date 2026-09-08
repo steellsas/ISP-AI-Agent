@@ -403,6 +403,22 @@ class TestQuestionRegistry:
         agent._mark_step_presented()
         assert active(agent) is None  # wrap-up fazė — walker uždarytas
 
+    def test_priority_guard_holds_walker_on_safety_question(self, db_connection):
+        """PERJUNGIMAS (P6): kol atviras safety/ident/ticket klausimas, walker'is
+        turn'o neskaito kaip savo žingsnio atsakymo."""
+        from agent.dialog_registry import active, clear_owner, register
+
+        agent = self._identified()
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate", "asked": True}
+        register(agent, "safety", "cannot_now_offer")
+        agent._advance_resolution("Registruokite meistrą")
+        assert agent._ticket_stage is None  # walker'is nepradėjo tiketo — laiko
+        assert active(agent) is not None  # klausimas gyvas, jį skaito savininkas
+        # Klausimui užsidarius — walker'is vėl skaito normaliai.
+        clear_owner(agent, "safety")
+        agent._advance_resolution("Registruokite meistrą")
+        assert agent._ticket_stage is not None  # dabar tiketo dialogas prasidėjo
+
     def test_caller_name_closes_on_capture(self, db_connection):
         """Gyva 2026-09-08: vardo klausimas registre kabėjo atviras po atsakymo."""
         from agent.dialog_registry import active, register
