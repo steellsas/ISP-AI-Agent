@@ -335,6 +335,8 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     # hypothesis back in and the narrator drove the old analysis question.
     # Thrown away with everything else.
     engine._bg_diagnosis = None
+    # B-wave registry: the whole dialogue restarts — no question survives.
+    engine._active_question = None
     # A-2R follow-up (Andrius 2026-09-07): on an address change EVERYTHING
     # restarts — only the caller's name and the problem survive (plus the
     # caller's own story: it describes the REAL place). The old phone

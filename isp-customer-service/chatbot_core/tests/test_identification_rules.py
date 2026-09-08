@@ -371,6 +371,29 @@ class TestQuestionRegistry:
         assert agent.state.ticket_id
         assert active(agent) is None  # dialogas baigtas — registras švarus
 
+    def test_walker_evidence_question_closes_on_fact(self, db_connection):
+        """B žingsnis 4: įrodymo klausimas registre užsidaro, kai ateina jo
+        rakto faktas (kito rakto faktas jo neliečia)."""
+        from agent.dialog_registry import active, register
+
+        agent = self._identified()
+        register(agent, "walker", "evidence:lights")
+        agent._ingest_client_evidence("Nei viena lemputė nedega")
+        assert active(agent) is None
+        # kito rakto faktas svetimo klausimo neuždaro
+        register(agent, "walker", "evidence:fail_scope")
+        agent._ingest_client_evidence("Kabelis įkištas gerai")
+        assert active(agent) is not None
+
+    def test_step_presentation_registers(self, db_connection):
+        from agent.dialog_registry import active
+
+        agent = self._identified()
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate", "asked": False}
+        agent._mark_step_presented()
+        q = active(agent)
+        assert q and q.owner == "walker" and q.key == "step:escalate"
+
     def test_cannot_now_lifecycle(self, db_connection):
         from agent.dialog_registry import active
         from agent.resolution import STRATEGIES

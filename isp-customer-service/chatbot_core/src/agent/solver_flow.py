@@ -623,6 +623,9 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
             engine._goto_step(r, target)
             r["asked"] = True  # the verify question goes out in THIS reply
             r["asked_at"] = len(engine.state.messages) + 1
+            from .dialog_registry import register as _q_register
+
+            _q_register(engine, "walker", f"step:{target}")
             engine.tracer.emit(
                 "decision", intent="evidence", action="pivot", to=target, reason="bind verify"
             )

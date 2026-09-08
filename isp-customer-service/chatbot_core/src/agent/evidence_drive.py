@@ -397,6 +397,12 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             )
     engine._evidence_asks[key] = asks + 1
     engine._evidence_last_ask_key = key  # for the barge-in cancel rollback
+    # B-wave registry (shadow): the evidence question is the walker family's
+    # ask — both the narrator-worded first ask and the scripted retries pass
+    # through here, so the asks counter mirrors the retry ladder.
+    from .dialog_registry import register as _q_register
+
+    _q_register(engine, "walker", f"evidence:{key}")
     # Persona (R5c): the FIRST ask goes to the NARRATOR as a goal directive —
     # it words the question naturally with its full persona + context. Retries,
     # clarifies and facts with `formuluote: skriptas` stay scripted (precision

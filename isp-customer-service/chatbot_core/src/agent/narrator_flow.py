@@ -1155,6 +1155,11 @@ def mark_step_presented(engine) -> None:
         # killed by a many-turns-stale dr_intro reading a reply as its own
         # answer. The asked-step routing only trusts a RECENT question.
         r["asked_at"] = len(engine.state.messages)
+        # B-wave registry (shadow): the step's question/instruction was just
+        # presented — it is now the walker's active question.
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "walker", f"step:{step.id}")
         # Presentation counter (L2): a step presented the 2nd+ time gets the
         # ŽINGSNIS KARTOJAMAS directive — repeat WITH an explanation.
         counts = r.setdefault("presented", {})

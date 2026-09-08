@@ -338,6 +338,11 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
             engine.tracer.emit("evidence", action="fact", key=key, value=value)
             _note_fact_meaning(engine, key, str(value))
+            # B-wave registry: the asked evidence question just got its
+            # answer — close it (a different key's fact leaves it open).
+            from .dialog_registry import clear as _q_clear
+
+            _q_clear(engine, f"evidence:{key}")
     # Reader disagreements land SECOND: on a fresh key this flags the
     # conflict (one scripted clarify settles it); if the flip guard dropped
     # the pass value above, the keyword read simply stands as the fact.
