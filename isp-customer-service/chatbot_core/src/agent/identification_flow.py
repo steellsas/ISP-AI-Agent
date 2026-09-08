@@ -768,6 +768,13 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     returns None so the LLM answers it; the ladder resumes next turn. Solving and
     free dialogue never come here."""
     s = engine.state
+    # P-C (2026-09-08): the walker's 'callback' terminal just closed the case
+    # (homework agreed) — the goodbye is scripted, warm and deterministic.
+    if getattr(engine, "_callback_goodbye_due", False):
+        engine._callback_goodbye_due = False
+        from .identification import phrase as _cb_phrase
+
+        return _cb_phrase("callback_goodbye")
     if s.case_closed:
         return None
     from .identification import caller_question, phrase
@@ -902,9 +909,10 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         and not engine._ticket_stage
         and user_input
     ):
+        from .dialog_registry import pack_owns_cannot_now as _pack_cn
         from .resolution import detect_cannot_now as _dcn
 
-        if _dcn(user_input):
+        if _dcn(user_input) and not _pack_cn(engine):
             from .dialog_registry import register as _q_register
 
             engine._cannot_now_state = "asked"

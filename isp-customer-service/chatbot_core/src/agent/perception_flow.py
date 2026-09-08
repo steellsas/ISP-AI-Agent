@@ -1069,9 +1069,12 @@ def pre_turn_guards(engine, user_input: str) -> None:
         and getattr(engine, "_cannot_now_state", None) is None
         and not getattr(engine, "_cannot_now_done", False)
     ):
+        from .dialog_registry import pack_owns_cannot_now
         from .resolution import detect_cannot_now as _dcn_head
 
-        if _dcn_head(user_input):
+        # P-C: an *_ability/*_locate/*_homework step's question IS the pack's
+        # own cannot-now handling — the shield stands down, the walker routes.
+        if _dcn_head(user_input) and not pack_owns_cannot_now(engine):
             from .dialog_registry import register as _q_register
 
             _q_register(engine, "safety", "cannot_now")  # priority shield this turn

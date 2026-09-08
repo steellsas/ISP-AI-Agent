@@ -259,6 +259,9 @@ class ReactAgent:
         # B wave (2026-09-07): question registry — the last question asked,
         # with its owner (dialog_registry; shadow mode for now).
         self._active_question = None
+        # P-C (2026-09-08): the walker's 'callback' terminal closed the case —
+        # the very next scripted reply is the warm callback goodbye.
+        self._callback_goodbye_due = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says

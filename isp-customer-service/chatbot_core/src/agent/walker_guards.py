@@ -132,11 +132,23 @@ def refuse_or_ticket_redirect(engine: Any, r, strat, step, user_input: str | Non
     rt = detect_refuse_or_ticket(user_input)
     if rt is None or strat.step("escalate") is None:
         return False
-    r["escalate_reason"] = (
-        "Klientas paprašė registracijos."
-        if rt == "demand"
-        else "Neišspręsta — klientas atsisakė tęsti tikrinimą."
-    )
+    # P-C (2026-09-08): an *_ability/*_locate/*_homework step's question IS
+    # the pack's own cannot-now handling — a SOFT refusal ("nesu namuose")
+    # is that question's answer and routes per the pack file (homework +
+    # callback), never the generic escalate. An explicit ticket DEMAND
+    # still wins — with the HONEST reason (nothing was done at the device).
+    if step.id.endswith(("_ability", "_locate", "_homework")):
+        if rt == "refuse":
+            return False
+        r["escalate_reason"] = (
+            "Klientas negali dabar atlikti veiksmų prie įrenginio — prašo registracijos."
+        )
+    else:
+        r["escalate_reason"] = (
+            "Klientas paprašė registracijos."
+            if rt == "demand"
+            else "Neišspręsta — klientas atsisakė tęsti tikrinimą."
+        )
     engine._goto_step(r, "escalate")
     engine.tracer.emit(
         "decision", intent="refuse_or_ticket", action=rt, from_step=step.id, to="escalate"

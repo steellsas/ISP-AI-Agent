@@ -67,6 +67,19 @@ def clear(engine: Any, key: str | None = None) -> None:
     engine.tracer.emit("question", owner=q.owner, key=q.key, asks=q.asks, action="closed")
 
 
+_PACK_CANNOT_NOW_SUFFIXES = ("_ability", "_locate", "_homework")
+
+
+def pack_owns_cannot_now(engine: Any) -> bool:
+    """File convention (P-C, 2026-09-08): a strategy step named *_ability /
+    *_locate / *_homework IS the pack's own cannot-now handling ("can you get
+    to the router now?"). While such a step's question is active, the generic
+    cannot-now ladder and its head shield stand down — the walker routes the
+    answer per the pack file."""
+    q = getattr(engine, "_active_question", None)
+    return q is not None and q.key.startswith("step:") and q.key.endswith(_PACK_CANNOT_NOW_SUFFIXES)
+
+
 def clear_owner(engine: Any, owner: str) -> None:
     """A whole owner's stage got answered (e.g. identification committed) —
     close its active question, leaving other owners' questions alone."""

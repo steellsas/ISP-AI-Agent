@@ -420,6 +420,71 @@ class TestQuestionRegistry:
         r = agent._identification_scripted_reply(msg)
         assert r and "nepatogu" in r  # laiptelis klausia KAS nepatogu
 
+    def test_ability_yes_routes_to_reboot(self, db_connection):
+        """P-C: gebėjimo klausimas — „taip" veda į perkrovimo instrukciją."""
+        agent = self._identified()
+        agent.state.resolution = {
+            "verdict": "router_hung",
+            "step": "rh_ability",
+            "asked": True,
+            "solution_synced": True,
+        }
+        agent._advance_resolution("Taip, galiu, esu prie routerio")
+        assert agent.state.resolution["step"] == "rh_reboot"
+
+    def test_ability_no_routes_to_homework_then_callback(self, db_connection):
+        """P-C: „ne" → namų darbas; sutikimas → callback uždarymas su scripted
+        atsisveikinimu, be tiketo."""
+        agent = self._identified()
+        agent.state.resolution = {
+            "verdict": "router_hung",
+            "step": "rh_ability",
+            "asked": True,
+            "solution_synced": True,
+        }
+        agent._advance_resolution("Ne.")
+        assert agent.state.resolution["step"] == "rh_homework"
+        agent.state.resolution["asked"] = True
+        agent._advance_resolution("Taip, sutinku.")
+        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert agent.state.ticket_id is None
+        r = agent._identification_scripted_reply("Taip, sutinku.")
+        assert r and "paskambinkite" in r  # callback_goodbye
+
+    def test_soft_refuse_at_ability_stays_with_pack(self, db_connection):
+        """P-C: švelnus „nesu namuose" ability žingsnyje NEeskaluoja į tiketą —
+        pack'as pats nuves į homework; aiškus reikalavimas vis tiek laimi."""
+        agent = self._identified()
+        agent.state.resolution = {
+            "verdict": "router_hung",
+            "step": "rh_ability",
+            "asked": True,
+            "solution_synced": True,
+        }
+        from agent.dialog_registry import register
+
+        register(agent, "walker", "step:rh_ability")
+        agent._pre_turn_guards("Nepatogu, nesu namuose dabar")
+        # skydas NEkyla (pack'o žingsnis valdo), tiketas NEprasidėjo
+        from agent.dialog_registry import active
+
+        q = active(agent)
+        assert q and q.key == "step:rh_ability"
+        assert agent._ticket_stage is None
+
+    def test_homework_no_escalates_with_honest_reason(self, db_connection):
+        agent = self._identified()
+        agent.state.resolution = {
+            "verdict": "router_hung",
+            "step": "rh_homework",
+            "asked": True,
+            "solution_synced": True,
+        }
+        agent._advance_resolution("Ne, geriau meistrą registruokim")
+        assert agent.state.resolution.get("escalate_reason")
+        need = agent._ticket_need()
+        assert "nepavyko" in need and "perkrautas" not in need
+
     def test_ticket_need_honest_on_refusal(self, db_connection):
         """P-E gyva: „routeris perkrautas, bet ryšys neatsistatė" — melas, kai
         veiksmo nebuvo; atsisakymo/negalėjimo eskalacija sako sąžiningai."""
