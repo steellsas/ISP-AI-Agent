@@ -121,3 +121,15 @@ identifikacijos testų sluoksnio žymėjimas TESTU_ZEMELAPIS.md.
 - **A-3R Kodo echo:** kodo pakopoje pasakyk „dešimt šimtas keturi" (10104).
   → LAUKIAM: **„Išgirdau kodą A B 1 0 1 0 4. Radau adresą — ar skambinate dėl S. Dariaus ir S. Girėno g. 25, butas 45?"** — agentas pasako, KĄ išgirdo.
   → Blogo kodo variantas: „A B devyni devyni devyni devyni devyni" → LAUKIAM: „Išgirdau kodą A B 9 9 9 9 9, bet tokio sistemoje nerandu..." — klientas girdi, kur klaida.
+
+---
+
+## P-C — gebėjimo srautas router_hung (2026-09-08)
+
+- **PC-1 Gali dabar:** +37060020112 → identifikuokis → „visuose neveikia" →
+  LAUKIAM: hipotezė + **„Ar galite dabar prieiti prie routerio?"** (NE komanda!) → „Taip, galiu." → perkrovimo instrukcija → toliau kaip įprasta.
+- **PC-2 Nežino kur routeris:** į gebėjimo klausimą atsakyk: **„O kas tas routeris? Nežinau kur jis."**
+  → LAUKIAM: apibūdinimas („dėžutė su lemputėmis, prieškambaryje ar prie lango, laidas iš laiptinės... Matote tokią?") → „Radau!" → instrukcija.
+- **PC-3 Negali dabar (namų darbas):** į gebėjimo klausimą: **„Negaliu, nesu namuose."**
+  → LAUKIAM: NAMŲ DARBAS („kai grįšite — ištraukite laidą, 5 sekundes... jei neatsiras — paskambinkite, padėsime arba užregistruosiu meistrą. Gerai?") → „Gerai." → **callback atsisveikinimas**, BE tiketo. RAUDONA, jei spaudžia tiketą arba sako „perkrauta, neatsistatė".
+  → Variantas: į „Gerai?" atsakyk „Ne, registruokite meistrą dabar." → tiketo dialogas su SĄŽININGA priežastimi (be „perkrautas, bet neatsistatė").
