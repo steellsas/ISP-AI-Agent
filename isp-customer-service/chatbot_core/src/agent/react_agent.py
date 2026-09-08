@@ -256,6 +256,9 @@ class ReactAgent:
         # A-2 (2026-09-07): deterministinė turn'o galva (prefill+guards) įvyko
         # anksčiau šiame turn'e (diagnose mazgas) — narrate() jos nekartoja.
         self._pre_turn_head_done = False
+        # B banga (2026-09-07): klausimų registras — paskutinis užduotas
+        # klausimas su savininku (dialog_registry; kol kas shadow režimu).
+        self._active_question = None
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says

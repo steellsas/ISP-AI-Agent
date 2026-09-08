@@ -992,6 +992,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
     if getattr(engine, "_reopen_confirm_pending", None) is not None and getattr(
         engine, "_reopen_confirm_asked", False
     ):
+        from .dialog_registry import clear as _q_clear
         from .identification_flow import _looks_like_address
         from .resolution import DETECTORS
 
@@ -1000,6 +1001,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
         if verdict == "yes" or _looks_like_address(user_input):
             engine._reopen_confirm_pending = None
             engine._reopen_confirm_asked = False
+            _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="confirmed")
             engine._reopen_identification(pending)
             # P1 (gyva 2026-09-07): pending frazė dažnai jau davė gerą adresą
@@ -1026,6 +1028,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
         if verdict == "no":
             engine._reopen_confirm_pending = None
             engine._reopen_confirm_asked = False
+            _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="declined")
         elif getattr(engine, "_reopen_confirm_asks", 1) < 2:
             engine._reopen_reask = True  # scripted sluoksnis pakartos klausimą
@@ -1033,6 +1036,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
         else:
             engine._reopen_confirm_pending = None
             engine._reopen_confirm_asked = False
+            _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="declined_unclear")
         return
     mid_process = not s.case_closed and (

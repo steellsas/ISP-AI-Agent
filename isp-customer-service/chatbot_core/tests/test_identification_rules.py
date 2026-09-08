@@ -312,6 +312,62 @@ class TestReopenConfirmation:
         assert agent.state.diagnosis == {}
 
 
+class TestQuestionRegistry:
+    """B banga, žingsnis 1 (shadow): registras atspindi saugiklių klausimus —
+    kas klausė, kelintą kartą; skaitytuvai jį valo."""
+
+    def _identified(self):
+        agent = _agent(phone="+37060020112")
+        agent.state.customer_id = "CUST112"
+        agent.state.customer_address = "Šiauliai, Vilniaus g. 33-2"
+        agent.state.problem_type = "internet_down"
+        return agent
+
+    def test_reopen_lifecycle_ask_reask_close(self, db_connection):
+        from agent.dialog_registry import active
+
+        agent = self._identified()
+        agent._reopen_confirm_pending = "dėl Tilžės g. 60"
+        agent._reopen_confirm_asked = False
+        agent._identification_scripted_reply("dėl Tilžės g. 60")  # ask
+        q = active(agent)
+        assert q and q.owner == "safety" and q.key == "reopen_confirm" and q.asks == 1
+        agent._pre_turn_guards("Nu kaip čia pasakyt")  # unclear → reask
+        agent._identification_scripted_reply("Nu kaip čia pasakyt")
+        q = active(agent)
+        assert q and q.asks == 2  # pakartojimas registruotas
+        agent._pre_turn_guards("Mhm chm")  # antras neaiškus → nurašyta
+        assert active(agent) is None
+
+    def test_reopen_confirmed_clears(self, db_connection):
+        from agent.dialog_registry import active
+
+        agent = self._identified()
+        agent._reopen_confirm_pending = "dėl Vilniaus gatvės 29"
+        agent._reopen_confirm_asked = False
+        agent._identification_scripted_reply("dėl Vilniaus gatvės 29")
+        agent._pre_turn_guards("Taip")
+        assert active(agent) is None
+        assert agent.state.customer_id == "CUST009"
+
+    def test_cannot_now_lifecycle(self, db_connection):
+        from agent.dialog_registry import active
+        from agent.resolution import STRATEGIES
+
+        agent = self._identified()
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        agent._identification_scripted_reply("Ne patogu man dabar")
+        q = active(agent)
+        assert q and q.key == "cannot_now_clarify"
+        agent._identification_scripted_reply("Nesu namie dabar")
+        q = active(agent)
+        assert q and q.key == "cannot_now_offer"
+        r = agent._identification_scripted_reply("Gerai, paskambinsiu vėliau")
+        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert active(agent) is None
+        assert STRATEGIES  # naudota fixture kelio įkėlimui
+
+
 class TestHolderNameCheck:
     """№4: sakosi savininkas kitu vardu → patikslinimas BE DB vardo."""
 

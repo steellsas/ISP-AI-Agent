@@ -788,15 +788,19 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # jo nesuvartotų (A-2 gyva yda). Čia liko tik ask/reask pusė.
     pending_reopen = getattr(engine, "_reopen_confirm_pending", None)
     if pending_reopen is not None:
+        from .dialog_registry import register as _q_register
+
         adresas = s.customer_address or "dabartinio adreso"
         if not getattr(engine, "_reopen_confirm_asked", False):
             engine._reopen_confirm_asked = True
             engine._reopen_confirm_asks = 1
+            _q_register(engine, "safety", "reopen_confirm", adresas=adresas)
             engine.tracer.emit("decision", intent="reopen_confirm", action="ask")
             return phrase("reopen_confirm", adresas=adresas)
         if getattr(engine, "_reopen_reask", False):
             engine._reopen_reask = False
             engine._reopen_confirm_asks = getattr(engine, "_reopen_confirm_asks", 1) + 1
+            _q_register(engine, "safety", "reopen_confirm", adresas=adresas)
             return phrase("repeat_ack") + phrase("reopen_confirm", adresas=adresas)
         return None  # atsakymą jau perskaitė guards; naratorius tęsia
 
@@ -805,19 +809,27 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # nepatogu, tada pasiūlyti kelią (registracija / perskambinimas / tęsiam).
     cn_state = getattr(engine, "_cannot_now_state", None)
     if cn_state == "asked" and user_input:
+        from .dialog_registry import clear as _q_clear
+        from .dialog_registry import register as _q_register
+
         engine._cannot_now_state = None
+        _q_clear(engine, "cannot_now_clarify")
         from .resolution import DETECTORS as _DET_CN
         from .resolution import detect_cannot_now
 
         if detect_cannot_now(user_input) or _DET_CN["yes_no"](user_input) == "yes":
             engine._cannot_now_state = "offered"
+            _q_register(engine, "safety", "cannot_now_offer")
             engine.tracer.emit("decision", intent="cannot_now", action="offer")
             return phrase("cannot_now_offer")
         engine.tracer.emit("decision", intent="cannot_now", action="resume")
         return None  # paaiškino kitaip — tęsiam kelią (turinys jau ingest'e)
     if cn_state == "offered" and user_input:
+        from .dialog_registry import clear as _q_clear
+
         engine._cannot_now_state = None
         engine._cannot_now_done = True
+        _q_clear(engine, "cannot_now_offer")
         low_cn = user_input.lower()
         if any(
             m in low_cn
@@ -853,7 +865,10 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         from .resolution import detect_cannot_now as _dcn
 
         if _dcn(user_input):
+            from .dialog_registry import register as _q_register
+
             engine._cannot_now_state = "asked"
+            _q_register(engine, "safety", "cannot_now_clarify")
             engine.tracer.emit("decision", intent="cannot_now", action="clarify_ask")
             return phrase("cannot_now_clarify")
 
