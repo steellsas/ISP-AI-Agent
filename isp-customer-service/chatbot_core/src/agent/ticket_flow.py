@@ -59,6 +59,16 @@ def ticket_need(engine: Any) -> str:
 
     s = engine.state
     cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
+    # P-E (live 2026-09-08): escalating WITHOUT the step's action done must
+    # not claim it happened — "routeris perkrautas, bet ryšys neatsistatė"
+    # went out when the caller never rebooted (not at home). A refusal /
+    # cannot-now escalation speaks the honest state instead of the fault
+    # file's post-action wording.
+    reason = str((s.resolution or {}).get("escalate_reason") or "")
+    if "atsisakė" in reason or "negali" in reason:
+        gloss = DIAGNOSIS_LT.get(cause)
+        prefix = f"įtariama, kad {gloss}; " if gloss else ""
+        return prefix + "patikrinti kartu telefonu nepavyko"
     need = fault_need(cause) or TICKET_NEED_LT.get(cause)  # file first, code fallback
     if need:
         return need
@@ -106,6 +116,9 @@ def abort_ticket_to_solving(engine: Any) -> None:
     engine._ticket_ctx = None
     engine._resume_fix_note = True
     engine._resync_note = True  # C: re-anchor from the ledger, no improvising
+    from .dialog_registry import clear_owner as _q_clear_owner
+
+    _q_clear_owner(engine, "ticket")
     engine.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
 
 
@@ -115,23 +128,28 @@ def ticket_stage_reply(engine: Any) -> str:
     caller hears the transition before the contact questions. Marks the stage
     question as ASKED — only then does the capture accept an answer — and
     speaks the retry phrasing after an unclear answer."""
+    from .dialog_registry import register as _q_register
     from .identification import phrase
 
     ctx = engine._ticket_ctx if engine._ticket_ctx is not None else {}
     if ctx.pop("ask_cancel_confirm", None):
         ctx["cancel_confirm_out"] = True
         ctx["last_kind"] = "cancel_confirm"
+        _q_register(engine, "ticket", "ticket_cancel")
         return phrase("ticket_cancel_confirm")
     retry = ctx.pop("ask_retry", None)
     if retry == "phone":
         ctx["last_kind"] = "retry_phone"
+        _q_register(engine, "ticket", "ticket_phone")
         return phrase("ticket_phone_retry")
     if retry == "hours":
         ctx["last_kind"] = "retry_hours"
+        _q_register(engine, "ticket", "ticket_hours")
         return phrase("ticket_hours_retry")
     if engine._ticket_stage == "hours":
         ctx["hours_asked"] = True
         ctx["last_kind"] = "hours"
+        _q_register(engine, "ticket", "ticket_hours")
         return phrase("ticket_hours")
     parts = []
     if not ctx.get("intro_done"):
@@ -147,6 +165,7 @@ def ticket_stage_reply(engine: Any) -> str:
     else:
         ctx["last_kind"] = "phone"
     ctx["phone_asked"] = True
+    _q_register(engine, "ticket", "ticket_phone")
     parts.append(phrase("ticket_phone"))
     return " ".join(parts)
 
@@ -208,6 +227,9 @@ def finish_ticket_dialogue(engine: Any) -> str:
     note = (engine._ticket_ctx or {}).get("note") or ""
     engine._ticket_stage = None
     engine._ticket_ctx = None
+    from .dialog_registry import clear_owner as _q_clear_owner
+
+    _q_clear_owner(engine, "ticket")  # contacts collected — the dialogue is over
     engine._register_ticket_from_state(step)
     s.case_closed = True
     s.closed_reason = "registered" if s.ticket_id else "declined"

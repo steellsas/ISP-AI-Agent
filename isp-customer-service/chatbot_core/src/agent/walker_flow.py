@@ -714,19 +714,31 @@ def reject_and_rediagnose(engine, r: dict) -> bool:
 
 
 def route_to(engine, r: dict, target: str) -> None:
-    """Apply a routing target: the 'resolve'/'end' terminals close the case; any
-    other id is a real step to advance to. Centralises terminal handling so every
-    branch (including client_side -> resolve) actually closes."""
+    """Apply a routing target: the 'resolve'/'end'/'callback' terminals close
+    the case; any other id is a real step to advance to. Centralises terminal
+    handling so every branch (including client_side -> resolve) actually
+    closes."""
     if target == "resolve":
         engine.state.case_closed = True
         engine.state.closed_reason = "resolved"
         # The fix worked, so the cause we were testing was the right one — the
         # agent can now say so ("taigi dėl X ir nebuvo interneto").
         engine._settle_hypothesis("confirmed", "sutvarkius problema dingo")
+    elif target == "callback":
+        # P-C (Andrius 2026-09-08): the caller agreed to do the homework and
+        # call back — a warm callback close, never pressure into a ticket.
+        engine.state.case_closed = True
+        engine.state.closed_reason = "callback"
+        engine._callback_goodbye_due = True  # scripted speaks callback_goodbye
+        engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
     elif target == "end":
         engine.state.case_closed = True
         engine.state.closed_reason = engine.state.closed_reason or "declined"
     else:
+        # P-E: escalating out of the homework step means nothing was done at
+        # the device — the ticket intro must speak the honest state.
+        if target == "escalate" and str(r.get("step") or "").endswith("_homework"):
+            r.setdefault("escalate_reason", "Klientas negali dabar atlikti veiksmų prie įrenginio.")
         engine._goto_step(r, target)
 
 

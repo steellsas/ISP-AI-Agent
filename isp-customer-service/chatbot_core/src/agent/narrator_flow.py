@@ -411,9 +411,26 @@ def state_facts_block(engine) -> str | None:
     # re-EXPLANATIONS aimed at what was actually not understood.
     u = getattr(engine, "_last_understanding", None)
     if u is not None and not engine._side_topic_this_turn and not s.case_closed:
-        if u.get("supratau"):
+        sup = (u.get("supratau") or "").strip()
+        # P-A (live 2026-09-08: "Supratau — Paulius atliko veiksmą" spoken TO
+        # Paulius): the pass's summary is INTERNAL wording, often third-person
+        # about the caller — quoted verbatim it becomes the agent's broadcast
+        # thought. When it names the caller or reads third-person, the model
+        # gets only the instruction, never the quote to copy.
+        name = (s.caller_name or "").strip()
+        third_person = (bool(name) and name.lower() in sup.lower()) or any(
+            m in sup.lower() for m in ("klientas", "klientė", "kliente", "naudotojas", "vartotojas")
+        )
+        if sup and third_person:
             facts.append(
-                f"- PATVIRTINK, ką supratai, puse sakinio („{u['supratau']}“) — "
+                "- PATVIRTINK, kad išgirdai, puse sakinio SAVAIS žodžiais, "
+                "kreipdamasis į klientą ANTRUOJU asmeniu („Gerai, kad "
+                "padarėte…“, „Aišku, darote…“) — vidinės santraukos "
+                "NEcituok ir apie klientą trečiuoju asmeniu nekalbėk."
+            )
+        elif sup:
+            facts.append(
+                f"- PATVIRTINK, ką supratai, puse sakinio („{sup}“) — "
                 "tada tęsk vienu kitu klausimu/žingsniu. KREIPKIS į klientą "
                 "(„Supratau — …“), niekada nekalbėk apie jį trečiuoju asmeniu "
                 "(NE „Klientas sutinka…“)."
@@ -1155,6 +1172,19 @@ def mark_step_presented(engine) -> None:
         # killed by a many-turns-stale dr_intro reading a reply as its own
         # answer. The asked-step routing only trusts a RECENT question.
         r["asked_at"] = len(engine.state.messages)
+        # B-wave registry (shadow): the step's question/instruction was just
+        # presented — it is now the walker's active question. Live 2026-09-08:
+        # the end-confirm and wrap-up replies are NOT the step's question, so
+        # they must not re-register it (asks inflated to 5 on a solved call).
+        from .dialog_registry import clear_owner as _q_clear_owner
+        from .dialog_registry import register as _q_register
+
+        if engine._end_confirm_pending:
+            pass  # this reply asked the end-confirm question, not the step's
+        elif engine.state.case_closed:
+            _q_clear_owner(engine, "walker")  # the case is over — wrap-up owns the turns
+        else:
+            _q_register(engine, "walker", f"step:{step.id}")
         # Presentation counter (L2): a step presented the 2nd+ time gets the
         # ŽINGSNIS KARTOJAMAS directive — repeat WITH an explanation.
         counts = r.setdefault("presented", {})
@@ -1292,8 +1322,40 @@ def update_state_from_observation(engine, action: str, observation: str):
                 from .identification_flow import address_diag_note
 
                 engine._addr_diag_note = address_diag_note(obs_data)
+                res_levels = obs_data.get("resolution") or {}
+                street_lvl = res_levels.get("street") or {}
+                # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
+                # Ginkūnuose" — įsimenam siūlomą vietovę; klientui patvirtinus
+                # miesto slotas persijungia (prefill vielos) ir paieška vyksta
+                # TEN. Tikslinimas NĖRA bandymas — fails nekeliam.
+                elsewhere = street_lvl.get("found_elsewhere") or []
+                if street_lvl.get("status") == "not_in_city" and elsewhere:
+                    engine._addr_city_suggestion = elsewhere[0].get("city")
+                # №2 (perdirbta 2026-09-04): nesėkme laikoma tik GATVĖS/NAMO
+                # lygmens fiasko; „trūksta buto/pavardės" ar vietovės
+                # pasiūlymas — tikslinimas, ne nesėkmė.
+                house_lvl = res_levels.get("house") or {}
+                apt_lvl = res_levels.get("apartment") or {}
+                clarification = (
+                    street_lvl.get("status") == "not_in_city"
+                    or apt_lvl.get("status") == "required"
+                    or "pavard" in str(obs_data.get("hint") or "").lower()
+                )
+                if not clarification and (
+                    street_lvl.get("status") not in (None, "ok")
+                    or house_lvl.get("status") not in (None, "ok")
+                ):
+                    engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
             else:
                 engine._addr_diag_note = None
+                engine._addr_city_suggestion = None
+                # B-wave registry: identification committed on ANY successful
+                # resolve (the LLM's own tool call included) — the ident
+                # question must never outlive it and freeze the walker.
+                from .dialog_registry import clear_owner as _q_clear_owner
+
+                _q_clear_owner(engine, "ident")
+                engine._addr_resolve_fails = 0
 
         if action in ("find_customer", "resolve_address") and obs_data.get("success"):
             # resolve_address nests the normalized profile under `customer`;

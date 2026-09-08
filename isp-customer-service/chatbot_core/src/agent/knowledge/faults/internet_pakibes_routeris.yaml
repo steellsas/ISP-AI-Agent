@@ -53,8 +53,8 @@ reikalinga: "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routeri
 sprendimai:
 - jei: [fail_scope=visuose]
   tada: walker
-  zingsnis: rh_reboot
-  aprasymas: "perkrauti routerį iš maitinimo — pakibęs routeris po to dažniausiai atsistato"
+  zingsnis: rh_ability
+  aprasymas: "perkrauti routerį iš maitinimo — pakibęs routeris po to dažniausiai atsistato; pirma klausiama, ar klientas GALI dabar prieiti"
 - jei: [fail_scope=viename]
   tada: walker
   zingsnis: rh_device
@@ -71,7 +71,7 @@ steps:
   rag_section: 0
   tikslas: "aišku, ar internetas neveikia visuose įrenginiuose, ar tik viename"
   'on':
-    all: rh_reboot
+    all: rh_ability
     one: rh_device
     phone: rh_device
     computer: rh_device
@@ -83,6 +83,64 @@ steps:
     one: sako, kad neveikia tik VIENAME įrenginyje
     phone: AIŠKIAI įvardija telefoną ar planšetę
     computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
+# P-C GEBĖJIMO KLAUSIMAS (Andrius 2026-09-08): hipotezė jau ištransliuota
+# (rh_scope hint), toliau NE komanda, o klausimas ar klientas GALI dabar —
+# „taip" → instrukcija; „nežinau kur" → pagalba surasti; „negaliu/ne namie"
+# → namų darbas + callback (be spaudimo į tiketą).
+- id: rh_ability
+  kind: confirm
+  detector: yes_no
+  rag_section: 1
+  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio ir jį perkrauti"
+  'on':
+    'yes': rh_reboot
+    'no': rh_homework
+    lost: rh_locate
+  hint: 'The hypothesis is already told (router visible, no traffic — most likely hung). Now ONE
+    short question and WAIT: a reboot would help — can they get to the router right now? Do NOT
+    give the reboot instruction yet. Length model: "Padėtų routerio perkrovimas. Ar galite dabar
+    prieiti prie routerio?"'
+  answers:
+    'yes': gali dabar prieiti prie routerio ir jį perkrauti
+    'no': negali dabar / nėra namie / nepatogu šiuo metu
+    lost: nežino, kur routeris yra arba kaip jis atrodo
+# P-C pagalba: klientas nežino, kur routeris — padedam surasti (agento
+# pagalba, Andrius 2026-09-08).
+- id: rh_locate
+  kind: confirm
+  detector: yes_no
+  rag_section: 1
+  tikslas: "klientas surado routerį (dėžutė su lemputėmis, prie jos ateina interneto laidas)"
+  'on':
+    'yes': rh_reboot
+    'no': rh_homework
+  hint: 'They do not know where the router is. Describe it simply in ONE-TWO sentences and ask if
+    they can see it: a small box with little lights, usually in the hallway or by a window; the
+    internet cable from the stairwell runs into it. Length model: "Tai nedidelė dėžutė su
+    lemputėmis — dažniausiai prieškambaryje ar prie lango, prie jos ateina laidas iš laiptinės.
+    Matote tokią?"'
+  answers:
+    'yes': surado routerį / mato tokią dėžutę
+    'no': neranda / negali dabar ieškoti
+# P-C namų darbas: negali dabar — instrukcija ATEIČIAI + callback uždarymas;
+# meistras tik jei pats paprašo ('no' į „Gerai?" = nori meistro dabar).
+- id: rh_homework
+  kind: confirm
+  detector: yes_no
+  rag_section: 1
+  tikslas: "sutarta: grįžęs perkraus routerį, o jei neatsistatys — paskambins"
+  'on':
+    'yes': callback
+    'no': escalate
+  hint: 'They cannot do it now — give the homework warmly in TWO-THREE short sentences and ask
+    consent: when they are back, pull the power lead out of the router itself, wait 5 seconds,
+    plug it back; if the internet does not return within a couple of minutes, call again and we
+    will help or register a technician. Length model: "Suprantu. Tada kai grįšite — ištraukite
+    routerio maitinimo laidą, palaukite 5 sekundes ir įkiškite atgal. Jei internetas neatsiras —
+    paskambinkite, padėsime toliau arba užregistruosiu meistrą. Gerai?"'
+  answers:
+    'yes': sutinka — perkraus grįžęs ir paskambins, jei neveiks
+    'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 # Perkrovimo instrukcija — kortelės šerdis. Dažniausios klaidos įaustos į hint:
 # prailgintuvas / mygtukas = nepilnas perkrovimas; du įrenginiai = perkrauna ne tą.
 - id: rh_reboot
@@ -90,14 +148,12 @@ steps:
   rag_section: 1
   goto: rh_check
   tikslas: "routeris perkrautas iš maitinimo (ištrauktas maitinimo laidas, palaukta ~5 s, įkištas atgal)"
-  hint: 'First explain in ONE short human sentence what you see (router visible, no traffic —
-    most likely hung; this happens), then ONE instruction and WAIT. VOICE: THREE short
-    sentences MAXIMUM. Do NOT echo their answer back ("Supratau — neveikia visuose...") — no
-    recap, no extra warnings (the retry step carries the clarifications). Length model — do
-    not read verbatim, but do not exceed it: "Routerį linijoje matau, bet srautas nevaikšto —
-    greičiausiai jis pakibo, taip nutinka. Ištraukite maitinimo laidą iš paties routerio,
-    palaukite 5 sekundes ir įkiškite atgal — pasikraus per minutę. Pasakykite, kai
-    padarysite."'
+  hint: 'They CAN reach the router (rh_ability said yes) — the hypothesis was already told, do
+    NOT repeat it. ONE instruction and WAIT. VOICE: THREE short sentences MAXIMUM. Do NOT echo
+    their answer back ("Supratau — galite...") — no recap, no extra warnings (the retry step
+    carries the clarifications). Length model — do not read verbatim, but do not exceed it:
+    "Puiku. Ištraukite maitinimo laidą iš paties routerio, palaukite 5 sekundes ir įkiškite
+    atgal — pasikraus per minutę. Pasakykite, kai padarysite."'
 # Patikra po perkrovimo — kliento žodis + telemetrija KARTU. Variklis šį žingsnį
 # sprendžia pats (advance_reboot_check): srautas grįžo / perkrovimo nesimatė
 # (port flap = liudininkas) / perkrauta bet neatsistatė — trys skirtingi keliai.

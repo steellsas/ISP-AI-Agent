@@ -338,6 +338,11 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
             engine.tracer.emit("evidence", action="fact", key=key, value=value)
             _note_fact_meaning(engine, key, str(value))
+            # B-wave registry: the asked evidence question just got its
+            # answer — close it (a different key's fact leaves it open).
+            from .dialog_registry import clear as _q_clear
+
+            _q_clear(engine, f"evidence:{key}")
     # Reader disagreements land SECOND: on a fresh key this flags the
     # conflict (one scripted clarify settles it); if the flip guard dropped
     # the pass value above, the keyword read simply stands as the fact.
@@ -362,6 +367,65 @@ def _note_fact_meaning(engine, key: str, value: str) -> None:
     if meaning:
         engine._fact_meaning = (LABELS.get(key, key), value, str(meaning))
         engine.tracer.emit("evidence", action="fact_meaning", key=key, value=value)
+
+
+_STREETS_FOLD_CACHE: list[str] | None = None
+
+
+def _registry_streets_fold() -> list[str]:
+    """Folded registry street names (be „g." uodegos) — pigus vienkartinis
+    užkrovimas kito-adreso signalui."""
+    global _STREETS_FOLD_CACHE
+    if _STREETS_FOLD_CACHE is None:
+        try:
+            from .evidence import _fold
+            from .tools import get_db
+
+            with get_db().cursor() as cur:
+                cur.execute("SELECT DISTINCT street_name FROM streets")
+                _STREETS_FOLD_CACHE = [
+                    _fold(str(r[0]).replace(" g.", "")) for r in cur.fetchall() if r[0]
+                ]
+        except Exception:  # pragma: no cover - best-effort
+            _STREETS_FOLD_CACHE = []
+    return _STREETS_FOLD_CACHE
+
+
+def _mentions_other_street(engine, text: str | None) -> bool:
+    """A-banga P2 (gyva #4, 2026-09-04: „mano ADARAS yra Tilžės gatvė 60" —
+    STT sudarkė žodį „adresas" ir korekcijos detektorius tylėjo, o naratorius
+    ŽODŽIU „pripažino" keitimą): identifikuoto kliento turn'as, kuriame yra
+    KITOS registro gatvės vardas + skaitmuo, yra korekcijos kandidatas —
+    nesvarbu, ar nuskambėjo žodis „adresas"."""
+    if not text or not engine.state.customer_id:
+        return False
+    if not any(ch.isdigit() for ch in text):
+        return False
+    from .evidence import _fold
+
+    low = _fold(text)
+    current = _fold(str(engine.state.customer_address or ""))
+    return any(len(st) >= 4 and st in low and st not in current for st in _registry_streets_fold())
+
+
+def _holder_name_matches(engine, caller_name: str) -> bool:
+    """Does the caller's stated first name plausibly match the CRM account
+    holder's name? Fuzzy by 4-letter prefix (STT garbles endings). True also
+    when the holder name is unknown — no basis to challenge."""
+    from .evidence import _fold
+
+    holder = engine.state.customer_name or (engine.state.phone_candidate or {}).get("name")
+    if not holder:
+        return True
+    caller_tokens = [t for t in _fold(caller_name).split() if len(t) >= 3]
+    holder_tokens = [t for t in _fold(str(holder)).split() if len(t) >= 3]
+    if not caller_tokens or not holder_tokens:
+        return True
+    for c in caller_tokens:
+        for h in holder_tokens:
+            if c[:4] == h[:4]:
+                return True
+    return False
 
 
 def _conflict_to_clarify(engine, key: str, entry: dict) -> bool:
@@ -664,6 +728,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 m in low_q for m in ("neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu")
             ):
                 engine._ticket_stage = "cancelled"
+                from .dialog_registry import clear_owner as _q_clear_owner
+
+                _q_clear_owner(engine, "ticket")
                 engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                 return
             # Anything else resumes the registration — the stage re-asks.
@@ -724,6 +791,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     # ticket the caller was just promised.
                     if ctx.get("cancel_confirm_asked"):
                         engine._ticket_stage = "cancelled"
+                        from .dialog_registry import clear_owner as _q_clear_owner
+
+                        _q_clear_owner(engine, "ticket")
                         engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                         return
                     ctx["cancel_confirm_asked"] = True
@@ -806,6 +876,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 return
             if ctx.get("cancel_confirm_asked"):
                 engine._ticket_stage = "cancelled"
+                from .dialog_registry import clear_owner as _q_clear_owner
+
+                _q_clear_owner(engine, "ticket")
                 engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                 return
             ctx["cancel_confirm_asked"] = True
@@ -924,6 +997,88 @@ def pre_turn_guards(engine, user_input: str) -> None:
             engine._resync_note = True  # C: re-anchor from the ledger, no improvising
             engine.tracer.emit("decision", intent="end_declined", action="resume")
         return
+    # A-2 (live 2026-09-07: "Taip taip dėl KITO adreso" was consumed by the
+    # walker, and a later side-topic turn burned the question): the SAFETY
+    # question's answer is read HERE — in the deterministic turn head, BEFORE
+    # the solver/walker. One-owner principle: the last question asked owns
+    # the turn. An unclear answer does NOT burn the question — one re-ask,
+    # only then written off as "stay with the current address".
+    if getattr(engine, "_reopen_confirm_pending", None) is not None and getattr(
+        engine, "_reopen_confirm_asked", False
+    ):
+        from .dialog_registry import clear as _q_clear
+        from .identification_flow import _looks_like_address
+        from .resolution import DETECTORS
+
+        pending = engine._reopen_confirm_pending
+        verdict = DETECTORS["yes_no"](user_input)
+        if verdict == "yes" or _looks_like_address(user_input):
+            engine._reopen_confirm_pending = None
+            engine._reopen_confirm_asked = False
+            _q_clear(engine, "reopen_confirm")
+            engine.tracer.emit("decision", intent="reopen_confirm", action="confirmed")
+            engine._reopen_identification(pending)
+            # P1 (live 2026-09-07): the pending phrase often already yielded a
+            # good address (conf 1.0) — the answer's STT garble ("Tildziai
+            # 660-3") must not stomp it; the answer is read only when the
+            # address is still missing.
+            p = s.profile
+            if _looks_like_address(user_input) and not (p.street.value and p.house.value):
+                engine._prefill_slots_from_text(user_input)  # the answer names it
+            # A-2R (live 2026-09-07): the new address was usually ALREADY
+            # heard (in the pending phrase "mano adresas Tilžės 60") —
+            # identification continues RIGHT NOW: the engine tries resolve;
+            # success = new customer, failure leaves the diagnosis note
+            # (e.g. "which apartment?"), and the next question belongs to
+            # identification, not the old analysis.
+            if p.street.value and p.house.value:
+                engine._trace_note("reopen_identity", "new address already heard; engine resolve")
+                if engine._engine_resolve_from_slots():
+                    engine._just_identified = True
+                    from .identification import ask_caller
+
+                    if ask_caller() and not s.caller_name:
+                        engine._result_pending = True
+            return
+        engine._resume_hold = True  # the answer belongs to THIS question, not the walker
+        if verdict == "no":
+            engine._reopen_confirm_pending = None
+            engine._reopen_confirm_asked = False
+            _q_clear(engine, "reopen_confirm")
+            engine.tracer.emit("decision", intent="reopen_confirm", action="declined")
+        elif getattr(engine, "_reopen_confirm_asks", 1) < 2:
+            engine._reopen_reask = True  # the scripted layer re-asks the question
+            engine.tracer.emit("decision", intent="reopen_confirm", action="reask")
+        else:
+            engine._reopen_confirm_pending = None
+            engine._reopen_confirm_asked = False
+            _q_clear(engine, "reopen_confirm")
+            engine.tracer.emit("decision", intent="reopen_confirm", action="declined_unclear")
+        return
+    # P-D (live 2026-09-08: "nepatogu, nesu namuose" — the walker's refuse
+    # guard escalated into a TICKET in the same turn, and the cannot-now
+    # ladder never got its chance because ticket_stage was already set): a
+    # cannot-now signal registers a SAFETY question in the turn head, so the
+    # registry priority guard holds the walker/solver and the scripted ladder
+    # asks its clarify this very turn.
+    if (
+        s.customer_id
+        and s.resolution
+        and not engine._ticket_stage
+        and not s.case_closed
+        and getattr(engine, "_cannot_now_state", None) is None
+        and not getattr(engine, "_cannot_now_done", False)
+    ):
+        from .dialog_registry import pack_owns_cannot_now
+        from .resolution import detect_cannot_now as _dcn_head
+
+        # P-C: an *_ability/*_locate/*_homework step's question IS the pack's
+        # own cannot-now handling — the shield stands down, the walker routes.
+        if _dcn_head(user_input) and not pack_owns_cannot_now(engine):
+            from .dialog_registry import register as _q_register
+
+            _q_register(engine, "safety", "cannot_now")  # priority shield this turn
+            engine.tracer.emit("decision", intent="cannot_now", action="shield")
     mid_process = not s.case_closed and (
         not s.customer_id
         or s.resolution is not None
@@ -982,6 +1137,19 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
                 engine._name_heard = True
             engine.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
+            # B-wave registry: the caller-name question just got its answer.
+            from .dialog_registry import clear as _q_clear
+
+            _q_clear(engine, "caller_name")
+            # №4 (etalonas 2026-09-03): sakosi SAVININKAS, bet vardas nesutampa
+            # su DB sutarties vardu — vienas mandagus patikslinimas, DB vardo
+            # NEgarsinant (privatumo riba). Fuzzy: STT darkymui („Andrijus" ~
+            # „Andrius") užtenka 4 raidžių prefikso sutapimo.
+            if s.caller_relation == "holder" and s.caller_name not in (None, "nenurodyta"):
+                if not _holder_name_matches(engine, s.caller_name):
+                    engine._holder_clarify_open = True
+                    engine._holder_clarify_asked = False
+                    engine.tracer.emit("decision", intent="holder_name", action="mismatch_clarify")
         return
     if not s.customer_id:
         q = (engine._last_agent_question() or "").lower()
@@ -1013,6 +1181,21 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     if ask_caller() and not s.caller_name:
                         engine._result_pending = True
                 return
+            if verdict == "yes":
+                # A-2R-b (2026-09-07): a "taip" to an address confirm WITHOUT
+                # a phone candidate (e.g. after reopen, address heard in the
+                # slots) — the engine commits from the slots; a block of
+                # flats leaves the apartment note.
+                p_y = s.profile
+                if p_y.street.value and p_y.house.value:
+                    engine._trace_note("address_confirm", "slots confirmed; engine resolve")
+                    if engine._engine_resolve_from_slots():
+                        engine._just_identified = True
+                        from .identification import ask_caller
+
+                        if ask_caller() and not s.caller_name:
+                            engine._result_pending = True
+                    return
             if verdict != "yes":
                 # Direct accept (arc v3.1): the caller DICTATED a full other address
                 # in this very turn (NLU heard street+house clearly) — the ENGINE
@@ -1102,8 +1285,15 @@ def pre_turn_guards(engine, user_input: str) -> None:
     elif not s.case_closed:
         from .resolution import detect_address_correction
 
-        if detect_address_correction(user_input):
-            engine._reopen_identification(user_input)
+        if (
+            detect_address_correction(user_input) or _mentions_other_street(engine, user_input)
+        ) and not getattr(engine, "_reopen_confirm_pending", None):
+            # Etalonas №3 (2026-09-03): PIRMA patvirtinimo klausimas, tik tada
+            # identifikacija atsidaro iš naujo — STT darkymas nebemeta pokalbio
+            # ant kito adreso be kliento „taip".
+            engine._reopen_confirm_pending = user_input
+            engine._reopen_confirm_asked = False
+            engine.tracer.emit("decision", intent="reopen_confirm", action="pending")
 
 
 def engine_resolve_from_slots(engine) -> bool:
@@ -1129,5 +1319,11 @@ def engine_resolve_from_slots(engine) -> bool:
     engine._update_state_from_observation("resolve_address", obs)
     if not engine.state.customer_id:
         return False
+    # B-wave registry: the identification question (address/code) got its
+    # answer — a contract committed; the next question (the name) is
+    # registered by its own owner.
+    from .dialog_registry import clear_owner as _q_clear_owner
+
+    _q_clear_owner(engine, "ident")
     engine.ensure_diagnosed()
     return True

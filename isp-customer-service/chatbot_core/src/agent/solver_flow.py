@@ -220,6 +220,14 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     # thinker waits (scripted replies and guards are deterministic territory).
     if engine._result_pending or engine._end_confirm_pending or engine._resume_hold:
         return None
+    # B-wave switch (2026-09-08): a higher-priority open question (safety/
+    # ident/ticket) owns the turn — the solver waits like the walker does.
+    from .dialog_registry import OWNER_PRIORITY
+    from .dialog_registry import active as _q_active
+
+    _q = _q_active(engine)
+    if _q is not None and OWNER_PRIORITY.get(_q.owner, 99) < OWNER_PRIORITY["walker"]:
+        return None
     if engine._ticket_stage:
         return None  # the ticket dialogue owns the turn
     if engine._evidence_conflict:
@@ -623,6 +631,9 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
             engine._goto_step(r, target)
             r["asked"] = True  # the verify question goes out in THIS reply
             r["asked_at"] = len(engine.state.messages) + 1
+            from .dialog_registry import register as _q_register
+
+            _q_register(engine, "walker", f"step:{target}")
             engine.tracer.emit(
                 "decision", intent="evidence", action="pivot", to=target, reason="bind verify"
             )

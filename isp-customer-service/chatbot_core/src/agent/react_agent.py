@@ -253,6 +253,15 @@ class ReactAgent:
         # pending / the walker holds one turn after the caller decides to continue.
         self._end_confirm_pending = False
         self._resume_hold = False
+        # A-2 (2026-09-07): the deterministic turn head (prefill+guards)
+        # already ran earlier this turn (diagnose node) — narrate() skips it.
+        self._pre_turn_head_done = False
+        # B wave (2026-09-07): question registry — the last question asked,
+        # with its owner (dialog_registry; shadow mode for now).
+        self._active_question = None
+        # P-C (2026-09-08): the walker's 'callback' terminal closed the case —
+        # the very next scripted reply is the warm callback goodbye.
+        self._callback_goodbye_due = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says
@@ -1413,8 +1422,13 @@ class ReactAgent:
         self._apply_bg_diagnosis()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
-            self._prefill_slots_from_text(user_input)
-            self._pre_turn_guards(user_input)
+            # The deterministic head may have run EARLIER (diagnose node, A-2
+            # 2026-09-07) — the latch prevents a double prefill/guards run.
+            if getattr(self, "_pre_turn_head_done", False):
+                self._pre_turn_head_done = False
+            else:
+                self._prefill_slots_from_text(user_input)
+                self._pre_turn_guards(user_input)
 
         # The caller's utterance goes on the history for EVERY reply path
         # (review 2026-08-07): scripted turns used to skip it, so the LLM
@@ -1549,6 +1563,11 @@ class ReactAgent:
         if not bg:
             return
         self._bg_diagnosis = None
+        # A-2R (2026-09-07): with no identified customer the telemetry has no
+        # one to belong to — after reopen it used to restore the dropped
+        # account's diagnosis.
+        if not self.state.customer_id:
+            return
         with suppress(Exception):
             r0 = self.state.resolution or {}
             in_solution = bool(
@@ -1758,8 +1777,12 @@ class ReactAgent:
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
-            self._prefill_slots_from_text(user_input)
-            self._pre_turn_guards(user_input)
+            # Latch (A-2 2026-09-07): the head may have run in the diagnose node.
+            if getattr(self, "_pre_turn_head_done", False):
+                self._pre_turn_head_done = False
+            else:
+                self._prefill_slots_from_text(user_input)
+                self._pre_turn_guards(user_input)
 
         # Deterministic backstop before the LLM, once a genuine repeat loop escalated.
         backstop = self._stuck_backstop()

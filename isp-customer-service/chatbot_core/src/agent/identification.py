@@ -172,8 +172,11 @@ _RELATION_MARKS: dict[str, tuple[str, ...]] = {
     "holder": ("sutart", "savinink", "mano vardu", "aš sudariau", "as sudariau"),
     "family": (
         "vyras",
+        "vyro",
         "žmona",
         "zmona",
+        "žmonos",
+        "zmonos",
         "vaikas",
         "sūnus",
         "sunus",

@@ -83,6 +83,12 @@ class FakeEngine:
     def ensure_diagnosed(self):
         self.calls.append("diagnose")
 
+    def _prefill_slots_from_text(self, text):
+        self.calls.append("prefill")
+
+    def _pre_turn_guards(self, user_input):
+        self.calls.append("guards")
+
     def _ingest_client_evidence(self, user_input):
         self.calls.append("ingest")
 
@@ -138,8 +144,12 @@ class TestDiagnosisSubgraph:
     def test_normal_path_keeps_legacy_call_order(self):
         engine = FakeEngine()
         out = _fake_graph(engine).invoke(_diag_input(), _CFG)
+        # A-2 (2026-09-07): the deterministic turn head (prefill + guards) runs
+        # FIRST — before the solver/walker can consume a safety-question answer.
         assert engine.calls == [
             "diagnose",
+            "prefill",
+            "guards",
             "ingest",
             "classify",
             "solver",
@@ -155,13 +165,13 @@ class TestDiagnosisSubgraph:
         engine = FakeEngine(side_topic=True)
         out = _fake_graph(engine).invoke(_diag_input(), _CFG)
         # No close-inform/solver/walker/action on side chatter — only the frozen narration.
-        assert engine.calls == ["diagnose", "ingest", "classify", "narrate"]
+        assert engine.calls == ["diagnose", "prefill", "guards", "ingest", "classify", "narrate"]
         assert out["turn"].reply == "ok-reply"
 
     def test_solver_drive_skips_walker_and_narrator(self):
         engine = FakeEngine(driven="Atsakau pats.")
         out = _fake_graph(engine).invoke(_diag_input(), _CFG)
-        assert engine.calls == ["diagnose", "ingest", "classify", "solver"]
+        assert engine.calls == ["diagnose", "prefill", "guards", "ingest", "classify", "solver"]
         assert out["turn"].reply == "Atsakau pats."
 
     def test_tokens_stream_out_of_the_subgraph(self):

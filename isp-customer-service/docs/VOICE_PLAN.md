@@ -208,7 +208,33 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
    gatvės gatvės" advance'ino žingsnį). 973 testai, eval 61/61 ×2.
    UŽDARYMO ETAPUI užfiksuota (nelieciam dabar): kurtumas po „Ar dar kuo
    padėti?" (klausimas/„sumokėjau" nuryjami), keista improvizuota paskutinė
-   replika po scripted goodbye momento.
+   replika po scripted goodbye momento. + P5 (gyva 2026-09-07): „Gerai, aš
+   paskambinsiu vėliau" TICKET dialogo viduryje neskaitomas kaip callback —
+   stadija perklausė „ar tiks numeris?"; ticket stadijoje callback frazės
+   turi vesti į callback_goodbye (kaip cannot_now laiptelyje).
+   B BANGOS DIZAINUI užfiksuota P6 (gyva 2026-09-07): viename turn'e TRYS
+   signalai („negaliu dabar" + „ne namuose" + adreso klausimas) — scripted
+   atsakė į adresą, o walker'is lygiagrečiai startavo tiketą (refuse→
+   escalate), cannot_now laiptelis nesuveikė. Klausimų registras turi turėti
+   SIGNALŲ PRIORITETUS, kai turn'as neša kelis.
+
+#### INFORMAVIMO PAKETAI — uždarymo bangai (Andrius 2026-09-08)
+
+Principo tęsinys „kodas = mechanika, failai = elgsena": inform verdiktų
+(skola, kabelis, laiptinė, avarija) TURINYS ir FORMULUOTĖ keliasi į failą,
+kad Andrius koreguotų be kodo.
+
+- Vienkartinė mechanika: (1) diagnose signals papildomi skolos detalėmis
+  (suma, mėnesiai, paskutinio mokėjimo data — DB billing lentelėse yra);
+  (2) inform kalbos šablonai su placeholder'iais → knowledge/informavimas.yaml
+  (billing_suspended: „Skola {suma} € už {menesiai}. Paskutinis mokėjimas
+  {data}…"; cable_cut: „Gedimas mūsų pusėje — {vieta}, atstatymas {eta},
+  jums nieko daryti nereikia."); (3) `po_to` nuoroda į FAQ („kaip apmokėti?").
+- `aiskumo_salyga` per verdiktą (Andrius: „pokalbis visuomet baigiasi
+  aiškumu"): [kas_negerai, ka_daryti/kas_daroma, kada_atsistatys] — uždarymo
+  banga tikrina, kad visi nuskambėjo PRIEŠ goodbye; wrap_up be jų neuždaro.
+- Po mechanikos: naujas inform atvejis ar formuluotės keitimas = tik YAML;
+  naujas duomuo iš DB = maža tool'o eilutė + YAML.
 4. Pažingsninis testavimas pagal etaloną (prisistatymas → identifikacija →
    analizė → sprendimas → tiketas/užbaigimas) + testų žemėlapio valymas
    sluoksnis po sluoksnio (docs/TESTU_ZEMELAPIS.md).
@@ -216,6 +242,32 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
    jungiklis STT stresui.
 6. Vėliau: modelių reakcijos testai, latencijos A/B, linijos banga
    (Twilio/Telnyx adapteris — architektūra jau tinkama).
+
+#### Identifikacijos supratimo backlog (užfiksuota 2026-09-04, Andrius)
+
+- **LT NER pre-filtras** (LitLat-BERT ar pan.): fuzzy gatvių paieška
+  leidžiama TIK NER-LOC span'uose (struktūriškai išnyksta „kodo"→„Sodo g."
+  klasės klaidos, kurias dabar dengia guard'ai), PER span'ai — vardų/pavardžių
+  gaudymui. Daryti LOKALIZACIJOS etape (kartu su lokaliu percepcijos modeliu);
+  CPU ~50–150 ms, tinka. Iki tol — deterministiniai guard'ai.
+- **PARAIDŽIUI pakopa** (Andriaus idėja): kai gatvė/miestas nesuprantami po
+  kelių bandymų (f/s, š/s garsai susilieja) — agentas paprašo paraidžiui su
+  inkaro žodžiais („K kaip Kaunas, U kaip upė…"). Mechanika: parseris ima
+  inkaro žodžių PIRMAS raides (pavienes raides Whisper darko, o žodžius
+  girdi gerai), iš prefikso siaurina registro kandidatus (2–3 raidės dažnai
+  vienareikšmės) → pasiūlo („Kuktos gatvė — taip?"). Vieta kopėčiose: adresas
+  nesuprastas ×2 → PARAIDŽIUI → vis tiek ne → abonento kodas → „tik
+  abonentams". Tinka ir pavardėms (Dainų g. 7 disambiguacija). ASR promptas
+  paraidžiui turn'e keičiamas į raidžių režimą. Daryti po gyvų T-1…T-12
+  (testai parodys dažnį ir formuluotes).
+- **NAMAS/BUTAS žodžių inkarai slotuose** (gyva P2 2026-09-07): „6 0 būtų
+  namas, o butas 3" → namas=6; „NAMO numeris yra 60" nuėjo į BUTO slotą —
+  priskyrimas nesiklauso žodžio prie skaičiaus („namo/namas + N" → house
+  override, „butas/bute + N" → apartment). Ta pačia proga: kodo režimo tylos
+  langas (prefill return) nurijo PILNĄ diktaciją „Šiauliai, Tilžės gatvė 60,
+  butas 3" — pilna diktacija turi prabudinti adresų skaitytuvą net kodo
+  režime; ir dictated-resolve ėmė PASENUSIUS slotus (6/60) vietoj šio turn'o
+  skaitymo. Daryti kartu su paraidžiui/NER pakopa.
 
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 
@@ -289,7 +341,13 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
 - VAD parametrai (started_talking_threshold, speech_threshold,
   audio_chunk_duration, can_interrupt) → config puslapis.
 - Adaptyvus VAD langas iš dialogo: po adreso klausimo — ilgas (≈3.5 s), po
-  taip/ne — trumpas (≈1.8 s).
+  taip/ne — trumpas (≈1.8 s). GYVA 2026-09-08 (PC-1 skambutis): po INSTRUCT/
+  check žingsnių klientas pasakoja EIGĄ su pauzėmis tarp minčių („routeris
+  kraunasi… [pauzė] …internetas atsistatė") — VAD uždarė po „mirksi lemputės",
+  tęsinys nuskambėjo agentui kalbant ir dingo (overlay pagavo tik „Gerai.").
+  Ten langas ilgas; PLIUS: overlay tęsinys, atėjęs per ~2 s po turn'o
+  finalizavimo, KLIJUOJAMAS prie ką tik uždaryto atsakymo (to paties
+  atsakymo uodega, ne naujas turn'as).
 - Nebaigtos minties sargas: transkriptas baigiasi „ir/bet/tai…" → palaukti dar
   langą.
 

@@ -99,6 +99,38 @@ identification:
     checkin: "Kaip sekasi — ar pavyksta?"
     # Problemos vartai (2026-08-21): po kelių bandymų be aiškios mūsų srities problemos.
     no_problem_goodbye: "Supratau. Čia interneto ir televizijos gedimų pagalba — jei kils ryšio ar TV bėda, drąsiai skambinkite. Geros dienos!"
+    # Identifikacijos etalonas (Andrius 2026-09-03): adresui nepavykus ~4
+    # bandymus — KITAS METODAS: abonento kodas; jo nesant — pagalba tik
+    # abonentams ir mandagus uždarymas.
+    account_code_ask: "Pabandykime kitaip — ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
+    account_code_retry: "Kodas atrodo taip: A B brūkšnys ir penki skaitmenys, pavyzdžiui sąskaitos viršuje. Ar pavyksta jį rasti?"
+    not_client_goodbye: "Deja, jūsų duomenų mūsų sistemoje rasti nepavyko — pagalba teikiama tik mūsų abonentams. Jei esate abonentas, paskambinkite turėdami sutarties adresą ar abonento kodą. Geros dienos!"
+    # 2026-09-04 (Andrius): miestas ne aptarnavimo zonoje — pasakoma IŠ KARTO,
+    # tai ne bandymas; perspėjimas prieš uždarymą; uždarymas be vietos.
+    city_not_served: "Šiame mieste mūsų abonentų nėra — paslaugas teikiame Šiaulių mieste ir rajone. Gal adresas, dėl kurio skambinate, yra Šiauliuose ar Šiaulių rajone?"
+    address_need_warning: "Norėčiau padėti, bet nežinodamas adreso negalėsiu nei patikrinti gedimo, nei jo užregistruoti. Gal galite pasakyti adresą — arba abonento kodą iš sąskaitos?"
+    no_location_goodbye: "Suprantu. Deja, nenustačius gedimo vietos negaliu nei patikrinti, nei užregistruoti. Kai galėsite pasakyti adresą ar abonento kodą — paskambinkite, mielai padėsiu. Geros dienos!"
+    # Adreso keitimas po identifikacijos — TIK su patvirtinimu (taisyklė №3).
+    reopen_confirm: "Norėčiau patikslinti — ar tikrai skambinate dėl KITO adreso, ne dėl {adresas}?"
+    # A-2b (2026-09-07): patvirtintas adresas nėra paslaptis — paklaustas agentas
+    # jį pasako; frazė pati kviečia pasitaisyti, jei adresas ne tas.
+    current_address_info: "Kalbame dėl adreso {adresas}. Jei skambinate dėl kito adreso — pasakykite."
+    # A-2R-b (2026-09-07): klausimas „dėl kokio adreso?" VIDURY identifikacijos —
+    # sakome girdėtą (dar nepatvirtintą) adresą; šerdis „dėl šio adreso" verbatim,
+    # nuo jos raktuojasi patvirtinimo sargas.
+    ident_address_heard: "Girdėjau adresą {adresas}, bet dar nepatvirtinau. Ar skambinate dėl šio adreso?"
+    ident_address_none: "Adreso dar nenustatėme — kaip tik jį tikslinuosi. Koks adresas, dėl kurio skambinate?"
+    # A-3 skaidrumas (2026-09-07): agentas pasako, KOKĮ kodą išgirdo — ir radęs
+    # (patvirtinimui kartu su adresu), ir neradęs (klientas girdi, kur klaida).
+    account_code_echo_offer: "Išgirdau kodą {kodas}. Radau adresą — ar skambinate dėl {adresas}?"
+    account_code_miss: "Išgirdau kodą {kodas}, bet tokio sistemoje nerandu. Patikrinkite, prašau — kodas prasideda raidėmis A B ir penki skaitmenys."
+    # A-banga P1 (2026-09-04): „nepatogu / negaliu dabar" — pirma išsiaiškinti
+    # KAS nepatogu, tada pasiūlyti kelią (ne ignoruoti, ne iškart tiketas).
+    cannot_now_clarify: "Suprantu. O kas nepatogu — ar tiesiog negalite dabar patikrinti?"
+    cannot_now_offer: "Gerai — tada galiu užregistruoti gedimą meistrui, arba paskambinkite, kai būsite prie routerio, ir patikrinsime kartu. Kaip patogiau?"
+    callback_goodbye: "Gerai — paskambinkite, kai galėsite patikrinti, padėsime iš karto. Geros dienos!"
+    # Savininko vardo patikra (taisyklė №4): DB vardo NIEKADA negarsiname.
+    holder_mismatch_clarify: "Sistemoje sutartis šiuo adresu registruota kitu vardu — gal ji sudaryta šeimos nario ar kito asmens vardu?"
     repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
     escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
     ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"

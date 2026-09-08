@@ -86,8 +86,13 @@ class TestRouterHungPack:
         st = get_strategy("router_hung")
         assert st is not None
         ids = [s.id for s in st.steps]
+        # P-C (2026-09-08): gebėjimo klausimas + pagalba surasti + namų darbas
+        # su callback uždarymu — prieš instrukciją klausiama, ar klientas GALI.
         assert ids == [
             "rh_scope",
+            "rh_ability",
+            "rh_locate",
+            "rh_homework",
             "rh_reboot",
             "rh_check",
             "rh_reboot_retry",
@@ -95,6 +100,12 @@ class TestRouterHungPack:
             "rh_verify_dev",
             "escalate",
         ]
+        assert st.step("rh_ability").on == {
+            "yes": "rh_reboot",
+            "no": "rh_homework",
+            "lost": "rh_locate",
+        }
+        assert st.step("rh_homework").on == {"yes": "callback", "no": "escalate"}
         # 2026-08-31 live lesson: the INITIAL step's hint must match the
         # solver's first evidence question (scope), never the instruction.
         assert st.steps[0].detector == "scope"

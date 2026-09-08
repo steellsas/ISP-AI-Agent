@@ -391,6 +391,15 @@ def find_customer(
 
         # --- Resolve customer_id from whichever search key was provided ----
         if account_code:
+            # STT normalization (live 2026-09-04: the LLM passed "D10104" raw
+            # and the lookup missed AB-10104): strip separators, keep the
+            # digits, restore the AB- prefix — whoever calls the tool.
+            import re as _re
+
+            _raw = str(account_code).upper().replace(" ", "").replace("-", "").replace("–", "")
+            _m = _re.search(r"(\d{4,6})$", _raw)
+            if _m:
+                account_code = f"AB-{_m.group(1)}"
             result = lookup_customer_by_account_code(db, account_code)
             if not result.get("success"):
                 return {

@@ -1269,6 +1269,38 @@ _ADDR_NO = (
 )
 
 
+# A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" buvo ignoruotas ir
+# agentas toliau liepė ieškoti routerio): negalėjimo-DABAR signalai. Sąmoningai
+# be pliko „negaliu" — „negaliu prisijungti/rasti" yra eigos turinys.
+_CANNOT_NOW = (
+    "nepatogu",
+    "ne patogu",
+    "ne namie",
+    "ne namuose",
+    "nesu namie",
+    "nesu namuose",
+    "nenamie",
+    "negaliu dabar",
+    "dabar negaliu",
+    "negalėsiu dabar",
+    "negalesiu dabar",
+    "neturiu laiko",
+    "kitu metu",
+    "kitą kartą",
+    "kita karta",
+)
+
+
+def detect_cannot_now(text: str | None) -> bool:
+    """True when the caller signals they CANNOT act right now (not at home,
+    inconvenient, no time) — the flow must STOP and clarify, never push the
+    next instruction."""
+    if not text:
+        return False
+    low = text.lower()
+    return any(m in low for m in _CANNOT_NOW)
+
+
 def detect_address_correction(text: str | None) -> bool:
     """True when an ALREADY-identified caller says they are calling about a different
     address ("tai ne dėl to adreso skambinu", "kitas butas") — the engine must reopen
