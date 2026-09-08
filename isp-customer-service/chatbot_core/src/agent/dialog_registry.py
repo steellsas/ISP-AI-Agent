@@ -1,19 +1,20 @@
 """
-Klausimų registras — B bangos pamatas (Andrius 2026-09-07): universalus
-dialogo variklis, kuriame PASKUTINIS užduotas klausimas turi VIENĄ savininką,
-o kiekvienas kliento turn'as pirmiausia vertinamas prieš TĄ klausimą
-(atsakyta / dalinai / neaišku → tikslinam / nukrypimas → grąžinam į kelią).
+Question registry — the B-wave foundation (Andrius 2026-09-07): a universal
+dialogue engine where the LAST question asked has ONE owner, and every caller
+turn is first read against THAT question (answered / partial / unclear ->
+clarify / deviation -> return to the path).
 
-Žingsnis 1 (shadow): registras ATSPINDI realybę — klausimo savininkai jį
-pildo, skaitytuvai valo, trace rodo `question` įvykius. Elgsenos jis dar
-nekeičia: maršrutizacija lieka esamoms vėliavoms (_reopen_confirm_pending,
-_cannot_now_state, ticket_stage…). Žingsniai 2–4 po vieną migruoja
-identifikacijos, tiketo ir walker'io klausimus, kol registras tampa
-vieninteliu šaltiniu ir prioritetų teisėju (saugiklis > aktyvus tikslinimas >
-stadijos savininkas > šalutinė tema).
+Step 1 (shadow): the registry MIRRORS reality — question owners fill it,
+readers clear it, and the trace shows `question` events. It does not change
+behavior yet: routing still runs on the existing flags
+(_reopen_confirm_pending, _cannot_now_state, ticket_stage...). Steps 2-4
+migrate the identification, ticket and walker questions one owner at a time
+until the registry becomes the single routing source and the priority judge
+(safety > active clarification > stage owner > side topic).
 
-Savininkai: "safety" (reopen_confirm, cannot_now…), "ident" (adresas, butas,
-vardas, kodas), "ticket" (numeris, valandos), "walker" (įrodymai/žingsniai).
+Owners: "safety" (reopen_confirm, cannot_now...), "ident" (address,
+apartment, name, account code), "ticket" (phone, hours), "walker"
+(evidence/steps).
 """
 
 from __future__ import annotations
@@ -21,25 +22,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-# Prioritetų tvarka daugiasignaliam turn'ui (gyva P6 2026-09-07: „negaliu
-# dabar" + „ne namuose" + adreso klausimas viename turn'e) — mažesnis
-# skaičius laimi.
+# Priority order for a multi-signal turn (live P6 2026-09-07: "negaliu
+# dabar" + "ne namuose" + an address question in ONE turn) — the lower
+# number wins.
 OWNER_PRIORITY = {"safety": 0, "ident": 1, "ticket": 2, "walker": 3}
 
 
 @dataclass
 class ActiveQuestion:
-    """Vienas užduotas klausimas: kas klausė, ko ir kelintą kartą."""
+    """One asked question: who asked, what for, and which attempt this is."""
 
     owner: str  # "safety" | "ident" | "ticket" | "walker"
-    key: str  # pvz. "reopen_confirm", "cannot_now_clarify", "ticket_phone"
-    asks: int = 1  # kelintas to paties klausimo bandymas (tikslinimo riba)
-    data: dict[str, Any] = field(default_factory=dict)  # savininko kontekstas
+    key: str  # e.g. "reopen_confirm", "cannot_now_clarify", "ticket_phone"
+    asks: int = 1  # attempt count for the SAME question (clarify limit)
+    data: dict[str, Any] = field(default_factory=dict)  # owner context
 
 
 def register(engine: Any, owner: str, key: str, **data: Any) -> ActiveQuestion:
-    """Klausimo savininkas skelbia: ŠIS klausimas dabar valdo turn'ą.
-    Pakartotinis tas pats klausimas kelia asks skaitiklį (tikslinimo ribai)."""
+    """A question owner declares: THIS question now owns the turn. Re-asking
+    the same question bumps the asks counter (feeds the clarify limit)."""
     prev = getattr(engine, "_active_question", None)
     q = ActiveQuestion(owner=owner, key=key, data=data)
     if prev is not None and prev.owner == owner and prev.key == key:
@@ -54,8 +55,9 @@ def active(engine: Any) -> ActiveQuestion | None:
 
 
 def clear(engine: Any, key: str | None = None) -> None:
-    """Atsakymas perskaitytas (ar klausimas nurašytas) — registras valomas.
-    Su `key` valoma tik jei aktyvus būtent tas klausimas (svetimo nelietiam)."""
+    """The answer was read (or the question written off) — clear the entry.
+    With `key` given, clears only when exactly that question is active
+    (never touches someone else's question)."""
     q = getattr(engine, "_active_question", None)
     if q is None:
         return
@@ -63,3 +65,12 @@ def clear(engine: Any, key: str | None = None) -> None:
         return
     engine._active_question = None
     engine.tracer.emit("question", owner=q.owner, key=q.key, asks=q.asks, action="closed")
+
+
+def clear_owner(engine: Any, owner: str) -> None:
+    """A whole owner's stage got answered (e.g. identification committed) —
+    close its active question, leaving other owners' questions alone."""
+    q = getattr(engine, "_active_question", None)
+    if q is not None and q.owner == owner:
+        engine._active_question = None
+        engine.tracer.emit("question", owner=q.owner, key=q.key, asks=q.asks, action="closed")

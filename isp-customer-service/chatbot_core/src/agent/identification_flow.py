@@ -330,15 +330,17 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     # survive an address correction. The ticket dialogue, ask counters and
     # deviation streak reset with it; the thinker gets a clean slate too.
     s.evidence.clear()
-    # A-2R (gyva 2026-09-07): foninis telemetrijos skaitymas priklauso METAMAI
-    # sąskaitai — po reopen jis vėl užpildavo išvalytą diagnozę/hipotezę ir
-    # narratorius toliau varė seną analizės klausimą. Išmetam kartu su viskuo.
+    # A-2R (live 2026-09-07): the background telemetry read belongs to the
+    # DROPPED account — after reopen it kept flooding the cleared diagnosis/
+    # hypothesis back in and the narrator drove the old analysis question.
+    # Thrown away with everything else.
     engine._bg_diagnosis = None
-    # A-2R tęsinys (Andrius 2026-09-07): keičiantis adresui VISKAS prasideda iš
-    # naujo — lieka tik skambinusiojo vardas ir problema (+ kliento pasakojimas,
-    # nes jis apie TIKRĄJĄ vietą). Senojo telefono kandidatūra nebesiūloma
-    # (ladder'is vėl siūlytų numestą adresą), o identifikacijos skaitikliai ir
-    # kodo režimas grįžta į švarų lapą.
+    # A-2R follow-up (Andrius 2026-09-07): on an address change EVERYTHING
+    # restarts — only the caller's name and the problem survive (plus the
+    # caller's own story: it describes the REAL place). The old phone
+    # candidate is not offered again (the ladder would re-offer the dropped
+    # address), and the identification counters and the account-code mode
+    # return to a clean slate.
     s.phone_candidate = None
     engine._awaiting_account_code = False
     engine._code_grace = 0
@@ -524,7 +526,7 @@ def _has_address_content(text: str | None) -> bool:
 
 
 def _speak_code(code: str) -> str:
-    """TTS-draugiška kodo forma patvirtinimui: „AB-10104" → „A B 1 0 1 0 4"."""
+    """TTS-friendly form of the code for confirmation: "AB-10104" -> "A B 1 0 1 0 4"."""
     digits = "".join(ch for ch in code if ch.isdigit())
     return "A B " + " ".join(digits)
 
@@ -556,10 +558,11 @@ def _lookup_by_code(engine: Any, s: Any, code: str):
         "apartment": primary.get("apartment_number"),
     }
     engine.tracer.emit("decision", intent="account_code", action="found", value=code)
-    # A-3 skaidrumas (Andrius 2026-09-07): agentas PASAKO, kokį kodą išgirdo —
-    # klientas girdi mūsų veiksmą ir pagauna klaidą prieš einant toliau. Kodo
-    # kelias visada scripted (ne naratoriaus valia); šerdis „ar skambinate dėl"
-    # lieka verbatim — nuo jos raktuojasi patvirtinimo sargas.
+    # A-3 transparency (Andrius 2026-09-07): the agent SAYS which code it
+    # heard — the caller hears our action and catches a mistake before we
+    # move on. The code path is always scripted (never the narrator's whim);
+    # the "ar skambinate dėl" core stays verbatim — the confirm guard keys
+    # off it.
     from .identification import phrase as _phrase
 
     c = s.phone_candidate
@@ -603,7 +606,11 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         if reply is not None:
             return True, reply
         if getattr(engine, "_awaiting_account_code", False):
-            # A-3 skaidrumas: pasakom, KĄ išgirdome — klientas mato, kur klaida.
+            # A-3 transparency: say WHAT we heard — the caller sees where
+            # the mishearing happened.
+            from .dialog_registry import register as _q_register
+
+            _q_register(engine, "ident", "account_code")
             return True, phrase("account_code_miss", kodas=_speak_code(code))
     if getattr(engine, "_awaiting_account_code", False):
         low = user_input.lower()
@@ -627,6 +634,9 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         # A-banga P3c (gyva #3: „A. B." → LLM haliucinavo „nerastas"): klientas
         # KALBA apie kodą, bet skaitmenų neperskaitėm — scripted pagalba, ne LLM.
         if "kod" in low:
+            from .dialog_registry import register as _q_register
+
+            _q_register(engine, "ident", "account_code")
             engine.tracer.emit("decision", intent="account_code", action="retry_help")
             return True, phrase("account_code_retry")
         # Ne kodas, o TURINYS (adresas, pavardė, pasakojimas) — praleidžiam į
@@ -657,6 +667,9 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         and not getattr(engine, "_city_not_served_said", False)
     ):
         engine._city_not_served_said = True
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "city_not_served")
         engine.tracer.emit("decision", intent="account_code", action="city_not_served")
         return True, phrase("city_not_served")
     # 1b) LOOP'as (Andrius: „kai loopas prasideda — galvojama apie kitus
@@ -666,6 +679,9 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         engine._addr_resolve_fails = 0
         engine._awaiting_account_code = True
         engine._code_grace = 0
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "account_code")
         engine.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
         return True, phrase("account_code_ask")
     # 2) Skaitikliai. TIKSLINIMO fazė (pavardės klausimas, diagnozės nota,
@@ -673,11 +689,11 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     last_q = (engine._last_agent_question() or "").lower()
     clarifying = (
         "pavard" in last_q
-        # P3 (gyva 2026-09-07): klausimas su KONKRETAUS adreso echo (taip pat
-        # LLM'o savo žodžiais — „Taigi, Tilžės g. 60, butas 3, taip?") —
-        # atsakymas „Taip." yra tikslinimas, ne tuščias turn'as. Siaurai:
-        # skaitmuo + gatvės žodis, kad „Koks adresas?" ir perspėjimas
-        # (be skaitmenų) skaitiklių neužšaldytų.
+        # P3 (live 2026-09-07): a question that ECHOES a concrete address
+        # (including an LLM-worded one — "Taigi, Tilžės g. 60, butas 3,
+        # taip?") — a "Taip." answering it is clarification, not an empty
+        # turn. Narrow rule: digit + street word, so "Koks adresas?" and the
+        # warning (no digits) cannot freeze the counters.
         or (any(ch.isdigit() for ch in last_q) and ("gatv" in last_q or " g." in last_q))
         or getattr(engine, "_addr_diag_note", None)
         or getattr(engine, "_addr_city_suggestion", None)
@@ -703,6 +719,9 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             if n >= 2:
                 engine._awaiting_account_code = True
                 engine._code_grace = 0
+                from .dialog_registry import register as _q_register
+
+                _q_register(engine, "ident", "account_code")
                 engine.tracer.emit(
                     "decision", intent="account_code", action="ask", reason="unrecognized"
                 )
@@ -719,6 +738,9 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         # klausymas įjungtas (praleidimo semantika turinį saugo).
         engine._awaiting_account_code = True
         engine._code_grace = 0
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "address_need")
         engine.tracer.emit("decision", intent="account_code", action="warn")
         return True, phrase("address_need_warning")
     if n >= limit:
@@ -755,12 +777,16 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         engine, "_holder_clarify_asked", False
     ):
         engine._holder_clarify_asked = True
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "holder_clarify")
         engine.tracer.emit("decision", intent="holder_name", action="clarify_ask")
         return phrase("holder_mismatch_clarify")
-    # A-2b (Andrius 2026-09-07, gyva: „negaliu pasakyti, dėl kokio adreso"):
-    # identifikuotas klientas KLAUSIA, dėl kokio adreso kalbame — PATVIRTINTAS
-    # adresas nėra paslaptis, priešingai: taip klientas pagauna mūsų klaidą.
-    # Deterministinis atsakymas, ne LLM valia; frazė pati kviečia pasitaisyti.
+    # A-2b (Andrius 2026-09-07, live: "negaliu pasakyti, dėl kokio adreso"):
+    # the caller ASKS which address the call is about — the CONFIRMED address
+    # is not a secret; on the contrary, this is how the caller catches our
+    # mistake. Deterministic scripted answer, never the LLM's whim; the
+    # phrase itself invites a correction.
     if (
         user_input
         and "adres" in user_input.lower()
@@ -768,14 +794,14 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         and is_real_question(user_input)
     ):
         if s.customer_id and s.customer_address:
-            engine._reopen_reask = False  # info atsakymas pakeičia pakartojimą
+            engine._reopen_reask = False  # the info answer replaces the re-ask
             engine.tracer.emit("decision", intent="address_info", action="disclose")
             return phrase("current_address_info", adresas=s.customer_address)
         if not s.customer_id:
-            # A-2R-b tęsinys (gyva 2026-09-07): klausimas atėjo VIDURY
-            # identifikacijos (po reopen) — sakome, KĄ tikslinam: girdėtą
-            # adresą (su patvirtinimo šerdim „dėl šio adreso" — nuo jos
-            # raktuojasi confirm sargas) arba kad adreso dar neturime.
+            # A-2R-b follow-up (live 2026-09-07): the question arrived MID
+            # identification (after reopen) — say WHAT we are clarifying:
+            # the heard address (with the "dėl šio adreso" confirm core the
+            # guard keys off), or that we have no address yet.
             p = s.profile
             if p.street.value:
                 adr = f"{p.street.value} {p.house.value or ''}".strip()
@@ -783,9 +809,9 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
                 return phrase("ident_address_heard", adresas=adr)
             engine.tracer.emit("decision", intent="address_info", action="none_yet")
             return phrase("ident_address_none")
-    # Adreso keitimo klausimą UŽDUODA šis sluoksnis; ATSAKYMĄ skaito
-    # pre_turn_guards (deterministinė turn'o galva) — kad solveris/walker'is
-    # jo nesuvartotų (A-2 gyva yda). Čia liko tik ask/reask pusė.
+    # This layer ASKS the address-change question; the ANSWER is read by
+    # pre_turn_guards (the deterministic turn head) so the solver/walker
+    # cannot consume it (live A-2 defect). Only the ask/re-ask side is here.
     pending_reopen = getattr(engine, "_reopen_confirm_pending", None)
     if pending_reopen is not None:
         from .dialog_registry import register as _q_register
@@ -802,7 +828,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             engine._reopen_confirm_asks = getattr(engine, "_reopen_confirm_asks", 1) + 1
             _q_register(engine, "safety", "reopen_confirm", adresas=adresas)
             return phrase("repeat_ack") + phrase("reopen_confirm", adresas=adresas)
-        return None  # atsakymą jau perskaitė guards; naratorius tęsia
+        return None  # the guards already read the answer; the narrator continues
 
     # A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" ignoruotas):
     # negalėjimo-DABAR mini-kopėčios sprendimo fazėje — STOP, išsiaiškinti KAS
@@ -1063,6 +1089,9 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             parts.append(phrase("echo_address", adresas=s.customer_address))
             parts.append(phrase("checking_note"))
         engine._just_identified = False
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "caller_name")
         parts.append(caller_question())
         return " ".join(p for p in parts if p)
     # The caller introduced themselves — deliver the deferred result. INFORM
@@ -1098,6 +1127,7 @@ def _address_move(engine, s):
     deterministic confirm guard keys off it. Off-switch keeps the scripts."""
     import os as _os
 
+    from .dialog_registry import register as _q_register
     from .identification import offer_phone_address, phrase
 
     c = s.phone_candidate
@@ -1108,6 +1138,7 @@ def _address_move(engine, s):
     else:
         adresas = None
         kind, fallback = "address_ask", phrase("address_ask")
+    _q_register(engine, "ident", kind, adresas=adresas)
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
         engine._ident_directive = {"kind": kind, "adresas": adresas, "fallback": fallback}
         return None  # the narrator words the transition (facts directive)

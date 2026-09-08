@@ -983,12 +983,12 @@ def pre_turn_guards(engine, user_input: str) -> None:
             engine._resync_note = True  # C: re-anchor from the ledger, no improvising
             engine.tracer.emit("decision", intent="end_declined", action="resume")
         return
-    # A-2 (gyva 2026-09-07: „Taip taip dėl KITO adreso" atiteko walker'iui, o
-    # klausimą sudegino vėlesnis šalutinis turn'as): SAUGIKLIO klausimo
-    # atsakymas skaitomas ČIA — deterministinėje turn'o galvoje, PRIEŠ solverį/
-    # walker'į. Vieno savininko principas: paskutinis užduotas klausimas valdo
-    # turn'ą. Neaiškus atsakymas klausimo NEsudegina — vienas pakartojimas, tik
-    # tada nurašoma kaip „liekam prie esamo adreso".
+    # A-2 (live 2026-09-07: "Taip taip dėl KITO adreso" was consumed by the
+    # walker, and a later side-topic turn burned the question): the SAFETY
+    # question's answer is read HERE — in the deterministic turn head, BEFORE
+    # the solver/walker. One-owner principle: the last question asked owns
+    # the turn. An unclear answer does NOT burn the question — one re-ask,
+    # only then written off as "stay with the current address".
     if getattr(engine, "_reopen_confirm_pending", None) is not None and getattr(
         engine, "_reopen_confirm_asked", False
     ):
@@ -1004,17 +1004,19 @@ def pre_turn_guards(engine, user_input: str) -> None:
             _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="confirmed")
             engine._reopen_identification(pending)
-            # P1 (gyva 2026-09-07): pending frazė dažnai jau davė gerą adresą
-            # (conf 1.0) — atsakymo STT darkymas („Tildžiai 660-3") jo
-            # NEBEperrašo; atsakymas skaitomas tik kai adreso dar neturime.
+            # P1 (live 2026-09-07): the pending phrase often already yielded a
+            # good address (conf 1.0) — the answer's STT garble ("Tildziai
+            # 660-3") must not stomp it; the answer is read only when the
+            # address is still missing.
             p = s.profile
             if _looks_like_address(user_input) and not (p.street.value and p.house.value):
-                engine._prefill_slots_from_text(user_input)  # atsakymas įvardija adresą
-            # A-2R (gyva 2026-09-07): naujas adresas dažnai JAU girdėtas
-            # (pending frazėje „mano adresas Tilžės 60") — identifikacija
-            # tęsiasi IŠ KARTO: variklis bando resolve; sėkmė = naujas
-            # klientas, nesėkmė palieka diagnozės notą (pvz. „koks butas?"),
-            # ir kitas klausimas yra identifikacijos, ne senos analizės.
+                engine._prefill_slots_from_text(user_input)  # the answer names it
+            # A-2R (live 2026-09-07): the new address was usually ALREADY
+            # heard (in the pending phrase "mano adresas Tilžės 60") —
+            # identification continues RIGHT NOW: the engine tries resolve;
+            # success = new customer, failure leaves the diagnosis note
+            # (e.g. "which apartment?"), and the next question belongs to
+            # identification, not the old analysis.
             if p.street.value and p.house.value:
                 engine._trace_note("reopen_identity", "new address already heard; engine resolve")
                 if engine._engine_resolve_from_slots():
@@ -1024,14 +1026,14 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     if ask_caller() and not s.caller_name:
                         engine._result_pending = True
             return
-        engine._resume_hold = True  # atsakymas skirtas ŠIAM klausimui, ne walker'iui
+        engine._resume_hold = True  # the answer belongs to THIS question, not the walker
         if verdict == "no":
             engine._reopen_confirm_pending = None
             engine._reopen_confirm_asked = False
             _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="declined")
         elif getattr(engine, "_reopen_confirm_asks", 1) < 2:
-            engine._reopen_reask = True  # scripted sluoksnis pakartos klausimą
+            engine._reopen_reask = True  # the scripted layer re-asks the question
             engine.tracer.emit("decision", intent="reopen_confirm", action="reask")
         else:
             engine._reopen_confirm_pending = None
@@ -1138,9 +1140,10 @@ def pre_turn_guards(engine, user_input: str) -> None:
                         engine._result_pending = True
                 return
             if verdict == "yes":
-                # A-2R-b (2026-09-07): „taip" į adreso patvirtinimą BE telefono
-                # kandidato (pvz. po reopen, kai adresas girdėtas slotuose) —
-                # variklis riša iš slotų; daugiabutis palieka buto notą.
+                # A-2R-b (2026-09-07): a "taip" to an address confirm WITHOUT
+                # a phone candidate (e.g. after reopen, address heard in the
+                # slots) — the engine commits from the slots; a block of
+                # flats leaves the apartment note.
                 p_y = s.profile
                 if p_y.street.value and p_y.house.value:
                     engine._trace_note("address_confirm", "slots confirmed; engine resolve")
@@ -1274,5 +1277,11 @@ def engine_resolve_from_slots(engine) -> bool:
     engine._update_state_from_observation("resolve_address", obs)
     if not engine.state.customer_id:
         return False
+    # B-wave registry: the identification question (address/code) got its
+    # answer — a contract committed; the next question (the name) is
+    # registered by its own owner.
+    from .dialog_registry import clear_owner as _q_clear_owner
+
+    _q_clear_owner(engine, "ident")
     engine.ensure_diagnosed()
     return True

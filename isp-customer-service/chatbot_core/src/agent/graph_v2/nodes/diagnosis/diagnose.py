@@ -26,14 +26,14 @@ def make_diagnose_node(engine: Any):
     def diagnose_node(state: GraphState) -> dict[str, Any]:
         user_input = state.turn.user_input
         engine.ensure_diagnosed()
-        # Vieno savininko principas (A-2 gyva 2026-09-07): deterministinė turn'o
-        # galva (prefill + pre_turn_guards) vykdoma PRIEŠ solverį/walker'į —
-        # solver_gate atsakydavo anksčiau, nei narrate() sluoksnio guards
-        # perskaitydavo saugiklio klausimo atsakymą, ir „Taip taip dėl KITO
-        # adreso" nutekėdavo į walker'io klausimą. Latch'as saugo nuo dvigubo
-        # vykdymo, kai vėliau tą patį turn'ą narratorius užbaigia narrate().
+        # One-owner principle (live A-2, 2026-09-07): the deterministic turn
+        # head (prefill + pre_turn_guards) runs BEFORE the solver/walker —
+        # solver_gate used to answer before narrate()'s guards could read a
+        # safety-question answer, and "Taip taip dėl KITO adreso" leaked into
+        # the walker's question. The latch prevents a double run when the
+        # narrator later finishes the same turn via narrate().
         if user_input:
-            # user_turn trace lieka narrate()/solver commit'ui — be dublikatų.
+            # user_turn trace stays with narrate()/the solver commit — no duplicates.
             engine._prefill_slots_from_text(user_input)
             engine._pre_turn_guards(user_input)
             engine._pre_turn_head_done = True

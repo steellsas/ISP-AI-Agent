@@ -253,11 +253,11 @@ class ReactAgent:
         # pending / the walker holds one turn after the caller decides to continue.
         self._end_confirm_pending = False
         self._resume_hold = False
-        # A-2 (2026-09-07): deterministinė turn'o galva (prefill+guards) įvyko
-        # anksčiau šiame turn'e (diagnose mazgas) — narrate() jos nekartoja.
+        # A-2 (2026-09-07): the deterministic turn head (prefill+guards)
+        # already ran earlier this turn (diagnose node) — narrate() skips it.
         self._pre_turn_head_done = False
-        # B banga (2026-09-07): klausimų registras — paskutinis užduotas
-        # klausimas su savininku (dialog_registry; kol kas shadow režimu).
+        # B wave (2026-09-07): question registry — the last question asked,
+        # with its owner (dialog_registry; shadow mode for now).
         self._active_question = None
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
@@ -1419,8 +1419,8 @@ class ReactAgent:
         self._apply_bg_diagnosis()
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
-            # Deterministinė galva galėjo įvykti ANKSČIAU (diagnose mazgas, A-2
-            # 2026-09-07) — latch'as saugo nuo dvigubo prefill/guards vykdymo.
+            # The deterministic head may have run EARLIER (diagnose node, A-2
+            # 2026-09-07) — the latch prevents a double prefill/guards run.
             if getattr(self, "_pre_turn_head_done", False):
                 self._pre_turn_head_done = False
             else:
@@ -1560,8 +1560,9 @@ class ReactAgent:
         if not bg:
             return
         self._bg_diagnosis = None
-        # A-2R (2026-09-07): be identifikuoto kliento telemetrija neturi kam
-        # priklausyti — po reopen ji atstatydavo numestos sąskaitos diagnozę.
+        # A-2R (2026-09-07): with no identified customer the telemetry has no
+        # one to belong to — after reopen it used to restore the dropped
+        # account's diagnosis.
         if not self.state.customer_id:
             return
         with suppress(Exception):
@@ -1773,7 +1774,7 @@ class ReactAgent:
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # Deterministic NLU prefill (Track A) before the LLM sees the turn.
-            # Latch (A-2 2026-09-07): galva galėjo įvykti diagnose mazge.
+            # Latch (A-2 2026-09-07): the head may have run in the diagnose node.
             if getattr(self, "_pre_turn_head_done", False):
                 self._pre_turn_head_done = False
             else:
