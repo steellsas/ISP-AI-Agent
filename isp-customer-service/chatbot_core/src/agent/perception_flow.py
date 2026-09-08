@@ -1055,6 +1055,27 @@ def pre_turn_guards(engine, user_input: str) -> None:
             _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="declined_unclear")
         return
+    # P-D (live 2026-09-08: "nepatogu, nesu namuose" — the walker's refuse
+    # guard escalated into a TICKET in the same turn, and the cannot-now
+    # ladder never got its chance because ticket_stage was already set): a
+    # cannot-now signal registers a SAFETY question in the turn head, so the
+    # registry priority guard holds the walker/solver and the scripted ladder
+    # asks its clarify this very turn.
+    if (
+        s.customer_id
+        and s.resolution
+        and not engine._ticket_stage
+        and not s.case_closed
+        and getattr(engine, "_cannot_now_state", None) is None
+        and not getattr(engine, "_cannot_now_done", False)
+    ):
+        from .resolution import detect_cannot_now as _dcn_head
+
+        if _dcn_head(user_input):
+            from .dialog_registry import register as _q_register
+
+            _q_register(engine, "safety", "cannot_now")  # priority shield this turn
+            engine.tracer.emit("decision", intent="cannot_now", action="shield")
     mid_process = not s.case_closed and (
         not s.customer_id
         or s.resolution is not None

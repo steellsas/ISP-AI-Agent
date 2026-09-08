@@ -403,6 +403,36 @@ class TestQuestionRegistry:
         agent._mark_step_presented()
         assert active(agent) is None  # wrap-up fazė — walker uždarytas
 
+    def test_cannot_now_shield_beats_walker_refuse(self, db_connection):
+        """P-D gyva: „nepatogu, nesu namuose" — anksčiau walker'io refuse
+        guard'as tą patį turn'ą startavo tiketą; dabar galvos skydas
+        registruoja safety klausimą ir walker'is laiko."""
+        from agent.dialog_registry import active
+
+        agent = self._identified()
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate", "asked": True}
+        msg = "Nepatogu man tai daryt, aš nesu namuose dabar."
+        agent._pre_turn_guards(msg)
+        q = active(agent)
+        assert q and q.owner == "safety" and q.key == "cannot_now"
+        agent._advance_resolution(msg)
+        assert agent._ticket_stage is None  # tiketas NEprasidėjo
+        r = agent._identification_scripted_reply(msg)
+        assert r and "nepatogu" in r  # laiptelis klausia KAS nepatogu
+
+    def test_ticket_need_honest_on_refusal(self, db_connection):
+        """P-E gyva: „routeris perkrautas, bet ryšys neatsistatė" — melas, kai
+        veiksmo nebuvo; atsisakymo/negalėjimo eskalacija sako sąžiningai."""
+        agent = self._identified()
+        agent.state.resolution = {
+            "verdict": "router_hung",
+            "step": "escalate",
+            "escalate_reason": "Klientas negali dabar atlikti veiksmų prie įrenginio.",
+        }
+        need = agent._ticket_need()
+        assert "nepavyko" in need
+        assert "perkrautas" not in need and "neatsistatė" not in need
+
     def test_priority_guard_holds_walker_on_safety_question(self, db_connection):
         """PERJUNGIMAS (P6): kol atviras safety/ident/ticket klausimas, walker'is
         turn'o neskaito kaip savo žingsnio atsakymo."""

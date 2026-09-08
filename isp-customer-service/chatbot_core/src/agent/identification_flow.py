@@ -884,6 +884,12 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         ):
             from .resolution import STRATEGIES as _STR
 
+            # P-E: the ticket intro must speak the honest state — the caller
+            # could not act NOW; nothing was performed.
+            if s.resolution is not None:
+                s.resolution["escalate_reason"] = (
+                    "Klientas negali dabar atlikti veiksmų prie įrenginio."
+                )
             engine.tracer.emit("decision", intent="cannot_now", action="ticket")
             engine._begin_ticket_dialogue(_STR["unclear_fault"].step("escalate"))
             return None  # tiketo dialogo intro — kitas žingsnis

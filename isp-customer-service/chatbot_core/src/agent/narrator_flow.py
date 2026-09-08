@@ -411,9 +411,26 @@ def state_facts_block(engine) -> str | None:
     # re-EXPLANATIONS aimed at what was actually not understood.
     u = getattr(engine, "_last_understanding", None)
     if u is not None and not engine._side_topic_this_turn and not s.case_closed:
-        if u.get("supratau"):
+        sup = (u.get("supratau") or "").strip()
+        # P-A (live 2026-09-08: "Supratau — Paulius atliko veiksmą" spoken TO
+        # Paulius): the pass's summary is INTERNAL wording, often third-person
+        # about the caller — quoted verbatim it becomes the agent's broadcast
+        # thought. When it names the caller or reads third-person, the model
+        # gets only the instruction, never the quote to copy.
+        name = (s.caller_name or "").strip()
+        third_person = (bool(name) and name.lower() in sup.lower()) or any(
+            m in sup.lower() for m in ("klientas", "klientė", "kliente", "naudotojas", "vartotojas")
+        )
+        if sup and third_person:
             facts.append(
-                f"- PATVIRTINK, ką supratai, puse sakinio („{u['supratau']}“) — "
+                "- PATVIRTINK, kad išgirdai, puse sakinio SAVAIS žodžiais, "
+                "kreipdamasis į klientą ANTRUOJU asmeniu („Gerai, kad "
+                "padarėte…“, „Aišku, darote…“) — vidinės santraukos "
+                "NEcituok ir apie klientą trečiuoju asmeniu nekalbėk."
+            )
+        elif sup:
+            facts.append(
+                f"- PATVIRTINK, ką supratai, puse sakinio („{sup}“) — "
                 "tada tęsk vienu kitu klausimu/žingsniu. KREIPKIS į klientą "
                 "(„Supratau — …“), niekada nekalbėk apie jį trečiuoju asmeniu "
                 "(NE „Klientas sutinka…“)."

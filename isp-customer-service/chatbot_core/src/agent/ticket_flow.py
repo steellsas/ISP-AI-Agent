@@ -59,6 +59,16 @@ def ticket_need(engine: Any) -> str:
 
     s = engine.state
     cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
+    # P-E (live 2026-09-08): escalating WITHOUT the step's action done must
+    # not claim it happened — "routeris perkrautas, bet ryšys neatsistatė"
+    # went out when the caller never rebooted (not at home). A refusal /
+    # cannot-now escalation speaks the honest state instead of the fault
+    # file's post-action wording.
+    reason = str((s.resolution or {}).get("escalate_reason") or "")
+    if "atsisakė" in reason or "negali" in reason:
+        gloss = DIAGNOSIS_LT.get(cause)
+        prefix = f"įtariama, kad {gloss}; " if gloss else ""
+        return prefix + "patikrinti kartu telefonu nepavyko"
     need = fault_need(cause) or TICKET_NEED_LT.get(cause)  # file first, code fallback
     if need:
         return need

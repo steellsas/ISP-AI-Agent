@@ -114,7 +114,12 @@ def run_analyst(engine: Any) -> None:
         from .dialog_registry import active as _q_active
 
         q = _q_active(engine)
-        aktyvus = f"{q.owner}/{q.key} (bandymas {q.asks})" if q is not None else "(nėra)"
+        # Damping (live 2026-09-08): a question asked THIS turn has no answer
+        # yet — flagging "neatsako" then is noise. The deviation read only
+        # makes sense once the same question needed a re-ask (asks >= 2).
+        aktyvus = (
+            f"{q.owner}/{q.key} (bandymas {q.asks})" if q is not None and q.asks >= 2 else "(nėra)"
+        )
         user = (
             f"POKALBIS:\n{history}\n\nŽURNALAS (deterministiniai faktai): {ledger}\n"
             f"HIPOTEZĖ: {verdict}\nAKTYVUS KLAUSIMAS (registras): {aktyvus}\n\n"
