@@ -217,6 +217,24 @@ trigger'ių) + G2 (sąskaitų riba). 956 testai, eval 52/52 ×2.
    atsakė į adresą, o walker'is lygiagrečiai startavo tiketą (refuse→
    escalate), cannot_now laiptelis nesuveikė. Klausimų registras turi turėti
    SIGNALŲ PRIORITETUS, kai turn'as neša kelis.
+
+#### INFORMAVIMO PAKETAI — uždarymo bangai (Andrius 2026-09-08)
+
+Principo tęsinys „kodas = mechanika, failai = elgsena": inform verdiktų
+(skola, kabelis, laiptinė, avarija) TURINYS ir FORMULUOTĖ keliasi į failą,
+kad Andrius koreguotų be kodo.
+
+- Vienkartinė mechanika: (1) diagnose signals papildomi skolos detalėmis
+  (suma, mėnesiai, paskutinio mokėjimo data — DB billing lentelėse yra);
+  (2) inform kalbos šablonai su placeholder'iais → knowledge/informavimas.yaml
+  (billing_suspended: „Skola {suma} € už {menesiai}. Paskutinis mokėjimas
+  {data}…"; cable_cut: „Gedimas mūsų pusėje — {vieta}, atstatymas {eta},
+  jums nieko daryti nereikia."); (3) `po_to` nuoroda į FAQ („kaip apmokėti?").
+- `aiskumo_salyga` per verdiktą (Andrius: „pokalbis visuomet baigiasi
+  aiškumu"): [kas_negerai, ka_daryti/kas_daroma, kada_atsistatys] — uždarymo
+  banga tikrina, kad visi nuskambėjo PRIEŠ goodbye; wrap_up be jų neuždaro.
+- Po mechanikos: naujas inform atvejis ar formuluotės keitimas = tik YAML;
+  naujas duomuo iš DB = maža tool'o eilutė + YAML.
 4. Pažingsninis testavimas pagal etaloną (prisistatymas → identifikacija →
    analizė → sprendimas → tiketas/užbaigimas) + testų žemėlapio valymas
    sluoksnis po sluoksnio (docs/TESTU_ZEMELAPIS.md).
