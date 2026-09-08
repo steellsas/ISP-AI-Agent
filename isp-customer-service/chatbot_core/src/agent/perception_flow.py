@@ -1113,6 +1113,10 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
                 engine._name_heard = True
             engine.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
+            # B-wave registry: the caller-name question just got its answer.
+            from .dialog_registry import clear as _q_clear
+
+            _q_clear(engine, "caller_name")
             # №4 (etalonas 2026-09-03): sakosi SAVININKAS, bet vardas nesutampa
             # su DB sutarties vardu — vienas mandagus patikslinimas, DB vardo
             # NEgarsinant (privatumo riba). Fuzzy: STT darkymui („Andrijus" ~

@@ -571,6 +571,12 @@ def _lookup_by_code(engine: Any, s: Any, code: str):
     if c.get("street"):
         flat = f", butas {c['apartment']}" if c.get("apartment") else ""
         adresas = f"{c['street']} {c.get('house')}{flat}"
+        # B-wave registry: the echo-offer IS the address-offer question
+        # (live 2026-09-08: this path bypassed _address_move and the offer
+        # went out unregistered).
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "address_offer", adresas=adresas)
         return _phrase("account_code_echo_offer", kodas=_speak_code(code), adresas=adresas)
     # The address is OFFERED aloud for confirmation, never assumed.
     return _address_move(engine, s)

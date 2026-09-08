@@ -1156,10 +1156,18 @@ def mark_step_presented(engine) -> None:
         # answer. The asked-step routing only trusts a RECENT question.
         r["asked_at"] = len(engine.state.messages)
         # B-wave registry (shadow): the step's question/instruction was just
-        # presented — it is now the walker's active question.
+        # presented — it is now the walker's active question. Live 2026-09-08:
+        # the end-confirm and wrap-up replies are NOT the step's question, so
+        # they must not re-register it (asks inflated to 5 on a solved call).
+        from .dialog_registry import clear_owner as _q_clear_owner
         from .dialog_registry import register as _q_register
 
-        _q_register(engine, "walker", f"step:{step.id}")
+        if engine._end_confirm_pending:
+            pass  # this reply asked the end-confirm question, not the step's
+        elif engine.state.case_closed:
+            _q_clear_owner(engine, "walker")  # the case is over — wrap-up owns the turns
+        else:
+            _q_register(engine, "walker", f"step:{step.id}")
         # Presentation counter (L2): a step presented the 2nd+ time gets the
         # ŽINGSNIS KARTOJAMAS directive — repeat WITH an explanation.
         counts = r.setdefault("presented", {})

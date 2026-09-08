@@ -393,6 +393,39 @@ class TestQuestionRegistry:
         agent._mark_step_presented()
         q = active(agent)
         assert q and q.owner == "walker" and q.key == "step:escalate"
+        # Gyva 2026-09-08: end-confirm/wrap-up replikos NE žingsnio klausimas —
+        # jos nebekelia asks; uždarytas atvejis valo walker savininką.
+        agent._end_confirm_pending = True
+        agent._mark_step_presented()
+        assert active(agent).asks == 1  # nepakito
+        agent._end_confirm_pending = False
+        agent.state.case_closed = True
+        agent._mark_step_presented()
+        assert active(agent) is None  # wrap-up fazė — walker uždarytas
+
+    def test_caller_name_closes_on_capture(self, db_connection):
+        """Gyva 2026-09-08: vardo klausimas registre kabėjo atviras po atsakymo."""
+        from agent.dialog_registry import active, register
+
+        agent = self._identified()
+        agent._result_pending = True
+        register(agent, "ident", "caller_name")
+        agent._pre_turn_guards("Paulius mano vardas")
+        assert agent.state.caller_name == "Paulius"
+        assert active(agent) is None
+
+    def test_code_echo_offer_registers_as_address_offer(self, db_connection):
+        """Gyva 2026-09-08: kodo echo pasiūla apeidavo _address_move ir likdavo
+        neregistruota."""
+        from agent.dialog_registry import active
+        from agent.identification_flow import _account_code_rung
+
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent._awaiting_account_code = True
+        _account_code_rung(agent, agent.state, "AB 10104")
+        q = active(agent)
+        assert q and q.owner == "ident" and q.key == "address_offer"
 
     def test_cannot_now_lifecycle(self, db_connection):
         from agent.dialog_registry import active
