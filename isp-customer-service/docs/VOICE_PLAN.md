@@ -341,7 +341,13 @@ kad Andrius koreguotų be kodo.
 - VAD parametrai (started_talking_threshold, speech_threshold,
   audio_chunk_duration, can_interrupt) → config puslapis.
 - Adaptyvus VAD langas iš dialogo: po adreso klausimo — ilgas (≈3.5 s), po
-  taip/ne — trumpas (≈1.8 s).
+  taip/ne — trumpas (≈1.8 s). GYVA 2026-09-08 (PC-1 skambutis): po INSTRUCT/
+  check žingsnių klientas pasakoja EIGĄ su pauzėmis tarp minčių („routeris
+  kraunasi… [pauzė] …internetas atsistatė") — VAD uždarė po „mirksi lemputės",
+  tęsinys nuskambėjo agentui kalbant ir dingo (overlay pagavo tik „Gerai.").
+  Ten langas ilgas; PLIUS: overlay tęsinys, atėjęs per ~2 s po turn'o
+  finalizavimo, KLIJUOJAMAS prie ką tik uždaryto atsakymo (to paties
+  atsakymo uodega, ne naujas turn'as).
 - Nebaigtos minties sargas: transkriptas baigiasi „ir/bet/tai…" → palaukti dar
   langą.
 
