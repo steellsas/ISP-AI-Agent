@@ -350,6 +350,27 @@ class TestQuestionRegistry:
         assert active(agent) is None
         assert agent.state.customer_id == "CUST009"
 
+    def test_ticket_question_lifecycle(self, db_connection):
+        """B žingsnis 3: tiketo klausimai (numeris → valandos) registre;
+        registracija uždaro savininką."""
+        from agent.dialog_registry import active
+        from agent.resolution import STRATEGIES
+
+        agent = self._identified()
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        agent._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
+        agent._ticket_stage_reply()
+        q = active(agent)
+        assert q and q.owner == "ticket" and q.key == "ticket_phone"
+        agent._pre_turn_guards("Taip, tiks")
+        agent._ticket_stage_reply()
+        q = active(agent)
+        assert q and q.key == "ticket_hours"
+        agent._pre_turn_guards("Po 17 valandos")
+        agent._finish_ticket_dialogue()
+        assert agent.state.ticket_id
+        assert active(agent) is None  # dialogas baigtas — registras švarus
+
     def test_cannot_now_lifecycle(self, db_connection):
         from agent.dialog_registry import active
         from agent.resolution import STRATEGIES

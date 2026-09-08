@@ -723,6 +723,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 m in low_q for m in ("neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu")
             ):
                 engine._ticket_stage = "cancelled"
+                from .dialog_registry import clear_owner as _q_clear_owner
+
+                _q_clear_owner(engine, "ticket")
                 engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                 return
             # Anything else resumes the registration — the stage re-asks.
@@ -783,6 +786,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     # ticket the caller was just promised.
                     if ctx.get("cancel_confirm_asked"):
                         engine._ticket_stage = "cancelled"
+                        from .dialog_registry import clear_owner as _q_clear_owner
+
+                        _q_clear_owner(engine, "ticket")
                         engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                         return
                     ctx["cancel_confirm_asked"] = True
@@ -865,6 +871,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 return
             if ctx.get("cancel_confirm_asked"):
                 engine._ticket_stage = "cancelled"
+                from .dialog_registry import clear_owner as _q_clear_owner
+
+                _q_clear_owner(engine, "ticket")
                 engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                 return
             ctx["cancel_confirm_asked"] = True
