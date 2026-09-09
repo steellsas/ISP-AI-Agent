@@ -18,7 +18,15 @@ logger = logging.getLogger(__name__)
 _ROOT = Path(__file__).resolve().parents[3]
 _DB = _ROOT / "database" / "isp_database.db"
 _SCHEMAS = ("crm_schema", "network_schema")
-_SEEDS = ("customers", "addresses", "service_plans", "equipment", "network", "demo_internet")
+_SEEDS = (
+    "customers",
+    "addresses",
+    "service_plans",
+    "equipment",
+    "network",
+    "demo_internet",
+    "invoices",
+)
 
 
 def reset_db() -> dict:

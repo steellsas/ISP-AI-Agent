@@ -262,6 +262,11 @@ class ReactAgent:
         # P-C (2026-09-08): the walker's 'callback' terminal closed the case —
         # the very next scripted reply is the warm callback goodbye.
         self._callback_goodbye_due = False
+        # Closing wave block 2 (2026-09-09): wrap-up content turns — the caller
+        # said something real after "Ar dar kuo padėti?"; capped at 2 so a
+        # garbled goodbye cannot loop the wrap-up.
+        self._wrap_content_turns = 0
+        self._wrap_react_note = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says
@@ -1196,6 +1201,18 @@ class ReactAgent:
         # record; contacts default to the caller-ID number. After-hours
         # philosophy: a human takes over through the ticket.
         s = self.state
+        # F3 (live 2026-09-09): a hang-up ON the homework step means the
+        # callback was agreed (or at least offered) — closing with a ticket
+        # breaks the agreement (TKT registered over "as perskambinsiu").
+        if (
+            s.customer_id
+            and not s.ticket_id
+            and not s.case_closed
+            and str((s.resolution or {}).get("step") or "").endswith("_homework")
+        ):
+            s.case_closed = True
+            s.closed_reason = "callback"
+            self.tracer.emit("decision", intent="hangup_net", action="callback_close")
         if s.customer_id and not s.ticket_id and not s.case_closed and s.resolution is not None:
             from .resolution import get_strategy
 

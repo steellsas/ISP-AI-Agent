@@ -358,11 +358,45 @@ def get_billing_status(db: DatabaseConnection, customer_id: str) -> dict[str, An
             )
             suspended_plans = [dict(row) for row in cursor.fetchall()]
 
+        # Closing wave (2026-09-08): the debt DETAILS the agent may speak —
+        # total unpaid amount, the unpaid months, and the last payment date.
+        # Best-effort: an older DB without the invoices table just yields
+        # debt=None and the inform template falls back to the generic gloss.
+        debt = None
+        try:
+            with db.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT period, amount FROM invoices
+                    WHERE customer_id = ? AND status = 'unpaid'
+                    ORDER BY period
+                    """,
+                    (customer_id,),
+                )
+                unpaid = [dict(row) for row in cursor.fetchall()]
+                cursor.execute(
+                    """
+                    SELECT MAX(paid_date) AS last_paid FROM invoices
+                    WHERE customer_id = ? AND status = 'paid'
+                    """,
+                    (customer_id,),
+                )
+                last_row = cursor.fetchone()
+            if unpaid:
+                debt = {
+                    "amount": round(sum(float(u["amount"]) for u in unpaid), 2),
+                    "months": [u["period"] for u in unpaid],
+                    "last_payment": (dict(last_row) or {}).get("last_paid") if last_row else None,
+                }
+        except Exception:
+            logger.debug("invoices lookup failed (older DB?)", exc_info=True)
+
         return {
             "success": True,
             "customer_status": customer_status,
             "suspended": customer_status == "suspended" or bool(suspended_plans),
             "suspended_plans": suspended_plans,
+            "debt": debt,
         }
 
     except Exception as e:

@@ -112,6 +112,9 @@ def gather_signals(db, customer_id: str) -> dict[str, Any]:
         "suspension_reason": next(
             (p.get("suspension_reason") for p in billing.get("suspended_plans", [])), None
         ),
+        # Closing wave (2026-09-08): debt details for the inform template
+        # ({amount, months, last_payment} or None on an older DB).
+        "billing_debt": billing.get("debt"),
         "incident": outage_info,
         "switch_status": port.get("switch_status") if port else None,
         "port_link": port.get("status") if port else None,

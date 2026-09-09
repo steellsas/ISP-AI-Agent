@@ -85,6 +85,11 @@ def seed_database():
         cursor.executescript(demo_sql)
         print("   Demo slice loaded (CUST101-111, SW101-103)")
 
+        # Invoices after the demo slice - debt details reference CUST101.
+        print("   - Loading invoices (debt details)...")
+        invoices_sql = load_seed_file("invoices")
+        cursor.executescript(invoices_sql)
+
         # Commit changes
         conn.commit()
         print("commited")

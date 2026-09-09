@@ -72,6 +72,25 @@ CREATE INDEX idx_service_plans_type ON service_plans(service_type);
 CREATE INDEX idx_service_plans_status ON service_plans(status);
 
 -- ============================================
+-- INVOICES TABLE (closing wave 2026-09-08: the debt DETAILS the agent may
+-- speak — amount, unpaid months, last payment — live here; the inform
+-- template in knowledge/informavimas.yaml reads the aggregates via
+-- get_billing_status)
+-- ============================================
+CREATE TABLE IF NOT EXISTS invoices (
+    invoice_id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL,
+    period TEXT NOT NULL,               -- 'YYYY-MM' billing month
+    amount DECIMAL(10,2) NOT NULL,
+    status TEXT DEFAULT 'unpaid' CHECK(status IN ('paid', 'unpaid')),
+    paid_date DATE,
+    FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_invoices_customer ON invoices(customer_id);
+CREATE INDEX idx_invoices_status ON invoices(status);
+
+-- ============================================
 -- CUSTOMER EQUIPMENT TABLE
 -- ============================================
 CREATE TABLE IF NOT EXISTS customer_equipment (

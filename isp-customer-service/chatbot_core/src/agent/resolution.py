@@ -728,6 +728,8 @@ _RESTORED_YES = (
     "jo",
     "veikia",
     "atsirad",  # atsirado internetas
+    "atsarad",  # STT garble of "atsirado" (live 2026-09-08: "interneto satsarado")
+    "satsarad",  # the same garble with a leading s
     "atsistat",  # ryšys atsistatė
     "prisijung",
     "jau yra",
@@ -1288,6 +1290,18 @@ _CANNOT_NOW = (
     "kitu metu",
     "kitą kartą",
     "kita karta",
+    # N3 (live 2026-09-09: "Kai grįšiu, namo padarysiu" got "Gerai, lauksiu"
+    # — the agent waited while the caller was away): a promise to do it upon
+    # RETURNING is a cannot-now, not an in-progress report.
+    "kai grįšiu",
+    "kai grisiu",
+    "grįžęs pad",
+    "grizes pad",
+    "kai būsiu nam",
+    "kai busiu nam",
+    "negaliu, nes",
+    "negaliu kalbėti",
+    "negaliu kalbeti",
 )
 
 

@@ -62,6 +62,7 @@ class TestChainOrder:
     def test_step_guard_order_is_frozen(self):
         assert [g.__name__ for g in walker_guards.STEP_GUARDS] == [
             "device_change_pre_answer",
+            "homework_consent",
             "backchannel_hold",
             "restored_pre_answer",
             "refuse_or_ticket_redirect",
