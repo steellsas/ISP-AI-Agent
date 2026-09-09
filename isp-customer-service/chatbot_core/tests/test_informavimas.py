@@ -165,6 +165,15 @@ class TestTicketCallback:
         assert agent.state.contact_hours and "17" in agent.state.contact_hours
 
 
+class TestRestoredGarble:
+    def test_satsarado_reads_as_restored(self, db_connection):
+        """P-B gyva: „interneto satsarado" (STT „atsirado") — restored YES."""
+        from agent.resolution import Outcome, detect_restored
+
+        assert detect_restored("Mhm, interneto satsarado") is Outcome.YES
+        assert detect_restored("interneto atsarado jau") is Outcome.YES
+
+
 class TestInformResultComposer:
     def test_deferred_result_uses_template(self, db_connection):
         """Pilnas kelias: diagnozė su skola → atidėtas rezultatas kalba

@@ -728,6 +728,8 @@ _RESTORED_YES = (
     "jo",
     "veikia",
     "atsirad",  # atsirado internetas
+    "atsarad",  # STT garble of "atsirado" (live 2026-09-08: "interneto satsarado")
+    "satsarad",  # the same garble with a leading s
     "atsistat",  # ryšys atsistatė
     "prisijung",
     "jau yra",

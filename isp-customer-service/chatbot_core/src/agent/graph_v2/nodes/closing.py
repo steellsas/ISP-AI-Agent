@@ -77,6 +77,15 @@ def make_closing_node(engine: Any):
                 reply = phrase("goodbye")
                 speak_scripted(engine, CLOSING, user_input, reply)
                 return sync_updates(engine, user_input=user_input, reply=reply)
+        # Closing wave block 4 (live 2026-09-08: three near-identical
+        # "Džiaugiuosi… routeris buvo pakibęs…" improvisations after the
+        # goodbye moment): the FIRST closing reply may be the LLM's warm,
+        # personalised close — every trailing non-question turn gets the
+        # short scripted goodbye instead of a fresh re-explanation.
+        if not is_real_question(user_input) and (s.is_complete or s.closing_turns >= 1):
+            reply = phrase("goodbye")
+            speak_scripted(engine, CLOSING, user_input, reply)
+            return sync_updates(engine, user_input=user_input, reply=reply)
         reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
         return sync_updates(engine, user_input=user_input, reply=reply)
 
