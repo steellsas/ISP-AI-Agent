@@ -855,10 +855,24 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
 
         engine._cannot_now_state = None
         _q_clear(engine, "cannot_now_clarify")
-        from .resolution import DETECTORS as _DET_CN
-        from .resolution import detect_cannot_now
-
-        if detect_cannot_now(user_input) or _DET_CN["yes_no"](user_input) == "yes":
+        low_cl = user_input.lower()
+        # N2b (live 2026-09-09): "Aš Jums perskambinsiu" IN the clarify answer
+        # is the whole decision — close warm right here, no offer round.
+        if any(m in low_cl for m in ("perskambin", "paskambinsiu", "pats paskambin")):
+            engine._cannot_now_done = True
+            s.case_closed = True
+            s.closed_reason = "callback"
+            engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
+            return phrase("callback_goodbye")
+        # N2 (live 2026-09-09: "Negaliu, nes esu nenuose" got RESUME and the
+        # walker pushed another check): the caller was just asked "ar negalite
+        # dabar patikrinti?" — a rambling answer about being away IS a yes.
+        # RESUME only on a clear back-to-solving signal; everything else
+        # offers the way out.
+        resumed = any(
+            m in low_cl for m in ("galiu", "radau", "viskas gerai", "veikia", "nereikia", "jau ")
+        ) and not any(m in low_cl for m in ("negaliu", "nerandu"))
+        if not resumed:
             engine._cannot_now_state = "offered"
             _q_register(engine, "safety", "cannot_now_offer")
             engine.tracer.emit("decision", intent="cannot_now", action="offer")

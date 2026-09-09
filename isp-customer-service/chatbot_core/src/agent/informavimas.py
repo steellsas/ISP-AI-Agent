@@ -152,4 +152,7 @@ def inform_text(engine: Any, reason: str | None) -> str | None:
     if data_sentences == 0:
         fb = str(entry.get("fallback") or "").strip()
         return re.sub(r"\s+", " ", fb) if fb else None
-    return re.sub(r"\s+", " ", " ".join(kept)).strip()
+    text = re.sub(r"\s+", " ", " ".join(kept)).strip()
+    # N4 (live): a value ending in "d." plus the template's own period made
+    # "birželio 5 d.." — collapse doubled dots.
+    return re.sub(r"\.\.+", ".", text)

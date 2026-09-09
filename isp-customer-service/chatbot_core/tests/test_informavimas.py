@@ -215,6 +215,77 @@ class TestDebtSignalsReachState:
         assert "49 eurai 98 centai" in facts and "liepą ir rugpjūtį" in facts
 
 
+class TestCannotNowHearing:
+    """N1-N3 (gyva 2026-09-09): klientui teko 3x kartoti „negaliu" — clarify
+    atsakymas dabar girdimas, safety klausimo registro niekas neperrašo,
+    „kai grįšiu" = cannot_now."""
+
+    def _solving(self):
+        agent = _agent()
+        agent.state.customer_id = "CUST112"
+        agent.state.caller_name = "Paulius"
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        return agent
+
+    def test_rambling_cannot_answer_offers_not_resumes(self, db_connection):
+        """N2: neaiškus atsakymas į „ar negalite dabar?" = patvirtinimas."""
+        agent = self._solving()
+        agent._cannot_now_state = "asked"
+        r = agent._identification_scripted_reply("Negaliu, nes esu nenuose")
+        assert r and "užregistruoti" in r  # pasiūlymas, ne resume
+
+    def test_callback_in_clarify_answer_closes_warm(self, db_connection):
+        """N2b: „Aš Jums perskambinsiu" clarify atsakyme — iškart callback."""
+        agent = self._solving()
+        agent._cannot_now_state = "asked"
+        r = agent._identification_scripted_reply("Negaliu, aš Jums perskambinsiu")
+        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert r and "paskambinkite" in r
+
+    def test_clear_resume_still_resumes(self, db_connection):
+        agent = self._solving()
+        agent._cannot_now_state = "asked"
+        r = agent._identification_scripted_reply("Ne ne, galiu, jau radau routerį")
+        assert r is None and agent._cannot_now_state is None
+        assert not agent.state.case_closed
+
+    def test_kai_grisiu_is_cannot_now(self, db_connection):
+        """N3: „Kai grįšiu, namo padarysiu" — ne laukimas, o cannot_now."""
+        from agent.resolution import detect_cannot_now
+
+        assert detect_cannot_now("Kai grįšiu, namo padarysiu") is True
+        assert detect_cannot_now("Negaliu, nes esu ne mieste") is True
+
+    def test_safety_question_survives_step_presentation(self, db_connection):
+        """N1: clarify klausimo registro įrašo mark_step_presented neperrašo."""
+        from agent.dialog_registry import active, register
+
+        agent = self._solving()
+        register(agent, "safety", "cannot_now_clarify")
+        agent.state.resolution["asked"] = False
+        agent._mark_step_presented()
+        q = active(agent)
+        assert q and q.owner == "safety" and q.key == "cannot_now_clarify"
+
+    def test_double_dot_collapsed(self, db_connection):
+        """N4: „birželio 5 d.." → vienas taškas."""
+        from agent.informavimas import inform_text
+
+        agent = _agent()
+        agent.state.diagnosis["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        t = inform_text(agent, "billing_suspended")
+        assert t and "d.." not in t and "birželio 5 d." in t
+
+
 class TestRestoredGarble:
     def test_satsarado_reads_as_restored(self, db_connection):
         """P-B gyva: „interneto satsarado" (STT „atsirado") — restored YES."""

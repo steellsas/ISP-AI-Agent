@@ -486,7 +486,9 @@ def state_facts_block(engine) -> str | None:
                 "skaičius, jie tavo sistemoje): "
                 + "; ".join(_bits)
                 + ". Apmokėjus paslauga įsijungia automatiškai per valandą. "
-                "Į buhalteriją siųsk TIK dėl sąskaitos ginčų ar detalizacijos."
+                "Į buhalteriją siųsk TIK dėl sąskaitos ginčų ar detalizacijos; "
+                "NESIŪLYK pats jungti su jokiomis tarnybomis — tokios paslaugos "
+                "neturi."
             )
     # Closing wave block 2 (2026-09-09): the business is done, but the caller
     # said something with CONTENT after "Ar dar kuo padėti?" — react to THAT,
@@ -1212,11 +1214,18 @@ def mark_step_presented(engine) -> None:
         # presented — it is now the walker's active question. Live 2026-09-08:
         # the end-confirm and wrap-up replies are NOT the step's question, so
         # they must not re-register it (asks inflated to 5 on a solved call).
+        from .dialog_registry import active as _q_active
         from .dialog_registry import clear_owner as _q_clear_owner
         from .dialog_registry import register as _q_register
 
+        _q = _q_active(engine)
         if engine._end_confirm_pending:
             pass  # this reply asked the end-confirm question, not the step's
+        elif _q is not None and _q.owner == "safety":
+            # Live 2026-09-09 (N1): the reply just asked a SAFETY question
+            # (cannot-now clarify) — clobbering it with the step let the
+            # refuse guard consume the clarify ANSWER and start a ticket.
+            pass
         elif engine.state.case_closed:
             _q_clear_owner(engine, "walker")  # the case is over — wrap-up owns the turns
         else:
