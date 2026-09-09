@@ -132,6 +132,39 @@ class TestWrapUpHearing:
         assert agent.state.case_closed and r and "Geros dienos" in r
 
 
+class TestTicketCallback:
+    """P5 (gyva 2026-09-07): „paskambinsiu vėliau" TIKETO dialogo viduryje —
+    callback noras, ne kontaktų atsakymas; šiltas uždarymas be tiketo."""
+
+    def test_callback_wish_mid_ticket_closes_warm(self, db_connection):
+        from agent.resolution import STRATEGIES
+
+        agent = _agent()
+        agent.state.caller_name = "Tomas"
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        agent._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
+        agent._ticket_stage_reply()  # numerio klausimas išėjo
+        agent._pre_turn_guards("Gerai, aš paskambinsiu vėliau pats")
+        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert agent.state.ticket_id is None
+        assert agent._ticket_stage is None
+        r = agent._identification_scripted_reply("Gerai, aš paskambinsiu vėliau pats")
+        assert r and "paskambinkite" in r  # callback_goodbye
+
+    def test_normal_hours_answer_still_captured(self, db_connection):
+        from agent.resolution import STRATEGIES
+
+        agent = _agent()
+        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        agent._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
+        agent._ticket_stage_reply()
+        agent._pre_turn_guards("Taip, tiks")
+        agent._ticket_stage_reply()
+        agent._pre_turn_guards("Skambinkite po 17 valandos")  # JŪS skambinkite — ne callback
+        assert not agent.state.case_closed
+        assert agent.state.contact_hours and "17" in agent.state.contact_hours
+
+
 class TestInformResultComposer:
     def test_deferred_result_uses_template(self, db_connection):
         """Pilnas kelias: diagnozė su skola → atidėtas rezultatas kalba

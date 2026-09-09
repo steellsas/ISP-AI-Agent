@@ -740,6 +740,22 @@ def pre_turn_guards(engine, user_input: str) -> None:
             return
         # SUPRATIMO pass'as pirmiau (2026-08-10, Andrius): caller phrasing
         # cannot be predicted — "Bet kada galima per pietus iš ryto" IS an
+        # P5 (closing wave, live 2026-09-07: "Gerai, aš paskambinsiu vėliau"
+        # mid-ticket-dialogue got "ar tiks numeris?"): a first-person "I will
+        # call back" IS a callback wish, not a contact answer — the caller
+        # does not want the registration now. Same warm close as the
+        # cannot-now ladder: no ticket, callback goodbye.
+        if any(m in low_q for m in ("paskambinsiu", "perskambinsiu", "pats paskambin")):
+            engine._ticket_stage = None
+            engine._ticket_ctx = None
+            from .dialog_registry import clear_owner as _q_clear_owner
+
+            _q_clear_owner(engine, "ticket")
+            s.case_closed = True
+            s.closed_reason = "callback"
+            engine._callback_goodbye_due = True
+            engine.tracer.emit("decision", intent="ticket_dialogue", action="callback_close")
+            return
         # hours answer, but "galima" sat on the keyword question list and
         # diverted it. The model reads the answer against THIS question;
         # keyword logic below stays as the fallback when it is unavailable.
