@@ -61,7 +61,15 @@ _PROD_INDEX = _CHATBOT_CORE / "src" / "rag" / "vector_store_data" / "production_
 # Order matters: schemas first (DDL), then seeds (DML). demo_internet last —
 # it references rows from the base seeds (SW001, OUT001).
 _SCHEMA_FILES = ("crm_schema", "network_schema")
-_SEED_FILES = ("customers", "addresses", "service_plans", "equipment", "network", "demo_internet")
+_SEED_FILES = (
+    "customers",
+    "addresses",
+    "service_plans",
+    "equipment",
+    "network",
+    "demo_internet",
+    "invoices",
+)
 
 
 def _build_test_database() -> None:

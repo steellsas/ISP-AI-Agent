@@ -1,0 +1,42 @@
+# INFORMAVIMO PAKETAI (uždarymo banga, Andrius 2026-09-08) — inform verdiktų
+# TURINYS ir FORMULUOTĖ gyvena čia, ne kode: ką klientas išgirsta apie skolą,
+# avariją ar mūsų pusės gedimą redaguoja žmogus, be programavimo.
+#
+# Kiekvienas įrašas:
+#   sakoma       — šablonas su {placeholder}'iais; trūkstant duomenų (senesnė
+#                  DB, nėra ETA) variklis IŠMETA sakinius su tuščiais laukais
+#                  arba krenta į fallback (DIAGNOSIS_LT gloss'as) — melo nebus.
+#   fallback     — kas sakoma, kai duomenų šablonui nepakanka (neprivalomas;
+#                  jo nesant naudojamas glossary DIAGNOSIS_LT).
+#   aiskumo_salyga — deklaracija, KĄ klientas privalo žinoti prieš goodbye:
+#                  kas_negerai / ka_daryti (arba kas_daroma) / kada_atsistatys.
+#                  Uždarymo banga (2 blokas) pagal ją tikrins wrap_up.
+#
+# Placeholder'iai pildomi iš diagnose signalų:
+#   skola:    {suma} (EUR), {menesiai} („liepą ir rugpjūtį"), {pask_mokejimas}
+#             („birželio 5 d."; sakinys išmetamas, jei mokėjimo nebuvo)
+#   avarija:  {vieta} (gatvė/aprašymas), {eta} (HH:MM)
+#
+# Sakinio išmetimo taisyklė: sakinys su {placeholder}'iu, kurio reikšmės nėra,
+# tyliai praleidžiamas — likę sakiniai sujungiami.
+
+billing_suspended:
+  sakoma: >-
+    Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų.
+    Skola {suma} už {menesiai}.
+    Paskutinis mokėjimas gautas {pask_mokejimas}.
+    Apmokėjus, paslauga įsijungs automatiškai — nieko papildomai daryti nereikia.
+  fallback: >-
+    Patikrinau — paslauga sustabdyta dėl neapmokėtos sąskaitos.
+    Apmokėjus sąskaitą, paslauga bus įjungta automatiškai.
+  aiskumo_salyga: [kas_negerai, ka_daryti, kada_atsistatys]
+
+active_outage:
+  sakoma: >-
+    Patikrinau — jūsų rajone šiuo metu vyksta masinė avarija ({vieta}).
+    Mūsų meistrai jau dirba, numatomas atstatymas iki {eta}.
+    Jums nieko daryti nereikia — internetas atsistatys savaime.
+  fallback: >-
+    Patikrinau — jūsų rajone šiuo metu vyksta masinė avarija.
+    Mūsų meistrai jau dirba prie atstatymo. Jums nieko daryti nereikia.
+  aiskumo_salyga: [kas_negerai, kas_daroma, kada_atsistatys]

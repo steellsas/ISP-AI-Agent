@@ -1125,6 +1125,18 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
 
     d = s.diagnosis.get("network") or {}
     reason = d.get("reason")
+    # Closing wave (2026-09-08): the inform SPEECH lives in
+    # knowledge/informavimas.yaml — the template carries the details (debt
+    # amount, months, last payment; outage place and ETA) and its own
+    # "Patikrinau…" opening, so check_result/billing_extra are not repeated.
+    from .informavimas import inform_text
+
+    inf = inform_text(engine, reason)
+    if inf:
+        engine._result_pending = False
+        engine._news_told = True
+        engine.tracer.emit("decision", intent="inform", action="template", reason=reason)
+        return " ".join([phrase("thanks"), inf, phrase("anything_else")])
     zinia = DIAGNOSIS_LT.get(reason, reason or "")
     if not zinia:
         return None
