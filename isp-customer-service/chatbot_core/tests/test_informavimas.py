@@ -165,6 +165,56 @@ class TestTicketCallback:
         assert agent.state.contact_hours and "17" in agent.state.contact_hours
 
 
+class TestDebtSignalsReachState:
+    """Gyva 2026-09-09: signals guli payload'o VIRŠUJE, ne verdict'e — state
+    gaudavo signals=None ir šablonas krito į fallback („nemato skolos")."""
+
+    def test_diagnose_observation_stores_toplevel_signals(self, db_connection):
+        import json
+
+        agent = _agent()
+        payload = {
+            "success": True,
+            "verdict": {
+                "side": "provider",
+                "group": "B1",
+                "action": "inform",
+                "reason": "billing_suspended",
+            },
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        agent._update_state_from_observation("diagnose_connection", json.dumps(payload))
+        sig = agent.state.diagnosis["network"]["signals"]
+        assert sig and sig["billing_debt"]["amount"] == 49.98
+        from agent.informavimas import inform_text
+
+        t = inform_text(agent, "billing_suspended")
+        assert t and "49 eurai 98 centai" in t
+
+    def test_facts_block_carries_debt_for_questions(self, db_connection):
+        """„Kokia skola?" — naratorius gauna skaičius faktuose, ne „nematau"."""
+        agent = _agent()
+        agent.state.diagnosis["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        facts = agent._state_facts_block()
+        assert facts and "SKOLOS FAKTAI" in facts
+        assert "49 eurai 98 centai" in facts and "liepą ir rugpjūtį" in facts
+
+
 class TestRestoredGarble:
     def test_satsarado_reads_as_restored(self, db_connection):
         """P-B gyva: „interneto satsarado" (STT „atsirado") — restored YES."""

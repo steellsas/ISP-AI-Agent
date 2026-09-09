@@ -465,6 +465,29 @@ def state_facts_block(engine) -> str | None:
             "gatvės pavadinimas galėjo pasikeisti; užtenka gatvės ir namo "
             "numerio. Paklausk, ką klientas žino."
         )
+    # Closing wave (2026-09-09, live: "kokia skola?" got "nematau… buhalterija"):
+    # the DEBT FACTS of the suspended service are OURS to state — they explain
+    # why the internet is off. Only billing DISPUTES go to buhalterija.
+    _net = s.diagnosis.get("network") or {}
+    if _net.get("reason") == "billing_suspended":
+        _debt = (_net.get("signals") or {}).get("billing_debt") or {}
+        if _debt.get("amount"):
+            from .informavimas import _date_gen, _eur, _months_acc
+
+            _bits = [f"skola {_eur(float(_debt['amount']))}"]
+            _m = _months_acc(_debt.get("months") or [])
+            if _m:
+                _bits.append(f"už {_m}")
+            _lp = _date_gen(_debt.get("last_payment"))
+            if _lp:
+                _bits.append(f"paskutinis mokėjimas gautas {_lp}")
+            facts.append(
+                "- SKOLOS FAKTAI (paklaustas sumos ar mėnesių — SAKYK šiuos "
+                "skaičius, jie tavo sistemoje): "
+                + "; ".join(_bits)
+                + ". Apmokėjus paslauga įsijungia automatiškai per valandą. "
+                "Į buhalteriją siųsk TIK dėl sąskaitos ginčų ar detalizacijos."
+            )
     # Closing wave block 2 (2026-09-09): the business is done, but the caller
     # said something with CONTENT after "Ar dar kuo padėti?" — react to THAT,
     # never a deaf goodbye. One-shot, set by the wrap-up phase.
@@ -1407,7 +1430,11 @@ def update_state_from_observation(engine, action: str, observation: str):
                 "side": v.get("side"),
                 "action": v.get("action"),
                 "reason": v.get("reason"),
-                "signals": v.get("signals"),
+                # Live 2026-09-09 (the debt template rendered its FALLBACK):
+                # signals ride at the payload's TOP level, not inside the
+                # verdict — v.get("signals") was always None, so billing_debt
+                # (and the solver's telemetry facts) never reached the state.
+                "signals": obs_data.get("signals") or v.get("signals"),
             }
             # Ledger: telemetry facts are ground truth — every (re)diagnose
             # lands on the evidence with full history (a re-check after a fix
