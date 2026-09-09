@@ -1090,13 +1090,47 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
                 "minut",
                 "sekund",
                 "skol",
+                # Closing wave block 2 (live: these were swallowed by the
+                # goodbye): payment claims and follow-up asks are CONTENT.
+                "sumokėj",
+                "sumokej",
+                "apmokėj",
+                "apmokej",
+                "kiek",
+                "kada",
+                "anks",
+                "neveik",
+                "kain",
             )
         )
         if wants_more:
             return None  # a question / wants something — the LLM handles it
+        # Closing wave block 2 (live 2026-09-08: "Vilma" — the caller's NAME —
+        # got a deaf goodbye): a content-bearing turn is NOT a goodbye. Up to
+        # two such turns get an LLM reaction (with a directive to react and
+        # re-offer the close); the cap keeps garbled goodbyes ("Nusigaro")
+        # from looping the wrap-up forever.
+        from .resolution import detect_farewell as _df
+        from .resolution import is_backchannel as _bc
+
+        content = bool(user_input) and not _df(user_input) and not _bc(user_input)
+        n = getattr(engine, "_wrap_content_turns", 0)
+        if content and n < 2:
+            engine._wrap_content_turns = n + 1
+            engine._wrap_react_note = True
+            engine.tracer.emit("decision", intent="wrap_up", action="react", turns=n + 1)
+            return None  # the narrator reacts to WHAT was said, then re-offers
         s.case_closed = True
         s.closed_reason = "outage" if s.outage_reported else "inform"
         s.is_complete = True
+        # aiskumo_salyga (declared in informavimas.yaml): the inform template
+        # spoke all its elements before this close — trace it for the audits.
+        from .informavimas import clarity_declaration
+
+        _reason = (s.diagnosis.get("network") or {}).get("reason")
+        _salyga = clarity_declaration(_reason)
+        if _salyga:
+            engine.tracer.emit("clarity", reason=_reason, salyga=_salyga, told=engine._news_told)
         engine.tracer.emit("decision", intent="wrap_up", action="close", to=s.closed_reason)
         return phrase("goodbye")
     if not engine._result_pending:

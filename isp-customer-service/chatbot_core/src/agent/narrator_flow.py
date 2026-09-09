@@ -465,6 +465,19 @@ def state_facts_block(engine) -> str | None:
             "gatvės pavadinimas galėjo pasikeisti; užtenka gatvės ir namo "
             "numerio. Paklausk, ką klientas žino."
         )
+    # Closing wave block 2 (2026-09-09): the business is done, but the caller
+    # said something with CONTENT after "Ar dar kuo padėti?" — react to THAT,
+    # never a deaf goodbye. One-shot, set by the wrap-up phase.
+    if getattr(engine, "_wrap_react_note", False):
+        engine._wrap_react_note = False
+        facts.append(
+            "- UŽDARYMO FAZĖ: verslas baigtas, bet klientas KAŽKĄ pasakė — "
+            "sureaguok į TAI konkrečiai: jei prisistatė vardu — šiltai priimk "
+            "(„Malonu!“); jei sako, kad SUMOKĖJO — patvirtink, kad apmokėjus "
+            "paslauga įsijungs automatiškai per valandą; jei mini naują bėdą — "
+            "trumpai atsakyk. Jokių ilgų paaiškinimų iš naujo. Baik klausimu "
+            "„Ar dar kuo galiu padėti?“."
+        )
     if getattr(engine, "_reopen_note", False) and not s.customer_id:
         facts.append(
             "- KLIENTAS PATIKSLINO: skambina dėl KITO adreso nei buvo nustatyta. "

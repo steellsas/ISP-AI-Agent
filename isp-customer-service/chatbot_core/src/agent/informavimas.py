@@ -114,6 +114,19 @@ def _values(engine: Any, reason: str) -> dict[str, str]:
     return vals
 
 
+def clarity_declaration(reason: str | None) -> list[str] | None:
+    """The declared aiskumo_salyga for a verdict — what the caller must know
+    before the goodbye (kas_negerai / ka_daryti / kas_daroma / kada_atsistatys).
+    The wrap-up traces it on close; block-2+ enforcement reads it."""
+    if not reason:
+        return None
+    entry = _catalog().get(reason)
+    if not isinstance(entry, dict):
+        return None
+    salyga = entry.get("aiskumo_salyga")
+    return list(salyga) if isinstance(salyga, list) else None
+
+
 def inform_text(engine: Any, reason: str | None) -> str | None:
     """The rendered inform speech for this verdict, or None when no template
     applies (the caller then falls back to the glossary gloss). The

@@ -93,6 +93,45 @@ class TestInformTemplates:
         assert _eur(10.01) == "10 eurų 1 centas"
 
 
+class TestWrapUpHearing:
+    """Blokas 2: po „Ar dar kuo padėti?" turinys ATSAKOMAS, ne nuryjamas su
+    goodbye; darkyti atsisveikinimai nebekilpuoja (riba 2 turn'ai)."""
+
+    def _informed(self):
+        agent = _agent()
+        agent.state.caller_name = "Tomas"
+        agent._news_told = True
+        agent._result_pending = False
+        return agent
+
+    def test_payment_claim_is_heard(self, db_connection):
+        agent = self._informed()
+        r = agent._identification_scripted_reply("Tai aš vakar sumokėjau sąskaitą")
+        assert r is None  # LLM atsako (wants_more), ne goodbye
+        assert not agent.state.case_closed
+
+    def test_name_statement_gets_reaction_not_goodbye(self, db_connection):
+        agent = self._informed()
+        agent.state.caller_name = None
+        r = agent._identification_scripted_reply("Vilma")
+        assert r is None  # naratorius reaguoja su direktyva
+        assert agent._wrap_react_note is True
+        assert not agent.state.case_closed
+
+    def test_farewell_closes_immediately(self, db_connection):
+        agent = self._informed()
+        r = agent._identification_scripted_reply("Ačiū, viso gero")
+        assert agent.state.case_closed and r and "Geros dienos" in r
+
+    def test_content_turns_capped_then_close(self, db_connection):
+        """Darkytas atsisveikinimas („Nusigaro") — po 2 reakcijų uždaroma."""
+        agent = self._informed()
+        assert agent._identification_scripted_reply("Nusigaro") is None
+        assert agent._identification_scripted_reply("Nusigaro visai") is None
+        r = agent._identification_scripted_reply("Nusigaro vėl")
+        assert agent.state.case_closed and r and "Geros dienos" in r
+
+
 class TestInformResultComposer:
     def test_deferred_result_uses_template(self, db_connection):
         """Pilnas kelias: diagnozė su skola → atidėtas rezultatas kalba

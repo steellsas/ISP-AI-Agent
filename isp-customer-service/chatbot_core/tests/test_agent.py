@@ -1434,7 +1434,13 @@ class TestScriptedWrapUp:
         return agent
 
     def test_garbled_goodbye_wraps_up(self, db_connection):
+        # Closing wave block 2 (2026-09-09): a content-bearing turn first gets
+        # a REACTION (the caller may have said something real — "Vilma",
+        # "sumokėjau"); the cap of 2 still guarantees a garbled goodbye
+        # ("Nusigaro") cannot loop the wrap-up — the third turn closes.
         agent = self._informed(db_connection)
+        assert agent._identification_scripted_reply("Nusigaro.") is None
+        assert agent._identification_scripted_reply("Nusigaro.") is None
         reply = agent._identification_scripted_reply("Nusigaro.")
         assert reply and "Ačiū, kad paskambinote" in reply
         assert agent.state.case_closed is True
