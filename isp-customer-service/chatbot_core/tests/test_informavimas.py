@@ -286,6 +286,54 @@ class TestCannotNowHearing:
         assert t and "d.." not in t and "birželio 5 d." in t
 
 
+class TestHomeworkFinale:
+    """F1-F3 (gyva 2026-09-09): homework sutikimas su „viso gero" nebegauna
+    „ar tikrai norite baigti?", „perskambinsiu" uždaro callback, o ragelio
+    padėjimas homework žingsnyje NEregistruoja tiketo."""
+
+    def _at_homework(self):
+        agent = _agent()
+        agent.state.customer_id = "CUST112"
+        agent.state.caller_name = "Paulius"
+        agent.state.resolution = {
+            "verdict": "router_hung",
+            "step": "rh_homework",
+            "asked": True,
+            "solution_synced": True,
+        }
+        from agent.dialog_registry import register
+
+        register(agent, "walker", "step:rh_homework")
+        return agent
+
+    def test_farewell_consent_routes_to_callback(self, db_connection):
+        """F1+F2: „Gerai, sutariam, viso gero" = sutikimas → callback, be
+        end-confirm rato."""
+        agent = self._at_homework()
+        agent._pre_turn_guards("Gerai, sutariam, viso gero.")
+        assert agent._end_confirm_pending is False  # end-confirm nekilo
+        agent._advance_resolution("Gerai, sutariam, viso gero.")
+        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert agent.state.ticket_id is None
+
+    def test_callback_promise_routes_to_callback(self, db_connection):
+        agent = self._at_homework()
+        agent._advance_resolution("Nereikia susitikti, aš perskambinsiu, sakiau.")
+        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+
+    def test_ticket_demand_still_wins(self, db_connection):
+        agent = self._at_homework()
+        agent._advance_resolution("Gerai, bet registruokite meistrą dabar.")
+        assert not (agent.state.case_closed and agent.state.closed_reason == "callback")
+
+    def test_hangup_at_homework_closes_callback_no_ticket(self, db_connection):
+        """F3: ragelis homework žingsnyje — callback, ne TKT."""
+        agent = self._at_homework()
+        agent.end_session(outcome="client_closed")
+        assert agent.state.closed_reason == "callback"
+        assert agent.state.ticket_id is None
+
+
 class TestRestoredGarble:
     def test_satsarado_reads_as_restored(self, db_connection):
         """P-B gyva: „interneto satsarado" (STT „atsirado") — restored YES."""

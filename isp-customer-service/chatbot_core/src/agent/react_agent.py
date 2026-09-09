@@ -1201,6 +1201,18 @@ class ReactAgent:
         # record; contacts default to the caller-ID number. After-hours
         # philosophy: a human takes over through the ticket.
         s = self.state
+        # F3 (live 2026-09-09): a hang-up ON the homework step means the
+        # callback was agreed (or at least offered) — closing with a ticket
+        # breaks the agreement (TKT registered over "as perskambinsiu").
+        if (
+            s.customer_id
+            and not s.ticket_id
+            and not s.case_closed
+            and str((s.resolution or {}).get("step") or "").endswith("_homework")
+        ):
+            s.case_closed = True
+            s.closed_reason = "callback"
+            self.tracer.emit("decision", intent="hangup_net", action="callback_close")
         if s.customer_id and not s.ticket_id and not s.case_closed and s.resolution is not None:
             from .resolution import get_strategy
 

@@ -1102,9 +1102,17 @@ def pre_turn_guards(engine, user_input: str) -> None:
         or (bool(s.diagnosis) and not (engine._news_told or s.outage_reported))
     )
     if mid_process and detect_farewell(user_input):
-        engine._end_confirm_pending = True
-        engine.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
-        return
+        # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the
+        # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the
+        # *_homework step a farewell IS the consent — the walker routes it
+        # to the callback terminal; the end-confirm must not intercept.
+        from .dialog_registry import active as _q_act
+
+        _qa = _q_act(engine)
+        if not (_qa is not None and _qa.key.endswith("_homework")):
+            engine._end_confirm_pending = True
+            engine.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
+            return
     # (0) Caller-intro capture: the previous reply asked WHO is calling (the
     # identification ladder's last rung) — record the answer verbatim (for the
     # RECORD, 5d rule) + a keyword relation read. The deferred check result goes

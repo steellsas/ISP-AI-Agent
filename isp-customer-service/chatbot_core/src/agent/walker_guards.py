@@ -87,6 +87,34 @@ def device_change_pre_answer(engine: Any, r, strat, step, user_input: str | None
     return False
 
 
+def homework_consent(engine: Any, r, strat, step, user_input: str | None) -> bool:
+    """P-C follow-up (live 2026-09-09, F1/F2): on the *_homework step a
+    farewell ("Gerai, sutariam, viso gero"), a plain consent word or a
+    first-person callback promise ("aš perskambinsiu") IS the yes — the
+    caller agrees to do the homework and call back. Route to the callback
+    terminal; an explicit ticket demand falls through to the refuse guard."""
+    from .resolution import detect_farewell, next_step_id
+
+    if not step.id.endswith("_homework"):
+        return False
+    low = (user_input or "").lower()
+    tokens = {t.strip(".,!?") for t in low.split()}
+    # A first-person callback promise wins outright — "nereikia susitikti,
+    # aš perskambinsiu" refuses the MEETING, not the agreement.
+    callback = any(m in low for m in ("perskambin", "paskambinsiu", "pats paskambin"))
+    consent = detect_farewell(user_input) or bool(
+        tokens & {"gerai", "sutariam", "sutarėm", "sutarem", "sutinku", "taip"}
+    )
+    blocked = any(m in low for m in ("registruok", "meistr", "nereikia", "nesutink"))
+    if callback or (consent and not blocked):
+        engine._route_to(r, next_step_id(strat, step.id, "yes"))
+        engine.tracer.emit(
+            "decision", intent="cannot_now", action="homework_agreed", from_step=step.id
+        )
+        return True
+    return False
+
+
 def backchannel_hold(engine: Any, r, strat, step, user_input: str | None) -> bool:
     """A bare "Mhm." / one-letter STT crumb is an acknowledgement, not an answer —
     HOLD asking steps instead of routing garbage (observed: "T." entered the bridge
@@ -218,6 +246,7 @@ def classifier_instruct_route(engine: Any, r, strat, step, user_input: str | Non
 
 STEP_GUARDS = (
     device_change_pre_answer,
+    homework_consent,
     backchannel_hold,
     restored_pre_answer,
     refuse_or_ticket_redirect,
