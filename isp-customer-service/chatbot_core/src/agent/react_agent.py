@@ -276,6 +276,10 @@ class ReactAgent:
         # "resolver offered street choices" marker.
         self._denied_street = None
         self._addr_suggested = False
+        # REPEAT trigger (2026-09-10): failed street readings across turns —
+        # the same word repeating means the agent cannot hear it.
+        self._street_attempts = []
+        self._spell_due = None
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says

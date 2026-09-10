@@ -97,7 +97,7 @@ class TestSpellingRung:
 
         agent = _agent()
         cand = _street_by_prefix(agent, "vil")
-        assert cand and "Vilniaus" in cand
+        assert cand and cand.lower().startswith("vil")  # dabar VIL turi 2 kandidatus
 
     def test_two_unrecognized_then_spell_then_code(self, db_connection):
         agent = _agent()
@@ -118,8 +118,11 @@ class TestSpellingRung:
         agent._spell_mode = True
         agent._spell_done = True
         r = agent._identification_scripted_reply("V kaip Vilnius, I kaip Ieva, L kaip Lina")
-        assert r and "Vilniaus" in r and "namo" in r
-        assert agent.state.profile.street.value and "Vilniaus" in agent.state.profile.street.value
+        assert r and ("Vil" in r) and "namo" in r  # VIL pogrupio kandidatas
+        assert (
+            agent.state.profile.street.value
+            and agent.state.profile.street.value.lower().startswith("vil")
+        )
 
     def test_resolve_loop_offers_spelling_first(self, db_connection):
         """Gyva 2026-09-10: darkytos gatvės loopas ėjo per RESOLVE nesėkmes ir
@@ -169,6 +172,71 @@ class TestSpellingRung:
         r = agent._identification_scripted_reply("Ne, nei viena netinka")
         assert r and "paraidžiui" in r
         assert agent._spell_mode is True
+
+    def test_spell_prefix_client_form(self):
+        """Kliento spontaniška forma: inkaras PO „kaip" (gyva: „Taip kaip
+        tėtis ir kaip Ignas" = T, I)."""
+        from agent.identification_flow import _spell_prefix
+
+        assert _spell_prefix("Taip kaip tėtis ir kaip Ignas") == "ti"
+        assert _spell_prefix("K kaip Kaunas, U kaip upė") == "ku"
+
+    def test_repeat_same_word_triggers_letters(self, db_connection):
+        """KARTOJIMO trigeris (Andrius): tas pats nesuprastas žodis antrą
+        kartą — agentas negirdi, klausiam raidžių. Skirtingi žodžiai — ne."""
+        from agent.identification_flow import _register_street_attempt
+
+        agent = _agent()
+        assert _register_street_attempt(agent, "Šilkės") is False
+        assert _register_street_attempt(agent, "Šilkes gatvė") is True  # tas pats žodis
+        agent2 = _agent()
+        assert _register_street_attempt(agent2, "Šilkės") is False
+        assert _register_street_attempt(agent2, "Kosmonautų") is False  # kitas žodis
+
+    def test_repeated_garbled_attempt_asks_letters_not_closes(self, db_connection):
+        """R4+repeat gyva (Tilžiukos): kartojamas darkinys — raidžių klausimas,
+        o ne tuščių turn'ų uždarymas."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        agent._last_agent_question = lambda: "Gal galėtumėte pakartoti gatvės pavadinimą?"
+        agent._register_street_attempt_seed = None
+        from agent.identification_flow import _account_code_rung, _register_street_attempt
+
+        _register_street_attempt(agent, "Tilžiuko")  # pirmas girdėjimas (resolve fail)
+        handled, r = _account_code_rung(agent, agent.state, "Tilžiukos.")
+        assert handled and r and "raides" in r  # spell_repeat_ask
+        assert agent._spell_mode is True
+        assert not agent.state.case_closed
+
+    def test_letters_filter_garble_in_subset(self, db_connection):
+        """Raidė + darkinys kartu: prefiksas „t" + girdėtas „Tilžiuko" →
+        Tilžės g. (fuzzy pogrupyje)."""
+        from agent.identification_flow import _street_by_prefix_and_garble
+
+        agent = _agent()
+        cand = _street_by_prefix_and_garble(agent, "t", "tilziuko")
+        assert cand and cand.lower().startswith("til")  # TIL pogrupis: Tilžės/Tilvyčio
+
+    def test_client_initiated_kaip_pairs_read_as_letters(self, db_connection):
+        """R3: klientas pats raidžiuoja be režimo — „kaip X" poros girdimos."""
+        from agent.identification_flow import _register_street_attempt
+
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        _register_street_attempt(agent, "Tilžiuko")
+        r = agent._identification_scripted_reply("Taip kaip Tomas ir kaip Ieva, taip kaip Lina")
+        assert r and ("Tilž" in r or "namo" in r)  # raidės TIL → Tilžės
+
+    def test_correct_hearing_not_found_no_letters(self, db_connection):
+        """Andrius: jei išgirdo TEISINGAI, o gatvės tiesiog nėra — raidžių
+        nereikia (skirtingi bandymai trigerio nekelia)."""
+        from agent.identification_flow import _register_street_attempt
+
+        agent = _agent()
+        assert _register_street_attempt(agent, "Kosmonautų") is False
+        assert agent._spell_due is None
 
     def test_spell_turn_prefill_silent(self, db_connection):
         """„K kaip Kaunas" spell turn'e NEtampa miestu Kaunu."""

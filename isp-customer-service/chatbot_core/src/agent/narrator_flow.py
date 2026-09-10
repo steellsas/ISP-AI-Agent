@@ -1375,6 +1375,17 @@ def update_state_from_observation(engine, action: str, observation: str):
                     engine._addr_suggested = True
                 res_levels = obs_data.get("resolution") or {}
                 street_lvl = res_levels.get("street") or {}
+                # REPEAT trigger (Andrius 2026-09-10): every failed street
+                # reading lands on the attempt tracker; the SAME word coming
+                # back means the agent cannot hear it — letters round due.
+                _given = str(street_lvl.get("given") or "")
+                if _given and street_lvl.get("status") not in (None, "ok", "not_in_city"):
+                    from .identification_flow import _register_street_attempt
+
+                    if _register_street_attempt(engine, _given) and not getattr(
+                        engine, "_spell_done", False
+                    ):
+                        engine._spell_due = "repeat"
                 # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
                 # Ginkūnuose" — įsimenam siūlomą vietovę; klientui patvirtinus
                 # miesto slotas persijungia (prefill vielos) ir paieška vyksta

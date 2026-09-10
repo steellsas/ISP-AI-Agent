@@ -591,21 +591,72 @@ def _speak_code(code: str) -> str:
 
 
 def _spell_prefix(text: str | None) -> str:
-    """First letters from an anchor-word spelling ("K kaip Kaunas, U kaip
-    upė" -> "ku"). With "kaip" pairs present, only the word BEFORE each
-    "kaip" contributes; without any "kaip", every word's first letter counts
-    ("Kaunas Upė" -> "ku"). Whisper mangles bare letters but hears words."""
+    """First letters from an anchor-word spelling. Two spoken forms exist:
+    "K kaip Kaunas" (the letter BEFORE "kaip") and the caller's spontaneous
+    "taip kaip tėtis, ir kaip Ignas" (the anchor AFTER "kaip" — live
+    2026-09-10). Per pair: a single-letter token before "kaip" wins; else the
+    first letter of the word after it. Without any "kaip", every word's
+    first letter counts ("Kaunas Upė" -> "ku")."""
     toks = [t.strip(".,!?-").lower() for t in (text or "").split() if t.strip(".,!?-")]
     if not toks:
         return ""
     letters: list[str] = []
     if "kaip" in toks:
         for i, t in enumerate(toks):
-            if t == "kaip" and i > 0 and toks[i - 1].isalpha():
-                letters.append(toks[i - 1][0])
+            if t != "kaip":
+                continue
+            before = toks[i - 1] if i > 0 else ""
+            after = toks[i + 1] if i + 1 < len(toks) else ""
+            if len(before) == 1 and before.isalpha():
+                letters.append(before)
+            elif after.isalpha():
+                letters.append(after[0])
     else:
         letters = [t[0] for t in toks if t.isalpha() and len(t) >= 2]
     return "".join(letters)
+
+
+def _register_street_attempt(engine: Any, garble: str) -> bool:
+    """Track failed street readings across turns. True when the caller is
+    REPEATING the same word (two attempts fuzzy-similar to each other) —
+    Andrius 2026-09-10: repetition means the AGENT cannot hear this word,
+    so the letters round should engage; a street heard correctly but absent
+    from the registry is not a mishearing and never triggers it."""
+    from .evidence import _fold
+    from .nlu import street_match_score
+
+    g = _fold((garble or "").replace("gatvė", "").replace(" g.", "").strip())[:24].strip()
+    if len(g) < 3:
+        return False
+    attempts = getattr(engine, "_street_attempts", None) or []
+    repeat = any(street_match_score(g, prev) >= 0.55 for prev in attempts)
+    attempts.append(g)
+    engine._street_attempts = attempts[-4:]
+    return repeat
+
+
+def _street_by_prefix_and_garble(engine: Any, prefix: str, garble: str | None) -> str | None:
+    """The letters as a FUZZY FILTER (Andrius 2026-09-10): the registry is
+    narrowed to streets starting with the spelled prefix, and the HEARD
+    garble is fuzzy-matched inside that small subset with a LOWERED bar —
+    letter + garble together beat either alone. Without a garble, the
+    shortest prefix match wins (the caller spelled the name itself)."""
+    from .evidence import _fold
+    from .nlu import load_registry, street_match_score
+    from .tools import get_db
+
+    if engine._registry is None:
+        engine._registry = load_registry(get_db())
+    streets, _ = engine._registry
+    want = _fold(prefix)
+    subset = [st for st in streets if _fold(st).startswith(want)]
+    if not subset:
+        return None
+    if garble:
+        best = max(subset, key=lambda st: street_match_score(garble, st))
+        if street_match_score(garble, best) >= 0.4:
+            return best
+    return min(subset, key=len)
 
 
 def _street_by_prefix(engine: Any, prefix: str) -> str | None:
@@ -698,13 +749,33 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
 
     if not user_input:
         return False, None
+    # R3 (live 2026-09-10: "Taip kaip tėtis ir kaip Ignas" went unheard): the
+    # caller may START spelling on their own — two "kaip <žodis>" pairs in an
+    # address-phase turn ARE a letters answer, no mode needed.
+    if (
+        not getattr(engine, "_spell_mode", False)
+        and user_input.lower().count(" kaip ") >= 2
+        and (
+            getattr(engine, "_street_attempts", None)
+            or "gatv" in (engine._last_agent_question() or "").lower()
+        )
+    ):
+        engine._spell_mode = True
+        engine._spell_done = True
+        engine.tracer.emit("decision", intent="street_spell", action="client_initiated")
     # NLU wave block 4 (paraidžiui): the spelling answer is read FIRST — the
-    # anchor-word first letters narrow the registry by prefix; a hit proposes
-    # the street and asks the house, a miss falls to the account-code rung.
+    # anchor-word first letters narrow the registry by prefix AND fuzzy the
+    # last heard garble inside that subset (letters help fuzzy, never replace
+    # it — Andrius 2026-09-10); a miss falls to the account-code rung.
     if getattr(engine, "_spell_mode", False):
         engine._spell_mode = False
         prefix = _spell_prefix(user_input)
-        cand = _street_by_prefix(engine, prefix) if len(prefix) >= 2 else None
+        _garble = (getattr(engine, "_street_attempts", None) or [None])[-1]
+        cand = (
+            _street_by_prefix_and_garble(engine, prefix, _garble)
+            if len(prefix) >= (1 if _garble else 2)
+            else None
+        )
         if cand:
             from .dialog_registry import register as _q_register
             from .slots import SlotStatus
@@ -775,6 +846,18 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             engine._awaiting_account_code = False
     if not s.problem_type:
         return False, None
+    # REPEAT trigger (Andrius 2026-09-10): the caller REPEATED the same
+    # unrecognized word — the agent cannot hear it; the letters round fires
+    # NOW (set by the attempt tracker in the capture/counter paths).
+    if getattr(engine, "_spell_due", None) and not getattr(engine, "_spell_done", False):
+        engine._spell_due = None
+        engine._spell_done = True
+        engine._spell_mode = True
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "street_spell")
+        engine.tracer.emit("decision", intent="street_spell", action="ask", reason="repeat")
+        return True, phrase("spell_repeat_ask")
     # 1) Miestas ne aptarnavimo zonoje — IŠ KARTO, vieną kartą. SVARBU:
     # „Vilniaus GATVĖ" yra Šiaulių gatvė, ne miestas — miesto žodis, po kurio
     # eina gatvės indikatorius, yra GATVĖS pavadinimas (gyvas testų lūžis).
@@ -870,7 +953,33 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         limit = int(_os.environ.get("IDENT_MAX_TURNS", "4"))
     except ValueError:
         limit = 4
-    if _has_address_content(user_input):
+    # R4 (live 2026-09-10: "Tilžiukos." counted as an EMPTY turn and the call
+    # CLOSED on a cooperating caller): when the last question asked for the
+    # street/address, a bare word attempt IS address content — a garbled
+    # street name, not silence. It also feeds the repeat tracker: the same
+    # word coming back arms the letters round.
+    street_asked = any(w in last_q for w in ("gatv", "adres", "pavadinim"))
+    alpha_attempt = (
+        street_asked
+        and not _has_address_content(user_input)
+        and any(t.strip(".,!?").isalpha() and len(t.strip(".,!?")) >= 4 for t in user_input.split())
+    )
+    if alpha_attempt:
+        _word = max(
+            (t.strip(".,!?") for t in user_input.split() if t.strip(".,!?").isalpha()),
+            key=len,
+        )
+        if _register_street_attempt(engine, _word) and not getattr(engine, "_spell_done", False):
+            engine._spell_due = "repeat"
+            engine._spell_done = True
+            engine._spell_mode = True
+            engine._spell_due = None
+            from .dialog_registry import register as _q_register
+
+            _q_register(engine, "ident", "street_spell")
+            engine.tracer.emit("decision", intent="street_spell", action="ask", reason="repeat")
+            return True, phrase("spell_repeat_ask")
+    if _has_address_content(user_input) or alpha_attempt:
         engine._addr_empty_turns = 0
         # Turinys yra, bet registras jo VISAI neatpažįsta (nei sloto, nei
         # diagnozės) — po dviejų tokių siūlom kodą.
@@ -1182,8 +1291,10 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # frazė su UŽUOMINA kur ieškoti ir YRA atsakymas (etalonas №2).
         and not getattr(engine, "_awaiting_account_code", False)
         # NLU wave block 4: "V KAIP Vilnius" is the spelling answer, not a
-        # question — the rung's spell reader owns the armed turn.
+        # question — the rung's spell reader owns the armed turn; two "kaip"
+        # pairs are spelling-shaped even without the mode (client-initiated).
         and not getattr(engine, "_spell_mode", False)
+        and user_input.lower().count(" kaip ") < 2
     ):
         return None  # off-script — the LLM answers; guards kept the ladder state
         # (pre-problem questions fall through to the problem GATE below)

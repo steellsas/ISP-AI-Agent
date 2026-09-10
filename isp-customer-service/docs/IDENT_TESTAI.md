@@ -133,3 +133,18 @@ identifikacijos testų sluoksnio žymėjimas TESTU_ZEMELAPIS.md.
 - **PC-3 Negali dabar (namų darbas):** į gebėjimo klausimą: **„Negaliu, nesu namuose."**
   → LAUKIAM: NAMŲ DARBAS („kai grįšite — ištraukite laidą, 5 sekundes... jei neatsiras — paskambinkite, padėsime arba užregistruosiu meistrą. Gerai?") → „Gerai." → **callback atsisveikinimas**, BE tiketo. RAUDONA, jei spaudžia tiketą arba sako „perkrauta, neatsistatė".
   → Variantas: į „Gerai?" atsakyk „Ne, registruokite meistrą dabar." → tiketo dialogas su SĄŽININGA priežastimi (be „perkrautas, bet neatsistatė").
+
+---
+
+## PR — PARAIDŽIUI su panašiomis gatvėmis (2026-09-10; reikia ♻️ DB — atsiranda Tilvyčio/Dainavos/Vilties)
+
+Registre dabar yra PANAŠIŲ porų: **Tilžės ~ Tilvyčio** (TIL), **Dainų ~ Dainavos ~ Dailės** (D), **Vilniaus ~ Vilties** (VIL). Nauji klientai: Tilvyčio g. 8 (Rasa), Dainavos g. 4 (Jonas), Vilties g. 15 (Eglė) — visi be butų, sveikos linijos.
+
+- **PR-1 Kartojimo trigeris:** unknown → problema → sakyk neaiškiai/greitakalbe **„Tilvyčio gatvė 8"** → agentas neišgirs arba pasiūlys („Tilžės?") → atmesk ir **PAKARTOK TĄ PATĮ žodį** („Tilvyčio!") →
+  LAUKIAM: **„girdžiu, kad kartojate, bet garsas man neaiškus — pasakykite gatvės pirmas raides žodžiais..."** → „T kaip Tomas, I kaip Ieva, L kaip Lina" → TIL turi DU kandidatus (Tilžės/Tilvyčio) — girdėtas darkinys nusveria → **„Supratau raides T I L — tai turbūt Tilvyčio g. Koks namo numeris?"** → „8" → identifikuota (Rasa).
+- **PR-2 Klientas pats raidžiuoja:** unknown → problema → „Vilties gatvė 15" (darkytai) → po pirmo „nerandu/pasiūlymo" NELAUKDAMAS klausimo sakyk: **„Taip kaip Vilnius, kaip Ieva, kaip Lina"** →
+  LAUKIAM: agentas supranta raides VIL be jokio režimo → darkinys renkasi tarp Vilniaus/Vilties → siūlo gatvę ir klausia namo.
+- **PR-3 Kontrolinis (algoritmo nesugadinom):** aiškiai pasakyk **„Dainavos gatvė 4"** →
+  LAUKIAM: fuzzy randa iš pirmo karto, JOKIŲ raidžių klausimų — normalus kelias iki galo (Jonas). RAUDONA, jei aiškiai pasakius įsijungia paraidžiui.
+- **PR-4 Teisingai išgirsta, bet nėra:** aiškiai „Kosmonautų alėja 7" → agentas sako nerandu → pasakyk KITĄ tikrą gatvę →
+  LAUKIAM: jokio paraidžiui (žodis nesikartojo — išgirdo teisingai, gatvės tiesiog nėra), pokalbis tęsiasi normaliai.
