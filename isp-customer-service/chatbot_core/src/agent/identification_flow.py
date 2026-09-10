@@ -759,13 +759,25 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         return True, phrase("city_not_served")
     # 1b) LOOP'as (Andrius: „kai loopas prasideda — galvojama apie kitus
     # būdus"): trys TIKROS gatvės/namo paieškos nesėkmės (tikslinimai —
-    # butas/pavardė/vietovė — nesiskaito) → siūlom kodą.
+    # butas/pavardė/vietovė — nesiskaito) → PIRMA paraidžiui, tada kodas.
     if getattr(engine, "_addr_resolve_fails", 0) >= 3:
         engine._addr_resolve_fails = 0
-        engine._awaiting_account_code = True
-        engine._code_grace = 0
         from .dialog_registry import register as _q_register
 
+        # NLU wave block 4 follow-up (live 2026-09-10: the garbled-street
+        # loop ran through RESOLVE failures, not the prefill counter, and
+        # jumped straight to the code — the spelling round comes first on
+        # THIS channel too; one shot per call either way).
+        if not getattr(engine, "_spell_done", False):
+            engine._spell_done = True
+            engine._spell_mode = True
+            _q_register(engine, "ident", "street_spell")
+            engine.tracer.emit(
+                "decision", intent="street_spell", action="ask", reason="resolve_loop"
+            )
+            return True, phrase("spell_ask")
+        engine._awaiting_account_code = True
+        engine._code_grace = 0
         _q_register(engine, "ident", "account_code")
         engine.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
         return True, phrase("account_code_ask")

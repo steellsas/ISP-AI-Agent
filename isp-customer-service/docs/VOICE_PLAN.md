@@ -269,6 +269,16 @@ kad Andrius koreguotų be kodo.
   režime; ir dictated-resolve ėmė PASENUSIUS slotus (6/60) vietoj šio turn'o
   skaitymo. Daryti kartu su paraidžiui/NER pakopa.
 
+#### TTS latencijos šuoliai (gyva 2026-09-10)
+
+- voice_latency rodė tts_ms 16 s / 18.5 s / 25 s šuolius tarp normalių
+  0.7–3 s turn'ų (agent_ms=0, ASR normalus) — TTS API pusės strigimai.
+- Kandidatai: TTS kvietimo TIMEOUT (pvz. 6–8 s) + retry; nepavykus —
+  trumpesnė atsarginė frazė iš kešo (backchannel infrastruktūra jau yra);
+  matavimui — replay stendo laiko ašis. Daryti techninių bangoje.
+- Šalutinis simptomas: WS „send after close" kai klientas padeda ragelį
+  TTS dar transliuojant — užtildyti (try/except), ne klaida.
+
 ### Produkcinės parengties takelis (vėliau, prie stage su linija)
 
 - TELEFONIJA (Andrius 2026-08-26): produkcijoje agentas dirbs su TELEFONO

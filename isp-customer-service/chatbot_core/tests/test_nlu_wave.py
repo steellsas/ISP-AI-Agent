@@ -121,6 +121,21 @@ class TestSpellingRung:
         assert r and "Vilniaus" in r and "namo" in r
         assert agent.state.profile.street.value and "Vilniaus" in agent.state.profile.street.value
 
+    def test_resolve_loop_offers_spelling_first(self, db_connection):
+        """Gyva 2026-09-10: darkytos gatvės loopas ėjo per RESOLVE nesėkmes ir
+        šoko tiesiai į kodą — paraidžiui pirmiau ir šiame kanale."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        agent._addr_resolve_fails = 3
+        r = agent._identification_scripted_reply("Tilžiatkas gatvė 6")
+        assert r and "paraidžiui" in r
+        # antrą kartą (spell jau išnaudotas) — kodas
+        agent._addr_resolve_fails = 3
+        agent._spell_mode = False
+        r2 = agent._identification_scripted_reply("Vis tiek nesigauna")
+        assert r2 and "abonento kodą" in r2
+
     def test_spell_turn_prefill_silent(self, db_connection):
         """„K kaip Kaunas" spell turn'e NEtampa miestu Kaunu."""
         agent = _agent()
