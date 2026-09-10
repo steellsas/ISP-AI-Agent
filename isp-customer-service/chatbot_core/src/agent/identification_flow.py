@@ -179,6 +179,32 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # city/street; the rung's spell reader owns this turn.
     if getattr(engine, "_spell_mode", False):
         return
+    # NLU wave D1 (live 2026-09-10: STT invented "Žeimių g.", the slot locked
+    # at conf 1.0 and the ladder pushed Ginkūnai for THREE turns over "aš
+    # apie Žeimių gatvę nieko NESAKIAU"): a denial naming the heard street
+    # DROPS it — and counts as a real miss on the road to the spelling round.
+    _low_d = (text or "").lower()
+    if s.profile.street.value and any(m in _low_d for m in ("nesakiau", "nesakau", "ne apie")):
+        from .evidence import _fold as _fd
+
+        _st = _fd(str(s.profile.street.value).replace(" g.", ""))[:5]
+        if _st and _st in _fd(text or ""):
+            from .slots import Slot as _Slot
+
+            engine._denied_street = _fd(str(s.profile.street.value))
+            s.profile.street = _Slot()
+            s.profile.house = _Slot()
+            engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
+            engine._addr_diag_note = None
+            engine.tracer.emit(
+                "decision",
+                intent="street_denied",
+                action="slot_dropped",
+                fails=engine._addr_resolve_fails,
+            )
+            # NE return: sakinys gali nešti ir PATAISYMĄ ("nesakiau Žeimių,
+            # sakiau TILŽĖS gatvė 60") — skaitymas tęsiasi, tik paneigtos
+            # gatvės nebesiūlome (žr. propose žemiau).
     # Address-evidence gate: only scan the turn for an address when it plausibly
     # CONTAINS one — a digit or an address word in the utterance, or the agent just
     # asked for the address. Without this, fuzzy street matching read an ADDRESS out
@@ -233,6 +259,21 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # authoritative statement and overrides earlier fragment readings.
     if reading.street and reading.house:
         conf = max(conf, 0.99)
+    # D1: the street the caller just DENIED never comes back from its own
+    # denial sentence ("apie Žeimių gatvę nesakiau" fuzzy-matches Žeimių) —
+    # re-read the turn against the registry WITHOUT it, so a correction in
+    # the same sentence ("…sakiau TILŽĖS gatvė 60") still lands.
+    _denied = getattr(engine, "_denied_street", None)
+    engine._denied_street = None
+    if _denied and reading.street:
+        from .evidence import _fold as _fd2
+
+        if _fd2(reading.street) == _denied:
+            streets2 = [st for st in streets if _fd2(st) != _denied]
+            reading = extract_address(text, streets2, localities)
+            conf = reading.street_confidence or 0.6
+            if reading.street and reading.house:
+                conf = max(conf, 0.99)
     if reading.city:
         p.city.propose(reading.city, conf, SlotStatus.HEARD)
     if reading.street:
@@ -781,6 +822,29 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         _q_register(engine, "ident", "account_code")
         engine.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
         return True, phrase("account_code_ask")
+    # NLU wave D2 (live 2026-09-10): the resolver's street CHOICES were
+    # rejected ("ne, nei viena / nesakiau tokios") and no new street arrived —
+    # the next method is the spelling round, not another suggestion loop.
+    low_r = user_input.lower()
+    if (
+        getattr(engine, "_addr_suggested", False)
+        and not getattr(engine, "_spell_done", False)
+        and not s.profile.street.value
+        and any(
+            m in low_r
+            for m in ("nei viena", "ne viena", "nė viena", "nei ta", "ne ta", "nesakiau", "kitokia")
+        )
+    ):
+        engine._addr_suggested = False
+        engine._spell_done = True
+        engine._spell_mode = True
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "street_spell")
+        engine.tracer.emit(
+            "decision", intent="street_spell", action="ask", reason="suggestions_rejected"
+        )
+        return True, phrase("spell_ask")
     # 2) Skaitikliai. TIKSLINIMO fazė (pavardės klausimas, diagnozės nota,
     # vietovės pasiūlymas) skaitiklių NEliečia.
     last_q = (engine._last_agent_question() or "").lower()

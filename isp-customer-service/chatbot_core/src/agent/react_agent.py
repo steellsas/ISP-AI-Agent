@@ -271,6 +271,11 @@ class ReactAgent:
         # spell_ask went out; one round per call.
         self._spell_mode = False
         self._spell_done = False
+        # NLU wave D1/D2 (2026-09-10): the street the caller DENIED saying
+        # (never re-proposed from the denial sentence) and the durable
+        # "resolver offered street choices" marker.
+        self._denied_street = None
+        self._addr_suggested = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says

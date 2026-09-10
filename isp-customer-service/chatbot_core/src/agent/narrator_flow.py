@@ -1367,6 +1367,12 @@ def update_state_from_observation(engine, action: str, observation: str):
                 from .identification_flow import address_diag_note
 
                 engine._addr_diag_note = address_diag_note(obs_data)
+                # NLU wave D2 (2026-09-10): the resolver offered street
+                # CHOICES — remember it durably (the per-turn diag note is
+                # wiped at the next turn's start), so a rejection of the
+                # suggestions can route to the spelling round.
+                if "pasiūlyk pasirinkim" in str(obs_data.get("hint") or ""):
+                    engine._addr_suggested = True
                 res_levels = obs_data.get("resolution") or {}
                 street_lvl = res_levels.get("street") or {}
                 # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
@@ -1394,6 +1400,7 @@ def update_state_from_observation(engine, action: str, observation: str):
             else:
                 engine._addr_diag_note = None
                 engine._addr_city_suggestion = None
+                engine._addr_suggested = False  # D2: choices answered by a hit
                 # B-wave registry: identification committed on ANY successful
                 # resolve (the LLM's own tool call included) — the ident
                 # question must never outlive it and freeze the walker.

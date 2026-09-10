@@ -136,6 +136,40 @@ class TestSpellingRung:
         r2 = agent._identification_scripted_reply("Vis tiek nesigauna")
         assert r2 and "abonento kodą" in r2
 
+    def test_denied_street_dropped_and_not_reread(self, db_connection):
+        """D1 (gyva 2026-09-10): „apie Žeimių gatvę nieko NESAKIAU" — slotas
+        išmetamas ir iš paties neigimo sakinio gatvė NEgrįžta."""
+        from agent.slots import SlotStatus
+
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.profile.street.propose("Žeimių g.", 1.0, SlotStatus.HEARD)
+        agent.state.profile.house.propose("60", 1.0, SlotStatus.HEARD)
+        agent._prefill_slots_from_text("Aš apie Žeimių gatvę nieko nesakiau")
+        assert agent.state.profile.street.value is None
+        assert agent._addr_resolve_fails >= 1  # žingsnis link paraidžiui
+
+    def test_denial_with_correction_keeps_new_street(self, db_connection):
+        """D1: „nesakiau Žeimių — Tilžės gatvė 60" — pataisymas išgyvena."""
+        from agent.slots import SlotStatus
+
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.profile.street.propose("Žeimių g.", 1.0, SlotStatus.HEARD)
+        agent._prefill_slots_from_text("Nesakiau Žeimių — Tilžės gatvė 60")
+        assert agent.state.profile.street.value and "Tilž" in agent.state.profile.street.value
+        assert agent.state.profile.house.value == "60"
+
+    def test_rejected_suggestions_go_to_spelling(self, db_connection):
+        """D2: resolverio pasiūlymai atmesti be naujos gatvės → paraidžiui."""
+        agent = _agent()
+        agent.state.problem_type = "internet_down"
+        agent.state.anamnesis_asked = True
+        agent._addr_suggested = True
+        r = agent._identification_scripted_reply("Ne, nei viena netinka")
+        assert r and "paraidžiui" in r
+        assert agent._spell_mode is True
+
     def test_spell_turn_prefill_silent(self, db_connection):
         """„K kaip Kaunas" spell turn'e NEtampa miestu Kaunu."""
         agent = _agent()
