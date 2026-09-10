@@ -51,7 +51,23 @@ def _tokenize(text: str) -> list[tuple[str, str]]:
             seq.append(("num", m.group("num")))
         else:
             seq.append(("word", m.group("word")))
-    return seq
+    # NLU wave block 1 (live 2026-09-08: "Tildžės 6 0 būtų namas" read house=6):
+    # two adjacent SINGLE-digit tokens are one spoken number ("šeši nulis" =
+    # 60), not two values — glue the pair. Longer digits never glue, so
+    # "Vilniaus 33 2" keeps its two numbers.
+    glued: list[tuple[str, str]] = []
+    for k, v in seq:
+        if (
+            k == "num"
+            and len(v) == 1
+            and glued
+            and glued[-1][0] == "num"
+            and len(glued[-1][1]) == 1
+        ):
+            glued[-1] = ("num", glued[-1][1] + v)
+            continue
+        glued.append((k, v))
+    return glued
 
 
 def _best_span(
@@ -117,28 +133,47 @@ def extract_address(
 
     nums = [(i, v) for i, (k, v) in enumerate(seq) if k == "num"]
 
+    # NLU wave block 1 (live P2, 2026-09-08): word ANCHORS decide the slot.
+    # "Tai but... but NAMO numeris yra 60" put 60 into the APARTMENT (the
+    # truncated "but" matched the flat marker); "60 būtų namas" lost the
+    # house. The number nearest to an explicit house word (namo/namas/namą,
+    # within 3 tokens either side) is the HOUSE — no marker may claim it.
+    _HOUSE_WORDS = {"namo", "namas", "nama", "name", "namu"}
+    house_anchor = None
+    house_anchor_i = None
+    for i, (k, v) in enumerate(seq):
+        if k == "word" and _deaccent_lt(v.lower()) in _HOUSE_WORDS:
+            near = [(abs(j - i), j, nv) for j, nv in nums if abs(j - i) <= 3]
+            if near:
+                _, house_anchor_i, house_anchor = min(near)
+            break
+
     # apartment = first number after a "but*" marker word. De-accent the word first so
     # STT long-vowel spellings ("būtos", "būto") still match the "but" marker — observed:
     # "Tilžės 60 būtos 3" left apartment=None, so the caller's flat was silently ignored.
+    # Block 1: a 3-letter "but" (usually a truncated "bet") is NOT a marker,
+    # and the house-anchored number is never the apartment.
     apt = None
     apt_i = None
     for i, (k, v) in enumerate(seq):
-        if k == "word" and _deaccent_lt(v.lower()).startswith("but"):
-            nxt = next(((j, nv) for j, nv in nums if j > i), None)
+        if k == "word" and _deaccent_lt(v.lower()).startswith("but") and len(v) >= 4:
+            nxt = next(((j, nv) for j, nv in nums if j > i and j != house_anchor_i), None)
             if nxt:
                 apt_i, apt = nxt
             break
 
-    # house = first remaining number after the street span (else the first one)
-    house = None
-    rest = [(j, v) for j, v in nums if j != apt_i]
-    if street is not None:
-        after = [(j, v) for j, v in rest if j > s_end]
-        pick = after or rest
-    else:
-        pick = rest
-    if pick:
-        house = pick[0][1]
+    # house = the anchored number first; else the first remaining number after
+    # the street span (else the first one).
+    house = house_anchor
+    rest = [(j, v) for j, v in nums if j != apt_i and j != house_anchor_i]
+    if house is None:
+        if street is not None:
+            after = [(j, v) for j, v in rest if j > s_end]
+            pick = after or rest
+        else:
+            pick = rest
+        if pick:
+            house = pick[0][1]
 
     return AddressReading(
         city=city, street=street, house=house, apartment=apt, street_confidence=sc

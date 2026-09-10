@@ -1369,6 +1369,19 @@ def update_state_from_observation(engine, action: str, observation: str):
                 engine._addr_diag_note = address_diag_note(obs_data)
                 res_levels = obs_data.get("resolution") or {}
                 street_lvl = res_levels.get("street") or {}
+                # HONEST not-exists (Andrius 2026-09-10 rev.2): every failed
+                # street reading lands on the attempt tracker; the SAME
+                # transcript coming back means the agent heard RIGHT and the
+                # street simply is not served — say so instead of pushing
+                # codes/letters at a correctly-heard address.
+                _given = str(street_lvl.get("given") or "")
+                if _given and street_lvl.get("status") not in (None, "ok", "not_in_city"):
+                    from .identification_flow import _register_street_attempt
+
+                    if _register_street_attempt(engine, _given) == "identical" and not getattr(
+                        engine, "_street_not_exists_said", False
+                    ):
+                        engine._street_not_exists_due = True
                 # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
                 # Ginkūnuose" — įsimenam siūlomą vietovę; klientui patvirtinus
                 # miesto slotas persijungia (prefill vielos) ir paieška vyksta

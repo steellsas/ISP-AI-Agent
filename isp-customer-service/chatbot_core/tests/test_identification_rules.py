@@ -80,7 +80,8 @@ class TestAccountCodeRung:
         assert agent.state.ticket_id is None
 
     def test_unrecognized_address_offers_code(self, db_connection):
-        """Turinys yra, bet registras jo visai neatpažįsta — po 2 siūlom kodą."""
+        """Turinys yra, bet registras jo visai neatpažįsta — po 2 siūlom kodą
+        (rev.2 2026-09-10: automatinių raidžių nebėra, fuzzy — pagrindinis)."""
         agent = _agent()
         agent.state.problem_type = "internet_down"
         agent.state.anamnesis_asked = True

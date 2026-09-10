@@ -90,6 +90,10 @@ def seed_database():
         invoices_sql = load_seed_file("invoices")
         cursor.executescript(invoices_sql)
 
+        # Similar street pairs for the letters-round voice tests.
+        print("   - Loading similar streets (letters-round demo)...")
+        cursor.executescript(load_seed_file("similar_streets"))
+
         # Commit changes
         conn.commit()
         print("commited")

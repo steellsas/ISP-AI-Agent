@@ -267,6 +267,18 @@ class ReactAgent:
         # garbled goodbye cannot loop the wrap-up.
         self._wrap_content_turns = 0
         self._wrap_react_note = False
+        # NLU wave block 4 (2026-09-09): the spelling rung — armed after the
+        # spell_ask went out; one round per call.
+        self._spell_mode = False
+        self._spell_done = False
+        # NLU wave D1 (2026-09-10): the street the caller DENIED saying —
+        # never re-proposed from the denial sentence itself.
+        self._denied_street = None
+        # HONEST not-exists (2026-09-10 rev.2): failed street readings across
+        # turns; the SAME transcript repeating = heard right, street absent.
+        self._street_attempts = []
+        self._street_not_exists_due = False
+        self._street_not_exists_said = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says

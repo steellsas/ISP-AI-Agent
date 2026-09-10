@@ -133,3 +133,21 @@ identifikacijos testų sluoksnio žymėjimas TESTU_ZEMELAPIS.md.
 - **PC-3 Negali dabar (namų darbas):** į gebėjimo klausimą: **„Negaliu, nesu namuose."**
   → LAUKIAM: NAMŲ DARBAS („kai grįšite — ištraukite laidą, 5 sekundes... jei neatsiras — paskambinkite, padėsime arba užregistruosiu meistrą. Gerai?") → „Gerai." → **callback atsisveikinimas**, BE tiketo. RAUDONA, jei spaudžia tiketą arba sako „perkrauta, neatsistatė".
   → Variantas: į „Gerai?" atsakyk „Ne, registruokite meistrą dabar." → tiketo dialogas su SĄŽININGA priežastimi (be „perkrautas, bet neatsistatė").
+
+---
+
+## PR — panašios gatvės ir sąžininga riba (rev.2 2026-09-10; reikia ♻️ DB)
+
+Automatinių raidžių klausimų NEBĖRA (fuzzy + pasiūlymai — pagrindinis kelias).
+Liko: PASYVUS kliento raidžiavimo supratimas + SĄŽININGA „gatvės nėra" riba.
+Registre panašios poros: **Tilžės ~ Tilvyčio**, **Dainų ~ Dainavos ~ Dailės**,
+**Vilniaus ~ Vilties**. Klientai: Tilvyčio g. 8 (Rasa), Dainavos g. 4 (Jonas),
+Vilties g. 15 (Eglė).
+
+- **PR-1 Fuzzy pasiūlymai su panašiomis:** sakyk darkytai **„Tilvyko gatvė 8"** →
+  LAUKIAM: pasiūlymas („Tilžės ar Tilvyčio?") → „Tilvyčio" → namo klausimas → identifikuota (Rasa). Jokių raidžių klausimų iš agento.
+- **PR-2 Klientas PATS raidžiuoja (pasyvus supratimas):** po „nerandu/pasiūlymo" NELAUKDAMAS sakyk: **„Taip kaip Vilnius, kaip Ieva, kaip Lina"** →
+  LAUKIAM: supranta raides VIL → siūlo VIL gatvę ir klausia namo.
+- **PR-3 Kontrolinis:** aiškiai **„Dainavos gatvė 4"** → fuzzy randa iš karto, normalus kelias (Jonas).
+- **PR-4 Išgirsta gerai, bet NĖRA (sąžininga riba):** aiškiai „Kosmonautų alėja 7" → „nerandu, patikslinkite" → **PAKARTOK tą patį** („Kosmonautų alėja") →
+  LAUKIAM: **„Girdžiu aiškiai, bet tokios gatvės aptarnaujamose vietovėse nerandu. Paslaugas teikiame Šiaulių mieste ir rajone — gal jūsų adresas kitame mieste?"** → „Ne, Šiauliuose" / nieko → toliau esama eilė: abonento kodas → mandagus uždarymas („paskambinkite, kai galėsite pasakyti adresą ar kodą"). RAUDONA, jei prašo raidžiuoti teisingai išgirstą žodį.

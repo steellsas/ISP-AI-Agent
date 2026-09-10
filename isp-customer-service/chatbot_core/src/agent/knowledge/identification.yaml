@@ -102,6 +102,16 @@ identification:
     # Identifikacijos etalonas (Andrius 2026-09-03): adresui nepavykus ~4
     # bandymus — KITAS METODAS: abonento kodas; jo nesant — pagalba tik
     # abonentams ir mandagus uždarymas.
+    # Paraidžiui liko TIK pasyvus (Andrius 2026-09-10 rev.2): agentas pats
+    # raidžių NEklausia (fuzzy + pasiūlymai — pagrindinis kelias), bet jei
+    # klientas PATS raidžiuoja („kaip Vilnius, kaip Ieva") — supranta.
+    spell_result: "Supratau raides {raides} — tai turbūt {gatve}. Koks namo numeris?"
+    # SĄŽININGA riba (Andrius 2026-09-10): tas pats žodis kartojasi — agentas
+    # girdi STABILIAI, vadinasi išgirdo teisingai, o tokios gatvės tiesiog
+    # nėra zonoje. Eilė: pirma MIESTAS, tada kodas (klausymas jau įjungtas),
+    # galiausiai esamas mandagus uždarymas („paskambinkite, kai galėsite
+    # pasakyti adresą ar kodą").
+    street_not_exists: "Girdžiu aiškiai, bet tokios gatvės aptarnaujamose vietovėse nerandu. Paslaugas teikiame Šiaulių mieste ir rajone — gal jūsų adresas kitame mieste?"
     account_code_ask: "Pabandykime kitaip — ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
     account_code_retry: "Kodas atrodo taip: A B brūkšnys ir penki skaitmenys, pavyzdžiui sąskaitos viršuje. Ar pavyksta jį rasti?"
     not_client_goodbye: "Deja, jūsų duomenų mūsų sistemoje rasti nepavyko — pagalba teikiama tik mūsų abonentams. Jei esate abonentas, paskambinkite turėdami sutarties adresą ar abonento kodą. Geros dienos!"
