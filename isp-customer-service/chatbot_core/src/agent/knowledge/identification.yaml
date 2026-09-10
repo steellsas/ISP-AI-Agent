@@ -102,6 +102,11 @@ identification:
     # Identifikacijos etalonas (Andrius 2026-09-03): adresui nepavykus ~4
     # bandymus — KITAS METODAS: abonento kodas; jo nesant — pagalba tik
     # abonentams ir mandagus uždarymas.
+    # NLU banga, paraidžiui pakopa (Andriaus idėja 2026-09-04): gatvė
+    # nesuprasta ×2 → prašome PARAIDŽIUI su inkaro žodžiais (pavienes raides
+    # Whisper darko, žodžius girdi gerai); pirmos raidės siaurina registrą.
+    spell_ask: "Sunkiai suprantu gatvės pavadinimą. Pabandykime paraidžiui — sakykite po raidę su žodžiais, pavyzdžiui: K kaip Kaunas, A kaip Alytus."
+    spell_result: "Supratau raides {raides} — tai turbūt {gatve}. Koks namo numeris?"
     account_code_ask: "Pabandykime kitaip — ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
     account_code_retry: "Kodas atrodo taip: A B brūkšnys ir penki skaitmenys, pavyzdžiui sąskaitos viršuje. Ar pavyksta jį rasti?"
     not_client_goodbye: "Deja, jūsų duomenų mūsų sistemoje rasti nepavyko — pagalba teikiama tik mūsų abonentams. Jei esate abonentas, paskambinkite turėdami sutarties adresą ar abonento kodą. Geros dienos!"

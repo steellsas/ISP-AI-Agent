@@ -167,7 +167,17 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # №2 (etalonas 2026-09-03): kodo laukimo fazėje adresų skaitytuvas TYLI —
     # kodo skaitmenys ne namo numeris, o fuzzy gatvių paieška iš tokių frazių
     # („Neturiu jokio KODO" → „Sodo g.", gyva I5) tik teršia slotus.
+    # NLU wave block 2 (live 2026-09-07: "Šiauliai, Tilžės gatvė 60, butas 3"
+    # was swallowed in code mode): a FULL dictation — an explicit street WORD
+    # in the turn — wakes the reader; bare digits stay silenced (the code).
     if getattr(engine, "_awaiting_account_code", False):
+        low_cd = (text or "").lower()
+        if not any(w in low_cd for w in ("gatv", " g.", "prospekt", "alėj", "alej", "aikšt")):
+            return
+    # NLU wave block 4: the spelling turn carries LETTERS ("K kaip Kaunas"),
+    # not an address — the fuzzy reader would turn the anchor words into a
+    # city/street; the rung's spell reader owns this turn.
+    if getattr(engine, "_spell_mode", False):
         return
     # Address-evidence gate: only scan the turn for an address when it plausibly
     # CONTAINS one — a digit or an address word in the utterance, or the agent just
@@ -217,6 +227,12 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
 
     p = s.profile
     conf = reading.street_confidence or 0.6
+    # NLU wave block 3 (live 2026-09-07: resolve kept going out with the
+    # stale 6/60 while the caller dictated the full correct address): a FULL
+    # dictation — street AND house heard in THIS turn — is the caller's
+    # authoritative statement and overrides earlier fragment readings.
+    if reading.street and reading.house:
+        conf = max(conf, 0.99)
     if reading.city:
         p.city.propose(reading.city, conf, SlotStatus.HEARD)
     if reading.street:
@@ -533,6 +549,41 @@ def _speak_code(code: str) -> str:
     return "A B " + " ".join(digits)
 
 
+def _spell_prefix(text: str | None) -> str:
+    """First letters from an anchor-word spelling ("K kaip Kaunas, U kaip
+    upė" -> "ku"). With "kaip" pairs present, only the word BEFORE each
+    "kaip" contributes; without any "kaip", every word's first letter counts
+    ("Kaunas Upė" -> "ku"). Whisper mangles bare letters but hears words."""
+    toks = [t.strip(".,!?-").lower() for t in (text or "").split() if t.strip(".,!?-")]
+    if not toks:
+        return ""
+    letters: list[str] = []
+    if "kaip" in toks:
+        for i, t in enumerate(toks):
+            if t == "kaip" and i > 0 and toks[i - 1].isalpha():
+                letters.append(toks[i - 1][0])
+    else:
+        letters = [t[0] for t in toks if t.isalpha() and len(t) >= 2]
+    return "".join(letters)
+
+
+def _street_by_prefix(engine: Any, prefix: str) -> str | None:
+    """The registry street whose folded name starts with the spelled prefix —
+    the shortest match wins (the caller spelled the NAME, not the suffix)."""
+    from .evidence import _fold
+    from .nlu import load_registry
+    from .tools import get_db
+
+    if engine._registry is None:
+        engine._registry = load_registry(get_db())
+    streets, _ = engine._registry
+    want = _fold(prefix)
+    matches = [st for st in streets if _fold(st).startswith(want)]
+    if not matches:
+        return None
+    return min(matches, key=len)
+
+
 def _lookup_by_code(engine: Any, s: Any, code: str):
     """find_customer(account_code) -> candidate + the aloud address offer, or
     None when the code is not in the DB."""
@@ -606,6 +657,32 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
 
     if not user_input:
         return False, None
+    # NLU wave block 4 (paraidžiui): the spelling answer is read FIRST — the
+    # anchor-word first letters narrow the registry by prefix; a hit proposes
+    # the street and asks the house, a miss falls to the account-code rung.
+    if getattr(engine, "_spell_mode", False):
+        engine._spell_mode = False
+        prefix = _spell_prefix(user_input)
+        cand = _street_by_prefix(engine, prefix) if len(prefix) >= 2 else None
+        if cand:
+            from .dialog_registry import register as _q_register
+            from .slots import SlotStatus
+
+            s.profile.street.propose(cand, 0.9, SlotStatus.HEARD)
+            engine._addr_unrecognized = 0
+            engine._addr_empty_turns = 0
+            _q_register(engine, "ident", "address_ask")
+            engine.tracer.emit(
+                "decision", intent="street_spell", action="matched", value=cand, prefix=prefix
+            )
+            return True, phrase("spell_result", raides=" ".join(prefix.upper()), gatve=cand)
+        engine.tracer.emit("decision", intent="street_spell", action="miss", prefix=prefix)
+        engine._awaiting_account_code = True
+        engine._code_grace = 0
+        from .dialog_registry import register as _q_register
+
+        _q_register(engine, "ident", "account_code")
+        return True, phrase("account_code_ask")
     # 0) Kodas girdimas VISADA (ne tik „režime") — klientas gali jį pasakyti
     # bet kada, taip pat po perspėjimo frazės.
     code = _extract_account_code(user_input)
@@ -725,6 +802,17 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             n = getattr(engine, "_addr_unrecognized", 0) + 1
             engine._addr_unrecognized = n
             if n >= 2:
+                # NLU wave block 4 (Andrius): before falling to the account
+                # code, ONE spelling round — anchor words survive STT where
+                # street names do not. One-shot per call.
+                if not getattr(engine, "_spell_done", False):
+                    engine._spell_done = True
+                    engine._spell_mode = True
+                    from .dialog_registry import register as _q_register
+
+                    _q_register(engine, "ident", "street_spell")
+                    engine.tracer.emit("decision", intent="street_spell", action="ask")
+                    return True, phrase("spell_ask")
                 engine._awaiting_account_code = True
                 engine._code_grace = 0
                 from .dialog_registry import register as _q_register
@@ -1017,6 +1105,9 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # Kodo fazės klausimas („o kur jį rasti?") eina į pakopą — retry
         # frazė su UŽUOMINA kur ieškoti ir YRA atsakymas (etalonas №2).
         and not getattr(engine, "_awaiting_account_code", False)
+        # NLU wave block 4: "V KAIP Vilnius" is the spelling answer, not a
+        # question — the rung's spell reader owns the armed turn.
+        and not getattr(engine, "_spell_mode", False)
     ):
         return None  # off-script — the LLM answers; guards kept the ladder state
         # (pre-problem questions fall through to the problem GATE below)
