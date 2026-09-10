@@ -118,7 +118,7 @@ class TestClientSideStrategy:
     def test_scope_routes_four_ways(self):
         # Phase 3.11 universality: every answer order has its own route — all,
         # one-unnamed (-> ask which), or a named device (-> cross-check the others).
-        assert next_step_id(self.s, "cs_scope", "all") == "cs_reboot"
+        assert next_step_id(self.s, "cs_scope", "all") == "cs_ability"
         assert next_step_id(self.s, "cs_scope", "one") == "cs_which"
         assert next_step_id(self.s, "cs_scope", "phone") == "cs_cross_phone"
         assert next_step_id(self.s, "cs_scope", "computer") == "cs_cross_computer"
@@ -129,9 +129,9 @@ class TestClientSideStrategy:
         assert next_step_id(self.s, "cs_which", "computer") == "cs_conn"
         # cross-check: others work -> device branch; others down too -> whole-home path.
         assert next_step_id(self.s, "cs_cross_phone", "yes") == "cs_wifi"
-        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_reboot"
+        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_ability"
         assert next_step_id(self.s, "cs_cross_computer", "yes") == "cs_conn"
-        assert next_step_id(self.s, "cs_cross_computer", "no") == "cs_reboot"
+        assert next_step_id(self.s, "cs_cross_computer", "no") == "cs_ability"
 
     def test_reboot_verify_resolves_or_escalates(self):
         assert next_step_id(self.s, "cs_reboot", None) == "cs_verify_all"  # fall through
@@ -152,7 +152,7 @@ class TestClientSideStrategy:
         # unreachable from every phone route (scope -> cross-check -> wifi/reboot).
         assert next_step_id(self.s, "cs_scope", "phone") == "cs_cross_phone"
         assert next_step_id(self.s, "cs_cross_phone", "yes") == "cs_wifi"
-        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_reboot"
+        assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_ability"
         assert next_step_id(self.s, "cs_which", "phone") == "cs_wifi"
         assert self.s.step("cs_wifi").goto == "cs_wifi2"
 

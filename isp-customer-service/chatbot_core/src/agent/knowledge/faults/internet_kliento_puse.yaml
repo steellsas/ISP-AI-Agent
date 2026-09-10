@@ -75,8 +75,8 @@ evidence:
 sprendimai:
 - jei: [fail_scope=visuose]
   tada: walker
-  zingsnis: cs_reboot
-  aprasymas: "perkrauti routerį — tai išsprendžia daugumą tokių atvejų"
+  zingsnis: cs_ability
+  aprasymas: "perkrauti routerį — tai išsprendžia daugumą tokių atvejų; pirma klausiama, ar klientas GALI dabar prieiti"
 - jei: [fail_device=telefonas]
   tada: walker
   zingsnis: cs_wifi
@@ -98,7 +98,7 @@ steps:
   detector: scope
   rag_section: 0
   'on':
-    all: cs_reboot
+    all: cs_ability
     one: cs_which
     phone: cs_cross_phone
     computer: cs_cross_computer
@@ -130,7 +130,7 @@ steps:
   rag_section: 0
   'on':
     'yes': cs_wifi
-    'no': cs_reboot
+    'no': cs_ability
   hint: 'They said the PHONE has no internet. Cross-check ONE thing: do the other home devices have
     internet? Others work -> the fault is on the phone; others down too -> whole-home path.'
   answers:
@@ -142,12 +142,62 @@ steps:
   rag_section: 0
   'on':
     'yes': cs_conn
-    'no': cs_reboot
+    'no': cs_ability
   hint: 'They said the COMPUTER has no internet. Cross-check ONE thing: do the other home devices
     have internet? Others work -> the fault is on the computer; others down too -> whole-home path.'
   answers:
     'yes': kituose įrenginiuose internetas VEIKIA
     'no': kituose įrenginiuose interneto irgi NĖRA
+# P-C gebėjimo trijulė (2026-09-10): prieš perkrovimo instrukciją — ar
+# klientas GALI dabar prieiti; galūnės _ability/_locate/_homework šventos
+# (docs/FAULT_PACKS.md — Ability-first šablonas).
+- id: cs_ability
+  kind: confirm
+  detector: yes_no
+  rag_section: 1
+  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio ir jį perkrauti"
+  'on':
+    'yes': cs_reboot
+    'no': cs_homework
+    lost: cs_locate
+  hint: 'All devices are down — a reboot would help. ONE short question and WAIT: can they get to
+    the router right now? Do NOT give the reboot instruction yet. Length model: "Padėtų routerio
+    perkrovimas. Ar galite dabar prieiti prie routerio?"'
+  answers:
+    'yes': gali dabar prieiti prie routerio
+    'no': negali dabar / nėra namie / nepatogu šiuo metu
+    lost: nežino, kur routeris yra arba kaip jis atrodo
+- id: cs_locate
+  kind: confirm
+  detector: yes_no
+  rag_section: 1
+  tikslas: "klientas surado routerį"
+  'on':
+    'yes': cs_reboot
+    'no': cs_homework
+  hint: 'They do not know where the router is. Describe it simply and ask if they can see it: a
+    small box with little lights, usually in the hallway or by a window; the internet cable runs
+    into it. Length model: "Tai nedidelė dėžutė su lemputėmis — dažniausiai prieškambaryje ar prie
+    lango. Matote tokią?"'
+  answers:
+    'yes': surado routerį / mato tokią dėžutę
+    'no': neranda / negali dabar ieškoti
+- id: cs_homework
+  kind: confirm
+  detector: yes_no
+  rag_section: 1
+  tikslas: "sutarta: grįžęs perkraus routerį, o jei neatsistatys — paskambins"
+  'on':
+    'yes': callback
+    'no': escalate
+  hint: 'They cannot do it now — homework warmly, then consent: when back, unplug the router from
+    the socket for 10 seconds, plug back in; if the internet does not return — call again and we
+    will continue, or register a technician. Length model: "Suprantu. Tada kai grįšite — ištraukite
+    routerį iš rozetės 10 sekundžių ir įjunkite iš naujo. Jei internetas neatsiras — paskambinkite,
+    tęsime arba užregistruosiu meistrą. Gerai?"'
+  answers:
+    'yes': sutinka — perkraus grįžęs ir paskambins, jei neveiks
+    'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 - id: cs_reboot
   kind: instruct
   rag_section: 1

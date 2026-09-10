@@ -487,13 +487,14 @@ class TestHearingAgent:
 
     @pytest.mark.usefixtures("walker_driven")
     def test_bare_ne_to_escalate_clarifies_once_then_escalates(self, db_connection, monkeypatch):
+        # P-C (2026-09-10): plikas "Ne." dr_intro žingsnyje dabar veda į
+        # NAMŲ DARBO sutikimą (ne tiesiai į escalate) — vienpusės durys
+        # persikėlė ten; "ne + registruokite" iš homework -> escalate.
         agent = self._agent(monkeypatch)
-        agent._walk_resolution("Ne.")  # keyword "no" routes dr_intro -> escalate
-        assert agent.state.resolution["step"] == "dr_intro"  # blocked — clarify instead
-        assert agent._escalate_clarify_pending is True
-        reply = agent._identification_scripted_reply("Ne.")
-        assert reply is not None and "registruoju meistrą" in reply
-        agent._walk_resolution("Ne.")  # repeated no IS a real no
+        agent._walk_resolution("Ne.")
+        assert agent.state.resolution["step"] == "dr_homework"
+        agent.state.resolution["asked"] = True
+        agent._walk_resolution("Ne, registruokite meistrą")
         assert agent.state.resolution["step"] == "escalate"
 
     def test_rich_refusal_still_escalates_directly(self, db_connection, monkeypatch):

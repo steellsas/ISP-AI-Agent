@@ -145,15 +145,34 @@ steps:
   rag_section: 0
   'on':
     'yes': dr_lights
-    'no': escalate
+    'no': dr_homework
   hint: 'Do NOT start ordering them about. First explain what YOU can see and what it likely means
     — the internet reaches the flat but the line does not see their device (likely the router or its
     cable) — and ASK whether it suits them to check it together now. VOICE: keep this to TWO short
-    sentences, do NOT enumerate every possible cause. Wait for their answer. If they cannot (not
-    home, busy), do not push: offer to register the fault or to call back.'
+    sentences, do NOT enumerate every possible cause. Wait for their answer.'
   answers:
     'yes': sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)
     'no': AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas
+# P-C namų darbas (2026-09-10): negali dabar — instrukcija ATEIČIAI + callback;
+# meistras tik paprašius. Galūnė _homework šventa: farewell = sutikimas,
+# „perskambinsiu" laimi, ragelis čia = callback be tiketo.
+- id: dr_homework
+  tikslas: "sutarta: grįžęs patikrins lemputes ir laidus, o jei neatsiras — paskambins"
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  'on':
+    'yes': callback
+    'no': escalate
+  hint: 'They cannot check now — give the homework warmly in TWO-THREE short sentences and ask
+    consent: when they are back, look whether any router light is on and that the power lead is
+    firmly in the socket and the router; if the internet does not return — call again and we will
+    continue, or register a technician. Length model: "Suprantu. Tada kai grįšite — pažiūrėkite,
+    ar dega routerio lemputės, ir ar laidai tvirtai įkišti. Jei internetas neatsiras —
+    paskambinkite, tęsime arba užregistruosiu meistrą. Gerai?"'
+  answers:
+    'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
+    'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 - id: dr_lights
   tikslas: "klientas prie routerio ir aišku, ar dega bent viena lemputė"
   kind: confirm
