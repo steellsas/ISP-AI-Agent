@@ -120,6 +120,65 @@ sprendimai:
   aprasymas: "laikinai paleisti internetą per kompiuterį"
 ```
 
+## Vairuotojas ir terminalai (papildyta 2026-09-10)
+
+```yaml
+meta:
+  vairuotojas: solveris    # solveris — LLM mąstytojas veda pagal playbook'ą
+                           # (gate'as validuoja); walker — griežtas žingsnių
+                           # medis be LLM sprendimų. Nauja kortelė: pradėk nuo
+                           # walker, solverį įjunk kai eiga pasiteisina.
+```
+
+Terminalai `on:` šakoms: `resolve` (išspręsta, closed_reason=resolved),
+`end` (uždaryta), `escalate` (žingsnis su kind: escalate → tiketas) ir
+**`callback`** (P-C 2026-09-09): sutarta, kad klientas atliks veiksmą vėliau
+ir paskambins — šiltas uždarymas closed_reason=callback su scripted
+callback_goodbye, BE tiketo.
+
+## Ability-first šablonas (P-C, Andrius 2026-09-08)
+
+Prieš KIEKVIENĄ instrukciją, kur klientui reikia fiziškai prieiti prie
+įrenginio, dedami trys žingsniai. **Vardų galūnės šventos** — mechanika jas
+atpažįsta (`*_ability`, `*_locate`, `*_homework`):
+
+```yaml
+- id: xx_ability            # „ar galite DABAR prieiti prie X?"
+  kind: confirm
+  detector: yes_no
+  'on': { 'yes': xx_instrukcija, 'no': xx_homework, lost: xx_locate }
+  answers:
+    'yes': gali dabar prieiti ir patikrinti
+    'no': negali dabar / nėra namie / nepatogu
+    lost: nežino, kur įrenginys ar kaip atrodo
+- id: xx_locate             # pagalba SURASTI įrenginį
+  kind: confirm
+  detector: yes_no
+  'on': { 'yes': xx_instrukcija, 'no': xx_homework }
+- id: xx_homework           # negali dabar → namų darbas + callback
+  kind: confirm
+  detector: yes_no
+  'on': { 'yes': callback, 'no': escalate }
+```
+
+Ką galūnės duoda iš mechanikos pusės (kodo keisti nereikia):
+- bendras cannot-now laiptelis ir jo skydas šiuose žingsniuose NUSILEIDŽIA —
+  „negaliu / nesu namie" yra ŠIO žingsnio atsakymas ir eina pagal `on:`;
+- švelnus atsisakymas nebe-eskaluoja į tiketą (refuse guard praleidžia);
+  aiškus REIKALAVIMAS („registruokite!") vis tiek laimi — su sąžininga
+  priežastimi („negali dabar atlikti veiksmų"), ne „veiksmas atliktas";
+- `xx_homework` žingsnyje atsisveikinimas („gerai, sutariam, viso gero")
+  YRA sutikimas → callback; „perskambinsiu" laimi net šalia „nereikia";
+- ragelio padėjimas homework žingsnyje uždaro callback, be tiketo.
+
+## Informavimo paketai (inform verdiktai)
+
+INFORM tipo verdiktų (skola, avarija) KALBA gyvena atskirai:
+`knowledge/informavimas.yaml` — šablonas `sakoma` su {placeholder}'iais,
+`fallback`, `aiskumo_salyga`. Sakinys be duomenų IŠMETAMAS (melo nebus).
+Duomenų šaltinis — diagnose signalai (naujam laukui reikia mechanikos eilutės
+signaluose).
+
 ## Naujo gedimo checklist'as
 
 1. `faults/<vardas>.yaml` — paketas su meta/tags (šablonu imk esamą).
