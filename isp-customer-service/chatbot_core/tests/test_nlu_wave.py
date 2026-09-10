@@ -99,17 +99,14 @@ class TestSpellingRung:
         cand = _street_by_prefix(agent, "vil")
         assert cand and cand.lower().startswith("vil")  # dabar VIL turi 2 kandidatus
 
-    def test_two_unrecognized_then_spell_then_code(self, db_connection):
+    def test_two_unrecognized_offers_code(self, db_connection):
+        """rev.2: automatinių raidžių NEBĖRA — po 2 neatpažintų kodas."""
         agent = _agent()
         agent.state.problem_type = "internet_down"
         agent.state.anamnesis_asked = True
         agent._identification_scripted_reply("Kosmonautų alėja 7")
         r = agent._identification_scripted_reply("Sakau — Kosmonautų alėja septyni")
-        assert r and "paraidžiui" in r  # pirma paraidžiui, ne kodas
-        assert agent._spell_mode is True
-        # nepavykusi paraidžiui (neatpažįstamos raidės) → kodo pakopa
-        r2 = agent._identification_scripted_reply("Nu nežinau ką čia sakot")
-        assert r2 and "abonento kodą" in r2
+        assert r and "abonento kodą" in r
 
     def test_spell_answer_matches_street_and_asks_house(self, db_connection):
         agent = _agent()
@@ -124,20 +121,14 @@ class TestSpellingRung:
             and agent.state.profile.street.value.lower().startswith("vil")
         )
 
-    def test_resolve_loop_offers_spelling_first(self, db_connection):
-        """Gyva 2026-09-10: darkytos gatvės loopas ėjo per RESOLVE nesėkmes ir
-        šoko tiesiai į kodą — paraidžiui pirmiau ir šiame kanale."""
+    def test_resolve_loop_offers_code(self, db_connection):
+        """rev.2: resolve loopas (3 nesėkmės) → kodas, be raidžių."""
         agent = _agent()
         agent.state.problem_type = "internet_down"
         agent.state.anamnesis_asked = True
         agent._addr_resolve_fails = 3
         r = agent._identification_scripted_reply("Tilžiatkas gatvė 6")
-        assert r and "paraidžiui" in r
-        # antrą kartą (spell jau išnaudotas) — kodas
-        agent._addr_resolve_fails = 3
-        agent._spell_mode = False
-        r2 = agent._identification_scripted_reply("Vis tiek nesigauna")
-        assert r2 and "abonento kodą" in r2
+        assert r and "abonento kodą" in r
 
     def test_denied_street_dropped_and_not_reread(self, db_connection):
         """D1 (gyva 2026-09-10): „apie Žeimių gatvę nieko NESAKIAU" — slotas
@@ -163,16 +154,6 @@ class TestSpellingRung:
         assert agent.state.profile.street.value and "Tilž" in agent.state.profile.street.value
         assert agent.state.profile.house.value == "60"
 
-    def test_rejected_suggestions_go_to_spelling(self, db_connection):
-        """D2: resolverio pasiūlymai atmesti be naujos gatvės → paraidžiui."""
-        agent = _agent()
-        agent.state.problem_type = "internet_down"
-        agent.state.anamnesis_asked = True
-        agent._addr_suggested = True
-        r = agent._identification_scripted_reply("Ne, nei viena netinka")
-        assert r and "paraidžiui" in r
-        assert agent._spell_mode is True
-
     def test_spell_prefix_client_form(self):
         """Kliento spontaniška forma: inkaras PO „kaip" (gyva: „Taip kaip
         tėtis ir kaip Ignas" = T, I)."""
@@ -181,32 +162,35 @@ class TestSpellingRung:
         assert _spell_prefix("Taip kaip tėtis ir kaip Ignas") == "ti"
         assert _spell_prefix("K kaip Kaunas, U kaip upė") == "ku"
 
-    def test_repeat_same_word_triggers_letters(self, db_connection):
-        """KARTOJIMO trigeris (Andrius): tas pats nesuprastas žodis antrą
-        kartą — agentas negirdi, klausiam raidžių. Skirtingi žodžiai — ne."""
+    def test_attempt_tracker_verdicts(self, db_connection):
+        """rev.2: identiškas pakartojimas = išgirsta TEISINGAI (gatvės nėra);
+        panašus-bet-kitoks = ASR nestabilus; skirtingi žodžiai — nieko."""
         from agent.identification_flow import _register_street_attempt
 
         agent = _agent()
-        assert _register_street_attempt(agent, "Šilkės") is False
-        assert _register_street_attempt(agent, "Šilkes gatvė") is True  # tas pats žodis
+        assert _register_street_attempt(agent, "Kosmonautų") is None
+        assert _register_street_attempt(agent, "Kosmonautų gatvė") == "identical"
         agent2 = _agent()
-        assert _register_street_attempt(agent2, "Šilkės") is False
-        assert _register_street_attempt(agent2, "Kosmonautų") is False  # kitas žodis
+        assert _register_street_attempt(agent2, "Šilkės") is None
+        assert _register_street_attempt(agent2, "Čilkes") == "similar"
+        agent3 = _agent()
+        assert _register_street_attempt(agent3, "Šilkės") is None
+        assert _register_street_attempt(agent3, "Kosmonautų") is None
 
-    def test_repeated_garbled_attempt_asks_letters_not_closes(self, db_connection):
-        """R4+repeat gyva (Tilžiukos): kartojamas darkinys — raidžių klausimas,
-        o ne tuščių turn'ų uždarymas."""
+    def test_identical_repeat_says_street_not_exists(self, db_connection):
+        """rev.2 (gyva Kosmonautų): tas pats žodis pakartotas — sąžininga
+        riba („tokios gatvės nerandu... ar tikrai mūsų klientas?"), ne
+        raidės/kodo spaudimas ir ne uždarymas."""
         agent = _agent()
         agent.state.problem_type = "internet_down"
         agent.state.anamnesis_asked = True
         agent._last_agent_question = lambda: "Gal galėtumėte pakartoti gatvės pavadinimą?"
-        agent._register_street_attempt_seed = None
         from agent.identification_flow import _account_code_rung, _register_street_attempt
 
-        _register_street_attempt(agent, "Tilžiuko")  # pirmas girdėjimas (resolve fail)
-        handled, r = _account_code_rung(agent, agent.state, "Tilžiukos.")
-        assert handled and r and "raides" in r  # spell_repeat_ask
-        assert agent._spell_mode is True
+        _register_street_attempt(agent, "Kosmonautų")  # pirmas girdėjimas
+        handled, r = _account_code_rung(agent, agent.state, "Kosmonautų.")
+        assert handled and r and "nerandu" in r and "mieste" in r  # pirma MIESTAS
+        assert agent._awaiting_account_code is True  # kodas girdimas, jei pasakys
         assert not agent.state.case_closed
 
     def test_letters_filter_garble_in_subset(self, db_connection):
@@ -229,14 +213,13 @@ class TestSpellingRung:
         r = agent._identification_scripted_reply("Taip kaip Tomas ir kaip Ieva, taip kaip Lina")
         assert r and ("Tilž" in r or "namo" in r)  # raidės TIL → Tilžės
 
-    def test_correct_hearing_not_found_no_letters(self, db_connection):
-        """Andrius: jei išgirdo TEISINGAI, o gatvės tiesiog nėra — raidžių
-        nereikia (skirtingi bandymai trigerio nekelia)."""
+    def test_first_sighting_triggers_nothing(self, db_connection):
+        """Andrius: pirmas girdėjimas — jokių specialių šakų."""
         from agent.identification_flow import _register_street_attempt
 
         agent = _agent()
-        assert _register_street_attempt(agent, "Kosmonautų") is False
-        assert agent._spell_due is None
+        assert _register_street_attempt(agent, "Kosmonautų") is None
+        assert agent._street_not_exists_due is False
 
     def test_spell_turn_prefill_silent(self, db_connection):
         """„K kaip Kaunas" spell turn'e NEtampa miestu Kaunu."""

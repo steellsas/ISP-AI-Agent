@@ -1367,25 +1367,21 @@ def update_state_from_observation(engine, action: str, observation: str):
                 from .identification_flow import address_diag_note
 
                 engine._addr_diag_note = address_diag_note(obs_data)
-                # NLU wave D2 (2026-09-10): the resolver offered street
-                # CHOICES — remember it durably (the per-turn diag note is
-                # wiped at the next turn's start), so a rejection of the
-                # suggestions can route to the spelling round.
-                if "pasiūlyk pasirinkim" in str(obs_data.get("hint") or ""):
-                    engine._addr_suggested = True
                 res_levels = obs_data.get("resolution") or {}
                 street_lvl = res_levels.get("street") or {}
-                # REPEAT trigger (Andrius 2026-09-10): every failed street
-                # reading lands on the attempt tracker; the SAME word coming
-                # back means the agent cannot hear it — letters round due.
+                # HONEST not-exists (Andrius 2026-09-10 rev.2): every failed
+                # street reading lands on the attempt tracker; the SAME
+                # transcript coming back means the agent heard RIGHT and the
+                # street simply is not served — say so instead of pushing
+                # codes/letters at a correctly-heard address.
                 _given = str(street_lvl.get("given") or "")
                 if _given and street_lvl.get("status") not in (None, "ok", "not_in_city"):
                     from .identification_flow import _register_street_attempt
 
-                    if _register_street_attempt(engine, _given) and not getattr(
-                        engine, "_spell_done", False
+                    if _register_street_attempt(engine, _given) == "identical" and not getattr(
+                        engine, "_street_not_exists_said", False
                     ):
-                        engine._spell_due = "repeat"
+                        engine._street_not_exists_due = True
                 # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
                 # Ginkūnuose" — įsimenam siūlomą vietovę; klientui patvirtinus
                 # miesto slotas persijungia (prefill vielos) ir paieška vyksta
@@ -1411,7 +1407,6 @@ def update_state_from_observation(engine, action: str, observation: str):
             else:
                 engine._addr_diag_note = None
                 engine._addr_city_suggestion = None
-                engine._addr_suggested = False  # D2: choices answered by a hit
                 # B-wave registry: identification committed on ANY successful
                 # resolve (the LLM's own tool call included) — the ident
                 # question must never outlive it and freeze the walker.

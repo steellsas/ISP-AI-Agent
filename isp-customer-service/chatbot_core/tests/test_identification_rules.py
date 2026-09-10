@@ -80,16 +80,14 @@ class TestAccountCodeRung:
         assert agent.state.ticket_id is None
 
     def test_unrecognized_address_offers_code(self, db_connection):
-        """Turinys yra, bet registras jo visai neatpažįsta — po 2 PIRMA
-        paraidžiui (NLU banga), o jai nepavykus — kodas."""
+        """Turinys yra, bet registras jo visai neatpažįsta — po 2 siūlom kodą
+        (rev.2 2026-09-10: automatinių raidžių nebėra, fuzzy — pagrindinis)."""
         agent = _agent()
         agent.state.problem_type = "internet_down"
         agent.state.anamnesis_asked = True
         agent._identification_scripted_reply("Kosmonautų alėja 7")
         r = agent._identification_scripted_reply("Sakau — Kosmonautų alėja septyni")
-        assert r and "paraidžiui" in r
-        r2 = agent._identification_scripted_reply("Nu nesuprantu ko norit")
-        assert r2 and "abonento kodą" in r2
+        assert r and "abonento kodą" in r
         assert agent._awaiting_account_code is True
 
     def test_code_mode_passes_content_through(self, db_connection):

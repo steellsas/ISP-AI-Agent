@@ -616,23 +616,30 @@ def _spell_prefix(text: str | None) -> str:
     return "".join(letters)
 
 
-def _register_street_attempt(engine: Any, garble: str) -> bool:
-    """Track failed street readings across turns. True when the caller is
-    REPEATING the same word (two attempts fuzzy-similar to each other) —
-    Andrius 2026-09-10: repetition means the AGENT cannot hear this word,
-    so the letters round should engage; a street heard correctly but absent
-    from the registry is not a mishearing and never triggers it."""
+def _register_street_attempt(engine: Any, garble: str) -> str | None:
+    """Track failed street readings across turns (Andrius 2026-09-10 rev.2):
+    'identical' — the SAME transcript came back, the agent hears it
+    CONSISTENTLY, so it heard RIGHT and the street simply is not in the
+    registry (the honest not-exists / are-you-our-client branch);
+    'similar' — a close-but-different garble, the ASR is unstable (fuzzy
+    suggestions and the code rung handle it); None — first sighting."""
     from .evidence import _fold
     from .nlu import street_match_score
 
     g = _fold((garble or "").replace("gatvė", "").replace(" g.", "").strip())[:24].strip()
     if len(g) < 3:
-        return False
+        return None
     attempts = getattr(engine, "_street_attempts", None) or []
-    repeat = any(street_match_score(g, prev) >= 0.55 for prev in attempts)
+    verdict: str | None = None
+    for prev in attempts:
+        if prev == g:
+            verdict = "identical"
+            break
+        if street_match_score(g, prev) >= 0.55:
+            verdict = "similar"
     attempts.append(g)
     engine._street_attempts = attempts[-4:]
-    return repeat
+    return verdict
 
 
 def _street_by_prefix_and_garble(engine: Any, prefix: str, garble: str | None) -> str | None:
@@ -846,18 +853,23 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             engine._awaiting_account_code = False
     if not s.problem_type:
         return False, None
-    # REPEAT trigger (Andrius 2026-09-10): the caller REPEATED the same
-    # unrecognized word — the agent cannot hear it; the letters round fires
-    # NOW (set by the attempt tracker in the capture/counter paths).
-    if getattr(engine, "_spell_due", None) and not getattr(engine, "_spell_done", False):
-        engine._spell_due = None
-        engine._spell_done = True
-        engine._spell_mode = True
+    # HONEST not-exists branch (Andrius 2026-09-10 rev.2): the SAME transcript
+    # repeated — the agent hears it consistently, so it heard RIGHT and such
+    # a street simply is not in the service area. Say so and draw the client
+    # boundary (paslaugos tik savo klientams); code listening arms so an
+    # insisting client has a way in.
+    if getattr(engine, "_street_not_exists_due", False) and not getattr(
+        engine, "_street_not_exists_said", False
+    ):
+        engine._street_not_exists_due = False
+        engine._street_not_exists_said = True
+        engine._awaiting_account_code = True
+        engine._code_grace = 0
         from .dialog_registry import register as _q_register
 
-        _q_register(engine, "ident", "street_spell")
-        engine.tracer.emit("decision", intent="street_spell", action="ask", reason="repeat")
-        return True, phrase("spell_repeat_ask")
+        _q_register(engine, "ident", "street_not_exists")
+        engine.tracer.emit("decision", intent="street_not_exists", action="say")
+        return True, phrase("street_not_exists")
     # 1) Miestas ne aptarnavimo zonoje — IŠ KARTO, vieną kartą. SVARBU:
     # „Vilniaus GATVĖ" yra Šiaulių gatvė, ne miestas — miesto žodis, po kurio
     # eina gatvės indikatorius, yra GATVĖS pavadinimas (gyvas testų lūžis).
@@ -886,48 +898,13 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     # butas/pavardė/vietovė — nesiskaito) → PIRMA paraidžiui, tada kodas.
     if getattr(engine, "_addr_resolve_fails", 0) >= 3:
         engine._addr_resolve_fails = 0
-        from .dialog_registry import register as _q_register
-
-        # NLU wave block 4 follow-up (live 2026-09-10: the garbled-street
-        # loop ran through RESOLVE failures, not the prefill counter, and
-        # jumped straight to the code — the spelling round comes first on
-        # THIS channel too; one shot per call either way).
-        if not getattr(engine, "_spell_done", False):
-            engine._spell_done = True
-            engine._spell_mode = True
-            _q_register(engine, "ident", "street_spell")
-            engine.tracer.emit(
-                "decision", intent="street_spell", action="ask", reason="resolve_loop"
-            )
-            return True, phrase("spell_ask")
         engine._awaiting_account_code = True
         engine._code_grace = 0
+        from .dialog_registry import register as _q_register
+
         _q_register(engine, "ident", "account_code")
         engine.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
         return True, phrase("account_code_ask")
-    # NLU wave D2 (live 2026-09-10): the resolver's street CHOICES were
-    # rejected ("ne, nei viena / nesakiau tokios") and no new street arrived —
-    # the next method is the spelling round, not another suggestion loop.
-    low_r = user_input.lower()
-    if (
-        getattr(engine, "_addr_suggested", False)
-        and not getattr(engine, "_spell_done", False)
-        and not s.profile.street.value
-        and any(
-            m in low_r
-            for m in ("nei viena", "ne viena", "nė viena", "nei ta", "ne ta", "nesakiau", "kitokia")
-        )
-    ):
-        engine._addr_suggested = False
-        engine._spell_done = True
-        engine._spell_mode = True
-        from .dialog_registry import register as _q_register
-
-        _q_register(engine, "ident", "street_spell")
-        engine.tracer.emit(
-            "decision", intent="street_spell", action="ask", reason="suggestions_rejected"
-        )
-        return True, phrase("spell_ask")
     # 2) Skaitikliai. TIKSLINIMO fazė (pavardės klausimas, diagnozės nota,
     # vietovės pasiūlymas) skaitiklių NEliečia.
     last_q = (engine._last_agent_question() or "").lower()
@@ -969,16 +946,16 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             (t.strip(".,!?") for t in user_input.split() if t.strip(".,!?").isalpha()),
             key=len,
         )
-        if _register_street_attempt(engine, _word) and not getattr(engine, "_spell_done", False):
-            engine._spell_due = "repeat"
-            engine._spell_done = True
-            engine._spell_mode = True
-            engine._spell_due = None
+        _rep = _register_street_attempt(engine, _word)
+        if _rep == "identical" and not getattr(engine, "_street_not_exists_said", False):
+            engine._street_not_exists_said = True
+            engine._awaiting_account_code = True
+            engine._code_grace = 0
             from .dialog_registry import register as _q_register
 
-            _q_register(engine, "ident", "street_spell")
-            engine.tracer.emit("decision", intent="street_spell", action="ask", reason="repeat")
-            return True, phrase("spell_repeat_ask")
+            _q_register(engine, "ident", "street_not_exists")
+            engine.tracer.emit("decision", intent="street_not_exists", action="say")
+            return True, phrase("street_not_exists")
     if _has_address_content(user_input) or alpha_attempt:
         engine._addr_empty_turns = 0
         # Turinys yra, bet registras jo VISAI neatpažįsta (nei sloto, nei
@@ -987,17 +964,6 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             n = getattr(engine, "_addr_unrecognized", 0) + 1
             engine._addr_unrecognized = n
             if n >= 2:
-                # NLU wave block 4 (Andrius): before falling to the account
-                # code, ONE spelling round — anchor words survive STT where
-                # street names do not. One-shot per call.
-                if not getattr(engine, "_spell_done", False):
-                    engine._spell_done = True
-                    engine._spell_mode = True
-                    from .dialog_registry import register as _q_register
-
-                    _q_register(engine, "ident", "street_spell")
-                    engine.tracer.emit("decision", intent="street_spell", action="ask")
-                    return True, phrase("spell_ask")
                 engine._awaiting_account_code = True
                 engine._code_grace = 0
                 from .dialog_registry import register as _q_register

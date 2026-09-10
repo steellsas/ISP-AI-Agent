@@ -271,15 +271,14 @@ class ReactAgent:
         # spell_ask went out; one round per call.
         self._spell_mode = False
         self._spell_done = False
-        # NLU wave D1/D2 (2026-09-10): the street the caller DENIED saying
-        # (never re-proposed from the denial sentence) and the durable
-        # "resolver offered street choices" marker.
+        # NLU wave D1 (2026-09-10): the street the caller DENIED saying —
+        # never re-proposed from the denial sentence itself.
         self._denied_street = None
-        self._addr_suggested = False
-        # REPEAT trigger (2026-09-10): failed street readings across turns —
-        # the same word repeating means the agent cannot hear it.
+        # HONEST not-exists (2026-09-10 rev.2): failed street readings across
+        # turns; the SAME transcript repeating = heard right, street absent.
         self._street_attempts = []
-        self._spell_due = None
+        self._street_not_exists_due = False
+        self._street_not_exists_said = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says

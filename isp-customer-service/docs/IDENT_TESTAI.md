@@ -136,15 +136,18 @@ identifikacijos testų sluoksnio žymėjimas TESTU_ZEMELAPIS.md.
 
 ---
 
-## PR — PARAIDŽIUI su panašiomis gatvėmis (2026-09-10; reikia ♻️ DB — atsiranda Tilvyčio/Dainavos/Vilties)
+## PR — panašios gatvės ir sąžininga riba (rev.2 2026-09-10; reikia ♻️ DB)
 
-Registre dabar yra PANAŠIŲ porų: **Tilžės ~ Tilvyčio** (TIL), **Dainų ~ Dainavos ~ Dailės** (D), **Vilniaus ~ Vilties** (VIL). Nauji klientai: Tilvyčio g. 8 (Rasa), Dainavos g. 4 (Jonas), Vilties g. 15 (Eglė) — visi be butų, sveikos linijos.
+Automatinių raidžių klausimų NEBĖRA (fuzzy + pasiūlymai — pagrindinis kelias).
+Liko: PASYVUS kliento raidžiavimo supratimas + SĄŽININGA „gatvės nėra" riba.
+Registre panašios poros: **Tilžės ~ Tilvyčio**, **Dainų ~ Dainavos ~ Dailės**,
+**Vilniaus ~ Vilties**. Klientai: Tilvyčio g. 8 (Rasa), Dainavos g. 4 (Jonas),
+Vilties g. 15 (Eglė).
 
-- **PR-1 Kartojimo trigeris:** unknown → problema → sakyk neaiškiai/greitakalbe **„Tilvyčio gatvė 8"** → agentas neišgirs arba pasiūlys („Tilžės?") → atmesk ir **PAKARTOK TĄ PATĮ žodį** („Tilvyčio!") →
-  LAUKIAM: **„girdžiu, kad kartojate, bet garsas man neaiškus — pasakykite gatvės pirmas raides žodžiais..."** → „T kaip Tomas, I kaip Ieva, L kaip Lina" → TIL turi DU kandidatus (Tilžės/Tilvyčio) — girdėtas darkinys nusveria → **„Supratau raides T I L — tai turbūt Tilvyčio g. Koks namo numeris?"** → „8" → identifikuota (Rasa).
-- **PR-2 Klientas pats raidžiuoja:** unknown → problema → „Vilties gatvė 15" (darkytai) → po pirmo „nerandu/pasiūlymo" NELAUKDAMAS klausimo sakyk: **„Taip kaip Vilnius, kaip Ieva, kaip Lina"** →
-  LAUKIAM: agentas supranta raides VIL be jokio režimo → darkinys renkasi tarp Vilniaus/Vilties → siūlo gatvę ir klausia namo.
-- **PR-3 Kontrolinis (algoritmo nesugadinom):** aiškiai pasakyk **„Dainavos gatvė 4"** →
-  LAUKIAM: fuzzy randa iš pirmo karto, JOKIŲ raidžių klausimų — normalus kelias iki galo (Jonas). RAUDONA, jei aiškiai pasakius įsijungia paraidžiui.
-- **PR-4 Teisingai išgirsta, bet nėra:** aiškiai „Kosmonautų alėja 7" → agentas sako nerandu → pasakyk KITĄ tikrą gatvę →
-  LAUKIAM: jokio paraidžiui (žodis nesikartojo — išgirdo teisingai, gatvės tiesiog nėra), pokalbis tęsiasi normaliai.
+- **PR-1 Fuzzy pasiūlymai su panašiomis:** sakyk darkytai **„Tilvyko gatvė 8"** →
+  LAUKIAM: pasiūlymas („Tilžės ar Tilvyčio?") → „Tilvyčio" → namo klausimas → identifikuota (Rasa). Jokių raidžių klausimų iš agento.
+- **PR-2 Klientas PATS raidžiuoja (pasyvus supratimas):** po „nerandu/pasiūlymo" NELAUKDAMAS sakyk: **„Taip kaip Vilnius, kaip Ieva, kaip Lina"** →
+  LAUKIAM: supranta raides VIL → siūlo VIL gatvę ir klausia namo.
+- **PR-3 Kontrolinis:** aiškiai **„Dainavos gatvė 4"** → fuzzy randa iš karto, normalus kelias (Jonas).
+- **PR-4 Išgirsta gerai, bet NĖRA (sąžininga riba):** aiškiai „Kosmonautų alėja 7" → „nerandu, patikslinkite" → **PAKARTOK tą patį** („Kosmonautų alėja") →
+  LAUKIAM: **„Girdžiu aiškiai, bet tokios gatvės aptarnaujamose vietovėse nerandu. Paslaugas teikiame Šiaulių mieste ir rajone — gal jūsų adresas kitame mieste?"** → „Ne, Šiauliuose" / nieko → toliau esama eilė: abonento kodas → mandagus uždarymas („paskambinkite, kai galėsite pasakyti adresą ar kodą"). RAUDONA, jei prašo raidžiuoti teisingai išgirstą žodį.
