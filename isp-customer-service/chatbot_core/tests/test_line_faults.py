@@ -109,6 +109,52 @@ class TestSeeds:
         assert d["verdict"]["side"] == "provider"
 
 
+class TestBlendGuard:
+    """Gyvas 2026-09-11: „perkišau, nepadėjo" per carry-through uždarė kaip
+    resolved. Blend žingsniai (ll/crc_recheck) — variklio, žodis jų nevaro."""
+
+    def test_nepadejo_at_cable_never_resolves(self, db_connection, monkeypatch):
+        from agent.resolution import get_strategy
+
+        agent = _agent("crc_errors", "crc_cable", monkeypatch, "crc_errors")
+        st = get_strategy("crc_errors")
+        agent._advance_instruct(
+            agent.state.resolution,
+            st.step("crc_cable"),
+            st,
+            "Gal ir užlenkės, bet perkišau, nepadėjo",
+        )
+        r = agent.state.resolution
+        assert r["step"] == "crc_recheck"  # patikros klausimas eina, byla NEuždaryta
+        assert not agent.state.case_closed
+
+    def test_restored_vocabulary_negations(self, db_connection):
+        from agent.resolution import Outcome, detect_restored
+
+        assert detect_restored("Perkišau, bet nepadėjo") is Outcome.NO
+        assert detect_restored("Nieko nepasikeitė") is Outcome.NO
+        assert detect_restored("Internetas nedirba") is Outcome.NO
+        # „jo" liko YES tik kaip atskiras žodis
+        assert detect_restored("Jo") is Outcome.YES
+        assert detect_restored("Jo, jau veikia") is Outcome.YES
+
+    def test_still_down_at_closing_reopens(self, db_connection, monkeypatch):
+        from types import SimpleNamespace
+
+        from agent.graph_v2.nodes.closing import make_closing_node
+
+        agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
+        s = agent.state
+        s.case_closed = True
+        s.closed_reason = "resolved"
+        node = make_closing_node(agent)
+        upd = node(SimpleNamespace(turn=SimpleNamespace(user_input="Internetas neveikia.")))
+        assert upd["turn"].reply  # registracijos dialogas, ne „geros dienos"
+        assert "geros dienos" not in upd["turn"].reply.lower()
+        assert not s.is_complete
+        assert "vis tiek neveikia" in (s.resolution.get("escalate_reason") or "")
+
+
 @pytest.mark.usefixtures("db_connection")
 class TestAbilityEntry:
     def test_ability_no_routes_to_homework(self, db_connection):

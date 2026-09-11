@@ -221,7 +221,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
                 "Kliento tinklo mazgas nepasiekiamas, registruotos avarijos nėra — "
                 "tiekėjo gedimas. INFORMUOK klientą: manomas gedimas TINKLE, jam "
                 "nieko daryti nereikia; kai bus išspręsta, su juo susisieks ir "
-                "informuos apie sutvarkymą. Kurk tiketą."
+                "informuos apie sutvarkymą. Jei klausia KADA — tikslaus laiko "
+                "nežadėk: darysime, kad kuo greičiau, ir informuosime, kai bus "
+                "išspręsta. Tiketas jau sukurtas automatiškai."
             ),
         )
 
@@ -239,7 +241,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
                     "tikėtinas mazgo gedimas. INFORMUOK klientą: manomas gedimas "
                     "TINKLE (ne tik pas jį), jam nieko daryti nereikia; kai gedimas "
                     "bus išspręstas, su juo susisieks ir informuos apie sutvarkymą. "
-                    "Kurk tiketą."
+                    "Jei klausia KADA — tikslaus laiko nežadėk: darysime, kad kuo "
+                    "greičiau, ir informuosime, kai bus išspręsta. Tiketas jau "
+                    "sukurtas automatiškai."
                 ),
             )
         return _verdict(

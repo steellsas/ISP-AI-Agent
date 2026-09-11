@@ -478,6 +478,13 @@ def advance_instruct(engine, r: dict, step, strat, user_input: str | None = None
         engine._simulate_router_reboot()
         engine._advance_reboot_check(r, user_input)
         return
+    # ll_recheck / crc_recheck are engine-owned BLEND steps too — never let the
+    # completing utterance keyword-route them (live 2026-09-11: "perkišau,
+    # nepadėjo" matched the loose restored-YES vocabulary and closed a damaged
+    # cable as resolved without the telemetry read).
+    if r.get("step") in ("ll_recheck", "crc_recheck"):
+        engine._advance_line_check(r, user_input)
+        return
     # Carry-through pre-answer: the utterance that completed the instruction often
     # already reports the outcome ("prisijungiau iš naujo — jau veikia"). If we just
     # landed on a restored CONFIRM and the SAME reply carries a clear YES, route it

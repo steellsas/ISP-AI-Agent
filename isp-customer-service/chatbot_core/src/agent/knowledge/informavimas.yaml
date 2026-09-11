@@ -40,3 +40,22 @@ active_outage:
     Patikrinau — jūsų rajone įvykusi tinklo avarija, meistrai jau dirba.
     Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą.
   aiskumo_salyga: [kas_negerai, kas_daroma, kada_atsistatys, kaip_suzinos]
+
+# Tinklo gedimas be registruotos avarijos (Andrius 2026-09-11): klientas
+# INFORMUOJAMAS — gedimas iki namo, nieko daryti nereikia, meistrai jau
+# užregistruoti (tiketą variklis sukuria pats, žr. _deferred_result),
+# informuosime kai bus pašalinta. Į „o kada?" — tikslaus laiko nežadame.
+node_fault_unregistered:
+  sakoma: >-
+    Patikrinau — matau gedimą tinkle iki jūsų namo, ne tik jūsų bute.
+    Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys.
+    Kai gedimas bus pašalintas, jus informuosime.
+  aiskumo_salyga: [kas_negerai, kas_daroma, kaip_suzinos]
+
+switch_unreachable:
+  sakoma: >-
+    Patikrinau — jūsų namą aptarnaujantis tinklo įrenginys nepasiekiamas,
+    gedimas mūsų tinkle.
+    Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys.
+    Kai gedimas bus pašalintas, jus informuosime.
+  aiskumo_salyga: [kas_negerai, kas_daroma, kaip_suzinos]

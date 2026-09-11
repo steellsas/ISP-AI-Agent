@@ -774,11 +774,19 @@ _RESTORED_NO = (
     "dar ne",
     "nėra internet",
     "nesat",
+    # Live 2026-09-11: "perkišau, nepadėjo" — the negated report vocabulary was
+    # missing, so the trailing "jo" substring matched _RESTORED_YES and a damaged
+    # cable closed as resolved.
+    "nepadėjo",
+    "nepadejo",
+    "nepadeda",
+    "nepasikeit",
+    "nedirba",
+    "neprisijung",
 )
 _RESTORED_YES = (
     "taip",  # the plain answer to "ar internetas atsirado?" — was missing, so a
     "aha",  # confirmed fix looked unanswered and ended in a needless ticket
-    "jo",
     "veikia",
     "atsirad",  # atsirado internetas
     "atsarad",  # STT garble of "atsirado" (live 2026-09-08: "interneto satsarado")
@@ -804,6 +812,10 @@ def detect_restored(text: str | None) -> Outcome | None:
     if re.search(r"\bne\b", low) or low.strip() in ("ne", "ne."):
         return Outcome.NO
     if any(m in low for m in _RESTORED_YES):
+        return Outcome.YES
+    # "jo" only as a standalone word — as a substring it matched "nepadėjo"/"jos"
+    # (live 2026-09-11 / S6) and flipped a NO report to YES.
+    if re.search(r"\bjo\b", low):
         return Outcome.YES
     return None
 
