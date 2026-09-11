@@ -202,7 +202,7 @@
   {
    "id": "S3_switch_unreachable_inform",
    "phone": "+37060020103",
-   "desc": "Switch nepasiekiamas (avarija neregistruota) — tiekėjo gedimas, informuoti ir uždaryti be tiketo",
+   "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",
    "turns": [
     "Labas, neveikia internetas",
     "Vakar vakare dingo, po nieko ypatingo",
@@ -212,10 +212,10 @@
    ],
    "expect": {
     "verdict_in": "switch_unreachable",
-    "disposition": "inform",
+    "disposition": "ticket",
     "reply_any": [
      "nepasiekiam",
-     "tiekėjo",
+     "tinkle",
      "gedim"
     ],
     "reply_none": []

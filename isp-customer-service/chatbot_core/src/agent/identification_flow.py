@@ -1425,6 +1425,11 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
 
     inf = inform_text(engine, reason)
     if inf:
+        # B3 inform verdicts (node/switch fault, Andrius 2026-09-11): the
+        # template PROMISES "meistrai jau užregistruoti" — the engine makes it
+        # true by registering the ticket itself before the words go out.
+        if reason in ("node_fault_unregistered", "switch_unreachable") and not s.ticket_id:
+            engine._register_ticket_from_state(None)
         engine._result_pending = False
         engine._news_told = True
         engine.tracer.emit("decision", intent="inform", action="template", reason=reason)

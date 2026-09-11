@@ -77,7 +77,10 @@ class EdgeTTSProvider:
         cache_key = (sentence, voice, kwargs.get("rate"), kwargs.get("pitch"))
         cached = self._CACHE.get(cache_key)
         if cached is not None:
+            logger.debug("edge-tts cache hit (%d chars)", len(sentence))
             return cached
+
+        import time
 
         import edge_tts  # deferred (optional dependency) — a cache hit needs none
 
@@ -88,7 +91,16 @@ class EdgeTTSProvider:
                     out.extend(chunk["data"])
             return bytes(out)
 
+        # Latency observability (2026-09-11): each sentence is a separate
+        # websocket round-trip to the free Microsoft endpoint, and intermittent
+        # throttling shows up as multi-second stalls mid-reply. Log every
+        # synthesis; a slow one is a WARNING so the stall is visible in the
+        # server log without debug level.
+        t0 = time.perf_counter()
         audio = asyncio.run(_collect())
+        ms = int((time.perf_counter() - t0) * 1000)
+        log = logger.warning if ms > 3000 else logger.info
+        log("edge-tts: %d chars -> %d bytes in %d ms", len(sentence), len(audio), ms)
         if audio:
             if len(self._CACHE) >= self._CACHE_MAX:
                 self._CACHE.pop(next(iter(self._CACHE)))

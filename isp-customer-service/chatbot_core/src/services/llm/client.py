@@ -246,6 +246,14 @@ def _execute_completion(kwargs: dict, model: str):
             last_error = e
             logger.warning(f"LLM call failed (attempt {attempt + 1}): {e}")
 
+            # Live 2026-09-11 (Groq gpt-oss-20b): json_validate_failed is a
+            # DETERMINISTIC model/prompt mismatch — retrying burns the
+            # provider's TPM budget and stalls the voice turn for seconds
+            # (the retries then hit the rate limit). Fail fast; the callers
+            # (understand/analyst/classifier) are fail-soft by design.
+            if "json_validate_failed" in str(e):
+                break
+
             if attempt < settings.max_retries - 1:
                 delay = settings.retry_delay * (attempt + 1)
                 time.sleep(delay)

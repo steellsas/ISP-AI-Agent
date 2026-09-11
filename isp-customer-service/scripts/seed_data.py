@@ -93,6 +93,8 @@ def seed_database():
         # Similar street pairs for the letters-round voice tests.
         print("   - Loading similar streets (letters-round demo)...")
         cursor.executescript(load_seed_file("similar_streets"))
+        print("   - Loading network fault cases (CRC / unregistered node)...")
+        cursor.executescript(load_seed_file("network_faults"))
 
         # Commit changes
         conn.commit()

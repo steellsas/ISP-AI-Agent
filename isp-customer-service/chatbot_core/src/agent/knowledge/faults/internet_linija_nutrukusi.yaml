@@ -1,0 +1,146 @@
+# GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
+#
+# NT (Andrius 2026-09-11): porto ryšys nutrūkęs, KAIMYNAI veikia — gedimas
+# kliento atkarpoje (kabelis laiptinė→butas arba routerio WAN pusė). Eiga:
+# hipotezės transliacija → ar gali prieiti DABAR (ability) → lemputės (dega =
+# routeris gyvas) → perkišti iš sienos ateinantį laidą → VARIKLIS perskaito
+# portą (ll_recheck) → neatsikėlė, o routeris gyvas → sąžininga išvada:
+# tikėtinas kabelio pažeidimas trasoje, vyksta meistras.
+verdict: link_down_local
+meta:
+  pavadinimas: "Nėra interneto — porto ryšys nutrūkęs, kaimynai veikia (kabelis iki buto)"
+  domenas: internet
+  priklauso_nuo: []
+  tags: [internet, nera_interneto, linija, kabelis, portas]
+  vairuotojas: walker
+problem: internet_down
+playbook: troubleshooting/internet_linija_nutrukusi
+evidence:
+  client: {}
+  patvirtinta_kai: []
+  paneigta_kai: []
+reikalinga: "routeris gyvas, bet signalas iš linijos neateina (interneto lemputė nedega, portas neaktyvus ir po perkišimo) — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
+isvada: "signalas iki jūsų routerio neateina — greičiausiai pažeistas kabelis trasoje"
+steps:
+- id: ll_ability
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio"
+  'on':
+    'yes': ll_lights
+    'no': ll_homework
+    lost: ll_locate
+  hint: 'Explain in ONE short sentence what you see — the connection to their flat is down while
+    the neighbours are fine, so it is most likely the cable or a connector on their side — then ONE
+    question and WAIT: can they get to the router right now? Length model: "Ryšio iki jūsų buto
+    nematau, nors kaimynai veikia — greičiausiai kabelis ar jungtis. Ar galite dabar prieiti prie
+    routerio?"'
+  answers:
+    'yes': gali dabar prieiti prie routerio
+    'no': negali dabar / nėra namie / nepatogu šiuo metu
+    lost: nežino, kur routeris yra arba kaip jis atrodo
+- id: ll_locate
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  tikslas: "klientas surado routerį"
+  'on':
+    'yes': ll_lights
+    'no': ll_homework
+  hint: 'They do not know where the router is. Describe it simply and ask if they can see it: a
+    small box with little lights, usually in the hallway or by a window; the internet cable from
+    the stairwell runs into it.'
+  answers:
+    'yes': surado routerį / mato tokią dėžutę
+    'no': neranda / negali dabar ieškoti
+- id: ll_homework
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  tikslas: "sutarta: grįžęs perkiš laidą, o jei neatsistatys — paskambins"
+  'on':
+    'yes': callback
+    'no': escalate
+  hint: 'They cannot check now — homework warmly, then consent: when back, firmly reseat the cable
+    that comes from the wall into the router; if the internet does not return — call again and we
+    will register a technician, the fault looks like the cable run. Length model: "Suprantu. Tada
+    kai grįšite — ištraukite ir tvirtai įkiškite laidą, kuris ateina iš sienos į routerį. Jei
+    internetas neatsiras — paskambinkite, registruosime meistrą. Gerai?"'
+  answers:
+    'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
+    'no': nesutinka / nori, kad meistras būtų registruojamas dabar
+- id: ll_lights
+  kind: confirm
+  detector: lights
+  rag_section: 1
+  tikslas: "aišku, ar routeris gyvas (dega bent viena lemputė)"
+  'on':
+    'yes': ll_wan
+    'no': ll_power
+  hint: 'They are at the router. ONE question and WAIT: is ANY light on? Lights ON means the router
+    is alive and the fault sits in the line — exactly what the telemetry suggests.'
+  answers:
+    'yes': dega / šviečia / mirksi bent viena lemputė
+    'no': nedega nė viena (įskaitant darkytas neiginio formas)
+# Aiškus simptomas (Andrius 2026-09-11): routeris gyvas, bet INTERNETO/WAN
+# lemputė nedega — signalas iš linijos neateina; tai patvirtina hipotezę.
+- id: ll_wan
+  kind: confirm
+  detector: lights
+  rag_section: 1
+  tikslas: "aišku, ar dega INTERNETO (WAN) lemputė — signalo iš linijos požymis"
+  'on':
+    'yes': ll_cable
+    'no': ll_cable
+  hint: 'The router is alive. ONE question and WAIT: is the INTERNET light (marked "Internet",
+    "WAN" or a globe icon) on or blinking? If it is DARK — the signal from the line is not
+    arriving, exactly the fault we see. Either way the next step is the cable reseat; when it is
+    dark, SAY the meaning first: "Interneto lemputė nedega — signalas iš linijos neateina."'
+  answers:
+    'yes': interneto/WAN lemputė dega ar mirksi
+    'no': interneto/WAN lemputė nedega / tamsi
+- id: ll_power
+  kind: confirm
+  detector: lights
+  rag_section: 2
+  tikslas: "maitinimas patikrintas — aišku, ar lemputės užsidegė"
+  'on':
+    'yes': ll_cable
+    'no': escalate
+  hint: 'No lights — first make the router alive: check the power lead is firmly in the socket and
+    in the router, try another socket, and ask whether any light came on. If still nothing, the
+    router itself is dead too — register the fault (the line AND the device need a technician).'
+  answers:
+    'yes': patikrinus maitinimą lemputės užsidegė
+    'no': net ir patikrinus maitinimą lemputės nedega
+- id: ll_cable
+  kind: instruct
+  rag_section: 3
+  goto: ll_recheck
+  hint: 'The router is alive, the line is not. ONE instruction, then wait: firmly reseat the cable
+    that comes from the wall/stairwell into the router''s internet port — pull it out, push back
+    until it clicks — and say when done.'
+- id: ll_recheck
+  kind: confirm
+  detector: restored
+  rag_section: 4
+  tikslas: "aišku, ar po laido perkišimo linija atsistatė (variklis perskaito portą)"
+  'on':
+    'yes': resolve
+    'no': escalate
+  hint: 'They reseated the cable. The ENGINE silently re-reads the port — do not declare success
+    yourself. Ask ONE thing: did the INTERNET light come on / did the internet come back? The
+    engine blends their answer with the fresh port reading.'
+  answers:
+    'yes': interneto lemputė užsidegė / internetas atsirado
+    'no': lemputė toliau nedega / internetas neatsirado
+- id: escalate
+  kind: escalate
+  tools: []
+  rag_section: 5
+  hint: 'The router is alive but the internet light stays dark and the port stays down after the
+    reseat — the signal is not arriving, most likely a damaged cable on the run (stairwell to
+    flat). Say the CLEAR conclusion ("signalas iki jūsų routerio neateina"), that a technician
+    must come out, and say you WILL register — "užregistruosiu" (future tense), NEVER
+    "užregistravau". The ticket note: router alive, WAN light dark, port down after reseat.'

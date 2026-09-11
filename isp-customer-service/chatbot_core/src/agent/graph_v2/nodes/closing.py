@@ -42,6 +42,30 @@ def make_closing_node(engine: Any):
                 return sync_updates(engine, user_input=user_input, reply=reply)
             reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
             return sync_updates(engine, user_input=user_input, reply=reply)
+        # A "still not working" at the goodbye contradicts a resolved close —
+        # never wave it off (live 2026-09-11: "Internetas neveikia." got
+        # "Geros dienos!"). Reopen and register instead of celebrating.
+        from ...resolution import Outcome, detect_restored
+
+        if (
+            user_input
+            and s.closed_reason == "resolved"
+            and not s.ticket_id
+            and s.resolution is not None
+            and detect_restored(user_input) is Outcome.NO
+        ):
+            s.case_closed = False
+            s.is_complete = False
+            s.resolution["escalate_reason"] = (
+                "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
+            )
+            engine.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
+            reply = engine._drive_escalate(None)
+            if reply:
+                speak_scripted(engine, CLOSING, user_input, reply)
+                return sync_updates(engine, user_input=user_input, reply=reply)
+            reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
+            return sync_updates(engine, user_input=user_input, reply=reply)
         maybe_finish(engine, user_input)
         # After a REGISTRATION the goodbye is scripted (live 2026-08-21: the
         # closing LLM re-asked the call-back hours after the ticket was done).

@@ -54,7 +54,9 @@ INSERT INTO ip_assignments (assignment_id, customer_id, ip_address, mac_address,
 
 -- ACTIVE Area Outage - affects CUST002 (Dainų g.)
 INSERT INTO area_outages (outage_id, city, street, outage_type, severity, status, reported_at, estimated_resolution, affected_customers, description) VALUES
-('OUT001', 'Šiauliai', 'Dainų g.', 'internet', 'major', 'active', datetime('now', '-2 hours'), datetime('now', '+2 hours'), 15, 'Fiber cable damaged during construction. Technicians on site.');
+-- Description is SPOKEN by the inform template ({vieta}) — Lithuanian, short.
+-- ETA +4h so a demo call an hour or two after the DB reset still hears a future time.
+('OUT001', 'Šiauliai', 'Dainų g.', 'internet', 'major', 'active', datetime('now', '-2 hours'), datetime('now', '+4 hours'), 15, 'kasimo darbų metu pažeistas magistralinis kabelis');
 
 -- Bandwidth logs for CUST008 - intermittent with packet loss
 INSERT INTO bandwidth_logs (log_id, customer_id, timestamp, download_mbps, upload_mbps, latency_ms, packet_loss_percent, measurement_type, notes) VALUES

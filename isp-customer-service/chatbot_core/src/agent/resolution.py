@@ -254,7 +254,7 @@ _CLIENT_SIDE = Strategy(
                 "ask the same again."
             ),
             on={
-                "all": "cs_reboot",
+                "all": "cs_ability",
                 "one": "cs_which",  # said ONE but did not name it -> ask which
                 "phone": "cs_cross_phone",  # named the device outright -> cross-check scope
                 "computer": "cs_cross_computer",
@@ -284,7 +284,7 @@ _CLIENT_SIDE = Strategy(
                 "other home devices have internet? If others work -> the fault is on the "
                 "phone; if others are down too -> whole-home path."
             ),
-            on={"yes": "cs_wifi", "no": "cs_reboot"},
+            on={"yes": "cs_wifi", "no": "cs_ability"},
         ),
         Step(
             id="cs_cross_computer",
@@ -296,7 +296,46 @@ _CLIENT_SIDE = Strategy(
                 "other home devices have internet? If others work -> the fault is on the "
                 "computer; if others are down too -> whole-home path."
             ),
-            on={"yes": "cs_conn", "no": "cs_reboot"},
+            on={"yes": "cs_conn", "no": "cs_ability"},
+        ),
+        # P-C ability trio (2026-09-10) — mirrors the pack file; the sacred
+        # *_ability/*_locate/*_homework suffixes carry the cannot-now
+        # mechanics (docs/FAULT_PACKS.md).
+        Step(
+            id="cs_ability",
+            kind=StepKind.CONFIRM,
+            detector="yes_no",
+            rag_section=1,
+            hint=(
+                "All devices are down — a reboot would help. ONE short question and "
+                "WAIT: can they get to the router right now? Do NOT give the reboot "
+                "instruction yet."
+            ),
+            on={"yes": "cs_reboot", "no": "cs_homework", "lost": "cs_locate"},
+        ),
+        Step(
+            id="cs_locate",
+            kind=StepKind.CONFIRM,
+            detector="yes_no",
+            rag_section=1,
+            hint=(
+                "They do not know where the router is. Describe it simply and ask if "
+                "they can see it: a small box with little lights, usually in the "
+                "hallway or by a window; the internet cable runs into it."
+            ),
+            on={"yes": "cs_reboot", "no": "cs_homework"},
+        ),
+        Step(
+            id="cs_homework",
+            kind=StepKind.CONFIRM,
+            detector="yes_no",
+            rag_section=1,
+            hint=(
+                "They cannot do it now — homework warmly, then consent: when back, "
+                "unplug the router from the socket for 10 seconds, plug back in; if "
+                "the internet does not return — call again or register a technician."
+            ),
+            on={"yes": "callback", "no": "escalate"},
         ),
         Step(
             id="cs_reboot",
@@ -412,7 +451,21 @@ _DEAD_ROUTER = Strategy(
                 "Wait for their answer. If they cannot (not home, busy), do not push: "
                 "offer to register the fault or to call back."
             ),
-            on={"yes": "dr_lights", "no": "escalate"},
+            on={"yes": "dr_lights", "no": "dr_homework"},
+        ),
+        # P-C homework (2026-09-10) — mirrors the pack: cannot check now ->
+        # homework + callback; a ticket only when asked.
+        Step(
+            id="dr_homework",
+            kind=StepKind.CONFIRM,
+            detector="yes_no",
+            rag_section=0,
+            hint=(
+                "They cannot check now — homework warmly, then consent: when back, "
+                "look whether any router light is on and the power lead is firmly in; "
+                "if the internet does not return — call again or register a technician."
+            ),
+            on={"yes": "callback", "no": "escalate"},
         ),
         Step(
             id="dr_lights",
@@ -721,11 +774,19 @@ _RESTORED_NO = (
     "dar ne",
     "nėra internet",
     "nesat",
+    # Live 2026-09-11: "perkišau, nepadėjo" — the negated report vocabulary was
+    # missing, so the trailing "jo" substring matched _RESTORED_YES and a damaged
+    # cable closed as resolved.
+    "nepadėjo",
+    "nepadejo",
+    "nepadeda",
+    "nepasikeit",
+    "nedirba",
+    "neprisijung",
 )
 _RESTORED_YES = (
     "taip",  # the plain answer to "ar internetas atsirado?" — was missing, so a
     "aha",  # confirmed fix looked unanswered and ended in a needless ticket
-    "jo",
     "veikia",
     "atsirad",  # atsirado internetas
     "atsarad",  # STT garble of "atsirado" (live 2026-09-08: "interneto satsarado")
@@ -751,6 +812,10 @@ def detect_restored(text: str | None) -> Outcome | None:
     if re.search(r"\bne\b", low) or low.strip() in ("ne", "ne."):
         return Outcome.NO
     if any(m in low for m in _RESTORED_YES):
+        return Outcome.YES
+    # "jo" only as a standalone word — as a substring it matched "nepadėjo"/"jos"
+    # (live 2026-09-11 / S6) and flipped a NO report to YES.
+    if re.search(r"\bjo\b", low):
         return Outcome.YES
     return None
 

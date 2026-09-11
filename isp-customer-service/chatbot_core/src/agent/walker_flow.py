@@ -306,6 +306,11 @@ def walk_resolution(engine, user_input: str | None) -> None:
     if step.id == "rh_check":
         engine._advance_reboot_check(r, user_input)
         return
+    # NT line faults (2026-09-11): the cable-reseat check re-reads the port /
+    # CRC level and blends it with the caller's word.
+    if step.id in ("ll_recheck", "crc_recheck"):
+        engine._advance_line_check(r, user_input)
+        return
     # Bridge: did the device they just plugged in actually appear on the line?
     if step.id == "dr_see_device":
         engine._advance_see_device(r)
@@ -472,6 +477,13 @@ def advance_instruct(engine, r: dict, step, strat, user_input: str | None = None
     if r.get("step") == "rh_check":
         engine._simulate_router_reboot()
         engine._advance_reboot_check(r, user_input)
+        return
+    # ll_recheck / crc_recheck are engine-owned BLEND steps too — never let the
+    # completing utterance keyword-route them (live 2026-09-11: "perkišau,
+    # nepadėjo" matched the loose restored-YES vocabulary and closed a damaged
+    # cable as resolved without the telemetry read).
+    if r.get("step") in ("ll_recheck", "crc_recheck"):
+        engine._advance_line_check(r, user_input)
         return
     # Carry-through pre-answer: the utterance that completed the instruction often
     # already reports the outcome ("prisijungiau iš naujo — jau veikia"). If we just
@@ -802,6 +814,53 @@ def _classify_reboot_check(engine, user_input: str | None) -> str | None:
     if obs is not None and obs.is_answer and obs.confidence >= 0.5:
         return str(obs.label)
     return None
+
+
+def advance_line_check(engine, r: dict, user_input: str | None) -> None:
+    """ll_recheck / crc_recheck (NT, Andrius 2026-09-11): after the cable
+    reseat the ENGINE re-reads the line and blends it with the caller's word
+    — the reboot-check pattern for the LINE faults.
+
+    Routes:
+    - fresh read still a line fault -> the honest escalate (the cable run is
+      damaged; a technician must come out), whatever the caller said;
+    - line recovered + caller YES -> resolved, no ticket;
+    - line recovered but caller NO -> escalate (the technician sorts the
+      rest; the note says the line itself came back);
+    - unclear caller word with a recovered line -> hold, the step re-asks."""
+    from .resolution import Outcome, detect_restored
+
+    if not r.get("asked"):
+        return
+    reason_now = engine._fresh_diagnose_reason()
+    line_bad = reason_now in (
+        "link_down_local",
+        "crc_errors",
+        "switch_unreachable",
+        "node_fault_unregistered",
+        "no_port_data",
+    )
+    if line_bad:
+        r["escalate_reason"] = (
+            "Routeris gyvas, bet linija neatsistatė po laido perkišimo — "
+            "tikėtinas kabelio pažeidimas trasoje."
+        )
+        engine._goto_step(r, "escalate")
+        engine.tracer.emit("decision", intent="line_check", action="still_down", reason=reason_now)
+        return
+    outcome = detect_restored(user_input)
+    if outcome is Outcome.YES:
+        engine._route_to(r, "resolve")
+        engine.tracer.emit("decision", intent="line_check", action="resolved")
+        return
+    if outcome is Outcome.NO:
+        r["escalate_reason"] = (
+            "Linija atsistatė, bet klientas sako, kad internetas vis tiek neveikia."
+        )
+        engine._goto_step(r, "escalate")
+        engine.tracer.emit("decision", intent="line_check", action="line_ok_caller_no")
+        return
+    engine.tracer.emit("decision", intent="line_check", action="hold")
 
 
 def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:

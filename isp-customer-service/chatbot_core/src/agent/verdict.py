@@ -219,7 +219,11 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             reason="switch_unreachable",
             agent_message=(
                 "Kliento tinklo mazgas nepasiekiamas, registruotos avarijos nėra — "
-                "tiekėjo gedimas. Kurk tiketą; darbuotojas susisieks suderinti laiko."
+                "tiekėjo gedimas. INFORMUOK klientą: manomas gedimas TINKLE, jam "
+                "nieko daryti nereikia; kai bus išspręsta, su juo susisieks ir "
+                "informuos apie sutvarkymą. Jei klausia KADA — tikslaus laiko "
+                "nežadėk: darysime, kad kuo greičiau, ir informuosime, kai bus "
+                "išspręsta. Tiketas jau sukurtas automatiškai."
             ),
         )
 
@@ -234,7 +238,12 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
                 reason="node_fault_unregistered",
                 agent_message=(
                     "Kliento ir kaimynų portai neaktyvūs, bet avarija neregistruota — "
-                    "tikėtinas mazgo gedimas. Kurk tiketą."
+                    "tikėtinas mazgo gedimas. INFORMUOK klientą: manomas gedimas "
+                    "TINKLE (ne tik pas jį), jam nieko daryti nereikia; kai gedimas "
+                    "bus išspręstas, su juo susisieks ir informuos apie sutvarkymą. "
+                    "Jei klausia KADA — tikslaus laiko nežadėk: darysime, kad kuo "
+                    "greičiau, ir informuosime, kai bus išspręsta. Tiketas jau "
+                    "sukurtas automatiškai."
                 ),
             )
         return _verdict(

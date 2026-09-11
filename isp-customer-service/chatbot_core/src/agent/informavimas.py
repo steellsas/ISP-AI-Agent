@@ -141,15 +141,19 @@ def inform_text(engine: Any, reason: str | None) -> str | None:
     sentences = re.split(r"(?<=[.!?])\s+", str(entry["sakoma"]).strip())
     kept: list[str] = []
     data_sentences = 0
+    placeholder_sentences = 0
     for sent in sentences:
         keys = re.findall(r"\{(\w+)\}", sent)
         if not keys:
             kept.append(sent)
             continue
+        placeholder_sentences += 1
         if all(k in vals for k in keys):
             kept.append(sent.format(**vals))
             data_sentences += 1
-    if data_sentences == 0:
+    # The fallback kicks in only when the template HAS data sentences and none
+    # rendered — a fully static template (node/switch fault) speaks as-is.
+    if placeholder_sentences and data_sentences == 0:
         fb = str(entry.get("fallback") or "").strip()
         return re.sub(r"\s+", " ", fb) if fb else None
     text = re.sub(r"\s+", " ", " ".join(kept)).strip()

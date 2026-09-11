@@ -343,6 +343,42 @@ class TestRestoredGarble:
         assert detect_restored("interneto atsarado jau") is Outcome.YES
 
 
+class TestNodeFaultInform:
+    """B3 inform (Andrius 2026-09-11): mazgo/switch gedimas — statinis šablonas
+    kalba (be placeholder'ių), variklis pats sukuria tiketą prieš žodžius."""
+
+    def test_static_templates_speak(self, db_connection):
+        from agent.informavimas import inform_text
+
+        a = _agent()
+        t = inform_text(a, "node_fault_unregistered")
+        assert t and "nieko daryti nereikia" in t and "informuosime" in t
+        assert "užregistravau" in t
+        t2 = inform_text(a, "switch_unreachable")
+        assert t2 and "nieko daryti nereikia" in t2 and "informuosime" in t2
+
+    def test_deferred_result_registers_ticket_and_informs(self, db_connection):
+        from agent.react_agent import ReactAgent
+
+        a = ReactAgent(caller_phone="+37060030306")
+        a.state.customer_id = "CUST306"
+        a.state.customer_address = "Šiauliai, Vilties g. 17-2"
+        a.state.problem_type = "internet_down"
+        a.state.caller_name = "Lina"
+        a._result_pending = True
+        a.state.diagnosis["network"] = {"reason": "node_fault_unregistered", "signals": {}}
+        a.state.hypothesis = {
+            "cause": "node_fault_unregistered",
+            "because": [],
+            "status": "testing",
+            "settled_by": None,
+        }
+        r = a._identification_scripted_reply("Lina čia")
+        assert r and "meistrai" in r.lower() and "informuosime" in r
+        assert "neregistruotas" not in r  # žalias gloss'as nebekalba
+        assert a.state.ticket_id  # „meistrai jau užregistruoti" — tiesa
+
+
 class TestInformResultComposer:
     def test_deferred_result_uses_template(self, db_connection):
         """Pilnas kelias: diagnozė su skola → atidėtas rezultatas kalba

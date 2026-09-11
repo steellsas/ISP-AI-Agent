@@ -110,7 +110,9 @@ class TestRouting:
 
         session = AgentSession(caller_phone="unknown", engine="graph")
         session.greeting()
-        session.state.customer_id = "CUST104"  # link_down_local -> no strategy registered
+        # NT (2026-09-11): link_down_local gavo pack'ą, tad CUST104 nebetinka
+        # kaip „be strategijos" — billing inform (CUST007) strategijos neturi.
+        session.state.customer_id = "CUST007"
 
         names = self._run_turn_capture_tools(session, "taip")
 
