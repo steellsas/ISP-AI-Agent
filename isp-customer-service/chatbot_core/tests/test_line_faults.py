@@ -32,13 +32,15 @@ class TestPacksBuild:
             "ll_locate",
             "ll_homework",
             "ll_lights",
+            "ll_wan",
             "ll_power",
             "ll_cable",
             "ll_recheck",
             "escalate",
         ]
         assert st.step("ll_homework").on == {"yes": "callback", "no": "escalate"}
-        assert st.step("ll_lights").on == {"yes": "ll_cable", "no": "ll_power"}
+        # Aiškus simptomas (Andrius): po bendrų lempučių — INTERNETO lemputė.
+        assert st.step("ll_lights").on == {"yes": "ll_wan", "no": "ll_power"}
 
     def test_crc_strategy(self, db_connection):
         from agent.resolution import get_strategy

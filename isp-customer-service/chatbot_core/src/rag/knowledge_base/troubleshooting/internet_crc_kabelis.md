@@ -10,10 +10,12 @@ Pasakyti, ką matome: linija veikia, bet daug klaidų — dažniausiai pažeista
 ar atsilaisvinęs laidas. Ar klientas gali DABAR prieiti prie routerio?
 Negalint — namų darbas (perkišti abiejuose galuose grįžus) ir susitarimas.
 
-### Žingsnis 1: Perkišti laidą abiejuose galuose
+### Žingsnis 1: Perkišti laidą routeryje
 
-Interneto laidą ištraukti iš routerio ir įkišti iki spragtelėjimo; tą patį
-padaryti sienos lizde. Atsilaisvinusi jungtis — dažniausia priežastis.
+Interneto laidą (ateinantį iš lauko) ištraukti iš routerio interneto lizdo
+ir įkišti iki spragtelėjimo. NESAKYTI „abiejuose galuose" — nežinome, kaip
+pas klientą atvestas tinklas (UTP gali eiti tiesiai iš sienos). Paklausti,
+ar ant laido nesimato pažeidimų (užlenkimas, prispaudimas).
 
 ### Žingsnis 2: Linijos patikra
 

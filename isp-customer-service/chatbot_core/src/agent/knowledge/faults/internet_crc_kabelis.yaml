@@ -17,7 +17,7 @@ evidence:
   client: {}
   patvirtinta_kai: []
   paneigta_kai: []
-reikalinga: "linijoje daug klaidų ir po laido perkišimo — pažeistas laidas, reikalingas keitimas"
+reikalinga: "linijoje daug klaidų ir po laido perkišimo routeryje — pažeistas laidas, reikalingas keitimas (perkišimas būtų tik laikinas sprendimas)"
 isvada: "linijoje daug klaidų — pažeistas arba blogai įkištas laidas"
 steps:
 - id: crc_ability
@@ -54,15 +54,15 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 0
-  tikslas: "sutarta: grįžęs perkiš laidą abiejuose galuose, o jei nepadės — paskambins"
+  tikslas: "sutarta: grįžęs perkiš interneto laidą routeryje, o jei nepadės — paskambins"
   'on':
     'yes': callback
     'no': escalate
   hint: 'They cannot check now — homework warmly, then consent: when back, firmly reseat the
-    internet cable at BOTH ends (at the router and at the wall socket); if it still misbehaves —
-    call again and we will register a cable replacement. Length model: "Suprantu. Tada kai grįšite
-    — ištraukite ir tvirtai įkiškite interneto laidą abiejuose galuose. Jei nepadės —
-    paskambinkite, registruosime laido keitimą. Gerai?"'
+    internet cable AT THE ROUTER (we do not know how their wiring runs, so never mention wall
+    sockets or both ends); if it still misbehaves — call again and we will register a cable
+    replacement. Length model: "Suprantu. Tada kai grįšite — ištraukite ir tvirtai įkiškite
+    interneto laidą routeryje. Jei nepadės — paskambinkite, registruosime laido keitimą. Gerai?"'
   answers:
     'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
     'no': nesutinka / nori, kad meistras būtų registruojamas dabar
@@ -70,8 +70,11 @@ steps:
   kind: instruct
   rag_section: 1
   goto: crc_recheck
-  hint: 'ONE instruction, then wait: firmly reseat the internet cable at BOTH ends — pull it out
-    of the router and push back until it clicks, the same at the wall socket — and say when done.'
+  hint: 'ONE instruction, then wait: firmly reseat the internet cable AT THE ROUTER — pull the
+    cable that comes in from outside out of the router''s internet port and push back until it
+    clicks. Do NOT tell them to reseat "both ends" — we do not know their wiring (the UTP may run
+    straight out of the wall). While they are at it, ask whether the cable shows any visible
+    damage (a kink, a pinch, a chewed spot). Say when done.'
 - id: crc_recheck
   kind: confirm
   detector: restored
@@ -90,6 +93,7 @@ steps:
   kind: escalate
   tools: []
   rag_section: 3
-  hint: 'The errors persist after the reseat — the cable is damaged and must be replaced by a
-    technician. Say it honestly; say you WILL register — "užregistruosiu" (future tense), NEVER
-    "užregistravau". The ticket note must say CRC errors persist after reseating both ends.'
+  hint: 'The errors persist after the reseat — even if reseating had helped a little, a damaged
+    cable is a TEMPORARY state, so the fault gets registered: a technician will replace the
+    cable. Say it honestly; say you WILL register — "užregistruosiu" (future tense), NEVER
+    "užregistravau". Include any visible damage the caller mentioned on the ticket note.'

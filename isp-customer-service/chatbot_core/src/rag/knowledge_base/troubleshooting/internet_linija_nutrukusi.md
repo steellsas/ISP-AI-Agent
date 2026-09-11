@@ -12,10 +12,12 @@ kabelis ar jungtis kliento pusėje. Paklausti, ar klientas gali DABAR prieiti
 prie routerio. Negalint — namų darbas (perkišti laidą grįžus) ir susitarimas
 paskambinti.
 
-### Žingsnis 1: Ar routeris gyvas
+### Žingsnis 1: Ar routeris gyvas ir ar yra signalas
 
-Prie routerio: ar dega bent viena lemputė? Dega — routeris gyvas, problema
-linijoje (tai atitinka telemetriją). Nedega — pirma maitinimas.
+Prie routerio: ar dega bent viena lemputė? Dega — routeris gyvas. Tada
+AIŠKUS SIMPTOMAS: ar dega INTERNETO (WAN) lemputė — „Internet", „WAN" ar
+gaublio ženkliukas? Jai nedegant — signalas iš linijos neateina, būtent tai
+matome telemetrijoje. Nedega jokia — pirma maitinimas.
 
 ### Žingsnis 2: Maitinimas
 

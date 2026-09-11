@@ -19,8 +19,8 @@ evidence:
   client: {}
   patvirtinta_kai: []
   paneigta_kai: []
-reikalinga: "routeris gyvas, bet ryšys iki buto neatsistato — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
-isvada: "ryšys iki jūsų buto nutrūkęs — greičiausiai pažeistas kabelis"
+reikalinga: "routeris gyvas, bet signalas iš linijos neateina (interneto lemputė nedega, portas neaktyvus ir po perkišimo) — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
+isvada: "signalas iki jūsų routerio neateina — greičiausiai pažeistas kabelis trasoje"
 steps:
 - id: ll_ability
   kind: confirm
@@ -76,13 +76,30 @@ steps:
   rag_section: 1
   tikslas: "aišku, ar routeris gyvas (dega bent viena lemputė)"
   'on':
-    'yes': ll_cable
+    'yes': ll_wan
     'no': ll_power
   hint: 'They are at the router. ONE question and WAIT: is ANY light on? Lights ON means the router
     is alive and the fault sits in the line — exactly what the telemetry suggests.'
   answers:
     'yes': dega / šviečia / mirksi bent viena lemputė
     'no': nedega nė viena (įskaitant darkytas neiginio formas)
+# Aiškus simptomas (Andrius 2026-09-11): routeris gyvas, bet INTERNETO/WAN
+# lemputė nedega — signalas iš linijos neateina; tai patvirtina hipotezę.
+- id: ll_wan
+  kind: confirm
+  detector: lights
+  rag_section: 1
+  tikslas: "aišku, ar dega INTERNETO (WAN) lemputė — signalo iš linijos požymis"
+  'on':
+    'yes': ll_cable
+    'no': ll_cable
+  hint: 'The router is alive. ONE question and WAIT: is the INTERNET light (marked "Internet",
+    "WAN" or a globe icon) on or blinking? If it is DARK — the signal from the line is not
+    arriving, exactly the fault we see. Either way the next step is the cable reseat; when it is
+    dark, SAY the meaning first: "Interneto lemputė nedega — signalas iš linijos neateina."'
+  answers:
+    'yes': interneto/WAN lemputė dega ar mirksi
+    'no': interneto/WAN lemputė nedega / tamsi
 - id: ll_power
   kind: confirm
   detector: lights
@@ -113,16 +130,17 @@ steps:
     'yes': resolve
     'no': escalate
   hint: 'They reseated the cable. The ENGINE silently re-reads the port — do not declare success
-    yourself. Ask ONE thing: did the internet come back? The engine blends their answer with the
-    fresh port reading.'
+    yourself. Ask ONE thing: did the INTERNET light come on / did the internet come back? The
+    engine blends their answer with the fresh port reading.'
   answers:
-    'yes': internetas atsirado po laido perkišimo
-    'no': internetas vis tiek neatsirado
+    'yes': interneto lemputė užsidegė / internetas atsirado
+    'no': lemputė toliau nedega / internetas neatsirado
 - id: escalate
   kind: escalate
   tools: []
   rag_section: 5
-  hint: 'The router is alive but the line to the flat did not come back — most likely a damaged
-    cable on the run (stairwell to flat). Say it honestly and that a technician must come out; say
-    you WILL register — "užregistruosiu" (future tense), NEVER "užregistravau". The ticket note
-    must say the router is alive, the port stays down after the reseat.'
+  hint: 'The router is alive but the internet light stays dark and the port stays down after the
+    reseat — the signal is not arriving, most likely a damaged cable on the run (stairwell to
+    flat). Say the CLEAR conclusion ("signalas iki jūsų routerio neateina"), that a technician
+    must come out, and say you WILL register — "užregistruosiu" (future tense), NEVER
+    "užregistravau". The ticket note: router alive, WAN light dark, port down after reseat.'

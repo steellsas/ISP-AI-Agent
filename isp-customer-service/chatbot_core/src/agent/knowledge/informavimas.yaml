@@ -33,10 +33,10 @@ billing_suspended:
 
 active_outage:
   sakoma: >-
-    Patikrinau — jūsų rajone šiuo metu vyksta masinė avarija ({vieta}).
-    Mūsų meistrai jau dirba, numatomas atstatymas iki {eta}.
-    Jums nieko daryti nereikia — internetas atsistatys savaime.
+    Patikrinau — jūsų rajone įvykusi tinklo avarija ({vieta}).
+    Meistrai jau dirba, numatomas atstatymas iki {eta}.
+    Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą.
   fallback: >-
-    Patikrinau — jūsų rajone šiuo metu vyksta masinė avarija.
-    Mūsų meistrai jau dirba prie atstatymo. Jums nieko daryti nereikia.
-  aiskumo_salyga: [kas_negerai, kas_daroma, kada_atsistatys]
+    Patikrinau — jūsų rajone įvykusi tinklo avarija, meistrai jau dirba.
+    Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą.
+  aiskumo_salyga: [kas_negerai, kas_daroma, kada_atsistatys, kaip_suzinos]
