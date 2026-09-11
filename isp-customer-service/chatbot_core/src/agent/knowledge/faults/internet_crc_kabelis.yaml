@@ -1,0 +1,95 @@
+# GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
+#
+# NT1 (Andrius 2026-09-11): linija gyva, bet daug CRC klaidų — pažeistas arba
+# atsilaisvinęs laidas. Vienas pigus patikrinimas su klientu (perkišti laidą
+# ABIEJUOSE galuose), variklis perskaito CRC iš naujo; nepadėjo — meistras
+# keis laidą.
+verdict: crc_errors
+meta:
+  pavadinimas: "Internetas trūkinėja / lėtas — linijoje daug CRC klaidų (pažeistas laidas)"
+  domenas: internet
+  priklauso_nuo: []
+  tags: [internet, crc, kabelis, laidas, trukcioja]
+  vairuotojas: walker
+problem: internet_down
+playbook: troubleshooting/internet_crc_kabelis
+evidence:
+  client: {}
+  patvirtinta_kai: []
+  paneigta_kai: []
+reikalinga: "linijoje daug klaidų ir po laido perkišimo — pažeistas laidas, reikalingas keitimas"
+isvada: "linijoje daug klaidų — pažeistas arba blogai įkištas laidas"
+steps:
+- id: crc_ability
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio"
+  'on':
+    'yes': crc_cable
+    'no': crc_homework
+    lost: crc_locate
+  hint: 'Explain in ONE short sentence what you see — the line works but carries a lot of errors,
+    which usually means a damaged or loose cable — then ONE question and WAIT: can they get to the
+    router right now? Length model: "Linija veikia, bet matau daug klaidų — dažniausiai tai
+    pažeistas ar atsilaisvinęs laidas. Ar galite dabar prieiti prie routerio?"'
+  answers:
+    'yes': gali dabar prieiti prie routerio
+    'no': negali dabar / nėra namie / nepatogu šiuo metu
+    lost: nežino, kur routeris yra arba kaip jis atrodo
+- id: crc_locate
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  tikslas: "klientas surado routerį"
+  'on':
+    'yes': crc_cable
+    'no': crc_homework
+  hint: 'They do not know where the router is. Describe it simply and ask if they can see it: a
+    small box with little lights; the internet cable runs into it.'
+  answers:
+    'yes': surado routerį / mato tokią dėžutę
+    'no': neranda / negali dabar ieškoti
+- id: crc_homework
+  kind: confirm
+  detector: yes_no
+  rag_section: 0
+  tikslas: "sutarta: grįžęs perkiš laidą abiejuose galuose, o jei nepadės — paskambins"
+  'on':
+    'yes': callback
+    'no': escalate
+  hint: 'They cannot check now — homework warmly, then consent: when back, firmly reseat the
+    internet cable at BOTH ends (at the router and at the wall socket); if it still misbehaves —
+    call again and we will register a cable replacement. Length model: "Suprantu. Tada kai grįšite
+    — ištraukite ir tvirtai įkiškite interneto laidą abiejuose galuose. Jei nepadės —
+    paskambinkite, registruosime laido keitimą. Gerai?"'
+  answers:
+    'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
+    'no': nesutinka / nori, kad meistras būtų registruojamas dabar
+- id: crc_cable
+  kind: instruct
+  rag_section: 1
+  goto: crc_recheck
+  hint: 'ONE instruction, then wait: firmly reseat the internet cable at BOTH ends — pull it out
+    of the router and push back until it clicks, the same at the wall socket — and say when done.'
+- id: crc_recheck
+  kind: confirm
+  detector: restored
+  rag_section: 2
+  tikslas: "aišku, ar po perkišimo klaidos dingo (variklis perskaito liniją)"
+  'on':
+    'yes': resolve
+    'no': escalate
+  hint: 'They reseated the cable. The ENGINE silently re-reads the line errors — do not declare
+    success yourself. Ask ONE thing: does the internet behave now? The engine blends their answer
+    with the fresh reading.'
+  answers:
+    'yes': internetas dabar veikia normaliai
+    'no': vis tiek trūkinėja / neveikia
+- id: escalate
+  kind: escalate
+  tools: []
+  rag_section: 3
+  hint: 'The errors persist after the reseat — the cable is damaged and must be replaced by a
+    technician. Say it honestly; say you WILL register — "užregistruosiu" (future tense), NEVER
+    "užregistravau". The ticket note must say CRC errors persist after reseating both ends.'

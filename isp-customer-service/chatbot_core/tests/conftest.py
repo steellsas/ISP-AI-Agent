@@ -70,6 +70,7 @@ _SEED_FILES = (
     "demo_internet",
     "invoices",
     "similar_streets",
+    "network_faults",
 )
 
 

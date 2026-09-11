@@ -973,6 +973,12 @@ class ReactAgent:
 
         return advance_reboot_check(self, r, user_input)
 
+    def _advance_line_check(self, r: dict, user_input: str | None) -> None:
+        """Delegates to walker_flow.advance_line_check (NT line faults)."""
+        from .walker_flow import advance_line_check
+
+        return advance_line_check(self, r, user_input)
+
     def _reject_and_rediagnose(self, r: dict) -> bool:
         """Delegates to walker_flow.reject_and_rediagnose (R3 extraction)."""
         from .walker_flow import reject_and_rediagnose

@@ -82,6 +82,7 @@ class TestModulesAndMeta:
             "healthy_to_router",
             "no_mac_observed",
             "router_hung",
+            "link_down_local",  # NT (2026-09-11): kabelis iki buto
         }
 
     def test_depends_on_default_empty(self):

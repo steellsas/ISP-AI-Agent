@@ -27,6 +27,7 @@ _SEEDS = (
     "demo_internet",
     "invoices",
     "similar_streets",
+    "network_faults",
 )
 
 
