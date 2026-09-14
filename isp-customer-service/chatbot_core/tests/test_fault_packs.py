@@ -27,6 +27,7 @@ from agent.graph_v2.state import (
     IntakeState,
     ResolutionState,
     TicketState,
+    TurnScratch,
 )
 
 _SNAPSHOT = json.loads(
@@ -126,12 +127,14 @@ class TestSolverMechanics:
         engine = SimpleNamespace(
             state=GraphState(
                 resolution=ResolutionState(procedure={"verdict": "x", "step": "a"}),
-                diagnosis=DiagnosisState(evidence={}),
+                diagnosis=DiagnosisState(
+                    evidence={},
+                    findings_announced=True,
+                    pending_evidence_key=None,
+                    evidence_ask_counts={},
+                ),
                 dialog=DialogState(turn_count=1),
             ),
-            _findings_announced=True,
-            _evidence_last_ask_key=None,
-            _evidence_asks={},
             _goto_step=lambda r, t: gotos.append(t),
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
@@ -209,15 +212,16 @@ class TestNarratorWordedQuestions:
                 resolution=ResolutionState(
                     procedure={"verdict": "no_mac_observed", "step": "dr_intro"}
                 ),
-                diagnosis=DiagnosisState(evidence={}),
+                diagnosis=DiagnosisState(
+                    evidence={},
+                    findings_announced=True,
+                    facts_recap_state="done",
+                    pending_evidence_key=None,
+                    evidence_ask_counts={},
+                    pending_announcement="",
+                ),
                 dialog=DialogState(turn_count=1),
             ),
-            _findings_announced=True,
-            _recap_state="done",
-            _evidence_last_ask_key=None,
-            _evidence_asks={},
-            _evidence_directive=None,
-            _pending_announce="",
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
 
@@ -227,9 +231,9 @@ class TestNarratorWordedQuestions:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         engine = self._engine()
         assert evidence_drive(engine, "labas") is None
-        d = engine._evidence_directive
+        d = engine.state.turn.directives.evidence
         assert d and d["key"] == "ivykiai" and d["reikia"]  # contextual anamnesis first
-        assert engine._evidence_asks["ivykiai"] == 1  # ask bookkeeping intact
+        assert engine.state.diagnosis.evidence_ask_counts["ivykiai"] == 1  # ask bookkeeping intact
 
     def test_off_switch_keeps_scripted_wording(self, monkeypatch):
         from agent.evidence_drive import evidence_drive
@@ -238,13 +242,13 @@ class TestNarratorWordedQuestions:
         engine = self._engine()
         reply = evidence_drive(engine, "labas")
         assert reply and "dingusi elektra" in reply  # ivykiai (kontekstinė anamnezė)
-        assert engine._evidence_directive is None
+        assert engine.state.turn.directives.evidence is None
 
     def test_directive_lands_in_facts_block(self, db_connection):
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._evidence_directive = {
+        agent.state.turn.directives.evidence = {
             "key": "lights",
             "reikia": "ar dega bent viena lemputė",
             "kodel": "matysime ar gauna srovę",
@@ -268,16 +272,16 @@ class TestNarratorFindings:
                 resolution=ResolutionState(
                     procedure={"verdict": "no_mac_observed", "step": "dr_intro"}
                 ),
-                diagnosis=DiagnosisState(evidence={}),
+                diagnosis=DiagnosisState(
+                    evidence={},
+                    findings_announced=False,
+                    facts_recap_state="done",
+                    pending_evidence_key=None,
+                    evidence_ask_counts={},
+                    pending_announcement="",
+                ),
                 dialog=DialogState(turn_count=3),
             ),
-            _findings_announced=False,
-            _recap_state="done",
-            _evidence_last_ask_key=None,
-            _evidence_asks={},
-            _evidence_directive=None,
-            _findings_directive=None,
-            _pending_announce="",
             _ticket_need=lambda: "",
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
@@ -328,21 +332,21 @@ class TestNarratorFindings:
                 resolution=ResolutionState(
                     procedure={"verdict": "no_mac_observed", "step": "dr_intro"}
                 ),
-                diagnosis=DiagnosisState(evidence={}),
+                diagnosis=DiagnosisState(
+                    evidence={},
+                    findings_announced=False,
+                    facts_recap_state="done",
+                    pending_evidence_key="device_present",
+                    evidence_ask_counts={"device_present": 1},
+                    pending_announcement="",
+                ),
                 dialog=DialogState(turn_count=2),
             ),
-            _findings_announced=False,
-            _recap_state="done",
-            _recap_directive=None,
-            _evidence_last_ask_key="device_present",
-            _evidence_asks={"device_present": 1},
-            _evidence_directive=None,
-            _pending_announce="",
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         reply = evidence_drive(engine, "Palaukit, tuoj ateinu.")
         assert reply and "lauksiu" in reply.lower()
-        assert engine._evidence_asks["device_present"] == 1  # retry NOT burned
+        assert engine.state.diagnosis.evidence_ask_counts["device_present"] == 1  # retry NOT burned
 
     def test_reask_phrase_has_no_internal_labels(self):
         from agent.identification import phrase
@@ -367,19 +371,21 @@ class TestNarratorFindings:
         engine = SimpleNamespace(
             state=GraphState(
                 diagnosis=DiagnosisState(
-                    evidence={"lights": {"value": "nedega", "source": "client"}}
+                    evidence={"lights": {"value": "nedega", "source": "client"}},
+                    facts_recap_state="",
                 )
             ),
-            _recap_state="",
-            _recap_directive=None,
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         from agent import evidence as ev
 
         monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
         assert maybe_facts_recap(engine) is None
-        assert engine._recap_directive and "nedega" in engine._recap_directive["faktai"]
-        assert engine._recap_state == "pending"
+        assert (
+            engine.state.turn.directives.recap
+            and "nedega" in engine.state.turn.directives.recap["faktai"]
+        )
+        assert engine.state.diagnosis.facts_recap_state == "pending"
 
     def test_recap_off_switch_stays_scripted(self, monkeypatch):
         from types import SimpleNamespace
@@ -390,19 +396,17 @@ class TestNarratorFindings:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
         engine = SimpleNamespace(
-            state=GraphState(diagnosis=DiagnosisState(evidence={"x": {}})),
-            _recap_state="",
-            _recap_directive=None,
+            state=GraphState(diagnosis=DiagnosisState(evidence={"x": {}}, facts_recap_state="")),
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         reply = maybe_facts_recap(engine)
-        assert reply and "Pasitikslinu" in reply and engine._recap_directive is None
+        assert reply and "Pasitikslinu" in reply and engine.state.turn.directives.recap is None
 
     def test_recap_directive_lands_in_facts_block(self, db_connection):
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._recap_directive = {"faktai": "routerio lemputės: nedega"}
+        agent.state.turn.directives.recap = {"faktai": "routerio lemputės: nedega"}
         block = agent._state_facts_block()
         assert "PASITIKSLINK" in block and "nedega" in block
 
@@ -413,10 +417,10 @@ class TestNarratorFindings:
         self._mock_confirmed(monkeypatch)
         engine = self._engine()
         assert evidence_drive(engine, "nedega") is None  # narrator takes the turn
-        d = engine._findings_directive
+        d = engine.state.turn.directives.findings
         assert d and d["isvada"] == "routeris sugedęs"
         assert "ARBA" in d["sprendimai"]
-        assert engine._findings_announced is True  # said once, never re-dumped
+        assert engine.state.diagnosis.findings_announced is True  # said once, never re-dumped
 
     def test_off_switch_keeps_scripted_announce(self, monkeypatch):
         from agent.evidence_drive import evidence_drive
@@ -425,14 +429,14 @@ class TestNarratorFindings:
         self._mock_confirmed(monkeypatch)
         engine = self._engine()
         assert evidence_drive(engine, "nedega") is None  # bridge -> solver drives
-        assert engine._findings_directive is None
-        assert "Ką patikrinome" in engine._pending_announce
+        assert engine.state.turn.directives.findings is None
+        assert "Ką patikrinome" in engine.state.diagnosis.pending_announcement
 
     def test_findings_directive_lands_in_facts_block(self, db_connection):
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._findings_directive = {
+        agent.state.turn.directives.findings = {
             "faktai": "routerio lemputės: nedega",
             "isvada": "routeris sugedęs",
             "sprendimai": "paleisti per kompiuterį ARBA meistras",
@@ -483,19 +487,21 @@ class TestTicketFirst:
 
         engine = SimpleNamespace(
             state=GraphState(
-                identity=IdentityState(customer_id="C1"), closing=ClosingState(case_closed=False)
+                identity=IdentityState(customer_id="C1"),
+                closing=ClosingState(case_closed=False),
+                diagnosis=DiagnosisState(evidence_conflict=None),
+                turn=TurnScratch(
+                    side_topic_active=False, understanding={"tipas": "nukrypimas", "faktai": {}}
+                ),
+                dialog=DialogState(side_topic_streak=0),
             ),
             _ticket_stage=None,
-            _evidence_conflict=None,
             _end_confirm_pending=False,
             _resume_hold=False,
-            _side_topic_this_turn=False,
-            _side_topic_turns=0,
-            _last_understanding={"tipas": "nukrypimas", "faktai": {}},
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         assert classify_side_topic(engine, "Išregistruoti meistrą ir paleisti internetą") is False
-        assert engine._side_topic_this_turn is False
+        assert engine.state.turn.side_topic_active is False
 
     def test_solver_close_after_bridge_registers(self):
         from types import SimpleNamespace
@@ -570,7 +576,7 @@ class TestTicketFirst:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._findings_directive = {
+        agent.state.turn.directives.findings = {
             "faktai": "routerio lemputės: nedega",
             "isvada": "routeris sugedęs",
             "sprendimai": "a ARBA b",
@@ -808,7 +814,7 @@ class TestTicketDirectives:
         agent = self._agent()
         reply = agent._identification_scripted_reply("nepatogu, ne namuose")
         assert reply is None  # the narrator takes the turn
-        td = agent._ticket_directive
+        td = agent.state.turn.directives.ticket
         assert td and td["kind"] == "phone_intro" and "numeris" in td["fallback"]
         block = agent._state_facts_block()
         assert "TIKETO ŽINGSNIS" in block and "registruoji meistrą" in block
@@ -818,7 +824,7 @@ class TestTicketDirectives:
         agent = self._agent()
         reply = agent._identification_scripted_reply("gerai")
         assert reply and "Ar tiks numeris" in reply
-        assert agent._ticket_directive is None
+        assert agent.state.turn.directives.ticket is None
 
     def test_retry_stays_scripted_even_in_narrator_mode(self, db_connection, monkeypatch):
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
@@ -826,7 +832,7 @@ class TestTicketDirectives:
         agent._ticket_ctx["ask_retry"] = "phone"
         reply = agent._identification_scripted_reply("kazkas neaisku")
         assert reply and "skaitmenimis" in reply  # precision repeat, no LLM
-        assert agent._ticket_directive is None
+        assert agent.state.turn.directives.ticket is None
 
     def test_hours_directive(self, db_connection, monkeypatch):
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
@@ -834,7 +840,7 @@ class TestTicketDirectives:
         agent._ticket_stage = "hours"
         agent._ticket_ctx = {"step_id": None, "intro_done": True}
         assert agent._identification_scripted_reply("tiks tas") is None
-        assert agent._ticket_directive["kind"] == "hours"
+        assert agent.state.turn.directives.ticket["kind"] == "hours"
         assert "patogiausia" in agent._state_facts_block()
 
 
@@ -864,7 +870,7 @@ class TestIdentDirectives:
         agent = self._agent()
         reply = agent._identification_scripted_reply("Vakar po audros dingo")
         assert reply is None
-        idd = agent._ident_directive
+        idd = agent.state.turn.directives.ident
         assert idd and idd["kind"] == "address_offer" and "Vilniaus g. 29" in idd["adresas"]
         block = agent._state_facts_block()
         assert "Ar skambinate dėl Vilniaus g. 29?" in block  # verbatim core kept
@@ -873,7 +879,7 @@ class TestIdentDirectives:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent(candidate=False)
         assert agent._identification_scripted_reply("Vakar po audros dingo") is None
-        assert agent._ident_directive["kind"] == "address_ask"
+        assert agent.state.turn.directives.ident["kind"] == "address_ask"
         assert "IDENTIFIKACIJOS ŽINGSNIS" in agent._state_facts_block()
 
     def test_off_switch_keeps_scripted_offer(self, db_connection, monkeypatch):
@@ -881,7 +887,7 @@ class TestIdentDirectives:
         agent = self._agent()
         reply = agent._identification_scripted_reply("Vakar po audros dingo")
         assert reply and "Ar skambinate dėl Vilniaus g. 29?" in reply
-        assert agent._ident_directive is None
+        assert agent.state.turn.directives.ident is None
 
 
 class TestAnamnesisDirectives:
@@ -897,7 +903,7 @@ class TestAnamnesisDirectives:
         agent.state.intake.problem_type = "internet_down"
         assert agent._identification_scripted_reply("Neveikia internetas") is None
         assert agent.state.intake.anamnesis_asked is True  # ladder-live marker stays
-        assert agent._ident_directive["kind"] in ("address_offer", "address_ask")
+        assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
         block = agent._state_facts_block()
         assert "ANAMNEZĖS ŽINGSNIS" not in block
         assert "IDENTIFIKACIJOS ŽINGSNIS" in block
@@ -931,10 +937,10 @@ class TestDirectiveTurnsAreSpeechOnly:
 
         agent = ReactAgent(caller_phone="unknown")
         assert agent._scoped_tools_schema()  # baseline: tools exist
-        agent._ident_directive = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
+        agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
         assert agent._scoped_tools_schema() == []
-        agent._ident_directive = None
-        agent._ticket_directive = {"kind": "hours", "fallback": "x"}
+        agent.state.turn.directives.ident = None
+        agent.state.turn.directives.ticket = {"kind": "hours", "fallback": "x"}
         assert agent._scoped_tools_schema() == []
 
 
@@ -1049,16 +1055,16 @@ class TestWalkerFollowsLedger:
                 resolution=ResolutionState(
                     procedure={"verdict": "no_mac_observed", "step": "dr_intro"}
                 ),
-                diagnosis=DiagnosisState(evidence={}),
+                diagnosis=DiagnosisState(
+                    evidence={},
+                    findings_announced=True,
+                    facts_recap_state="done",
+                    pending_evidence_key=None,
+                    evidence_ask_counts={},
+                    pending_announcement="",
+                ),
                 dialog=DialogState(turn_count=1),
             ),
-            _findings_announced=True,
-            _recap_state="done",
-            _recap_directive=None,
-            _evidence_last_ask_key=None,
-            _evidence_asks={},
-            _evidence_directive=None,
-            _pending_announce="",
             _goto_step=lambda r, t: (gotos.append(t), r.__setitem__("step", t)),
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
@@ -1135,7 +1141,7 @@ class TestLiveCall0821Fixes:
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
         plain = agent._state_facts_block() or ""
         assert "THIS STEP" in plain
-        agent._findings_directive = {
+        agent.state.turn.directives.findings = {
             "faktai": "x",
             "isvada": "y",
             "sprendimai": "",
@@ -1160,12 +1166,14 @@ class TestLiveCall0821Fixes:
         engine = SimpleNamespace(
             state=GraphState(
                 resolution=ResolutionState(procedure=r),
-                diagnosis=DiagnosisState(evidence={}),
+                diagnosis=DiagnosisState(
+                    evidence={},
+                    findings_announced=True,
+                    pending_evidence_key=None,
+                    evidence_ask_counts={},
+                ),
                 dialog=DialogState(turn_count=3),
             ),
-            _findings_announced=True,
-            _evidence_last_ask_key=None,
-            _evidence_asks={},
             _goto_step=lambda rr, t: (gotos.append(t), rr.__setitem__("step", t)),
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
@@ -1186,15 +1194,15 @@ class TestLiveCall0821Fixes:
                 resolution=ResolutionState(
                     procedure={"verdict": "no_mac_observed", "step": "dr_pick_cable", "asked": True}
                 ),
+                diagnosis=DiagnosisState(evidence_conflict=None, pending_evidence_key=None),
+                turn=TurnScratch(
+                    side_topic_active=False, understanding={"tipas": "klausimas", "faktai": {}}
+                ),
+                dialog=DialogState(side_topic_streak=0),
             ),
             _ticket_stage=None,
-            _evidence_conflict=None,
             _end_confirm_pending=False,
             _resume_hold=False,
-            _side_topic_this_turn=False,
-            _side_topic_turns=0,
-            _evidence_last_ask_key=None,
-            _last_understanding={"tipas": "klausimas", "faktai": {}},
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         assert classify_side_topic(engine, "O kaip tai padaryti?") is False
@@ -1207,10 +1215,10 @@ class TestLiveCall0821Fixes:
         assert "problema" in agent._identification_scripted_reply("Atsikai daro")
         assert "problema" in agent._identification_scripted_reply("Vaikai neklauso")
         assert agent._identification_scripted_reply("Viki kur neklauso") is None
-        assert agent._ident_directive["kind"] == "problem_gate"
+        assert agent.state.turn.directives.ident["kind"] == "problem_gate"
         assert "PROBLEMOS VARTAI" in agent._state_facts_block()
         assert agent._identification_scripted_reply("Kokiu problemu?") is None
-        assert agent._ident_directive["kind"] == "problem_gate"
+        assert agent.state.turn.directives.ident["kind"] == "problem_gate"
         bye = agent._identification_scripted_reply("Mendulija")
         assert bye and "skambinkite" in bye and agent.state.closing.case_closed
 
@@ -1236,7 +1244,7 @@ class TestLiveCall0824Fixes:
     def test_ticket_directive_suppresses_step_hint(self, db_connection):
         agent = self._ticket_agent()
         agent._bridge_bound = True
-        agent._ticket_directive = {"kind": "phone_intro", "fallback": "Ar tiks numeris?"}
+        agent.state.turn.directives.ticket = {"kind": "phone_intro", "fallback": "Ar tiks numeris?"}
         block = agent._state_facts_block() or ""
         assert "TIKETO ŽINGSNIS" in block
         assert "THIS STEP" not in block and "PLAYBOOK" not in block
@@ -1245,7 +1253,7 @@ class TestLiveCall0824Fixes:
 
     def test_ident_directive_suppresses_step_hint(self, db_connection):
         agent = self._ticket_agent()
-        agent._ident_directive = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
+        agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
         block = agent._state_facts_block() or ""
         assert "THIS STEP" not in block and "PLAYBOOK" not in block
 
@@ -1308,9 +1316,9 @@ class TestD5WaitAckAndClosing:
         agent = self._agent()
         agent.state.dialog.last_intent = INTENT_IN_PROGRESS
         agent.state.dialog.awaiting = "client_action"
-        agent._evidence_directive = {"reikia": "x"}
+        agent.state.turn.directives.evidence = {"reikia": "x"}
         assert scripted_wait_ack(agent) is None
-        agent._evidence_directive = None
+        agent.state.turn.directives.evidence = None
         agent.state.dialog.last_intent = "answer"
         assert scripted_wait_ack(agent) is None
 

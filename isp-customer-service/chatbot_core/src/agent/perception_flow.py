@@ -75,12 +75,12 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # leaked a PREVIOUS turn's "supratau" into the ticket dialogue's reply
     # ("Routeris sugedęs, laukiame naujo. Gerai. O kada…"). Every turn starts
     # with a clean read — the early-returns below must not keep the old one.
-    engine._last_understanding = None
-    engine._evidence_directive = None  # persona: fresh narrator directive per turn
-    engine._findings_directive = None
-    engine._recap_directive = None
-    engine._ticket_directive = None
-    engine._ident_directive = None
+    engine.state.turn.understanding = None
+    engine.state.turn.directives.evidence = None  # persona: fresh narrator directive per turn
+    engine.state.turn.directives.findings = None
+    engine.state.turn.directives.recap = None
+    engine.state.turn.directives.ticket = None
+    engine.state.turn.directives.ident = None
     if (
         not user_input
         or not s.identity.customer_id
@@ -95,7 +95,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # ledger, history). Any failure -> the deterministic keyword layer
     # below, so the call never stalls on a model hiccup.
     facts: dict[str, str] | None = None
-    engine._last_understanding = None
+    engine.state.turn.understanding = None
     from . import understand as _und
 
     if _und.enabled():
@@ -118,7 +118,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         # call classifies the reply against the step's routing keys — the
         # walker consumes the cached result instead of a second LLM round-trip.
         step_options, active_step = step_perception_options(engine)
-        engine._perception_step = None
+        engine.state.turn.perception_step = None
         u = _und.understand(
             user_input,
             anchor=engine.anchor_text(),
@@ -130,10 +130,10 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
             step_options=step_options,
         )
         if u is not None:
-            engine._last_understanding = u
+            engine.state.turn.understanding = u
             facts = dict(u["faktai"])
             if u.get("zingsnis") and active_step is not None:
-                engine._perception_step = {
+                engine.state.turn.perception_step = {
                     "step_id": active_step.id,
                     "input": user_input,
                     "obs": u["zingsnis"],
@@ -180,7 +180,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # "Radau." to "Radote?" (no noun -> the general extractor is blind)
     # became a give-up live 2026-08-10. Context read fills ONLY the pending
     # key, and only when the general pass found nothing for it.
-    pending = getattr(engine, "_evidence_last_ask_key", None)
+    pending = engine.state.diagnosis.pending_evidence_key
     # 2026-09-03 (eval S6 flake): the pack's FIRST question can go out from
     # the STEP HINT (the narrator, before the drive's own ask bookkeeping) —
     # then _evidence_last_ask_key is still None and the deterministic answer
@@ -201,7 +201,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         except Exception:  # pragma: no cover - best-effort
             pending = None
     pending_entry = s.diagnosis.evidence.get(pending) if pending else None
-    u_tipas = (engine._last_understanding or {}).get("tipas")
+    u_tipas = (engine.state.turn.understanding or {}).get("tipas")
     # DONE-report without a result (live 2026-08-11): "Mhm, patikrinau."
     # says the check happened, not what it FOUND — yet the pass invented
     # power_cable=atjungtas (echoed from the agent's own explanation) and
@@ -209,8 +209,8 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # such a turn stands only if the utterance itself corroborates it
     # (the key's markers / the keyword extractor); otherwise it is dropped
     # and the drive asks WHAT was found ("pasitikslinti, o ne kurti").
-    engine._done_report_key = None
-    if engine._last_understanding is not None and pending and pending in facts:
+    engine.state.turn.done_report_key = None
+    if engine.state.turn.understanding is not None and pending and pending in facts:
         from .resolution import is_bare_done_report
 
         if is_bare_done_report(user_input) and (
@@ -233,7 +233,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
                     value=facts[pending],
                 )
                 del facts[pending]
-                engine._done_report_key = pending
+                engine.state.turn.done_report_key = pending
     # SUPPLEMENT, not just fallback (2026-08-10 round 2): the pass returned
     # tipas=atsakymas with an empty faktai for "…sakiau, kad RADAU" and the
     # key was given up on. When the pass failed OR answered without the
@@ -262,9 +262,9 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # ("Tik pasitikslinsiu — sakėte, kad rozetė neveikia?"): a yes commits the
     # parked value; anything else drops it (a correction lands as a normal
     # fact from THIS utterance below).
-    fca = getattr(engine, "_fact_confirm_asked", None)
+    fca = engine.state.diagnosis.fact_confirm_asked
     if fca and user_input:
-        engine._fact_confirm_asked = None
+        engine.state.diagnosis.fact_confirm_asked = None
         g_key, g_value = fca.key, fca.value
         from .evidence import _fold, _mark_hit
 
@@ -276,7 +276,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         else:
             engine.tracer.emit("evidence", action="fact_withdrawn", key=g_key, value=g_value)
     # A clarify is out — settle that key first.
-    pending_key = engine._evidence_conflict_asked
+    pending_key = engine.state.diagnosis.evidence_conflict_asked_key
     if pending_key:
         value = facts.get(pending_key)
         if value is None and pending_key == "has_computer":
@@ -287,7 +287,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         elif entry is not None and entry.get("conflict"):
             # Unreadable answer — keep the LATEST stated value, stop asking.
             set_fact(s.diagnosis.evidence, pending_key, entry.get("pending"), CLIENT, turn)
-        engine._evidence_conflict_asked = None
+        engine.state.diagnosis.evidence_conflict_asked_key = None
         engine.tracer.emit(
             "evidence",
             action="conflict_resolved",
@@ -296,14 +296,16 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         )
         facts.pop(pending_key, None)
     if pending and pending in facts:
-        engine._evidence_last_ask_key = None  # answered — later "taip" maps to nothing old
+        engine.state.diagnosis.pending_evidence_key = (
+            None  # answered — later "taip" maps to nothing old
+        )
     # Contradiction corroboration (2026-08-10): an LLM fact that FLIPS an
     # already-established ledger entry needs the keyword extractor to read
     # the same flip from the utterance — otherwise it is dropped and the
     # established fact stands ("Neturi kompiuterio" hallucinated
     # device_present=nerado against a settled "rado" and forced a phantom
     # clarify). New facts (no entry yet) are accepted as before.
-    if engine._last_understanding is not None and facts:
+    if engine.state.turn.understanding is not None and facts:
         kw = extract_client_facts(user_input)
         for key in list(facts):
             entry = s.diagnosis.evidence.get(key)
@@ -370,7 +372,7 @@ def _note_fact_meaning(engine, key: str, value: str) -> None:
     item = (spec.get("client") or {}).get(key) or {}
     meaning = (item.get("reiskia") or {}).get(value)
     if meaning:
-        engine._fact_meaning = (LABELS.get(key, key), value, str(meaning))
+        engine.state.diagnosis.fact_meaning = [LABELS.get(key, key), value, str(meaning)]
         engine.tracer.emit("evidence", action="fact_meaning", key=key, value=value)
 
 
@@ -449,10 +451,10 @@ def _conflict_to_clarify(engine, key: str, entry: dict) -> bool:
 
     spec = spec_for((engine.state.resolution.procedure or {}).get("verdict")) or {}
     if key in (spec.get("client") or {}):
-        if engine._evidence_conflict is None:
+        if engine.state.diagnosis.evidence_conflict is None:
             from .evidence import EvidenceConflict
 
-            engine._evidence_conflict = EvidenceConflict(
+            engine.state.diagnosis.evidence_conflict = EvidenceConflict(
                 key=key, old=entry["value"], new=entry["pending"]
             )
             engine.tracer.emit(
@@ -478,7 +480,7 @@ def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:
     the live attribute before the commit loop), and the ledger has no entry
     yet (existing entries belong to the conflict machinery)."""
     s = engine.state
-    if getattr(engine, "_fact_confirm", None) or getattr(engine, "_fact_confirm_asked", None):
+    if engine.state.diagnosis.fact_confirm_pending or engine.state.diagnosis.fact_confirm_asked:
         return False
     if key == pending:
         return False
@@ -493,7 +495,7 @@ def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:
         return False
     from .evidence import FactConfirm
 
-    engine._fact_confirm = FactConfirm(key=key, value=value)
+    engine.state.diagnosis.fact_confirm_pending = FactConfirm(key=key, value=value)
     engine.tracer.emit("evidence", action="fact_gate", key=key, value=value)
     return True
 
@@ -511,7 +513,7 @@ def ingest_overlay(engine, text: str) -> None:
     from .evidence import CLIENT, extract_client_facts, read_pending_answer, set_fact, spec_for
 
     facts = dict(extract_client_facts(text))
-    pending = getattr(engine, "_evidence_last_ask_key", None)
+    pending = engine.state.diagnosis.pending_evidence_key
     if pending and pending not in facts:
         spec = spec_for((s.resolution.procedure or {}).get("verdict"))
         item = (spec.get("client") or {}).get(pending) if spec else None
@@ -522,10 +524,10 @@ def ingest_overlay(engine, text: str) -> None:
         if _story_flip_gate(engine, key, str(value), pending):
             continue
         entry = set_fact(s.diagnosis.evidence, key, value, CLIENT, s.dialog.turn_count)
-        if entry.get("conflict") and engine._evidence_conflict is None:
+        if entry.get("conflict") and engine.state.diagnosis.evidence_conflict is None:
             from .evidence import EvidenceConflict
 
-            engine._evidence_conflict = EvidenceConflict(
+            engine.state.diagnosis.evidence_conflict = EvidenceConflict(
                 key=key, old=entry["value"], new=entry["pending"]
             )
             engine.tracer.emit(
@@ -558,7 +560,7 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
     from .resolution import is_real_question
 
     s = engine.state
-    engine._side_topic_this_turn = False
+    engine.state.turn.side_topic_active = False
     if (
         not user_input
         or not s.identity.customer_id
@@ -566,7 +568,11 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
         or engine._ticket_stage
     ):
         return False
-    if engine._evidence_conflict or engine._end_confirm_pending or engine._resume_hold:
+    if (
+        engine.state.diagnosis.evidence_conflict
+        or engine._end_confirm_pending
+        or engine._resume_hold
+    ):
         return False
     # Ticket demand is NEVER a side topic (live 2026-08-13: "Išregistruoti
     # meistrą ir paleisti internetą…" got tipas=nukrypimas and the side_topic
@@ -575,17 +581,16 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
     from .resolution import detect_refuse_or_ticket
 
     if detect_refuse_or_ticket(user_input) == "demand":
-        engine._side_topic_turns = 0
+        engine.state.dialog.side_topic_streak = 0
         engine.tracer.emit("decision", intent="side_topic", action="ticket_demand_passthrough")
         return False
     # How-to / help requests while an instruction or question stands are ON
     # TASK by definition (live 2026-08-21: "O kaip tai padaryti?" at the
     # bridge instruction got the FAQ "ne mano sritis") — the step explains.
     if is_howto(user_input) and (
-        getattr(engine, "_evidence_last_ask_key", None)
-        or (s.resolution.procedure or {}).get("asked")
+        engine.state.diagnosis.pending_evidence_key or (s.resolution.procedure or {}).get("asked")
     ):
-        engine._side_topic_turns = 0
+        engine.state.dialog.side_topic_streak = 0
         engine.tracer.emit("decision", intent="side_topic", action="on_task_howto")
         return False
     # The understanding pass judged this turn IN CONTEXT — but its tipas is
@@ -594,14 +599,14 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
     # tipas=klausimas and the answer was answered with a price non-sequitur).
     # CORROBORATION rule: enter only when a deterministic signal agrees —
     # a question word in the text or a FAQ keyword hit.
-    u = getattr(engine, "_last_understanding", None)
+    u = engine.state.turn.understanding
     if u is not None:
         if u["tipas"] in ("klausimas", "nukrypimas") and not u["faktai"]:
             if extract_client_facts(user_input):
                 # The keyword layer read facts the pass missed — an
                 # informative interruption, not a deviation (they already
                 # landed on the ledger via the always-on supplement).
-                engine._side_topic_turns = 0
+                engine.state.dialog.side_topic_streak = 0
                 return False
             from .faq import match as faq_match
 
@@ -610,43 +615,46 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
             # "tai nėra mano sritis"). FAQ topics stay side topics.
             if not faq_match(user_input) and engine._on_task_question(user_input):
                 engine.tracer.emit("decision", intent="side_topic", action="on_task")
-                engine._side_topic_turns = 0
+                engine.state.dialog.side_topic_streak = 0
                 return False
             corroborated = is_real_question(user_input) or bool(faq_match(user_input))
             if corroborated:
-                engine._side_topic_this_turn = True
-                engine._side_topic_turns += 1
+                engine.state.turn.side_topic_active = True
+                engine.state.dialog.side_topic_streak += 1
                 engine.tracer.emit(
                     "decision",
                     intent="side_topic",
                     action="enter",
-                    streak=engine._side_topic_turns,
+                    streak=engine.state.dialog.side_topic_streak,
                 )
                 return True
             # The model felt a deviation but the text carries no question —
             # treat as an on-topic turn (the evidence/solver flow continues).
             engine.tracer.emit("decision", intent="side_topic", action="uncorroborated")
-            engine._side_topic_turns = 0
+            engine.state.dialog.side_topic_streak = 0
             return False
-        engine._side_topic_turns = 0
+        engine.state.dialog.side_topic_streak = 0
         return False
     if not is_real_question(user_input):
-        engine._side_topic_turns = 0
+        engine.state.dialog.side_topic_streak = 0
         return False
     if extract_client_facts(user_input):
         # An informative interruption ANSWERS things — not a deviation.
-        engine._side_topic_turns = 0
+        engine.state.dialog.side_topic_streak = 0
         return False
     from .faq import match as faq_match
 
     if not faq_match(user_input) and engine._on_task_question(user_input):
         engine.tracer.emit("decision", intent="side_topic", action="on_task")
-        engine._side_topic_turns = 0
+        engine.state.dialog.side_topic_streak = 0
         return False
-    engine._side_topic_this_turn = True
-    engine._side_topic_turns += 1
+    engine.state.turn.side_topic_active = True
+    engine.state.dialog.side_topic_streak += 1
     engine.tracer.emit(
-        "decision", intent="side_topic", action="enter", streak=engine._side_topic_turns
+        "decision",
+        intent="side_topic",
+        action="enter",
+        streak=engine.state.dialog.side_topic_streak,
     )
     return True
 
@@ -720,7 +728,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
     s = engine.state
     engine.state.turn.address_confirm_note = None
     engine.state.turn.address_lookup_note = None  # F2: fresh lookup diagnosis per turn
-    engine._ident_directive = None  # zone 2: ingest may not run pre-identification
+    engine.state.turn.directives.ident = None  # zone 2: ingest may not run pre-identification
     engine.state.turn.reopen_note = False
     if not user_input:
         return
@@ -1123,7 +1131,10 @@ def pre_turn_guards(engine, user_input: str) -> None:
         not s.identity.customer_id
         or s.resolution.procedure is not None
         or engine.state.identity.result_pending
-        or (bool(s.diagnosis.verdicts) and not (engine._news_told or s.diagnosis.outage_reported))
+        or (
+            bool(s.diagnosis.verdicts)
+            and not (engine.state.diagnosis.news_delivered or s.diagnosis.outage_reported)
+        )
     )
     if mid_process and detect_farewell(user_input):
         # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the

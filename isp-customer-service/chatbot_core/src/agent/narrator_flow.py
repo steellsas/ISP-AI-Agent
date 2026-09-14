@@ -77,9 +77,7 @@ def build_messages(engine, user_input: str = None) -> list:
     # partials kept overriding the directive (live 2026-08-20: the model
     # offered the address on the anamnesis turn, straight from the procedure
     # text) — a directive turn has exactly ONE instruction, the facts block.
-    directive_turn = bool(
-        getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None)
-    )
+    directive_turn = bool(engine.state.turn.directives.ident or engine.state.turn.directives.ticket)
     if directive_turn:
         messages = [{"role": "system", "content": _directive_system_prompt()}]
     else:
@@ -149,7 +147,7 @@ def scoped_tools_schema(engine) -> list:
     # exposed the model grabbed resolve_address on the anamnesis turn and
     # skipped the whole ladder — the engine owns the mechanics, the narrator
     # only words the one goal in the facts block.
-    if getattr(engine, "_ident_directive", None) or getattr(engine, "_ticket_directive", None):
+    if engine.state.turn.directives.ident or engine.state.turn.directives.ticket:
         return []
     schema = engine.tools_schema
     if engine._active_tool_names is not None:
@@ -296,7 +294,7 @@ def state_facts_block(engine) -> str | None:
     # Side-topic turn (deviation): the ONLY permitted content is the FAQ hit
     # (or an honest "not my area"), then the RETURN ANCHOR — the engine's
     # exact pending question. Leads the block; nothing else competes.
-    if engine._side_topic_this_turn:
+    if engine.state.turn.side_topic_active:
         from .faq import match as faq_match
 
         hits = faq_match(s.dialog.last_heard)
@@ -411,8 +409,8 @@ def state_facts_block(engine) -> str | None:
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
     # re-EXPLANATIONS aimed at what was actually not understood.
-    u = getattr(engine, "_last_understanding", None)
-    if u is not None and not engine._side_topic_this_turn and not s.closing.case_closed:
+    u = engine.state.turn.understanding
+    if u is not None and not engine.state.turn.side_topic_active and not s.closing.case_closed:
         sup = (u.get("supratau") or "").strip()
         # P-A (live 2026-09-08: "Supratau — Paulius atliko veiksmą" spoken TO
         # Paulius): the pass's summary is INTERNAL wording, often third-person
@@ -553,8 +551,8 @@ def state_facts_block(engine) -> str | None:
         # Directive turns (zones 2–3, live 2026-08-20): this block told the
         # model to OFFER the address and it obeyed — on the anamnesis turn.
         # The ladder decides WHEN the offer happens; the block yields.
-        and not getattr(engine, "_ident_directive", None)
-        and not getattr(engine, "_ticket_directive", None)
+        and not engine.state.turn.directives.ident
+        and not engine.state.turn.directives.ticket
         # Ladder order (live 2026-08-21): the offer comes AFTER the problem
         # and the anamnesis — a garbled first utterance must not trigger it.
         and s.intake.problem_type
@@ -837,7 +835,7 @@ def state_facts_block(engine) -> str | None:
     # reply (arc v3). The JAU PRANEŠTA marker stops the model re-reading the same
     # news every turn (observed live: "sustabdyta dėl skolos" said 3×).
     if s.resolution.procedure is None and s.diagnosis.verdicts and not s.closing.case_closed:
-        if getattr(engine, "_news_told", False):
+        if engine.state.diagnosis.news_delivered:
             facts.append(
                 "- ŽINIA JAU PASAKYTA: nebekartok „patikrinau / sustabdyta / "
                 "avarija“ teksto. Atsakyk į kliento klausimą, arba paklausk „Ar dar "
@@ -858,11 +856,11 @@ def state_facts_block(engine) -> str | None:
         # try another socket") won over the directive twice. A directive
         # turn carries ONE instruction: no step hint, no playbook section.
         directive_active = bool(
-            getattr(engine, "_evidence_directive", None)
-            or getattr(engine, "_recap_directive", None)
-            or getattr(engine, "_findings_directive", None)
-            or getattr(engine, "_ticket_directive", None)
-            or getattr(engine, "_ident_directive", None)
+            engine.state.turn.directives.evidence
+            or engine.state.turn.directives.recap
+            or engine.state.turn.directives.findings
+            or engine.state.turn.directives.ticket
+            or engine.state.turn.directives.ident
         )
         # Step facts wait while the caller-intro question is owed (see above).
         if step is not None and not caller_pending and not directive_active:
@@ -971,9 +969,9 @@ def state_facts_block(engine) -> str | None:
     # Turn'o gramatika (etalonas 2026-09-03): the JUST-landed answer's declared
     # MEANING — the reaction carries it instead of parroting the fact
     # („Vadinasi, maitinimą gauna, bet tinklo nemato."). One-shot.
-    fm = getattr(engine, "_fact_meaning", None)
+    fm = engine.state.diagnosis.fact_meaning
     if fm:
-        engine._fact_meaning = None
+        engine.state.diagnosis.fact_meaning = None
         tema, reiksme, prasme = fm
         facts.append(
             f"- KĄ TIK PAAIŠKĖJO: {tema} — „{reiksme}“. TAI REIŠKIA: {prasme}. "
@@ -988,7 +986,7 @@ def state_facts_block(engine) -> str | None:
                 f"- KLIENTAS PRISISTATĖ: pradėk šiltu priėmimu — „Malonu, "
                 f"{s.identity.caller_name}!“ (arba panašiai) — ir tęsk mintį."
             )
-    idd = getattr(engine, "_ident_directive", None)
+    idd = engine.state.turn.directives.ident
     if idd:
         # W1-1 (Andrius 2026-08-25): the opening already said WHEN it broke —
         # the caller must HEAR they were heard, one short acknowledgement
@@ -1037,7 +1035,7 @@ def state_facts_block(engine) -> str | None:
     # Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments,
     # worded by the narrator into the conversation's flow — the engine still
     # owns the stages and the capture; only the WORDING is free.
-    td = getattr(engine, "_ticket_directive", None)
+    td = engine.state.turn.directives.ticket
     if td:
         from .ticket_flow import ticket_need
 
@@ -1071,14 +1069,14 @@ def state_facts_block(engine) -> str | None:
 
     # Persona: the RECAP as a goal directive — read the gathered facts back in
     # the narrator's own words, one short sentence, never the label:value dump.
-    rd = getattr(engine, "_recap_directive", None)
+    rd = engine.state.turn.directives.recap
     if rd:
         facts.append(f"- PASITIKSLINK: ar teisingai supratai — {rd['faktai']}.")
 
     # Persona: the FINDINGS moment as a goal directive — the narrator states
     # what was established, the conclusion and the choice BRIEFLY in its own
     # words (never the 'label: value; label: value' template dump).
-    fd = getattr(engine, "_findings_directive", None)
+    fd = engine.state.turn.directives.findings
     if fd:
         # Ticket-first faults script their own offer (`pasiulymas` in the
         # pack): the primary outcome first, the convenience as the question.
@@ -1128,7 +1126,7 @@ def state_facts_block(engine) -> str | None:
     # directive — the narrator words it naturally in the conversation's flow
     # instead of reading the pack's scripted sentence. Hard limits keep it
     # safe: ONE question, this goal only, no invented facts.
-    directive = getattr(engine, "_evidence_directive", None)
+    directive = engine.state.turn.directives.evidence
     if directive:
         kodel = f" Kodėl tikriname: {directive['kodel']}." if directive.get("kodel") else ""
         # The OTHER still-open goals are named as off-limits (eval 2026-08-21:
@@ -1210,7 +1208,7 @@ def mark_step_presented(engine) -> None:
             return  # the reply asked WHO is calling — nothing else was presented
         engine.state.identity.result_pending = False
         if s.resolution.procedure is None:
-            engine._news_told = True
+            engine.state.diagnosis.news_delivered = True
     r = engine.state.resolution.procedure
     if not r:
         return
@@ -1314,7 +1312,9 @@ def result_narration_tail(engine) -> str:
             "klausimą (jis atlieka „ar darome?“ vaidmenį). NEkartok adreso klausimo, "
             "NEkartok anamnezės klausimo, jokių instrukcijų sąrašo — vienas klausimas."
         )
-    engine._news_told = True  # the news goes out in THIS reply — never repeat it
+    engine.state.diagnosis.news_delivered = (
+        True  # the news goes out in THIS reply — never repeat it
+    )
     return (
         f" Patikra atlikta. ŽINIA: {gloss}. Šiame VIENAME atsakyme, šia tvarka: "
         "(1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) pasakyk žinią "

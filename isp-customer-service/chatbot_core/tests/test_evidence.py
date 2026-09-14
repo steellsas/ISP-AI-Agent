@@ -157,7 +157,7 @@ class TestAgentWiring:
         agent = _diagnosing_agent()
         agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
         agent._ingest_client_evidence("Turiu kompiuterį, galim bandyti")
-        assert agent._evidence_conflict is not None
+        assert agent.state.diagnosis.evidence_conflict is not None
         # The solver yields, the walker holds, the scripted clarify goes out.
         assert agent.solver_drive_turn("Turiu kompiuterį, galim bandyti") is None
         agent._advance_resolution("Turiu kompiuterį, galim bandyti")
@@ -170,7 +170,10 @@ class TestAgentWiring:
         agent._ingest_client_evidence("Turiu kompiuterį")
         e = agent.state.diagnosis.evidence["has_computer"]
         assert e["value"] == "yes" and e["conflict"] is False
-        assert agent._evidence_conflict is None and agent._evidence_conflict_asked is None
+        assert (
+            agent.state.diagnosis.evidence_conflict is None
+            and agent.state.diagnosis.evidence_conflict_asked_key is None
+        )
 
     def test_bare_polarity_settles_yes_no_conflict(self):
         agent = _diagnosing_agent()
@@ -188,7 +191,7 @@ class TestAgentWiring:
         agent._ingest_client_evidence("Kurs komentai")  # garble
         e = agent.state.diagnosis.evidence["has_computer"]
         assert e["conflict"] is False and e["value"] == "yes"  # latest stated wins
-        assert agent._evidence_conflict_asked is None
+        assert agent.state.diagnosis.evidence_conflict_asked_key is None
 
     def test_facts_block_and_solver_context_carry_ledger(self):
         agent = _diagnosing_agent()
@@ -307,18 +310,18 @@ class TestAgentWiring:
         # Live 2026-08-10 (T1): "Radau." to "Radote?" carried no noun -> the
         # general extractor was blind -> give-up despite a clear answer.
         agent = _diagnosing_agent()
-        agent._evidence_asks["device_present"] = 2
-        agent._evidence_last_ask_key = "device_present"
+        agent.state.diagnosis.evidence_ask_counts["device_present"] = 2
+        agent.state.diagnosis.pending_evidence_key = "device_present"
         agent._ingest_client_evidence("Radau.")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
-        assert agent._evidence_last_ask_key is None  # answered — context consumed
+        assert agent.state.diagnosis.pending_evidence_key is None  # answered — context consumed
 
     def test_pending_lights_reads_garbled_negation(self):
         # "Ne daganiai 1." (STT of "nedega nė viena") had no 'lemp' word — with
         # the lights question pending it now reads as nedega instead of falling
         # to the stale walker's yes/no classifier (which escalated on it).
         agent = _diagnosing_agent()
-        agent._evidence_last_ask_key = "lights"
+        agent.state.diagnosis.pending_evidence_key = "lights"
         agent._ingest_client_evidence("Ne daganiai 1.")
         assert agent.state.diagnosis.evidence["lights"]["value"] == "nedega"
 
@@ -327,7 +330,7 @@ class TestAgentWiring:
 
         agent = _diagnosing_agent()
         set_fact(agent.state.diagnosis.evidence, "device_present", "neaišku", CLIENT, 3)
-        agent._evidence_last_ask_key = "device_present"
+        agent.state.diagnosis.pending_evidence_key = "device_present"
         agent._ingest_client_evidence("Taip, radau tą dėžutę")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
 
@@ -335,7 +338,7 @@ class TestAgentWiring:
         # A rich utterance that the general extractor understands wins — the
         # pending context only fills the gap when nothing was extracted.
         agent = _diagnosing_agent()
-        agent._evidence_last_ask_key = "device_present"
+        agent.state.diagnosis.pending_evidence_key = "device_present"
         agent._ingest_client_evidence("Radau routerį, lemputės dega žaliai")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
         assert agent.state.diagnosis.evidence["lights"]["value"] == "dega"

@@ -251,7 +251,7 @@ class TestConflictScope:
         entry = set_fact(agent.state.diagnosis.evidence, "lights", "dega", CLIENT, 2)
         assert entry["conflict"]
         assert _conflict_to_clarify(agent, "lights", entry) is True  # consumed silently
-        assert agent._evidence_conflict is None  # no clarify loop
+        assert agent.state.diagnosis.evidence_conflict is None  # no clarify loop
         assert entry["value"] == "dega" and not entry["conflict"]  # newest stands
 
     def test_declared_key_conflict_still_clarifies(self, db_connection):
@@ -263,7 +263,7 @@ class TestConflictScope:
         entry = set_fact(agent.state.diagnosis.evidence, "fail_scope", "viename", CLIENT, 2)
         assert entry["conflict"]
         assert _conflict_to_clarify(agent, "fail_scope", entry) is True
-        c = agent._evidence_conflict
+        c = agent.state.diagnosis.evidence_conflict
         assert (c.key, c.old, c.new) == ("fail_scope", "visuose", "viename")
 
 

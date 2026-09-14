@@ -415,34 +415,34 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine.state.identity.address_unrecognized_turns = 0
     engine.state.identity.address_resolve_failures = 0
     engine.state.identity.suggested_city = None
-    engine._evidence_asks.clear()
-    engine._evidence_last_ask_key = None
-    engine._evidence_conflict = None
-    engine._evidence_conflict_asked = None
-    engine._side_topic_this_turn = False
-    engine._side_topic_turns = 0
+    engine.state.diagnosis.evidence_ask_counts.clear()
+    engine.state.diagnosis.pending_evidence_key = None
+    engine.state.diagnosis.evidence_conflict = None
+    engine.state.diagnosis.evidence_conflict_asked_key = None
+    engine.state.turn.side_topic_active = False
+    engine.state.dialog.side_topic_streak = 0
     engine._ticket_stage = None
     engine._ticket_ctx = None
     engine._drive_bridge_offered = False
     engine._drive_disabled = False
     engine._drive_repeats = 0
-    engine._findings_announced = False
-    engine._pending_announce = ""
+    engine.state.diagnosis.findings_announced = False
+    engine.state.diagnosis.pending_announcement = ""
     engine._escalate_clarify_asked = False
     engine._escalate_clarify_pending = False
     engine._resume_fix_note = False
-    engine._recap_state = ""
-    engine._refute_state = ""
-    engine._done_report_key = None
+    engine.state.diagnosis.facts_recap_state = ""
+    engine.state.diagnosis.refute_confirm_state = ""
+    engine.state.turn.done_report_key = None
     engine._bridge_plug_reported = False
     engine._bridge_fail_stage = 0
     engine._bridge_fail_note = None
-    engine._revived_keys = []
+    engine.state.diagnosis.revived_evidence_keys = []
     from .slots import ClientProfileState
 
     s.identity.profile = ClientProfileState()
     engine.state.turn.db_address_note = None
-    engine._news_told = False  # a new address may carry different news
+    engine.state.diagnosis.news_delivered = False  # a new address may carry different news
     engine.state.identity.result_pending = False
     engine._end_confirm_pending = False
     engine._resume_hold = False
@@ -543,7 +543,7 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
     if p_asks < 2 and not asking:
         return phrase("ask_problem")
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
-        engine._ident_directive = {
+        engine.state.turn.directives.ident = {
             "kind": "problem_gate",
             "adresas": None,
             "fallback": phrase("ask_problem"),
@@ -1200,7 +1200,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             "phone",
             "hours",
         ):
-            engine._ticket_directive = {"kind": kind, "fallback": scripted}
+            engine.state.turn.directives.ticket = {"kind": kind, "fallback": scripted}
             return None  # the ticket node's narrator speaks (facts directive)
         return scripted
     if engine._ticket_stage == "done":
@@ -1216,8 +1216,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # and the caller keeps drifting — the return is scripted now. With a
     # CONFIRMED hypothesis the frame is the solve-together-or-technician
     # choice (Andrius 2026-08-07: maximise solving by phone).
-    if engine._side_topic_this_turn and engine._side_topic_turns >= 3:
-        engine._side_topic_turns = 0
+    if engine.state.turn.side_topic_active and engine.state.dialog.side_topic_streak >= 3:
+        engine.state.dialog.side_topic_streak = 0
         from .evidence import hypothesis_status, spec_for
 
         spec = spec_for((s.resolution.procedure or {}).get("verdict"))
@@ -1226,13 +1226,13 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         return phrase("back_to_issue", inkaras=engine.anchor_text())
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
-    if engine._evidence_conflict:
+    if engine.state.diagnosis.evidence_conflict:
         from .evidence import LABELS, VALUE_LT
 
-        conflict = engine._evidence_conflict
+        conflict = engine.state.diagnosis.evidence_conflict
         key, old, new = conflict.key, conflict.old, conflict.new
-        engine._evidence_conflict = None
-        engine._evidence_conflict_asked = key
+        engine.state.diagnosis.evidence_conflict = None
+        engine.state.diagnosis.evidence_conflict_asked_key = key
         return phrase(
             "evidence_conflict",
             tema=LABELS.get(key, key),
@@ -1348,7 +1348,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # not end the call).
     if (
         s.resolution.procedure is None
-        and (engine._news_told or s.diagnosis.outage_reported)
+        and (engine.state.diagnosis.news_delivered or s.diagnosis.outage_reported)
         and not engine.state.identity.result_pending
     ):
         low = (user_input or "").lower()
@@ -1402,7 +1402,12 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         _reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
         _salyga = clarity_declaration(_reason)
         if _salyga:
-            engine.tracer.emit("clarity", reason=_reason, salyga=_salyga, told=engine._news_told)
+            engine.tracer.emit(
+                "clarity",
+                reason=_reason,
+                salyga=_salyga,
+                told=engine.state.diagnosis.news_delivered,
+            )
         engine.tracer.emit("decision", intent="wrap_up", action="close", to=s.closing.closed_reason)
         return phrase("goodbye")
     if not engine.state.identity.result_pending:
@@ -1445,7 +1450,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         if reason in ("node_fault_unregistered", "switch_unreachable") and not s.ticket.ticket_id:
             engine._register_ticket_from_state(None)
         engine.state.identity.result_pending = False
-        engine._news_told = True
+        engine.state.diagnosis.news_delivered = True
         engine.tracer.emit("decision", intent="inform", action="template", reason=reason)
         return " ".join([phrase("thanks"), inf, phrase("anything_else")])
     zinia = DIAGNOSIS_LT.get(reason, reason or "")
@@ -1460,7 +1465,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         bits.append(f"Numatomas atstatymas iki {s.identity.preflight_outage['eta']}.")
     bits.append(phrase("anything_else"))
     engine.state.identity.result_pending = False
-    engine._news_told = True
+    engine.state.diagnosis.news_delivered = True
     return " ".join(b for b in bits if b)
 
 
@@ -1485,7 +1490,11 @@ def _address_move(engine, s):
         kind, fallback = "address_ask", phrase("address_ask")
     _q_register(engine, "ident", kind, adresas=adresas)
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
-        engine._ident_directive = {"kind": kind, "adresas": adresas, "fallback": fallback}
+        engine.state.turn.directives.ident = {
+            "kind": kind,
+            "adresas": adresas,
+            "fallback": fallback,
+        }
         return None  # the narrator words the transition (facts directive)
     return fallback
 

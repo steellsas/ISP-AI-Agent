@@ -132,26 +132,26 @@ class TestRound2Fixes:
         # "Galim dabar patikrinti" got tipas=klausimas and froze the engine —
         # no question word, no FAQ hit -> the single sensor may not decide.
         agent = _diagnosing_agent(monkeypatch)
-        agent._last_understanding = _canned(tipas="klausimas", supratau="nori patikrinti")
+        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="nori patikrinti")
         assert agent.classify_side_topic("Galim dabar patikrinti") is False
-        assert agent._side_topic_this_turn is False
+        assert agent.state.turn.side_topic_active is False
 
     def test_side_entry_allowed_with_question_word(self, db_connection, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
-        agent._last_understanding = _canned(tipas="klausimas", supratau="klausia kainos")
+        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="klausia kainos")
         assert agent.classify_side_topic("O kiek man tai kainuos?") is True
 
     def test_side_entry_allowed_with_faq_keyword(self, db_connection, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
-        agent._last_understanding = _canned(tipas="klausimas", supratau="klausia apie meistrą")
+        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="klausia apie meistrą")
         assert agent.classify_side_topic("Man atrodo reikės meistro vizito") is True
 
     def test_supplement_fills_pending_key_on_empty_answer_facts(self, db_connection, monkeypatch):
         # "…sakiau, kad RADAU" came back tipas=atsakymas with faktai={} — the
         # pending-context read now SUPPLEMENTS instead of only falling back.
         agent = _diagnosing_agent(monkeypatch)
-        agent._evidence_asks["device_present"] = 2
-        agent._evidence_last_ask_key = "device_present"
+        agent.state.diagnosis.evidence_ask_counts["device_present"] = 2
+        agent.state.diagnosis.pending_evidence_key = "device_present"
         with patch(
             "agent.understand.understand",
             return_value=_canned(tipas="atsakymas", supratau="klientas rado routerį"),
@@ -177,7 +177,7 @@ class TestRound2Fixes:
     def test_side_facts_carry_deterministic_topic(self, db_connection, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
         agent.state.dialog.last_heard = "O kiek man tai kainuos?"
-        agent._last_understanding = _canned(tipas="klausimas", supratau="klausia kainos")
+        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="klausia kainos")
         agent.classify_side_topic("O kiek man tai kainuos?")
         facts = agent._state_facts_block()
         assert "Kliento tema: kaina" in facts  # from the FAQ hit, not a template
@@ -190,7 +190,9 @@ class TestFindingsAnnounce:
 
     def _confirmed_agent(self, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
-        agent._recap_state = "done"  # recap checkpoint tested separately (round 3)
+        agent.state.diagnosis.facts_recap_state = (
+            "done"  # recap checkpoint tested separately (round 3)
+        )
         with patch("agent.understand.understand", return_value=None):
             agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
             agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
@@ -240,8 +242,8 @@ class TestConfirmationAgent:
         set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         with patch("agent.understand.understand", return_value=None):
             agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
-        agent._evidence_last_ask_key = "power_cable"
-        agent._evidence_asks["power_cable"] = 1
+        agent.state.diagnosis.pending_evidence_key = "power_cable"
+        agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
         with patch(
             "agent.understand.understand",
             return_value=_canned(
@@ -258,7 +260,7 @@ class TestConfirmationAgent:
         # "Taip ir padaryta" to the cable question DOES carry a value ("taip"
         # is the key's own marker) — corroborated, the fact stands.
         agent = _diagnosing_agent(monkeypatch)
-        agent._evidence_last_ask_key = "power_cable"
+        agent.state.diagnosis.pending_evidence_key = "power_cable"
         with patch(
             "agent.understand.understand",
             return_value=_canned(faktai={"power_cable": "įkištas"}, supratau="įkišo laidą"),
@@ -343,7 +345,7 @@ class TestKeywordSupplement:
             )
         e = agent.state.diagnosis.evidence["outlet_works"]
         assert e["conflict"] is True  # neither reader won silently
-        assert agent._evidence_conflict is not None  # the clarify goes out
+        assert agent.state.diagnosis.evidence_conflict is not None  # the clarify goes out
         with patch("agent.understand.understand", return_value=None):
             reply = agent._identification_scripted_reply("na")
         assert reply is not None and "rozetė" in reply  # "kaip yra iš tiesų?"
@@ -492,7 +494,7 @@ class TestTicketUnderstanding:
 
     def test_stale_supratau_cleared_on_ticket_turns(self, db_connection, monkeypatch):
         agent = self._ticket_agent(monkeypatch, stage="hours")
-        agent._last_understanding = {"supratau": "Routeris sugedęs", "tipas": "atsakymas"}
+        agent.state.turn.understanding = {"supratau": "Routeris sugedęs", "tipas": "atsakymas"}
         # The stream turn entry clears it for ticket-node turns.
         gen = agent.run_turn_scoped_stream("bet kada", frozenset(), None)
         with patch(
@@ -500,7 +502,7 @@ class TestTicketUnderstanding:
             return_value={"reiksme": "bet kada", "tipas": "atsakymas"},
         ):
             reply = "".join(gen)
-        assert agent._last_understanding is None
+        assert agent.state.turn.understanding is None
         assert "Užregistravau" in reply  # dialogue completed
         facts = agent._state_facts_block() or ""
         assert "Routeris sugedęs" not in facts
@@ -513,7 +515,7 @@ class TestUnderstandWiring:
         with patch("agent.understand.understand", return_value=canned):
             agent._ingest_client_evidence("Radau.")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
-        assert agent._last_understanding["supratau"] == "klientas rado routerį"
+        assert agent.state.turn.understanding["supratau"] == "klientas rado routerį"
 
     def test_pass_failure_falls_back_to_keywords(self, db_connection, monkeypatch):
         agent = _diagnosing_agent(monkeypatch)
@@ -568,7 +570,9 @@ class TestUnderstandWiring:
             return_value=_canned(faktai={"has_computer": "yes"}, tipas="prieštaravimas"),
         ):
             agent._ingest_client_evidence("Turiu kompiuterį")
-        assert agent._evidence_conflict is not None  # same clarify discipline as before
+        assert (
+            agent.state.diagnosis.evidence_conflict is not None
+        )  # same clarify discipline as before
 
     def test_keyword_suite_untouched_without_flag(self, db_connection, monkeypatch):
         # CLASSIFIER=off (the whole deterministic suite) — the pass never runs.

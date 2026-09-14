@@ -81,7 +81,6 @@ class FakeEngine:
         self._driven = driven
         self._ticket_stage = None
         self._active_node = None
-        self._news_told = False
         self.session_id = "fake-session"
         self.tracer = SimpleNamespace(emit=lambda *a, **k: None)
 

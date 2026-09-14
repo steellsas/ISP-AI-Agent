@@ -181,7 +181,9 @@ class TestIdentifyThenDiagnoseSameTurn:
         tail = agent._result_narration_tail()
         assert "Patikrinsiu būseną" in tail
         assert "ŽINIA" in tail
-        assert agent._news_told is True  # inform news marked told — never repeated
+        assert (
+            agent.state.diagnosis.news_delivered is True
+        )  # inform news marked told — never repeated
 
     def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):
         """Regression: the tool loop augmented BEFORE committing customer_id, so

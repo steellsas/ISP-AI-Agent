@@ -84,7 +84,7 @@ class TestW1LivingDialogue:
         )
         assert reply is None
         assert agent.state.intake.anamnesis_raw and agent.state.intake.anamnesis_when
-        assert agent._ident_directive["kind"] in ("address_offer", "address_ask")
+        assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
         block = agent._state_facts_block() or ""
         assert "KLIENTAS JAU PASAKĖ" in block and "NEKLAUSK" in block
 
@@ -97,7 +97,7 @@ class TestW1LivingDialogue:
         agent = ReactAgent(caller_phone="unknown")
         agent.state.intake.problem_type = "internet_down"
         assert agent._identification_scripted_reply("Neveikia internetas pas mane") is None
-        assert agent._ident_directive["kind"] in ("address_offer", "address_ask")
+        assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
 
     def _resolving_agent(self):
         from agent.react_agent import ReactAgent
@@ -118,22 +118,28 @@ class TestW1LivingDialogue:
             lambda t: {"lights": "nedega", "outlet_works": "neveikia"} if t else {},
         )
         agent = self._resolving_agent()
-        agent._evidence_last_ask_key = "lights"  # we asked about the LIGHTS
+        agent.state.diagnosis.pending_evidence_key = "lights"  # we asked about the LIGHTS
         agent._ingest_client_evidence("nedega nė viena, ir rozetė neveikia")
         assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked, not committed
-        assert agent._fact_confirm == FactConfirm(key="outlet_works", value="neveikia")
+        assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
+            key="outlet_works", value="neveikia"
+        )
         reply = agent._evidence_drive("nedega nė viena, ir rozetė neveikia")
         assert reply and "sitikinti" in reply  # the one confirm question
-        assert agent._fact_confirm_asked == FactConfirm(key="outlet_works", value="neveikia")
+        assert agent.state.diagnosis.fact_confirm_asked == FactConfirm(
+            key="outlet_works", value="neveikia"
+        )
 
     def test_confirmed_gate_commits_denied_gate_drops(self, db_connection):
         agent = self._resolving_agent()
-        agent._fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
+        agent.state.diagnosis.fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
         agent._ingest_client_evidence("Taip, tikrai neveikia")
         assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
         agent2 = self._resolving_agent()
-        agent2._fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
+        agent2.state.diagnosis.fact_confirm_asked = FactConfirm(
+            key="outlet_works", value="neveikia"
+        )
         agent2._ingest_client_evidence("Ne ne, rozetė veikia, viskas gerai")
         assert (agent2.state.diagnosis.evidence.get("outlet_works") or {}).get(
             "value"
@@ -146,10 +152,10 @@ class TestW1LivingDialogue:
             ev, "extract_client_facts", lambda t: {"outlet_works": "neveikia"} if t else {}
         )
         agent = self._resolving_agent()
-        agent._evidence_last_ask_key = "outlet_works"  # we ASKED about the outlet
+        agent.state.diagnosis.pending_evidence_key = "outlet_works"  # we ASKED about the outlet
         agent._ingest_client_evidence("neveikia rozetė")
         assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
-        assert agent._fact_confirm is None
+        assert agent.state.diagnosis.fact_confirm_pending is None
 
 
 class TestUnheardQuestion:
@@ -173,15 +179,15 @@ class TestUnheardQuestion:
     def test_unheard_question_rolls_the_ask_back(self, db_connection):
         agent = self._agent()
         agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
-        agent._evidence_last_ask_key = "lights"
-        agent._evidence_asks = {"lights": 1}
+        agent.state.diagnosis.pending_evidence_key = "lights"
+        agent.state.diagnosis.evidence_ask_counts = {"lights": 1}
         agent.apply_delivery(["Gerai, kad radote.", "Ar dega bent viena lemputė?"], 1)
         assert agent.state.dialog.last_question is None
         # the pending key STAYS (live 2026-08-27: clearing it looped the call —
         # the interrupting ANSWER had no key to land on); only the ask counter
         # steps back.
-        assert agent._evidence_last_ask_key == "lights"
-        assert agent._evidence_asks["lights"] == 0
+        assert agent.state.diagnosis.pending_evidence_key == "lights"
+        assert agent.state.diagnosis.evidence_ask_counts["lights"] == 0
         assert agent.state.resolution.procedure["presented"]["dr_lights"] == 0
         assert agent._unheard_question == "Ar dega bent viena lemputė?"
         assert agent._undelivered_tail is None  # superseded by the strong note
@@ -192,11 +198,11 @@ class TestUnheardQuestion:
     def test_heard_question_keeps_the_ask(self, db_connection):
         agent = self._agent()
         agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
-        agent._evidence_last_ask_key = "lights"
-        agent._evidence_asks = {"lights": 1}
+        agent.state.diagnosis.pending_evidence_key = "lights"
+        agent.state.diagnosis.evidence_ask_counts = {"lights": 1}
         agent.apply_delivery(["Ar dega bent viena lemputė?", "Tai parodys, ar gauna srovę."], 1)
         assert agent.state.dialog.last_question == "Ar dega bent viena lemputė?"
-        assert agent._evidence_last_ask_key == "lights"
+        assert agent.state.diagnosis.pending_evidence_key == "lights"
         assert agent._unheard_question is None
         assert agent._undelivered_tail  # the plain advisory note stands
 
@@ -281,7 +287,7 @@ class TestTurnGrammar:
 
         agent = self._agent(verdict="no_mac_observed")
         _note_fact_meaning(agent, "power_cable", "įkištas")  # no reiskia declared
-        assert getattr(agent, "_fact_meaning", None) is None
+        assert agent.state.diagnosis.fact_meaning is None
 
     def test_mires_lights_meaning_declared(self, db_connection):
         from agent.perception_flow import _note_fact_meaning
@@ -303,7 +309,7 @@ class TestTurnGrammar:
 
         agent = ReactAgent(caller_phone="+37060020112")
         agent.state.intake.problem_type = "internet_down"
-        agent._ident_directive = {
+        agent.state.turn.directives.ident = {
             "kind": "address_offer",
             "adresas": "Tilžės g. 60, butas 7",
             "fallback": "Ar skambinate dėl Tilžės g. 60, butas 7?",

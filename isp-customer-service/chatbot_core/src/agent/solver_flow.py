@@ -236,9 +236,9 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
         return None
     if engine._ticket_stage:
         return None  # the ticket dialogue owns the turn
-    if engine._evidence_conflict:
+    if engine.state.diagnosis.evidence_conflict:
         return None  # the scripted conflict clarification owns the turn
-    if engine._side_topic_this_turn:
+    if engine.state.turn.side_topic_active:
         return None  # the side_topic node owns the turn (answer + anchor)
     # POLICY turns never belong to the thinker (2026-08-07: a refusal
     # ("neturiu laiko") got a solver `wait`→`close` and the call ended with
@@ -299,9 +299,9 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     # (goal directive in the facts block) — hand the turn to the narrator path.
     # Same for the FINDINGS moment (facts + conclusion + choice, said humanly).
     if (
-        getattr(engine, "_evidence_directive", None)
-        or getattr(engine, "_findings_directive", None)
-        or getattr(engine, "_recap_directive", None)
+        engine.state.turn.directives.evidence
+        or engine.state.turn.directives.findings
+        or engine.state.turn.directives.recap
     ):
         return None
     # R4b: a confirmed hypothesis with a WALKER solution means the step tree
@@ -373,10 +373,10 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
         return None
     # The findings announce stashed by the evidence layer rides on the
     # solver's first reply (the bridge path returns None to hand over).
-    pending_announce = getattr(engine, "_pending_announce", "")
+    pending_announce = engine.state.diagnosis.pending_announcement
     if pending_announce:
         reply = pending_announce + reply
-        engine._pending_announce = ""
+        engine.state.diagnosis.pending_announcement = ""
     # Committed to driving this turn — do the same end-of-turn bookkeeping the walker
     # path gets from run_turn_scoped_stream: user_turn trace, dialogue history (the solver reads
     # it next turn), and the shared reply finalisation (case snapshot + agent_reply).
@@ -676,8 +676,10 @@ def bridge_fail_step(engine: Any) -> str:
         spec = spec_for(verdict) or {}
         item = (spec.get("client") or {}).get("lan_active") or {}
         # The answer reads against THIS key (pending machinery, universal).
-        engine._evidence_last_ask_key = "lan_active"
-        engine._evidence_asks["lan_active"] = engine._evidence_asks.get("lan_active", 0) + 1
+        engine.state.diagnosis.pending_evidence_key = "lan_active"
+        engine.state.diagnosis.evidence_ask_counts["lan_active"] = (
+            engine.state.diagnosis.evidence_ask_counts.get("lan_active", 0) + 1
+        )
         engine.tracer.emit("drive_decision", action="bridge_fail_lan_check", accepted=True)
         return str(
             item.get("klausimas")

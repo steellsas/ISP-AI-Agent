@@ -100,7 +100,7 @@ class TestWrapUpHearing:
     def _informed(self):
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
-        agent._news_told = True
+        agent.state.diagnosis.news_delivered = True
         agent.state.identity.result_pending = False
         return agent
 

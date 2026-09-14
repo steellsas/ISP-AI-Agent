@@ -79,7 +79,7 @@ def plan_branches(engine: Any) -> dict[str, Any] | None:
     s = engine.state
     r = s.resolution.procedure or {}
     verdict = r.get("verdict")
-    key = getattr(engine, "_evidence_last_ask_key", None)
+    key = engine.state.diagnosis.pending_evidence_key
     if not verdict or not key or s.closing.case_closed:
         return None
     spec = spec_for(verdict)
@@ -104,13 +104,13 @@ def plan_branches(engine: Any) -> dict[str, Any] | None:
         if status == "refuted":
             continue  # pivot path — deterministic machinery handles it live
         if status == "confirmed":
-            if getattr(engine, "_recap_state", "") != "done":
+            if engine.state.diagnosis.facts_recap_state != "done":
                 branches[str(value)] = {
                     "kind": "recap",
                     "key": None,
                     "directive": _directive_line("recap", {"faktai": client_facts_lt(ev2)}),
                 }
-            elif not getattr(engine, "_findings_announced", False):
+            elif not engine.state.diagnosis.findings_announced:
                 branches[str(value)] = {
                     "kind": "findings",
                     "key": None,
@@ -231,7 +231,7 @@ def match(engine: Any, transcript: str) -> dict[str, Any] | None:
     if not cache or not enabled() or not transcript:
         return None
     key = cache["pending_key"]
-    if getattr(engine, "_evidence_last_ask_key", None) != key:
+    if engine.state.diagnosis.pending_evidence_key != key:
         return None
     from .evidence import extract_client_facts, read_pending_answer, spec_for
     from .resolution import (

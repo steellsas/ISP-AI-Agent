@@ -9,7 +9,7 @@ so the replay bench can reproduce the live decoding exactly.
 
 from types import SimpleNamespace
 
-from agent.graph_v2.state import GraphState, IntakeState, ResolutionState
+from agent.graph_v2.state import DiagnosisState, GraphState, IntakeState, ResolutionState
 from agent.voice_pipeline import VoicePipeline, audio_duration_s
 
 
@@ -235,7 +235,7 @@ class TestSessionAsrContext:
         a = session._agent
         a.state.dialog.last_question = "Ar dega bent viena lemputė?"
         a.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        a._evidence_last_ask_key = "lights"
+        a.state.diagnosis.pending_evidence_key = "lights"
         ctx = session.asr_context()
         assert ctx and "lemputė" in ctx
         assert "nedega" in ctx and "dega" in ctx  # the pack's atsakymai markers
@@ -262,7 +262,7 @@ class TestSpeculation:
 
         set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
-        agent._evidence_last_ask_key = "lights"
+        agent.state.diagnosis.pending_evidence_key = "lights"
         return agent
 
     def test_plan_branches_from_the_ledger(self, db_connection):
@@ -299,7 +299,7 @@ class TestSpeculation:
             "key": "power_cable",
             "text": "Ar laidas įkištas?",
         }
-        agent._evidence_directive = {
+        agent.state.turn.directives.evidence = {
             "key": "power_cable",
             "reikia": "x",
             "kodel": "",
@@ -467,11 +467,11 @@ class TestSemanticEndpoint:
         # problem_type set: these tests probe the MID-CALL windows; the
         # pre-problem STORY window has its own tests (test_classification).
         return SimpleNamespace(
-            _evidence_last_ask_key=pending,
             state=GraphState(
                 resolution=ResolutionState(procedure={"verdict": verdict} if verdict else None),
                 intake=IntakeState(problem_type="internet_down"),
-            ),
+                diagnosis=DiagnosisState(pending_evidence_key=pending),
+            )
         )
 
     def test_trailing_conjunction_waits(self):

@@ -62,7 +62,7 @@ def maybe_close_inform(engine: Any, user_input: str | None) -> None:
     if (
         engine.state.identity.result_pending
         or engine._ticket_stage
-        or not (engine._news_told or s.diagnosis.outage_reported)
+        or not (engine.state.diagnosis.news_delivered or s.diagnosis.outage_reported)
     ):
         return
     reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")

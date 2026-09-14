@@ -22,7 +22,7 @@ def _agent():
 class TestApplyOverlay:
     def test_pending_answer_lands_from_overlay(self, db_connection):
         agent = _agent()
-        agent._evidence_last_ask_key = "lights"
+        agent.state.diagnosis.pending_evidence_key = "lights"
         agent.apply_overlay(["ne, nedega nė viena"])
         assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
         block = agent._state_facts_block() or ""
@@ -46,10 +46,12 @@ class TestApplyOverlay:
             ev, "extract_client_facts", lambda t: {"outlet_works": "neveikia"} if t else {}
         )
         agent = _agent()
-        agent._evidence_last_ask_key = "lights"  # volunteered, not the asked key
+        agent.state.diagnosis.pending_evidence_key = "lights"  # volunteered, not the asked key
         agent.apply_overlay(["rozetė neveikia"])
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked
-        assert agent._fact_confirm == FactConfirm(key="outlet_works", value="neveikia")
+        assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
+            key="outlet_works", value="neveikia"
+        )
 
     def test_empty_and_capped(self, db_connection):
         agent = _agent()

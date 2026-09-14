@@ -95,7 +95,7 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     # Complete expected answer: the pending evidence question's deterministic
     # reader maps the whole utterance to a canonical value.
     try:
-        pending = getattr(engine, "_evidence_last_ask_key", None)
+        pending = engine.state.diagnosis.pending_evidence_key
         r = getattr(engine.state.resolution, "procedure", None) or {}
         if pending and r.get("verdict"):
             from .evidence import read_pending_answer, spec_for

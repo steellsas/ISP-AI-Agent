@@ -152,7 +152,7 @@ class TestGateL2:
         agent = _agent()
         reply = self._gate(agent, "Mendulija kadulija")
         assert agent.state.intake.problem_type is None
-        assert reply is not None or agent._ident_directive is not None
+        assert reply is not None or agent.state.turn.directives.ident is not None
 
 
 class TestAccumulatedContext:
@@ -246,7 +246,7 @@ class TestPendingFallback:
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
-        assert getattr(agent, "_evidence_last_ask_key", None) is None  # no ask yet
+        assert agent.state.diagnosis.pending_evidence_key is None  # no ask yet
         canned = NS(
             tipas="atsakymas",
             faktai={},

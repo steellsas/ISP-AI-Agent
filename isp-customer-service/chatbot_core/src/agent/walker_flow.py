@@ -200,12 +200,12 @@ def advance_resolution(engine, user_input: str | None) -> None:
     # Ledger: a fresh evidence conflict holds the walker THIS turn — the
     # contradicting utterance must not double as a step answer; the scripted
     # clarification goes out instead and the settling answer resumes.
-    if engine._evidence_conflict:
+    if engine.state.diagnosis.evidence_conflict:
         engine.tracer.emit(
             "decision",
             intent="evidence_conflict",
             action="hold",
-            key=engine._evidence_conflict.key,
+            key=engine.state.diagnosis.evidence_conflict.key,
         )
         return
     r = engine.state.resolution.procedure
@@ -356,7 +356,7 @@ def block_uncorroborated_escalate(engine, step, strat, label, user_input: str | 
         return False
     if getattr(engine, "_escalate_clarify_asked", False):
         return False  # clarified once already — a repeated no is a real no
-    u = getattr(engine, "_last_understanding", None)
+    u = engine.state.turn.understanding
     if u is not None and u.get("tipas") == "atsakymas" and (u.get("pasitikejimas") or 0) >= 0.6:
         return False  # two sources agree on the refusal — escalate may proceed
     engine._escalate_clarify_asked = True
@@ -375,7 +375,7 @@ def block_uncorroborated_escalate(engine, step, strat, label, user_input: str | 
 def _cached_perception(engine, step, user_input: str | None):
     """The merged perception call's step read for THIS step + THIS utterance,
     or None (walker then falls back to the standalone classifier)."""
-    cached = getattr(engine, "_perception_step", None)
+    cached = engine.state.turn.perception_step
     if not cached or cached.get("step_id") != step.id or cached.get("input") != user_input:
         return None
     from .classifier import CandidateObservation
@@ -626,19 +626,13 @@ def scripted_wait_ack(engine) -> str | None:
         return None
     if s.dialog.last_intent != INTENT_IN_PROGRESS or s.dialog.awaiting != "client_action":
         return None
-    if engine._pending_announce or getattr(engine, "_evidence_conflict", None):
+    if engine.state.diagnosis.pending_announcement or engine.state.diagnosis.evidence_conflict:
         return None
     if getattr(engine, "_resync_note", False) or getattr(engine, "_undelivered_tail", None):
         return None
-    for attr in (
-        "_evidence_directive",
-        "_recap_directive",
-        "_findings_directive",
-        "_ticket_directive",
-        "_ident_directive",
-    ):
-        if getattr(engine, attr, None):
-            return None
+    d = engine.state.turn.directives
+    if d.evidence or d.recap or d.findings or d.ticket or d.ident:
+        return None
     from .identification import phrase
 
     variant = phrase("wait_ack") if s.dialog.awaiting_turns % 2 else phrase("wait_ack_2")

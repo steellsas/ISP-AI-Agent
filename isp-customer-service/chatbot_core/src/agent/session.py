@@ -104,7 +104,7 @@ class AgentSession:
             if q:
                 parts.append(f"Klausimas: {q}")
             words: list[str] = []
-            pending = getattr(a, "_evidence_last_ask_key", None)
+            pending = a.state.diagnosis.pending_evidence_key
             r = a.state.resolution.procedure or {}
             if pending and r.get("verdict"):
                 from .evidence import _PENDING_ANSWERS, spec_for

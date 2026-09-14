@@ -160,7 +160,7 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     is_answer = False
     try:
         engine = getattr(ms.session, "_agent", None)
-        key = getattr(engine, "_evidence_last_ask_key", None) if engine else None
+        key = engine.state.diagnosis.pending_evidence_key if engine else None
         if key:
             from agent.evidence import read_pending_answer, spec_for
 

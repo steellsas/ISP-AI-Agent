@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from agent import understand as und
+from agent.graph_v2.state import GraphState, TurnScratch
 from agent.walker_flow import _cached_perception
 
 
@@ -77,25 +78,33 @@ class TestWalkerConsumesCache:
 
     def test_cache_hit_returns_observation(self):
         engine = SimpleNamespace(
-            _perception_step={
-                "step_id": "confirm_change",
-                "input": "Taip, keičiau.",
-                "obs": {"label": "yes", "is_answer": True, "confidence": 0.9},
-            }
+            state=GraphState(
+                turn=TurnScratch(
+                    perception_step={
+                        "step_id": "confirm_change",
+                        "input": "Taip, keičiau.",
+                        "obs": {"label": "yes", "is_answer": True, "confidence": 0.9},
+                    }
+                )
+            )
         )
         obs = _cached_perception(engine, self._step(), "Taip, keičiau.")
         assert obs is not None and obs.label == "yes" and obs.confidence == 0.9
 
     def test_cache_misses_on_other_step_or_input(self):
         engine = SimpleNamespace(
-            _perception_step={
-                "step_id": "confirm_change",
-                "input": "Taip, keičiau.",
-                "obs": {"label": "yes", "is_answer": True},
-            }
+            state=GraphState(
+                turn=TurnScratch(
+                    perception_step={
+                        "step_id": "confirm_change",
+                        "input": "Taip, keičiau.",
+                        "obs": {"label": "yes", "is_answer": True},
+                    }
+                )
+            )
         )
         other_step = SimpleNamespace(id="dr_power", detector="yes_no", on=("yes", "no"), hint="")
         assert _cached_perception(engine, other_step, "Taip, keičiau.") is None
         assert _cached_perception(engine, self._step(), "Kitas tekstas") is None
-        engine._perception_step = None
+        engine.state.turn.perception_step = None
         assert _cached_perception(engine, self._step(), "Taip, keičiau.") is None

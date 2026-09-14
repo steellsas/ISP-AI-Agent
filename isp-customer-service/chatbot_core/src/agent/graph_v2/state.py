@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..config import AgentConfig
+from ..evidence import EvidenceConflict, FactConfirm
 from ..slots import ClientProfileState
 
 
@@ -137,6 +138,30 @@ class DiagnosisState(BaseModel):
     # An active outage was reported for the caller's street (does NOT close the case).
     outage_reported: bool = False
 
+    # --- evidence dialogue ------------------------------------------------------
+    # The diagnosis result was told to the caller (never repeated).
+    news_delivered: bool = False
+    # How many times each evidence key was asked.
+    evidence_ask_counts: dict[str, int] = Field(default_factory=dict)
+    # The evidence key whose question is out (a bare "taip/ne" maps to it).
+    pending_evidence_key: str | None = None
+    # A client fact contradicted an earlier value: the clarify is due / out.
+    evidence_conflict: EvidenceConflict | None = None
+    evidence_conflict_asked_key: str | None = None
+    # A story-flipping volunteered fact parked for one confirm question / asked.
+    fact_confirm_pending: FactConfirm | None = None
+    fact_confirm_asked: FactConfirm | None = None
+    # The just-landed answer's declared meaning [label, value, meaning], one-shot.
+    fact_meaning: list[str] | None = None
+    # Keys whose give-up marker got its one revival ask.
+    revived_evidence_keys: list[str] = Field(default_factory=list)
+    # Facts recap / refute-confirm sub-dialogue progress ("" = not started).
+    facts_recap_state: str = ""
+    refute_confirm_state: str = ""
+    findings_announced: bool = False
+    # A finding to prepend to the next reply.
+    pending_announcement: str = ""
+
 
 class ResolutionState(BaseModel):
     """The active strategy/procedure position."""
@@ -171,6 +196,8 @@ class DialogState(BaseModel):
     awaiting_turns: int = 0
     # How many times the caller said they do not follow THIS step.
     step_confusions: int = 0
+    # Consecutive side-topic (deviation) turns.
+    side_topic_streak: int = 0
     # resolution.detect_turn_intent of the last turn — only "answer"/"done" advance a step.
     last_intent: str = ""
     turn_count: int = 0
@@ -186,6 +213,16 @@ class ClosingState(BaseModel):
     closing_turns: int = 0
 
 
+class TurnDirectives(BaseModel):
+    """Narrator directives composed this turn, consumed by the facts block."""
+
+    evidence: dict[str, Any] | None = None
+    findings: dict[str, Any] | None = None
+    recap: dict[str, Any] | None = None
+    ident: dict[str, Any] | None = None
+    ticket: dict[str, Any] | None = None
+
+
 class TurnScratch(BaseModel):
     """Per-invocation scratchpad — replaced every turn, never history."""
 
@@ -199,6 +236,12 @@ class TurnScratch(BaseModel):
     address_confirm_note: str | None = None
     db_address_note: str | None = None
     reopen_note: bool = False
+    # Perception of this turn: the understand pass and the step classifier.
+    understanding: dict[str, Any] | None = None
+    perception_step: dict[str, Any] | None = None
+    # The evidence key the caller reported as done this turn.
+    done_report_key: str | None = None
+    directives: TurnDirectives = Field(default_factory=TurnDirectives)
 
 
 # The persisted groups, in declaration order (everything but the turn scratch).

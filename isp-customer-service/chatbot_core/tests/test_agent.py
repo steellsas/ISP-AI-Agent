@@ -410,16 +410,16 @@ class TestHearingAgent:
 
     def test_walker_holds_while_evidence_question_open(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
-        agent._evidence_last_ask_key = "power_cable"
-        agent._evidence_asks["power_cable"] = 1
+        agent.state.diagnosis.pending_evidence_key = "power_cable"
+        agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
         agent._walk_resolution("Ne.")  # the fatal live turn
         assert agent.state.resolution.procedure["step"] == "dr_intro"  # held, not escalate
         assert agent._ticket_stage is None
 
     def test_open_question_negation_gets_fault_file_clarify(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
-        agent._evidence_last_ask_key = "power_cable"
-        agent._evidence_asks["power_cable"] = 1
+        agent.state.diagnosis.pending_evidence_key = "power_cable"
+        agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
         reply = agent._identification_scripted_reply("Ne.")
         assert reply is not None and "neįkištas" in reply  # patikslinimas wording
 
@@ -430,8 +430,8 @@ class TestHearingAgent:
         set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
         set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
         set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 2)
-        agent._evidence_last_ask_key = "power_cable"
-        agent._evidence_asks["power_cable"] = 1
+        agent.state.diagnosis.pending_evidence_key = "power_cable"
+        agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
         reply = agent._evidence_drive("Ne.")
         assert reply is not None and "neįkištas" in reply
 
@@ -610,8 +610,8 @@ class TestHearingAgent:
         ):
             set_fact(agent.state.diagnosis.evidence, k, v, CLIENT, 1)
         agent.state.identity.caller_name = "Andrius"
-        agent._recap_state = "done"
-        agent._findings_announced = True
+        agent.state.diagnosis.facts_recap_state = "done"
+        agent.state.diagnosis.findings_announced = True
         agent._drive_bridge_offered = True
         agent._drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
@@ -631,7 +631,7 @@ class TestHearingAgent:
         assert "nematome jūsų kompiuterio" in r1
         r2 = agent._drive_propose_fix("", "vis dar nieko")
         assert "LAN" in r2  # the computer's network card, not the router
-        assert agent._evidence_last_ask_key == "lan_active"
+        assert agent.state.diagnosis.pending_evidence_key == "lan_active"
         agent._ingest_client_evidence("Nerodo nieko, neaktyvus")
         assert agent.state.diagnosis.evidence["lan_active"]["value"] == "neaktyvus"
         r3 = agent._drive_propose_fix("", "ir dabar nieko")
@@ -661,7 +661,7 @@ class TestHearingAgent:
             ("power_cable", "neaišku"),  # gave up — hypothesis unconfirmable
         ):
             set_fact(agent.state.diagnosis.evidence, k, v, CLIENT, 1)
-        agent._revived_keys = ["power_cable"]  # revival already spent
+        agent.state.diagnosis.revived_evidence_keys = ["power_cable"]  # revival already spent
         agent._drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("nežinau ką daugiau daryti") is None
         assert agent.state.resolution.procedure["step"] == "escalate"  # honest endgame
@@ -1176,9 +1176,9 @@ class TestSideTopicNode:
 
     def test_informative_interruption_is_not_a_deviation(self, db_connection, monkeypatch):
         agent = self._diagnosing(monkeypatch)
-        agent._side_topic_turns = 2
+        agent.state.dialog.side_topic_streak = 2
         assert agent.classify_side_topic("Kur ta lemputė? Nedega nė viena lemputė") is False
-        assert agent._side_topic_turns == 0  # productive turn resets the streak
+        assert agent.state.dialog.side_topic_streak == 0  # productive turn resets the streak
 
     def test_refusal_and_farewell_yield_to_walker_policies(self, db_connection, monkeypatch):
         import os
@@ -1252,15 +1252,18 @@ class TestReviewGaps:
             json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}}),
         )
         agent._begin_ticket_dialogue(None)
-        agent._side_topic_turns = 2
+        agent.state.dialog.side_topic_streak = 2
         assert agent.state.diagnosis.evidence and agent._ticket_stage == "phone"
 
         agent._reopen_identification("skambinu dėl kito adreso — Dainų 5")
 
         assert agent.state.diagnosis.evidence == {}
         assert agent._ticket_stage is None and agent._ticket_ctx is None
-        assert agent._evidence_asks == {} and agent._evidence_conflict is None
-        assert agent._side_topic_turns == 0
+        assert (
+            agent.state.diagnosis.evidence_ask_counts == {}
+            and agent.state.diagnosis.evidence_conflict is None
+        )
+        assert agent.state.dialog.side_topic_streak == 0
         assert agent.state.identity.customer_id is None  # identity dropped as before
 
     def test_scripted_turn_lands_user_message_on_history(self, db_connection):
@@ -1361,13 +1364,15 @@ class TestBargeInCancel:
             "step": "dr_lights",
             "asked": True,
         }
-        agent._evidence_asks["lights"] = 1
-        agent._evidence_last_ask_key = "lights"
+        agent.state.diagnosis.evidence_ask_counts["lights"] = 1
+        agent.state.diagnosis.pending_evidence_key = "lights"
 
         agent.on_turn_cancelled("Pažiūrėkite, ar dega bent")
 
         assert agent.state.resolution.procedure["asked"] is True  # early answer will route
-        assert agent._evidence_asks["lights"] == 0  # wording level not escalated
+        assert (
+            agent.state.diagnosis.evidence_ask_counts["lights"] == 0
+        )  # wording level not escalated
         assert agent.state.messages[-1]["content"].startswith("Pažiūrėkite")
         assert agent.state.messages[-1]["content"].endswith("—")
 
@@ -1424,7 +1429,7 @@ class TestScriptedWrapUp:
         agent = ReactAgent(caller_phone="+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
-        agent._news_told = True
+        agent.state.diagnosis.news_delivered = True
         return agent
 
     def test_garbled_goodbye_wraps_up(self, db_connection):
@@ -1529,7 +1534,9 @@ class TestDriveRepeatBailout:
         agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas, bandžiau kitą rozetę")
         agent._ingest_client_evidence("Turiu kompiuterį")
-        agent._recap_state = "done"  # recap checkpoint tested elsewhere (round 3)
+        agent.state.diagnosis.facts_recap_state = (
+            "done"  # recap checkpoint tested elsewhere (round 3)
+        )
         agent._drive_repeats = 2  # repeat/disambiguate streak already observed
 
         # 2026-08-21 (fix 2): the bridge is WALKED through the pack's guided
@@ -1999,6 +2006,6 @@ class TestPromptPrefixHygiene:
 
         agent = ReactAgent(caller_phone="unknown")
         agent._node_prompt = "NODE-RULES-MARKER"
-        agent._ident_directive = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
+        agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
         messages = agent._build_messages(user_input="Labas")
         assert all("NODE-RULES-MARKER" not in m.get("content", "") for m in messages)

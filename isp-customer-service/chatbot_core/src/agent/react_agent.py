@@ -27,7 +27,6 @@ from src.services.llm.client import (
 )
 
 from .config import AgentConfig, create_config
-from .evidence import EvidenceConflict, FactConfirm
 from .graph_v2.state import DialogState, GraphState, IdentityState
 from .prompts import load_system_prompt
 
@@ -232,16 +231,6 @@ class ReactAgent:
         # The bridge OFFER was spoken (drive path) — the first fix deferral says
         # the transition + offer; later deferrals say the short wait line.
         self._drive_bridge_offered = False
-        # Evidence ledger (Ledger v1): a freshly detected client-client conflict
-        # (key, old, new) — the next scripted reply asks ONE clarification; the
-        # key whose clarification is out, awaiting the settling answer.
-        self._evidence_conflict: EvidenceConflict | None = None
-        self._evidence_conflict_asked: str | None = None
-        # W1-2 svarbos vartai: a NEW volunteered fact that flips the story is
-        # parked here until one confirm question settles it (STT garbles
-        # poison exactly these — "rozetė NEVEIKĖ" heard live for a fine outlet).
-        self._fact_confirm: FactConfirm | None = None
-        self._fact_confirm_asked: FactConfirm | None = None
         # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
         # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
         # stream closes mid-generation and the cancelled-turn bookkeeping runs
@@ -250,35 +239,11 @@ class ReactAgent:
         # generator-close never reaches this loop — the flag is the only
         # reliable cancel path (verified 2026-08-06).
         self._cancel_requested = False
-        # Side-topic node (2026-08-07): an off-fault QUESTION during analysis /
-        # solving freezes the engine for the turn (nothing advances on side
-        # chatter); the 3rd consecutive deviation gets the scripted frame.
-        self._side_topic_this_turn = False
-        self._side_topic_turns = 0
-        # The understanding pass' read of the CURRENT turn (None = pass skipped
-        # or failed -> keyword fallback ran instead).
-        self._last_understanding: dict | None = None
-        # R4 perception merge: the understanding call's step-classification read
-        # ({step_id, input, obs}) — consumed by the walker's classify guards so
-        # an asked-step turn costs ONE sensor call, not two.
-        self._perception_step: dict | None = None
-        # Persona (R5c): the evidence question as a narrator GOAL directive
-        # ({key, reikia, kodel, klausimas}) — set by the drive, consumed by the
-        # facts block, reset every turn at ingest.
-        self._evidence_directive: dict | None = None
-        self._findings_directive: dict | None = None
-        self._recap_directive: dict | None = None
-        self._ticket_directive: dict | None = None
-        self._ident_directive: dict | None = None
         # S1 speculation (2026-08-24): the branch cache prepared while the
         # caller was answering, and the matched reply injected past the LLM.
         self._spec_cache: dict | None = None
         self._injected_reply: dict | None = None
         self._bg_diagnosis: str | None = None  # S2: background telemetry read
-        # Findings announce: spoken ONCE at the first confirmed-hypothesis
-        # moment; stashed when the reply comes from another layer that turn.
-        self._findings_announced = False
-        self._pending_announce = ""
         # Bare-"ne" escalate clarify (2026-08-11): asked at most once per case;
         # pending = the scripted choice question goes out this turn.
         self._escalate_clarify_asked = False
@@ -299,12 +264,6 @@ class ReactAgent:
         # Duplex-hearing 2: what the caller said OVER the agent's voice —
         # already ingested deterministically; surfaced to the narrator once.
         self._overlay_heard: list[str] | None = None
-        # Pasitikslinimo checkpoints (2026-08-11): facts recap before the first
-        # announce; refute confirm before a client-fact pivot; the pending-key
-        # whose done-report ("patikrinau") carried no result this turn.
-        self._recap_state = ""
-        self._refute_state = ""
-        self._done_report_key: str | None = None
         # Plug-report memory (round 4): the caller's completed-plug report,
         # remembered across turns — the bind gate no longer demands the plug
         # verb in THIS turn's utterance.
@@ -313,11 +272,6 @@ class ReactAgent:
         # question went out, 2 = escalate with the attempt on the ticket.
         self._bridge_fail_stage = 0
         self._bridge_fail_note: str | None = None
-        # Given-up keys already revived once (round 6) — never a second time.
-        self._revived_keys: list[str] = []
-        # How many times each evidence question was asked (level 1 -> paprasciau
-        # -> give up and mark "neaišku"), so an unreadable caller never loops us.
-        self._evidence_asks: dict[str, int] = {}
         # Ticket-confirmation dialogue (2026-08-04): every registration first collects
         # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
         # None | "phone" | "hours" | "done"; ctx remembers the escalate step to build
@@ -328,9 +282,6 @@ class ReactAgent:
         # ("kokiu numeriu?") — the ticket node's LLM answers it (with the pending
         # stage question re-asked); the stage does not advance.
         self._ticket_offscript = False
-        # INFORM arc: the news (billing/outage) was already delivered once — the JAU
-        # PRANEŠTA marker stops the model re-reading it every turn.
-        self._news_told = False
 
         # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
         # tools exposed to the model and add a focused prompt. None = unrestricted
@@ -595,9 +546,9 @@ class ReactAgent:
         spoken = (spoken_text or "").strip()
         s.messages.append({"role": "assistant", "content": (spoken + " —") if spoken else "—"})
         # An evidence ask that never fully went out must not escalate the wording.
-        key = getattr(self, "_evidence_last_ask_key", None)
-        if key and self._evidence_asks.get(key, 0) > 0:
-            self._evidence_asks[key] -= 1
+        key = self.state.diagnosis.pending_evidence_key
+        if key and self.state.diagnosis.evidence_ask_counts.get(key, 0) > 0:
+            self.state.diagnosis.evidence_ask_counts[key] -= 1
         self.tracer.emit("turn_cancelled", spoken=spoken[:160])
 
     def apply_overlay(self, texts: list[str]) -> None:
@@ -651,9 +602,9 @@ class ReactAgent:
             # committed and the same question re-asked forever). Only the ask
             # counter steps back so the wording escalation stays fair; an
             # answer that maps still commits, a true non-answer re-asks anyway.
-            key = getattr(self, "_evidence_last_ask_key", None)
-            if key and self._evidence_asks.get(key, 0) > 0:
-                self._evidence_asks[key] -= 1
+            key = self.state.diagnosis.pending_evidence_key
+            if key and self.state.diagnosis.evidence_ask_counts.get(key, 0) > 0:
+                self.state.diagnosis.evidence_ask_counts[key] -= 1
             r = s.resolution.procedure or {}
             pres = r.get("presented") or {}
             step_id = r.get("step")
@@ -1333,7 +1284,7 @@ class ReactAgent:
         # Ticket-node turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "supratau" directive leaks into their replies.
         if self._ticket_stage:
-            self._last_understanding = None
+            self.state.turn.understanding = None
 
         self.state.dialog.last_heard = (user_input or "").strip()
         from .resolution import detect_turn_intent
@@ -1525,15 +1476,15 @@ class ReactAgent:
         if not text:
             return None
         if kind == "evidence":
-            d = getattr(self, "_evidence_directive", None)
+            d = self.state.turn.directives.evidence
             if d and d.get("key") == key:
                 self.tracer.emit("speculation", action="hit", kind=kind, key=key)
                 return str(text)
         elif (
             kind == "recap"
-            and getattr(self, "_recap_directive", None)
+            and self.state.turn.directives.recap
             or kind == "findings"
-            and getattr(self, "_findings_directive", None)
+            and self.state.turn.directives.findings
         ):
             self.tracer.emit("speculation", action="hit", kind=kind)
             return str(text)
