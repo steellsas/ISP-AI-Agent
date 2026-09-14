@@ -910,7 +910,7 @@ class TestAnamnesisDirectives:
         agent.state.intake.problem_type = "internet_down"
         agent._identification_scripted_reply("Neveikia internetas nuo vakar, po audros")
         assert agent.state.intake.anamnesis_when  # capture-first read the opener
-        assert agent._opening_heard_note is True
+        assert agent.state.intake.opening_heard_note is True
 
     def test_pack_carries_the_contextual_anamnesis(self, db_connection):
         from agent.evidence import spec_for

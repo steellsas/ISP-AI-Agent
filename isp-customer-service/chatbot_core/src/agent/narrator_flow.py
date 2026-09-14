@@ -993,8 +993,8 @@ def state_facts_block(engine) -> str | None:
         # W1-1 (Andrius 2026-08-25): the opening already said WHEN it broke —
         # the caller must HEAR they were heard, one short acknowledgement
         # before the address ask, never a repeated "kada dingo?".
-        if getattr(engine, "_opening_heard_note", False):
-            engine._opening_heard_note = False
+        if engine.state.intake.opening_heard_note:
+            engine.state.intake.opening_heard_note = False
             when = s.intake.anamnesis_when or s.intake.anamnesis_trigger or ""
             facts.append(
                 "- KLIENTAS JAU PASAKĖ, kada dingo"

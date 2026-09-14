@@ -290,9 +290,6 @@ class ReactAgent:
         # D1 delivery ledger: the tail of an interrupted reply the caller never
         # HEARD — surfaced to the narrator next turn, then cleared.
         self._undelivered_tail: str | None = None
-        # W1-1: the opening already carried the anamnesis — the narrator shows
-        # it HEARD ("aišku — nuo vakar") instead of re-asking; one-shot.
-        self._opening_heard_note = False
         # W2 tylusis analitikas: background advisory notes for the narrator's
         # next turn (written by the bg thread, consumed once in facts).
         self._analyst_notes: list[str] | None = None

@@ -126,7 +126,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         # not a fault). Stashed one-shot for the reply layer.
         if problem and problem_politika(problem) in ("nelieciam", "pokalbis"):
             if s.intake.problem_type is None:
-                engine._boundary_problem = problem
+                engine.state.intake.boundary_problem = problem
             problem = None
         if problem:
             # A (Andrius 2026-08-21): the PRIMARY goal is the caller's stated
@@ -475,9 +475,9 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
     from .resolution import DETECTORS, is_real_question
 
     # 1) the caller answers last turn's "Ar gerai suprantu — …?"
-    pg = getattr(engine, "_problem_guess", None)
+    pg = engine.state.intake.problem_guess
     if pg is not None:
-        engine._problem_guess = None
+        engine.state.intake.problem_guess = None
         if DETECTORS["yes_no"](user_input) == "yes":
             s.intake.problem_type = pg
             engine.tracer.emit(
@@ -487,14 +487,14 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
         # a "ne"/correction falls through; a NAMED problem was already read
         # by the ingest (then this gate is not even entered)
     # 2) boundary type recognized by the trigger layer this turn
-    bp = getattr(engine, "_boundary_problem", None)
+    bp = engine.state.intake.boundary_problem
     if bp is not None:
-        engine._boundary_problem = None
-        engine._ask_problem_count = getattr(engine, "_ask_problem_count", 0) + 1
+        engine.state.intake.boundary_problem = None
+        engine.state.intake.ask_problem_count = engine.state.intake.ask_problem_count + 1
         engine.tracer.emit("decision", intent="problem_gate", action="boundary", value=bp)
         return problem_atsakymas(bp) or phrase("ask_problem")
-    p_asks = getattr(engine, "_ask_problem_count", 0)
-    engine._ask_problem_count = p_asks + 1
+    p_asks = engine.state.intake.ask_problem_count
+    engine.state.intake.ask_problem_count = p_asks + 1
     asking = "?" in user_input or is_real_question(user_input)
     # N riba (Andrius 2026-09-03): ne klientas / neaiški situacija — po
     # GATE_MAX_TURNS nevaisingų apsikeitimų mandagus uždarymas BE tiketo
@@ -533,7 +533,7 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
                     s.intake.problem_type = label  # implicit confirmation — the
                     return None  # narrator acknowledges it naturally
                 if conf >= 0.5:
-                    engine._problem_guess = label
+                    engine.state.intake.problem_guess = label
                     q = problem_patvirtinimas(label)
                     if q:
                         return q
@@ -1338,7 +1338,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
                         trigger=s.intake.anamnesis_trigger,
                         from_opening=True,
                     )
-                    engine._opening_heard_note = True
+                    engine.state.intake.opening_heard_note = True
             return _address_move(engine, s)
         return None
     # WRAP-UP after the news (inform mode): the business is DONE — any further

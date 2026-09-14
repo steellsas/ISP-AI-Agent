@@ -63,7 +63,7 @@ class TestPolitikaIngest:
         agent = _agent()
         agent._prefill_slots_from_text("Kodėl man tokia didelė sąskaita?")
         assert agent.state.intake.problem_type is None
-        assert agent._boundary_problem == "saskaitos"
+        assert agent.state.intake.boundary_problem == "saskaitos"
 
     def test_boundary_reply_states_competence(self, db_connection):
         agent = _agent()
@@ -84,7 +84,7 @@ class TestGateGuessConfirm:
 
     def test_yes_commits_and_falls_through(self, db_connection):
         agent = _agent()
-        agent._problem_guess = "internet_down"
+        agent.state.intake.problem_guess = "internet_down"
         reply = agent._identification_scripted_reply("Taip, būtent")
         assert agent.state.intake.problem_type == "internet_down"
         assert not agent.state.closing.case_closed
@@ -93,11 +93,11 @@ class TestGateGuessConfirm:
 
     def test_no_keeps_gate_open(self, db_connection):
         agent = _agent()
-        agent._problem_guess = "internet_down"
+        agent.state.intake.problem_guess = "internet_down"
         agent._identification_scripted_reply("Ne, ne dėl to skambinu")
         assert agent.state.intake.problem_type is None
         assert not agent.state.closing.case_closed
-        assert agent._problem_guess is None  # spėjimas nunaudotas, kopėčios tęsiasi
+        assert agent.state.intake.problem_guess is None  # spėjimas nunaudotas, kopėčios tęsiasi
 
 
 class TestGateL2:
@@ -128,7 +128,7 @@ class TestGateL2:
         agent = _agent()
         reply = self._gate(agent, "Kažkas namuose nebeveikia gerai")
         assert agent.state.intake.problem_type is None
-        assert agent._problem_guess == "internet_down"
+        assert agent.state.intake.problem_guess == "internet_down"
         assert reply and "Ar gerai suprantu" in reply
 
     def test_boundary_type_from_context(self, db_connection, monkeypatch):

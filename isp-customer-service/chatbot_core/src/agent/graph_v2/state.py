@@ -111,6 +111,13 @@ class IntakeState(BaseModel):
     heard_utterances: list[str] = Field(default_factory=list)
     # Raw tool observations.
     observations: list[str] = Field(default_factory=list)
+    # Out-of-scope problem named by the caller (competence boundary), one-shot.
+    boundary_problem: str | None = None
+    # Tentative problem label awaiting the caller's confirmation.
+    problem_guess: str | None = None
+    ask_problem_count: int = 0
+    # The opening utterance was heard before the problem was clear — one-shot note.
+    opening_heard_note: bool = False
 
 
 class DiagnosisState(BaseModel):
