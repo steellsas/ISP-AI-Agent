@@ -4,8 +4,8 @@ Executor flow — the ONLY place tools run and tickets are registered.
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent — the deterministic tool-access gate, the gated tool-call loop,
 the STATE-driven idempotent ticket registration and the demo bridge
-simulation. Functions take the engine explicitly; execute_tool is imported
-lazily from react_agent so the tests' import-fallback stubs keep working.
+simulation. Functions take the engine explicitly; tools run through
+engine.tools (the gateway).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import os
 from typing import Any
 
 from .dialog_utils import assistant_tool_message
-from .trace import tools_called_this_session, trace_note, trace_tool_result
+from .trace import tools_called_this_session, trace_note
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,6 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     an existing ticket is never duplicated. Best-effort: a failure is traced and the
     close still proceeds (the call record keeps the outcome)."""
     from .glossary import DIAGNOSIS_LT, TICKET_NEED_LT
-    from .react_agent import execute_tool
 
     s = engine.state
     if s.ticket.ticket_id or not s.identity.customer_id:
@@ -149,12 +148,8 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
         "notes": ("Atlikta: " + ", ".join(actions)) if actions else "",
     }
     try:
-        engine.tracer.emit(
-            "tool_call", name="create_ticket", args={"customer_id": s.identity.customer_id}
-        )
-        obs = execute_tool("create_ticket", args)
-        trace_tool_result(engine.tracer, "create_ticket", obs)
-        engine._update_state_from_observation("create_ticket", obs)  # sets ticket_id
+        # The state update sets ticket_id.
+        engine.tools.run(engine, "create_ticket", args, reason="register_ticket")
     except Exception as e:  # pragma: no cover - defensive
         trace_note(engine.tracer, engine.state, "register_ticket", str(e), level="error")
 
@@ -171,11 +166,14 @@ def simulate_router_reboot_action(engine: Any) -> None:
     if not cid:
         return
     try:
-        from .tools import simulate_router_reboot
-
-        res = simulate_router_reboot(cid)
-        engine.tracer.emit("tool_call", name="simulate_router_reboot", args={"customer_id": cid})
-        if isinstance(res, dict) and res.get("success"):
+        res = engine.tools.run(
+            engine,
+            "simulate_router_reboot",
+            {"customer_id": cid},
+            reason="simulate_reboot",
+            apply=False,
+        ).data
+        if res.get("success"):
             engine._note_evidence("klientas perkrovė routerį — portas mirktelėjo (simuliuota)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"router reboot sim failed: {e}")
@@ -193,11 +191,14 @@ def simulate_bridge_connection(engine: Any) -> None:
     if not cid:
         return
     try:
-        from .tools import simulate_bridge_connect
-
-        res = simulate_bridge_connect(cid)
-        engine.tracer.emit("tool_call", name="simulate_bridge_connect", args={"customer_id": cid})
-        if isinstance(res, dict) and res.get("success"):
+        res = engine.tools.run(
+            engine,
+            "simulate_bridge_connect",
+            {"customer_id": cid},
+            reason="simulate_bridge",
+            apply=False,
+        ).data
+        if res.get("success"):
             engine._note_evidence("klientas prijungė įrenginį — matomas linijoje (simuliuota)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"bridge connection sim failed: {e}")
