@@ -7,8 +7,7 @@ ReactAgent. The pure sequencer (next_step_id, detectors, strategies) stays in
 agent/resolution.py; the guard chain lives in agent/walker_guards.py.
 Functions take the engine explicitly; intra-family calls go through the
 engine delegate seam (engine._x) so subclass overrides and test patches keep
-working. execute_tool is resolved lazily from react_agent so the tests'
-import-fallback stubs apply.
+working. Tools run through engine.tools (the gateway).
 """
 
 from __future__ import annotations
@@ -20,17 +19,10 @@ from typing import Any  # noqa: F401
 
 from .dialog_utils import asked_recently, last_agent_question
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
-from .trace import emit_decision, trace_note, trace_tool_result
+from .trace import emit_decision, trace_note
 from .verdict import UNRESOLVED_LINE_FAULTS
 
 logger = logging.getLogger(__name__)
-
-
-def execute_tool(name, args):
-    """Lazy pass-through to react_agent's execute_tool (test stubs included)."""
-    from . import react_agent
-
-    return react_agent.execute_tool(name, args)
 
 
 def fresh_diagnose(engine) -> dict | None:
@@ -40,9 +32,13 @@ def fresh_diagnose(engine) -> dict | None:
     if not engine.state.identity.customer_id:
         return None
     try:
-        return json.loads(
-            execute_tool("diagnose_connection", {"customer_id": engine.state.identity.customer_id})
-        )
+        return engine.tools.run(
+            engine,
+            "diagnose_connection",
+            {"customer_id": engine.state.identity.customer_id},
+            reason="recheck",
+            apply=False,
+        ).data
     except Exception:  # pragma: no cover - best-effort
         return None
 
@@ -92,14 +88,14 @@ def ensure_diagnosed(engine) -> bool:
             engine._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
             return True
     try:
-        obs = execute_tool("diagnose_connection", {"customer_id": s.identity.customer_id})
+        engine.tools.run(
+            engine,
+            "diagnose_connection",
+            {"customer_id": s.identity.customer_id},
+            reason="first_diagnosis",
+        )
     except Exception:  # pragma: no cover - best-effort
         return False
-    engine.tracer.emit(
-        "tool_call", name="diagnose_connection", args={"customer_id": s.identity.customer_id}
-    )
-    trace_tool_result(engine.tracer, "diagnose_connection", obs)
-    engine._update_state_from_observation("diagnose_connection", obs)
     _seed_evidence_from_anamnesis(engine)
     return True
 
@@ -178,12 +174,16 @@ def ensure_action_done(engine) -> bool:
     ran = False
     for action in step.tool_actions:
         try:
-            obs = execute_tool(action, {"customer_id": s.identity.customer_id})
+            result = engine.tools.run(
+                engine,
+                action,
+                {"customer_id": s.identity.customer_id},
+                reason=f"step_action:{step.id}",
+                apply=False,
+            )
         except Exception:  # pragma: no cover - best-effort
             continue
-        engine.tracer.emit("tool_call", name=action, args={"customer_id": s.identity.customer_id})
-        obs = engine._augment_tool_result(action, obs)  # chains reset_port + re-diagnose
-        trace_tool_result(engine.tracer, action, obs)
+        engine._augment_tool_result(action, result.observation)  # chains reset_port + re-diagnose
         ran = True
     if ran:
         r["action_done"] = True  # the announce is narrated this turn; advance next

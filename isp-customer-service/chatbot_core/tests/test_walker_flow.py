@@ -11,6 +11,8 @@ import json
 
 import pytest
 
+from tests.tool_fakes import install_fake_tools
+
 
 @pytest.mark.usefixtures("walker_driven")
 class TestEngineDrivenAction:
@@ -46,8 +48,8 @@ class TestEngineDrivenAction:
     def _stub_tools(self, monkeypatch, telemetry):
         import agent.react_agent as ra
 
-        monkeypatch.setattr(
-            ra, "execute_tool", lambda name, args: json.dumps({"success": True, "new_mac": "X"})
+        install_fake_tools(
+            monkeypatch, lambda name, args: json.dumps({"success": True, "new_mac": "X"})
         )
         monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: telemetry)
 
@@ -274,9 +276,8 @@ class TestHypothesisObject:
             "restored_denials": 1,
         }
         monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: "foreign_mac")
-        monkeypatch.setattr(
-            ra,
-            "execute_tool",
+        install_fake_tools(
+            monkeypatch,
             lambda n, a: json.dumps(
                 {
                     "success": True,
@@ -402,9 +403,8 @@ class TestHypothesisRejection:
             "restored_denials": 1,  # one denial already: the next one decides
         }
         monkeypatch.setattr(ra.ReactAgent, "_fresh_diagnose_reason", lambda self: "foreign_mac")
-        monkeypatch.setattr(
-            ra,
-            "execute_tool",
+        install_fake_tools(
+            monkeypatch,
             lambda n, args: json.dumps(
                 {"success": True, "verdict": {"reason": telemetry_after, "side": "x", "group": "B"}}
             ),

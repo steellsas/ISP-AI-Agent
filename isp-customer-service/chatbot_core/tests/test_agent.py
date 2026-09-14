@@ -1,5 +1,7 @@
 import pytest
 
+from tests.tool_fakes import install_fake_tools
+
 """
 Tests for agent logic (without real LLM calls where possible).
 
@@ -684,7 +686,7 @@ class TestHearingAgent:
                 return _json.dumps({"success": True, "verdict": {"reason": reason}})
             return _json.dumps({"success": True})
 
-        monkeypatch.setattr("agent.react_agent.execute_tool", fake_execute)
+        install_fake_tools(monkeypatch, fake_execute)
         monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: calls.append("simulated"))
         monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
         reply = agent._drive_propose_fix("", "įkišau į kompiuterį")
@@ -1611,7 +1613,7 @@ class TestBindDiscipline:
                 return _json.dumps({"success": True, "verdict": {"reason": reason}})
             return _json.dumps({"success": True})
 
-        monkeypatch.setattr("agent.react_agent.execute_tool", fake_execute)
+        install_fake_tools(monkeypatch, fake_execute)
         monkeypatch.setattr(agent, "_simulate_bridge_connection", lambda: calls.append("simulated"))
         monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
 
@@ -1822,9 +1824,8 @@ class TestTicketDialogue:
         # transition — caller asked "Apie kokį kompiuterį kalbat?". The FIRST
         # deferral now announces the dead router and OFFERS the bridge.
         agent = self._agent_at_consent(monkeypatch)
-        monkeypatch.setattr(
-            "agent.react_agent.execute_tool",
-            lambda name, args: json.dumps({"verdict": {"reason": "no_mac_observed"}}),
+        install_fake_tools(
+            monkeypatch, lambda name, args: json.dumps({"verdict": {"reason": "no_mac_observed"}})
         )
         first = agent._drive_propose_fix("", "nedega lemputės")
         assert "routeris sugedęs" in first and "Ar turite kompiuterį" in first
@@ -1933,9 +1934,8 @@ class TestTicketDialogue:
         # line. The line's current truth now decides: fresh diagnose healthy ->
         # no ticket, closed as resolved.
         agent = self._agent_at_consent(monkeypatch)
-        monkeypatch.setattr(
-            "agent.react_agent.execute_tool",
-            lambda name, args: json.dumps({"verdict": {"reason": "healthy_to_router"}}),
+        install_fake_tools(
+            monkeypatch, lambda name, args: json.dumps({"verdict": {"reason": "healthy_to_router"}})
         )
         agent.end_session(outcome="client_closed")
         assert agent.state.ticket.ticket_id is None
