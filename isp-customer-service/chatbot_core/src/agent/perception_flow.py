@@ -6,8 +6,7 @@ classification, the anchor question, and the pre-turn guard sweep.
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent; R4 merges the understand/intent/classifier calls into ONE fast
 LLM call here. Functions take the engine explicitly; intra-family calls go
-through the engine delegate seam. execute_tool resolves lazily from
-react_agent so the tests' import-fallback stubs apply.
+through the engine delegate seam; tools run through engine.tools (the gateway).
 """
 
 from __future__ import annotations
@@ -20,16 +19,9 @@ from typing import Any  # noqa: F401
 
 from .dialog_utils import asked_recently, last_agent_question
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
-from .trace import trace_note, trace_tool_result
+from .trace import trace_note
 
 logger = logging.getLogger(__name__)
-
-
-def execute_tool(name, args):
-    """Lazy pass-through to react_agent's execute_tool (test stubs included)."""
-    from . import react_agent
-
-    return react_agent.execute_tool(name, args)
 
 
 def step_perception_options(engine: Any):
@@ -1414,13 +1406,10 @@ def engine_resolve_from_slots(engine) -> bool:
     if p.city.value:
         args["city"] = str(p.city.value)
     try:
-        obs = execute_tool("resolve_address", args)
+        engine.tools.run(engine, "resolve_address", args, reason="resolve_from_slots")
     except Exception as e:  # pragma: no cover - best-effort
         trace_note(engine.tracer, engine.state, "engine_resolve", str(e), level="error")
         return False
-    engine.tracer.emit("tool_call", name="resolve_address", args=args)
-    trace_tool_result(engine.tracer, "resolve_address", obs)
-    engine._update_state_from_observation("resolve_address", obs)
     if not engine.state.identity.customer_id:
         return False
     # B-wave registry: the identification question (address/code) got its
