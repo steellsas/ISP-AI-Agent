@@ -9,7 +9,6 @@ from agent.resolution import (
     TERMINALS,
     Outcome,
     StepKind,
-    build_linear_strategy,
     detect_conn,
     detect_scope,
     detect_yes_no,
@@ -155,19 +154,6 @@ class TestClientSideStrategy:
         assert next_step_id(self.s, "cs_cross_phone", "no") == "cs_ability"
         assert next_step_id(self.s, "cs_which", "phone") == "cs_wifi"
         assert self.s.step("cs_wifi").goto == "cs_wifi2"
-
-
-class TestLinearStrategy:
-    def test_build_linear_walks_instruct_then_verify(self):
-        s = build_linear_strategy("demo_fault", "troubleshooting/demo", 2)
-        ids = [st.id for st in s.steps]
-        assert ids == ["step_1", "step_2", "verify", "escalate"]
-        assert s.step("step_1").kind == StepKind.INSTRUCT
-        assert s.step("step_1").rag_section == 0
-        assert next_step_id(s, "step_1", None) == "step_2"  # fall through
-        assert next_step_id(s, "step_2", None) == "verify"
-        assert next_step_id(s, "verify", "yes") == "resolve"
-        assert next_step_id(s, "verify", "no") == "escalate"
 
 
 class TestRegistry:

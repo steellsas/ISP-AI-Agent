@@ -372,7 +372,7 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
         reply = pending_announce + reply
         engine._pending_announce = ""
     # Committed to driving this turn — do the same end-of-turn bookkeeping the walker
-    # path gets from run_turn_scoped: user_turn trace, dialogue history (the solver reads
+    # path gets from run_turn_scoped_stream: user_turn trace, dialogue history (the solver reads
     # it next turn), and the shared reply finalisation (case snapshot + agent_reply).
     if user_input:
         engine.state.last_heard = user_input.strip()

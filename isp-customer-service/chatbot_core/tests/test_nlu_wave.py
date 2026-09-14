@@ -113,7 +113,6 @@ class TestSpellingRung:
         agent.state.problem_type = "internet_down"
         agent.state.anamnesis_asked = True
         agent._spell_mode = True
-        agent._spell_done = True
         r = agent._identification_scripted_reply("V kaip Vilnius, I kaip Ieva, L kaip Lina")
         assert r and ("Vil" in r) and "namo" in r  # VIL pogrupio kandidatas
         assert (

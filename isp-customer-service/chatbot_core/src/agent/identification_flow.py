@@ -768,7 +768,6 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         )
     ):
         engine._spell_mode = True
-        engine._spell_done = True
         engine.tracer.emit("decision", intent="street_spell", action="client_initiated")
     # NLU wave block 4 (paraidžiui): the spelling answer is read FIRST — the
     # anchor-word first letters narrow the registry by prefix AND fuzzy the

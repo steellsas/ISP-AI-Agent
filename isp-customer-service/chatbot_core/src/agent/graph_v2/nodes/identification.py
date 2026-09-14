@@ -6,7 +6,7 @@ lookup-only toolset, then _mark_step_presented (resolve_address may have
 identified the caller mid-turn and the same reply narrates the first step).
 
 R3 migrates here (roadmap §4): ReactAgent._identification_scripted_reply,
-_reopen_identification, _preflight_phone, _revalidate_accumulated_address.
+_reopen_identification, _preflight_phone, revalidate_accumulated_address.
 Slot policy stays pure in agent/slots.py + agent/identification.py.
 """
 

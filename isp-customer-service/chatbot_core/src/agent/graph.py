@@ -15,7 +15,7 @@ construction (the in-engine gate from 1.3 remains as a backstop). Each node also
 gets a short focus prompt on top of the shared system prompt.
 
 Both nodes delegate the actual LLM tool-loop to the existing ReactAgent
-(`run_turn_scoped`), so tools, the verdict tree, resolve_address, NLU prefill and
+(`run_turn_scoped_stream`), so tools, the verdict tree, resolve_address, NLU prefill and
 tracing are all REUSED, not rewritten. Conversation state still lives in the
 engine (read by the router via `engine.state`); migrating it into the typed graph
 state is a later refinement.

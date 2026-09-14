@@ -84,27 +84,6 @@ logger = logging.getLogger(__name__)
 # Closing rules moved to closing_flow.py (R3, docs/ROADMAP_REFACTORING.md §4);
 # the alias keeps existing imports/tests working during the migration.
 
-
-def _register_linear_strategies() -> None:
-    """Populate STRATEGIES with a linear guided walk for each LINEAR_DOCS verdict
-    (reads the doc's step count once), so a purely linear fault needs ONLY a RAG doc
-    — no bespoke strategy code. No-op while LINEAR_DOCS is empty."""
-    try:
-        from .playbook import step_count
-        from .resolution import LINEAR_DOCS, STRATEGIES, build_linear_strategy
-
-        for verdict, doc in LINEAR_DOCS.items():
-            if verdict in STRATEGIES:
-                continue
-            n = step_count(doc)
-            if n > 0:
-                STRATEGIES[verdict] = build_linear_strategy(verdict, doc, n)
-    except Exception:  # pragma: no cover - best-effort, never break import
-        pass
-
-
-_register_linear_strategies()
-
 # Verdict glossaries moved to glossary.py (R3); aliases keep call sites working.
 
 # Repeat-guard: politeness/acknowledgement words stripped before comparing two
@@ -268,9 +247,8 @@ class ReactAgent:
         self._wrap_content_turns = 0
         self._wrap_react_note = False
         # NLU wave block 4 (2026-09-09): the spelling rung — armed after the
-        # spell_ask went out; one round per call.
+        # spell_ask went out.
         self._spell_mode = False
-        self._spell_done = False
         # NLU wave D1 (2026-09-10): the street the caller DENIED saying —
         # never re-proposed from the denial sentence itself.
         self._denied_street = None
@@ -464,23 +442,6 @@ class ReactAgent:
         from .narrator_flow import scoped_tools_schema
 
         return scoped_tools_schema(self)
-
-    def run_turn_scoped(
-        self,
-        user_input: str | None,
-        allowed_tools: frozenset[str] | None,
-        node_prompt: str | None,
-    ) -> str:
-        """Run ONE turn restricted to `allowed_tools` with a focused `node_prompt`
-        appended (used by the LangGraph nodes). Scoping is reset afterwards so the
-        engine returns to its unrestricted default."""
-        self._active_tool_names = allowed_tools
-        self._node_prompt = node_prompt
-        try:
-            return self.run_until_response(user_input)
-        finally:
-            self._active_tool_names = None
-            self._node_prompt = None
 
     def _prune_history(self, messages: list) -> list:
         """Delegates to narrator_flow.prune_history (R3 extraction)."""
@@ -748,7 +709,7 @@ class ReactAgent:
 
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
         """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the
-        walker path's run_turn_scoped): user_turn trace, dialogue history, shared
+        walker path's run_turn_scoped_stream): user_turn trace, dialogue history, shared
         finalisation (case snapshot + agent_reply)."""
         if user_input:
             self.state.last_heard = user_input.strip()
@@ -760,30 +721,6 @@ class ReactAgent:
 
     # Evidence-drive flow moved to evidence_drive.py (R3, roadmap §4) — thin
     # delegates keep every internal call site and test working unchanged.
-
-    def _revive_gave_up_key(self, spec: dict) -> str | None:
-        """Delegates to evidence_drive.revive_gave_up_key (R3 extraction)."""
-        from .evidence_drive import revive_gave_up_key
-
-        return revive_gave_up_key(self, spec)
-
-    def _maybe_facts_recap(self) -> str | None:
-        """Delegates to evidence_drive.maybe_facts_recap (R3 extraction)."""
-        from .evidence_drive import maybe_facts_recap
-
-        return maybe_facts_recap(self)
-
-    def _refuting_client_fact(self, spec: dict) -> tuple[str, str] | None:
-        """Delegates to evidence_drive.refuting_client_fact (R3 extraction)."""
-        from .evidence_drive import refuting_client_fact
-
-        return refuting_client_fact(self, spec)
-
-    def _maybe_refute_confirm(self, spec: dict) -> str | None:
-        """Delegates to evidence_drive.maybe_refute_confirm (R3 extraction)."""
-        from .evidence_drive import maybe_refute_confirm
-
-        return maybe_refute_confirm(self, spec)
 
     def _evidence_question_open(self) -> str | None:
         """Delegates to evidence_drive.evidence_question_open (R3 extraction)."""
@@ -1191,22 +1128,6 @@ class ReactAgent:
 
         prefill_slots_from_text(self, text)
 
-    def _revalidate_accumulated_address(self) -> None:
-        """Check the ACCUMULATED address slots against the DB every turn and stash
-        the DB's verdict for the facts block.
-
-        The tools can always validate what is real — which streets exist, in which
-        village, which house numbers are on a street — so we lean on that instead
-        of the last (often garbled) fragment. resolve_address is called with ALL
-        slots gathered so far, in any order; its `hint` already says the exact next
-        step ("Radau sutartį adresu … — patvirtink", "Paklausk namo numerio",
-        "Dainų ar Dailės?", "Namo 6 … nerandu"). Read-only: the id is committed only
-        when the agent confirms with the caller (anchor rule), never here.
-        """
-        from .identification_flow import revalidate_accumulated_address
-
-        revalidate_accumulated_address(self)
-
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
         if self._session_ended:
@@ -1407,7 +1328,7 @@ class ReactAgent:
         allowed_tools: frozenset[str] | None,
         node_prompt: str | None,
     ):
-        """Streaming variant of run_turn_scoped (Pillar C3): a generator that YIELDS
+        """Run ONE scoped turn (Pillar C3): a generator that YIELDS
         the FINAL reply's text tokens as the LLM produces them. Tool rounds run
         silently (no yields). Called from inside the LangGraph nodes, which forward
         the tokens via the stream writer — so LangGraph stays the orchestrator."""

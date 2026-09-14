@@ -647,35 +647,6 @@ STRATEGIES: dict[str, Strategy] = {
     "unclear_fault": _UNCLEAR_FAULT,
 }
 
-# Verdicts whose fix is a straight, branch-free, action-free sequence: give them a
-# RAG doc here and the engine builds a linear guided walk (N INSTRUCT steps from the
-# doc -> caller verify -> resolve/escalate) with NO bespoke strategy code. Empty for
-# now; adding an entry + a RAG doc is all a new simple linear fault needs.
-LINEAR_DOCS: dict[str, str] = {}
-
-
-def build_linear_strategy(verdict: str, rag_doc: str, n_steps: int) -> Strategy:
-    """A purely LINEAR guided strategy: n_steps INSTRUCT steps (one per RAG section,
-    walked in order) then a caller-verified check -> resolve / escalate. Telemetry is
-    not consulted (these are client-side self-service fixes). Pure — the caller reads
-    n_steps from the doc (playbook.step_count) and passes it in."""
-    steps: list[Step] = [
-        Step(id=f"step_{i + 1}", kind=StepKind.INSTRUCT, rag_section=i) for i in range(n_steps)
-    ]
-    steps.append(
-        Step(
-            id="verify",
-            kind=StepKind.CONFIRM,
-            detector="restored",
-            hint="Ask whether it works now. Yes -> resolved; no -> register the fault.",
-            on={"yes": "resolve", "no": "escalate"},
-        )
-    )
-    # Engine registers the ticket (Phase 3.11 B), not the model — no tool exposed.
-    steps.append(Step(id="escalate", kind=StepKind.ESCALATE, tools=frozenset()))
-    return Strategy(verdict=verdict, rag_doc=rag_doc, steps=tuple(steps))
-
-
 # Deterministic yes/no read of a caller reply, to advance a CONFIRM step. Coarse
 # on purpose: a clear affirmative advances (e.g. to bind), anything with a denial
 # or "nothing changed" does NOT advance to an action — so the agent never binds a
