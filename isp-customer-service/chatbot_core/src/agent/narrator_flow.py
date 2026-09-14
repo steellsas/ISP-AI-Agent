@@ -5,8 +5,7 @@ injection, tool-result augmentation and state updates from observations.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md par. 4): moved verbatim out of
 ReactAgent. Functions take the engine explicitly; intra-family calls go
-through the engine delegate seam. execute_tool resolves lazily from
-react_agent so the tests' import-fallback stubs apply.
+through the engine delegate seam; tools run through engine.tools (the gateway).
 """
 
 from __future__ import annotations
@@ -22,13 +21,6 @@ from .glossary import PROBLEM_LT as _PROBLEM_LT
 from .verdict import UNRESOLVED_LINE_FAULTS
 
 logger = logging.getLogger(__name__)
-
-
-def execute_tool(name, args):
-    """Lazy pass-through to react_agent's execute_tool (test stubs included)."""
-    from . import react_agent
-
-    return react_agent.execute_tool(name, args)
 
 
 _DIRECTIVE_PROMPT: str | None = None
@@ -1353,8 +1345,9 @@ def augment_tool_result(engine, name: str, observation: str) -> str:
         return observation  # nothing bound (e.g. no_observed_mac) — leave as is
     cid = engine.state.identity.customer_id
     try:
-        rp = json.loads(execute_tool("reset_port", {"customer_id": cid}))
-        engine.tracer.emit("tool_call", name="reset_port", args={"customer_id": cid})
+        rp = engine.tools.run(
+            engine, "reset_port", {"customer_id": cid}, reason="reset_after_bind", apply=False
+        ).data
         obs["auto_reset_port"] = bool(rp.get("success"))
     except Exception:  # pragma: no cover - best-effort
         obs["auto_reset_port"] = None
