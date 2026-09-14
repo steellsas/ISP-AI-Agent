@@ -5,13 +5,11 @@ the disciplined bridge fix, the failure ladder and the escalate hand-off.
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent. The pure pieces stay put: solver.py (the LLM reasoner),
 gate.py (the deterministic policy). Functions take the engine explicitly;
-execute_tool is imported lazily from react_agent so the tests'
-import-fallback stubs keep working.
+tools run through engine.tools (the gateway).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any
@@ -561,8 +559,6 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
       2. never twice — a completed bind is recorded and not repeated;
       3. after the (demo) simulation, bind only if a device is actually observed —
          never bind blind."""
-    from .react_agent import execute_tool
-
     cid = engine.state.identity.customer_id
     if engine.state.resolution.bridge_bound:
         return say or "Įrenginys jau pririštas — patikrinkite, ar internetas atsirado."
@@ -572,7 +568,13 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
         # from the REASON: "no_mac_observed" = the line still sees nothing; any
         # other verdict (foreign_mac after the plug-in) = a device is there.
         try:
-            d = json.loads(execute_tool("diagnose_connection", {"customer_id": cid}))
+            d = engine.tools.run(
+                engine,
+                "diagnose_connection",
+                {"customer_id": cid},
+                reason="bridge_device_check",
+                apply=False,
+            ).data
             return ((d.get("verdict") or {}).get("reason")) != "no_mac_observed"
         except Exception:  # pragma: no cover - best-effort read
             return False
@@ -639,9 +641,10 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
         )
         return engine._bridge_fail_step()
     try:
-        obs = execute_tool("update_mac", {"customer_id": cid})
-        engine.tracer.emit("tool_call", name="update_mac", args={"customer_id": cid})
-        engine._augment_tool_result("update_mac", obs)  # chains reset_port + re-diagnose
+        bind = engine.tools.run(
+            engine, "update_mac", {"customer_id": cid}, reason="bridge_bind", apply=False
+        )
+        engine._augment_tool_result("update_mac", bind.observation)  # chains reset + re-diagnose
         engine.state.resolution.bridge_bound = True
     except Exception as e:
         trace_note(engine.tracer, engine.state, "drive_propose_fix", str(e), level="error")
