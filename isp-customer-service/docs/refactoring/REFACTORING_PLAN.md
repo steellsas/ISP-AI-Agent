@@ -129,5 +129,11 @@ Those come after the refactor (see DECISIONS.md D-22).
 
 | # | Question | Needed by | Answer |
 |---|---|---|---|
-| Q-1 | Delete the unused MCP servers (`crm_service/src/crm_mcp/server.py`, `network_diagnostic_service/src/network_diagnostic_mcp/server.py`) and their repository classes, or keep MCP as the future integration transport? | M0 | _pending_ |
-| Q-2 | Keep the voice speculation feature (`agent/speculation.py`, pre-computed replies) and adapt it to `TurnPlan`, or delete it? | M5 | _pending_ |
+| Q-1 | Delete the unused MCP servers (`crm_service/src/crm_mcp/server.py`, `network_diagnostic_service/src/network_diagnostic_mcp/server.py`) and their repository classes, or keep MCP as the future integration transport? | M0 | **Keep** (2026-09-14). MCP may be the transport to the customer's DB/tools — decided during integration. Do not delete servers, repository classes or server-only tool functions. |
+| Q-2 | Keep the voice speculation feature (`agent/speculation.py`, pre-computed replies) and adapt it to `TurnPlan`, or delete it? | M5 | **Remove in M5, re-evaluate after M7** (2026-09-14). It exists only to cut latency and depends on the old directive mechanism. After the refactor, measure latency (see §9); rebuild on `TurnPlan` only if it is still needed. |
+
+## 9. Post-refactor checks (owner decides after M7)
+
+| # | Check | How | Decision it feeds |
+|---|---|---|---|
+| P-1 | Is pre-computed reply speculation still needed? | Compare `voice_turn_done.ttfa_ms` and `voice_latency` on the 9 demo calls: M0 baseline (speculation on) vs after M7 (no speculation). Record numbers in `docs/refactoring/RESULT.md`. | Rebuild speculation on `TurnPlan` (predict plans for the top answers of `awaiting`, pre-render `phrase` plans) or drop it for good |

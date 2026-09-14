@@ -50,6 +50,9 @@ Paths relative to `chatbot_core/src/`. Line numbers from `develop` @ `c7be3ba`; 
      `scripts/refactor_acceptance.py` (commit it; it is useful for future regressions).
    - App starts; owner live voice session on the 9 demo scenarios (`docs/DEMO_SCENARIJAI.md`)
      + contradiction call + repeat call with open ticket + unidentified hang-up.
+   - Latency check P-1 (plan §9): collect `ttfa_ms` / `voice_latency` from those voice sessions
+     and compare with the M0 baseline; write the numbers into `RESULT.md` for the owner's
+     speculation decision.
 5. **Handover.** Update `REFACTORING_PLAN.md` (all ticks, status log, findings), write
    `docs/refactoring/RESULT.md` (1 page: what changed, final architecture diagram, known
    limitations, follow-ups for documentation/presentation), update `docs/DEMO_SCENARIJAI.md`

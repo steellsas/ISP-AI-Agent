@@ -64,13 +64,13 @@ Line numbers from `develop` @ `c7be3ba`; re-locate with grep.
 | `ReactAgent.run_turn_scoped` (~L468) and dead delegates `_revalidate_accumulated_address`, `_maybe_facts_recap`, `_maybe_refute_confirm`, `_refuting_client_fact`, `_revive_gave_up_key` | zero callers |
 | `_spell_done` attribute (`react_agent.py` ~L273, `identification_flow.py` ~L771) | set, never read |
 
-**Depends on open question Q-1 (plan §8)** — do not delete until the owner answers:
+**Keep — do NOT delete (owner decision Q-1, plan §8):** the MCP servers
 `crm_service/src/crm_mcp/server.py`, `network_diagnostic_service/src/network_diagnostic_mcp/server.py`,
-`[project.scripts]` entries in both service `pyproject.toml`, `shared/src/utils/logger.py`
-`setup_mcp_server_logger`, `TicketRepository` / `NetworkRepository`, tool functions reachable
-only through the servers (`get_customer_equipment`, `get_customer_tickets`, `get_switch_info`).
-Note: `get_customer_tickets` / `ticket_repo.get_open_tickets` may be reused in M6 (open-ticket
-check) — keep them regardless.
+their `[project.scripts]` entries, `shared/src/utils/logger.py` `setup_mcp_server_logger`,
+`CustomerRepository` / `TicketRepository` / `NetworkRepository`, and tool functions reachable only
+through the servers (`get_customer_equipment`, `get_customer_tickets`, `get_switch_info`). MCP may
+become the integration transport. They are unused and untested today — do not refactor them in
+this plan beyond keeping imports working.
 
 **Tests to delete together with the code above**
 - `chatbot_core/tests/test_voice_adapters.py`: `TestFastRTCTransport` (6 tests),
@@ -105,6 +105,10 @@ check) — keep them regardless.
    seen, disposition, tools used). Write `baseline/README.md`: date, git commit, models from
    `chatbot_core/.api_config.json`/env (`PERCEPTION_MODEL`, agent model), total checks passed
    per run. Commit.
+   **Voice latency baseline (for plan §9 P-1):** ask the owner to run the 9 demo calls by voice
+   on the current code (speculation on). From each session trace
+   `logs/sessions/<session_id>.jsonl` extract `voice_turn_done.ttfa_ms`, `total_ms` and
+   `voice_latency` events; write per-call median/p90 into `baseline/voice_latency.md`. Commit.
 3. **Delete dead code** from §3 in small commits (services; voice demo + transport + port;
    streamlit; prompts; stale scripts/tests; no-op strategies and dead ReactAgent delegates).
    After each commit: `uv run pytest` green, and `uv run uvicorn --app-dir chatbot_core
@@ -121,7 +125,7 @@ check) — keep them regardless.
 
 - Every verdict in `A/verdict.py decide()` appears in at least one scenario `verdict_in`.
 - `docs/refactoring/baseline/` committed with two runs and README.
-- All paths in §3 "Delete" are gone (except Q-1 items if unanswered); importer grep for each
+- All paths in §3 "Delete" are gone (the "Keep" list stays); importer grep for each
   deleted module name returns nothing.
 - App starts; `uv run pytest` green.
 

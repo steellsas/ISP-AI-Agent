@@ -2,8 +2,8 @@
 
 > Part of [REFACTORING_PLAN.md](REFACTORING_PLAN.md). Read its "Rules for the executor" first.
 > Decisions: D-02 (speaker never decides), D-06 (analyst = signals), D-15 (phrase | directive),
-> D-19 (English prompts). Prerequisites: M4 done. Open question **Q-2** (speculation) must be
-> answered before step 6.
+> D-19 (English prompts). Prerequisites: M4 done. Q-2 answered: speculation is removed here and
+> re-evaluated after M7 (plan §9).
 
 Legend as in M1. Line numbers from `develop` @ `c7be3ba`; re-locate with grep.
 
@@ -115,13 +115,13 @@ Every section is generated from typed state; no section may carry an instruction
      `off_topic` → return-to-anchor phrase; `frustration` → tone hint added to `say.goal`.
    - The analyst never writes facts, never changes the hypothesis, never speaks (D-06).
    Commit.
-6. **Speculation (Q-2).** If the owner keeps it: adapt `A/speculation.py` to predict the next
-   `TurnPlan` for the top candidate answers of `awaiting` (run `decide` on a state copy with a
-   synthetic perception) and pre-render only `phrase` plans or directive plans via `speak` on a
-   copy; inject by matching the real plan (`rule`, `say.key/goal`) instead of directive kinds.
-   If the owner deletes it: remove `A/speculation.py`, `SPECULATION` flag, `session.speculate_next`,
-   `speculation_match`, `voice_pipeline` hooks (~L419-436), tests in `test_voice_v1.py` Speculation
-   class. Commit.
+6. **Remove speculation (owner decision Q-2).** Delete `A/speculation.py`, the `SPECULATION`
+   flag and dashboard option, `session.speculate_next`, `speculation_match`,
+   `turn.injected_reply`, the `voice_pipeline` hooks (~L419-436) and the background trigger in
+   `app/voice.py` (~L353-372; keep the background **analyst** trigger), tests in
+   `test_voice_v1.py` Speculation class. Keep the background telemetry snapshot only if M6 still
+   needs it for the held outage check; otherwise delete it too. Latency is re-evaluated after M7
+   (plan §9, P-1) — if needed, speculation is rebuilt on `TurnPlan` then. Commit.
 7. **Delete `ReactAgent`.** Move remaining helpers (`_build_call_summary`, `_persist_call_record`,
    `_tools_called_this_session`, `_record_llm_stats`) to `A/session_record.py` / `rt.llm`; delete
    `A/react_agent.py`, `A/narrator_flow.py` and everything in §3 "Delete". Commit.
