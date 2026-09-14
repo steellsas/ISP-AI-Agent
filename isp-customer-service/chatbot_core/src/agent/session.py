@@ -166,7 +166,7 @@ class AgentSession:
         branch = match(self._agent, transcript)
         if not branch:
             return None
-        self._agent._injected_reply = {
+        self._agent.state.turn.injected_reply = {
             "kind": branch["kind"],
             "key": branch.get("key"),
             "text": branch["text"],

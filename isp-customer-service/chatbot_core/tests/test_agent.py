@@ -1992,21 +1992,19 @@ class TestPromptPrefixHygiene:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._node_prompt = "NODE-RULES-MARKER"
-        messages = agent._build_messages(user_input="Labas")
+        messages = agent._build_messages(user_input="Labas", node_prompt="NODE-RULES-MARKER")
         assert messages[0]["role"] == "system"
         assert "NODE-RULES-MARKER" in messages[0]["content"]
         # no trailing system message carries the node prompt any more
         assert all("NODE-RULES-MARKER" not in m.get("content", "") for m in messages[1:])
         # and the prefix is byte-stable across turns
-        again = agent._build_messages(user_input="Kitas")
+        again = agent._build_messages(user_input="Kitas", node_prompt="NODE-RULES-MARKER")
         assert again[0]["content"] == messages[0]["content"]
 
     def test_directive_turn_keeps_lean_prompt_without_node_rules(self, db_connection):
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._node_prompt = "NODE-RULES-MARKER"
         agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
-        messages = agent._build_messages(user_input="Labas")
+        messages = agent._build_messages(user_input="Labas", node_prompt="NODE-RULES-MARKER")
         assert all("NODE-RULES-MARKER" not in m.get("content", "") for m in messages)

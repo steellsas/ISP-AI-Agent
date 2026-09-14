@@ -54,7 +54,12 @@ def _directive_system_prompt() -> str:
     return _DIRECTIVE_PROMPT
 
 
-def build_messages(engine, user_input: str = None) -> list:
+def build_messages(
+    engine,
+    user_input: str | None = None,
+    node_prompt: str | None = None,
+    allowed_tools: frozenset[str] | None = None,
+) -> list:
     """
     Build the message payload for one LLM call.
 
@@ -87,8 +92,8 @@ def build_messages(engine, user_input: str = None) -> list:
         # several prefixes warm in parallel). It used to trail the facts
         # block, re-sent uncached every turn.
         prefix = engine.system_prompt
-        if engine._node_prompt:
-            prefix = f"{prefix}\n\n{engine._node_prompt}"
+        if node_prompt:
+            prefix = f"{prefix}\n\n{node_prompt}"
         messages = [{"role": "system", "content": prefix}]
 
     # Istorija v2 (hygiene step 3): when the window cut older turns, a short
@@ -117,9 +122,11 @@ def build_messages(engine, user_input: str = None) -> list:
     # changes); full messages only when DEBUG_LLM=full.
     if os.environ.get("DEBUG_LLM"):
         payload: dict[str, Any] = {
-            "node": engine._active_node,
+            "node": engine.state.turn.active_node,
             "facts": facts,
-            "tools": sorted(t["function"]["name"] for t in engine._scoped_tools_schema()),
+            "tools": sorted(
+                t["function"]["name"] for t in engine._scoped_tools_schema(allowed_tools)
+            ),
             "history_msgs": len(messages) - 1,
         }
         if os.environ.get("DEBUG_LLM") == "full":
@@ -129,9 +136,9 @@ def build_messages(engine, user_input: str = None) -> list:
     return messages
 
 
-def scoped_tools_schema(engine) -> list:
+def scoped_tools_schema(engine, allowed_tools: frozenset[str] | None = None) -> list:
     """The tool schema for the current node — all tools, or the subset a graph
-    node restricted the model to (engine._active_tool_names).
+    node restricted the model to (`allowed_tools`).
 
     Per-step scoping while a resolution strategy is active: the engine owns all
     diagnostics (withheld); an ACTION/ESCALATE step exposes ONLY its tool so the
@@ -150,10 +157,8 @@ def scoped_tools_schema(engine) -> list:
     if engine.state.turn.directives.ident or engine.state.turn.directives.ticket:
         return []
     schema = engine.tools_schema
-    if engine._active_tool_names is not None:
-        schema = [
-            t for t in schema if t.get("function", {}).get("name") in engine._active_tool_names
-        ]
+    if allowed_tools is not None:
+        schema = [t for t in schema if t.get("function", {}).get("name") in allowed_tools]
     if engine.state.resolution.procedure is not None:
         from .resolution import StepKind, get_strategy
 
@@ -379,9 +384,9 @@ def state_facts_block(engine) -> str | None:
     # caller heard only its beginning. The unheard tail is surfaced ONCE so the
     # narrator can weave the essential part back in instead of assuming it
     # landed (live: the agent referenced instructions the caller never heard).
-    tail = getattr(engine, "_undelivered_tail", None)
+    tail = engine.state.voice.undelivered_tail
     if tail:
-        engine._undelivered_tail = None
+        engine.state.voice.undelivered_tail = None
         facts.append(
             f"- KLIENTAS NEGIRDĖJO (pertraukė): „{tail[:160]}“ — jei svarbu, "
             "pasakyk trumpai savais žodžiais."
@@ -389,9 +394,9 @@ def state_facts_block(engine) -> str | None:
     # Duplex-hearing 2: words the caller said OVER the agent's voice — the
     # facts already landed via the deterministic ingest; the narrator just
     # shows it HEARD ("kaip minėjot…") and never re-asks what these answered.
-    oh = getattr(engine, "_overlay_heard", None)
+    oh = engine.state.voice.overlay_heard
     if oh:
-        engine._overlay_heard = None
+        engine.state.voice.overlay_heard = None
         quoted = " / ".join(f"„{t[:120]}“" for t in oh)
         facts.append(
             f"- KOL KALBĖJAI, KLIENTAS ĮSITERPĖ: {quoted} — atsižvelk į tai; "
@@ -399,9 +404,9 @@ def state_facts_block(engine) -> str | None:
         )
     # Andrius 2026-08-26: the cut-off QUESTION never reached the caller — they
     # were NOT answering it. React to what they said, then ask it anew.
-    uq = getattr(engine, "_unheard_question", None)
+    uq = engine.state.voice.unheard_question
     if uq:
-        engine._unheard_question = None
+        engine.state.voice.unheard_question = None
         facts.append(
             "- KLAUSIMAS NEIŠĖJO Į ETERĮ: klientas TAVO klausimo negirdėjo "
             "(pertraukė anksčiau), tad jo žodžiai — NE atsakymas į jį. "
@@ -1168,9 +1173,9 @@ def state_facts_block(engine) -> str | None:
 
     # W2 tylusis analitikas: advisory notes from the background read — they
     # shape the WORDING only; on any clash the directives above win. One-shot.
-    notes = getattr(engine, "_analyst_notes", None)
+    notes = engine.state.voice.analyst_notes
     if notes:
-        engine._analyst_notes = None
+        engine.state.voice.analyst_notes = None
         facts.append(
             "- TYLIOJO ANALITIKO PASTABOS (patariamosios — faktų ir eigos "
             "NEkeičia; jei prieštarauja aukščiau esančioms direktyvoms, "
@@ -1293,7 +1298,7 @@ def result_narration_tail(engine) -> str:
     """The narration directive once the identity has committed and the silent
     diagnose ran. Identification LADDER (2026-07-31): if the caller-intro question
     is still owed (WHO is calling — name + relation, for the record), ask THAT
-    first and hold the result one turn (_result_pending); otherwise narrate the
+    first and hold the result one turn (identity.result_pending); otherwise narrate the
     check announce + the REAL result in this one reply (arc v3)."""
     from .identification import ask_caller, caller_question
 

@@ -7,7 +7,7 @@ deterministically from STATE.
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent. Both engines use it — the legacy ReactAgent through thin delegate
 methods, the v2 ticket/executor nodes directly. The stage value lives on
-GraphState.ticket.stage (promoted); the dialogue CONTEXT (engine._ticket_ctx)
+GraphState.ticket.stage (promoted); the dialogue CONTEXT (GraphState.ticket.context)
 is a plain JSON dict — the escalate step is kept by id.
 """
 

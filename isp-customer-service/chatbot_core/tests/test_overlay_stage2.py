@@ -56,7 +56,7 @@ class TestApplyOverlay:
     def test_empty_and_capped(self, db_connection):
         agent = _agent()
         agent.apply_overlay(["", "   "])
-        assert agent._overlay_heard is None
+        assert agent.state.voice.overlay_heard is None
 
 
 class TestTransportHandOver:

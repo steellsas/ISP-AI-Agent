@@ -190,8 +190,8 @@ class TestUnheardQuestion:
         assert agent.state.diagnosis.pending_evidence_key == "lights"
         assert agent.state.diagnosis.evidence_ask_counts["lights"] == 0
         assert agent.state.resolution.procedure["presented"]["dr_lights"] == 0
-        assert agent._unheard_question == "Ar dega bent viena lemputė?"
-        assert agent._undelivered_tail is None  # superseded by the strong note
+        assert agent.state.voice.unheard_question == "Ar dega bent viena lemputė?"
+        assert agent.state.voice.undelivered_tail is None  # superseded by the strong note
         block = agent._state_facts_block() or ""
         assert "KLAUSIMAS NEIŠĖJO" in block and "lemputė" in block
         assert "KLAUSIMAS NEIŠĖJO" not in (agent._state_facts_block() or "")
@@ -204,8 +204,8 @@ class TestUnheardQuestion:
         agent.apply_delivery(["Ar dega bent viena lemputė?", "Tai parodys, ar gauna srovę."], 1)
         assert agent.state.dialog.last_question == "Ar dega bent viena lemputė?"
         assert agent.state.diagnosis.pending_evidence_key == "lights"
-        assert agent._unheard_question is None
-        assert agent._undelivered_tail  # the plain advisory note stands
+        assert agent.state.voice.unheard_question is None
+        assert agent.state.voice.undelivered_tail  # the plain advisory note stands
 
 
 class TestW2QuietAnalyst:
@@ -238,7 +238,7 @@ class TestW2QuietAnalyst:
 
         agent = self._agent()
         run_analyst(agent)
-        assert agent._analyst_notes == [
+        assert agent.state.voice.analyst_notes == [
             "klientas jau pasake, kada dingo",
             "faktas priestarauja tam, ka klientas kartoja",
         ]
@@ -255,10 +255,10 @@ class TestW2QuietAnalyst:
         monkeypatch.setenv("ANALYST", "off")
         agent = self._agent()
         run_analyst(agent)
-        assert calls == [] and agent._analyst_notes is None
+        assert calls == [] and agent.state.voice.analyst_notes is None
         monkeypatch.setenv("ANALYST", "on")
         run_analyst(agent)
-        assert calls == [1] and agent._analyst_notes is None  # OK -> no notes
+        assert calls == [1] and agent.state.voice.analyst_notes is None  # OK -> no notes
 
 
 class TestTurnGrammar:

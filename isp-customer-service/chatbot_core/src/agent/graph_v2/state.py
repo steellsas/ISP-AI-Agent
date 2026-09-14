@@ -5,7 +5,7 @@ Design:
 - Pydantic so the whole state JSON-serializes losslessly — every checkpoint is
   a plain document (SqliteSaver: time-travel, state between turns).
 - Grouped by concern: identity · intake · diagnosis · resolution · ticket ·
-  dialog · closing, plus `messages` (the LLM transcript) and `turn`.
+  dialog · closing · voice, plus `messages` (the LLM transcript) and `turn`.
 - One-turn scratch lives in `turn: TurnScratch`, replaced at every graph
   invocation. It is carried inside the state for node-to-node hand-off within a
   single turn, but is NOT conversation history — checkpoints of past turns must
@@ -284,6 +284,18 @@ class ClosingState(BaseModel):
     secondary_problems_asked: bool = False
 
 
+class VoiceState(BaseModel):
+    """What the voice layer learned between turns (duplex hearing, barge-in, analyst)."""
+
+    # The quiet analyst's advisory notes for the next narration (never facts).
+    analyst_notes: list[str] | None = None
+    # Words the caller said OVER the agent's voice, for a one-shot narrator note.
+    overlay_heard: list[str] | None = None
+    # After a barge-in: the reply tail the caller did not hear / an unheard question.
+    undelivered_tail: str | None = None
+    unheard_question: str | None = None
+
+
 class TurnDirectives(BaseModel):
     """Narrator directives composed this turn, consumed by the facts block."""
 
@@ -299,9 +311,10 @@ class TurnScratch(BaseModel):
 
     user_input: str | None = None
     reply: str | None = None
-    cancel_requested: bool = False
     side_topic_active: bool = False
-    active_node: str | None = None
+    active_node: str | None = None  # which graph node is running (trace/debug)
+    # A speculation branch reply prepared before the turn (served when it matches).
+    injected_reply: dict[str, Any] | None = None
     # Identification notes for this turn's facts block.
     address_lookup_note: str | None = None
     address_confirm_note: str | None = None
@@ -331,6 +344,7 @@ STATE_GROUPS: tuple[str, ...] = (
     "ticket",
     "dialog",
     "closing",
+    "voice",
 )
 
 
@@ -347,4 +361,5 @@ class GraphState(BaseModel):
     ticket: TicketState = Field(default_factory=TicketState)
     dialog: DialogState = Field(default_factory=DialogState)
     closing: ClosingState = Field(default_factory=ClosingState)
+    voice: VoiceState = Field(default_factory=VoiceState)
     turn: TurnScratch = Field(default_factory=TurnScratch)

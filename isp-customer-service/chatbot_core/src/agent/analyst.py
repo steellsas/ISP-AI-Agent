@@ -85,7 +85,7 @@ def _allowed(note: str) -> bool:
 
 
 def run_analyst(engine: Any) -> None:
-    """One background read -> engine._analyst_notes (list[str] | None).
+    """One background read -> engine.state.voice.analyst_notes (list[str] | None).
     Best-effort: any hiccup leaves the notes empty and the call untouched."""
     if not enabled():
         return
@@ -147,7 +147,7 @@ def run_analyst(engine: Any) -> None:
         # Deterministic whitelist: only the three agreed note types survive —
         # already-said, suspicious-fact, concept-confusion.
         notes = [n for n in notes if _allowed(n)][:2]
-        engine._analyst_notes = notes or None
+        engine.state.voice.analyst_notes = notes or None
         if notes:
             engine.tracer.emit("analyst", notes=notes)
             # C wave: the deviation note is FLAG-ONLY — a separate trace event

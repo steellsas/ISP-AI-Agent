@@ -8,7 +8,7 @@ an off-script question.
 
 R3 migrates here (roadmap §4): _begin/_finish_ticket_dialogue,
 _ticket_stage_reply, _ticket_need, _abort_ticket_to_solving,
-_wants_to_keep_solving; _ticket_ctx promotes to GraphState.
+_wants_to_keep_solving; the dialogue context lives on GraphState.ticket.
 """
 
 from __future__ import annotations

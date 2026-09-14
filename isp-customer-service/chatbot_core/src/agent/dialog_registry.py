@@ -7,7 +7,7 @@ clarify / deviation -> return to the path).
 Step 1 (shadow): the registry MIRRORS reality — question owners fill it,
 readers clear it, and the trace shows `question` events. It does not change
 behavior yet: routing still runs on the existing flags
-(_reopen_confirm_pending, _cannot_now_state, ticket_stage...). Steps 2-4
+(identity.reopen_confirm_utterance, dialog.cannot_now_state, ticket.stage...). Steps 2-4
 migrate the identification, ticket and walker questions one owner at a time
 until the registry becomes the single routing source and the priority judge
 (safety > active clarification > stage owner > side topic).

@@ -294,7 +294,7 @@ class TestSpeculation:
 
     def test_injection_consumed_only_on_directive_match(self, db_connection):
         agent = self._agent()
-        agent._injected_reply = {
+        agent.state.turn.injected_reply = {
             "kind": "evidence",
             "key": "power_cable",
             "text": "Ar laidas įkištas?",
@@ -306,7 +306,11 @@ class TestSpeculation:
             "klausimas": "",
         }
         assert agent._consume_injected_reply() == "Ar laidas įkištas?"
-        agent._injected_reply = {"kind": "evidence", "key": "outlet_works", "text": "Ne tas?"}
+        agent.state.turn.injected_reply = {
+            "kind": "evidence",
+            "key": "outlet_works",
+            "text": "Ne tas?",
+        }
         assert agent._consume_injected_reply() is None  # directive key mismatch
 
     def test_pipeline_serves_cached_audio_on_hit(self):
@@ -563,11 +567,11 @@ class TestDeliveryLedger:
         agent.state.messages.append({"role": "assistant", "content": "Pirmas. Antras. Trečias."})
         agent.apply_delivery(["Pirmas.", "Antras.", "Trečias."], 1)
         assert agent.state.messages[-1]["content"] == "Pirmas. —"
-        assert agent._undelivered_tail == "Antras. Trečias."
+        assert agent.state.voice.undelivered_tail == "Antras. Trečias."
         block = agent._state_facts_block() or ""
         assert "KLIENTAS NEGIRD" in block and "Antras." in block
         # consumed once — the note must not nag every later turn
-        assert agent._undelivered_tail is None
+        assert agent.state.voice.undelivered_tail is None
         assert "KLIENTAS NEGIRD" not in (agent._state_facts_block() or "")
 
     def test_apply_delivery_nothing_heard(self, db_connection):
@@ -577,7 +581,7 @@ class TestDeliveryLedger:
         agent.state.messages.append({"role": "assistant", "content": "Visas tekstas."})
         agent.apply_delivery(["Visas tekstas."], 0)
         assert agent.state.messages[-1]["content"] == "—"
-        assert agent._undelivered_tail == "Visas tekstas."
+        assert agent.state.voice.undelivered_tail == "Visas tekstas."
 
     def test_apply_delivery_all_heard_is_noop(self, db_connection):
         from agent.react_agent import ReactAgent
@@ -586,7 +590,7 @@ class TestDeliveryLedger:
         agent.state.messages.append({"role": "assistant", "content": "Viskas. Gerai."})
         agent.apply_delivery(["Viskas.", "Gerai."], 2)
         assert agent.state.messages[-1]["content"] == "Viskas. Gerai."
-        assert agent._undelivered_tail is None
+        assert agent.state.voice.undelivered_tail is None
 
 
 class TestAsrHeadStart:

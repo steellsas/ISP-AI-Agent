@@ -219,27 +219,7 @@ class ReactAgent:
         # S1 speculation (2026-08-24): the branch cache prepared while the
         # caller was answering, and the matched reply injected past the LLM.
         self._spec_cache: dict | None = None
-        self._injected_reply: dict | None = None
         self._bg_diagnosis: str | None = None  # S2: background telemetry read
-        # D1 delivery ledger: the tail of an interrupted reply the caller never
-        # HEARD — surfaced to the narrator next turn, then cleared.
-        self._undelivered_tail: str | None = None
-        # W2 tylusis analitikas: background advisory notes for the narrator's
-        # next turn (written by the bg thread, consumed once in facts).
-        self._analyst_notes: list[str] | None = None
-        # D1+ (Andrius 2026-08-26): the interrupted reply's QUESTION never
-        # sounded — the narrator must react to the caller and RE-ASK it.
-        self._unheard_question: str | None = None
-        # Duplex-hearing 2: what the caller said OVER the agent's voice —
-        # already ingested deterministically; surfaced to the narrator once.
-        self._overlay_heard: list[str] | None = None
-
-        # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
-        # tools exposed to the model and add a focused prompt. None = unrestricted
-        # (the legacy single-agent behaviour).
-        self._active_tool_names: frozenset[str] | None = None
-        self._node_prompt: str | None = None
-        self._active_node: str | None = None  # which graph node is running (debug)
 
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
@@ -263,11 +243,16 @@ class ReactAgent:
         """Get accumulated LLM statistics."""
         return self.llm_stats.to_dict()
 
-    def _build_messages(self, user_input: str = None) -> list:
+    def _build_messages(
+        self,
+        user_input: str | None = None,
+        node_prompt: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
+    ) -> list:
         """Delegates to narrator_flow.build_messages (R3 extraction)."""
         from .narrator_flow import build_messages
 
-        return build_messages(self, user_input)
+        return build_messages(self, user_input, node_prompt, allowed_tools)
 
     # Security-sensitive resolution actions — only exposed on the strategy STEP
     # that permits them (update_mac on bind_mac, create_ticket on escalate). So the
@@ -279,11 +264,11 @@ class ReactAgent:
         {"diagnose_connection", "check_network_status", "run_ping_test", "check_port_status"}
     )
 
-    def _scoped_tools_schema(self) -> list:
+    def _scoped_tools_schema(self, allowed_tools: frozenset[str] | None = None) -> list:
         """Delegates to narrator_flow.scoped_tools_schema (R3 extraction)."""
         from .narrator_flow import scoped_tools_schema
 
-        return scoped_tools_schema(self)
+        return scoped_tools_schema(self, allowed_tools)
 
     def _prune_history(self, messages: list) -> list:
         """Delegates to narrator_flow.prune_history (R3 extraction)."""
@@ -492,7 +477,7 @@ class ReactAgent:
             return
         for text in kept:
             ingest_overlay(self, text)
-        self._overlay_heard = kept
+        self.state.voice.overlay_heard = kept
         self.tracer.emit("overlay_applied", texts=[t[:120] for t in kept])
 
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
@@ -513,7 +498,7 @@ class ReactAgent:
             if msg.get("role") == "assistant":
                 msg["content"] = (heard + " —") if heard else "—"
                 break
-        self._undelivered_tail = tail or None
+        self.state.voice.undelivered_tail = tail or None
         # Andrius 2026-08-26: the agent must NEVER believe it asked a question
         # the caller could not hear. When the "?" lives only in the unheard
         # tail, the ask never happened: the pending evidence key and its ask
@@ -539,14 +524,14 @@ class ReactAgent:
             step_id = r.get("step")
             if step_id and pres.get(step_id, 0) > 0:
                 pres[step_id] -= 1
-            self._unheard_question = tail
-            self._undelivered_tail = None  # superseded by the strong directive
+            self.state.voice.unheard_question = tail
+            self.state.voice.undelivered_tail = None  # superseded by the strong directive
         self.tracer.emit(
             "delivery",
             delivered=delivered,
             total=total,
             unheard=tail[:160],
-            question_unheard=bool(getattr(self, "_unheard_question", None)),
+            question_unheard=bool(self.state.voice.unheard_question),
         )
 
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
@@ -1183,15 +1168,14 @@ class ReactAgent:
         the FINAL reply's text tokens as the LLM produces them. Tool rounds run
         silently (no yields). Called from inside the LangGraph nodes, which forward
         the tokens via the stream writer — so LangGraph stays the orchestrator."""
-        self._active_tool_names = allowed_tools
-        self._node_prompt = node_prompt
-        try:
-            yield from self._run_turn_stream(user_input)
-        finally:
-            self._active_tool_names = None
-            self._node_prompt = None
+        yield from self._run_turn_stream(user_input, allowed_tools, node_prompt)
 
-    def _run_turn_stream(self, user_input: str | None = None):
+    def _run_turn_stream(
+        self,
+        user_input: str | None = None,
+        allowed_tools: frozenset[str] | None = None,
+        node_prompt: str | None = None,
+    ):
         """The scoped turn: deterministic head, scripted replies, then the LLM tool
         loop streaming the final reply token by token."""
         # Hardcoded greeting (first turn, no input) — the node yields the fixed
@@ -1289,7 +1273,7 @@ class ReactAgent:
 
             # The user message is already on the history (appended up front, so
             # scripted turns record it too); the prompt builds from history.
-            messages = self._build_messages(None)
+            messages = self._build_messages(None, node_prompt, allowed_tools)
 
             try:
                 # Manual consumption instead of `yield from`: the cancel flag is
@@ -1297,7 +1281,7 @@ class ReactAgent:
                 # LLM HTTP stream, so the generation itself stops (PR3).
                 inner = stream_tool_completion(
                     messages=messages,
-                    tools=self._scoped_tools_schema(),
+                    tools=self._scoped_tools_schema(allowed_tools),
                     tool_choice="auto",
                     model=self.config.model,
                     temperature=self.config.temperature,
@@ -1397,10 +1381,10 @@ class ReactAgent:
         by the voice layer when the caller's answer matched a prepared
         branch). Consumed only when the drive actually produced the predicted
         directive — any mismatch falls back to the normal LLM path."""
-        inj = getattr(self, "_injected_reply", None)
+        inj = self.state.turn.injected_reply
         if not inj:
             return None
-        self._injected_reply = None
+        self.state.turn.injected_reply = None
         kind, key, text = inj.get("kind"), inj.get("key"), inj.get("text")
         if not text:
             return None
@@ -1604,7 +1588,7 @@ class ReactAgent:
                 level=level,
                 where=where,
                 detail=(detail or "")[:300],
-                node=self._active_node,
+                node=self.state.turn.active_node,
                 step=r.get("step"),
                 awaiting=self.state.dialog.awaiting,
             )

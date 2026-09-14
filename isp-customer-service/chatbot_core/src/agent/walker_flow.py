@@ -185,7 +185,7 @@ def ensure_action_done(engine) -> bool:
     if ran:
         r["action_done"] = True  # the announce is narrated this turn; advance next
         if "update_mac" in step.tool_actions:
-            # Only a TEMPORARY bridge marks _bridge_bound (ticket-first close,
+            # Only a TEMPORARY bridge marks resolution.bridge_bound (ticket-first close,
             # bridged intro) — foreign_mac's bind IS the fix, not a bridge.
             from .evidence import solution_for
 
@@ -624,7 +624,7 @@ def scripted_wait_ack(engine) -> str | None:
         return None
     if engine.state.diagnosis.pending_announcement or engine.state.diagnosis.evidence_conflict:
         return None
-    if engine.state.dialog.resync_note or getattr(engine, "_undelivered_tail", None):
+    if engine.state.dialog.resync_note or engine.state.voice.undelivered_tail:
         return None
     d = engine.state.turn.directives
     if d.evidence or d.recap or d.findings or d.ticket or d.ident:

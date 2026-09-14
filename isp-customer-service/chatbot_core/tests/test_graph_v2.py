@@ -79,7 +79,6 @@ class FakeEngine:
         self.calls = []
         self._side = side_topic
         self._driven = driven
-        self._active_node = None
         self.session_id = "fake-session"
         self.tracer = SimpleNamespace(emit=lambda *a, **k: None)
 

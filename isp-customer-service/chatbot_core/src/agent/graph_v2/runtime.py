@@ -34,7 +34,7 @@ def narrate(engine: Any, user_input: str | None, allowed_tools, node_prompt: str
     """Run the engine's scoped LLM turn, streaming tokens out via the LangGraph
     stream writer (a no-op under .invoke(), live under .stream(stream_mode='custom'))
     while collecting the full reply for the checkpoint."""
-    engine._active_node = node
+    engine.state.turn.active_node = node
     engine.tracer.emit("node", node=node, customer_id=engine.state.identity.customer_id)
     writer = get_stream_writer()
     parts: list[str] = []
@@ -50,7 +50,7 @@ def speak_scripted(engine: Any, node: str, user_input: str | None, reply: str) -
     streamed — and the call ended in dead silence, three caller turns in a
     row). Mirrors narrate()'s surface for an engine-composed line: node event,
     history, trace, and the stream writer."""
-    engine._active_node = node
+    engine.state.turn.active_node = node
     engine.tracer.emit("node", node=node, customer_id=engine.state.identity.customer_id)
     if user_input:
         engine.state.dialog.last_heard = user_input.strip()

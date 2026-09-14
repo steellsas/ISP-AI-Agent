@@ -183,7 +183,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     pending = engine.state.diagnosis.pending_evidence_key
     # 2026-09-03 (eval S6 flake): the pack's FIRST question can go out from
     # the STEP HINT (the narrator, before the drive's own ask bookkeeping) —
-    # then _evidence_last_ask_key is still None and the deterministic answer
+    # then diagnosis.pending_evidence_key is still None and the deterministic answer
     # read was skipped, leaving the fact to the LLM pass's mercy. When no ask
     # is pending, the NEXT MISSING evidence key of the active pack stands in:
     # its conservative `atsakymai` marks still have to hit, so an unrelated

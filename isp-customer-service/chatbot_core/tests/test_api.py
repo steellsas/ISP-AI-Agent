@@ -352,7 +352,7 @@ class TestVoiceChannel:
 
         engine = manager.get(sid).session._agent
         # an unheard "?" upgrades the tail into the strong re-ask directive
-        tail = engine._undelivered_tail or engine._unheard_question
+        tail = engine.state.voice.undelivered_tail or engine.state.voice.unheard_question
         last_assistant = next(
             m for m in reversed(engine.state.messages) if m["role"] == "assistant"
         )
