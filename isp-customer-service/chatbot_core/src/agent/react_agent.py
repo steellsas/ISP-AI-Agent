@@ -192,10 +192,6 @@ class ReactAgent:
 
         # Initialize LLM stats tracking
         self.llm_stats = LLMStats()
-
-        # Streets/localities registry for deterministic NLU prefill (loaded lazily
-        # on the first user turn so construction stays DB-free where possible).
-        self._registry: tuple[list[str], list[str]] | None = None
         # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
         # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
         # stream closes mid-generation and the cancelled-turn bookkeeping runs

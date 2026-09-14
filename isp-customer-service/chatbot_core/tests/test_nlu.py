@@ -91,16 +91,16 @@ class TestConservative:
         assert r.city is None  # Vilnius is not served -> no locality match
 
 
-class TestLoadRegistryIntegration:
-    def test_extract_over_seed_registry(self, db_connection):
-        from agent.nlu import load_registry
-        from agent.tools import get_db
+class TestAddressRegistryIntegration:
+    def test_seed_registry_is_served_by_the_provider(self, db_connection):
+        from agent.tooling import LocalToolProvider
 
-        streets, localities = load_registry(get_db())
-        assert "Tilžės g." in streets
-        assert "Šiauliai" in localities
+        registry = LocalToolProvider().address_registry()
+        assert "Tilžės g." in registry.streets
+        assert "Tilžės" in registry.street_names
+        assert "Šiauliai" in registry.localities
 
-        r = extract_address("Tilžės 60 butas 7", streets, localities)
+        r = extract_address("Tilžės 60 butas 7", registry.streets, registry.localities)
         assert r.street == "Tilžės g."
         assert r.house == "60"
         assert r.apartment == "7"

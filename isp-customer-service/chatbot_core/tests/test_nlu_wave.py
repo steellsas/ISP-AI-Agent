@@ -12,11 +12,11 @@ def _agent(phone="unknown"):
 
 
 def _read(text):
-    from agent.nlu import extract_address, load_registry
-    from agent.tools import get_db
+    from agent.nlu import extract_address
+    from agent.tooling import LocalToolProvider
 
-    streets, localities = load_registry(get_db())
-    return extract_address(text, streets, localities)
+    registry = LocalToolProvider().address_registry()
+    return extract_address(text, registry.streets, registry.localities)
 
 
 class TestWordAnchors:

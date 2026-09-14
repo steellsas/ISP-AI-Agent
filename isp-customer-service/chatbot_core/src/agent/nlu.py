@@ -9,7 +9,7 @@ address never depends on it, and the extractor can only return a street that
 actually exists in the registry (no hallucination).
 
 Pure function `extract_address(text, streets, localities)` is unit-testable with
-hand-given registry lists; `load_registry(db)` is the thin DB-backed loader.
+hand-given registry lists (the gateway's address_registry() provides them).
 """
 
 from __future__ import annotations
@@ -18,7 +18,8 @@ import re
 from dataclasses import dataclass
 
 from adapters.asr.lt_text import normalize_lt_numbers
-from crm_mcp.tools.address_resolver import locality_match_score, street_match_score
+
+from .tooling.address_matching import locality_match_score, street_match_score
 
 # A token is a number (optionally with a trailing letter: "122F") or a word.
 _TOKEN_RE = re.compile(r"(?P<num>\d+[^\W\d_]?)|(?P<word>[^\W\d_]+)", re.UNICODE)
@@ -313,16 +314,6 @@ def extract_symptoms(text: str) -> dict[str, str]:
                 out[category] = value
                 break
     return out
-
-
-def load_registry(db) -> tuple[list[str], list[str]]:
-    """(street names with their 'g.' suffix, sorted locality names) from the DB."""
-    with db.cursor() as cursor:
-        cursor.execute("SELECT street_name, street_type, city FROM streets")
-        rows = [dict(r) for r in cursor.fetchall()]
-    streets = [f"{r['street_name']} {r['street_type'] or 'g.'}".strip() for r in rows]
-    localities = sorted({r["city"] for r in rows})
-    return streets, localities
 
 
 # --- Anamnesis reading (Step 2, the ANALYSIS object) -------------------------------

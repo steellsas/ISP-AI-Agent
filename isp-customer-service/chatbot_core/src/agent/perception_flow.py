@@ -370,26 +370,15 @@ def _note_fact_meaning(engine, key: str, value: str) -> None:
         engine.tracer.emit("evidence", action="fact_meaning", key=key, value=value)
 
 
-_STREETS_FOLD_CACHE: list[str] | None = None
+def _registry_streets_fold(engine) -> list[str]:
+    """Folded registry street names (be „g." uodegos) — kito-adreso signalui."""
+    try:
+        from .evidence import _fold
 
-
-def _registry_streets_fold() -> list[str]:
-    """Folded registry street names (be „g." uodegos) — pigus vienkartinis
-    užkrovimas kito-adreso signalui."""
-    global _STREETS_FOLD_CACHE
-    if _STREETS_FOLD_CACHE is None:
-        try:
-            from .evidence import _fold
-            from .tools import get_db
-
-            with get_db().cursor() as cur:
-                cur.execute("SELECT DISTINCT street_name FROM streets")
-                _STREETS_FOLD_CACHE = [
-                    _fold(str(r[0]).replace(" g.", "")) for r in cur.fetchall() if r[0]
-                ]
-        except Exception:  # pragma: no cover - best-effort
-            _STREETS_FOLD_CACHE = []
-    return _STREETS_FOLD_CACHE
+        names = engine.tools.address_registry().street_names
+        return [_fold(str(n).replace(" g.", "")) for n in names]
+    except Exception:  # pragma: no cover - best-effort
+        return []
 
 
 def _mentions_other_street(engine, text: str | None) -> bool:
@@ -406,7 +395,9 @@ def _mentions_other_street(engine, text: str | None) -> bool:
 
     low = _fold(text)
     current = _fold(str(engine.state.identity.customer_address or ""))
-    return any(len(st) >= 4 and st in low and st not in current for st in _registry_streets_fold())
+    return any(
+        len(st) >= 4 and st in low and st not in current for st in _registry_streets_fold(engine)
+    )
 
 
 def _holder_name_matches(engine, caller_name: str) -> bool:

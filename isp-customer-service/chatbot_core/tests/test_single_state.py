@@ -46,7 +46,6 @@ RUNTIME_ATTRIBUTES = {
     "system_prompt",
     "tools_schema",
     "_session_ended",
-    "_registry",
     "_spec_cache",
     "_cancel_requested",
 }

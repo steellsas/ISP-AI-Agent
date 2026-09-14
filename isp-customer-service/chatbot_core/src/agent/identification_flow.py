@@ -249,13 +249,11 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         if not asked_address:
             return  # no address in sight — do not fuzzy-match one into the slots
     try:
-        from .nlu import extract_address, load_registry
+        from .nlu import extract_address
         from .slots import SlotStatus
-        from .tools import get_db
 
-        if engine._registry is None:
-            engine._registry = load_registry(get_db())
-        streets, localities = engine._registry
+        registry = engine.tools.address_registry()
+        streets, localities = registry.streets, registry.localities
         reading = extract_address(text, streets, localities)
     except Exception:  # pragma: no cover - best-effort, never break a turn
         logger.debug("NLU prefill failed", exc_info=True)
@@ -664,12 +662,9 @@ def _street_by_prefix_and_garble(engine: Any, prefix: str, garble: str | None) -
     letter + garble together beat either alone. Without a garble, the
     shortest prefix match wins (the caller spelled the name itself)."""
     from .evidence import _fold
-    from .nlu import load_registry, street_match_score
-    from .tools import get_db
+    from .nlu import street_match_score
 
-    if engine._registry is None:
-        engine._registry = load_registry(get_db())
-    streets, _ = engine._registry
+    streets = engine.tools.address_registry().streets
     want = _fold(prefix)
     subset = [st for st in streets if _fold(st).startswith(want)]
     if not subset:
@@ -685,12 +680,8 @@ def _street_by_prefix(engine: Any, prefix: str) -> str | None:
     """The registry street whose folded name starts with the spelled prefix —
     the shortest match wins (the caller spelled the NAME, not the suffix)."""
     from .evidence import _fold
-    from .nlu import load_registry
-    from .tools import get_db
 
-    if engine._registry is None:
-        engine._registry = load_registry(get_db())
-    streets, _ = engine._registry
+    streets = engine.tools.address_registry().streets
     want = _fold(prefix)
     matches = [st for st in streets if _fold(st).startswith(want)]
     if not matches:
