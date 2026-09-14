@@ -175,7 +175,7 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
     return executed
 
 
-def register_ticket_from_state(engine: Any, step) -> None:
+def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
     cause from the hypothesis/verdict, actions from this call's trace — never from
     the model's free text (which once invented an invalid ticket_type). Idempotent:
@@ -216,7 +216,7 @@ def register_ticket_from_state(engine: Any, step) -> None:
         if s.anamnesis_trigger:
             bits.append(f"po: {s.anamnesis_trigger}")
         details += f" Klientas: {', '.join(bits) if bits else s.anamnesis_raw}."
-    if step is not None and step.id == "dr_register_router":
+    if step_id == "dr_register_router":
         details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
     # Ledger: what the CALLER established (client-side evidence) — the human
     # taking over sees the checked physical facts, not just telemetry.

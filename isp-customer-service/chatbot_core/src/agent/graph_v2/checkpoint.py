@@ -23,15 +23,18 @@ DEFAULT_DB_PATH = "logs/graph_checkpoints.sqlite"
 # future version" and returned plain dicts instead of models. Both import
 # roots are listed because the project is loadable as `agent.*` and
 # `src.agent.*` (known debt — see roadmap).
+_STATE_TYPES: list[tuple[str, str]] = [
+    ("slots", "Slot"),
+    ("slots", "SlotStatus"),
+    ("slots", "ClientProfileState"),
+    ("graph_v2.state", "GraphState"),
+    ("graph_v2.state", "TurnScratch"),
+    ("dialog_registry", "ActiveQuestion"),
+    ("evidence", "EvidenceConflict"),
+    ("evidence", "FactConfirm"),
+]
 _ALLOWED: list[tuple[str, str]] = [
-    ("agent.slots", "Slot"),
-    ("agent.slots", "SlotStatus"),
-    ("agent.slots", "ClientProfileState"),
-    ("agent.graph_v2.state", "TurnScratch"),
-    ("src.agent.slots", "Slot"),
-    ("src.agent.slots", "SlotStatus"),
-    ("src.agent.slots", "ClientProfileState"),
-    ("src.agent.graph_v2.state", "TurnScratch"),
+    (f"{root}.{module}", name) for root in ("agent", "src.agent") for module, name in _STATE_TYPES
 ]
 
 

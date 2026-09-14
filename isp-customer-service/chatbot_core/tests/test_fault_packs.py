@@ -771,7 +771,7 @@ class TestTicketDirectives:
         agent.state.customer_id = "CUST009"
         agent.state.resolution = {"verdict": "no_mac_observed", "step": "escalate"}
         agent._ticket_stage = "phone"
-        agent._ticket_ctx = {"step": None}
+        agent._ticket_ctx = {"step_id": None}
         return agent
 
     def test_phone_intro_goes_to_narrator(self, db_connection, monkeypatch):
@@ -803,7 +803,7 @@ class TestTicketDirectives:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
         agent._ticket_stage = "hours"
-        agent._ticket_ctx = {"step": None, "intro_done": True}
+        agent._ticket_ctx = {"step_id": None, "intro_done": True}
         assert agent._identification_scripted_reply("tiks tas") is None
         assert agent._ticket_directive["kind"] == "hours"
         assert "patogiausia" in agent._state_facts_block()

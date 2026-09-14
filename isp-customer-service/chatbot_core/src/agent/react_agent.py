@@ -27,6 +27,7 @@ from src.services.llm.client import (
 )
 
 from .config import AgentConfig, create_config
+from .evidence import EvidenceConflict, FactConfirm
 from .prompts import load_system_prompt
 from .state import AgentState
 
@@ -256,13 +257,13 @@ class ReactAgent:
         # Evidence ledger (Ledger v1): a freshly detected client-client conflict
         # (key, old, new) — the next scripted reply asks ONE clarification; the
         # key whose clarification is out, awaiting the settling answer.
-        self._evidence_conflict: tuple[str, str, str] | None = None
+        self._evidence_conflict: EvidenceConflict | None = None
         self._evidence_conflict_asked: str | None = None
         # W1-2 svarbos vartai: a NEW volunteered fact that flips the story is
         # parked here until one confirm question settles it (STT garbles
         # poison exactly these — "rozetė NEVEIKĖ" heard live for a fine outlet).
-        self._fact_confirm: tuple[str, str] | None = None
-        self._fact_confirm_asked: tuple[str, str] | None = None
+        self._fact_confirm: FactConfirm | None = None
+        self._fact_confirm_asked: FactConfirm | None = None
         # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
         # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
         # stream closes mid-generation and the cancelled-turn bookkeeping runs
@@ -338,7 +339,7 @@ class ReactAgent:
         self._bridge_fail_stage = 0
         self._bridge_fail_note: str | None = None
         # Given-up keys already revived once (round 6) — never a second time.
-        self._revived_keys: set[str] = set()
+        self._revived_keys: list[str] = []
         # How many times each evidence question was asked (level 1 -> paprasciau
         # -> give up and mark "neaišku"), so an unreadable caller never loops us.
         self._evidence_asks: dict[str, int] = {}
@@ -983,7 +984,7 @@ class ReactAgent:
 
         return finish_ticket_dialogue(self)
 
-    def _register_ticket_from_state(self, step) -> None:
+    def _register_ticket_from_state(self, step_id: str | None) -> None:
         """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
         cause from the hypothesis/verdict, actions from this call's trace — never from
         the model's free text (which once invented an invalid ticket_type). Idempotent:
@@ -991,7 +992,7 @@ class ReactAgent:
         close still proceeds (the call record keeps the outcome)."""
         from .executor_flow import register_ticket_from_state
 
-        register_ticket_from_state(self, step)
+        register_ticket_from_state(self, step_id)
 
     def _goto_step(self, r: dict, next_id: str) -> None:
         """Delegates to walker_flow.goto_step (R3 extraction)."""
@@ -1176,7 +1177,7 @@ class ReactAgent:
                     s.contact_hours = "bet kada"
                 strat = get_strategy(s.resolution.get("verdict"))
                 esc = strat.step("escalate") if strat else None
-                self._register_ticket_from_state(esc)
+                self._register_ticket_from_state(esc.id if esc is not None else None)
                 if s.ticket_id:
                     s.closed_reason = "registered"
                     self.tracer.emit("decision", intent="hangup_net", action="register")

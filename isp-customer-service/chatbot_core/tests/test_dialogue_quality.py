@@ -5,6 +5,8 @@ garbled-call analysis, hear-the-caller mechanics, and the quiet analyst.
 
 from types import SimpleNamespace
 
+from agent.evidence import FactConfirm
+
 
 class TestW0OrderGuards:
     """W0 (live 2026-08-25): the solver's legacy bridge path fired mid-power
@@ -40,7 +42,7 @@ class TestW0OrderGuards:
     def test_question_shaped_hours_answer_is_captured(self, db_connection):
         agent = self._agent()
         agent._ticket_stage = "hours"
-        agent._ticket_ctx = {"step": None, "hours_asked": True, "intro_done": True}
+        agent._ticket_ctx = {"step_id": None, "hours_asked": True, "intro_done": True}
         agent._pre_turn_guards("Kodėl tokiausia skambinti nuo 17-18 val.")
         assert agent.state.contact_hours and "17-18" in agent.state.contact_hours
         assert agent._ticket_stage == "done"
@@ -48,7 +50,7 @@ class TestW0OrderGuards:
     def test_real_question_without_content_still_diverts(self, db_connection):
         agent = self._agent()
         agent._ticket_stage = "hours"
-        agent._ticket_ctx = {"step": None, "hours_asked": True, "intro_done": True}
+        agent._ticket_ctx = {"step_id": None, "hours_asked": True, "intro_done": True}
         agent._pre_turn_guards("Kodėl jums reikia mano laiko?")
         assert not agent.state.contact_hours
         assert agent._ticket_offscript is True
@@ -120,18 +122,18 @@ class TestW1LivingDialogue:
         agent._ingest_client_evidence("nedega nė viena, ir rozetė neveikia")
         assert agent.state.evidence.get("lights", {}).get("value") == "nedega"
         assert agent.state.evidence.get("outlet_works") is None  # parked, not committed
-        assert agent._fact_confirm == ("outlet_works", "neveikia")
+        assert agent._fact_confirm == FactConfirm(key="outlet_works", value="neveikia")
         reply = agent._evidence_drive("nedega nė viena, ir rozetė neveikia")
         assert reply and "sitikinti" in reply  # the one confirm question
-        assert agent._fact_confirm_asked == ("outlet_works", "neveikia")
+        assert agent._fact_confirm_asked == FactConfirm(key="outlet_works", value="neveikia")
 
     def test_confirmed_gate_commits_denied_gate_drops(self, db_connection):
         agent = self._resolving_agent()
-        agent._fact_confirm_asked = ("outlet_works", "neveikia")
+        agent._fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
         agent._ingest_client_evidence("Taip, tikrai neveikia")
         assert agent.state.evidence.get("outlet_works", {}).get("value") == "neveikia"
         agent2 = self._resolving_agent()
-        agent2._fact_confirm_asked = ("outlet_works", "neveikia")
+        agent2._fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
         agent2._ingest_client_evidence("Ne ne, rozetė veikia, viskas gerai")
         assert (agent2.state.evidence.get("outlet_works") or {}).get("value") != "neveikia"
 

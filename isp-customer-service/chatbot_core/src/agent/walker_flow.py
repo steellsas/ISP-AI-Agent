@@ -203,7 +203,7 @@ def advance_resolution(engine, user_input: str | None) -> None:
             "decision",
             intent="evidence_conflict",
             action="hold",
-            key=engine._evidence_conflict[0],
+            key=engine._evidence_conflict.key,
         )
         return
     r = engine.state.resolution

@@ -6,6 +6,8 @@ one-shot narrator note. Overlay may FILL facts, never steer routing.
 
 from types import SimpleNamespace
 
+from agent.evidence import FactConfirm
+
 
 def _agent():
     from agent.react_agent import ReactAgent
@@ -47,7 +49,7 @@ class TestApplyOverlay:
         agent._evidence_last_ask_key = "lights"  # volunteered, not the asked key
         agent.apply_overlay(["rozetė neveikia"])
         assert agent.state.evidence.get("outlet_works") is None  # parked
-        assert agent._fact_confirm == ("outlet_works", "neveikia")
+        assert agent._fact_confirm == FactConfirm(key="outlet_works", value="neveikia")
 
     def test_empty_and_capped(self, db_connection):
         agent = _agent()

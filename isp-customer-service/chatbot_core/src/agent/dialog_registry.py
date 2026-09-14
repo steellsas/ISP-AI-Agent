@@ -19,8 +19,9 @@ apartment, name, account code), "ticket" (phone, hours), "walker"
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 # Priority order for a multi-signal turn (live P6 2026-09-07: "negaliu
 # dabar" + "ne namuose" + an address question in ONE turn) — the lower
@@ -28,14 +29,13 @@ from typing import Any
 OWNER_PRIORITY = {"safety": 0, "ident": 1, "ticket": 2, "walker": 3}
 
 
-@dataclass
-class ActiveQuestion:
+class ActiveQuestion(BaseModel):
     """One asked question: who asked, what for, and which attempt this is."""
 
     owner: str  # "safety" | "ident" | "ticket" | "walker"
     key: str  # e.g. "reopen_confirm", "cannot_now_clarify", "ticket_phone"
     asks: int = 1  # attempt count for the SAME question (clarify limit)
-    data: dict[str, Any] = field(default_factory=dict)  # owner context
+    data: dict[str, Any] = Field(default_factory=dict)  # owner context
 
 
 def register(engine: Any, owner: str, key: str, **data: Any) -> ActiveQuestion:

@@ -152,3 +152,26 @@ class TestTurnLifecycle:
         assert v2.turn == TurnScratch(user_input="dabar veikia")
         assert v2.stuck_count == 1
         assert v2.evidence["router_lights"]["value"] == "dega"
+
+
+class TestCheckpointSerde:
+    """Every model the engine keeps as call state comes back from the checkpoint
+    serializer as the same model — not a plain dict, not a blocked type."""
+
+    def test_state_models_round_trip_through_the_checkpoint_serializer(self, tmp_path):
+        from agent.dialog_registry import ActiveQuestion
+        from agent.evidence import EvidenceConflict, FactConfirm
+        from agent.graph_v2.checkpoint import make_checkpointer
+
+        serde = make_checkpointer(tmp_path / "cp.sqlite").serde
+        values = [
+            ActiveQuestion(owner="ticket", key="ticket_phone", asks=2, data={"retry": True}),
+            EvidenceConflict(key="lights", old="dega", new="nedega"),
+            FactConfirm(key="outlet_works", value="neveikia"),
+            GraphState(caller_phone="+37060012353", customer_id="CUST009"),
+        ]
+        for value in values:
+            # An unregistered type comes back as a plain dict (and logs "Blocked").
+            restored = serde.loads_typed(serde.dumps_typed(value))
+            assert type(restored) is type(value)
+            assert restored == value

@@ -429,7 +429,7 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine._bridge_plug_reported = False
     engine._bridge_fail_stage = 0
     engine._bridge_fail_note = None
-    engine._revived_keys = set()
+    engine._revived_keys = []
     from .slots import ClientProfileState
 
     s.profile = ClientProfileState()
@@ -1220,7 +1220,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if engine._evidence_conflict:
         from .evidence import LABELS, VALUE_LT
 
-        key, old, new = engine._evidence_conflict
+        conflict = engine._evidence_conflict
+        key, old, new = conflict.key, conflict.old, conflict.new
         engine._evidence_conflict = None
         engine._evidence_conflict_asked = key
         return phrase(

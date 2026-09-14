@@ -260,7 +260,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     fca = getattr(engine, "_fact_confirm_asked", None)
     if fca and user_input:
         engine._fact_confirm_asked = None
-        g_key, g_value = fca
+        g_key, g_value = fca.key, fca.value
         from .evidence import _fold, _mark_hit
 
         low_c = _fold(user_input)
@@ -443,7 +443,11 @@ def _conflict_to_clarify(engine, key: str, entry: dict) -> bool:
     spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
     if key in (spec.get("client") or {}):
         if engine._evidence_conflict is None:
-            engine._evidence_conflict = (key, entry["value"], entry["pending"])
+            from .evidence import EvidenceConflict
+
+            engine._evidence_conflict = EvidenceConflict(
+                key=key, old=entry["value"], new=entry["pending"]
+            )
             engine.tracer.emit(
                 "evidence", action="conflict", key=key, old=entry["value"], new=entry["pending"]
             )
@@ -480,7 +484,9 @@ def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:
     gated_values = [str(v) for v in (item.get("patikslinti") or [])]
     if value not in gated_values:
         return False
-    engine._fact_confirm = (key, value)
+    from .evidence import FactConfirm
+
+    engine._fact_confirm = FactConfirm(key=key, value=value)
     engine.tracer.emit("evidence", action="fact_gate", key=key, value=value)
     return True
 
@@ -510,7 +516,11 @@ def ingest_overlay(engine, text: str) -> None:
             continue
         entry = set_fact(s.evidence, key, value, CLIENT, s.turn_count)
         if entry.get("conflict") and engine._evidence_conflict is None:
-            engine._evidence_conflict = (key, entry["value"], entry["pending"])
+            from .evidence import EvidenceConflict
+
+            engine._evidence_conflict = EvidenceConflict(
+                key=key, old=entry["value"], new=entry["pending"]
+            )
             engine.tracer.emit(
                 "evidence", action="conflict", key=key, old=entry["value"], new=entry["pending"]
             )

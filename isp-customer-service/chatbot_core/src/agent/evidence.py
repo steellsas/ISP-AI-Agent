@@ -21,7 +21,28 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
+
 TELEMETRY = "telemetry"
+
+
+class EvidenceConflict(BaseModel):
+    """A client fact contradicted an earlier client value: one scripted clarify
+    ("sakėte X, dabar Y — kaip yra iš tiesų?") is due for `key`."""
+
+    key: str
+    old: str
+    new: str
+
+
+class FactConfirm(BaseModel):
+    """A story-flipping volunteered fact parked for one confirm question before
+    it may enter the ledger."""
+
+    key: str
+    value: str
+
+
 CLIENT = "client"
 
 # Canonical client-side evidence keys for the piloted fault (no_mac_observed).

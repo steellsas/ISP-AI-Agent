@@ -8,8 +8,7 @@ R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent. Both engines use it — the legacy ReactAgent through thin delegate
 methods, the v2 ticket/executor nodes directly. The stage value lives on
 AgentState.ticket_stage (promoted); the dialogue CONTEXT (engine._ticket_ctx)
-still holds a live resolution Step reference, so it stays engine-local until
-steps are addressable by id.
+is a plain JSON dict — the escalate step is kept by id.
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ def begin_ticket_dialogue(engine: Any, step) -> None:
     registers with the contacts on the ticket."""
     if engine.state.ticket_id or engine._ticket_stage:
         return  # already registered / already collecting
-    engine._ticket_ctx = {"step": step}
+    engine._ticket_ctx = {"step_id": step.id if step is not None else None}
     engine._ticket_stage = "phone"
     engine.tracer.emit("decision", intent="ticket_dialogue", action="start")
 
@@ -223,14 +222,14 @@ def finish_ticket_dialogue(engine: Any) -> str:
         s.contact_phone = s.caller_phone  # default: the number they call from
     if not s.contact_hours:
         s.contact_hours = "bet kada"
-    step = (engine._ticket_ctx or {}).get("step")
+    step_id = (engine._ticket_ctx or {}).get("step_id")
     note = (engine._ticket_ctx or {}).get("note") or ""
     engine._ticket_stage = None
     engine._ticket_ctx = None
     from .dialog_registry import clear_owner as _q_clear_owner
 
     _q_clear_owner(engine, "ticket")  # contacts collected — the dialogue is over
-    engine._register_ticket_from_state(step)
+    engine._register_ticket_from_state(step_id)
     s.case_closed = True
     s.closed_reason = "registered" if s.ticket_id else "declined"
     val = s.contact_hours

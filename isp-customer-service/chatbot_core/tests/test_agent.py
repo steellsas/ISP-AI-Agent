@@ -673,7 +673,7 @@ class TestHearingAgent:
             ("power_cable", "neaišku"),  # gave up — hypothesis unconfirmable
         ):
             set_fact(agent.state.evidence, k, v, CLIENT, 1)
-        agent._revived_keys = {"power_cable"}  # revival already spent
+        agent._revived_keys = ["power_cable"]  # revival already spent
         agent._drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("nežinau ką daugiau daryti") is None
         assert agent.state.resolution["step"] == "escalate"  # honest endgame

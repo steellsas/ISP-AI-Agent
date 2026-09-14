@@ -33,9 +33,9 @@ def revive_gave_up_key(engine: Any, spec: dict) -> str | None:
         entry = ev.get(key)
         if entry is None or entry.get("value") != "neaišku":
             continue
-        if key in getattr(engine, "_revived_keys", set()):
+        if key in engine._revived_keys:
             continue
-        engine._revived_keys = getattr(engine, "_revived_keys", set()) | {key}
+        engine._revived_keys = [*engine._revived_keys, key]
         item = (spec.get("client") or {}).get(key) or {}
         engine._evidence_last_ask_key = key
         engine.tracer.emit("evidence", action="revive_ask", key=key)
@@ -210,11 +210,11 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
 
         engine._fact_confirm = None
         engine._fact_confirm_asked = fc
-        engine.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc[0])
+        engine.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.key)
         return _phrase(
             "refute_confirm",
-            tema=LABELS.get(fc[0], fc[0]),
-            reiksme=VALUE_LT.get(fc[1], fc[1]),
+            tema=LABELS.get(fc.key, fc.key),
+            reiksme=VALUE_LT.get(fc.value, fc.value),
         )
     # Captured BEFORE any new ask below overwrites it: was a question already
     # out when the caller spoke? Needed for the bare-"ne" clarify.

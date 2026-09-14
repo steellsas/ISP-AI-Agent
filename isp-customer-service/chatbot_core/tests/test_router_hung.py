@@ -257,7 +257,8 @@ class TestConflictScope:
         entry = set_fact(agent.state.evidence, "fail_scope", "viename", CLIENT, 2)
         assert entry["conflict"]
         assert _conflict_to_clarify(agent, "fail_scope", entry) is True
-        assert agent._evidence_conflict == ("fail_scope", "visuose", "viename")
+        c = agent._evidence_conflict
+        assert (c.key, c.old, c.new) == ("fail_scope", "visuose", "viename")
 
 
 class TestSimRebootSeed:
