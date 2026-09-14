@@ -1,5 +1,5 @@
 {
- "_doc": "Golden Dataset for the conversation eval harness (Phase 3.8 step 0). Each scenario drives AgentSession text-to-text with scripted CLIENT turns and hard-scores the resulting STATE + replies. The LLM only phrases; verdict/walker are deterministic given these turns, so state outcomes are stable. Checks: verdict_in (expected verdict seen), disposition (resolved|ticket|outage|open), reply_any (>=1 reply contains), reply_none (no reply contains — regression guard for known bugs). Scenarios flagged 'known_bug' are EXPECTED to fail now and turn green after the Phase 3.8 fix.",
+ "_doc": "Golden Dataset for the conversation eval harness. Each scenario drives AgentSession text-to-text with scripted CLIENT turns and hard-scores the resulting STATE + replies. The LLM only phrases; verdict/walker are deterministic given these turns, so state outcomes are stable. Checks (see README.md): verdict_in, disposition, identified, reply_any, reply_none, tool_used, reply_len (always on). Scenarios flagged 'known_bug' are EXPECTED to fail now and turn green once the fix lands.",
  "scenarios": [
   {
    "id": "S1_foreign_mac_changed_router",

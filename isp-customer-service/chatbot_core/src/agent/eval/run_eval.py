@@ -12,20 +12,24 @@ docs/MASTANTIS_AGENTAS_SPEC.md). Scenarios flagged `known_bug` encode a bug we f
 in voice testing and are EXPECTED to fail now — they turn green once the fix lands,
 so a regression can never silently return.
 
-Checks per scenario (all optional, only those present are scored):
+Checks per scenario (only those present in `expect` are scored, except reply_len):
   - verdict_in    : the expected verdict reason appears at some point
                     (state.hypothesis.cause / resolution.verdict across turns)
   - disposition   : resolved | ticket | outage | inform | open | any
-  - reply_any     : at least one agent reply contains EACH listed substring
+                    (ticket = create_ticket ran; inform also accepts open/outage)
+  - identified    : true/false — whether the call ended with a committed customer_id
+  - reply_any     : at least ONE agent reply contains at least ONE listed substring
   - reply_none    : NO agent reply contains ANY listed substring (regression guard)
+  - tool_used     : each listed tool_call actually ran (read from the session trace)
+  - reply_len     : always on — longest reply <= MAX_REPLY_CHARS, average <= AVG_REPLY_CHARS
 
-Usage (needs LLM API keys in .env — like the voice demo):
+Usage (needs LLM API keys in .env):
     cd chatbot_core
     uv run python src/agent/eval/run_eval.py                 # all scenarios
     uv run python src/agent/eval/run_eval.py --only S1_foreign_mac_changed_router
     uv run python src/agent/eval/run_eval.py --no-db          # skip DB rebuild (faster reruns)
     uv run python src/agent/eval/run_eval.py --json report.json
-    uv run python src/agent/eval/run_eval.py --engine v2      # run on the graph_v2 engine
+    uv run python src/agent/eval/run_eval.py --engine graph   # run on the legacy graph engine
     uv run python src/agent/eval/run_eval.py --compare graph,v2   # engine parity diff
 
 Engine parity (--compare, docs/ROADMAP_REFACTORING.md R0/R2): each scenario runs
@@ -61,7 +65,7 @@ MAX_REPLY_CHARS = 280
 AVG_REPLY_CHARS = 160
 
 
-# --- .env (LLM keys) — the harness drives the REAL model, like voice_demo ---------
+# --- .env (LLM keys) — the harness drives the REAL model, like a live call --------
 def _load_env() -> None:
     # The eval drives simulated calls end-to-end: enable the dead-router bridge device
     # simulation so the bridge can VERIFY + bind (like the update_mac/reset_port stubs).
@@ -385,7 +389,7 @@ def main() -> int:
     ap.add_argument(
         "--engine",
         choices=["graph", "v2", "legacy"],
-        help="orchestration engine for the run (default: AGENT_ENGINE env / graph)",
+        help="orchestration engine for the run (default: AGENT_ENGINE env / v2)",
     )
     ap.add_argument(
         "--compare",

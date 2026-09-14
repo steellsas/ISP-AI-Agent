@@ -17,16 +17,24 @@ uv run python src/agent/eval/run_eval.py --only S8_billing_inform
 uv run python src/agent/eval/run_eval.py --no-db          # skip DB rebuild (faster reruns)
 uv run python src/agent/eval/run_eval.py --json report.json
 ```
-Needs LLM API keys in `.env` (drives the REAL model, like `voice_demo.py`). The DB is
+Needs LLM API keys in `.env` (drives the REAL model, like a live call). The DB is
 rebuilt from the versioned seed **before each scenario** (bind/reset stubs mutate it —
 scenarios must not leak state; sub-second).
 
+The recorded pre-refactor results live in
+[`docs/refactoring/baseline/`](../../../../docs/refactoring/baseline/README.md).
+
 ## Scenarios (`scenarios.json`)
-Each scenario = `{id, phone, desc, turns[], expect{}}`. Checks (only those present run):
+Each scenario = `{id, phone, desc, turns[], expect{}, known_bug?}`. Seven check types
+(the first six run only when present in `expect`; `reply_len` always runs):
 - `verdict_in` — the expected verdict reason appears at some point.
-- `disposition` — `resolved | ticket | outage | inform | open | any`.
+- `disposition` — `resolved | ticket | outage | inform | open | any` (`ticket` = a
+  `create_ticket` tool call ran; `inform` also accepts `open`/`outage`).
+- `identified` — `true`/`false`: whether the call ended with a committed customer id.
 - `reply_any` — at least ONE of the listed substrings appears (synonyms / OR-group).
 - `reply_none` — NO reply contains ANY listed substring (regression guard for a bug).
+- `tool_used` — each listed tool call actually ran (read from the session trace).
+- `reply_len` — voice-length guard: longest reply ≤ 280 chars, average ≤ 160.
 
 ## `known_bug` scenarios
 Flagged `known_bug: true` encode a fault found in voice testing. They are **expected to
@@ -34,10 +42,11 @@ fail now** (shown as `xfail`, exit code stays 0) and turn **green** once the fix
 so the bug can never silently return. Once a known bug is fixed and stably green, PROMOTE
 it (drop the flag) so a future regression fails the suite instead of hiding as `xfail`.
 
-There are currently no open known bugs. `S4_dead_router_bridge` was the first — the
-agent blamed the router's power after the PC was plugged in — and the Phase 3.8 dr_intro
-desync fix (the walker/narration were desynced; a later "ne" misrouted to escalate)
-closed it. It is now a must-pass regression guard.
+Open known bug: `X_dhcp_silent` — the `dhcp_silent` verdict has no pack, so the free LLM
+improvises (jargon, a factory-reset suggestion, no ticket); the target after refactor M4
+is an unclear-fault ticket. `S4_dead_router_bridge` was the first known bug — the agent
+blamed the router's power after the PC was plugged in — and the Phase 3.8 dr_intro
+desync fix closed it. It is now a must-pass regression guard.
 
 ## Exit code
 `0` = no UNEXPECTED failures (known_bug scenarios may fail). `1` = a scenario that
