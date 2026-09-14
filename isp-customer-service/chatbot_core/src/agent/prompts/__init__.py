@@ -83,8 +83,3 @@ def load_system_prompt(
         language_instruction=get_language_instruction(language),
         output_language=get_language_name(language),
     )
-
-
-def get_prompt_path(name: str) -> Path:
-    """Get path to a prompt file (kept for the .txt greeting helper)."""
-    return PROMPTS_DIR / f"{name}.txt"
