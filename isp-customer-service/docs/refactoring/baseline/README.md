@@ -31,7 +31,7 @@ not (LLM variance on an unidentified caller; all checks pass in both).
 |---|---|
 | `eval_run1.json`, `eval_run2.json` | `run_eval.py --json` output + `tools_used` read from each trace; `trace` is the file name only (traces are gitignored) |
 | `eval_baseline.json` | Per scenario, both runs: pass/fail per check, verdicts seen, disposition, tools used, `stable` flag |
-| `voice_latency.md` | Voice latency baseline for plan §9 P-1 (9 demo calls, speculation on) — **pending, recorded by the owner** |
+| `voice_latency.md` | Voice latency baseline for plan §9 P-1 (speculation on): one billing call, median 2217 ms to first audio |
 
 ## Scenarios added in M0
 

@@ -100,7 +100,7 @@ while the app is serving a live call.
 | Date | Milestone | Commit | Notes |
 |---|---|---|---|
 | 2026-09-14 | plan | — | Plan, decisions and milestone files written; old docs archived |
-| 2026-09-14 | M0 (in progress) | `089c915` … `5942c64` | Scenarios added: `D2_outage`, `D3_node_fault`, `D4_switch`, `D5_link_down`, `D6_crc`, `D8_router_hung` (3/3 each), `X_dhcp_silent` (`known_bug`). Baseline on `089c915`: 105/108 checks ×2, 0 unexpected failures. Dead code from M0 §3 deleted (+ `fastrtc` voice extra); pytest 1094 → 1086 (obsolete tests removed), app starts. **Open:** Q-3 (`no_port_data` scenario), voice latency baseline (owner) |
+| 2026-09-14 | M0 (in progress) | `089c915` … `5942c64` | Scenarios added: `D2_outage`, `D3_node_fault`, `D4_switch`, `D5_link_down`, `D6_crc`, `D8_router_hung` (3/3 each), `X_dhcp_silent` (`known_bug`). Baseline on `089c915`: 105/108 checks ×2, 0 unexpected failures. Dead code from M0 §3 deleted (+ `fastrtc` voice extra); pytest 1094 → 1086 (obsolete tests removed), app starts. Q-3 answered (unit test). Voice latency: one billing call recorded instead of 9 (`baseline/voice_latency.md`) |
 
 ## 6. Findings log (bugs/risks found during the refactor, not fixed in scope)
 
@@ -121,7 +121,7 @@ Pre-filled from the 2026-09-14 code research:
 | F-11 | "Neveikia internetas visuose įrenginiuose" in the first turn is not captured: after `router_hung` the agent still asks "visuose ar tik viename?" (eval probe, CUST112) | understand / facts intake | M4/M5 (facts from any turn) |
 | F-12 | `router_hung`: caller says "perkroviau, internetas atsirado" before the reboot instruction → agent ignores it and asks to reach the router; "Ne, ačiū, viso gero" then creates a ticket on a line the caller called working (eval probe, CUST112) | procedure walker / closing | M4 (evidence hands control back to `decide`) |
 | F-13 | Link-down/CRC ticket offer: caller answers the phone-number question with "Ačiū, viso gero" → agent re-asks "Registruoti, ar tikrai nereikia?" yet `create_ticket` still runs (eval probe, CUST104) | ticket flow / closing | M6 |
-| F-14 | `no_port_data` cannot be reached in eval: every seeded customer has a port row (covered only by `tests/test_verdict.py::test_no_port_data`) | `database/seeds/` | Q-3 |
+| F-14 | `no_port_data` cannot be reached in eval: every seeded customer has a port row (covered only by `tests/test_verdict.py::test_no_port_data`) | `database/seeds/` | Q-3: unit test accepted |
 
 ## 7. Out of scope (do not do in this refactor)
 
@@ -136,10 +136,10 @@ Those come after the refactor (see DECISIONS.md D-22).
 |---|---|---|---|
 | Q-1 | Delete the unused MCP servers (`crm_service/src/crm_mcp/server.py`, `network_diagnostic_service/src/network_diagnostic_mcp/server.py`) and their repository classes, or keep MCP as the future integration transport? | M0 | **Keep** (2026-09-14). MCP may be the transport to the customer's DB/tools — decided during integration. Do not delete servers, repository classes or server-only tool functions. |
 | Q-2 | Keep the voice speculation feature (`agent/speculation.py`, pre-computed replies) and adapt it to `TurnPlan`, or delete it? | M5 | **Remove in M5, re-evaluate after M7** (2026-09-14). It exists only to cut latency and depends on the old directive mechanism. After the refactor, measure latency (see §9); rebuild on `TurnPlan` only if it is still needed. |
-| Q-3 | M0 DoD needs every `decide()` verdict in an eval scenario, but no seeded customer lacks a port, so `no_port_data` is unreachable (F-14). Add a seed customer without a port row (e.g. `CUST113`, additive, visible in the demo DB), or accept the unit test as coverage? | M0 | — |
+| Q-3 | M0 DoD needs every `decide()` verdict in an eval scenario, but no seeded customer lacks a port, so `no_port_data` is unreachable (F-14). Add a seed customer without a port row (e.g. `CUST113`, additive, visible in the demo DB), or accept the unit test as coverage? | M0 | **Unit test is enough** (2026-09-14). Not every verdict needs an eval scenario; `no_port_data` stays covered by `tests/test_verdict.py::test_no_port_data`. |
 
 ## 9. Post-refactor checks (owner decides after M7)
 
 | # | Check | How | Decision it feeds |
 |---|---|---|---|
-| P-1 | Is pre-computed reply speculation still needed? | Compare `voice_turn_done.ttfa_ms` and `voice_latency` on the 9 demo calls: M0 baseline (speculation on) vs after M7 (no speculation). Record numbers in `docs/refactoring/RESULT.md`. | Rebuild speculation on `TurnPlan` (predict plans for the top answers of `awaiting`, pre-render `phrase` plans) or drop it for good |
+| P-1 | Is pre-computed reply speculation still needed? | Repeat the calls in `baseline/voice_latency.md` and compare `voice_latency` (`total_ms` = server-side time to first audio; `ttfa_ms` is not traced): M0 baseline (speculation on) vs after M7 (no speculation). Record numbers in `docs/refactoring/RESULT.md`. | Rebuild speculation on `TurnPlan` (predict plans for the top answers of `awaiting`, pre-render `phrase` plans) or drop it for good |
