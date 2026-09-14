@@ -120,22 +120,3 @@ class TestCloseCaseGate:
 
     def test_declined_always_allowed(self, agent):
         assert agent._gate_tool("close_case", {"reason": "declined"}) is None
-
-
-class TestGateInStep:
-    def test_blocked_call_does_not_execute_tool(self, agent):
-        """A premature diagnose is intercepted; execute_tool is never called."""
-        tc = _fake_tool_call("c1", "diagnose_connection", '{"customer_id": "1"}')
-        msg = _fake_message(content=None, tool_calls=[tc])
-
-        with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
-            patch("agent.react_agent.execute_tool") as exec_mock,
-        ):
-            result = agent.step(user_input="neveikia internetas")
-
-        exec_mock.assert_not_called()
-        obs = json.loads(result["tool_calls"][0]["observation"])
-        assert obs["error"] == "not_identified"
-        assert result["needs_continuation"] is True

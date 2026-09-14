@@ -3,22 +3,14 @@ Agent - ISP Customer Support
 
 Drives the support conversation with native LLM function/tool calling.
 
-Loop (run_until_response):
+Loop (run_turn_scoped_stream, called by the LangGraph v2 nodes):
 1. The model receives the conversation + tool schemas (tool_choice="auto").
 2. It either calls one or more tools (structured tool_calls) or replies in text.
 3. Tool results are fed back as role:"tool" messages and the model continues.
-4. When the model replies with text (no tool call), that is the customer answer.
+4. When the model replies with text (no tool call), that is the customer answer,
+   streamed token by token (see services.llm.stream_tool_completion).
 
-The class is still named ReactAgent for import compatibility; the brittle
-"Thought:/Action:/Action Input:" regex parsing has been replaced by native
-tool calls (see agent.tools.get_tools_schema and services.llm.llm_tool_completion).
-
-Usage:
-    from agent import ReactAgent
-
-    agent = ReactAgent(caller_phone="+37060012345")
-    response = agent.run_until_response("Neveikia internetas")
-    uv run python -m src.agent.react_agent --lang lt --phone +37060012345
+Callers use agent.session.AgentSession; the engine is internal.
 """
 
 import json
@@ -31,7 +23,6 @@ from typing import Any
 # LLM client
 from src.services.llm.client import (
     get_last_call_stats,
-    llm_tool_completion,
     stream_tool_completion,
 )
 
@@ -1335,15 +1326,17 @@ class ReactAgent:
         self._active_tool_names = allowed_tools
         self._node_prompt = node_prompt
         try:
-            yield from self._run_until_response_stream(user_input)
+            yield from self._run_turn_stream(user_input)
         finally:
             self._active_tool_names = None
             self._node_prompt = None
 
-    def _run_until_response_stream(self, user_input: str | None = None):
-        """Like run_until_response, but streams the final reply token by token."""
-        # Hardcoded greeting (first turn, no input) — mirrors run_until_response so
-        # the streaming node yields the fixed opening line, not an LLM call.
+    def _run_turn_stream(self, user_input: str | None = None):
+        """The scoped turn: deterministic head, scripted replies, then the LLM tool
+        loop streaming the final reply token by token."""
+        # Hardcoded greeting (first turn, no input) — the node yields the fixed
+        # opening line, not an LLM call. The caller's number is pre-flighted
+        # while the greeting plays.
         if user_input is None and self.state.turn_count == 0:
             self._preflight_phone()
             greeting = self.config.greeting_message
@@ -1567,216 +1560,6 @@ class ReactAgent:
         self.tracer.emit("speculation", action="miss", kind=kind, key=key)
         return None
 
-    def step(self, user_input: str = None) -> dict[str, Any]:
-        """
-        Execute one agent step.
-
-        Args:
-            user_input: Customer message (None for initial/continuation)
-
-        Returns:
-            Dict with: thought, action, action_input, observation, response, is_complete
-        """
-        self.state.turn_count += 1
-
-        # Check turn limit
-        if self.state.turn_count > self.state.max_turns:
-            return {
-                "thought": "Max turns reached",
-                "action": "finish",
-                "response": self.config.max_turns_message,
-                "is_complete": True,
-            }
-
-        # Build messages and call LLM
-        messages = self._build_messages(user_input)
-
-        if user_input:
-            self.state.messages.append({"role": "user", "content": user_input})
-
-        try:
-            message = llm_tool_completion(
-                messages=messages,
-                tools=self._scoped_tools_schema(),
-                tool_choice="auto",
-                model=self.config.model,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
-            )
-
-            # Track LLM stats
-            stats = get_last_call_stats()
-            self.llm_stats.add_call(
-                input_tokens=stats.get("input_tokens", 0),
-                output_tokens=stats.get("output_tokens", 0),
-                cost=stats.get("cost", 0),
-                latency_ms=stats.get("latency_ms", 0),
-                cached=stats.get("cached", False),
-                model=stats.get("model", self.config.model),
-            )
-            # One LLM call per step -> trace its tokens/latency (where agent_ms goes).
-            self.tracer.emit(
-                "llm",
-                model=stats.get("model", self.config.model),
-                input_tokens=stats.get("input_tokens", 0),
-                output_tokens=stats.get("output_tokens", 0),
-                latency_ms=round(stats.get("latency_ms", 0)),
-                cached=stats.get("cached", False),
-            )
-
-        except Exception as e:
-            logger.error(f"LLM error: {e}")
-            self._trace_note("llm", str(e), level="error")
-            return {
-                "thought": f"LLM Error: {e}",
-                "action": "error",
-                "response": self.config.error_message,
-                "is_complete": False,
-            }
-
-        result = {
-            "thought": None,
-            "action": None,
-            "action_input": None,
-            "observation": None,
-            "response": None,
-            "is_complete": False,
-            "needs_continuation": False,
-            "tool_calls": [],
-        }
-
-        tool_calls = getattr(message, "tool_calls", None)
-
-        if tool_calls:
-            # The model chose to call one or more tools. Echo the assistant message,
-            # run each tool, append results — no customer-facing reply yet →
-            # needs_continuation so run_until_response loops.
-            executed = self._execute_tool_calls(message)
-            result["tool_calls"] = executed
-            # Back-compat single-action view (last tool) for existing callers/UI.
-            result["action"] = executed[-1]["name"] if executed else None
-            result["action_input"] = executed[-1]["arguments"] if executed else None
-            result["observation"] = executed[-1]["observation"] if executed else None
-            result["needs_continuation"] = True
-            return result
-
-        # No tool calls → the content is the reply for the customer.
-        content = (message.content or "").strip()
-
-        # Model failure mode: no tool call AND no text. An empty reply gives the
-        # customer nothing, so nudge the model with a corrective turn and let the
-        # loop retry (bounded by max_tool_calls_per_response → no infinite loop /
-        # cost blowup). result["response"] stays None so run_until_response does
-        # not treat this as a real answer.
-        if not content:
-            logger.warning(
-                "[AGENT] Empty reply with no tool call; injecting correction and retrying"
-            )
-            self.state.messages.append({"role": "assistant", "content": ""})
-            self.state.messages.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "Your last reply was empty. Either call a tool or write a "
-                        "non-empty message to the customer."
-                    ),
-                }
-            )
-            result["needs_continuation"] = True
-            return result
-
-        result["action"] = "respond"
-        result["response"] = content
-        self.state.messages.append({"role": "assistant", "content": content})
-        return result
-
-    def run_until_response(
-        self,
-        user_input: str = None,
-        max_tool_calls: int = None,
-    ) -> str:
-        """
-        Run agent until it has a response for the customer.
-
-        Args:
-            user_input: Customer message (None for initial greeting)
-            max_tool_calls: Max tool calls before forcing response
-
-        Returns:
-            Agent response string
-        """
-        # Hardcoded greeting - first message without user input
-        if user_input is None and self.state.turn_count == 0:
-            # Pre-flight the caller's number while the greeting plays — by the
-            # customer's first turn the phone account is already known.
-            self._preflight_phone()
-
-            greeting = self.config.greeting_message
-
-            # Log to message history (for context)
-            self.state.messages.append({"role": "assistant", "content": greeting})
-            self.state.turn_count += 1
-
-            logger.info(f"[AGENT] Hardcoded greeting: {greeting}")
-            self.tracer.emit("agent_reply", text=greeting)
-            return greeting
-
-        # Repeat-guard: snapshot progress BEFORE the NLU prefill (so a slot filled
-        # this turn counts as progress and clears the counter).
-        self._turn_start_key = self._progress_key()
-
-        self.state.last_heard = (user_input or "").strip()
-        from .resolution import detect_turn_intent
-
-        self.state.last_intent = detect_turn_intent(user_input)
-        self._maybe_raise_clarity(user_input)
-        if user_input:
-            self.tracer.emit("user_turn", text=user_input)
-            # Deterministic NLU prefill (Track A) before the LLM sees the turn.
-            # Latch (A-2 2026-09-07): the head may have run in the diagnose node.
-            if getattr(self, "_pre_turn_head_done", False):
-                self._pre_turn_head_done = False
-            else:
-                self._prefill_slots_from_text(user_input)
-                self._pre_turn_guards(user_input)
-
-        # Deterministic backstop before the LLM, once a genuine repeat loop escalated.
-        backstop = self._stuck_backstop()
-        if backstop is not None:
-            return self._apply_backstop(backstop)
-
-        # Scripted identification-ladder reply (engine-composed, LLM skipped).
-        scripted = self._identification_scripted_reply(user_input)
-        if scripted is not None:
-            return self._emit_scripted_reply(scripted)
-
-        # Normal LLM flow
-        max_calls = max_tool_calls or self.config.max_tool_calls_per_response
-        tool_calls = 0
-
-        while tool_calls < max_calls:
-            result = self.step(user_input)
-            user_input = None  # Only pass on first step
-
-            # Distinguish "no response yet" (None) from a real reply. An empty
-            # respond is now caught in step() (needs_continuation), so any
-            # non-None response here is a genuine answer for the customer.
-            if result.get("response") is not None:
-                return self._reply(result["response"])
-
-            if result.get("is_complete"):
-                reply = result.get("response", self.config.conversation_end_message)
-                self.end_session(outcome="complete")
-                return self._reply(reply)
-
-            if result.get("needs_continuation"):
-                tool_calls += 1
-                continue
-
-            break
-
-        return self._reply(self.config.timeout_message)
-
     # --- Repeat-guard ------------------------------------------------------
 
     def _progress_key(self) -> tuple:
@@ -1962,99 +1745,3 @@ class ReactAgent:
             )
         except Exception:  # pragma: no cover - tracing must never break the turn
             pass
-
-    def _reply(self, text: str) -> str:
-        """Emit the customer-facing reply (with repeat-guard bookkeeping) and return it."""
-        self._finalize_reply(text)
-        return text
-
-
-# =============================================================================
-# CLI INTERFACE
-# =============================================================================
-
-
-def run_cli(caller_phone: str = "+37060012345", language: str = "lt"):
-    """Run interactive agent session in CLI."""
-    # Local import avoids a circular import (session imports ReactAgent).
-    from .session import AgentSession
-
-    print("\n" + "=" * 60)
-    print("ISP SUPPORT AGENT (ReAct)")
-    print("=" * 60)
-    print(f"Caller phone: {caller_phone}")
-    print(f"Language: {language}")
-    print("Type 'quit' to exit, 'debug' to toggle debug mode")
-    print("=" * 60 + "\n")
-
-    # Drive the CLI through the stable AgentSession boundary (same seam voice
-    # and web use), not the ReactAgent engine directly.
-    session = AgentSession(caller_phone=caller_phone, language=language)
-    debug_mode = False
-
-    # Initial greeting
-    initial_response = session.greeting()
-    if initial_response:
-        print(f"\n🤖 Agent: {initial_response}\n")
-
-    while not session.is_complete:
-        try:
-            user_input = input("👤 You: ").strip()
-
-            if not user_input:
-                continue
-
-            if user_input.lower() == "quit":
-                print(f"\n{session.config.cli_goodbye_message}")
-                break
-
-            if user_input.lower() == "debug":
-                debug_mode = not debug_mode
-                logging.getLogger().setLevel(logging.DEBUG if debug_mode else logging.INFO)
-                print(f"[Debug mode: {'ON' if debug_mode else 'OFF'}]")
-                continue
-
-            if user_input.lower() == "state":
-                print(f"\n[STATE] {session.state.to_dict()}\n")
-                continue
-
-            response = session.handle_turn(user_input)
-            print(f"\n🤖 Agent: {response}\n")
-
-        except KeyboardInterrupt:
-            print(f"\n\n{session.config.cli_interrupted_message}")
-            break
-
-    # Close the trace for this conversation (emits session_end).
-    session.end_session(outcome="cli_quit")
-
-    print("\n" + "=" * 60)
-    print(f"Conversation ended. Turns: {session.state.turn_count}")
-    if session.state.customer_id:
-        print(f"Customer: {session.state.customer_name} ({session.state.customer_id})")
-    if session.state.ticket_id:
-        print(f"Ticket: {session.state.ticket_id}")
-    print(f"Trace: logs/sessions/{session.session_id}.jsonl")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="ISP Support Agent CLI")
-    parser.add_argument("--phone", default="+37060012345", help="Caller phone number")
-    parser.add_argument("--lang", default="lt", choices=["lt", "en"], help="Language (lt or en)")
-    args = parser.parse_args()
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s | %(levelname)s | %(message)s",
-        datefmt="%H:%M:%S",
-    )
-
-    # Mask phone numbers in logs (after basicConfig set up the root handler).
-    from utils import install_pii_redaction
-
-    install_pii_redaction()
-
-    run_cli(caller_phone=args.phone, language=args.lang)

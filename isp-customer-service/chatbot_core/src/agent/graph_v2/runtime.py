@@ -2,16 +2,15 @@
 Shared node runtime — the only code nodes share besides GraphState.
 
 Two seams:
-- `narrate()` — the scoped LLM turn with token streaming (ports _run_node from
-  agent/graph.py verbatim: same trace event, same stream writer contract).
+- `narrate()` — the scoped LLM turn with token streaming (node trace event +
+  stream writer contract).
 - `sync_updates()` — mirrors engine.state back into GraphState after a node
   ran. This is the strangler seam: while the legacy engine still owns the
   conversation state, every turn ends by snapshotting it into the graph state,
   so checkpoints capture the full call and the entry router can stay pure.
   It disappears in R3 when state ownership moves to the graph.
 
-Tool scopes are IMPORTED from agent/graph.py (single source) so v1 and v2 can
-never drift apart while both engines are alive.
+Tool scopes live in tool_scopes.py (re-exported here for the nodes).
 """
 
 from __future__ import annotations
@@ -21,11 +20,11 @@ from typing import Any
 
 from langgraph.config import get_stream_writer
 
-from ..graph import CLOSING_TOOLS, LOOKUP_TOOLS, TICKET_TOOLS  # noqa: F401  (re-exported)
 from ..prompts import load_node_prompt
 from .state import _LEGACY_FIELDS, TurnScratch
+from .tool_scopes import CLOSING_TOOLS, LOOKUP_TOOLS, TICKET_TOOLS  # noqa: F401  (re-exported)
 
-# Per-stage prompts — same loader, same files as the legacy graph.
+# Per-stage prompts.
 ADDRESS_NODE_PROMPT = load_node_prompt("stages/identification")
 DIAGNOSIS_NODE_PROMPT = load_node_prompt("stages/diagnosis")
 CLOSING_NODE_PROMPT = load_node_prompt("stages/closing")

@@ -67,17 +67,6 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        # AgentSession reads AGENT_ENGINE at construction, so the switch takes
-        # effect on the NEXT call — running calls keep their engine. "graph" =
-        # legacy LangGraph, "v2" = graph_v2 (docs/ROADMAP_REFACTORING.md),
-        # "legacy" = direct ReactAgent loop (rollback).
-        "key": "AGENT_ENGINE",
-        "label": "Orkestravimo variklis (v2 = numatytasis)",
-        "options": ["v2", "graph", "legacy"],
-        "scope": "new_calls",
-        "kind": "env",
-    },
-    {
         # Persona (R5c): evidence questions worded by the NARRATOR from the
         # pack's goal (reikia) vs read verbatim from the script. off = rollback.
         "key": "NARRATOR_QUESTIONS",

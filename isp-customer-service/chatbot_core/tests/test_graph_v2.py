@@ -1,10 +1,6 @@
 """
-graph_v2 — R2 thin-wrapper parity + R1 checkpointer tests
-(docs/ROADMAP_REFACTORING.md §3).
-
-The v2 graph must behave exactly like the legacy graph (same replies, same
-structural tool gates) while adding what v1 never had: a fully-synced typed
-GraphState in every checkpoint and time-travel history via SqliteSaver.
+graph_v2 — the conversation graph: entry routing, the diagnosis subgraph, the
+per-stage tool scopes, and the checkpointed GraphState (SqliteSaver).
 """
 
 from types import SimpleNamespace
@@ -33,17 +29,23 @@ def _fake_stream(content=None, tool_calls=None, captured=None):
     return _gen
 
 
-def _v2_session(tmp_path, name="cp.sqlite"):
-    """AgentSession on the v2 engine with an isolated sqlite checkpoint db."""
+def _v2_session(tmp_path, name="cp.sqlite", phone="unknown"):
+    """AgentSession with an isolated sqlite checkpoint db."""
     from agent.graph_v2.checkpoint import make_checkpointer
     from agent.graph_v2.graph import build_graph
     from agent.session import AgentSession
 
-    session = AgentSession(caller_phone="unknown", engine="legacy")
-    session._engine_mode = "v2"
-    session._use_graph = True
+    session = AgentSession(caller_phone=phone)
     session._graph = build_graph(session._agent, make_checkpointer(tmp_path / name))
     return session
+
+
+def _sync_checkpoint(session):
+    """Mirror fields a test set on the engine into the checkpoint the entry router reads."""
+    from agent.graph_v2.runtime import sync_updates
+
+    updates = sync_updates(session._agent, user_input=None, reply=None)
+    session._graph.update_state(session._graph_config, updates)
 
 
 class TestRouteEntryPure:
@@ -188,31 +190,10 @@ class TestDiagnosisSubgraph:
         assert chunks == ["ok-", "reply"]
 
 
-class TestRuntimeConfigSwitch:
-    def test_agent_engine_knob_reaches_new_sessions(self, tmp_path, monkeypatch):
-        """The dashboard knob (PUT /admin/config AGENT_ENGINE=v2) must flip the
-        engine for the NEXT session."""
-        from agent.session import AgentSession
-        from app import runtime_config
-
-        monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "cfg.json"))
-        monkeypatch.delenv("AGENT_ENGINE", raising=False)
-
-        runtime_config.apply({"AGENT_ENGINE": "v2"})
-        try:
-            session = AgentSession(caller_phone="unknown")
-            assert session._engine_mode == "v2"
-            assert session.greeting()  # the v2 graph actually runs
-        finally:
-            monkeypatch.delenv("AGENT_ENGINE", raising=False)
-
-
-class TestParityWithLegacy:
-    def test_greeting_matches_legacy_and_graph(self, tmp_path):
-        from agent.session import AgentSession
-
-        v2 = _v2_session(tmp_path)
-        assert v2.greeting() == AgentSession(caller_phone="unknown", engine="legacy").greeting()
+class TestSessionThroughGraph:
+    def test_greeting_is_the_configured_opening(self, tmp_path):
+        session = _v2_session(tmp_path)
+        assert session.greeting() == session.config.greeting_message
 
     def test_handle_turn_returns_reply_and_syncs_engine_state(self, db_connection, tmp_path):
         session = _v2_session(tmp_path)
@@ -231,7 +212,7 @@ class TestParityWithLegacy:
         assert session.state.messages[-1]["content"] == "Pasakykite adresą."
 
     def test_unidentified_turn_is_lookup_only(self, db_connection, tmp_path):
-        from agent.graph import LOOKUP_TOOLS
+        from agent.graph_v2.tool_scopes import LOOKUP_TOOLS
 
         session = _v2_session(tmp_path)
         session.greeting()
@@ -250,6 +231,96 @@ class TestParityWithLegacy:
         assert names <= set(LOOKUP_TOOLS)
         assert "diagnose_connection" not in names
         assert "create_ticket" not in names
+
+
+class TestRouting:
+    """The deterministic router scopes the toolset per stage (structural gate)."""
+
+    def _run_turn_capture_tools(self, session, text):
+        _sync_checkpoint(session)
+        captured = {}
+        with (
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="ok", captured=captured),
+            ),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            session.handle_turn(text)
+        return _tool_names(captured["tools"])
+
+    def test_identified_turn_has_full_toolset(self, db_connection, tmp_path):
+        session = _v2_session(tmp_path)
+        session.greeting()
+        # NT (2026-09-11): link_down_local gavo pack'ą, tad CUST104 nebetinka
+        # kaip „be strategijos" — billing inform (CUST007) strategijos neturi.
+        session.state.customer_id = "CUST007"
+
+        names = self._run_turn_capture_tools(session, "taip")
+
+        # A verdict with no strategy -> the diagnosis node keeps the full toolset
+        # (diagnose available; lookup kept for a re-resolve).
+        assert "diagnose_connection" in names
+        assert "resolve_address" in names
+
+    def test_diagnose_withheld_while_strategy_active(self, db_connection, tmp_path):
+        session = _v2_session(tmp_path)
+        session.greeting()
+        session.state.customer_id = "CUST105"  # foreign_mac -> strategy activates
+
+        # ensure_diagnosed runs on entry -> strategy active at the CONFIRM step.
+        # A CONFIRM step exposes NO tools at all: the engine owns diagnosis, the
+        # action and closing, so the model just talks. This is the fix for the
+        # observed catastrophe where an empty step still left lookup tools on the
+        # table and the model spammed check_outages to the call limit.
+        names = self._run_turn_capture_tools(session, "taip")
+        assert names == set()
+        assert "diagnose_connection" not in names
+        assert "update_mac" not in names  # bind only exposed after confirm (bind_mac)
+        assert "check_outages" not in names  # the looped tool in the failing trace
+
+    def test_ticket_dialogue_routes_to_ticket_node_with_no_tools(self, db_connection, tmp_path):
+        # Mid-dialogue turns run in the dedicated ticket_registration node: the
+        # walker/solver stay frozen and the LLM (off-script question only) has NO
+        # tools. A scripted turn would skip the LLM, so ask a question.
+        session = _v2_session(tmp_path, phone="+37060012353")
+        session.greeting()
+        session.state.customer_id = "CUST009"
+        session.state.problem_type = "internet_down"
+        engine = session._agent
+        engine.state.hypothesis = {
+            "cause": "no_mac_observed",
+            "status": "testing",
+            "because": ["linijoje nematomas įrenginys"],
+        }
+        engine.state.resolution = {"verdict": "no_mac_observed", "step": "escalate", "asked": True}
+        engine._begin_ticket_dialogue(None)
+
+        names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
+
+        assert names == set()  # TICKET_TOOLS is empty — structurally no mutations
+        assert engine._ticket_stage == "phone"  # the stage held; answer comes next turn
+
+    def test_closed_session_routes_to_closing_with_no_tools(self, db_connection, tmp_path):
+        session = _v2_session(tmp_path)
+        session.greeting()
+        session.state.customer_id = "CUST105"
+        session.state.case_closed = True  # END stage
+        session.state.closed_reason = "resolved"
+        _sync_checkpoint(session)
+
+        captured = {}
+        with (
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="Geros dienos!", captured=captured),
+            ),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            reply = session.handle_turn("O kiek tai kainuos?")  # a real question -> LLM
+
+        assert reply == "Geros dienos!"
+        assert captured["tools"] == []  # closing stage is structurally tools-less
 
 
 class TestCheckpointedState:

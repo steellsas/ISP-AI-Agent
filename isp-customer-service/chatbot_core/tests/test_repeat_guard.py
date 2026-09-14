@@ -18,6 +18,22 @@ def _agent():
     return ReactAgent(caller_phone="unknown")
 
 
+def _turn(agent, text=None):
+    """One streaming engine turn; returns the full reply."""
+    return "".join(t for t in agent._run_turn_stream(text) if isinstance(t, str))
+
+
+def _stream_of(message):
+    """A fake stream_tool_completion: streams the message content, returns the message."""
+
+    def _gen(**kwargs):
+        if message.content:
+            yield message.content
+        return message
+
+    return _gen
+
+
 class TestQuestionSimilarity:
     def test_is_question(self):
         a = _agent()
@@ -111,23 +127,19 @@ class TestBackstop:
     def test_backstop_fires_before_llm(self, db_connection):
         """At stuck>=3 the engine answers deterministically — no LLM call."""
         a = _agent()
-        a.run_until_response()  # greeting (turn 0)
+        _turn(a)  # greeting (turn 0)
         a.state.stuck_count = 3
-        with (
-            patch("agent.react_agent.llm_tool_completion") as llm_mock,
-            patch("agent.react_agent.stream_tool_completion") as stream_mock,
-        ):
-            reply = a.run_until_response("nesąmonė")
-        llm_mock.assert_not_called()
+        with patch("agent.react_agent.stream_tool_completion") as stream_mock:
+            reply = _turn(a, "nesąmonė")
         stream_mock.assert_not_called()
         assert "abonento kodą" in reply
 
     def test_backstop_at_four_closes_case(self, db_connection):
         a = _agent()
-        a.run_until_response()
+        _turn(a)
         a.state.stuck_count = 4
-        with patch("agent.react_agent.llm_tool_completion"):
-            a.run_until_response("vis dar nesąmonė")
+        with patch("agent.react_agent.stream_tool_completion"):
+            _turn(a, "vis dar nesąmonė")
         assert a.state.case_closed is True
         assert a.state.closed_reason == "declined"
 
@@ -137,15 +149,15 @@ class TestProgressReset:
 
     def test_nlu_street_fill_resets_stuck(self, db_connection):
         a = _agent()
-        a.run_until_response()  # greeting
+        _turn(a)  # greeting
         a.state.stuck_count = 2
         a.state.problem_type = "internet_down"
         msg = SimpleNamespace(content="Radau gatvę. Koks namo numeris?", tool_calls=None)
         with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            a.run_until_response("Dainų gatvė")
+            _turn(a, "Dainų gatvė")
         assert a.state.profile.street.value  # NLU heard the street this turn
         assert a.state.stuck_count == 0  # ...which counts as progress and resets
 

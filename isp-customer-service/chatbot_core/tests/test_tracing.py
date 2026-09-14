@@ -325,7 +325,7 @@ class TestReactAgentEmits:
             assert dict(cur.fetchone())["customer_id"] is None
 
     def test_reply_emits_case_snapshot(self, db_connection):
-        """_reply emits a compact case snapshot for review (Pillar A2)."""
+        """_finalize_reply emits a compact case snapshot for review (Pillar A2)."""
         cap = _CaptureTracer()
         agent = self._agent(cap)
         agent.state.problem_type = "internet_down"
@@ -333,7 +333,7 @@ class TestReactAgentEmits:
         agent.state.diagnosis["network"] = {"group": "B6", "reason": "foreign_mac"}
         cap.events.clear()
 
-        agent._reply("Ar pakeitėte routerį?")
+        agent._finalize_reply("Ar pakeitėte routerį?")
 
         case = next(e for e in cap.events if e["type"] == "case")
         assert case["problem"] == "internet_down"
@@ -346,6 +346,6 @@ class TestReactAgentEmits:
         agent = self._agent(cap)
         cap.events.clear()
 
-        agent._reply("Labas!")
+        agent._finalize_reply("Labas!")
 
         assert not [e for e in cap.events if e["type"] == "case"]

@@ -3,8 +3,8 @@ import pytest
 """
 Tests for agent logic (without real LLM calls where possible).
 
-These tests verify agent stepping (native tool calling), tool descriptions,
-and basic logic. The LLM is mocked so no network/API key is needed.
+These tests verify the engine's tool handling, tool descriptions and basic
+logic. The LLM is mocked so no network/API key is needed.
 Run: pytest tests/test_agent.py -v
 """
 
@@ -25,32 +25,6 @@ def _fake_tool_call(call_id, name, arguments):
         type="function",
         function=SimpleNamespace(name=name, arguments=arguments),
     )
-
-
-class TestAgentStep:
-    """Tests for ReactAgent.step() under native tool calling (LLM mocked)."""
-
-    def test_step_text_reply(self):
-        """A message with no tool_calls becomes the customer reply."""
-        from agent.react_agent import ReactAgent
-
-        agent = ReactAgent(caller_phone="+37060012345")
-
-        msg = _fake_message(content="Labas! Kuo galiu padėti?")
-        with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
-        ):
-            result = agent.step(user_input="Labas")
-
-        assert result["action"] == "respond"
-        assert result["response"] == "Labas! Kuo galiu padėti?"
-        assert result["needs_continuation"] is False
-        # Reply is persisted as a plain assistant message.
-        assert agent.state.messages[-1] == {
-            "role": "assistant",
-            "content": "Labas! Kuo galiu padėti?",
-        }
 
 
 class TestAgentSystemPrompt:
@@ -1279,7 +1253,7 @@ class TestReviewGaps:
         # caller's utterance, so later turns re-asked answered questions.
         from agent.session import AgentSession
 
-        s = AgentSession(caller_phone="+37060012353", engine="graph")
+        s = AgentSession(caller_phone="+37060012353")
         s.greeting()
         reply = s.handle_turn("neveikia internetas")  # scripted address move, no LLM
         assert "skambinate dėl" in reply  # etalonas #2: no opening anamnesis
@@ -1299,7 +1273,7 @@ class TestReviewGaps:
 
             return _gen()
 
-        s = AgentSession(caller_phone="+37060012353", engine="graph")
+        s = AgentSession(caller_phone="+37060012353")
         s.greeting()
         with (
             _patch("agent.react_agent.stream_tool_completion", side_effect=_stream),
@@ -1345,7 +1319,7 @@ class TestBargeInCancel:
             patch("agent.react_agent.stream_tool_completion", side_effect=slow_stream),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            s = AgentSession(caller_phone="unknown", engine="graph")
+            s = AgentSession(caller_phone="unknown")
             s.greeting()
             tokens = []
             for tok in s.handle_turn_stream("O kas jūs tokie?"):

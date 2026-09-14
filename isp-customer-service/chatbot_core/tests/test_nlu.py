@@ -167,6 +167,17 @@ class TestExtractSymptoms:
         assert got == {"connection": "wifi", "lights": "nedega"}
 
 
+def _stream_of(message):
+    """A fake stream_tool_completion: streams the message content, returns the message."""
+
+    def _gen(**kwargs):
+        if message.content:
+            yield message.content
+        return message
+
+    return _gen
+
+
 class TestPrefillWiring:
     def test_user_turn_prefills_slots(self, db_connection):
         """A caller turn populates the slots before the LLM, via the agent."""
@@ -180,10 +191,10 @@ class TestPrefillWiring:
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            agent.run_until_response("neveikia internetas Tilžės 60 butas 7")
+            list(agent._run_turn_stream("neveikia internetas Tilžės 60 butas 7"))
 
         p = agent.state.profile
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
@@ -203,10 +214,10 @@ class TestPrefillWiring:
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
+            patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            agent.run_until_response("internetas neveikia, lemputės nedega, jungiuosi per wifi")
+            list(agent._run_turn_stream("internetas neveikia, lemputės nedega, jungiuosi per wifi"))
 
         assert agent.state.symptoms["lights"] == "nedega"
         assert agent.state.symptoms["connection"] == "wifi"
