@@ -5,13 +5,11 @@ helpers in agent/identification.py (phrases, policy) and agent/nlu.py.
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent — the phone preflight, the NLU slot prefill, the accumulated-address
 DB check, the identity reopen, and the scripted-ladder reply composer.
-Functions take the engine explicitly. execute_tool is imported lazily from
-react_agent so the tests' import-fallback stubs keep working.
+Functions take the engine explicitly; tools run through engine.tools (the gateway).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -29,14 +27,14 @@ def preflight_phone(engine: Any) -> None:
     address for confirmation without a tool round-trip. Stored as an
     UNCONFIRMED candidate (anchor rule), never as a confirmed customer.
     """
-    from .react_agent import execute_tool
-
     phone = engine.state.identity.caller_phone
     if not phone or phone == "unknown":
         return
     engine.state.identity.preflight_done = True
     try:
-        result = json.loads(execute_tool("find_customer", {"phone": phone}))
+        result = engine.tools.run(
+            engine, "find_customer", {"phone": phone}, reason="preflight_phone", apply=False
+        ).data
     except Exception:
         return
     if not result.get("success"):
@@ -65,9 +63,13 @@ def preflight_phone(engine: Any) -> None:
     # has an active outage, remember it so the FIRST reply can inform right
     # away — no full identification needed (everyone at that street is down).
     try:
-        outage = json.loads(
-            execute_tool("check_outages", {"customer_id": result.get("customer_id")})
-        )
+        outage = engine.tools.run(
+            engine,
+            "check_outages",
+            {"customer_id": result.get("customer_id")},
+            reason="preflight_outage",
+            apply=False,
+        ).data
     except Exception:
         return
     if outage.get("affected") and outage.get("active_outages"):
@@ -343,8 +345,6 @@ def revalidate_accumulated_address(engine: Any) -> None:
     "Dainų ar Dailės?", "Namo 6 … nerandu"). Read-only: the id is committed only
     when the agent confirms with the caller (anchor rule), never here.
     """
-    from .react_agent import execute_tool
-
     engine.state.turn.db_address_note = None
     s = engine.state
     if s.identity.customer_id or not s.identity.profile.street.value:
@@ -358,7 +358,9 @@ def revalidate_accumulated_address(engine: Any) -> None:
     if p.apartment.value:
         args["apartment_number"] = p.apartment.value
     try:
-        res = json.loads(execute_tool("resolve_address", args))
+        res = engine.tools.run(
+            engine, "resolve_address", args, reason="revalidate_address", apply=False
+        ).data
     except Exception:  # pragma: no cover - best-effort, never break a turn
         return
     hint = res.get("hint")
@@ -699,12 +701,10 @@ def _street_by_prefix(engine: Any, prefix: str) -> str | None:
 def _lookup_by_code(engine: Any, s: Any, code: str):
     """find_customer(account_code) -> candidate + the aloud address offer, or
     None when the code is not in the DB."""
-    import json as _json
-
-    from .react_agent import execute_tool
-
     try:
-        res = _json.loads(execute_tool("find_customer", {"account_code": code}))
+        res = engine.tools.run(
+            engine, "find_customer", {"account_code": code}, reason="account_code", apply=False
+        ).data
     except Exception:
         res = {}
     if not res.get("success"):
