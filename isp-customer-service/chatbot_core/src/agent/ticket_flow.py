@@ -6,8 +6,8 @@ deterministically from STATE.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent. The stage value lives on
-GraphState.ticket.stage (promoted); the dialogue CONTEXT (GraphState.ticket.context)
-is a plain JSON dict — the escalate step is kept by id.
+GraphState.ticket.stage (promoted); the dialogue CONTEXT is GraphState.ticket.context
+(a TicketContext model — the escalate step is kept by id).
 """
 
 from __future__ import annotations

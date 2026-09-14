@@ -209,7 +209,7 @@ class TestCheckin:
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
-        a = session._agent
+        a = session
         a.state.dialog.last_question = ""
         assert session.awaiting_caller() is False
         a.state.dialog.last_question = "Ar dega lemputė?"
@@ -234,7 +234,7 @@ class TestSessionAsrContext:
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
-        a = session._agent
+        a = session
         a.state.dialog.last_question = "Ar dega bent viena lemputė?"
         a.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         a.state.diagnosis.pending_evidence_key = "lights"
@@ -246,7 +246,7 @@ class TestSessionAsrContext:
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
-        session._agent.state.dialog.last_question = ""
+        session.state.dialog.last_question = ""
         assert session.asr_context() is None
 
 
@@ -255,9 +255,9 @@ class TestSpeculation:
     on an exact, fact-clean match — any doubt falls to the normal path."""
 
     def _agent(self, db_connection=None):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         from agent.evidence import CLIENT, set_fact
@@ -286,16 +286,16 @@ class TestSpeculation:
             "verdict": "no_mac_observed",
             "branches": {"nedega": {"kind": "evidence", "key": "power_cable", "text": "x?"}},
         }
-        agent._spec_cache = dict(base)
+        agent.runtime.speculation["cache"] = dict(base)
         assert match(agent.state, agent.runtime, "O kiek tai kainuos?") is None  # question
-        agent._spec_cache = dict(base)
+        agent.runtime.speculation["cache"] = dict(base)
         assert (
             match(agent.state, agent.runtime, "Nedega, bet keičiau routerį vakar") is None
         )  # extra fact
-        agent._spec_cache = dict(base)
+        agent.runtime.speculation["cache"] = dict(base)
         hit = match(agent.state, agent.runtime, "Nedega nė viena")
         assert hit and hit["key"] == "power_cable"
-        assert agent._spec_cache is None  # one shot
+        assert agent.runtime.speculation["cache"] is None  # one shot
 
     def test_injection_consumed_only_on_directive_match(self, db_connection):
         agent = self._agent()
@@ -354,9 +354,9 @@ class TestBgDiagnosisGate:
     def _agent(self, events):
         from types import SimpleNamespace
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         agent.tracer = SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
@@ -575,9 +575,10 @@ class TestDeliveryLedger:
 
     def test_apply_delivery_truncates_history_and_surfaces_tail(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.messages.append({"role": "user", "content": "neveikia"})
         agent.state.messages.append({"role": "assistant", "content": "Pirmas. Antras. Trečias."})
         agent.apply_delivery(["Pirmas.", "Antras.", "Trečias."], 1)
@@ -590,18 +591,18 @@ class TestDeliveryLedger:
         assert "KLIENTAS NEGIRD" not in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_apply_delivery_nothing_heard(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.messages.append({"role": "assistant", "content": "Visas tekstas."})
         agent.apply_delivery(["Visas tekstas."], 0)
         assert agent.state.messages[-1]["content"] == "—"
         assert agent.state.voice.undelivered_tail == "Visas tekstas."
 
     def test_apply_delivery_all_heard_is_noop(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.messages.append({"role": "assistant", "content": "Viskas. Gerai."})
         agent.apply_delivery(["Viskas.", "Gerai."], 2)
         assert agent.state.messages[-1]["content"] == "Viskas. Gerai."

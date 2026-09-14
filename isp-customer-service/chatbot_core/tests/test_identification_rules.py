@@ -7,9 +7,9 @@ patvirtinimu, №4 savininko vardo patikra be DB vardo garsinimo.
 
 
 def _agent(phone="unknown"):
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    return ReactAgent(caller_phone=phone)
+    return make_agent(phone)
 
 
 class TestApartmentByRegistry:

@@ -9,9 +9,9 @@ from types import SimpleNamespace
 
 
 def _agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    return ReactAgent(caller_phone="unknown")
+    return make_agent("unknown")
 
 
 class TestCatalog:
@@ -259,9 +259,10 @@ class TestPendingFallback:
         from unittest.mock import patch
 
         from agent.perception_flow import ingest_client_evidence
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020112")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
@@ -281,9 +282,10 @@ class TestPendingFallback:
         from unittest.mock import patch
 
         from agent.perception_flow import ingest_client_evidence
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020112")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}

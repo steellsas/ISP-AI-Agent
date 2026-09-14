@@ -19,22 +19,23 @@ from langgraph.runtime import Runtime
 
 from ...runtime import AgentRuntime
 from ..router import TICKET_REGISTRATION
-from ..runtime import TICKET_NODE_PROMPT, TICKET_TOOLS, narrate, run_on_state
+from ..runtime import TICKET_NODE_PROMPT, TICKET_TOOLS, narrate, node_update
 from ..state import GraphState
 
 
 def ticket_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
-    engine = runtime.context.engine
+    rt = runtime.context
+    state = state.model_copy(deep=True)
 
     def body() -> str:
         user_input = state.turn.user_input
         return narrate(
-            engine.state,
-            engine.runtime,
+            state,
+            rt,
             user_input,
             TICKET_TOOLS,
             TICKET_NODE_PROMPT,
             TICKET_REGISTRATION,
         )
 
-    return run_on_state(engine, state, body)
+    return node_update(state, body())

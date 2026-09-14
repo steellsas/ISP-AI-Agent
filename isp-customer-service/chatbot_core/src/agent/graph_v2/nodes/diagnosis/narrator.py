@@ -17,21 +17,20 @@ from langgraph.runtime import Runtime
 
 from ....runtime import AgentRuntime
 from ...router import DIAGNOSIS
-from ...runtime import DIAGNOSIS_NODE_PROMPT, narrate, run_on_state
+from ...runtime import DIAGNOSIS_NODE_PROMPT, narrate, node_update
 from ...state import GraphState
 
 
 def narrator_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
     from ....narrator_flow import mark_step_presented
 
-    engine = runtime.context.engine
+    rt = runtime.context
+    state = state.model_copy(deep=True)
 
     def body() -> str:
         user_input = state.turn.user_input
-        reply = narrate(
-            engine.state, engine.runtime, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS
-        )
-        mark_step_presented(engine.state, engine.runtime)
+        reply = narrate(state, rt, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS)
+        mark_step_presented(state, rt)
         return reply
 
-    return run_on_state(engine, state, body)
+    return node_update(state, body())

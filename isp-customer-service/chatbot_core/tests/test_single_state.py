@@ -35,20 +35,18 @@ def _turns(session, texts):
     return replies
 
 
-# Engine attributes that are runtime objects or config, never call data.
-RUNTIME_ATTRIBUTES = {
-    "config",
+# What a narrator (ReactAgent) may hold: the node's state, the call runtime and
+# values derived from it — never call data of its own.
+NARRATOR_ATTRIBUTES = {
     "state",  # the working copy handed in by the running node
+    "runtime",
+    "config",
     "session_id",
     "tracer",
     "tools",
-    "runtime",
     "llm_stats",
     "system_prompt",
     "tools_schema",
-    "_session_ended",
-    "_spec_cache",
-    "_cancel_requested",
 }
 
 
@@ -86,9 +84,12 @@ class TestCallContinuesOnAFreshSession:
         # And back on the checkpoint: the first object sees the continued call too.
         assert first._current_state().ticket.stage == "phone"
 
-    def test_engine_holds_no_call_data(self, db_connection):
+    def test_no_engine_holds_call_data(self, db_connection):
+        from agent.graph_v2.runtime import narrator
+
         session = AgentSession(caller_phone="+37060012353")
         session.greeting()
         _turns(session, ["Neveikia internetas", "Taip"])
-        leftovers = sorted(set(vars(session._agent)) - RUNTIME_ATTRIBUTES)
-        assert leftovers == []
+        assert not hasattr(session, "_agent")  # the session owns graph + runtime only
+        agent = narrator(session.state, session._runtime)
+        assert sorted(set(vars(agent)) - NARRATOR_ATTRIBUTES) == []

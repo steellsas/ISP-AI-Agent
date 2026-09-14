@@ -15,9 +15,9 @@ from agent.dialog_utils import is_question, progress_key, similar
 
 
 def _agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    return ReactAgent(caller_phone="unknown")
+    return make_agent("unknown")
 
 
 def _turn(agent, text=None):

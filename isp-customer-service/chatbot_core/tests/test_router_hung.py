@@ -134,9 +134,10 @@ class TestAdvanceRebootCheck:
 
     def _agent(self, monkeypatch, payload):
         from agent import walker_flow
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020112")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {
@@ -263,9 +264,9 @@ class TestConflictScope:
     hijacked two turns of the hung-router flow with a clarify loop)."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060020112")
+        agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}

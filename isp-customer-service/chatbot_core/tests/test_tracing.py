@@ -152,9 +152,9 @@ class TestReactAgentEmits:
     """ReactAgent translates tool observations into trace events (no LLM)."""
 
     def _agent(self, tracer):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
+        return make_agent("+37060020105", language="lt", tracer=tracer)
 
     def test_session_start_on_init(self, db_connection):
         cap = _CaptureTracer()
@@ -220,9 +220,9 @@ class TestReactAgentEmits:
         from agent.identification_flow import preflight_phone
 
         cap = _CaptureTracer()
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37069999999", language="lt", tracer=cap)
+        agent = make_agent("+37069999999", language="lt", tracer=cap)
         preflight_phone(agent.state, agent.runtime)
 
         assert agent.state.identity.phone_candidate is None
@@ -270,10 +270,11 @@ class TestReactAgentEmits:
     def test_call_summary_actions_read_from_trace(self, db_connection, tmp_path):
         """`actions` are the tool names actually executed, harvested from the JSONL."""
         from adapters.tracing.jsonl_tracer import JsonlFileTracer
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         tracer = JsonlFileTracer("callsummary-test", trace_dir=tmp_path)
-        agent = ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
+        agent = make_agent("+37060020105", language="lt", tracer=tracer)
         tracer.emit("tool_call", name="diagnose_connection", args={})
         tracer.emit("tool_call", name="update_mac", args={})
         tracer.emit("tool_call", name="diagnose_connection", args={})  # dedup
@@ -285,10 +286,11 @@ class TestReactAgentEmits:
         import json as _json
 
         from adapters.tracing.jsonl_tracer import JsonlFileTracer
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         tracer = JsonlFileTracer("convrow-test", trace_dir=tmp_path)
-        agent = ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
+        agent = make_agent("+37060020105", language="lt", tracer=tracer)
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.customer_id = "CUST105"
         agent.state.identity.caller_name = "kaimynas Jonas"

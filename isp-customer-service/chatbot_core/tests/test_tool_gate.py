@@ -32,9 +32,9 @@ def _fake_tool_call(call_id, name, arguments):
 
 @pytest.fixture
 def agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    return ReactAgent(caller_phone="+37060012345")
+    return make_agent("+37060012345")
 
 
 class TestGateUnit:

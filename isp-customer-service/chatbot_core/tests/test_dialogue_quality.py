@@ -22,9 +22,9 @@ class TestW0OrderGuards:
     the capture; the scripted goodbye never ended the call."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
         return agent
@@ -75,7 +75,6 @@ class TestW0OrderGuards:
 
     def test_scripted_goodbye_ends_the_call(self, db_connection):
         from agent.graph_v2.nodes.closing import closing_node
-        from agent.runtime import build_runtime
         from agent.tools import create_ticket
         from langgraph.runtime import Runtime
 
@@ -83,9 +82,9 @@ class TestW0OrderGuards:
         res = create_ticket("CUST009", "network_issue", "test")
         agent.state.ticket.ticket_id = res["ticket_id"]
         agent.state.closing.case_closed = True
-        runtime = Runtime(context=build_runtime(agent))
-        closing_node(_turn_state(agent, "Gerai, ačiū"), runtime)
-        assert agent.state.closing.is_complete is True  # one goodbye, then hang up
+        runtime = Runtime(context=agent.runtime)
+        upd = closing_node(_turn_state(agent, "Gerai, ačiū"), runtime)
+        assert upd["closing"].is_complete is True  # one goodbye, then hang up
 
 
 class TestW1LivingDialogue:
@@ -96,10 +95,11 @@ class TestW1LivingDialogue:
     def test_opening_anamnesis_skips_the_question(self, db_connection, monkeypatch):
         from agent.identification_flow import identification_scripted_reply
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         reply = identification_scripted_reply(
             agent.state,
@@ -117,10 +117,10 @@ class TestW1LivingDialogue:
 
         # etalonas #2 (2026-09-03): no opening anamnesis question — the flow
         # goes straight to the address; targeted anamnesis lives in the packs.
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         assert (
             identification_scripted_reply(
@@ -131,9 +131,9 @@ class TestW1LivingDialogue:
         assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
 
     def _resolving_agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
         return agent
@@ -200,9 +200,9 @@ class TestUnheardQuestion:
     narrator reacts + re-asks."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -249,9 +249,9 @@ class TestW2QuietAnalyst:
     """W2: background advisory notes — wording only, one-shot, off-switch."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.customer_id = "CUST009"
         agent.state.messages.append({"role": "user", "content": "neveikia internetas"})
@@ -305,9 +305,9 @@ class TestTurnGrammar:
     vardo priemimas, adreso perejimas be suolio."""
 
     def _agent(self, verdict="router_hung"):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060020112")
+        agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {"verdict": verdict, "step": "rh_scope"}
@@ -354,9 +354,10 @@ class TestTurnGrammar:
 
     def test_address_offer_directive_reacts_first(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020112")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020112")
         agent.state.intake.problem_type = "internet_down"
         agent.state.turn.directives.ident = {
             "kind": "address_offer",

@@ -17,15 +17,14 @@ from langgraph.runtime import Runtime
 from ...closing_flow import maybe_finish
 from ...runtime import AgentRuntime
 from ..router import CLOSING
-from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, run_on_state, speak_scripted
+from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, node_update, speak_scripted
 from ..state import GraphState
 
 
 def closing_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
-    engine = runtime.context.engine
-    return run_on_state(
-        engine, state, lambda: _closing(engine.state, engine.runtime, state.turn.user_input)
-    )
+    rt = runtime.context
+    state = state.model_copy(deep=True)
+    return node_update(state, _closing(state, rt, state.turn.user_input))
 
 
 def _closing(state: Any, rt: Any, user_input: str | None) -> str:

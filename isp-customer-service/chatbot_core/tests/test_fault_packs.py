@@ -259,9 +259,10 @@ class TestNarratorWordedQuestions:
 
     def test_directive_lands_in_facts_block(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.turn.directives.evidence = {
             "key": "lights",
             "reikia": "ar dega bent viena lemputė",
@@ -320,10 +321,11 @@ class TestNarratorFindings:
         with the opening question — after the problem the flow goes straight
         to the address; targeted anamnesis lives in the packs."""
         from agent.identification_flow import identification_scripted_reply
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         s = agent.state
         s.intake.problem_type = "internet_down"
         reply = identification_scripted_reply(agent.state, agent.runtime, "Nežinau, nepastebėjau.")
@@ -433,9 +435,10 @@ class TestNarratorFindings:
 
     def test_recap_directive_lands_in_facts_block(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.turn.directives.recap = {"faktai": "routerio lemputės: nedega"}
         block = state_facts_block(agent.state, agent.runtime)
         assert "PASITIKSLINK" in block and "nedega" in block
@@ -468,9 +471,10 @@ class TestNarratorFindings:
 
     def test_findings_directive_lands_in_facts_block(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.turn.directives.findings = {
             "faktai": "routerio lemputės: nedega",
             "isvada": "routeris sugedęs",
@@ -482,9 +486,10 @@ class TestNarratorFindings:
 
     def test_bridge_anchor_lands_in_narrator_facts(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.resolution.bridge_plug_reported = True
         block = state_facts_block(agent.state, agent.runtime)
         assert block and "TILTO FAZĖ" in block and "NEBEKLAUSK" in block
@@ -614,9 +619,10 @@ class TestTicketFirst:
 
     def test_situational_block_lands_in_narrator_facts(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST001"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
         block = state_facts_block(agent.state, agent.runtime)
@@ -624,9 +630,10 @@ class TestTicketFirst:
 
     def test_findings_prefer_the_pack_offer(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.turn.directives.findings = {
             "faktai": "routerio lemputės: nedega",
             "isvada": "routeris sugedęs",
@@ -681,9 +688,10 @@ class TestStepAwareness:
 
     def test_facts_block_states_goal_and_repeat(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST001"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -696,9 +704,10 @@ class TestStepAwareness:
 
     def test_first_presentation_has_no_repeat_directive(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST001"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -709,10 +718,11 @@ class TestStepAwareness:
         assert "ŽINGSNIS KARTOJAMAS" not in block
 
     def test_solver_context_includes_the_journey(self, db_connection):
-        from agent.react_agent import ReactAgent
         from agent.solver_flow import build_solver_context
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST001"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -816,18 +826,20 @@ class TestIdentificationF:
 
     def test_diag_note_lands_in_facts_block(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.turn.address_lookup_note = "- ADRESO PAIEŠKOS DIAGNOZĖ: gatvę RANDU, namo NĖRA."
         block = state_facts_block(agent.state, agent.runtime)
         assert block and "ADRESO PAIEŠKOS DIAGNOZĖ" in block
 
     def test_encouragement_appears_once(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         agent.state.dialog.turn_count = 5
         first = state_facts_block(agent.state, agent.runtime) or ""
@@ -836,9 +848,9 @@ class TestIdentificationF:
         assert "PARAGINIMAS DĖL ADRESO" not in second
 
     def test_failed_identification_lands_on_the_record(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.heard_utterances.extend(["neveikia internetas", "Vilnaus gatve kazkur"])
         summary = agent._build_call_summary()
@@ -857,9 +869,9 @@ class TestTicketDirectives:
     become narrator goal directives; retries/cancel stay scripted; off reverts."""
 
     def _agent(self, db_connection=None):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "escalate"}
         agent.state.ticket.stage = "phone"
@@ -916,9 +928,9 @@ class TestIdentDirectives:
     the OFFER question core stays verbatim (confirm guard); off reverts."""
 
     def _agent(self, candidate=True):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         if candidate:
             agent.state.identity.phone_candidate = {
@@ -976,10 +988,11 @@ class TestAnamnesisDirectives:
     def test_no_opening_question_straight_to_address(self, db_connection, monkeypatch):
         from agent.identification_flow import identification_scripted_reply
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         assert (
             identification_scripted_reply(agent.state, agent.runtime, "Neveikia internetas") is None
@@ -992,10 +1005,11 @@ class TestAnamnesisDirectives:
 
     def test_opening_capture_still_lands(self, db_connection, monkeypatch):
         from agent.identification_flow import identification_scripted_reply
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         identification_scripted_reply(
             agent.state, agent.runtime, "Neveikia internetas nuo vakar, po audros"
@@ -1019,9 +1033,10 @@ class TestDirectiveTurnsAreSpeechOnly:
 
     def test_no_tools_when_directive_set(self, db_connection):
         from agent.narrator_flow import scoped_tools_schema
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         assert scoped_tools_schema(agent.state, agent.runtime)  # baseline: tools exist
         agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
         assert scoped_tools_schema(agent.state, agent.runtime) == []
@@ -1050,9 +1065,10 @@ class TestDetourResilience:
 
     def test_resync_note_renders_once(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         from agent.evidence import CLIENT, set_fact
@@ -1070,9 +1086,10 @@ class TestPrimaryGoalFrozen:
 
     def test_mid_call_mention_becomes_secondary(self, db_connection):
         from agent.identification_flow import prefill_slots_from_text
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         s = agent.state
         prefill_slots_from_text(agent.state, agent.runtime, "Neveikia internetas")
         assert s.intake.problem_type == "internet_down"
@@ -1091,9 +1108,10 @@ class TestPrimaryGoalFrozen:
 
     def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         s = agent.state
         s.identity.customer_id = "CUST009"
         s.intake.problem_type = "internet_down"
@@ -1177,9 +1195,10 @@ class TestOpenerAndClosingHygiene:
 
     def test_garbled_opener_asks_for_the_problem(self, db_connection):
         from agent.identification_flow import identification_scripted_reply
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         r1 = identification_scripted_reply(agent.state, agent.runtime, "Atsikai, daro.")
         assert r1 and "problema" in r1
         r2 = identification_scripted_reply(agent.state, agent.runtime, "Mmm kažkas.")
@@ -1193,9 +1212,10 @@ class TestOpenerAndClosingHygiene:
 
     def test_phone_account_block_waits_for_the_problem(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.identity.phone_candidate = {
             "customer_id": "CUST009",
             "name": "T",
@@ -1211,9 +1231,10 @@ class TestOpenerAndClosingHygiene:
 
     def test_no_secondary_problems_from_ticket_stage_garbles(self, db_connection):
         from agent.identification_flow import prefill_slots_from_text
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         s = agent.state
         s.intake.problem_type = "internet_down"
         s.identity.customer_id = "CUST009"
@@ -1235,9 +1256,10 @@ class TestLiveCall0821Fixes:
 
     def test_directive_turn_drops_step_hint_and_playbook(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
         plain = state_facts_block(agent.state, agent.runtime) or ""
@@ -1321,10 +1343,11 @@ class TestLiveCall0821Fixes:
     def test_problem_gate_scripted_then_directive_then_close(self, db_connection, monkeypatch):
         from agent.identification_flow import identification_scripted_reply
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         assert "problema" in identification_scripted_reply(
             agent.state, agent.runtime, "Atsikai daro"
         )
@@ -1350,9 +1373,9 @@ class TestLiveCall0824Fixes:
     dictated to them anyway."""
 
     def _ticket_agent(self, db_connection=None):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -1427,9 +1450,9 @@ class TestD5WaitAckAndClosing:
     on the ticket instead of vanishing."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_pick_cable"}
         return agent
@@ -1466,7 +1489,6 @@ class TestD5WaitAckAndClosing:
         from types import SimpleNamespace
 
         from agent.graph_v2.nodes.closing import closing_node
-        from agent.runtime import build_runtime
         from agent.tools import create_ticket
         from langgraph.runtime import Runtime
 
@@ -1475,7 +1497,7 @@ class TestD5WaitAckAndClosing:
         assert res.get("success")
         agent.state.ticket.ticket_id = res["ticket_id"]
         agent.state.closing.case_closed = True
-        runtime = Runtime(context=build_runtime(agent))
+        runtime = Runtime(context=agent.runtime)
         # 1) number correction: acknowledged aloud AND noted on the ticket
         upd = closing_node(
             agent.state.model_copy(
@@ -1484,7 +1506,8 @@ class TestD5WaitAckAndClosing:
             runtime,
         )
         assert "Užsirašiau" in upd["turn"].reply
-        assert agent.state.messages[-1]["content"] == upd["turn"].reply
+        assert upd["messages"][-1]["content"] == upd["turn"].reply
+        agent.state = GraphState(**upd)  # the next turn starts from the committed state
         import sqlite3
 
         from agent.tools import get_db
@@ -1500,4 +1523,4 @@ class TestD5WaitAckAndClosing:
             agent.state.model_copy(update={"turn": TurnScratch(user_input="Gerai, ačiū")}), runtime
         )
         assert upd2["turn"].reply and "Geros dienos" in upd2["turn"].reply
-        assert agent.state.messages[-1]["content"] == upd2["turn"].reply
+        assert upd2["messages"][-1]["content"] == upd2["turn"].reply

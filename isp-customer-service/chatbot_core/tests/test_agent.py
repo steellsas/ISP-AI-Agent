@@ -36,9 +36,9 @@ class TestAgentSystemPrompt:
 
     def test_system_prompt_contains_tools(self):
         """System prompt should include tool descriptions."""
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        agent = make_agent("+37060012345")
 
         assert "find_customer" in agent.system_prompt
         assert "search_knowledge" in agent.system_prompt
@@ -50,9 +50,9 @@ class TestAgentSystemPromptPhone:
 
     def test_agent_phone_in_system_prompt(self):
         """Caller phone should be in system prompt."""
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        agent = make_agent("+37060012345")
 
         assert "+37060012345" in agent.system_prompt
 
@@ -77,9 +77,10 @@ class TestAgentBuildMessages:
     def test_build_messages_includes_system(self):
         """Built messages should include system prompt."""
         from agent.narrator_flow import build_messages
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
 
         messages = build_messages(agent.state, agent.runtime)
 
@@ -90,9 +91,10 @@ class TestAgentBuildMessages:
     def test_build_messages_with_user_input(self):
         """Should add user input to messages."""
         from agent.narrator_flow import build_messages
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
 
         messages = build_messages(agent.state, agent.runtime, user_input="Labas")
 
@@ -108,9 +110,10 @@ class TestHistoryWindow:
     def test_short_history_not_pruned(self):
         """History at or below the window is returned unchanged."""
         from agent.narrator_flow import prune_history
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.config.history_window_messages = 10
         agent.state.messages = [{"role": "user", "content": f"m{i}"} for i in range(5)]
 
@@ -121,9 +124,10 @@ class TestHistoryWindow:
     def test_window_zero_disables_pruning(self):
         """A window of 0 sends the full history."""
         from agent.narrator_flow import prune_history
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.config.history_window_messages = 0
         agent.state.messages = [{"role": "user", "content": f"m{i}"} for i in range(50)]
 
@@ -134,9 +138,10 @@ class TestHistoryWindow:
     def test_long_history_pruned_to_window(self):
         """A long, tool-free history is trimmed to exactly the window size."""
         from agent.narrator_flow import prune_history
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.config.history_window_messages = 6
         # 20 alternating user/assistant text messages (no tool exchanges)
         agent.state.messages = [
@@ -155,9 +160,10 @@ class TestHistoryWindow:
         rejects the orphaned tool message.
         """
         from agent.narrator_flow import prune_history
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.config.history_window_messages = 3
         # ...older..., assistant(tool_calls), tool, tool, assistant(text)
         agent.state.messages = [
@@ -182,9 +188,10 @@ class TestHistoryWindow:
         """Resolved GraphState facts ride in a SEPARATE trailing system message,
         not concatenated into the (cacheable) system prompt."""
         from agent.narrator_flow import build_messages
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.state.identity.set_customer(
             customer_id="C123",
             name="Jonas Jonaitis",
@@ -211,9 +218,10 @@ class TestHistoryWindow:
         (2026-08-06: it stops the LLM offering the address before a problem is
         stated); the system prompt itself stays unchanged."""
         from agent.narrator_flow import build_messages, state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
 
         facts = state_facts_block(agent.state, agent.runtime)
         assert facts is not None and "PROBLEMA DAR NEPASAKYTA" in facts
@@ -224,10 +232,11 @@ class TestHistoryWindow:
         """NLU-prefilled slots are surfaced so the model passes them to
         resolve_address instead of re-extracting garbled text (R5)."""
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
         from agent.slots import SlotStatus
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.state.identity.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
         agent.state.identity.profile.house.propose("8", 0.8, SlotStatus.HEARD)
 
@@ -239,10 +248,11 @@ class TestHistoryWindow:
     def test_heard_address_hidden_once_identified(self):
         """Once identified the heard-address hint is dropped (already known)."""
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
         from agent.slots import SlotStatus
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.state.identity.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
         agent.state.identity.customer_id = "CUST110"
 
@@ -254,10 +264,11 @@ class TestHistoryWindow:
         import json
 
         from agent.narrator_flow import state_facts_block, update_state_from_observation
-        from agent.react_agent import ReactAgent
         from agent.tools import diagnose_connection
 
-        agent = ReactAgent(caller_phone="+37060020105")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020105")
         obs = json.dumps(diagnose_connection("CUST105"))  # S5a -> B6 foreign_mac
         update_state_from_observation(agent.state, agent.runtime, "diagnose_connection", obs)
 
@@ -293,9 +304,9 @@ class TestDeterministicInformClose:
     the engine, not the model, ends the call (fixes the goodbye loop observed live)."""
 
     def _informed_agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060020102")
+        agent = make_agent("+37060020102")
         agent.state.identity.customer_id = "CUST102"
         agent.state.diagnosis.verdicts["network"] = {"group": "B2", "reason": "active_outage"}
         agent.state.diagnosis.outage_reported = True
@@ -352,10 +363,10 @@ class TestEscalateOutcome:
     def _agent_on_escalate(self, monkeypatch):
         import os
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "no_mac_observed"}
@@ -417,10 +428,10 @@ class TestHearingAgent:
     def _agent(self, monkeypatch, step="dr_intro", asked=True):
         import os
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "no_mac_observed"}
@@ -825,11 +836,12 @@ class TestAutoRegisterEscalate:
     def test_arrival_registers_and_closes(self, db_connection, monkeypatch):
         import os
 
-        from agent.react_agent import ReactAgent
         from agent.walker_flow import ensure_action_done
 
+        from tests.calls import make_agent
+
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
@@ -868,11 +880,12 @@ class TestRestoredPreAnswer:
     def test_restored_yes_advances_unasked_verify(self, db_connection, monkeypatch):
         import os
 
-        from agent.react_agent import ReactAgent
         from agent.walker_flow import walk_resolution
 
+        from tests.calls import make_agent
+
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060020109")
+        agent = make_agent("+37060020109")
         agent.state.identity.customer_id = "CUST109"
         agent.state.intake.problem_type = "internet_down"
         agent.state.diagnosis.verdicts["network"] = {"group": "B7", "reason": "healthy_to_router"}
@@ -907,9 +920,10 @@ class TestAddressGuards:
     def test_pre_turn_guard_vetoes_commit(self, db_connection):
         from agent.narrator_flow import state_facts_block
         from agent.perception_flow import pre_turn_guards
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020101")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020101")
         agent.state.messages.append(
             {"role": "assistant", "content": "Ar skambinate dėl Tilžės g. 60, butas 3?"}
         )
@@ -925,9 +939,9 @@ class TestAddressGuards:
         # Etalonas №3 (2026-09-03): a correction no longer reopens INSTANTLY —
         # one confirmation question first; a "taip" (or a named new address)
         # then drops the identity.
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060020101")
+        agent = make_agent("+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.identity.customer_address = "Šiauliai, Tilžės g. 60-3"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
@@ -952,10 +966,10 @@ class TestRefuseOrTicket:
     def _agent_mid_flow(self, monkeypatch, step="cable_check"):
         import os
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060020105")
+        agent = make_agent("+37060020105")
         agent.state.identity.customer_id = "CUST105"
         agent.state.intake.problem_type = "internet_down"
         agent.state.diagnosis.hypothesis = {"cause": "foreign_mac", "status": "testing"}
@@ -1003,9 +1017,10 @@ class TestIdentificationLadder:
     def test_caller_intro_captured_and_result_released(self, db_connection):
         from agent.narrator_flow import state_facts_block
         from agent.perception_flow import pre_turn_guards
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020101")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent.state.identity.result_pending = True  # the caller question was posed last reply
@@ -1029,9 +1044,10 @@ class TestIdentificationLadder:
     def test_engine_resolves_dictated_correction(self, db_connection):
         from agent.identification_flow import prefill_slots_from_text
         from agent.perception_flow import pre_turn_guards
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020105")  # phone = 60-7 account
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020105")  # phone = 60-7 account
         agent.state.messages.append(
             {"role": "assistant", "content": "Ar skambinate dėl Tilžės g. 60, butas 7?"}
         )
@@ -1070,11 +1086,12 @@ class TestVoiceGuardsRound5:
     def test_backchannel_holds_asking_steps(self, db_connection, monkeypatch):
         import os
 
-        from agent.react_agent import ReactAgent
         from agent.walker_flow import walk_resolution
 
+        from tests.calls import make_agent
+
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
         agent.state.resolution.procedure = {
@@ -1092,9 +1109,10 @@ class TestVoiceGuardsRound5:
 
     def test_caller_intro_with_stt_question_mark_is_captured(self, db_connection):
         from agent.perception_flow import pre_turn_guards
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020101")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent.state.identity.result_pending = True
@@ -1107,9 +1125,10 @@ class TestVoiceGuardsRound5:
 
     def test_inform_close_gated_until_news_told(self, db_connection):
         from agent.closing_flow import maybe_close_inform
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060020101")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent.state.identity.result_pending = True  # ladder still open, news NOT delivered
@@ -1122,10 +1141,11 @@ class TestVoiceGuardsRound5:
 
         from agent.identification_flow import identification_scripted_reply
         from agent.perception_flow import pre_turn_guards
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
@@ -1154,11 +1174,12 @@ class TestVoiceGuardsRound5:
         import os
 
         from agent.perception_flow import pre_turn_guards
-        from agent.react_agent import ReactAgent
         from agent.walker_flow import walk_resolution
 
+        from tests.calls import make_agent
+
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
         agent.state.resolution.procedure = {
@@ -1190,10 +1211,11 @@ class TestAnalysisStep2:
         assert extract_anamnesis("Vakar dar veikė")["when"] == "vakar"
 
     def test_hypothesis_cites_both_sides(self, db_connection):
-        from agent.react_agent import ReactAgent
         from agent.walker_flow import open_hypothesis
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012353")
         agent.state.intake.anamnesis_when = "šiandien"
         agent.state.intake.anamnesis_trigger = "audra"
         open_hypothesis(agent.state, agent.runtime, "no_mac_observed")
@@ -1204,11 +1226,12 @@ class TestAnalysisStep2:
     def test_ticket_carries_anamnesis(self, db_connection, monkeypatch):
         import os
 
-        from agent.react_agent import ReactAgent
         from agent.walker_flow import ensure_action_done
 
+        from tests.calls import make_agent
+
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_when = "vakar"
@@ -1241,10 +1264,10 @@ class TestSideTopicNode:
     def _diagnosing(self, monkeypatch):
         import os
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {
@@ -1404,9 +1427,9 @@ class TestReviewGaps:
         from agent.ticket_flow import begin_ticket_dialogue
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {
@@ -1525,9 +1548,9 @@ class TestBargeInCancel:
         # blanket asked=False re-asked the question they just answered. The
         # flags stay; the NEXT turn decides (answer routes / question anchors /
         # unclear holds and re-asks naturally).
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -1548,13 +1571,14 @@ class TestBargeInCancel:
 
     def test_stale_cancel_never_kills_the_next_turn(self, db_connection):
         from agent.identification_flow import identification_scripted_reply
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012353")
-        agent.request_cancel()  # interrupt raced past the turn's end
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012353")
+        agent.runtime.cancel.set()  # interrupt raced past the turn's end
         reply = identification_scripted_reply(agent.state, agent.runtime, "Labadiena!")
         assert reply  # scripted path unaffected
-        assert agent._cancel_requested.is_set()  # cleared only at a STREAM turn start
+        assert agent.runtime.cancel.is_set()  # cleared only at a STREAM turn start
 
 
 class TestSmallTalkBeforeProblem:
@@ -1563,9 +1587,9 @@ class TestSmallTalkBeforeProblem:
     Small talk pre-problem is scripted now; the facts block guards the rest."""
 
     def _fresh(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="+37060012353")
+        return make_agent("+37060012353")
 
     def test_greeting_gets_scripted_ask_problem(self, db_connection):
         from agent.identification import phrase
@@ -1604,9 +1628,9 @@ class TestScriptedWrapUp:
     a garbled goodbye ("Nusigaro") had looped 'nesupratau, pakartokite' forever."""
 
     def _informed(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060020101")
+        agent = make_agent("+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent.state.diagnosis.news_delivered = True
@@ -1656,9 +1680,9 @@ class TestThinkerBoundaries:
     deterministic mechanics (ladder, clarify contract, wrap-up)."""
 
     def _agent(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.identity.caller_name = "Jonas"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
@@ -1734,9 +1758,9 @@ class TestDriveRepeatBailout:
         # bailout now matters where the SOLVER actually drives: the bridge
         # phase (evidence confirmed, has_computer=yes -> _evidence_drive None).
         monkeypatch.setenv("SOLVER_DRIVE", "on")
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.identity.caller_name = "Andrius"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
@@ -1767,9 +1791,9 @@ class TestDriveRepeatBailout:
         # The rewind trap is dead: a benched solver no longer strands the call
         # at a stale step — missing evidence still gets asked deterministically.
         monkeypatch.setenv("SOLVER_DRIVE", "on")
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.identity.caller_name = "Andrius"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
@@ -1787,11 +1811,11 @@ class TestBindDiscipline:
     def _driving_agent(self, monkeypatch, simulate="on"):
         import os
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
         monkeypatch.setitem(os.environ, "SIMULATE_BRIDGE", simulate)
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.caller_name = "Andrius"
@@ -1877,10 +1901,10 @@ class TestTicketDialogue:
     def _agent_at_consent(self, monkeypatch):
         import os
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
-        agent = ReactAgent(caller_phone="+37060012353")
+        agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.caller_name = "Andrius"
@@ -2294,9 +2318,10 @@ class TestPromptPrefixHygiene:
 
     def test_node_prompt_folds_into_the_leading_system(self, db_connection):
         from agent.narrator_flow import build_messages
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         messages = build_messages(
             agent.state, agent.runtime, user_input="Labas", node_prompt="NODE-RULES-MARKER"
         )
@@ -2312,9 +2337,10 @@ class TestPromptPrefixHygiene:
 
     def test_directive_turn_keeps_lean_prompt_without_node_rules(self, db_connection):
         from agent.narrator_flow import build_messages
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
         messages = build_messages(
             agent.state, agent.runtime, user_input="Labas", node_prompt="NODE-RULES-MARKER"

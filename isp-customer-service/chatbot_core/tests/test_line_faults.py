@@ -9,9 +9,10 @@ import pytest
 
 def _agent(verdict, step, monkeypatch, reason_now):
     from agent import walker_flow
-    from agent.react_agent import ReactAgent
 
-    agent = ReactAgent(caller_phone="+37060030305")
+    from tests.calls import make_agent
+
+    agent = make_agent("+37060030305")
     agent.state.identity.customer_id = "CUST305"
     agent.state.intake.problem_type = "internet_down"
     agent.state.resolution.procedure = {"verdict": verdict, "step": step, "asked": True}
@@ -164,19 +165,18 @@ class TestBlendGuard:
         from types import SimpleNamespace
 
         from agent.graph_v2.nodes.closing import closing_node
-        from agent.graph_v2.state import TurnScratch
-        from agent.runtime import build_runtime
+        from agent.graph_v2.state import GraphState, TurnScratch
         from langgraph.runtime import Runtime
 
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
         agent.state.closing.case_closed = True
         agent.state.closing.closed_reason = "resolved"
-        runtime = Runtime(context=build_runtime(agent))
+        runtime = Runtime(context=agent.runtime)
         upd = closing_node(
             agent.state.model_copy(update={"turn": TurnScratch(user_input="Internetas neveikia.")}),
             runtime,
         )
-        s = agent.state  # the node's working copy — the state after the turn
+        s = GraphState(**upd)  # the state after the turn
         assert upd["turn"].reply  # registracijos dialogas, ne „geros dienos"
         assert "geros dienos" not in upd["turn"].reply.lower()
         assert not s.closing.is_complete

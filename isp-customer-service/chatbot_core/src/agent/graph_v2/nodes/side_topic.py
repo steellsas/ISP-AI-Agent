@@ -15,17 +15,16 @@ from langgraph.runtime import Runtime
 
 from ...runtime import AgentRuntime
 from ..router import SIDE_TOPIC
-from ..runtime import SIDE_TOPIC_PROMPT, narrate, run_on_state
+from ..runtime import SIDE_TOPIC_PROMPT, narrate, node_update
 from ..state import GraphState
 
 
 def side_topic_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
-    engine = runtime.context.engine
+    rt = runtime.context
+    state = state.model_copy(deep=True)
 
     def body() -> str:
         user_input = state.turn.user_input
-        return narrate(
-            engine.state, engine.runtime, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC
-        )
+        return narrate(state, rt, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
 
-    return run_on_state(engine, state, body)
+    return node_update(state, body())

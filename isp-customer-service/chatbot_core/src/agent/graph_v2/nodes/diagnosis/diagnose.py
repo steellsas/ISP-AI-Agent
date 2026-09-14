@@ -22,15 +22,14 @@ from typing import Any
 from langgraph.runtime import Runtime
 
 from ....runtime import AgentRuntime
-from ...runtime import run_on_state
+from ...runtime import node_update
 from ...state import GraphState
 
 
 def diagnose_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
-    engine = runtime.context.engine
-    return run_on_state(
-        engine, state, lambda: _diagnose(engine.state, engine.runtime, state.turn.user_input)
-    )
+    rt = runtime.context
+    state = state.model_copy(deep=True)
+    return node_update(state, _diagnose(state, rt, state.turn.user_input))
 
 
 def _diagnose(state: Any, rt: Any, user_input: str | None) -> None:

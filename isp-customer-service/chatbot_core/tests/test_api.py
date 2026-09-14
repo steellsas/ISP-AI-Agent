@@ -369,7 +369,7 @@ class TestVoiceChannel:
             assert done is not None and done["interrupted"] is True
         from app.main import manager
 
-        engine = manager.get(sid).session._agent
+        engine = manager.get(sid).session
         # an unheard "?" upgrades the tail into the strong re-ask directive
         tail = engine.state.voice.undelivered_tail or engine.state.voice.unheard_question
         last_assistant = next(
@@ -429,7 +429,7 @@ class TestVoiceChannel:
         sid = _create(client)["session_id"]
         from app.main import manager
 
-        manager.get(sid).session._agent.state.closing.is_complete = True
+        manager.get(sid).session.state.closing.is_complete = True
         with client.websocket_connect(f"/ws/call/{sid}") as ws:
             ws.send_bytes(b"RIFF-fake-wav-utterance")
             ended = False

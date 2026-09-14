@@ -12,9 +12,9 @@ class TestClosing:
     so the agent does not loop goodbyes."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="unknown")
+        return make_agent("unknown")
 
     def test_farewell_ends_the_call(self):
         from agent.closing_flow import maybe_finish
@@ -68,9 +68,9 @@ class TestCaseStateTransitions:
     """_update_state_from_observation drives the END-state flags."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="unknown")
+        return make_agent("unknown")
 
     def test_close_case_observation_sets_closed(self):
         import json

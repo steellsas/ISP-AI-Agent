@@ -119,9 +119,9 @@ class _CaptureTracer:
 
 
 def _diagnosing_agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    agent = ReactAgent(caller_phone="+37060012353", tracer=_CaptureTracer())
+    agent = make_agent("+37060012353", tracer=_CaptureTracer())
     agent.state.identity.customer_id = "CUST009"
     agent.state.intake.problem_type = "internet_down"
     agent.state.diagnosis.hypothesis = {

@@ -6,9 +6,9 @@ own earlier lines back in; nothing is ever deleted from state.messages.
 
 
 def _agent(db_connection=None):
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    agent = ReactAgent(caller_phone="+37060012353")
+    agent = make_agent("+37060012353")
     agent.state.intake.problem_type = "internet_down"
     agent.state.intake.anamnesis_when = "vakar"
     agent.state.identity.customer_id = "CUST009"

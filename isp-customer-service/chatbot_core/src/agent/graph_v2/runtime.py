@@ -4,16 +4,16 @@ Shared node runtime — the only code nodes share besides GraphState.
 Two seams:
 - `narrate()` — the scoped LLM turn with token streaming (node trace event +
   stream writer contract).
-- `run_on_state()` — the node contract: the node body runs on a working copy
-  of the graph state and the node returns the full state as its update, so the
-  checkpoint is the only state between nodes and between turns.
+- `node_update()` — the node contract: a node works on a copy of the graph
+  state and returns the full state as its update, so the checkpoint is the only
+  state between nodes and between turns.
+- `narrator()` — the LLM narrator loop (ReactAgent) for a node run.
 
 Tool scopes live in tool_scopes.py (re-exported here for the nodes).
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 from langgraph.config import get_stream_writer
@@ -40,7 +40,7 @@ def narrate(
     rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
     writer = get_stream_writer()
     parts: list[str] = []
-    for token in rt.engine.run_turn_scoped_stream(user_input, allowed_tools, node_prompt):
+    for token in narrator(state, rt).run_turn_scoped_stream(user_input, allowed_tools, node_prompt):
         writer(token)
         parts.append(token)
     return "".join(parts)
@@ -58,7 +58,7 @@ def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply
         state.dialog.last_heard = user_input.strip()
         rt.tracer.emit("user_turn", text=user_input)
         state.messages.append({"role": "user", "content": user_input})
-    rt.engine._emit_scripted_reply(reply)
+    narrator(state, rt)._emit_scripted_reply(reply)
     # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
     # END the call like an LLM one — the hang-up detector ran only on the LLM
     # path, so every trailing garbled turn earned a fresh goodbye.
@@ -71,14 +71,16 @@ def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply
         pass
 
 
-def run_on_state(engine: Any, state: GraphState, body: Callable[[], str | None]) -> dict[str, Any]:
-    """Run a node body on a working copy of `state` and return the full update.
-
-    The engine's flows read and write `engine.state`; it is set to a deep copy of
-    the node's input state, so nothing outlives the node except what it returns.
-    A non-None result of `body` is the turn's reply."""
-    engine.state = state.model_copy(deep=True)
-    reply = body()
+def node_update(state: GraphState, reply: str | None = None) -> dict[str, Any]:
+    """The node contract: a node works on its own copy of the state and returns
+    the whole state as its update; a non-None `reply` is the turn's reply."""
     if reply is not None:
-        engine.state.turn.reply = reply
-    return {name: getattr(engine.state, name) for name in GraphState.model_fields}
+        state.turn.reply = reply
+    return {name: getattr(state, name) for name in GraphState.model_fields}
+
+
+def narrator(state: GraphState, rt: Any):
+    """The LLM narrator loop (ReactAgent) for one node run on `state`."""
+    from ..react_agent import ReactAgent
+
+    return ReactAgent(state, rt)

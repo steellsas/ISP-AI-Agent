@@ -6,8 +6,9 @@ Run: pytest tests/test_tool_gateway.py -v
 
 import json
 
-from agent.react_agent import ReactAgent
 from agent.tooling import ToolGateway
+
+from tests.calls import make_agent
 
 
 class _Tracer:
@@ -33,7 +34,7 @@ class _Provider:
 
 def _agent(provider):
     tracer = _Tracer()
-    agent = ReactAgent(caller_phone="+37060012353", tracer=tracer)
+    agent = make_agent("+37060012353", tracer=tracer)
     agent.tools = ToolGateway(provider)
     tracer.events.clear()
     return agent, tracer

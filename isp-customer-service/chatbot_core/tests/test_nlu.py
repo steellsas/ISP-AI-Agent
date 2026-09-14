@@ -183,10 +183,11 @@ class TestPrefillWiring:
         """A caller turn populates the slots before the LLM, via the agent."""
         from unittest.mock import patch
 
-        from agent.react_agent import ReactAgent
         from agent.slots import SlotStatus
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.state.dialog.turn_count = 1  # skip the greeting branch
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
@@ -208,9 +209,10 @@ class TestPrefillWiring:
         from unittest.mock import patch
 
         from agent.narrator_flow import state_facts_block
-        from agent.react_agent import ReactAgent
 
-        agent = ReactAgent(caller_phone="+37060012345")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
         agent.state.dialog.turn_count = 1
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()

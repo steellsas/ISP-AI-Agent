@@ -11,6 +11,7 @@ import json
 
 import pytest
 
+from tests.calls import make_agent
 from tests.tool_fakes import install_fake_tools
 
 
@@ -25,9 +26,9 @@ class TestEngineDrivenAction:
     The real bind→telemetry flip is covered in test_port_actions / test_verdict."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="unknown")
+        return make_agent("unknown")
 
     def _at_bind(self, agent):
         agent.state.identity.customer_id = "CUST105"
@@ -177,9 +178,9 @@ class TestIdentifyThenDiagnoseSameTurn:
     gedimų", "kokie įrenginiai prijungti?") — or the caller goes quiet and it stalls."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="unknown")
+        return make_agent("unknown")
 
     def test_resolve_triggers_diagnosis_and_carries_the_finding(self, db_connection):
         from agent.narrator_flow import augment_tool_result, result_narration_tail
@@ -260,9 +261,9 @@ class TestHypothesisObject:
     tracked)."""
 
     def _agent(self):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="unknown")
+        return make_agent("unknown")
 
     def _diagnose(self, agent, reason):
         from agent.narrator_flow import update_state_from_observation
@@ -342,7 +343,7 @@ class TestTurnHolding:
     def _at_step(self, monkeypatch, step_id, reason="no_mac_observed"):
         import agent.react_agent as ra
 
-        agent = ra.ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -414,7 +415,7 @@ class TestBridgeSeesDevice:
     def _at_plug(self, monkeypatch, reason):
         import agent.react_agent as ra
 
-        agent = ra.ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -456,7 +457,7 @@ class TestHypothesisRejection:
     def _at_restored(self, monkeypatch, telemetry_after):
         import agent.react_agent as ra
 
-        agent = ra.ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST105"
         agent.state.resolution.procedure = {
             "verdict": "foreign_mac",

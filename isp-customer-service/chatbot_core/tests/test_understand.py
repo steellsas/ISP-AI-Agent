@@ -15,12 +15,12 @@ import pytest
 def _diagnosing_agent(monkeypatch, understand_on=True):
     import os
 
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
     if understand_on:
         monkeypatch.setitem(os.environ, "CLASSIFIER", "on")
         monkeypatch.setitem(os.environ, "UNDERSTAND", "on")
-    agent = ReactAgent(caller_phone="+37060012353")
+    agent = make_agent("+37060012353")
     agent.state.identity.customer_id = "CUST009"
     agent.state.intake.problem_type = "internet_down"
     agent.state.resolution.procedure = {

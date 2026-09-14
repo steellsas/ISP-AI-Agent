@@ -109,10 +109,11 @@ class TestIntegrationViaAgentTool:
         import json
 
         from agent.narrator_flow import update_state_from_observation
-        from agent.react_agent import ReactAgent
         from agent.tools import resolve_address
 
-        agent = ReactAgent(caller_phone="+37060020105")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020105")
         obs = json.dumps(
             resolve_address(
                 city="Šiauliai", street="Tilžės", house_number="60", apartment_number="7"

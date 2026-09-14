@@ -49,6 +49,12 @@ def _directive_system_prompt() -> str:
     return _DIRECTIVE_PROMPT
 
 
+def _system_prompt_for(caller_phone: str, language: str) -> str:
+    from .react_agent import system_prompt_for
+
+    return system_prompt_for(caller_phone, language)
+
+
 def build_messages(
     state,
     rt,
@@ -87,7 +93,7 @@ def build_messages(
         # the cacheable prefix (one stable prefix per node; providers keep
         # several prefixes warm in parallel). It used to trail the facts
         # block, re-sent uncached every turn.
-        prefix = rt.engine.system_prompt
+        prefix = _system_prompt_for(state.identity.caller_phone, rt.config.language)
         if node_prompt:
             prefix = f"{prefix}\n\n{node_prompt}"
         messages = [{"role": "system", "content": prefix}]
@@ -152,7 +158,9 @@ def scoped_tools_schema(state, rt, allowed_tools: frozenset[str] | None = None) 
     # only words the one goal in the facts block.
     if state.turn.directives.ident or state.turn.directives.ticket:
         return []
-    schema = rt.engine.tools_schema
+    from .tools import get_tools_schema
+
+    schema = get_tools_schema()
     if allowed_tools is not None:
         schema = [t for t in schema if t.get("function", {}).get("name") in allowed_tools]
     if state.resolution.procedure is not None:

@@ -8,8 +8,9 @@ management, model swap, prompt changes — can evolve *behind* this boundary
 without breaking any caller. This is the "lock the interface first" step:
 later work (e.g. memory management) plugs in inside, not on top.
 
-Design: AgentSession owns the LangGraph v2 graph and the ReactAgent engine the
-graph nodes call into, and exposes a small, intentional surface.
+Design: AgentSession owns the call's LangGraph graph and its AgentRuntime and
+exposes a small, intentional surface. The call state lives in the checkpoint;
+the session keeps the last committed snapshot for read-only views.
 
 Usage:
     session = AgentSession(caller_phone="+37060012345", language="lt")
@@ -24,7 +25,8 @@ from typing import Any
 
 from .config import AgentConfig
 from .graph_v2 import GraphState, TurnScratch, build_graph
-from .react_agent import ReactAgent
+from .graph_v2.runtime import narrator
+from .runtime import new_call
 
 
 class AgentSession:
@@ -52,18 +54,13 @@ class AgentSession:
             thread_id: Continue an existing call from the checkpointer (defaults
                 to this session's own id — a new call).
         """
-        self._agent = ReactAgent(
-            caller_phone=caller_phone,
-            language=language,
-            config=config,
-            tracer=tracer,
-        )
-
-        # LangGraph v2: typed GraphState, SqliteSaver checkpoints, diagnosis
-        # subgraph, one node per file.
-        self._runtime = self._agent.runtime
+        # The initial state seeds the first invoke; afterwards the checkpoint
+        # holds the call and _state is the last committed snapshot.
+        self._state, self._runtime = new_call(caller_phone, language, config, tracer)
         self._graph = build_graph(checkpointer)
-        self._graph_config = {"configurable": {"thread_id": thread_id or self._agent.session_id}}
+        self._graph_config = {"configurable": {"thread_id": thread_id or self._runtime.session_id}}
+        if thread_id:
+            self._refresh_state()
         # Results of background work (analyst, speculation, telemetry refresh),
         # handed to the NEXT turn through its graph input — no thread writes state.
         self._inbox: dict[str, Any] = {}
@@ -83,34 +80,37 @@ class AgentSession:
         values = self._graph.get_state(self._graph_config).values
         update: dict[str, Any] = {}
         if not values:
-            initial = self._agent.state
+            initial = self._state
             update = {name: getattr(initial, name) for name in type(initial).model_fields}
         if inbox.get("analyst_notes"):
-            voice = values["voice"] if values else self._agent.state.voice
+            voice = values["voice"] if values else self._state.voice
             update["voice"] = voice.model_copy(update={"analyst_notes": inbox["analyst_notes"]})
         update["turn"] = turn
         return update
 
     def _current_state(self) -> GraphState:
-        """The call state as checkpointed after the last turn (the engine's initial
-        state before the first one)."""
+        """The call state as checkpointed after the last turn (the initial state
+        before the first one)."""
         values = self._graph.get_state(self._graph_config).values
-        return GraphState(**values) if values else self._agent.state
+        return GraphState(**values) if values else self._state
+
+    def _refresh_state(self) -> None:
+        self._state = self._current_state()
 
     def _write_between_turns(self, write) -> None:
-        """Run an engine write outside a turn: on a copy of the checkpointed state,
-        stored back with graph.update_state (before the first turn the engine's
-        initial state is edited and seeds the first invoke)."""
+        """Run a narrator write outside a turn — `write(agent)` on a copy of the
+        checkpointed state, stored back with graph.update_state (before the first
+        turn the initial state is edited and seeds the first invoke)."""
         if not self._graph.get_state(self._graph_config).values:
-            write()
+            write(narrator(self._state, self._runtime))
             return
-        self._agent.state = self._current_state().model_copy(deep=True)
-        write()
-        state = self._agent.state
+        state = self._current_state().model_copy(deep=True)
+        write(narrator(state, self._runtime))
         self._graph.update_state(
             self._graph_config,
             {name: getattr(state, name) for name in type(state).model_fields if name != "turn"},
         )
+        self._state = state
 
     @staticmethod
     def _graph_reply(out: dict) -> str | None:
@@ -125,17 +125,17 @@ class AgentSession:
         delete, eval) so every conversation's trace is properly closed. The
         hang-up net and the call record run on the checkpointed state.
         """
-        self._write_between_turns(lambda: self._agent.end_session(outcome=outcome))
+        self._write_between_turns(lambda agent: agent.end_session(outcome=outcome))
 
     @property
     def session_id(self) -> str:
         """The conversation's trace id (also the JSONL filename stem)."""
-        return self._agent.session_id
+        return self._runtime.session_id
 
     @property
     def tracer(self):
         """The ConversationTracer for this call (lets the voice pipeline log)."""
-        return self._agent.tracer
+        return self._runtime.tracer
 
     def asr_context(self) -> str | None:
         """Per-turn STT biasing context (VOICE_PLAN V1): the agent's LAST
@@ -145,7 +145,7 @@ class AgentSession:
         ("nedega"). Best-effort — None on any hiccup, the ASR then uses only
         its static domain prompt."""
         try:
-            a = self._agent
+            a = self
             parts: list[str] = []
             q = (a.state.dialog.last_question or "").strip()
             if q:
@@ -172,12 +172,12 @@ class AgentSession:
     def apply_overlay(self, texts: list[str]) -> None:
         """Duplex-hearing 2: hand the caller's over-the-voice words to the
         engine (deterministic ingest + one-shot narrator note)."""
-        self._write_between_turns(lambda: self._agent.apply_overlay(texts))
+        self._write_between_turns(lambda agent: agent.apply_overlay(texts))
 
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1: after a barge-in, keep in history only the sentences the caller
         actually heard; the unheard tail resurfaces via the narrator next turn."""
-        self._write_between_turns(lambda: self._agent.apply_delivery(sentences, delivered))
+        self._write_between_turns(lambda agent: agent.apply_delivery(sentences, delivered))
 
     def endpoint_hint(self, partial_text: str) -> tuple[str, int | None]:
         """E2 duplex: how much trailing silence the utterance-so-far deserves —
@@ -186,7 +186,7 @@ class AgentSession:
         try:
             from .endpoint import classify_endpoint
 
-            return classify_endpoint(self._agent.state, self._agent.runtime, partial_text)
+            return classify_endpoint(self._state, self._runtime, partial_text)
         except Exception:  # pragma: no cover - a hint must never break a turn
             return ("normal", None)
 
@@ -195,7 +195,7 @@ class AgentSession:
         narrator's next turn (never facts, never routing)."""
         from .analyst import run_analyst
 
-        notes = run_analyst(self._agent.state, self._agent.runtime)
+        notes = run_analyst(self._state, self._runtime)
         if notes:
             with self._inbox_lock:
                 self._inbox["analyst_notes"] = notes
@@ -205,7 +205,7 @@ class AgentSession:
         thread entry — pure planning + standalone LLM/TTS, no state writes)."""
         from .speculation import precompute
 
-        precompute(self._agent.state, self._agent.runtime, synthesize)
+        precompute(self._state, self._runtime, synthesize)
 
     def speculation_match(self, transcript: str) -> bytes | None:
         """S1 serve gate: when the utterance maps to a prepared branch, arm the
@@ -213,7 +213,7 @@ class AgentSession:
         audio; None on any doubt — the normal path runs untouched."""
         from .speculation import match
 
-        branch = match(self._agent.state, self._agent.runtime, transcript)
+        branch = match(self._state, self._runtime, transcript)
         if not branch:
             return None
         with self._inbox_lock:
@@ -229,15 +229,13 @@ class AgentSession:
         """S2: a READ-ONLY telemetry refresh while the caller is busy — the
         result is folded in at the next turn's start (never mid-turn)."""
         try:
-            engine = self._agent
-            cid = engine.state.identity.customer_id
-            if not cid or engine.state.closing.case_closed:
+            state = self._state
+            cid = state.identity.customer_id
+            if not cid or state.closing.case_closed:
                 return
             from .tooling import telemetry
 
-            result = telemetry(
-                engine.state, engine.runtime, mode="recheck", reason="background_refresh"
-            )
+            result = telemetry(state, self._runtime, mode="recheck", reason="background_refresh")
         except Exception:  # pragma: no cover - background best-effort
             return
         with self._inbox_lock:
@@ -246,7 +244,7 @@ class AgentSession:
     def is_pending_answer(self, text: str) -> bool:
         """Does `text` answer the evidence question that is currently out? (The
         deterministic reader — used to tell a caller's answer from an echo.)"""
-        s = self._agent.state
+        s = self._state
         key = s.diagnosis.pending_evidence_key
         if not key:
             return False
@@ -261,10 +259,8 @@ class AgentSession:
         the gate for the silence check-in (G3): 'Kaip sekasi?' only makes sense
         when the caller was asked to DO or ANSWER something."""
         try:
-            a = self._agent
-            return not a.state.closing.case_closed and bool(
-                (a.state.dialog.last_question or "").strip()
-            )
+            s = self._state
+            return not s.closing.case_closed and bool((s.dialog.last_question or "").strip())
         except Exception:  # pragma: no cover
             return False
 
@@ -272,10 +268,10 @@ class AgentSession:
         """The agent's most recent spoken reply (echo reference for L3a) —
         falls back to the standing question when no reply is recorded yet."""
         try:
-            for m in reversed(self._agent.state.messages):
+            for m in reversed(self._state.messages):
                 if m.get("role") == "assistant" and (m.get("content") or "").strip():
                     return str(m["content"])
-            return self._agent.state.dialog.last_question or ""
+            return self._state.dialog.last_question or ""
         except Exception:  # pragma: no cover
             return ""
 
@@ -284,7 +280,7 @@ class AgentSession:
         from .perception_flow import anchor_text
 
         try:
-            return anchor_text(self._agent.state, self._agent.runtime)
+            return anchor_text(self._state, self._runtime)
         except Exception:  # pragma: no cover
             return ""
 
@@ -295,9 +291,9 @@ class AgentSession:
         The first turn has no user input — the agent greets, then waits for the
         customer's problem. Voice/telephony speak this before listening.
         """
-        return self._graph_reply(
-            self._graph.invoke(self._graph_input(None), self._graph_config, context=self._runtime)
-        )
+        out = self._graph.invoke(self._graph_input(None), self._graph_config, context=self._runtime)
+        self._refresh_state()
+        return self._graph_reply(out)
 
     def handle_turn(self, text: str) -> str:
         """
@@ -312,9 +308,9 @@ class AgentSession:
         Returns:
             The agent's reply string.
         """
-        return self._graph_reply(
-            self._graph.invoke(self._graph_input(text), self._graph_config, context=self._runtime)
-        )
+        out = self._graph.invoke(self._graph_input(text), self._graph_config, context=self._runtime)
+        self._refresh_state()
+        return self._graph_reply(out)
 
     def handle_turn_stream(self, text: str):
         """Streaming variant of handle_turn (Pillar C3): a generator yielding the
@@ -327,20 +323,23 @@ class AgentSession:
         # The diagnosis stage is a SUBGRAPH — custom writer events only surface
         # with subgraphs=True, which wraps every chunk in a (namespace, chunk)
         # pair; unwrap so transports receive raw tokens.
-        for _ns, chunk in self._graph.stream(
-            self._graph_input(text),
-            self._graph_config,
-            context=self._runtime,
-            stream_mode="custom",
-            subgraphs=True,
-        ):
-            yield chunk
+        try:
+            for _ns, chunk in self._graph.stream(
+                self._graph_input(text),
+                self._graph_config,
+                context=self._runtime,
+                stream_mode="custom",
+                subgraphs=True,
+            ):
+                yield chunk
+        finally:
+            self._refresh_state()
 
     def request_cancel(self) -> None:
         """Barge-in (Phase 5 PR3): stop the running streaming turn — the engine's
         token loop closes the LLM stream and re-asks the interrupted question.
         Thread-safe; no-op when no turn is running."""
-        self._agent.request_cancel()
+        self._runtime.cancel.set()
 
     # --- Read-only views for transports / debug UIs ------------------------
     # Exposed as properties (not the agent itself) so callers depend on this
@@ -349,19 +348,19 @@ class AgentSession:
     @property
     def is_complete(self) -> bool:
         """Whether the conversation has ended."""
-        return self._agent.state.closing.is_complete
+        return self._state.closing.is_complete
 
     @property
     def state(self) -> GraphState:
-        """Current conversation state (customer info, history, flags)."""
-        return self._agent.state
+        """The call state after the last turn (customer info, history, flags)."""
+        return self._state
 
     @property
     def config(self) -> AgentConfig:
         """The agent configuration in use (model, language, messages...)."""
-        return self._agent.config
+        return self._runtime.config
 
     @property
     def stats(self) -> dict[str, Any]:
         """Accumulated LLM statistics for this conversation."""
-        return self._agent.get_stats()
+        return self._runtime.llm_stats.to_dict()

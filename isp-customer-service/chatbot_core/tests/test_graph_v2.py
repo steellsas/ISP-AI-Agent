@@ -42,7 +42,7 @@ def _v2_session(tmp_path, name="cp.sqlite", phone="unknown"):
 
 def _sync_checkpoint(session):
     """Mirror fields a test set on the engine into the checkpoint the entry router reads."""
-    state = session._agent.state
+    state = session.state
     updates = {name: getattr(state, name) for name in type(state).model_fields if name != "turn"}
     session._graph.update_state(session._graph_config, updates)
 
@@ -94,6 +94,7 @@ class FakeEngine:
         }
         for target, (label, result) in recorders.items():
             monkeypatch.setattr(target, self._recorder(label, result))
+        monkeypatch.setattr("agent.graph_v2.runtime.narrator", lambda state, rt: self)
 
     def _recorder(self, label, result):
         def record(state, rt, *args):
@@ -127,7 +128,6 @@ def _fake_runtime(engine):
         tracer=engine.tracer,
         tools=None,
         cancel=threading.Event(),
-        engine=engine,
     )
 
 
@@ -296,7 +296,7 @@ class TestRouting:
         session.greeting()
         session.state.identity.customer_id = "CUST009"
         session.state.intake.problem_type = "internet_down"
-        engine = session._agent
+        engine = SimpleNamespace(state=session.state, runtime=session._runtime)
         engine.state.diagnosis.hypothesis = {
             "cause": "no_mac_observed",
             "status": "testing",

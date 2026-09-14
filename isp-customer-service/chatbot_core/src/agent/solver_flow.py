@@ -28,6 +28,12 @@ DRIVE_MAX_TURNS = 14  # hard bailout — never grind the caller forever
 logger = logging.getLogger(__name__)
 
 
+def narrator(state, rt):
+    from .graph_v2.runtime import narrator as _narrator
+
+    return _narrator(state, rt)
+
+
 def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     """Compact situation snapshot the solver reasons over: the live hypothesis, the
     raw telemetry facts (line-side truth), the caller's latest turn, and where the
@@ -286,7 +292,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     if plug_report(state, rt, user_input):
         state.resolution.bridge_plug_reported = True
         reply = drive_propose_fix(state, rt, "", user_input)
-        return rt.engine._commit_driven_reply(user_input, reply)
+        return narrator(state, rt)._commit_driven_reply(user_input, reply)
     # Discipline rule (2026-08-05): "no device" after the bridge OFFER is
     # ENGINE territory — with nothing to bridge through, the only solutions
     # are ticket-shaped, so escalate NOW. Left to the solver, this answer
@@ -307,14 +313,14 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
             accepted=True,
             reason="no device after bridge offer — deterministic",
         )
-        return rt.engine._commit_driven_reply(user_input, drive_escalate(state, rt, None))
+        return narrator(state, rt)._commit_driven_reply(user_input, drive_escalate(state, rt, None))
     # Ledger v2: the fault declares its EVIDENCE (faults.yaml) — the engine
     # asks the first missing fact, confirms/refutes from the ledger and picks
     # the declared solution. Deterministic; runs even after a solver bench,
     # so there is never a "step to rewind to". None -> the solver's turn.
     evidence_reply = evidence_drive(state, rt, user_input)
     if evidence_reply is not None:
-        return rt.engine._commit_driven_reply(user_input, evidence_reply)
+        return narrator(state, rt)._commit_driven_reply(user_input, evidence_reply)
     # Persona (R5c): the drive delegated the question's WORDING to the narrator
     # (goal directive in the facts block) — hand the turn to the narrator path.
     # Same for the FINDINGS moment (facts + conclusion + choice, said humanly).
@@ -411,7 +417,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
         rt.tracer.emit("user_turn", text=user_input)
         state.messages.append({"role": "user", "content": user_input})
     state.messages.append({"role": "assistant", "content": reply})
-    rt.engine._finalize_reply(reply)
+    narrator(state, rt)._finalize_reply(reply)
     return reply
 
 

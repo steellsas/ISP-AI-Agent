@@ -22,15 +22,14 @@ from langgraph.runtime import Runtime
 from ....closing_flow import maybe_close_inform
 from ....runtime import AgentRuntime
 from ...router import DIAGNOSIS
-from ...runtime import run_on_state
+from ...runtime import node_update
 from ...state import GraphState
 
 
 def solver_gate_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
-    engine = runtime.context.engine
-    return run_on_state(
-        engine, state, lambda: _solver_gate(engine.state, engine.runtime, state.turn.user_input)
-    )
+    rt = runtime.context
+    state = state.model_copy(deep=True)
+    return node_update(state, _solver_gate(state, rt, state.turn.user_input))
 
 
 def _solver_gate(state: Any, rt: Any, user_input: str | None) -> str | None:

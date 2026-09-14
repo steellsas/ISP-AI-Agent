@@ -10,9 +10,9 @@ from agent.evidence import FactConfirm
 
 
 def _agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    agent = ReactAgent(caller_phone="+37060012353")
+    agent = make_agent("+37060012353")
     agent.state.identity.customer_id = "CUST009"
     agent.state.intake.problem_type = "internet_down"
     agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
@@ -32,9 +32,9 @@ class TestApplyOverlay:
         assert "ĮSITERPĖ" not in (state_facts_block(agent.state, agent.runtime) or "")  # one-shot
 
     def test_address_slots_prefill_from_overlay(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         agent.apply_overlay(["dėl Vilniaus gatvės 29 Šiauliai"])
         p = agent.state.identity.profile

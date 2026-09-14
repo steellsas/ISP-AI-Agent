@@ -7,9 +7,9 @@ be jokių — fallback. „Pokalbis visuomet baigiasi aiškumu."
 
 
 def _agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    a = ReactAgent(caller_phone="+37060020101")
+    a = make_agent("+37060020101")
     a.state.identity.customer_id = "CUST101"
     a.state.identity.customer_address = "Šiauliai, Tilžės g. 60-3"
     a.state.intake.problem_type = "internet_down"
@@ -411,9 +411,10 @@ class TestNodeFaultInform:
 
     def test_deferred_result_registers_ticket_and_informs(self, db_connection):
         from agent.identification_flow import identification_scripted_reply
-        from agent.react_agent import ReactAgent
 
-        a = ReactAgent(caller_phone="+37060030306")
+        from tests.calls import make_agent
+
+        a = make_agent("+37060030306")
         a.state.identity.customer_id = "CUST306"
         a.state.identity.customer_address = "Šiauliai, Vilties g. 17-2"
         a.state.intake.problem_type = "internet_down"

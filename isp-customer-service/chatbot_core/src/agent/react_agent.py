@@ -15,9 +15,8 @@ Callers use agent.session.AgentSession; the engine is internal.
 
 import json
 import logging
-import threading
 from contextlib import suppress
-from dataclasses import dataclass
+from functools import lru_cache
 
 # LLM client
 from src.services.llm.client import (
@@ -25,32 +24,11 @@ from src.services.llm.client import (
     stream_tool_completion,
 )
 
-from .config import AgentConfig, create_config
 from .dialog_utils import is_question, progress_key, similar
-from .graph_v2.state import DialogState, GraphState, IdentityState
+from .graph_v2.state import GraphState
 from .prompts import load_system_prompt
-from .tooling import LocalToolProvider, ToolGateway
+from .runtime import AgentRuntime
 from .trace import emit_case, tools_called_this_session, trace_note
-
-# Conversation trace (observability). Optional: if the adapter can't import,
-# fall back to a no-op so tracing never breaks the agent.
-try:
-    from src.adapters.tracing import get_tracer, new_session_id
-
-    _TRACING_AVAILABLE = True
-except ImportError:  # pragma: no cover - defensive
-    _TRACING_AVAILABLE = False
-
-    def new_session_id() -> str:
-        return "no-trace"
-
-    def get_tracer(session_id, **_kwargs):
-        class _Null:
-            def emit(self, *_a, **_k):
-                return None
-
-        return _Null()
-
 
 # Tools
 try:
@@ -71,6 +49,17 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+@lru_cache(maxsize=16)
+def system_prompt_for(caller_phone: str, language: str) -> str:
+    """The byte-stable system prompt for a call (cacheable prefix)."""
+    return load_system_prompt(
+        tools_description=get_tools_description(),
+        caller_phone=caller_phone,
+        language=language,
+    )
+
+
 # Closing rules moved to closing_flow.py (R3, docs/ROADMAP_REFACTORING.md §4);
 # the alias keeps existing imports/tests working during the migration.
 
@@ -85,62 +74,6 @@ _STUCK_REGISTER = (
 )
 
 
-@dataclass
-class LLMStats:
-    """Accumulated LLM statistics for a conversation."""
-
-    total_calls: int = 0
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    total_cost: float = 0.0
-    total_latency_ms: float = 0.0
-    cached_calls: int = 0
-    model: str = ""
-
-    @property
-    def total_tokens(self) -> int:
-        return self.total_input_tokens + self.total_output_tokens
-
-    @property
-    def average_latency_ms(self) -> float:
-        non_cached = self.total_calls - self.cached_calls
-        if non_cached > 0:
-            return self.total_latency_ms / non_cached
-        return 0.0
-
-    def add_call(
-        self,
-        input_tokens: int,
-        output_tokens: int,
-        cost: float,
-        latency_ms: float,
-        cached: bool,
-        model: str,
-    ):
-        """Add stats from one LLM call."""
-        self.total_calls += 1
-        self.total_input_tokens += input_tokens
-        self.total_output_tokens += output_tokens
-        self.total_cost += cost
-        self.total_latency_ms += latency_ms
-        if cached:
-            self.cached_calls += 1
-        self.model = model
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for UI."""
-        return {
-            "total_calls": self.total_calls,
-            "total_tokens": self.total_tokens,
-            "input_tokens": self.total_input_tokens,
-            "output_tokens": self.total_output_tokens,
-            "total_cost": self.total_cost,
-            "average_latency_ms": self.average_latency_ms,
-            "cached_calls": self.cached_calls,
-            "model": self.model,
-        }
-
-
 class ReactAgent:
     """
     ReAct pattern agent for ISP customer support.
@@ -151,93 +84,23 @@ class ReactAgent:
         system_prompt: Formatted system prompt
     """
 
-    def __init__(
-        self,
-        caller_phone: str = "unknown",
-        language: str = "lt",
-        config: AgentConfig = None,
-        tracer=None,
-    ):
-        """
-        Initialize agent.
-
-        Args:
-            caller_phone: Customer's phone number
-            language: Language code ("lt" or "en")
-            config: Agent configuration (uses default if None)
-            tracer: ConversationTracer (defaults to the configured JSONL sink).
-        """
-        # Create config with language if not provided
-        if config is None:
-            self.config = create_config(language=language)
-        else:
-            self.config = config
-
-        self.state = GraphState(
-            identity=IdentityState(caller_phone=caller_phone),
-            dialog=DialogState(max_turns=self.config.max_turns),
-        )
-
-        # Conversation trace: one file per session, identical across transports.
-        self.session_id = new_session_id()
-        self.tracer = tracer if tracer is not None else get_tracer(self.session_id)
-        self._session_ended = False
-        self.tracer.emit(
-            "session_start",
-            caller_phone=caller_phone,
-            language=self.config.language,
-            model=self.config.model,
-        )
-
-        # Initialize LLM stats tracking
-        self.llm_stats = LLMStats()
-        # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
-        # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
-        # stream closes mid-generation and the cancelled-turn bookkeeping runs
-        # (partial reply recorded, interrupted question re-asked). LangGraph
-        # runs the node to completion in the background, so an outer
-        # generator-close never reaches this loop — the flag is the only
-        # reliable cancel path (verified 2026-08-06).
-        self._cancel_requested = threading.Event()
-        # S1 speculation (2026-08-24): the branch cache prepared while the
-        # caller was answering, and the matched reply injected past the LLM.
-        self._spec_cache: dict | None = None
-        # The one gateway every tool call goes through (gate, trace, state update).
-        self.tools = ToolGateway(LocalToolProvider())
-
+    def __init__(self, state: GraphState, runtime: AgentRuntime):
+        """The narrator loop for one node run: `state` is the node's working copy,
+        `runtime` the call's dependencies."""
+        self.state = state
+        self.runtime = runtime
+        self.config = runtime.config
+        self.tracer = runtime.tracer
+        self.session_id = runtime.session_id
+        self.llm_stats = runtime.llm_stats
+        self.tools = runtime.tools
         # OpenAI function-calling schemas passed to the LLM on every step.
-        # The model picks which tools to call (tool_choice="auto"); this is the
-        # single source of truth, derived from the Tool dataclass.
         self.tools_schema = get_tools_schema()
-
-        # Load and format system prompt with language
-        self.system_prompt = load_system_prompt(
-            tools_description=get_tools_description(),
-            caller_phone=caller_phone,
-            language=self.config.language,
-        )
-
-        # The per-call runtime the flows receive (temporary home until the
-        # session owns it, M2 step 7).
-        from .runtime import build_runtime
-
-        self.runtime = build_runtime(self)
-
-        logger.info(f"ReactAgent initialized for {caller_phone} [lang={self.config.language}]")
-        if USING_REAL_TOOLS:
-            logger.info("Using REAL tools")
-        else:
-            logger.warning("Using MOCK tools")
+        self.system_prompt = system_prompt_for(state.identity.caller_phone, runtime.config.language)
 
     def get_stats(self) -> dict:
         """Get accumulated LLM statistics."""
         return self.llm_stats.to_dict()
-
-    def request_cancel(self) -> None:
-        """Ask the running streaming turn to stop (thread-safe event). Checked
-        between tokens; a no-op when no turn is running (the event is cleared at
-        the next turn's start)."""
-        self._cancel_requested.set()
 
     def on_turn_cancelled(self, spoken_text: str) -> None:
         """Barge-in cut the reply mid-generation (Phase 5 PR3): record what the
@@ -341,9 +204,9 @@ class ReactAgent:
         """Emit session_end once (idempotent). Call when the conversation ends."""
         from .executor_flow import register_ticket_from_state
 
-        if self._session_ended:
+        if self.runtime.ended.is_set():
             return
-        self._session_ended = True
+        self.runtime.ended.set()
         # Hang-up safety net (2026-08-05): the call ended MID-STRATEGY with no
         # ticket — the problem is not solved and nobody would follow up (observed
         # live: registration promised, caller hung up via the UI button, ticket
@@ -563,7 +426,7 @@ class ReactAgent:
         # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
         # slot/problem filled THIS turn counts as progress and clears the counter.
         self.state.turn.progress_key_at_start = progress_key(self.state)
-        self._cancel_requested.clear()  # a stale barge-in never cancels a NEW turn
+        self.runtime.cancel.clear()  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "supratau" directive leaks into their replies.
         if self.state.ticket.stage:
@@ -666,7 +529,7 @@ class ReactAgent:
                     except StopIteration as done:
                         message = done.value
                         break
-                    if self._cancel_requested.is_set():
+                    if self.runtime.cancel.is_set():
                         with suppress(Exception):
                             inner.close()
                         self.on_turn_cancelled("".join(streamed))

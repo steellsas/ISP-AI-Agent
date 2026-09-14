@@ -3,8 +3,8 @@ Graph assembly — add_node / add_edge / compile and NOTHING else.
 
 All logic lives in nodes/ (one node = one file) and router.py; this file only
 wires them together, so the whole flow is readable in one screen.
-Dependencies (engine, checkpointer) are injected here — nodes never reach for
-globals.
+The checkpointer is injected here and the AgentRuntime arrives per invoke as
+the graph context — nodes never reach for globals.
 
 Current shape (R3): entry router -> identification | ticket | closing |
 DIAGNOSIS SUBGRAPH (diagnose -> side_topic | solver_gate -> walker ->

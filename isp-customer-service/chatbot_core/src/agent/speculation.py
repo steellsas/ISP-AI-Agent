@@ -188,7 +188,7 @@ def _speculative_narrate(state: Any, rt: Any, directive: str) -> str | None:
 
 
 def precompute(state: Any, rt: Any, synthesize) -> None:
-    """Fill engine._spec_cache for the open question's branches. Runs in a
+    """Fill rt.speculation["cache"] for the open question's branches. Runs in a
     background thread; the cache is a plain dict swap (atomic enough for the
     serialized WS turn loop)."""
     if not enabled():
@@ -196,7 +196,7 @@ def precompute(state: Any, rt: Any, synthesize) -> None:
     try:
         plan = plan_branches(state, rt)
         if not plan:
-            rt.engine._spec_cache = None
+            rt.speculation["cache"] = None
             return
         for _value, br in plan["branches"].items():
             text = _speculative_narrate(state, rt, br["directive"])
@@ -208,7 +208,7 @@ def precompute(state: Any, rt: Any, synthesize) -> None:
             except Exception:  # pragma: no cover
                 br["audio"] = b""
         plan["branches"] = {v: b for v, b in plan["branches"].items() if b.get("text")}
-        rt.engine._spec_cache = plan if plan["branches"] else None
+        rt.speculation["cache"] = plan if plan["branches"] else None
         rt.tracer.emit(
             "speculation",
             action="prepared",
@@ -217,7 +217,7 @@ def precompute(state: Any, rt: Any, synthesize) -> None:
         )
     except Exception as e:  # pragma: no cover - never break the call
         logger.debug(f"speculation precompute failed: {e}")
-        rt.engine._spec_cache = None
+        rt.speculation["cache"] = None
 
 
 # --- matching (serve gates; conservative by design) ---------------------------
@@ -226,8 +226,8 @@ def precompute(state: Any, rt: Any, synthesize) -> None:
 def match(state: Any, rt: Any, transcript: str) -> dict[str, Any] | None:
     """The prepared branch for THIS utterance — or None on ANY doubt.
     Consumes the cache either way (one shot per question)."""
-    cache = rt.engine._spec_cache
-    rt.engine._spec_cache = None
+    cache = rt.speculation.get("cache")
+    rt.speculation["cache"] = None
     if not cache or not enabled() or not transcript:
         return None
     key = cache["pending_key"]

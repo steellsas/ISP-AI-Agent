@@ -17,7 +17,7 @@ from typing import Any
 from langgraph.runtime import Runtime
 
 from ....runtime import AgentRuntime
-from ...runtime import run_on_state
+from ...runtime import node_update
 from ...state import GraphState
 
 
@@ -25,11 +25,12 @@ def walker_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, 
     from ....solver_flow import shadow_solve
     from ....walker_flow import advance_resolution
 
-    engine = runtime.context.engine
+    rt = runtime.context
+    state = state.model_copy(deep=True)
 
     def body() -> None:
         user_input = state.turn.user_input
-        advance_resolution(engine.state, engine.runtime, user_input)
-        shadow_solve(engine.state, engine.runtime, user_input)
+        advance_resolution(state, rt, user_input)
+        shadow_solve(state, rt, user_input)
 
-    return run_on_state(engine, state, body)
+    return node_update(state, body())

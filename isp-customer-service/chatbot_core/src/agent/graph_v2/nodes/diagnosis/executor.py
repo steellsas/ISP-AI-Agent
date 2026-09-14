@@ -18,16 +18,17 @@ from typing import Any
 from langgraph.runtime import Runtime
 
 from ....runtime import AgentRuntime
-from ...runtime import run_on_state
+from ...runtime import node_update
 from ...state import GraphState
 
 
 def executor_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
     from ....walker_flow import ensure_action_done
 
-    engine = runtime.context.engine
+    rt = runtime.context
+    state = state.model_copy(deep=True)
 
     def body() -> None:
-        ensure_action_done(engine.state, engine.runtime)
+        ensure_action_done(state, rt)
 
-    return run_on_state(engine, state, body)
+    return node_update(state, body())
