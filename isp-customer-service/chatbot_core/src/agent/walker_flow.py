@@ -190,7 +190,7 @@ def ensure_action_done(engine) -> bool:
             from .evidence import solution_for
 
             if solution_for(s.diagnosis.evidence, r.get("verdict")) == "bridge":
-                engine._bridge_bound = True
+                engine.state.resolution.bridge_bound = True
     return ran
 
 
@@ -225,7 +225,7 @@ def walker_owns_turn(engine, r: dict, step) -> bool:
 
     if driver(r.get("verdict")) != "solveris":
         return True
-    if r.get("solution_synced") or getattr(engine, "_bridge_bound", False):
+    if r.get("solution_synced") or engine.state.resolution.bridge_bound:
         return True
     if step.kind in (StepKind.ESCALATE, StepKind.VERIFY):
         return True
@@ -354,13 +354,13 @@ def block_uncorroborated_escalate(engine, step, strat, label, user_input: str | 
         return False
     if not is_bare_negation(user_input):
         return False
-    if getattr(engine, "_escalate_clarify_asked", False):
+    if engine.state.resolution.escalate_clarify_asked:
         return False  # clarified once already — a repeated no is a real no
     u = engine.state.turn.understanding
     if u is not None and u.get("tipas") == "atsakymas" and (u.get("pasitikejimas") or 0) >= 0.6:
         return False  # two sources agree on the refusal — escalate may proceed
-    engine._escalate_clarify_asked = True
-    engine._escalate_clarify_pending = True
+    engine.state.resolution.escalate_clarify_asked = True
+    engine.state.resolution.escalate_clarify_due = True
     engine.tracer.emit(
         "decision",
         intent="answer",

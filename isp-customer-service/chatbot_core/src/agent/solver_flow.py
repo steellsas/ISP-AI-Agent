@@ -88,7 +88,7 @@ def build_solver_context(engine: Any, user_input: str | None) -> str:
         )
     # Bridge-phase anchor (2026-08-12): after the plug report the solver
     # kept sliding back to router/power questions — the router is HISTORY.
-    if getattr(engine, "_bridge_plug_reported", False):
+    if engine.state.resolution.bridge_plug_reported:
         lines.append(
             "TILTO FAZĖ: routeris jau pripažintas sugedusiu ir kabelis PERKIŠTAS į "
             "kompiuterį — apie routerio lemputes/maitinimą NEBEKLAUSK. Darbas dabar: "
@@ -136,23 +136,29 @@ def shadow_solve(engine: Any, user_input: str | None) -> None:
 
         # Counters the gate reasons over (owned here so the gate stays pure). Track
         # them even in shadow so the bailout/loop safeguards are exercised for real.
-        engine._solver_cycles = engine._solver_cycles + 1 if step == engine._solver_prev_step else 0
-        engine._solver_prev_step = step
+        engine.state.resolution.solver_cycles = (
+            engine.state.resolution.solver_cycles + 1
+            if step == engine.state.resolution.solver_prev_step
+            else 0
+        )
+        engine.state.resolution.solver_prev_step = step
         conf = decision.confidence if decision else 0.0
-        engine._solver_low_conf = (
-            engine._solver_low_conf + 1 if conf < DEFAULT_POLICY["confidence_floor"] else 0
+        engine.state.resolution.solver_low_conf_streak = (
+            engine.state.resolution.solver_low_conf_streak + 1
+            if conf < DEFAULT_POLICY["confidence_floor"]
+            else 0
         )
         if decision and decision.next_action in INTERNAL_ACTIONS:
-            engine._solver_internal_hops += 1
+            engine.state.resolution.solver_internal_hops += 1
         else:
-            engine._solver_internal_hops = 0
+            engine.state.resolution.solver_internal_hops = 0
 
         result = gate(
             decision,
             known_hypotheses=set(STRATEGIES),
-            low_conf_streak=engine._solver_low_conf,
-            cycles_in_step=engine._solver_cycles,
-            internal_hops=engine._solver_internal_hops,
+            low_conf_streak=engine.state.resolution.solver_low_conf_streak,
+            cycles_in_step=engine.state.resolution.solver_cycles,
+            internal_hops=engine.state.resolution.solver_internal_hops,
         )
         engine.tracer.emit(
             "shadow_decision",
@@ -264,7 +270,7 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     from .resolution import detect_no_device
 
     if engine._plug_report(user_input):
-        engine._bridge_plug_reported = True
+        engine.state.resolution.bridge_plug_reported = True
         reply = engine._drive_propose_fix("", user_input)
         return engine._commit_driven_reply(user_input, reply)
     # Discipline rule (2026-08-05): "no device" after the bridge OFFER is
@@ -323,12 +329,12 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     # in eval: 6/8 turns of variously-worded disambiguate). The promised backstop
     # takes over: the DETERMINISTIC WALKER resumes this direction for the rest of
     # the call; its own guards (stuck counter, escalate) handle the endgame.
-    if getattr(engine, "_drive_disabled", False):
+    if engine.state.resolution.drive_disabled:
         return None
-    if getattr(engine, "_drive_repeats", 0) >= 2:
-        engine._drive_disabled = True
-        engine._drive_repeats = 0
-        engine._drive_last_reply = None
+    if engine.state.resolution.drive_repeats >= 2:
+        engine.state.resolution.drive_disabled = True
+        engine.state.resolution.drive_repeats = 0
+        engine.state.resolution.drive_last_reply = None
         engine.tracer.emit(
             "drive_decision",
             action="bailout_to_walker",
@@ -395,12 +401,12 @@ def drive(engine: Any, user_input: str | None) -> str:
     from .solver import solve
 
     engine.state.dialog.last_intent = detect_turn_intent(user_input)
-    engine._drive_turns = getattr(engine, "_drive_turns", 0) + 1
+    engine.state.resolution.drive_turns = engine.state.resolution.drive_turns + 1
 
     context = engine._build_solver_context(user_input)
     # Anti-repeat nudge: last reply repeated an earlier one — tell the solver the
     # answer is already GIVEN and it must take a DIFFERENT next step.
-    if getattr(engine, "_drive_repeats", 0) >= 1:
+    if engine.state.resolution.drive_repeats >= 1:
         context += (
             "\nSVARBU: tavo praėjęs klausimas KARTOJOSI, o klientas jau atsakė ir "
             "patvirtino. PRIIMK tą atsakymą kaip faktą ir ženk KITĄ žingsnį (kita "
@@ -425,21 +431,23 @@ def drive(engine: Any, user_input: str | None) -> str:
                 }
             )
         conf = decision.confidence if decision else 0.0
-        engine._solver_low_conf = (
-            engine._solver_low_conf + 1 if conf < DEFAULT_POLICY["confidence_floor"] else 0
+        engine.state.resolution.solver_low_conf_streak = (
+            engine.state.resolution.solver_low_conf_streak + 1
+            if conf < DEFAULT_POLICY["confidence_floor"]
+            else 0
         )
-        forced = engine._drive_turns > engine._DRIVE_MAX_TURNS
+        forced = engine.state.resolution.drive_turns > engine._DRIVE_MAX_TURNS
         result = gate(
             decision,
             known_hypotheses=set(STRATEGIES),
-            low_conf_streak=engine._solver_low_conf,
+            low_conf_streak=engine.state.resolution.solver_low_conf_streak,
             # The REAL per-question cycle count (the same-reply streak) — with a
             # flat 0 here the gate's stuck detector was blind and the solver
             # looped one question 6x (observed live).
             cycles_in_step=(
-                engine._DRIVE_MAX_TURNS + 1 if forced else getattr(engine, "_drive_repeats", 0)
+                engine._DRIVE_MAX_TURNS + 1 if forced else engine.state.resolution.drive_repeats
             ),
-            internal_hops=engine._solver_internal_hops,
+            internal_hops=engine.state.resolution.solver_internal_hops,
         )
         action = result.action
         engine.tracer.emit(
@@ -458,10 +466,10 @@ def drive(engine: Any, user_input: str | None) -> str:
             say = ""
 
         if action in ("reread_telemetry", "pivot"):
-            engine._solver_internal_hops += 1
+            engine.state.resolution.solver_internal_hops += 1
             engine._refresh_diagnosis()  # re-read the line, then decide again
             continue
-        engine._solver_internal_hops = 0
+        engine.state.resolution.solver_internal_hops = 0
 
         if action == "propose_fix":
             return engine._drive_propose_fix(say, user_input)
@@ -478,17 +486,16 @@ def drive(engine: Any, user_input: str | None) -> str:
         }
         reply = say or defaults.get(action, "Atsiprašau, ar galėtumėte pakartoti?")
         norm = " ".join(reply.lower().split())
-        repeated = norm == getattr(engine, "_drive_last_reply", None)
+        repeated = norm == engine.state.resolution.drive_last_reply
         re_disambiguate = (
-            action == "disambiguate"
-            and getattr(engine, "_drive_last_action", None) == "disambiguate"
+            action == "disambiguate" and engine.state.resolution.drive_last_action == "disambiguate"
         )
         if repeated or re_disambiguate:
-            engine._drive_repeats = getattr(engine, "_drive_repeats", 0) + 1
+            engine.state.resolution.drive_repeats = engine.state.resolution.drive_repeats + 1
         else:
-            engine._drive_repeats = 0
-        engine._drive_last_reply = norm
-        engine._drive_last_action = action
+            engine.state.resolution.drive_repeats = 0
+        engine.state.resolution.drive_last_reply = norm
+        engine.state.resolution.drive_last_action = action
         if repeated:
             # Verbatim repeat still went out — at least SAY why it repeats
             # (Andrius 2026-08-11: the caller must hear the agent knows it
@@ -507,7 +514,7 @@ def close_or_register(engine: Any, say: str) -> str:
     end the call without the router-replacement registration — it becomes the
     escalate (live: 'Aš radu internetas' -> close -> ticket=None)."""
     r = engine.state.resolution.procedure or {}
-    bridged = bool(r.get("telemetry_fixed")) or getattr(engine, "_bridge_bound", False)
+    bridged = bool(r.get("telemetry_fixed")) or engine.state.resolution.bridge_bound
     if bridged and not engine.state.ticket.ticket_id:
         engine.tracer.emit(
             "drive_decision",
@@ -544,7 +551,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
     from .react_agent import execute_tool
 
     cid = engine.state.identity.customer_id
-    if getattr(engine, "_bridge_bound", False):
+    if engine.state.resolution.bridge_bound:
         return say or "Įrenginys jau pririštas — patikrinkite, ar internetas atsirado."
 
     def _device_visible() -> bool:
@@ -561,7 +568,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
     # has_computer=yes — never re-ask an established fact.
     ev_pc = engine.state.diagnosis.evidence.get("has_computer")
     if ev_pc is not None and ev_pc.get("value") == "yes":
-        engine._drive_bridge_offered = True
+        engine.state.resolution.bridge_offered = True
     # Plug-report MEMORY (round 4, 2026-08-11): the report is remembered
     # across turns — the caller said "Įkišau, laukiu" three turns ago and
     # kept being asked to plug in because each NEW turn no longer contained
@@ -570,7 +577,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
     # bridge plug and the solver jumped to see-device checks mid-power-talk.
     # plug_report keeps the unlock, WITH the computer-context requirement.
     if engine._plug_report(user_input):
-        engine._bridge_plug_reported = True
+        engine.state.resolution.bridge_plug_reported = True
     visible = _device_visible()
     # W0-A: the fix may not START before the bridge was even OFFERED — with no
     # offer, no computer on the ledger and no device on the line, a remembered
@@ -578,14 +585,14 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
     ev_pc0 = engine.state.diagnosis.evidence.get("has_computer")
     if (
         not visible
-        and not getattr(engine, "_drive_bridge_offered", False)
+        and not engine.state.resolution.bridge_offered
         and (ev_pc0 is None or ev_pc0.get("value") != "yes")
         # An explicit plug-into-COMPUTER report THIS turn implies they have
         # one — the offer would be absurd ("Įkišau į kompiuterį" -> bind path).
         and not engine._plug_report(user_input)
     ):
-        engine._bridge_plug_reported = False
-        engine._drive_bridge_offered = True
+        engine.state.resolution.bridge_plug_reported = False
+        engine.state.resolution.bridge_offered = True
         engine.tracer.emit(
             "drive_decision", action="fix_deferred", accepted=False, reason="bridge not offered"
         )
@@ -594,7 +601,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
             "laikinai paleisti internetą per kompiuterį, kol gausite naują "
             "routerį. Ar turite kompiuterį?"
         )
-    if not getattr(engine, "_bridge_plug_reported", False) and not visible:
+    if not engine.state.resolution.bridge_plug_reported and not visible:
         # The work is not done yet — the fix must WAIT for the client. And the
         # FIRST deferral must be the actual TRANSITION + OFFER: live 2026-08-05
         # the solver jumped straight to bind-speak ("pririšiu įrenginį") without
@@ -603,8 +610,8 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
         engine.tracer.emit(
             "drive_decision", action="fix_deferred", accepted=False, reason="not plugged yet"
         )
-        if not getattr(engine, "_drive_bridge_offered", False):
-            engine._drive_bridge_offered = True
+        if not engine.state.resolution.bridge_offered:
+            engine.state.resolution.bridge_offered = True
             return (
                 "Panašu, kad routeris sugedęs — telefonu jo neprikelsime. Galiu "
                 "laikinai paleisti internetą per kompiuterį, kol gausite naują "
@@ -622,7 +629,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
         obs = execute_tool("update_mac", {"customer_id": cid})
         engine.tracer.emit("tool_call", name="update_mac", args={"customer_id": cid})
         engine._augment_tool_result("update_mac", obs)  # chains reset_port + re-diagnose
-        engine._bridge_bound = True
+        engine.state.resolution.bridge_bound = True
     except Exception as e:
         engine._trace_note("drive_propose_fix", str(e), level="error")
     # Position the walker on the VERIFY step (the step after the bind, read
@@ -664,15 +671,15 @@ def bridge_fail_step(engine: Any) -> str:
     from .evidence import LABELS, VALUE_LT, fault_bridge_fail, spec_for
 
     verdict = (engine.state.resolution.procedure or {}).get("verdict")
-    stage = getattr(engine, "_bridge_fail_stage", 0)
+    stage = engine.state.resolution.bridge_fail_stage
     if stage == 0:
-        engine._bridge_fail_stage = 1
+        engine.state.resolution.bridge_fail_stage = 1
         return (
             "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
             "kabelis įkištas iki galo, ir pasakykite."
         )
     if stage == 1:
-        engine._bridge_fail_stage = 2
+        engine.state.resolution.bridge_fail_stage = 2
         spec = spec_for(verdict) or {}
         item = (spec.get("client") or {}).get("lan_active") or {}
         # The answer reads against THIS key (pending machinery, universal).
@@ -717,7 +724,7 @@ def drive_escalate(engine: Any, decision) -> str:
     strat = get_strategy(r.get("verdict"))
     # The bridge already restored internet on the PC -> this is the
     # register-router shape (temporary bridge note rides on the ticket).
-    bridged = bool(r.get("telemetry_fixed")) or getattr(engine, "_bridge_bound", False)
+    bridged = bool(r.get("telemetry_fixed")) or engine.state.resolution.bridge_bound
     step = None
     if strat is not None:
         step = strat.step("dr_register_router") if bridged else strat.step("escalate")

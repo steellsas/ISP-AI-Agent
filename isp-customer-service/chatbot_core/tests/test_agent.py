@@ -590,11 +590,13 @@ class TestHearingAgent:
         # "Įkišau, laukiu" three turns ago — the gate demanded the verb in THIS
         # turn's utterance and kept repeating "Kai prijungsite…" (live).
         agent = self._agent(monkeypatch)
-        agent._bridge_plug_reported = True
-        agent._drive_bridge_offered = True
+        agent.state.resolution.bridge_plug_reported = True
+        agent.state.resolution.bridge_offered = True
         reply = agent._drive_propose_fix("", "taip, viskas padaryta, laukiu")
         assert "Kai prijungsite" not in reply  # no more deferral on wording
-        assert agent._bridge_bound or "nematome" in reply  # bind ran (or line check)
+        assert (
+            agent.state.resolution.bridge_bound or "nematome" in reply
+        )  # bind ran (or line check)
 
     def test_bailout_lands_on_declared_solution_step(self, db_connection, monkeypatch):
         from agent.evidence import CLIENT, set_fact
@@ -612,8 +614,8 @@ class TestHearingAgent:
         agent.state.identity.caller_name = "Andrius"
         agent.state.diagnosis.facts_recap_state = "done"
         agent.state.diagnosis.findings_announced = True
-        agent._drive_bridge_offered = True
-        agent._drive_repeats = 2  # distrust streak observed
+        agent.state.resolution.bridge_offered = True
+        agent.state.resolution.drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
         assert agent.state.resolution.procedure["step"] == "dr_pick_cable"  # …AT the bridge
 
@@ -625,8 +627,8 @@ class TestHearingAgent:
         # (3) incoming-cable note + technician, attempt on the ticket.
         agent = self._agent(monkeypatch)
         agent.state.identity.caller_name = "Andrius"
-        agent._bridge_plug_reported = True
-        agent._drive_bridge_offered = True
+        agent.state.resolution.bridge_plug_reported = True
+        agent.state.resolution.bridge_offered = True
         r1 = agent._drive_propose_fix("", "pajungiau kabelį")
         assert "nematome jūsų kompiuterio" in r1
         r2 = agent._drive_propose_fix("", "vis dar nieko")
@@ -662,7 +664,7 @@ class TestHearingAgent:
         ):
             set_fact(agent.state.diagnosis.evidence, k, v, CLIENT, 1)
         agent.state.diagnosis.revived_evidence_keys = ["power_cable"]  # revival already spent
-        agent._drive_repeats = 2  # distrust streak observed
+        agent.state.resolution.drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("nežinau ką daugiau daryti") is None
         assert agent.state.resolution.procedure["step"] == "escalate"  # honest endgame
 
@@ -672,8 +674,8 @@ class TestHearingAgent:
         import json as _json
 
         agent = self._agent(monkeypatch)
-        agent._bridge_plug_reported = True
-        agent._drive_bridge_offered = True
+        agent.state.resolution.bridge_plug_reported = True
+        agent.state.resolution.bridge_offered = True
         calls = []
 
         def fake_execute(name, args):
@@ -697,7 +699,7 @@ class TestHearingAgent:
         # CAME BACK read as a failure (live 2026-08-12) — the post-bridge
         # intro states the success and registers the router replacement.
         agent = self._agent(monkeypatch, step="escalate")
-        agent._bridge_bound = True
+        agent.state.resolution.bridge_bound = True
         agent._begin_ticket_dialogue(None)
         intro = agent._ticket_stage_reply()
         assert "veikia per kompiuterį" in intro
@@ -1537,7 +1539,7 @@ class TestDriveRepeatBailout:
         agent.state.diagnosis.facts_recap_state = (
             "done"  # recap checkpoint tested elsewhere (round 3)
         )
-        agent._drive_repeats = 2  # repeat/disambiguate streak already observed
+        agent.state.resolution.drive_repeats = 2  # repeat/disambiguate streak already observed
 
         # 2026-08-21 (fix 2): the bridge is WALKED through the pack's guided
         # steps — the solver never drives it, so there is no distrust loop to
@@ -1556,7 +1558,7 @@ class TestDriveRepeatBailout:
         agent.state.identity.customer_id = "CUST009"
         agent.state.identity.caller_name = "Andrius"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
-        agent._drive_disabled = True  # solver already benched
+        agent.state.resolution.drive_disabled = True  # solver already benched
 
         reply = agent.solver_drive_turn("na, nežinau")
         assert reply is not None and "elektra" in reply  # ivykiai first (2026-09-03)
@@ -1592,7 +1594,7 @@ class TestBindDiscipline:
         assert "Ar turite kompiuterį" in first
         again = agent._drive_propose_fix("Pririšu dabar!", "gerai, tuoj bandysiu")
         assert "Kai prijungsite" in again
-        assert agent._bridge_bound is False
+        assert agent.state.resolution.bridge_bound is False
 
     def test_plugged_report_binds_once(self, db_connection, monkeypatch):
         # Tools are FAKED so the shared session DB is not mutated (a real bind here
@@ -1615,7 +1617,7 @@ class TestBindDiscipline:
         monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
 
         reply = agent._drive_propose_fix("", "Įkišau į kompiuterį")
-        assert agent._bridge_bound is True
+        assert agent.state.resolution.bridge_bound is True
         assert "update_mac" in calls  # the bind actually ran
         assert "pririš" in reply.lower() or "atsirado" in reply.lower()
         # Never twice.
@@ -1861,7 +1863,7 @@ class TestTicketDialogue:
         agent.state.messages.append(
             {"role": "assistant", "content": "Ar turite kompiuterį, kad paleistume internetą?"}
         )
-        agent._drive_disabled = True  # isolate: no solver LLM call
+        agent.state.resolution.drive_disabled = True  # isolate: no solver LLM call
         reply = agent.solver_drive_turn("Neturiu kito routerio, tik kompiuterį")
         assert agent._ticket_stage is None  # no escalation fired
         # (evidence drive may still ask its next question — that is fine)

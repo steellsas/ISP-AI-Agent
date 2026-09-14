@@ -161,7 +161,7 @@ def ticket_stage_reply(engine: Any) -> str:
         # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
         # the internet just came back (live 2026-08-12). The intro then
         # states the success and registers the ROUTER replacement.
-        if getattr(engine, "_bridge_bound", False):
+        if engine.state.resolution.bridge_bound:
             parts.append(phrase("ticket_intro_bridge"))
         else:
             parts.append(phrase("ticket_intro", priezastis=ticket_need(engine)))

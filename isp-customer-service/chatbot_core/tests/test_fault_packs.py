@@ -449,7 +449,7 @@ class TestNarratorFindings:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._bridge_plug_reported = True
+        agent.state.resolution.bridge_plug_reported = True
         block = agent._state_facts_block()
         assert block and "TILTO FAZĖ" in block and "NEBEKLAUSK" in block
 
@@ -512,12 +512,12 @@ class TestTicketFirst:
         engine = SimpleNamespace(
             state=GraphState(
                 resolution=ResolutionState(
-                    procedure={"verdict": "no_mac_observed", "telemetry_fixed": True}
+                    procedure={"verdict": "no_mac_observed", "telemetry_fixed": True},
+                    bridge_bound=True,
                 ),
                 ticket=TicketState(ticket_id=None),
                 closing=ClosingState(case_closed=False, closed_reason=None),
             ),
-            _bridge_bound=True,
             _drive_escalate=lambda d: calls.append("escalate") or "Užregistruosiu gedimą…",
             _settle_hypothesis=lambda *a, **k: None,
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
@@ -531,11 +531,10 @@ class TestTicketFirst:
 
         engine = SimpleNamespace(
             state=GraphState(
-                resolution=ResolutionState(procedure={"verdict": "x"}),
+                resolution=ResolutionState(procedure={"verdict": "x"}, bridge_bound=False),
                 ticket=TicketState(ticket_id=None),
                 closing=ClosingState(case_closed=False, closed_reason=None),
             ),
-            _bridge_bound=False,
             _settle_hypothesis=lambda *a, **k: None,
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
@@ -1032,14 +1031,14 @@ class TestWalkerFollowsLedger:
         from agent.walker_flow import walker_owns_turn
 
         strat = get_strategy("no_mac_observed")
-        engine = SimpleNamespace(_bridge_bound=False)
+        engine = SimpleNamespace(state=GraphState(resolution=ResolutionState(bridge_bound=False)))
         r = {"verdict": "no_mac_observed", "step": "dr_lights"}
         assert walker_owns_turn(engine, r, strat.step("dr_lights")) is False
         assert walker_owns_turn(engine, r, strat.step("escalate")) is True
         assert walker_owns_turn(engine, r, strat.step("dr_see_device")) is True
         r["solution_synced"] = "dr_plug_pc"
         assert walker_owns_turn(engine, r, strat.step("dr_plug_pc")) is True
-        engine._bridge_bound = True
+        engine.state.resolution.bridge_bound = True
         del r["solution_synced"]
         assert walker_owns_turn(engine, r, strat.step("dr_verify")) is True
 
@@ -1243,7 +1242,7 @@ class TestLiveCall0824Fixes:
 
     def test_ticket_directive_suppresses_step_hint(self, db_connection):
         agent = self._ticket_agent()
-        agent._bridge_bound = True
+        agent.state.resolution.bridge_bound = True
         agent.state.turn.directives.ticket = {"kind": "phone_intro", "fallback": "Ar tiks numeris?"}
         block = agent._state_facts_block() or ""
         assert "TIKETO ŽINGSNIS" in block

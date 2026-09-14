@@ -423,19 +423,19 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine.state.dialog.side_topic_streak = 0
     engine._ticket_stage = None
     engine._ticket_ctx = None
-    engine._drive_bridge_offered = False
-    engine._drive_disabled = False
-    engine._drive_repeats = 0
+    engine.state.resolution.bridge_offered = False
+    engine.state.resolution.drive_disabled = False
+    engine.state.resolution.drive_repeats = 0
     engine.state.diagnosis.findings_announced = False
     engine.state.diagnosis.pending_announcement = ""
-    engine._escalate_clarify_asked = False
-    engine._escalate_clarify_pending = False
+    engine.state.resolution.escalate_clarify_asked = False
+    engine.state.resolution.escalate_clarify_due = False
     engine._resume_fix_note = False
     engine.state.diagnosis.facts_recap_state = ""
     engine.state.diagnosis.refute_confirm_state = ""
     engine.state.turn.done_report_key = None
-    engine._bridge_plug_reported = False
-    engine._bridge_fail_stage = 0
+    engine.state.resolution.bridge_plug_reported = False
+    engine.state.resolution.bridge_fail_stage = 0
     engine._bridge_fail_note = None
     engine.state.diagnosis.revived_evidence_keys = []
     from .slots import ClientProfileState
@@ -446,7 +446,7 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine.state.identity.result_pending = False
     engine._end_confirm_pending = False
     engine._resume_hold = False
-    engine._bridge_bound = False  # a different account starts clean
+    engine.state.resolution.bridge_bound = False  # a different account starts clean
     # Re-extract address parts from THIS utterance (the correction often carries
     # the new address: "ne, skambinu dėl Dainų 5").
     prefill_slots_from_text(engine, user_input)
@@ -1245,8 +1245,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
     # the solve-or-register choice instead of crossing the one-way door
     # (2026-08-11). The next turn routes normally: a repeated no escalates.
-    if getattr(engine, "_escalate_clarify_pending", False):
-        engine._escalate_clarify_pending = False
+    if engine.state.resolution.escalate_clarify_due:
+        engine.state.resolution.escalate_clarify_due = False
         return phrase("escalate_clarify")
     # Bare "ne" while the evidence drive's question is open, on the WALKER
     # path (farewell/refuse-shaped turns land here; the drive words its own

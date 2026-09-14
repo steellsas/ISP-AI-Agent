@@ -23,11 +23,11 @@ class TestW0OrderGuards:
 
     def test_bridge_fix_waits_for_the_offer(self, db_connection):
         agent = self._agent()
-        agent._bridge_plug_reported = True  # poisoned by a garbled power reseat
+        agent.state.resolution.bridge_plug_reported = True  # poisoned by a garbled power reseat
         reply = agent._drive_propose_fix("", "ištraukiau ir vėl įkišau")
         assert "Ar turite kompiuterį?" in reply
-        assert agent._bridge_plug_reported is False  # the false memory cleared
-        assert agent._drive_bridge_offered is True
+        assert agent.state.resolution.bridge_plug_reported is False  # the false memory cleared
+        assert agent.state.resolution.bridge_offered is True
 
     def test_power_reseat_is_not_a_bridge_plug(self, db_connection):
         agent = self._agent()

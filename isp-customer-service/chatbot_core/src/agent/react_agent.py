@@ -226,11 +226,6 @@ class ReactAgent:
         # garbled goodbye cannot loop the wrap-up.
         self._wrap_content_turns = 0
         self._wrap_react_note = False
-        # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
-        self._bridge_bound = False
-        # The bridge OFFER was spoken (drive path) — the first fix deferral says
-        # the transition + offer; later deferrals say the short wait line.
-        self._drive_bridge_offered = False
         # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
         # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
         # stream closes mid-generation and the cancelled-turn bookkeeping runs
@@ -244,10 +239,6 @@ class ReactAgent:
         self._spec_cache: dict | None = None
         self._injected_reply: dict | None = None
         self._bg_diagnosis: str | None = None  # S2: background telemetry read
-        # Bare-"ne" escalate clarify (2026-08-11): asked at most once per case;
-        # pending = the scripted choice question goes out this turn.
-        self._escalate_clarify_asked = False
-        self._escalate_clarify_pending = False
         # Ticket refusal with solving content: one-turn narrator directive to
         # say "neregistruoju" and return to the last fix instruction.
         self._resume_fix_note = False
@@ -264,13 +255,6 @@ class ReactAgent:
         # Duplex-hearing 2: what the caller said OVER the agent's voice —
         # already ingested deterministically; surfaced to the narrator once.
         self._overlay_heard: list[str] | None = None
-        # Plug-report memory (round 4): the caller's completed-plug report,
-        # remembered across turns — the bind gate no longer demands the plug
-        # verb in THIS turn's utterance.
-        self._bridge_plug_reported = False
-        # Bridge-failure ladder (round 5): 0 = cable re-check, 1 = the LAN
-        # question went out, 2 = escalate with the attempt on the ticket.
-        self._bridge_fail_stage = 0
         self._bridge_fail_note: str | None = None
         # Ticket-confirmation dialogue (2026-08-04): every registration first collects
         # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
@@ -289,11 +273,6 @@ class ReactAgent:
         self._active_tool_names: frozenset[str] | None = None
         self._node_prompt: str | None = None
         self._active_node: str | None = None  # which graph node is running (debug)
-        # Shadow-solver safeguard counters (Phase 3.8 step 3) — fed to the gate.
-        self._solver_prev_step: str | None = None
-        self._solver_cycles = 0
-        self._solver_low_conf = 0
-        self._solver_internal_hops = 0
 
         # Repeat-guard bookkeeping (set per turn). _turn_start_key snapshots the
         # progress fields at the start of a turn so the finalizer can tell whether
@@ -1452,8 +1431,8 @@ class ReactAgent:
             r0 = self.state.resolution.procedure or {}
             in_solution = bool(
                 r0.get("solution_synced")
-                or getattr(self, "_bridge_plug_reported", False)
-                or getattr(self, "_bridge_bound", False)
+                or self.state.resolution.bridge_plug_reported
+                or self.state.resolution.bridge_bound
             )
             fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
             current = r0.get("verdict")

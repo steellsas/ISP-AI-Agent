@@ -379,7 +379,7 @@ class TestBgDiagnosisGate:
 
         events = []
         agent = self._agent(events)
-        agent._bridge_bound = True
+        agent.state.resolution.bridge_bound = True
         agent._bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )

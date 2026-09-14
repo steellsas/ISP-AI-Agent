@@ -170,6 +170,27 @@ class ResolutionState(BaseModel):
     # engine walks its steps deterministically. None = generic inform/instruct.
     procedure: dict[str, Any] | None = None
 
+    # --- solver ---------------------------------------------------------------
+    solver_prev_step: str | None = None
+    solver_cycles: int = 0
+    # Consecutive low-confidence solver decisions.
+    solver_low_conf_streak: int = 0
+    solver_internal_hops: int = 0
+    # --- solver drive (the solver owns the whole turn) ---------------------------
+    drive_turns: int = 0
+    drive_repeats: int = 0
+    drive_last_reply: str | None = None
+    drive_last_action: str | None = None
+    drive_disabled: bool = False
+    # --- dead-router bridge (internet cable straight into the PC) ---------------
+    bridge_offered: bool = False
+    bridge_plug_reported: bool = False
+    bridge_bound: bool = False
+    bridge_fail_stage: int = 0
+    # --- escalation --------------------------------------------------------------
+    escalate_clarify_asked: bool = False
+    escalate_clarify_due: bool = False
+
 
 class TicketState(BaseModel):
     """The contact dialogue before registration and the registered ticket."""

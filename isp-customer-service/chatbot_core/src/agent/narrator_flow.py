@@ -956,7 +956,7 @@ def state_facts_block(engine) -> str | None:
     # Bridge-phase anchor for the NARRATOR too (live 2026-08-13: it slid back
     # to router questions after the cable was already replugged — the anchor
     # existed only in the solver's context).
-    if getattr(engine, "_bridge_plug_reported", False):
+    if engine.state.resolution.bridge_plug_reported:
         facts.append(
             "- TILTO FAZĖ: routeris jau pripažintas sugedusiu, kabelis PERKIŠTAS į "
             "kompiuterį — apie routerį, jo lemputes ar maitinimą NEBEKLAUSK ir "
@@ -1040,7 +1040,7 @@ def state_facts_block(engine) -> str | None:
         from .ticket_flow import ticket_need
 
         if td["kind"] == "phone_intro":
-            if getattr(engine, "_bridge_bound", False):
+            if engine.state.resolution.bridge_bound:
                 goal = (
                     "pranešk gerą žinią — internetas kol kas veikia per kompiuterį — "
                     "ir kad registruoji meistrą dėl naujo routerio; paklausk TIK "
