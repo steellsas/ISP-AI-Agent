@@ -186,7 +186,7 @@ signaluose).
 3. Verdiktas: jei telemetrija jį pasiekia — šaka `verdict.py` medyje (kodas!);
    grynai klientinės eigos verdiktui užtenka paketo.
 4. Patikra: `uv run pytest tests/test_fault_packs.py` (struktūra) ir naujas
-   scenarijus `agent/eval/scenarios.json` + `run_eval.py --engine v2`.
+   scenarijus `agent/eval/scenarios.json` + `run_eval.py`.
 5. Jei keitei modulį — auksinis eval'as privalomas (paliečia visus naudotojus).
 
 ## Įrenginio patikslinimas (gairė, 2026-08-20)

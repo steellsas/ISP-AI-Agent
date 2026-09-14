@@ -29,7 +29,7 @@ ENTRY_TARGETS = (ADDRESS_VALIDATION, DIAGNOSIS, TICKET_REGISTRATION, CLOSING)
 
 
 def route_entry(state: GraphState) -> str:
-    """Deterministic entry routing (ports agent/graph.py route() unchanged).
+    """Deterministic entry routing.
 
     Priority: case_closed wins (END stage); a mid-ticket-dialogue turn goes to
     the dedicated node so diagnosis narration cannot compete with the contact

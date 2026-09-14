@@ -1,7 +1,7 @@
 """
 Ticket node — the scripted 2-question contact dialogue before registration.
 
-R2 thin wrapper: ports ticket_registration() from agent/graph.py verbatim —
+R2 thin wrapper around the engine's ticket-registration turn —
 the engine owns the dialogue (guards capture answers, the scripted ladder
 asks, _finish_ticket_dialogue registers); the LLM (no tools) speaks only on
 an off-script question.

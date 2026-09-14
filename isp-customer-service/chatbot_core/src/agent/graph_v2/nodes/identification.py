@@ -1,7 +1,7 @@
 """
 Identification node — address slots, lookup, caller confirmation.
 
-R2 thin wrapper: ports address_validation() from agent/graph.py verbatim —
+R2 thin wrapper around the engine's address-validation turn —
 lookup-only toolset, then _mark_step_presented (resolve_address may have
 identified the caller mid-turn and the same reply narrates the first step).
 
