@@ -6,6 +6,7 @@ one-shot narrator note. Overlay may FILL facts, never steer routing.
 
 from types import SimpleNamespace
 
+from agent.delivery import apply_overlay
 from agent.evidence import FactConfirm
 
 
@@ -25,7 +26,7 @@ class TestApplyOverlay:
 
         agent = _agent()
         agent.state.diagnosis.pending_evidence_key = "lights"
-        agent.apply_overlay(["ne, nedega nė viena"])
+        apply_overlay(agent.state, agent.runtime, ["ne, nedega nė viena"])
         assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
         block = state_facts_block(agent.state, agent.runtime) or ""
         assert "ĮSITERPĖ" in block and "nedega" in block
@@ -36,7 +37,7 @@ class TestApplyOverlay:
 
         agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
-        agent.apply_overlay(["dėl Vilniaus gatvės 29 Šiauliai"])
+        apply_overlay(agent.state, agent.runtime, ["dėl Vilniaus gatvės 29 Šiauliai"])
         p = agent.state.identity.profile
         assert p.street.value and "Vilniaus" in p.street.value
         assert p.house.value == "29"
@@ -49,7 +50,7 @@ class TestApplyOverlay:
         )
         agent = _agent()
         agent.state.diagnosis.pending_evidence_key = "lights"  # volunteered, not the asked key
-        agent.apply_overlay(["rozetė neveikia"])
+        apply_overlay(agent.state, agent.runtime, ["rozetė neveikia"])
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked
         assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
             key="outlet_works", value="neveikia"
@@ -57,7 +58,7 @@ class TestApplyOverlay:
 
     def test_empty_and_capped(self, db_connection):
         agent = _agent()
-        agent.apply_overlay(["", "   "])
+        apply_overlay(agent.state, agent.runtime, ["", "   "])
         assert agent.state.voice.overlay_heard is None
 
 

@@ -24,6 +24,7 @@ import threading
 from typing import Any
 
 from .config import AgentConfig
+from .delivery import apply_delivery, apply_overlay
 from .graph_v2 import GraphState, TurnScratch, build_graph
 from .graph_v2.runtime import narrator
 from .runtime import new_call
@@ -98,14 +99,14 @@ class AgentSession:
         self._state = self._current_state()
 
     def _write_between_turns(self, write) -> None:
-        """Run a narrator write outside a turn — `write(agent)` on a copy of the
+        """Run a write outside a turn — `write(state, rt)` on a copy of the
         checkpointed state, stored back with graph.update_state (before the first
         turn the initial state is edited and seeds the first invoke)."""
         if not self._graph.get_state(self._graph_config).values:
-            write(narrator(self._state, self._runtime))
+            write(self._state, self._runtime)
             return
         state = self._current_state().model_copy(deep=True)
-        write(narrator(state, self._runtime))
+        write(state, self._runtime)
         self._graph.update_state(
             self._graph_config,
             {name: getattr(state, name) for name in type(state).model_fields if name != "turn"},
@@ -125,7 +126,9 @@ class AgentSession:
         delete, eval) so every conversation's trace is properly closed. The
         hang-up net and the call record run on the checkpointed state.
         """
-        self._write_between_turns(lambda agent: agent.end_session(outcome=outcome))
+        self._write_between_turns(
+            lambda state, rt: narrator(state, rt).end_session(outcome=outcome)
+        )
 
     @property
     def session_id(self) -> str:
@@ -172,12 +175,12 @@ class AgentSession:
     def apply_overlay(self, texts: list[str]) -> None:
         """Duplex-hearing 2: hand the caller's over-the-voice words to the
         engine (deterministic ingest + one-shot narrator note)."""
-        self._write_between_turns(lambda agent: agent.apply_overlay(texts))
+        self._write_between_turns(lambda state, rt: apply_overlay(state, rt, texts))
 
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1: after a barge-in, keep in history only the sentences the caller
         actually heard; the unheard tail resurfaces via the narrator next turn."""
-        self._write_between_turns(lambda agent: agent.apply_delivery(sentences, delivered))
+        self._write_between_turns(lambda state, rt: apply_delivery(state, rt, sentences, delivered))
 
     def endpoint_hint(self, partial_text: str) -> tuple[str, int | None]:
         """E2 duplex: how much trailing silence the utterance-so-far deserves —

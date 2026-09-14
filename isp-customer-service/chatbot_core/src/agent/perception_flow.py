@@ -1388,3 +1388,13 @@ def engine_resolve_from_slots(state, rt) -> bool:
     _q_clear_owner(state, rt, "ident")
     ensure_diagnosed(state, rt)
     return True
+
+
+def raise_clarity(state: Any, user_input: str | None) -> None:
+    """Once the caller says they do not follow the wording ("kas tas WAN?"),
+    stay in plain language for the rest of the call. One-way: a caller who was
+    lost once should not be dropped back into jargon two steps later."""
+    from .resolution import detect_confusion
+
+    if state.dialog.clarity_level == "standard" and detect_confusion(user_input):
+        state.dialog.clarity_level = "basic"

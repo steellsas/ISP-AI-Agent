@@ -9,7 +9,9 @@ so the replay bench can reproduce the live decoding exactly.
 
 from types import SimpleNamespace
 
+from agent.delivery import apply_delivery
 from agent.graph_v2.state import DiagnosisState, GraphState, IntakeState, ResolutionState
+from agent.speculation import apply_bg_diagnosis, consume_injected_reply
 from agent.voice_pipeline import VoicePipeline, audio_duration_s
 
 from tests.engine_fakes import as_call
@@ -310,13 +312,13 @@ class TestSpeculation:
             "kodel": "",
             "klausimas": "",
         }
-        assert agent._consume_injected_reply() == "Ar laidas įkištas?"
+        assert consume_injected_reply(agent.state, agent.runtime) == "Ar laidas įkištas?"
         agent.state.turn.injected_reply = {
             "kind": "evidence",
             "key": "outlet_works",
             "text": "Ne tas?",
         }
-        assert agent._consume_injected_reply() is None  # directive key mismatch
+        assert consume_injected_reply(agent.state, agent.runtime) is None  # directive key mismatch
 
     def test_pipeline_serves_cached_audio_on_hit(self):
         from types import SimpleNamespace
@@ -356,10 +358,11 @@ class TestBgDiagnosisGate:
 
         from tests.calls import make_agent
 
-        agent = make_agent("unknown")
+        agent = make_agent(
+            "unknown", tracer=SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
+        )
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        agent.tracer = SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
         return agent
 
     def test_flip_is_discarded(self, db_connection):
@@ -370,7 +373,7 @@ class TestBgDiagnosisGate:
         agent.state.turn.bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "foreign_mac"}}
         )
-        agent._apply_bg_diagnosis()
+        apply_bg_diagnosis(agent.state, agent.runtime)
         assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
         assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
 
@@ -382,7 +385,7 @@ class TestBgDiagnosisGate:
         agent.state.turn.bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
-        agent._apply_bg_diagnosis()
+        apply_bg_diagnosis(agent.state, agent.runtime)
         assert any(f.get("action") == "bg_diagnosis_applied" for _k, f in events)
 
     def test_bridge_phase_always_discards(self, db_connection):
@@ -394,7 +397,7 @@ class TestBgDiagnosisGate:
         agent.state.turn.bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
-        agent._apply_bg_diagnosis()
+        apply_bg_diagnosis(agent.state, agent.runtime)
         assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
 
 
@@ -581,7 +584,7 @@ class TestDeliveryLedger:
         agent = make_agent("unknown")
         agent.state.messages.append({"role": "user", "content": "neveikia"})
         agent.state.messages.append({"role": "assistant", "content": "Pirmas. Antras. Trečias."})
-        agent.apply_delivery(["Pirmas.", "Antras.", "Trečias."], 1)
+        apply_delivery(agent.state, agent.runtime, ["Pirmas.", "Antras.", "Trečias."], 1)
         assert agent.state.messages[-1]["content"] == "Pirmas. —"
         assert agent.state.voice.undelivered_tail == "Antras. Trečias."
         block = state_facts_block(agent.state, agent.runtime) or ""
@@ -595,7 +598,7 @@ class TestDeliveryLedger:
 
         agent = make_agent("unknown")
         agent.state.messages.append({"role": "assistant", "content": "Visas tekstas."})
-        agent.apply_delivery(["Visas tekstas."], 0)
+        apply_delivery(agent.state, agent.runtime, ["Visas tekstas."], 0)
         assert agent.state.messages[-1]["content"] == "—"
         assert agent.state.voice.undelivered_tail == "Visas tekstas."
 
@@ -604,7 +607,7 @@ class TestDeliveryLedger:
 
         agent = make_agent("unknown")
         agent.state.messages.append({"role": "assistant", "content": "Viskas. Gerai."})
-        agent.apply_delivery(["Viskas.", "Gerai."], 2)
+        apply_delivery(agent.state, agent.runtime, ["Viskas.", "Gerai."], 2)
         assert agent.state.messages[-1]["content"] == "Viskas. Gerai."
         assert agent.state.voice.undelivered_tail is None
 

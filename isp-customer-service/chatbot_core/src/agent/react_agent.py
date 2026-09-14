@@ -13,7 +13,6 @@ Loop (run_turn_scoped_stream, called by the LangGraph v2 nodes):
 Callers use agent.session.AgentSession; the engine is internal.
 """
 
-import json
 import logging
 from contextlib import suppress
 from functools import lru_cache
@@ -118,75 +117,6 @@ class ReactAgent:
         if key and self.state.diagnosis.evidence_ask_counts.get(key, 0) > 0:
             self.state.diagnosis.evidence_ask_counts[key] -= 1
         self.tracer.emit("turn_cancelled", spoken=spoken[:160])
-
-    def apply_overlay(self, texts: list[str]) -> None:
-        """Duplex-hearing 2: the caller's words spoken OVER the agent's voice
-        (echo already filtered by the transport) — deterministic fact ingest
-        through the importance gates + a one-shot narrator note. Overlay may
-        FILL facts, never steer routing."""
-        from .perception_flow import ingest_overlay
-
-        kept = [t.strip() for t in texts if t and t.strip()][:3]
-        if not kept:
-            return
-        for text in kept:
-            ingest_overlay(self.state, self.runtime, text)
-        self.state.voice.overlay_heard = kept
-        self.tracer.emit("overlay_applied", texts=[t[:120] for t in kept])
-
-    def apply_delivery(self, sentences: list[str], delivered: int) -> None:
-        """D1 delivery ledger (live 2026-08-25: the transcript renders before
-        the audio, so a barge-in leaves the engine believing the caller heard
-        the WHOLE reply). The transport reports how many sentences actually
-        finished playing — the history keeps only that prefix, and the unheard
-        tail is surfaced to the narrator next turn. A half-played sentence
-        counts as NOT heard (repeating it is the natural repair)."""
-        total = len(sentences)
-        delivered = max(0, min(int(delivered), total))
-        if not total or delivered >= total:
-            return
-        heard = " ".join(s.strip() for s in sentences[:delivered]).strip()
-        tail = " ".join(s.strip() for s in sentences[delivered:]).strip()
-        s = self.state
-        for msg in reversed(s.messages):
-            if msg.get("role") == "assistant":
-                msg["content"] = (heard + " —") if heard else "—"
-                break
-        self.state.voice.undelivered_tail = tail or None
-        # Andrius 2026-08-26: the agent must NEVER believe it asked a question
-        # the caller could not hear. When the "?" lives only in the unheard
-        # tail, the ask never happened: the pending evidence key and its ask
-        # counter roll back (the caller's next words are NOT an answer to it),
-        # the step's presented counter steps back, and the narrator gets a
-        # STRONG re-ask directive instead of the advisory tail note.
-        # Closing-stage chatter is exempt (live 2026-08-27): garbled farewells
-        # kept cutting the goodbye before its "?" and the re-ask machinery
-        # looped "Ar dar kuo padėti?" — a closed case never re-asks.
-        if "?" in tail and "?" not in heard and not s.closing.case_closed:
-            s.dialog.last_question = None
-            # The PENDING evidence key deliberately STAYS (live 2026-08-27:
-            # clearing it looped the call — the caller kept interrupting with
-            # the ANSWER, which then had no key to land on, so the fact never
-            # committed and the same question re-asked forever). Only the ask
-            # counter steps back so the wording escalation stays fair; an
-            # answer that maps still commits, a true non-answer re-asks anyway.
-            key = self.state.diagnosis.pending_evidence_key
-            if key and self.state.diagnosis.evidence_ask_counts.get(key, 0) > 0:
-                self.state.diagnosis.evidence_ask_counts[key] -= 1
-            r = s.resolution.procedure or {}
-            pres = r.get("presented") or {}
-            step_id = r.get("step")
-            if step_id and pres.get(step_id, 0) > 0:
-                pres[step_id] -= 1
-            self.state.voice.unheard_question = tail
-            self.state.voice.undelivered_tail = None  # superseded by the strong directive
-        self.tracer.emit(
-            "delivery",
-            delivered=delivered,
-            total=total,
-            unheard=tail[:160],
-            question_unheard=bool(self.state.voice.unheard_question),
-        )
 
     def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
         """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the
@@ -407,7 +337,8 @@ class ReactAgent:
             preflight_phone,
         )
         from .narrator_flow import build_messages, scoped_tools_schema
-        from .perception_flow import pre_turn_guards
+        from .perception_flow import pre_turn_guards, raise_clarity
+        from .speculation import apply_bg_diagnosis, consume_injected_reply
         from .ticket_flow import registration_claim_guard
         from .walker_flow import scripted_wait_ack
 
@@ -436,7 +367,7 @@ class ReactAgent:
         from .resolution import detect_turn_intent
 
         self.state.dialog.last_intent = detect_turn_intent(user_input)
-        self._maybe_raise_clarity(user_input)
+        raise_clarity(self.state, user_input)
         # S2 (2026-08-24): a background telemetry read finished while the
         # caller was busy — fold it in at the deterministic turn start, but
         # ONLY as a refresh: in the solution/bridge phase, or when the fresh
@@ -445,7 +376,7 @@ class ReactAgent:
         # agent asked "ar keitėte routerį?" over a working bind). The solution
         # steps (dr_see_device / dr_verify) do their own reads at the right
         # moments.
-        self._apply_bg_diagnosis()
+        apply_bg_diagnosis(self.state, self.runtime)
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
             # The deterministic head may have run EARLIER (diagnose node, A-2
@@ -499,7 +430,7 @@ class ReactAgent:
             # directive skips the LLM entirely — the wording was generated
             # ahead, while the caller was still answering. Consumed only when
             # the drive actually produced the predicted directive.
-            injected = self._consume_injected_reply()
+            injected = consume_injected_reply(self.state, self.runtime)
             if injected is not None:
                 yield injected
                 self.state.messages.append({"role": "assistant", "content": injected})
@@ -582,65 +513,6 @@ class ReactAgent:
 
         yield self.config.timeout_message
 
-    def _apply_bg_diagnosis(self) -> None:
-        """S2 gate: fold the background telemetry read in ONLY as a refresh —
-        in the solution/bridge phase, or when the fresh verdict FLIPS the
-        story, it is discarded (the solution steps read at the right moments
-        themselves)."""
-        from .narrator_flow import update_state_from_observation
-
-        bg = self.state.turn.bg_diagnosis
-        if not bg:
-            return
-        self.state.turn.bg_diagnosis = None
-        # A-2R (2026-09-07): with no identified customer the telemetry has no
-        # one to belong to — after reopen it used to restore the dropped
-        # account's diagnosis.
-        if not self.state.identity.customer_id:
-            return
-        with suppress(Exception):
-            r0 = self.state.resolution.procedure or {}
-            in_solution = bool(
-                r0.get("solution_synced")
-                or self.state.resolution.bridge_plug_reported
-                or self.state.resolution.bridge_bound
-            )
-            fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
-            current = r0.get("verdict")
-            if not in_solution and (not current or fresh == current):
-                update_state_from_observation(self.state, self.runtime, "diagnose_connection", bg)
-                self.tracer.emit("speculation", action="bg_diagnosis_applied")
-            else:
-                self.tracer.emit("speculation", action="bg_diagnosis_discarded", fresh=fresh)
-
-    def _consume_injected_reply(self) -> str | None:
-        """S1 speculation: the precomputed reply for the ACTIVE directive (set
-        by the voice layer when the caller's answer matched a prepared
-        branch). Consumed only when the drive actually produced the predicted
-        directive — any mismatch falls back to the normal LLM path."""
-        inj = self.state.turn.injected_reply
-        if not inj:
-            return None
-        self.state.turn.injected_reply = None
-        kind, key, text = inj.get("kind"), inj.get("key"), inj.get("text")
-        if not text:
-            return None
-        if kind == "evidence":
-            d = self.state.turn.directives.evidence
-            if d and d.get("key") == key:
-                self.tracer.emit("speculation", action="hit", kind=kind, key=key)
-                return str(text)
-        elif (
-            kind == "recap"
-            and self.state.turn.directives.recap
-            or kind == "findings"
-            and self.state.turn.directives.findings
-        ):
-            self.tracer.emit("speculation", action="hit", kind=kind)
-            return str(text)
-        self.tracer.emit("speculation", action="miss", kind=kind, key=key)
-        return None
-
     def _stuck_backstop(self) -> tuple[str, bool] | None:
         """Deterministic escalation (text, should_close) once the prompt-level nudge
         has failed — fired BEFORE the LLM (so it works with token streaming): at 3
@@ -705,15 +577,6 @@ class ReactAgent:
         self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=False)
         self.tracer.emit("agent_reply", text=text)
         return text
-
-    def _maybe_raise_clarity(self, user_input: str | None) -> None:
-        """Once the caller says they do not follow the wording ("kas tas WAN?"),
-        stay in plain language for the rest of the call. One-way: a caller who was
-        lost once should not be dropped back into jargon two steps later."""
-        from .resolution import detect_confusion
-
-        if self.state.dialog.clarity_level == "standard" and detect_confusion(user_input):
-            self.state.dialog.clarity_level = "basic"
 
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the

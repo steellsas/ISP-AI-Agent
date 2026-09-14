@@ -368,7 +368,9 @@ class TestReopenConfirmation:
     def test_bg_diagnosis_never_applies_without_customer(self, db_connection):
         agent = _agent()
         agent.state.turn.bg_diagnosis = '{"success": true}'
-        agent._apply_bg_diagnosis()
+        from agent.speculation import apply_bg_diagnosis
+
+        apply_bg_diagnosis(agent.state, agent.runtime)
         assert agent.state.turn.bg_diagnosis is None
         assert agent.state.diagnosis.verdicts == {}
 

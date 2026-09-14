@@ -5,6 +5,7 @@ garbled-call analysis, hear-the-caller mechanics, and the quiet analyst.
 
 from types import SimpleNamespace
 
+from agent.delivery import apply_delivery
 from agent.evidence import FactConfirm
 from agent.graph_v2.state import TicketContext
 
@@ -219,7 +220,9 @@ class TestUnheardQuestion:
         agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
         agent.state.diagnosis.pending_evidence_key = "lights"
         agent.state.diagnosis.evidence_ask_counts = {"lights": 1}
-        agent.apply_delivery(["Gerai, kad radote.", "Ar dega bent viena lemputė?"], 1)
+        apply_delivery(
+            agent.state, agent.runtime, ["Gerai, kad radote.", "Ar dega bent viena lemputė?"], 1
+        )
         assert agent.state.dialog.last_question is None
         # the pending key STAYS (live 2026-08-27: clearing it looped the call —
         # the interrupting ANSWER had no key to land on); only the ask counter
@@ -238,7 +241,12 @@ class TestUnheardQuestion:
         agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
         agent.state.diagnosis.pending_evidence_key = "lights"
         agent.state.diagnosis.evidence_ask_counts = {"lights": 1}
-        agent.apply_delivery(["Ar dega bent viena lemputė?", "Tai parodys, ar gauna srovę."], 1)
+        apply_delivery(
+            agent.state,
+            agent.runtime,
+            ["Ar dega bent viena lemputė?", "Tai parodys, ar gauna srovę."],
+            1,
+        )
         assert agent.state.dialog.last_question == "Ar dega bent viena lemputė?"
         assert agent.state.diagnosis.pending_evidence_key == "lights"
         assert agent.state.voice.unheard_question is None

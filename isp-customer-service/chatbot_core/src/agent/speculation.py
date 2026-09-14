@@ -19,7 +19,9 @@ mutates engine state and never calls mutating tools.
 
 from __future__ import annotations
 
+import contextlib
 import copy
+import json
 import logging
 import os
 from typing import Any
@@ -268,3 +270,64 @@ def match(state: Any, rt: Any, transcript: str) -> dict[str, Any] | None:
         return None
     rt.tracer.emit("speculation", action="match", key=key, value=str(value))
     return branch
+
+
+def apply_bg_diagnosis(state: Any, rt: Any) -> None:
+    """S2 gate: fold the background telemetry read in ONLY as a refresh —
+    in the solution/bridge phase, or when the fresh verdict FLIPS the
+    story, it is discarded (the solution steps read at the right moments
+    themselves)."""
+    from .narrator_flow import update_state_from_observation
+
+    bg = state.turn.bg_diagnosis
+    if not bg:
+        return
+    state.turn.bg_diagnosis = None
+    # A-2R (2026-09-07): with no identified customer the telemetry has no
+    # one to belong to — after reopen it used to restore the dropped
+    # account's diagnosis.
+    if not state.identity.customer_id:
+        return
+    with contextlib.suppress(Exception):
+        r0 = state.resolution.procedure or {}
+        in_solution = bool(
+            r0.get("solution_synced")
+            or state.resolution.bridge_plug_reported
+            or state.resolution.bridge_bound
+        )
+        fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
+        current = r0.get("verdict")
+        if not in_solution and (not current or fresh == current):
+            update_state_from_observation(state, rt, "diagnose_connection", bg)
+            rt.tracer.emit("speculation", action="bg_diagnosis_applied")
+        else:
+            rt.tracer.emit("speculation", action="bg_diagnosis_discarded", fresh=fresh)
+
+
+def consume_injected_reply(state: Any, rt: Any) -> str | None:
+    """S1 speculation: the precomputed reply for the ACTIVE directive (set
+    by the voice layer when the caller's answer matched a prepared
+    branch). Consumed only when the drive actually produced the predicted
+    directive — any mismatch falls back to the normal LLM path."""
+    inj = state.turn.injected_reply
+    if not inj:
+        return None
+    state.turn.injected_reply = None
+    kind, key, text = inj.get("kind"), inj.get("key"), inj.get("text")
+    if not text:
+        return None
+    if kind == "evidence":
+        d = state.turn.directives.evidence
+        if d and d.get("key") == key:
+            rt.tracer.emit("speculation", action="hit", kind=kind, key=key)
+            return str(text)
+    elif (
+        kind == "recap"
+        and state.turn.directives.recap
+        or kind == "findings"
+        and state.turn.directives.findings
+    ):
+        rt.tracer.emit("speculation", action="hit", kind=kind)
+        return str(text)
+    rt.tracer.emit("speculation", action="miss", kind=kind, key=key)
+    return None
