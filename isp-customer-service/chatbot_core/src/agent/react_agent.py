@@ -208,24 +208,6 @@ class ReactAgent:
         # Streets/localities registry for deterministic NLU prefill (loaded lazily
         # on the first user turn so construction stays DB-free where possible).
         self._registry: tuple[list[str], list[str]] | None = None
-        # Farewell-mid-process clarify contract (2026-08-03): the confirm question is
-        # pending / the walker holds one turn after the caller decides to continue.
-        self._end_confirm_pending = False
-        self._resume_hold = False
-        # A-2 (2026-09-07): the deterministic turn head (prefill+guards)
-        # already ran earlier this turn (diagnose node) — narrate() skips it.
-        self._pre_turn_head_done = False
-        # B wave (2026-09-07): question registry — the last question asked,
-        # with its owner (dialog_registry; shadow mode for now).
-        self._active_question = None
-        # P-C (2026-09-08): the walker's 'callback' terminal closed the case —
-        # the very next scripted reply is the warm callback goodbye.
-        self._callback_goodbye_due = False
-        # Closing wave block 2 (2026-09-09): wrap-up content turns — the caller
-        # said something real after "Ar dar kuo padėti?"; capped at 2 so a
-        # garbled goodbye cannot loop the wrap-up.
-        self._wrap_content_turns = 0
-        self._wrap_react_note = False
         # Barge-in cancel (Phase 5 PR3): set via request_cancel() from any
         # thread; the streaming token loop checks it BETWEEN TOKENS — the LLM
         # stream closes mid-generation and the cancelled-turn bookkeeping runs
@@ -239,7 +221,6 @@ class ReactAgent:
         self._spec_cache: dict | None = None
         self._injected_reply: dict | None = None
         self._bg_diagnosis: str | None = None  # S2: background telemetry read
-        self._resync_note = False
         # D1 delivery ledger: the tail of an interrupted reply the caller never
         # HEARD — surfaced to the narrator next turn, then cleared.
         self._undelivered_tail: str | None = None
@@ -259,12 +240,6 @@ class ReactAgent:
         self._active_tool_names: frozenset[str] | None = None
         self._node_prompt: str | None = None
         self._active_node: str | None = None  # which graph node is running (debug)
-
-        # Repeat-guard bookkeeping (set per turn). _turn_start_key snapshots the
-        # progress fields at the start of a turn so the finalizer can tell whether
-        # the turn advanced; _repeated_verbatim flags a near-identical re-ask.
-        self._turn_start_key: tuple | None = None
-        self._repeated_verbatim: bool = False
 
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
@@ -1233,7 +1208,7 @@ class ReactAgent:
 
         # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
         # slot/problem filled THIS turn counts as progress and clears the counter.
-        self._turn_start_key = self._progress_key()
+        self.state.turn.progress_key_at_start = self._progress_key()
         self._cancel_requested = False  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "supratau" directive leaks into their replies.
@@ -1258,8 +1233,8 @@ class ReactAgent:
             self.tracer.emit("user_turn", text=user_input)
             # The deterministic head may have run EARLIER (diagnose node, A-2
             # 2026-09-07) — the latch prevents a double prefill/guards run.
-            if getattr(self, "_pre_turn_head_done", False):
-                self._pre_turn_head_done = False
+            if self.state.turn.pre_turn_head_done:
+                self.state.turn.pre_turn_head_done = False
             else:
                 self._prefill_slots_from_text(user_input)
                 self._pre_turn_guards(user_input)
@@ -1447,7 +1422,7 @@ class ReactAgent:
 
     # --- Repeat-guard ------------------------------------------------------
 
-    def _progress_key(self) -> tuple:
+    def _progress_key(self) -> list:
         """A snapshot of the fields that mean the conversation ADVANCED. Compared
         start-vs-end of a turn: if it changed, the turn made real progress (a slot
         filled, identified, an outage found, the case closed) — so the stuck
@@ -1458,14 +1433,14 @@ class ReactAgent:
             1 for slot in (p.city, p.street, p.house, p.apartment, p.account_code) if slot.value
         )
         s = self.state
-        return (
+        return [
             s.identity.customer_id,
             filled,
             s.intake.problem_type,
             s.diagnosis.outage_reported,
             s.closing.case_closed,
             s.ticket.ticket_id,
-        )
+        ]
 
     @staticmethod
     def _is_question(text: str) -> bool:
@@ -1506,14 +1481,14 @@ class ReactAgent:
         question or normal back-and-forth must not escalate. Real progress (a slot/
         customer_id/problem change since the turn started) clears it. Records
         last_question for the next turn's repeat check."""
-        progressed = self._progress_key() != self._turn_start_key
+        progressed = self._progress_key() != self.state.turn.progress_key_at_start
         is_q = self._is_question(reply)
         repeat = bool(
             is_q
             and self.state.dialog.last_question
             and self._similar(reply, self.state.dialog.last_question)
         )
-        self._repeated_verbatim = repeat
+        self.state.dialog.last_reply_repeated = repeat
         if progressed:
             self.state.dialog.stuck_count = 0
         elif repeat:

@@ -570,8 +570,8 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
         return False
     if (
         engine.state.diagnosis.evidence_conflict
-        or engine._end_confirm_pending
-        or engine._resume_hold
+        or engine.state.dialog.end_confirm_pending
+        or engine.state.dialog.resume_hold_due
     ):
         return False
     # Ticket demand is NEVER a side topic (live 2026-08-13: "Išregistruoti
@@ -787,7 +787,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             _q_clear_owner(engine, "ticket")
             s.closing.case_closed = True
             s.closing.closed_reason = "callback"
-            engine._callback_goodbye_due = True
+            engine.state.closing.callback_goodbye_due = True
             engine.tracer.emit("decision", intent="ticket_dialogue", action="callback_close")
             return
         # hours answer, but "galima" sat on the keyword question list and
@@ -1022,8 +1022,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
     # call — through the outcome (registration when a strategy is active).
     from .resolution import detect_farewell, detect_ticket_consent
 
-    if engine._end_confirm_pending and not s.closing.case_closed:
-        engine._end_confirm_pending = False
+    if engine.state.dialog.end_confirm_pending and not s.closing.case_closed:
+        engine.state.dialog.end_confirm_pending = False
         if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
             if s.resolution.procedure is not None:
                 from .resolution import get_strategy
@@ -1043,8 +1043,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
         else:
             # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
             # is not misrouted as a step answer; resume next turn.
-            engine._resume_hold = True
-            engine._resync_note = True  # C: re-anchor from the ledger, no improvising
+            engine.state.dialog.resume_hold_due = True
+            engine.state.dialog.resync_note = True  # C: re-anchor from the ledger, no improvising
             engine.tracer.emit("decision", intent="end_declined", action="resume")
         return
     # A-2 (live 2026-09-07: "Taip taip dėl KITO adreso" was consumed by the
@@ -1091,7 +1091,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     if ask_caller() and not s.identity.caller_name:
                         engine.state.identity.result_pending = True
             return
-        engine._resume_hold = True  # the answer belongs to THIS question, not the walker
+        engine.state.dialog.resume_hold_due = (
+            True  # the answer belongs to THIS question, not the walker
+        )
         if verdict == "no":
             engine.state.identity.reopen_confirm_utterance = None
             engine.state.identity.reopen_confirm_asked = False
@@ -1117,8 +1119,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
         and s.resolution.procedure
         and not engine.state.ticket.stage
         and not s.closing.case_closed
-        and getattr(engine, "_cannot_now_state", None) is None
-        and not getattr(engine, "_cannot_now_done", False)
+        and engine.state.dialog.cannot_now_state is None
+        and not engine.state.dialog.cannot_now_done
     ):
         from .dialog_registry import pack_owns_cannot_now
         from .resolution import detect_cannot_now as _dcn_head
@@ -1148,7 +1150,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
 
         _qa = _q_act(engine)
         if not (_qa is not None and _qa.key.endswith("_homework")):
-            engine._end_confirm_pending = True
+            engine.state.dialog.end_confirm_pending = True
             engine.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
             return
     # (0) Caller-intro capture: the previous reply asked WHO is calling (the

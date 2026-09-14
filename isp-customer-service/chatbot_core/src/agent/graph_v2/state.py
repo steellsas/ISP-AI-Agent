@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..config import AgentConfig
+from ..dialog_registry import ActiveQuestion
 from ..evidence import EvidenceConflict, FactConfirm
 from ..slots import ClientProfileState
 
@@ -251,6 +252,20 @@ class DialogState(BaseModel):
     last_intent: str = ""
     turn_count: int = 0
     max_turns: int = AgentConfig.max_turns
+    # The ONE question that owns the next caller turn (agent/dialog_registry.py).
+    active_question: ActiveQuestion | None = None
+    # A farewell mid-process: the confirm question is out.
+    end_confirm_pending: bool = False
+    # Hold the process one turn after a detour / re-anchor from the ledger next reply.
+    resume_hold_due: bool = False
+    resync_note: bool = False
+    # "Cannot do it now" ladder: None | "asked" | "offered"; done once per call.
+    cannot_now_state: str | None = None
+    cannot_now_done: bool = False
+    # The last reply re-asked the previous question verbatim.
+    last_reply_repeated: bool = False
+    # (doc, section, step) of the last injected playbook section (trace dedup).
+    last_rag_injection_key: list[Any] | None = None
 
 
 class ClosingState(BaseModel):
@@ -260,6 +275,13 @@ class ClosingState(BaseModel):
     closed_reason: str | None = None  # "resolved" | "outage" | "declined" | …
     is_complete: bool = False  # the transport hangs up once True
     closing_turns: int = 0
+    # Wrap-up: real content said after "Ar dar kuo padėti?" (capped) + its one-shot note.
+    wrap_content_turns: int = 0
+    wrap_react_note: bool = False
+    # A callback was agreed — the next reply is the callback goodbye.
+    callback_goodbye_due: bool = False
+    # The caller's secondary problems were asked about at the end.
+    secondary_problems_asked: bool = False
 
 
 class TurnDirectives(BaseModel):
@@ -293,6 +315,10 @@ class TurnScratch(BaseModel):
     directives: TurnDirectives = Field(default_factory=TurnDirectives)
     # The caller asked an off-script question during the contact dialogue.
     ticket_offscript_question: bool = False
+    # Repeat-guard progress snapshot taken at the start of the turn.
+    progress_key_at_start: list[Any] | None = None
+    # The deterministic head (prefill + guards) already ran in the diagnose node.
+    pre_turn_head_done: bool = False
 
 
 # The persisted groups, in declaration order (everything but the turn scratch).

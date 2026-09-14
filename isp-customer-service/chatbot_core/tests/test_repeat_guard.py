@@ -56,14 +56,14 @@ class TestStuckCounter:
     def test_repeat_increments(self):
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
-        a._turn_start_key = a._progress_key()
+        a.state.turn.progress_key_at_start = a._progress_key()
         a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.stuck_count == 1
 
     def test_first_question_does_not_increment(self):
         # No prior question -> not a repeat -> normal opening, no strike.
         a = _agent()
-        a._turn_start_key = a._progress_key()
+        a.state.turn.progress_key_at_start = a._progress_key()
         a._track_stuck("Kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.stuck_count == 0
 
@@ -71,7 +71,7 @@ class TestStuckCounter:
         # A new, distinct question is normal progression, not a stuck loop.
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
-        a._turn_start_key = a._progress_key()
+        a.state.turn.progress_key_at_start = a._progress_key()
         a._track_stuck("Koks namo numeris?")
         assert a.state.dialog.stuck_count == 0
 
@@ -79,7 +79,7 @@ class TestStuckCounter:
         a = _agent()
         a.state.dialog.stuck_count = 2
         a.state.dialog.last_question = "Kurioje gatvėje?"
-        a._turn_start_key = a._progress_key()
+        a.state.turn.progress_key_at_start = a._progress_key()
         a.state.identity.customer_id = "CUST105"  # the turn advanced
         a._track_stuck("Kurioje gatvėje?")
         assert a.state.dialog.stuck_count == 0
@@ -87,9 +87,9 @@ class TestStuckCounter:
     def test_repeated_verbatim_flag_set(self):
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
-        a._turn_start_key = a._progress_key()
+        a.state.turn.progress_key_at_start = a._progress_key()
         a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
-        assert a._repeated_verbatim is True
+        assert a.state.dialog.last_reply_repeated is True
 
     def test_apply_backstop_offer_climbs_ladder(self):
         a = _agent()

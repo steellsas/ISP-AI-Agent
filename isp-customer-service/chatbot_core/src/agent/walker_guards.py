@@ -50,8 +50,8 @@ def question_priority_hold(engine: Any, user_input: str | None) -> bool:
 def resume_hold(engine: Any, user_input: str | None) -> bool:
     """One-turn hold after the caller declined to end the call — their "ne,
     tęskime" answers the confirm-end question, not the current step."""
-    if engine._resume_hold:
-        engine._resume_hold = False
+    if engine.state.dialog.resume_hold_due:
+        engine.state.dialog.resume_hold_due = False
         return True
     return False
 
@@ -62,7 +62,7 @@ def end_confirm_pending(engine: Any, user_input: str | None) -> bool:
     reply belongs to that question, not the step (live 2026-08-11: "Ne,
     nenoriu" — i.e. don't END — advanced stale dr_intro -> escalate ->
     ticket). Hold; _pre_turn_guards resumes or closes this same turn."""
-    if engine._end_confirm_pending:
+    if engine.state.dialog.end_confirm_pending:
         engine.tracer.emit("decision", intent="answer", action="hold", reason="end_confirm_pending")
         return True
     return False

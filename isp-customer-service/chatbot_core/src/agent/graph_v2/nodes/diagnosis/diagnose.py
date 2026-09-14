@@ -36,7 +36,7 @@ def make_diagnose_node(engine: Any):
             # user_turn trace stays with narrate()/the solver commit — no duplicates.
             engine._prefill_slots_from_text(user_input)
             engine._pre_turn_guards(user_input)
-            engine._pre_turn_head_done = True
+            engine.state.turn.pre_turn_head_done = True
         engine._ingest_client_evidence(user_input)
         side = bool(engine.classify_side_topic(user_input))
         return {"turn": state.turn.model_copy(update={"side_topic_active": side})}

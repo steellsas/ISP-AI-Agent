@@ -401,7 +401,7 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     # Thrown away with everything else.
     engine._bg_diagnosis = None
     # B-wave registry: the whole dialogue restarts — no question survives.
-    engine._active_question = None
+    engine.state.dialog.active_question = None
     # A-2R follow-up (Andrius 2026-09-07): on an address change EVERYTHING
     # restarts — only the caller's name and the problem survive (plus the
     # caller's own story: it describes the REAL place). The old phone
@@ -444,8 +444,8 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine.state.turn.db_address_note = None
     engine.state.diagnosis.news_delivered = False  # a new address may carry different news
     engine.state.identity.result_pending = False
-    engine._end_confirm_pending = False
-    engine._resume_hold = False
+    engine.state.dialog.end_confirm_pending = False
+    engine.state.dialog.resume_hold_due = False
     engine.state.resolution.bridge_bound = False  # a different account starts clean
     # Re-extract address parts from THIS utterance (the correction often carries
     # the new address: "ne, skambinu dėl Dainų 5").
@@ -1017,8 +1017,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     s = engine.state
     # P-C (2026-09-08): the walker's 'callback' terminal just closed the case
     # (homework agreed) — the goodbye is scripted, warm and deterministic.
-    if getattr(engine, "_callback_goodbye_due", False):
-        engine._callback_goodbye_due = False
+    if engine.state.closing.callback_goodbye_due:
+        engine.state.closing.callback_goodbye_due = False
         from .identification import phrase as _cb_phrase
 
         return _cb_phrase("callback_goodbye")
@@ -1095,18 +1095,18 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" ignoruotas):
     # negalėjimo-DABAR mini-kopėčios sprendimo fazėje — STOP, išsiaiškinti KAS
     # nepatogu, tada pasiūlyti kelią (registracija / perskambinimas / tęsiam).
-    cn_state = getattr(engine, "_cannot_now_state", None)
+    cn_state = engine.state.dialog.cannot_now_state
     if cn_state == "asked" and user_input:
         from .dialog_registry import clear as _q_clear
         from .dialog_registry import register as _q_register
 
-        engine._cannot_now_state = None
+        engine.state.dialog.cannot_now_state = None
         _q_clear(engine, "cannot_now_clarify")
         low_cl = user_input.lower()
         # N2b (live 2026-09-09): "Aš Jums perskambinsiu" IN the clarify answer
         # is the whole decision — close warm right here, no offer round.
         if any(m in low_cl for m in ("perskambin", "paskambinsiu", "pats paskambin")):
-            engine._cannot_now_done = True
+            engine.state.dialog.cannot_now_done = True
             s.closing.case_closed = True
             s.closing.closed_reason = "callback"
             engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
@@ -1120,7 +1120,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             m in low_cl for m in ("galiu", "radau", "viskas gerai", "veikia", "nereikia", "jau ")
         ) and not any(m in low_cl for m in ("negaliu", "nerandu"))
         if not resumed:
-            engine._cannot_now_state = "offered"
+            engine.state.dialog.cannot_now_state = "offered"
             _q_register(engine, "safety", "cannot_now_offer")
             engine.tracer.emit("decision", intent="cannot_now", action="offer")
             return phrase("cannot_now_offer")
@@ -1129,8 +1129,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if cn_state == "offered" and user_input:
         from .dialog_registry import clear as _q_clear
 
-        engine._cannot_now_state = None
-        engine._cannot_now_done = True
+        engine.state.dialog.cannot_now_state = None
+        engine.state.dialog.cannot_now_done = True
         _q_clear(engine, "cannot_now_offer")
         low_cn = user_input.lower()
         if any(
@@ -1164,7 +1164,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         return None
     if (
         cn_state is None
-        and not getattr(engine, "_cannot_now_done", False)
+        and not engine.state.dialog.cannot_now_done
         and s.resolution.procedure
         and s.identity.customer_id
         and not engine.state.ticket.stage
@@ -1176,7 +1176,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         if _dcn(user_input) and not _pack_cn(engine):
             from .dialog_registry import register as _q_register
 
-            engine._cannot_now_state = "asked"
+            engine.state.dialog.cannot_now_state = "asked"
             _q_register(engine, "safety", "cannot_now_clarify")
             engine.tracer.emit("decision", intent="cannot_now", action="clarify_ask")
             return phrase("cannot_now_clarify")
@@ -1241,7 +1241,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             b=VALUE_LT.get(new, new),
         )
     # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
-    if engine._end_confirm_pending:
+    if engine.state.dialog.end_confirm_pending:
         return phrase("confirm_end")
     # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
     # the solve-or-register choice instead of crossing the one-way door
@@ -1387,10 +1387,10 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         from .resolution import is_backchannel as _bc
 
         content = bool(user_input) and not _df(user_input) and not _bc(user_input)
-        n = getattr(engine, "_wrap_content_turns", 0)
+        n = engine.state.closing.wrap_content_turns
         if content and n < 2:
-            engine._wrap_content_turns = n + 1
-            engine._wrap_react_note = True
+            engine.state.closing.wrap_content_turns = n + 1
+            engine.state.closing.wrap_react_note = True
             engine.tracer.emit("decision", intent="wrap_up", action="react", turns=n + 1)
             return None  # the narrator reacts to WHAT was said, then re-offers
         s.closing.case_closed = True

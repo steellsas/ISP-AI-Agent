@@ -494,11 +494,11 @@ class TestTicketFirst:
                 turn=TurnScratch(
                     side_topic_active=False, understanding={"tipas": "nukrypimas", "faktai": {}}
                 ),
-                dialog=DialogState(side_topic_streak=0),
+                dialog=DialogState(
+                    side_topic_streak=0, end_confirm_pending=False, resume_hold_due=False
+                ),
                 ticket=TicketState(stage=None),
             ),
-            _end_confirm_pending=False,
-            _resume_hold=False,
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         assert classify_side_topic(engine, "Išregistruoti meistrą ir paleisti internetą") is False
@@ -971,7 +971,7 @@ class TestDetourResilience:
         from agent.evidence import CLIENT, set_fact
 
         set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 1)
-        agent._resync_note = True
+        agent.state.dialog.resync_note = True
         block = agent._state_facts_block()
         assert "GRĮŽTAME PRIE SPRENDIMO" in block and "nustatyta" in block
         assert "GRĮŽTAME" not in (agent._state_facts_block() or "")  # consumed
@@ -1198,11 +1198,11 @@ class TestLiveCall0821Fixes:
                 turn=TurnScratch(
                     side_topic_active=False, understanding={"tipas": "klausimas", "faktai": {}}
                 ),
-                dialog=DialogState(side_topic_streak=0),
+                dialog=DialogState(
+                    side_topic_streak=0, end_confirm_pending=False, resume_hold_due=False
+                ),
                 ticket=TicketState(stage=None),
             ),
-            _end_confirm_pending=False,
-            _resume_hold=False,
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
         )
         assert classify_side_topic(engine, "O kaip tai padaryti?") is False

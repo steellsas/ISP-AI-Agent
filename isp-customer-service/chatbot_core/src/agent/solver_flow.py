@@ -230,7 +230,11 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
         return None
     # Engine mechanics first: while the ladder / clarify flow owns the turn, the
     # thinker waits (scripted replies and guards are deterministic territory).
-    if engine.state.identity.result_pending or engine._end_confirm_pending or engine._resume_hold:
+    if (
+        engine.state.identity.result_pending
+        or engine.state.dialog.end_confirm_pending
+        or engine.state.dialog.resume_hold_due
+    ):
         return None
     # B-wave switch (2026-09-08): a higher-priority open question (safety/
     # ident/ticket) owns the turn — the solver waits like the walker does.

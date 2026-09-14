@@ -115,7 +115,7 @@ class TestWrapUpHearing:
         agent.state.identity.caller_name = None
         r = agent._identification_scripted_reply("Vilma")
         assert r is None  # naratorius reaguoja su direktyva
-        assert agent._wrap_react_note is True
+        assert agent.state.closing.wrap_react_note is True
         assert not agent.state.closing.case_closed
 
     def test_farewell_closes_immediately(self, db_connection):
@@ -230,23 +230,23 @@ class TestCannotNowHearing:
     def test_rambling_cannot_answer_offers_not_resumes(self, db_connection):
         """N2: neaiškus atsakymas į „ar negalite dabar?" = patvirtinimas."""
         agent = self._solving()
-        agent._cannot_now_state = "asked"
+        agent.state.dialog.cannot_now_state = "asked"
         r = agent._identification_scripted_reply("Negaliu, nes esu nenuose")
         assert r and "užregistruoti" in r  # pasiūlymas, ne resume
 
     def test_callback_in_clarify_answer_closes_warm(self, db_connection):
         """N2b: „Aš Jums perskambinsiu" clarify atsakyme — iškart callback."""
         agent = self._solving()
-        agent._cannot_now_state = "asked"
+        agent.state.dialog.cannot_now_state = "asked"
         r = agent._identification_scripted_reply("Negaliu, aš Jums perskambinsiu")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert r and "paskambinkite" in r
 
     def test_clear_resume_still_resumes(self, db_connection):
         agent = self._solving()
-        agent._cannot_now_state = "asked"
+        agent.state.dialog.cannot_now_state = "asked"
         r = agent._identification_scripted_reply("Ne ne, galiu, jau radau routerį")
-        assert r is None and agent._cannot_now_state is None
+        assert r is None and agent.state.dialog.cannot_now_state is None
         assert not agent.state.closing.case_closed
 
     def test_kai_grisiu_is_cannot_now(self, db_connection):
@@ -311,7 +311,7 @@ class TestHomeworkFinale:
         end-confirm rato."""
         agent = self._at_homework()
         agent._pre_turn_guards("Gerai, sutariam, viso gero.")
-        assert agent._end_confirm_pending is False  # end-confirm nekilo
+        assert agent.state.dialog.end_confirm_pending is False  # end-confirm nekilo
         agent._advance_resolution("Gerai, sutariam, viso gero.")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None

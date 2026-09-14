@@ -33,7 +33,7 @@ def make_solver_gate_node(engine: Any):
             return {}
         # narrate() will not run this turn — consume the deterministic-head
         # latch here so the NEXT turn's narrate does not skip its head.
-        engine._pre_turn_head_done = False
+        engine.state.turn.pre_turn_head_done = False
         engine._active_node = DIAGNOSIS
         engine.tracer.emit(
             "node", node="diagnosis_solver", customer_id=engine.state.identity.customer_id

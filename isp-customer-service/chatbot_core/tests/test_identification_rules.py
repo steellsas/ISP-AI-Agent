@@ -202,7 +202,7 @@ class TestReopenConfirmation:
         agent.state.identity.reopen_confirm_asks = 1
         agent._pre_turn_guards("Nu kaip čia dabar pasakyt")
         assert agent.state.identity.reopen_confirm_utterance is not None  # klausimas gyvas
-        assert agent._resume_hold is True  # walker'is nesuvartos turn'o
+        assert agent.state.dialog.resume_hold_due is True  # walker'is nesuvartos turn'o
         r = agent._identification_scripted_reply("Nu kaip čia dabar pasakyt")
         assert r and "KITO adreso" in r  # pakartojimas
         # Antras neaiškus — nurašom (liekam prie esamo), be amžino ciklo.
@@ -400,10 +400,10 @@ class TestQuestionRegistry:
         assert q and q.owner == "walker" and q.key == "step:escalate"
         # Gyva 2026-09-08: end-confirm/wrap-up replikos NE žingsnio klausimas —
         # jos nebekelia asks; uždarytas atvejis valo walker savininką.
-        agent._end_confirm_pending = True
+        agent.state.dialog.end_confirm_pending = True
         agent._mark_step_presented()
         assert active(agent).asks == 1  # nepakito
-        agent._end_confirm_pending = False
+        agent.state.dialog.end_confirm_pending = False
         agent.state.closing.case_closed = True
         agent._mark_step_presented()
         assert active(agent) is None  # wrap-up fazė — walker uždarytas
@@ -620,17 +620,17 @@ class TestCannotNowLadder:
         agent = self._solving()
         r = agent._identification_scripted_reply("Ne patogu")
         assert r and "kas nepatogu" in r
-        assert agent._cannot_now_state == "asked"
+        assert agent.state.dialog.cannot_now_state == "asked"
 
     def test_confirmed_cannot_offers_paths(self, db_connection):
         agent = self._solving()
-        agent._cannot_now_state = "asked"
+        agent.state.dialog.cannot_now_state = "asked"
         r = agent._identification_scripted_reply("Na, aš ne namie dabar")
         assert r and "užregistruoti" in r and "paskambinkite" in r
 
     def test_callback_choice_closes_politely(self, db_connection):
         agent = self._solving()
-        agent._cannot_now_state = "offered"
+        agent.state.dialog.cannot_now_state = "offered"
         r = agent._identification_scripted_reply("Geriau pats perskambinsiu vėliau")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert r and "paskambinkite" in r
@@ -638,16 +638,16 @@ class TestCannotNowLadder:
 
     def test_ticket_choice_starts_dialogue(self, db_connection):
         agent = self._solving()
-        agent._cannot_now_state = "offered"
+        agent.state.dialog.cannot_now_state = "offered"
         agent._identification_scripted_reply("Registruokite meistrą")
         assert agent.state.ticket.stage == "phone"
 
     def test_explained_otherwise_resumes(self, db_connection):
         agent = self._solving()
-        agent._cannot_now_state = "asked"
+        agent.state.dialog.cannot_now_state = "asked"
         r = agent._identification_scripted_reply("Ne ne, viskas gerai, jau radau routerį")
         assert r is None  # kelias tęsiasi
-        assert agent._cannot_now_state is None
+        assert agent.state.dialog.cannot_now_state is None
 
     def test_in_flow_negaliu_is_not_a_signal(self, db_connection):
         from agent.resolution import detect_cannot_now

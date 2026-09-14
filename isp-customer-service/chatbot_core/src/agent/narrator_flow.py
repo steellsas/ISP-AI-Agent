@@ -360,8 +360,8 @@ def state_facts_block(engine) -> str | None:
     # the LEDGER (kur esame, ką padarėme, kas liko / gal jau sprendimas), never
     # improvises a fresh diagnostic (live: 'ar prijungtas prie maitinimo?' re-
     # asked after a detour while all three facts were already established).
-    if getattr(engine, "_resync_note", False):
-        engine._resync_note = False
+    if engine.state.dialog.resync_note:
+        engine.state.dialog.resync_note = False
         nustatyta = ""
         if s.diagnosis.evidence:
             from .evidence import summary_lt as _sum
@@ -495,8 +495,8 @@ def state_facts_block(engine) -> str | None:
     # Closing wave block 2 (2026-09-09): the business is done, but the caller
     # said something with CONTENT after "Ar dar kuo padėti?" — react to THAT,
     # never a deaf goodbye. One-shot, set by the wrap-up phase.
-    if getattr(engine, "_wrap_react_note", False):
-        engine._wrap_react_note = False
+    if engine.state.closing.wrap_react_note:
+        engine.state.closing.wrap_react_note = False
         facts.append(
             "- UŽDARYMO FAZĖ: verslas baigtas, bet klientas KAŽKĄ pasakė — "
             "sureaguok į TAI konkrečiai: jei prisistatė vardu — šiltai priimk "
@@ -643,7 +643,7 @@ def state_facts_block(engine) -> str | None:
     elif s.dialog.stuck_count == 1:
         extra = (
             " Praeitą klausimą uždavei pažodžiui — BŪTINAI perfrazuok."
-            if engine._repeated_verbatim
+            if engine.state.dialog.last_reply_repeated
             else ""
         )
         if s.dialog.last_heard:
@@ -1187,10 +1187,10 @@ def emit_rag_injection(engine, doc: str | None, section: int, step_id: str, text
     """Emit a `rag` trace event when a playbook section is injected for a step —
     deduped on (doc, section, step) so the multi-call turn (LLM + tool follow-up)
     logs it once, and a step change logs the new section."""
-    key = (doc, section, step_id)
-    if getattr(engine, "_last_rag_key", None) == key:
+    key = [doc, section, step_id]
+    if engine.state.dialog.last_rag_injection_key == key:
         return
-    engine._last_rag_key = key
+    engine.state.dialog.last_rag_injection_key = key
     preview = " ".join((text or "").split())[:90]
     engine.tracer.emit("rag", doc=doc, section=section, step=step_id, preview=preview)
 
@@ -1239,7 +1239,7 @@ def mark_step_presented(engine) -> None:
         from .dialog_registry import register as _q_register
 
         _q = _q_active(engine)
-        if engine._end_confirm_pending:
+        if engine.state.dialog.end_confirm_pending:
             pass  # this reply asked the end-confirm question, not the step's
         elif _q is not None and _q.owner == "safety":
             # Live 2026-09-09 (N1): the reply just asked a SAFETY question

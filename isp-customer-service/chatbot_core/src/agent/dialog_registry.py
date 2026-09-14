@@ -41,29 +41,29 @@ class ActiveQuestion(BaseModel):
 def register(engine: Any, owner: str, key: str, **data: Any) -> ActiveQuestion:
     """A question owner declares: THIS question now owns the turn. Re-asking
     the same question bumps the asks counter (feeds the clarify limit)."""
-    prev = getattr(engine, "_active_question", None)
+    prev = engine.state.dialog.active_question
     q = ActiveQuestion(owner=owner, key=key, data=data)
     if prev is not None and prev.owner == owner and prev.key == key:
         q.asks = prev.asks + 1
-    engine._active_question = q
+    engine.state.dialog.active_question = q
     engine.tracer.emit("question", owner=owner, key=key, asks=q.asks)
     return q
 
 
 def active(engine: Any) -> ActiveQuestion | None:
-    return getattr(engine, "_active_question", None)
+    return engine.state.dialog.active_question
 
 
 def clear(engine: Any, key: str | None = None) -> None:
     """The answer was read (or the question written off) — clear the entry.
     With `key` given, clears only when exactly that question is active
     (never touches someone else's question)."""
-    q = getattr(engine, "_active_question", None)
+    q = engine.state.dialog.active_question
     if q is None:
         return
     if key is not None and q.key != key:
         return
-    engine._active_question = None
+    engine.state.dialog.active_question = None
     engine.tracer.emit("question", owner=q.owner, key=q.key, asks=q.asks, action="closed")
 
 
@@ -76,14 +76,14 @@ def pack_owns_cannot_now(engine: Any) -> bool:
     to the router now?"). While such a step's question is active, the generic
     cannot-now ladder and its head shield stand down — the walker routes the
     answer per the pack file."""
-    q = getattr(engine, "_active_question", None)
+    q = engine.state.dialog.active_question
     return q is not None and q.key.startswith("step:") and q.key.endswith(_PACK_CANNOT_NOW_SUFFIXES)
 
 
 def clear_owner(engine: Any, owner: str) -> None:
     """A whole owner's stage got answered (e.g. identification committed) —
     close its active question, leaving other owners' questions alone."""
-    q = getattr(engine, "_active_question", None)
+    q = engine.state.dialog.active_question
     if q is not None and q.owner == owner:
-        engine._active_question = None
+        engine.state.dialog.active_question = None
         engine.tracer.emit("question", owner=q.owner, key=q.key, asks=q.asks, action="closed")

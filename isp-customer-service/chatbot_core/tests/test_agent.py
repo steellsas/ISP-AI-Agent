@@ -492,7 +492,7 @@ class TestHearingAgent:
         # nenoriu" (= don't END) then advanced stale dr_intro -> escalate ->
         # ticket. The walker holds while the confirm-end answer is unread.
         agent = self._agent(monkeypatch)
-        agent._end_confirm_pending = True
+        agent.state.dialog.end_confirm_pending = True
         agent._walk_resolution("Ne, nenoriu.")
         assert agent.state.resolution.procedure["step"] == "dr_intro"
         assert agent.state.ticket.stage is None
@@ -1016,7 +1016,7 @@ class TestVoiceGuardsRound5:
         }
 
         agent._pre_turn_guards("viso gero")  # mid-troubleshooting goodbye
-        assert agent._end_confirm_pending is True
+        assert agent.state.dialog.end_confirm_pending is True
         assert agent.state.closing.case_closed is False  # clarify first, never hang up
         reply = agent._identification_scripted_reply("viso gero")
         assert reply and "tikrai norite baigti" in reply
@@ -1046,7 +1046,7 @@ class TestVoiceGuardsRound5:
         agent._pre_turn_guards("viso gero")
         agent._pre_turn_guards("ne ne, tęskime")  # changed their mind
         assert agent.state.closing.case_closed is False
-        assert agent._end_confirm_pending is False
+        assert agent.state.dialog.end_confirm_pending is False
         agent._walk_resolution("ne ne, tęskime")  # held one turn, not misrouted
         assert agent.state.resolution.procedure["step"] == "dr_lights"
 
@@ -1480,7 +1480,7 @@ class TestThinkerBoundaries:
     def test_defers_while_end_confirm_pending(self, db_connection, monkeypatch):
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
-        agent._end_confirm_pending = True
+        agent.state.dialog.end_confirm_pending = True
         assert agent.solver_drive_turn("taip") is None
 
     def test_defers_until_caller_intro_done(self, db_connection, monkeypatch):

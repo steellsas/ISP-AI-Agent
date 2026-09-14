@@ -120,7 +120,7 @@ def abort_ticket_to_solving(engine: Any) -> None:
     engine.state.ticket.stage = None
     engine.state.ticket.context = None
     engine.state.ticket.resume_fix_note = True
-    engine._resync_note = True  # C: re-anchor from the ledger, no improvising
+    engine.state.dialog.resync_note = True  # C: re-anchor from the ledger, no improvising
     from .dialog_registry import clear_owner as _q_clear_owner
 
     _q_clear_owner(engine, "ticket")

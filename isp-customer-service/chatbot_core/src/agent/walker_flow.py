@@ -624,7 +624,7 @@ def scripted_wait_ack(engine) -> str | None:
         return None
     if engine.state.diagnosis.pending_announcement or engine.state.diagnosis.evidence_conflict:
         return None
-    if getattr(engine, "_resync_note", False) or getattr(engine, "_undelivered_tail", None):
+    if engine.state.dialog.resync_note or getattr(engine, "_undelivered_tail", None):
         return None
     d = engine.state.turn.directives
     if d.evidence or d.recap or d.findings or d.ticket or d.ident:
@@ -739,7 +739,7 @@ def route_to(engine, r: dict, target: str) -> None:
         # call back — a warm callback close, never pressure into a ticket.
         engine.state.closing.case_closed = True
         engine.state.closing.closed_reason = "callback"
-        engine._callback_goodbye_due = True  # scripted speaks callback_goodbye
+        engine.state.closing.callback_goodbye_due = True  # scripted speaks callback_goodbye
         engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
     elif target == "end":
         engine.state.closing.case_closed = True

@@ -95,8 +95,10 @@ def make_closing_node(engine: Any):
                 reply = phrase("ticket_phone_fixed", nr=fmt_phone(nr))
                 speak_scripted(engine, CLOSING, user_input, reply)
                 return sync_updates(engine, user_input=user_input, reply=reply)
-            if s.intake.secondary_problems and not getattr(engine, "_secondary_asked", False):
-                engine._secondary_asked = True  # the facts directive carries the list
+            if s.intake.secondary_problems and not engine.state.closing.secondary_problems_asked:
+                engine.state.closing.secondary_problems_asked = (
+                    True  # the facts directive carries the list
+                )
             else:
                 reply = phrase("goodbye")
                 speak_scripted(engine, CLOSING, user_input, reply)

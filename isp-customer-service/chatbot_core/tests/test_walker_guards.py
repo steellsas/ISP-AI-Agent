@@ -9,6 +9,7 @@ use the REAL strategies and detectors — only the engine is faked.
 from types import SimpleNamespace
 
 from agent import walker_guards
+from agent.graph_v2.state import GraphState
 from agent.resolution import STRATEGIES, detect_refuse_or_ticket
 
 
@@ -16,8 +17,7 @@ class GuardEngine:
     """Minimal engine surface the guards touch, with recorded routing calls."""
 
     def __init__(self):
-        self._resume_hold = False
-        self._end_confirm_pending = False
+        self.state = GraphState()
         self.routed = []
         self.gotos = []
         self.dialogue_started = []
@@ -75,14 +75,14 @@ class TestChainOrder:
 class TestPrelude:
     def test_resume_hold_consumes_exactly_one_turn(self):
         engine = GuardEngine()
-        engine._resume_hold = True
+        engine.state.dialog.resume_hold_due = True
         assert walker_guards.resume_hold(engine, "ne, tęskime") is True
-        assert engine._resume_hold is False
+        assert engine.state.dialog.resume_hold_due is False
         assert walker_guards.resume_hold(engine, "toliau") is False
 
     def test_end_confirm_pending_holds(self):
         engine = GuardEngine()
-        engine._end_confirm_pending = True
+        engine.state.dialog.end_confirm_pending = True
         assert walker_guards.end_confirm_pending(engine, "Ne, nenoriu") is True
 
 
