@@ -41,6 +41,7 @@ RUNTIME_ATTRIBUTES = {
     "state",  # the working copy handed in by the running node
     "session_id",
     "tracer",
+    "tools",
     "llm_stats",
     "system_prompt",
     "tools_schema",

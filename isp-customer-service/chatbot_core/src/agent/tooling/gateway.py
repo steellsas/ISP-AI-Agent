@@ -1,0 +1,183 @@
+"""
+ToolGateway — the ONE place a tool call happens.
+
+run(): trace `tool_call` (with the caller's reason) → deterministic access gate
+→ provider call → state update from the observation → trace `tool_result`.
+Callers get a ToolResult; the observation stays the tool's JSON string.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+from src.ports.tools import ToolProvider
+
+from ..trace import trace_tool_result
+from ..verdict import UNRESOLVED_LINE_FAULTS
+
+# Technical tools that must NOT run before the customer is identified
+# (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
+GATED_TOOLS = frozenset({"diagnose_connection", "update_mac", "reset_port", "create_ticket"})
+
+
+@dataclass(frozen=True)
+class ToolResult:
+    name: str
+    args: dict[str, Any]
+    # The tool's JSON string (or the gate's corrective refusal).
+    observation: str
+    ms: int = 0
+    gated: bool = False
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+def _parse(observation: str) -> dict[str, Any]:
+    try:
+        data = json.loads(observation)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+class ToolGateway:
+    def __init__(self, provider: ToolProvider):
+        self.provider = provider
+
+    def run(
+        self,
+        engine: Any,
+        name: str,
+        args: dict[str, Any],
+        *,
+        reason: str,
+        apply: bool = True,
+    ) -> ToolResult:
+        """Run one tool call for the call `engine` is working on. `apply=False`
+        leaves the state untouched (read-only rechecks)."""
+        engine.tracer.emit("tool_call", name=name, args=args, reason=reason)
+        refusal = gate(engine, name, args)
+        if refusal is not None:
+            observation, ms, gated = refusal, 0, True
+        else:
+            started = time.perf_counter()
+            observation = self.provider.execute(name, args)
+            ms, gated = round((time.perf_counter() - started) * 1000.0), False
+        if apply:
+            from ..narrator_flow import update_state_from_observation
+
+            update_state_from_observation(engine, name, observation)
+        trace_tool_result(engine.tracer, name, observation, ms)
+        return ToolResult(name, args, observation, ms, gated, _parse(observation))
+
+
+def gate(engine: Any, name: str, args: dict) -> str | None:
+    """
+    Deterministic tool-access gate.
+
+    Returns a corrective observation (JSON string) when a technical tool is
+    called before identification, or with a customer_id that is not the
+    identified one — otherwise None (the call proceeds). This moves the "no
+    diagnostics before identification" / "never act on a guessed id" rules
+    out of the prompt and into code, so a hallucinated `diagnose_connection`
+    cannot fire (observed: customer_id='1' on an unidentified caller).
+    """
+    # check_outages must be street-specific. A city-only query returns OTHER
+    # streets' outages, which the model then misattributes to the caller
+    # (observed). Require a street (area="Miestas, Gatvė") OR a customer_id —
+    # the house/apartment is NOT required (street-level check is valid pre-house).
+    if name == "check_outages":
+        area = (args.get("area") or "").strip()
+        if area and "," not in area and not args.get("customer_id"):
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "city_only",
+                    "message": (
+                        "check_outages reikalauja gatvės: perduok area='Miestas, "
+                        "Gatvė' (ne vien miestą) arba customer_id. Tik-miesto "
+                        "patikra grąžina kitų gatvių gedimus."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        return None
+
+    # close_case: reason-specific backstop so an over-eager model can't end the
+    # call prematurely. "resolved" needs an identified customer; "outage" needs
+    # an outage to have actually been reported.
+    if name == "close_case":
+        reason = args.get("reason", "resolved")
+        if reason == "resolved":
+            if not engine.state.identity.customer_id:
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "not_identified",
+                        "message": "Negalima uždaryti kaip 'resolved' neidentifikavus kliento.",
+                    },
+                    ensure_ascii=False,
+                )
+            # Verify-gate: telemetry is the source of truth. If a fresh
+            # diagnose still shows the line fault, the fix has NOT taken —
+            # block "resolved" so the agent can't close on the caller's word
+            # (observed: B6 closed as resolved without ever binding the MAC).
+            reason_now = engine._fresh_diagnose_reason()
+            if reason_now in UNRESOLVED_LINE_FAULTS:
+                from ..glossary import DIAGNOSIS_LT
+
+                gloss = DIAGNOSIS_LT.get(reason_now, reason_now)
+                return json.dumps(
+                    {
+                        "success": False,
+                        "error": "not_fixed",
+                        "message": (
+                            f"Telemetrija dar rodo gedimą ({gloss}) — dar NEsutvarkyta, "
+                            "neuždaryk kaip 'resolved'. Atlik reikiamą veiksmą (pvz. "
+                            "update_mac + reset_port) ir per-tikrink diagnostiką."
+                        ),
+                    },
+                    ensure_ascii=False,
+                )
+        if reason == "outage" and not engine.state.diagnosis.outage_reported:
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": "no_outage",
+                    "message": (
+                        "close_case(reason='outage') leidžiama tik po to, kai "
+                        "check_outages patvirtino aktyvų gedimą."
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        return None
+
+    if name not in GATED_TOOLS:
+        return None
+    if not engine.state.identity.customer_id:
+        return json.dumps(
+            {
+                "success": False,
+                "error": "not_identified",
+                "message": (
+                    "Klientas dar neidentifikuotas. Pirma surask ir patvirtink "
+                    "adresą (resolve_address) — tik tada galima diagnozė ar veiksmai."
+                ),
+            }
+        )
+    cid = args.get("customer_id")
+    if cid and cid != engine.state.identity.customer_id:
+        return json.dumps(
+            {
+                "success": False,
+                "error": "id_mismatch",
+                "message": (
+                    f"customer_id turi būti identifikuoto kliento: "
+                    f"{engine.state.identity.customer_id}. Nenaudok kito ar spėto id."
+                ),
+            }
+        )
+    return None

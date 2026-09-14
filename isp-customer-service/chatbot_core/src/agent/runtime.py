@@ -26,6 +26,8 @@ class AgentRuntime:
     session_id: str
     config: AgentConfig
     tracer: Any  # ConversationTracer
+    # The one tool gateway (agent/tooling).
+    tools: Any
     # Barge-in: set from the transport thread, checked between LLM tokens.
     cancel: threading.Event
     # Testable time (ETA, flap windows).
@@ -40,6 +42,7 @@ def build_runtime(engine: Any) -> AgentRuntime:
         session_id=engine.session_id,
         config=engine.config,
         tracer=engine.tracer,
+        tools=engine.tools,
         cancel=engine._cancel_requested,
         engine=engine,
     )

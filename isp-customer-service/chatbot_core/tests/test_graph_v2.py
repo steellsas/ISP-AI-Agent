@@ -136,6 +136,7 @@ def _fake_runtime(engine):
         session_id=engine.session_id,
         config=AgentConfig(),
         tracer=engine.tracer,
+        tools=None,
         cancel=threading.Event(),
         engine=engine,
     )

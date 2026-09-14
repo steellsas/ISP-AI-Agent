@@ -30,6 +30,7 @@ from .config import AgentConfig, create_config
 from .dialog_utils import is_question, progress_key, similar
 from .graph_v2.state import DialogState, GraphState, IdentityState
 from .prompts import load_system_prompt
+from .tooling import LocalToolProvider, ToolGateway
 from .trace import emit_case, tools_called_this_session, trace_note
 
 # Conversation trace (observability). Optional: if the adapter can't import,
@@ -209,6 +210,8 @@ class ReactAgent:
         # S1 speculation (2026-08-24): the branch cache prepared while the
         # caller was answering, and the matched reply injected past the LLM.
         self._spec_cache: dict | None = None
+        # The one gateway every tool call goes through (gate, trace, state update).
+        self.tools = ToolGateway(LocalToolProvider())
 
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
@@ -270,27 +273,6 @@ class ReactAgent:
         from .narrator_flow import state_facts_block
 
         return state_facts_block(self)
-
-    # Technical tools that must NOT run before the customer is identified
-    # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
-    _GATED_TOOLS = frozenset({"diagnose_connection", "update_mac", "reset_port", "create_ticket"})
-
-    # Line/provider-side faults that a remote or instructed fix is supposed to
-    # clear. If a fresh diagnose still shows one of these, the fix has NOT taken —
-    # so "resolved" is premature (telemetry is the source of truth, not the
-    # caller's word). healthy_to_router is deliberately absent: the line is fine,
-    # any remaining fault is client-side (Wi-Fi/device) which telemetry can't see,
-    # so that close is the caller's call.
-    _UNRESOLVED_LINE_FAULTS = frozenset(
-        {
-            "foreign_mac",
-            "link_down_local",
-            "dhcp_silent",
-            "crc_errors",
-            "no_mac_observed",
-            "router_hung",
-        }
-    )
 
     def _fresh_diagnose_reason(self) -> str | None:
         """Delegates to walker_flow.fresh_diagnose_reason (R3 extraction)."""
@@ -787,21 +769,6 @@ class ReactAgent:
         from .narrator_flow import augment_tool_result
 
         return augment_tool_result(self, name, observation)
-
-    def _gate_tool(self, name: str, args: dict) -> str | None:
-        """
-        Deterministic tool-access gate.
-
-        Returns a corrective observation (JSON string) when a technical tool is
-        called before identification, or with a customer_id that is not the
-        identified one — otherwise None (the call proceeds). This moves the "no
-        diagnostics before identification" / "never act on a guessed id" rules
-        out of the prompt and into code, so a hallucinated `diagnose_connection`
-        cannot fire (observed: customer_id='1' on an unidentified caller).
-        """
-        from .executor_flow import gate_tool
-
-        return gate_tool(self, name, args)
 
     def _update_state_from_observation(self, action: str, observation: str):
         """Delegates to narrator_flow.update_state_from_observation (R3 extraction)."""

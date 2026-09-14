@@ -21,6 +21,7 @@ from typing import Any  # noqa: F401
 from .dialog_utils import asked_recently, last_agent_question
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
 from .trace import emit_decision, trace_note, trace_tool_result
+from .verdict import UNRESOLVED_LINE_FAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -771,7 +772,7 @@ def advance_restored(engine, r: dict, user_input: str | None) -> None:
     from .resolution import Outcome, detect_restored
 
     reason_now = engine._fresh_diagnose_reason()
-    fixed = reason_now not in engine._UNRESOLVED_LINE_FAULTS
+    fixed = reason_now not in UNRESOLVED_LINE_FAULTS
     r["telemetry_fixed"] = fixed
     if not r.get("asked"):
         return  # question not asked yet (the bind turn) — just record telemetry
@@ -909,7 +910,7 @@ def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:
     reason_now = verdict.get("reason")
     telem_ok = isinstance(payload, dict) and reason_now is not None
     flap = bool(signals.get("port_flap_recent"))
-    r["telemetry_fixed"] = telem_ok and reason_now not in engine._UNRESOLVED_LINE_FAULTS
+    r["telemetry_fixed"] = telem_ok and reason_now not in UNRESOLVED_LINE_FAULTS
     if not r.get("asked"):
         return  # the check question goes out this turn — just record telemetry
     outcome = detect_reboot_check(user_input)

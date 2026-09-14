@@ -19,6 +19,7 @@ from typing import Any  # noqa: F401
 
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
 from .glossary import PROBLEM_LT as _PROBLEM_LT
+from .verdict import UNRESOLVED_LINE_FAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -1358,7 +1359,7 @@ def augment_tool_result(engine, name: str, observation: str) -> str:
     except Exception:  # pragma: no cover - best-effort
         obs["auto_reset_port"] = None
     reason_now = engine._fresh_diagnose_reason()
-    fixed = reason_now not in engine._UNRESOLVED_LINE_FAULTS
+    fixed = reason_now not in UNRESOLVED_LINE_FAULTS
     obs["telemetry_after"] = reason_now
     obs["fixed"] = fixed
     gloss = _DIAGNOSIS_LT.get(reason_now, reason_now or "—")

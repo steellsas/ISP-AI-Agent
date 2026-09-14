@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 from typing import Any
 
 from .dialog_utils import assistant_tool_message
@@ -22,122 +21,10 @@ from .trace import tools_called_this_session, trace_note, trace_tool_result
 logger = logging.getLogger(__name__)
 
 
-def gate_tool(engine: Any, name: str, args: dict) -> str | None:
-    """
-    Deterministic tool-access gate.
-
-    Returns a corrective observation (JSON string) when a technical tool is
-    called before identification, or with a customer_id that is not the
-    identified one — otherwise None (the call proceeds). This moves the "no
-    diagnostics before identification" / "never act on a guessed id" rules
-    out of the prompt and into code, so a hallucinated `diagnose_connection`
-    cannot fire (observed: customer_id='1' on an unidentified caller).
-    """
-    # check_outages must be street-specific. A city-only query returns OTHER
-    # streets' outages, which the model then misattributes to the caller
-    # (observed). Require a street (area="Miestas, Gatvė") OR a customer_id —
-    # the house/apartment is NOT required (street-level check is valid pre-house).
-    if name == "check_outages":
-        area = (args.get("area") or "").strip()
-        if area and "," not in area and not args.get("customer_id"):
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": "city_only",
-                    "message": (
-                        "check_outages reikalauja gatvės: perduok area='Miestas, "
-                        "Gatvė' (ne vien miestą) arba customer_id. Tik-miesto "
-                        "patikra grąžina kitų gatvių gedimus."
-                    ),
-                },
-                ensure_ascii=False,
-            )
-        return None
-
-    # close_case: reason-specific backstop so an over-eager model can't end the
-    # call prematurely. "resolved" needs an identified customer; "outage" needs
-    # an outage to have actually been reported.
-    if name == "close_case":
-        reason = args.get("reason", "resolved")
-        if reason == "resolved":
-            if not engine.state.identity.customer_id:
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": "not_identified",
-                        "message": "Negalima uždaryti kaip 'resolved' neidentifikavus kliento.",
-                    },
-                    ensure_ascii=False,
-                )
-            # Verify-gate: telemetry is the source of truth. If a fresh
-            # diagnose still shows the line fault, the fix has NOT taken —
-            # block "resolved" so the agent can't close on the caller's word
-            # (observed: B6 closed as resolved without ever binding the MAC).
-            reason_now = engine._fresh_diagnose_reason()
-            if reason_now in engine._UNRESOLVED_LINE_FAULTS:
-                from .glossary import DIAGNOSIS_LT
-
-                gloss = DIAGNOSIS_LT.get(reason_now, reason_now)
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": "not_fixed",
-                        "message": (
-                            f"Telemetrija dar rodo gedimą ({gloss}) — dar NEsutvarkyta, "
-                            "neuždaryk kaip 'resolved'. Atlik reikiamą veiksmą (pvz. "
-                            "update_mac + reset_port) ir per-tikrink diagnostiką."
-                        ),
-                    },
-                    ensure_ascii=False,
-                )
-        if reason == "outage" and not engine.state.diagnosis.outage_reported:
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": "no_outage",
-                    "message": (
-                        "close_case(reason='outage') leidžiama tik po to, kai "
-                        "check_outages patvirtino aktyvų gedimą."
-                    ),
-                },
-                ensure_ascii=False,
-            )
-        return None
-
-    if name not in engine._GATED_TOOLS:
-        return None
-    if not engine.state.identity.customer_id:
-        return json.dumps(
-            {
-                "success": False,
-                "error": "not_identified",
-                "message": (
-                    "Klientas dar neidentifikuotas. Pirma surask ir patvirtink "
-                    "adresą (resolve_address) — tik tada galima diagnozė ar veiksmai."
-                ),
-            }
-        )
-    cid = args.get("customer_id")
-    if cid and cid != engine.state.identity.customer_id:
-        return json.dumps(
-            {
-                "success": False,
-                "error": "id_mismatch",
-                "message": (
-                    f"customer_id turi būti identifikuoto kliento: "
-                    f"{engine.state.identity.customer_id}. Nenaudok kito ar spėto id."
-                ),
-            }
-        )
-    return None
-
-
 def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
     """Echo the assistant tool-call message, run each tool through the gate,
     append results to history, trace, and update state. Returns the executed
-    list. Shared by step() (non-streaming) and the streaming loop."""
-    from .react_agent import execute_tool
-
+    list."""
     engine.state.messages.append(assistant_tool_message(message))
     executed = []
     for tc in message.tool_calls:
@@ -153,28 +40,19 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
             args = {}
 
         logger.info(f"[AGENT] Tool call: {name}")
-        engine.tracer.emit("tool_call", name=name, args=args)
-
-        gate = gate_tool(engine, name, args)
-        if gate is not None:
-            observation, tool_ms = gate, 0
-            engine._update_state_from_observation(name, observation)
-        else:
-            _t = time.perf_counter()
-            observation = execute_tool(name, args)
-            tool_ms = round((time.perf_counter() - _t) * 1000.0)
-            # Commit state BEFORE augmenting: resolve_address sets customer_id
-            # here, and the augment then diagnoses in the same turn (it read a
-            # not-yet-committed id and skipped, so the strategy never activated —
-            # the whole dead-router walk fell back to free-form LLM). _update reads
-            # only raw tool fields, never the ones augment adds, so the order is safe.
-            engine._update_state_from_observation(name, observation)
+        # The gateway commits state BEFORE augmenting: resolve_address sets
+        # customer_id there, and the augment then diagnoses in the same turn (it
+        # read a not-yet-committed id and skipped, so the strategy never
+        # activated). The state update reads only raw tool fields, never the ones
+        # augment adds, so the order is safe.
+        result = engine.tools.run(engine, name, args, reason="llm")
+        observation = result.observation
+        if not result.gated:
             observation = engine._augment_tool_result(name, observation)
 
         engine.state.messages.append(
             {"role": "tool", "tool_call_id": tc.id, "content": observation}
         )
-        trace_tool_result(engine.tracer, name, observation, tool_ms)
         engine.state.intake.observations.append(observation)
         executed.append({"name": name, "arguments": args, "observation": observation})
     return executed
