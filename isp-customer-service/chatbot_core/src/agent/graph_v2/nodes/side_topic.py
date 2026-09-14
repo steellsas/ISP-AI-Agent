@@ -12,14 +12,16 @@ from __future__ import annotations
 from typing import Any
 
 from ..router import SIDE_TOPIC
-from ..runtime import SIDE_TOPIC_PROMPT, narrate, sync_updates
+from ..runtime import SIDE_TOPIC_PROMPT, narrate, run_on_state
 from ..state import GraphState
 
 
 def make_side_topic_node(engine: Any):
     def side_topic_node(state: GraphState) -> dict[str, Any]:
-        user_input = state.turn.user_input
-        reply = narrate(engine, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
-        return sync_updates(engine, user_input=user_input, reply=reply)
+        def body() -> str:
+            user_input = state.turn.user_input
+            return narrate(engine, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
+
+        return run_on_state(engine, state, body)
 
     return side_topic_node

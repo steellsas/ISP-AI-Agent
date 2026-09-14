@@ -9,6 +9,13 @@ from agent.evidence import FactConfirm
 from agent.graph_v2.state import TicketContext
 
 
+def _turn_state(agent, text):
+    """The agent's state as a node input for one caller turn."""
+    from agent.graph_v2.state import TurnScratch
+
+    return agent.state.model_copy(update={"turn": TurnScratch(user_input=text)})
+
+
 class TestW0OrderGuards:
     """W0 (live 2026-08-25): the solver's legacy bridge path fired mid-power
     talk on a garbled 'vėl įkišau'; question-shaped ticket answers bypassed
@@ -65,7 +72,7 @@ class TestW0OrderGuards:
         agent.state.ticket.ticket_id = res["ticket_id"]
         agent.state.closing.case_closed = True
         node = make_closing_node(agent)
-        node(SimpleNamespace(turn=SimpleNamespace(user_input="Gerai, ačiū")))
+        node(_turn_state(agent, "Gerai, ačiū"))
         assert agent.state.closing.is_complete is True  # one goodbye, then hang up
 
 

@@ -14,13 +14,15 @@ from typing import Any
 
 from ...closing_flow import maybe_finish
 from ..router import CLOSING
-from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, speak_scripted, sync_updates
+from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, run_on_state, speak_scripted
 from ..state import GraphState
 
 
 def make_closing_node(engine: Any):
     def closing_node(state: GraphState) -> dict[str, Any]:
-        user_input = state.turn.user_input
+        return run_on_state(engine, state, lambda: closing(state.turn.user_input))
+
+    def closing(user_input: str | None) -> str:
         # A ticket demand at the goodbye reopens the case (live 2026-08-13:
         # "Dar prašau, žegistruokit gedimą…" got "gražios dienos!" and the
         # caller left with ticket=None) — the registration dialogue starts
@@ -39,9 +41,9 @@ def make_closing_node(engine: Any):
             reply = engine._drive_escalate(None)
             if reply:  # narrator mode leaves the intro to the LLM (directive set)
                 speak_scripted(engine, CLOSING, user_input, reply)
-                return sync_updates(engine, user_input=user_input, reply=reply)
+                return reply
             reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
-            return sync_updates(engine, user_input=user_input, reply=reply)
+            return reply
         # A "still not working" at the goodbye contradicts a resolved close —
         # never wave it off (live 2026-09-11: "Internetas neveikia." got
         # "Geros dienos!"). Reopen and register instead of celebrating.
@@ -63,9 +65,9 @@ def make_closing_node(engine: Any):
             reply = engine._drive_escalate(None)
             if reply:
                 speak_scripted(engine, CLOSING, user_input, reply)
-                return sync_updates(engine, user_input=user_input, reply=reply)
+                return reply
             reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
-            return sync_updates(engine, user_input=user_input, reply=reply)
+            return reply
         maybe_finish(engine, user_input)
         # After a REGISTRATION the goodbye is scripted (live 2026-08-21: the
         # closing LLM re-asked the call-back hours after the ticket was done).
@@ -94,7 +96,7 @@ def make_closing_node(engine: Any):
                 )
                 reply = phrase("ticket_phone_fixed", nr=fmt_phone(nr))
                 speak_scripted(engine, CLOSING, user_input, reply)
-                return sync_updates(engine, user_input=user_input, reply=reply)
+                return reply
             if s.intake.secondary_problems and not engine.state.closing.secondary_problems_asked:
                 engine.state.closing.secondary_problems_asked = (
                     True  # the facts directive carries the list
@@ -102,7 +104,7 @@ def make_closing_node(engine: Any):
             else:
                 reply = phrase("goodbye")
                 speak_scripted(engine, CLOSING, user_input, reply)
-                return sync_updates(engine, user_input=user_input, reply=reply)
+                return reply
         # Closing wave block 4 (live 2026-09-08: three near-identical
         # "Džiaugiuosi… routeris buvo pakibęs…" improvisations after the
         # goodbye moment): the FIRST closing reply may be the LLM's warm,
@@ -113,8 +115,8 @@ def make_closing_node(engine: Any):
         ):
             reply = phrase("goodbye")
             speak_scripted(engine, CLOSING, user_input, reply)
-            return sync_updates(engine, user_input=user_input, reply=reply)
+            return reply
         reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
-        return sync_updates(engine, user_input=user_input, reply=reply)
+        return reply
 
     return closing_node

@@ -14,14 +14,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...runtime import run_on_state
 from ...state import GraphState
 
 
 def make_walker_node(engine: Any):
     def walker_node(state: GraphState) -> dict[str, Any]:
-        user_input = state.turn.user_input
-        engine._advance_resolution(user_input)
-        engine._shadow_solve(user_input)
-        return {}
+        def body() -> None:
+            user_input = state.turn.user_input
+            engine._advance_resolution(user_input)
+            engine._shadow_solve(user_input)
+
+        return run_on_state(engine, state, body)
 
     return walker_node

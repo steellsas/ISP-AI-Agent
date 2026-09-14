@@ -15,12 +15,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...runtime import run_on_state
 from ...state import GraphState
 
 
 def make_executor_node(engine: Any):
     def executor_node(state: GraphState) -> dict[str, Any]:
-        engine.ensure_action_done()
-        return {}
+        def body() -> None:
+            engine.ensure_action_done()
+
+        return run_on_state(engine, state, body)
 
     return executor_node

@@ -14,15 +14,18 @@ from __future__ import annotations
 from typing import Any
 
 from ...router import DIAGNOSIS
-from ...runtime import DIAGNOSIS_NODE_PROMPT, narrate, sync_updates
+from ...runtime import DIAGNOSIS_NODE_PROMPT, narrate, run_on_state
 from ...state import GraphState
 
 
 def make_narrator_node(engine: Any):
     def narrator_node(state: GraphState) -> dict[str, Any]:
-        user_input = state.turn.user_input
-        reply = narrate(engine, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS)
-        engine._mark_step_presented()
-        return sync_updates(engine, user_input=user_input, reply=reply)
+        def body() -> str:
+            user_input = state.turn.user_input
+            reply = narrate(engine, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS)
+            engine._mark_step_presented()
+            return reply
+
+        return run_on_state(engine, state, body)
 
     return narrator_node

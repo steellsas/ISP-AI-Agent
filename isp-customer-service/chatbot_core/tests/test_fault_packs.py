@@ -1336,7 +1336,9 @@ class TestD5WaitAckAndClosing:
         node = make_closing_node(agent)
         # 1) number correction: acknowledged aloud AND noted on the ticket
         upd = node(
-            SimpleNamespace(turn=SimpleNamespace(user_input="Skambinkite kitu numeriu 868321007"))
+            agent.state.model_copy(
+                update={"turn": TurnScratch(user_input="Skambinkite kitu numeriu 868321007")}
+            )
         )
         assert "Užsirašiau" in upd["turn"].reply
         assert agent.state.messages[-1]["content"] == upd["turn"].reply
@@ -1351,6 +1353,6 @@ class TestD5WaitAckAndClosing:
             details = dict(cur.fetchone())["details"]
         assert "PATIKSLINTA" in details and "868321007" in details
         # 2) a plain 'gerai' now gets the SPOKEN scripted goodbye
-        upd2 = node(SimpleNamespace(turn=SimpleNamespace(user_input="Gerai, ačiū")))
+        upd2 = node(agent.state.model_copy(update={"turn": TurnScratch(user_input="Gerai, ačiū")}))
         assert upd2["turn"].reply and "Geros dienos" in upd2["turn"].reply
         assert agent.state.messages[-1]["content"] == upd2["turn"].reply

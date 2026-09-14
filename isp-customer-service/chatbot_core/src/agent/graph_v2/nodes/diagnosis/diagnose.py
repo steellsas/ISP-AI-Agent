@@ -19,12 +19,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...runtime import run_on_state
 from ...state import GraphState
 
 
 def make_diagnose_node(engine: Any):
     def diagnose_node(state: GraphState) -> dict[str, Any]:
-        user_input = state.turn.user_input
+        return run_on_state(engine, state, lambda: diagnose(state.turn.user_input))
+
+    def diagnose(user_input: str | None) -> None:
         engine.ensure_diagnosed()
         # One-owner principle (live A-2, 2026-09-07): the deterministic turn
         # head (prefill + pre_turn_guards) runs BEFORE the solver/walker —
@@ -38,7 +41,7 @@ def make_diagnose_node(engine: Any):
             engine._pre_turn_guards(user_input)
             engine.state.turn.pre_turn_head_done = True
         engine._ingest_client_evidence(user_input)
-        side = bool(engine.classify_side_topic(user_input))
-        return {"turn": state.turn.model_copy(update={"side_topic_active": side})}
+        # A corroborated deviation freezes the engine this turn (read by the router).
+        engine.state.turn.side_topic_active = bool(engine.classify_side_topic(user_input))
 
     return diagnose_node

@@ -16,14 +16,18 @@ from __future__ import annotations
 from typing import Any
 
 from ..router import TICKET_REGISTRATION
-from ..runtime import TICKET_NODE_PROMPT, TICKET_TOOLS, narrate, sync_updates
+from ..runtime import TICKET_NODE_PROMPT, TICKET_TOOLS, narrate, run_on_state
 from ..state import GraphState
 
 
 def make_ticket_node(engine: Any):
     def ticket_node(state: GraphState) -> dict[str, Any]:
-        user_input = state.turn.user_input
-        reply = narrate(engine, user_input, TICKET_TOOLS, TICKET_NODE_PROMPT, TICKET_REGISTRATION)
-        return sync_updates(engine, user_input=user_input, reply=reply)
+        def body() -> str:
+            user_input = state.turn.user_input
+            return narrate(
+                engine, user_input, TICKET_TOOLS, TICKET_NODE_PROMPT, TICKET_REGISTRATION
+            )
+
+        return run_on_state(engine, state, body)
 
     return ticket_node

@@ -4,22 +4,22 @@ Shared node runtime — the only code nodes share besides GraphState.
 Two seams:
 - `narrate()` — the scoped LLM turn with token streaming (node trace event +
   stream writer contract).
-- `sync_updates()` — mirrors engine.state back into GraphState after a node
-  ran, so checkpoints capture the full call and the entry router can stay pure.
-  It disappears when nodes return their own updates (M1 step 5).
+- `run_on_state()` — the node contract: the node body runs on a working copy
+  of the graph state and the node returns the full state as its update, so the
+  checkpoint is the only state between nodes and between turns.
 
 Tool scopes live in tool_scopes.py (re-exported here for the nodes).
 """
 
 from __future__ import annotations
 
-import copy
+from collections.abc import Callable
 from typing import Any
 
 from langgraph.config import get_stream_writer
 
 from ..prompts import load_node_prompt
-from .state import STATE_GROUPS, TurnScratch
+from .state import GraphState
 from .tool_scopes import CLOSING_TOOLS, LOOKUP_TOOLS, TICKET_TOOLS  # noqa: F401  (re-exported)
 
 # Per-stage prompts.
@@ -69,10 +69,14 @@ def speak_scripted(engine: Any, node: str, user_input: str | None, reply: str) -
         pass
 
 
-def sync_updates(engine: Any, *, user_input: str | None, reply: str | None) -> dict[str, Any]:
-    """Snapshot engine.state into graph-state updates."""
-    updates: dict[str, Any] = {
-        name: copy.deepcopy(getattr(engine.state, name)) for name in STATE_GROUPS
-    }
-    updates["turn"] = TurnScratch(user_input=user_input, reply=reply)
-    return updates
+def run_on_state(engine: Any, state: GraphState, body: Callable[[], str | None]) -> dict[str, Any]:
+    """Run a node body on a working copy of `state` and return the full update.
+
+    The engine's flows read and write `engine.state`; it is set to a deep copy of
+    the node's input state, so nothing outlives the node except what it returns.
+    A non-None result of `body` is the turn's reply."""
+    engine.state = state.model_copy(deep=True)
+    reply = body()
+    if reply is not None:
+        engine.state.turn.reply = reply
+    return {name: getattr(engine.state, name) for name in GraphState.model_fields}

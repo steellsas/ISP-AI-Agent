@@ -42,9 +42,8 @@ def _v2_session(tmp_path, name="cp.sqlite", phone="unknown"):
 
 def _sync_checkpoint(session):
     """Mirror fields a test set on the engine into the checkpoint the entry router reads."""
-    from agent.graph_v2.runtime import sync_updates
-
-    updates = sync_updates(session._agent, user_input=None, reply=None)
+    state = session._agent.state
+    updates = {name: getattr(state, name) for name in type(state).model_fields if name != "turn"}
     session._graph.update_state(session._graph_config, updates)
 
 

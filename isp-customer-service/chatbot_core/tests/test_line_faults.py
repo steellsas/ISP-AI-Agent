@@ -142,13 +142,16 @@ class TestBlendGuard:
         from types import SimpleNamespace
 
         from agent.graph_v2.nodes.closing import make_closing_node
+        from agent.graph_v2.state import TurnScratch
 
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
-        s = agent.state
-        s.closing.case_closed = True
-        s.closing.closed_reason = "resolved"
+        agent.state.closing.case_closed = True
+        agent.state.closing.closed_reason = "resolved"
         node = make_closing_node(agent)
-        upd = node(SimpleNamespace(turn=SimpleNamespace(user_input="Internetas neveikia.")))
+        upd = node(
+            agent.state.model_copy(update={"turn": TurnScratch(user_input="Internetas neveikia.")})
+        )
+        s = agent.state  # the node's working copy — the state after the turn
         assert upd["turn"].reply  # registracijos dialogas, ne „geros dienos"
         assert "geros dienos" not in upd["turn"].reply.lower()
         assert not s.closing.is_complete

@@ -58,13 +58,14 @@ class AgentSession:
         self._graph_config = {"configurable": {"thread_id": self._agent.session_id}}
 
     def _graph_input(self, text: str | None) -> dict:
-        """Shape one turn's graph input."""
-        # Seeding identity keeps the checkpointed GraphState complete from the
-        # very first turn; a fresh TurnScratch resets the per-turn scratch.
-        return {
-            "identity": self._agent.state.identity,
-            "turn": TurnScratch(user_input=text),
-        }
+        """Shape one turn's graph input: a fresh turn scratch. The rest of the state
+        comes from the checkpoint — on the very first invoke it is seeded from the
+        engine's initial state (caller phone, config-derived limits)."""
+        turn = {"turn": TurnScratch(user_input=text)}
+        if self._graph.get_state(self._graph_config).values:
+            return turn
+        initial = self._agent.state
+        return {**{name: getattr(initial, name) for name in type(initial).model_fields}, **turn}
 
     @staticmethod
     def _graph_reply(out: dict) -> str | None:
