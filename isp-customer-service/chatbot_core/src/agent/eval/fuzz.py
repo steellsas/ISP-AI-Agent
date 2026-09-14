@@ -122,9 +122,9 @@ def _run(persona: dict) -> dict:
         snap()
         turns += 1
 
-    st = session.state
     trace = session.tracer.path if hasattr(session.tracer, "path") else None
     session.end_session(outcome="fuzz")
+    st = session.state  # after end_session: the hang-up net may close the case
     _close_db()
     tools = _tools_in_trace(trace)
     ev = {

@@ -175,9 +175,9 @@ def _run_scenario(scn: dict) -> dict:
             replies.append(f"<<EXCEPTION: {e}>>")
         _snapshot()
 
-    st = session.state
     trace_path = session.tracer.path if hasattr(session.tracer, "path") else None
     session.end_session(outcome="eval")
+    st = session.state  # after end_session: the hang-up net may close the case
     _close_db()  # free the file handle before the next scenario's DB rebuild
 
     tools = _tools_in_trace(trace_path)
