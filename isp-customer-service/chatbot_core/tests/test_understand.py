@@ -464,7 +464,7 @@ class TestTicketUnderstanding:
         ):
             agent._pre_turn_guards("Bet kada galima per pietus iš ryto")
         assert agent.state.ticket.contact_hours == "per pietus arba ryte"
-        assert agent._ticket_stage == "done"
+        assert agent.state.ticket.stage == "done"
 
     def test_phone_tas_pats_via_pass(self, db_connection, monkeypatch):
         agent = self._ticket_agent(monkeypatch, stage="phone")
@@ -474,7 +474,7 @@ class TestTicketUnderstanding:
         ):
             agent._pre_turn_guards("Stengiai tas, iš kurios kambinu")
         assert agent.state.ticket.contact_phone == "+37060012353"
-        assert agent._ticket_stage == "hours"
+        assert agent.state.ticket.stage == "hours"
 
     def test_real_question_still_diverts(self, db_connection, monkeypatch):
         agent = self._ticket_agent(monkeypatch, stage="hours")
@@ -483,7 +483,7 @@ class TestTicketUnderstanding:
             return_value={"reiksme": None, "tipas": "klausimas"},
         ):
             agent._pre_turn_guards("O kodėl turiu laukti skambučio?")
-        assert agent._ticket_offscript is True
+        assert agent.state.turn.ticket_offscript_question is True
         assert agent.state.ticket.contact_hours is None
 
     def test_pass_failure_falls_back_to_keywords(self, db_connection, monkeypatch):

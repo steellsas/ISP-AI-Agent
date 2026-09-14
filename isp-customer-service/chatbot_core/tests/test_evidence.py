@@ -274,7 +274,7 @@ class TestAgentWiring:
         assert recap is not None and "Pasitikslinu" in recap
         reply = agent._evidence_drive("taip, teisingai")
         assert reply is not None and "Ar tiks numeris" in reply
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
 
     def test_confirmed_with_computer_yields_to_solver_bridge(self):
         agent = _diagnosing_agent()
@@ -345,7 +345,7 @@ class TestAgentWiring:
 
     def test_no_ingest_during_ticket_dialogue_or_before_id(self):
         agent = _diagnosing_agent()
-        agent._ticket_stage = "phone"
+        agent.state.ticket.stage = "phone"
         agent._ingest_client_evidence("Nedega lemputės")
         assert agent.state.diagnosis.evidence == {}
         agent2 = _diagnosing_agent()

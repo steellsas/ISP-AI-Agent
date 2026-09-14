@@ -6,6 +6,7 @@ garbled-call analysis, hear-the-caller mechanics, and the quiet analyst.
 from types import SimpleNamespace
 
 from agent.evidence import FactConfirm
+from agent.graph_v2.state import TicketContext
 
 
 class TestW0OrderGuards:
@@ -41,19 +42,19 @@ class TestW0OrderGuards:
 
     def test_question_shaped_hours_answer_is_captured(self, db_connection):
         agent = self._agent()
-        agent._ticket_stage = "hours"
-        agent._ticket_ctx = {"step_id": None, "hours_asked": True, "intro_done": True}
+        agent.state.ticket.stage = "hours"
+        agent.state.ticket.context = TicketContext(step_id=None, hours_asked=True, intro_done=True)
         agent._pre_turn_guards("Kodėl tokiausia skambinti nuo 17-18 val.")
         assert agent.state.ticket.contact_hours and "17-18" in agent.state.ticket.contact_hours
-        assert agent._ticket_stage == "done"
+        assert agent.state.ticket.stage == "done"
 
     def test_real_question_without_content_still_diverts(self, db_connection):
         agent = self._agent()
-        agent._ticket_stage = "hours"
-        agent._ticket_ctx = {"step_id": None, "hours_asked": True, "intro_done": True}
+        agent.state.ticket.stage = "hours"
+        agent.state.ticket.context = TicketContext(step_id=None, hours_asked=True, intro_done=True)
         agent._pre_turn_guards("Kodėl jums reikia mano laiko?")
         assert not agent.state.ticket.contact_hours
-        assert agent._ticket_offscript is True
+        assert agent.state.turn.ticket_offscript_question is True
 
     def test_scripted_goodbye_ends_the_call(self, db_connection):
         from agent.graph_v2.nodes.closing import make_closing_node

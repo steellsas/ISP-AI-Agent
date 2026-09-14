@@ -147,7 +147,7 @@ class TestTicketCallback:
         agent._pre_turn_guards("Gerai, aš paskambinsiu vėliau pats")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
-        assert agent._ticket_stage is None
+        assert agent.state.ticket.stage is None
         r = agent._identification_scripted_reply("Gerai, aš paskambinsiu vėliau pats")
         assert r and "paskambinkite" in r  # callback_goodbye
 

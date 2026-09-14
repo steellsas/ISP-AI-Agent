@@ -79,7 +79,6 @@ class FakeEngine:
         self.calls = []
         self._side = side_topic
         self._driven = driven
-        self._ticket_stage = None
         self._active_node = None
         self.session_id = "fake-session"
         self.tracer = SimpleNamespace(emit=lambda *a, **k: None)
@@ -304,7 +303,7 @@ class TestRouting:
         names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
 
         assert names == set()  # TICKET_TOOLS is empty — structurally no mutations
-        assert engine._ticket_stage == "phone"  # the stage held; answer comes next turn
+        assert engine.state.ticket.stage == "phone"  # the stage held; answer comes next turn
 
     def test_closed_session_routes_to_closing_with_no_tools(self, db_connection, tmp_path):
         session = _v2_session(tmp_path)

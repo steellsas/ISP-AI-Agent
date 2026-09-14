@@ -12,6 +12,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from agent.graph_v2.state import TicketContext
+
 
 def _fake_message(content=None, tool_calls=None):
     """Build a stand-in for the litellm assistant message object."""
@@ -346,7 +348,7 @@ class TestEscalateOutcome:
     def test_consent_registers_ticket_and_closes(self, db_connection, monkeypatch):
         agent = self._agent_on_escalate(monkeypatch)
         agent._walk_resolution("gerai, tinka")
-        assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
+        assert agent.state.ticket.stage == "phone"  # contacts dialogue first (2026-08-04)
         _complete_ticket_dialogue(agent)
         assert agent.state.ticket.ticket_id  # engine-created, from state
         assert agent.state.closing.case_closed is True
@@ -414,7 +416,7 @@ class TestHearingAgent:
         agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
         agent._walk_resolution("Ne.")  # the fatal live turn
         assert agent.state.resolution.procedure["step"] == "dr_intro"  # held, not escalate
-        assert agent._ticket_stage is None
+        assert agent.state.ticket.stage is None
 
     def test_open_question_negation_gets_fault_file_clarify(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
@@ -460,27 +462,27 @@ class TestHearingAgent:
     def test_rich_refusal_still_escalates_directly(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
         agent._walk_resolution("Nieko nedarysiu, įregistruokit gedimą")
-        assert agent._ticket_stage == "phone"  # refuse/demand path untouched
+        assert agent.state.ticket.stage == "phone"  # refuse/demand path untouched
 
     def test_ticket_cancel_needs_one_confirm(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, step="escalate")
-        agent._ticket_stage = "phone"
-        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent.state.ticket.stage = "phone"
+        agent.state.ticket.context = TicketContext(phone_asked=True, intro_done=True)
         agent._pre_turn_guards("Neregistruokite nieko")
-        assert agent._ticket_stage == "phone"  # not cancelled yet
+        assert agent.state.ticket.stage == "phone"  # not cancelled yet
         reply = agent._ticket_stage_reply()
         assert "tikrai nereikia" in reply  # the confirm question went out
         agent._pre_turn_guards("nereikia")
-        assert agent._ticket_stage == "cancelled"  # confirmed refusal cancels
+        assert agent.state.ticket.stage == "cancelled"  # confirmed refusal cancels
 
     def test_ticket_cancel_confirm_can_resume(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, step="escalate")
-        agent._ticket_stage = "phone"
-        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent.state.ticket.stage = "phone"
+        agent.state.ticket.context = TicketContext(phone_asked=True, intro_done=True)
         agent._pre_turn_guards("Neregistruokite nieko")
         agent._ticket_stage_reply()  # confirm question goes out
         agent._pre_turn_guards("gerai, registruokite vis dėlto")
-        assert agent._ticket_stage == "phone"  # resumed, not cancelled
+        assert agent.state.ticket.stage == "phone"  # resumed, not cancelled
         assert "numeris" in agent._ticket_stage_reply()  # stage re-asks
 
     # --- round 2 (live 2026-08-11, call 2) ------------------------------------
@@ -493,32 +495,29 @@ class TestHearingAgent:
         agent._end_confirm_pending = True
         agent._walk_resolution("Ne, nenoriu.")
         assert agent.state.resolution.procedure["step"] == "dr_intro"
-        assert agent._ticket_stage is None
+        assert agent.state.ticket.stage is None
 
     def test_ticket_refusal_with_solving_content_returns_to_fix(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, step="escalate")
-        agent._ticket_stage = "phone"
-        agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
+        agent.state.ticket.stage = "phone"
+        agent.state.ticket.context = TicketContext(phone_asked=True, intro_done=True)
         agent._pre_turn_guards("Neregistruokite, pajunkim tą kompiuterį")
-        assert agent._ticket_stage is None  # dialogue dropped…
+        assert agent.state.ticket.stage is None  # dialogue dropped…
         assert agent.state.closing.case_closed is False  # …but the call stays OPEN
-        assert agent._resume_fix_note is True  # narrator returns to the fix
+        assert agent.state.ticket.resume_fix_note is True  # narrator returns to the fix
 
     def test_cancel_confirm_answer_with_solving_content_returns_to_fix(
         self, db_connection, monkeypatch
     ):
         agent = self._agent(monkeypatch, step="escalate")
-        agent._ticket_stage = "phone"
-        agent._ticket_ctx = {
-            "phone_asked": True,
-            "intro_done": True,
-            "cancel_confirm_asked": True,
-            "cancel_confirm_out": True,
-        }
+        agent.state.ticket.stage = "phone"
+        agent.state.ticket.context = TicketContext(
+            phone_asked=True, intro_done=True, cancel_confirm_asked=True, cancel_confirm_out=True
+        )
         agent._pre_turn_guards("Ne, tai mes pajunkim tą kompiuterį. Aš jungiu kabelį.")
-        assert agent._ticket_stage is None
+        assert agent.state.ticket.stage is None
         assert agent.state.closing.case_closed is False
-        assert agent._resume_fix_note is True
+        assert agent.state.ticket.resume_fix_note is True
 
     # --- round 3 (live 2026-08-11, call 3) ------------------------------------
 
@@ -556,13 +555,13 @@ class TestHearingAgent:
         agent.state.messages.extend({"role": "user", "content": f"turn {i}"} for i in range(8))
         agent._walk_resolution("Ne.")
         assert agent.state.resolution.procedure["step"] == "dr_intro"  # held — question too old
-        assert agent._ticket_stage is None
+        assert agent.state.ticket.stage is None
 
     def test_fresh_step_question_still_routes(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
         agent.state.resolution.procedure["asked_at"] = len(agent.state.messages)
         agent._walk_resolution("nieko nedarysiu, įregistruokit gedimą")
-        assert agent._ticket_stage == "phone"  # refuse/demand path unaffected
+        assert agent.state.ticket.stage == "phone"  # refuse/demand path unaffected
 
     # --- round 4 (live 2026-08-11, call 4: bind never ran) --------------------
 
@@ -639,7 +638,7 @@ class TestHearingAgent:
         r3 = agent._drive_propose_fix("", "ir dabar nieko")
         assert "kabeliu" in r3  # the possible incoming-cable problem is NAMED
         assert "Ar tiks numeris" in r3  # technician registration begins
-        assert "NEPAVYKO" in (agent._bridge_fail_note or "")
+        assert "NEPAVYKO" in (agent.state.ticket.bridge_fail_note or "")
         _complete_ticket_dialogue(agent)
         with db_connection.cursor() as cur:
             cur.execute(
@@ -751,7 +750,7 @@ class TestAutoRegisterEscalate:
         ran = agent.ensure_action_done()
 
         assert ran is True
-        assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
+        assert agent.state.ticket.stage == "phone"  # contacts dialogue first (2026-08-04)
         _complete_ticket_dialogue(agent)
         assert agent.state.ticket.ticket_id
         assert agent.state.closing.case_closed is True
@@ -865,7 +864,7 @@ class TestRefuseOrTicket:
     def test_demand_registers_immediately(self, db_connection, monkeypatch):
         agent = self._agent_mid_flow(monkeypatch)
         agent._walk_resolution("Nieko nedarysiu, įregistruokit gedimą")
-        assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
+        assert agent.state.ticket.stage == "phone"  # contacts dialogue first (2026-08-04)
         _complete_ticket_dialogue(agent)
         assert agent.state.ticket.ticket_id
         assert agent.state.closing.case_closed is True
@@ -1023,7 +1022,7 @@ class TestVoiceGuardsRound5:
         assert reply and "tikrai norite baigti" in reply
 
         agent._pre_turn_guards("taip, baikim")  # confirmed -> contacts, then registration
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
         _complete_ticket_dialogue(agent)
         assert agent.state.closing.case_closed is True
         assert agent.state.closing.closed_reason == "registered"
@@ -1255,12 +1254,12 @@ class TestReviewGaps:
         )
         agent._begin_ticket_dialogue(None)
         agent.state.dialog.side_topic_streak = 2
-        assert agent.state.diagnosis.evidence and agent._ticket_stage == "phone"
+        assert agent.state.diagnosis.evidence and agent.state.ticket.stage == "phone"
 
         agent._reopen_identification("skambinu dėl kito adreso — Dainų 5")
 
         assert agent.state.diagnosis.evidence == {}
-        assert agent._ticket_stage is None and agent._ticket_ctx is None
+        assert agent.state.ticket.stage is None and agent.state.ticket.context is None
         assert (
             agent.state.diagnosis.evidence_ask_counts == {}
             and agent.state.diagnosis.evidence_conflict is None
@@ -1674,7 +1673,7 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         agent._walk_resolution("gerai, tinka")
         assert agent.state.ticket.ticket_id is None  # not yet — contacts first
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
         assert "Ar tiks numeris" in agent._identification_scripted_reply("gerai, tinka")
 
     def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
@@ -1684,11 +1683,11 @@ class TestTicketDialogue:
         # Q1 answer: "tiks šis" -> the number they call from.
         agent._pre_turn_guards("Taip, tiks šis numeris")
         assert agent.state.ticket.contact_phone == "+37060012353"
-        assert agent._ticket_stage == "hours"
+        assert agent.state.ticket.stage == "hours"
         agent._identification_scripted_reply("Taip, tiks šis numeris")  # asks hours
         # Q2 answer -> hours; the scripted turn then registers + closes.
         agent._pre_turn_guards("Po penkių vakare")
-        assert agent._ticket_stage == "done"
+        assert agent.state.ticket.stage == "done"
         reply = agent._identification_scripted_reply("Po penkių vakare")
         assert "Užregistravau" in reply
         assert agent.state.ticket.ticket_id and agent.state.closing.case_closed
@@ -1711,7 +1710,7 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
         agent._pre_turn_guards("viso gero")  # done talking — defaults kick in
-        assert agent._ticket_stage == "done"
+        assert agent.state.ticket.stage == "done"
         reply = agent._identification_scripted_reply("viso gero")
         assert "Užregistravau" in reply
         assert agent.state.ticket.contact_phone == "+37060012353"
@@ -1737,16 +1736,16 @@ class TestTicketDialogue:
         agent._begin_ticket_dialogue(None)
         agent._identification_scripted_reply(None)
         agent._pre_turn_guards("taip, tiks šis")
-        assert agent._ticket_stage == "hours"
+        assert agent.state.ticket.stage == "hours"
         agent._identification_scripted_reply("taip, tiks šis")
         agent._pre_turn_guards("Tu sakė, užregistravai jau. Bet kada galima skambinti?")
-        assert agent._ticket_stage == "hours"  # held, not captured
+        assert agent.state.ticket.stage == "hours"  # held, not captured
         assert agent.state.ticket.contact_hours is None
         assert agent._identification_scripted_reply("Bet kada galima skambinti?") is None
         facts = agent._state_facts_block()
         assert facts and "TIKETO DIALOGAS" in facts and "kada patogiausia" in facts
         # A plain answer next turn still lands.
-        agent._ticket_offscript = False
+        agent.state.turn.ticket_offscript_question = False
         agent._pre_turn_guards("bet kada")
         assert agent.state.ticket.contact_hours == "bet kada"
 
@@ -1781,7 +1780,7 @@ class TestTicketDialogue:
         agent._begin_ticket_dialogue(None)
         agent._pre_turn_guards("Neturi kompiutera")  # same-turn trigger phrase
         assert agent.state.ticket.contact_phone is None
-        assert agent._ticket_stage == "phone"  # still waiting for its question
+        assert agent.state.ticket.stage == "phone"  # still waiting for its question
         first = agent._identification_scripted_reply("Neturi kompiutera")
         assert "Ar tiks numeris" in first  # the question goes out now
 
@@ -1799,7 +1798,7 @@ class TestTicketDialogue:
         assert reply == phrase("ticket_phone_retry")
         agent._pre_turn_guards("Visai nesuprantu ko klausiat")  # second garbage
         assert agent.state.ticket.contact_phone == "+37060012353"  # caller-ID default
-        assert agent._ticket_stage == "hours"
+        assert agent.state.ticket.stage == "hours"
 
     def test_garbage_hours_answer_reasks_then_defaults(self, db_connection, monkeypatch):
         # Live: "Kurs komentai" became "skambinti galima kurs komentai".
@@ -1816,7 +1815,7 @@ class TestTicketDialogue:
         assert reply == phrase("ticket_hours_retry")
         agent._pre_turn_guards("Nu nezinau visai")  # second garbage -> default
         assert agent.state.ticket.contact_hours == "bet kada"
-        assert agent._ticket_stage == "done"
+        assert agent.state.ticket.stage == "done"
 
     def test_first_fix_deferral_is_transition_and_offer(self, db_connection, monkeypatch):
         # Live: solver jumped to bind-speak ("pririšiu įrenginį") with no
@@ -1865,7 +1864,7 @@ class TestTicketDialogue:
         )
         agent.state.resolution.drive_disabled = True  # isolate: no solver LLM call
         reply = agent.solver_drive_turn("Neturiu kito routerio, tik kompiuterį")
-        assert agent._ticket_stage is None  # no escalation fired
+        assert agent.state.ticket.stage is None  # no escalation fired
         # (evidence drive may still ask its next question — that is fine)
 
     def test_no_device_after_bridge_offer_escalates_deterministically(
@@ -1890,7 +1889,7 @@ class TestTicketDialogue:
         )
         reply = agent.solver_drive_turn("Neturiu, internetą naudoju tik telefonu.")
         assert reply is not None and "Ar tiks numeris" in reply
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
 
     def test_registration_claim_without_ticket_starts_dialogue(self, db_connection, monkeypatch):
         # Live 2026-08-05: narrator said "Užregistravau gedimą…", ticket_id None,
@@ -1900,7 +1899,7 @@ class TestTicketDialogue:
             "Supratau. Užregistravau gedimą, kolegos susisieks su jumis."
         )
         assert extra and "Ar tiks numeris" in extra
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
         # Honest replies pass untouched.
         agent2 = self._agent_at_consent(monkeypatch)
         assert agent2._registration_claim_guard("Patikrinkime lemputes.") is None
@@ -1963,10 +1962,10 @@ class TestTicketDialogue:
         # Cancelling is a one-way door (2026-08-11): the first refusal gets ONE
         # confirm question; only the confirmed refusal cancels and closes.
         agent._pre_turn_guards("ne, nereikia registruoti nieko")
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
         assert "tikrai nereikia" in agent._ticket_stage_reply()
         agent._pre_turn_guards("nereikia")
-        assert agent._ticket_stage == "cancelled"
+        assert agent.state.ticket.stage == "cancelled"
         reply = agent._identification_scripted_reply("nereikia")
         assert "neregistruoju" in reply
         assert agent.state.ticket.ticket_id is None
@@ -1980,7 +1979,7 @@ class TestTicketDialogue:
         # dialogue deterministically the same turn, consent step or not.
         agent = self._agent_at_consent(monkeypatch)
         assert agent.ensure_action_done() is True
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
 
 
 class TestPromptPrefixHygiene:

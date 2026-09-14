@@ -425,7 +425,7 @@ class TestQuestionRegistry:
         q = active(agent)
         assert q and q.owner == "safety" and q.key == "cannot_now"
         agent._advance_resolution(msg)
-        assert agent._ticket_stage is None  # tiketas NEprasidėjo
+        assert agent.state.ticket.stage is None  # tiketas NEprasidėjo
         r = agent._identification_scripted_reply(msg)
         assert r and "nepatogu" in r  # laiptelis klausia KAS nepatogu
 
@@ -479,7 +479,7 @@ class TestQuestionRegistry:
 
         q = active(agent)
         assert q and q.key == "step:rh_ability"
-        assert agent._ticket_stage is None
+        assert agent.state.ticket.stage is None
 
     def test_homework_no_escalates_with_honest_reason(self, db_connection):
         agent = self._identified()
@@ -520,12 +520,12 @@ class TestQuestionRegistry:
         }
         register(agent, "safety", "cannot_now_offer")
         agent._advance_resolution("Registruokite meistrą")
-        assert agent._ticket_stage is None  # walker'is nepradėjo tiketo — laiko
+        assert agent.state.ticket.stage is None  # walker'is nepradėjo tiketo — laiko
         assert active(agent) is not None  # klausimas gyvas, jį skaito savininkas
         # Klausimui užsidarius — walker'is vėl skaito normaliai.
         clear_owner(agent, "safety")
         agent._advance_resolution("Registruokite meistrą")
-        assert agent._ticket_stage is not None  # dabar tiketo dialogas prasidėjo
+        assert agent.state.ticket.stage is not None  # dabar tiketo dialogas prasidėjo
 
     def test_caller_name_closes_on_capture(self, db_connection):
         """Gyva 2026-09-08: vardo klausimas registre kabėjo atviras po atsakymo."""
@@ -640,7 +640,7 @@ class TestCannotNowLadder:
         agent = self._solving()
         agent._cannot_now_state = "offered"
         agent._identification_scripted_reply("Registruokite meistrą")
-        assert agent._ticket_stage == "phone"
+        assert agent.state.ticket.stage == "phone"
 
     def test_explained_otherwise_resumes(self, db_connection):
         agent = self._solving()

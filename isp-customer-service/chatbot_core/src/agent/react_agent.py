@@ -239,9 +239,6 @@ class ReactAgent:
         self._spec_cache: dict | None = None
         self._injected_reply: dict | None = None
         self._bg_diagnosis: str | None = None  # S2: background telemetry read
-        # Ticket refusal with solving content: one-turn narrator directive to
-        # say "neregistruoju" and return to the last fix instruction.
-        self._resume_fix_note = False
         self._resync_note = False
         # D1 delivery ledger: the tail of an interrupted reply the caller never
         # HEARD — surfaced to the narrator next turn, then cleared.
@@ -255,17 +252,6 @@ class ReactAgent:
         # Duplex-hearing 2: what the caller said OVER the agent's voice —
         # already ingested deterministically; surfaced to the narrator once.
         self._overlay_heard: list[str] | None = None
-        self._bridge_fail_note: str | None = None
-        # Ticket-confirmation dialogue (2026-08-04): every registration first collects
-        # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
-        # None | "phone" | "hours" | "done"; ctx remembers the escalate step to build
-        # the ticket from once the dialogue completes.
-        # _ticket_stage lives on GraphState.ticket.stage (see the property below).
-        self._ticket_ctx: dict | None = None
-        # This turn's utterance is an off-script QUESTION during the dialogue
-        # ("kokiu numeriu?") — the ticket node's LLM answers it (with the pending
-        # stage question re-asked); the stage does not advance.
-        self._ticket_offscript = False
 
         # Per-node scoping (LangGraph step 3.2): a graph node may restrict the
         # tools exposed to the model and add a focused prompt. None = unrestricted
@@ -297,17 +283,6 @@ class ReactAgent:
             logger.info("Using REAL tools")
         else:
             logger.warning("Using MOCK tools")
-
-    @property
-    def _ticket_stage(self) -> str | None:
-        """Promoted to GraphState.ticket.stage (R3, roadmap §6): the state owns
-        the value (checkpointed, read by the v2 entry router); this property
-        keeps every existing engine call site working unchanged."""
-        return self.state.ticket.stage
-
-    @_ticket_stage.setter
-    def _ticket_stage(self, value: str | None) -> None:
-        self.state.ticket.stage = value
 
     def get_stats(self) -> dict:
         """Get accumulated LLM statistics."""
@@ -1262,7 +1237,7 @@ class ReactAgent:
         self._cancel_requested = False  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "supratau" directive leaks into their replies.
-        if self._ticket_stage:
+        if self.state.ticket.stage:
             self.state.turn.understanding = None
 
         self.state.dialog.last_heard = (user_input or "").strip()

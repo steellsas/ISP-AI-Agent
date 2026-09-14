@@ -318,7 +318,7 @@ class TestNoPathTicket:
         assert agent.ensure_diagnosed() is True
         r = agent.state.resolution.procedure
         assert r["verdict"] == "unclear_fault" and r["step"] == "escalate"
-        assert agent._ticket_stage == "phone"  # dialogue began deterministically
+        assert agent.state.ticket.stage == "phone"  # dialogue began deterministically
         from agent.ticket_flow import ticket_need
 
         assert "neaiškus" in ticket_need(agent)

@@ -201,8 +201,8 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     # Bridge attempt outcome (2026-08-12): the technician reads WHAT was
     # already tried — "pajungti PC nepavyko (LAN aktyvus)" changes what
     # they bring and check first.
-    if getattr(engine, "_bridge_fail_note", None):
-        details += f" {engine._bridge_fail_note}"
+    if engine.state.ticket.bridge_fail_note:
+        details += f" {engine.state.ticket.bridge_fail_note}"
     # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
     if s.ticket.contact_phone or s.identity.caller_name:
         kas = s.identity.caller_name or "skambinęs asmuo"

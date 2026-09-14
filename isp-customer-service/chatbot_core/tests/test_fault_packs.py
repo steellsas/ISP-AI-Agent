@@ -26,6 +26,7 @@ from agent.graph_v2.state import (
     IdentityState,
     IntakeState,
     ResolutionState,
+    TicketContext,
     TicketState,
     TurnScratch,
 )
@@ -494,8 +495,8 @@ class TestTicketFirst:
                     side_topic_active=False, understanding={"tipas": "nukrypimas", "faktai": {}}
                 ),
                 dialog=DialogState(side_topic_streak=0),
+                ticket=TicketState(stage=None),
             ),
-            _ticket_stage=None,
             _end_confirm_pending=False,
             _resume_hold=False,
             tracer=SimpleNamespace(emit=lambda *a, **k: None),
@@ -804,8 +805,8 @@ class TestTicketDirectives:
         agent = ReactAgent(caller_phone="+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "escalate"}
-        agent._ticket_stage = "phone"
-        agent._ticket_ctx = {"step_id": None}
+        agent.state.ticket.stage = "phone"
+        agent.state.ticket.context = TicketContext(step_id=None)
         return agent
 
     def test_phone_intro_goes_to_narrator(self, db_connection, monkeypatch):
@@ -828,7 +829,7 @@ class TestTicketDirectives:
     def test_retry_stays_scripted_even_in_narrator_mode(self, db_connection, monkeypatch):
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
-        agent._ticket_ctx["ask_retry"] = "phone"
+        agent.state.ticket.context.ask_retry = "phone"
         reply = agent._identification_scripted_reply("kazkas neaisku")
         assert reply and "skaitmenimis" in reply  # precision repeat, no LLM
         assert agent.state.turn.directives.ticket is None
@@ -836,8 +837,8 @@ class TestTicketDirectives:
     def test_hours_directive(self, db_connection, monkeypatch):
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
-        agent._ticket_stage = "hours"
-        agent._ticket_ctx = {"step_id": None, "intro_done": True}
+        agent.state.ticket.stage = "hours"
+        agent.state.ticket.context = TicketContext(step_id=None, intro_done=True)
         assert agent._identification_scripted_reply("tiks tas") is None
         assert agent.state.turn.directives.ticket["kind"] == "hours"
         assert "patogiausia" in agent._state_facts_block()
@@ -1117,10 +1118,10 @@ class TestOpenerAndClosingHygiene:
         s.intake.problem_type = "internet_down"
         s.identity.customer_id = "CUST009"
         s.resolution.procedure = {"verdict": "no_mac_observed", "step": "escalate"}
-        agent._ticket_stage = "hours"
+        agent.state.ticket.stage = "hours"
         agent._prefill_slots_from_text("Sąskaitos žemės gatvės klausimas")
         assert s.intake.secondary_problems == []
-        agent._ticket_stage = None
+        agent.state.ticket.stage = None
         agent._prefill_slots_from_text("Žemės gatvės")  # 2 words: a garble
         assert s.intake.secondary_problems == []
         agent._prefill_slots_from_text("O dar televizorius man blogai rodo")
@@ -1198,8 +1199,8 @@ class TestLiveCall0821Fixes:
                     side_topic_active=False, understanding={"tipas": "klausimas", "faktai": {}}
                 ),
                 dialog=DialogState(side_topic_streak=0),
+                ticket=TicketState(stage=None),
             ),
-            _ticket_stage=None,
             _end_confirm_pending=False,
             _resume_hold=False,
             tracer=SimpleNamespace(emit=lambda *a, **k: None),

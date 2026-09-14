@@ -32,6 +32,7 @@ _STATE_TYPES: list[tuple[str, str]] = [
     ("graph_v2.state", "IntakeState"),
     ("graph_v2.state", "DiagnosisState"),
     ("graph_v2.state", "ResolutionState"),
+    ("graph_v2.state", "TicketContext"),
     ("graph_v2.state", "TicketState"),
     ("graph_v2.state", "DialogState"),
     ("graph_v2.state", "ClosingState"),

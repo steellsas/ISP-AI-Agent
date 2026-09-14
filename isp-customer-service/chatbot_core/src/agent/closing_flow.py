@@ -61,7 +61,7 @@ def maybe_close_inform(engine: Any, user_input: str | None) -> None:
     # outage_reported flips (a different path than the billing script).
     if (
         engine.state.identity.result_pending
-        or engine._ticket_stage
+        or engine.state.ticket.stage
         or not (engine.state.diagnosis.news_delivered or s.diagnosis.outage_reported)
     ):
         return

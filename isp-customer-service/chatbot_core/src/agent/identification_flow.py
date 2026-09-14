@@ -139,7 +139,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
                 problem != s.intake.problem_type
                 and s.resolution.procedure is not None
                 and not s.closing.case_closed
-                and not getattr(engine, "_ticket_stage", None)
+                and not engine.state.ticket.stage
                 and len((text or "").split()) >= 3  # garbles ("Žemės gatvės") are not complaints
             ):
                 if not any(x.get("tipas") == problem for x in s.intake.secondary_problems):
@@ -421,8 +421,8 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine.state.diagnosis.evidence_conflict_asked_key = None
     engine.state.turn.side_topic_active = False
     engine.state.dialog.side_topic_streak = 0
-    engine._ticket_stage = None
-    engine._ticket_ctx = None
+    engine.state.ticket.stage = None
+    engine.state.ticket.context = None
     engine.state.resolution.bridge_offered = False
     engine.state.resolution.drive_disabled = False
     engine.state.resolution.drive_repeats = 0
@@ -430,13 +430,13 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine.state.diagnosis.pending_announcement = ""
     engine.state.resolution.escalate_clarify_asked = False
     engine.state.resolution.escalate_clarify_due = False
-    engine._resume_fix_note = False
+    engine.state.ticket.resume_fix_note = False
     engine.state.diagnosis.facts_recap_state = ""
     engine.state.diagnosis.refute_confirm_state = ""
     engine.state.turn.done_report_key = None
     engine.state.resolution.bridge_plug_reported = False
     engine.state.resolution.bridge_fail_stage = 0
-    engine._bridge_fail_note = None
+    engine.state.ticket.bridge_fail_note = None
     engine.state.diagnosis.revived_evidence_keys = []
     from .slots import ClientProfileState
 
@@ -1167,7 +1167,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         and not getattr(engine, "_cannot_now_done", False)
         and s.resolution.procedure
         and s.identity.customer_id
-        and not engine._ticket_stage
+        and not engine.state.ticket.stage
         and user_input
     ):
         from .dialog_registry import pack_owns_cannot_now as _pack_cn
@@ -1184,8 +1184,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # Ticket-confirmation dialogue: contacts before every registration. An
     # off-script question falls to the ticket node's LLM (facts carry the
     # pending stage question to re-ask); the mechanical turns stay scripted.
-    if engine._ticket_stage in ("phone", "hours"):
-        if engine._ticket_offscript:
+    if engine.state.ticket.stage in ("phone", "hours"):
+        if engine.state.turn.ticket_offscript_question:
             return None
         scripted = engine._ticket_stage_reply()
         # Zone 1 (skriptai -> direktyvos, Andrius 2026-08-20): the QUESTION
@@ -1194,7 +1194,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # scripted (precision beats style on a repeat). Off-switch reverts.
         import os as _os
 
-        kind = (engine._ticket_ctx or {}).get("last_kind")
+        ctx = engine.state.ticket.context
+        kind = ctx.last_kind if ctx else None
         if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on" and kind in (
             "phone_intro",
             "phone",
@@ -1203,11 +1204,11 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             engine.state.turn.directives.ticket = {"kind": kind, "fallback": scripted}
             return None  # the ticket node's narrator speaks (facts directive)
         return scripted
-    if engine._ticket_stage == "done":
+    if engine.state.ticket.stage == "done":
         return engine._finish_ticket_dialogue()
-    if engine._ticket_stage == "cancelled":
-        engine._ticket_stage = None
-        engine._ticket_ctx = None
+    if engine.state.ticket.stage == "cancelled":
+        engine.state.ticket.stage = None
+        engine.state.ticket.context = None
         s.closing.case_closed = True
         s.closing.closed_reason = "declined"
         s.closing.is_complete = True

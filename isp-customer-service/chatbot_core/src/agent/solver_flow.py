@@ -240,7 +240,7 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     _q = _q_active(engine)
     if _q is not None and OWNER_PRIORITY.get(_q.owner, 99) < OWNER_PRIORITY["walker"]:
         return None
-    if engine._ticket_stage:
+    if engine.state.ticket.stage:
         return None  # the ticket dialogue owns the turn
     if engine.state.diagnosis.evidence_conflict:
         return None  # the scripted conflict clarification owns the turn
@@ -697,7 +697,7 @@ def bridge_fail_step(engine: Any) -> str:
     # the technician takes it from here; the attempt goes on the ticket.
     texts = fault_bridge_fail(verdict)
     lan = (engine.state.diagnosis.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
-    engine._bridge_fail_note = (
+    engine.state.ticket.bridge_fail_note = (
         texts.get("prierasas")
         or "Laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: {lan})."
     ).format(lan=VALUE_LT.get(lan, lan))
@@ -736,8 +736,8 @@ def drive_escalate(engine: Any, decision) -> str:
     # _finish_ticket_dialogue registers and closes. The bridged note rides on the
     # final announce via the ctx.
     engine._begin_ticket_dialogue(step)
-    if engine._ticket_ctx is not None and bridged:
-        engine._ticket_ctx["note"] = (
+    if engine.state.ticket.context is not None and bridged:
+        engine.state.ticket.context.note = (
             " Internetas kol kas veiks per kompiuterį; kai turėsite naują routerį, "
             "paskambinkite — pririšime, ir veiks visi namai."
         )

@@ -618,11 +618,7 @@ def scripted_wait_ack(engine) -> str | None:
     from .resolution import INTENT_IN_PROGRESS
 
     s = engine.state
-    if (
-        not s.resolution.procedure
-        or s.closing.case_closed
-        or getattr(engine, "_ticket_stage", None)
-    ):
+    if not s.resolution.procedure or s.closing.case_closed or engine.state.ticket.stage:
         return None
     if s.dialog.last_intent != INTENT_IN_PROGRESS or s.dialog.awaiting != "client_action":
         return None

@@ -320,11 +320,13 @@ def state_facts_block(engine) -> str | None:
     # Ticket-dialogue off-script turn: the caller asked something instead of
     # answering the stage question — give the LLM the answers it may need and
     # the EXACT question to re-ask. Leads the block; nothing else competes.
-    if engine._ticket_stage in ("phone", "hours"):
+    if engine.state.ticket.stage in ("phone", "hours"):
         from .identification import phrase
 
         pending = (
-            phrase("ticket_phone") if engine._ticket_stage == "phone" else phrase("ticket_hours")
+            phrase("ticket_phone")
+            if engine.state.ticket.stage == "phone"
+            else phrase("ticket_hours")
         )
         facts.append(
             "- TIKETO DIALOGAS: registruojame gedimą (priežastis: "
@@ -335,8 +337,8 @@ def state_facts_block(engine) -> str | None:
         )
     # Ticket refusal WITH solving content (2026-08-11): the dialogue was
     # dropped, the call stays OPEN — the reply returns to the fix.
-    if getattr(engine, "_resume_fix_note", False):
-        engine._resume_fix_note = False
+    if engine.state.ticket.resume_fix_note:
+        engine.state.ticket.resume_fix_note = False
         facts.append(
             "- KLIENTAS ATSISAKĖ REGISTRACIJOS IR NORI TĘSTI SPRENDIMĄ: pasakyk "
             "vienu sakiniu, kad meistro neregistruoji, ir GRĮŽK prie paskutinės "

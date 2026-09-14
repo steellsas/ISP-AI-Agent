@@ -192,6 +192,29 @@ class ResolutionState(BaseModel):
     escalate_clarify_due: bool = False
 
 
+class TicketContext(BaseModel):
+    """The running contact dialogue before a registration."""
+
+    # The escalate step that started the dialogue (only its id is ever read).
+    step_id: str | None = None
+    # Appended to the final announce (e.g. the working-bridge note).
+    note: str | None = None
+    # Which scripted question went out last ("phone_intro", "retry_hours", …).
+    last_kind: str | None = None
+    intro_done: bool = False
+    phone_asked: bool = False
+    hours_asked: bool = False
+    # One unclear answer earns one retry per stage.
+    phone_retry: bool = False
+    hours_retry: bool = False
+    # The next scripted reply is a retry for this stage ("phone" | "hours").
+    ask_retry: str | None = None
+    # "registruoti, ar tikrai nereikia?" — due next reply / out / already asked once.
+    ask_cancel_confirm: bool = False
+    cancel_confirm_out: bool = False
+    cancel_confirm_asked: bool = False
+
+
 class TicketState(BaseModel):
     """The contact dialogue before registration and the registered ticket."""
 
@@ -200,6 +223,11 @@ class TicketState(BaseModel):
     stage: str | None = None
     contact_phone: str | None = None
     contact_hours: str | None = None
+    context: TicketContext | None = None
+    # What the dead-router bridge attempt showed — the technician reads it.
+    bridge_fail_note: str | None = None
+    # The ticket dialogue was dropped back to solving: say so next reply.
+    resume_fix_note: bool = False
 
 
 class DialogState(BaseModel):
@@ -263,6 +291,8 @@ class TurnScratch(BaseModel):
     # The evidence key the caller reported as done this turn.
     done_report_key: str | None = None
     directives: TurnDirectives = Field(default_factory=TurnDirectives)
+    # The caller asked an off-script question during the contact dialogue.
+    ticket_offscript_question: bool = False
 
 
 # The persisted groups, in declaration order (everything but the turn scratch).

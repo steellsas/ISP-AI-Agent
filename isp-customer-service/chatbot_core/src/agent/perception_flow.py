@@ -85,7 +85,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         not user_input
         or not s.identity.customer_id
         or s.closing.case_closed
-        or engine._ticket_stage
+        or engine.state.ticket.stage
     ):
         return
     from .evidence import CLIENT, extract_client_facts, polarity, set_fact
@@ -565,7 +565,7 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
         not user_input
         or not s.identity.customer_id
         or s.closing.case_closed
-        or engine._ticket_stage
+        or engine.state.ticket.stage
     ):
         return False
     if (
@@ -736,18 +736,21 @@ def pre_turn_guards(engine, user_input: str) -> None:
     # contact number / hours — read the answer. A question falls through to the
     # LLM (the stage stays and re-asks); a farewell fast-forwards with defaults
     # (the caller is done talking — register with what we have).
-    if engine._ticket_stage in ("phone", "hours"):
+    if engine.state.ticket.stage in ("phone", "hours"):
         from .resolution import detect_farewell, detect_ticket_consent
 
-        engine._ticket_offscript = False
+        engine.state.turn.ticket_offscript_question = False
         low_q = (user_input or "").lower()
-        ctx = engine._ticket_ctx if engine._ticket_ctx is not None else {}
+        from .graph_v2.state import TicketContext
+
+        ctx = engine.state.ticket.context or TicketContext()
         # Cancel-confirm answer (2026-08-11): the previous reply asked
         # "registruoti, ar tikrai nereikia?" — read THIS turn against that
         # question only. Live, a bare "Ne." (a barge-in crumb) cancelled the
         # ticket AND closed the call in one breath; cancelling is a one-way
         # door, so it now takes a confirmed refusal.
-        if ctx.pop("cancel_confirm_out", False):
+        cancel_confirm_out, ctx.cancel_confirm_out = ctx.cancel_confirm_out, False
+        if cancel_confirm_out:
             from .resolution import is_bare_negation
 
             # "Ne, tai pajunkim tą kompiuterį" refuses the TICKET, not the
@@ -758,7 +761,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             if is_bare_negation(user_input) or any(
                 m in low_q for m in ("neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu")
             ):
-                engine._ticket_stage = "cancelled"
+                engine.state.ticket.stage = "cancelled"
                 from .dialog_registry import clear_owner as _q_clear_owner
 
                 _q_clear_owner(engine, "ticket")
@@ -777,8 +780,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
         # does not want the registration now. Same warm close as the
         # cannot-now ladder: no ticket, callback goodbye.
         if any(m in low_q for m in ("paskambinsiu", "perskambinsiu", "pats paskambin")):
-            engine._ticket_stage = None
-            engine._ticket_ctx = None
+            engine.state.ticket.stage = None
+            engine.state.ticket.context = None
             from .dialog_registry import clear_owner as _q_clear_owner
 
             _q_clear_owner(engine, "ticket")
@@ -796,7 +799,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
         if _und.enabled():
             ut = _und.understand_ticket(
                 user_input,
-                stage=engine._ticket_stage,
+                stage=engine.state.ticket.stage,
                 anchor=(s.dialog.last_question or ""),
                 model=engine.config.model,
             )
@@ -804,7 +807,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 und_handled = True
                 engine.tracer.emit(
                     "understand_ticket",
-                    stage=engine._ticket_stage,
+                    stage=engine.state.ticket.stage,
                     tipas=ut["tipas"],
                     reiksme=ut.get("reiksme"),
                 )
@@ -813,17 +816,17 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     # iš kurio skambinu?" repeated back with rising intonation
                     # is CONSENT — answering it and re-asking doubled the
                     # question. Fuzzy overlap with what we just asked decides.
-                    if engine._ticket_stage == "phone":
+                    if engine.state.ticket.stage == "phone":
                         from .barge_in import token_overlap
 
                         if token_overlap(user_input, s.dialog.last_question or "") >= 0.8:
                             s.ticket.contact_phone = s.identity.caller_phone
-                            engine._ticket_stage = "hours"
+                            engine.state.ticket.stage = "hours"
                             engine.tracer.emit(
                                 "decision", intent="ticket_dialogue", action="phone_echo_consent"
                             )
                             return
-                    engine._ticket_offscript = True
+                    engine.state.turn.ticket_offscript_question = True
                     engine.tracer.emit("decision", intent="ticket_dialogue", action="question")
                     return
                 if ut["tipas"] == "atsisakymas":
@@ -836,24 +839,24 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     # "Ne." to "ar tiks šis numeris?" may mean "kitu numeriu",
                     # not "neregistruokite" — clarify before dropping the
                     # ticket the caller was just promised.
-                    if ctx.get("cancel_confirm_asked"):
-                        engine._ticket_stage = "cancelled"
+                    if ctx.cancel_confirm_asked:
+                        engine.state.ticket.stage = "cancelled"
                         from .dialog_registry import clear_owner as _q_clear_owner
 
                         _q_clear_owner(engine, "ticket")
                         engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                         return
-                    ctx["cancel_confirm_asked"] = True
-                    ctx["ask_cancel_confirm"] = True
+                    ctx.cancel_confirm_asked = True
+                    ctx.ask_cancel_confirm = True
                     engine.tracer.emit(
                         "decision", intent="ticket_dialogue", action="cancel_confirm"
                     )
                     return
-                if not ctx.get(f"{engine._ticket_stage}_asked"):
+                if not getattr(ctx, f"{engine.state.ticket.stage}_asked", False):
                     return  # trigger-swallow guard (question not asked yet)
                 value = ut.get("reiksme")
                 if value:
-                    if engine._ticket_stage == "phone":
+                    if engine.state.ticket.stage == "phone":
                         digits = re.sub(r"\D", "", value)
                         if value == "tas_pats":
                             s.ticket.contact_phone = s.identity.caller_phone
@@ -865,14 +868,14 @@ def pre_turn_guards(engine, user_input: str) -> None:
                             engine.tracer.emit(
                                 "decision", intent="ticket_dialogue", action="phone_captured"
                             )
-                            engine._ticket_stage = "hours"
+                            engine.state.ticket.stage = "hours"
                             return
                     else:
                         s.ticket.contact_hours = re.sub(r"[?!]", " ", value).strip(" .,")[:80]
                         engine.tracer.emit(
                             "decision", intent="ticket_dialogue", action="hours_captured"
                         )
-                        engine._ticket_stage = "done"
+                        engine.state.ticket.stage = "done"
                         return
                 # No reiksme — fall through to the keyword/retry machinery.
         # W0-C (live 2026-08-25): STT turned "patogiausia" into "KODĖL
@@ -882,7 +885,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
         # CURRENT stage is read by the capture machinery, question-shaped or not.
         # Digits only — "Bet kada galima skambinti?" is the caller ASKING and
         # must still divert; a garbled question-word around "nuo 17-18" is not.
-        if engine._ticket_stage == "phone":
+        if engine.state.ticket.stage == "phone":
             _answer_content = len(re.sub(r"\D", "", user_input or "")) >= 6
         else:
             _answer_content = bool(re.search(r"\d", user_input or ""))
@@ -908,7 +911,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
         ):
             # Keyword question-divert (fallback only): the pass, when it ran,
             # already said this is NOT a question.
-            engine._ticket_offscript = True
+            engine.state.turn.ticket_offscript_question = True
             engine.tracer.emit("decision", intent="ticket_dialogue", action="question")
             return
         # Explicit "do not register" cancels the dialogue (their call, their
@@ -921,28 +924,28 @@ def pre_turn_guards(engine, user_input: str) -> None:
             if engine._wants_to_keep_solving(user_input):
                 engine._abort_ticket_to_solving()
                 return
-            if ctx.get("cancel_confirm_asked"):
-                engine._ticket_stage = "cancelled"
+            if ctx.cancel_confirm_asked:
+                engine.state.ticket.stage = "cancelled"
                 from .dialog_registry import clear_owner as _q_clear_owner
 
                 _q_clear_owner(engine, "ticket")
                 engine.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
                 return
-            ctx["cancel_confirm_asked"] = True
-            ctx["ask_cancel_confirm"] = True
+            ctx.cancel_confirm_asked = True
+            ctx.ask_cancel_confirm = True
             engine.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm")
             return
         if detect_farewell(user_input):
-            engine._ticket_stage = "done"
+            engine.state.ticket.stage = "done"
             return
         # An answer counts ONLY after its question was actually ASKED. The
         # dialogue can begin mid-turn (escalate fires while processing the
         # caller's utterance) — live 2026-08-05 the TRIGGER phrase "Neturi
         # kompiutera" was swallowed as the phone number.
-        if not ctx.get(f"{engine._ticket_stage}_asked"):
+        if not getattr(ctx, f"{engine.state.ticket.stage}_asked", False):
             return
         clean = user_input.strip().strip(" .?!,")
-        if engine._ticket_stage == "phone":
+        if engine.state.ticket.stage == "phone":
             from .resolution import is_backchannel
 
             digits = re.sub(r"[^\d+]", "", user_input)
@@ -952,19 +955,19 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # "tiks šis" / a garbled yes ("T." — STT of "Taip", observed
                 # live as tel. on the ticket) — the number they call from.
                 s.ticket.contact_phone = s.identity.caller_phone
-            elif ctx.get("phone_retry"):
+            elif ctx.phone_retry:
                 # Second unclear answer — default to the caller-ID and move on.
                 s.ticket.contact_phone = s.identity.caller_phone
             else:
                 # Not a number, not a yes — the agent SAYS what it needs and
                 # re-asks ONCE ("understand the answer, re-ask when it is not
                 # one" — 2026-08-05); garbage never lands on the ticket.
-                ctx["phone_retry"] = True
-                ctx["ask_retry"] = "phone"
+                ctx.phone_retry = True
+                ctx.ask_retry = "phone"
                 engine.tracer.emit("decision", intent="ticket_dialogue", action="phone_retry")
                 return
             engine.tracer.emit("decision", intent="ticket_dialogue", action="phone_captured")
-            engine._ticket_stage = "hours"
+            engine.state.ticket.stage = "hours"
         else:
             # STT sticks "?" mid-string too ("Bet kada? Bet kurio laiko?") —
             # scrub ALL question/exclamation marks before the ticket/announce.
@@ -1001,9 +1004,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     "siandien",
                 )
             )
-            if not plausible and not ctx.get("hours_retry"):
-                ctx["hours_retry"] = True
-                ctx["ask_retry"] = "hours"
+            if not plausible and not ctx.hours_retry:
+                ctx.hours_retry = True
+                ctx.ask_retry = "hours"
                 engine.tracer.emit("decision", intent="ticket_dialogue", action="hours_retry")
                 return
             # Strip trailing STT punctuation — "Bet kada?" landed on the ticket
@@ -1011,7 +1014,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # answer defaults to "bet kada" (spoken back in the announce).
             s.ticket.contact_hours = clean[:80] if plausible else "bet kada"
             engine.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
-            engine._ticket_stage = "done"
+            engine.state.ticket.stage = "done"
         return
     # (-1) Farewell mid-process is a signal to CLARIFY, never to close (policy
     # 2026-08-03): "viso gero" heard during identification / troubleshooting /
@@ -1112,7 +1115,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
     if (
         s.identity.customer_id
         and s.resolution.procedure
-        and not engine._ticket_stage
+        and not engine.state.ticket.stage
         and not s.closing.case_closed
         and getattr(engine, "_cannot_now_state", None) is None
         and not getattr(engine, "_cannot_now_done", False)
