@@ -2,9 +2,8 @@
 Router — every routing decision of the v2 graph lives in THIS file.
 
 Rules: routing functions are PURE — they read GraphState and return a node
-name; no LLM calls, no tools, no mutation. GraphState is synced from the
-engine at the end of every node (runtime.sync_updates), so the entry router
-sees exactly what the legacy route() saw live on the engine.
+name; no LLM calls, no tools, no mutation. Every node returns the full state
+(runtime.run_on_state), so the routers read exactly what the last node left.
 
 Node names keep the legacy spelling ("address_validation",
 "ticket_registration") for trace/test parity; renaming is a deliberate later

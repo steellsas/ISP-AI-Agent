@@ -46,7 +46,7 @@ def narrate(engine: Any, user_input: str | None, allowed_tools, node_prompt: str
 
 def speak_scripted(engine: Any, node: str, user_input: str | None, reply: str) -> None:
     """A SCRIPTED node reply must reach the transport too (live 2026-08-25: the
-    post-registration goodbye returned via sync_updates only — zero tokens
+    post-registration goodbye returned in the state update only — zero tokens
     streamed — and the call ended in dead silence, three caller turns in a
     row). Mirrors narrate()'s surface for an engine-composed line: node event,
     history, trace, and the stream writer."""
