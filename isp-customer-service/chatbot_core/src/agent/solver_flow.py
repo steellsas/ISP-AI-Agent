@@ -568,13 +568,9 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
         # from the REASON: "no_mac_observed" = the line still sees nothing; any
         # other verdict (foreign_mac after the plug-in) = a device is there.
         try:
-            d = engine.tools.run(
-                engine,
-                "diagnose_connection",
-                {"customer_id": cid},
-                reason="bridge_device_check",
-                apply=False,
-            ).data
+            from .tooling import telemetry
+
+            d = telemetry(engine, mode="recheck", reason="bridge_device_check").data
             return ((d.get("verdict") or {}).get("reason")) != "no_mac_observed"
         except Exception:  # pragma: no cover - best-effort read
             return False

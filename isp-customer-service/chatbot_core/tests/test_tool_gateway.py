@@ -77,3 +77,56 @@ class TestToolGateway:
 
         agent.tools.run(agent, "close_case", {"reason": "declined"}, reason="test")
         assert agent.state.closing.case_closed is True
+
+
+class TestTelemetry:
+    _VERDICT = {
+        "success": True,
+        "verdict": {"reason": "router_hung", "side": "customer", "group": "B6"},
+        "signals": {"traffic": "none"},
+    }
+
+    def test_snapshot_commits_the_verdict(self):
+        from agent.tooling import telemetry
+
+        agent, tracer = _agent(_Provider(self._VERDICT))
+        agent.state.identity.customer_id = "CUST112"
+
+        telemetry(agent, mode="snapshot", reason="test")
+
+        assert agent.state.diagnosis.verdicts["network"]["reason"] == "router_hung"
+        assert agent.state.diagnosis.hypothesis["cause"] == "router_hung"
+        assert agent.state.resolution.procedure["verdict"] == "router_hung"
+        call = next(e for e in tracer.events if e["type"] == "tool_call")
+        assert call["name"] == "diagnose_connection" and call["reason"] == "snapshot:test"
+
+    def test_recheck_never_changes_verdict_or_hypothesis(self):
+        from agent.tooling import telemetry
+
+        agent, _ = _agent(_Provider(self._VERDICT))
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.diagnosis.hypothesis = {"cause": "foreign_mac", "status": "testing"}
+
+        result = telemetry(agent, mode="recheck", reason="test")
+
+        assert result.data["verdict"]["reason"] == "router_hung"
+        assert agent.state.diagnosis.verdicts == {}
+        assert agent.state.diagnosis.hypothesis == {"cause": "foreign_mac", "status": "testing"}
+        assert agent.state.resolution.procedure is None
+
+
+class TestNoToolCallsOutsideTooling:
+    def test_engine_code_never_bypasses_the_gateway(self):
+        import re
+        from pathlib import Path
+
+        agent_dir = Path(__file__).resolve().parents[1] / "src" / "agent"
+        pattern = re.compile(r"execute_tool\(|from crm_mcp|from network_diagnostic_mcp")
+        offenders = [
+            f"{path.relative_to(agent_dir)}:{n}"
+            for path in agent_dir.rglob("*.py")
+            if path.name != "tools.py" and "tooling" not in path.parts
+            for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+            if pattern.search(line)
+        ]
+        assert offenders == []

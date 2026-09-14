@@ -472,6 +472,35 @@ def find_customer(
         }
 
 
+class _TelemetrySources:
+    """verdict.TelemetrySources over the CRM and network-diagnostic adapters."""
+
+    def __init__(self, db):
+        self._db = db
+
+    def billing_status(self, customer_id: str) -> dict:
+        from crm_mcp.tools.customer_lookup import get_billing_status
+
+        return get_billing_status(self._db, customer_id)
+
+    def outage_for_customer(self, customer_id: str) -> dict:
+        from network_diagnostic_mcp.tools.outage_checks import check_customer_affected_by_outage
+
+        return check_customer_affected_by_outage(self._db, customer_id)
+
+    def port_status(self, customer_id: str) -> dict:
+        from network_diagnostic_mcp.tools.port_diagnostics import check_port_status
+
+        return check_port_status(self._db, customer_id)
+
+    def switch_neighbors(self, switch_id: str, exclude_customer_id: str) -> dict:
+        from network_diagnostic_mcp.tools.port_diagnostics import get_switch_neighbor_summary
+
+        return get_switch_neighbor_summary(
+            self._db, switch_id, exclude_customer_id=exclude_customer_id
+        )
+
+
 def diagnose_connection(customer_id: str) -> dict:
     """
     Run the full no-internet diagnostic and return a deterministic verdict.
@@ -500,7 +529,7 @@ def diagnose_connection(customer_id: str) -> dict:
     try:
         from .verdict import diagnose
 
-        return diagnose(get_db(), customer_id)
+        return diagnose(_TelemetrySources(get_db()), customer_id)
 
     except ImportError as e:
         # Same policy as check_network_status: no raw-SQL fallback in the

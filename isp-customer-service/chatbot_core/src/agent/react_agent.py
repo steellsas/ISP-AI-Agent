@@ -834,13 +834,9 @@ class ReactAgent:
             solved = bool(s.resolution.procedure.get("telemetry_fixed"))
             if not solved:
                 try:
-                    d = self.tools.run(
-                        self,
-                        "diagnose_connection",
-                        {"customer_id": s.identity.customer_id},
-                        reason="hangup_net",
-                        apply=False,
-                    ).data
+                    from .tooling import telemetry
+
+                    d = telemetry(self, mode="recheck", reason="hangup_net").data
                     solved = ((d.get("verdict") or {}).get("reason") or "healthy_to_router") == (
                         "healthy_to_router"
                     )

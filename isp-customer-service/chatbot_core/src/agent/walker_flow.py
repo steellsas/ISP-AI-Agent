@@ -32,13 +32,9 @@ def fresh_diagnose(engine) -> dict | None:
     if not engine.state.identity.customer_id:
         return None
     try:
-        return engine.tools.run(
-            engine,
-            "diagnose_connection",
-            {"customer_id": engine.state.identity.customer_id},
-            reason="recheck",
-            apply=False,
-        ).data
+        from .tooling import telemetry
+
+        return telemetry(engine, mode="recheck", reason="verify").data
     except Exception:  # pragma: no cover - best-effort
         return None
 
@@ -88,12 +84,9 @@ def ensure_diagnosed(engine) -> bool:
             engine._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
             return True
     try:
-        engine.tools.run(
-            engine,
-            "diagnose_connection",
-            {"customer_id": s.identity.customer_id},
-            reason="first_diagnosis",
-        )
+        from .tooling import telemetry
+
+        telemetry(engine, mode="snapshot", reason="first_diagnosis")
     except Exception:  # pragma: no cover - best-effort
         return False
     _seed_evidence_from_anamnesis(engine)

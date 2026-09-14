@@ -234,13 +234,9 @@ class AgentSession:
             cid = engine.state.identity.customer_id
             if not cid or engine.state.closing.case_closed:
                 return
-            result = engine.tools.run(
-                engine,
-                "diagnose_connection",
-                {"customer_id": cid},
-                reason="background_refresh",
-                apply=False,
-            )
+            from .tooling import telemetry
+
+            result = telemetry(engine, mode="recheck", reason="background_refresh")
         except Exception:  # pragma: no cover - background best-effort
             return
         with self._inbox_lock:

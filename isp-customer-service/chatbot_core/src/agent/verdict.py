@@ -14,13 +14,16 @@ cause: on side=customer/unclear the agent continues the conversation
 docs/demo_plan_neveikia_internetas.md §2.
 
 Split in two so the tree is unit-testable without a database:
-    gather_signals(db, customer_id) -> signals dict   (adapters, I/O)
-    decide(signals)                 -> verdict dict   (pure function)
+    gather_signals(sources, customer_id) -> signals dict   (I/O through the sources)
+    decide(signals)                      -> verdict dict   (pure function)
+
+The sources (CRM billing, network outage/port/neighbours) are supplied by the
+tool provider — this module imports no adapter.
 """
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
@@ -52,26 +55,31 @@ def _flap_recent(last_status_change: str | None, window_s: int = REBOOT_FLAP_WIN
 # =============================================================================
 
 
-def gather_signals(db, customer_id: str) -> dict[str, Any]:
+class TelemetrySources(Protocol):
+    """The CRM and network reads the verdict needs (one call's worth)."""
+
+    def billing_status(self, customer_id: str) -> dict[str, Any]: ...
+
+    def outage_for_customer(self, customer_id: str) -> dict[str, Any]: ...
+
+    def port_status(self, customer_id: str) -> dict[str, Any]: ...
+
+    def switch_neighbors(self, switch_id: str, exclude_customer_id: str) -> dict[str, Any]: ...
+
+
+def gather_signals(sources: TelemetrySources, customer_id: str) -> dict[str, Any]:
     """
     Collect the verdict's input signals from both services.
 
     Orchestrates CRM (billing) and network (outage / switch / port / telemetry
     / neighbours) — the two domains stay separate (no cross-schema JOINs), so
-    swapping either backing for a real system later touches only the adapter.
+    swapping either backing for a real system later touches only the sources.
 
     Returns a flat signals dict; on a hard failure returns
     {"error": ..., "message": ...} instead.
     """
-    from crm_mcp.tools.customer_lookup import get_billing_status
-    from network_diagnostic_mcp.tools.outage_checks import check_customer_affected_by_outage
-    from network_diagnostic_mcp.tools.port_diagnostics import (
-        check_port_status,
-        get_switch_neighbor_summary,
-    )
-
     # --- Step 1 signal: billing (CRM domain) -------------------------------
-    billing = get_billing_status(db, customer_id)
+    billing = sources.billing_status(customer_id)
     if not billing.get("success"):
         return {
             "error": billing.get("error", "billing_check_failed"),
@@ -79,7 +87,7 @@ def gather_signals(db, customer_id: str) -> dict[str, Any]:
         }
 
     # --- Step 2 signal: registered incident (network domain) ---------------
-    outage = check_customer_affected_by_outage(db, customer_id)
+    outage = sources.outage_for_customer(customer_id)
     outage_info = None
     if outage.get("success") and outage.get("affected"):
         first = (outage.get("outages") or [{}])[0]
@@ -91,7 +99,7 @@ def gather_signals(db, customer_id: str) -> dict[str, Any]:
         }
 
     # --- Steps 3-4 signals: switch + port + telemetry ----------------------
-    port_result = check_port_status(db, customer_id)
+    port_result = sources.port_status(customer_id)
     port = None
     if port_result.get("success") and port_result.get("ports"):
         ports = port_result["ports"]
@@ -133,9 +141,7 @@ def gather_signals(db, customer_id: str) -> dict[str, Any]:
     # Neighbour correlation only matters when the customer's link is down
     # (BŪSENA A: local fault vs unregistered node fault).
     if port and port.get("status") != "up":
-        neighbors = get_switch_neighbor_summary(
-            db, port["switch_id"], exclude_customer_id=customer_id
-        )
+        neighbors = sources.switch_neighbors(port["switch_id"], exclude_customer_id=customer_id)
         if neighbors.get("success"):
             signals["neighbors_up"] = neighbors["neighbors_up"]
             signals["neighbors_down"] = neighbors["neighbors_down"]
@@ -368,9 +374,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
 # =============================================================================
 
 
-def diagnose(db, customer_id: str) -> dict[str, Any]:
+def diagnose(sources: TelemetrySources, customer_id: str) -> dict[str, Any]:
     """gather_signals + decide -> the diagnose_connection tool payload."""
-    signals = gather_signals(db, customer_id)
+    signals = gather_signals(sources, customer_id)
     if "error" in signals:
         return {
             "success": False,
