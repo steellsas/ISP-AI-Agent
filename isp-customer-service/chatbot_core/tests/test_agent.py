@@ -41,7 +41,7 @@ class TestAgentSystemPrompt:
         assert "check_network_status" in agent.system_prompt
 
 
-class TestAgentState:
+class TestAgentSystemPromptPhone:
     """Tests for agent state management."""
 
     def test_agent_phone_in_system_prompt(self):
@@ -169,7 +169,7 @@ class TestHistoryWindow:
         assert pruned[0]["role"] != "tool"
 
     def test_build_messages_injects_known_facts(self):
-        """Resolved AgentState facts ride in a SEPARATE trailing system message,
+        """Resolved GraphState facts ride in a SEPARATE trailing system message,
         not concatenated into the (cacheable) system prompt."""
         from agent.react_agent import ReactAgent
 
