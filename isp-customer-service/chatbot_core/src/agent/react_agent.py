@@ -16,6 +16,7 @@ Callers use agent.session.AgentSession; the engine is internal.
 import json
 import logging
 import re
+import threading
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
@@ -215,11 +216,10 @@ class ReactAgent:
         # runs the node to completion in the background, so an outer
         # generator-close never reaches this loop — the flag is the only
         # reliable cancel path (verified 2026-08-06).
-        self._cancel_requested = False
+        self._cancel_requested = threading.Event()
         # S1 speculation (2026-08-24): the branch cache prepared while the
         # caller was answering, and the matched reply injected past the LLM.
         self._spec_cache: dict | None = None
-        self._bg_diagnosis: str | None = None  # S2: background telemetry read
 
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
@@ -425,10 +425,10 @@ class ReactAgent:
         return plug_report(self, user_input)
 
     def request_cancel(self) -> None:
-        """Ask the running streaming turn to stop (thread-safe: a bool flip).
-        Checked between tokens; a no-op when no turn is running (the flag is
-        reset at the next turn's start)."""
-        self._cancel_requested = True
+        """Ask the running streaming turn to stop (thread-safe event). Checked
+        between tokens; a no-op when no turn is running (the event is cleared at
+        the next turn's start)."""
+        self._cancel_requested.set()
 
     def anchor_text(self) -> str:
         """Delegates to perception_flow.anchor_text (R3 extraction)."""
@@ -1193,7 +1193,7 @@ class ReactAgent:
         # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
         # slot/problem filled THIS turn counts as progress and clears the counter.
         self.state.turn.progress_key_at_start = self._progress_key()
-        self._cancel_requested = False  # a stale barge-in never cancels a NEW turn
+        self._cancel_requested.clear()  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "supratau" directive leaks into their replies.
         if self.state.ticket.stage:
@@ -1294,7 +1294,7 @@ class ReactAgent:
                     except StopIteration as done:
                         message = done.value
                         break
-                    if self._cancel_requested:
+                    if self._cancel_requested.is_set():
                         with suppress(Exception):
                             inner.close()
                         self.on_turn_cancelled("".join(streamed))
@@ -1352,10 +1352,10 @@ class ReactAgent:
         in the solution/bridge phase, or when the fresh verdict FLIPS the
         story, it is discarded (the solution steps read at the right moments
         themselves)."""
-        bg = getattr(self, "_bg_diagnosis", None)
+        bg = self.state.turn.bg_diagnosis
         if not bg:
             return
-        self._bg_diagnosis = None
+        self.state.turn.bg_diagnosis = None
         # A-2R (2026-09-07): with no identified customer the telemetry has no
         # one to belong to — after reopen it used to restore the dropped
         # account's diagnosis.

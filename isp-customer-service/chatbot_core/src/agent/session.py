@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from .config import AgentConfig
@@ -56,16 +57,53 @@ class AgentSession:
         # subgraph, one node per file.
         self._graph = build_graph(self._agent)
         self._graph_config = {"configurable": {"thread_id": self._agent.session_id}}
+        # Results of background work (analyst, speculation, telemetry refresh),
+        # handed to the NEXT turn through its graph input — no thread writes state.
+        self._inbox: dict[str, Any] = {}
+        self._inbox_lock = threading.Lock()
 
     def _graph_input(self, text: str | None) -> dict:
         """Shape one turn's graph input: a fresh turn scratch. The rest of the state
         comes from the checkpoint — on the very first invoke it is seeded from the
         engine's initial state (caller phone, config-derived limits)."""
-        turn = {"turn": TurnScratch(user_input=text)}
-        if self._graph.get_state(self._graph_config).values:
-            return turn
-        initial = self._agent.state
-        return {**{name: getattr(initial, name) for name in type(initial).model_fields}, **turn}
+        with self._inbox_lock:
+            inbox, self._inbox = self._inbox, {}
+        turn = TurnScratch(
+            user_input=text,
+            injected_reply=inbox.get("injected_reply"),
+            bg_diagnosis=inbox.get("bg_diagnosis"),
+        )
+        values = self._graph.get_state(self._graph_config).values
+        update: dict[str, Any] = {}
+        if not values:
+            initial = self._agent.state
+            update = {name: getattr(initial, name) for name in type(initial).model_fields}
+        if inbox.get("analyst_notes"):
+            voice = values["voice"] if values else self._agent.state.voice
+            update["voice"] = voice.model_copy(update={"analyst_notes": inbox["analyst_notes"]})
+        update["turn"] = turn
+        return update
+
+    def _current_state(self) -> GraphState:
+        """The call state as checkpointed after the last turn (the engine's initial
+        state before the first one)."""
+        values = self._graph.get_state(self._graph_config).values
+        return GraphState(**values) if values else self._agent.state
+
+    def _write_between_turns(self, write) -> None:
+        """Run an engine write outside a turn: on a copy of the checkpointed state,
+        stored back with graph.update_state (before the first turn the engine's
+        initial state is edited and seeds the first invoke)."""
+        if not self._graph.get_state(self._graph_config).values:
+            write()
+            return
+        self._agent.state = self._current_state().model_copy(deep=True)
+        write()
+        state = self._agent.state
+        self._graph.update_state(
+            self._graph_config,
+            {name: getattr(state, name) for name in type(state).model_fields if name != "turn"},
+        )
 
     @staticmethod
     def _graph_reply(out: dict) -> str | None:
@@ -76,10 +114,11 @@ class AgentSession:
     def end_session(self, outcome: str | None = None) -> None:
         """Mark the conversation finished (emits session_end to the trace).
 
-        Idempotent. Transports call this when the call ends (CLI quit, voice
-        hang-up) so every conversation's trace is properly closed.
+        Idempotent. Transports call this when the call ends (voice hang-up, API
+        delete, eval) so every conversation's trace is properly closed. The
+        hang-up net and the call record run on the checkpointed state.
         """
-        self._agent.end_session(outcome=outcome)
+        self._write_between_turns(lambda: self._agent.end_session(outcome=outcome))
 
     @property
     def session_id(self) -> str:
@@ -126,12 +165,12 @@ class AgentSession:
     def apply_overlay(self, texts: list[str]) -> None:
         """Duplex-hearing 2: hand the caller's over-the-voice words to the
         engine (deterministic ingest + one-shot narrator note)."""
-        self._agent.apply_overlay(texts)
+        self._write_between_turns(lambda: self._agent.apply_overlay(texts))
 
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1: after a barge-in, keep in history only the sentences the caller
         actually heard; the unheard tail resurfaces via the narrator next turn."""
-        self._agent.apply_delivery(sentences, delivered)
+        self._write_between_turns(lambda: self._agent.apply_delivery(sentences, delivered))
 
     def endpoint_hint(self, partial_text: str) -> tuple[str, int | None]:
         """E2 duplex: how much trailing silence the utterance-so-far deserves —
@@ -149,7 +188,10 @@ class AgentSession:
         narrator's next turn (never facts, never routing)."""
         from .analyst import run_analyst
 
-        run_analyst(self._agent)
+        notes = run_analyst(self._agent)
+        if notes:
+            with self._inbox_lock:
+                self._inbox["analyst_notes"] = notes
 
     def speculate_next(self, synthesize=None) -> None:
         """S1: prepare the branch cache for the OPEN question (background
@@ -167,11 +209,12 @@ class AgentSession:
         branch = match(self._agent, transcript)
         if not branch:
             return None
-        self._agent.state.turn.injected_reply = {
-            "kind": branch["kind"],
-            "key": branch.get("key"),
-            "text": branch["text"],
-        }
+        with self._inbox_lock:
+            self._inbox["injected_reply"] = {
+                "kind": branch["kind"],
+                "key": branch.get("key"),
+                "text": branch["text"],
+            }
         self._last_injected_text = branch["text"]
         return branch.get("audio") or None
 
@@ -184,9 +227,24 @@ class AgentSession:
             cid = self._agent.state.identity.customer_id
             if not cid or self._agent.state.closing.case_closed:
                 return
-            self._agent._bg_diagnosis = execute_tool("diagnose_connection", {"customer_id": cid})
+            result = execute_tool("diagnose_connection", {"customer_id": cid})
         except Exception:  # pragma: no cover - background best-effort
-            self._agent._bg_diagnosis = None
+            return
+        with self._inbox_lock:
+            self._inbox["bg_diagnosis"] = result
+
+    def is_pending_answer(self, text: str) -> bool:
+        """Does `text` answer the evidence question that is currently out? (The
+        deterministic reader — used to tell a caller's answer from an echo.)"""
+        s = self._agent.state
+        key = s.diagnosis.pending_evidence_key
+        if not key:
+            return False
+        from .evidence import read_pending_answer, spec_for
+
+        spec = spec_for((s.resolution.procedure or {}).get("verdict")) or {}
+        item = (spec.get("client") or {}).get(key)
+        return read_pending_answer(str(key), text, item) is not None
 
     def awaiting_caller(self) -> bool:
         """True while the call is open and a question/instruction is standing —

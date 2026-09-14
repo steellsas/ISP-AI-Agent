@@ -84,15 +84,16 @@ def _allowed(note: str) -> bool:
     return any(m in low for m in _ALLOWED_MARKS)
 
 
-def run_analyst(engine: Any) -> None:
-    """One background read -> engine.state.voice.analyst_notes (list[str] | None).
-    Best-effort: any hiccup leaves the notes empty and the call untouched."""
+def run_analyst(engine: Any) -> list[str] | None:
+    """One background read of the call -> advisory notes for the next narration
+    (None when there is nothing to say). Reads engine.state, never writes it — the
+    session hands the notes to the next turn. Best-effort: any hiccup returns None."""
     if not enabled():
-        return
+        return None
     try:
         s = engine.state
         if not s.intake.problem_type or s.closing.case_closed or s.closing.is_complete:
-            return
+            return None
         from src.services.llm.client import llm_completion
 
         from .evidence import summary_lt
@@ -147,7 +148,6 @@ def run_analyst(engine: Any) -> None:
         # Deterministic whitelist: only the three agreed note types survive —
         # already-said, suspicious-fact, concept-confusion.
         notes = [n for n in notes if _allowed(n)][:2]
-        engine.state.voice.analyst_notes = notes or None
         if notes:
             engine.tracer.emit("analyst", notes=notes)
             # C wave: the deviation note is FLAG-ONLY — a separate trace event
@@ -157,5 +157,7 @@ def run_analyst(engine: Any) -> None:
 
             if any("nukryp" in _f(n) or "neatsako" in _f(n) for n in notes):
                 engine.tracer.emit("analyst_flag", type="nukrypimas_nuo_plano")
+        return notes or None
     except Exception:  # pragma: no cover - the analyst must never break a call
         logger.debug("analyst failed", exc_info=True)
+        return None

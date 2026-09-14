@@ -159,14 +159,8 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     kind = "klientas"
     is_answer = False
     try:
-        engine = getattr(ms.session, "_agent", None)
-        key = engine.state.diagnosis.pending_evidence_key if engine else None
-        if key:
-            from agent.evidence import read_pending_answer, spec_for
-
-            spec = spec_for((engine.state.resolution.procedure or {}).get("verdict")) or {}
-            item = (spec.get("client") or {}).get(key)
-            is_answer = read_pending_answer(str(key), text, item) is not None
+        pending = getattr(ms.session, "is_pending_answer", None)
+        is_answer = bool(pending(text)) if callable(pending) else False
     except Exception:  # pragma: no cover - the filter must never break
         pass
     if is_answer:

@@ -244,11 +244,12 @@ class TestW2QuietAnalyst:
         from agent.analyst import run_analyst
 
         agent = self._agent()
-        run_analyst(agent)
-        assert agent.state.voice.analyst_notes == [
+        notes = run_analyst(agent)
+        assert notes == [
             "klientas jau pasake, kada dingo",
             "faktas priestarauja tam, ka klientas kartoja",
         ]
+        agent.state.voice.analyst_notes = notes  # the session hands them to the next turn
         block = agent._state_facts_block() or ""
         assert "TYLIOJO ANALITIKO" in block and "paprasykite" not in block
         assert "TYLIOJO ANALITIKO" not in (agent._state_facts_block() or "")
@@ -261,11 +262,11 @@ class TestW2QuietAnalyst:
         monkeypatch.setattr(llm, "llm_completion", lambda **k: calls.append(1) or "OK")
         monkeypatch.setenv("ANALYST", "off")
         agent = self._agent()
-        run_analyst(agent)
-        assert calls == [] and agent.state.voice.analyst_notes is None
+        assert run_analyst(agent) is None
+        assert calls == []
         monkeypatch.setenv("ANALYST", "on")
-        run_analyst(agent)
-        assert calls == [1] and agent.state.voice.analyst_notes is None  # OK -> no notes
+        assert run_analyst(agent) is None  # OK -> no notes
+        assert calls == [1]
 
 
 class TestTurnGrammar:

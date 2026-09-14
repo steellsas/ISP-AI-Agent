@@ -381,3 +381,46 @@ class TestCheckpointedState:
         restored = rebuilt.get_state(session._graph_config).values
         assert restored["turn"].reply == first["turn"].reply
         assert restored["identity"].caller_phone == "unknown"
+
+
+class TestBetweenTurnWrites:
+    """Writes that happen between turns reach the checkpoint (no engine memory)."""
+
+    def test_delivery_truncation_survives_into_the_next_turn(self, db_connection, tmp_path):
+        session = _v2_session(tmp_path)
+        session.greeting()
+        session.apply_delivery(["Labas!", "Kuo galiu padėti?"], 1)
+
+        values = session._graph.get_state(session._graph_config).values
+        assert values["messages"][-1]["content"] == "Labas! —"
+        assert values["voice"].unheard_question == "Kuo galiu padėti?"  # the ask never landed
+
+        seen = {}
+        original = session._agent._build_messages
+
+        def spy(*args, **kwargs):
+            seen["history"] = [m.get("content") for m in session._agent.state.messages]
+            return original(*args, **kwargs)
+
+        with (
+            patch.object(session._agent, "_build_messages", side_effect=spy),
+            patch(
+                "agent.react_agent.stream_tool_completion",
+                side_effect=_fake_stream(content="Suprantu."),
+            ),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            session.handle_turn("O kas jūs tokie?")
+        assert "Labas! —" in seen["history"]
+
+    def test_background_results_ride_the_next_turn_input(self, db_connection, tmp_path):
+        session = _v2_session(tmp_path)
+        session.greeting()
+        with session._inbox_lock:
+            session._inbox["analyst_notes"] = ["klientas jau pasakė, kada dingo"]
+            session._inbox["bg_diagnosis"] = '{"success": true}'
+
+        turn_input = session._graph_input("labas")
+        assert turn_input["voice"].analyst_notes == ["klientas jau pasakė, kada dingo"]
+        assert turn_input["turn"].bg_diagnosis == '{"success": true}'
+        assert session._inbox == {}  # consumed once

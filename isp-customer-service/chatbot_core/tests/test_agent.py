@@ -1384,7 +1384,7 @@ class TestBargeInCancel:
         agent.request_cancel()  # interrupt raced past the turn's end
         reply = agent._identification_scripted_reply("Labadiena!")
         assert reply  # scripted path unaffected
-        assert agent._cancel_requested is True  # cleared only at a STREAM turn start
+        assert agent._cancel_requested.is_set()  # cleared only at a STREAM turn start
 
 
 class TestSmallTalkBeforeProblem:

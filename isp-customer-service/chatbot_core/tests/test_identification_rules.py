@@ -223,13 +223,13 @@ class TestReopenConfirmation:
         ir variklis IŠ KARTO bando naują adresą (Tilžės 60 → buto klausimas)."""
         agent = self._identified()
         agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "router_hung"}
-        agent._bg_diagnosis = '{"success": true}'
+        agent.state.turn.bg_diagnosis = '{"success": true}'
         agent.state.identity.phone_candidate = {"customer_id": "CUST112", "street": "Vilniaus g."}
         agent.state.identity.reopen_confirm_utterance = "mano adresas yra Tilžės gatvė 60"
         agent.state.identity.reopen_confirm_asked = True
         agent._pre_turn_guards("Taip taip, dėl KITO adreso skambinu")
         assert agent.state.identity.customer_id is None  # sena tapatybė numesta
-        assert agent._bg_diagnosis is None  # telemetrija išmesta kartu
+        assert agent.state.turn.bg_diagnosis is None  # telemetrija išmesta kartu
         assert agent.state.diagnosis.verdicts == {}  # senų išvadų nebėra
         assert agent.state.identity.phone_candidate is None  # senas adresas nebesiūlomas
         assert agent.state.intake.problem_type == "internet_down"  # problema LIEKA
@@ -307,9 +307,9 @@ class TestReopenConfirmation:
 
     def test_bg_diagnosis_never_applies_without_customer(self, db_connection):
         agent = _agent()
-        agent._bg_diagnosis = '{"success": true}'
+        agent.state.turn.bg_diagnosis = '{"success": true}'
         agent._apply_bg_diagnosis()
-        assert agent._bg_diagnosis is None
+        assert agent.state.turn.bg_diagnosis is None
         assert agent.state.diagnosis.verdicts == {}
 
 

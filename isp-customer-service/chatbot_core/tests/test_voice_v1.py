@@ -362,7 +362,9 @@ class TestBgDiagnosisGate:
 
         events = []
         agent = self._agent(events)
-        agent._bg_diagnosis = _json.dumps({"success": True, "verdict": {"reason": "foreign_mac"}})
+        agent.state.turn.bg_diagnosis = _json.dumps(
+            {"success": True, "verdict": {"reason": "foreign_mac"}}
+        )
         agent._apply_bg_diagnosis()
         assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
         assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
@@ -372,7 +374,7 @@ class TestBgDiagnosisGate:
 
         events = []
         agent = self._agent(events)
-        agent._bg_diagnosis = _json.dumps(
+        agent.state.turn.bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
         agent._apply_bg_diagnosis()
@@ -384,7 +386,7 @@ class TestBgDiagnosisGate:
         events = []
         agent = self._agent(events)
         agent.state.resolution.bridge_bound = True
-        agent._bg_diagnosis = _json.dumps(
+        agent.state.turn.bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
         agent._apply_bg_diagnosis()

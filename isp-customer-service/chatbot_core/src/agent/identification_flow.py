@@ -399,7 +399,7 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     # DROPPED account — after reopen it kept flooding the cleared diagnosis/
     # hypothesis back in and the narrator drove the old analysis question.
     # Thrown away with everything else.
-    engine._bg_diagnosis = None
+    engine.state.turn.bg_diagnosis = None
     # B-wave registry: the whole dialogue restarts — no question survives.
     engine.state.dialog.active_question = None
     # A-2R follow-up (Andrius 2026-09-07): on an address change EVERYTHING
