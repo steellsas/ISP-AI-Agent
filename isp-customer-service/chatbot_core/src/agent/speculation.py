@@ -60,7 +60,7 @@ def _directive_line(kind: str, payload: dict[str, Any]) -> str:
     )
 
 
-def plan_branches(engine: Any) -> dict[str, Any] | None:
+def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
     """What would the NEXT directive be for each candidate answer to the OPEN
     evidence question? Pure — works on copies; None when there is nothing
     safe to speculate on."""
@@ -76,10 +76,10 @@ def plan_branches(engine: Any) -> dict[str, Any] | None:
         spec_for,
     )
 
-    s = engine.state
+    s = state
     r = s.resolution.procedure or {}
     verdict = r.get("verdict")
-    key = engine.state.diagnosis.pending_evidence_key
+    key = state.diagnosis.pending_evidence_key
     if not verdict or not key or s.closing.case_closed:
         return None
     spec = spec_for(verdict)
@@ -104,13 +104,13 @@ def plan_branches(engine: Any) -> dict[str, Any] | None:
         if status == "refuted":
             continue  # pivot path — deterministic machinery handles it live
         if status == "confirmed":
-            if engine.state.diagnosis.facts_recap_state != "done":
+            if state.diagnosis.facts_recap_state != "done":
                 branches[str(value)] = {
                     "kind": "recap",
                     "key": None,
                     "directive": _directive_line("recap", {"faktai": client_facts_lt(ev2)}),
                 }
-            elif not engine.state.diagnosis.findings_announced:
+            elif not state.diagnosis.findings_announced:
                 branches[str(value)] = {
                     "kind": "findings",
                     "key": None,
@@ -151,7 +151,7 @@ def plan_branches(engine: Any) -> dict[str, Any] | None:
 # --- precompute (background thread; never touches engine state) --------------
 
 
-def _speculative_narrate(engine: Any, directive: str) -> str | None:
+def _speculative_narrate(state: Any, rt: Any, directive: str) -> str | None:
     """One standalone narrator call: persona+style prompt + recent dialogue +
     the goal directive. No tools, no engine state."""
     try:
@@ -161,7 +161,7 @@ def _speculative_narrate(engine: Any, directive: str) -> str | None:
 
         history = [
             {"role": m["role"], "content": (m.get("content") or "")[:300]}
-            for m in engine.state.messages[-6:]
+            for m in state.messages[-6:]
             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
         ]
         messages = (
@@ -177,8 +177,8 @@ def _speculative_narrate(engine: Any, directive: str) -> str | None:
         )
         content = llm_completion(
             messages=messages,
-            model=engine.config.model,
-            temperature=engine.config.temperature,
+            model=rt.config.model,
+            temperature=rt.config.temperature,
             max_tokens=220,
         )
         return (content or "").strip() or None
@@ -187,19 +187,19 @@ def _speculative_narrate(engine: Any, directive: str) -> str | None:
         return None
 
 
-def precompute(engine: Any, synthesize) -> None:
+def precompute(state: Any, rt: Any, synthesize) -> None:
     """Fill engine._spec_cache for the open question's branches. Runs in a
     background thread; the cache is a plain dict swap (atomic enough for the
     serialized WS turn loop)."""
     if not enabled():
         return
     try:
-        plan = plan_branches(engine)
+        plan = plan_branches(state, rt)
         if not plan:
-            engine._spec_cache = None
+            rt.engine._spec_cache = None
             return
         for _value, br in plan["branches"].items():
-            text = _speculative_narrate(engine, br["directive"])
+            text = _speculative_narrate(state, rt, br["directive"])
             if not text or "?" not in text:
                 continue  # a directive turn must end in the one question
             br["text"] = text
@@ -208,8 +208,8 @@ def precompute(engine: Any, synthesize) -> None:
             except Exception:  # pragma: no cover
                 br["audio"] = b""
         plan["branches"] = {v: b for v, b in plan["branches"].items() if b.get("text")}
-        engine._spec_cache = plan if plan["branches"] else None
-        engine.tracer.emit(
+        rt.engine._spec_cache = plan if plan["branches"] else None
+        rt.tracer.emit(
             "speculation",
             action="prepared",
             key=plan["pending_key"],
@@ -217,21 +217,21 @@ def precompute(engine: Any, synthesize) -> None:
         )
     except Exception as e:  # pragma: no cover - never break the call
         logger.debug(f"speculation precompute failed: {e}")
-        engine._spec_cache = None
+        rt.engine._spec_cache = None
 
 
 # --- matching (serve gates; conservative by design) ---------------------------
 
 
-def match(engine: Any, transcript: str) -> dict[str, Any] | None:
+def match(state: Any, rt: Any, transcript: str) -> dict[str, Any] | None:
     """The prepared branch for THIS utterance — or None on ANY doubt.
     Consumes the cache either way (one shot per question)."""
-    cache = getattr(engine, "_spec_cache", None)
-    engine._spec_cache = None
+    cache = rt.engine._spec_cache
+    rt.engine._spec_cache = None
     if not cache or not enabled() or not transcript:
         return None
     key = cache["pending_key"]
-    if engine.state.diagnosis.pending_evidence_key != key:
+    if state.diagnosis.pending_evidence_key != key:
         return None
     from .evidence import extract_client_facts, read_pending_answer, spec_for
     from .resolution import (
@@ -266,5 +266,5 @@ def match(engine: Any, transcript: str) -> dict[str, Any] | None:
     branch = cache["branches"].get(str(value))
     if not branch:
         return None
-    engine.tracer.emit("speculation", action="match", key=key, value=str(value))
+    rt.tracer.emit("speculation", action="match", key=key, value=str(value))
     return branch

@@ -23,9 +23,11 @@ from ...state import GraphState
 
 
 def executor_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    from ....walker_flow import ensure_action_done
+
     engine = runtime.context.engine
 
     def body() -> None:
-        engine.ensure_action_done()
+        ensure_action_done(engine.state, engine.runtime)
 
     return run_on_state(engine, state, body)

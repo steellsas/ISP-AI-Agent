@@ -23,24 +23,26 @@ class TestHistorySummary:
 
         agent = _agent()
         agent.state.messages = [{"role": "user", "content": "labas"}] * 5
-        assert history_summary(agent) is None
+        assert history_summary(agent.state, agent.runtime) is None
 
     def test_summary_bridges_the_cut(self, db_connection):
         from agent.narrator_flow import history_summary
 
         agent = _agent()
         agent.state.messages = [{"role": "user", "content": f"r{i}"} for i in range(30)]
-        text = history_summary(agent)
+        text = history_summary(agent.state, agent.runtime)
         assert text and "SANTRAUKA" in text
         assert "internet_down" in text and "vakar" in text
         assert "Vilniaus g. 29" in text
 
     def test_summary_lands_before_the_window(self, db_connection):
+        from agent.narrator_flow import build_messages
+
         agent = _agent()
         agent.state.messages = [
             {"role": "user" if i % 2 else "assistant", "content": f"replika {i}"} for i in range(30)
         ]
-        messages = agent._build_messages(user_input="testas")
+        messages = build_messages(agent.state, agent.runtime, user_input="testas")
         idx = [
             i
             for i, m in enumerate(messages)
@@ -64,7 +66,7 @@ class TestRecallTrigger:
         ]
         agent.state.messages = old + filler
         agent.state.dialog.last_heard = "juk sakiau — po audros dingo"
-        note = recall_lines(agent)
+        note = recall_lines(agent.state, agent.runtime)
         assert note and "audros" in note and "PRIMENA" in note
 
     def test_no_marks_no_recall(self, db_connection):
@@ -73,7 +75,7 @@ class TestRecallTrigger:
         agent = _agent()
         agent.state.messages = [{"role": "user", "content": "po audros"}] * 30
         agent.state.dialog.last_heard = "nedega lemputė"
-        assert recall_lines(agent) is None
+        assert recall_lines(agent.state, agent.runtime) is None
 
     def test_recent_reference_needs_no_recall(self, db_connection):
         from agent.narrator_flow import recall_lines
@@ -81,4 +83,6 @@ class TestRecallTrigger:
         agent = _agent()
         agent.state.messages = [{"role": "user", "content": "po audros dingo"}] * 5
         agent.state.dialog.last_heard = "sakiau — po audros"
-        assert recall_lines(agent) is None  # the line is still inside the window
+        assert (
+            recall_lines(agent.state, agent.runtime) is None
+        )  # the line is still inside the window

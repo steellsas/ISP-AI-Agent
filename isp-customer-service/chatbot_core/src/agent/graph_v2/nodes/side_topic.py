@@ -24,6 +24,8 @@ def side_topic_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[s
 
     def body() -> str:
         user_input = state.turn.user_input
-        return narrate(engine, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
+        return narrate(
+            engine.state, engine.runtime, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC
+        )
 
     return run_on_state(engine, state, body)

@@ -84,14 +84,14 @@ def _allowed(note: str) -> bool:
     return any(m in low for m in _ALLOWED_MARKS)
 
 
-def run_analyst(engine: Any) -> list[str] | None:
+def run_analyst(state: Any, rt: Any) -> list[str] | None:
     """One background read of the call -> advisory notes for the next narration
     (None when there is nothing to say). Reads engine.state, never writes it — the
     session hands the notes to the next turn. Best-effort: any hiccup returns None."""
     if not enabled():
         return None
     try:
-        s = engine.state
+        s = state
         if not s.intake.problem_type or s.closing.case_closed or s.closing.is_complete:
             return None
         from src.services.llm.client import llm_completion
@@ -114,7 +114,7 @@ def run_analyst(engine: Any) -> list[str] | None:
         # type-5 deviation note compares reality against the plan.
         from .dialog_registry import active as _q_active
 
-        q = _q_active(engine)
+        q = _q_active(state, rt)
         # Damping (live 2026-09-08): a question asked THIS turn has no answer
         # yet — flagging "neatsako" then is noise. The deviation read only
         # makes sense once the same question needed a re-ask (asks >= 2).
@@ -131,7 +131,7 @@ def run_analyst(engine: Any) -> list[str] | None:
                 {"role": "system", "content": _SYSTEM},
                 {"role": "user", "content": user},
             ],
-            model=perception_model(engine.config.model),
+            model=perception_model(rt.config.model),
             temperature=0.2,
             # Reasoning models (gpt-oss) burn tokens on hidden thinking BEFORE
             # the answer — 180 returned an empty string (observed 2026-08-25).
@@ -149,14 +149,14 @@ def run_analyst(engine: Any) -> list[str] | None:
         # already-said, suspicious-fact, concept-confusion.
         notes = [n for n in notes if _allowed(n)][:2]
         if notes:
-            engine.tracer.emit("analyst", notes=notes)
+            rt.tracer.emit("analyst", notes=notes)
             # C wave: the deviation note is FLAG-ONLY — a separate trace event
             # so the deterministic layer (and the dashboards) can count it;
             # nothing routes on it yet.
             from .evidence import _fold as _f
 
             if any("nukryp" in _f(n) or "neatsako" in _f(n) for n in notes):
-                engine.tracer.emit("analyst_flag", type="nukrypimas_nuo_plano")
+                rt.tracer.emit("analyst_flag", type="nukrypimas_nuo_plano")
         return notes or None
     except Exception:  # pragma: no cover - the analyst must never break a call
         logger.debug("analyst failed", exc_info=True)

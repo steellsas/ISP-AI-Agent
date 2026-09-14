@@ -30,16 +30,22 @@ class TestW0OrderGuards:
         return agent
 
     def test_bridge_fix_waits_for_the_offer(self, db_connection):
+        from agent.solver_flow import drive_propose_fix
+
         agent = self._agent()
         agent.state.resolution.bridge_plug_reported = True  # poisoned by a garbled power reseat
-        reply = agent._drive_propose_fix("", "ištraukiau ir vėl įkišau")
+        reply = drive_propose_fix(agent.state, agent.runtime, "", "ištraukiau ir vėl įkišau")
         assert "Ar turite kompiuterį?" in reply
         assert agent.state.resolution.bridge_plug_reported is False  # the false memory cleared
         assert agent.state.resolution.bridge_offered is True
 
     def test_power_reseat_is_not_a_bridge_plug(self, db_connection):
+        from agent.solver_flow import plug_report
+
         agent = self._agent()
-        assert agent._plug_report("ištraukiau ir vėl įkišau") is False  # no computer context
+        assert (
+            plug_report(agent.state, agent.runtime, "ištraukiau ir vėl įkišau") is False
+        )  # no computer context
 
     def test_kur_questions_are_on_task(self):
         from agent.perception_flow import is_howto
@@ -48,18 +54,22 @@ class TestW0OrderGuards:
         assert is_howto("Kur žiūrėti tą lemputę?")
 
     def test_question_shaped_hours_answer_is_captured(self, db_connection):
+        from agent.perception_flow import pre_turn_guards
+
         agent = self._agent()
         agent.state.ticket.stage = "hours"
         agent.state.ticket.context = TicketContext(step_id=None, hours_asked=True, intro_done=True)
-        agent._pre_turn_guards("Kodėl tokiausia skambinti nuo 17-18 val.")
+        pre_turn_guards(agent.state, agent.runtime, "Kodėl tokiausia skambinti nuo 17-18 val.")
         assert agent.state.ticket.contact_hours and "17-18" in agent.state.ticket.contact_hours
         assert agent.state.ticket.stage == "done"
 
     def test_real_question_without_content_still_diverts(self, db_connection):
+        from agent.perception_flow import pre_turn_guards
+
         agent = self._agent()
         agent.state.ticket.stage = "hours"
         agent.state.ticket.context = TicketContext(step_id=None, hours_asked=True, intro_done=True)
-        agent._pre_turn_guards("Kodėl jums reikia mano laiko?")
+        pre_turn_guards(agent.state, agent.runtime, "Kodėl jums reikia mano laiko?")
         assert not agent.state.ticket.contact_hours
         assert agent.state.turn.ticket_offscript_question is True
 
@@ -84,21 +94,27 @@ class TestW1LivingDialogue:
     before it may poison the ledger."""
 
     def test_opening_anamnesis_skips_the_question(self, db_connection, monkeypatch):
+        from agent.identification_flow import identification_scripted_reply
+        from agent.narrator_flow import state_facts_block
         from agent.react_agent import ReactAgent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = ReactAgent(caller_phone="unknown")
         agent.state.intake.problem_type = "internet_down"
-        reply = agent._identification_scripted_reply(
-            "Laba diena, neveikia internetas. Vakar dingo, šiandien nebėra."
+        reply = identification_scripted_reply(
+            agent.state,
+            agent.runtime,
+            "Laba diena, neveikia internetas. Vakar dingo, šiandien nebėra.",
         )
         assert reply is None
         assert agent.state.intake.anamnesis_raw and agent.state.intake.anamnesis_when
         assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
-        block = agent._state_facts_block() or ""
+        block = state_facts_block(agent.state, agent.runtime) or ""
         assert "KLIENTAS JAU PASAKĖ" in block and "NEKLAUSK" in block
 
     def test_opening_without_when_goes_to_address(self, db_connection, monkeypatch):
+        from agent.identification_flow import identification_scripted_reply
+
         # etalonas #2 (2026-09-03): no opening anamnesis question — the flow
         # goes straight to the address; targeted anamnesis lives in the packs.
         from agent.react_agent import ReactAgent
@@ -106,7 +122,12 @@ class TestW1LivingDialogue:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = ReactAgent(caller_phone="unknown")
         agent.state.intake.problem_type = "internet_down"
-        assert agent._identification_scripted_reply("Neveikia internetas pas mane") is None
+        assert (
+            identification_scripted_reply(
+                agent.state, agent.runtime, "Neveikia internetas pas mane"
+            )
+            is None
+        )
         assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
 
     def _resolving_agent(self):
@@ -121,6 +142,8 @@ class TestW1LivingDialogue:
         # Live the poisoned fact came from the UNDERSTAND pass; tests run with
         # the pass off, so the keyword reader is stubbed to deliver the same.
         import agent.evidence as ev
+        from agent.evidence_drive import evidence_drive
+        from agent.perception_flow import ingest_client_evidence
 
         monkeypatch.setattr(
             ev,
@@ -129,41 +152,44 @@ class TestW1LivingDialogue:
         )
         agent = self._resolving_agent()
         agent.state.diagnosis.pending_evidence_key = "lights"  # we asked about the LIGHTS
-        agent._ingest_client_evidence("nedega nė viena, ir rozetė neveikia")
+        ingest_client_evidence(agent.state, agent.runtime, "nedega nė viena, ir rozetė neveikia")
         assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked, not committed
         assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
             key="outlet_works", value="neveikia"
         )
-        reply = agent._evidence_drive("nedega nė viena, ir rozetė neveikia")
+        reply = evidence_drive(agent.state, agent.runtime, "nedega nė viena, ir rozetė neveikia")
         assert reply and "sitikinti" in reply  # the one confirm question
         assert agent.state.diagnosis.fact_confirm_asked == FactConfirm(
             key="outlet_works", value="neveikia"
         )
 
     def test_confirmed_gate_commits_denied_gate_drops(self, db_connection):
+        from agent.perception_flow import ingest_client_evidence
+
         agent = self._resolving_agent()
         agent.state.diagnosis.fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
-        agent._ingest_client_evidence("Taip, tikrai neveikia")
+        ingest_client_evidence(agent.state, agent.runtime, "Taip, tikrai neveikia")
         assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
         agent2 = self._resolving_agent()
         agent2.state.diagnosis.fact_confirm_asked = FactConfirm(
             key="outlet_works", value="neveikia"
         )
-        agent2._ingest_client_evidence("Ne ne, rozetė veikia, viskas gerai")
+        ingest_client_evidence(agent2.state, agent2.runtime, "Ne ne, rozetė veikia, viskas gerai")
         assert (agent2.state.diagnosis.evidence.get("outlet_works") or {}).get(
             "value"
         ) != "neveikia"
 
     def test_direct_answer_is_not_gated(self, db_connection, monkeypatch):
         import agent.evidence as ev
+        from agent.perception_flow import ingest_client_evidence
 
         monkeypatch.setattr(
             ev, "extract_client_facts", lambda t: {"outlet_works": "neveikia"} if t else {}
         )
         agent = self._resolving_agent()
         agent.state.diagnosis.pending_evidence_key = "outlet_works"  # we ASKED about the outlet
-        agent._ingest_client_evidence("neveikia rozetė")
+        ingest_client_evidence(agent.state, agent.runtime, "neveikia rozetė")
         assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
         assert agent.state.diagnosis.fact_confirm_pending is None
 
@@ -187,6 +213,8 @@ class TestUnheardQuestion:
         return agent
 
     def test_unheard_question_rolls_the_ask_back(self, db_connection):
+        from agent.narrator_flow import state_facts_block
+
         agent = self._agent()
         agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
         agent.state.diagnosis.pending_evidence_key = "lights"
@@ -201,9 +229,9 @@ class TestUnheardQuestion:
         assert agent.state.resolution.procedure["presented"]["dr_lights"] == 0
         assert agent.state.voice.unheard_question == "Ar dega bent viena lemputė?"
         assert agent.state.voice.undelivered_tail is None  # superseded by the strong note
-        block = agent._state_facts_block() or ""
+        block = state_facts_block(agent.state, agent.runtime) or ""
         assert "KLAUSIMAS NEIŠĖJO" in block and "lemputė" in block
-        assert "KLAUSIMAS NEIŠĖJO" not in (agent._state_facts_block() or "")
+        assert "KLAUSIMAS NEIŠĖJO" not in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_heard_question_keeps_the_ask(self, db_connection):
         agent = self._agent()
@@ -231,6 +259,7 @@ class TestW2QuietAnalyst:
 
     def test_notes_parsed_filtered_and_consumed_once(self, db_connection, monkeypatch):
         import src.services.llm.client as llm
+        from agent.narrator_flow import state_facts_block
 
         monkeypatch.setenv("ANALYST", "on")
         monkeypatch.setattr(
@@ -246,15 +275,15 @@ class TestW2QuietAnalyst:
         from agent.analyst import run_analyst
 
         agent = self._agent()
-        notes = run_analyst(agent)
+        notes = run_analyst(agent.state, agent.runtime)
         assert notes == [
             "klientas jau pasake, kada dingo",
             "faktas priestarauja tam, ka klientas kartoja",
         ]
         agent.state.voice.analyst_notes = notes  # the session hands them to the next turn
-        block = agent._state_facts_block() or ""
+        block = state_facts_block(agent.state, agent.runtime) or ""
         assert "TYLIOJO ANALITIKO" in block and "paprasykite" not in block
-        assert "TYLIOJO ANALITIKO" not in (agent._state_facts_block() or "")
+        assert "TYLIOJO ANALITIKO" not in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_off_switch_and_ok_reply(self, db_connection, monkeypatch):
         import src.services.llm.client as llm
@@ -264,10 +293,10 @@ class TestW2QuietAnalyst:
         monkeypatch.setattr(llm, "llm_completion", lambda **k: calls.append(1) or "OK")
         monkeypatch.setenv("ANALYST", "off")
         agent = self._agent()
-        assert run_analyst(agent) is None
+        assert run_analyst(agent.state, agent.runtime) is None
         assert calls == []
         monkeypatch.setenv("ANALYST", "on")
-        assert run_analyst(agent) is None  # OK -> no notes
+        assert run_analyst(agent.state, agent.runtime) is None  # OK -> no notes
         assert calls == [1]
 
 
@@ -285,37 +314,46 @@ class TestTurnGrammar:
         return agent
 
     def test_fact_meaning_note_is_one_shot(self, db_connection):
+        from agent.narrator_flow import state_facts_block
         from agent.perception_flow import _note_fact_meaning
 
         agent = self._agent()
-        _note_fact_meaning(agent, "fail_scope", "visuose")
-        block = agent._state_facts_block() or ""
+        _note_fact_meaning(agent.state, agent.runtime, "fail_scope", "visuose")
+        block = state_facts_block(agent.state, agent.runtime) or ""
         assert "TAI REIŠKIA" in block and "pakibo pats routeris" in block
-        assert "TAI REIŠKIA" not in (agent._state_facts_block() or "")  # one-shot
+        assert "TAI REIŠKIA" not in (
+            state_facts_block(agent.state, agent.runtime) or ""
+        )  # one-shot
 
     def test_fact_meaning_silent_without_declaration(self, db_connection):
         from agent.perception_flow import _note_fact_meaning
 
         agent = self._agent(verdict="no_mac_observed")
-        _note_fact_meaning(agent, "power_cable", "įkištas")  # no reiskia declared
+        _note_fact_meaning(
+            agent.state, agent.runtime, "power_cable", "įkištas"
+        )  # no reiskia declared
         assert agent.state.diagnosis.fact_meaning is None
 
     def test_mires_lights_meaning_declared(self, db_connection):
+        from agent.narrator_flow import state_facts_block
         from agent.perception_flow import _note_fact_meaning
 
         agent = self._agent(verdict="no_mac_observed")
-        _note_fact_meaning(agent, "lights", "dega")
-        assert "linija jo nemato" in (agent._state_facts_block() or "")
+        _note_fact_meaning(agent.state, agent.runtime, "lights", "dega")
+        assert "linija jo nemato" in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_name_acceptance_is_one_shot(self, db_connection):
+        from agent.narrator_flow import state_facts_block
+
         agent = self._agent()
         agent.state.identity.caller_name = "Tomas"
         agent.state.identity.caller_name_heard = True
-        block = agent._state_facts_block() or ""
+        block = state_facts_block(agent.state, agent.runtime) or ""
         assert "Malonu, Tomas" in block
-        assert "Malonu" not in (agent._state_facts_block() or "")
+        assert "Malonu" not in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_address_offer_directive_reacts_first(self, db_connection):
+        from agent.narrator_flow import state_facts_block
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020112")
@@ -325,7 +363,7 @@ class TestTurnGrammar:
             "adresas": "Tilžės g. 60, butas 7",
             "fallback": "Ar skambinate dėl Tilžės g. 60, butas 7?",
         }
-        block = agent._state_facts_block() or ""
+        block = state_facts_block(agent.state, agent.runtime) or ""
         assert "išgirdai" in block  # reakcija pirmiau
         assert "Suprantu — dingo internetas" in block  # problemos aidas
         assert "„Ar skambinate dėl Tilžės g. 60, butas 7?“" in block  # šerdis

@@ -108,6 +108,7 @@ class TestIntegrationViaAgentTool:
     def test_resolve_address_fills_slots(self, db_connection):
         import json
 
+        from agent.narrator_flow import update_state_from_observation
         from agent.react_agent import ReactAgent
         from agent.tools import resolve_address
 
@@ -117,7 +118,7 @@ class TestIntegrationViaAgentTool:
                 city="Šiauliai", street="Tilžės", house_number="60", apartment_number="7"
             )
         )
-        agent._update_state_from_observation("resolve_address", obs)
+        update_state_from_observation(agent.state, agent.runtime, "resolve_address", obs)
 
         p = agent.state.identity.profile
         assert p.street.status == SlotStatus.RESOLVED

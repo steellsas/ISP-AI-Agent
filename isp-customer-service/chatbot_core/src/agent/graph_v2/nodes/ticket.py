@@ -28,6 +28,13 @@ def ticket_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, 
 
     def body() -> str:
         user_input = state.turn.user_input
-        return narrate(engine, user_input, TICKET_TOOLS, TICKET_NODE_PROMPT, TICKET_REGISTRATION)
+        return narrate(
+            engine.state,
+            engine.runtime,
+            user_input,
+            TICKET_TOOLS,
+            TICKET_NODE_PROMPT,
+            TICKET_REGISTRATION,
+        )
 
     return run_on_state(engine, state, body)

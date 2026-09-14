@@ -207,6 +207,7 @@ class TestPrefillWiring:
         """A symptom turn populates state.symptoms and the facts block (A3)."""
         from unittest.mock import patch
 
+        from agent.narrator_flow import state_facts_block
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
@@ -221,5 +222,5 @@ class TestPrefillWiring:
 
         assert agent.state.intake.symptoms["lights"] == "nedega"
         assert agent.state.intake.symptoms["connection"] == "wifi"
-        facts = agent._state_facts_block()
+        facts = state_facts_block(agent.state, agent.runtime)
         assert "SYMPTOMAI" in facts and "lights=nedega" in facts

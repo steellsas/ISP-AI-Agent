@@ -75,7 +75,7 @@ def story_ms() -> int:
     return _ms("ENDPOINT_STORY_MS", 1800)
 
 
-def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
+def classify_endpoint(state: Any, rt: Any, text: str | None) -> tuple[str, int | None]:
     """(mode, silence_ms) for the utterance-so-far; ("normal", None) on any
     doubt. Order matters: an unfinished thought outranks a mapped answer —
     "nedega, bet" must WAIT even though "nedega" maps."""
@@ -95,8 +95,8 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     # Complete expected answer: the pending evidence question's deterministic
     # reader maps the whole utterance to a canonical value.
     try:
-        pending = engine.state.diagnosis.pending_evidence_key
-        r = getattr(engine.state.resolution, "procedure", None) or {}
+        pending = state.diagnosis.pending_evidence_key
+        r = getattr(state.resolution, "procedure", None) or {}
         if pending and r.get("verdict"):
             from .evidence import read_pending_answer, spec_for
 
@@ -122,7 +122,7 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     # cut waits longer. Once the problem is set, answers return to the normal
     # window.
     try:
-        if getattr(engine.state.intake, "problem_type", None) is None:
+        if getattr(state.intake, "problem_type", None) is None:
             return ("slow", story_ms())
     except Exception:  # pragma: no cover
         pass

@@ -42,6 +42,7 @@ RUNTIME_ATTRIBUTES = {
     "session_id",
     "tracer",
     "tools",
+    "runtime",
     "llm_stats",
     "system_prompt",
     "tools_schema",

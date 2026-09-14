@@ -87,10 +87,10 @@ def _date_gen(date: str | None) -> str | None:
     return f"{month} {day} d." if month else None
 
 
-def _values(engine: Any, reason: str) -> dict[str, str]:
+def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
     """Placeholder values from the diagnose signals — only the ones that
     genuinely exist; the renderer drops sentences for the missing ones."""
-    signals = ((engine.state.diagnosis.verdicts.get("network") or {}).get("signals")) or {}
+    signals = ((state.diagnosis.verdicts.get("network") or {}).get("signals")) or {}
     vals: dict[str, str] = {}
     if reason == "billing_suspended":
         debt = signals.get("billing_debt") or {}
@@ -127,7 +127,7 @@ def clarity_declaration(reason: str | None) -> list[str] | None:
     return list(salyga) if isinstance(salyga, list) else None
 
 
-def inform_text(engine: Any, reason: str | None) -> str | None:
+def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
     """The rendered inform speech for this verdict, or None when no template
     applies (the caller then falls back to the glossary gloss). The
     drop-a-sentence rule: a template sentence whose placeholder has no value
@@ -137,7 +137,7 @@ def inform_text(engine: Any, reason: str | None) -> str | None:
     entry = _catalog().get(reason)
     if not isinstance(entry, dict) or not entry.get("sakoma"):
         return None
-    vals = _values(engine, reason)
+    vals = _values(state, rt, reason)
     sentences = re.split(r"(?<=[.!?])\s+", str(entry["sakoma"]).strip())
     kept: list[str] = []
     data_sentences = 0

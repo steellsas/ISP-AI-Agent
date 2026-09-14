@@ -28,20 +28,22 @@ from ...state import GraphState
 
 def solver_gate_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
     engine = runtime.context.engine
-    return run_on_state(engine, state, lambda: _solver_gate(engine, state.turn.user_input))
+    return run_on_state(
+        engine, state, lambda: _solver_gate(engine.state, engine.runtime, state.turn.user_input)
+    )
 
 
-def _solver_gate(engine: Any, user_input: str | None) -> str | None:
-    maybe_close_inform(engine, user_input)
-    driven = engine.solver_drive_turn(user_input)
+def _solver_gate(state: Any, rt: Any, user_input: str | None) -> str | None:
+    from ....solver_flow import solver_drive_turn
+
+    maybe_close_inform(state, rt, user_input)
+    driven = solver_drive_turn(state, rt, user_input)
     if driven is None:
         return None
     # narrate() will not run this turn — consume the deterministic-head
     # latch here so the NEXT turn's narrate does not skip its head.
-    engine.state.turn.pre_turn_head_done = False
-    engine.state.turn.active_node = DIAGNOSIS
-    engine.tracer.emit(
-        "node", node="diagnosis_solver", customer_id=engine.state.identity.customer_id
-    )
+    state.turn.pre_turn_head_done = False
+    state.turn.active_node = DIAGNOSIS
+    rt.tracer.emit("node", node="diagnosis_solver", customer_id=state.identity.customer_id)
     get_stream_writer()(driven)
     return driven

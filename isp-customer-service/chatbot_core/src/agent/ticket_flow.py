@@ -5,8 +5,7 @@ convenient hours; _register_ticket_from_state creates the ticket
 deterministically from STATE.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
-ReactAgent. Both engines use it — the legacy ReactAgent through thin delegate
-methods, the v2 ticket/executor nodes directly. The stage value lives on
+ReactAgent. The stage value lives on
 GraphState.ticket.stage (promoted); the dialogue CONTEXT (GraphState.ticket.context)
 is a plain JSON dict — the escalate step is kept by id.
 """
@@ -36,29 +35,29 @@ CONTINUE_SOLVING_MARKS = (
 )
 
 
-def begin_ticket_dialogue(engine: Any, step) -> None:
+def begin_ticket_dialogue(state: Any, rt: Any, step) -> None:
     """Start the ticket-confirmation dialogue: before ANY registration the agent
     collects the contact number (ALWAYS asked — the caller may be on a
     company/other phone, or the DB number stale) and when it is convenient to
     call. The scripted ladder asks; once complete, finish_ticket_dialogue
     registers with the contacts on the ticket."""
-    if engine.state.ticket.ticket_id or engine.state.ticket.stage:
+    if state.ticket.ticket_id or state.ticket.stage:
         return  # already registered / already collecting
     from .graph_v2.state import TicketContext
 
-    engine.state.ticket.context = TicketContext(step_id=step.id if step is not None else None)
-    engine.state.ticket.stage = "phone"
-    engine.tracer.emit("decision", intent="ticket_dialogue", action="start")
+    state.ticket.context = TicketContext(step_id=step.id if step is not None else None)
+    state.ticket.stage = "phone"
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="start")
 
 
-def ticket_need(engine: Any) -> str:
+def ticket_need(state: Any, rt: Any) -> str:
     """Human wording of WHY the ticket is needed ("reikalingas naujas
     maršrutizatorius"), for the intro announce and the ticket itself — never
     the raw verdict key."""
     from .evidence import fault_need
     from .glossary import DIAGNOSIS_LT, TICKET_NEED_LT
 
-    s = engine.state
+    s = state
     cause = (
         (s.diagnosis.hypothesis or {}).get("cause")
         or (s.resolution.procedure or {}).get("verdict")
@@ -85,7 +84,7 @@ def ticket_need(engine: Any) -> str:
     return DIAGNOSIS_LT.get(cause, cause)
 
 
-def wants_to_keep_solving(engine: Any, user_input: str | None) -> bool:
+def wants_to_keep_solving(state: Any, rt: Any, user_input: str | None) -> bool:
     """A ticket refusal that CARRIES solving content ("Ne, tai mes pajunkim
     tą kompiuterį…") — the caller is refusing the REGISTRATION, not the
     help. Live 2026-08-11: this was read as plain refusal, the dialogue
@@ -113,21 +112,21 @@ def wants_to_keep_solving(engine: Any, user_input: str | None) -> bool:
     return False
 
 
-def abort_ticket_to_solving(engine: Any) -> None:
+def abort_ticket_to_solving(state: Any, rt: Any) -> None:
     """Drop the ticket dialogue WITHOUT closing the call and hand the turn
     back to solving — the narrator says so and re-anchors the last
     instruction (directive consumed in the facts block)."""
-    engine.state.ticket.stage = None
-    engine.state.ticket.context = None
-    engine.state.ticket.resume_fix_note = True
-    engine.state.dialog.resync_note = True  # C: re-anchor from the ledger, no improvising
+    state.ticket.stage = None
+    state.ticket.context = None
+    state.ticket.resume_fix_note = True
+    state.dialog.resync_note = True  # C: re-anchor from the ledger, no improvising
     from .dialog_registry import clear_owner as _q_clear_owner
 
-    _q_clear_owner(engine, "ticket")
-    engine.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
+    _q_clear_owner(state, rt, "ticket")
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
 
 
-def ticket_stage_reply(engine: Any) -> str:
+def ticket_stage_reply(state: Any, rt: Any) -> str:
     """The scripted reply for the CURRENT dialogue stage. The first phone ask
     carries the intro (phone solving is over -> registering, and WHY), so the
     caller hears the transition before the contact questions. Marks the stage
@@ -137,26 +136,26 @@ def ticket_stage_reply(engine: Any) -> str:
     from .graph_v2.state import TicketContext
     from .identification import phrase
 
-    ctx = engine.state.ticket.context or TicketContext()
+    ctx = state.ticket.context or TicketContext()
     if ctx.ask_cancel_confirm:
         ctx.ask_cancel_confirm = False
         ctx.cancel_confirm_out = True
         ctx.last_kind = "cancel_confirm"
-        _q_register(engine, "ticket", "ticket_cancel")
+        _q_register(state, rt, "ticket", "ticket_cancel")
         return phrase("ticket_cancel_confirm")
     retry, ctx.ask_retry = ctx.ask_retry, None
     if retry == "phone":
         ctx.last_kind = "retry_phone"
-        _q_register(engine, "ticket", "ticket_phone")
+        _q_register(state, rt, "ticket", "ticket_phone")
         return phrase("ticket_phone_retry")
     if retry == "hours":
         ctx.last_kind = "retry_hours"
-        _q_register(engine, "ticket", "ticket_hours")
+        _q_register(state, rt, "ticket", "ticket_hours")
         return phrase("ticket_hours_retry")
-    if engine.state.ticket.stage == "hours":
+    if state.ticket.stage == "hours":
         ctx.hours_asked = True
         ctx.last_kind = "hours"
-        _q_register(engine, "ticket", "ticket_hours")
+        _q_register(state, rt, "ticket", "ticket_hours")
         return phrase("ticket_hours")
     parts = []
     if not ctx.intro_done:
@@ -165,14 +164,14 @@ def ticket_stage_reply(engine: Any) -> str:
         # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
         # the internet just came back (live 2026-08-12). The intro then
         # states the success and registers the ROUTER replacement.
-        if engine.state.resolution.bridge_bound:
+        if state.resolution.bridge_bound:
             parts.append(phrase("ticket_intro_bridge"))
         else:
-            parts.append(phrase("ticket_intro", priezastis=ticket_need(engine)))
+            parts.append(phrase("ticket_intro", priezastis=ticket_need(state, rt)))
     else:
         ctx.last_kind = "phone"
     ctx.phone_asked = True
-    _q_register(engine, "ticket", "ticket_phone")
+    _q_register(state, rt, "ticket", "ticket_phone")
     parts.append(phrase("ticket_phone"))
     return " ".join(parts)
 
@@ -188,18 +187,19 @@ def fmt_phone(nr: str | None) -> str:
     return digits
 
 
-def amend_ticket_note(engine: Any, note: str) -> bool:
+def amend_ticket_note(state: Any, rt: Any, note: str) -> bool:
     """Post-registration correction (live 2026-08-25: the caller gave a NEW
     call-back number after 'Užregistravau' and it vanished into the goodbye).
     Appends the note to the registered ticket's details so the worker sees it.
     Best-effort: False on any hiccup — the spoken acknowledgement then still
     happens, but the trace records note_failed."""
-    tid = engine.state.ticket.ticket_id
+    tid = state.ticket.ticket_id
     if not tid or not note:
         return False
     try:
-        result = engine.tools.run(
-            engine,
+        result = rt.tools.run(
+            state,
+            rt,
             "append_ticket_note",
             {"ticket_id": tid, "note": note},
             reason="ticket_amend",
@@ -213,26 +213,27 @@ def amend_ticket_note(engine: Any, note: str) -> bool:
         return False
 
 
-def finish_ticket_dialogue(engine: Any) -> str:
+def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     """All contacts collected (or defaulted) — register, close, announce. The
     announce repeats the number and hours back, so "kokiu numeriu?" never needs
     asking (observed live: the caller asked twice and got a goodbye)."""
+    from .executor_flow import register_ticket_from_state
     from .identification import phrase
 
-    s = engine.state
+    s = state
     if not s.ticket.contact_phone:
         s.ticket.contact_phone = s.identity.caller_phone  # default: the number they call from
     if not s.ticket.contact_hours:
         s.ticket.contact_hours = "bet kada"
-    ctx = engine.state.ticket.context
+    ctx = state.ticket.context
     step_id = ctx.step_id if ctx else None
     note = (ctx.note if ctx else None) or ""
-    engine.state.ticket.stage = None
-    engine.state.ticket.context = None
+    state.ticket.stage = None
+    state.ticket.context = None
     from .dialog_registry import clear_owner as _q_clear_owner
 
-    _q_clear_owner(engine, "ticket")  # contacts collected — the dialogue is over
-    engine._register_ticket_from_state(step_id)
+    _q_clear_owner(state, rt, "ticket")  # contacts collected — the dialogue is over
+    register_ticket_from_state(state, rt, step_id)
     s.closing.case_closed = True
     s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
     val = s.ticket.contact_hours
@@ -240,14 +241,14 @@ def finish_ticket_dialogue(engine: Any) -> str:
     return phrase("ticket_done", nr=fmt_phone(s.ticket.contact_phone), val=val) + note
 
 
-def registration_claim_guard(engine: Any, content: str) -> str | None:
+def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
     """The LLM narrator CLAIMED a registration that never happened (observed
     live 2026-08-05: "Užregistravau gedimą…" at dr_recheck, ticket_id None,
     the caller hung up trusting it). Words may not outrun the engine: when a
     claim is detected with no ticket and no dialogue running, the contact
     dialogue begins NOW and its phone question is APPENDED to the reply —
     the promise becomes the process. Returns the appended text or None."""
-    s = engine.state
+    s = state
     low = (content or "").lower()
     if not any(m in low for m in ("užregistrav", "uzregistrav", "registruoju gedim")):
         return None
@@ -258,7 +259,7 @@ def registration_claim_guard(engine: Any, content: str) -> str | None:
         return None
     if (
         s.ticket.ticket_id
-        or engine.state.ticket.stage
+        or state.ticket.stage
         or s.closing.case_closed
         or not s.identity.customer_id
     ):
@@ -271,11 +272,11 @@ def registration_claim_guard(engine: Any, content: str) -> str | None:
     strat = get_strategy(s.resolution.procedure.get("verdict"))
     esc = strat.step("escalate") if strat else None
     s.resolution.procedure.setdefault("escalate_reason", "Sprendimas telefonu nepavyko.")
-    begin_ticket_dialogue(engine, esc)
-    if engine.state.ticket.stage != "phone":
+    begin_ticket_dialogue(state, rt, esc)
+    if state.ticket.stage != "phone":
         return None  # could not start (defensive) — nothing to append
-    engine.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
-    if engine.state.ticket.context is not None:
-        engine.state.ticket.context.intro_done = True  # the claim already announced it
-        engine.state.ticket.context.phone_asked = True  # appended below — answers count
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
+    if state.ticket.context is not None:
+        state.ticket.context.intro_done = True  # the claim already announced it
+        state.ticket.context.phone_asked = True  # appended below — answers count
     return " " + phrase("ticket_phone")

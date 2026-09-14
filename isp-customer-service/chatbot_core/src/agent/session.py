@@ -25,7 +25,6 @@ from typing import Any
 from .config import AgentConfig
 from .graph_v2 import GraphState, TurnScratch, build_graph
 from .react_agent import ReactAgent
-from .runtime import build_runtime
 
 
 class AgentSession:
@@ -62,7 +61,7 @@ class AgentSession:
 
         # LangGraph v2: typed GraphState, SqliteSaver checkpoints, diagnosis
         # subgraph, one node per file.
-        self._runtime = build_runtime(self._agent)
+        self._runtime = self._agent.runtime
         self._graph = build_graph(checkpointer)
         self._graph_config = {"configurable": {"thread_id": thread_id or self._agent.session_id}}
         # Results of background work (analyst, speculation, telemetry refresh),
@@ -187,7 +186,7 @@ class AgentSession:
         try:
             from .endpoint import classify_endpoint
 
-            return classify_endpoint(self._agent, partial_text)
+            return classify_endpoint(self._agent.state, self._agent.runtime, partial_text)
         except Exception:  # pragma: no cover - a hint must never break a turn
             return ("normal", None)
 
@@ -196,7 +195,7 @@ class AgentSession:
         narrator's next turn (never facts, never routing)."""
         from .analyst import run_analyst
 
-        notes = run_analyst(self._agent)
+        notes = run_analyst(self._agent.state, self._agent.runtime)
         if notes:
             with self._inbox_lock:
                 self._inbox["analyst_notes"] = notes
@@ -206,7 +205,7 @@ class AgentSession:
         thread entry — pure planning + standalone LLM/TTS, no state writes)."""
         from .speculation import precompute
 
-        precompute(self._agent, synthesize)
+        precompute(self._agent.state, self._agent.runtime, synthesize)
 
     def speculation_match(self, transcript: str) -> bytes | None:
         """S1 serve gate: when the utterance maps to a prepared branch, arm the
@@ -214,7 +213,7 @@ class AgentSession:
         audio; None on any doubt — the normal path runs untouched."""
         from .speculation import match
 
-        branch = match(self._agent, transcript)
+        branch = match(self._agent.state, self._agent.runtime, transcript)
         if not branch:
             return None
         with self._inbox_lock:
@@ -236,7 +235,9 @@ class AgentSession:
                 return
             from .tooling import telemetry
 
-            result = telemetry(engine, mode="recheck", reason="background_refresh")
+            result = telemetry(
+                engine.state, engine.runtime, mode="recheck", reason="background_refresh"
+            )
         except Exception:  # pragma: no cover - background best-effort
             return
         with self._inbox_lock:
@@ -280,8 +281,10 @@ class AgentSession:
 
     def anchor_text(self) -> str:
         """The exact question to re-say after a swallowed backchannel turn."""
+        from .perception_flow import anchor_text
+
         try:
-            return self._agent.anchor_text()
+            return anchor_text(self._agent.state, self._agent.runtime)
         except Exception:  # pragma: no cover
             return ""
 

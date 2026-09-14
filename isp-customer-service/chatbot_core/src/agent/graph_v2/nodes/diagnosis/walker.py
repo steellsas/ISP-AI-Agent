@@ -22,11 +22,14 @@ from ...state import GraphState
 
 
 def walker_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    from ....solver_flow import shadow_solve
+    from ....walker_flow import advance_resolution
+
     engine = runtime.context.engine
 
     def body() -> None:
         user_input = state.turn.user_input
-        engine._advance_resolution(user_input)
-        engine._shadow_solve(user_input)
+        advance_resolution(engine.state, engine.runtime, user_input)
+        shadow_solve(engine.state, engine.runtime, user_input)
 
     return run_on_state(engine, state, body)

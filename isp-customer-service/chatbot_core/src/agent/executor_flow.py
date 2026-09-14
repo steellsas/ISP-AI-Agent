@@ -1,11 +1,11 @@
 """
 Executor flow — the ONLY place tools run and tickets are registered.
 
-R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
-ReactAgent — the deterministic tool-access gate, the gated tool-call loop,
-the STATE-driven idempotent ticket registration and the demo bridge
-simulation. Functions take the engine explicitly; tools run through
-engine.tools (the gateway).
+R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent —
+the deterministic tool-access gate, the gated tool-call loop, the STATE-driven
+idempotent ticket registration and the demo bridge simulation. Functions take
+(state, rt) — the call state and the AgentRuntime. tools run through rt.tools (the
+gateway).
 """
 
 from __future__ import annotations
@@ -21,11 +21,13 @@ from .trace import tools_called_this_session, trace_note
 logger = logging.getLogger(__name__)
 
 
-def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
+def execute_tool_calls(state: Any, rt: Any, message: Any) -> list[dict]:
     """Echo the assistant tool-call message, run each tool through the gate,
     append results to history, trace, and update state. Returns the executed
     list."""
-    engine.state.messages.append(assistant_tool_message(message))
+    from .narrator_flow import augment_tool_result
+
+    state.messages.append(assistant_tool_message(message))
     executed = []
     for tc in message.tool_calls:
         name = tc.function.name
@@ -34,9 +36,7 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
             args = json.loads(raw_args)
         except json.JSONDecodeError:
             logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
-            trace_note(
-                engine.tracer, engine.state, "tool_args", f"{name}: bad JSON args {raw_args!r}"
-            )
+            trace_note(rt.tracer, state, "tool_args", f"{name}: bad JSON args {raw_args!r}")
             args = {}
 
         logger.info(f"[AGENT] Tool call: {name}")
@@ -45,20 +45,18 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
         # read a not-yet-committed id and skipped, so the strategy never
         # activated). The state update reads only raw tool fields, never the ones
         # augment adds, so the order is safe.
-        result = engine.tools.run(engine, name, args, reason="llm")
+        result = rt.tools.run(state, rt, name, args, reason="llm")
         observation = result.observation
         if not result.gated:
-            observation = engine._augment_tool_result(name, observation)
+            observation = augment_tool_result(state, rt, name, observation)
 
-        engine.state.messages.append(
-            {"role": "tool", "tool_call_id": tc.id, "content": observation}
-        )
-        engine.state.intake.observations.append(observation)
+        state.messages.append({"role": "tool", "tool_call_id": tc.id, "content": observation})
+        state.intake.observations.append(observation)
         executed.append({"name": name, "arguments": args, "observation": observation})
     return executed
 
 
-def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
+def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None:
     """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
     cause from the hypothesis/verdict, actions from this call's trace — never from
     the model's free text (which once invented an invalid ticket_type). Idempotent:
@@ -66,7 +64,7 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     close still proceeds (the call record keeps the outcome)."""
     from .glossary import DIAGNOSIS_LT, TICKET_NEED_LT
 
-    s = engine.state
+    s = state
     if s.ticket.ticket_id or not s.identity.customer_id:
         return
     cause = (
@@ -83,8 +81,8 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     # Bridge attempt outcome (2026-08-12): the technician reads WHAT was
     # already tried — "pajungti PC nepavyko (LAN aktyvus)" changes what
     # they bring and check first.
-    if engine.state.ticket.bridge_fail_note:
-        details += f" {engine.state.ticket.bridge_fail_note}"
+    if state.ticket.bridge_fail_note:
+        details += f" {state.ticket.bridge_fail_note}"
     # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
     if s.ticket.contact_phone or s.identity.caller_name:
         kas = s.identity.caller_name or "skambinęs asmuo"
@@ -139,7 +137,7 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     if getattr(s.intake, "secondary_problems", None):
         extra = "; ".join(f"{x['tipas']}: „{x['tekstas']}“" for x in s.intake.secondary_problems)
         details += f" Papildomai patikrinti: {extra}."
-    actions = tools_called_this_session(engine.tracer)
+    actions = tools_called_this_session(rt.tracer)
     args = {
         "customer_id": s.identity.customer_id,
         "problem_type": "technician_visit",
@@ -149,57 +147,63 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     }
     try:
         # The state update sets ticket_id.
-        engine.tools.run(engine, "create_ticket", args, reason="register_ticket")
+        rt.tools.run(state, rt, "create_ticket", args, reason="register_ticket")
     except Exception as e:  # pragma: no cover - defensive
-        trace_note(engine.tracer, engine.state, "register_ticket", str(e), level="error")
+        trace_note(rt.tracer, state, "register_ticket", str(e), level="error")
 
 
-def simulate_router_reboot_action(engine: Any) -> None:
+def simulate_router_reboot_action(state: Any, rt: Any) -> None:
     """DEMO/TEST only (SIMULATE_REBOOT=on): reflect the caller power-cycling the
     router (S6) — the demo port flaps and traffic returns, so the reboot-check
     telemetry read sees what a real reboot produces. Off by default → live demo
     calls use the „Perkrauti routerį" button instead (the human plays the
     physical world); production sees the real flap on its own."""
+    from .walker_flow import note_evidence
+
     if os.getenv("SIMULATE_REBOOT", "off").lower() != "on":
         return
-    cid = engine.state.identity.customer_id
+    cid = state.identity.customer_id
     if not cid:
         return
     try:
-        res = engine.tools.run(
-            engine,
+        res = rt.tools.run(
+            state,
+            rt,
             "simulate_router_reboot",
             {"customer_id": cid},
             reason="simulate_reboot",
             apply=False,
         ).data
         if res.get("success"):
-            engine._note_evidence("klientas perkrovė routerį — portas mirktelėjo (simuliuota)")
+            note_evidence(state, rt, "klientas perkrovė routerį — portas mirktelėjo (simuliuota)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"router reboot sim failed: {e}")
-        trace_note(engine.tracer, engine.state, "reboot_sim", str(e))
+        trace_note(rt.tracer, state, "reboot_sim", str(e))
 
 
-def simulate_bridge_connection(engine: Any) -> None:
+def simulate_bridge_connection(state: Any, rt: Any) -> None:
     """DEMO/TEST only (SIMULATE_BRIDGE=on): reflect the caller plugging a PC into the
     wall cable by making an unbound device appear on the line, so the bridge can
     VERIFY it. Off by default → production never fakes a device (the real one appears
     on its own). Best-effort: a failure just leaves the line unchanged."""
+    from .walker_flow import note_evidence
+
     if os.getenv("SIMULATE_BRIDGE", "off").lower() != "on":
         return
-    cid = engine.state.identity.customer_id
+    cid = state.identity.customer_id
     if not cid:
         return
     try:
-        res = engine.tools.run(
-            engine,
+        res = rt.tools.run(
+            state,
+            rt,
             "simulate_bridge_connect",
             {"customer_id": cid},
             reason="simulate_bridge",
             apply=False,
         ).data
         if res.get("success"):
-            engine._note_evidence("klientas prijungė įrenginį — matomas linijoje (simuliuota)")
+            note_evidence(state, rt, "klientas prijungė įrenginį — matomas linijoje (simuliuota)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"bridge connection sim failed: {e}")
-        trace_note(engine.tracer, engine.state, "bridge_sim", str(e))
+        trace_note(rt.tracer, state, "bridge_sim", str(e))

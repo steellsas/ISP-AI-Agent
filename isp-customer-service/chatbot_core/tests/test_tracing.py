@@ -195,10 +195,13 @@ class TestReactAgentEmits:
         assert "Ginkūnai" in result["summary"]["hint"]
 
     def test_preflight_phone_sets_unconfirmed_candidate(self, db_connection):
+        from agent.identification_flow import preflight_phone
+        from agent.narrator_flow import state_facts_block
+
         cap = _CaptureTracer()
         agent = self._agent(cap)  # caller +37060020105 -> CUST105
 
-        agent._preflight_phone()
+        preflight_phone(agent.state, agent.runtime)
 
         cand = agent.state.identity.phone_candidate
         assert cand is not None
@@ -209,16 +212,18 @@ class TestReactAgentEmits:
         # only (cross-check / outage fast-path) and is NOT surfaced to the model.
         # The agent asks for the address rather than offering this one, so the
         # facts block must not leak a "PHONE CANDIDATE" to confirm.
-        facts = agent._state_facts_block()
+        facts = state_facts_block(agent.state, agent.runtime)
         assert facts is None or "PHONE CANDIDATE" not in facts
         assert any(e["type"] == "preflight" and e["found"] for e in cap.events)
 
     def test_preflight_unknown_phone_no_candidate(self, db_connection):
+        from agent.identification_flow import preflight_phone
+
         cap = _CaptureTracer()
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37069999999", language="lt", tracer=cap)
-        agent._preflight_phone()
+        preflight_phone(agent.state, agent.runtime)
 
         assert agent.state.identity.phone_candidate is None
 

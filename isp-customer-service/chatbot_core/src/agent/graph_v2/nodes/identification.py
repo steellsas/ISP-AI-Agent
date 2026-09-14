@@ -23,12 +23,21 @@ from ..state import GraphState
 
 
 def identification_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    from ...narrator_flow import mark_step_presented
+
     engine = runtime.context.engine
 
     def body() -> str:
         user_input = state.turn.user_input
-        reply = narrate(engine, user_input, LOOKUP_TOOLS, ADDRESS_NODE_PROMPT, ADDRESS_VALIDATION)
-        engine._mark_step_presented()
+        reply = narrate(
+            engine.state,
+            engine.runtime,
+            user_input,
+            LOOKUP_TOOLS,
+            ADDRESS_NODE_PROMPT,
+            ADDRESS_VALIDATION,
+        )
+        mark_step_presented(engine.state, engine.runtime)
         return reply
 
     return run_on_state(engine, state, body)

@@ -14,11 +14,14 @@ from typing import Any, Literal
 from .gateway import ToolResult
 
 
-def telemetry(engine: Any, *, mode: Literal["snapshot", "recheck"], reason: str) -> ToolResult:
-    return engine.tools.run(
-        engine,
+def telemetry(
+    state: Any, rt: Any, *, mode: Literal["snapshot", "recheck"], reason: str
+) -> ToolResult:
+    return rt.tools.run(
+        state,
+        rt,
         "diagnose_connection",
-        {"customer_id": engine.state.identity.customer_id},
+        {"customer_id": state.identity.customer_id},
         reason=f"{mode}:{reason}",
         apply=mode == "snapshot",
     )

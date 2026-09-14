@@ -48,17 +48,18 @@ class ToolGateway:
 
     def run(
         self,
-        engine: Any,
+        state: Any,
+        rt: Any,
         name: str,
         args: dict[str, Any],
         *,
         reason: str,
         apply: bool = True,
     ) -> ToolResult:
-        """Run one tool call for the call `engine` is working on. `apply=False`
-        leaves the state untouched (read-only rechecks)."""
-        engine.tracer.emit("tool_call", name=name, args=args, reason=reason)
-        refusal = gate(engine, name, args)
+        """Run one tool call for the call in `state`. `apply=False` leaves the
+        state untouched (read-only rechecks)."""
+        rt.tracer.emit("tool_call", name=name, args=args, reason=reason)
+        refusal = gate(state, rt, name, args)
         if refusal is not None:
             observation, ms, gated = refusal, 0, True
         else:
@@ -68,8 +69,8 @@ class ToolGateway:
         if apply:
             from ..narrator_flow import update_state_from_observation
 
-            update_state_from_observation(engine, name, observation)
-        trace_tool_result(engine.tracer, name, observation, ms)
+            update_state_from_observation(state, rt, name, observation)
+        trace_tool_result(rt.tracer, name, observation, ms)
         return ToolResult(name, args, observation, ms, gated, _parse(observation))
 
     def address_registry(self):
@@ -77,7 +78,7 @@ class ToolGateway:
         return self.provider.address_registry()
 
 
-def gate(engine: Any, name: str, args: dict) -> str | None:
+def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
     """
     Deterministic tool-access gate.
 
@@ -88,6 +89,8 @@ def gate(engine: Any, name: str, args: dict) -> str | None:
     out of the prompt and into code, so a hallucinated `diagnose_connection`
     cannot fire (observed: customer_id='1' on an unidentified caller).
     """
+    from ..walker_flow import fresh_diagnose_reason
+
     # check_outages must be street-specific. A city-only query returns OTHER
     # streets' outages, which the model then misattributes to the caller
     # (observed). Require a street (area="Miestas, Gatvė") OR a customer_id —
@@ -115,7 +118,7 @@ def gate(engine: Any, name: str, args: dict) -> str | None:
     if name == "close_case":
         reason = args.get("reason", "resolved")
         if reason == "resolved":
-            if not engine.state.identity.customer_id:
+            if not state.identity.customer_id:
                 return json.dumps(
                     {
                         "success": False,
@@ -128,7 +131,7 @@ def gate(engine: Any, name: str, args: dict) -> str | None:
             # diagnose still shows the line fault, the fix has NOT taken —
             # block "resolved" so the agent can't close on the caller's word
             # (observed: B6 closed as resolved without ever binding the MAC).
-            reason_now = engine._fresh_diagnose_reason()
+            reason_now = fresh_diagnose_reason(state, rt)
             if reason_now in UNRESOLVED_LINE_FAULTS:
                 from ..glossary import DIAGNOSIS_LT
 
@@ -145,7 +148,7 @@ def gate(engine: Any, name: str, args: dict) -> str | None:
                     },
                     ensure_ascii=False,
                 )
-        if reason == "outage" and not engine.state.diagnosis.outage_reported:
+        if reason == "outage" and not state.diagnosis.outage_reported:
             return json.dumps(
                 {
                     "success": False,
@@ -161,7 +164,7 @@ def gate(engine: Any, name: str, args: dict) -> str | None:
 
     if name not in GATED_TOOLS:
         return None
-    if not engine.state.identity.customer_id:
+    if not state.identity.customer_id:
         return json.dumps(
             {
                 "success": False,
@@ -173,14 +176,14 @@ def gate(engine: Any, name: str, args: dict) -> str | None:
             }
         )
     cid = args.get("customer_id")
-    if cid and cid != engine.state.identity.customer_id:
+    if cid and cid != state.identity.customer_id:
         return json.dumps(
             {
                 "success": False,
                 "error": "id_mismatch",
                 "message": (
                     f"customer_id turi būti identifikuoto kliento: "
-                    f"{engine.state.identity.customer_id}. Nenaudok kito ar spėto id."
+                    f"{state.identity.customer_id}. Nenaudok kito ar spėto id."
                 ),
             }
         )

@@ -70,53 +70,42 @@ class TestRouteEntryPure:
 
 
 class FakeEngine:
-    """Records the engine-call order so subgraph wiring is testable without LLM/DB."""
+    """Records the flow-call order so subgraph wiring is testable without LLM/DB:
+    the flows the nodes call are replaced by recorders."""
 
-    def __init__(self, side_topic=False, driven=None):
+    def __init__(self, monkeypatch, side_topic=False, driven=None):
         self.state = GraphState()
         self.state.identity.customer_id = "CUST-T"
         self.calls = []
-        self._side = side_topic
-        self._driven = driven
         self.session_id = "fake-session"
         self.tracer = SimpleNamespace(emit=lambda *a, **k: None)
+        self.runtime = _fake_runtime(self)
+        recorders = {
+            "agent.walker_flow.ensure_diagnosed": ("diagnose", None),
+            "agent.identification_flow.prefill_slots_from_text": ("prefill", None),
+            "agent.perception_flow.pre_turn_guards": ("guards", None),
+            "agent.perception_flow.ingest_client_evidence": ("ingest", None),
+            "agent.perception_flow.classify_side_topic": ("classify", side_topic),
+            "agent.solver_flow.solver_drive_turn": ("solver", driven),
+            "agent.walker_flow.advance_resolution": ("walker", None),
+            "agent.solver_flow.shadow_solve": ("shadow", None),
+            "agent.walker_flow.ensure_action_done": ("action", None),
+            "agent.narrator_flow.mark_step_presented": ("mark", None),
+        }
+        for target, (label, result) in recorders.items():
+            monkeypatch.setattr(target, self._recorder(label, result))
 
-    def ensure_diagnosed(self):
-        self.calls.append("diagnose")
+    def _recorder(self, label, result):
+        def record(state, rt, *args):
+            self.calls.append(label)
+            return result
 
-    def _prefill_slots_from_text(self, text):
-        self.calls.append("prefill")
-
-    def _pre_turn_guards(self, user_input):
-        self.calls.append("guards")
-
-    def _ingest_client_evidence(self, user_input):
-        self.calls.append("ingest")
-
-    def classify_side_topic(self, user_input):
-        self.calls.append("classify")
-        return self._side
-
-    def solver_drive_turn(self, user_input):
-        self.calls.append("solver")
-        return self._driven
-
-    def _advance_resolution(self, user_input):
-        self.calls.append("walker")
-
-    def _shadow_solve(self, user_input):
-        self.calls.append("shadow")
-
-    def ensure_action_done(self):
-        self.calls.append("action")
+        return record
 
     def run_turn_scoped_stream(self, user_input, allowed_tools, node_prompt):
         self.calls.append("narrate")
         yield "ok-"
         yield "reply"
-
-    def _mark_step_presented(self):
-        self.calls.append("mark")
 
 
 def _fake_graph(engine):
@@ -157,8 +146,8 @@ _CFG = {"configurable": {"thread_id": "t-subgraph"}}
 class TestDiagnosisSubgraph:
     """The legacy 9-step pipeline order must survive the split into subgraph nodes."""
 
-    def test_normal_path_keeps_legacy_call_order(self):
-        engine = FakeEngine()
+    def test_normal_path_keeps_legacy_call_order(self, monkeypatch):
+        engine = FakeEngine(monkeypatch)
         out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         # A-2 (2026-09-07): the deterministic turn head (prefill + guards) runs
         # FIRST — before the solver/walker can consume a safety-question answer.
@@ -177,24 +166,24 @@ class TestDiagnosisSubgraph:
         ]
         assert out["turn"].reply == "ok-reply"
 
-    def test_side_topic_freezes_the_engine(self):
-        engine = FakeEngine(side_topic=True)
+    def test_side_topic_freezes_the_engine(self, monkeypatch):
+        engine = FakeEngine(monkeypatch, side_topic=True)
         out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         # No close-inform/solver/walker/action on side chatter — only the frozen narration.
         assert engine.calls == ["diagnose", "prefill", "guards", "ingest", "classify", "narrate"]
         assert out["turn"].reply == "ok-reply"
 
-    def test_solver_drive_skips_walker_and_narrator(self):
-        engine = FakeEngine(driven="Atsakau pats.")
+    def test_solver_drive_skips_walker_and_narrator(self, monkeypatch):
+        engine = FakeEngine(monkeypatch, driven="Atsakau pats.")
         out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         assert engine.calls == ["diagnose", "prefill", "guards", "ingest", "classify", "solver"]
         assert out["turn"].reply == "Atsakau pats."
 
-    def test_tokens_stream_out_of_the_subgraph(self):
+    def test_tokens_stream_out_of_the_subgraph(self, monkeypatch):
         """The voice pipeline consumes stream_mode='custom' — narrator tokens
         emitted INSIDE the subgraph must surface on the parent stream. Mirrors
         AgentSession.handle_turn_stream's v2 path (subgraphs=True + unwrap)."""
-        engine = FakeEngine()
+        engine = FakeEngine(monkeypatch)
         chunks = [
             chunk
             for _ns, chunk in _fake_graph(engine).stream(
@@ -298,6 +287,8 @@ class TestRouting:
         assert "check_outages" not in names  # the looped tool in the failing trace
 
     def test_ticket_dialogue_routes_to_ticket_node_with_no_tools(self, db_connection, tmp_path):
+        from agent.ticket_flow import begin_ticket_dialogue
+
         # Mid-dialogue turns run in the dedicated ticket_registration node: the
         # walker/solver stay frozen and the LLM (off-script question only) has NO
         # tools. A scripted turn would skip the LLM, so ask a question.
@@ -316,7 +307,7 @@ class TestRouting:
             "step": "escalate",
             "asked": True,
         }
-        engine._begin_ticket_dialogue(None)
+        begin_ticket_dialogue(engine.state, engine.runtime, None)
 
         names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
 
@@ -416,14 +407,16 @@ class TestBetweenTurnWrites:
         assert values["voice"].unheard_question == "Kuo galiu padėti?"  # the ask never landed
 
         seen = {}
-        original = session._agent._build_messages
+        from agent import narrator_flow
 
-        def spy(*args, **kwargs):
-            seen["history"] = [m.get("content") for m in session._agent.state.messages]
-            return original(*args, **kwargs)
+        original = narrator_flow.build_messages
+
+        def spy(state, rt, *args, **kwargs):
+            seen["history"] = [m.get("content") for m in state.messages]
+            return original(state, rt, *args, **kwargs)
 
         with (
-            patch.object(session._agent, "_build_messages", side_effect=spy),
+            patch.object(narrator_flow, "build_messages", side_effect=spy),
             patch(
                 "agent.react_agent.stream_tool_completion",
                 side_effect=_fake_stream(content="Suprantu."),

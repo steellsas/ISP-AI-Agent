@@ -22,3 +22,13 @@ CLOSING_TOOLS: frozenset[str] = frozenset()
 # creates the ticket deterministically; the node's LLM only answers off-script
 # questions ("kokiu numeriu?") between the scripted stage questions.
 TICKET_TOOLS: frozenset[str] = frozenset()
+
+# Security-sensitive resolution actions — only exposed on the strategy STEP
+# that permits them (update_mac on bind_mac, create_ticket on escalate). So the
+# model cannot bind a device during a CONFIRM step, before the caller confirms.
+STRATEGY_ACTION_TOOLS = frozenset({"update_mac", "reset_port", "create_ticket"})
+# Diagnostics the ENGINE owns during a strategy — the model must not call them
+# (observed: it looped check_network_status / run_ping_test instead of talking).
+STRATEGY_DIAG_TOOLS = frozenset(
+    {"diagnose_connection", "check_network_status", "run_ping_test", "check_port_status"}
+)

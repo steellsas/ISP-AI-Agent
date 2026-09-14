@@ -144,19 +144,28 @@ class TestAdvanceRebootCheck:
             "step": "rh_check",
             "asked": True,
         }
-        monkeypatch.setattr(walker_flow, "fresh_diagnose", lambda e: payload)
+        monkeypatch.setattr(walker_flow, "fresh_diagnose", lambda state, rt: payload)
         return agent
 
     def test_caller_yes_with_witness_resolves_without_ticket(self, db_connection, monkeypatch):
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload(flap=True))
-        agent._advance_reboot_check(agent.state.resolution.procedure, "Taip, jau veikia")
+        advance_reboot_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Taip, jau veikia"
+        )
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "resolved"
         assert agent.state.ticket.ticket_id is None
 
     def test_caller_yes_with_traffic_back_resolves(self, db_connection, monkeypatch):
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload(reason="healthy_to_router"))
-        agent._advance_reboot_check(
-            agent.state.resolution.procedure, "Mirksi, puslapis atsidaro — veikia"
+        advance_reboot_check(
+            agent.state,
+            agent.runtime,
+            agent.state.resolution.procedure,
+            "Mirksi, puslapis atsidaro — veikia",
         )
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "resolved"
 
@@ -164,42 +173,62 @@ class TestAdvanceRebootCheck:
         """VERIFICATION RULE (Andrius 2026-08-31, DIALOGO_ETALONAS #8): the
         caller's word alone must NOT close a line fault the telemetry still
         sees as hung with NO reboot witnessed — ask to redo the power-cycle."""
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload(flap=False))
-        agent._advance_reboot_check(agent.state.resolution.procedure, "Veikia jau")
+        advance_reboot_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Veikia jau"
+        )
         assert not agent.state.closing.case_closed
         assert agent.state.resolution.procedure["step"] == "rh_reboot_retry"
         assert agent.state.resolution.procedure["reboot_retries"] == 1
 
     def test_no_but_traffic_back_goes_to_device(self, db_connection, monkeypatch):
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload(reason="healthy_to_router"))
-        agent._advance_reboot_check(agent.state.resolution.procedure, "Ne, vis tiek neveikia")
+        advance_reboot_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Ne, vis tiek neveikia"
+        )
         assert agent.state.resolution.procedure["step"] == "rh_device"
 
     def test_no_flap_retries_once_then_escalates(self, db_connection, monkeypatch):
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload(flap=False))
         r = agent.state.resolution.procedure
-        agent._advance_reboot_check(r, "Ne, neveikia")
+        advance_reboot_check(agent.state, agent.runtime, r, "Ne, neveikia")
         assert r["step"] == "rh_reboot_retry" and r["reboot_retries"] == 1
         r.update(step="rh_check", asked=True)
-        agent._advance_reboot_check(r, "Ne, vis tiek neveikia")
+        advance_reboot_check(agent.state, agent.runtime, r, "Ne, vis tiek neveikia")
         assert r["step"] == "escalate"
 
     def test_flap_seen_but_dead_escalates(self, db_connection, monkeypatch):
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload(flap=True))
-        monkeypatch.setattr(agent, "_reject_and_rediagnose", lambda r: False)
-        agent._advance_reboot_check(agent.state.resolution.procedure, "Ne, neveikia")
+        monkeypatch.setattr("agent.walker_flow.reject_and_rediagnose", lambda state, rt, r: False)
+        advance_reboot_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Ne, neveikia"
+        )
         assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_unclear_answer_holds_the_step(self, db_connection, monkeypatch):
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload())
-        agent._advance_reboot_check(agent.state.resolution.procedure, "Palaukite, dar žiūriu")
+        advance_reboot_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Palaukite, dar žiūriu"
+        )
         assert agent.state.resolution.procedure["step"] == "rh_check"
         assert not agent.state.closing.case_closed
 
     def test_unasked_turn_only_records_telemetry(self, db_connection, monkeypatch):
+        from agent.walker_flow import advance_reboot_check
+
         agent = self._agent(monkeypatch, _hung_payload())
         agent.state.resolution.procedure["asked"] = False
-        agent._advance_reboot_check(agent.state.resolution.procedure, "Taip")
+        advance_reboot_check(agent.state, agent.runtime, agent.state.resolution.procedure, "Taip")
         assert agent.state.resolution.procedure["step"] == "rh_check"
         assert agent.state.resolution.procedure["telemetry_fixed"] is False
         assert not agent.state.closing.case_closed
@@ -250,7 +279,9 @@ class TestConflictScope:
         set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 1)
         entry = set_fact(agent.state.diagnosis.evidence, "lights", "dega", CLIENT, 2)
         assert entry["conflict"]
-        assert _conflict_to_clarify(agent, "lights", entry) is True  # consumed silently
+        assert (
+            _conflict_to_clarify(agent.state, agent.runtime, "lights", entry) is True
+        )  # consumed silently
         assert agent.state.diagnosis.evidence_conflict is None  # no clarify loop
         assert entry["value"] == "dega" and not entry["conflict"]  # newest stands
 
@@ -262,7 +293,7 @@ class TestConflictScope:
         set_fact(agent.state.diagnosis.evidence, "fail_scope", "visuose", CLIENT, 1)
         entry = set_fact(agent.state.diagnosis.evidence, "fail_scope", "viename", CLIENT, 2)
         assert entry["conflict"]
-        assert _conflict_to_clarify(agent, "fail_scope", entry) is True
+        assert _conflict_to_clarify(agent.state, agent.runtime, "fail_scope", entry) is True
         c = agent.state.diagnosis.evidence_conflict
         assert (c.key, c.old, c.new) == ("fail_scope", "visuose", "viename")
 

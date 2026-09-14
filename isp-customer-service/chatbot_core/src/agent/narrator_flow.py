@@ -4,8 +4,8 @@ message assembly, the KNOWN FACTS block, per-step tool scoping, playbook
 injection, tool-result augmentation and state updates from observations.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md par. 4): moved verbatim out of
-ReactAgent. Functions take the engine explicitly; intra-family calls go
-through the engine delegate seam; tools run through engine.tools (the gateway).
+ReactAgent. Functions take (state, rt) — the call state and the AgentRuntime; flows
+call each other directly; tools run through rt.tools (the gateway).
 """
 
 from __future__ import annotations
@@ -18,6 +18,8 @@ from typing import Any  # noqa: F401
 
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
 from .glossary import PROBLEM_LT as _PROBLEM_LT
+from .graph_v2.tool_scopes import STRATEGY_ACTION_TOOLS, STRATEGY_DIAG_TOOLS
+from .ticket_flow import fmt_phone
 from .verdict import UNRESOLVED_LINE_FAULTS
 
 logger = logging.getLogger(__name__)
@@ -48,7 +50,8 @@ def _directive_system_prompt() -> str:
 
 
 def build_messages(
-    engine,
+    state,
+    rt,
     user_input: str | None = None,
     node_prompt: str | None = None,
     allowed_tools: frozenset[str] | None = None,
@@ -75,7 +78,7 @@ def build_messages(
     # partials kept overriding the directive (live 2026-08-20: the model
     # offered the address on the anamnesis turn, straight from the procedure
     # text) — a directive turn has exactly ONE instruction, the facts block.
-    directive_turn = bool(engine.state.turn.directives.ident or engine.state.turn.directives.ticket)
+    directive_turn = bool(state.turn.directives.ident or state.turn.directives.ticket)
     if directive_turn:
         messages = [{"role": "system", "content": _directive_system_prompt()}]
     else:
@@ -84,7 +87,7 @@ def build_messages(
         # the cacheable prefix (one stable prefix per node; providers keep
         # several prefixes warm in parallel). It used to trail the facts
         # block, re-sent uncached every turn.
-        prefix = engine.system_prompt
+        prefix = rt.engine.system_prompt
         if node_prompt:
             prefix = f"{prefix}\n\n{node_prompt}"
         messages = [{"role": "system", "content": prefix}]
@@ -92,16 +95,16 @@ def build_messages(
     # Istorija v2 (hygiene step 3): when the window cut older turns, a short
     # DETERMINISTIC summary from STATE bridges the gap — the model never sees
     # a conversation that starts mid-air.
-    summary = history_summary(engine)
+    summary = history_summary(state, rt)
     if summary:
         messages.append({"role": "system", "content": summary})
 
     # Add recent conversation history (windowed, tool-pairing safe)
-    messages.extend(engine._prune_history(engine.state.messages))
+    messages.extend(prune_history(state, rt, state.messages))
 
     # Durable facts as a trailing system message (kept OUT of the cached
     # prefix). None until something is resolved this call.
-    facts = engine._state_facts_block()
+    facts = state_facts_block(state, rt)
     if facts:
         messages.append({"role": "system", "content": facts})
 
@@ -115,21 +118,21 @@ def build_messages(
     # changes); full messages only when DEBUG_LLM=full.
     if os.environ.get("DEBUG_LLM"):
         payload: dict[str, Any] = {
-            "node": engine.state.turn.active_node,
+            "node": state.turn.active_node,
             "facts": facts,
             "tools": sorted(
-                t["function"]["name"] for t in engine._scoped_tools_schema(allowed_tools)
+                t["function"]["name"] for t in scoped_tools_schema(state, rt, allowed_tools)
             ),
             "history_msgs": len(messages) - 1,
         }
         if os.environ.get("DEBUG_LLM") == "full":
             payload["messages"] = messages
-        engine.tracer.emit("llm_input", **payload)
+        rt.tracer.emit("llm_input", **payload)
 
     return messages
 
 
-def scoped_tools_schema(engine, allowed_tools: frozenset[str] | None = None) -> list:
+def scoped_tools_schema(state, rt, allowed_tools: frozenset[str] | None = None) -> list:
     """The tool schema for the current node — all tools, or the subset a graph
     node restricted the model to (`allowed_tools`).
 
@@ -141,22 +144,22 @@ def scoped_tools_schema(engine, allowed_tools: frozenset[str] | None = None) -> 
     # Case closed mid-turn (bind resolved / ticket registered): no tools at all,
     # so the model narrates the close instead of looping tool calls to the limit
     # (which surfaced the 'negaliu apdoroti' fallback).
-    if engine.state.closing.case_closed:
+    if state.closing.case_closed:
         return []
     # Directive turns are SPEECH-ONLY (zones 1–3, live 2026-08-20): with tools
     # exposed the model grabbed resolve_address on the anamnesis turn and
     # skipped the whole ladder — the engine owns the mechanics, the narrator
     # only words the one goal in the facts block.
-    if engine.state.turn.directives.ident or engine.state.turn.directives.ticket:
+    if state.turn.directives.ident or state.turn.directives.ticket:
         return []
-    schema = engine.tools_schema
+    schema = rt.engine.tools_schema
     if allowed_tools is not None:
         schema = [t for t in schema if t.get("function", {}).get("name") in allowed_tools]
-    if engine.state.resolution.procedure is not None:
+    if state.resolution.procedure is not None:
         from .resolution import StepKind, get_strategy
 
-        strat = get_strategy(engine.state.resolution.procedure.get("verdict"))
-        step = strat.step(engine.state.resolution.procedure.get("step", "")) if strat else None
+        strat = get_strategy(state.resolution.procedure.get("verdict"))
+        step = strat.step(state.resolution.procedure.get("step", "")) if strat else None
         if step is not None:
             # Scope to EXACTLY this step's tools. A CONFIRM / INSTRUCT / VERIFY
             # step has NONE — the model just talks while the engine owns the
@@ -168,28 +171,26 @@ def scoped_tools_schema(engine, allowed_tools: frozenset[str] | None = None) -> 
             # has not already run it. Once action_done is set, WITHHOLD it — the
             # model only announces; otherwise the single exposed tool gets
             # re-called to the limit (observed: update_mac x6 -> 'negaliu apdoroti').
-            if step.kind == StepKind.ACTION and engine.state.resolution.procedure.get(
-                "action_done"
-            ):
+            if step.kind == StepKind.ACTION and state.resolution.procedure.get("action_done"):
                 allowed = frozenset()
             schema = [t for t in schema if t.get("function", {}).get("name") in allowed]
         else:
             schema = [
                 t
                 for t in schema
-                if (n := t.get("function", {}).get("name")) not in engine._STRATEGY_DIAG_TOOLS
-                and n not in engine._STRATEGY_ACTION_TOOLS
+                if (n := t.get("function", {}).get("name")) not in STRATEGY_DIAG_TOOLS
+                and n not in STRATEGY_ACTION_TOOLS
             ]
     return schema
 
 
-def history_summary(engine) -> str | None:
+def history_summary(state, rt) -> str | None:
     """Hygiene step 3 (istorija v2, Andrius 2026-08-27): when older turns fall
     out of the window, the narrator gets a 1–2 line DETERMINISTIC summary
     built from STATE — zero LLM cost, never hallucinates, always fresh. The
     full transcript stays in GraphState.messages (nothing is deleted)."""
-    s = engine.state
-    if len(s.messages) <= engine.config.history_window_messages:
+    s = state
+    if len(s.messages) <= rt.config.history_window_messages:
         return None  # nothing was cut — no summary needed
     bits: list[str] = []
     if s.intake.problem_type:
@@ -225,18 +226,18 @@ def history_summary(engine) -> str | None:
 _RECALL_MARKS = ("minejau", "sakiau", "kartoju", "jau aiskinau", "anksciau sakiau")
 
 
-def recall_lines(engine) -> str | None:
+def recall_lines(state, rt) -> str | None:
     """Hygiene step 3 — the RECALL trigger: when the caller references their
     own earlier words ("juk SAKIAU…"), the matching OLD user lines (outside
     the window) are pulled back into the facts block for THIS turn. Pure
     keyword overlap on folded content words — no vectors, no latency."""
     from .evidence import _fold
 
-    s = engine.state
+    s = state
     heard = _fold(s.dialog.last_heard or "")
     if not heard or not any(m in heard for m in _RECALL_MARKS):
         return None
-    window = engine.config.history_window_messages
+    window = rt.config.history_window_messages
     old = s.messages[:-window] if len(s.messages) > window else []
     old_user = [m.get("content") or "" for m in old if m.get("role") == "user"]
     if not old_user:
@@ -258,7 +259,7 @@ def recall_lines(engine) -> str | None:
     )
 
 
-def prune_history(engine, messages: list) -> list:
+def prune_history(state, rt, messages: list) -> list:
     """
     Return the most recent slice of history that fits the configured window.
 
@@ -269,7 +270,7 @@ def prune_history(engine, messages: list) -> list:
     we walk the start index left until it lands on the owning assistant
     message, keeping the exchange intact.
     """
-    window = engine.config.history_window_messages
+    window = rt.config.history_window_messages
     if window <= 0 or len(messages) <= window:
         return list(messages)
 
@@ -279,7 +280,7 @@ def prune_history(engine, messages: list) -> list:
     return messages[start:]
 
 
-def state_facts_block(engine) -> str | None:
+def state_facts_block(state, rt) -> str | None:
     """
     Render durable facts from GraphState as a short system addendum.
 
@@ -287,12 +288,15 @@ def state_facts_block(engine) -> str | None:
     log), so re-injecting them keeps the model from re-asking for details it
     already resolved. Returns None when nothing has been resolved yet.
     """
-    s = engine.state
+    from .perception_flow import anchor_text
+    from .ticket_flow import ticket_need
+
+    s = state
     facts: list[str] = []
     # Side-topic turn (deviation): the ONLY permitted content is the FAQ hit
     # (or an honest "not my area"), then the RETURN ANCHOR — the engine's
     # exact pending question. Leads the block; nothing else competes.
-    if engine.state.turn.side_topic_active:
+    if state.turn.side_topic_active:
         from .faq import match as faq_match
 
         hits = faq_match(s.dialog.last_heard)
@@ -313,30 +317,28 @@ def state_facts_block(engine) -> str | None:
             f"{tema_line}Atsakyk VIENU-DVIEM sakiniais TIK pagal ŽINOMUS "
             f"ATSAKYMUS: {zinios} NIEKO neišgalvok (jokių sumų, terminų, "
             f"pažadų). Tada BŪTINAI grįžk prie gedimo — pakartok: "
-            f"„{engine.anchor_text()}“"
+            f"„{anchor_text(state, rt)}“"
         )
     # Ticket-dialogue off-script turn: the caller asked something instead of
     # answering the stage question — give the LLM the answers it may need and
     # the EXACT question to re-ask. Leads the block; nothing else competes.
-    if engine.state.ticket.stage in ("phone", "hours"):
+    if state.ticket.stage in ("phone", "hours"):
         from .identification import phrase
 
         pending = (
-            phrase("ticket_phone")
-            if engine.state.ticket.stage == "phone"
-            else phrase("ticket_hours")
+            phrase("ticket_phone") if state.ticket.stage == "phone" else phrase("ticket_hours")
         )
         facts.append(
             "- TIKETO DIALOGAS: registruojame gedimą (priežastis: "
-            f"{engine._ticket_need()}). Skambinančiojo numeris: "
-            f"{engine._fmt_phone(s.identity.caller_phone) or 'nežinomas'}. Tiketas DAR "
+            f"{ticket_need(state, rt)}). Skambinančiojo numeris: "
+            f"{fmt_phone(s.identity.caller_phone) or 'nežinomas'}. Tiketas DAR "
             "neužregistruotas — nesakyk „užregistravau“. Atsakyk į kliento "
             f"klausimą VIENU sakiniu ir būtinai pakartok klausimą: „{pending}“"
         )
     # Ticket refusal WITH solving content (2026-08-11): the dialogue was
     # dropped, the call stays OPEN — the reply returns to the fix.
-    if engine.state.ticket.resume_fix_note:
-        engine.state.ticket.resume_fix_note = False
+    if state.ticket.resume_fix_note:
+        state.ticket.resume_fix_note = False
         facts.append(
             "- KLIENTAS ATSISAKĖ REGISTRACIJOS IR NORI TĘSTI SPRENDIMĄ: pasakyk "
             "vienu sakiniu, kad meistro neregistruoji, ir GRĮŽK prie paskutinės "
@@ -358,8 +360,8 @@ def state_facts_block(engine) -> str | None:
     # the LEDGER (kur esame, ką padarėme, kas liko / gal jau sprendimas), never
     # improvises a fresh diagnostic (live: 'ar prijungtas prie maitinimo?' re-
     # asked after a detour while all three facts were already established).
-    if engine.state.dialog.resync_note:
-        engine.state.dialog.resync_note = False
+    if state.dialog.resync_note:
+        state.dialog.resync_note = False
         nustatyta = ""
         if s.diagnosis.evidence:
             from .evidence import summary_lt as _sum
@@ -377,9 +379,9 @@ def state_facts_block(engine) -> str | None:
     # caller heard only its beginning. The unheard tail is surfaced ONCE so the
     # narrator can weave the essential part back in instead of assuming it
     # landed (live: the agent referenced instructions the caller never heard).
-    tail = engine.state.voice.undelivered_tail
+    tail = state.voice.undelivered_tail
     if tail:
-        engine.state.voice.undelivered_tail = None
+        state.voice.undelivered_tail = None
         facts.append(
             f"- KLIENTAS NEGIRDĖJO (pertraukė): „{tail[:160]}“ — jei svarbu, "
             "pasakyk trumpai savais žodžiais."
@@ -387,9 +389,9 @@ def state_facts_block(engine) -> str | None:
     # Duplex-hearing 2: words the caller said OVER the agent's voice — the
     # facts already landed via the deterministic ingest; the narrator just
     # shows it HEARD ("kaip minėjot…") and never re-asks what these answered.
-    oh = engine.state.voice.overlay_heard
+    oh = state.voice.overlay_heard
     if oh:
-        engine.state.voice.overlay_heard = None
+        state.voice.overlay_heard = None
         quoted = " / ".join(f"„{t[:120]}“" for t in oh)
         facts.append(
             f"- KOL KALBĖJAI, KLIENTAS ĮSITERPĖ: {quoted} — atsižvelk į tai; "
@@ -397,9 +399,9 @@ def state_facts_block(engine) -> str | None:
         )
     # Andrius 2026-08-26: the cut-off QUESTION never reached the caller — they
     # were NOT answering it. React to what they said, then ask it anew.
-    uq = engine.state.voice.unheard_question
+    uq = state.voice.unheard_question
     if uq:
-        engine.state.voice.unheard_question = None
+        state.voice.unheard_question = None
         facts.append(
             "- KLAUSIMAS NEIŠĖJO Į ETERĮ: klientas TAVO klausimo negirdėjo "
             "(pertraukė anksčiau), tad jo žodžiai — NE atsakymas į jį. "
@@ -409,8 +411,8 @@ def state_facts_block(engine) -> str | None:
     # Understanding-pass directives (2026-08-10): the acknowledgement makes
     # the caller feel HEARD; the confusion note turns re-asks into
     # re-EXPLANATIONS aimed at what was actually not understood.
-    u = engine.state.turn.understanding
-    if u is not None and not engine.state.turn.side_topic_active and not s.closing.case_closed:
+    u = state.turn.understanding
+    if u is not None and not state.turn.side_topic_active and not s.closing.case_closed:
         sup = (u.get("supratau") or "").strip()
         # P-A (live 2026-09-08: "Supratau — Paulius atliko veiksmą" spoken TO
         # Paulius): the pass's summary is INTERNAL wording, often third-person
@@ -442,12 +444,12 @@ def state_facts_block(engine) -> str | None:
             )
     # Per-turn guards (deterministic, set in _pre_turn_guards) lead the block —
     # they override the model's own reading of the last reply.
-    if engine.state.turn.address_confirm_note:
-        facts.append(engine.state.turn.address_confirm_note)
+    if state.turn.address_confirm_note:
+        facts.append(state.turn.address_confirm_note)
     # F2: the failed lookup's per-level diagnosis — the narrator tells the
     # caller what WAS found and asks to correct only the missing part.
-    if engine.state.turn.address_lookup_note and not s.identity.customer_id:
-        facts.append(engine.state.turn.address_lookup_note)
+    if state.turn.address_lookup_note and not s.identity.customer_id:
+        facts.append(state.turn.address_lookup_note)
     # F3 (Andrius 2026-08-20): a caller who is NOT giving the address gets ONE
     # warm encouragement with the WHY and the hints — never an endless re-ask.
     if (
@@ -455,9 +457,9 @@ def state_facts_block(engine) -> str | None:
         and s.intake.problem_type
         and s.dialog.turn_count >= 4
         and not s.identity.profile.street.value
-        and not engine.state.identity.address_encouraged
+        and not state.identity.address_encouraged
     ):
-        engine.state.identity.address_encouraged = True
+        state.identity.address_encouraged = True
         facts.append(
             "- PARAGINIMAS DĖL ADRESO (vieną kartą, šiltai): paaiškink, KODĖL "
             "adreso reikia — be jo nematai kliento linijos ir negali patikrinti "
@@ -493,8 +495,8 @@ def state_facts_block(engine) -> str | None:
     # Closing wave block 2 (2026-09-09): the business is done, but the caller
     # said something with CONTENT after "Ar dar kuo padėti?" — react to THAT,
     # never a deaf goodbye. One-shot, set by the wrap-up phase.
-    if engine.state.closing.wrap_react_note:
-        engine.state.closing.wrap_react_note = False
+    if state.closing.wrap_react_note:
+        state.closing.wrap_react_note = False
         facts.append(
             "- UŽDARYMO FAZĖ: verslas baigtas, bet klientas KAŽKĄ pasakė — "
             "sureaguok į TAI konkrečiai: jei prisistatė vardu — šiltai priimk "
@@ -503,7 +505,7 @@ def state_facts_block(engine) -> str | None:
             "trumpai atsakyk. Jokių ilgų paaiškinimų iš naujo. Baik klausimu "
             "„Ar dar kuo galiu padėti?“."
         )
-    if engine.state.turn.reopen_note and not s.identity.customer_id:
+    if state.turn.reopen_note and not s.identity.customer_id:
         facts.append(
             "- KLIENTAS PATIKSLINO: skambina dėl KITO adreso nei buvo nustatyta. "
             "Atsiprašyk vienu sakiniu ir paprašyk pasakyti adresą, dėl kurio "
@@ -551,8 +553,8 @@ def state_facts_block(engine) -> str | None:
         # Directive turns (zones 2–3, live 2026-08-20): this block told the
         # model to OFFER the address and it obeyed — on the anamnesis turn.
         # The ladder decides WHEN the offer happens; the block yields.
-        and not engine.state.turn.directives.ident
-        and not engine.state.turn.directives.ticket
+        and not state.turn.directives.ident
+        and not state.turn.directives.ticket
         # Ladder order (live 2026-08-21): the offer comes AFTER the problem
         # and the anamnesis — a garbled first utterance must not trigger it.
         and s.intake.problem_type
@@ -573,8 +575,8 @@ def state_facts_block(engine) -> str | None:
             f"state the address where the fault is and take THAT."
         )
     # DB-grounded verdict on the accumulated address (set in the prefill).
-    if engine.state.turn.db_address_note and not s.identity.customer_id:
-        facts.append(engine.state.turn.db_address_note)
+    if state.turn.db_address_note and not s.identity.customer_id:
+        facts.append(state.turn.db_address_note)
     # Extra verification questions declared in identification.yaml (e.g. the name),
     # asked while still identifying. Empty by default → nothing added.
     if not s.identity.customer_id:
@@ -641,7 +643,7 @@ def state_facts_block(engine) -> str | None:
     elif s.dialog.stuck_count == 1:
         extra = (
             " Praeitą klausimą uždavei pažodžiui — BŪTINAI perfrazuok."
-            if engine.state.dialog.last_reply_repeated
+            if state.dialog.last_reply_repeated
             else ""
         )
         if s.dialog.last_heard:
@@ -712,7 +714,7 @@ def state_facts_block(engine) -> str | None:
     # are suppressed to keep the model from blurting it alongside the question.
     caller_pending = (
         bool(s.identity.customer_id)
-        and engine.state.identity.result_pending
+        and state.identity.result_pending
         and not s.identity.caller_name
     )
     if caller_pending:
@@ -723,9 +725,9 @@ def state_facts_block(engine) -> str | None:
             f"NESAKYK. Šiame atsakyme TIK klausimas: „{caller_question()}“. "
             "Jokio rezultato, jokių instrukcijų."
         )
-    elif s.identity.customer_id and engine.state.identity.result_pending and s.identity.caller_name:
+    elif s.identity.customer_id and state.identity.result_pending and s.identity.caller_name:
         # The caller introduced themselves — deliver the deferred result NOW.
-        facts.append("- REZULTATO PRISTATYMAS:" + engine._result_narration_tail())
+        facts.append("- REZULTATO PRISTATYMAS:" + result_narration_tail(state, rt))
     # KREIPINYS (live 2026-08-25: the LLM addressed the caller "Giedriau" — the
     # DB account holder's name for that address — while the caller had said
     # "Andrius". The tool results carry the contract holder's name; it is
@@ -835,7 +837,7 @@ def state_facts_block(engine) -> str | None:
     # reply (arc v3). The JAU PRANEŠTA marker stops the model re-reading the same
     # news every turn (observed live: "sustabdyta dėl skolos" said 3×).
     if s.resolution.procedure is None and s.diagnosis.verdicts and not s.closing.case_closed:
-        if engine.state.diagnosis.news_delivered:
+        if state.diagnosis.news_delivered:
             facts.append(
                 "- ŽINIA JAU PASAKYTA: nebekartok „patikrinau / sustabdyta / "
                 "avarija“ teksto. Atsakyk į kliento klausimą, arba paklausk „Ar dar "
@@ -856,11 +858,11 @@ def state_facts_block(engine) -> str | None:
         # try another socket") won over the directive twice. A directive
         # turn carries ONE instruction: no step hint, no playbook section.
         directive_active = bool(
-            engine.state.turn.directives.evidence
-            or engine.state.turn.directives.recap
-            or engine.state.turn.directives.findings
-            or engine.state.turn.directives.ticket
-            or engine.state.turn.directives.ident
+            state.turn.directives.evidence
+            or state.turn.directives.recap
+            or state.turn.directives.findings
+            or state.turn.directives.ticket
+            or state.turn.directives.ident
         )
         # Step facts wait while the caller-intro question is owed (see above).
         if step is not None and not caller_pending and not directive_active:
@@ -870,7 +872,7 @@ def state_facts_block(engine) -> str | None:
                     # Observability: WHICH knowledge chunk feeds THIS step (the
                     # trace otherwise never shows the RAG injection — only
                     # DEBUG_LLM did, with far too much noise).
-                    engine._emit_rag_injection(strat.rag_doc, step.rag_section, step.id, section)
+                    emit_rag_injection(state, rt, strat.rag_doc, step.rag_section, step.id, section)
                     facts.append(
                         "- PLAYBOOK — your INTERNAL guidance for THIS step (Lithuanian "
                         "content). Act on it, do NOT read it to the caller verbatim, "
@@ -956,7 +958,7 @@ def state_facts_block(engine) -> str | None:
     # Bridge-phase anchor for the NARRATOR too (live 2026-08-13: it slid back
     # to router questions after the cable was already replugged — the anchor
     # existed only in the solver's context).
-    if engine.state.resolution.bridge_plug_reported:
+    if state.resolution.bridge_plug_reported:
         facts.append(
             "- TILTO FAZĖ: routeris jau pripažintas sugedusiu, kabelis PERKIŠTAS į "
             "kompiuterį — apie routerį, jo lemputes ar maitinimą NEBEKLAUSK ir "
@@ -969,9 +971,9 @@ def state_facts_block(engine) -> str | None:
     # Turn'o gramatika (etalonas 2026-09-03): the JUST-landed answer's declared
     # MEANING — the reaction carries it instead of parroting the fact
     # („Vadinasi, maitinimą gauna, bet tinklo nemato."). One-shot.
-    fm = engine.state.diagnosis.fact_meaning
+    fm = state.diagnosis.fact_meaning
     if fm:
-        engine.state.diagnosis.fact_meaning = None
+        state.diagnosis.fact_meaning = None
         tema, reiksme, prasme = fm
         facts.append(
             f"- KĄ TIK PAAIŠKĖJO: {tema} — „{reiksme}“. TAI REIŠKIA: {prasme}. "
@@ -979,20 +981,20 @@ def state_facts_block(engine) -> str | None:
             "tada kitas žingsnis."
         )
     # Frazynas: the caller JUST introduced themselves — accept warmly, once.
-    if engine.state.identity.caller_name_heard:
-        engine.state.identity.caller_name_heard = False
+    if state.identity.caller_name_heard:
+        state.identity.caller_name_heard = False
         if s.identity.caller_name and s.identity.caller_name != "nenurodyta":
             facts.append(
                 f"- KLIENTAS PRISISTATĖ: pradėk šiltu priėmimu — „Malonu, "
                 f"{s.identity.caller_name}!“ (arba panašiai) — ir tęsk mintį."
             )
-    idd = engine.state.turn.directives.ident
+    idd = state.turn.directives.ident
     if idd:
         # W1-1 (Andrius 2026-08-25): the opening already said WHEN it broke —
         # the caller must HEAR they were heard, one short acknowledgement
         # before the address ask, never a repeated "kada dingo?".
-        if engine.state.intake.opening_heard_note:
-            engine.state.intake.opening_heard_note = False
+        if state.intake.opening_heard_note:
+            state.intake.opening_heard_note = False
             when = s.intake.anamnesis_when or s.intake.anamnesis_trigger or ""
             facts.append(
                 "- KLIENTAS JAU PASAKĖ, kada dingo"
@@ -1035,12 +1037,12 @@ def state_facts_block(engine) -> str | None:
     # Zone 1 (skriptai -> direktyvos): the ticket dialogue's question moments,
     # worded by the narrator into the conversation's flow — the engine still
     # owns the stages and the capture; only the WORDING is free.
-    td = engine.state.turn.directives.ticket
+    td = state.turn.directives.ticket
     if td:
         from .ticket_flow import ticket_need
 
         if td["kind"] == "phone_intro":
-            if engine.state.resolution.bridge_bound:
+            if state.resolution.bridge_bound:
                 goal = (
                     "pranešk gerą žinią — internetas kol kas veikia per kompiuterį — "
                     "ir kad registruoji meistrą dėl naujo routerio; paklausk TIK "
@@ -1048,7 +1050,7 @@ def state_facts_block(engine) -> str | None:
                 )
             else:
                 goal = (
-                    f"pranešk, kad telefonu šito neišspręsim ({ticket_need(engine)}) "
+                    f"pranešk, kad telefonu šito neišspręsim ({ticket_need(state, rt)}) "
                     "ir kad registruoji meistrą; paklausk TIK vieno: ar susisiekimui "
                     "tinka numeris, iš kurio klientas skambina"
                 )
@@ -1069,14 +1071,14 @@ def state_facts_block(engine) -> str | None:
 
     # Persona: the RECAP as a goal directive — read the gathered facts back in
     # the narrator's own words, one short sentence, never the label:value dump.
-    rd = engine.state.turn.directives.recap
+    rd = state.turn.directives.recap
     if rd:
         facts.append(f"- PASITIKSLINK: ar teisingai supratai — {rd['faktai']}.")
 
     # Persona: the FINDINGS moment as a goal directive — the narrator states
     # what was established, the conclusion and the choice BRIEFLY in its own
     # words (never the 'label: value; label: value' template dump).
-    fd = engine.state.turn.directives.findings
+    fd = state.turn.directives.findings
     if fd:
         # Ticket-first faults script their own offer (`pasiulymas` in the
         # pack): the primary outcome first, the convenience as the question.
@@ -1126,7 +1128,7 @@ def state_facts_block(engine) -> str | None:
     # directive — the narrator words it naturally in the conversation's flow
     # instead of reading the pack's scripted sentence. Hard limits keep it
     # safe: ONE question, this goal only, no invented facts.
-    directive = engine.state.turn.directives.evidence
+    directive = state.turn.directives.evidence
     if directive:
         kodel = f" Kodėl tikriname: {directive['kodel']}." if directive.get("kodel") else ""
         # The OTHER still-open goals are named as off-limits (eval 2026-08-21:
@@ -1160,15 +1162,15 @@ def state_facts_block(engine) -> str | None:
 
     # Istorija v2: the caller referenced their OWN earlier words — pull the
     # matching old lines (outside the window) back in for this turn.
-    recall = recall_lines(engine)
+    recall = recall_lines(state, rt)
     if recall:
         facts.append(recall)
 
     # W2 tylusis analitikas: advisory notes from the background read — they
     # shape the WORDING only; on any clash the directives above win. One-shot.
-    notes = engine.state.voice.analyst_notes
+    notes = state.voice.analyst_notes
     if notes:
-        engine.state.voice.analyst_notes = None
+        state.voice.analyst_notes = None
         facts.append(
             "- TYLIOJO ANALITIKO PASTABOS (patariamosios — faktų ir eigos "
             "NEkeičia; jei prieštarauja aukščiau esančioms direktyvoms, "
@@ -1181,35 +1183,35 @@ def state_facts_block(engine) -> str | None:
     return "KNOWN FACTS (already resolved this call — do not ask again):\n" + "\n".join(facts)
 
 
-def emit_rag_injection(engine, doc: str | None, section: int, step_id: str, text: str) -> None:
+def emit_rag_injection(state, rt, doc: str | None, section: int, step_id: str, text: str) -> None:
     """Emit a `rag` trace event when a playbook section is injected for a step —
     deduped on (doc, section, step) so the multi-call turn (LLM + tool follow-up)
     logs it once, and a step change logs the new section."""
     key = [doc, section, step_id]
-    if engine.state.dialog.last_rag_injection_key == key:
+    if state.dialog.last_rag_injection_key == key:
         return
-    engine.state.dialog.last_rag_injection_key = key
+    state.dialog.last_rag_injection_key = key
     preview = " ".join((text or "").split())[:90]
-    engine.tracer.emit("rag", doc=doc, section=section, step=step_id, preview=preview)
+    rt.tracer.emit("rag", doc=doc, section=section, step=step_id, preview=preview)
 
 
-def mark_step_presented(engine) -> None:
+def mark_step_presented(state, rt) -> None:
     """After the agent replies while on a strategy step, record that the step's
     message (a CONFIRM question, an INSTRUCT instruction, or the ACTION announce)
     has now been presented — so the caller's NEXT reply advances the walker."""
-    engine.state.diagnosis.pivoted_from = None  # the rethink has now been said — say it once
-    s = engine.state
+    state.diagnosis.pivoted_from = None  # the rethink has now been said — say it once
+    s = state
     # Identification ladder bookkeeping: while the caller-intro question is owed,
     # the strategy step's question was NOT asked this reply — do not mark it. Once
     # the caller introduced themselves and the RESULT was narrated, the deferral
     # closes (inform news counted as told).
-    if s.identity.customer_id and engine.state.identity.result_pending:
+    if s.identity.customer_id and state.identity.result_pending:
         if not s.identity.caller_name:
             return  # the reply asked WHO is calling — nothing else was presented
-        engine.state.identity.result_pending = False
+        state.identity.result_pending = False
         if s.resolution.procedure is None:
-            engine.state.diagnosis.news_delivered = True
-    r = engine.state.resolution.procedure
+            state.diagnosis.news_delivered = True
+    r = state.resolution.procedure
     if not r:
         return
     from .resolution import StepKind, get_strategy
@@ -1227,7 +1229,7 @@ def mark_step_presented(engine) -> None:
         # the turns, the walker step's question ages — three live calls were
         # killed by a many-turns-stale dr_intro reading a reply as its own
         # answer. The asked-step routing only trusts a RECENT question.
-        r["asked_at"] = len(engine.state.messages)
+        r["asked_at"] = len(state.messages)
         # B-wave registry (shadow): the step's question/instruction was just
         # presented — it is now the walker's active question. Live 2026-09-08:
         # the end-confirm and wrap-up replies are NOT the step's question, so
@@ -1236,25 +1238,25 @@ def mark_step_presented(engine) -> None:
         from .dialog_registry import clear_owner as _q_clear_owner
         from .dialog_registry import register as _q_register
 
-        _q = _q_active(engine)
-        if engine.state.dialog.end_confirm_pending:
+        _q = _q_active(state, rt)
+        if state.dialog.end_confirm_pending:
             pass  # this reply asked the end-confirm question, not the step's
         elif _q is not None and _q.owner == "safety":
             # Live 2026-09-09 (N1): the reply just asked a SAFETY question
             # (cannot-now clarify) — clobbering it with the step let the
             # refuse guard consume the clarify ANSWER and start a ticket.
             pass
-        elif engine.state.closing.case_closed:
-            _q_clear_owner(engine, "walker")  # the case is over — wrap-up owns the turns
+        elif state.closing.case_closed:
+            _q_clear_owner(state, rt, "walker")  # the case is over — wrap-up owns the turns
         else:
-            _q_register(engine, "walker", f"step:{step.id}")
+            _q_register(state, rt, "walker", f"step:{step.id}")
         # Presentation counter (L2): a step presented the 2nd+ time gets the
         # ŽINGSNIS KARTOJAMAS directive — repeat WITH an explanation.
         counts = r.setdefault("presented", {})
         counts[step.id] = counts.get(step.id, 0) + 1
 
 
-def augment_resolve_result(engine, observation: str) -> str:
+def augment_resolve_result(state, rt, observation: str) -> str:
     """Identification just landed — diagnose in the SAME turn.
 
     Otherwise the identification turn has nothing real left to say (the address is
@@ -1263,13 +1265,15 @@ def augment_resolve_result(engine, observation: str) -> str:
     debt a turn later — or the caller goes quiet and the call stalls before any
     diagnosis. Running it here lets ONE reply confirm the address and deliver the
     finding."""
+    from .walker_flow import ensure_diagnosed
+
     try:
         obs = json.loads(observation)
     except (TypeError, ValueError):
         return observation
-    if not obs.get("success") or not engine.state.identity.customer_id:
+    if not obs.get("success") or not state.identity.customer_id:
         return observation
-    if not engine.ensure_diagnosed():
+    if not ensure_diagnosed(state, rt):
         return observation
     # The address was JUST confirmed (that is what triggered this diagnose) — the
     # lookup hint still says "patvirtink adresą klientui", and the narrator obeying
@@ -1283,11 +1287,11 @@ def augment_resolve_result(engine, observation: str) -> str:
     # vacuum for the model to hallucinate into (observed: it invented a router
     # story for a debtor). When async telemetry lands (Phase 5), the announce and
     # the result naturally split into two real turns.
-    obs["message"] = (obs.get("message", "") or "").strip() + engine._result_narration_tail()
+    obs["message"] = (obs.get("message", "") or "").strip() + result_narration_tail(state, rt)
     return json.dumps(obs, ensure_ascii=False)
 
 
-def result_narration_tail(engine) -> str:
+def result_narration_tail(state, rt) -> str:
     """The narration directive once the identity has committed and the silent
     diagnose ran. Identification LADDER (2026-07-31): if the caller-intro question
     is still owed (WHO is calling — name + relation, for the record), ask THAT
@@ -1295,16 +1299,16 @@ def result_narration_tail(engine) -> str:
     check announce + the REAL result in this one reply (arc v3)."""
     from .identification import ask_caller, caller_question
 
-    if ask_caller() and not engine.state.identity.caller_name:
-        engine.state.identity.result_pending = True
+    if ask_caller() and not state.identity.caller_name:
+        state.identity.result_pending = True
         return (
             " Identifikacijos pabaiga: patikra atlikta TYLIAI, bet rezultato dar "
             f"NESAKYK. Šiame atsakyme TIK: „{caller_question()}“ (galima trumpai "
             "patvirtinti adresą prieš klausimą). Jokio rezultato, jokių instrukcijų."
         )
-    d = engine.state.diagnosis.verdicts.get("network") or {}
+    d = state.diagnosis.verdicts.get("network") or {}
     gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
-    if engine.state.resolution.procedure:
+    if state.resolution.procedure:
         return (
             f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
             "tvarka: (1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) trumpai "
@@ -1312,9 +1316,7 @@ def result_narration_tail(engine) -> str:
             "klausimą (jis atlieka „ar darome?“ vaidmenį). NEkartok adreso klausimo, "
             "NEkartok anamnezės klausimo, jokių instrukcijų sąrašo — vienas klausimas."
         )
-    engine.state.diagnosis.news_delivered = (
-        True  # the news goes out in THIS reply — never repeat it
-    )
+    state.diagnosis.news_delivered = True  # the news goes out in THIS reply — never repeat it
     return (
         f" Patikra atlikta. ŽINIA: {gloss}. Šiame VIENAME atsakyme, šia tvarka: "
         "(1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) pasakyk žinią "
@@ -1324,7 +1326,7 @@ def result_narration_tail(engine) -> str:
     )
 
 
-def augment_tool_result(engine, name: str, observation: str) -> str:
+def augment_tool_result(state, rt, name: str, observation: str) -> str:
     """Deterministic post-action chaining + telemetry verification (B6 strategy).
 
     update_mac ALONE does not restore service — the port must be reset and the
@@ -1333,8 +1335,10 @@ def augment_tool_result(engine, name: str, observation: str) -> str:
     chains it: after a successful update_mac it runs reset_port and re-reads the
     telemetry, and hands the model a VERIFIED outcome to narrate (what the
     provider side actually shows, not what the caller claims)."""
+    from .walker_flow import fresh_diagnose_reason
+
     if name == "resolve_address":
-        return engine._augment_resolve_result(observation)
+        return augment_resolve_result(state, rt, observation)
     if name != "update_mac":
         return observation
     try:
@@ -1343,15 +1347,15 @@ def augment_tool_result(engine, name: str, observation: str) -> str:
         return observation
     if not obs.get("success"):
         return observation  # nothing bound (e.g. no_observed_mac) — leave as is
-    cid = engine.state.identity.customer_id
+    cid = state.identity.customer_id
     try:
-        rp = engine.tools.run(
-            engine, "reset_port", {"customer_id": cid}, reason="reset_after_bind", apply=False
+        rp = rt.tools.run(
+            state, rt, "reset_port", {"customer_id": cid}, reason="reset_after_bind", apply=False
         ).data
         obs["auto_reset_port"] = bool(rp.get("success"))
     except Exception:  # pragma: no cover - best-effort
         obs["auto_reset_port"] = None
-    reason_now = engine._fresh_diagnose_reason()
+    reason_now = fresh_diagnose_reason(state, rt)
     fixed = reason_now not in UNRESOLVED_LINE_FAULTS
     obs["telemetry_after"] = reason_now
     obs["fixed"] = fixed
@@ -1361,7 +1365,7 @@ def augment_tool_result(engine, name: str, observation: str) -> str:
     # advances bind_mac -> confirm_restored on the caller's next reply, where we
     # ASK them and re-read telemetry before deciding resolve / client-side /
     # escalate (_advance_restored). Just record the telemetry reading.
-    r = engine.state.resolution.procedure
+    r = state.resolution.procedure
     if r is not None:
         r["telemetry_fixed"] = fixed
     obs["message"] = (
@@ -1370,8 +1374,10 @@ def augment_tool_result(engine, name: str, observation: str) -> str:
     return json.dumps(obs, ensure_ascii=False)
 
 
-def update_state_from_observation(engine, action: str, observation: str):
+def update_state_from_observation(state, rt, action: str, observation: str):
     """Update agent state based on tool observation."""
+    from .walker_flow import open_hypothesis
+
     try:
         obs_data = json.loads(observation)
 
@@ -1380,14 +1386,14 @@ def update_state_from_observation(engine, action: str, observation: str):
         # accumulates as structured memory, protected from low-confidence
         # overwrites (slots.Slot.propose).
         if action == "resolve_address" and isinstance(obs_data.get("resolution"), dict):
-            engine.state.identity.profile.update_from_resolution(obs_data["resolution"])
+            state.identity.profile.update_from_resolution(obs_data["resolution"])
             # F2 (2026-08-20): a failed lookup speaks its DIAGNOSIS — what was
             # found and what was not — so the caller can correct themselves
             # ("Vilniaus gatvę randu, bet 39 numerio nematau").
             if not obs_data.get("success"):
                 from .identification_flow import address_diag_note
 
-                engine.state.turn.address_lookup_note = address_diag_note(obs_data)
+                state.turn.address_lookup_note = address_diag_note(obs_data)
                 res_levels = obs_data.get("resolution") or {}
                 street_lvl = res_levels.get("street") or {}
                 # HONEST not-exists (Andrius 2026-09-10 rev.2): every failed
@@ -1400,17 +1406,17 @@ def update_state_from_observation(engine, action: str, observation: str):
                     from .identification_flow import _register_street_attempt
 
                     if (
-                        _register_street_attempt(engine, _given) == "identical"
-                        and not engine.state.identity.street_not_exists_said
+                        _register_street_attempt(state, rt, _given) == "identical"
+                        and not state.identity.street_not_exists_said
                     ):
-                        engine.state.identity.street_not_exists_due = True
+                        state.identity.street_not_exists_due = True
                 # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
                 # Ginkūnuose" — įsimenam siūlomą vietovę; klientui patvirtinus
                 # miesto slotas persijungia (prefill vielos) ir paieška vyksta
                 # TEN. Tikslinimas NĖRA bandymas — fails nekeliam.
                 elsewhere = street_lvl.get("found_elsewhere") or []
                 if street_lvl.get("status") == "not_in_city" and elsewhere:
-                    engine.state.identity.suggested_city = elsewhere[0].get("city")
+                    state.identity.suggested_city = elsewhere[0].get("city")
                 # №2 (perdirbta 2026-09-04): nesėkme laikoma tik GATVĖS/NAMO
                 # lygmens fiasko; „trūksta buto/pavardės" ar vietovės
                 # pasiūlymas — tikslinimas, ne nesėkmė.
@@ -1425,19 +1431,19 @@ def update_state_from_observation(engine, action: str, observation: str):
                     street_lvl.get("status") not in (None, "ok")
                     or house_lvl.get("status") not in (None, "ok")
                 ):
-                    engine.state.identity.address_resolve_failures = (
-                        engine.state.identity.address_resolve_failures + 1
+                    state.identity.address_resolve_failures = (
+                        state.identity.address_resolve_failures + 1
                     )
             else:
-                engine.state.turn.address_lookup_note = None
-                engine.state.identity.suggested_city = None
+                state.turn.address_lookup_note = None
+                state.identity.suggested_city = None
                 # B-wave registry: identification committed on ANY successful
                 # resolve (the LLM's own tool call included) — the ident
                 # question must never outlive it and freeze the walker.
                 from .dialog_registry import clear_owner as _q_clear_owner
 
-                _q_clear_owner(engine, "ident")
-                engine.state.identity.address_resolve_failures = 0
+                _q_clear_owner(state, rt, "ident")
+                state.identity.address_resolve_failures = 0
 
         if action in ("find_customer", "resolve_address") and obs_data.get("success"):
             # resolve_address nests the normalized profile under `customer`;
@@ -1451,27 +1457,27 @@ def update_state_from_observation(engine, action: str, observation: str):
                 addresses[0] if addresses else {},
             )
             if profile.get("customer_id"):
-                engine.state.identity.set_customer(
+                state.identity.set_customer(
                     customer_id=profile.get("customer_id"),
                     name=profile.get("name"),
                     address=primary.get("full_address"),
                 )
 
         elif action == "create_ticket" and obs_data.get("success"):
-            engine.state.ticket.ticket_id = obs_data.get("ticket_id")
+            state.ticket.ticket_id = obs_data.get("ticket_id")
             # Inside a resolution strategy (escalate step), the fault is now
             # registered — close the case so create_ticket is withdrawn and the
             # model narrates the close instead of re-registering in a loop.
-            if engine.state.resolution.procedure and not engine.state.closing.case_closed:
-                engine.state.closing.case_closed = True
-                engine.state.closing.closed_reason = "registered"
+            if state.resolution.procedure and not state.closing.case_closed:
+                state.closing.case_closed = True
+                state.closing.closed_reason = "registered"
 
         # Diagnostic findings -> case state under their DOMAIN, so the agent
         # reconciles them with the customer and never loses / re-runs them, and
         # new fault families attach additively (§12.1).
         if action == "diagnose_connection" and isinstance(obs_data.get("verdict"), dict):
             v = obs_data["verdict"]
-            engine.state.diagnosis.verdicts["network"] = {
+            state.diagnosis.verdicts["network"] = {
                 "group": v.get("group"),
                 "side": v.get("side"),
                 "action": v.get("action"),
@@ -1487,14 +1493,14 @@ def update_state_from_observation(engine, action: str, observation: str):
             # OVERWRITES the value; the caller's words never do).
             from .evidence import TELEMETRY, set_fact
 
-            turn = engine.state.dialog.turn_count
+            turn = state.dialog.turn_count
             if v.get("reason"):
-                set_fact(engine.state.diagnosis.evidence, "verdict", v["reason"], TELEMETRY, turn)
+                set_fact(state.diagnosis.evidence, "verdict", v["reason"], TELEMETRY, turn)
             if v.get("side"):
-                set_fact(engine.state.diagnosis.evidence, "side", v["side"], TELEMETRY, turn)
+                set_fact(state.diagnosis.evidence, "side", v["side"], TELEMETRY, turn)
             # A verdict IS a hypothesis — record what we now believe and why, so
             # the agent can say it aloud and later report how it settled.
-            engine._open_hypothesis(v.get("reason"))
+            open_hypothesis(state, rt, v.get("reason"))
             # Activate / re-evaluate the resolution strategy for this verdict
             # (dynamic pivot: a re-diagnose with a different verdict switches
             # strategy). None = generic inform/instruct flow.
@@ -1503,10 +1509,10 @@ def update_state_from_observation(engine, action: str, observation: str):
             strat = get_strategy(v.get("reason"))
             # Never pivot back into a hypothesis the telemetry already disproved —
             # that is how a re-diagnose after a failed fix would loop forever.
-            if strat is not None and strat.verdict not in engine.state.diagnosis.failed_hypotheses:
-                prev = (engine.state.resolution.procedure or {}).get("verdict")
+            if strat is not None and strat.verdict not in state.diagnosis.failed_hypotheses:
+                prev = (state.resolution.procedure or {}).get("verdict")
                 if prev != strat.verdict:  # new or pivoted
-                    engine.state.resolution.procedure = {
+                    state.resolution.procedure = {
                         "verdict": strat.verdict,
                         "step": strat.steps[0].id,
                     }
@@ -1516,14 +1522,14 @@ def update_state_from_observation(engine, action: str, observation: str):
         # agent stays in a tool-having node but stops diagnosing (facts block).
         # By the gate, a returned `affected` here is already street-specific.
         if action == "check_outages" and obs_data.get("affected"):
-            engine.state.diagnosis.outage_reported = True
+            state.diagnosis.outage_reported = True
 
         # close_case signal -> flip the router to the closing stage. The model
         # owns WHEN (it read the caller's confirmation); the gate already
         # backstopped premature/unfounded closes.
         if action == "close_case" and obs_data.get("case_closed"):
-            engine.state.closing.case_closed = True
-            engine.state.closing.closed_reason = obs_data.get("reason")
+            state.closing.case_closed = True
+            state.closing.closed_reason = obs_data.get("reason")
 
     except json.JSONDecodeError:
         pass

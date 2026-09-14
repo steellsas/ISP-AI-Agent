@@ -166,13 +166,17 @@ class TestProgressReset:
 
 class TestStuckFacts:
     def test_nudge_at_one(self):
+        from agent.narrator_flow import state_facts_block
+
         a = _agent()
         a.state.dialog.stuck_count = 1
-        block = a._state_facts_block()
+        block = state_facts_block(a.state, a.runtime)
         assert block is not None and "neišgirdau" in block.lower()
 
     def test_escalation_at_two(self):
+        from agent.narrator_flow import state_facts_block
+
         a = _agent()
         a.state.dialog.stuck_count = 2
-        block = a._state_facts_block()
+        block = state_facts_block(a.state, a.runtime)
         assert block is not None and "abonento kodą" in block

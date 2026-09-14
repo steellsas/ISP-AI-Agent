@@ -45,7 +45,11 @@ class TestToolGateway:
         agent, tracer = _agent(provider)
 
         result = agent.tools.run(
-            agent, "check_outages", {"area": "Šiauliai, Dainų g."}, reason="test_reason"
+            agent.state,
+            agent.runtime,
+            "check_outages",
+            {"area": "Šiauliai, Dainų g."},
+            reason="test_reason",
         )
 
         calls = [e for e in tracer.events if e["type"] == "tool_call"]
@@ -60,7 +64,11 @@ class TestToolGateway:
         agent, tracer = _agent(provider)  # not identified yet
 
         result = agent.tools.run(
-            agent, "diagnose_connection", {"customer_id": "CUST009"}, reason="test"
+            agent.state,
+            agent.runtime,
+            "diagnose_connection",
+            {"customer_id": "CUST009"},
+            reason="test",
         )
 
         assert result.gated is True and result.data["error"] == "not_identified"
@@ -72,10 +80,19 @@ class TestToolGateway:
         agent, _ = _agent(_Provider(observation))
         agent.state.identity.customer_id = "CUST009"
 
-        agent.tools.run(agent, "close_case", {"reason": "declined"}, reason="test", apply=False)
+        agent.tools.run(
+            agent.state,
+            agent.runtime,
+            "close_case",
+            {"reason": "declined"},
+            reason="test",
+            apply=False,
+        )
         assert agent.state.closing.case_closed is False
 
-        agent.tools.run(agent, "close_case", {"reason": "declined"}, reason="test")
+        agent.tools.run(
+            agent.state, agent.runtime, "close_case", {"reason": "declined"}, reason="test"
+        )
         assert agent.state.closing.case_closed is True
 
 
@@ -92,7 +109,7 @@ class TestTelemetry:
         agent, tracer = _agent(_Provider(self._VERDICT))
         agent.state.identity.customer_id = "CUST112"
 
-        telemetry(agent, mode="snapshot", reason="test")
+        telemetry(agent.state, agent.runtime, mode="snapshot", reason="test")
 
         assert agent.state.diagnosis.verdicts["network"]["reason"] == "router_hung"
         assert agent.state.diagnosis.hypothesis["cause"] == "router_hung"
@@ -107,7 +124,7 @@ class TestTelemetry:
         agent.state.identity.customer_id = "CUST112"
         agent.state.diagnosis.hypothesis = {"cause": "foreign_mac", "status": "testing"}
 
-        result = telemetry(agent, mode="recheck", reason="test")
+        result = telemetry(agent.state, agent.runtime, mode="recheck", reason="test")
 
         assert result.data["verdict"]["reason"] == "router_hung"
         assert agent.state.diagnosis.verdicts == {}

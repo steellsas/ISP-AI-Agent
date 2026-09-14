@@ -1,11 +1,9 @@
 """
 Closing-stage flow — the deterministic "when does the call end" rules.
 
-R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
-ReactAgent so the closing rules live in one importable module. Both engines
-use it — the legacy ReactAgent through thin delegate methods, the v2 graph
-nodes directly. Functions take the engine explicitly (state + per-call flags);
-no module state.
+R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent so
+the closing rules live in one importable module. Functions
+take (state, rt) — the call state and the AgentRuntime; no module state.
 """
 
 from __future__ import annotations
@@ -26,12 +24,12 @@ GOODBYE_MARKERS = (
 )
 
 
-def maybe_finish(engine: Any, user_input: str | None) -> None:
+def maybe_finish(state: Any, rt: Any, user_input: str | None) -> None:
     """In the closing stage, decide whether to end the call. The case is already
     closed; the agent offered "ar dar kuo nors padėti?". If the caller says a
     goodbye / "no", or we have lingered a second closing turn, set is_complete so
     the transport hangs up — no endless goodbyes."""
-    s = engine.state
+    s = state
     if not s.closing.case_closed or s.closing.is_complete:
         return
     s.closing.closing_turns += 1
@@ -41,7 +39,7 @@ def maybe_finish(engine: Any, user_input: str | None) -> None:
         s.closing.is_complete = True
 
 
-def maybe_close_inform(engine: Any, user_input: str | None) -> None:
+def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
     """Deterministic close for INFORM mode (mass outage, billing, or any verdict with
     NO troubleshooting strategy to walk). Once the caller has been informed and
     signals they are done — a goodbye or a plain 'no more questions' — the engine
@@ -50,7 +48,7 @@ def maybe_close_inform(engine: Any, user_input: str | None) -> None:
     Without this, closing depended on the model calling close_case, which it did not:
     the caller said goodbye repeatedly, the call stayed open, and the diagnosis node
     re-narrated the outage every turn (observed: 'kartoja gedimą')."""
-    s = engine.state
+    s = state
     if s.closing.case_closed or not s.identity.customer_id:
         return
     # Farewell may close the INFORM call only after the BUSINESS is done: the
@@ -60,9 +58,9 @@ def maybe_close_inform(engine: Any, user_input: str | None) -> None:
     # An OUTAGE report counts as the news told — it is delivered the moment
     # outage_reported flips (a different path than the billing script).
     if (
-        engine.state.identity.result_pending
-        or engine.state.ticket.stage
-        or not (engine.state.diagnosis.news_delivered or s.diagnosis.outage_reported)
+        state.identity.result_pending
+        or state.ticket.stage
+        or not (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
     ):
         return
     reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
@@ -85,19 +83,19 @@ def maybe_close_inform(engine: Any, user_input: str | None) -> None:
         s.closing.is_complete = True  # caller already said goodbye — end on ONE farewell
         # Observability: the close moment was invisible in the trace (this made a
         # stuck-close analysis needlessly hard) — record it.
-        engine.tracer.emit(
+        rt.tracer.emit(
             "decision", intent="inform_close", action="close", to=s.closing.closed_reason
         )
 
 
-def maybe_end_on_goodbye(engine: Any, text: str) -> None:
+def maybe_end_on_goodbye(state: Any, rt: Any, text: str) -> None:
     """Catch-all hang-up: if the agent JUST said a terminal goodbye — on ANY path
     (resolved, registered, declined, or the stuck backstop) — end the call so the
     transport stops instead of looping the goodbye. Covers the cases the
     case_closed/closing flow misses (e.g. the model says 'geros dienos' on a stuck
     turn without close_case ever firing)."""
-    if engine.state.closing.is_complete or not text:
+    if state.closing.is_complete or not text:
         return
     low = text.lower()
     if any(m in low for m in GOODBYE_MARKERS):
-        engine.state.closing.is_complete = True
+        state.closing.is_complete = True

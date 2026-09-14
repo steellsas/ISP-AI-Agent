@@ -12,6 +12,8 @@ from types import SimpleNamespace
 from agent.graph_v2.state import DiagnosisState, GraphState, IntakeState, ResolutionState
 from agent.voice_pipeline import VoicePipeline, audio_duration_s
 
+from tests.engine_fakes import as_call
+
 
 class _Recorder:
     def __init__(self):
@@ -268,7 +270,8 @@ class TestSpeculation:
     def test_plan_branches_from_the_ledger(self, db_connection):
         from agent.speculation import plan_branches
 
-        plan = plan_branches(self._agent())
+        agent = self._agent()
+        plan = plan_branches(agent.state, agent.runtime)
         assert plan and plan["pending_key"] == "lights"
         assert plan["branches"]["nedega"]["kind"] == "evidence"
         assert plan["branches"]["nedega"]["key"] == "power_cable"
@@ -284,11 +287,13 @@ class TestSpeculation:
             "branches": {"nedega": {"kind": "evidence", "key": "power_cable", "text": "x?"}},
         }
         agent._spec_cache = dict(base)
-        assert match(agent, "O kiek tai kainuos?") is None  # question
+        assert match(agent.state, agent.runtime, "O kiek tai kainuos?") is None  # question
         agent._spec_cache = dict(base)
-        assert match(agent, "Nedega, bet keičiau routerį vakar") is None  # extra fact
+        assert (
+            match(agent.state, agent.runtime, "Nedega, bet keičiau routerį vakar") is None
+        )  # extra fact
         agent._spec_cache = dict(base)
-        hit = match(agent, "Nedega nė viena")
+        hit = match(agent.state, agent.runtime, "Nedega nė viena")
         assert hit and hit["key"] == "power_cable"
         assert agent._spec_cache is None  # one shot
 
@@ -469,55 +474,62 @@ class TestSemanticEndpoint:
     """E2 duplex — the endpoint hint: slow on an unfinished thought, fast on a
     complete expected answer / farewell, normal otherwise. Deterministic only."""
 
+    def _call(self, pending=None, verdict=None):
+        engine = self._engine(pending, verdict)
+        return engine.state, engine.runtime
+
     def _engine(self, pending=None, verdict=None):
         # problem_type set: these tests probe the MID-CALL windows; the
         # pre-problem STORY window has its own tests (test_classification).
-        return SimpleNamespace(
-            state=GraphState(
-                resolution=ResolutionState(procedure={"verdict": verdict} if verdict else None),
-                intake=IntakeState(problem_type="internet_down"),
-                diagnosis=DiagnosisState(pending_evidence_key=pending),
-            )
+        return as_call(
+            None,
+            SimpleNamespace(
+                state=GraphState(
+                    resolution=ResolutionState(procedure={"verdict": verdict} if verdict else None),
+                    intake=IntakeState(problem_type="internet_down"),
+                    diagnosis=DiagnosisState(pending_evidence_key=pending),
+                )
+            ),
         )
 
     def test_trailing_conjunction_waits(self):
         from agent.endpoint import classify_endpoint, slow_ms
 
-        mode, ms = classify_endpoint(self._engine(), "Patikrinau ir")
+        mode, ms = classify_endpoint(*self._call(), "Patikrinau ir")
         assert mode == "slow" and ms == slow_ms()
-        assert classify_endpoint(self._engine(), "Nedega, bet")[0] == "slow"
+        assert classify_endpoint(*self._call(), "Nedega, bet")[0] == "slow"
 
     def test_trailing_comma_waits(self):
         from agent.endpoint import classify_endpoint
 
-        assert classify_endpoint(self._engine(), "Neveikia internetas,")[0] == "slow"
+        assert classify_endpoint(*self._call(), "Neveikia internetas,")[0] == "slow"
 
     def test_unfinished_outranks_mapped_answer(self):
         from agent.endpoint import classify_endpoint
 
         eng = self._engine(pending="lights", verdict="no_mac_observed")
-        assert classify_endpoint(eng, "Nedega, bet")[0] == "slow"
+        assert classify_endpoint(eng.state, eng.runtime, "Nedega, bet")[0] == "slow"
 
     def test_complete_pending_answer_cuts_fast(self, monkeypatch):
         from agent.endpoint import classify_endpoint
 
         monkeypatch.setenv("ENDPOINT_FAST_MS", "250")
         eng = self._engine(pending="lights", verdict="no_mac_observed")
-        mode, ms = classify_endpoint(eng, "Nedega nė viena.")
+        mode, ms = classify_endpoint(eng.state, eng.runtime, "Nedega nė viena.")
         assert mode == "fast" and ms == 250
 
     def test_farewell_cuts_fast(self):
         from agent.endpoint import classify_endpoint, fast_ms
 
-        mode, ms = classify_endpoint(self._engine(), "Ačiū, viso gero.")
+        mode, ms = classify_endpoint(*self._call(), "Ačiū, viso gero.")
         assert mode == "fast" and ms == fast_ms()
 
     def test_plain_sentence_and_empty_are_normal(self):
         from agent.endpoint import classify_endpoint
 
-        assert classify_endpoint(self._engine(), "Kažkas čia negerai") == ("normal", None)
-        assert classify_endpoint(self._engine(), "") == ("normal", None)
-        assert classify_endpoint(self._engine(), None) == ("normal", None)
+        assert classify_endpoint(*self._call(), "Kažkas čia negerai") == ("normal", None)
+        assert classify_endpoint(*self._call(), "") == ("normal", None)
+        assert classify_endpoint(*self._call(), None) == ("normal", None)
 
     def test_partial_payload_carries_the_hint(self, monkeypatch):
         from app import voice
@@ -562,6 +574,7 @@ class TestDeliveryLedger:
         assert pipeline.last_turn_aligned is False
 
     def test_apply_delivery_truncates_history_and_surfaces_tail(self, db_connection):
+        from agent.narrator_flow import state_facts_block
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
@@ -570,11 +583,11 @@ class TestDeliveryLedger:
         agent.apply_delivery(["Pirmas.", "Antras.", "Trečias."], 1)
         assert agent.state.messages[-1]["content"] == "Pirmas. —"
         assert agent.state.voice.undelivered_tail == "Antras. Trečias."
-        block = agent._state_facts_block() or ""
+        block = state_facts_block(agent.state, agent.runtime) or ""
         assert "KLIENTAS NEGIRD" in block and "Antras." in block
         # consumed once — the note must not nag every later turn
         assert agent.state.voice.undelivered_tail is None
-        assert "KLIENTAS NEGIRD" not in (agent._state_facts_block() or "")
+        assert "KLIENTAS NEGIRD" not in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_apply_delivery_nothing_heard(self, db_connection):
         from agent.react_agent import ReactAgent

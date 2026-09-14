@@ -139,35 +139,49 @@ def _diagnosing_agent():
 
 class TestAgentWiring:
     def test_telemetry_verdict_lands_on_ledger(self):
+        from agent.narrator_flow import update_state_from_observation
+
         agent = _diagnosing_agent()
         obs = json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}})
-        agent._update_state_from_observation("diagnose_connection", obs)
+        update_state_from_observation(agent.state, agent.runtime, "diagnose_connection", obs)
         assert agent.state.diagnosis.evidence["verdict"]["value"] == "no_mac_observed"
         assert agent.state.diagnosis.evidence["verdict"]["source"] == "telemetry"
 
     def test_ingest_fills_client_facts(self):
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Nedega nė viena lemputė, laidas įkištas")
+        ingest_client_evidence(
+            agent.state, agent.runtime, "Nedega nė viena lemputė, laidas įkištas"
+        )
         assert agent.state.diagnosis.evidence["lights"]["value"] == "nedega"
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "įkištas"
 
     def test_contradiction_asks_one_clarify_then_settles(self):
         from agent.identification import phrase
+        from agent.identification_flow import identification_scripted_reply
+        from agent.perception_flow import ingest_client_evidence
+        from agent.solver_flow import solver_drive_turn
+        from agent.walker_flow import advance_resolution
 
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
-        agent._ingest_client_evidence("Turiu kompiuterį, galim bandyti")
+        ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
+        ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
         assert agent.state.diagnosis.evidence_conflict is not None
         # The solver yields, the walker holds, the scripted clarify goes out.
-        assert agent.solver_drive_turn("Turiu kompiuterį, galim bandyti") is None
-        agent._advance_resolution("Turiu kompiuterį, galim bandyti")
+        assert (
+            solver_drive_turn(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti") is None
+        )
+        advance_resolution(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
         assert agent.state.resolution.procedure["step"] == "dr_lights"  # held, not advanced
-        reply = agent._identification_scripted_reply("Turiu kompiuterį, galim bandyti")
+        reply = identification_scripted_reply(
+            agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti"
+        )
         assert reply == phrase(
             "evidence_conflict", tema="ar turite kompiuterį", a="neturite", b="turite"
         )
         # The settling answer resolves the fact; no second clarify.
-        agent._ingest_client_evidence("Turiu kompiuterį")
+        ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį")
         e = agent.state.diagnosis.evidence["has_computer"]
         assert e["value"] == "yes" and e["conflict"] is False
         assert (
@@ -176,38 +190,51 @@ class TestAgentWiring:
         )
 
     def test_bare_polarity_settles_yes_no_conflict(self):
+        from agent.identification_flow import identification_scripted_reply
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
-        agent._ingest_client_evidence("Turiu kompiuterį vis dėlto")
-        agent._identification_scripted_reply("x")  # asks the clarify
-        agent._ingest_client_evidence("Taip.")  # bare yes
+        ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
+        ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį vis dėlto")
+        identification_scripted_reply(agent.state, agent.runtime, "x")  # asks the clarify
+        ingest_client_evidence(agent.state, agent.runtime, "Taip.")  # bare yes
         assert agent.state.diagnosis.evidence["has_computer"]["value"] == "yes"
 
     def test_unreadable_settle_keeps_latest_and_stops_asking(self):
+        from agent.identification_flow import identification_scripted_reply
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
-        agent._ingest_client_evidence("Turiu kompiuterį vis dėlto")
-        agent._identification_scripted_reply("x")
-        agent._ingest_client_evidence("Kurs komentai")  # garble
+        ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
+        ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį vis dėlto")
+        identification_scripted_reply(agent.state, agent.runtime, "x")
+        ingest_client_evidence(agent.state, agent.runtime, "Kurs komentai")  # garble
         e = agent.state.diagnosis.evidence["has_computer"]
         assert e["conflict"] is False and e["value"] == "yes"  # latest stated wins
         assert agent.state.diagnosis.evidence_conflict_asked_key is None
 
     def test_facts_block_and_solver_context_carry_ledger(self):
+        from agent.narrator_flow import state_facts_block
+        from agent.perception_flow import ingest_client_evidence
+        from agent.solver_flow import build_solver_context
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Nedega nė viena lemputė")
-        facts = agent._state_facts_block()
+        ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
+        facts = state_facts_block(agent.state, agent.runtime)
         assert facts and "ĮRODYMŲ ŽURNALAS" in facts and "nedega" in facts
-        ctx = agent._build_solver_context("tęsiam")
+        ctx = build_solver_context(agent.state, agent.runtime, "tęsiam")
         assert "ĮRODYMŲ ŽURNALAS" in ctx
 
     def test_ticket_carries_client_evidence(self, db_connection):
+        from agent.executor_flow import register_ticket_from_state
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Nedega nė viena lemputė")
-        agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
+        ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
+        ingest_client_evidence(agent.state, agent.runtime, "Pabandžiau kitą rozetę, nepadėjo")
         agent.state.ticket.contact_phone = "+37060012353"
         agent.state.ticket.contact_hours = "bet kada"
-        agent._register_ticket_from_state(None)
+        register_ticket_from_state(agent.state, agent.runtime, None)
         assert agent.state.ticket.ticket_id
         with db_connection.cursor() as cur:
             cur.execute(
@@ -236,121 +263,159 @@ class TestAgentWiring:
         assert spec_for("nesamas_verdiktas") is None
 
     def test_evidence_drive_asks_in_order_with_kada_gates(self):
+        from agent.evidence_drive import evidence_drive
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
         # Nothing known -> the first question is the contextual anamnesis
         # (ivykiai, 2026-09-03), then device_present (lights stays gated).
-        q0 = agent._evidence_drive("galim patikrinti")
+        q0 = evidence_drive(agent.state, agent.runtime, "galim patikrinti")
         assert "elektra" in q0
-        agent._ingest_client_evidence("Ne, nieko neįvyko, elektra nedingo")
-        q1 = agent._evidence_drive("nieko")
+        ingest_client_evidence(agent.state, agent.runtime, "Ne, nieko neįvyko, elektra nedingo")
+        q1 = evidence_drive(agent.state, agent.runtime, "nieko")
         assert "Susiraskite routerį" in q1
-        agent._ingest_client_evidence("Radau tą routerio dėžutę su antena")
-        q2 = agent._evidence_drive("radau")
+        ingest_client_evidence(agent.state, agent.runtime, "Radau tą routerio dėžutę su antena")
+        q2 = evidence_drive(agent.state, agent.runtime, "radau")
         assert "bent viena lemputė" in q2
-        agent._ingest_client_evidence("Nedega nė viena lemputė")
-        q3 = agent._evidence_drive("nedega")
+        ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
+        q3 = evidence_drive(agent.state, agent.runtime, "nedega")
         assert "maitinimo laidas" in q3
 
     def test_unreadable_answers_escalate_wording_then_give_up(self):
+        from agent.evidence_drive import evidence_drive
+
         agent = _diagnosing_agent()
-        q1 = agent._evidence_drive("x")
+        q1 = evidence_drive(agent.state, agent.runtime, "x")
         assert "elektra" in q1  # level 1 (ivykiai first, 2026-09-03)
-        q2 = agent._evidence_drive("Kurs komentai")  # extractor got nothing
+        q2 = evidence_drive(agent.state, agent.runtime, "Kurs komentai")  # extractor got nothing
         assert "šviesa" in q2  # paprasciau (level 2)
-        q3 = agent._evidence_drive("Vis tiek nesuprantu")
+        q3 = evidence_drive(agent.state, agent.runtime, "Vis tiek nesuprantu")
         # Gave up on ivykiai -> recorded "neaišku"; the plan moves on to the
         # next fact (device_present) instead of stalling.
         assert agent.state.diagnosis.evidence["ivykiai"]["value"] == "neaišku"
         assert q3 is not None and "Susiraskite routerį" in q3
 
     def test_confirmed_with_no_computer_escalates_to_ticket(self):
+        from agent.evidence_drive import evidence_drive
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
-        agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
-        agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
-        agent._ingest_client_evidence("Neturiu kompiuterio, tik telefonas")
+        ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
+        ingest_client_evidence(
+            agent.state, agent.runtime, "Maitinimo laidas gerai įkištas į rozetę"
+        )
+        ingest_client_evidence(agent.state, agent.runtime, "Pabandžiau kitą rozetę, nepadėjo")
+        ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
         # Round 3: the first confirmed moment READS THE FACTS BACK first.
-        recap = agent._evidence_drive("neturiu")
+        recap = evidence_drive(agent.state, agent.runtime, "neturiu")
         assert recap is not None and "Pasitikslinu" in recap
-        reply = agent._evidence_drive("taip, teisingai")
+        reply = evidence_drive(agent.state, agent.runtime, "taip, teisingai")
         assert reply is not None and "Ar tiks numeris" in reply
         assert agent.state.ticket.stage == "phone"
 
     def test_confirmed_with_computer_yields_to_solver_bridge(self):
+        from agent.evidence_drive import evidence_drive
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
-        agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
-        agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
-        agent._ingest_client_evidence("Turiu kompiuterį")
-        recap = agent._evidence_drive("turiu")  # round 3: recap checkpoint first
+        ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
+        ingest_client_evidence(
+            agent.state, agent.runtime, "Maitinimo laidas gerai įkištas į rozetę"
+        )
+        ingest_client_evidence(agent.state, agent.runtime, "Pabandžiau kitą rozetę, nepadėjo")
+        ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį")
+        recap = evidence_drive(
+            agent.state, agent.runtime, "turiu"
+        )  # round 3: recap checkpoint first
         assert recap is not None and "Pasitikslinu" in recap
-        assert agent._evidence_drive("taip") is None  # then solver drives the bridge
+        assert (
+            evidence_drive(agent.state, agent.runtime, "taip") is None
+        )  # then solver drives the bridge
 
     def test_confirmed_but_device_unknown_asks_has_computer(self):
+        from agent.evidence_drive import evidence_drive
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
-        agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
-        agent._ingest_client_evidence("Maitinimo laidas gerai įkištas į rozetę")
-        agent._ingest_client_evidence("Pabandžiau kitą rozetę, nepadėjo")
-        recap = agent._evidence_drive("nepadėjo")  # round 3: recap checkpoint first
+        ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
+        ingest_client_evidence(
+            agent.state, agent.runtime, "Maitinimo laidas gerai įkištas į rozetę"
+        )
+        ingest_client_evidence(agent.state, agent.runtime, "Pabandžiau kitą rozetę, nepadėjo")
+        recap = evidence_drive(
+            agent.state, agent.runtime, "nepadėjo"
+        )  # round 3: recap checkpoint first
         assert recap is not None and "Pasitikslinu" in recap
-        q = agent._evidence_drive("taip, viskas taip")
+        q = evidence_drive(agent.state, agent.runtime, "taip, viskas taip")
         assert q is not None and "kompiuterį" in q
 
     def test_refuted_syncs_walker_to_declared_step(self):
+        from agent.evidence_drive import evidence_drive
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
         agent.state.resolution.procedure["step"] = "dr_intro"  # stale — the rewind trap
-        agent._ingest_client_evidence("Radau routerį, lemputės dega žaliai")
+        ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, lemputės dega žaliai")
         # Round 3: a client-stated refute gets ONE confirm question first.
-        confirm = agent._evidence_drive("dega")
+        confirm = evidence_drive(agent.state, agent.runtime, "dega")
         assert confirm is not None and "keičia išvadą" in confirm
-        assert agent._evidence_drive("taip, tikrai dega") is None
+        assert evidence_drive(agent.state, agent.runtime, "taip, tikrai dega") is None
         assert agent.state.resolution.procedure["step"] == "dr_cable"  # pivot, not rewind
 
     def test_pending_key_gives_short_answers_meaning(self):
+        from agent.perception_flow import ingest_client_evidence
+
         # Live 2026-08-10 (T1): "Radau." to "Radote?" carried no noun -> the
         # general extractor was blind -> give-up despite a clear answer.
         agent = _diagnosing_agent()
         agent.state.diagnosis.evidence_ask_counts["device_present"] = 2
         agent.state.diagnosis.pending_evidence_key = "device_present"
-        agent._ingest_client_evidence("Radau.")
+        ingest_client_evidence(agent.state, agent.runtime, "Radau.")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
         assert agent.state.diagnosis.pending_evidence_key is None  # answered — context consumed
 
     def test_pending_lights_reads_garbled_negation(self):
+        from agent.perception_flow import ingest_client_evidence
+
         # "Ne daganiai 1." (STT of "nedega nė viena") had no 'lemp' word — with
         # the lights question pending it now reads as nedega instead of falling
         # to the stale walker's yes/no classifier (which escalated on it).
         agent = _diagnosing_agent()
         agent.state.diagnosis.pending_evidence_key = "lights"
-        agent._ingest_client_evidence("Ne daganiai 1.")
+        ingest_client_evidence(agent.state, agent.runtime, "Ne daganiai 1.")
         assert agent.state.diagnosis.evidence["lights"]["value"] == "nedega"
 
     def test_pending_read_overwrites_gave_up_marker(self):
         from agent.evidence import CLIENT, set_fact
+        from agent.perception_flow import ingest_client_evidence
 
         agent = _diagnosing_agent()
         set_fact(agent.state.diagnosis.evidence, "device_present", "neaišku", CLIENT, 3)
         agent.state.diagnosis.pending_evidence_key = "device_present"
-        agent._ingest_client_evidence("Taip, radau tą dėžutę")
+        ingest_client_evidence(agent.state, agent.runtime, "Taip, radau tą dėžutę")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
 
     def test_pending_read_never_hijacks_other_facts(self):
+        from agent.perception_flow import ingest_client_evidence
+
         # A rich utterance that the general extractor understands wins — the
         # pending context only fills the gap when nothing was extracted.
         agent = _diagnosing_agent()
         agent.state.diagnosis.pending_evidence_key = "device_present"
-        agent._ingest_client_evidence("Radau routerį, lemputės dega žaliai")
+        ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, lemputės dega žaliai")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
         assert agent.state.diagnosis.evidence["lights"]["value"] == "dega"
 
     def test_no_ingest_during_ticket_dialogue_or_before_id(self):
+        from agent.perception_flow import ingest_client_evidence
+
         agent = _diagnosing_agent()
         agent.state.ticket.stage = "phone"
-        agent._ingest_client_evidence("Nedega lemputės")
+        ingest_client_evidence(agent.state, agent.runtime, "Nedega lemputės")
         assert agent.state.diagnosis.evidence == {}
         agent2 = _diagnosing_agent()
         agent2.state.identity.customer_id = None
-        agent2._ingest_client_evidence("Nedega lemputės")
+        ingest_client_evidence(agent2.state, agent2.runtime, "Nedega lemputės")
         assert agent2.state.diagnosis.evidence == {}
 
 

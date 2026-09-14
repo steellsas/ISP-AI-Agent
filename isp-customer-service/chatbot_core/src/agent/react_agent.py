@@ -18,7 +18,6 @@ import logging
 import threading
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any
 
 # LLM client
 from src.services.llm.client import (
@@ -218,6 +217,12 @@ class ReactAgent:
             language=self.config.language,
         )
 
+        # The per-call runtime the flows receive (temporary home until the
+        # session owns it, M2 step 7).
+        from .runtime import build_runtime
+
+        self.runtime = build_runtime(self)
+
         logger.info(f"ReactAgent initialized for {caller_phone} [lang={self.config.language}]")
         if USING_REAL_TOOLS:
             logger.info("Using REAL tools")
@@ -228,135 +233,11 @@ class ReactAgent:
         """Get accumulated LLM statistics."""
         return self.llm_stats.to_dict()
 
-    def _build_messages(
-        self,
-        user_input: str | None = None,
-        node_prompt: str | None = None,
-        allowed_tools: frozenset[str] | None = None,
-    ) -> list:
-        """Delegates to narrator_flow.build_messages (R3 extraction)."""
-        from .narrator_flow import build_messages
-
-        return build_messages(self, user_input, node_prompt, allowed_tools)
-
-    # Security-sensitive resolution actions — only exposed on the strategy STEP
-    # that permits them (update_mac on bind_mac, create_ticket on escalate). So the
-    # model cannot bind a device during a CONFIRM step, before the caller confirms.
-    _STRATEGY_ACTION_TOOLS = frozenset({"update_mac", "reset_port", "create_ticket"})
-    # Diagnostics the ENGINE owns during a strategy — the model must not call them
-    # (observed: it looped check_network_status / run_ping_test instead of talking).
-    _STRATEGY_DIAG_TOOLS = frozenset(
-        {"diagnose_connection", "check_network_status", "run_ping_test", "check_port_status"}
-    )
-
-    def _scoped_tools_schema(self, allowed_tools: frozenset[str] | None = None) -> list:
-        """Delegates to narrator_flow.scoped_tools_schema (R3 extraction)."""
-        from .narrator_flow import scoped_tools_schema
-
-        return scoped_tools_schema(self, allowed_tools)
-
-    def _prune_history(self, messages: list) -> list:
-        """Delegates to narrator_flow.prune_history (R3 extraction)."""
-        from .narrator_flow import prune_history
-
-        return prune_history(self, messages)
-
-    def _state_facts_block(self) -> str | None:
-        """Delegates to narrator_flow.state_facts_block (R3 extraction)."""
-        from .narrator_flow import state_facts_block
-
-        return state_facts_block(self)
-
-    def _fresh_diagnose_reason(self) -> str | None:
-        """Delegates to walker_flow.fresh_diagnose_reason (R3 extraction)."""
-        from .walker_flow import fresh_diagnose_reason
-
-        return fresh_diagnose_reason(self)
-
-    def ensure_diagnosed(self) -> bool:
-        """Delegates to walker_flow.ensure_diagnosed (R3 extraction)."""
-        from .walker_flow import ensure_diagnosed
-
-        return ensure_diagnosed(self)
-
-    def ensure_action_done(self) -> bool:
-        """Delegates to walker_flow.ensure_action_done (R3 extraction)."""
-        from .walker_flow import ensure_action_done
-
-        return ensure_action_done(self)
-
-    def _advance_resolution(self, user_input: str | None) -> None:
-        """Delegates to walker_flow.advance_resolution (R3 extraction)."""
-        from .walker_flow import advance_resolution
-
-        return advance_resolution(self, user_input)
-
-    # --- Solver (Phase 3.8 step 2): shadow only ------------------------------
-    # Runs the reasoning solver ALONGSIDE the walker and logs its decision next to the
-    # walker's move, so we can compare on real calls before it ever drives a reply.
-    # Gated by SOLVER_SHADOW (default off) — it adds one LLM call per diagnosis turn.
-
-    def _build_solver_context(self, user_input: str | None) -> str:
-        """Delegates to solver_flow.build_solver_context (R3 extraction)."""
-        from .solver_flow import build_solver_context
-
-        return build_solver_context(self, user_input)
-
-    def _shadow_solve(self, user_input: str | None) -> None:
-        """Delegates to solver_flow.shadow_solve (R3 extraction)."""
-        from .solver_flow import shadow_solve
-
-        return shadow_solve(self, user_input)
-
-    # --- Solver DRIVES (Phase 3.8 step 5a) -----------------------------------
-    # Behind SOLVER_DRIVE (default off), for the piloted directions only, the solver runs
-    # the turn: it reads the RAG playbook + dialogue + telemetry, decides the next action,
-    # the gate validates + the engine executes safety actions by code, and the reply is the
-    # solver's spoken text. The walker stays the default and handles every other direction.
-    _SOLVER_DRIVE_VERDICTS = frozenset({"no_mac_observed"})  # pilot: dead-router / bridge
-    _DRIVE_MAX_TURNS = 14  # hard bailout — never grind the caller forever
-
-    def _ingest_client_evidence(self, user_input: str | None) -> None:
-        """Delegates to perception_flow.ingest_client_evidence (R3 extraction)."""
-        from .perception_flow import ingest_client_evidence
-
-        return ingest_client_evidence(self, user_input)
-
-    def solver_drive_turn(self, user_input: str | None) -> str | None:
-        """Delegates to solver_flow.solver_drive_turn (R3 extraction)."""
-        from .solver_flow import solver_drive_turn
-
-        return solver_drive_turn(self, user_input)
-
-    def _plug_report(self, user_input: str | None) -> bool:
-        """Delegates to solver_flow.plug_report (R3 extraction)."""
-        from .solver_flow import plug_report
-
-        return plug_report(self, user_input)
-
     def request_cancel(self) -> None:
         """Ask the running streaming turn to stop (thread-safe event). Checked
         between tokens; a no-op when no turn is running (the event is cleared at
         the next turn's start)."""
         self._cancel_requested.set()
-
-    def anchor_text(self) -> str:
-        """Delegates to perception_flow.anchor_text (R3 extraction)."""
-        from .perception_flow import anchor_text
-
-        return anchor_text(self)
-
-    def classify_side_topic(self, user_input: str | None) -> bool:
-        """Delegates to perception_flow.classify_side_topic (R3 extraction)."""
-        from .perception_flow import classify_side_topic
-
-        return classify_side_topic(self, user_input)
-
-    def _on_task_question(self, user_input: str | None) -> bool:
-        """Delegates to perception_flow.on_task_question (R3 extraction)."""
-        from .perception_flow import on_task_question
-
-        return on_task_question(self, user_input)
 
     def on_turn_cancelled(self, spoken_text: str) -> None:
         """Barge-in cut the reply mid-generation (Phase 5 PR3): record what the
@@ -386,7 +267,7 @@ class ReactAgent:
         if not kept:
             return
         for text in kept:
-            ingest_overlay(self, text)
+            ingest_overlay(self.state, self.runtime, text)
         self.state.voice.overlay_heard = kept
         self.tracer.emit("overlay_applied", texts=[t[:120] for t in kept])
 
@@ -456,346 +337,10 @@ class ReactAgent:
         self._finalize_reply(reply)
         return reply
 
-    # Evidence-drive flow moved to evidence_drive.py (R3, roadmap §4) — thin
-    # delegates keep every internal call site and test working unchanged.
-
-    def _evidence_question_open(self) -> str | None:
-        """Delegates to evidence_drive.evidence_question_open (R3 extraction)."""
-        from .evidence_drive import evidence_question_open
-
-        return evidence_question_open(self)
-
-    def _negation_clarify_reply(self, key: str) -> str | None:
-        """Delegates to evidence_drive.negation_clarify_reply (R3 extraction)."""
-        from .evidence_drive import negation_clarify_reply
-
-        return negation_clarify_reply(self, key)
-
-    def _evidence_drive(self, user_input: str | None) -> str | None:
-        """Delegates to evidence_drive.evidence_drive (R3 extraction)."""
-        from .evidence_drive import evidence_drive
-
-        return evidence_drive(self, user_input)
-
-    def _drive(self, user_input: str | None) -> str:
-        """Delegates to solver_flow.drive (R3 extraction)."""
-        from .solver_flow import drive
-
-        return drive(self, user_input)
-
-    def _refresh_diagnosis(self) -> None:
-        """Delegates to solver_flow.refresh_diagnosis (R3 extraction)."""
-        from .solver_flow import refresh_diagnosis
-
-        return refresh_diagnosis(self)
-
-    def _drive_propose_fix(self, say: str, user_input: str | None) -> str:
-        """Delegates to solver_flow.drive_propose_fix (R3 extraction)."""
-        from .solver_flow import drive_propose_fix
-
-        return drive_propose_fix(self, say, user_input)
-
-    def _bridge_fail_step(self) -> str:
-        """Delegates to solver_flow.bridge_fail_step (R3 extraction)."""
-        from .solver_flow import bridge_fail_step
-
-        return bridge_fail_step(self)
-
-    def _drive_escalate(self, decision) -> str:
-        """Delegates to solver_flow.drive_escalate (R3 extraction)."""
-        from .solver_flow import drive_escalate
-
-        return drive_escalate(self, decision)
-
-    def _walk_resolution(self, user_input: str | None) -> None:
-        """Delegates to walker_flow.walk_resolution (R3 extraction)."""
-        from .walker_flow import walk_resolution
-
-        return walk_resolution(self, user_input)
-
-    def _emit_rag_injection(self, doc: str | None, section: int, step_id: str, text: str) -> None:
-        """Delegates to narrator_flow.emit_rag_injection (R3 extraction)."""
-        from .narrator_flow import emit_rag_injection
-
-        return emit_rag_injection(self, doc, section, step_id, text)
-
-    def _pre_turn_guards(self, user_input: str) -> None:
-        """Delegates to perception_flow.pre_turn_guards (R3 extraction)."""
-        from .perception_flow import pre_turn_guards
-
-        return pre_turn_guards(self, user_input)
-
-    def _engine_resolve_from_slots(self) -> bool:
-        """Delegates to perception_flow.engine_resolve_from_slots (R3 extraction)."""
-        from .perception_flow import engine_resolve_from_slots
-
-        return engine_resolve_from_slots(self)
-
-    def _reopen_identification(self, user_input: str) -> None:
-        """Delegates to identification_flow.reopen_identification (R3 extraction)."""
-        from .identification_flow import reopen_identification
-
-        reopen_identification(self, user_input)
-
-    def _block_uncorroborated_escalate(self, step, strat, label, user_input: str | None) -> bool:
-        """Delegates to walker_flow.block_uncorroborated_escalate (R3 extraction)."""
-        from .walker_flow import block_uncorroborated_escalate
-
-        return block_uncorroborated_escalate(self, step, strat, label, user_input)
-
-    def _classify_confirm_and_route(self, step, strat, user_input: str | None) -> bool:
-        """Delegates to walker_flow.classify_confirm_and_route (R3 extraction)."""
-        from .walker_flow import classify_confirm_and_route
-
-        return classify_confirm_and_route(self, step, strat, user_input)
-
-    def _advance_instruct(self, r: dict, step, strat, user_input: str | None = None) -> None:
-        """Delegates to walker_flow.advance_instruct (R3 extraction)."""
-        from .walker_flow import advance_instruct
-
-        return advance_instruct(self, r, step, strat, user_input)
-
-    def _classify_instruct_and_advance(self, step, strat, user_input: str | None) -> bool:
-        """Delegates to walker_flow.classify_instruct_and_advance (R3 extraction)."""
-        from .walker_flow import classify_instruct_and_advance
-
-        return classify_instruct_and_advance(self, step, strat, user_input)
-
-    def _detect_confirm(self, step, user_input: str | None):
-        """Delegates to walker_flow.detect_confirm (R3 extraction)."""
-        from .walker_flow import detect_confirm
-
-        return detect_confirm(self, step, user_input)
-
-    # --- Hypothesis: what we believe is wrong, and why -----------------------
-    # The verdict tree decides; these just record the belief so the agent can narrate
-    # the arc. Evidence comes from telemetry, never from parsing the caller.
-
-    def _open_hypothesis(self, reason: str | None) -> None:
-        """Delegates to walker_flow.open_hypothesis (R3 extraction)."""
-        from .walker_flow import open_hypothesis
-
-        return open_hypothesis(self, reason)
-
-    def _note_evidence(self, text: str) -> None:
-        """Delegates to walker_flow.note_evidence (R3 extraction)."""
-        from .walker_flow import note_evidence
-
-        return note_evidence(self, text)
-
-    def _settle_hypothesis(self, status: str, settled_by: str) -> None:
-        """Delegates to walker_flow.settle_hypothesis (R3 extraction)."""
-        from .walker_flow import settle_hypothesis
-
-        return settle_hypothesis(self, status, settled_by)
-
-    def _turn_may_advance(self, step) -> bool:
-        """Delegates to walker_flow.turn_may_advance (R3 extraction)."""
-        from .walker_flow import turn_may_advance
-
-        return turn_may_advance(self, step)
-
-    def _scripted_wait_ack(self) -> str | None:
-        """Delegates to walker_flow.scripted_wait_ack (D5)."""
-        from .walker_flow import scripted_wait_ack
-
-        return scripted_wait_ack(self)
-
-    def _simulate_router_reboot(self) -> None:
-        """DEMO/TEST only (SIMULATE_REBOOT=on): delegates to
-        executor_flow.simulate_router_reboot_action (S6)."""
-        from .executor_flow import simulate_router_reboot_action
-
-        simulate_router_reboot_action(self)
-
-    def _simulate_bridge_connection(self) -> None:
-        """DEMO/TEST only (SIMULATE_BRIDGE=on): reflect the caller plugging a PC into the
-        wall cable by making an unbound device appear on the line, so the bridge can
-        VERIFY it. Off by default → production never fakes a device (the real one appears
-        on its own). Best-effort: a failure just leaves the line unchanged."""
-        from .executor_flow import simulate_bridge_connection
-
-        simulate_bridge_connection(self)
-
-    def _advance_see_device(self, r: dict) -> None:
-        """Delegates to walker_flow.advance_see_device (R3 extraction)."""
-        from .walker_flow import advance_see_device
-
-        return advance_see_device(self, r)
-
-    def _advance_reboot_check(self, r: dict, user_input: str | None) -> None:
-        """Delegates to walker_flow.advance_reboot_check (S6 hung router)."""
-        from .walker_flow import advance_reboot_check
-
-        return advance_reboot_check(self, r, user_input)
-
-    def _advance_line_check(self, r: dict, user_input: str | None) -> None:
-        """Delegates to walker_flow.advance_line_check (NT line faults)."""
-        from .walker_flow import advance_line_check
-
-        return advance_line_check(self, r, user_input)
-
-    def _reject_and_rediagnose(self, r: dict) -> bool:
-        """Delegates to walker_flow.reject_and_rediagnose (R3 extraction)."""
-        from .walker_flow import reject_and_rediagnose
-
-        return reject_and_rediagnose(self, r)
-
-    def _route_to(self, r: dict, target: str) -> None:
-        """Delegates to walker_flow.route_to (R3 extraction)."""
-        from .walker_flow import route_to
-
-        return route_to(self, r, target)
-
-    def _advance_restored(self, r: dict, user_input: str | None) -> None:
-        """Delegates to walker_flow.advance_restored (R3 extraction)."""
-        from .walker_flow import advance_restored
-
-        return advance_restored(self, r, user_input)
-
-    def _advance_escalate(self, r: dict, step, user_input: str | None) -> None:
-        """Delegates to walker_flow.advance_escalate (R3 extraction)."""
-        from .walker_flow import advance_escalate
-
-        return advance_escalate(self, r, step, user_input)
-
-    # Ticket-dialogue flow moved to ticket_flow.py (R3, roadmap §4) — thin
-    # delegates keep every internal call site and test working unchanged.
-
-    def _registration_claim_guard(self, content: str) -> str | None:
-        """Delegates to ticket_flow.registration_claim_guard (R3 extraction)."""
-        from .ticket_flow import registration_claim_guard
-
-        return registration_claim_guard(self, content)
-
-    def _begin_ticket_dialogue(self, step) -> None:
-        """Delegates to ticket_flow.begin_ticket_dialogue (R3 extraction)."""
-        from .ticket_flow import begin_ticket_dialogue
-
-        begin_ticket_dialogue(self, step)
-
-    def _ticket_need(self) -> str:
-        """Delegates to ticket_flow.ticket_need (R3 extraction)."""
-        from .ticket_flow import ticket_need
-
-        return ticket_need(self)
-
-    def _wants_to_keep_solving(self, user_input: str | None) -> bool:
-        """Delegates to ticket_flow.wants_to_keep_solving (R3 extraction)."""
-        from .ticket_flow import wants_to_keep_solving
-
-        return wants_to_keep_solving(self, user_input)
-
-    def _abort_ticket_to_solving(self) -> None:
-        """Delegates to ticket_flow.abort_ticket_to_solving (R3 extraction)."""
-        from .ticket_flow import abort_ticket_to_solving
-
-        abort_ticket_to_solving(self)
-
-    def _ticket_stage_reply(self) -> str:
-        """Delegates to ticket_flow.ticket_stage_reply (R3 extraction)."""
-        from .ticket_flow import ticket_stage_reply
-
-        return ticket_stage_reply(self)
-
-    @staticmethod
-    def _fmt_phone(nr: str | None) -> str:
-        """Delegates to ticket_flow.fmt_phone (R3 extraction)."""
-        from .ticket_flow import fmt_phone
-
-        return fmt_phone(nr)
-
-    def _finish_ticket_dialogue(self) -> str:
-        """Delegates to ticket_flow.finish_ticket_dialogue (R3 extraction)."""
-        from .ticket_flow import finish_ticket_dialogue
-
-        return finish_ticket_dialogue(self)
-
-    def _register_ticket_from_state(self, step_id: str | None) -> None:
-        """Build + create the ticket DETERMINISTICALLY from state (Phase 3.10/3.11 B):
-        cause from the hypothesis/verdict, actions from this call's trace — never from
-        the model's free text (which once invented an invalid ticket_type). Idempotent:
-        an existing ticket is never duplicated. Best-effort: a failure is traced and the
-        close still proceeds (the call record keeps the outcome)."""
-        from .executor_flow import register_ticket_from_state
-
-        register_ticket_from_state(self, step_id)
-
-    def _goto_step(self, r: dict, next_id: str) -> None:
-        """Delegates to walker_flow.goto_step (R3 extraction)."""
-        from .walker_flow import goto_step
-
-        return goto_step(self, r, next_id)
-
-    def _maybe_finish(self, user_input: str | None) -> None:
-        """Delegates to closing_flow.maybe_finish (R3 extraction)."""
-        from .closing_flow import maybe_finish
-
-        maybe_finish(self, user_input)
-
-    def _maybe_close_inform(self, user_input: str | None) -> None:
-        """Delegates to closing_flow.maybe_close_inform (R3 extraction)."""
-        from .closing_flow import maybe_close_inform
-
-        maybe_close_inform(self, user_input)
-
-    def _mark_step_presented(self) -> None:
-        """Delegates to narrator_flow.mark_step_presented (R3 extraction)."""
-        from .narrator_flow import mark_step_presented
-
-        return mark_step_presented(self)
-
-    def _augment_resolve_result(self, observation: str) -> str:
-        """Delegates to narrator_flow.augment_resolve_result (R3 extraction)."""
-        from .narrator_flow import augment_resolve_result
-
-        return augment_resolve_result(self, observation)
-
-    def _result_narration_tail(self) -> str:
-        """Delegates to narrator_flow.result_narration_tail (R3 extraction)."""
-        from .narrator_flow import result_narration_tail
-
-        return result_narration_tail(self)
-
-    def _augment_tool_result(self, name: str, observation: str) -> str:
-        """Delegates to narrator_flow.augment_tool_result (R3 extraction)."""
-        from .narrator_flow import augment_tool_result
-
-        return augment_tool_result(self, name, observation)
-
-    def _update_state_from_observation(self, action: str, observation: str):
-        """Delegates to narrator_flow.update_state_from_observation (R3 extraction)."""
-        from .narrator_flow import update_state_from_observation
-
-        return update_state_from_observation(self, action, observation)
-
-    def _preflight_phone(self) -> None:
-        """Look up the caller's number at the START of the call (deterministic).
-
-        Runs once, in code (not via the LLM), so by the customer's first turn the
-        phone account — if any — is already known and the agent can offer its
-        address for confirmation without a tool round-trip. Stored as an
-        UNCONFIRMED candidate (anchor rule), never as a confirmed customer.
-        """
-        from .identification_flow import preflight_phone
-
-        preflight_phone(self)
-
-    def _prefill_slots_from_text(self, text: str) -> None:
-        """Deterministic NLU Track A: extract the address from the caller's turn and
-        propose it into the slots BEFORE the LLM runs (docs/pokalbio_variklis.md §4).
-
-        The reading is the high-confidence floor — registry-validated street +
-        normalized numbers — so the slots get a reliable source independent of the
-        LLM. Proposed as HEARD; resolve_address upgrades a confirmed hit to
-        RESOLVED. Best-effort: any failure (DB, import) silently no-ops the turn.
-        """
-        from .identification_flow import prefill_slots_from_text
-
-        prefill_slots_from_text(self, text)
-
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
+        from .executor_flow import register_ticket_from_state
+
         if self._session_ended:
             return
         self._session_ended = True
@@ -836,7 +381,9 @@ class ReactAgent:
                 try:
                     from .tooling import telemetry
 
-                    d = telemetry(self, mode="recheck", reason="hangup_net").data
+                    d = telemetry(
+                        self.state, self.runtime, mode="recheck", reason="hangup_net"
+                    ).data
                     solved = ((d.get("verdict") or {}).get("reason") or "healthy_to_router") == (
                         "healthy_to_router"
                     )
@@ -856,7 +403,9 @@ class ReactAgent:
                     s.ticket.contact_hours = "bet kada"
                 strat = get_strategy(s.resolution.procedure.get("verdict"))
                 esc = strat.step("escalate") if strat else None
-                self._register_ticket_from_state(esc.id if esc is not None else None)
+                register_ticket_from_state(
+                    self.state, self.runtime, esc.id if esc is not None else None
+                )
                 if s.ticket.ticket_id:
                     s.closing.closed_reason = "registered"
                     self.tracer.emit("decision", intent="hangup_net", action="register")
@@ -948,14 +497,6 @@ class ReactAgent:
             ),
         }
 
-    def _execute_tool_calls(self, message: Any) -> list[dict]:
-        """Echo the assistant tool-call message, run each tool through the gate,
-        append results to history, trace, and update state. Returns the executed
-        list. Shared by step() (non-streaming) and the streaming loop."""
-        from .executor_flow import execute_tool_calls
-
-        return execute_tool_calls(self, message)
-
     def _record_llm_stats(self) -> None:
         """Fold the last LLM call's stats into the running totals + trace."""
         s = get_last_call_stats()
@@ -996,11 +537,22 @@ class ReactAgent:
     ):
         """The scoped turn: deterministic head, scripted replies, then the LLM tool
         loop streaming the final reply token by token."""
+        from .executor_flow import execute_tool_calls
+        from .identification_flow import (
+            identification_scripted_reply,
+            prefill_slots_from_text,
+            preflight_phone,
+        )
+        from .narrator_flow import build_messages, scoped_tools_schema
+        from .perception_flow import pre_turn_guards
+        from .ticket_flow import registration_claim_guard
+        from .walker_flow import scripted_wait_ack
+
         # Hardcoded greeting (first turn, no input) — the node yields the fixed
         # opening line, not an LLM call. The caller's number is pre-flighted
         # while the greeting plays.
         if user_input is None and self.state.dialog.turn_count == 0:
-            self._preflight_phone()
+            preflight_phone(self.state, self.runtime)
             greeting = self.config.greeting_message
             self.state.messages.append({"role": "assistant", "content": greeting})
             self.state.dialog.turn_count += 1
@@ -1038,8 +590,8 @@ class ReactAgent:
             if self.state.turn.pre_turn_head_done:
                 self.state.turn.pre_turn_head_done = False
             else:
-                self._prefill_slots_from_text(user_input)
-                self._pre_turn_guards(user_input)
+                prefill_slots_from_text(self.state, self.runtime, user_input)
+                pre_turn_guards(self.state, self.runtime, user_input)
 
         # The caller's utterance goes on the history for EVERY reply path
         # (review 2026-08-07): scripted turns used to skip it, so the LLM
@@ -1058,14 +610,16 @@ class ReactAgent:
 
         # Scripted identification-ladder reply (engine-composed, LLM skipped) — the
         # mechanical turns only; off-script turns fall through to the LLM.
-        scripted = self._identification_scripted_reply(self.state.dialog.last_heard)
+        scripted = identification_scripted_reply(
+            self.state, self.runtime, self.state.dialog.last_heard
+        )
         if scripted is not None:
             yield self._emit_scripted_reply(scripted)
             return
 
         # D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
         # wait signal at a standing client action is acknowledged scripted.
-        wait = self._scripted_wait_ack()
+        wait = scripted_wait_ack(self.state, self.runtime)
         if wait is not None:
             yield self._emit_scripted_reply(wait)
             return
@@ -1091,7 +645,7 @@ class ReactAgent:
 
             # The user message is already on the history (appended up front, so
             # scripted turns record it too); the prompt builds from history.
-            messages = self._build_messages(None, node_prompt, allowed_tools)
+            messages = build_messages(self.state, self.runtime, None, node_prompt, allowed_tools)
 
             try:
                 # Manual consumption instead of `yield from`: the cancel flag is
@@ -1099,7 +653,7 @@ class ReactAgent:
                 # LLM HTTP stream, so the generation itself stops (PR3).
                 inner = stream_tool_completion(
                     messages=messages,
-                    tools=self._scoped_tools_schema(allowed_tools),
+                    tools=scoped_tools_schema(self.state, self.runtime, allowed_tools),
                     tool_choice="auto",
                     model=self.config.model,
                     temperature=self.config.temperature,
@@ -1129,7 +683,7 @@ class ReactAgent:
             self._record_llm_stats()
 
             if message.tool_calls:
-                self._execute_tool_calls(message)
+                execute_tool_calls(self.state, self.runtime, message)
                 tool_rounds += 1
                 continue
 
@@ -1155,7 +709,7 @@ class ReactAgent:
             # Registration-claim guard: the narrator said "užregistravau" with no
             # ticket behind it — the contact dialogue starts NOW and its first
             # question rides on the same reply, so the claim becomes true.
-            extra = self._registration_claim_guard(content)
+            extra = registration_claim_guard(self.state, self.runtime, content)
             if extra:
                 content += extra
                 self.state.messages[-1]["content"] = content
@@ -1170,6 +724,8 @@ class ReactAgent:
         in the solution/bridge phase, or when the fresh verdict FLIPS the
         story, it is discarded (the solution steps read at the right moments
         themselves)."""
+        from .narrator_flow import update_state_from_observation
+
         bg = self.state.turn.bg_diagnosis
         if not bg:
             return
@@ -1189,7 +745,7 @@ class ReactAgent:
             fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
             current = r0.get("verdict")
             if not in_solution and (not current or fresh == current):
-                self._update_state_from_observation("diagnose_connection", bg)
+                update_state_from_observation(self.state, self.runtime, "diagnose_connection", bg)
                 self.tracer.emit("speculation", action="bg_diagnosis_applied")
             else:
                 self.tracer.emit("speculation", action="bg_diagnosis_discarded", fresh=fresh)
@@ -1257,18 +813,6 @@ class ReactAgent:
             self.state.dialog.last_question = reply
         self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=repeat)
 
-    def _identification_scripted_reply(self, user_input: str | None) -> str | None:
-        """Deterministic identification-ladder replies (2026-07-31, IDENTIFICATION
-        ONLY): the mechanical turns are COMPOSED by the engine from the phrases in
-        identification.yaml — the LLM repeatedly reordered or skipped them (promised
-        a check without the result, relapsed into confirm rounds, skipped the caller
-        question, captured 'Taip.' as a name). An off-script caller turn (a question)
-        returns None so the LLM answers it; the ladder resumes next turn. Solving and
-        free dialogue never come here."""
-        from .identification_flow import identification_scripted_reply
-
-        return identification_scripted_reply(self, user_input)
-
     def _emit_scripted_reply(self, text: str) -> str:
         """Bookkeeping for an engine-composed reply (mirrors _apply_backstop)."""
         self.state.messages.append({"role": "assistant", "content": text})
@@ -1282,6 +826,8 @@ class ReactAgent:
     def _apply_backstop(self, backstop: tuple[str, bool]) -> str:
         """Emit a deterministic backstop reply (manages the counter itself so a
         repeat backstop climbs 3 -> 4 -> close). Returns the text to yield/return."""
+        from .closing_flow import maybe_end_on_goodbye
+
         text, should_close = backstop
         if should_close:
             self.state.closing.case_closed = True
@@ -1291,7 +837,7 @@ class ReactAgent:
         self.state.messages.append({"role": "assistant", "content": text})
         if is_question(text):
             self.state.dialog.last_question = text
-        self._maybe_end_on_goodbye(text)
+        maybe_end_on_goodbye(self.state, self.runtime, text)
         emit_case(self.tracer, self.state)
         self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=False)
         self.tracer.emit("agent_reply", text=text)
@@ -1306,16 +852,12 @@ class ReactAgent:
         if self.state.dialog.clarity_level == "standard" and detect_confusion(user_input):
             self.state.dialog.clarity_level = "basic"
 
-    def _maybe_end_on_goodbye(self, text: str) -> None:
-        """Delegates to closing_flow.maybe_end_on_goodbye (R3 extraction)."""
-        from .closing_flow import maybe_end_on_goodbye
-
-        maybe_end_on_goodbye(self, text)
-
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the
         repeat-guard, emit the case snapshot + the reply trace."""
+        from .closing_flow import maybe_end_on_goodbye
+
         self._track_stuck(text)
-        self._maybe_end_on_goodbye(text)
+        maybe_end_on_goodbye(self.state, self.runtime, text)
         emit_case(self.tracer, self.state)
         self.tracer.emit("agent_reply", text=text)
