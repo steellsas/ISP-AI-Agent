@@ -230,16 +230,21 @@ class AgentSession:
         """S2: a READ-ONLY telemetry refresh while the caller is busy — the
         result is folded in at the next turn's start (never mid-turn)."""
         try:
-            from .react_agent import execute_tool
-
-            cid = self._agent.state.identity.customer_id
-            if not cid or self._agent.state.closing.case_closed:
+            engine = self._agent
+            cid = engine.state.identity.customer_id
+            if not cid or engine.state.closing.case_closed:
                 return
-            result = execute_tool("diagnose_connection", {"customer_id": cid})
+            result = engine.tools.run(
+                engine,
+                "diagnose_connection",
+                {"customer_id": cid},
+                reason="background_refresh",
+                apply=False,
+            )
         except Exception:  # pragma: no cover - background best-effort
             return
         with self._inbox_lock:
-            self._inbox["bg_diagnosis"] = result
+            self._inbox["bg_diagnosis"] = result.observation
 
     def is_pending_answer(self, text: str) -> bool:
         """Does `text` answer the evidence question that is currently out? (The
