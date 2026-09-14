@@ -18,7 +18,9 @@ import logging
 import os  # noqa: F401
 from typing import Any  # noqa: F401
 
+from .dialog_utils import asked_recently, last_agent_question
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
+from .trace import emit_decision, trace_note, trace_tool_result
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ def ensure_diagnosed(engine) -> bool:
     engine.tracer.emit(
         "tool_call", name="diagnose_connection", args={"customer_id": s.identity.customer_id}
     )
-    engine._trace_tool_result("diagnose_connection", obs)
+    trace_tool_result(engine.tracer, "diagnose_connection", obs)
     engine._update_state_from_observation("diagnose_connection", obs)
     _seed_evidence_from_anamnesis(engine)
     return True
@@ -180,7 +182,7 @@ def ensure_action_done(engine) -> bool:
             continue
         engine.tracer.emit("tool_call", name=action, args={"customer_id": s.identity.customer_id})
         obs = engine._augment_tool_result(action, obs)  # chains reset_port + re-diagnose
-        engine._trace_tool_result(action, obs)
+        trace_tool_result(engine.tracer, action, obs)
         ran = True
     if ran:
         r["action_done"] = True  # the announce is narrated this turn; advance next
@@ -211,7 +213,7 @@ def advance_resolution(engine, user_input: str | None) -> None:
     r = engine.state.resolution.procedure
     before = r.get("step") if r else None
     engine._walk_resolution(user_input)
-    engine._emit_decision(before)
+    emit_decision(engine.tracer, engine.state, before)
 
 
 def walker_owns_turn(engine, r: dict, step) -> bool:
@@ -328,7 +330,7 @@ def walk_resolution(engine, user_input: str | None) -> None:
     # Otherwise route only once the question was asked — a bare "taip" on the
     # diagnose turn is the address confirmation, not an answer to this step.
     # A STALE question (walker benched for turns) does not read answers either.
-    if not r.get("asked") or not engine._asked_recently(r):
+    if not r.get("asked") or not asked_recently(engine.state, r):
         return
     # Keyword fallback (classifier off / unsure): read the reply into a routing key.
     key = engine._detect_confirm(step, user_input)
@@ -415,10 +417,15 @@ def classify_confirm_and_route(engine, step, strat, user_input: str | None) -> b
             # so take .value to get the real routing key ("yes") the classifier must return.
             key = str(getattr(raw, "value", raw))
             options[key] = (declared or {}).get(key) or glosses.get(key, key)
-        question = engine._last_agent_question() or step.hint or ""
+        question = last_agent_question(engine.state) or step.hint or ""
         obs = classify_step(question, user_input or "", options, model=engine.config.model)
     if obs is None:
-        engine._trace_note("classifier", f"{step.detector or 'yes_no'}: no result → keyword")
+        trace_note(
+            engine.tracer,
+            engine.state,
+            "classifier",
+            f"{step.detector or 'yes_no'}: no result → keyword",
+        )
         return False
     answered = obs.is_answer and obs.label in step.on and obs.confidence >= 0.5
     engine.tracer.emit(
@@ -515,7 +522,7 @@ def classify_instruct_and_advance(engine, step, strat, user_input: str | None) -
     if obs is None:
         # Meanings come from knowledge/detectors.yaml (file-editable), code fallback.
         options = detector_glosses("instruct_done")
-        question = engine._last_agent_question() or step.hint or ""
+        question = last_agent_question(engine.state) or step.hint or ""
         obs = classify_step(question, user_input or "", options, model=engine.config.model)
     if obs is None:
         return False
@@ -804,7 +811,7 @@ def _classify_reboot_check(engine, user_input: str | None) -> str | None:
 
     options = step_options("router_hung", "rh_check") or detector_glosses("reboot_check")
     obs = classify_step(
-        engine._last_agent_question() or "Ar interneto lemputė mirksi? Ar atsidaro puslapis?",
+        last_agent_question(engine.state) or "Ar interneto lemputė mirksi? Ar atsidaro puslapis?",
         user_input or "",
         options,
         model=engine.config.model,
@@ -971,7 +978,7 @@ def advance_escalate(engine, r: dict, step, user_input: str | None) -> None:
     # messy phrasing the wordlist can't — "na jo, tebūnie", garbled STT).
     if label is None and os.getenv("CLASSIFIER", "on").lower() != "off":
         obs = classify_step(
-            engine._last_agent_question() or str(step.hint or ""),
+            last_agent_question(engine.state) or str(step.hint or ""),
             user_input or "",
             # Meanings from knowledge/detectors.yaml (file-editable), code fallback.
             detector_glosses("ticket_consent"),

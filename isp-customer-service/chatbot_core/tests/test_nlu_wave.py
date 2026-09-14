@@ -186,7 +186,9 @@ class TestSpellingRung:
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
-        agent._last_agent_question = lambda: "Gal galėtumėte pakartoti gatvės pavadinimą?"
+        agent.state.messages.append(
+            {"role": "assistant", "content": "Gal galėtumėte pakartoti gatvės pavadinimą?"}
+        )
         from agent.identification_flow import _account_code_rung, _register_street_attempt
 
         _register_street_attempt(agent, "Kosmonautų")  # pirmas girdėjimas

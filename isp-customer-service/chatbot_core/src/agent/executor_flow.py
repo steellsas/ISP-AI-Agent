@@ -16,6 +16,9 @@ import os
 import time
 from typing import Any
 
+from .dialog_utils import assistant_tool_message
+from .trace import tools_called_this_session, trace_note, trace_tool_result
+
 logger = logging.getLogger(__name__)
 
 
@@ -135,7 +138,7 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
     list. Shared by step() (non-streaming) and the streaming loop."""
     from .react_agent import execute_tool
 
-    engine.state.messages.append(engine._assistant_tool_message(message))
+    engine.state.messages.append(assistant_tool_message(message))
     executed = []
     for tc in message.tool_calls:
         name = tc.function.name
@@ -144,7 +147,9 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
             args = json.loads(raw_args)
         except json.JSONDecodeError:
             logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
-            engine._trace_note("tool_args", f"{name}: bad JSON args {raw_args!r}")
+            trace_note(
+                engine.tracer, engine.state, "tool_args", f"{name}: bad JSON args {raw_args!r}"
+            )
             args = {}
 
         logger.info(f"[AGENT] Tool call: {name}")
@@ -169,7 +174,7 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
         engine.state.messages.append(
             {"role": "tool", "tool_call_id": tc.id, "content": observation}
         )
-        engine._trace_tool_result(name, observation, tool_ms)
+        trace_tool_result(engine.tracer, name, observation, tool_ms)
         engine.state.intake.observations.append(observation)
         executed.append({"name": name, "arguments": args, "observation": observation})
     return executed
@@ -257,7 +262,7 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     if getattr(s.intake, "secondary_problems", None):
         extra = "; ".join(f"{x['tipas']}: „{x['tekstas']}“" for x in s.intake.secondary_problems)
         details += f" Papildomai patikrinti: {extra}."
-    actions = engine._tools_called_this_session()
+    actions = tools_called_this_session(engine.tracer)
     args = {
         "customer_id": s.identity.customer_id,
         "problem_type": "technician_visit",
@@ -270,10 +275,10 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
             "tool_call", name="create_ticket", args={"customer_id": s.identity.customer_id}
         )
         obs = execute_tool("create_ticket", args)
-        engine._trace_tool_result("create_ticket", obs)
+        trace_tool_result(engine.tracer, "create_ticket", obs)
         engine._update_state_from_observation("create_ticket", obs)  # sets ticket_id
     except Exception as e:  # pragma: no cover - defensive
-        engine._trace_note("register_ticket", str(e), level="error")
+        trace_note(engine.tracer, engine.state, "register_ticket", str(e), level="error")
 
 
 def simulate_router_reboot_action(engine: Any) -> None:
@@ -296,7 +301,7 @@ def simulate_router_reboot_action(engine: Any) -> None:
             engine._note_evidence("klientas perkrovė routerį — portas mirktelėjo (simuliuota)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"router reboot sim failed: {e}")
-        engine._trace_note("reboot_sim", str(e))
+        trace_note(engine.tracer, engine.state, "reboot_sim", str(e))
 
 
 def simulate_bridge_connection(engine: Any) -> None:
@@ -318,4 +323,4 @@ def simulate_bridge_connection(engine: Any) -> None:
             engine._note_evidence("klientas prijungė įrenginį — matomas linijoje (simuliuota)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"bridge connection sim failed: {e}")
-        engine._trace_note("bridge_sim", str(e))
+        trace_note(engine.tracer, engine.state, "bridge_sim", str(e))

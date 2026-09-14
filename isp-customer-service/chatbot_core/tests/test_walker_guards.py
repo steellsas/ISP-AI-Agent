@@ -35,9 +35,6 @@ class GuardEngine:
     def _evidence_question_open(self):
         return False
 
-    def _asked_recently(self, r):
-        return True
-
     def _classify_confirm_and_route(self, step, strat, user_input):
         return False
 

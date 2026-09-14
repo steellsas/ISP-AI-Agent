@@ -123,7 +123,9 @@ class TestAccountCodeRung:
         """Gyva T-6: pavardės tikslinimas skaitiklių neliečia."""
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._last_agent_question = lambda: "Kokia pavardė, kad galėčiau patvirtinti sutartį?"
+        agent.state.messages.append(
+            {"role": "assistant", "content": "Kokia pavardė, kad galėčiau patvirtinti sutartį?"}
+        )
         from agent.identification_flow import _account_code_rung
 
         for txt in ("Tetraitos", "Petraitis", "Pet raitis sakau"):
@@ -251,8 +253,11 @@ class TestReopenConfirmation:
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
-        agent._last_agent_question = lambda: (
-            "Taigi, adresas yra Šiauliai, Tilžės g. 60, butas 3, taip?"
+        agent.state.messages.append(
+            {
+                "role": "assistant",
+                "content": "Taigi, adresas yra Šiauliai, Tilžės g. 60, butas 3, taip?",
+            }
         )
         from agent.identification_flow import _account_code_rung
 

@@ -18,7 +18,9 @@ import os  # noqa: F401
 import re
 from typing import Any  # noqa: F401
 
+from .dialog_utils import asked_recently, last_agent_question
 from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
+from .trace import trace_note, trace_tool_result
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +45,7 @@ def step_perception_options(engine: Any):
     r = engine.state.resolution.procedure or {}
     strat = get_strategy(r.get("verdict")) if r else None
     step = strat.step(r.get("step", "")) if strat else None
-    if step is None or not r.get("asked") or not engine._asked_recently(r):
+    if step is None or not r.get("asked") or not asked_recently(engine.state, r):
         return None, None
     if step.kind is StepKind.CONFIRM and step.on and step.id != "confirm_restored":
         from .detectors import glosses as detector_glosses
@@ -702,7 +704,7 @@ def on_task_question(engine, user_input: str | None) -> bool:
     kabelį?"), not a side topic; the solver/narrator answers it in place.
     Folded prefix-overlap (≥5 chars) so inflections and dropped diacritics
     still match ("jungti" ~ "prijungsite", "kabelį" ~ "kabelio")."""
-    last = engine._last_agent_question() or ""
+    last = last_agent_question(engine.state) or ""
     if not last or not user_input:
         return False
     from .evidence import _fold
@@ -1083,7 +1085,12 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # (e.g. "which apartment?"), and the next question belongs to
             # identification, not the old analysis.
             if p.street.value and p.house.value:
-                engine._trace_note("reopen_identity", "new address already heard; engine resolve")
+                trace_note(
+                    engine.tracer,
+                    engine.state,
+                    "reopen_identity",
+                    "new address already heard; engine resolve",
+                )
                 if engine._engine_resolve_from_slots():
                     engine.state.identity.just_identified = True
                     from .identification import ask_caller
@@ -1225,7 +1232,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     engine.tracer.emit("decision", intent="holder_name", action="mismatch_clarify")
         return
     if not s.identity.customer_id:
-        q = (engine._last_agent_question() or "").lower()
+        q = (last_agent_question(engine.state) or "").lower()
         if "skambinate dėl" in q or "dėl šio adreso" in q or "adreso skambinate" in q:
             from .resolution import detect_address_confirm
 
@@ -1251,7 +1258,12 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 if c.get("city"):
                     p.city.propose(str(c["city"]), 1.0, SlotStatus.HEARD)
                 if engine._engine_resolve_from_slots():
-                    engine._trace_note("address_confirm", "offer confirmed; engine resolve")
+                    trace_note(
+                        engine.tracer,
+                        engine.state,
+                        "address_confirm",
+                        "offer confirmed; engine resolve",
+                    )
                     engine.state.identity.just_identified = True
                     from .identification import ask_caller
 
@@ -1265,7 +1277,12 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # flats leaves the apartment note.
                 p_y = s.identity.profile
                 if p_y.street.value and p_y.house.value:
-                    engine._trace_note("address_confirm", "slots confirmed; engine resolve")
+                    trace_note(
+                        engine.tracer,
+                        engine.state,
+                        "address_confirm",
+                        "slots confirmed; engine resolve",
+                    )
                     if engine._engine_resolve_from_slots():
                         engine.state.identity.just_identified = True
                         from .identification import ask_caller
@@ -1296,7 +1313,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                             str(s.identity.phone_candidate["city"]), 0.9, SlotStatus.HEARD
                         )
                 if p.street.value and p.house.value:
-                    engine._trace_note(
+                    trace_note(
+                        engine.tracer,
+                        engine.state,
                         "address_confirm",
                         "offer corrected with a full dictated address; engine resolve",
                     )
@@ -1327,7 +1346,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                         "naudok TĄ. Kitu atveju mandagiai perklausk: „Atsiprašau, "
                         "nesupratau — dėl kokio adreso skambinate?“"
                     )
-                    engine._trace_note(
+                    trace_note(
+                        engine.tracer,
+                        engine.state,
                         "address_confirm",
                         f"offer not confirmed (verdict={verdict}); veto commit",
                         level="warn",
@@ -1350,7 +1371,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 and p.house.value
                 and _re.search(r"\d", user_input or "")
             ):
-                engine._trace_note("address_ask", "dictated address; engine resolve")
+                trace_note(
+                    engine.tracer, engine.state, "address_ask", "dictated address; engine resolve"
+                )
                 if engine._engine_resolve_from_slots():
                     engine.state.identity.just_identified = True
                     from .identification import ask_caller
@@ -1393,10 +1416,10 @@ def engine_resolve_from_slots(engine) -> bool:
     try:
         obs = execute_tool("resolve_address", args)
     except Exception as e:  # pragma: no cover - best-effort
-        engine._trace_note("engine_resolve", str(e), level="error")
+        trace_note(engine.tracer, engine.state, "engine_resolve", str(e), level="error")
         return False
     engine.tracer.emit("tool_call", name="resolve_address", args=args)
-    engine._trace_tool_result("resolve_address", obs)
+    trace_tool_result(engine.tracer, "resolve_address", obs)
     engine._update_state_from_observation("resolve_address", obs)
     if not engine.state.identity.customer_id:
         return False

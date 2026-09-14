@@ -15,6 +15,9 @@ import json
 import logging
 from typing import Any
 
+from .dialog_utils import last_agent_question
+from .trace import trace_note
+
 logger = logging.getLogger(__name__)
 
 
@@ -239,7 +242,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
     )
     if not has_addr_evidence:
-        q = (engine._last_agent_question() or "").lower()
+        q = (last_agent_question(engine.state) or "").lower()
         asked_address = any(w in q for w in ("adres", "gatv", "namo", "numer", "but"))
         if not asked_address:
             return  # no address in sight — do not fuzzy-match one into the slots
@@ -374,7 +377,9 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     every per-account conclusion; keep only the conversation. The router sends the
     next turn back to address_validation (customer_id is None again)."""
     s = engine.state
-    engine._trace_note(
+    trace_note(
+        engine.tracer,
+        engine.state,
         "reopen_identity",
         f"caller says a DIFFERENT address; dropping {s.identity.customer_id}",
         level="warn",
@@ -772,7 +777,7 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         and user_input.lower().count(" kaip ") >= 2
         and (
             engine.state.identity.street_attempts
-            or "gatv" in (engine._last_agent_question() or "").lower()
+            or "gatv" in (last_agent_question(engine.state) or "").lower()
         )
     ):
         engine.state.identity.spell_mode = True
@@ -915,7 +920,7 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         return True, phrase("account_code_ask")
     # 2) Skaitikliai. TIKSLINIMO fazė (pavardės klausimas, diagnozės nota,
     # vietovės pasiūlymas) skaitiklių NEliečia.
-    last_q = (engine._last_agent_question() or "").lower()
+    last_q = (last_agent_question(engine.state) or "").lower()
     clarifying = (
         "pavard" in last_q
         # P3 (live 2026-09-07): a question that ECHOES a concrete address

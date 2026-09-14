@@ -15,7 +15,6 @@ Callers use agent.session.AgentSession; the engine is internal.
 
 import json
 import logging
-import re
 import threading
 from contextlib import suppress
 from dataclasses import dataclass
@@ -28,8 +27,10 @@ from src.services.llm.client import (
 )
 
 from .config import AgentConfig, create_config
+from .dialog_utils import is_question, progress_key, similar
 from .graph_v2.state import DialogState, GraphState, IdentityState
 from .prompts import load_system_prompt
+from .trace import emit_case, tools_called_this_session, trace_note
 
 # Conversation trace (observability). Optional: if the adapter can't import,
 # fall back to a no-op so tracing never breaks the agent.
@@ -78,18 +79,6 @@ logger = logging.getLogger(__name__)
 
 # Verdict glossaries moved to glossary.py (R3); aliases keep call sites working.
 
-# Repeat-guard: politeness/acknowledgement words stripped before comparing two
-# questions, so "Atsiprašau, ar galėtumėte ..." matches "Ar galėtumėte ..." as a
-# verbatim re-ask instead of looking different because of the prefix.
-_STUCK_FILLER = {
-    "atsiprašau",
-    "gerai",
-    "supratau",
-    "prašau",
-    "ačiū",
-    "sakykite",
-    "pasakykite",
-}
 
 # Deterministic backstops (LT), used when the prompt-level nudge fails to break a
 # loop. Kept here (not the language service) so the escalation is self-contained.
@@ -282,33 +271,6 @@ class ReactAgent:
 
         return state_facts_block(self)
 
-    @staticmethod
-    def _assistant_tool_message(message: Any) -> dict:
-        """
-        Serialize an assistant message that requested tool calls into the dict
-        shape the chat API needs echoed back on the next turn.
-
-        The protocol requires that, before any role:"tool" result messages, the
-        exact assistant message that issued the tool_calls is present in history
-        (matched by tool_call_id). We store a plain dict (not the litellm object)
-        so the history stays JSON-serializable.
-        """
-        return {
-            "role": "assistant",
-            "content": message.content or "",
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in message.tool_calls
-            ],
-        }
-
     # Technical tools that must NOT run before the customer is identified
     # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
     _GATED_TOOLS = frozenset({"diagnose_connection", "update_mac", "reset_port", "create_ticket"})
@@ -353,33 +315,6 @@ class ReactAgent:
         from .walker_flow import advance_resolution
 
         return advance_resolution(self, user_input)
-
-    def _emit_decision(self, before: str | None) -> None:
-        """One line per strategy turn: what the caller's turn was read as, where the
-        walker went (or that it HELD), and the live hypothesis. This is the 'why' the
-        raw reply never showed — e.g. step=None means no strategy is active at all."""
-        s = self.state
-        r = s.resolution.procedure
-        after = r.get("step") if r else None
-        if before is None and after is None:
-            return  # no strategy in play — nothing to explain
-        if s.closing.case_closed:
-            action, dest = "close", s.closing.closed_reason
-        elif after == before:
-            action, dest = "hold", after
-        else:
-            action, dest = "advance", after
-        h = s.diagnosis.hypothesis or {}
-        self.tracer.emit(
-            "decision",
-            intent=s.dialog.last_intent or None,
-            awaiting=s.dialog.awaiting,
-            action=action,
-            from_step=before,
-            to=dest,
-            hypothesis=h.get("cause"),
-            hyp_status=h.get("status"),
-        )
 
     # --- Solver (Phase 3.8 step 2): shadow only ------------------------------
     # Runs the reasoning solver ALONGSIDE the walker and logs its decision next to the
@@ -626,24 +561,6 @@ class ReactAgent:
         from .identification_flow import reopen_identification
 
         reopen_identification(self, user_input)
-
-    def _last_agent_question(self) -> str | None:
-        """The last thing the agent actually said — the real question the caller is
-        answering (a better classifier context than the English step hint)."""
-        for m in reversed(self.state.messages):
-            if m.get("role") == "assistant" and (m.get("content") or "").strip():
-                return m["content"]
-        return None
-
-    def _asked_recently(self, r: dict) -> bool:
-        """True when the current step's question actually went out within the
-        last ~3 exchanges. Steps presented long ago (walker benched by the
-        solver/evidence drive) may not read new replies as their answers —
-        test/legacy setups without the stamp count as fresh."""
-        at = r.get("asked_at")
-        if at is None:
-            return True
-        return len(self.state.messages) - at <= 6
 
     def _block_uncorroborated_escalate(self, step, strat, label, user_input: str | None) -> bool:
         """Delegates to walker_flow.block_uncorroborated_escalate (R3 extraction)."""
@@ -892,44 +809,6 @@ class ReactAgent:
 
         return update_state_from_observation(self, action, observation)
 
-    def _trace_tool_result(self, name: str, observation: str, ms: int | None = None) -> None:
-        """Emit a tool_result event (+ a dedicated verdict event for diagnoses).
-
-        Keeps the trace small: a boolean ok + a few key fields + how long the
-        tool took (ms) — needed to know which tool to overlap/mask. The verdict
-        is its own event type because "why the agent acted" is the most valuable
-        thing when debugging.
-        """
-        try:
-            data = json.loads(observation)
-        except (json.JSONDecodeError, TypeError):
-            self.tracer.emit("tool_result", name=name, ok=None, ms=ms, summary="<non-json>")
-            return
-
-        ok = data.get("success")
-        summary: dict[str, Any] = {}
-        for key in ("customer_id", "ticket_id", "outcome"):
-            if data.get(key):
-                summary[key] = data[key]
-        if not ok and data.get("error"):
-            summary["error"] = data["error"]
-        # resolve_address: surface the per-level hint (drives the next question).
-        if name == "resolve_address" and data.get("hint"):
-            summary["hint"] = data["hint"]
-
-        self.tracer.emit("tool_result", name=name, ok=ok, ms=ms, summary=summary or None)
-
-        # diagnose_connection carries the verdict -> its own event.
-        verdict = data.get("verdict") if isinstance(data, dict) else None
-        if verdict:
-            self.tracer.emit(
-                "verdict",
-                side=verdict.get("side"),
-                group=verdict.get("group"),
-                action=verdict.get("action"),
-                reason=verdict.get("reason"),
-            )
-
     def _preflight_phone(self) -> None:
         """Look up the caller's number at the START of the call (deterministic).
 
@@ -1062,7 +941,7 @@ class ReactAgent:
                 ticket_id=self.state.ticket.ticket_id,
             )
         except Exception as e:  # pragma: no cover - defensive
-            self._trace_note("persist_call_record", f"failed: {e}", level="warn")
+            trace_note(self.tracer, self.state, "persist_call_record", f"failed: {e}", level="warn")
 
     def _build_call_summary(self) -> dict:
         """The call's outcome, derived from state — the single source for the record and
@@ -1092,7 +971,7 @@ class ReactAgent:
             "outcome": s.closing.closed_reason,  # resolved | outage | declined | escalated | None
             "resolved": s.closing.closed_reason == "resolved",
             "ticket_id": s.ticket.ticket_id,
-            "actions": self._tools_called_this_session(),
+            "actions": tools_called_this_session(self.tracer),
             # F4 (Andrius 2026-08-20): a call that ended WITHOUT identification
             # records everything that was heard — the address may have changed
             # its name, the caller may not be the holder; a person reading the
@@ -1108,27 +987,6 @@ class ReactAgent:
                 else None
             ),
         }
-
-    def _tools_called_this_session(self) -> list[str]:
-        """Tool names actually executed this call, read from the session's own trace
-        (single source of truth; append-only, safe to read at end)."""
-        path = getattr(self.tracer, "path", None)
-        if not path:
-            return []
-        seen: list[str] = []
-        try:
-            import json as _json
-            from pathlib import Path as _Path
-
-            for line in _Path(path).read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                e = _json.loads(line)
-                if e.get("type") == "tool_call" and e.get("name") and e["name"] not in seen:
-                    seen.append(e["name"])
-        except Exception:  # pragma: no cover - best-effort; the summary still emits
-            pass
-        return seen
 
     def _execute_tool_calls(self, message: Any) -> list[dict]:
         """Echo the assistant tool-call message, run each tool through the gate,
@@ -1192,7 +1050,7 @@ class ReactAgent:
 
         # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
         # slot/problem filled THIS turn counts as progress and clears the counter.
-        self.state.turn.progress_key_at_start = self._progress_key()
+        self.state.turn.progress_key_at_start = progress_key(self.state)
         self._cancel_requested.clear()  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "supratau" directive leaks into their replies.
@@ -1304,7 +1162,7 @@ class ReactAgent:
                     yield token
             except Exception as e:
                 logger.error(f"LLM stream error: {e}")
-                self._trace_note("llm_stream", str(e), level="error")
+                trace_note(self.tracer, self.state, "llm_stream", str(e), level="error")
                 yield self.config.error_message
                 return
 
@@ -1404,50 +1262,6 @@ class ReactAgent:
         self.tracer.emit("speculation", action="miss", kind=kind, key=key)
         return None
 
-    # --- Repeat-guard ------------------------------------------------------
-
-    def _progress_key(self) -> list:
-        """A snapshot of the fields that mean the conversation ADVANCED. Compared
-        start-vs-end of a turn: if it changed, the turn made real progress (a slot
-        filled, identified, an outage found, the case closed) — so the stuck
-        counter resets. Text changing alone is NOT progress (docs: reset on state,
-        not on a reworded question)."""
-        p = self.state.identity.profile
-        filled = sum(
-            1 for slot in (p.city, p.street, p.house, p.apartment, p.account_code) if slot.value
-        )
-        s = self.state
-        return [
-            s.identity.customer_id,
-            filled,
-            s.intake.problem_type,
-            s.diagnosis.outage_reported,
-            s.closing.case_closed,
-            s.ticket.ticket_id,
-        ]
-
-    @staticmethod
-    def _is_question(text: str) -> bool:
-        return text.strip().endswith("?")
-
-    def _sanitize_question(self, text: str) -> str:
-        """Lowercase, drop punctuation + politeness fillers, collapse whitespace —
-        so two questions compare on their CORE, not their wording trim."""
-        cleaned = re.sub(r"[^\w\s]", " ", text.lower(), flags=re.UNICODE)
-        return " ".join(w for w in cleaned.split() if w not in _STUCK_FILLER)
-
-    def _similar(self, a: str, b: str) -> bool:
-        """True if two questions are effectively the same re-ask (containment, to
-        catch an added prefix, or a high difflib ratio on the sanitized cores)."""
-        from difflib import SequenceMatcher
-
-        sa, sb = self._sanitize_question(a), self._sanitize_question(b)
-        if not sa or not sb:
-            return False
-        if sa in sb or sb in sa:
-            return True
-        return SequenceMatcher(None, sa, sb).ratio() > 0.8
-
     def _stuck_backstop(self) -> tuple[str, bool] | None:
         """Deterministic escalation (text, should_close) once the prompt-level nudge
         has failed — fired BEFORE the LLM (so it works with token streaming): at 3
@@ -1465,12 +1279,12 @@ class ReactAgent:
         question or normal back-and-forth must not escalate. Real progress (a slot/
         customer_id/problem change since the turn started) clears it. Records
         last_question for the next turn's repeat check."""
-        progressed = self._progress_key() != self.state.turn.progress_key_at_start
-        is_q = self._is_question(reply)
+        progressed = progress_key(self.state) != self.state.turn.progress_key_at_start
+        is_q = is_question(reply)
         repeat = bool(
             is_q
             and self.state.dialog.last_question
-            and self._similar(reply, self.state.dialog.last_question)
+            and similar(reply, self.state.dialog.last_question)
         )
         self.state.dialog.last_reply_repeated = repeat
         if progressed:
@@ -1498,9 +1312,9 @@ class ReactAgent:
     def _emit_scripted_reply(self, text: str) -> str:
         """Bookkeeping for an engine-composed reply (mirrors _apply_backstop)."""
         self.state.messages.append({"role": "assistant", "content": text})
-        if self._is_question(text):
+        if is_question(text):
             self.state.dialog.last_question = text
-        self._emit_case()
+        emit_case(self.tracer, self.state)
         self.tracer.emit("scripted", where="identification")
         self.tracer.emit("agent_reply", text=text)
         return text
@@ -1515,10 +1329,10 @@ class ReactAgent:
         else:
             self.state.dialog.stuck_count += 1  # advance the ladder for the next turn
         self.state.messages.append({"role": "assistant", "content": text})
-        if self._is_question(text):
+        if is_question(text):
             self.state.dialog.last_question = text
         self._maybe_end_on_goodbye(text)
-        self._emit_case()
+        emit_case(self.tracer, self.state)
         self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=False)
         self.tracer.emit("agent_reply", text=text)
         return text
@@ -1543,54 +1357,5 @@ class ReactAgent:
         repeat-guard, emit the case snapshot + the reply trace."""
         self._track_stuck(text)
         self._maybe_end_on_goodbye(text)
-        self._emit_case()
+        emit_case(self.tracer, self.state)
         self.tracer.emit("agent_reply", text=text)
-
-    def _emit_case(self) -> None:
-        """Emit a compact case-state snapshot to the TRACE (for review) — NOT into
-        the LLM context. The lean current-truth the model reads is the facts block;
-        the full running summary / history stays in the trace + DB (§12.7)."""
-        s = self.state
-        diag = (
-            "; ".join(
-                f"{dom}:{f.get('group')}/{f.get('reason')}"
-                for dom, f in s.diagnosis.verdicts.items()
-            )
-            or None
-        )
-        if not (s.intake.problem_type or s.identity.customer_id or diag or s.intake.symptoms):
-            return
-        r = s.resolution.procedure or {}
-        h = s.diagnosis.hypothesis or {}
-        self.tracer.emit(
-            "case",
-            problem=s.intake.problem_type,
-            customer_id=s.identity.customer_id,
-            address=s.identity.customer_address,
-            symptoms=(", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items()) or None),
-            diagnosis=diag,
-            # Decision state — the "where are we / why" that a raw reply hides.
-            step=r.get("step"),
-            awaiting=s.dialog.awaiting,
-            clarity=s.dialog.clarity_level if s.dialog.clarity_level != "standard" else None,
-            hypothesis=(f"{h.get('cause')}:{h.get('status')}" if h else None),
-        )
-
-    def _trace_note(self, where: str, detail: str, level: str = "warn") -> None:
-        """Record a behaviour-affecting failure/fallback INTO the trace (not only the
-        console log), stamped with the current state (node/step/awaiting), so a call
-        review shows WHY the agent behaved as it did — a swallowed classifier/solver/tool
-        error no longer disappears from the JSONL. Best-effort; never raises."""
-        try:
-            r = self.state.resolution.procedure or {}
-            self.tracer.emit(
-                "error",
-                level=level,
-                where=where,
-                detail=(detail or "")[:300],
-                node=self.state.turn.active_node,
-                step=r.get("step"),
-                awaiting=self.state.dialog.awaiting,
-            )
-        except Exception:  # pragma: no cover - tracing must never break the turn
-            pass

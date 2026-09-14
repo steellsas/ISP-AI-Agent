@@ -16,6 +16,9 @@ import logging
 import os
 from typing import Any
 
+from .dialog_utils import last_agent_question
+from .trace import trace_note
+
 logger = logging.getLogger(__name__)
 
 
@@ -174,7 +177,7 @@ def shadow_solve(engine: Any, user_input: str | None) -> None:
         )
     except Exception as e:  # shadow must never affect the live turn
         logger.warning(f"shadow solver failed: {e}")
-        engine._trace_note("solver_shadow", str(e))
+        trace_note(engine.tracer, engine.state, "solver_shadow", str(e))
 
 
 def plug_report(engine: Any, user_input: str | None) -> bool:
@@ -190,7 +193,7 @@ def plug_report(engine: Any, user_input: str | None) -> bool:
     from .resolution import detect_plugged
 
     low = _fold(user_input)
-    last_q = _fold(engine._last_agent_question() or "")
+    last_q = _fold(last_agent_question(engine.state) or "")
     if "kompiuter" not in low and "kompiuter" not in last_q:
         return False  # not the bridge context — a cable reseat is not a bind
     if detect_plugged(user_input):
@@ -286,7 +289,7 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     # kompiuterį" is a YES — the loose detector escalated on it).
     from .evidence import extract_client_facts
 
-    last_q = (engine._last_agent_question() or "").lower()
+    last_q = (last_agent_question(engine.state) or "").lower()
     has_pc = extract_client_facts(user_input).get("has_computer")
     if "kompiuter" in last_q and (
         has_pc == "no" or (has_pc is None and detect_no_device(user_input))
@@ -345,7 +348,13 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
             accepted=False,
             reason="distrust loop (repeat/disambiguate streak)",
         )
-        engine._trace_note("solver_drive", "distrust loop — walker resumes", level="warn")
+        trace_note(
+            engine.tracer,
+            engine.state,
+            "solver_drive",
+            "distrust loop — walker resumes",
+            level="warn",
+        )
         # Ledger-position sync (round 4, 2026-08-11): a mid-bridge bailout
         # resumed at a long-stale dr_intro and improvised into a ticket one
         # step from a working bridge. With a CONFIRMED hypothesis the walker
@@ -379,7 +388,7 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
         reply = engine._drive(user_input)
     except Exception as e:  # a solver failure falls back to the walker (no bookkeeping yet)
         logger.error(f"solver drive failed: {e}")
-        engine._trace_note("solver_drive", str(e), level="error")
+        trace_note(engine.tracer, engine.state, "solver_drive", str(e), level="error")
         return None
     # The findings announce stashed by the evidence layer rides on the
     # solver's first reply (the bridge path returns None to hand over).
@@ -635,7 +644,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
         engine._augment_tool_result("update_mac", obs)  # chains reset_port + re-diagnose
         engine.state.resolution.bridge_bound = True
     except Exception as e:
-        engine._trace_note("drive_propose_fix", str(e), level="error")
+        trace_note(engine.tracer, engine.state, "drive_propose_fix", str(e), level="error")
     # Position the walker on the VERIFY step (the step after the bind, read
     # structurally) — the reply below asks "ar internetas atsirado?", so the
     # caller's "jau atsistatė!" must route as RESTORED. Live 2026-08-12 the

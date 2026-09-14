@@ -11,6 +11,8 @@ Run: pytest tests/test_repeat_guard.py -v
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from agent.dialog_utils import is_question, progress_key, similar
+
 
 def _agent():
     from agent.react_agent import ReactAgent
@@ -37,33 +39,33 @@ def _stream_of(message):
 class TestQuestionSimilarity:
     def test_is_question(self):
         a = _agent()
-        assert a._is_question("Kurioje gatvėje?") is True
-        assert a._is_question("Radau jūsų adresą.") is False
+        assert is_question("Kurioje gatvėje?") is True
+        assert is_question("Radau jūsų adresą.") is False
 
     def test_apologetic_prefix_is_a_repeat(self):
         # The exact pair from the trace (only "Atsiprašau, " differs).
         a = _agent()
         q1 = "Ar galėtumėte pasakyti, kurioje gatvėje neveikia internetas?"
         q2 = "Atsiprašau, ar galėtumėte pasakyti, kurioje gatvėje neveikia internetas?"
-        assert a._similar(q1, q2) is True
+        assert similar(q1, q2) is True
 
     def test_different_questions_not_similar(self):
         a = _agent()
-        assert a._similar("Kurioje gatvėje neveikia?", "Koks namo numeris?") is False
+        assert similar("Kurioje gatvėje neveikia?", "Koks namo numeris?") is False
 
 
 class TestStuckCounter:
     def test_repeat_increments(self):
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
-        a.state.turn.progress_key_at_start = a._progress_key()
+        a.state.turn.progress_key_at_start = progress_key(a.state)
         a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.stuck_count == 1
 
     def test_first_question_does_not_increment(self):
         # No prior question -> not a repeat -> normal opening, no strike.
         a = _agent()
-        a.state.turn.progress_key_at_start = a._progress_key()
+        a.state.turn.progress_key_at_start = progress_key(a.state)
         a._track_stuck("Kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.stuck_count == 0
 
@@ -71,7 +73,7 @@ class TestStuckCounter:
         # A new, distinct question is normal progression, not a stuck loop.
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
-        a.state.turn.progress_key_at_start = a._progress_key()
+        a.state.turn.progress_key_at_start = progress_key(a.state)
         a._track_stuck("Koks namo numeris?")
         assert a.state.dialog.stuck_count == 0
 
@@ -79,7 +81,7 @@ class TestStuckCounter:
         a = _agent()
         a.state.dialog.stuck_count = 2
         a.state.dialog.last_question = "Kurioje gatvėje?"
-        a.state.turn.progress_key_at_start = a._progress_key()
+        a.state.turn.progress_key_at_start = progress_key(a.state)
         a.state.identity.customer_id = "CUST105"  # the turn advanced
         a._track_stuck("Kurioje gatvėje?")
         assert a.state.dialog.stuck_count == 0
@@ -87,7 +89,7 @@ class TestStuckCounter:
     def test_repeated_verbatim_flag_set(self):
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
-        a.state.turn.progress_key_at_start = a._progress_key()
+        a.state.turn.progress_key_at_start = progress_key(a.state)
         a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.last_reply_repeated is True
 

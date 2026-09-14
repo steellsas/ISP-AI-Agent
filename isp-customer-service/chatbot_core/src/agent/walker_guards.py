@@ -23,6 +23,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .dialog_utils import asked_recently
+
 # --- prelude (no step resolved yet) -----------------------------------------
 
 
@@ -218,7 +220,7 @@ def classifier_confirm_route(engine: Any, r, strat, step, user_input: str | None
     if (
         step.kind is StepKind.CONFIRM
         and r.get("asked")
-        and engine._asked_recently(r)
+        and asked_recently(engine.state, r)
         and step.on
         and step.id != "confirm_restored"
         and os.getenv("CLASSIFIER", "on").lower() != "off"
@@ -237,7 +239,7 @@ def classifier_instruct_route(engine: Any, r, strat, step, user_input: str | Non
     if (
         step.kind is StepKind.INSTRUCT
         and r.get("asked")
-        and engine._asked_recently(r)
+        and asked_recently(engine.state, r)
         and os.getenv("CLASSIFIER", "on").lower() != "off"
     ):
         return bool(engine._classify_instruct_and_advance(step, strat, user_input))

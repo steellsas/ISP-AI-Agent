@@ -15,6 +15,7 @@ Run: pytest tests/test_tracing.py -v
 import json
 
 import pytest
+from agent.trace import tools_called_this_session, trace_tool_result
 
 
 def _read_events(path):
@@ -170,7 +171,7 @@ class TestReactAgentEmits:
         from agent.tools import diagnose_connection
 
         obs = json.dumps(diagnose_connection("CUST105"))
-        agent._trace_tool_result("diagnose_connection", obs)
+        trace_tool_result(agent.tracer, "diagnose_connection", obs)
 
         types = [e["type"] for e in cap.events]
         assert types == ["tool_result", "verdict"]
@@ -187,7 +188,7 @@ class TestReactAgentEmits:
         from agent.tools import resolve_address
 
         obs = json.dumps(resolve_address(city="Šiauliai", street="Žeimių"))
-        agent._trace_tool_result("resolve_address", obs)
+        trace_tool_result(agent.tracer, "resolve_address", obs)
 
         result = cap.events[0]
         assert result["type"] == "tool_result"
@@ -272,7 +273,7 @@ class TestReactAgentEmits:
         tracer.emit("tool_call", name="update_mac", args={})
         tracer.emit("tool_call", name="diagnose_connection", args={})  # dedup
 
-        assert agent._tools_called_this_session() == ["diagnose_connection", "update_mac"]
+        assert tools_called_this_session(agent.tracer) == ["diagnose_connection", "update_mac"]
 
     def test_end_session_persists_conversation_row(self, db_connection, tmp_path):
         """Phase 3.10 slice 1b: session end writes one row to the conversations table."""
