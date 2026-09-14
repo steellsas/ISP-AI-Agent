@@ -198,20 +198,14 @@ def amend_ticket_note(engine: Any, note: str) -> bool:
     if not tid or not note:
         return False
     try:
-        from .tools import get_db
-
-        db = get_db()
-        with db.cursor() as cursor:
-            cursor.execute("SELECT details FROM tickets WHERE ticket_id = ?", (tid,))
-            row = cursor.fetchone()
-            if not row:
-                return False
-            details = (dict(row).get("details") or "").rstrip()
-            cursor.execute(
-                "UPDATE tickets SET details = ? WHERE ticket_id = ?",
-                (f"{details}\n[PATIKSLINTA] {note}".strip(), tid),
-            )
-        return True
+        result = engine.tools.run(
+            engine,
+            "append_ticket_note",
+            {"ticket_id": tid, "note": note},
+            reason="ticket_amend",
+            apply=False,
+        )
+        return bool(result.data.get("success"))
     except Exception:  # a failed note must never break the goodbye
         import logging
 

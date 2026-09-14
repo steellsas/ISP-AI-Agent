@@ -1100,6 +1100,24 @@ def _search_knowledge_fallback(query: str) -> dict:
     }
 
 
+def append_ticket_note(ticket_id: str, note: str) -> dict:
+    """Append a post-registration correction to a ticket's details ([PATIKSLINTA])."""
+    if not ticket_id or not note:
+        return {"success": False, "error": "missing_arguments"}
+    db = get_db()
+    with db.cursor() as cursor:
+        cursor.execute("SELECT details FROM tickets WHERE ticket_id = ?", (ticket_id,))
+        row = cursor.fetchone()
+        if not row:
+            return {"success": False, "error": "ticket_not_found"}
+        details = (dict(row).get("details") or "").rstrip()
+        cursor.execute(
+            "UPDATE tickets SET details = ? WHERE ticket_id = ?",
+            (f"{details}\n[PATIKSLINTA] {note}".strip(), ticket_id),
+        )
+    return {"success": True, "ticket_id": ticket_id}
+
+
 def create_ticket(
     customer_id: str,
     problem_type: str,

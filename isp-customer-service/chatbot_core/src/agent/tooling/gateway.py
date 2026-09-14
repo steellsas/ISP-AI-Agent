@@ -72,6 +72,10 @@ class ToolGateway:
         trace_tool_result(engine.tracer, name, observation, ms)
         return ToolResult(name, args, observation, ms, gated, _parse(observation))
 
+    def address_registry(self):
+        """The served streets/localities (reference data, not a traced call)."""
+        return self.provider.address_registry()
+
 
 def gate(engine: Any, name: str, args: dict) -> str | None:
     """
