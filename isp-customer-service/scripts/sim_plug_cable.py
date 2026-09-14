@@ -8,7 +8,7 @@ plugged a PC into the wall cable. The agent's next telemetry read then sees the 
 (foreign_mac) and the bridge binds it — so you drive the physical action yourself instead
 of the engine faking it on a keyword.
 
-For this to be YOUR trigger (not the engine's auto-fire), run voice_demo with the
+For this to be YOUR trigger (not the engine's auto-fire), run the app server with the
 auto-simulation OFF:  $env:SIMULATE_BRIDGE="off"
 
 Usage:
