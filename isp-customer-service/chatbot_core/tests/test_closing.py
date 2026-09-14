@@ -117,3 +117,26 @@ class TestCaseStateTransitions:
             json.dumps({"success": True, "affected": False, "active_outages": []}),
         )
         assert agent.state.diagnosis.outage_reported is False
+
+
+class TestClosingNode:
+    """The node contract on a bare state + runtime: `closing_node(state, runtime)`
+    returns the whole state as its update and reaches tools only via the gateway."""
+
+    def test_number_correction_is_noted_through_the_gateway(self, make_state, make_runtime):
+        from agent.graph_v2.nodes.closing import closing_node
+        from agent.graph_v2.state import ClosingState, TicketState, TurnScratch
+        from langgraph.runtime import Runtime
+
+        rt = make_runtime(lambda name, args: {"success": True})
+        state = make_state(
+            "+37060012353",
+            ticket=TicketState(ticket_id="TCK-1"),
+            closing=ClosingState(case_closed=True),
+            turn=TurnScratch(user_input="Skambinkite kitu numeriu 868321007"),
+        )
+        upd = closing_node(state, Runtime(context=rt))
+        assert "Užsirašiau" in upd["turn"].reply
+        assert [c[0] for c in rt.tools.provider.calls] == ["append_ticket_note"]
+        assert "868321007" in rt.tools.provider.calls[0][1]["note"]
+        assert state.turn.reply is None  # the node worked on its own copy

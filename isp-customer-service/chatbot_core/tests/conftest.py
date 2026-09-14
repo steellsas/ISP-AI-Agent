@@ -202,3 +202,19 @@ def walker_driven(monkeypatch):
 
     monkeypatch.setattr(faults, "driver", lambda verdict: "walker")
     yield
+
+
+@pytest.fixture(name="make_state")
+def make_state_fixture():
+    """Factory for a call's GraphState (tests.calls.make_state)."""
+    from tests.calls import make_state
+
+    return make_state
+
+
+@pytest.fixture(name="make_runtime")
+def make_runtime_fixture():
+    """Factory for a call's AgentRuntime with optional fake tools (tests.calls.make_runtime)."""
+    from tests.calls import make_runtime
+
+    return make_runtime
