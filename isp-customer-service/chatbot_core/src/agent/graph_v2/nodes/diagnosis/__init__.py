@@ -19,6 +19,7 @@ from typing import Any
 
 from langgraph.graph import END, StateGraph
 
+from ....runtime import AgentRuntime
 from ...router import (
     DIAG_DIAGNOSE,
     DIAG_EXECUTOR,
@@ -30,23 +31,23 @@ from ...router import (
     route_after_solver_gate,
 )
 from ...state import GraphState
-from ..side_topic import make_side_topic_node
-from .diagnose import make_diagnose_node
-from .executor import make_executor_node
-from .narrator import make_narrator_node
-from .solver_gate import make_solver_gate_node
-from .walker import make_walker_node
+from ..side_topic import side_topic_node
+from .diagnose import diagnose_node
+from .executor import executor_node
+from .narrator import narrator_node
+from .solver_gate import solver_gate_node
+from .walker import walker_node
 
 
-def make_diagnosis_graph(engine: Any):
+def make_diagnosis_graph():
     """Compile the diagnosis subgraph (no checkpointer — inherits the parent's)."""
-    builder = StateGraph(GraphState)
-    builder.add_node(DIAG_DIAGNOSE, make_diagnose_node(engine))
-    builder.add_node(DIAG_SIDE_TOPIC, make_side_topic_node(engine))
-    builder.add_node(DIAG_SOLVER_GATE, make_solver_gate_node(engine))
-    builder.add_node(DIAG_WALKER, make_walker_node(engine))
-    builder.add_node(DIAG_EXECUTOR, make_executor_node(engine))
-    builder.add_node(DIAG_NARRATOR, make_narrator_node(engine))
+    builder = StateGraph(GraphState, context_schema=AgentRuntime)
+    builder.add_node(DIAG_DIAGNOSE, diagnose_node)
+    builder.add_node(DIAG_SIDE_TOPIC, side_topic_node)
+    builder.add_node(DIAG_SOLVER_GATE, solver_gate_node)
+    builder.add_node(DIAG_WALKER, walker_node)
+    builder.add_node(DIAG_EXECUTOR, executor_node)
+    builder.add_node(DIAG_NARRATOR, narrator_node)
     builder.set_entry_point(DIAG_DIAGNOSE)
     builder.add_conditional_edges(
         DIAG_DIAGNOSE,

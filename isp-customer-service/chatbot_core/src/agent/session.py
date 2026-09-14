@@ -25,6 +25,7 @@ from typing import Any
 from .config import AgentConfig
 from .graph_v2 import GraphState, TurnScratch, build_graph
 from .react_agent import ReactAgent
+from .runtime import build_runtime
 
 
 class AgentSession:
@@ -61,7 +62,8 @@ class AgentSession:
 
         # LangGraph v2: typed GraphState, SqliteSaver checkpoints, diagnosis
         # subgraph, one node per file.
-        self._graph = build_graph(self._agent, checkpointer)
+        self._runtime = build_runtime(self._agent)
+        self._graph = build_graph(checkpointer)
         self._graph_config = {"configurable": {"thread_id": thread_id or self._agent.session_id}}
         # Results of background work (analyst, speculation, telemetry refresh),
         # handed to the NEXT turn through its graph input — no thread writes state.
@@ -289,7 +291,9 @@ class AgentSession:
         The first turn has no user input — the agent greets, then waits for the
         customer's problem. Voice/telephony speak this before listening.
         """
-        return self._graph_reply(self._graph.invoke(self._graph_input(None), self._graph_config))
+        return self._graph_reply(
+            self._graph.invoke(self._graph_input(None), self._graph_config, context=self._runtime)
+        )
 
     def handle_turn(self, text: str) -> str:
         """
@@ -304,7 +308,9 @@ class AgentSession:
         Returns:
             The agent's reply string.
         """
-        return self._graph_reply(self._graph.invoke(self._graph_input(text), self._graph_config))
+        return self._graph_reply(
+            self._graph.invoke(self._graph_input(text), self._graph_config, context=self._runtime)
+        )
 
     def handle_turn_stream(self, text: str):
         """Streaming variant of handle_turn (Pillar C3): a generator yielding the
@@ -318,7 +324,11 @@ class AgentSession:
         # with subgraphs=True, which wraps every chunk in a (namespace, chunk)
         # pair; unwrap so transports receive raw tokens.
         for _ns, chunk in self._graph.stream(
-            self._graph_input(text), self._graph_config, stream_mode="custom", subgraphs=True
+            self._graph_input(text),
+            self._graph_config,
+            context=self._runtime,
+            stream_mode="custom",
+            subgraphs=True,
         ):
             yield chunk
 

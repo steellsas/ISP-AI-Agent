@@ -14,17 +14,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.runtime import Runtime
+
+from ....runtime import AgentRuntime
 from ...runtime import run_on_state
 from ...state import GraphState
 
 
-def make_walker_node(engine: Any):
-    def walker_node(state: GraphState) -> dict[str, Any]:
-        def body() -> None:
-            user_input = state.turn.user_input
-            engine._advance_resolution(user_input)
-            engine._shadow_solve(user_input)
+def walker_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    engine = runtime.context.engine
 
-        return run_on_state(engine, state, body)
+    def body() -> None:
+        user_input = state.turn.user_input
+        engine._advance_resolution(user_input)
+        engine._shadow_solve(user_input)
 
-    return walker_node
+    return run_on_state(engine, state, body)

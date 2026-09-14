@@ -12,111 +12,111 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.runtime import Runtime
+
 from ...closing_flow import maybe_finish
+from ...runtime import AgentRuntime
 from ..router import CLOSING
 from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, run_on_state, speak_scripted
 from ..state import GraphState
 
 
-def make_closing_node(engine: Any):
-    def closing_node(state: GraphState) -> dict[str, Any]:
-        return run_on_state(engine, state, lambda: closing(state.turn.user_input))
+def closing_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    engine = runtime.context.engine
+    return run_on_state(engine, state, lambda: _closing(engine, state.turn.user_input))
 
-    def closing(user_input: str | None) -> str:
-        # A ticket demand at the goodbye reopens the case (live 2026-08-13:
-        # "Dar prašau, žegistruokit gedimą…" got "gražios dienos!" and the
-        # caller left with ticket=None) — the registration dialogue starts
-        # instead of the farewell.
-        from ...resolution import detect_refuse_or_ticket
 
-        s = engine.state
-        if (
-            user_input
-            and detect_refuse_or_ticket(user_input) == "demand"
-            and not s.ticket.ticket_id
-            and s.resolution.procedure is not None
-        ):
-            s.closing.case_closed = False
-            engine.tracer.emit("decision", intent="ticket_demand", action="reopen_at_closing")
-            reply = engine._drive_escalate(None)
-            if reply:  # narrator mode leaves the intro to the LLM (directive set)
-                speak_scripted(engine, CLOSING, user_input, reply)
-                return reply
-            reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
-            return reply
-        # A "still not working" at the goodbye contradicts a resolved close —
-        # never wave it off (live 2026-09-11: "Internetas neveikia." got
-        # "Geros dienos!"). Reopen and register instead of celebrating.
-        from ...resolution import Outcome, detect_restored
+def _closing(engine: Any, user_input: str | None) -> str:
+    # A ticket demand at the goodbye reopens the case (live 2026-08-13:
+    # "Dar prašau, žegistruokit gedimą…" got "gražios dienos!" and the
+    # caller left with ticket=None) — the registration dialogue starts
+    # instead of the farewell.
+    from ...resolution import detect_refuse_or_ticket
 
-        if (
-            user_input
-            and s.closing.closed_reason == "resolved"
-            and not s.ticket.ticket_id
-            and s.resolution.procedure is not None
-            and detect_restored(user_input) is Outcome.NO
-        ):
-            s.closing.case_closed = False
-            s.closing.is_complete = False
-            s.resolution.procedure["escalate_reason"] = (
-                "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
-            )
-            engine.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
-            reply = engine._drive_escalate(None)
-            if reply:
-                speak_scripted(engine, CLOSING, user_input, reply)
-                return reply
-            reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
-            return reply
-        maybe_finish(engine, user_input)
-        # After a REGISTRATION the goodbye is scripted (live 2026-08-21: the
-        # closing LLM re-asked the call-back hours after the ticket was done).
-        # The LLM speaks only for a real question, or ONCE to ask back about
-        # secondary problems the caller mentioned mid-call.
-        from ...identification import phrase
-        from ...resolution import is_real_question
-
-        if s.ticket.ticket_id and not is_real_question(user_input):
-            # D5 (live 2026-08-25): a POST-registration contact correction
-            # ("skambinkite kitu numeriu 868…") must land on the ticket, not
-            # vanish into the goodbye — the worker would call a dead number.
-            import re as _re
-
-            digits = _re.sub(r"\D", "", user_input or "")
-            if len(digits) >= 6 and not s.closing.is_complete:
-                from ...ticket_flow import amend_ticket_note, fmt_phone
-
-                nr = _re.sub(r"[^\d+]", "", user_input or "")[:20]
-                s.ticket.contact_phone = nr
-                noted = amend_ticket_note(engine, f"Skambinti kitu numeriu: {nr}")
-                engine.tracer.emit(
-                    "decision",
-                    intent="ticket_amend",
-                    action="phone_noted" if noted else "note_failed",
-                )
-                reply = phrase("ticket_phone_fixed", nr=fmt_phone(nr))
-                speak_scripted(engine, CLOSING, user_input, reply)
-                return reply
-            if s.intake.secondary_problems and not engine.state.closing.secondary_problems_asked:
-                engine.state.closing.secondary_problems_asked = (
-                    True  # the facts directive carries the list
-                )
-            else:
-                reply = phrase("goodbye")
-                speak_scripted(engine, CLOSING, user_input, reply)
-                return reply
-        # Closing wave block 4 (live 2026-09-08: three near-identical
-        # "Džiaugiuosi… routeris buvo pakibęs…" improvisations after the
-        # goodbye moment): the FIRST closing reply may be the LLM's warm,
-        # personalised close — every trailing non-question turn gets the
-        # short scripted goodbye instead of a fresh re-explanation.
-        if not is_real_question(user_input) and (
-            s.closing.is_complete or s.closing.closing_turns >= 1
-        ):
-            reply = phrase("goodbye")
+    s = engine.state
+    if (
+        user_input
+        and detect_refuse_or_ticket(user_input) == "demand"
+        and not s.ticket.ticket_id
+        and s.resolution.procedure is not None
+    ):
+        s.closing.case_closed = False
+        engine.tracer.emit("decision", intent="ticket_demand", action="reopen_at_closing")
+        reply = engine._drive_escalate(None)
+        if reply:  # narrator mode leaves the intro to the LLM (directive set)
             speak_scripted(engine, CLOSING, user_input, reply)
             return reply
         reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
         return reply
+    # A "still not working" at the goodbye contradicts a resolved close —
+    # never wave it off (live 2026-09-11: "Internetas neveikia." got
+    # "Geros dienos!"). Reopen and register instead of celebrating.
+    from ...resolution import Outcome, detect_restored
 
-    return closing_node
+    if (
+        user_input
+        and s.closing.closed_reason == "resolved"
+        and not s.ticket.ticket_id
+        and s.resolution.procedure is not None
+        and detect_restored(user_input) is Outcome.NO
+    ):
+        s.closing.case_closed = False
+        s.closing.is_complete = False
+        s.resolution.procedure["escalate_reason"] = (
+            "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
+        )
+        engine.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
+        reply = engine._drive_escalate(None)
+        if reply:
+            speak_scripted(engine, CLOSING, user_input, reply)
+            return reply
+        reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
+        return reply
+    maybe_finish(engine, user_input)
+    # After a REGISTRATION the goodbye is scripted (live 2026-08-21: the
+    # closing LLM re-asked the call-back hours after the ticket was done).
+    # The LLM speaks only for a real question, or ONCE to ask back about
+    # secondary problems the caller mentioned mid-call.
+    from ...identification import phrase
+    from ...resolution import is_real_question
+
+    if s.ticket.ticket_id and not is_real_question(user_input):
+        # D5 (live 2026-08-25): a POST-registration contact correction
+        # ("skambinkite kitu numeriu 868…") must land on the ticket, not
+        # vanish into the goodbye — the worker would call a dead number.
+        import re as _re
+
+        digits = _re.sub(r"\D", "", user_input or "")
+        if len(digits) >= 6 and not s.closing.is_complete:
+            from ...ticket_flow import amend_ticket_note, fmt_phone
+
+            nr = _re.sub(r"[^\d+]", "", user_input or "")[:20]
+            s.ticket.contact_phone = nr
+            noted = amend_ticket_note(engine, f"Skambinti kitu numeriu: {nr}")
+            engine.tracer.emit(
+                "decision",
+                intent="ticket_amend",
+                action="phone_noted" if noted else "note_failed",
+            )
+            reply = phrase("ticket_phone_fixed", nr=fmt_phone(nr))
+            speak_scripted(engine, CLOSING, user_input, reply)
+            return reply
+        if s.intake.secondary_problems and not engine.state.closing.secondary_problems_asked:
+            engine.state.closing.secondary_problems_asked = (
+                True  # the facts directive carries the list
+            )
+        else:
+            reply = phrase("goodbye")
+            speak_scripted(engine, CLOSING, user_input, reply)
+            return reply
+    # Closing wave block 4 (live 2026-09-08: three near-identical
+    # "Džiaugiuosi… routeris buvo pakibęs…" improvisations after the
+    # goodbye moment): the FIRST closing reply may be the LLM's warm,
+    # personalised close — every trailing non-question turn gets the
+    # short scripted goodbye instead of a fresh re-explanation.
+    if not is_real_question(user_input) and (s.closing.is_complete or s.closing.closing_turns >= 1):
+        reply = phrase("goodbye")
+        speak_scripted(engine, CLOSING, user_input, reply)
+        return reply
+    reply = narrate(engine, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)
+    return reply

@@ -14,21 +14,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.runtime import Runtime
+
+from ...runtime import AgentRuntime
 from ..router import ADDRESS_VALIDATION
 from ..runtime import ADDRESS_NODE_PROMPT, LOOKUP_TOOLS, narrate, run_on_state
 from ..state import GraphState
 
 
-def make_identification_node(engine: Any):
-    def identification_node(state: GraphState) -> dict[str, Any]:
-        def body() -> str:
-            user_input = state.turn.user_input
-            reply = narrate(
-                engine, user_input, LOOKUP_TOOLS, ADDRESS_NODE_PROMPT, ADDRESS_VALIDATION
-            )
-            engine._mark_step_presented()
-            return reply
+def identification_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    engine = runtime.context.engine
 
-        return run_on_state(engine, state, body)
+    def body() -> str:
+        user_input = state.turn.user_input
+        reply = narrate(engine, user_input, LOOKUP_TOOLS, ADDRESS_NODE_PROMPT, ADDRESS_VALIDATION)
+        engine._mark_step_presented()
+        return reply
 
-    return identification_node
+    return run_on_state(engine, state, body)

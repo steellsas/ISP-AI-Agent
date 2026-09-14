@@ -13,19 +13,21 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.runtime import Runtime
+
+from ....runtime import AgentRuntime
 from ...router import DIAGNOSIS
 from ...runtime import DIAGNOSIS_NODE_PROMPT, narrate, run_on_state
 from ...state import GraphState
 
 
-def make_narrator_node(engine: Any):
-    def narrator_node(state: GraphState) -> dict[str, Any]:
-        def body() -> str:
-            user_input = state.turn.user_input
-            reply = narrate(engine, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS)
-            engine._mark_step_presented()
-            return reply
+def narrator_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    engine = runtime.context.engine
 
-        return run_on_state(engine, state, body)
+    def body() -> str:
+        user_input = state.turn.user_input
+        reply = narrate(engine, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS)
+        engine._mark_step_presented()
+        return reply
 
-    return narrator_node
+    return run_on_state(engine, state, body)

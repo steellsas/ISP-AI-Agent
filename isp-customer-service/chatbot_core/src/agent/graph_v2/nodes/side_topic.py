@@ -11,17 +11,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.runtime import Runtime
+
+from ...runtime import AgentRuntime
 from ..router import SIDE_TOPIC
 from ..runtime import SIDE_TOPIC_PROMPT, narrate, run_on_state
 from ..state import GraphState
 
 
-def make_side_topic_node(engine: Any):
-    def side_topic_node(state: GraphState) -> dict[str, Any]:
-        def body() -> str:
-            user_input = state.turn.user_input
-            return narrate(engine, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
+def side_topic_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    engine = runtime.context.engine
 
-        return run_on_state(engine, state, body)
+    def body() -> str:
+        user_input = state.turn.user_input
+        return narrate(engine, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
 
-    return side_topic_node
+    return run_on_state(engine, state, body)

@@ -36,7 +36,7 @@ def _v2_session(tmp_path, name="cp.sqlite", phone="unknown"):
     from agent.session import AgentSession
 
     session = AgentSession(caller_phone=phone)
-    session._graph = build_graph(session._agent, make_checkpointer(tmp_path / name))
+    session._graph = build_graph(make_checkpointer(tmp_path / name))
     return session
 
 
@@ -123,7 +123,22 @@ def _fake_graph(engine):
     from agent.graph_v2.graph import build_graph
     from langgraph.checkpoint.memory import MemorySaver
 
-    return build_graph(engine, MemorySaver())
+    return build_graph(MemorySaver())
+
+
+def _fake_runtime(engine):
+    import threading
+
+    from agent.config import AgentConfig
+    from agent.runtime import AgentRuntime
+
+    return AgentRuntime(
+        session_id=engine.session_id,
+        config=AgentConfig(),
+        tracer=engine.tracer,
+        cancel=threading.Event(),
+        engine=engine,
+    )
 
 
 def _diag_input():
@@ -143,7 +158,7 @@ class TestDiagnosisSubgraph:
 
     def test_normal_path_keeps_legacy_call_order(self):
         engine = FakeEngine()
-        out = _fake_graph(engine).invoke(_diag_input(), _CFG)
+        out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         # A-2 (2026-09-07): the deterministic turn head (prefill + guards) runs
         # FIRST — before the solver/walker can consume a safety-question answer.
         assert engine.calls == [
@@ -163,14 +178,14 @@ class TestDiagnosisSubgraph:
 
     def test_side_topic_freezes_the_engine(self):
         engine = FakeEngine(side_topic=True)
-        out = _fake_graph(engine).invoke(_diag_input(), _CFG)
+        out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         # No close-inform/solver/walker/action on side chatter — only the frozen narration.
         assert engine.calls == ["diagnose", "prefill", "guards", "ingest", "classify", "narrate"]
         assert out["turn"].reply == "ok-reply"
 
     def test_solver_drive_skips_walker_and_narrator(self):
         engine = FakeEngine(driven="Atsakau pats.")
-        out = _fake_graph(engine).invoke(_diag_input(), _CFG)
+        out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         assert engine.calls == ["diagnose", "prefill", "guards", "ingest", "classify", "solver"]
         assert out["turn"].reply == "Atsakau pats."
 
@@ -182,7 +197,11 @@ class TestDiagnosisSubgraph:
         chunks = [
             chunk
             for _ns, chunk in _fake_graph(engine).stream(
-                _diag_input(), _CFG, stream_mode="custom", subgraphs=True
+                _diag_input(),
+                _CFG,
+                context=_fake_runtime(engine),
+                stream_mode="custom",
+                subgraphs=True,
             )
         ]
         assert chunks == ["ok-", "reply"]
@@ -377,7 +396,7 @@ class TestCheckpointedState:
         first = session._graph.get_state(session._graph_config).values
         assert first["turn"].reply
 
-        rebuilt = build_graph(session._agent, make_checkpointer(tmp_path / "persist.sqlite"))
+        rebuilt = build_graph(make_checkpointer(tmp_path / "persist.sqlite"))
         restored = rebuilt.get_state(session._graph_config).values
         assert restored["turn"].reply == first["turn"].reply
         assert restored["identity"].caller_phone == "unknown"

@@ -15,19 +15,19 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.runtime import Runtime
+
+from ...runtime import AgentRuntime
 from ..router import TICKET_REGISTRATION
 from ..runtime import TICKET_NODE_PROMPT, TICKET_TOOLS, narrate, run_on_state
 from ..state import GraphState
 
 
-def make_ticket_node(engine: Any):
-    def ticket_node(state: GraphState) -> dict[str, Any]:
-        def body() -> str:
-            user_input = state.turn.user_input
-            return narrate(
-                engine, user_input, TICKET_TOOLS, TICKET_NODE_PROMPT, TICKET_REGISTRATION
-            )
+def ticket_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    engine = runtime.context.engine
 
-        return run_on_state(engine, state, body)
+    def body() -> str:
+        user_input = state.turn.user_input
+        return narrate(engine, user_input, TICKET_TOOLS, TICKET_NODE_PROMPT, TICKET_REGISTRATION)
 
-    return ticket_node
+    return run_on_state(engine, state, body)

@@ -141,15 +141,18 @@ class TestBlendGuard:
     def test_still_down_at_closing_reopens(self, db_connection, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.graph_v2.nodes.closing import make_closing_node
+        from agent.graph_v2.nodes.closing import closing_node
         from agent.graph_v2.state import TurnScratch
+        from agent.runtime import build_runtime
+        from langgraph.runtime import Runtime
 
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
         agent.state.closing.case_closed = True
         agent.state.closing.closed_reason = "resolved"
-        node = make_closing_node(agent)
-        upd = node(
-            agent.state.model_copy(update={"turn": TurnScratch(user_input="Internetas neveikia.")})
+        runtime = Runtime(context=build_runtime(agent))
+        upd = closing_node(
+            agent.state.model_copy(update={"turn": TurnScratch(user_input="Internetas neveikia.")}),
+            runtime,
         )
         s = agent.state  # the node's working copy — the state after the turn
         assert upd["turn"].reply  # registracijos dialogas, ne „geros dienos"

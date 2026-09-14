@@ -17,11 +17,12 @@ from typing import Any
 
 from langgraph.graph import END, StateGraph
 
+from ..runtime import AgentRuntime
 from .checkpoint import make_checkpointer
-from .nodes.closing import make_closing_node
+from .nodes.closing import closing_node
 from .nodes.diagnosis import make_diagnosis_graph
-from .nodes.identification import make_identification_node
-from .nodes.ticket import make_ticket_node
+from .nodes.identification import identification_node
+from .nodes.ticket import ticket_node
 from .router import (
     ADDRESS_VALIDATION,
     CLOSING,
@@ -33,14 +34,14 @@ from .router import (
 from .state import GraphState
 
 
-def build_graph(engine: Any, checkpointer: Any | None = None):
-    """Compile the v2 graph around `engine` (a ReactAgent). Without a checkpointer
-    the call state lives in memory (tests, eval)."""
-    builder = StateGraph(GraphState)
-    builder.add_node(ADDRESS_VALIDATION, make_identification_node(engine))
-    builder.add_node(DIAGNOSIS, make_diagnosis_graph(engine))
-    builder.add_node(TICKET_REGISTRATION, make_ticket_node(engine))
-    builder.add_node(CLOSING, make_closing_node(engine))
+def build_graph(checkpointer: Any | None = None):
+    """Compile the graph. Dependencies arrive per invoke as the AgentRuntime
+    context. Without a checkpointer the call state lives in memory (tests, eval)."""
+    builder = StateGraph(GraphState, context_schema=AgentRuntime)
+    builder.add_node(ADDRESS_VALIDATION, identification_node)
+    builder.add_node(DIAGNOSIS, make_diagnosis_graph())
+    builder.add_node(TICKET_REGISTRATION, ticket_node)
+    builder.add_node(CLOSING, closing_node)
     builder.set_conditional_entry_point(route_entry, {name: name for name in ENTRY_TARGETS})
     for name in ENTRY_TARGETS:
         builder.add_edge(name, END)
