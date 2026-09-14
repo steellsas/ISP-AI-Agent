@@ -10,7 +10,6 @@ dependencies = [
     "langgraph>=0.0.20",
     "langsmith>=0.0.87",
     "openai>=1.0.0",
-    "streamlit>=1.30.0",
     # RAG dependencies
     "sentence-transformers>=2.2.0",
     "faiss-cpu>=1.7.4",

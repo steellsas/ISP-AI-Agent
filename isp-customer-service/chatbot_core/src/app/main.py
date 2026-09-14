@@ -23,7 +23,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Entry-point path setup (same pattern as streamlit_ui / voice demo): make
+# Entry-point path setup: make
 # `agent.*` importable whether launched via `src.app.main` or `app.main`.
 _SRC = Path(__file__).resolve().parents[1]
 if str(_SRC) not in sys.path:  # pragma: no cover - import-order plumbing
