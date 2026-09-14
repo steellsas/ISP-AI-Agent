@@ -175,7 +175,7 @@ class TestIdentifyThenDiagnoseSameTurn:
         # question ("su kuo kalbu?") — the result is deferred one turn behind it.
         assert agent.state.diagnosis.verdicts["network"]["reason"] == "billing_suspended"
         assert "su kuo kalbu" in out["message"].lower()
-        assert agent._result_pending is True
+        assert agent.state.identity.result_pending is True
         # Once the caller introduces themselves, the tail delivers the real result.
         agent.state.identity.caller_name = "Jonas"
         tail = agent._result_narration_tail()

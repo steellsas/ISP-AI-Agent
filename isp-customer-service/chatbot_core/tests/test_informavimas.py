@@ -101,7 +101,7 @@ class TestWrapUpHearing:
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
         agent._news_told = True
-        agent._result_pending = False
+        agent.state.identity.result_pending = False
         return agent
 
     def test_payment_claim_is_heard(self, db_connection):
@@ -367,7 +367,7 @@ class TestNodeFaultInform:
         a.state.identity.customer_address = "Šiauliai, Vilties g. 17-2"
         a.state.intake.problem_type = "internet_down"
         a.state.identity.caller_name = "Lina"
-        a._result_pending = True
+        a.state.identity.result_pending = True
         a.state.diagnosis.verdicts["network"] = {"reason": "node_fault_unregistered", "signals": {}}
         a.state.diagnosis.hypothesis = {
             "cause": "node_fault_unregistered",
@@ -387,7 +387,7 @@ class TestInformResultComposer:
         šablonu (viena žinia su detalėm), be billing_extra dubliavimo."""
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
-        agent._result_pending = True
+        agent.state.identity.result_pending = True
         agent.state.diagnosis.verdicts["network"] = {
             "reason": "billing_suspended",
             "signals": {

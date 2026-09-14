@@ -718,10 +718,10 @@ def pre_turn_guards(engine, user_input: str) -> None:
         about a DIFFERENT address -> drop the identity and ask for the address
         again instead of carrying on about the wrong account."""
     s = engine.state
-    engine._addr_confirm_note = None
-    engine._addr_diag_note = None  # F2: fresh lookup diagnosis per turn
+    engine.state.turn.address_confirm_note = None
+    engine.state.turn.address_lookup_note = None  # F2: fresh lookup diagnosis per turn
     engine._ident_directive = None  # zone 2: ingest may not run pre-identification
-    engine._reopen_note = False
+    engine.state.turn.reopen_note = False
     if not user_input:
         return
     # (-2) Ticket-dialogue capture: the previous scripted reply asked for the
@@ -1042,18 +1042,19 @@ def pre_turn_guards(engine, user_input: str) -> None:
     # the solver/walker. One-owner principle: the last question asked owns
     # the turn. An unclear answer does NOT burn the question — one re-ask,
     # only then written off as "stay with the current address".
-    if getattr(engine, "_reopen_confirm_pending", None) is not None and getattr(
-        engine, "_reopen_confirm_asked", False
+    if (
+        engine.state.identity.reopen_confirm_utterance is not None
+        and engine.state.identity.reopen_confirm_asked
     ):
         from .dialog_registry import clear as _q_clear
         from .identification_flow import _looks_like_address
         from .resolution import DETECTORS
 
-        pending = engine._reopen_confirm_pending
+        pending = engine.state.identity.reopen_confirm_utterance
         verdict = DETECTORS["yes_no"](user_input)
         if verdict == "yes" or _looks_like_address(user_input):
-            engine._reopen_confirm_pending = None
-            engine._reopen_confirm_asked = False
+            engine.state.identity.reopen_confirm_utterance = None
+            engine.state.identity.reopen_confirm_asked = False
             _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="confirmed")
             engine._reopen_identification(pending)
@@ -1073,24 +1074,24 @@ def pre_turn_guards(engine, user_input: str) -> None:
             if p.street.value and p.house.value:
                 engine._trace_note("reopen_identity", "new address already heard; engine resolve")
                 if engine._engine_resolve_from_slots():
-                    engine._just_identified = True
+                    engine.state.identity.just_identified = True
                     from .identification import ask_caller
 
                     if ask_caller() and not s.identity.caller_name:
-                        engine._result_pending = True
+                        engine.state.identity.result_pending = True
             return
         engine._resume_hold = True  # the answer belongs to THIS question, not the walker
         if verdict == "no":
-            engine._reopen_confirm_pending = None
-            engine._reopen_confirm_asked = False
+            engine.state.identity.reopen_confirm_utterance = None
+            engine.state.identity.reopen_confirm_asked = False
             _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="declined")
-        elif getattr(engine, "_reopen_confirm_asks", 1) < 2:
-            engine._reopen_reask = True  # the scripted layer re-asks the question
+        elif engine.state.identity.reopen_confirm_asks < 2:
+            engine.state.identity.reopen_reask_due = True  # the scripted layer re-asks the question
             engine.tracer.emit("decision", intent="reopen_confirm", action="reask")
         else:
-            engine._reopen_confirm_pending = None
-            engine._reopen_confirm_asked = False
+            engine.state.identity.reopen_confirm_utterance = None
+            engine.state.identity.reopen_confirm_asked = False
             _q_clear(engine, "reopen_confirm")
             engine.tracer.emit("decision", intent="reopen_confirm", action="declined_unclear")
         return
@@ -1121,7 +1122,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
     mid_process = not s.closing.case_closed and (
         not s.identity.customer_id
         or s.resolution.procedure is not None
-        or engine._result_pending
+        or engine.state.identity.result_pending
         or (bool(s.diagnosis.verdicts) and not (engine._news_told or s.diagnosis.outage_reported))
     )
     if mid_process and detect_farewell(user_input):
@@ -1140,7 +1141,11 @@ def pre_turn_guards(engine, user_input: str) -> None:
     # identification ladder's last rung) — record the answer verbatim (for the
     # RECORD, 5d rule) + a keyword relation read. The deferred check result goes
     # out in THIS turn's reply (see the RESULT facts directive).
-    if s.identity.customer_id and engine._result_pending and not s.identity.caller_name:
+    if (
+        s.identity.customer_id
+        and engine.state.identity.result_pending
+        and not s.identity.caller_name
+    ):
         from .identification import detect_caller_relation
         from .resolution import detect_farewell, is_real_question
 
@@ -1182,7 +1187,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # Frazynas (etalonas, 2026-09-03): the caller JUST introduced
                 # themselves — the next reply opens with a warm acceptance
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
-                engine._name_heard = True
+                engine.state.identity.caller_name_heard = True
             engine.tracer.emit(
                 "caller_intro", name=s.identity.caller_name, relation=s.identity.caller_relation
             )
@@ -1199,8 +1204,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 "nenurodyta",
             ):
                 if not _holder_name_matches(engine, s.identity.caller_name):
-                    engine._holder_clarify_open = True
-                    engine._holder_clarify_asked = False
+                    engine.state.identity.holder_clarify_open = True
+                    engine.state.identity.holder_clarify_asked = False
                     engine.tracer.emit("decision", intent="holder_name", action="mismatch_clarify")
         return
     if not s.identity.customer_id:
@@ -1231,11 +1236,11 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     p.city.propose(str(c["city"]), 1.0, SlotStatus.HEARD)
                 if engine._engine_resolve_from_slots():
                     engine._trace_note("address_confirm", "offer confirmed; engine resolve")
-                    engine._just_identified = True
+                    engine.state.identity.just_identified = True
                     from .identification import ask_caller
 
                     if ask_caller() and not s.identity.caller_name:
-                        engine._result_pending = True
+                        engine.state.identity.result_pending = True
                 return
             if verdict == "yes":
                 # A-2R-b (2026-09-07): a "taip" to an address confirm WITHOUT
@@ -1246,11 +1251,11 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 if p_y.street.value and p_y.house.value:
                     engine._trace_note("address_confirm", "slots confirmed; engine resolve")
                     if engine._engine_resolve_from_slots():
-                        engine._just_identified = True
+                        engine.state.identity.just_identified = True
                         from .identification import ask_caller
 
                         if ask_caller() and not s.identity.caller_name:
-                            engine._result_pending = True
+                            engine.state.identity.result_pending = True
                     return
             if verdict != "yes":
                 # Direct accept (arc v3.1): the caller DICTATED a full other address
@@ -1280,25 +1285,25 @@ def pre_turn_guards(engine, user_input: str) -> None:
                         "offer corrected with a full dictated address; engine resolve",
                     )
                     if engine._engine_resolve_from_slots():
-                        engine._just_identified = True
+                        engine.state.identity.just_identified = True
                         from .identification import ask_caller
 
                         if ask_caller() and not s.identity.caller_name:
-                            engine._result_pending = True
-                        engine._addr_confirm_note = (
+                            engine.state.identity.result_pending = True
+                        engine.state.turn.address_confirm_note = (
                             "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
                             f"adresas {s.identity.customer_address}. Atsakymo pradžioje "
                             "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
                             "pagal žemiau esančią kryptį."
                         )
                     else:
-                        engine._addr_confirm_note = (
+                        engine.state.turn.address_confirm_note = (
                             "- KLIENTAS PASAKĖ KITĄ ADRESĄ, bet jo patikrinti "
                             "nepavyko (žr. HEARD ADDRESS) — patikslink trūkstamą "
                             "dalį arba paprašyk pakartoti."
                         )
                 else:
-                    engine._addr_confirm_note = (
+                    engine.state.turn.address_confirm_note = (
                         "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI "
                         "nepatvirtino pasiūlyto adreso (girdisi neigimas ar "
                         "neaiškumas). NEkviesk resolve_address su pasiūlytu adresu. "
@@ -1331,12 +1336,12 @@ def pre_turn_guards(engine, user_input: str) -> None:
             ):
                 engine._trace_note("address_ask", "dictated address; engine resolve")
                 if engine._engine_resolve_from_slots():
-                    engine._just_identified = True
+                    engine.state.identity.just_identified = True
                     from .identification import ask_caller
 
                     if ask_caller() and not s.identity.caller_name:
-                        engine._result_pending = True
-                    engine._addr_confirm_note = (
+                        engine.state.identity.result_pending = True
+                    engine.state.turn.address_confirm_note = (
                         "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
                         f"adresas {s.identity.customer_address}. Atsakymo pradžioje "
                         "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
@@ -1347,12 +1352,12 @@ def pre_turn_guards(engine, user_input: str) -> None:
 
         if (
             detect_address_correction(user_input) or _mentions_other_street(engine, user_input)
-        ) and not getattr(engine, "_reopen_confirm_pending", None):
+        ) and not engine.state.identity.reopen_confirm_utterance:
             # Etalonas №3 (2026-09-03): PIRMA patvirtinimo klausimas, tik tada
             # identifikacija atsidaro iš naujo — STT darkymas nebemeta pokalbio
             # ant kito adreso be kliento „taip".
-            engine._reopen_confirm_pending = user_input
-            engine._reopen_confirm_asked = False
+            engine.state.identity.reopen_confirm_utterance = user_input
+            engine.state.identity.reopen_confirm_asked = False
             engine.tracer.emit("decision", intent="reopen_confirm", action="pending")
 
 

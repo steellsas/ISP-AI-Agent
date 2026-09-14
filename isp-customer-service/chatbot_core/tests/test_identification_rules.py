@@ -88,26 +88,26 @@ class TestAccountCodeRung:
         agent._identification_scripted_reply("Kosmonautų alėja 7")
         r = agent._identification_scripted_reply("Sakau — Kosmonautų alėja septyni")
         assert r and "abonento kodą" in r
-        assert agent._awaiting_account_code is True
+        assert agent.state.identity.account_code_mode is True
 
     def test_code_mode_passes_content_through(self, db_connection):
         """KURTUMO fix: adresas/pavardė kodo režime praleidžiami į normalią
         eigą, o ne atsimuša į „kodas atrodo taip"."""
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         from agent.identification_flow import _account_code_rung
 
         handled, reply = _account_code_rung(agent, agent.state, "Petraitis, pasižiūrėkit pavardę")
         assert handled is False and reply is None  # praleista — agentas klauso
         handled, reply = _account_code_rung(agent, agent.state, "Ginkūnai, Žeimių gatvė 12")
         assert handled is False
-        assert agent._awaiting_account_code is False  # režimas tyliai užgeso
+        assert agent.state.identity.account_code_mode is False  # režimas tyliai užgeso
 
     def test_explicit_no_code_closes(self, db_connection):
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         r = agent._identification_scripted_reply("Neturiu jokio kodo")
         assert agent.state.closing.case_closed and r and "abonentams" in r
 
@@ -117,7 +117,7 @@ class TestAccountCodeRung:
         r = agent._identification_scripted_reply("Vilnius, Gedimino prospektas 1")
         assert r and "Šiaulių mieste ir rajone" in r
         assert not agent.state.closing.case_closed
-        assert getattr(agent, "_addr_empty_turns", 0) == 0  # ne bandymas
+        assert agent.state.identity.address_empty_turns == 0  # ne bandymas
 
     def test_clarifying_turns_never_count(self, db_connection):
         """Gyva T-6: pavardės tikslinimas skaitiklių neliečia."""
@@ -129,7 +129,7 @@ class TestAccountCodeRung:
         for txt in ("Tetraitos", "Petraitis", "Pet raitis sakau"):
             handled, reply = _account_code_rung(agent, agent.state, txt)
             assert handled is False and reply is None
-        assert getattr(agent, "_addr_empty_turns", 0) == 0
+        assert agent.state.identity.address_empty_turns == 0
 
 
 class TestCitySuggestionWiring:
@@ -139,24 +139,24 @@ class TestCitySuggestionWiring:
     def test_confirmation_moves_the_city_slot(self, db_connection):
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._addr_city_suggestion = "Ginkūnai"
+        agent.state.identity.suggested_city = "Ginkūnai"
         agent._prefill_slots_from_text("Taip, Ginkūnuose")
         assert agent.state.identity.profile.city.value == "Ginkūnai"
-        assert agent._addr_city_suggestion is None
+        assert agent.state.identity.suggested_city is None
 
     def test_bare_yes_also_moves(self, db_connection):
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._addr_city_suggestion = "Ginkūnai"
+        agent.state.identity.suggested_city = "Ginkūnai"
         agent._prefill_slots_from_text("Taip taip")
         assert agent.state.identity.profile.city.value == "Ginkūnai"
 
     def test_other_answer_keeps_suggestion_open(self, db_connection):
         agent = _agent()
-        agent._addr_city_suggestion = "Ginkūnai"
+        agent.state.identity.suggested_city = "Ginkūnai"
         agent._prefill_slots_from_text("Palaukite, pasižiūrėsiu dokumentuose")
         assert agent.state.identity.profile.city.value is None
-        assert agent._addr_city_suggestion == "Ginkūnai"
+        assert agent.state.identity.suggested_city == "Ginkūnai"
 
 
 class TestReopenConfirmation:
@@ -171,8 +171,8 @@ class TestReopenConfirmation:
 
     def test_correction_asks_before_reopening(self, db_connection):
         agent = self._identified()
-        agent._reopen_confirm_pending = "iš tikrųjų skambinu dėl Tilžės g. 60"
-        agent._reopen_confirm_asked = False
+        agent.state.identity.reopen_confirm_utterance = "iš tikrųjų skambinu dėl Tilžės g. 60"
+        agent.state.identity.reopen_confirm_asked = False
         reply = agent._identification_scripted_reply("iš tikrųjų skambinu dėl Tilžės g. 60")
         assert reply and "tikrai" in reply and "Vilniaus g. 33-2" in reply
         assert agent.state.identity.customer_id == "CUST112"  # dar NEperjungta
@@ -181,33 +181,33 @@ class TestReopenConfirmation:
         # Atsakymą skaito pre_turn_guards (A-2: kad solveris/walker'is jo
         # nesuvartotų) — testas kviečia gyvą kelią.
         agent = self._identified()
-        agent._reopen_confirm_pending = "dėl Tilžės g. 60"
-        agent._reopen_confirm_asked = True
+        agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
+        agent.state.identity.reopen_confirm_asked = True
         agent._pre_turn_guards("Taip, dėl kito")
         assert agent.state.identity.customer_id is None  # atidaryta iš naujo
 
         agent2 = self._identified()
-        agent2._reopen_confirm_pending = "dėl Tilžės g. 60"
-        agent2._reopen_confirm_asked = True
+        agent2.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
+        agent2.state.identity.reopen_confirm_asked = True
         agent2._pre_turn_guards("Ne ne, likim prie šito")
         assert agent2.state.identity.customer_id == "CUST112"  # liko
-        assert agent2._reopen_confirm_pending is None
+        assert agent2.state.identity.reopen_confirm_utterance is None
 
     def test_unclear_answer_reasks_not_burns(self, db_connection):
         """A-2 gyva yda: neaiškus atsakymas klausimo nebesudegina — vienas
         pakartojimas, o walker'is tą turn'ą laikomas (hold)."""
         agent = self._identified()
-        agent._reopen_confirm_pending = "dėl Tilžės g. 60"
-        agent._reopen_confirm_asked = True
-        agent._reopen_confirm_asks = 1
+        agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
+        agent.state.identity.reopen_confirm_asked = True
+        agent.state.identity.reopen_confirm_asks = 1
         agent._pre_turn_guards("Nu kaip čia dabar pasakyt")
-        assert agent._reopen_confirm_pending is not None  # klausimas gyvas
+        assert agent.state.identity.reopen_confirm_utterance is not None  # klausimas gyvas
         assert agent._resume_hold is True  # walker'is nesuvartos turn'o
         r = agent._identification_scripted_reply("Nu kaip čia dabar pasakyt")
         assert r and "KITO adreso" in r  # pakartojimas
         # Antras neaiškus — nurašom (liekam prie esamo), be amžino ciklo.
         agent._pre_turn_guards("Mhm chm")
-        assert agent._reopen_confirm_pending is None
+        assert agent.state.identity.reopen_confirm_utterance is None
         assert agent.state.identity.customer_id == "CUST112"
 
     def test_address_question_is_answered(self, db_connection):
@@ -225,8 +225,8 @@ class TestReopenConfirmation:
         agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "router_hung"}
         agent._bg_diagnosis = '{"success": true}'
         agent.state.identity.phone_candidate = {"customer_id": "CUST112", "street": "Vilniaus g."}
-        agent._reopen_confirm_pending = "mano adresas yra Tilžės gatvė 60"
-        agent._reopen_confirm_asked = True
+        agent.state.identity.reopen_confirm_utterance = "mano adresas yra Tilžės gatvė 60"
+        agent.state.identity.reopen_confirm_asked = True
         agent._pre_turn_guards("Taip taip, dėl KITO adreso skambinu")
         assert agent.state.identity.customer_id is None  # sena tapatybė numesta
         assert agent._bg_diagnosis is None  # telemetrija išmesta kartu
@@ -234,14 +234,14 @@ class TestReopenConfirmation:
         assert agent.state.identity.phone_candidate is None  # senas adresas nebesiūlomas
         assert agent.state.intake.problem_type == "internet_down"  # problema LIEKA
         # Tilžės 60 pabandyta iš karto → „koks butas?" nota reply sluoksniui.
-        assert agent._addr_diag_note or agent._db_address_note
+        assert agent.state.turn.address_lookup_note or agent.state.turn.db_address_note
 
     def test_garbled_answer_does_not_stomp_good_pending_slots(self, db_connection):
         """P1 gyva: pending davė Tilžės 60 (conf 1.0), atsakymo darkymas
         „Tildžiai 660-3" jo nebeperrašo — resolve eina su 60."""
         agent = self._identified()
-        agent._reopen_confirm_pending = "mano adresas yra Tilžės gatvė 60"
-        agent._reopen_confirm_asked = True
+        agent.state.identity.reopen_confirm_utterance = "mano adresas yra Tilžės gatvė 60"
+        agent.state.identity.reopen_confirm_asked = True
         agent._pre_turn_guards("Taip, dėl KITO adreso. Dėl Tildžiai 660-3.")
         assert agent.state.identity.profile.house.value == "60"  # ne 660
 
@@ -258,14 +258,14 @@ class TestReopenConfirmation:
 
         handled, reply = _account_code_rung(agent, agent.state, "Taip.")
         assert handled is False and reply is None
-        assert getattr(agent, "_addr_empty_turns", 0) == 0
+        assert agent.state.identity.address_empty_turns == 0
 
     def test_confirmed_reopen_commits_single_contract_address(self, db_connection):
         """Naujas adresas be butų (Vilniaus g. 29) — po „taip" identifikacija
         įvyksta TĄ PATĮ turn'ą, be papildomų klausimų."""
         agent = self._identified()
-        agent._reopen_confirm_pending = "skambinu dėl Vilniaus gatvės 29"
-        agent._reopen_confirm_asked = True
+        agent.state.identity.reopen_confirm_utterance = "skambinu dėl Vilniaus gatvės 29"
+        agent.state.identity.reopen_confirm_asked = True
         agent._pre_turn_guards("Taip")
         assert agent.state.identity.customer_id == "CUST009"  # nauja sutartis prisirišo
 
@@ -328,8 +328,8 @@ class TestQuestionRegistry:
         from agent.dialog_registry import active
 
         agent = self._identified()
-        agent._reopen_confirm_pending = "dėl Tilžės g. 60"
-        agent._reopen_confirm_asked = False
+        agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
+        agent.state.identity.reopen_confirm_asked = False
         agent._identification_scripted_reply("dėl Tilžės g. 60")  # ask
         q = active(agent)
         assert q and q.owner == "safety" and q.key == "reopen_confirm" and q.asks == 1
@@ -344,8 +344,8 @@ class TestQuestionRegistry:
         from agent.dialog_registry import active
 
         agent = self._identified()
-        agent._reopen_confirm_pending = "dėl Vilniaus gatvės 29"
-        agent._reopen_confirm_asked = False
+        agent.state.identity.reopen_confirm_utterance = "dėl Vilniaus gatvės 29"
+        agent.state.identity.reopen_confirm_asked = False
         agent._identification_scripted_reply("dėl Vilniaus gatvės 29")
         agent._pre_turn_guards("Taip")
         assert active(agent) is None
@@ -532,7 +532,7 @@ class TestQuestionRegistry:
         from agent.dialog_registry import active, register
 
         agent = self._identified()
-        agent._result_pending = True
+        agent.state.identity.result_pending = True
         register(agent, "ident", "caller_name")
         agent._pre_turn_guards("Paulius mano vardas")
         assert agent.state.identity.caller_name == "Paulius"
@@ -546,7 +546,7 @@ class TestQuestionRegistry:
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         _account_code_rung(agent, agent.state, "AB 10104")
         q = active(agent)
         assert q and q.owner == "ident" and q.key == "address_offer"
@@ -588,8 +588,8 @@ class TestHolderNameCheck:
         agent.state.identity.customer_id = "CUST009"
         agent.state.identity.customer_name = "Giedrius Giedraitis"
         agent.state.identity.caller_name = "Petras"
-        agent._holder_clarify_open = True
-        agent._holder_clarify_asked = False
+        agent.state.identity.holder_clarify_open = True
+        agent.state.identity.holder_clarify_asked = False
         reply = agent._identification_scripted_reply("Petras, aš savininkas")
         assert reply and "kitu vardu" in reply  # scripted, deterministinis
         assert "Giedri" not in reply  # DB vardas NIEKADA negarsinamas
@@ -599,8 +599,8 @@ class TestHolderNameCheck:
         agent.state.identity.customer_id = "CUST009"
         agent.state.identity.caller_name = "Petras"
         agent.state.identity.caller_relation = "holder"
-        agent._holder_clarify_open = True
-        agent._holder_clarify_asked = True  # klausimas jau nuskambėjo
+        agent.state.identity.holder_clarify_open = True
+        agent.state.identity.holder_clarify_asked = True  # klausimas jau nuskambėjo
         agent._prefill_slots_from_text("Žmonos vardu sudaryta sutartis")
         assert agent.state.identity.caller_relation != "holder"
 
@@ -680,19 +680,19 @@ class TestOtherStreetSignal:
         agent = self._identified()
         msg = "Atsiprašau su maišiu, mano adaras yra Tilžės gatvė 60"
         self._turn(agent, msg)
-        assert agent._reopen_confirm_pending  # kandidatas užfiksuotas
+        assert agent.state.identity.reopen_confirm_utterance  # kandidatas užfiksuotas
         r = agent._identification_scripted_reply(msg)
         assert r and "KITO adreso" in r  # patvirtinimo klausimas
 
     def test_own_street_number_is_content(self, db_connection):
         agent = self._identified()
         self._turn(agent, "Nei 1 lemputė nedega ant to routerio")
-        assert not getattr(agent, "_reopen_confirm_pending", None)
+        assert not agent.state.identity.reopen_confirm_utterance
 
     def test_no_digit_no_trigger(self, db_connection):
         agent = self._identified()
         self._turn(agent, "Kaimynas iš Tilžės gatvės sakė tas pats")
-        assert not getattr(agent, "_reopen_confirm_pending", None)
+        assert not agent.state.identity.reopen_confirm_utterance
 
 
 class TestCodeHoles:
@@ -706,7 +706,7 @@ class TestCodeHoles:
         agent._identification_scripted_reply("Nežinau adreso")
         r = agent._identification_scripted_reply("Negaliu pasakyti")  # warn
         assert r and "negalėsiu" in r
-        assert agent._awaiting_account_code is True
+        assert agent.state.identity.account_code_mode is True
         agent._identification_scripted_reply("10104")
         assert agent.state.identity.phone_candidate
         assert agent.state.identity.phone_candidate["customer_id"] == "CUST104"
@@ -724,7 +724,7 @@ class TestCodeHoles:
     def test_code_talk_without_digits_gets_scripted_help(self, db_connection):
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         r = agent._identification_scripted_reply("Nu, gerai, abonento kodą pasakysiu. A. B.")
         assert r and "penki skaitmenys" in r  # scripted, ne LLM haliucinacija
 
@@ -733,7 +733,7 @@ class TestCodeHoles:
         adresą patvirtinimui — klientas pagauna klaidą prieš einant toliau."""
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         from agent.identification_flow import _account_code_rung
 
         handled, r = _account_code_rung(agent, agent.state, "Kodas dešimt šimtas keturi, 10104")
@@ -744,7 +744,7 @@ class TestCodeHoles:
     def test_missed_code_is_echoed_too(self, db_connection):
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         from agent.identification_flow import _account_code_rung
 
         handled, r = _account_code_rung(agent, agent.state, "AB 99999")

@@ -60,7 +60,7 @@ def maybe_close_inform(engine: Any, user_input: str | None) -> None:
     # An OUTAGE report counts as the news told — it is delivered the moment
     # outage_reported flips (a different path than the billing script).
     if (
-        engine._result_pending
+        engine.state.identity.result_pending
         or engine._ticket_stage
         or not (engine._news_told or s.diagnosis.outage_reported)
     ):

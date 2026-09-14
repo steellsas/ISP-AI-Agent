@@ -757,7 +757,7 @@ class TestIdentificationF:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent._addr_diag_note = "- ADRESO PAIEŠKOS DIAGNOZĖ: gatvę RANDU, namo NĖRA."
+        agent.state.turn.address_lookup_note = "- ADRESO PAIEŠKOS DIAGNOZĖ: gatvę RANDU, namo NĖRA."
         block = agent._state_facts_block()
         assert block and "ADRESO PAIEŠKOS DIAGNOZĖ" in block
 

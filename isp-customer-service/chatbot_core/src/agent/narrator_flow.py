@@ -444,12 +444,12 @@ def state_facts_block(engine) -> str | None:
             )
     # Per-turn guards (deterministic, set in _pre_turn_guards) lead the block —
     # they override the model's own reading of the last reply.
-    if getattr(engine, "_addr_confirm_note", None):
-        facts.append(engine._addr_confirm_note)
+    if engine.state.turn.address_confirm_note:
+        facts.append(engine.state.turn.address_confirm_note)
     # F2: the failed lookup's per-level diagnosis — the narrator tells the
     # caller what WAS found and asks to correct only the missing part.
-    if getattr(engine, "_addr_diag_note", None) and not s.identity.customer_id:
-        facts.append(engine._addr_diag_note)
+    if engine.state.turn.address_lookup_note and not s.identity.customer_id:
+        facts.append(engine.state.turn.address_lookup_note)
     # F3 (Andrius 2026-08-20): a caller who is NOT giving the address gets ONE
     # warm encouragement with the WHY and the hints — never an endless re-ask.
     if (
@@ -457,9 +457,9 @@ def state_facts_block(engine) -> str | None:
         and s.intake.problem_type
         and s.dialog.turn_count >= 4
         and not s.identity.profile.street.value
-        and not getattr(engine, "_addr_encouraged", False)
+        and not engine.state.identity.address_encouraged
     ):
-        engine._addr_encouraged = True
+        engine.state.identity.address_encouraged = True
         facts.append(
             "- PARAGINIMAS DĖL ADRESO (vieną kartą, šiltai): paaiškink, KODĖL "
             "adreso reikia — be jo nematai kliento linijos ir negali patikrinti "
@@ -505,7 +505,7 @@ def state_facts_block(engine) -> str | None:
             "trumpai atsakyk. Jokių ilgų paaiškinimų iš naujo. Baik klausimu "
             "„Ar dar kuo galiu padėti?“."
         )
-    if getattr(engine, "_reopen_note", False) and not s.identity.customer_id:
+    if engine.state.turn.reopen_note and not s.identity.customer_id:
         facts.append(
             "- KLIENTAS PATIKSLINO: skambina dėl KITO adreso nei buvo nustatyta. "
             "Atsiprašyk vienu sakiniu ir paprašyk pasakyti adresą, dėl kurio "
@@ -575,8 +575,8 @@ def state_facts_block(engine) -> str | None:
             f"state the address where the fault is and take THAT."
         )
     # DB-grounded verdict on the accumulated address (set in the prefill).
-    if engine._db_address_note and not s.identity.customer_id:
-        facts.append(engine._db_address_note)
+    if engine.state.turn.db_address_note and not s.identity.customer_id:
+        facts.append(engine.state.turn.db_address_note)
     # Extra verification questions declared in identification.yaml (e.g. the name),
     # asked while still identifying. Empty by default → nothing added.
     if not s.identity.customer_id:
@@ -713,7 +713,9 @@ def state_facts_block(engine) -> str | None:
     # this reply) — the deferred check result comes next turn, so the finding facts
     # are suppressed to keep the model from blurting it alongside the question.
     caller_pending = (
-        bool(s.identity.customer_id) and engine._result_pending and not s.identity.caller_name
+        bool(s.identity.customer_id)
+        and engine.state.identity.result_pending
+        and not s.identity.caller_name
     )
     if caller_pending:
         from .identification import caller_question
@@ -723,7 +725,7 @@ def state_facts_block(engine) -> str | None:
             f"NESAKYK. Šiame atsakyme TIK klausimas: „{caller_question()}“. "
             "Jokio rezultato, jokių instrukcijų."
         )
-    elif s.identity.customer_id and engine._result_pending and s.identity.caller_name:
+    elif s.identity.customer_id and engine.state.identity.result_pending and s.identity.caller_name:
         # The caller introduced themselves — deliver the deferred result NOW.
         facts.append("- REZULTATO PRISTATYMAS:" + engine._result_narration_tail())
     # KREIPINYS (live 2026-08-25: the LLM addressed the caller "Giedriau" — the
@@ -979,8 +981,8 @@ def state_facts_block(engine) -> str | None:
             "tada kitas žingsnis."
         )
     # Frazynas: the caller JUST introduced themselves — accept warmly, once.
-    if getattr(engine, "_name_heard", False):
-        engine._name_heard = False
+    if engine.state.identity.caller_name_heard:
+        engine.state.identity.caller_name_heard = False
         if s.identity.caller_name and s.identity.caller_name != "nenurodyta":
             facts.append(
                 f"- KLIENTAS PRISISTATĖ: pradėk šiltu priėmimu — „Malonu, "
@@ -1203,10 +1205,10 @@ def mark_step_presented(engine) -> None:
     # the strategy step's question was NOT asked this reply — do not mark it. Once
     # the caller introduced themselves and the RESULT was narrated, the deferral
     # closes (inform news counted as told).
-    if s.identity.customer_id and engine._result_pending:
+    if s.identity.customer_id and engine.state.identity.result_pending:
         if not s.identity.caller_name:
             return  # the reply asked WHO is calling — nothing else was presented
-        engine._result_pending = False
+        engine.state.identity.result_pending = False
         if s.resolution.procedure is None:
             engine._news_told = True
     r = engine.state.resolution.procedure
@@ -1296,7 +1298,7 @@ def result_narration_tail(engine) -> str:
     from .identification import ask_caller, caller_question
 
     if ask_caller() and not engine.state.identity.caller_name:
-        engine._result_pending = True
+        engine.state.identity.result_pending = True
         return (
             " Identifikacijos pabaiga: patikra atlikta TYLIAI, bet rezultato dar "
             f"NESAKYK. Šiame atsakyme TIK: „{caller_question()}“ (galima trumpai "
@@ -1384,7 +1386,7 @@ def update_state_from_observation(engine, action: str, observation: str):
             if not obs_data.get("success"):
                 from .identification_flow import address_diag_note
 
-                engine._addr_diag_note = address_diag_note(obs_data)
+                engine.state.turn.address_lookup_note = address_diag_note(obs_data)
                 res_levels = obs_data.get("resolution") or {}
                 street_lvl = res_levels.get("street") or {}
                 # HONEST not-exists (Andrius 2026-09-10 rev.2): every failed
@@ -1396,17 +1398,18 @@ def update_state_from_observation(engine, action: str, observation: str):
                 if _given and street_lvl.get("status") not in (None, "ok", "not_in_city"):
                     from .identification_flow import _register_street_attempt
 
-                    if _register_street_attempt(engine, _given) == "identical" and not getattr(
-                        engine, "_street_not_exists_said", False
+                    if (
+                        _register_street_attempt(engine, _given) == "identical"
+                        and not engine.state.identity.street_not_exists_said
                     ):
-                        engine._street_not_exists_due = True
+                        engine.state.identity.street_not_exists_due = True
                 # Vietovės PASIŪLYMAS (T-5, 2026-09-04): „Žeimių g. yra
                 # Ginkūnuose" — įsimenam siūlomą vietovę; klientui patvirtinus
                 # miesto slotas persijungia (prefill vielos) ir paieška vyksta
                 # TEN. Tikslinimas NĖRA bandymas — fails nekeliam.
                 elsewhere = street_lvl.get("found_elsewhere") or []
                 if street_lvl.get("status") == "not_in_city" and elsewhere:
-                    engine._addr_city_suggestion = elsewhere[0].get("city")
+                    engine.state.identity.suggested_city = elsewhere[0].get("city")
                 # №2 (perdirbta 2026-09-04): nesėkme laikoma tik GATVĖS/NAMO
                 # lygmens fiasko; „trūksta buto/pavardės" ar vietovės
                 # pasiūlymas — tikslinimas, ne nesėkmė.
@@ -1421,17 +1424,19 @@ def update_state_from_observation(engine, action: str, observation: str):
                     street_lvl.get("status") not in (None, "ok")
                     or house_lvl.get("status") not in (None, "ok")
                 ):
-                    engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
+                    engine.state.identity.address_resolve_failures = (
+                        engine.state.identity.address_resolve_failures + 1
+                    )
             else:
-                engine._addr_diag_note = None
-                engine._addr_city_suggestion = None
+                engine.state.turn.address_lookup_note = None
+                engine.state.identity.suggested_city = None
                 # B-wave registry: identification committed on ANY successful
                 # resolve (the LLM's own tool call included) — the ident
                 # question must never outlive it and freeze the walker.
                 from .dialog_registry import clear_owner as _q_clear_owner
 
                 _q_clear_owner(engine, "ident")
-                engine._addr_resolve_fails = 0
+                engine.state.identity.address_resolve_failures = 0
 
         if action in ("find_customer", "resolve_address") and obs_data.get("success"):
             # resolve_address nests the normalized profile under `customer`;

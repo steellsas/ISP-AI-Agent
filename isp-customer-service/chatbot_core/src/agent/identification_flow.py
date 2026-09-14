@@ -106,12 +106,12 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         # №4 tęsinys (etalonas 2026-09-03): atsakymas į savininko patikslinimą
         # atnaujina santykį („žmonos vardu sudaryta" → family) — vienas skaitymas.
         if (
-            getattr(engine, "_holder_clarify_open", False)
-            and getattr(engine, "_holder_clarify_asked", False)
+            engine.state.identity.holder_clarify_open
+            and engine.state.identity.holder_clarify_asked
             and text
         ):
-            engine._holder_clarify_open = False
-            engine._holder_clarify_asked = False
+            engine.state.identity.holder_clarify_open = False
+            engine.state.identity.holder_clarify_asked = False
             from .identification import detect_caller_relation as _dcr
 
             _rel = _dcr(text)
@@ -170,19 +170,20 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # NLU wave block 2 (live 2026-09-07: "Šiauliai, Tilžės gatvė 60, butas 3"
     # was swallowed in code mode): a FULL dictation — an explicit street WORD
     # in the turn — wakes the reader; bare digits stay silenced (the code).
-    if getattr(engine, "_awaiting_account_code", False):
+    if engine.state.identity.account_code_mode:
         low_cd = (text or "").lower()
         if not any(w in low_cd for w in ("gatv", " g.", "prospekt", "alėj", "alej", "aikšt")):
             return
     # NLU wave block 4: the spelling turn carries LETTERS ("K kaip Kaunas"),
     # not an address — the fuzzy reader would turn the anchor words into a
     # city/street; the rung's spell reader owns this turn.
-    if getattr(engine, "_spell_mode", False):
+    if engine.state.identity.spell_mode:
         return
     # NLU wave D1 (live 2026-09-10: STT invented "Žeimių g.", the slot locked
     # at conf 1.0 and the ladder pushed Ginkūnai for THREE turns over "aš
     # apie Žeimių gatvę nieko NESAKIAU"): a denial naming the heard street
     # DROPS it — and counts as a real miss on the road to the spelling round.
+    denied_street = None
     _low_d = (text or "").lower()
     if s.identity.profile.street.value and any(
         m in _low_d for m in ("nesakiau", "nesakau", "ne apie")
@@ -193,16 +194,18 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         if _st and _st in _fd(text or ""):
             from .slots import Slot as _Slot
 
-            engine._denied_street = _fd(str(s.identity.profile.street.value))
+            denied_street = _fd(str(s.identity.profile.street.value))
             s.identity.profile.street = _Slot()
             s.identity.profile.house = _Slot()
-            engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
-            engine._addr_diag_note = None
+            engine.state.identity.address_resolve_failures = (
+                engine.state.identity.address_resolve_failures + 1
+            )
+            engine.state.turn.address_lookup_note = None
             engine.tracer.emit(
                 "decision",
                 intent="street_denied",
                 action="slot_dropped",
-                fails=engine._addr_resolve_fails,
+                fails=engine.state.identity.address_resolve_failures,
             )
             # NE return: sakinys gali nešti ir PATAISYMĄ ("nesakiau Žeimių,
             # sakiau TILŽĖS gatvė 60") — skaitymas tęsiasi, tik paneigtos
@@ -216,7 +219,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # klientas patvirtino — tikrinamas kitas regionas"): resolveris pasakė
     # „Žeimių g. yra Ginkūnuose", klientas patvirtina (arba pamini kaimą) —
     # miesto slotas persijungia ir kita paieška vyksta TEN, ne Šiauliuose.
-    sug = getattr(engine, "_addr_city_suggestion", None)
+    sug = engine.state.identity.suggested_city
     if sug and text:
         from .evidence import _fold as _fold_sug
         from .resolution import DETECTORS as _DET
@@ -226,7 +229,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
             from .slots import SlotStatus as _SS
 
             s.identity.profile.city.propose(str(sug), 0.95, _SS.RESOLVED)
-            engine._addr_city_suggestion = None
+            engine.state.identity.suggested_city = None
             engine.tracer.emit(
                 "decision", intent="city_suggestion", action="accepted", value=str(sug)
             )
@@ -265,8 +268,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # denial sentence ("apie Žeimių gatvę nesakiau" fuzzy-matches Žeimių) —
     # re-read the turn against the registry WITHOUT it, so a correction in
     # the same sentence ("…sakiau TILŽĖS gatvė 60") still lands.
-    _denied = getattr(engine, "_denied_street", None)
-    engine._denied_street = None
+    _denied = denied_street
     if _denied and reading.street:
         from .evidence import _fold as _fd2
 
@@ -297,8 +299,8 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
     )
     if _evid and (reading.street or reading.house or reading.apartment):
-        engine._addr_empty_turns = 0
-        engine._addr_unrecognized = 0
+        engine.state.identity.address_empty_turns = 0
+        engine.state.identity.address_unrecognized_turns = 0
 
     # If the caller names a DIFFERENT street than the pre-flight outage was
     # for, that outage is not theirs — drop it so its proactive instruction
@@ -340,7 +342,7 @@ def revalidate_accumulated_address(engine: Any) -> None:
     """
     from .react_agent import execute_tool
 
-    engine._db_address_note = None
+    engine.state.turn.db_address_note = None
     s = engine.state
     if s.identity.customer_id or not s.identity.profile.street.value:
         return
@@ -358,7 +360,7 @@ def revalidate_accumulated_address(engine: Any) -> None:
         return
     hint = res.get("hint")
     if hint:
-        engine._db_address_note = (
+        engine.state.turn.db_address_note = (
             f"- DB CHECK (everything heard so far → {args}): {hint} "
             "Act on THIS (the DB), not on the last thing you misheard; if it is a "
             "match, confirm that exact address; if a part is missing/unclear, ask "
@@ -407,12 +409,12 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     # address), and the identification counters and the account-code mode
     # return to a clean slate.
     s.identity.phone_candidate = None
-    engine._awaiting_account_code = False
-    engine._code_grace = 0
-    engine._addr_empty_turns = 0
-    engine._addr_unrecognized = 0
-    engine._addr_resolve_fails = 0
-    engine._addr_city_suggestion = None
+    engine.state.identity.account_code_mode = False
+    engine.state.identity.account_code_grace_turns = 0
+    engine.state.identity.address_empty_turns = 0
+    engine.state.identity.address_unrecognized_turns = 0
+    engine.state.identity.address_resolve_failures = 0
+    engine.state.identity.suggested_city = None
     engine._evidence_asks.clear()
     engine._evidence_last_ask_key = None
     engine._evidence_conflict = None
@@ -439,16 +441,16 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     from .slots import ClientProfileState
 
     s.identity.profile = ClientProfileState()
-    engine._db_address_note = None
+    engine.state.turn.db_address_note = None
     engine._news_told = False  # a new address may carry different news
-    engine._result_pending = False
+    engine.state.identity.result_pending = False
     engine._end_confirm_pending = False
     engine._resume_hold = False
     engine._bridge_bound = False  # a different account starts clean
     # Re-extract address parts from THIS utterance (the correction often carries
     # the new address: "ne, skambinu dėl Dainų 5").
     prefill_slots_from_text(engine, user_input)
-    engine._reopen_note = True
+    engine.state.turn.reopen_note = True
 
 
 def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
@@ -635,7 +637,7 @@ def _register_street_attempt(engine: Any, garble: str) -> str | None:
     g = _fold((garble or "").replace("gatvė", "").replace(" g.", "").strip())[:24].strip()
     if len(g) < 3:
         return None
-    attempts = getattr(engine, "_street_attempts", None) or []
+    attempts = engine.state.identity.street_attempts or []
     verdict: str | None = None
     for prev in attempts:
         if prev == g:
@@ -644,7 +646,7 @@ def _register_street_attempt(engine: Any, garble: str) -> str | None:
         if street_match_score(g, prev) >= 0.55:
             verdict = "similar"
     attempts.append(g)
-    engine._street_attempts = attempts[-4:]
+    engine.state.identity.street_attempts = attempts[-4:]
     return verdict
 
 
@@ -703,7 +705,7 @@ def _lookup_by_code(engine: Any, s: Any, code: str):
     if not res.get("success"):
         engine.tracer.emit("decision", intent="account_code", action="not_found", value=code)
         return None
-    engine._awaiting_account_code = False
+    engine.state.identity.account_code_mode = False
     addresses = res.get("addresses") or []
     primary = next((a for a in addresses if a.get("is_primary")), addresses[0] if addresses else {})
     s.identity.phone_candidate = {
@@ -766,23 +768,23 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     # caller may START spelling on their own — two "kaip <žodis>" pairs in an
     # address-phase turn ARE a letters answer, no mode needed.
     if (
-        not getattr(engine, "_spell_mode", False)
+        not engine.state.identity.spell_mode
         and user_input.lower().count(" kaip ") >= 2
         and (
-            getattr(engine, "_street_attempts", None)
+            engine.state.identity.street_attempts
             or "gatv" in (engine._last_agent_question() or "").lower()
         )
     ):
-        engine._spell_mode = True
+        engine.state.identity.spell_mode = True
         engine.tracer.emit("decision", intent="street_spell", action="client_initiated")
     # NLU wave block 4 (paraidžiui): the spelling answer is read FIRST — the
     # anchor-word first letters narrow the registry by prefix AND fuzzy the
     # last heard garble inside that subset (letters help fuzzy, never replace
     # it — Andrius 2026-09-10); a miss falls to the account-code rung.
-    if getattr(engine, "_spell_mode", False):
-        engine._spell_mode = False
+    if engine.state.identity.spell_mode:
+        engine.state.identity.spell_mode = False
         prefix = _spell_prefix(user_input)
-        _garble = (getattr(engine, "_street_attempts", None) or [None])[-1]
+        _garble = (engine.state.identity.street_attempts or [None])[-1]
         cand = (
             _street_by_prefix_and_garble(engine, prefix, _garble)
             if len(prefix) >= (1 if _garble else 2)
@@ -793,16 +795,16 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             from .slots import SlotStatus
 
             s.identity.profile.street.propose(cand, 0.9, SlotStatus.HEARD)
-            engine._addr_unrecognized = 0
-            engine._addr_empty_turns = 0
+            engine.state.identity.address_unrecognized_turns = 0
+            engine.state.identity.address_empty_turns = 0
             _q_register(engine, "ident", "address_ask")
             engine.tracer.emit(
                 "decision", intent="street_spell", action="matched", value=cand, prefix=prefix
             )
             return True, phrase("spell_result", raides=" ".join(prefix.upper()), gatve=cand)
         engine.tracer.emit("decision", intent="street_spell", action="miss", prefix=prefix)
-        engine._awaiting_account_code = True
-        engine._code_grace = 0
+        engine.state.identity.account_code_mode = True
+        engine.state.identity.account_code_grace_turns = 0
         from .dialog_registry import register as _q_register
 
         _q_register(engine, "ident", "account_code")
@@ -810,18 +812,18 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     # 0) Kodas girdimas VISADA (ne tik „režime") — klientas gali jį pasakyti
     # bet kada, taip pat po perspėjimo frazės.
     code = _extract_account_code(user_input)
-    if code and (getattr(engine, "_awaiting_account_code", False) or "ab" in user_input.lower()):
+    if code and (engine.state.identity.account_code_mode or "ab" in user_input.lower()):
         reply = _lookup_by_code(engine, s, code)
         if reply is not None:
             return True, reply
-        if getattr(engine, "_awaiting_account_code", False):
+        if engine.state.identity.account_code_mode:
             # A-3 transparency: say WHAT we heard — the caller sees where
             # the mishearing happened.
             from .dialog_registry import register as _q_register
 
             _q_register(engine, "ident", "account_code")
             return True, phrase("account_code_miss", kodas=_speak_code(code))
-    if getattr(engine, "_awaiting_account_code", False):
+    if engine.state.identity.account_code_mode:
         low = user_input.lower()
         explicit_no = any(
             m in low
@@ -852,10 +854,10 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         # normalią eigą; po poros tokių turn'ų kodo režimas tyliai užgęsta.
         # NE return: tušti turn'ai toliau artina perspėjimo/uždarymo ribą
         # (kodo režimas jos nebeįšaldo).
-        grace = getattr(engine, "_code_grace", 0) + 1
-        engine._code_grace = grace
+        grace = engine.state.identity.account_code_grace_turns + 1
+        engine.state.identity.account_code_grace_turns = grace
         if grace >= 2:
-            engine._awaiting_account_code = False
+            engine.state.identity.account_code_mode = False
     if not s.intake.problem_type:
         return False, None
     # HONEST not-exists branch (Andrius 2026-09-10 rev.2): the SAME transcript
@@ -863,13 +865,14 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     # a street simply is not in the service area. Say so and draw the client
     # boundary (paslaugos tik savo klientams); code listening arms so an
     # insisting client has a way in.
-    if getattr(engine, "_street_not_exists_due", False) and not getattr(
-        engine, "_street_not_exists_said", False
+    if (
+        engine.state.identity.street_not_exists_due
+        and not engine.state.identity.street_not_exists_said
     ):
-        engine._street_not_exists_due = False
-        engine._street_not_exists_said = True
-        engine._awaiting_account_code = True
-        engine._code_grace = 0
+        engine.state.identity.street_not_exists_due = False
+        engine.state.identity.street_not_exists_said = True
+        engine.state.identity.account_code_mode = True
+        engine.state.identity.account_code_grace_turns = 0
         from .dialog_registry import register as _q_register
 
         _q_register(engine, "ident", "street_not_exists")
@@ -890,9 +893,9 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         _city_mention
         and "šiaul" not in low
         and "siaul" not in low
-        and not getattr(engine, "_city_not_served_said", False)
+        and not engine.state.identity.city_not_served_said
     ):
-        engine._city_not_served_said = True
+        engine.state.identity.city_not_served_said = True
         from .dialog_registry import register as _q_register
 
         _q_register(engine, "ident", "city_not_served")
@@ -901,10 +904,10 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     # 1b) LOOP'as (Andrius: „kai loopas prasideda — galvojama apie kitus
     # būdus"): trys TIKROS gatvės/namo paieškos nesėkmės (tikslinimai —
     # butas/pavardė/vietovė — nesiskaito) → PIRMA paraidžiui, tada kodas.
-    if getattr(engine, "_addr_resolve_fails", 0) >= 3:
-        engine._addr_resolve_fails = 0
-        engine._awaiting_account_code = True
-        engine._code_grace = 0
+    if engine.state.identity.address_resolve_failures >= 3:
+        engine.state.identity.address_resolve_failures = 0
+        engine.state.identity.account_code_mode = True
+        engine.state.identity.account_code_grace_turns = 0
         from .dialog_registry import register as _q_register
 
         _q_register(engine, "ident", "account_code")
@@ -921,8 +924,8 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         # turn. Narrow rule: digit + street word, so "Koks adresas?" and the
         # warning (no digits) cannot freeze the counters.
         or (any(ch.isdigit() for ch in last_q) and ("gatv" in last_q or " g." in last_q))
-        or getattr(engine, "_addr_diag_note", None)
-        or getattr(engine, "_addr_city_suggestion", None)
+        or engine.state.turn.address_lookup_note
+        or engine.state.identity.suggested_city
     )
     if clarifying:
         return False, None
@@ -952,25 +955,25 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             key=len,
         )
         _rep = _register_street_attempt(engine, _word)
-        if _rep == "identical" and not getattr(engine, "_street_not_exists_said", False):
-            engine._street_not_exists_said = True
-            engine._awaiting_account_code = True
-            engine._code_grace = 0
+        if _rep == "identical" and not engine.state.identity.street_not_exists_said:
+            engine.state.identity.street_not_exists_said = True
+            engine.state.identity.account_code_mode = True
+            engine.state.identity.account_code_grace_turns = 0
             from .dialog_registry import register as _q_register
 
             _q_register(engine, "ident", "street_not_exists")
             engine.tracer.emit("decision", intent="street_not_exists", action="say")
             return True, phrase("street_not_exists")
     if _has_address_content(user_input) or alpha_attempt:
-        engine._addr_empty_turns = 0
+        engine.state.identity.address_empty_turns = 0
         # Turinys yra, bet registras jo VISAI neatpažįsta (nei sloto, nei
         # diagnozės) — po dviejų tokių siūlom kodą.
-        if not s.identity.profile.street.value and not getattr(engine, "_addr_diag_note", None):
-            n = getattr(engine, "_addr_unrecognized", 0) + 1
-            engine._addr_unrecognized = n
+        if not s.identity.profile.street.value and not engine.state.turn.address_lookup_note:
+            n = engine.state.identity.address_unrecognized_turns + 1
+            engine.state.identity.address_unrecognized_turns = n
             if n >= 2:
-                engine._awaiting_account_code = True
-                engine._code_grace = 0
+                engine.state.identity.account_code_mode = True
+                engine.state.identity.account_code_grace_turns = 0
                 from .dialog_registry import register as _q_register
 
                 _q_register(engine, "ident", "account_code")
@@ -979,17 +982,17 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
                 )
                 return True, phrase("account_code_ask")
         else:
-            engine._addr_unrecognized = 0
+            engine.state.identity.address_unrecognized_turns = 0
         return False, None
     # 3) Tuščias turn'as (jokio adreso turinio): perspėjimas → uždarymas.
-    n = getattr(engine, "_addr_empty_turns", 0) + 1
-    engine._addr_empty_turns = n
-    if n == max(2, limit - 2) and not getattr(engine, "_addr_warned", False):
-        engine._addr_warned = True
+    n = engine.state.identity.address_empty_turns + 1
+    engine.state.identity.address_empty_turns = n
+    if n == max(2, limit - 2) and not engine.state.identity.address_warned:
+        engine.state.identity.address_warned = True
         # A-banga P3a (gyva #3): perspėjimas MINI kodą — nuo šio momento kodo
         # klausymas įjungtas (praleidimo semantika turinį saugo).
-        engine._awaiting_account_code = True
-        engine._code_grace = 0
+        engine.state.identity.account_code_mode = True
+        engine.state.identity.account_code_grace_turns = 0
         from .dialog_registry import register as _q_register
 
         _q_register(engine, "ident", "address_need")
@@ -1032,10 +1035,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # patikslinimas (naratorius gyvai nurungė notą ir patvirtino „Jūs, Petrai,
     # esate savininkas"; privatumo taisyklė per svarbi improvizacijai). DB
     # vardo frazėje NĖRA; atsakymas kitą turn'ą atnaujina santykį (prefill).
-    if getattr(engine, "_holder_clarify_open", False) and not getattr(
-        engine, "_holder_clarify_asked", False
-    ):
-        engine._holder_clarify_asked = True
+    if engine.state.identity.holder_clarify_open and not engine.state.identity.holder_clarify_asked:
+        engine.state.identity.holder_clarify_asked = True
         from .dialog_registry import register as _q_register
 
         _q_register(engine, "ident", "holder_clarify")
@@ -1053,7 +1054,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         and is_real_question(user_input)
     ):
         if s.identity.customer_id and s.identity.customer_address:
-            engine._reopen_reask = False  # the info answer replaces the re-ask
+            engine.state.identity.reopen_reask_due = False  # the info answer replaces the re-ask
             engine.tracer.emit("decision", intent="address_info", action="disclose")
             return phrase("current_address_info", adresas=s.identity.customer_address)
         if not s.identity.customer_id:
@@ -1071,20 +1072,22 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # This layer ASKS the address-change question; the ANSWER is read by
     # pre_turn_guards (the deterministic turn head) so the solver/walker
     # cannot consume it (live A-2 defect). Only the ask/re-ask side is here.
-    pending_reopen = getattr(engine, "_reopen_confirm_pending", None)
+    pending_reopen = engine.state.identity.reopen_confirm_utterance
     if pending_reopen is not None:
         from .dialog_registry import register as _q_register
 
         adresas = s.identity.customer_address or "dabartinio adreso"
-        if not getattr(engine, "_reopen_confirm_asked", False):
-            engine._reopen_confirm_asked = True
-            engine._reopen_confirm_asks = 1
+        if not engine.state.identity.reopen_confirm_asked:
+            engine.state.identity.reopen_confirm_asked = True
+            engine.state.identity.reopen_confirm_asks = 1
             _q_register(engine, "safety", "reopen_confirm", adresas=adresas)
             engine.tracer.emit("decision", intent="reopen_confirm", action="ask")
             return phrase("reopen_confirm", adresas=adresas)
-        if getattr(engine, "_reopen_reask", False):
-            engine._reopen_reask = False
-            engine._reopen_confirm_asks = getattr(engine, "_reopen_confirm_asks", 1) + 1
+        if engine.state.identity.reopen_reask_due:
+            engine.state.identity.reopen_reask_due = False
+            engine.state.identity.reopen_confirm_asks = (
+                engine.state.identity.reopen_confirm_asks + 1
+            )
             _q_register(engine, "safety", "reopen_confirm", adresas=adresas)
             return phrase("repeat_ack") + phrase("reopen_confirm", adresas=adresas)
         return None  # the guards already read the answer; the narrator continues
@@ -1261,11 +1264,11 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         and (s.intake.problem_type or s.identity.customer_id)
         # Kodo fazės klausimas („o kur jį rasti?") eina į pakopą — retry
         # frazė su UŽUOMINA kur ieškoti ir YRA atsakymas (etalonas №2).
-        and not getattr(engine, "_awaiting_account_code", False)
+        and not engine.state.identity.account_code_mode
         # NLU wave block 4: "V KAIP Vilnius" is the spelling answer, not a
         # question — the rung's spell reader owns the armed turn; two "kaip"
         # pairs are spelling-shaped even without the mode (client-initiated).
-        and not getattr(engine, "_spell_mode", False)
+        and not engine.state.identity.spell_mode
         and user_input.lower().count(" kaip ") < 2
     ):
         return None  # off-script — the LLM answers; guards kept the ladder state
@@ -1300,7 +1303,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # neaiškėja, metodas keičiamas; kodo laukimo fazė skaito atsakymą.
         # Telefono kandidato pasiūlymo srautas neskaičiuojamas (jis turi savo
         # patvirtinimo mechaniką).
-        if getattr(engine, "_awaiting_account_code", False) or not s.identity.phone_candidate:
+        if engine.state.identity.account_code_mode or not s.identity.phone_candidate:
             handled, reply = _account_code_rung(engine, s, user_input)
             if handled:
                 return reply
@@ -1346,7 +1349,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if (
         s.resolution.procedure is None
         and (engine._news_told or s.diagnosis.outage_reported)
-        and not engine._result_pending
+        and not engine.state.identity.result_pending
     ):
         low = (user_input or "").lower()
         wants_more = is_real_question(user_input) or any(
@@ -1402,7 +1405,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             engine.tracer.emit("clarity", reason=_reason, salyga=_salyga, told=engine._news_told)
         engine.tracer.emit("decision", intent="wrap_up", action="close", to=s.closing.closed_reason)
         return phrase("goodbye")
-    if not engine._result_pending:
+    if not engine.state.identity.result_pending:
         return None
     if not s.identity.caller_name:
         # The caller-intro question turn (with the address echo on a fresh
@@ -1410,10 +1413,10 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # here, and without the cue the caller thinks nothing started
         # (live 2026-08-07: "nepasako, kad patikrins").
         parts = []
-        if engine._just_identified and s.identity.customer_address:
+        if engine.state.identity.just_identified and s.identity.customer_address:
             parts.append(phrase("echo_address", adresas=s.identity.customer_address))
             parts.append(phrase("checking_note"))
-        engine._just_identified = False
+        engine.state.identity.just_identified = False
         from .dialog_registry import register as _q_register
 
         _q_register(engine, "ident", "caller_name")
@@ -1441,7 +1444,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # true by registering the ticket itself before the words go out.
         if reason in ("node_fault_unregistered", "switch_unreachable") and not s.ticket.ticket_id:
             engine._register_ticket_from_state(None)
-        engine._result_pending = False
+        engine.state.identity.result_pending = False
         engine._news_told = True
         engine.tracer.emit("decision", intent="inform", action="template", reason=reason)
         return " ".join([phrase("thanks"), inf, phrase("anything_else")])
@@ -1456,7 +1459,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if reason == "active_outage" and (s.identity.preflight_outage or {}).get("eta"):
         bits.append(f"Numatomas atstatymas iki {s.identity.preflight_outage['eta']}.")
     bits.append(phrase("anything_else"))
-    engine._result_pending = False
+    engine.state.identity.result_pending = False
     engine._news_told = True
     return " ".join(b for b in bits if b)
 

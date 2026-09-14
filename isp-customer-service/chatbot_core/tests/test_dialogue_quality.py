@@ -293,7 +293,7 @@ class TestTurnGrammar:
     def test_name_acceptance_is_one_shot(self, db_connection):
         agent = self._agent()
         agent.state.identity.caller_name = "Tomas"
-        agent._name_heard = True
+        agent.state.identity.caller_name_heard = True
         block = agent._state_facts_block() or ""
         assert "Malonu, Tomas" in block
         assert "Malonu" not in (agent._state_facts_block() or "")

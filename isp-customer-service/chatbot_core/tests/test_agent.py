@@ -817,7 +817,7 @@ class TestAddressGuards:
             {"role": "assistant", "content": "Ar skambinate dėl Tilžės g. 60, butas 3?"}
         )
         agent._pre_turn_guards("Taip, nebija")
-        assert agent._addr_confirm_note is not None  # veto: do not resolve the offer
+        assert agent.state.turn.address_confirm_note is not None  # veto: do not resolve the offer
         facts = agent._state_facts_block()
         assert facts and "NEPATVIRTINTAS" in facts
 
@@ -833,7 +833,7 @@ class TestAddressGuards:
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent._pre_turn_guards("Tai ne dėl to adresų skambinu")
         assert agent.state.identity.customer_id == "CUST101"  # NOT dropped yet
-        assert agent._reopen_confirm_pending
+        assert agent.state.identity.reopen_confirm_utterance
         reply = agent._identification_scripted_reply("Tai ne dėl to adresų skambinu")
         assert reply and "tikrai" in reply  # the confirmation question
         # A-2 (2026-09-07): the ANSWER is read in pre_turn_guards (the turn head,
@@ -841,7 +841,7 @@ class TestAddressGuards:
         agent._pre_turn_guards("Taip, dėl kito adreso")
         assert agent.state.identity.customer_id is None  # identity dropped after the yes
         assert agent.state.diagnosis.verdicts == {}  # per-account conclusions dropped
-        assert agent._reopen_note is True
+        assert agent.state.turn.reopen_note is True
 
 
 class TestRefuseOrTicket:
@@ -900,7 +900,7 @@ class TestIdentificationLadder:
         agent = ReactAgent(caller_phone="+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
-        agent._result_pending = True  # the caller question was posed last reply
+        agent.state.identity.result_pending = True  # the caller question was posed last reply
 
         agent._pre_turn_guards("Ona, aš žmona sutartį sudariusio")
 
@@ -932,8 +932,11 @@ class TestIdentificationLadder:
         assert agent.state.identity.customer_id == "CUST101"
         assert agent.state.diagnosis.verdicts["network"]["reason"] == "billing_suspended"
         # The reply is steered by the identified-note (ladder: caller question next).
-        assert agent._addr_confirm_note and "IDENTIFIKUOTA" in agent._addr_confirm_note
-        assert agent._result_pending is True
+        assert (
+            agent.state.turn.address_confirm_note
+            and "IDENTIFIKUOTA" in agent.state.turn.address_confirm_note
+        )
+        assert agent.state.identity.result_pending is True
 
     def test_farewell_garble_visai_gero(self):
         from agent.resolution import detect_farewell
@@ -978,7 +981,7 @@ class TestVoiceGuardsRound5:
         agent = ReactAgent(caller_phone="+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
-        agent._result_pending = True
+        agent.state.identity.result_pending = True
 
         agent._pre_turn_guards("Tomas? Ne, mano vardas Tomas, aš esu kaimynas.")
         assert agent.state.identity.caller_name is not None  # captured, not skipped as a question
@@ -990,7 +993,7 @@ class TestVoiceGuardsRound5:
         agent = ReactAgent(caller_phone="+37060020101")
         agent.state.identity.customer_id = "CUST101"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
-        agent._result_pending = True  # ladder still open, news NOT delivered
+        agent.state.identity.result_pending = True  # ladder still open, news NOT delivered
 
         agent._maybe_close_inform("viso gero")
         assert agent.state.closing.case_closed is False  # must NOT hang up before informing
@@ -1200,8 +1203,8 @@ class TestSideTopicNode:
         agent = self._diagnosing(monkeypatch)
         agent.state.resolution.procedure = None
         agent.state.identity.customer_address = "Šiauliai, Vilniaus g. 29"
-        agent._just_identified = True
-        agent._result_pending = True
+        agent.state.identity.just_identified = True
+        agent.state.identity.result_pending = True
         reply = agent._identification_scripted_reply(None)
         assert "Tuoj patikrinsiu ryšį" in reply
         assert "su kuo kalbu" in reply
@@ -1465,7 +1468,7 @@ class TestThinkerBoundaries:
     def test_defers_while_ladder_open(self, db_connection, monkeypatch):
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
-        agent._result_pending = True  # caller-intro / result still owed
+        agent.state.identity.result_pending = True  # caller-intro / result still owed
         assert agent.solver_drive_turn("taip") is None
 
     def test_defers_while_end_confirm_pending(self, db_connection, monkeypatch):

@@ -48,6 +48,42 @@ class IdentityState(BaseModel):
     preflight_outage: dict[str, Any] | None = None
     address_confirmed: bool = False
 
+    # --- identification ladder -------------------------------------------------
+    # Account-code rung: the caller is asked for the abonento kodas; grace turns
+    # let a partly dictated code finish before the ladder moves on.
+    account_code_mode: bool = False
+    account_code_grace_turns: int = 0
+    # Address rung counters / one-shot warnings.
+    address_empty_turns: int = 0
+    address_unrecognized_turns: int = 0
+    address_warned: bool = False
+    address_encouraged: bool = False
+    address_resolve_failures: int = 0
+    # A city the lookup found the street in, offered back to the caller.
+    suggested_city: str | None = None
+    # Failed street readings across turns — the SAME transcript repeating means
+    # "heard right, street absent" (honest not-exists).
+    street_attempts: list[str] = Field(default_factory=list)
+    street_not_exists_due: bool = False
+    street_not_exists_said: bool = False
+    city_not_served_said: bool = False
+    # Spelling rung — armed after the spell ask went out.
+    spell_mode: bool = False
+    # The caller was identified this turn (one-shot, read by the narration).
+    just_identified: bool = False
+    # Identified mid-turn: the diagnosis result is deferred behind the caller intro.
+    result_pending: bool = False
+    # Re-identification confirm ("ne mano adresas"): the utterance, ask state, re-ask.
+    reopen_confirm_utterance: str | None = None
+    reopen_confirm_asked: bool = False
+    reopen_confirm_asks: int = 1
+    reopen_reask_due: bool = False
+    # Holder-name clarification (privacy: the DB name is never spoken).
+    holder_clarify_open: bool = False
+    holder_clarify_asked: bool = False
+    # The caller just introduced themselves — accept warmly, once.
+    caller_name_heard: bool = False
+
     def set_customer(self, customer_id: str, name: str | None = None, address: str | None = None):
         """Commit the identified account (CRM lookup result)."""
         self.customer_id = customer_id
@@ -151,6 +187,11 @@ class TurnScratch(BaseModel):
     cancel_requested: bool = False
     side_topic_active: bool = False
     active_node: str | None = None
+    # Identification notes for this turn's facts block.
+    address_lookup_note: str | None = None
+    address_confirm_note: str | None = None
+    db_address_note: str | None = None
+    reopen_note: bool = False
 
 
 # The persisted groups, in declaration order (everything but the turn scratch).

@@ -52,7 +52,7 @@ class TestCodeModeDictation:
     def test_full_dictation_wakes_reader(self, db_connection):
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         agent._prefill_slots_from_text("Negaliu pasakyti kodo. Šiauliai, Tilžės gatvė 60, butas 3")
         p = agent.state.identity.profile
         assert p.street.value and "Tilž" in p.street.value
@@ -61,7 +61,7 @@ class TestCodeModeDictation:
     def test_bare_digits_stay_silenced(self, db_connection):
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._awaiting_account_code = True
+        agent.state.identity.account_code_mode = True
         agent._prefill_slots_from_text("10104")
         assert agent.state.identity.profile.street.value is None
 
@@ -112,7 +112,7 @@ class TestSpellingRung:
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
-        agent._spell_mode = True
+        agent.state.identity.spell_mode = True
         r = agent._identification_scripted_reply("V kaip Vilnius, I kaip Ieva, L kaip Lina")
         assert r and ("Vil" in r) and "namo" in r  # VIL pogrupio kandidatas
         assert (
@@ -125,7 +125,7 @@ class TestSpellingRung:
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
-        agent._addr_resolve_fails = 3
+        agent.state.identity.address_resolve_failures = 3
         r = agent._identification_scripted_reply("Tilžiatkas gatvė 6")
         assert r and "abonento kodą" in r
 
@@ -140,7 +140,7 @@ class TestSpellingRung:
         agent.state.identity.profile.house.propose("60", 1.0, SlotStatus.HEARD)
         agent._prefill_slots_from_text("Aš apie Žeimių gatvę nieko nesakiau")
         assert agent.state.identity.profile.street.value is None
-        assert agent._addr_resolve_fails >= 1  # žingsnis link paraidžiui
+        assert agent.state.identity.address_resolve_failures >= 1  # žingsnis link paraidžiui
 
     def test_denial_with_correction_keeps_new_street(self, db_connection):
         """D1: „nesakiau Žeimių — Tilžės gatvė 60" — pataisymas išgyvena."""
@@ -192,7 +192,7 @@ class TestSpellingRung:
         _register_street_attempt(agent, "Kosmonautų")  # pirmas girdėjimas
         handled, r = _account_code_rung(agent, agent.state, "Kosmonautų.")
         assert handled and r and "nerandu" in r and "mieste" in r  # pirma MIESTAS
-        assert agent._awaiting_account_code is True  # kodas girdimas, jei pasakys
+        assert agent.state.identity.account_code_mode is True  # kodas girdimas, jei pasakys
         assert not agent.state.closing.case_closed
 
     def test_letters_filter_garble_in_subset(self, db_connection):
@@ -221,12 +221,12 @@ class TestSpellingRung:
 
         agent = _agent()
         assert _register_street_attempt(agent, "Kosmonautų") is None
-        assert agent._street_not_exists_due is False
+        assert agent.state.identity.street_not_exists_due is False
 
     def test_spell_turn_prefill_silent(self, db_connection):
         """„K kaip Kaunas" spell turn'e NEtampa miestu Kaunu."""
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        agent._spell_mode = True
+        agent.state.identity.spell_mode = True
         agent._prefill_slots_from_text("K kaip Kaunas, U kaip upė")
         assert agent.state.identity.profile.city.value is None

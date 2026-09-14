@@ -209,17 +209,6 @@ class ReactAgent:
         # Streets/localities registry for deterministic NLU prefill (loaded lazily
         # on the first user turn so construction stays DB-free where possible).
         self._registry: tuple[list[str], list[str]] | None = None
-
-        # Per-turn guards (set in _pre_turn_guards): address-offer commit veto note and
-        # the one-turn "identification reopened" note.
-        self._addr_confirm_note: str | None = None
-        self._reopen_note = False
-        # Identification ladder: True while the check result is deferred behind the
-        # caller-intro question ("su kuo kalbu?"); cleared once the result is narrated.
-        self._result_pending = False
-        # Set when the ENGINE just committed the identity this turn — the scripted
-        # ladder reply then opens with the address echo.
-        self._just_identified = False
         # Farewell-mid-process clarify contract (2026-08-03): the confirm question is
         # pending / the walker holds one turn after the caller decides to continue.
         self._end_confirm_pending = False
@@ -238,17 +227,6 @@ class ReactAgent:
         # garbled goodbye cannot loop the wrap-up.
         self._wrap_content_turns = 0
         self._wrap_react_note = False
-        # NLU wave block 4 (2026-09-09): the spelling rung — armed after the
-        # spell_ask went out.
-        self._spell_mode = False
-        # NLU wave D1 (2026-09-10): the street the caller DENIED saying —
-        # never re-proposed from the denial sentence itself.
-        self._denied_street = None
-        # HONEST not-exists (2026-09-10 rev.2): failed street readings across
-        # turns; the SAME transcript repeating = heard right, street absent.
-        self._street_attempts = []
-        self._street_not_exists_due = False
-        self._street_not_exists_said = False
         # Bind discipline (2026-08-04): the bridge bind ran — never repeat it.
         self._bridge_bound = False
         # The bridge OFFER was spoken (drive path) — the first fix deferral says
@@ -374,11 +352,6 @@ class ReactAgent:
         # the turn advanced; _repeated_verbatim flags a near-identical re-ask.
         self._turn_start_key: tuple | None = None
         self._repeated_verbatim: bool = False
-
-        # DB-grounded address note (set per turn from the accumulated slots): the
-        # DB's verdict on everything heard so far, surfaced so the agent is steered
-        # by what the DB actually holds, not by the last garbled fragment.
-        self._db_address_note: str | None = None
 
         # OpenAI function-calling schemas passed to the LLM on every step.
         # The model picks which tools to call (tool_choice="auto"); this is the
