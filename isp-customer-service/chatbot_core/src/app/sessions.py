@@ -120,12 +120,22 @@ class SessionManager:
         self._hub = hub
         self._settings = settings
         self._sessions: dict[str, ManagedSession] = {}
+        # One checkpoint saver for every session in the process, opened on first
+        # use and closed on shutdown.
+        self._checkpointer = None
+
+    def _saver(self):
+        if self._checkpointer is None:
+            from agent.graph_v2.checkpoint import make_checkpointer
+
+            self._checkpointer = make_checkpointer(self._settings.checkpoint_path)
+        return self._checkpointer
 
     # --- lifecycle ----------------------------------------------------------
 
     async def create(self, caller_phone: str = "unknown") -> dict[str, Any]:
         def _start() -> tuple[AgentSession, str]:
-            session = AgentSession(caller_phone=caller_phone)
+            session = AgentSession(caller_phone=caller_phone, checkpointer=self._saver())
             session.tracer.add_sink(self._hub.make_sink(session.session_id))
             return session, session.greeting()
 
@@ -313,3 +323,7 @@ class SessionManager:
                 await self.end(sid, outcome="server_shutdown")
             except Exception:  # pragma: no cover - defensive
                 logger.warning(f"shutdown end failed for {sid}", exc_info=True)
+        from agent.graph_v2.checkpoint import close_checkpointer
+
+        close_checkpointer(self._checkpointer)
+        self._checkpointer = None

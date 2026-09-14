@@ -33,7 +33,10 @@ def client(db_connection, monkeypatch, tmp_path):
     # to os.environ GLOBALLY, so a real .api_config.json (written by a live
     # config-page session) leaked CLASSIFIER=on into the deterministic suite.
     monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "api_config.json"))
+    from app import main
     from app.main import app
+
+    monkeypatch.setattr(main.settings, "checkpoint_path", tmp_path / "checkpoints.sqlite")
 
     with TestClient(app) as c:
         yield c
@@ -55,6 +58,22 @@ class TestLifecycle:
         data = _create(client)
         assert data["session_id"]
         assert "Labas" in data["greeting"]
+
+    def test_sessions_share_one_checkpointer_closed_on_shutdown(
+        self, db_connection, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "api_config.json"))
+        from app import main
+
+        monkeypatch.setattr(main.settings, "checkpoint_path", tmp_path / "checkpoints.sqlite")
+        with TestClient(main.app) as c:
+            first, second = _create(c)["session_id"], _create(c)["session_id"]
+            saver = main.manager._checkpointer
+            assert saver is not None
+            for sid in (first, second):
+                assert main.manager.get(sid).session._graph.checkpointer is saver
+        assert main.manager._checkpointer is None  # closed and released on shutdown
+        assert (tmp_path / "checkpoints.sqlite").exists()
 
     def test_unknown_session_404(self, client):
         assert client.post("/sessions/nope/turns", json={"text": "labas"}).status_code == 404

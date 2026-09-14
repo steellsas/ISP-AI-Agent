@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from agent.graph_v2.checkpoint import DEFAULT_DB_PATH
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,6 +22,8 @@ class ApiSettings(BaseSettings):
     session_ttl_seconds: int = 1800
     cleanup_interval_seconds: int = 60
     cors_origins: list[str] = ["*"]  # demo default; tighten in Phase 7
+    # The call-state checkpoint database (one saver per process). None = in memory.
+    checkpoint_path: Path | None = DEFAULT_DB_PATH
 
 
 # USD per 1M tokens (input, output) — the dashboard's live call-cost counter.

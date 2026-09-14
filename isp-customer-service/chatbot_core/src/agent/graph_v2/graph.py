@@ -34,7 +34,8 @@ from .state import GraphState
 
 
 def build_graph(engine: Any, checkpointer: Any | None = None):
-    """Compile the v2 graph around `engine` (a ReactAgent)."""
+    """Compile the v2 graph around `engine` (a ReactAgent). Without a checkpointer
+    the call state lives in memory (tests, eval)."""
     builder = StateGraph(GraphState)
     builder.add_node(ADDRESS_VALIDATION, make_identification_node(engine))
     builder.add_node(DIAGNOSIS, make_diagnosis_graph(engine))

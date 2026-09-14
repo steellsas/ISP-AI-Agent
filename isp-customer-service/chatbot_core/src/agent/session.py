@@ -36,6 +36,7 @@ class AgentSession:
         language: str = "lt",
         config: AgentConfig | None = None,
         tracer=None,
+        checkpointer=None,
     ):
         """
         Start a session.
@@ -45,6 +46,8 @@ class AgentSession:
             language: Language code ("lt" or "en").
             config: Optional agent configuration (defaults applied if None).
             tracer: Optional ConversationTracer (defaults to the JSONL sink).
+            checkpointer: The process-wide checkpoint saver (the API service's
+                SqliteSaver); None keeps the call state in memory.
         """
         self._agent = ReactAgent(
             caller_phone=caller_phone,
@@ -55,7 +58,7 @@ class AgentSession:
 
         # LangGraph v2: typed GraphState, SqliteSaver checkpoints, diagnosis
         # subgraph, one node per file.
-        self._graph = build_graph(self._agent)
+        self._graph = build_graph(self._agent, checkpointer)
         self._graph_config = {"configurable": {"thread_id": self._agent.session_id}}
         # Results of background work (analyst, speculation, telemetry refresh),
         # handed to the NEXT turn through its graph input — no thread writes state.
