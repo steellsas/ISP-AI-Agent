@@ -424,6 +424,183 @@
      "adres"
     ]
    }
+  },
+  {
+   "id": "D5_link_down",
+   "phone": "+37060020104",
+   "desc": "Demo #5: linija nutrūkusi iki buto (portas DOWN, kaimynai UP) — kopetėlė (lemputės, perkišti laidą iš sienos), telemetrija toliau DOWN -> tiketas",
+   "turns": [
+    "Labas, neveikia internetas",
+    "Taip",
+    "Vilma, taip, mano sutartis",
+    "Taip, galiu prieiti",
+    "Dega",
+    "Nedega",
+    "Perkišau",
+    "Ne, neveikia",
+    "Taip, tinka",
+    "Ačiū, viso gero"
+   ],
+   "expect": {
+    "verdict_in": "link_down_local",
+    "disposition": "ticket",
+    "reply_any": [
+     "laid",
+     "kabel",
+     "signal"
+    ],
+    "tool_used": [
+     "create_ticket"
+    ]
+   }
+  },
+  {
+   "id": "D6_crc",
+   "phone": "+37060030305",
+   "desc": "Demo #6: pažeistas laidas (CRC klaidos) — perkišti laidą routeryje, klaidos liko -> tiketas vis tiek",
+   "turns": [
+    "Labas, neveikia internetas",
+    "Taip",
+    "Marius, taip, mano sutartis",
+    "Taip, galiu prieiti",
+    "Perkišau, nepadėjo, laidas buvo kiek užlenktas",
+    "Ne, neveikia",
+    "Taip, tinka",
+    "Ačiū, viso gero"
+   ],
+   "expect": {
+    "verdict_in": "crc_errors",
+    "disposition": "ticket",
+    "reply_any": [
+     "klaid",
+     "laid"
+    ],
+    "reply_none": [
+     "abiejuose galuose"
+    ],
+    "tool_used": [
+     "create_ticket"
+    ]
+   }
+  },
+  {
+   "id": "D3_node_fault",
+   "phone": "+37060030306",
+   "desc": "Demo #3: mazgo gedimas be registruotos avarijos (kaimynai irgi DOWN) — informuoti, nieko daryti nereikia, tiketas AUTOMATIŠKAI, tikslaus laiko nežadėti",
+   "turns": [
+    "Labas, neveikia internetas",
+    "Taip",
+    "Lina, taip, mano sutartis",
+    "O kada sutvarkysit?",
+    "Aišku, ačiū, viso gero"
+   ],
+   "expect": {
+    "verdict_in": "node_fault_unregistered",
+    "disposition": "ticket",
+    "reply_any": [
+     "tinkle",
+     "gedim"
+    ],
+    "tool_used": [
+     "create_ticket"
+    ]
+   }
+  },
+  {
+   "id": "D2_outage",
+   "phone": "+37060020102",
+   "desc": "Demo #2: registruota masinė avarija — informuoti + ETA, be tiketo (explicit verdict)",
+   "turns": [
+    "Labas, neveikia internetas",
+    "Taip",
+    "Rasa",
+    "Aišku, ačiū, lauksiu"
+   ],
+   "expect": {
+    "verdict_in": "active_outage",
+    "disposition": "inform",
+    "reply_any": [
+     "avarij",
+     "gedim"
+    ],
+    "reply_none": [
+     "registruoj"
+    ]
+   }
+  },
+  {
+   "id": "D4_switch",
+   "phone": "+37060020103",
+   "desc": "Demo #4: switch nepasiekiamas (demo eiga be 'kada dingo') — informuoti, tiketas AUTOMATIŠKAI, tikslaus laiko nežadėti",
+   "turns": [
+    "Neveikia internetas",
+    "Taip",
+    "Egidijus",
+    "O kada sutvarkysit?",
+    "Aišku, ačiū, viso gero"
+   ],
+   "expect": {
+    "verdict_in": "switch_unreachable",
+    "disposition": "ticket",
+    "reply_any": [
+     "tinkle",
+     "gedim"
+    ],
+    "tool_used": [
+     "create_ticket"
+    ]
+   }
+  },
+  {
+   "id": "D8_router_hung",
+   "phone": "+37060020112",
+   "desc": "Demo #8: pakibęs routeris (demo eiga) — perkrovimas iš maitinimo, patvirtinta žodžiu + telemetrija -> resolved be tiketo",
+   "turns": [
+    "Neveikia internetas visuose įrenginiuose",
+    "Taip",
+    "Paulius",
+    "Visuose",
+    "Taip, galiu prieiti",
+    "Perkroviau, internetas atsirado",
+    "Ne, ačiū, viso gero"
+   ],
+   "expect": {
+    "verdict_in": "router_hung",
+    "disposition": "resolved",
+    "reply_any": [
+     "perkrau",
+     "maitinimo"
+    ],
+    "reply_none": [
+     "užregistravau"
+    ]
+   }
+  },
+  {
+   "id": "X_dhcp_silent",
+   "phone": "+37060020106",
+   "desc": "dhcp_silent (CUST106, factory reset — MAC teisingas, DHCP užklausų nėra): pack'o nėra -> šiandien laisvas LLM (žargonas 'DHCP', siūlo gamyklinį atstatymą, baigia be tiketo; Findings F-8). Tikslas po M4: uždaras veiksmų rinkinys -> neaiškaus gedimo tiketas",
+   "known_bug": true,
+   "turns": [
+    "Labas, neveikia internetas",
+    "Taip",
+    "Greta, taip, mano sutartis",
+    "Taip, esu prie routerio",
+    "Lemputės dega",
+    "Ne, nieko nekeičiau",
+    "Ačiū, viso gero"
+   ],
+   "expect": {
+    "verdict_in": "dhcp_silent",
+    "disposition": "ticket",
+    "reply_none": [
+     "DHCP",
+     "gamyklin"
+    ],
+    "tool_used": [
+     "create_ticket"
+    ]
+   }
   }
  ]
 }
