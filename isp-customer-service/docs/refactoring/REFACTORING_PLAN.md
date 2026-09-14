@@ -100,6 +100,7 @@ while the app is serving a live call.
 | Date | Milestone | Commit | Notes |
 |---|---|---|---|
 | 2026-09-14 | plan | — | Plan, decisions and milestone files written; old docs archived |
+| 2026-09-14 | M0 (in progress) | `089c915` … `5942c64` | Scenarios added: `D2_outage`, `D3_node_fault`, `D4_switch`, `D5_link_down`, `D6_crc`, `D8_router_hung` (3/3 each), `X_dhcp_silent` (`known_bug`). Baseline on `089c915`: 105/108 checks ×2, 0 unexpected failures. Dead code from M0 §3 deleted (+ `fastrtc` voice extra); pytest 1094 → 1086 (obsolete tests removed), app starts. **Open:** Q-3 (`no_port_data` scenario), voice latency baseline (owner) |
 
 ## 6. Findings log (bugs/risks found during the refactor, not fixed in scope)
 
@@ -117,6 +118,10 @@ Pre-filled from the 2026-09-14 code research:
 | F-8 | `dhcp_silent`, `no_port_data` have no pack and no inform template → free LLM with all tools | `verdict.py`, `narrator_flow.scoped_tools_schema` | M4 (closed action set → unclear-fault ticket) |
 | F-9 | SQLite checkpointer connection opened per session, never closed; relative path depends on CWD | `graph_v2/checkpoint.py` | M1 |
 | F-10 | `_ticket_directive` not reset on ticket/identification/closing routes (can linger) | `perception_flow.py` ~L82 | M1 (TurnScratch reset) |
+| F-11 | "Neveikia internetas visuose įrenginiuose" in the first turn is not captured: after `router_hung` the agent still asks "visuose ar tik viename?" (eval probe, CUST112) | understand / facts intake | M4/M5 (facts from any turn) |
+| F-12 | `router_hung`: caller says "perkroviau, internetas atsirado" before the reboot instruction → agent ignores it and asks to reach the router; "Ne, ačiū, viso gero" then creates a ticket on a line the caller called working (eval probe, CUST112) | procedure walker / closing | M4 (evidence hands control back to `decide`) |
+| F-13 | Link-down/CRC ticket offer: caller answers the phone-number question with "Ačiū, viso gero" → agent re-asks "Registruoti, ar tikrai nereikia?" yet `create_ticket` still runs (eval probe, CUST104) | ticket flow / closing | M6 |
+| F-14 | `no_port_data` cannot be reached in eval: every seeded customer has a port row (covered only by `tests/test_verdict.py::test_no_port_data`) | `database/seeds/` | Q-3 |
 
 ## 7. Out of scope (do not do in this refactor)
 
@@ -131,6 +136,7 @@ Those come after the refactor (see DECISIONS.md D-22).
 |---|---|---|---|
 | Q-1 | Delete the unused MCP servers (`crm_service/src/crm_mcp/server.py`, `network_diagnostic_service/src/network_diagnostic_mcp/server.py`) and their repository classes, or keep MCP as the future integration transport? | M0 | **Keep** (2026-09-14). MCP may be the transport to the customer's DB/tools — decided during integration. Do not delete servers, repository classes or server-only tool functions. |
 | Q-2 | Keep the voice speculation feature (`agent/speculation.py`, pre-computed replies) and adapt it to `TurnPlan`, or delete it? | M5 | **Remove in M5, re-evaluate after M7** (2026-09-14). It exists only to cut latency and depends on the old directive mechanism. After the refactor, measure latency (see §9); rebuild on `TurnPlan` only if it is still needed. |
+| Q-3 | M0 DoD needs every `decide()` verdict in an eval scenario, but no seeded customer lacks a port, so `no_port_data` is unreachable (F-14). Add a seed customer without a port row (e.g. `CUST113`, additive, visible in the demo DB), or accept the unit test as coverage? | M0 | — |
 
 ## 9. Post-refactor checks (owner decides after M7)
 
