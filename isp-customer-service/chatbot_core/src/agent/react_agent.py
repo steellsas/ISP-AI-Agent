@@ -56,7 +56,7 @@ except ImportError:  # pragma: no cover - defensive
 # Tools
 try:
     from .tools import REAL_TOOLS as TOOLS
-    from .tools import execute_tool, get_tools_description, get_tools_schema
+    from .tools import get_tools_description, get_tools_schema
 
     USING_REAL_TOOLS = True
 except ImportError:
@@ -68,9 +68,6 @@ except ImportError:
 
     def get_tools_schema():
         return []
-
-    def execute_tool(name, args):
-        return json.dumps({"error": "Tools not available"})
 
 
 logger = logging.getLogger(__name__)
@@ -841,9 +838,13 @@ class ReactAgent:
             solved = bool(s.resolution.procedure.get("telemetry_fixed"))
             if not solved:
                 try:
-                    d = json.loads(
-                        execute_tool("diagnose_connection", {"customer_id": s.identity.customer_id})
-                    )
+                    d = self.tools.run(
+                        self,
+                        "diagnose_connection",
+                        {"customer_id": s.identity.customer_id},
+                        reason="hangup_net",
+                        apply=False,
+                    ).data
                     solved = ((d.get("verdict") or {}).get("reason") or "healthy_to_router") == (
                         "healthy_to_router"
                     )

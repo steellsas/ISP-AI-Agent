@@ -12,7 +12,7 @@ Usage:
 from .config import AgentConfig, get_config, update_config
 from .graph_v2 import GraphState
 from .session import AgentSession
-from .tools import REAL_TOOLS, execute_tool, get_tools_description
+from .tools import REAL_TOOLS, get_tools_description
 
 __all__ = [
     # Stable conversation entry point
@@ -25,6 +25,5 @@ __all__ = [
     "update_config",
     # Tools
     "REAL_TOOLS",
-    "execute_tool",
     "get_tools_description",
 ]
