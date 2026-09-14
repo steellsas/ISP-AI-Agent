@@ -35,7 +35,7 @@ deleted. Tick the box and add the merge commit hash when done.
 
 | # | Milestone | Instruction file | Decisions | Done |
 |---|---|---|---|---|
-| M0 | Safety net + dead code removal | [M0_safety_net.md](M0_safety_net.md) | D-20 | [ ] |
+| M0 | Safety net + dead code removal | [M0_safety_net.md](M0_safety_net.md) | D-20 | [x] `0126841` |
 | M1 | Single state (GraphState only, legacy engines removed) | [M1_single_state.md](M1_single_state.md) | D-01, D-21 | [ ] |
 | M2 | Runtime context + one tool gateway | [M2_runtime_and_tools.md](M2_runtime_and_tools.md) | D-01, D-08 | [ ] |
 | M3 | Knowledge contract (EN schema, locales, roles, limits, validation) | [M3_knowledge_contract.md](M3_knowledge_contract.md) | D-15…D-19 | [ ] |
@@ -100,7 +100,7 @@ while the app is serving a live call.
 | Date | Milestone | Commit | Notes |
 |---|---|---|---|
 | 2026-09-14 | plan | — | Plan, decisions and milestone files written; old docs archived |
-| 2026-09-14 | M0 (in progress) | `089c915` … `5942c64` | Scenarios added: `D2_outage`, `D3_node_fault`, `D4_switch`, `D5_link_down`, `D6_crc`, `D8_router_hung` (3/3 each), `X_dhcp_silent` (`known_bug`). Baseline on `089c915`: 105/108 checks ×2, 0 unexpected failures. Dead code from M0 §3 deleted (+ `fastrtc` voice extra); pytest 1094 → 1086 (obsolete tests removed), app starts. Q-3 answered (unit test). Voice latency: one billing call recorded instead of 9 (`baseline/voice_latency.md`) |
+| 2026-09-14 | M0 done | `089c915` … `0126841` | Scenarios added: `D2_outage`, `D3_node_fault`, `D4_switch`, `D5_link_down`, `D6_crc`, `D8_router_hung` (3/3 each), `X_dhcp_silent` (`known_bug`). Baseline on `089c915`: 105/108 checks ×2, 0 unexpected failures. Dead code from M0 §3 deleted (+ `fastrtc` voice extra); pytest 1094 → 1086 (obsolete tests removed), app starts. Q-3 answered (unit test). Voice latency: one billing call recorded instead of 9 (`baseline/voice_latency.md`); owner decision — enough, latency is reviewed separately after the refactor |
 
 ## 6. Findings log (bugs/risks found during the refactor, not fixed in scope)
 
@@ -142,4 +142,4 @@ Those come after the refactor (see DECISIONS.md D-22).
 
 | # | Check | How | Decision it feeds |
 |---|---|---|---|
-| P-1 | Is pre-computed reply speculation still needed? | Repeat the calls in `baseline/voice_latency.md` and compare `voice_latency` (`total_ms` = server-side time to first audio; `ttfa_ms` is not traced): M0 baseline (speculation on) vs after M7 (no speculation). Record numbers in `docs/refactoring/RESULT.md`. | Rebuild speculation on `TurnPlan` (predict plans for the top answers of `awaiting`, pre-render `phrase` plans) or drop it for good |
+| P-1 | Is pre-computed reply speculation still needed? | Repeat the calls in `baseline/voice_latency.md` and compare `voice_latency` (`total_ms` = server-side time to first audio; `ttfa_ms` is not traced): M0 baseline (speculation on) vs after M7 (no speculation). Record numbers in `docs/refactoring/RESULT.md`. Owner (2026-09-14): one baseline call is enough; a dedicated latency review (causes + improvements) follows the refactor. | Rebuild speculation on `TurnPlan` (predict plans for the top answers of `awaiting`, pre-render `phrase` plans) or drop it for good |
