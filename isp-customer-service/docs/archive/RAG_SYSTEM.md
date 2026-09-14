@@ -128,13 +128,13 @@ Handles text-to-vector conversion with caching.
 class EmbeddingManager:
     """
     Manages text embeddings with caching and batch processing.
-    
+
     Features:
     - Lazy model loading
     - Query result caching
     - Batch encoding
     """
-    
+
     def __init__(
         self,
         model_name: str = "paraphrase-multilingual-mpnet-base-v2",
@@ -167,13 +167,13 @@ FAISS-based similarity search.
 class VectorStore:
     """
     FAISS vector store for document embeddings.
-    
+
     Features:
     - Fast similarity search
     - Metadata storage
     - Save/load functionality
     """
-    
+
     def __init__(self, embedding_dim: int = 768):
         self.embedding_dim = embedding_dim
         self.index = faiss.IndexFlatIP(embedding_dim)
@@ -202,14 +202,14 @@ Combines semantic and keyword search.
 class Retriever:
     """
     Document retriever combining embeddings and vector store.
-    
+
     Features:
     - Query encoding
     - Similarity search
     - Hybrid scoring (semantic + keyword)
     - Result ranking
     """
-    
+
     def __init__(
         self,
         embedding_manager: EmbeddingManager,
