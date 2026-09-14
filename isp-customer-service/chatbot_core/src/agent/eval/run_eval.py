@@ -161,10 +161,10 @@ def _run_scenario(scn: dict) -> dict:
 
     def _snapshot() -> None:
         st = session.state
-        if st.hypothesis and st.hypothesis.get("cause"):
-            verdicts_seen.add(st.hypothesis["cause"])
-        if st.resolution and st.resolution.get("verdict"):
-            verdicts_seen.add(st.resolution["verdict"])
+        if st.diagnosis.hypothesis and st.diagnosis.hypothesis.get("cause"):
+            verdicts_seen.add(st.diagnosis.hypothesis["cause"])
+        if st.resolution.procedure and st.resolution.procedure.get("verdict"):
+            verdicts_seen.add(st.resolution.procedure["verdict"])
 
     replies.append(session.greeting())
     _snapshot()
@@ -184,10 +184,10 @@ def _run_scenario(scn: dict) -> dict:
     return {
         "replies": replies,
         "verdicts_seen": verdicts_seen,
-        "case_closed": st.case_closed,
-        "closed_reason": st.closed_reason,
-        "customer_id": st.customer_id,
-        "outage_reported": getattr(st, "outage_reported", False),
+        "case_closed": st.closing.case_closed,
+        "closed_reason": st.closing.closed_reason,
+        "customer_id": st.identity.customer_id,
+        "outage_reported": getattr(st.diagnosis, "outage_reported", False),
         "ticket_created": "create_ticket" in tools,
         "tools_used": tools,
         "trace": str(trace_path) if trace_path else None,

@@ -35,11 +35,11 @@ def route_entry(state: GraphState) -> str:
     the dedicated node so diagnosis narration cannot compete with the contact
     questions; then identified -> diagnosis, else keep identifying.
     """
-    if state.case_closed:
+    if state.closing.case_closed:
         return CLOSING
-    if state.ticket_stage:
+    if state.ticket.stage:
         return TICKET_REGISTRATION
-    return DIAGNOSIS if state.customer_id else ADDRESS_VALIDATION
+    return DIAGNOSIS if state.identity.customer_id else ADDRESS_VALIDATION
 
 
 # --- Diagnosis subgraph (R3): node names + routing -------------------------

@@ -10,15 +10,15 @@ Usage:
 """
 
 from .config import AgentConfig, get_config, update_config
+from .graph_v2 import GraphState
 from .session import AgentSession
-from .state import AgentState
 from .tools import REAL_TOOLS, execute_tool, get_tools_description
 
 __all__ = [
     # Stable conversation entry point
     "AgentSession",
     # State
-    "AgentState",
+    "GraphState",
     # Config
     "AgentConfig",
     "get_config",

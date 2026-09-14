@@ -24,10 +24,10 @@ def build_solver_context(engine: Any, user_input: str | None) -> str:
     raw telemetry facts (line-side truth), the caller's latest turn, and where the
     walker currently is."""
     s = engine.state
-    h = s.hypothesis or {}
-    net = s.diagnosis.get("network") or {}
+    h = s.diagnosis.hypothesis or {}
+    net = s.diagnosis.verdicts.get("network") or {}
     sig = net.get("signals") or {}
-    r = s.resolution or {}
+    r = s.resolution.procedure or {}
     lines: list[str] = []
     # Recent dialogue so the solver knows WHERE in the procedure it is (which steps
     # already happened) instead of re-reasoning from scratch each turn.
@@ -41,23 +41,27 @@ def build_solver_context(engine: Any, user_input: str | None) -> str:
             f"{'Klientas' if m['role'] == 'user' else 'Agentas'}: {m['content']}" for m in recent
         )
         lines.append(f"POKALBIS IKI ŠIOL:\n{convo}\n")
-    lines.append(f'KLIENTAS KĄ TIK PASAKĖ: "{user_input or ""}" (intent={s.last_intent or "?"})')
+    lines.append(
+        f'KLIENTAS KĄ TIK PASAKĖ: "{user_input or ""}" (intent={s.dialog.last_intent or "?"})'
+    )
     if h:
         because = "; ".join(h.get("because", []) or [])
         lines.append(f"HIPOTEZĖ: {h.get('cause')} (status={h.get('status')}); nes: {because}")
     # The ANALYSIS (Step 2): the caller's half of the picture — the thinker reasons
     # from BOTH sides, not telemetry alone.
-    if s.anamnesis_raw:
-        bits = [f'žodžiais: "{s.anamnesis_raw}"']
-        if s.anamnesis_when:
-            bits.append(f"dingo {s.anamnesis_when}")
-        if s.anamnesis_trigger:
-            bits.append(f"po: {s.anamnesis_trigger}")
+    if s.intake.anamnesis_raw:
+        bits = [f'žodžiais: "{s.intake.anamnesis_raw}"']
+        if s.intake.anamnesis_when:
+            bits.append(f"dingo {s.intake.anamnesis_when}")
+        if s.intake.anamnesis_trigger:
+            bits.append(f"po: {s.intake.anamnesis_trigger}")
         lines.append("ANAMNEZĖ (klientas): " + "; ".join(bits))
-    if s.symptoms:
-        lines.append("SIMPTOMAI: " + ", ".join(f"{k}={v}" for k, v in s.symptoms.items()))
-    if s.caller_name:
-        lines.append(f"SKAMBINA: {s.caller_name} (ryšys su sutartimi: {s.caller_relation})")
+    if s.intake.symptoms:
+        lines.append("SIMPTOMAI: " + ", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items()))
+    if s.identity.caller_name:
+        lines.append(
+            f"SKAMBINA: {s.identity.caller_name} (ryšys su sutartimi: {s.identity.caller_relation})"
+        )
     if net.get("reason"):
         lines.append(f"TELEMETRIJOS KANDIDATAS (verdict tree): {net.get('reason')}")
     if sig:
@@ -76,10 +80,12 @@ def build_solver_context(engine: Any, user_input: str | None) -> str:
             lines.append(f"TELEMETRIJA (signalai): {facts}")
     # Evidence ledger (Ledger v1): what is already ESTABLISHED — the thinker
     # asks only for what is missing and never re-asks a settled fact.
-    if s.evidence:
+    if s.diagnosis.evidence:
         from .evidence import summary_lt
 
-        lines.append(f"ĮRODYMŲ ŽURNALAS (nustatyta — NEBEKLAUSK): {summary_lt(s.evidence)}")
+        lines.append(
+            f"ĮRODYMŲ ŽURNALAS (nustatyta — NEBEKLAUSK): {summary_lt(s.diagnosis.evidence)}"
+        )
     # Bridge-phase anchor (2026-08-12): after the plug report the solver
     # kept sliding back to router/power questions — the router is HISTORY.
     if getattr(engine, "_bridge_plug_reported", False):
@@ -89,7 +95,7 @@ def build_solver_context(engine: Any, user_input: str | None) -> str:
             "kompiuterio prijungimas (linijos matomumas, kompiuterio LAN būsena)."
         )
     lines.append(
-        f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.awaiting}"
+        f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.dialog.awaiting}"
     )
     # Process journal (sąmoningumas №3): the transitions already walked — the
     # thinker sees the path ("kas jau vyko"), so it never re-proposes a step
@@ -114,7 +120,7 @@ def shadow_solve(engine: Any, user_input: str | None) -> None:
     Never drives the reply. No-op unless SOLVER_SHADOW=on and a strategy is active."""
     if os.getenv("SOLVER_SHADOW", "off").lower() != "on":
         return
-    if not engine.state.resolution or engine.state.case_closed:
+    if not engine.state.resolution.procedure or engine.state.closing.case_closed:
         return
     try:
         from .gate import DEFAULT_POLICY, INTERNAL_ACTIONS, gate
@@ -125,7 +131,7 @@ def shadow_solve(engine: Any, user_input: str | None) -> None:
             engine._build_solver_context(user_input),
             model=engine.config.solver_model or engine.config.model,
         )
-        r = engine.state.resolution or {}
+        r = engine.state.resolution.procedure or {}
         step = r.get("step")
 
         # Counters the gate reasons over (owned here so the gate stays pure). Track
@@ -203,8 +209,8 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     the thinker never overrides them)."""
     if os.getenv("SOLVER_DRIVE", "on").lower() != "on":
         return None
-    r = engine.state.resolution
-    if not r or engine.state.case_closed:
+    r = engine.state.resolution.procedure
+    if not r or engine.state.closing.case_closed:
         return None
     # R4b: the PACK declares its driver (meta.vairuotojas) — the solver takes a
     # fault when its file says so; the legacy frozenset stays the fallback for
@@ -245,7 +251,7 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
         return None
     from .identification import ask_caller
 
-    if ask_caller() and not engine.state.caller_name:
+    if ask_caller() and not engine.state.identity.caller_name:
         return None  # identification ladder not finished yet
     # Discipline rule (2026-08-06, eval S4): a reported plug-in INTO THE
     # COMPUTER runs the bind path deterministically — the solver answered
@@ -306,8 +312,8 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     _spec = spec_for(r.get("verdict"))
     if (
         _spec is not None
-        and hypothesis_status(engine.state.evidence, _spec) == "confirmed"
-        and solution_for(engine.state.evidence, r.get("verdict")) in ("walker", "bridge")
+        and hypothesis_status(engine.state.diagnosis.evidence, _spec) == "confirmed"
+        and solution_for(engine.state.diagnosis.evidence, r.get("verdict")) in ("walker", "bridge")
         and r.get("solution_synced")
     ):
         return None  # the walker takes this and every following turn
@@ -337,12 +343,12 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
         from .evidence import hypothesis_status, solution_step, spec_for
         from .resolution import get_strategy
 
-        r = engine.state.resolution or {}
+        r = engine.state.resolution.procedure or {}
         spec = spec_for(r.get("verdict"))
         strat = get_strategy(r.get("verdict"))
         target = None
-        if spec and hypothesis_status(engine.state.evidence, spec) == "confirmed":
-            target = solution_step(engine.state.evidence, r.get("verdict"))
+        if spec and hypothesis_status(engine.state.diagnosis.evidence, spec) == "confirmed":
+            target = solution_step(engine.state.diagnosis.evidence, r.get("verdict"))
         elif spec:
             # UNCONFIRMED dead end (evidence exhausted, revival spent):
             # resuming at the long-stale intro re-walked the WHOLE ladder
@@ -375,7 +381,7 @@ def solver_drive_turn(engine: Any, user_input: str | None) -> str | None:
     # path gets from run_turn_scoped_stream: user_turn trace, dialogue history (the solver reads
     # it next turn), and the shared reply finalisation (case snapshot + agent_reply).
     if user_input:
-        engine.state.last_heard = user_input.strip()
+        engine.state.dialog.last_heard = user_input.strip()
         engine.tracer.emit("user_turn", text=user_input)
         engine.state.messages.append({"role": "user", "content": user_input})
     engine.state.messages.append({"role": "assistant", "content": reply})
@@ -388,7 +394,7 @@ def drive(engine: Any, user_input: str | None) -> str:
     from .resolution import STRATEGIES, detect_turn_intent
     from .solver import solve
 
-    engine.state.last_intent = detect_turn_intent(user_input)
+    engine.state.dialog.last_intent = detect_turn_intent(user_input)
     engine._drive_turns = getattr(engine, "_drive_turns", 0) + 1
 
     context = engine._build_solver_context(user_input)
@@ -413,7 +419,10 @@ def drive(engine: Any, user_input: str | None) -> str:
         # DIFFERENT known cause, which stays gated.
         if decision is not None and decision.current_hypothesis not in STRATEGIES:
             decision = decision.model_copy(
-                update={"current_hypothesis": (engine.state.resolution or {}).get("verdict") or ""}
+                update={
+                    "current_hypothesis": (engine.state.resolution.procedure or {}).get("verdict")
+                    or ""
+                }
             )
         conf = decision.confidence if decision else 0.0
         engine._solver_low_conf = (
@@ -497,9 +506,9 @@ def close_or_register(engine: Any, say: str) -> str:
     bridge is TEMPORARY, so a solver 'close' after a successful bridge may not
     end the call without the router-replacement registration — it becomes the
     escalate (live: 'Aš radu internetas' -> close -> ticket=None)."""
-    r = engine.state.resolution or {}
+    r = engine.state.resolution.procedure or {}
     bridged = bool(r.get("telemetry_fixed")) or getattr(engine, "_bridge_bound", False)
-    if bridged and not engine.state.ticket_id:
+    if bridged and not engine.state.ticket.ticket_id:
         engine.tracer.emit(
             "drive_decision",
             action="escalate",
@@ -507,8 +516,8 @@ def close_or_register(engine: Any, say: str) -> str:
             reason="close overridden: bridge is temporary — register the router ticket",
         )
         return engine._drive_escalate(None)
-    engine.state.case_closed = True
-    engine.state.closed_reason = "resolved"
+    engine.state.closing.case_closed = True
+    engine.state.closing.closed_reason = "resolved"
     engine._settle_hypothesis("confirmed", "sprendimas suveikė (solveris)")
     return say or "Puiku, džiaugiuosi, kad sutvarkėme!"
 
@@ -516,7 +525,7 @@ def close_or_register(engine: Any, say: str) -> str:
 def refresh_diagnosis(engine: Any) -> None:
     """Re-read the line so the solver reasons over CURRENT telemetry (fixes the stale-
     snapshot issue). Keeps the active strategy; only refreshes the signals."""
-    engine.state.diagnosis.pop("network", None)
+    engine.state.diagnosis.verdicts.pop("network", None)
     engine.ensure_diagnosed()
 
 
@@ -534,7 +543,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
          never bind blind."""
     from .react_agent import execute_tool
 
-    cid = engine.state.customer_id
+    cid = engine.state.identity.customer_id
     if getattr(engine, "_bridge_bound", False):
         return say or "Įrenginys jau pririštas — patikrinkite, ar internetas atsirado."
 
@@ -550,7 +559,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
 
     # Ledger: the offer question is already answered when the ledger holds
     # has_computer=yes — never re-ask an established fact.
-    ev_pc = engine.state.evidence.get("has_computer")
+    ev_pc = engine.state.diagnosis.evidence.get("has_computer")
     if ev_pc is not None and ev_pc.get("value") == "yes":
         engine._drive_bridge_offered = True
     # Plug-report MEMORY (round 4, 2026-08-11): the report is remembered
@@ -566,7 +575,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
     # W0-A: the fix may not START before the bridge was even OFFERED — with no
     # offer, no computer on the ledger and no device on the line, a remembered
     # "plug" was about some other cable. Reset it and make the offer first.
-    ev_pc0 = engine.state.evidence.get("has_computer")
+    ev_pc0 = engine.state.diagnosis.evidence.get("has_computer")
     if (
         not visible
         and not getattr(engine, "_drive_bridge_offered", False)
@@ -623,7 +632,7 @@ def drive_propose_fix(engine: Any, say: str, user_input: str | None) -> str:
     # call drifted into ticket talk over a WORKING line.
     from .resolution import get_strategy, next_step_id
 
-    r = engine.state.resolution or {}
+    r = engine.state.resolution.procedure or {}
     strat = get_strategy(r.get("verdict"))
     if strat and strat.step("dr_bind"):
         target = next_step_id(strat, "dr_bind", None)
@@ -654,7 +663,7 @@ def bridge_fail_step(engine: Any) -> str:
     register the technician, with what-was-tried on the ticket."""
     from .evidence import LABELS, VALUE_LT, fault_bridge_fail, spec_for
 
-    verdict = (engine.state.resolution or {}).get("verdict")
+    verdict = (engine.state.resolution.procedure or {}).get("verdict")
     stage = getattr(engine, "_bridge_fail_stage", 0)
     if stage == 0:
         engine._bridge_fail_stage = 1
@@ -678,7 +687,7 @@ def bridge_fail_step(engine: Any) -> str:
     # Stage 2+: LAN answered (or unreadable) and the line is still empty —
     # the technician takes it from here; the attempt goes on the ticket.
     texts = fault_bridge_fail(verdict)
-    lan = (engine.state.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
+    lan = (engine.state.diagnosis.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
     engine._bridge_fail_note = (
         texts.get("prierasas")
         or "Laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: {lan})."
@@ -702,7 +711,7 @@ def drive_escalate(engine: Any, decision) -> str:
     from .resolution import get_strategy
 
     s = engine.state
-    r = s.resolution or {}
+    r = s.resolution.procedure or {}
     strat = get_strategy(r.get("verdict"))
     # The bridge already restored internet on the PC -> this is the
     # register-router shape (temporary bridge note rides on the ticket).

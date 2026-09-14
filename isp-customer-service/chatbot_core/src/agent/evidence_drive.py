@@ -25,7 +25,7 @@ def revive_gave_up_key(engine: Any, spec: dict) -> str | None:
     from .evidence import LABELS
     from .identification import phrase
 
-    ev = engine.state.evidence
+    ev = engine.state.diagnosis.evidence
     for cond in spec.get("patvirtinta_kai") or []:
         if "=" not in cond:
             continue
@@ -63,7 +63,7 @@ def maybe_facts_recap(engine: Any) -> str | None:
     from .evidence import client_facts_lt
     from .identification import phrase
 
-    faktai = client_facts_lt(engine.state.evidence)
+    faktai = client_facts_lt(engine.state.diagnosis.evidence)
     if not faktai:
         engine._recap_state = "done"
         return None
@@ -86,7 +86,7 @@ def refuting_client_fact(engine: Any, spec: dict) -> tuple[str, str] | None:
     one worth double-checking before pivoting (telemetry needs no confirm)."""
     from .evidence import CLIENT, _cond_holds
 
-    ev = engine.state.evidence
+    ev = engine.state.diagnosis.evidence
     for cond in spec.get("paneigta_kai") or []:
         if "=" in cond and _cond_holds(ev, cond, False):
             key = cond.split("=", 1)[0].strip()
@@ -133,7 +133,7 @@ def evidence_question_open(engine: Any) -> str | None:
     key = getattr(engine, "_evidence_last_ask_key", None)
     if not key:
         return None
-    entry = engine.state.evidence.get(key)
+    entry = engine.state.diagnosis.evidence.get(key)
     if entry is not None and entry.get("value") not in (None, "neaišku"):
         return None
     return key
@@ -150,7 +150,7 @@ def negation_clarify_reply(engine: Any, key: str) -> str | None:
 
     if engine._evidence_asks.get(key, 0) >= 2:
         return None  # already asked twice — let the drive give up, not loop
-    spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+    spec = spec_for((engine.state.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
     engine._evidence_asks[key] = engine._evidence_asks.get(key, 0) + 1
     engine.tracer.emit("evidence", action="negation_clarify", key=key)
@@ -167,7 +167,7 @@ def _sync_walker_solution(engine: Any, s: Any, r: dict) -> None:
     — the step's own hint/question goes out next."""
     from .evidence import solution_step
 
-    target = solution_step(s.evidence, r.get("verdict"))
+    target = solution_step(s.diagnosis.evidence, r.get("verdict"))
     if target and r.get("solution_synced") != target and r.get("step") != target:
         engine._goto_step(r, target)
         r["solution_synced"] = target
@@ -195,7 +195,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
     )
 
     s = engine.state
-    r = s.resolution or {}
+    r = s.resolution.procedure or {}
     spec = spec_for(r.get("verdict"))
     if spec is None:
         return None
@@ -219,7 +219,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
     # Captured BEFORE any new ask below overwrites it: was a question already
     # out when the caller spoke? Needed for the bare-"ne" clarify.
     pending_before = evidence_question_open(engine)
-    status = hypothesis_status(s.evidence, spec)
+    status = hypothesis_status(s.diagnosis.evidence, spec)
     if status == "refuted":
         # One confirm question before the pivot when the refuting fact came
         # from the CALLER's words — STT garbles flip facts (2026-08-11).
@@ -252,7 +252,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         # `tada: walker` step, the ritual only delays the sync a turn (or
         # more), the walker never takes over and the narrator improvises.
         # The step's own hint explains the finding and instructs in ONE move.
-        if _solution_for(s.evidence, r.get("verdict")) == "walker":
+        if _solution_for(s.diagnosis.evidence, r.get("verdict")) == "walker":
             engine._findings_announced = True
             return _sync_walker_solution(engine, s, r)
         # Recap checkpoint FIRST: read the gathered facts back and let the
@@ -266,7 +266,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
         from .evidence import client_facts_lt, fault_isvada, solution_descriptions
         from .identification import phrase
 
-        faktai_lt = client_facts_lt(s.evidence)
+        faktai_lt = client_facts_lt(s.diagnosis.evidence)
         isvada = fault_isvada(r.get("verdict")) or engine._ticket_need()
         sprendimai = solution_descriptions(r.get("verdict"))
         if faktai_lt and isvada:
@@ -296,7 +296,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             )
             engine.tracer.emit("decision", intent="findings", action="announce")
     if confirmed:
-        solution = solution_for(s.evidence, r.get("verdict"))
+        solution = solution_for(s.diagnosis.evidence, r.get("verdict"))
         if solution == "ticket":
             engine.tracer.emit(
                 "drive_decision",
@@ -313,7 +313,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             # padaryti?" gets the step explained. Synced ONCE, like walker.
             from .evidence import solution_step
 
-            target = solution_step(s.evidence, r.get("verdict"))
+            target = solution_step(s.diagnosis.evidence, r.get("verdict"))
             goto = getattr(engine, "_goto_step", None)
             if (
                 target
@@ -337,7 +337,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
             # goes out as THIS reply; the step's question follows next turn.
             _sync_walker_solution(engine, s, r)
             return announce or None
-    missing = next_missing(s.evidence, spec, confirmed)
+    missing = next_missing(s.diagnosis.evidence, spec, confirmed)
     if missing is None:
         # Nothing left to ask but no confirmation either — a given-up key
         # ("neaišku") may be BLOCKING it forever (live 2026-08-12: the
@@ -369,7 +369,7 @@ def evidence_drive(engine: Any, user_input: str | None) -> str | None:
     if asks >= 2:
         # Asked twice (normal + paprasciau), still nothing readable — record
         # "neaišku" and move on; an unreadable caller must never loop us.
-        set_fact(s.evidence, key, "neaišku", CLIENT, s.turn_count)
+        set_fact(s.diagnosis.evidence, key, "neaišku", CLIENT, s.dialog.turn_count)
         engine.tracer.emit("evidence", action="gave_up", key=key)
         if getattr(engine, "_evidence_last_ask_key", None) == key:
             # A given-up key must not read as an OPEN question forever —

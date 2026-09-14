@@ -28,8 +28,8 @@ from src.services.llm.client import (
 
 from .config import AgentConfig, create_config
 from .evidence import EvidenceConflict, FactConfirm
+from .graph_v2.state import DialogState, GraphState, IdentityState
 from .prompts import load_system_prompt
-from .state import AgentState
 
 # Conversation trace (observability). Optional: if the adapter can't import,
 # fall back to a no-op so tracing never breaks the agent.
@@ -187,9 +187,9 @@ class ReactAgent:
         else:
             self.config = config
 
-        self.state = AgentState(
-            caller_phone=caller_phone,
-            max_turns=self.config.max_turns,
+        self.state = GraphState(
+            identity=IdentityState(caller_phone=caller_phone),
+            dialog=DialogState(max_turns=self.config.max_turns),
         )
 
         # Conversation trace: one file per session, identical across transports.
@@ -347,7 +347,7 @@ class ReactAgent:
         # the contact number (ALWAYS asked, never assumed) and when to call. Stage is
         # None | "phone" | "hours" | "done"; ctx remembers the escalate step to build
         # the ticket from once the dialogue completes.
-        # _ticket_stage lives on AgentState (see the property below) — no init needed.
+        # _ticket_stage lives on GraphState.ticket.stage (see the property below).
         self._ticket_ctx: dict | None = None
         # This turn's utterance is an off-script QUESTION during the dialogue
         # ("kokiu numeriu?") — the ticket node's LLM answers it (with the pending
@@ -400,14 +400,14 @@ class ReactAgent:
 
     @property
     def _ticket_stage(self) -> str | None:
-        """Promoted to AgentState.ticket_stage (R3, roadmap §6): the state owns
+        """Promoted to GraphState.ticket.stage (R3, roadmap §6): the state owns
         the value (checkpointed, read by the v2 entry router); this property
         keeps every existing engine call site working unchanged."""
-        return self.state.ticket_stage
+        return self.state.ticket.stage
 
     @_ticket_stage.setter
     def _ticket_stage(self, value: str | None) -> None:
-        self.state.ticket_stage = value
+        self.state.ticket.stage = value
 
     def get_stats(self) -> dict:
         """Get accumulated LLM statistics."""
@@ -524,21 +524,21 @@ class ReactAgent:
         walker went (or that it HELD), and the live hypothesis. This is the 'why' the
         raw reply never showed — e.g. step=None means no strategy is active at all."""
         s = self.state
-        r = s.resolution
+        r = s.resolution.procedure
         after = r.get("step") if r else None
         if before is None and after is None:
             return  # no strategy in play — nothing to explain
-        if s.case_closed:
-            action, dest = "close", s.closed_reason
+        if s.closing.case_closed:
+            action, dest = "close", s.closing.closed_reason
         elif after == before:
             action, dest = "hold", after
         else:
             action, dest = "advance", after
-        h = s.hypothesis or {}
+        h = s.diagnosis.hypothesis or {}
         self.tracer.emit(
             "decision",
-            intent=s.last_intent or None,
-            awaiting=s.awaiting,
+            intent=s.dialog.last_intent or None,
+            awaiting=s.dialog.awaiting,
             action=action,
             from_step=before,
             to=dest,
@@ -673,8 +673,8 @@ class ReactAgent:
         # Closing-stage chatter is exempt (live 2026-08-27): garbled farewells
         # kept cutting the goodbye before its "?" and the re-ask machinery
         # looped "Ar dar kuo padėti?" — a closed case never re-asks.
-        if "?" in tail and "?" not in heard and not s.case_closed:
-            s.last_question = None
+        if "?" in tail and "?" not in heard and not s.closing.case_closed:
+            s.dialog.last_question = None
             # The PENDING evidence key deliberately STAYS (live 2026-08-27:
             # clearing it looped the call — the caller kept interrupting with
             # the ANSWER, which then had no key to land on, so the fact never
@@ -684,7 +684,7 @@ class ReactAgent:
             key = getattr(self, "_evidence_last_ask_key", None)
             if key and self._evidence_asks.get(key, 0) > 0:
                 self._evidence_asks[key] -= 1
-            r = s.resolution or {}
+            r = s.resolution.procedure or {}
             pres = r.get("presented") or {}
             step_id = r.get("step")
             if step_id and pres.get(step_id, 0) > 0:
@@ -704,7 +704,7 @@ class ReactAgent:
         walker path's run_turn_scoped_stream): user_turn trace, dialogue history, shared
         finalisation (case snapshot + agent_reply)."""
         if user_input:
-            self.state.last_heard = user_input.strip()
+            self.state.dialog.last_heard = user_input.strip()
             self.tracer.emit("user_turn", text=user_input)
             self.state.messages.append({"role": "user", "content": user_input})
         self.state.messages.append({"role": "assistant", "content": reply})
@@ -1136,15 +1136,20 @@ class ReactAgent:
         # callback was agreed (or at least offered) — closing with a ticket
         # breaks the agreement (TKT registered over "as perskambinsiu").
         if (
-            s.customer_id
-            and not s.ticket_id
-            and not s.case_closed
-            and str((s.resolution or {}).get("step") or "").endswith("_homework")
+            s.identity.customer_id
+            and not s.ticket.ticket_id
+            and not s.closing.case_closed
+            and str((s.resolution.procedure or {}).get("step") or "").endswith("_homework")
         ):
-            s.case_closed = True
-            s.closed_reason = "callback"
+            s.closing.case_closed = True
+            s.closing.closed_reason = "callback"
             self.tracer.emit("decision", intent="hangup_net", action="callback_close")
-        if s.customer_id and not s.ticket_id and not s.case_closed and s.resolution is not None:
+        if (
+            s.identity.customer_id
+            and not s.ticket.ticket_id
+            and not s.closing.case_closed
+            and s.resolution.procedure is not None
+        ):
             from .resolution import get_strategy
 
             # The line's CURRENT truth decides (2026-08-06): a caller who hung up
@@ -1152,11 +1157,11 @@ class ReactAgent:
             # live: TKT00D19E54 for a healthy line). A recorded fix or one fresh
             # diagnose read showing healthy skips the net; telemetry unreachable
             # -> register anyway (a spare ticket beats an abandoned caller).
-            solved = bool(s.resolution.get("telemetry_fixed"))
+            solved = bool(s.resolution.procedure.get("telemetry_fixed"))
             if not solved:
                 try:
                     d = json.loads(
-                        execute_tool("diagnose_connection", {"customer_id": s.customer_id})
+                        execute_tool("diagnose_connection", {"customer_id": s.identity.customer_id})
                     )
                     solved = ((d.get("verdict") or {}).get("reason") or "healthy_to_router") == (
                         "healthy_to_router"
@@ -1164,22 +1169,22 @@ class ReactAgent:
                 except Exception:  # pragma: no cover - defensive
                     solved = False
             if solved:
-                s.case_closed = True
-                s.closed_reason = "resolved"
+                s.closing.case_closed = True
+                s.closing.closed_reason = "resolved"
                 self.tracer.emit("decision", intent="hangup_net", action="skip_solved")
             else:
-                s.resolution.setdefault(
+                s.resolution.procedure.setdefault(
                     "escalate_reason", "Pokalbis nutrūko — klientas padėjo ragelį."
                 )
-                if not s.contact_phone:
-                    s.contact_phone = s.caller_phone
-                if not s.contact_hours:
-                    s.contact_hours = "bet kada"
-                strat = get_strategy(s.resolution.get("verdict"))
+                if not s.ticket.contact_phone:
+                    s.ticket.contact_phone = s.identity.caller_phone
+                if not s.ticket.contact_hours:
+                    s.ticket.contact_hours = "bet kada"
+                strat = get_strategy(s.resolution.procedure.get("verdict"))
                 esc = strat.step("escalate") if strat else None
                 self._register_ticket_from_state(esc.id if esc is not None else None)
-                if s.ticket_id:
-                    s.closed_reason = "registered"
+                if s.ticket.ticket_id:
+                    s.closing.closed_reason = "registered"
                     self.tracer.emit("decision", intent="hangup_net", action="register")
         # Structured OUTCOME of the call, built DETERMINISTICALLY from state (Phase 3.10):
         # why they called, the cause + side, what ran, resolved?/ticket, who called. Emitted
@@ -1189,9 +1194,9 @@ class ReactAgent:
         self.tracer.emit(
             "session_end",
             outcome=outcome or summary.get("outcome"),
-            customer_id=self.state.customer_id,
-            ticket_id=self.state.ticket_id,
-            turn_count=self.state.turn_count,
+            customer_id=self.state.identity.customer_id,
+            ticket_id=self.state.ticket.ticket_id,
+            turn_count=self.state.dialog.turn_count,
             llm_calls=self.llm_stats.total_calls,
             total_tokens=self.llm_stats.total_tokens,
             total_cost=round(self.llm_stats.total_cost, 5),
@@ -1215,11 +1220,11 @@ class ReactAgent:
 
             save_call_record(
                 session_id,
-                customer_id=self.state.customer_id,
+                customer_id=self.state.identity.customer_id,
                 messages=self.state.messages,
                 outcome=outcome or summary.get("outcome"),
                 summary=summary,
-                ticket_id=self.state.ticket_id,
+                ticket_id=self.state.ticket.ticket_id,
             )
         except Exception as e:  # pragma: no cover - defensive
             self._trace_note("persist_call_record", f"failed: {e}", level="warn")
@@ -1229,25 +1234,29 @@ class ReactAgent:
         (later) the ticket. No LLM, no new reasoning: it only reports what the engine knows.
         `actions` come from the tool_calls in this session's trace."""
         s = self.state
-        net = s.diagnosis.get("network") or {}
-        h = s.hypothesis or {}
-        cause = h.get("cause") or (s.resolution or {}).get("verdict") or net.get("reason")
+        net = s.diagnosis.verdicts.get("network") or {}
+        h = s.diagnosis.hypothesis or {}
+        cause = h.get("cause") or (s.resolution.procedure or {}).get("verdict") or net.get("reason")
         return {
-            "purpose": s.problem_type,
-            "customer_id": s.customer_id,
-            "address": s.customer_address,
-            "caller_name": s.caller_name,
-            "caller_relation": s.caller_relation,
+            "purpose": s.intake.problem_type,
+            "customer_id": s.identity.customer_id,
+            "address": s.identity.customer_address,
+            "caller_name": s.identity.caller_name,
+            "caller_relation": s.identity.caller_relation,
             "anamnesis": (
-                {"raw": s.anamnesis_raw, "when": s.anamnesis_when, "trigger": s.anamnesis_trigger}
-                if s.anamnesis_raw
+                {
+                    "raw": s.intake.anamnesis_raw,
+                    "when": s.intake.anamnesis_when,
+                    "trigger": s.intake.anamnesis_trigger,
+                }
+                if s.intake.anamnesis_raw
                 else None
             ),
             "cause": cause,
             "side": net.get("side"),  # provider | customer | unclear
-            "outcome": s.closed_reason,  # resolved | outage | declined | escalated | None
-            "resolved": s.closed_reason == "resolved",
-            "ticket_id": s.ticket_id,
+            "outcome": s.closing.closed_reason,  # resolved | outage | declined | escalated | None
+            "resolved": s.closing.closed_reason == "resolved",
+            "ticket_id": s.ticket.ticket_id,
             "actions": self._tools_called_this_session(),
             # F4 (Andrius 2026-08-20): a call that ended WITHOUT identification
             # records everything that was heard — the address may have changed
@@ -1255,12 +1264,12 @@ class ReactAgent:
             # record (or the caller phoning back) can pick the thread up.
             "identifikacija_nepavyko": (
                 {
-                    "girdeta": list(s.heard_utterances)[-6:],
-                    "gatve": s.profile.street.value,
-                    "namas": s.profile.house.value,
-                    "miestas": s.profile.city.value,
+                    "girdeta": list(s.intake.heard_utterances)[-6:],
+                    "gatve": s.identity.profile.street.value,
+                    "namas": s.identity.profile.house.value,
+                    "miestas": s.identity.profile.city.value,
                 }
-                if not s.customer_id and s.problem_type
+                if not s.identity.customer_id and s.intake.problem_type
                 else None
             ),
         }
@@ -1338,11 +1347,11 @@ class ReactAgent:
         # Hardcoded greeting (first turn, no input) — the node yields the fixed
         # opening line, not an LLM call. The caller's number is pre-flighted
         # while the greeting plays.
-        if user_input is None and self.state.turn_count == 0:
+        if user_input is None and self.state.dialog.turn_count == 0:
             self._preflight_phone()
             greeting = self.config.greeting_message
             self.state.messages.append({"role": "assistant", "content": greeting})
-            self.state.turn_count += 1
+            self.state.dialog.turn_count += 1
             self.tracer.emit("agent_reply", text=greeting)
             yield greeting
             return
@@ -1356,10 +1365,10 @@ class ReactAgent:
         if self._ticket_stage:
             self._last_understanding = None
 
-        self.state.last_heard = (user_input or "").strip()
+        self.state.dialog.last_heard = (user_input or "").strip()
         from .resolution import detect_turn_intent
 
-        self.state.last_intent = detect_turn_intent(user_input)
+        self.state.dialog.last_intent = detect_turn_intent(user_input)
         self._maybe_raise_clarity(user_input)
         # S2 (2026-08-24): a background telemetry read finished while the
         # caller was busy — fold it in at the deterministic turn start, but
@@ -1397,7 +1406,7 @@ class ReactAgent:
 
         # Scripted identification-ladder reply (engine-composed, LLM skipped) — the
         # mechanical turns only; off-script turns fall through to the LLM.
-        scripted = self._identification_scripted_reply(self.state.last_heard)
+        scripted = self._identification_scripted_reply(self.state.dialog.last_heard)
         if scripted is not None:
             yield self._emit_scripted_reply(scripted)
             return
@@ -1412,8 +1421,8 @@ class ReactAgent:
         max_calls = self.config.max_tool_calls_per_response
         tool_rounds = 0
         while tool_rounds < max_calls:
-            self.state.turn_count += 1
-            if self.state.turn_count > self.state.max_turns:
+            self.state.dialog.turn_count += 1
+            if self.state.dialog.turn_count > self.state.dialog.max_turns:
                 yield self.config.max_turns_message
                 return
 
@@ -1516,10 +1525,10 @@ class ReactAgent:
         # A-2R (2026-09-07): with no identified customer the telemetry has no
         # one to belong to — after reopen it used to restore the dropped
         # account's diagnosis.
-        if not self.state.customer_id:
+        if not self.state.identity.customer_id:
             return
         with suppress(Exception):
-            r0 = self.state.resolution or {}
+            r0 = self.state.resolution.procedure or {}
             in_solution = bool(
                 r0.get("solution_synced")
                 or getattr(self, "_bridge_plug_reported", False)
@@ -1569,18 +1578,18 @@ class ReactAgent:
         filled, identified, an outage found, the case closed) — so the stuck
         counter resets. Text changing alone is NOT progress (docs: reset on state,
         not on a reworded question)."""
-        p = self.state.profile
+        p = self.state.identity.profile
         filled = sum(
             1 for slot in (p.city, p.street, p.house, p.apartment, p.account_code) if slot.value
         )
         s = self.state
         return (
-            s.customer_id,
+            s.identity.customer_id,
             filled,
-            s.problem_type,
-            s.outage_reported,
-            s.case_closed,
-            s.ticket_id,
+            s.intake.problem_type,
+            s.diagnosis.outage_reported,
+            s.closing.case_closed,
+            s.ticket.ticket_id,
         )
 
     @staticmethod
@@ -1609,7 +1618,7 @@ class ReactAgent:
         """Deterministic escalation (text, should_close) once the prompt-level nudge
         has failed — fired BEFORE the LLM (so it works with token streaming): at 3
         offer the account code, at 4 register + close. None below that."""
-        n = self.state.stuck_count
+        n = self.state.dialog.stuck_count
         if n >= 4:
             return (_STUCK_REGISTER, True)
         if n >= 3:
@@ -1625,18 +1634,20 @@ class ReactAgent:
         progressed = self._progress_key() != self._turn_start_key
         is_q = self._is_question(reply)
         repeat = bool(
-            is_q and self.state.last_question and self._similar(reply, self.state.last_question)
+            is_q
+            and self.state.dialog.last_question
+            and self._similar(reply, self.state.dialog.last_question)
         )
         self._repeated_verbatim = repeat
         if progressed:
-            self.state.stuck_count = 0
+            self.state.dialog.stuck_count = 0
         elif repeat:
-            self.state.stuck_count += 1
+            self.state.dialog.stuck_count += 1
         # else: a different question or a statement leaves the counter unchanged —
         # only a real re-ask escalates, and only real progress clears it.
         if is_q:
-            self.state.last_question = reply
-        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=repeat)
+            self.state.dialog.last_question = reply
+        self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=repeat)
 
     def _identification_scripted_reply(self, user_input: str | None) -> str | None:
         """Deterministic identification-ladder replies (2026-07-31, IDENTIFICATION
@@ -1654,7 +1665,7 @@ class ReactAgent:
         """Bookkeeping for an engine-composed reply (mirrors _apply_backstop)."""
         self.state.messages.append({"role": "assistant", "content": text})
         if self._is_question(text):
-            self.state.last_question = text
+            self.state.dialog.last_question = text
         self._emit_case()
         self.tracer.emit("scripted", where="identification")
         self.tracer.emit("agent_reply", text=text)
@@ -1665,16 +1676,16 @@ class ReactAgent:
         repeat backstop climbs 3 -> 4 -> close). Returns the text to yield/return."""
         text, should_close = backstop
         if should_close:
-            self.state.case_closed = True
-            self.state.closed_reason = "declined"
+            self.state.closing.case_closed = True
+            self.state.closing.closed_reason = "declined"
         else:
-            self.state.stuck_count += 1  # advance the ladder for the next turn
+            self.state.dialog.stuck_count += 1  # advance the ladder for the next turn
         self.state.messages.append({"role": "assistant", "content": text})
         if self._is_question(text):
-            self.state.last_question = text
+            self.state.dialog.last_question = text
         self._maybe_end_on_goodbye(text)
         self._emit_case()
-        self.tracer.emit("stuck", count=self.state.stuck_count, repeated=False)
+        self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=False)
         self.tracer.emit("agent_reply", text=text)
         return text
 
@@ -1684,8 +1695,8 @@ class ReactAgent:
         lost once should not be dropped back into jargon two steps later."""
         from .resolution import detect_confusion
 
-        if self.state.clarity_level == "standard" and detect_confusion(user_input):
-            self.state.clarity_level = "basic"
+        if self.state.dialog.clarity_level == "standard" and detect_confusion(user_input):
+            self.state.dialog.clarity_level = "basic"
 
     def _maybe_end_on_goodbye(self, text: str) -> None:
         """Delegates to closing_flow.maybe_end_on_goodbye (R3 extraction)."""
@@ -1707,24 +1718,27 @@ class ReactAgent:
         the full running summary / history stays in the trace + DB (§12.7)."""
         s = self.state
         diag = (
-            "; ".join(f"{dom}:{f.get('group')}/{f.get('reason')}" for dom, f in s.diagnosis.items())
+            "; ".join(
+                f"{dom}:{f.get('group')}/{f.get('reason')}"
+                for dom, f in s.diagnosis.verdicts.items()
+            )
             or None
         )
-        if not (s.problem_type or s.customer_id or diag or s.symptoms):
+        if not (s.intake.problem_type or s.identity.customer_id or diag or s.intake.symptoms):
             return
-        r = s.resolution or {}
-        h = s.hypothesis or {}
+        r = s.resolution.procedure or {}
+        h = s.diagnosis.hypothesis or {}
         self.tracer.emit(
             "case",
-            problem=s.problem_type,
-            customer_id=s.customer_id,
-            address=s.customer_address,
-            symptoms=(", ".join(f"{k}={v}" for k, v in s.symptoms.items()) or None),
+            problem=s.intake.problem_type,
+            customer_id=s.identity.customer_id,
+            address=s.identity.customer_address,
+            symptoms=(", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items()) or None),
             diagnosis=diag,
             # Decision state — the "where are we / why" that a raw reply hides.
             step=r.get("step"),
-            awaiting=s.awaiting,
-            clarity=s.clarity_level if s.clarity_level != "standard" else None,
+            awaiting=s.dialog.awaiting,
+            clarity=s.dialog.clarity_level if s.dialog.clarity_level != "standard" else None,
             hypothesis=(f"{h.get('cause')}:{h.get('status')}" if h else None),
         )
 
@@ -1734,7 +1748,7 @@ class ReactAgent:
         review shows WHY the agent behaved as it did — a swallowed classifier/solver/tool
         error no longer disappears from the JSONL. Best-effort; never raises."""
         try:
-            r = self.state.resolution or {}
+            r = self.state.resolution.procedure or {}
             self.tracer.emit(
                 "error",
                 level=level,
@@ -1742,7 +1756,7 @@ class ReactAgent:
                 detail=(detail or "")[:300],
                 node=self._active_node,
                 step=r.get("step"),
-                awaiting=self.state.awaiting,
+                awaiting=self.state.dialog.awaiting,
             )
         except Exception:  # pragma: no cover - tracing must never break the turn
             pass

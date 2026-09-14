@@ -91,7 +91,7 @@ def run_analyst(engine: Any) -> None:
         return
     try:
         s = engine.state
-        if not s.problem_type or s.case_closed or s.is_complete:
+        if not s.intake.problem_type or s.closing.case_closed or s.closing.is_complete:
             return
         from src.services.llm.client import llm_completion
 
@@ -106,8 +106,8 @@ def run_analyst(engine: Any) -> None:
             for m in s.messages[-60:]
             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
         )
-        ledger = summary_lt(s.evidence) if s.evidence else "(tuščias)"
-        verdict = (s.resolution or {}).get("verdict") or "(nenustatyta)"
+        ledger = summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "(tuščias)"
+        verdict = (s.resolution.procedure or {}).get("verdict") or "(nenustatyta)"
         # C wave (2026-09-08): the analyst sees the QUESTION REGISTRY's active
         # entry — the deterministic "what we are asking right now" — so the
         # type-5 deviation note compares reality against the plan.

@@ -163,7 +163,7 @@ async def simulate_plug(session_id: str, unplug: bool = False):
         ms = manager.get(session_id)
     except SessionNotFound:
         raise HTTPException(status_code=404, detail="unknown session") from None
-    cid = ms.session.state.customer_id
+    cid = ms.session.state.identity.customer_id
     if not cid:
         raise HTTPException(status_code=409, detail="caller not identified yet")
     from agent.tools import simulate_bridge_connect, simulate_bridge_disconnect
@@ -196,7 +196,7 @@ async def simulate_reboot(session_id: str):
         ms = manager.get(session_id)
     except SessionNotFound:
         raise HTTPException(status_code=404, detail="unknown session") from None
-    cid = ms.session.state.customer_id
+    cid = ms.session.state.identity.customer_id
     if not cid:
         raise HTTPException(status_code=409, detail="caller not identified yet")
     from agent.tools import simulate_router_reboot

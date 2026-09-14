@@ -22,9 +22,8 @@ from __future__ import annotations
 from typing import Any
 
 from .config import AgentConfig
-from .graph_v2 import TurnScratch, build_graph
+from .graph_v2 import GraphState, TurnScratch, build_graph
 from .react_agent import ReactAgent
-from .state import AgentState
 
 
 class AgentSession:
@@ -60,10 +59,10 @@ class AgentSession:
 
     def _graph_input(self, text: str | None) -> dict:
         """Shape one turn's graph input."""
-        # Seeding caller_phone keeps the checkpointed GraphState complete from the
+        # Seeding identity keeps the checkpointed GraphState complete from the
         # very first turn; a fresh TurnScratch resets the per-turn scratch.
         return {
-            "caller_phone": self._agent.state.caller_phone,
+            "identity": self._agent.state.identity,
             "turn": TurnScratch(user_input=text),
         }
 
@@ -101,12 +100,12 @@ class AgentSession:
         try:
             a = self._agent
             parts: list[str] = []
-            q = (a.state.last_question or "").strip()
+            q = (a.state.dialog.last_question or "").strip()
             if q:
                 parts.append(f"Klausimas: {q}")
             words: list[str] = []
             pending = getattr(a, "_evidence_last_ask_key", None)
-            r = a.state.resolution or {}
+            r = a.state.resolution.procedure or {}
             if pending and r.get("verdict"):
                 from .evidence import _PENDING_ANSWERS, spec_for
 
@@ -181,8 +180,8 @@ class AgentSession:
         try:
             from .react_agent import execute_tool
 
-            cid = self._agent.state.customer_id
-            if not cid or self._agent.state.case_closed:
+            cid = self._agent.state.identity.customer_id
+            if not cid or self._agent.state.closing.case_closed:
                 return
             self._agent._bg_diagnosis = execute_tool("diagnose_connection", {"customer_id": cid})
         except Exception:  # pragma: no cover - background best-effort
@@ -194,7 +193,9 @@ class AgentSession:
         when the caller was asked to DO or ANSWER something."""
         try:
             a = self._agent
-            return not a.state.case_closed and bool((a.state.last_question or "").strip())
+            return not a.state.closing.case_closed and bool(
+                (a.state.dialog.last_question or "").strip()
+            )
         except Exception:  # pragma: no cover
             return False
 
@@ -205,7 +206,7 @@ class AgentSession:
             for m in reversed(self._agent.state.messages):
                 if m.get("role") == "assistant" and (m.get("content") or "").strip():
                     return str(m["content"])
-            return self._agent.state.last_question or ""
+            return self._agent.state.dialog.last_question or ""
         except Exception:  # pragma: no cover
             return ""
 
@@ -269,10 +270,10 @@ class AgentSession:
     @property
     def is_complete(self) -> bool:
         """Whether the conversation has ended."""
-        return self._agent.state.is_complete
+        return self._agent.state.closing.is_complete
 
     @property
-    def state(self) -> AgentState:
+    def state(self) -> GraphState:
         """Current conversation state (customer info, history, flags)."""
         return self._agent.state
 

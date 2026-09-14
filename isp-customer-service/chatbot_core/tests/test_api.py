@@ -109,8 +109,8 @@ class TestTurns:
         client.post(f"/sessions/{a}/turns", json={"text": "neveikia internetas"})
         from app.main import manager
 
-        assert manager.get(a).session.state.problem_type == "internet_down"
-        assert manager.get(b).session.state.problem_type is None
+        assert manager.get(a).session.state.intake.problem_type == "internet_down"
+        assert manager.get(b).session.state.intake.problem_type is None
 
 
 class TestEventStream:
@@ -410,7 +410,7 @@ class TestVoiceChannel:
         sid = _create(client)["session_id"]
         from app.main import manager
 
-        manager.get(sid).session._agent.state.is_complete = True
+        manager.get(sid).session._agent.state.closing.is_complete = True
         with client.websocket_connect(f"/ws/call/{sid}") as ws:
             ws.send_bytes(b"RIFF-fake-wav-utterance")
             ended = False
@@ -610,7 +610,7 @@ class TestSimulatePlug:
         sid = _create(client)["session_id"]
         from app.main import manager
 
-        manager.get(sid).session.state.customer_id = "CUST009"
+        manager.get(sid).session.state.identity.customer_id = "CUST009"
         resp = client.post(f"/sessions/{sid}/simulate-plug")
         assert resp.status_code == 200 and resp.json()["ok"] is True
         from agent.tools import execute_tool
@@ -644,7 +644,7 @@ class TestSimulateReboot:
         sid = _create(client)["session_id"]
         from app.main import manager
 
-        manager.get(sid).session.state.customer_id = "CUST112"
+        manager.get(sid).session.state.identity.customer_id = "CUST112"
         from agent.tools import execute_tool, get_db
 
         try:

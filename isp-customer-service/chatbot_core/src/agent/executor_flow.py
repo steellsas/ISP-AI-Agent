@@ -57,7 +57,7 @@ def gate_tool(engine: Any, name: str, args: dict) -> str | None:
     if name == "close_case":
         reason = args.get("reason", "resolved")
         if reason == "resolved":
-            if not engine.state.customer_id:
+            if not engine.state.identity.customer_id:
                 return json.dumps(
                     {
                         "success": False,
@@ -87,7 +87,7 @@ def gate_tool(engine: Any, name: str, args: dict) -> str | None:
                     },
                     ensure_ascii=False,
                 )
-        if reason == "outage" and not engine.state.outage_reported:
+        if reason == "outage" and not engine.state.diagnosis.outage_reported:
             return json.dumps(
                 {
                     "success": False,
@@ -103,7 +103,7 @@ def gate_tool(engine: Any, name: str, args: dict) -> str | None:
 
     if name not in engine._GATED_TOOLS:
         return None
-    if not engine.state.customer_id:
+    if not engine.state.identity.customer_id:
         return json.dumps(
             {
                 "success": False,
@@ -115,14 +115,14 @@ def gate_tool(engine: Any, name: str, args: dict) -> str | None:
             }
         )
     cid = args.get("customer_id")
-    if cid and cid != engine.state.customer_id:
+    if cid and cid != engine.state.identity.customer_id:
         return json.dumps(
             {
                 "success": False,
                 "error": "id_mismatch",
                 "message": (
                     f"customer_id turi būti identifikuoto kliento: "
-                    f"{engine.state.customer_id}. Nenaudok kito ar spėto id."
+                    f"{engine.state.identity.customer_id}. Nenaudok kito ar spėto id."
                 ),
             }
         )
@@ -170,7 +170,7 @@ def execute_tool_calls(engine: Any, message: Any) -> list[dict]:
             {"role": "tool", "tool_call_id": tc.id, "content": observation}
         )
         engine._trace_tool_result(name, observation, tool_ms)
-        engine.state.add_observation(observation)
+        engine.state.intake.observations.append(observation)
         executed.append({"name": name, "arguments": args, "observation": observation})
     return executed
 
@@ -185,11 +185,15 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     from .react_agent import execute_tool
 
     s = engine.state
-    if s.ticket_id or not s.customer_id:
+    if s.ticket.ticket_id or not s.identity.customer_id:
         return
-    cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
+    cause = (
+        (s.diagnosis.hypothesis or {}).get("cause")
+        or (s.resolution.procedure or {}).get("verdict")
+        or ""
+    )
     gloss = DIAGNOSIS_LT.get(cause, cause or "nenustatyta")
-    details = f"Gedimas: {s.problem_type or 'internetas'} — {gloss}."
+    details = f"Gedimas: {s.intake.problem_type or 'internetas'} — {gloss}."
     need = TICKET_NEED_LT.get(cause)
     if need:
         # Sentence-cased as its own sentence — "Reikalinga: reikalingas…" doubled up.
@@ -200,22 +204,24 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     if getattr(engine, "_bridge_fail_note", None):
         details += f" {engine._bridge_fail_note}"
     # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
-    if s.contact_phone or s.caller_name:
-        kas = s.caller_name or "skambinęs asmuo"
-        rel = f" ({s.caller_relation})" if s.caller_relation else ""
-        details += f" Kontaktas: {kas}{rel}, tel. {s.contact_phone or s.caller_phone}"
-        if s.contact_hours:
-            details += f", skambinti: {s.contact_hours}"
+    if s.ticket.contact_phone or s.identity.caller_name:
+        kas = s.identity.caller_name or "skambinęs asmuo"
+        rel = f" ({s.identity.caller_relation})" if s.identity.caller_relation else ""
+        details += (
+            f" Kontaktas: {kas}{rel}, tel. {s.ticket.contact_phone or s.identity.caller_phone}"
+        )
+        if s.ticket.contact_hours:
+            details += f", skambinti: {s.ticket.contact_hours}"
         details += "."
     # The caller's anamnesis rides on the ticket — the human sees WHEN it broke
     # and after what, not just the telemetry verdict (Step 2 analysis).
-    if s.anamnesis_when or s.anamnesis_trigger or s.anamnesis_raw:
+    if s.intake.anamnesis_when or s.intake.anamnesis_trigger or s.intake.anamnesis_raw:
         bits = []
-        if s.anamnesis_when:
-            bits.append(f"dingo {s.anamnesis_when}")
-        if s.anamnesis_trigger:
-            bits.append(f"po: {s.anamnesis_trigger}")
-        details += f" Klientas: {', '.join(bits) if bits else s.anamnesis_raw}."
+        if s.intake.anamnesis_when:
+            bits.append(f"dingo {s.intake.anamnesis_when}")
+        if s.intake.anamnesis_trigger:
+            bits.append(f"po: {s.intake.anamnesis_trigger}")
+        details += f" Klientas: {', '.join(bits) if bits else s.intake.anamnesis_raw}."
     if step_id == "dr_register_router":
         details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
     # Ledger: what the CALLER established (client-side evidence) — the human
@@ -225,7 +231,7 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
     from .evidence import LABELS as _EV_LABELS
     from .evidence import VALUE_LT as _EV_VALUES
 
-    for key, e in s.evidence.items():
+    for key, e in s.diagnosis.evidence.items():
         if e.get("source") == _EV_CLIENT and not e.get("conflict"):
             client_bits.append(
                 f"{_EV_LABELS.get(key, key)}: {_EV_VALUES.get(e['value'], e['value'])}"
@@ -234,33 +240,35 @@ def register_ticket_from_state(engine: Any, step_id: str | None) -> None:
         details += f" Patikrinta su klientu: {'; '.join(client_bits)}."
     # Why it was not solved (refusal / demand / not home) — recorded on the ticket
     # so the technician knows the context (policy 2026-07-30).
-    reason_note = (s.resolution or {}).get("escalate_reason")
+    reason_note = (s.resolution.procedure or {}).get("escalate_reason")
     if reason_note:
         details += f" {reason_note}"
     # What was already TRIED and ruled out — the human taking over must not redo
     # it (after-hours philosophy 2026-08-03: the agent attempts, a person takes
     # over via the ticket with the full attempt history).
-    tried = list(s.failed_hypotheses) + [
-        x.get("cause") for x in s.rejected_hypotheses if x.get("cause")
+    tried = list(s.diagnosis.failed_hypotheses) + [
+        x.get("cause") for x in s.diagnosis.rejected_hypotheses if x.get("cause")
     ]
     if tried:
         glosses = ", ".join(DIAGNOSIS_LT.get(c, c) for c in dict.fromkeys(tried))
         details += f" Bandyta/atmesta: {glosses}."
     # A (2026-08-21): secondary problems the caller mentioned mid-call — the
     # technician checks them on the same visit.
-    if getattr(s, "secondary_problems", None):
-        extra = "; ".join(f"{x['tipas']}: „{x['tekstas']}“" for x in s.secondary_problems)
+    if getattr(s.intake, "secondary_problems", None):
+        extra = "; ".join(f"{x['tipas']}: „{x['tekstas']}“" for x in s.intake.secondary_problems)
         details += f" Papildomai patikrinti: {extra}."
     actions = engine._tools_called_this_session()
     args = {
-        "customer_id": s.customer_id,
+        "customer_id": s.identity.customer_id,
         "problem_type": "technician_visit",
         "problem_description": details,
         "priority": "high",
         "notes": ("Atlikta: " + ", ".join(actions)) if actions else "",
     }
     try:
-        engine.tracer.emit("tool_call", name="create_ticket", args={"customer_id": s.customer_id})
+        engine.tracer.emit(
+            "tool_call", name="create_ticket", args={"customer_id": s.identity.customer_id}
+        )
         obs = execute_tool("create_ticket", args)
         engine._trace_tool_result("create_ticket", obs)
         engine._update_state_from_observation("create_ticket", obs)  # sets ticket_id
@@ -276,7 +284,7 @@ def simulate_router_reboot_action(engine: Any) -> None:
     physical world); production sees the real flap on its own."""
     if os.getenv("SIMULATE_REBOOT", "off").lower() != "on":
         return
-    cid = engine.state.customer_id
+    cid = engine.state.identity.customer_id
     if not cid:
         return
     try:
@@ -298,7 +306,7 @@ def simulate_bridge_connection(engine: Any) -> None:
     on its own). Best-effort: a failure just leaves the line unchanged."""
     if os.getenv("SIMULATE_BRIDGE", "off").lower() != "on":
         return
-    cid = engine.state.customer_id
+    cid = engine.state.identity.customer_id
     if not cid:
         return
     try:

@@ -34,11 +34,11 @@ def fresh_diagnose(engine) -> dict | None:
     """Re-read telemetry now and return the full diagnose payload
     ({verdict, signals}) or None on error. Read-only — used to VERIFY a fix
     actually took before closing/acting."""
-    if not engine.state.customer_id:
+    if not engine.state.identity.customer_id:
         return None
     try:
         return json.loads(
-            execute_tool("diagnose_connection", {"customer_id": engine.state.customer_id})
+            execute_tool("diagnose_connection", {"customer_id": engine.state.identity.customer_id})
         )
     except Exception:  # pragma: no cover - best-effort
         return None
@@ -63,9 +63,9 @@ def ensure_diagnosed(engine) -> bool:
     skips a step advance that turn — the strategy's first question is only being
     asked now, not yet answered."""
     s = engine.state
-    if not s.customer_id or s.case_closed:
+    if not s.identity.customer_id or s.closing.case_closed:
         return False
-    if s.diagnosis.get("network") or s.outage_reported:
+    if s.diagnosis.verdicts.get("network") or s.diagnosis.outage_reported:
         return False  # already diagnosed this stage (or an outage short-circuited it)
     # NO-PATH rule (Andrius 2026-09-03): the reported problem is in-scope and
     # the caller is IDENTIFIED, but no fault pack declares a path for it
@@ -73,26 +73,28 @@ def ensure_diagnosed(engine) -> bool:
     # the INTERNET telemetry and walking a wrong-domain pack (live: a TV call
     # was led through Wi-Fi questions). The single-escalate strategy begins
     # the ticket dialogue deterministically on arrival.
-    if s.problem_type and s.resolution is None:
+    if s.intake.problem_type and s.resolution.procedure is None:
         from .faults import problem_has_path
         from .resolution import STRATEGIES
 
-        if not problem_has_path(s.problem_type):
-            s.resolution = {"verdict": "unclear_fault", "step": "escalate"}
-            s.diagnosis["network"] = {"reason": "unclear_fault", "skipped": True}
+        if not problem_has_path(s.intake.problem_type):
+            s.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
+            s.diagnosis.verdicts["network"] = {"reason": "unclear_fault", "skipped": True}
             engine.tracer.emit(
                 "decision",
                 intent="no_path",
                 action="unclear_fault_ticket",
-                value=s.problem_type,
+                value=s.intake.problem_type,
             )
             engine._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
             return True
     try:
-        obs = execute_tool("diagnose_connection", {"customer_id": s.customer_id})
+        obs = execute_tool("diagnose_connection", {"customer_id": s.identity.customer_id})
     except Exception:  # pragma: no cover - best-effort
         return False
-    engine.tracer.emit("tool_call", name="diagnose_connection", args={"customer_id": s.customer_id})
+    engine.tracer.emit(
+        "tool_call", name="diagnose_connection", args={"customer_id": s.identity.customer_id}
+    )
     engine._trace_tool_result("diagnose_connection", obs)
     engine._update_state_from_observation("diagnose_connection", obs)
     _seed_evidence_from_anamnesis(engine)
@@ -107,8 +109,8 @@ def _seed_evidence_from_anamnesis(engine) -> None:
     matching facts land on the ledger — the drive then never asks them again.
     Only specific markers (>=5 chars) seed; generic affirmations never do."""
     s = engine.state
-    raw = s.anamnesis_raw
-    verdict = (s.resolution or {}).get("verdict")
+    raw = s.intake.anamnesis_raw
+    verdict = (s.resolution.procedure or {}).get("verdict")
     if not raw or not verdict:
         return
     from .evidence import CLIENT, _fold, _mark_hit, set_fact, spec_for
@@ -118,12 +120,12 @@ def _seed_evidence_from_anamnesis(engine) -> None:
         return
     low = _fold(raw)
     for key, item in (spec.get("client") or {}).items():
-        if key in s.evidence:
+        if key in s.diagnosis.evidence:
             continue
         for value, marks in ((item or {}).get("atsakymai") or {}).items():
             hits = [m for m in marks or [] if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
             if hits:
-                set_fact(s.evidence, key, str(value), CLIENT, s.turn_count)
+                set_fact(s.diagnosis.evidence, key, str(value), CLIENT, s.dialog.turn_count)
                 engine.tracer.emit("evidence", action="anamnesis_seed", key=key, value=str(value))
                 break
 
@@ -141,9 +143,9 @@ def ensure_action_done(engine) -> bool:
     escalate on failure), so by the time the LLM narrates it only PHRASES the
     verified outcome. Returns True if it ran an action this call."""
     s = engine.state
-    if not s.customer_id or s.case_closed:
+    if not s.identity.customer_id or s.closing.case_closed:
         return False
-    r = s.resolution
+    r = s.resolution.procedure
     if not r:
         return False
     from .resolution import StepKind, get_strategy
@@ -173,10 +175,10 @@ def ensure_action_done(engine) -> bool:
     ran = False
     for action in step.tool_actions:
         try:
-            obs = execute_tool(action, {"customer_id": s.customer_id})
+            obs = execute_tool(action, {"customer_id": s.identity.customer_id})
         except Exception:  # pragma: no cover - best-effort
             continue
-        engine.tracer.emit("tool_call", name=action, args={"customer_id": s.customer_id})
+        engine.tracer.emit("tool_call", name=action, args={"customer_id": s.identity.customer_id})
         obs = engine._augment_tool_result(action, obs)  # chains reset_port + re-diagnose
         engine._trace_tool_result(action, obs)
         ran = True
@@ -187,7 +189,7 @@ def ensure_action_done(engine) -> bool:
             # bridged intro) — foreign_mac's bind IS the fix, not a bridge.
             from .evidence import solution_for
 
-            if solution_for(s.evidence, r.get("verdict")) == "bridge":
+            if solution_for(s.diagnosis.evidence, r.get("verdict")) == "bridge":
                 engine._bridge_bound = True
     return ran
 
@@ -206,7 +208,7 @@ def advance_resolution(engine, user_input: str | None) -> None:
             key=engine._evidence_conflict.key,
         )
         return
-    r = engine.state.resolution
+    r = engine.state.resolution.procedure
     before = r.get("step") if r else None
     engine._walk_resolution(user_input)
     engine._emit_decision(before)
@@ -255,15 +257,15 @@ def walk_resolution(engine, user_input: str | None) -> None:
         next_step_id,
     )
 
-    r = engine.state.resolution
-    if not r or engine.state.case_closed:
+    r = engine.state.resolution.procedure
+    if not r or engine.state.closing.case_closed:
         return
     for guard in walker_guards.PRELUDE_GUARDS:
         if guard(engine, user_input):
             return
     # Derive the intent from THIS call's input rather than trusting it was set
     # earlier — the walker must not depend on the caller's ordering.
-    engine.state.last_intent = detect_turn_intent(user_input)
+    engine.state.dialog.last_intent = detect_turn_intent(user_input)
     strat = get_strategy(r.get("verdict"))
     step = strat.step(r.get("step", "")) if strat else None
     if step is None:
@@ -405,7 +407,7 @@ def classify_confirm_and_route(engine, step, strat, user_input: str | None) -> b
         # per-step, so it can be worded precisely for THIS check), falling back to the
         # universal per-detector glosses (knowledge/detectors.yaml, code as last
         # resort). A reworded check is a file edit, not code.
-        declared = step_options((engine.state.resolution or {}).get("verdict"), step.id)
+        declared = step_options((engine.state.resolution.procedure or {}).get("verdict"), step.id)
         glosses = detector_glosses(detector_name)
         options: dict[str, str] = {}
         for raw in step.on:
@@ -433,11 +435,11 @@ def classify_confirm_and_route(engine, step, strat, user_input: str | None) -> b
     if answered:
         if engine._block_uncorroborated_escalate(step, strat, obs.label, user_input):
             return True  # clarify goes out instead; the step holds
-        engine.state.awaiting = None
-        engine.state.awaiting_turns = 0
-        engine.state.step_confusions = 0
-        engine.state.last_intent = "answer"
-        engine._route_to(engine.state.resolution, next_step_id(strat, step.id, obs.label))
+        engine.state.dialog.awaiting = None
+        engine.state.dialog.awaiting_turns = 0
+        engine.state.dialog.step_confusions = 0
+        engine.state.dialog.last_intent = "answer"
+        engine._route_to(engine.state.resolution.procedure, next_step_id(strat, step.id, obs.label))
         return True
     return False
 
@@ -529,11 +531,11 @@ def classify_instruct_and_advance(engine, step, strat, user_input: str | None) -
         routed_by=("classifier" if done else "keyword"),
     )
     if done:
-        engine.state.awaiting = None
-        engine.state.awaiting_turns = 0
-        engine.state.step_confusions = 0
-        engine.state.last_intent = "done"
-        engine._advance_instruct(engine.state.resolution, step, strat, user_input)
+        engine.state.dialog.awaiting = None
+        engine.state.dialog.awaiting_turns = 0
+        engine.state.dialog.step_confusions = 0
+        engine.state.dialog.last_intent = "done"
+        engine._advance_instruct(engine.state.resolution.procedure, step, strat, user_input)
         return True
     # Classifier VETO: the classifier RAN and did NOT say "done" (waiting OR
     # unclear) — HOLD the step unless the keyword intent is an explicit DONE
@@ -560,7 +562,7 @@ def open_hypothesis(engine, reason: str | None) -> None:
     """A fresh verdict = a new belief. Seeds it with what the telemetry showed."""
     if not reason:
         return
-    h = engine.state.hypothesis
+    h = engine.state.diagnosis.hypothesis
     if h and h.get("cause") == reason and h.get("status") == "testing":
         return  # same belief, still being tested — keep its evidence
     # The ANALYSIS fuses BOTH sides (Step 2): telemetry is the first evidence,
@@ -569,14 +571,14 @@ def open_hypothesis(engine, reason: str | None) -> None:
     # klientas sako dingo po audros").
     because = [_DIAGNOSIS_LT.get(reason, reason)]
     s = engine.state
-    if s.anamnesis_when or s.anamnesis_trigger:
+    if s.intake.anamnesis_when or s.intake.anamnesis_trigger:
         bits = []
-        if s.anamnesis_when:
-            bits.append(f"dingo {s.anamnesis_when}")
-        if s.anamnesis_trigger:
-            bits.append(f"po: {s.anamnesis_trigger}")
+        if s.intake.anamnesis_when:
+            bits.append(f"dingo {s.intake.anamnesis_when}")
+        if s.intake.anamnesis_trigger:
+            bits.append(f"po: {s.intake.anamnesis_trigger}")
         because.append("klientas sako " + ", ".join(bits))
-    engine.state.hypothesis = {
+    engine.state.diagnosis.hypothesis = {
         "cause": reason,
         "because": because,
         "status": "testing",
@@ -586,7 +588,7 @@ def open_hypothesis(engine, reason: str | None) -> None:
 
 def note_evidence(engine, text: str) -> None:
     """Add something the ENGINE learned (a telemetry read, a check outcome)."""
-    h = engine.state.hypothesis
+    h = engine.state.diagnosis.hypothesis
     if h and text and text not in h["because"]:
         h["because"].append(text)
 
@@ -595,13 +597,15 @@ def settle_hypothesis(engine, status: str, settled_by: str) -> None:
     """Close the belief: confirmed (the fix worked / the cause was proven) or
     rejected (it did not hold). Rejected ones are remembered so the engine never
     re-tries them and the agent can say what it already ruled out."""
-    h = engine.state.hypothesis
+    h = engine.state.diagnosis.hypothesis
     if not h or h.get("status") != "testing":
         return
     h["status"] = status
     h["settled_by"] = settled_by
     if status == "rejected":
-        engine.state.rejected_hypotheses.append({"cause": h["cause"], "settled_by": settled_by})
+        engine.state.diagnosis.rejected_hypotheses.append(
+            {"cause": h["cause"], "settled_by": settled_by}
+        )
 
 
 def scripted_wait_ack(engine) -> str | None:
@@ -614,9 +618,13 @@ def scripted_wait_ack(engine) -> str | None:
     from .resolution import INTENT_IN_PROGRESS
 
     s = engine.state
-    if not s.resolution or s.case_closed or getattr(engine, "_ticket_stage", None):
+    if (
+        not s.resolution.procedure
+        or s.closing.case_closed
+        or getattr(engine, "_ticket_stage", None)
+    ):
         return None
-    if s.last_intent != INTENT_IN_PROGRESS or s.awaiting != "client_action":
+    if s.dialog.last_intent != INTENT_IN_PROGRESS or s.dialog.awaiting != "client_action":
         return None
     if engine._pending_announce or getattr(engine, "_evidence_conflict", None):
         return None
@@ -633,7 +641,7 @@ def scripted_wait_ack(engine) -> str | None:
             return None
     from .identification import phrase
 
-    variant = phrase("wait_ack") if s.awaiting_turns % 2 else phrase("wait_ack_2")
+    variant = phrase("wait_ack") if s.dialog.awaiting_turns % 2 else phrase("wait_ack_2")
     return variant or phrase("wait_ack")
 
 
@@ -660,23 +668,23 @@ def turn_may_advance(engine, step) -> bool:
     s = engine.state
     from .resolution import INTENT_CONFUSED
 
-    intent = s.last_intent or INTENT_UNKNOWN
+    intent = s.dialog.last_intent or INTENT_UNKNOWN
     if intent in (INTENT_ANSWER, INTENT_DONE):
-        s.awaiting = None
-        s.awaiting_turns = 0
-        s.step_confusions = 0  # they got past this one
+        s.dialog.awaiting = None
+        s.dialog.awaiting_turns = 0
+        s.dialog.step_confusions = 0  # they got past this one
         return True
     if intent == INTENT_CONFUSED:
         # Each "I don't follow" on the SAME step earns a smaller piece of it.
-        s.step_confusions += 1
+        s.dialog.step_confusions += 1
     # Still waiting on the same thing — count the turns so the agent can check in
     # ("ar pavyksta?") instead of silently re-asking the same sentence.
-    s.awaiting = (
+    s.dialog.awaiting = (
         "client_action"
         if (intent == INTENT_IN_PROGRESS or step.kind is StepKind.INSTRUCT)
         else "client_answer"
     )
-    s.awaiting_turns += 1
+    s.dialog.awaiting_turns += 1
     return False
 
 
@@ -713,14 +721,14 @@ def reject_and_rediagnose(engine, r: dict) -> bool:
     telemetry had started pointing at a different fault."""
     s = engine.state
     verdict = r.get("verdict")
-    if verdict and verdict not in s.failed_hypotheses:
-        s.failed_hypotheses.append(verdict)
+    if verdict and verdict not in s.diagnosis.failed_hypotheses:
+        s.diagnosis.failed_hypotheses.append(verdict)
     engine._settle_hypothesis("rejected", "po veiksmo ryšys neatsistatė (telemetrija)")
-    s.diagnosis.pop("network", None)  # let ensure_diagnosed re-read the line
+    s.diagnosis.verdicts.pop("network", None)  # let ensure_diagnosed re-read the line
     engine.ensure_diagnosed()
-    new = (s.resolution or {}).get("verdict")
-    if new and new != verdict and new not in s.failed_hypotheses:
-        s.pivoted_from = verdict  # narrate the rethink once, then clear
+    new = (s.resolution.procedure or {}).get("verdict")
+    if new and new != verdict and new not in s.diagnosis.failed_hypotheses:
+        s.diagnosis.pivoted_from = verdict  # narrate the rethink once, then clear
         return True
     return False
 
@@ -731,21 +739,21 @@ def route_to(engine, r: dict, target: str) -> None:
     handling so every branch (including client_side -> resolve) actually
     closes."""
     if target == "resolve":
-        engine.state.case_closed = True
-        engine.state.closed_reason = "resolved"
+        engine.state.closing.case_closed = True
+        engine.state.closing.closed_reason = "resolved"
         # The fix worked, so the cause we were testing was the right one — the
         # agent can now say so ("taigi dėl X ir nebuvo interneto").
         engine._settle_hypothesis("confirmed", "sutvarkius problema dingo")
     elif target == "callback":
         # P-C (Andrius 2026-09-08): the caller agreed to do the homework and
         # call back — a warm callback close, never pressure into a ticket.
-        engine.state.case_closed = True
-        engine.state.closed_reason = "callback"
+        engine.state.closing.case_closed = True
+        engine.state.closing.closed_reason = "callback"
         engine._callback_goodbye_due = True  # scripted speaks callback_goodbye
         engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
     elif target == "end":
-        engine.state.case_closed = True
-        engine.state.closed_reason = engine.state.closed_reason or "declined"
+        engine.state.closing.case_closed = True
+        engine.state.closing.closed_reason = engine.state.closing.closed_reason or "declined"
     else:
         # P-E: escalating out of the homework step means nothing was done at
         # the device — the ticket intro must speak the honest state.
@@ -772,8 +780,8 @@ def advance_restored(engine, r: dict, user_input: str | None) -> None:
         return  # question not asked yet (the bind turn) — just record telemetry
     outcome = detect_restored(user_input)
     if outcome == Outcome.YES:
-        engine.state.case_closed = True
-        engine.state.closed_reason = "resolved"
+        engine.state.closing.case_closed = True
+        engine.state.closing.closed_reason = "resolved"
         engine._settle_hypothesis("confirmed", "klientas patvirtino, kad veikia")
         return
     if outcome == Outcome.NO:
@@ -917,8 +925,8 @@ def advance_reboot_check(engine, r: dict, user_input: str | None) -> None:
         # (then the word is all we have). Still hung with no flap = neither
         # source saw anything change -> the wrong-device retry path.
         if r.get("telemetry_fixed") or flap or not telem_ok:
-            engine.state.case_closed = True
-            engine.state.closed_reason = "resolved"
+            engine.state.closing.case_closed = True
+            engine.state.closing.closed_reason = "resolved"
             engine._settle_hypothesis("confirmed", "po perkrovimo ryšys atsistatė")
             return
         outcome = Outcome.NO  # fall through to the no-flap retry below
@@ -995,8 +1003,8 @@ def advance_escalate(engine, r: dict, step, user_input: str | None) -> None:
     if label == "yes":
         engine._begin_ticket_dialogue(step)  # contacts first, then register+close
     elif label == "no":
-        engine.state.case_closed = True
-        engine.state.closed_reason = "declined"
+        engine.state.closing.case_closed = True
+        engine.state.closing.closed_reason = "declined"
     # unclear -> stay; the step's question is re-asked
 
 

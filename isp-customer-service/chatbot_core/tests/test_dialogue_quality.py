@@ -17,8 +17,8 @@ class TestW0OrderGuards:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_power"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
         return agent
 
     def test_bridge_fix_waits_for_the_offer(self, db_connection):
@@ -44,7 +44,7 @@ class TestW0OrderGuards:
         agent._ticket_stage = "hours"
         agent._ticket_ctx = {"step_id": None, "hours_asked": True, "intro_done": True}
         agent._pre_turn_guards("Kodėl tokiausia skambinti nuo 17-18 val.")
-        assert agent.state.contact_hours and "17-18" in agent.state.contact_hours
+        assert agent.state.ticket.contact_hours and "17-18" in agent.state.ticket.contact_hours
         assert agent._ticket_stage == "done"
 
     def test_real_question_without_content_still_diverts(self, db_connection):
@@ -52,7 +52,7 @@ class TestW0OrderGuards:
         agent._ticket_stage = "hours"
         agent._ticket_ctx = {"step_id": None, "hours_asked": True, "intro_done": True}
         agent._pre_turn_guards("Kodėl jums reikia mano laiko?")
-        assert not agent.state.contact_hours
+        assert not agent.state.ticket.contact_hours
         assert agent._ticket_offscript is True
 
     def test_scripted_goodbye_ends_the_call(self, db_connection):
@@ -61,11 +61,11 @@ class TestW0OrderGuards:
 
         agent = self._agent()
         res = create_ticket("CUST009", "network_issue", "test")
-        agent.state.ticket_id = res["ticket_id"]
-        agent.state.case_closed = True
+        agent.state.ticket.ticket_id = res["ticket_id"]
+        agent.state.closing.case_closed = True
         node = make_closing_node(agent)
         node(SimpleNamespace(turn=SimpleNamespace(user_input="Gerai, ačiū")))
-        assert agent.state.is_complete is True  # one goodbye, then hang up
+        assert agent.state.closing.is_complete is True  # one goodbye, then hang up
 
 
 class TestW1LivingDialogue:
@@ -78,12 +78,12 @@ class TestW1LivingDialogue:
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = ReactAgent(caller_phone="unknown")
-        agent.state.problem_type = "internet_down"
+        agent.state.intake.problem_type = "internet_down"
         reply = agent._identification_scripted_reply(
             "Laba diena, neveikia internetas. Vakar dingo, šiandien nebėra."
         )
         assert reply is None
-        assert agent.state.anamnesis_raw and agent.state.anamnesis_when
+        assert agent.state.intake.anamnesis_raw and agent.state.intake.anamnesis_when
         assert agent._ident_directive["kind"] in ("address_offer", "address_ask")
         block = agent._state_facts_block() or ""
         assert "KLIENTAS JAU PASAKĖ" in block and "NEKLAUSK" in block
@@ -95,7 +95,7 @@ class TestW1LivingDialogue:
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = ReactAgent(caller_phone="unknown")
-        agent.state.problem_type = "internet_down"
+        agent.state.intake.problem_type = "internet_down"
         assert agent._identification_scripted_reply("Neveikia internetas pas mane") is None
         assert agent._ident_directive["kind"] in ("address_offer", "address_ask")
 
@@ -103,8 +103,8 @@ class TestW1LivingDialogue:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_power"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
         return agent
 
     def test_story_flipping_volunteered_fact_is_parked(self, db_connection, monkeypatch):
@@ -120,8 +120,8 @@ class TestW1LivingDialogue:
         agent = self._resolving_agent()
         agent._evidence_last_ask_key = "lights"  # we asked about the LIGHTS
         agent._ingest_client_evidence("nedega nė viena, ir rozetė neveikia")
-        assert agent.state.evidence.get("lights", {}).get("value") == "nedega"
-        assert agent.state.evidence.get("outlet_works") is None  # parked, not committed
+        assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
+        assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked, not committed
         assert agent._fact_confirm == FactConfirm(key="outlet_works", value="neveikia")
         reply = agent._evidence_drive("nedega nė viena, ir rozetė neveikia")
         assert reply and "sitikinti" in reply  # the one confirm question
@@ -131,11 +131,13 @@ class TestW1LivingDialogue:
         agent = self._resolving_agent()
         agent._fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
         agent._ingest_client_evidence("Taip, tikrai neveikia")
-        assert agent.state.evidence.get("outlet_works", {}).get("value") == "neveikia"
+        assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
         agent2 = self._resolving_agent()
         agent2._fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
         agent2._ingest_client_evidence("Ne ne, rozetė veikia, viskas gerai")
-        assert (agent2.state.evidence.get("outlet_works") or {}).get("value") != "neveikia"
+        assert (agent2.state.diagnosis.evidence.get("outlet_works") or {}).get(
+            "value"
+        ) != "neveikia"
 
     def test_direct_answer_is_not_gated(self, db_connection, monkeypatch):
         import agent.evidence as ev
@@ -146,7 +148,7 @@ class TestW1LivingDialogue:
         agent = self._resolving_agent()
         agent._evidence_last_ask_key = "outlet_works"  # we ASKED about the outlet
         agent._ingest_client_evidence("neveikia rozetė")
-        assert agent.state.evidence.get("outlet_works", {}).get("value") == "neveikia"
+        assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
         assert agent._fact_confirm is None
 
 
@@ -159,8 +161,8 @@ class TestUnheardQuestion:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
             "step": "dr_lights",
             "presented": {"dr_lights": 1},
@@ -170,17 +172,17 @@ class TestUnheardQuestion:
 
     def test_unheard_question_rolls_the_ask_back(self, db_connection):
         agent = self._agent()
-        agent.state.last_question = "Ar dega bent viena lemputė?"
+        agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
         agent._evidence_last_ask_key = "lights"
         agent._evidence_asks = {"lights": 1}
         agent.apply_delivery(["Gerai, kad radote.", "Ar dega bent viena lemputė?"], 1)
-        assert agent.state.last_question is None
+        assert agent.state.dialog.last_question is None
         # the pending key STAYS (live 2026-08-27: clearing it looped the call —
         # the interrupting ANSWER had no key to land on); only the ask counter
         # steps back.
         assert agent._evidence_last_ask_key == "lights"
         assert agent._evidence_asks["lights"] == 0
-        assert agent.state.resolution["presented"]["dr_lights"] == 0
+        assert agent.state.resolution.procedure["presented"]["dr_lights"] == 0
         assert agent._unheard_question == "Ar dega bent viena lemputė?"
         assert agent._undelivered_tail is None  # superseded by the strong note
         block = agent._state_facts_block() or ""
@@ -189,11 +191,11 @@ class TestUnheardQuestion:
 
     def test_heard_question_keeps_the_ask(self, db_connection):
         agent = self._agent()
-        agent.state.last_question = "Ar dega bent viena lemputė?"
+        agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
         agent._evidence_last_ask_key = "lights"
         agent._evidence_asks = {"lights": 1}
         agent.apply_delivery(["Ar dega bent viena lemputė?", "Tai parodys, ar gauna srovę."], 1)
-        assert agent.state.last_question == "Ar dega bent viena lemputė?"
+        assert agent.state.dialog.last_question == "Ar dega bent viena lemputė?"
         assert agent._evidence_last_ask_key == "lights"
         assert agent._unheard_question is None
         assert agent._undelivered_tail  # the plain advisory note stands
@@ -206,8 +208,8 @@ class TestW2QuietAnalyst:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.problem_type = "internet_down"
-        agent.state.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST009"
         agent.state.messages.append({"role": "user", "content": "neveikia internetas"})
         return agent
 
@@ -260,9 +262,9 @@ class TestTurnGrammar:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020112")
-        agent.state.customer_id = "CUST112"
-        agent.state.problem_type = "internet_down"
-        agent.state.resolution = {"verdict": verdict, "step": "rh_scope"}
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {"verdict": verdict, "step": "rh_scope"}
         return agent
 
     def test_fact_meaning_note_is_one_shot(self, db_connection):
@@ -290,7 +292,7 @@ class TestTurnGrammar:
 
     def test_name_acceptance_is_one_shot(self, db_connection):
         agent = self._agent()
-        agent.state.caller_name = "Tomas"
+        agent.state.identity.caller_name = "Tomas"
         agent._name_heard = True
         block = agent._state_facts_block() or ""
         assert "Malonu, Tomas" in block
@@ -300,7 +302,7 @@ class TestTurnGrammar:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020112")
-        agent.state.problem_type = "internet_down"
+        agent.state.intake.problem_type = "internet_down"
         agent._ident_directive = {
             "kind": "address_offer",
             "adresas": "Tilžės g. 60, butas 7",

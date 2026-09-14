@@ -53,20 +53,6 @@ class TestAgentState:
         assert "+37060012345" in agent.system_prompt
 
 
-class TestAgentStateClass:
-    """Tests for AgentState dataclass."""
-
-    def test_state_confirm_address(self):
-        """Should confirm address and set caller name."""
-        from agent.state import AgentState
-
-        state = AgentState(caller_phone="+37060012345")
-        state.confirm_address(caller_name="Petras")
-
-        assert state.address_confirmed == True
-        assert state.caller_name == "Petras"
-
-
 class TestAgentConfig:
     """Tests for agent configuration."""
 
@@ -188,7 +174,7 @@ class TestHistoryWindow:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
-        agent.state.set_customer_info(
+        agent.state.identity.set_customer(
             customer_id="C123",
             name="Jonas Jonaitis",
             address="Vilniaus g. 1, Vilnius",
@@ -229,8 +215,8 @@ class TestHistoryWindow:
         from agent.slots import SlotStatus
 
         agent = ReactAgent(caller_phone="+37060012345")
-        agent.state.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
-        agent.state.profile.house.propose("8", 0.8, SlotStatus.HEARD)
+        agent.state.identity.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
+        agent.state.identity.profile.house.propose("8", 0.8, SlotStatus.HEARD)
 
         facts = agent._state_facts_block()
         assert "HEARD ADDRESS" in facts
@@ -243,8 +229,8 @@ class TestHistoryWindow:
         from agent.slots import SlotStatus
 
         agent = ReactAgent(caller_phone="+37060012345")
-        agent.state.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
-        agent.state.customer_id = "CUST110"
+        agent.state.identity.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
+        agent.state.identity.customer_id = "CUST110"
 
         facts = agent._state_facts_block()
         assert "HEARD ADDRESS" not in (facts or "")
@@ -260,8 +246,8 @@ class TestHistoryWindow:
         obs = json.dumps(diagnose_connection("CUST105"))  # S5a -> B6 foreign_mac
         agent._update_state_from_observation("diagnose_connection", obs)
 
-        assert agent.state.diagnosis["network"]["group"] == "B6"
-        assert agent.state.diagnosis["network"]["reason"] == "foreign_mac"
+        assert agent.state.diagnosis.verdicts["network"]["group"] == "B6"
+        assert agent.state.diagnosis.verdicts["network"]["reason"] == "foreign_mac"
 
         facts = agent._state_facts_block()
         assert "DIAGNOSTIKA [network] (B6" in facts
@@ -295,33 +281,33 @@ class TestDeterministicInformClose:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020102")
-        agent.state.customer_id = "CUST102"
-        agent.state.diagnosis["network"] = {"group": "B2", "reason": "active_outage"}
-        agent.state.outage_reported = True
-        agent.state.resolution = None  # inform mode: no strategy to walk
+        agent.state.identity.customer_id = "CUST102"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B2", "reason": "active_outage"}
+        agent.state.diagnosis.outage_reported = True
+        agent.state.resolution.procedure = None  # inform mode: no strategy to walk
         return agent
 
     def test_farewell_closes_outage_call(self, db_connection):
         agent = self._informed_agent()
         agent._maybe_close_inform("Ačiū, viso gero, sudie")
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "outage"
-        assert agent.state.is_complete is True
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "outage"
+        assert agent.state.closing.is_complete is True
 
     def test_no_farewell_keeps_call_open(self, db_connection):
         agent = self._informed_agent()
         agent._maybe_close_inform("O kada tiksliai sutvarkysite?")
-        assert agent.state.case_closed is False
+        assert agent.state.closing.case_closed is False
 
     def test_active_strategy_never_closed_here(self, db_connection):
         """A live troubleshooting strategy belongs to the walker — a mid-flow 'ne'
         must not end the call."""
         agent = self._informed_agent()
-        agent.state.outage_reported = False
-        agent.state.diagnosis["network"] = {"group": "B6", "reason": "foreign_mac"}
-        agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
+        agent.state.diagnosis.outage_reported = False
+        agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "foreign_mac"}
+        agent.state.resolution.procedure = {"verdict": "foreign_mac", "step": "confirm_change"}
         agent._maybe_close_inform("ne")
-        assert agent.state.case_closed is False
+        assert agent.state.closing.case_closed is False
 
 
 def _complete_ticket_dialogue(agent):
@@ -346,11 +332,11 @@ class TestEscalateOutcome:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.diagnosis["network"] = {"group": "B6", "reason": "no_mac_observed"}
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "no_mac_observed"}
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
             "step": "escalate",
             "asked": True,  # the consent question was posed last turn
@@ -362,29 +348,29 @@ class TestEscalateOutcome:
         agent._walk_resolution("gerai, tinka")
         assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
         _complete_ticket_dialogue(agent)
-        assert agent.state.ticket_id  # engine-created, from state
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "registered"
+        assert agent.state.ticket.ticket_id  # engine-created, from state
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "registered"
 
     def test_decline_closes_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent_on_escalate(monkeypatch)
         agent._walk_resolution("ne, nenoriu, ačiū")
-        assert agent.state.ticket_id is None
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "declined"
+        assert agent.state.ticket.ticket_id is None
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "declined"
 
     def test_unclear_holds_the_step(self, db_connection, monkeypatch):
         agent = self._agent_on_escalate(monkeypatch)
         agent._walk_resolution("hmm palaukite sekundėlę")
-        assert agent.state.ticket_id is None
-        assert agent.state.case_closed is False  # re-ask, don't register on a garble
+        assert agent.state.ticket.ticket_id is None
+        assert agent.state.closing.case_closed is False  # re-ask, don't register on a garble
 
     def test_not_asked_yet_never_advances(self, db_connection, monkeypatch):
         agent = self._agent_on_escalate(monkeypatch)
-        agent.state.resolution["asked"] = False
+        agent.state.resolution.procedure["asked"] = False
         agent._walk_resolution("gerai, tinka")  # "taip" to something else entirely
-        assert agent.state.ticket_id is None
-        assert agent.state.case_closed is False
+        assert agent.state.ticket.ticket_id is None
+        assert agent.state.closing.case_closed is False
 
 
 class TestHearingAgent:
@@ -401,11 +387,11 @@ class TestHearingAgent:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.diagnosis["network"] = {"group": "B6", "reason": "no_mac_observed"}
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "no_mac_observed"}
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
             "step": step,
             "asked": asked,
@@ -427,7 +413,7 @@ class TestHearingAgent:
         agent._evidence_last_ask_key = "power_cable"
         agent._evidence_asks["power_cable"] = 1
         agent._walk_resolution("Ne.")  # the fatal live turn
-        assert agent.state.resolution["step"] == "dr_intro"  # held, not escalate
+        assert agent.state.resolution.procedure["step"] == "dr_intro"  # held, not escalate
         assert agent._ticket_stage is None
 
     def test_open_question_negation_gets_fault_file_clarify(self, db_connection, monkeypatch):
@@ -441,9 +427,9 @@ class TestHearingAgent:
         from agent.evidence import CLIENT, set_fact
 
         agent = self._agent(monkeypatch)
-        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
-        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
-        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 2)
+        set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 2)
         agent._evidence_last_ask_key = "power_cable"
         agent._evidence_asks["power_cable"] = 1
         reply = agent._evidence_drive("Ne.")
@@ -453,8 +439,8 @@ class TestHearingAgent:
         from agent.evidence import CLIENT, set_fact
 
         agent = self._agent(monkeypatch)
-        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
-        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
         reply = agent._evidence_drive("radau")
         assert reply is not None and "lemputė" in reply
         assert "maitinimą" in reply  # the kodel sentence
@@ -466,10 +452,10 @@ class TestHearingAgent:
         # persikėlė ten; "ne + registruokite" iš homework -> escalate.
         agent = self._agent(monkeypatch)
         agent._walk_resolution("Ne.")
-        assert agent.state.resolution["step"] == "dr_homework"
-        agent.state.resolution["asked"] = True
+        assert agent.state.resolution.procedure["step"] == "dr_homework"
+        agent.state.resolution.procedure["asked"] = True
         agent._walk_resolution("Ne, registruokite meistrą")
-        assert agent.state.resolution["step"] == "escalate"
+        assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_rich_refusal_still_escalates_directly(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
@@ -506,7 +492,7 @@ class TestHearingAgent:
         agent = self._agent(monkeypatch)
         agent._end_confirm_pending = True
         agent._walk_resolution("Ne, nenoriu.")
-        assert agent.state.resolution["step"] == "dr_intro"
+        assert agent.state.resolution.procedure["step"] == "dr_intro"
         assert agent._ticket_stage is None
 
     def test_ticket_refusal_with_solving_content_returns_to_fix(self, db_connection, monkeypatch):
@@ -515,7 +501,7 @@ class TestHearingAgent:
         agent._ticket_ctx = {"phone_asked": True, "intro_done": True}
         agent._pre_turn_guards("Neregistruokite, pajunkim tą kompiuterį")
         assert agent._ticket_stage is None  # dialogue dropped…
-        assert agent.state.case_closed is False  # …but the call stays OPEN
+        assert agent.state.closing.case_closed is False  # …but the call stays OPEN
         assert agent._resume_fix_note is True  # narrator returns to the fix
 
     def test_cancel_confirm_answer_with_solving_content_returns_to_fix(
@@ -531,7 +517,7 @@ class TestHearingAgent:
         }
         agent._pre_turn_guards("Ne, tai mes pajunkim tą kompiuterį. Aš jungiu kabelį.")
         assert agent._ticket_stage is None
-        assert agent.state.case_closed is False
+        assert agent.state.closing.case_closed is False
         assert agent._resume_fix_note is True
 
     # --- round 3 (live 2026-08-11, call 3) ------------------------------------
@@ -566,15 +552,15 @@ class TestHearingAgent:
         # dr_intro presented ~15 turns earlier consumed "Dar interneto nėra."
         # as its own "no" -> escalate -> ticket (three live calls in a row).
         agent = self._agent(monkeypatch)
-        agent.state.resolution["asked_at"] = 0
+        agent.state.resolution.procedure["asked_at"] = 0
         agent.state.messages.extend({"role": "user", "content": f"turn {i}"} for i in range(8))
         agent._walk_resolution("Ne.")
-        assert agent.state.resolution["step"] == "dr_intro"  # held — question too old
+        assert agent.state.resolution.procedure["step"] == "dr_intro"  # held — question too old
         assert agent._ticket_stage is None
 
     def test_fresh_step_question_still_routes(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch)
-        agent.state.resolution["asked_at"] = len(agent.state.messages)
+        agent.state.resolution.procedure["asked_at"] = len(agent.state.messages)
         agent._walk_resolution("nieko nedarysiu, įregistruokit gedimą")
         assert agent._ticket_stage == "phone"  # refuse/demand path unaffected
 
@@ -622,14 +608,14 @@ class TestHearingAgent:
             ("outlet_works", "bandyta"),
             ("has_computer", "yes"),
         ):
-            set_fact(agent.state.evidence, k, v, CLIENT, 1)
-        agent.state.caller_name = "Andrius"
+            set_fact(agent.state.diagnosis.evidence, k, v, CLIENT, 1)
+        agent.state.identity.caller_name = "Andrius"
         agent._recap_state = "done"
         agent._findings_announced = True
         agent._drive_bridge_offered = True
         agent._drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("prijungiau, laukiu") is None  # walker resumes…
-        assert agent.state.resolution["step"] == "dr_pick_cable"  # …AT the bridge
+        assert agent.state.resolution.procedure["step"] == "dr_pick_cable"  # …AT the bridge
 
     # --- round 5 (2026-08-12): bridge-failure ladder ---------------------------
 
@@ -638,7 +624,7 @@ class TestHearingAgent:
         # (1) say the line sees nothing + cable re-check, (2) the LAN question,
         # (3) incoming-cable note + technician, attempt on the ticket.
         agent = self._agent(monkeypatch)
-        agent.state.caller_name = "Andrius"
+        agent.state.identity.caller_name = "Andrius"
         agent._bridge_plug_reported = True
         agent._drive_bridge_offered = True
         r1 = agent._drive_propose_fix("", "pajungiau kabelį")
@@ -647,14 +633,16 @@ class TestHearingAgent:
         assert "LAN" in r2  # the computer's network card, not the router
         assert agent._evidence_last_ask_key == "lan_active"
         agent._ingest_client_evidence("Nerodo nieko, neaktyvus")
-        assert agent.state.evidence["lan_active"]["value"] == "neaktyvus"
+        assert agent.state.diagnosis.evidence["lan_active"]["value"] == "neaktyvus"
         r3 = agent._drive_propose_fix("", "ir dabar nieko")
         assert "kabeliu" in r3  # the possible incoming-cable problem is NAMED
         assert "Ar tiks numeris" in r3  # technician registration begins
         assert "NEPAVYKO" in (agent._bridge_fail_note or "")
         _complete_ticket_dialogue(agent)
         with db_connection.cursor() as cur:
-            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            cur.execute(
+                "SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket.ticket_id,)
+            )
             details = dict(cur.fetchone())["details"]
         assert "NEPAVYKO" in details and "neaktyvus" in details
 
@@ -665,18 +653,18 @@ class TestHearingAgent:
 
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(monkeypatch)
-        agent.state.caller_name = "Andrius"
+        agent.state.identity.caller_name = "Andrius"
         for k, v in (
             ("ivykiai", "nebuvo"),
             ("device_present", "rado"),
             ("lights", "nedega"),
             ("power_cable", "neaišku"),  # gave up — hypothesis unconfirmable
         ):
-            set_fact(agent.state.evidence, k, v, CLIENT, 1)
+            set_fact(agent.state.diagnosis.evidence, k, v, CLIENT, 1)
         agent._revived_keys = ["power_cable"]  # revival already spent
         agent._drive_repeats = 2  # distrust streak observed
         assert agent.solver_drive_turn("nežinau ką daugiau daryti") is None
-        assert agent.state.resolution["step"] == "escalate"  # honest endgame
+        assert agent.state.resolution.procedure["step"] == "escalate"  # honest endgame
 
     def test_bind_lands_walker_on_verify_and_hears_restored(self, db_connection, monkeypatch):
         # Tools are FAKED so the shared session DB is not mutated (a real bind
@@ -700,9 +688,9 @@ class TestHearingAgent:
         monkeypatch.setattr(agent, "_augment_tool_result", lambda n, o: o)
         reply = agent._drive_propose_fix("", "įkišau į kompiuterį")
         assert "ririšau" in reply.lower() or "Pririšau" in reply  # the bind ran
-        assert agent.state.resolution["step"] == "dr_verify"  # verify owns the next reply
+        assert agent.state.resolution.procedure["step"] == "dr_verify"  # verify owns the next reply
         agent._walk_resolution("Jau atsistatė, veikia internetas!")
-        assert agent.state.resolution["step"] == "dr_register_router"  # success HEARD
+        assert agent.state.resolution.procedure["step"] == "dr_register_router"  # success HEARD
 
     def test_ticket_intro_after_working_bridge_states_the_success(self, db_connection, monkeypatch):
         # "Telefonu šio gedimo išspręsti nepavyks" right after the internet
@@ -750,19 +738,22 @@ class TestAutoRegisterEscalate:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_register_router"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_register_router",
+        }
 
         ran = agent.ensure_action_done()
 
         assert ran is True
         assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
         _complete_ticket_dialogue(agent)
-        assert agent.state.ticket_id
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "registered"
+        assert agent.state.ticket.ticket_id
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "registered"
 
     def test_lauksiu_skambucio_is_consent_not_decline(self):
         from agent.resolution import detect_ticket_consent
@@ -789,11 +780,11 @@ class TestRestoredPreAnswer:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060020109")
-        agent.state.customer_id = "CUST109"
-        agent.state.problem_type = "internet_down"
-        agent.state.diagnosis["network"] = {"group": "B7", "reason": "healthy_to_router"}
-        agent.state.hypothesis = {"cause": "healthy_to_router", "status": "testing"}
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST109"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B7", "reason": "healthy_to_router"}
+        agent.state.diagnosis.hypothesis = {"cause": "healthy_to_router", "status": "testing"}
+        agent.state.resolution.procedure = {
             "verdict": "healthy_to_router",
             "step": "cs_verify_dev",
             "asked": False,  # the question was never posed — caller pre-answered
@@ -801,8 +792,8 @@ class TestRestoredPreAnswer:
 
         agent._walk_resolution("Įjungta, yra internetas, ačiū, atsirado. Viso gero.")
 
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "resolved"
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "resolved"
 
 
 class TestAddressGuards:
@@ -837,19 +828,19 @@ class TestAddressGuards:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020101")
-        agent.state.customer_id = "CUST101"
-        agent.state.customer_address = "Šiauliai, Tilžės g. 60-3"
-        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent.state.identity.customer_id = "CUST101"
+        agent.state.identity.customer_address = "Šiauliai, Tilžės g. 60-3"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent._pre_turn_guards("Tai ne dėl to adresų skambinu")
-        assert agent.state.customer_id == "CUST101"  # NOT dropped yet
+        assert agent.state.identity.customer_id == "CUST101"  # NOT dropped yet
         assert agent._reopen_confirm_pending
         reply = agent._identification_scripted_reply("Tai ne dėl to adresų skambinu")
         assert reply and "tikrai" in reply  # the confirmation question
         # A-2 (2026-09-07): the ANSWER is read in pre_turn_guards (the turn head,
         # before the solver/walker can consume it) — mirror the live sequence.
         agent._pre_turn_guards("Taip, dėl kito adreso")
-        assert agent.state.customer_id is None  # identity dropped after the yes
-        assert agent.state.diagnosis == {}  # per-account conclusions dropped
+        assert agent.state.identity.customer_id is None  # identity dropped after the yes
+        assert agent.state.diagnosis.verdicts == {}  # per-account conclusions dropped
         assert agent._reopen_note is True
 
 
@@ -863,10 +854,10 @@ class TestRefuseOrTicket:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060020105")
-        agent.state.customer_id = "CUST105"
-        agent.state.problem_type = "internet_down"
-        agent.state.hypothesis = {"cause": "foreign_mac", "status": "testing"}
-        agent.state.resolution = {"verdict": "foreign_mac", "step": step, "asked": True}
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.diagnosis.hypothesis = {"cause": "foreign_mac", "status": "testing"}
+        agent.state.resolution.procedure = {"verdict": "foreign_mac", "step": step, "asked": True}
         return agent
 
     def test_demand_registers_immediately(self, db_connection, monkeypatch):
@@ -874,16 +865,16 @@ class TestRefuseOrTicket:
         agent._walk_resolution("Nieko nedarysiu, įregistruokit gedimą")
         assert agent._ticket_stage == "phone"  # contacts dialogue first (2026-08-04)
         _complete_ticket_dialogue(agent)
-        assert agent.state.ticket_id
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "registered"
+        assert agent.state.ticket.ticket_id
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "registered"
 
     def test_refuse_routes_to_escalate_consent(self, db_connection, monkeypatch):
         agent = self._agent_mid_flow(monkeypatch)
         agent._walk_resolution("Aš nenamosiu")  # garbled refusal
-        r = agent.state.resolution
+        r = agent.state.resolution.procedure
         assert r["step"] == "escalate"  # polite consent question comes next
-        assert agent.state.ticket_id is None  # not registered yet — clarify first
+        assert agent.state.ticket.ticket_id is None  # not registered yet — clarify first
         assert "atsisakė" in r["escalate_reason"]
 
 
@@ -907,14 +898,14 @@ class TestIdentificationLadder:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020101")
-        agent.state.customer_id = "CUST101"
-        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent.state.identity.customer_id = "CUST101"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent._result_pending = True  # the caller question was posed last reply
 
         agent._pre_turn_guards("Ona, aš žmona sutartį sudariusio")
 
-        assert agent.state.caller_name == "Ona"  # the NAME, not the sentence
-        assert agent.state.caller_relation == "family"
+        assert agent.state.identity.caller_name == "Ona"  # the NAME, not the sentence
+        assert agent.state.identity.caller_relation == "family"
         # The RESULT directive now renders (deferred news released this turn).
         facts = agent._state_facts_block()
         assert facts and "REZULTATO PRISTATYMAS" in facts
@@ -938,8 +929,8 @@ class TestIdentificationLadder:
         agent._pre_turn_guards("Ne, skambinu dėl Tilžės gatvės 60 buto 3")
 
         # The ENGINE committed the corrected identity and diagnosed silently.
-        assert agent.state.customer_id == "CUST101"
-        assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
+        assert agent.state.identity.customer_id == "CUST101"
+        assert agent.state.diagnosis.verdicts["network"]["reason"] == "billing_suspended"
         # The reply is steered by the identified-note (ladder: caller question next).
         assert agent._addr_confirm_note and "IDENTIFIKUOTA" in agent._addr_confirm_note
         assert agent._result_pending is True
@@ -968,41 +959,41 @@ class TestVoiceGuardsRound5:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
             "step": "dr_offer_bridge",
             "asked": True,
         }
 
         agent._walk_resolution("T.")  # was read as "yes, I have a computer" live
-        assert agent.state.resolution["step"] == "dr_offer_bridge"  # held
+        assert agent.state.resolution.procedure["step"] == "dr_offer_bridge"  # held
         agent._walk_resolution("Mhm.")
-        assert agent.state.resolution["step"] == "dr_offer_bridge"  # held
+        assert agent.state.resolution.procedure["step"] == "dr_offer_bridge"  # held
 
     def test_caller_intro_with_stt_question_mark_is_captured(self, db_connection):
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020101")
-        agent.state.customer_id = "CUST101"
-        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent.state.identity.customer_id = "CUST101"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent._result_pending = True
 
         agent._pre_turn_guards("Tomas? Ne, mano vardas Tomas, aš esu kaimynas.")
-        assert agent.state.caller_name is not None  # captured, not skipped as a question
-        assert agent.state.caller_relation == "helper"
+        assert agent.state.identity.caller_name is not None  # captured, not skipped as a question
+        assert agent.state.identity.caller_relation == "helper"
 
     def test_inform_close_gated_until_news_told(self, db_connection):
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020101")
-        agent.state.customer_id = "CUST101"
-        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent.state.identity.customer_id = "CUST101"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent._result_pending = True  # ladder still open, news NOT delivered
 
         agent._maybe_close_inform("viso gero")
-        assert agent.state.case_closed is False  # must NOT hang up before informing
+        assert agent.state.closing.case_closed is False  # must NOT hang up before informing
 
     def test_farewell_mid_strategy_confirms_then_registers(self, db_connection, monkeypatch):
         import os
@@ -1011,23 +1002,27 @@ class TestVoiceGuardsRound5:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "asked": True,
+        }
 
         agent._pre_turn_guards("viso gero")  # mid-troubleshooting goodbye
         assert agent._end_confirm_pending is True
-        assert agent.state.case_closed is False  # clarify first, never hang up
+        assert agent.state.closing.case_closed is False  # clarify first, never hang up
         reply = agent._identification_scripted_reply("viso gero")
         assert reply and "tikrai norite baigti" in reply
 
         agent._pre_turn_guards("taip, baikim")  # confirmed -> contacts, then registration
         assert agent._ticket_stage == "phone"
         _complete_ticket_dialogue(agent)
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "registered"
-        assert agent.state.ticket_id
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "registered"
+        assert agent.state.ticket.ticket_id
 
     def test_farewell_mid_strategy_declined_resumes(self, db_connection, monkeypatch):
         import os
@@ -1036,16 +1031,20 @@ class TestVoiceGuardsRound5:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "asked": True,
+        }
 
         agent._pre_turn_guards("viso gero")
         agent._pre_turn_guards("ne ne, tęskime")  # changed their mind
-        assert agent.state.case_closed is False
+        assert agent.state.closing.case_closed is False
         assert agent._end_confirm_pending is False
         agent._walk_resolution("ne ne, tęskime")  # held one turn, not misrouted
-        assert agent.state.resolution["step"] == "dr_lights"
+        assert agent.state.resolution.procedure["step"] == "dr_lights"
 
 
 class TestAnalysisStep2:
@@ -1064,11 +1063,11 @@ class TestAnalysisStep2:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.anamnesis_when = "šiandien"
-        agent.state.anamnesis_trigger = "audra"
+        agent.state.intake.anamnesis_when = "šiandien"
+        agent.state.intake.anamnesis_trigger = "audra"
         agent._open_hypothesis("no_mac_observed")
 
-        because = " ".join(agent.state.hypothesis["because"])
+        because = " ".join(agent.state.diagnosis.hypothesis["because"])
         assert "klientas sako" in because and "audra" in because
 
     def test_ticket_carries_anamnesis(self, db_connection, monkeypatch):
@@ -1078,21 +1077,26 @@ class TestAnalysisStep2:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.anamnesis_when = "vakar"
-        agent.state.anamnesis_trigger = "audra"
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_register_router"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.intake.anamnesis_when = "vakar"
+        agent.state.intake.anamnesis_trigger = "audra"
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_register_router",
+        }
 
         agent.ensure_action_done()  # consent-free: contacts dialogue on arrival
         _complete_ticket_dialogue(agent)
 
-        assert agent.state.ticket_id
+        assert agent.state.ticket.ticket_id
         import sqlite3
 
         with db_connection.cursor() as cur:
-            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            cur.execute(
+                "SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket.ticket_id,)
+            )
             details = dict(cur.fetchone())["details"]
         assert "Klientas: dingo vakar, po: audra" in details
 
@@ -1109,10 +1113,14 @@ class TestSideTopicNode:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
-        agent.state.last_question = "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "asked": True,
+        }
+        agent.state.dialog.last_question = "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
         return agent
 
     def test_question_freezes_engine_and_flags_side_topic(self, db_connection, monkeypatch):
@@ -1120,11 +1128,11 @@ class TestSideTopicNode:
         assert agent.classify_side_topic("O kiek man tai kainuos?") is True
         assert agent.solver_drive_turn("O kiek man tai kainuos?") is None  # thinker yields
         agent._advance_resolution("O kiek man tai kainuos?")
-        assert agent.state.resolution["step"] == "dr_lights"  # frozen, not advanced
+        assert agent.state.resolution.procedure["step"] == "dr_lights"  # frozen, not advanced
 
     def test_side_facts_carry_faq_and_anchor(self, db_connection, monkeypatch):
         agent = self._diagnosing(monkeypatch)
-        agent.state.last_heard = "O kiek man tai kainuos?"
+        agent.state.dialog.last_heard = "O kiek man tai kainuos?"
         agent.classify_side_topic("O kiek man tai kainuos?")
         facts = agent._state_facts_block()
         assert "NUKRYPIMAS" in facts
@@ -1133,7 +1141,7 @@ class TestSideTopicNode:
 
     def test_unknown_topic_gets_not_my_area_directive(self, db_connection, monkeypatch):
         agent = self._diagnosing(monkeypatch)
-        agent.state.last_heard = "O koks rytoj oras Šiauliuose?"
+        agent.state.dialog.last_heard = "O koks rytoj oras Šiauliuose?"
         agent.classify_side_topic("O koks rytoj oras Šiauliuose?")
         facts = agent._state_facts_block()
         assert "ATSAKYMO NĖRA" in facts
@@ -1186,12 +1194,12 @@ class TestSideTopicNode:
         agent._pre_turn_guards("taip, tiks šis")
         agent._identification_scripted_reply("taip, tiks šis")
         agent._pre_turn_guards("Bet kada? Bet kurio laiko?")
-        assert agent.state.contact_hours == "Bet kada Bet kurio laiko"
+        assert agent.state.ticket.contact_hours == "Bet kada Bet kurio laiko"
 
     def test_checking_cue_spoken_on_identity_commit(self, db_connection, monkeypatch):
         agent = self._diagnosing(monkeypatch)
-        agent.state.resolution = None
-        agent.state.customer_address = "Šiauliai, Vilniaus g. 29"
+        agent.state.resolution.procedure = None
+        agent.state.identity.customer_address = "Šiauliai, Vilniaus g. 29"
         agent._just_identified = True
         agent._result_pending = True
         reply = agent._identification_scripted_reply(None)
@@ -1228,9 +1236,13 @@ class TestReviewGaps:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "asked": True,
+        }
         agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._update_state_from_observation(
             "diagnose_connection",
@@ -1238,15 +1250,15 @@ class TestReviewGaps:
         )
         agent._begin_ticket_dialogue(None)
         agent._side_topic_turns = 2
-        assert agent.state.evidence and agent._ticket_stage == "phone"
+        assert agent.state.diagnosis.evidence and agent._ticket_stage == "phone"
 
         agent._reopen_identification("skambinu dėl kito adreso — Dainų 5")
 
-        assert agent.state.evidence == {}
+        assert agent.state.diagnosis.evidence == {}
         assert agent._ticket_stage is None and agent._ticket_ctx is None
         assert agent._evidence_asks == {} and agent._evidence_conflict is None
         assert agent._side_topic_turns == 0
-        assert agent.state.customer_id is None  # identity dropped as before
+        assert agent.state.identity.customer_id is None  # identity dropped as before
 
     def test_scripted_turn_lands_user_message_on_history(self, db_connection):
         # The LLM narrator used to see holes: scripted turns never appended the
@@ -1340,14 +1352,18 @@ class TestBargeInCancel:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights", "asked": True}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "asked": True,
+        }
         agent._evidence_asks["lights"] = 1
         agent._evidence_last_ask_key = "lights"
 
         agent.on_turn_cancelled("Pažiūrėkite, ar dega bent")
 
-        assert agent.state.resolution["asked"] is True  # early answer will route
+        assert agent.state.resolution.procedure["asked"] is True  # early answer will route
         assert agent._evidence_asks["lights"] == 0  # wording level not escalated
         assert agent.state.messages[-1]["content"].startswith("Pažiūrėkite")
         assert agent.state.messages[-1]["content"].endswith("—")
@@ -1381,7 +1397,7 @@ class TestSmallTalkBeforeProblem:
 
     def test_problem_statement_is_not_smalltalk(self, db_connection):
         agent = self._fresh()
-        agent.state.problem_type = "internet_down"
+        agent.state.intake.problem_type = "internet_down"
         reply = agent._identification_scripted_reply("neveikia internetas")
         # etalonas #2 (2026-09-03): straight to the address, not ask_problem
         assert reply is not None and "adres" in reply.lower()
@@ -1390,7 +1406,7 @@ class TestSmallTalkBeforeProblem:
         agent = self._fresh()
         facts = agent._state_facts_block() or ""
         assert "PROBLEMA DAR NEPASAKYTA" in facts
-        agent.state.problem_type = "internet_down"
+        agent.state.intake.problem_type = "internet_down"
         facts2 = agent._state_facts_block() or ""
         assert "PROBLEMA DAR NEPASAKYTA" not in facts2
 
@@ -1403,8 +1419,8 @@ class TestScriptedWrapUp:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020101")
-        agent.state.customer_id = "CUST101"
-        agent.state.diagnosis["network"] = {"group": "B1", "reason": "billing_suspended"}
+        agent.state.identity.customer_id = "CUST101"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent._news_told = True
         return agent
 
@@ -1418,19 +1434,19 @@ class TestScriptedWrapUp:
         assert agent._identification_scripted_reply("Nusigaro.") is None
         reply = agent._identification_scripted_reply("Nusigaro.")
         assert reply and "Ačiū, kad paskambinote" in reply
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "inform"
-        assert agent.state.is_complete is True
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "inform"
+        assert agent.state.closing.is_complete is True
 
     def test_question_after_news_goes_to_llm(self, db_connection):
         agent = self._informed(db_connection)
         assert agent._identification_scripted_reply("O kiek turiu sumokėti?") is None
-        assert agent.state.case_closed is False
+        assert agent.state.closing.case_closed is False
 
     def test_wants_more_goes_to_llm(self, db_connection):
         agent = self._informed(db_connection)
         assert agent._identification_scripted_reply("Palaukite, dar turiu klausimą") is None
-        assert agent.state.case_closed is False
+        assert agent.state.closing.case_closed is False
 
 
 class TestThinkerBoundaries:
@@ -1441,9 +1457,9 @@ class TestThinkerBoundaries:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.caller_name = "Jonas"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.caller_name = "Jonas"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
         return agent
 
     def test_defers_while_ladder_open(self, db_connection, monkeypatch):
@@ -1461,7 +1477,7 @@ class TestThinkerBoundaries:
     def test_defers_until_caller_intro_done(self, db_connection, monkeypatch):
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
-        agent.state.caller_name = None  # ladder's last rung not done
+        agent.state.identity.caller_name = None  # ladder's last rung not done
         assert agent.solver_drive_turn("taip") is None
 
     def test_off_switch_reverts_to_walker(self, db_connection, monkeypatch):
@@ -1478,7 +1494,7 @@ class TestThinkerBoundaries:
 
         monkeypatch.setattr(faults, "driver", lambda v: "walker")
         agent = self._agent(db_connection)
-        agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
+        agent.state.resolution.procedure = {"verdict": "foreign_mac", "step": "confirm_change"}
         assert agent.solver_drive_turn("taip") is None
 
     def test_solver_declared_direction_is_driven(self, db_connection, monkeypatch):
@@ -1486,7 +1502,7 @@ class TestThinkerBoundaries:
         # the evidence engine asks the first missing fact from the pack.
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
-        agent.state.resolution = {"verdict": "foreign_mac", "step": "confirm_change"}
+        agent.state.resolution.procedure = {"verdict": "foreign_mac", "step": "confirm_change"}
         reply = agent.solver_drive_turn("taip")
         assert reply is not None and "keitėte routerį" in reply
 
@@ -1504,9 +1520,9 @@ class TestDriveRepeatBailout:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.caller_name = "Andrius"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_power"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.caller_name = "Andrius"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
         agent._ingest_client_evidence("Radau routerį, nedega nė viena lemputė")
         agent._ingest_client_evidence("Maitinimo laidas gerai įkištas, bandžiau kitą rozetę")
         agent._ingest_client_evidence("Turiu kompiuterį")
@@ -1517,7 +1533,7 @@ class TestDriveRepeatBailout:
         # steps — the solver never drives it, so there is no distrust loop to
         # bench; the evidence layer syncs the walker to the cable step instead.
         assert agent.solver_drive_turn("gerai gerai") is None  # walker owns the bridge
-        assert agent.state.resolution.get("solution_synced") == "dr_pick_cable"
+        assert agent.state.resolution.procedure.get("solution_synced") == "dr_pick_cable"
         assert agent.solver_drive_turn("nedega") is None  # and keeps owning it
 
     def test_evidence_keeps_driving_after_solver_bench(self, db_connection, monkeypatch):
@@ -1527,9 +1543,9 @@ class TestDriveRepeatBailout:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.caller_name = "Andrius"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.identity.caller_name = "Andrius"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
         agent._drive_disabled = True  # solver already benched
 
         reply = agent.solver_drive_turn("na, nežinau")
@@ -1549,13 +1565,13 @@ class TestBindDiscipline:
         monkeypatch.setitem(os.environ, "SIMULATE_BRIDGE", simulate)
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.caller_name = "Andrius"
-        agent.state.anamnesis_when = "vakar"
-        agent.state.anamnesis_trigger = "audra"
-        agent.state.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_intro"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.caller_name = "Andrius"
+        agent.state.intake.anamnesis_when = "vakar"
+        agent.state.intake.anamnesis_trigger = "audra"
+        agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
         return agent
 
     def test_fix_deferred_until_plugged(self, db_connection, monkeypatch):
@@ -1602,11 +1618,13 @@ class TestBindDiscipline:
         q1 = agent._drive_escalate(None)
         assert "Ar tiks numeris" in q1  # contacts dialogue first (2026-08-04)
         say = _complete_ticket_dialogue(agent)
-        assert agent.state.ticket_id  # recorded on the call, not lost
-        assert agent.state.closed_reason == "registered"
+        assert agent.state.ticket.ticket_id  # recorded on the call, not lost
+        assert agent.state.closing.closed_reason == "registered"
         assert "Užregistravau" in say and "leisti" not in say  # a fact, not a request
         with db_connection.cursor() as cur:
-            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            cur.execute(
+                "SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket.ticket_id,)
+            )
             details = dict(cur.fetchone())["details"]
         assert "dingo vakar" in details and "audra" in details  # anamnesis rides along
 
@@ -1623,23 +1641,27 @@ class TestTicketDialogue:
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = ReactAgent(caller_phone="+37060012353")
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.state.caller_name = "Andrius"
-        agent.state.caller_relation = "holder"
-        agent.state.anamnesis_when = "vakar"
-        agent.state.hypothesis = {
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.caller_name = "Andrius"
+        agent.state.identity.caller_relation = "holder"
+        agent.state.intake.anamnesis_when = "vakar"
+        agent.state.diagnosis.hypothesis = {
             "cause": "no_mac_observed",
             "status": "testing",
             "because": ["linijoje nematomas įrenginys"],
         }
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "escalate", "asked": True}
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "escalate",
+            "asked": True,
+        }
         return agent
 
     def test_consent_starts_dialogue_not_immediate_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent._walk_resolution("gerai, tinka")
-        assert agent.state.ticket_id is None  # not yet — contacts first
+        assert agent.state.ticket.ticket_id is None  # not yet — contacts first
         assert agent._ticket_stage == "phone"
         assert "Ar tiks numeris" in agent._identification_scripted_reply("gerai, tinka")
 
@@ -1649,7 +1671,7 @@ class TestTicketDialogue:
         agent._identification_scripted_reply(None)  # asks the phone question
         # Q1 answer: "tiks šis" -> the number they call from.
         agent._pre_turn_guards("Taip, tiks šis numeris")
-        assert agent.state.contact_phone == "+37060012353"
+        assert agent.state.ticket.contact_phone == "+37060012353"
         assert agent._ticket_stage == "hours"
         agent._identification_scripted_reply("Taip, tiks šis numeris")  # asks hours
         # Q2 answer -> hours; the scripted turn then registers + closes.
@@ -1657,9 +1679,11 @@ class TestTicketDialogue:
         assert agent._ticket_stage == "done"
         reply = agent._identification_scripted_reply("Po penkių vakare")
         assert "Užregistravau" in reply
-        assert agent.state.ticket_id and agent.state.case_closed
+        assert agent.state.ticket.ticket_id and agent.state.closing.case_closed
         with db_connection.cursor() as cur:
-            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            cur.execute(
+                "SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket.ticket_id,)
+            )
             details = dict(cur.fetchone())["details"]
         assert "Andrius (holder), tel. +37060012353" in details
         assert "skambinti: Po penkių vakare" in details
@@ -1669,7 +1693,7 @@ class TestTicketDialogue:
         agent._begin_ticket_dialogue(None)
         agent._identification_scripted_reply(None)
         agent._pre_turn_guards("Geriau skambinkit 8 612 34 567")
-        assert agent.state.contact_phone == "861234567"
+        assert agent.state.ticket.contact_phone == "861234567"
 
     def test_farewell_mid_dialogue_registers_with_defaults(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
@@ -1678,9 +1702,9 @@ class TestTicketDialogue:
         assert agent._ticket_stage == "done"
         reply = agent._identification_scripted_reply("viso gero")
         assert "Užregistravau" in reply
-        assert agent.state.contact_phone == "+37060012353"
-        assert agent.state.contact_hours == "bet kada"
-        assert agent.state.ticket_id
+        assert agent.state.ticket.contact_phone == "+37060012353"
+        assert agent.state.ticket.contact_hours == "bet kada"
+        assert agent.state.ticket.ticket_id
 
     def test_intro_announces_cause_once(self, db_connection, monkeypatch):
         # The FIRST stage reply carries "Registruoju gedimą — {priežastis}"; a
@@ -1705,14 +1729,14 @@ class TestTicketDialogue:
         agent._identification_scripted_reply("taip, tiks šis")
         agent._pre_turn_guards("Tu sakė, užregistravai jau. Bet kada galima skambinti?")
         assert agent._ticket_stage == "hours"  # held, not captured
-        assert agent.state.contact_hours is None
+        assert agent.state.ticket.contact_hours is None
         assert agent._identification_scripted_reply("Bet kada galima skambinti?") is None
         facts = agent._state_facts_block()
         assert facts and "TIKETO DIALOGAS" in facts and "kada patogiausia" in facts
         # A plain answer next turn still lands.
         agent._ticket_offscript = False
         agent._pre_turn_guards("bet kada")
-        assert agent.state.contact_hours == "bet kada"
+        assert agent.state.ticket.contact_hours == "bet kada"
 
     def test_done_announce_repeats_number_and_hours(self, db_connection, monkeypatch):
         # "Kokiu numeriu?" was asked twice live and got a goodbye — the announce
@@ -1730,10 +1754,10 @@ class TestTicketDialogue:
         agent._begin_ticket_dialogue(None)
         agent._identification_scripted_reply(None)
         agent._pre_turn_guards("T.")
-        assert agent.state.contact_phone == "+37060012353"  # backchannel yes -> caller-ID
+        assert agent.state.ticket.contact_phone == "+37060012353"  # backchannel yes -> caller-ID
         agent._identification_scripted_reply("T.")
         agent._pre_turn_guards("Bet kada?")
-        assert agent.state.contact_hours == "Bet kada"
+        assert agent.state.ticket.contact_hours == "Bet kada"
         reply = agent._identification_scripted_reply("Bet kada?")
         assert "bet kada" in reply
 
@@ -1744,7 +1768,7 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         agent._begin_ticket_dialogue(None)
         agent._pre_turn_guards("Neturi kompiutera")  # same-turn trigger phrase
-        assert agent.state.contact_phone is None
+        assert agent.state.ticket.contact_phone is None
         assert agent._ticket_stage == "phone"  # still waiting for its question
         first = agent._identification_scripted_reply("Neturi kompiutera")
         assert "Ar tiks numeris" in first  # the question goes out now
@@ -1758,11 +1782,11 @@ class TestTicketDialogue:
         agent._begin_ticket_dialogue(None)
         agent._identification_scripted_reply(None)  # phone asked
         agent._pre_turn_guards("Kurs komentai")  # STT garbage
-        assert agent.state.contact_phone is None
+        assert agent.state.ticket.contact_phone is None
         reply = agent._identification_scripted_reply("Kurs komentai")
         assert reply == phrase("ticket_phone_retry")
         agent._pre_turn_guards("Visai nesuprantu ko klausiat")  # second garbage
-        assert agent.state.contact_phone == "+37060012353"  # caller-ID default
+        assert agent.state.ticket.contact_phone == "+37060012353"  # caller-ID default
         assert agent._ticket_stage == "hours"
 
     def test_garbage_hours_answer_reasks_then_defaults(self, db_connection, monkeypatch):
@@ -1775,11 +1799,11 @@ class TestTicketDialogue:
         agent._pre_turn_guards("taip, tiks šis")
         agent._identification_scripted_reply("taip, tiks šis")  # hours asked
         agent._pre_turn_guards("Kurs komentai")
-        assert agent.state.contact_hours is None
+        assert agent.state.ticket.contact_hours is None
         reply = agent._identification_scripted_reply("Kurs komentai")
         assert reply == phrase("ticket_hours_retry")
         agent._pre_turn_guards("Nu nezinau visai")  # second garbage -> default
-        assert agent.state.contact_hours == "bet kada"
+        assert agent.state.ticket.contact_hours == "bet kada"
         assert agent._ticket_stage == "done"
 
     def test_first_fix_deferral_is_transition_and_offer(self, db_connection, monkeypatch):
@@ -1805,7 +1829,7 @@ class TestTicketDialogue:
 
         monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
         agent = self._agent_at_consent(monkeypatch)
-        agent.state.resolution["step"] = "dr_offer_bridge"
+        agent.state.resolution.procedure["step"] = "dr_offer_bridge"
         called = {}
 
         def fake_propose(say, user_input):
@@ -1842,7 +1866,7 @@ class TestTicketDialogue:
 
         monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
         agent = self._agent_at_consent(monkeypatch)
-        agent.state.resolution["step"] = "dr_offer_bridge"
+        agent.state.resolution.procedure["step"] = "dr_offer_bridge"
         agent.state.messages.append(
             {
                 "role": "assistant",
@@ -1875,20 +1899,22 @@ class TestTicketDialogue:
         # from state with the interruption on the record.
         agent = self._agent_at_consent(monkeypatch)
         agent.end_session(outcome="client_closed")
-        assert agent.state.ticket_id
-        assert agent.state.closed_reason == "registered"
+        assert agent.state.ticket.ticket_id
+        assert agent.state.closing.closed_reason == "registered"
         with db_connection.cursor() as cur:
-            cur.execute("SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket_id,))
+            cur.execute(
+                "SELECT details FROM tickets WHERE ticket_id = ?", (agent.state.ticket.ticket_id,)
+            )
             details = dict(cur.fetchone())["details"]
         assert "Pokalbis nutrūko" in details
         assert "+37060012353" in details  # caller-ID default contact
 
     def test_hangup_after_resolved_call_registers_nothing(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
-        agent.state.case_closed = True
-        agent.state.closed_reason = "resolved"
+        agent.state.closing.case_closed = True
+        agent.state.closing.closed_reason = "resolved"
         agent.end_session(outcome="client_closed")
-        assert agent.state.ticket_id is None
+        assert agent.state.ticket.ticket_id is None
 
     def test_hangup_net_skips_when_line_is_healthy(self, db_connection, monkeypatch):
         # Live 2026-08-06 (TKT00D19E54): the caller confirmed "veikia!" and hung
@@ -1901,23 +1927,23 @@ class TestTicketDialogue:
             lambda name, args: json.dumps({"verdict": {"reason": "healthy_to_router"}}),
         )
         agent.end_session(outcome="client_closed")
-        assert agent.state.ticket_id is None
-        assert agent.state.closed_reason == "resolved"
+        assert agent.state.ticket.ticket_id is None
+        assert agent.state.closing.closed_reason == "resolved"
 
     def test_hangup_net_skips_on_recorded_fix(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
-        agent.state.resolution["telemetry_fixed"] = True
+        agent.state.resolution.procedure["telemetry_fixed"] = True
         agent.end_session(outcome="client_closed")
-        assert agent.state.ticket_id is None
-        assert agent.state.closed_reason == "resolved"
+        assert agent.state.ticket.ticket_id is None
+        assert agent.state.closing.closed_reason == "resolved"
 
     def test_hangup_net_still_registers_when_fault_persists(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         # _agent_at_consent uses CUST009 whose seeded line still shows no_mac —
         # the real diagnose read confirms the fault persists -> ticket.
         agent.end_session(outcome="client_closed")
-        assert agent.state.ticket_id
-        assert agent.state.closed_reason == "registered"
+        assert agent.state.ticket.ticket_id
+        assert agent.state.closing.closed_reason == "registered"
 
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
@@ -1931,8 +1957,8 @@ class TestTicketDialogue:
         assert agent._ticket_stage == "cancelled"
         reply = agent._identification_scripted_reply("nereikia")
         assert "neregistruoju" in reply
-        assert agent.state.ticket_id is None
-        assert agent.state.case_closed and agent.state.closed_reason == "declined"
+        assert agent.state.ticket.ticket_id is None
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "declined"
 
     def test_escalate_arrival_starts_dialogue_even_with_consent_step(
         self, db_connection, monkeypatch

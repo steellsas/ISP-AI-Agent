@@ -35,7 +35,9 @@ def make_solver_gate_node(engine: Any):
         # latch here so the NEXT turn's narrate does not skip its head.
         engine._pre_turn_head_done = False
         engine._active_node = DIAGNOSIS
-        engine.tracer.emit("node", node="diagnosis_solver", customer_id=engine.state.customer_id)
+        engine.tracer.emit(
+            "node", node="diagnosis_solver", customer_id=engine.state.identity.customer_id
+        )
         get_stream_writer()(driven)
         return sync_updates(engine, user_input=user_input, reply=driven)
 

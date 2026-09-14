@@ -31,10 +31,10 @@ def make_closing_node(engine: Any):
         if (
             user_input
             and detect_refuse_or_ticket(user_input) == "demand"
-            and not s.ticket_id
-            and s.resolution is not None
+            and not s.ticket.ticket_id
+            and s.resolution.procedure is not None
         ):
-            s.case_closed = False
+            s.closing.case_closed = False
             engine.tracer.emit("decision", intent="ticket_demand", action="reopen_at_closing")
             reply = engine._drive_escalate(None)
             if reply:  # narrator mode leaves the intro to the LLM (directive set)
@@ -49,14 +49,14 @@ def make_closing_node(engine: Any):
 
         if (
             user_input
-            and s.closed_reason == "resolved"
-            and not s.ticket_id
-            and s.resolution is not None
+            and s.closing.closed_reason == "resolved"
+            and not s.ticket.ticket_id
+            and s.resolution.procedure is not None
             and detect_restored(user_input) is Outcome.NO
         ):
-            s.case_closed = False
-            s.is_complete = False
-            s.resolution["escalate_reason"] = (
+            s.closing.case_closed = False
+            s.closing.is_complete = False
+            s.resolution.procedure["escalate_reason"] = (
                 "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
             )
             engine.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
@@ -74,18 +74,18 @@ def make_closing_node(engine: Any):
         from ...identification import phrase
         from ...resolution import is_real_question
 
-        if s.ticket_id and not is_real_question(user_input):
+        if s.ticket.ticket_id and not is_real_question(user_input):
             # D5 (live 2026-08-25): a POST-registration contact correction
             # ("skambinkite kitu numeriu 868…") must land on the ticket, not
             # vanish into the goodbye — the worker would call a dead number.
             import re as _re
 
             digits = _re.sub(r"\D", "", user_input or "")
-            if len(digits) >= 6 and not s.is_complete:
+            if len(digits) >= 6 and not s.closing.is_complete:
                 from ...ticket_flow import amend_ticket_note, fmt_phone
 
                 nr = _re.sub(r"[^\d+]", "", user_input or "")[:20]
-                s.contact_phone = nr
+                s.ticket.contact_phone = nr
                 noted = amend_ticket_note(engine, f"Skambinti kitu numeriu: {nr}")
                 engine.tracer.emit(
                     "decision",
@@ -95,7 +95,7 @@ def make_closing_node(engine: Any):
                 reply = phrase("ticket_phone_fixed", nr=fmt_phone(nr))
                 speak_scripted(engine, CLOSING, user_input, reply)
                 return sync_updates(engine, user_input=user_input, reply=reply)
-            if s.secondary_problems and not getattr(engine, "_secondary_asked", False):
+            if s.intake.secondary_problems and not getattr(engine, "_secondary_asked", False):
                 engine._secondary_asked = True  # the facts directive carries the list
             else:
                 reply = phrase("goodbye")
@@ -106,7 +106,9 @@ def make_closing_node(engine: Any):
         # goodbye moment): the FIRST closing reply may be the LLM's warm,
         # personalised close — every trailing non-question turn gets the
         # short scripted goodbye instead of a fresh re-explanation.
-        if not is_real_question(user_input) and (s.is_complete or s.closing_turns >= 1):
+        if not is_real_question(user_input) and (
+            s.closing.is_complete or s.closing.closing_turns >= 1
+        ):
             reply = phrase("goodbye")
             speak_scripted(engine, CLOSING, user_input, reply)
             return sync_updates(engine, user_input=user_input, reply=reply)

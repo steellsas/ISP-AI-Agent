@@ -7,7 +7,7 @@ deterministically from STATE.
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of
 ReactAgent. Both engines use it — the legacy ReactAgent through thin delegate
 methods, the v2 ticket/executor nodes directly. The stage value lives on
-AgentState.ticket_stage (promoted); the dialogue CONTEXT (engine._ticket_ctx)
+GraphState.ticket.stage (promoted); the dialogue CONTEXT (engine._ticket_ctx)
 is a plain JSON dict — the escalate step is kept by id.
 """
 
@@ -42,7 +42,7 @@ def begin_ticket_dialogue(engine: Any, step) -> None:
     company/other phone, or the DB number stale) and when it is convenient to
     call. The scripted ladder asks; once complete, finish_ticket_dialogue
     registers with the contacts on the ticket."""
-    if engine.state.ticket_id or engine._ticket_stage:
+    if engine.state.ticket.ticket_id or engine._ticket_stage:
         return  # already registered / already collecting
     engine._ticket_ctx = {"step_id": step.id if step is not None else None}
     engine._ticket_stage = "phone"
@@ -57,13 +57,17 @@ def ticket_need(engine: Any) -> str:
     from .glossary import DIAGNOSIS_LT, TICKET_NEED_LT
 
     s = engine.state
-    cause = (s.hypothesis or {}).get("cause") or (s.resolution or {}).get("verdict") or ""
+    cause = (
+        (s.diagnosis.hypothesis or {}).get("cause")
+        or (s.resolution.procedure or {}).get("verdict")
+        or ""
+    )
     # P-E (live 2026-09-08): escalating WITHOUT the step's action done must
     # not claim it happened — "routeris perkrautas, bet ryšys neatsistatė"
     # went out when the caller never rebooted (not at home). A refusal /
     # cannot-now escalation speaks the honest state instead of the fault
     # file's post-action wording.
-    reason = str((s.resolution or {}).get("escalate_reason") or "")
+    reason = str((s.resolution.procedure or {}).get("escalate_reason") or "")
     if "atsisakė" in reason or "negali" in reason:
         gloss = DIAGNOSIS_LT.get(cause)
         prefix = f"įtariama, kad {gloss}; " if gloss else ""
@@ -186,7 +190,7 @@ def amend_ticket_note(engine: Any, note: str) -> bool:
     Appends the note to the registered ticket's details so the worker sees it.
     Best-effort: False on any hiccup — the spoken acknowledgement then still
     happens, but the trace records note_failed."""
-    tid = engine.state.ticket_id
+    tid = engine.state.ticket.ticket_id
     if not tid or not note:
         return False
     try:
@@ -218,10 +222,10 @@ def finish_ticket_dialogue(engine: Any) -> str:
     from .identification import phrase
 
     s = engine.state
-    if not s.contact_phone:
-        s.contact_phone = s.caller_phone  # default: the number they call from
-    if not s.contact_hours:
-        s.contact_hours = "bet kada"
+    if not s.ticket.contact_phone:
+        s.ticket.contact_phone = s.identity.caller_phone  # default: the number they call from
+    if not s.ticket.contact_hours:
+        s.ticket.contact_hours = "bet kada"
     step_id = (engine._ticket_ctx or {}).get("step_id")
     note = (engine._ticket_ctx or {}).get("note") or ""
     engine._ticket_stage = None
@@ -230,11 +234,11 @@ def finish_ticket_dialogue(engine: Any) -> str:
 
     _q_clear_owner(engine, "ticket")  # contacts collected — the dialogue is over
     engine._register_ticket_from_state(step_id)
-    s.case_closed = True
-    s.closed_reason = "registered" if s.ticket_id else "declined"
-    val = s.contact_hours
+    s.closing.case_closed = True
+    s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
+    val = s.ticket.contact_hours
     val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
-    return phrase("ticket_done", nr=fmt_phone(s.contact_phone), val=val) + note
+    return phrase("ticket_done", nr=fmt_phone(s.ticket.contact_phone), val=val) + note
 
 
 def registration_claim_guard(engine: Any, content: str) -> str | None:
@@ -253,16 +257,21 @@ def registration_claim_guard(engine: Any, content: str) -> str | None:
     # guard fires only when the sentence is about the ticket/technician.
     if not any(m in low for m in ("gedim", "meistr", "tiket", "koleg", "technik")):
         return None
-    if s.ticket_id or engine._ticket_stage or s.case_closed or not s.customer_id:
+    if (
+        s.ticket.ticket_id
+        or engine._ticket_stage
+        or s.closing.case_closed
+        or not s.identity.customer_id
+    ):
         return None
-    if s.resolution is None:
+    if s.resolution.procedure is None:
         return None
     from .identification import phrase
     from .resolution import get_strategy
 
-    strat = get_strategy(s.resolution.get("verdict"))
+    strat = get_strategy(s.resolution.procedure.get("verdict"))
     esc = strat.step("escalate") if strat else None
-    s.resolution.setdefault("escalate_reason", "Sprendimas telefonu nepavyko.")
+    s.resolution.procedure.setdefault("escalate_reason", "Sprendimas telefonu nepavyko.")
     begin_ticket_dialogue(engine, esc)
     if engine._ticket_stage != "phone":
         return None  # could not start (defensive) — nothing to append

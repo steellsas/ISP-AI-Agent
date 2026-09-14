@@ -199,11 +199,11 @@ class TestReactAgentEmits:
 
         agent._preflight_phone()
 
-        cand = agent.state.phone_candidate
+        cand = agent.state.identity.phone_candidate
         assert cand is not None
         assert cand["customer_id"] == "CUST105"
         assert "Tilžės" in (cand["address"] or "")
-        assert agent.state.customer_id is None  # candidate, NOT confirmed
+        assert agent.state.identity.customer_id is None  # candidate, NOT confirmed
         # Address-first design: the candidate is kept in state for SILENT use
         # only (cross-check / outage fast-path) and is NOT surfaced to the model.
         # The agent asks for the address rather than offering this one, so the
@@ -219,7 +219,7 @@ class TestReactAgentEmits:
         agent = ReactAgent(caller_phone="+37069999999", language="lt", tracer=cap)
         agent._preflight_phone()
 
-        assert agent.state.phone_candidate is None
+        assert agent.state.identity.phone_candidate is None
 
     def test_end_session_idempotent(self, db_connection):
         cap = _CaptureTracer()
@@ -237,12 +237,12 @@ class TestReactAgentEmits:
         """Phase 3.10: every call ends with a structured summary derived from state."""
         cap = _CaptureTracer()
         agent = self._agent(cap)
-        agent.state.problem_type = "internet_down"
-        agent.state.customer_id = "CUST105"
-        agent.state.customer_address = "Tilžės g. 60-7, Šiauliai"
-        agent.state.caller_name = "duktė Rasa"
-        agent.state.diagnosis["network"] = {"reason": "foreign_mac", "side": "customer"}
-        agent.state.closed_reason = "resolved"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.identity.customer_address = "Tilžės g. 60-7, Šiauliai"
+        agent.state.identity.caller_name = "duktė Rasa"
+        agent.state.diagnosis.verdicts["network"] = {"reason": "foreign_mac", "side": "customer"}
+        agent.state.closing.closed_reason = "resolved"
         cap.events.clear()
 
         agent.end_session(outcome="complete")
@@ -283,11 +283,11 @@ class TestReactAgentEmits:
 
         tracer = JsonlFileTracer("convrow-test", trace_dir=tmp_path)
         agent = ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
-        agent.state.problem_type = "internet_down"
-        agent.state.customer_id = "CUST105"
-        agent.state.caller_name = "kaimynas Jonas"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.identity.caller_name = "kaimynas Jonas"
         agent.state.messages = [{"role": "user", "content": "labas"}]
-        agent.state.closed_reason = "resolved"
+        agent.state.closing.closed_reason = "resolved"
 
         agent.end_session(outcome="resolved")
 
@@ -328,9 +328,9 @@ class TestReactAgentEmits:
         """_finalize_reply emits a compact case snapshot for review (Pillar A2)."""
         cap = _CaptureTracer()
         agent = self._agent(cap)
-        agent.state.problem_type = "internet_down"
-        agent.state.customer_id = "CUST105"
-        agent.state.diagnosis["network"] = {"group": "B6", "reason": "foreign_mac"}
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "foreign_mac"}
         cap.events.clear()
 
         agent._finalize_reply("Ar pakeitėte routerį?")

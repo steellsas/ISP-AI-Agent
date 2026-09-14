@@ -49,11 +49,11 @@ class TestGateUnit:
         assert agent._gate_tool(tool, {}) is not None
 
     def test_allows_when_identified_and_id_matches(self, agent):
-        agent.state.customer_id = "CUST105"
+        agent.state.identity.customer_id = "CUST105"
         assert agent._gate_tool("diagnose_connection", {"customer_id": "CUST105"}) is None
 
     def test_id_mismatch_blocked(self, agent):
-        agent.state.customer_id = "CUST105"
+        agent.state.identity.customer_id = "CUST105"
         out = agent._gate_tool("diagnose_connection", {"customer_id": "CUST101"})
         assert out is not None
         assert json.loads(out)["error"] == "id_mismatch"
@@ -64,7 +64,7 @@ class TestGateUnit:
 
     def test_identified_tool_without_id_arg_passes(self, agent):
         # e.g. a technical tool that doesn't echo customer_id in args
-        agent.state.customer_id = "CUST105"
+        agent.state.identity.customer_id = "CUST105"
         assert agent._gate_tool("reset_port", {}) is None
 
 
@@ -96,14 +96,14 @@ class TestCloseCaseGate:
 
     def test_resolved_allowed_when_line_healthy(self, agent):
         # Identified AND a fresh diagnose shows no line fault -> resolved allowed.
-        agent.state.customer_id = "CUST105"
+        agent.state.identity.customer_id = "CUST105"
         with patch.object(agent, "_fresh_diagnose_reason", return_value="healthy_to_router"):
             assert agent._gate_tool("close_case", {"reason": "resolved"}) is None
 
     def test_resolved_blocked_when_line_still_broken(self, agent):
         # Verify-gate: telemetry still shows a line fault, so "resolved" is
         # premature and must be blocked (source of truth = telemetry, not caller).
-        agent.state.customer_id = "CUST105"
+        agent.state.identity.customer_id = "CUST105"
         with patch.object(agent, "_fresh_diagnose_reason", return_value="foreign_mac"):
             out = agent._gate_tool("close_case", {"reason": "resolved"})
         assert out is not None
@@ -115,7 +115,7 @@ class TestCloseCaseGate:
         assert json.loads(out)["error"] == "no_outage"
 
     def test_outage_allowed_after_outage_reported(self, agent):
-        agent.state.outage_reported = True
+        agent.state.diagnosis.outage_reported = True
         assert agent._gate_tool("close_case", {"reason": "outage"}) is None
 
     def test_declined_always_allowed(self, agent):

@@ -90,7 +90,7 @@ def _date_gen(date: str | None) -> str | None:
 def _values(engine: Any, reason: str) -> dict[str, str]:
     """Placeholder values from the diagnose signals — only the ones that
     genuinely exist; the renderer drops sentences for the missing ones."""
-    signals = ((engine.state.diagnosis.get("network") or {}).get("signals")) or {}
+    signals = ((engine.state.diagnosis.verdicts.get("network") or {}).get("signals")) or {}
     vals: dict[str, str] = {}
     if reason == "billing_suspended":
         debt = signals.get("billing_debt") or {}

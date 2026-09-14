@@ -137,41 +137,47 @@ class TestAdvanceRebootCheck:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020112")
-        agent.state.customer_id = "CUST112"
-        agent.state.problem_type = "internet_down"
-        agent.state.resolution = {"verdict": "router_hung", "step": "rh_check", "asked": True}
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {
+            "verdict": "router_hung",
+            "step": "rh_check",
+            "asked": True,
+        }
         monkeypatch.setattr(walker_flow, "fresh_diagnose", lambda e: payload)
         return agent
 
     def test_caller_yes_with_witness_resolves_without_ticket(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, _hung_payload(flap=True))
-        agent._advance_reboot_check(agent.state.resolution, "Taip, jau veikia")
-        assert agent.state.case_closed and agent.state.closed_reason == "resolved"
-        assert agent.state.ticket_id is None
+        agent._advance_reboot_check(agent.state.resolution.procedure, "Taip, jau veikia")
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "resolved"
+        assert agent.state.ticket.ticket_id is None
 
     def test_caller_yes_with_traffic_back_resolves(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, _hung_payload(reason="healthy_to_router"))
-        agent._advance_reboot_check(agent.state.resolution, "Mirksi, puslapis atsidaro — veikia")
-        assert agent.state.case_closed and agent.state.closed_reason == "resolved"
+        agent._advance_reboot_check(
+            agent.state.resolution.procedure, "Mirksi, puslapis atsidaro — veikia"
+        )
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "resolved"
 
     def test_caller_yes_without_telemetry_agreement_retries(self, db_connection, monkeypatch):
         """VERIFICATION RULE (Andrius 2026-08-31, DIALOGO_ETALONAS #8): the
         caller's word alone must NOT close a line fault the telemetry still
         sees as hung with NO reboot witnessed — ask to redo the power-cycle."""
         agent = self._agent(monkeypatch, _hung_payload(flap=False))
-        agent._advance_reboot_check(agent.state.resolution, "Veikia jau")
-        assert not agent.state.case_closed
-        assert agent.state.resolution["step"] == "rh_reboot_retry"
-        assert agent.state.resolution["reboot_retries"] == 1
+        agent._advance_reboot_check(agent.state.resolution.procedure, "Veikia jau")
+        assert not agent.state.closing.case_closed
+        assert agent.state.resolution.procedure["step"] == "rh_reboot_retry"
+        assert agent.state.resolution.procedure["reboot_retries"] == 1
 
     def test_no_but_traffic_back_goes_to_device(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, _hung_payload(reason="healthy_to_router"))
-        agent._advance_reboot_check(agent.state.resolution, "Ne, vis tiek neveikia")
-        assert agent.state.resolution["step"] == "rh_device"
+        agent._advance_reboot_check(agent.state.resolution.procedure, "Ne, vis tiek neveikia")
+        assert agent.state.resolution.procedure["step"] == "rh_device"
 
     def test_no_flap_retries_once_then_escalates(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, _hung_payload(flap=False))
-        r = agent.state.resolution
+        r = agent.state.resolution.procedure
         agent._advance_reboot_check(r, "Ne, neveikia")
         assert r["step"] == "rh_reboot_retry" and r["reboot_retries"] == 1
         r.update(step="rh_check", asked=True)
@@ -181,22 +187,22 @@ class TestAdvanceRebootCheck:
     def test_flap_seen_but_dead_escalates(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, _hung_payload(flap=True))
         monkeypatch.setattr(agent, "_reject_and_rediagnose", lambda r: False)
-        agent._advance_reboot_check(agent.state.resolution, "Ne, neveikia")
-        assert agent.state.resolution["step"] == "escalate"
+        agent._advance_reboot_check(agent.state.resolution.procedure, "Ne, neveikia")
+        assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_unclear_answer_holds_the_step(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, _hung_payload())
-        agent._advance_reboot_check(agent.state.resolution, "Palaukite, dar žiūriu")
-        assert agent.state.resolution["step"] == "rh_check"
-        assert not agent.state.case_closed
+        agent._advance_reboot_check(agent.state.resolution.procedure, "Palaukite, dar žiūriu")
+        assert agent.state.resolution.procedure["step"] == "rh_check"
+        assert not agent.state.closing.case_closed
 
     def test_unasked_turn_only_records_telemetry(self, db_connection, monkeypatch):
         agent = self._agent(monkeypatch, _hung_payload())
-        agent.state.resolution["asked"] = False
-        agent._advance_reboot_check(agent.state.resolution, "Taip")
-        assert agent.state.resolution["step"] == "rh_check"
-        assert agent.state.resolution["telemetry_fixed"] is False
-        assert not agent.state.case_closed
+        agent.state.resolution.procedure["asked"] = False
+        agent._advance_reboot_check(agent.state.resolution.procedure, "Taip")
+        assert agent.state.resolution.procedure["step"] == "rh_check"
+        assert agent.state.resolution.procedure["telemetry_fixed"] is False
+        assert not agent.state.closing.case_closed
 
 
 class TestRebootCheckDetector:
@@ -231,9 +237,9 @@ class TestConflictScope:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060020112")
-        agent.state.customer_id = "CUST112"
-        agent.state.problem_type = "internet_down"
-        agent.state.resolution = {"verdict": "router_hung", "step": "rh_check"}
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
         return agent
 
     def test_undeclared_key_conflict_settles_silently(self, db_connection):
@@ -241,8 +247,8 @@ class TestConflictScope:
         from agent.perception_flow import _conflict_to_clarify
 
         agent = self._agent()
-        set_fact(agent.state.evidence, "lights", "nedega", CLIENT, 1)
-        entry = set_fact(agent.state.evidence, "lights", "dega", CLIENT, 2)
+        set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 1)
+        entry = set_fact(agent.state.diagnosis.evidence, "lights", "dega", CLIENT, 2)
         assert entry["conflict"]
         assert _conflict_to_clarify(agent, "lights", entry) is True  # consumed silently
         assert agent._evidence_conflict is None  # no clarify loop
@@ -253,8 +259,8 @@ class TestConflictScope:
         from agent.perception_flow import _conflict_to_clarify
 
         agent = self._agent()
-        set_fact(agent.state.evidence, "fail_scope", "visuose", CLIENT, 1)
-        entry = set_fact(agent.state.evidence, "fail_scope", "viename", CLIENT, 2)
+        set_fact(agent.state.diagnosis.evidence, "fail_scope", "visuose", CLIENT, 1)
+        entry = set_fact(agent.state.diagnosis.evidence, "fail_scope", "viename", CLIENT, 2)
         assert entry["conflict"]
         assert _conflict_to_clarify(agent, "fail_scope", entry) is True
         c = agent._evidence_conflict

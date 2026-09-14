@@ -13,9 +13,9 @@ def _agent():
     from agent.react_agent import ReactAgent
 
     agent = ReactAgent(caller_phone="+37060012353")
-    agent.state.customer_id = "CUST009"
-    agent.state.problem_type = "internet_down"
-    agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+    agent.state.identity.customer_id = "CUST009"
+    agent.state.intake.problem_type = "internet_down"
+    agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
     return agent
 
 
@@ -24,7 +24,7 @@ class TestApplyOverlay:
         agent = _agent()
         agent._evidence_last_ask_key = "lights"
         agent.apply_overlay(["ne, nedega nė viena"])
-        assert agent.state.evidence.get("lights", {}).get("value") == "nedega"
+        assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
         block = agent._state_facts_block() or ""
         assert "ĮSITERPĖ" in block and "nedega" in block
         assert "ĮSITERPĖ" not in (agent._state_facts_block() or "")  # one-shot
@@ -33,9 +33,9 @@ class TestApplyOverlay:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent.state.problem_type = "internet_down"
+        agent.state.intake.problem_type = "internet_down"
         agent.apply_overlay(["dėl Vilniaus gatvės 29 Šiauliai"])
-        p = agent.state.profile
+        p = agent.state.identity.profile
         assert p.street.value and "Vilniaus" in p.street.value
         assert p.house.value == "29"
 
@@ -48,7 +48,7 @@ class TestApplyOverlay:
         agent = _agent()
         agent._evidence_last_ask_key = "lights"  # volunteered, not the asked key
         agent.apply_overlay(["rozetė neveikia"])
-        assert agent.state.evidence.get("outlet_works") is None  # parked
+        assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked
         assert agent._fact_confirm == FactConfirm(key="outlet_works", value="neveikia")
 
     def test_empty_and_capped(self, db_connection):

@@ -164,7 +164,7 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
         if key:
             from agent.evidence import read_pending_answer, spec_for
 
-            spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+            spec = spec_for((engine.state.resolution.procedure or {}).get("verdict")) or {}
             item = (spec.get("client") or {}).get(key)
             is_answer = read_pending_answer(str(key), text, item) is not None
     except Exception:  # pragma: no cover - the filter must never break

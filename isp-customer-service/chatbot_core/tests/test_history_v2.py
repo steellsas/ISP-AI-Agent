@@ -9,11 +9,11 @@ def _agent(db_connection=None):
     from agent.react_agent import ReactAgent
 
     agent = ReactAgent(caller_phone="+37060012353")
-    agent.state.problem_type = "internet_down"
-    agent.state.anamnesis_when = "vakar"
-    agent.state.customer_id = "CUST009"
-    agent.state.customer_address = "Šiauliai, Vilniaus g. 29"
-    agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_power"}
+    agent.state.intake.problem_type = "internet_down"
+    agent.state.intake.anamnesis_when = "vakar"
+    agent.state.identity.customer_id = "CUST009"
+    agent.state.identity.customer_address = "Šiauliai, Vilniaus g. 29"
+    agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
     return agent
 
 
@@ -63,7 +63,7 @@ class TestRecallTrigger:
             {"role": "user" if i % 2 else "assistant", "content": f"replika {i}"} for i in range(25)
         ]
         agent.state.messages = old + filler
-        agent.state.last_heard = "juk sakiau — po audros dingo"
+        agent.state.dialog.last_heard = "juk sakiau — po audros dingo"
         note = recall_lines(agent)
         assert note and "audros" in note and "PRIMENA" in note
 
@@ -72,7 +72,7 @@ class TestRecallTrigger:
 
         agent = _agent()
         agent.state.messages = [{"role": "user", "content": "po audros"}] * 30
-        agent.state.last_heard = "nedega lemputė"
+        agent.state.dialog.last_heard = "nedega lemputė"
         assert recall_lines(agent) is None
 
     def test_recent_reference_needs_no_recall(self, db_connection):
@@ -80,5 +80,5 @@ class TestRecallTrigger:
 
         agent = _agent()
         agent.state.messages = [{"role": "user", "content": "po audros dingo"}] * 5
-        agent.state.last_heard = "sakiau — po audros"
+        agent.state.dialog.last_heard = "sakiau — po audros"
         assert recall_lines(agent) is None  # the line is still inside the window

@@ -99,10 +99,10 @@ def _run(persona: dict) -> dict:
 
     def snap():
         st = session.state
-        if st.hypothesis and st.hypothesis.get("cause"):
-            verdicts.add(st.hypothesis["cause"])
-        if st.resolution and st.resolution.get("verdict"):
-            verdicts.add(st.resolution["verdict"])
+        if st.diagnosis.hypothesis and st.diagnosis.hypothesis.get("cause"):
+            verdicts.add(st.diagnosis.hypothesis["cause"])
+        if st.resolution.procedure and st.resolution.procedure.get("verdict"):
+            verdicts.add(st.resolution.procedure["verdict"])
 
     greeting = session.greeting()
     transcript.append(("a", greeting))
@@ -130,9 +130,9 @@ def _run(persona: dict) -> dict:
     ev = {
         "verdicts_seen": verdicts,
         "tools_used": tools,
-        "case_closed": st.case_closed,
-        "closed_reason": st.closed_reason,
-        "outage_reported": getattr(st, "outage_reported", False),
+        "case_closed": st.closing.case_closed,
+        "closed_reason": st.closing.closed_reason,
+        "outage_reported": getattr(st.diagnosis, "outage_reported", False),
         "ticket_created": "create_ticket" in tools,
         "turns": turns,
         "transcript": transcript,

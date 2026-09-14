@@ -9,6 +9,7 @@ so the replay bench can reproduce the live decoding exactly.
 
 from types import SimpleNamespace
 
+from agent.graph_v2.state import GraphState, IntakeState, ResolutionState
 from agent.voice_pipeline import VoicePipeline, audio_duration_s
 
 
@@ -207,11 +208,11 @@ class TestCheckin:
 
         session = AgentSession(caller_phone="unknown")
         a = session._agent
-        a.state.last_question = ""
+        a.state.dialog.last_question = ""
         assert session.awaiting_caller() is False
-        a.state.last_question = "Ar dega lemputė?"
+        a.state.dialog.last_question = "Ar dega lemputė?"
         assert session.awaiting_caller() is True
-        a.state.case_closed = True
+        a.state.closing.case_closed = True
         assert session.awaiting_caller() is False
 
     def test_checkin_phrase_and_confusion_markers(self):
@@ -232,8 +233,8 @@ class TestSessionAsrContext:
 
         session = AgentSession(caller_phone="unknown")
         a = session._agent
-        a.state.last_question = "Ar dega bent viena lemputė?"
-        a.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        a.state.dialog.last_question = "Ar dega bent viena lemputė?"
+        a.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         a._evidence_last_ask_key = "lights"
         ctx = session.asr_context()
         assert ctx and "lemputė" in ctx
@@ -243,7 +244,7 @@ class TestSessionAsrContext:
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
-        session._agent.state.last_question = ""
+        session._agent.state.dialog.last_question = ""
         assert session.asr_context() is None
 
 
@@ -255,12 +256,12 @@ class TestSpeculation:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         from agent.evidence import CLIENT, set_fact
 
-        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
-        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
         agent._evidence_last_ask_key = "lights"
         return agent
 
@@ -347,8 +348,8 @@ class TestBgDiagnosisGate:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="unknown")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         agent.tracer = SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
         return agent
 
@@ -360,7 +361,7 @@ class TestBgDiagnosisGate:
         agent._bg_diagnosis = _json.dumps({"success": True, "verdict": {"reason": "foreign_mac"}})
         agent._apply_bg_diagnosis()
         assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
-        assert agent.state.resolution["verdict"] == "no_mac_observed"
+        assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
 
     def test_same_verdict_applies(self, db_connection):
         import json as _json
@@ -467,9 +468,9 @@ class TestSemanticEndpoint:
         # pre-problem STORY window has its own tests (test_classification).
         return SimpleNamespace(
             _evidence_last_ask_key=pending,
-            state=SimpleNamespace(
-                resolution={"verdict": verdict} if verdict else None,
-                problem_type="internet_down",
+            state=GraphState(
+                resolution=ResolutionState(procedure={"verdict": verdict} if verdict else None),
+                intake=IntakeState(problem_type="internet_down"),
             ),
         )
 

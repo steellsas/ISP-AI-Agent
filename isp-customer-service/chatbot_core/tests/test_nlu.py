@@ -187,7 +187,7 @@ class TestPrefillWiring:
         from agent.slots import SlotStatus
 
         agent = ReactAgent(caller_phone="+37060012345")
-        agent.state.turn_count = 1  # skip the greeting branch
+        agent.state.dialog.turn_count = 1  # skip the greeting branch
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
@@ -196,12 +196,12 @@ class TestPrefillWiring:
         ):
             list(agent._run_turn_stream("neveikia internetas Tilžės 60 butas 7"))
 
-        p = agent.state.profile
+        p = agent.state.identity.profile
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
         assert p.house.value == "60"
         assert p.apartment.value == "7"
         # R1: the stated problem is captured as a durable fact.
-        assert agent.state.problem_type == "internet_down"
+        assert agent.state.intake.problem_type == "internet_down"
 
     def test_symptoms_prefilled_and_surfaced(self, db_connection):
         """A symptom turn populates state.symptoms and the facts block (A3)."""
@@ -210,7 +210,7 @@ class TestPrefillWiring:
         from agent.react_agent import ReactAgent
 
         agent = ReactAgent(caller_phone="+37060012345")
-        agent.state.turn_count = 1
+        agent.state.dialog.turn_count = 1
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
@@ -219,7 +219,7 @@ class TestPrefillWiring:
         ):
             list(agent._run_turn_stream("internetas neveikia, lemputės nedega, jungiuosi per wifi"))
 
-        assert agent.state.symptoms["lights"] == "nedega"
-        assert agent.state.symptoms["connection"] == "wifi"
+        assert agent.state.intake.symptoms["lights"] == "nedega"
+        assert agent.state.intake.symptoms["connection"] == "wifi"
         facts = agent._state_facts_block()
         assert "SYMPTOMAI" in facts and "lights=nedega" in facts

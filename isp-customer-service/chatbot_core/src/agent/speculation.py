@@ -77,10 +77,10 @@ def plan_branches(engine: Any) -> dict[str, Any] | None:
     )
 
     s = engine.state
-    r = s.resolution or {}
+    r = s.resolution.procedure or {}
     verdict = r.get("verdict")
     key = getattr(engine, "_evidence_last_ask_key", None)
-    if not verdict or not key or s.case_closed:
+    if not verdict or not key or s.closing.case_closed:
         return None
     spec = spec_for(verdict)
     if not spec:
@@ -98,8 +98,8 @@ def plan_branches(engine: Any) -> dict[str, Any] | None:
 
     branches: dict[str, dict[str, Any]] = {}
     for value in values[:3]:
-        ev2 = copy.deepcopy(s.evidence)
-        set_fact(ev2, str(key), str(value), CLIENT, s.turn_count)
+        ev2 = copy.deepcopy(s.diagnosis.evidence)
+        set_fact(ev2, str(key), str(value), CLIENT, s.dialog.turn_count)
         status = hypothesis_status(ev2, spec)
         if status == "refuted":
             continue  # pivot path — deterministic machinery handles it live

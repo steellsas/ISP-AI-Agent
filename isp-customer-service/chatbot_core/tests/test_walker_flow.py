@@ -28,12 +28,16 @@ class TestEngineDrivenAction:
         return ReactAgent(caller_phone="unknown")
 
     def _at_bind(self, agent):
-        agent.state.customer_id = "CUST105"
-        agent.state.resolution = {"verdict": "foreign_mac", "step": "bind_mac", "asked": False}
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.resolution.procedure = {
+            "verdict": "foreign_mac",
+            "step": "bind_mac",
+            "asked": False,
+        }
 
     def _at_restored(self, agent):
-        agent.state.customer_id = "CUST105"
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.resolution.procedure = {
             "verdict": "foreign_mac",
             "step": "confirm_restored",
             "asked": True,
@@ -54,14 +58,14 @@ class TestEngineDrivenAction:
         # The engine binds + re-reads telemetry, but does NOT close or jump ahead —
         # it STAYS on bind_mac to announce (model B). Telemetry is recorded.
         assert agent.ensure_action_done() is True
-        assert agent.state.case_closed is False
-        assert agent.state.resolution["step"] == "bind_mac"
-        assert agent.state.resolution["telemetry_fixed"] is True
-        assert agent.state.resolution["action_done"] is True
+        assert agent.state.closing.case_closed is False
+        assert agent.state.resolution.procedure["step"] == "bind_mac"
+        assert agent.state.resolution.procedure["telemetry_fixed"] is True
+        assert agent.state.resolution.procedure["action_done"] is True
         # Once the announce is presented, the caller's next reply advances to verify.
         agent._mark_step_presented()
         agent._advance_resolution("laukiu")
-        assert agent.state.resolution["step"] == "confirm_restored"
+        assert agent.state.resolution.procedure["step"] == "confirm_restored"
 
     def test_bind_runs_once(self, monkeypatch):
         agent = self._agent()
@@ -86,8 +90,8 @@ class TestEngineDrivenAction:
         self._at_restored(agent)
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")
         agent._advance_resolution("taip, veikia")
-        assert agent.state.case_closed is True
-        assert agent.state.closed_reason == "resolved"
+        assert agent.state.closing.case_closed is True
+        assert agent.state.closing.closed_reason == "resolved"
 
     def test_restored_no_but_provider_ok_pivots_client_side(self, monkeypatch):
         agent = self._agent()
@@ -95,44 +99,48 @@ class TestEngineDrivenAction:
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")  # provider OK
         agent._advance_resolution("ne, vis dar neveikia")
         # Provider OK but caller has no internet -> in-home fault, not escalate.
-        assert agent.state.case_closed is False
-        assert agent.state.resolution["step"] == "client_side"
+        assert agent.state.closing.case_closed is False
+        assert agent.state.resolution.procedure["step"] == "client_side"
 
     def test_restored_no_and_line_still_down_waits_then_escalates(self, monkeypatch):
         agent = self._agent()
         self._at_restored(agent)
         self._stub_tools(monkeypatch, telemetry="foreign_mac")  # line not restored yet
         agent._advance_resolution("ne")  # 1st denial -> wait (may take a few minutes)
-        assert agent.state.resolution["step"] == "confirm_restored"
-        agent.state.resolution["asked"] = True
+        assert agent.state.resolution.procedure["step"] == "confirm_restored"
+        agent.state.resolution.procedure["asked"] = True
         agent._advance_resolution("vis dar ne")  # 2nd denial -> escalate
-        assert agent.state.resolution["step"] == "escalate"
+        assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_ensure_action_noop_on_confirm_step(self, monkeypatch):
         agent = self._agent()
         self._at_restored(agent)  # a CONFIRM step, not ACTION
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")
         assert agent.ensure_action_done() is False  # nothing to run
-        assert agent.state.case_closed is False
+        assert agent.state.closing.case_closed is False
 
     def test_instruct_steps_walk_one_per_turn(self):
         # "nieko nekeičiau" -> the cable INSTRUCT steps are walked ONE per reply:
         # each advances only after its instruction was presented last turn.
         agent = self._agent()
-        agent.state.customer_id = "CUST105"
-        agent.state.resolution = {"verdict": "foreign_mac", "step": "cable_check", "asked": False}
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.resolution.procedure = {
+            "verdict": "foreign_mac",
+            "step": "cable_check",
+            "asked": False,
+        }
 
         # Instruction not presented yet -> a reply does NOT skip ahead.
         agent._advance_resolution("gerai")
-        assert agent.state.resolution["step"] == "cable_check"
+        assert agent.state.resolution.procedure["step"] == "cable_check"
         # Present it, then the next reply advances to the reconnect instruction.
         agent._mark_step_presented()
         agent._advance_resolution("geltoname")
-        assert agent.state.resolution["step"] == "cable_reconnect"
+        assert agent.state.resolution.procedure["step"] == "cable_reconnect"
         # And one more reply (after presenting) reaches the bind action.
         agent._mark_step_presented()
         agent._advance_resolution("padariau")
-        assert agent.state.resolution["step"] == "bind_mac"
+        assert agent.state.resolution.procedure["step"] == "bind_mac"
 
 
 class TestIdentifyThenDiagnoseSameTurn:
@@ -159,17 +167,17 @@ class TestIdentifyThenDiagnoseSameTurn:
                 "apartment_number": "3",
             },
         )
-        agent.state.customer_id = "CUST101"  # committed by resolve_address
+        agent.state.identity.customer_id = "CUST101"  # committed by resolve_address
         out = json.loads(agent._augment_tool_result("resolve_address", obs))
 
         # Arc v3 + identification ladder: the engine diagnosed SILENTLY (verdict in
         # state); the reply first finishes identification with the caller-intro
         # question ("su kuo kalbu?") — the result is deferred one turn behind it.
-        assert agent.state.diagnosis["network"]["reason"] == "billing_suspended"
+        assert agent.state.diagnosis.verdicts["network"]["reason"] == "billing_suspended"
         assert "su kuo kalbu" in out["message"].lower()
         assert agent._result_pending is True
         # Once the caller introduces themselves, the tail delivers the real result.
-        agent.state.caller_name = "Jonas"
+        agent.state.identity.caller_name = "Jonas"
         tail = agent._result_narration_tail()
         assert "Patikrinsiu būseną" in tail
         assert "ŽINIA" in tail
@@ -196,10 +204,10 @@ class TestIdentifyThenDiagnoseSameTurn:
         )
         agent._execute_tool_calls(SimpleNamespace(content=None, tool_calls=[call]))
 
-        assert agent.state.customer_id == "CUST009"
-        assert agent.state.resolution is not None  # strategy live, not None
-        assert agent.state.resolution["verdict"] == "no_mac_observed"
-        assert agent.state.hypothesis["cause"] == "no_mac_observed"
+        assert agent.state.identity.customer_id == "CUST009"
+        assert agent.state.resolution.procedure is not None  # strategy live, not None
+        assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
+        assert agent.state.diagnosis.hypothesis["cause"] == "no_mac_observed"
 
     def test_failed_resolve_does_not_diagnose(self, db_connection):
         from agent.tools import execute_tool
@@ -207,7 +215,7 @@ class TestIdentifyThenDiagnoseSameTurn:
         agent = self._agent()
         obs = execute_tool("resolve_address", {"street": "Tilžės g."})  # no house -> no hit
         out = agent._augment_tool_result("resolve_address", obs)
-        assert agent.state.diagnosis == {}
+        assert agent.state.diagnosis.verdicts == {}
         assert "DIAGNOZĖ" not in out
 
 
@@ -229,35 +237,35 @@ class TestHypothesisObject:
 
     def test_verdict_opens_a_belief_with_its_reason(self):
         agent = self._agent()
-        agent.state.customer_id = "CUST009"
+        agent.state.identity.customer_id = "CUST009"
         self._diagnose(agent, "no_mac_observed")
 
-        h = agent.state.hypothesis
+        h = agent.state.diagnosis.hypothesis
         assert h["cause"] == "no_mac_observed"
         assert h["status"] == "testing"
         assert h["because"]  # seeded with what the telemetry showed
 
     def test_a_working_fix_confirms_it(self):
         agent = self._agent()
-        agent.state.customer_id = "CUST009"
+        agent.state.identity.customer_id = "CUST009"
         self._diagnose(agent, "no_mac_observed")
-        agent._route_to(agent.state.resolution, "resolve")
+        agent._route_to(agent.state.resolution.procedure, "resolve")
 
-        assert agent.state.hypothesis["status"] == "confirmed"
+        assert agent.state.diagnosis.hypothesis["status"] == "confirmed"
         assert "PASITVIRTINO" in (agent._state_facts_block() or "")
 
     def test_rejected_causes_are_remembered_and_not_re_offered(self, monkeypatch):
         import agent.react_agent as ra
 
         agent = self._agent()
-        agent.state.customer_id = "CUST105"
-        agent.state.hypothesis = {
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.diagnosis.hypothesis = {
             "cause": "foreign_mac",
             "because": ["linijoje kitas įrenginys"],
             "status": "testing",
             "settled_by": None,
         }
-        agent.state.resolution = {
+        agent.state.resolution.procedure = {
             "verdict": "foreign_mac",
             "step": "confirm_restored",
             "asked": True,
@@ -276,8 +284,8 @@ class TestHypothesisObject:
         )
         agent._advance_resolution("vis dar neveikia")
 
-        assert [x["cause"] for x in agent.state.rejected_hypotheses] == ["foreign_mac"]
-        assert agent.state.hypothesis["cause"] == "healthy_to_router"  # a new belief
+        assert [x["cause"] for x in agent.state.diagnosis.rejected_hypotheses] == ["foreign_mac"]
+        assert agent.state.diagnosis.hypothesis["cause"] == "healthy_to_router"  # a new belief
         assert "JAU ATMESTA" in (agent._state_facts_block() or "")
 
 
@@ -290,8 +298,8 @@ class TestTurnHolding:
         import agent.react_agent as ra
 
         agent = ra.ReactAgent(caller_phone="unknown")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
             "step": step_id,
             "asked": True,
@@ -304,38 +312,38 @@ class TestTurnHolding:
         # line before anything was plugged in and concluded the bridge had failed.
         agent = self._at_step(monkeypatch, "dr_plug_pc")
         agent._advance_resolution("Gerai, atsinešiu kompiuterį, pajungsiu.")
-        assert agent.state.resolution["step"] == "dr_plug_pc"  # held
-        assert agent.state.awaiting == "client_action"
+        assert agent.state.resolution.procedure["step"] == "dr_plug_pc"  # held
+        assert agent.state.dialog.awaiting == "client_action"
 
     def test_done_advances(self, monkeypatch):
         agent = self._at_step(monkeypatch, "dr_plug_pc")
         agent._advance_resolution("įkišau")
-        assert agent.state.resolution["step"] != "dr_plug_pc"
-        assert agent.state.awaiting is None
+        assert agent.state.resolution.procedure["step"] != "dr_plug_pc"
+        assert agent.state.dialog.awaiting is None
 
     def test_question_and_confusion_hold(self, monkeypatch):
         for reply in ("o kiek tai kainuos?", "nesuprantu, kas tas kabelis"):
             agent = self._at_step(monkeypatch, "dr_offer_bridge")
             agent._advance_resolution(reply)
-            assert agent.state.resolution["step"] == "dr_offer_bridge"
+            assert agent.state.resolution.procedure["step"] == "dr_offer_bridge"
 
     def test_repeated_confusion_breaks_the_step_down(self, monkeypatch):
         agent = self._at_step(monkeypatch, "dr_lights")
         agent._advance_resolution("nesuprantu ko norit")
-        assert agent.state.step_confusions == 1
+        assert agent.state.dialog.step_confusions == 1
         assert "NESUPRATO" in (agent._state_facts_block() or "")
         agent._advance_resolution("vis tiek nesuprantu")
-        assert agent.state.step_confusions == 2
+        assert agent.state.dialog.step_confusions == 2
         assert "MAŽIAUSIĄ" in (agent._state_facts_block() or "")  # finest breakdown
         # a real answer clears it and moves on
         agent._advance_resolution("nedega")
-        assert agent.state.step_confusions == 0
+        assert agent.state.dialog.step_confusions == 0
 
     def test_waiting_turns_accumulate_for_a_check_in(self, monkeypatch):
         agent = self._at_step(monkeypatch, "dr_plug_pc")
         for _ in range(3):
             agent._advance_resolution("tuoj, ieškau")
-        assert agent.state.awaiting_turns == 3
+        assert agent.state.dialog.awaiting_turns == 3
         assert "ILGAI LAUKIAM" in (agent._state_facts_block() or "")
 
 
@@ -348,8 +356,8 @@ class TestBridgeSeesDevice:
         import agent.react_agent as ra
 
         agent = ra.ReactAgent(caller_phone="unknown")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
             "step": "dr_plug_pc",
             "asked": True,
@@ -360,20 +368,20 @@ class TestBridgeSeesDevice:
     def test_device_seen_goes_to_bind(self, monkeypatch):
         agent = self._at_plug(monkeypatch, "foreign_mac")  # anything but no_mac_observed
         agent._advance_resolution("įkišiau")
-        assert agent.state.resolution["step"] == "dr_bind"
-        assert agent.state.resolution["device_seen"] is True
+        assert agent.state.resolution.procedure["step"] == "dr_bind"
+        assert agent.state.resolution.procedure["device_seen"] is True
 
     def test_not_seen_walks_back_to_the_cable(self, monkeypatch):
         agent = self._at_plug(monkeypatch, "no_mac_observed")  # still nothing on the line
         agent._advance_resolution("įkišiau")
-        assert agent.state.resolution["step"] == "dr_pick_cable"  # wrong cable — retry
-        assert agent.state.resolution["device_seen"] is False
+        assert agent.state.resolution.procedure["step"] == "dr_pick_cable"  # wrong cable — retry
+        assert agent.state.resolution.procedure["device_seen"] is False
 
     def test_second_failure_escalates(self, monkeypatch):
         agent = self._at_plug(monkeypatch, "no_mac_observed")
-        agent.state.resolution["plug_retries"] = 1  # already tried once
+        agent.state.resolution.procedure["plug_retries"] = 1  # already tried once
         agent._advance_resolution("įkišiau")
-        assert agent.state.resolution["step"] == "escalate"
+        assert agent.state.resolution.procedure["step"] == "escalate"
 
 
 class TestHypothesisRejection:
@@ -384,8 +392,8 @@ class TestHypothesisRejection:
         import agent.react_agent as ra
 
         agent = ra.ReactAgent(caller_phone="unknown")
-        agent.state.customer_id = "CUST105"
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.resolution.procedure = {
             "verdict": "foreign_mac",
             "step": "confirm_restored",
             "asked": True,
@@ -405,18 +413,18 @@ class TestHypothesisRejection:
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
         agent._advance_resolution("vis dar neveikia")
 
-        assert agent.state.failed_hypotheses == ["foreign_mac"]
-        assert agent.state.resolution["verdict"] == "healthy_to_router"  # Plan B
-        assert agent.state.resolution["step"] == "cs_scope"
-        assert agent.state.pivoted_from == "foreign_mac"  # narrate it once
+        assert agent.state.diagnosis.failed_hypotheses == ["foreign_mac"]
+        assert agent.state.resolution.procedure["verdict"] == "healthy_to_router"  # Plan B
+        assert agent.state.resolution.procedure["step"] == "cs_scope"
+        assert agent.state.diagnosis.pivoted_from == "foreign_mac"  # narrate it once
 
     def test_same_verdict_has_no_plan_b_so_it_escalates(self, monkeypatch):
         agent = self._at_restored(monkeypatch, telemetry_after="foreign_mac")
         agent._advance_resolution("vis dar neveikia")
 
-        assert agent.state.failed_hypotheses == ["foreign_mac"]
-        assert agent.state.resolution["step"] == "escalate"
-        assert agent.state.pivoted_from is None
+        assert agent.state.diagnosis.failed_hypotheses == ["foreign_mac"]
+        assert agent.state.resolution.procedure["step"] == "escalate"
+        assert agent.state.diagnosis.pivoted_from is None
 
     def test_rethink_is_voiced_once_then_cleared(self, monkeypatch):
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
@@ -425,5 +433,5 @@ class TestHypothesisRejection:
         facts = agent._state_facts_block() or ""
         assert "PERSIGALVOJIMAS" in facts
         agent._mark_step_presented()  # the reply carried it
-        assert agent.state.pivoted_from is None
+        assert agent.state.diagnosis.pivoted_from is None
         assert "PERSIGALVOJIMAS" not in (agent._state_facts_block() or "")

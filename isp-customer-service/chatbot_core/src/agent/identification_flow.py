@@ -28,10 +28,10 @@ def preflight_phone(engine: Any) -> None:
     """
     from .react_agent import execute_tool
 
-    phone = engine.state.caller_phone
+    phone = engine.state.identity.caller_phone
     if not phone or phone == "unknown":
         return
-    engine.state.preflight_done = True
+    engine.state.identity.preflight_done = True
     try:
         result = json.loads(execute_tool("find_customer", {"phone": phone}))
     except Exception:
@@ -44,7 +44,7 @@ def preflight_phone(engine: Any) -> None:
         (a for a in addresses if a.get("is_primary")),
         addresses[0] if addresses else {},
     )
-    engine.state.phone_candidate = {
+    engine.state.identity.phone_candidate = {
         "customer_id": result.get("customer_id"),
         "name": result.get("name"),
         "address": primary.get("full_address"),
@@ -70,7 +70,7 @@ def preflight_phone(engine: Any) -> None:
     if outage.get("affected") and outage.get("active_outages"):
         first = outage["active_outages"][0]
         eta = first.get("estimated_resolution") or ""
-        engine.state.preflight_outage = {
+        engine.state.identity.preflight_outage = {
             "street": first.get("street"),
             "eta": eta[11:16] if len(eta) >= 16 else eta,  # HH:MM, voice-friendly
             "description": first.get("description"),
@@ -93,7 +93,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # reconciliation fact when the deterministic slots stall (see
     # _state_facts_block), and the future async silent re-processing.
     if text and text.strip():
-        s.heard_utterances.append(text.strip())
+        s.intake.heard_utterances.append(text.strip())
 
     # Problem classification (R1) — independent of the registry/DB, so it runs
     # even if address extraction fails. A revisable hypothesis: a clearer later
@@ -116,16 +116,16 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
 
             _rel = _dcr(text)
             if _rel and _rel != "unknown":
-                s.caller_relation = _rel
+                s.identity.caller_relation = _rel
                 engine.tracer.emit(
-                    "caller_intro", name=s.caller_name, relation=_rel, clarified=True
+                    "caller_intro", name=s.identity.caller_name, relation=_rel, clarified=True
                 )
         # Competence policy (2026-09-02): nelieciam/pokalbis types NEVER become
         # the call's problem_type — the gate answers with the declared boundary
         # phrase instead of opening identification ("kodėl tokia sąskaita?" is
         # not a fault). Stashed one-shot for the reply layer.
         if problem and problem_politika(problem) in ("nelieciam", "pokalbis"):
-            if s.problem_type is None:
+            if s.intake.problem_type is None:
                 engine._boundary_problem = problem
             problem = None
         if problem:
@@ -133,27 +133,27 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
             # call reason and NEVER flips mid-call (an STT garble switched it
             # to billing live). Later mentions of other problems become
             # SECONDARY — noted, asked about at the end, listed on the ticket.
-            if s.problem_type is None:
-                s.problem_type = problem
+            if s.intake.problem_type is None:
+                s.intake.problem_type = problem
             elif (
-                problem != s.problem_type
-                and s.resolution is not None
-                and not s.case_closed
+                problem != s.intake.problem_type
+                and s.resolution.procedure is not None
+                and not s.closing.case_closed
                 and not getattr(engine, "_ticket_stage", None)
                 and len((text or "").split()) >= 3  # garbles ("Žemės gatvės") are not complaints
             ):
-                if not any(x.get("tipas") == problem for x in s.secondary_problems):
-                    s.secondary_problems.append(
+                if not any(x.get("tipas") == problem for x in s.intake.secondary_problems):
+                    s.intake.secondary_problems.append(
                         {
                             "tipas": problem,
                             "tekstas": (text or "").strip()[:120],
-                            "turn": s.turn_count,
+                            "turn": s.dialog.turn_count,
                         }
                     )
-            elif not s.customer_id and s.resolution is None:
-                s.problem_type = problem  # early self-correction is fine
+            elif not s.identity.customer_id and s.resolution.procedure is None:
+                s.intake.problem_type = problem  # early self-correction is fine
         # Revisable: a clearer later mention overrides an earlier reading.
-        s.symptoms.update(extract_symptoms(text))
+        s.intake.symptoms.update(extract_symptoms(text))
     except Exception:  # pragma: no cover - best-effort
         pass
 
@@ -161,7 +161,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # and street-like words are CONTENT ("nei 1 lemputė nedega"), never an
     # address — stop extracting entirely; an address CORRECTION reopens
     # identification through its own path (_reopen_identification) instead.
-    if s.customer_id:
+    if s.identity.customer_id:
         return
 
     # №2 (etalonas 2026-09-03): kodo laukimo fazėje adresų skaitytuvas TYLI —
@@ -184,16 +184,18 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # apie Žeimių gatvę nieko NESAKIAU"): a denial naming the heard street
     # DROPS it — and counts as a real miss on the road to the spelling round.
     _low_d = (text or "").lower()
-    if s.profile.street.value and any(m in _low_d for m in ("nesakiau", "nesakau", "ne apie")):
+    if s.identity.profile.street.value and any(
+        m in _low_d for m in ("nesakiau", "nesakau", "ne apie")
+    ):
         from .evidence import _fold as _fd
 
-        _st = _fd(str(s.profile.street.value).replace(" g.", ""))[:5]
+        _st = _fd(str(s.identity.profile.street.value).replace(" g.", ""))[:5]
         if _st and _st in _fd(text or ""):
             from .slots import Slot as _Slot
 
-            engine._denied_street = _fd(str(s.profile.street.value))
-            s.profile.street = _Slot()
-            s.profile.house = _Slot()
+            engine._denied_street = _fd(str(s.identity.profile.street.value))
+            s.identity.profile.street = _Slot()
+            s.identity.profile.house = _Slot()
             engine._addr_resolve_fails = getattr(engine, "_addr_resolve_fails", 0) + 1
             engine._addr_diag_note = None
             engine.tracer.emit(
@@ -223,7 +225,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         if mentioned or _DET["yes_no"](text) == "yes":
             from .slots import SlotStatus as _SS
 
-            s.profile.city.propose(str(sug), 0.95, _SS.RESOLVED)
+            s.identity.profile.city.propose(str(sug), 0.95, _SS.RESOLVED)
             engine._addr_city_suggestion = None
             engine.tracer.emit(
                 "decision", intent="city_suggestion", action="accepted", value=str(sug)
@@ -251,7 +253,7 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
         logger.debug("NLU prefill failed", exc_info=True)
         return
 
-    p = s.profile
+    p = s.identity.profile
     conf = reading.street_confidence or 0.6
     # NLU wave block 3 (live 2026-09-07: resolve kept going out with the
     # stale 6/60 while the caller dictated the full correct address): a FULL
@@ -303,12 +305,16 @@ def prefill_slots_from_text(engine: Any, text: str) -> None:
     # stops polluting the rest of the call (observed: the agent kept
     # apologising and re-mentioning the outage after the caller switched
     # streets).
-    if reading.street and s.preflight_outage and reading.street != s.preflight_outage.get("street"):
-        s.preflight_outage = None
+    if (
+        reading.street
+        and s.identity.preflight_outage
+        and reading.street != s.identity.preflight_outage.get("street")
+    ):
+        s.identity.preflight_outage = None
 
     engine.tracer.emit(
         "nlu",
-        problem=s.problem_type,
+        problem=s.intake.problem_type,
         city=reading.city,
         street=reading.street,
         house=reading.house,
@@ -336,9 +342,9 @@ def revalidate_accumulated_address(engine: Any) -> None:
 
     engine._db_address_note = None
     s = engine.state
-    if s.customer_id or not s.profile.street.value:
+    if s.identity.customer_id or not s.identity.profile.street.value:
         return
-    p = s.profile
+    p = s.identity.profile
     args: dict[str, str] = {"street": p.street.value}
     if p.city.value:
         args["city"] = p.city.value
@@ -368,25 +374,25 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     s = engine.state
     engine._trace_note(
         "reopen_identity",
-        f"caller says a DIFFERENT address; dropping {s.customer_id}",
+        f"caller says a DIFFERENT address; dropping {s.identity.customer_id}",
         level="warn",
     )
-    s.customer_id = None
-    s.customer_name = None
-    s.customer_address = None
-    s.address_confirmed = False
-    s.resolution = None
-    s.diagnosis.clear()
-    s.hypothesis = None
-    s.failed_hypotheses.clear()
-    s.rejected_hypotheses.clear()
-    s.pivoted_from = None
-    s.outage_reported = False
+    s.identity.customer_id = None
+    s.identity.customer_name = None
+    s.identity.customer_address = None
+    s.identity.address_confirmed = False
+    s.resolution.procedure = None
+    s.diagnosis.verdicts.clear()
+    s.diagnosis.hypothesis = None
+    s.diagnosis.failed_hypotheses.clear()
+    s.diagnosis.rejected_hypotheses.clear()
+    s.diagnosis.pivoted_from = None
+    s.diagnosis.outage_reported = False
     # Ledger + its machinery (review 2026-08-07): the EVIDENCE belongs to the
     # dropped account — stale telemetry facts (the old verdict!) must never
     # survive an address correction. The ticket dialogue, ask counters and
     # deviation streak reset with it; the thinker gets a clean slate too.
-    s.evidence.clear()
+    s.diagnosis.evidence.clear()
     # A-2R (live 2026-09-07): the background telemetry read belongs to the
     # DROPPED account — after reopen it kept flooding the cleared diagnosis/
     # hypothesis back in and the narrator drove the old analysis question.
@@ -400,7 +406,7 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     # candidate is not offered again (the ladder would re-offer the dropped
     # address), and the identification counters and the account-code mode
     # return to a clean slate.
-    s.phone_candidate = None
+    s.identity.phone_candidate = None
     engine._awaiting_account_code = False
     engine._code_grace = 0
     engine._addr_empty_turns = 0
@@ -432,7 +438,7 @@ def reopen_identification(engine: Any, user_input: str) -> None:
     engine._revived_keys = []
     from .slots import ClientProfileState
 
-    s.profile = ClientProfileState()
+    s.identity.profile = ClientProfileState()
     engine._db_address_note = None
     engine._news_told = False  # a new address may carry different news
     engine._result_pending = False
@@ -471,7 +477,7 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
     if pg is not None:
         engine._problem_guess = None
         if DETECTORS["yes_no"](user_input) == "yes":
-            s.problem_type = pg
+            s.intake.problem_type = pg
             engine.tracer.emit(
                 "decision", intent="problem_gate", action="guess_confirmed", value=pg
             )
@@ -496,8 +502,8 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
     except ValueError:
         gate_max = 5
     if p_asks + 1 >= gate_max:
-        s.case_closed = True
-        s.closed_reason = "declined"
+        s.closing.case_closed = True
+        s.closing.closed_reason = "declined"
         engine.tracer.emit("decision", intent="problem_gate", action="close")
         return phrase("no_problem_goodbye")
     # 3) L2 — context classification against the file catalog. The LLM reads
@@ -508,7 +514,7 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
     if _os.getenv("CLASSIFIER", "on").lower() != "off":
         from .nlu import classify_problem_llm
 
-        tail = [u for u in getattr(s, "heard_utterances", [])[-3:] if u]
+        tail = [u for u in getattr(s.intake, "heard_utterances", [])[-3:] if u]
         ctx = " ".join(tail)[-400:] or (user_input or "")
         label, conf = classify_problem_llm(ctx, model=engine.config.model)
         if label:
@@ -522,7 +528,7 @@ def _problem_gate_reply(engine: Any, s: Any, user_input: str) -> str | None:
             )
             if pol in ("sprendzia", "registruoja"):
                 if conf >= 0.8:
-                    s.problem_type = label  # implicit confirmation — the
+                    s.intake.problem_type = label  # implicit confirmation — the
                     return None  # narrator acknowledges it naturally
                 if conf >= 0.5:
                     engine._problem_guess = label
@@ -700,7 +706,7 @@ def _lookup_by_code(engine: Any, s: Any, code: str):
     engine._awaiting_account_code = False
     addresses = res.get("addresses") or []
     primary = next((a for a in addresses if a.get("is_primary")), addresses[0] if addresses else {})
-    s.phone_candidate = {
+    s.identity.phone_candidate = {
         "customer_id": res.get("customer_id"),
         "name": res.get("name"),
         "address": primary.get("full_address"),
@@ -717,7 +723,7 @@ def _lookup_by_code(engine: Any, s: Any, code: str):
     # off it.
     from .identification import phrase as _phrase
 
-    c = s.phone_candidate
+    c = s.identity.phone_candidate
     if c.get("street"):
         flat = f", butas {c['apartment']}" if c.get("apartment") else ""
         adresas = f"{c['street']} {c.get('house')}{flat}"
@@ -786,7 +792,7 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             from .dialog_registry import register as _q_register
             from .slots import SlotStatus
 
-            s.profile.street.propose(cand, 0.9, SlotStatus.HEARD)
+            s.identity.profile.street.propose(cand, 0.9, SlotStatus.HEARD)
             engine._addr_unrecognized = 0
             engine._addr_empty_turns = 0
             _q_register(engine, "ident", "address_ask")
@@ -830,8 +836,8 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
             )
         )
         if explicit_no:
-            s.case_closed = True
-            s.closed_reason = "declined"
+            s.closing.case_closed = True
+            s.closing.closed_reason = "declined"
             engine.tracer.emit("decision", intent="account_code", action="not_client_close")
             return True, phrase("not_client_goodbye")
         # A-banga P3c (gyva #3: „A. B." → LLM haliucinavo „nerastas"): klientas
@@ -850,7 +856,7 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         engine._code_grace = grace
         if grace >= 2:
             engine._awaiting_account_code = False
-    if not s.problem_type:
+    if not s.intake.problem_type:
         return False, None
     # HONEST not-exists branch (Andrius 2026-09-10 rev.2): the SAME transcript
     # repeated — the agent hears it consistently, so it heard RIGHT and such
@@ -923,7 +929,7 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
     # Skaitikliai gyvi tik kai adreso KLAUSIMAS jau nuskambėjo (eval I4:
     # pati problemos frazė „Neveikia internetas" buvo suskaičiuota kaip
     # tuščias bandymas ir perspėjimas iššoko per anksti).
-    if not s.anamnesis_asked:
+    if not s.intake.anamnesis_asked:
         return False, None
     try:
         limit = int(_os.environ.get("IDENT_MAX_TURNS", "4"))
@@ -959,7 +965,7 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         engine._addr_empty_turns = 0
         # Turinys yra, bet registras jo VISAI neatpažįsta (nei sloto, nei
         # diagnozės) — po dviejų tokių siūlom kodą.
-        if not s.profile.street.value and not getattr(engine, "_addr_diag_note", None):
+        if not s.identity.profile.street.value and not getattr(engine, "_addr_diag_note", None):
             n = getattr(engine, "_addr_unrecognized", 0) + 1
             engine._addr_unrecognized = n
             if n >= 2:
@@ -990,8 +996,8 @@ def _account_code_rung(engine: Any, s: Any, user_input: str | None):
         engine.tracer.emit("decision", intent="account_code", action="warn")
         return True, phrase("address_need_warning")
     if n >= limit:
-        s.case_closed = True
-        s.closed_reason = "declined"
+        s.closing.case_closed = True
+        s.closing.closed_reason = "declined"
         engine.tracer.emit("decision", intent="account_code", action="no_location_close")
         return True, phrase("no_location_goodbye")
     return False, None
@@ -1013,7 +1019,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         from .identification import phrase as _cb_phrase
 
         return _cb_phrase("callback_goodbye")
-    if s.case_closed:
+    if s.closing.case_closed:
         return None
     from .identification import caller_question, phrase
     from .resolution import is_real_question
@@ -1046,16 +1052,16 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         and any(k in user_input.lower() for k in ("kok", "kur"))
         and is_real_question(user_input)
     ):
-        if s.customer_id and s.customer_address:
+        if s.identity.customer_id and s.identity.customer_address:
             engine._reopen_reask = False  # the info answer replaces the re-ask
             engine.tracer.emit("decision", intent="address_info", action="disclose")
-            return phrase("current_address_info", adresas=s.customer_address)
-        if not s.customer_id:
+            return phrase("current_address_info", adresas=s.identity.customer_address)
+        if not s.identity.customer_id:
             # A-2R-b follow-up (live 2026-09-07): the question arrived MID
             # identification (after reopen) — say WHAT we are clarifying:
             # the heard address (with the "dėl šio adreso" confirm core the
             # guard keys off), or that we have no address yet.
-            p = s.profile
+            p = s.identity.profile
             if p.street.value:
                 adr = f"{p.street.value} {p.house.value or ''}".strip()
                 engine.tracer.emit("decision", intent="address_info", action="progress")
@@ -1069,7 +1075,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if pending_reopen is not None:
         from .dialog_registry import register as _q_register
 
-        adresas = s.customer_address or "dabartinio adreso"
+        adresas = s.identity.customer_address or "dabartinio adreso"
         if not getattr(engine, "_reopen_confirm_asked", False):
             engine._reopen_confirm_asked = True
             engine._reopen_confirm_asks = 1
@@ -1098,8 +1104,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # is the whole decision — close warm right here, no offer round.
         if any(m in low_cl for m in ("perskambin", "paskambinsiu", "pats paskambin")):
             engine._cannot_now_done = True
-            s.case_closed = True
-            s.closed_reason = "callback"
+            s.closing.case_closed = True
+            s.closing.closed_reason = "callback"
             engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
             return phrase("callback_goodbye")
         # N2 (live 2026-09-09: "Negaliu, nes esu nenuose" got RESUME and the
@@ -1128,8 +1134,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             m in low_cn
             for m in ("perskambin", "paskambinsiu", "pats paskambin", "vėliau", "veliau")
         ):
-            s.case_closed = True
-            s.closed_reason = "callback"
+            s.closing.case_closed = True
+            s.closing.closed_reason = "callback"
             engine.tracer.emit("decision", intent="cannot_now", action="callback_close")
             return phrase("callback_goodbye")
         from .resolution import DETECTORS as _DET_CN2
@@ -1145,8 +1151,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
 
             # P-E: the ticket intro must speak the honest state — the caller
             # could not act NOW; nothing was performed.
-            if s.resolution is not None:
-                s.resolution["escalate_reason"] = (
+            if s.resolution.procedure is not None:
+                s.resolution.procedure["escalate_reason"] = (
                     "Klientas negali dabar atlikti veiksmų prie įrenginio."
                 )
             engine.tracer.emit("decision", intent="cannot_now", action="ticket")
@@ -1156,8 +1162,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if (
         cn_state is None
         and not getattr(engine, "_cannot_now_done", False)
-        and s.resolution
-        and s.customer_id
+        and s.resolution.procedure
+        and s.identity.customer_id
         and not engine._ticket_stage
         and user_input
     ):
@@ -1199,9 +1205,9 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if engine._ticket_stage == "cancelled":
         engine._ticket_stage = None
         engine._ticket_ctx = None
-        s.case_closed = True
-        s.closed_reason = "declined"
-        s.is_complete = True
+        s.closing.case_closed = True
+        s.closing.closed_reason = "declined"
+        s.closing.is_complete = True
         return "Gerai — gedimo neregistruoju. " + phrase("goodbye")
     # Side-topic FRAME (3rd consecutive deviation): the LLM answered twice
     # and the caller keeps drifting — the return is scripted now. With a
@@ -1211,8 +1217,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         engine._side_topic_turns = 0
         from .evidence import hypothesis_status, spec_for
 
-        spec = spec_for((s.resolution or {}).get("verdict"))
-        if spec is not None and hypothesis_status(s.evidence, spec) == "confirmed":
+        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
+        if spec is not None and hypothesis_status(s.diagnosis.evidence, spec) == "confirmed":
             return phrase("solve_or_ticket")
         return phrase("back_to_issue", inkaras=engine.anchor_text())
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
@@ -1252,7 +1258,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if (
         user_input
         and is_real_question(user_input)
-        and (s.problem_type or s.customer_id)
+        and (s.intake.problem_type or s.identity.customer_id)
         # Kodo fazės klausimas („o kur jį rasti?") eina į pakopą — retry
         # frazė su UŽUOMINA kur ieškoti ir YRA atsakymas (etalonas №2).
         and not getattr(engine, "_awaiting_account_code", False)
@@ -1267,11 +1273,11 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # INTAKE (not yet identified): the anamnesis question and the address
     # offer/ask are mechanical too — the LLM repeated the anamnesis and slid the
     # whole ladder by a turn (observed in eval).
-    if not s.customer_id:
+    if not s.identity.customer_id:
         # Small talk BEFORE any problem is stated gets a scripted greeting-back
         # — never the LLM (which jumped to the address offer on "Labadiena!",
         # duplicating the ladder's own later offer; live 2026-08-06).
-        if not s.problem_type and user_input:
+        if not s.intake.problem_type and user_input:
             from .resolution import is_greeting
 
             if is_greeting(user_input):
@@ -1282,23 +1288,28 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             # _problem_gate_reply. A commit there (LLM guess accepted) falls
             # THROUGH to the intake ladder the same turn: reaching a problem
             # never ends the call, only never reaching one does.
-            _has_addr0 = bool(s.profile.street.value or s.profile.house.value)
+            _has_addr0 = bool(s.identity.profile.street.value or s.identity.profile.house.value)
             if not _has_addr0:
                 reply = _problem_gate_reply(engine, s, user_input)
-                if s.problem_type is None:
+                if s.intake.problem_type is None:
                     return reply
                 # gate commit — continue to anamnesis/address this turn
-        p = s.profile
+        p = s.identity.profile
         has_addr = bool(p.street.value or p.house.value)
         # №2/№5 (etalonas 2026-09-03): abonento kodo pakopa — kai adresas
         # neaiškėja, metodas keičiamas; kodo laukimo fazė skaito atsakymą.
         # Telefono kandidato pasiūlymo srautas neskaičiuojamas (jis turi savo
         # patvirtinimo mechaniką).
-        if getattr(engine, "_awaiting_account_code", False) or not s.phone_candidate:
+        if getattr(engine, "_awaiting_account_code", False) or not s.identity.phone_candidate:
             handled, reply = _account_code_rung(engine, s, user_input)
             if handled:
                 return reply
-        if s.problem_type and not s.anamnesis_asked and not s.preflight_outage and not has_addr:
+        if (
+            s.intake.problem_type
+            and not s.intake.anamnesis_asked
+            and not s.identity.preflight_outage
+            and not has_addr
+        ):
             # DIALOGO_ETALONAS #2 (Andrius 2026-09-01/03): the OPENING
             # anamnesis QUESTION is gone — capture-first keeps whatever the
             # caller already said ("vakar dingo, po audros"), and the targeted
@@ -1308,20 +1319,20 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             # answer "kaimynai remontą darys" fed nothing — the verdict was a
             # billing block). anamnesis_asked stays as the ladder-live marker
             # (the deterministic address-resolve gate keys off it).
-            s.anamnesis_asked = True
+            s.intake.anamnesis_asked = True
             if user_input:
                 from .nlu import extract_anamnesis
 
                 read = extract_anamnesis(user_input)
                 if read.get("when") not in (None, "nežino") or read.get("trigger"):
-                    s.anamnesis_raw = user_input.strip()[:200]
-                    s.anamnesis_when = read.get("when")
-                    s.anamnesis_trigger = read.get("trigger")
+                    s.intake.anamnesis_raw = user_input.strip()[:200]
+                    s.intake.anamnesis_when = read.get("when")
+                    s.intake.anamnesis_trigger = read.get("trigger")
                     engine.tracer.emit(
                         "anamnesis",
-                        text=s.anamnesis_raw,
-                        when=s.anamnesis_when,
-                        trigger=s.anamnesis_trigger,
+                        text=s.intake.anamnesis_raw,
+                        when=s.intake.anamnesis_when,
+                        trigger=s.intake.anamnesis_trigger,
                         from_opening=True,
                     )
                     engine._opening_heard_note = True
@@ -1333,8 +1344,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # pakartokite" after a delivered debt notice (observed live: the caller could
     # not end the call).
     if (
-        s.resolution is None
-        and (engine._news_told or s.outage_reported)
+        s.resolution.procedure is None
+        and (engine._news_told or s.diagnosis.outage_reported)
         and not engine._result_pending
     ):
         low = (user_input or "").lower()
@@ -1378,29 +1389,29 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
             engine._wrap_react_note = True
             engine.tracer.emit("decision", intent="wrap_up", action="react", turns=n + 1)
             return None  # the narrator reacts to WHAT was said, then re-offers
-        s.case_closed = True
-        s.closed_reason = "outage" if s.outage_reported else "inform"
-        s.is_complete = True
+        s.closing.case_closed = True
+        s.closing.closed_reason = "outage" if s.diagnosis.outage_reported else "inform"
+        s.closing.is_complete = True
         # aiskumo_salyga (declared in informavimas.yaml): the inform template
         # spoke all its elements before this close — trace it for the audits.
         from .informavimas import clarity_declaration
 
-        _reason = (s.diagnosis.get("network") or {}).get("reason")
+        _reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
         _salyga = clarity_declaration(_reason)
         if _salyga:
             engine.tracer.emit("clarity", reason=_reason, salyga=_salyga, told=engine._news_told)
-        engine.tracer.emit("decision", intent="wrap_up", action="close", to=s.closed_reason)
+        engine.tracer.emit("decision", intent="wrap_up", action="close", to=s.closing.closed_reason)
         return phrase("goodbye")
     if not engine._result_pending:
         return None
-    if not s.caller_name:
+    if not s.identity.caller_name:
         # The caller-intro question turn (with the address echo on a fresh
         # commit) + the CHECKING cue — the engine resolves/diagnoses silently
         # here, and without the cue the caller thinks nothing started
         # (live 2026-08-07: "nepasako, kad patikrins").
         parts = []
-        if engine._just_identified and s.customer_address:
-            parts.append(phrase("echo_address", adresas=s.customer_address))
+        if engine._just_identified and s.identity.customer_address:
+            parts.append(phrase("echo_address", adresas=s.identity.customer_address))
             parts.append(phrase("checking_note"))
         engine._just_identified = False
         from .dialog_registry import register as _q_register
@@ -1411,11 +1422,11 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     # The caller introduced themselves — deliver the deferred result. INFORM
     # verdicts are fully mechanical; a strategy result (finding + step question)
     # stays with the LLM (returns None; the REZULTATO facts directive drives it).
-    if s.resolution is not None:
+    if s.resolution.procedure is not None:
         return None
     from .glossary import DIAGNOSIS_LT
 
-    d = s.diagnosis.get("network") or {}
+    d = s.diagnosis.verdicts.get("network") or {}
     reason = d.get("reason")
     # Closing wave (2026-09-08): the inform SPEECH lives in
     # knowledge/informavimas.yaml — the template carries the details (debt
@@ -1428,7 +1439,7 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
         # B3 inform verdicts (node/switch fault, Andrius 2026-09-11): the
         # template PROMISES "meistrai jau užregistruoti" — the engine makes it
         # true by registering the ticket itself before the words go out.
-        if reason in ("node_fault_unregistered", "switch_unreachable") and not s.ticket_id:
+        if reason in ("node_fault_unregistered", "switch_unreachable") and not s.ticket.ticket_id:
             engine._register_ticket_from_state(None)
         engine._result_pending = False
         engine._news_told = True
@@ -1442,8 +1453,8 @@ def identification_scripted_reply(engine: Any, user_input: str | None) -> str | 
     if reason == "billing_suspended":
         bits.append(phrase("billing_extra"))
     # Outage news carries the ETA when the preflight knows it.
-    if reason == "active_outage" and (s.preflight_outage or {}).get("eta"):
-        bits.append(f"Numatomas atstatymas iki {s.preflight_outage['eta']}.")
+    if reason == "active_outage" and (s.identity.preflight_outage or {}).get("eta"):
+        bits.append(f"Numatomas atstatymas iki {s.identity.preflight_outage['eta']}.")
     bits.append(phrase("anything_else"))
     engine._result_pending = False
     engine._news_told = True
@@ -1461,8 +1472,8 @@ def _address_move(engine, s):
     from .dialog_registry import register as _q_register
     from .identification import offer_phone_address, phrase
 
-    c = s.phone_candidate
-    if offer_phone_address() and c and c.get("street") and not s.preflight_outage:
+    c = s.identity.phone_candidate
+    if offer_phone_address() and c and c.get("street") and not s.identity.preflight_outage:
         flat = f", butas {c['apartment']}" if c.get("apartment") else ""
         adresas = f"{c['street']} {c.get('house')}{flat}"
         kind, fallback = "address_offer", phrase("address_offer", adresas=adresas)

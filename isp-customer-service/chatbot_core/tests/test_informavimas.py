@@ -10,9 +10,9 @@ def _agent():
     from agent.react_agent import ReactAgent
 
     a = ReactAgent(caller_phone="+37060020101")
-    a.state.customer_id = "CUST101"
-    a.state.customer_address = "Šiauliai, Tilžės g. 60-3"
-    a.state.problem_type = "internet_down"
+    a.state.identity.customer_id = "CUST101"
+    a.state.identity.customer_address = "Šiauliai, Tilžės g. 60-3"
+    a.state.intake.problem_type = "internet_down"
     return a
 
 
@@ -42,7 +42,7 @@ class TestInformTemplates:
         from agent.informavimas import inform_text
 
         agent = _agent()
-        agent.state.diagnosis["network"] = {
+        agent.state.diagnosis.verdicts["network"] = {
             "reason": "billing_suspended",
             "signals": {
                 "billing_debt": {
@@ -63,7 +63,7 @@ class TestInformTemplates:
         from agent.informavimas import inform_text
 
         agent = _agent()
-        agent.state.diagnosis["network"] = {
+        agent.state.diagnosis.verdicts["network"] = {
             "reason": "billing_suspended",
             "signals": {"billing_debt": {"amount": 24.99, "months": ["2026-08"]}},
         }
@@ -75,7 +75,7 @@ class TestInformTemplates:
         from agent.informavimas import inform_text
 
         agent = _agent()
-        agent.state.diagnosis["network"] = {"reason": "billing_suspended", "signals": {}}
+        agent.state.diagnosis.verdicts["network"] = {"reason": "billing_suspended", "signals": {}}
         t = inform_text(agent, "billing_suspended")
         assert t and "Apmokėjus sąskaitą" in t  # fallback, ne tuščios skylės
 
@@ -99,7 +99,7 @@ class TestWrapUpHearing:
 
     def _informed(self):
         agent = _agent()
-        agent.state.caller_name = "Tomas"
+        agent.state.identity.caller_name = "Tomas"
         agent._news_told = True
         agent._result_pending = False
         return agent
@@ -108,20 +108,20 @@ class TestWrapUpHearing:
         agent = self._informed()
         r = agent._identification_scripted_reply("Tai aš vakar sumokėjau sąskaitą")
         assert r is None  # LLM atsako (wants_more), ne goodbye
-        assert not agent.state.case_closed
+        assert not agent.state.closing.case_closed
 
     def test_name_statement_gets_reaction_not_goodbye(self, db_connection):
         agent = self._informed()
-        agent.state.caller_name = None
+        agent.state.identity.caller_name = None
         r = agent._identification_scripted_reply("Vilma")
         assert r is None  # naratorius reaguoja su direktyva
         assert agent._wrap_react_note is True
-        assert not agent.state.case_closed
+        assert not agent.state.closing.case_closed
 
     def test_farewell_closes_immediately(self, db_connection):
         agent = self._informed()
         r = agent._identification_scripted_reply("Ačiū, viso gero")
-        assert agent.state.case_closed and r and "Geros dienos" in r
+        assert agent.state.closing.case_closed and r and "Geros dienos" in r
 
     def test_content_turns_capped_then_close(self, db_connection):
         """Darkytas atsisveikinimas („Nusigaro") — po 2 reakcijų uždaroma."""
@@ -129,7 +129,7 @@ class TestWrapUpHearing:
         assert agent._identification_scripted_reply("Nusigaro") is None
         assert agent._identification_scripted_reply("Nusigaro visai") is None
         r = agent._identification_scripted_reply("Nusigaro vėl")
-        assert agent.state.case_closed and r and "Geros dienos" in r
+        assert agent.state.closing.case_closed and r and "Geros dienos" in r
 
 
 class TestTicketCallback:
@@ -140,13 +140,13 @@ class TestTicketCallback:
         from agent.resolution import STRATEGIES
 
         agent = _agent()
-        agent.state.caller_name = "Tomas"
-        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        agent.state.identity.caller_name = "Tomas"
+        agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
         agent._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
         agent._ticket_stage_reply()  # numerio klausimas išėjo
         agent._pre_turn_guards("Gerai, aš paskambinsiu vėliau pats")
-        assert agent.state.case_closed and agent.state.closed_reason == "callback"
-        assert agent.state.ticket_id is None
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
+        assert agent.state.ticket.ticket_id is None
         assert agent._ticket_stage is None
         r = agent._identification_scripted_reply("Gerai, aš paskambinsiu vėliau pats")
         assert r and "paskambinkite" in r  # callback_goodbye
@@ -155,14 +155,14 @@ class TestTicketCallback:
         from agent.resolution import STRATEGIES
 
         agent = _agent()
-        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
         agent._begin_ticket_dialogue(STRATEGIES["unclear_fault"].step("escalate"))
         agent._ticket_stage_reply()
         agent._pre_turn_guards("Taip, tiks")
         agent._ticket_stage_reply()
         agent._pre_turn_guards("Skambinkite po 17 valandos")  # JŪS skambinkite — ne callback
-        assert not agent.state.case_closed
-        assert agent.state.contact_hours and "17" in agent.state.contact_hours
+        assert not agent.state.closing.case_closed
+        assert agent.state.ticket.contact_hours and "17" in agent.state.ticket.contact_hours
 
 
 class TestDebtSignalsReachState:
@@ -190,7 +190,7 @@ class TestDebtSignalsReachState:
             },
         }
         agent._update_state_from_observation("diagnose_connection", json.dumps(payload))
-        sig = agent.state.diagnosis["network"]["signals"]
+        sig = agent.state.diagnosis.verdicts["network"]["signals"]
         assert sig and sig["billing_debt"]["amount"] == 49.98
         from agent.informavimas import inform_text
 
@@ -200,7 +200,7 @@ class TestDebtSignalsReachState:
     def test_facts_block_carries_debt_for_questions(self, db_connection):
         """„Kokia skola?" — naratorius gauna skaičius faktuose, ne „nematau"."""
         agent = _agent()
-        agent.state.diagnosis["network"] = {
+        agent.state.diagnosis.verdicts["network"] = {
             "reason": "billing_suspended",
             "signals": {
                 "billing_debt": {
@@ -222,9 +222,9 @@ class TestCannotNowHearing:
 
     def _solving(self):
         agent = _agent()
-        agent.state.customer_id = "CUST112"
-        agent.state.caller_name = "Paulius"
-        agent.state.resolution = {"verdict": "unclear_fault", "step": "escalate"}
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.identity.caller_name = "Paulius"
+        agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
         return agent
 
     def test_rambling_cannot_answer_offers_not_resumes(self, db_connection):
@@ -239,7 +239,7 @@ class TestCannotNowHearing:
         agent = self._solving()
         agent._cannot_now_state = "asked"
         r = agent._identification_scripted_reply("Negaliu, aš Jums perskambinsiu")
-        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert r and "paskambinkite" in r
 
     def test_clear_resume_still_resumes(self, db_connection):
@@ -247,7 +247,7 @@ class TestCannotNowHearing:
         agent._cannot_now_state = "asked"
         r = agent._identification_scripted_reply("Ne ne, galiu, jau radau routerį")
         assert r is None and agent._cannot_now_state is None
-        assert not agent.state.case_closed
+        assert not agent.state.closing.case_closed
 
     def test_kai_grisiu_is_cannot_now(self, db_connection):
         """N3: „Kai grįšiu, namo padarysiu" — ne laukimas, o cannot_now."""
@@ -262,7 +262,7 @@ class TestCannotNowHearing:
 
         agent = self._solving()
         register(agent, "safety", "cannot_now_clarify")
-        agent.state.resolution["asked"] = False
+        agent.state.resolution.procedure["asked"] = False
         agent._mark_step_presented()
         q = active(agent)
         assert q and q.owner == "safety" and q.key == "cannot_now_clarify"
@@ -272,7 +272,7 @@ class TestCannotNowHearing:
         from agent.informavimas import inform_text
 
         agent = _agent()
-        agent.state.diagnosis["network"] = {
+        agent.state.diagnosis.verdicts["network"] = {
             "reason": "billing_suspended",
             "signals": {
                 "billing_debt": {
@@ -293,9 +293,9 @@ class TestHomeworkFinale:
 
     def _at_homework(self):
         agent = _agent()
-        agent.state.customer_id = "CUST112"
-        agent.state.caller_name = "Paulius"
-        agent.state.resolution = {
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.identity.caller_name = "Paulius"
+        agent.state.resolution.procedure = {
             "verdict": "router_hung",
             "step": "rh_homework",
             "asked": True,
@@ -313,25 +313,27 @@ class TestHomeworkFinale:
         agent._pre_turn_guards("Gerai, sutariam, viso gero.")
         assert agent._end_confirm_pending is False  # end-confirm nekilo
         agent._advance_resolution("Gerai, sutariam, viso gero.")
-        assert agent.state.case_closed and agent.state.closed_reason == "callback"
-        assert agent.state.ticket_id is None
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
+        assert agent.state.ticket.ticket_id is None
 
     def test_callback_promise_routes_to_callback(self, db_connection):
         agent = self._at_homework()
         agent._advance_resolution("Nereikia susitikti, aš perskambinsiu, sakiau.")
-        assert agent.state.case_closed and agent.state.closed_reason == "callback"
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
 
     def test_ticket_demand_still_wins(self, db_connection):
         agent = self._at_homework()
         agent._advance_resolution("Gerai, bet registruokite meistrą dabar.")
-        assert not (agent.state.case_closed and agent.state.closed_reason == "callback")
+        assert not (
+            agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
+        )
 
     def test_hangup_at_homework_closes_callback_no_ticket(self, db_connection):
         """F3: ragelis homework žingsnyje — callback, ne TKT."""
         agent = self._at_homework()
         agent.end_session(outcome="client_closed")
-        assert agent.state.closed_reason == "callback"
-        assert agent.state.ticket_id is None
+        assert agent.state.closing.closed_reason == "callback"
+        assert agent.state.ticket.ticket_id is None
 
 
 class TestRestoredGarble:
@@ -361,13 +363,13 @@ class TestNodeFaultInform:
         from agent.react_agent import ReactAgent
 
         a = ReactAgent(caller_phone="+37060030306")
-        a.state.customer_id = "CUST306"
-        a.state.customer_address = "Šiauliai, Vilties g. 17-2"
-        a.state.problem_type = "internet_down"
-        a.state.caller_name = "Lina"
+        a.state.identity.customer_id = "CUST306"
+        a.state.identity.customer_address = "Šiauliai, Vilties g. 17-2"
+        a.state.intake.problem_type = "internet_down"
+        a.state.identity.caller_name = "Lina"
         a._result_pending = True
-        a.state.diagnosis["network"] = {"reason": "node_fault_unregistered", "signals": {}}
-        a.state.hypothesis = {
+        a.state.diagnosis.verdicts["network"] = {"reason": "node_fault_unregistered", "signals": {}}
+        a.state.diagnosis.hypothesis = {
             "cause": "node_fault_unregistered",
             "because": [],
             "status": "testing",
@@ -376,7 +378,7 @@ class TestNodeFaultInform:
         r = a._identification_scripted_reply("Lina čia")
         assert r and "meistrai" in r.lower() and "informuosime" in r
         assert "neregistruotas" not in r  # žalias gloss'as nebekalba
-        assert a.state.ticket_id  # „meistrai jau užregistruoti" — tiesa
+        assert a.state.ticket.ticket_id  # „meistrai jau užregistruoti" — tiesa
 
 
 class TestInformResultComposer:
@@ -384,9 +386,9 @@ class TestInformResultComposer:
         """Pilnas kelias: diagnozė su skola → atidėtas rezultatas kalba
         šablonu (viena žinia su detalėm), be billing_extra dubliavimo."""
         agent = _agent()
-        agent.state.caller_name = "Tomas"
+        agent.state.identity.caller_name = "Tomas"
         agent._result_pending = True
-        agent.state.diagnosis["network"] = {
+        agent.state.diagnosis.verdicts["network"] = {
             "reason": "billing_suspended",
             "signals": {
                 "billing_debt": {

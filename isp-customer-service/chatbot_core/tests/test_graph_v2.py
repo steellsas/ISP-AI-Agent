@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from agent.graph_v2.router import route_entry
-from agent.graph_v2.state import GraphState
+from agent.graph_v2.state import ClosingState, GraphState, IdentityState, TicketState
 
 
 def _fake_message(content=None, tool_calls=None):
@@ -53,14 +53,20 @@ class TestRouteEntryPure:
         assert route_entry(GraphState()) == "address_validation"
 
     def test_identified_routes_to_diagnosis(self):
-        assert route_entry(GraphState(customer_id="CUST-1")) == "diagnosis"
+        assert route_entry(GraphState(identity=IdentityState(customer_id="CUST-1"))) == "diagnosis"
 
     def test_ticket_stage_wins_over_identity(self):
-        state = GraphState(customer_id="CUST-1", ticket_stage="phone")
+        state = GraphState(
+            identity=IdentityState(customer_id="CUST-1"), ticket=TicketState(stage="phone")
+        )
         assert route_entry(state) == "ticket_registration"
 
     def test_case_closed_wins_over_everything(self):
-        state = GraphState(customer_id="CUST-1", ticket_stage="phone", case_closed=True)
+        state = GraphState(
+            identity=IdentityState(customer_id="CUST-1"),
+            ticket=TicketState(stage="phone"),
+            closing=ClosingState(case_closed=True),
+        )
         assert route_entry(state) == "closing"
 
 
@@ -68,10 +74,8 @@ class FakeEngine:
     """Records the engine-call order so subgraph wiring is testable without LLM/DB."""
 
     def __init__(self, side_topic=False, driven=None):
-        from agent.state import AgentState
-
-        self.state = AgentState(caller_phone="unknown")
-        self.state.customer_id = "CUST-T"
+        self.state = GraphState()
+        self.state.identity.customer_id = "CUST-T"
         self.calls = []
         self._side = side_topic
         self._driven = driven
@@ -131,8 +135,7 @@ def _diag_input():
     from agent.graph_v2.state import TurnScratch
 
     return {
-        "caller_phone": "unknown",
-        "customer_id": "CUST-T",
+        "identity": IdentityState(customer_id="CUST-T"),
         "turn": TurnScratch(user_input="neveikia internetas"),
     }
 
@@ -254,7 +257,7 @@ class TestRouting:
         session.greeting()
         # NT (2026-09-11): link_down_local gavo pack'ą, tad CUST104 nebetinka
         # kaip „be strategijos" — billing inform (CUST007) strategijos neturi.
-        session.state.customer_id = "CUST007"
+        session.state.identity.customer_id = "CUST007"
 
         names = self._run_turn_capture_tools(session, "taip")
 
@@ -266,7 +269,7 @@ class TestRouting:
     def test_diagnose_withheld_while_strategy_active(self, db_connection, tmp_path):
         session = _v2_session(tmp_path)
         session.greeting()
-        session.state.customer_id = "CUST105"  # foreign_mac -> strategy activates
+        session.state.identity.customer_id = "CUST105"  # foreign_mac -> strategy activates
 
         # ensure_diagnosed runs on entry -> strategy active at the CONFIRM step.
         # A CONFIRM step exposes NO tools at all: the engine owns diagnosis, the
@@ -285,15 +288,19 @@ class TestRouting:
         # tools. A scripted turn would skip the LLM, so ask a question.
         session = _v2_session(tmp_path, phone="+37060012353")
         session.greeting()
-        session.state.customer_id = "CUST009"
-        session.state.problem_type = "internet_down"
+        session.state.identity.customer_id = "CUST009"
+        session.state.intake.problem_type = "internet_down"
         engine = session._agent
-        engine.state.hypothesis = {
+        engine.state.diagnosis.hypothesis = {
             "cause": "no_mac_observed",
             "status": "testing",
             "because": ["linijoje nematomas įrenginys"],
         }
-        engine.state.resolution = {"verdict": "no_mac_observed", "step": "escalate", "asked": True}
+        engine.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "escalate",
+            "asked": True,
+        }
         engine._begin_ticket_dialogue(None)
 
         names = self._run_turn_capture_tools(session, "O kokiu numeriu jūs skambinsite?")
@@ -304,9 +311,9 @@ class TestRouting:
     def test_closed_session_routes_to_closing_with_no_tools(self, db_connection, tmp_path):
         session = _v2_session(tmp_path)
         session.greeting()
-        session.state.customer_id = "CUST105"
-        session.state.case_closed = True  # END stage
-        session.state.closed_reason = "resolved"
+        session.state.identity.customer_id = "CUST105"
+        session.state.closing.case_closed = True  # END stage
+        session.state.closing.closed_reason = "resolved"
         _sync_checkpoint(session)
 
         captured = {}
@@ -341,9 +348,9 @@ class TestCheckpointedState:
         # The whole conversation state is in the checkpoint, not just the reply
         # (the reply may be engine-scripted, so compare against what was returned).
         assert values["turn"].reply == reply
-        assert values["caller_phone"] == "unknown"
+        assert values["identity"].caller_phone == "unknown"
         assert values["messages"][-1]["content"] == reply
-        assert values["turn_count"] == session.state.turn_count
+        assert values["dialog"].turn_count == session.state.dialog.turn_count
 
     def test_time_travel_history_across_turns(self, db_connection, tmp_path):
         session = _v2_session(tmp_path)
@@ -378,4 +385,4 @@ class TestCheckpointedState:
         rebuilt = build_graph(session._agent, make_checkpointer(tmp_path / "persist.sqlite"))
         restored = rebuilt.get_state(session._graph_config).values
         assert restored["turn"].reply == first["turn"].reply
-        assert restored["caller_phone"] == "unknown"
+        assert restored["identity"].caller_phone == "unknown"

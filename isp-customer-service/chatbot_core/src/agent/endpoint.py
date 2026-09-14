@@ -96,7 +96,7 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     # reader maps the whole utterance to a canonical value.
     try:
         pending = getattr(engine, "_evidence_last_ask_key", None)
-        r = getattr(engine.state, "resolution", None) or {}
+        r = getattr(engine.state.resolution, "procedure", None) or {}
         if pending and r.get("verdict"):
             from .evidence import read_pending_answer, spec_for
 
@@ -122,7 +122,7 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     # cut waits longer. Once the problem is set, answers return to the normal
     # window.
     try:
-        if getattr(engine.state, "problem_type", None) is None:
+        if getattr(engine.state.intake, "problem_type", None) is None:
             return ("slow", story_ms())
     except Exception:  # pragma: no cover
         pass

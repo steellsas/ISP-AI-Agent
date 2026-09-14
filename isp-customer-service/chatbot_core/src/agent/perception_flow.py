@@ -40,7 +40,7 @@ def step_perception_options(engine: Any):
 
     if os.getenv("CLASSIFIER", "on").lower() == "off":
         return None, None
-    r = engine.state.resolution or {}
+    r = engine.state.resolution.procedure or {}
     strat = get_strategy(r.get("verdict")) if r else None
     step = strat.step(r.get("step", "")) if strat else None
     if step is None or not r.get("asked") or not engine._asked_recently(r):
@@ -81,7 +81,12 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     engine._recap_directive = None
     engine._ticket_directive = None
     engine._ident_directive = None
-    if not user_input or not s.customer_id or s.case_closed or engine._ticket_stage:
+    if (
+        not user_input
+        or not s.identity.customer_id
+        or s.closing.case_closed
+        or engine._ticket_stage
+    ):
         return
     from .evidence import CLIENT, extract_client_facts, polarity, set_fact
 
@@ -96,7 +101,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     if _und.enabled():
         from .evidence import spec_for, summary_lt
 
-        spec = spec_for((s.resolution or {}).get("verdict"))
+        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
         needs = (
             "; ".join(
                 f"{k}: {item.get('reikia', '')}" for k, item in (spec.get("client") or {}).items()
@@ -118,7 +123,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
             user_input,
             anchor=engine.anchor_text(),
             needs=needs,
-            ledger_summary=summary_lt(s.evidence) if s.evidence else "",
+            ledger_summary=summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "",
             history_tail=[m for m in s.messages[-5:] if m.get("role") in ("user", "assistant")],
             model=engine.config.model,
             allowed_extra=allowed_extra,
@@ -188,14 +193,14 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
             from .evidence import next_missing as _next_missing
             from .evidence import spec_for as _spec_for0
 
-            _spec0 = _spec_for0((s.resolution or {}).get("verdict"))
+            _spec0 = _spec_for0((s.resolution.procedure or {}).get("verdict"))
             if _spec0:
-                _nm = _next_missing(s.evidence, _spec0, True)
+                _nm = _next_missing(s.diagnosis.evidence, _spec0, True)
                 if _nm:
                     pending = _nm[0]
         except Exception:  # pragma: no cover - best-effort
             pending = None
-    pending_entry = s.evidence.get(pending) if pending else None
+    pending_entry = s.diagnosis.evidence.get(pending) if pending else None
     u_tipas = (engine._last_understanding or {}).get("tipas")
     # DONE-report without a result (live 2026-08-11): "Mhm, patikrinau."
     # says the check happened, not what it FOUND — yet the pass invented
@@ -214,7 +219,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
             from .evidence import read_pending_answer as _rpa
             from .evidence import spec_for as _spec_for
 
-            _spec = _spec_for((s.resolution or {}).get("verdict"))
+            _spec = _spec_for((s.resolution.procedure or {}).get("verdict"))
             _item = (_spec.get("client") or {}).get(pending) if _spec else None
             corroborated = (
                 _rpa(pending, user_input, _item) == facts[pending]
@@ -247,12 +252,12 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     ):
         from .evidence import read_pending_answer, spec_for
 
-        spec = spec_for((s.resolution or {}).get("verdict"))
+        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
         spec_item = (spec.get("client") or {}).get(pending) if spec else None
         value = read_pending_answer(pending, user_input, spec_item)
         if value is not None:
             facts[pending] = value
-    turn = s.turn_count
+    turn = s.dialog.turn_count
     # W1-2 svarbos vartai — the ANSWER to a standing fact-confirm question
     # ("Tik pasitikslinsiu — sakėte, kad rozetė neveikia?"): a yes commits the
     # parked value; anything else drops it (a correction lands as a normal
@@ -265,7 +270,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
 
         low_c = _fold(user_input)
         if any(_mark_hit(low_c, m) for m in ("taip", "tikrai", "jo", "aha", "sakiau")):
-            set_fact(s.evidence, g_key, g_value, CLIENT, turn)
+            set_fact(s.diagnosis.evidence, g_key, g_value, CLIENT, turn)
             engine.tracer.emit("evidence", action="fact_confirmed", key=g_key, value=g_value)
             facts.pop(g_key, None)
         else:
@@ -276,18 +281,18 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         value = facts.get(pending_key)
         if value is None and pending_key == "has_computer":
             value = polarity(user_input)
-        entry = s.evidence.get(pending_key)
+        entry = s.diagnosis.evidence.get(pending_key)
         if value is not None:
-            set_fact(s.evidence, pending_key, value, CLIENT, turn)
+            set_fact(s.diagnosis.evidence, pending_key, value, CLIENT, turn)
         elif entry is not None and entry.get("conflict"):
             # Unreadable answer — keep the LATEST stated value, stop asking.
-            set_fact(s.evidence, pending_key, entry.get("pending"), CLIENT, turn)
+            set_fact(s.diagnosis.evidence, pending_key, entry.get("pending"), CLIENT, turn)
         engine._evidence_conflict_asked = None
         engine.tracer.emit(
             "evidence",
             action="conflict_resolved",
             key=pending_key,
-            value=(s.evidence.get(pending_key) or {}).get("value"),
+            value=(s.diagnosis.evidence.get(pending_key) or {}).get("value"),
         )
         facts.pop(pending_key, None)
     if pending and pending in facts:
@@ -301,7 +306,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     if engine._last_understanding is not None and facts:
         kw = extract_client_facts(user_input)
         for key in list(facts):
-            entry = s.evidence.get(key)
+            entry = s.diagnosis.evidence.get(key)
             if (
                 entry is not None
                 and entry.get("source") == CLIENT
@@ -317,7 +322,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
                 # the key's OWN answer markers corroborate the flip too.
                 from .evidence import read_pending_answer, spec_for
 
-                spec = spec_for((s.resolution or {}).get("verdict"))
+                spec = spec_for((s.resolution.procedure or {}).get("verdict"))
                 spec_item = (spec.get("client") or {}).get(key) if spec else None
                 if read_pending_answer(key, user_input, spec_item) == facts[key]:
                     continue
@@ -334,7 +339,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
         # (jos scriptinis klausimas — tas pats pasitikslinimas).
         if key not in kw_disagreements and _story_flip_gate(engine, key, str(value), pending):
             continue
-        entry = set_fact(s.evidence, key, value, CLIENT, turn)
+        entry = set_fact(s.diagnosis.evidence, key, value, CLIENT, turn)
         if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
             engine.tracer.emit("evidence", action="fact", key=key, value=value)
             _note_fact_meaning(engine, key, str(value))
@@ -347,7 +352,7 @@ def ingest_client_evidence(engine, user_input: str | None) -> None:
     # conflict (one scripted clarify settles it); if the flip guard dropped
     # the pass value above, the keyword read simply stands as the fact.
     for key, kw_value in kw_disagreements.items():
-        entry = set_fact(s.evidence, key, kw_value, CLIENT, turn)
+        entry = set_fact(s.diagnosis.evidence, key, kw_value, CLIENT, turn)
         if not (entry.get("conflict") and _conflict_to_clarify(engine, key, entry)):
             engine.tracer.emit("evidence", action="fact", key=key, value=kw_value)
             _note_fact_meaning(engine, key, str(kw_value))
@@ -361,7 +366,7 @@ def _note_fact_meaning(engine, key: str, value: str) -> None:
     in the ACTIVE pack's evidence item, so wording is a file edit."""
     from .evidence import LABELS, spec_for
 
-    spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+    spec = spec_for((engine.state.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
     meaning = (item.get("reiskia") or {}).get(value)
     if meaning:
@@ -397,14 +402,14 @@ def _mentions_other_street(engine, text: str | None) -> bool:
     ŽODŽIU „pripažino" keitimą): identifikuoto kliento turn'as, kuriame yra
     KITOS registro gatvės vardas + skaitmuo, yra korekcijos kandidatas —
     nesvarbu, ar nuskambėjo žodis „adresas"."""
-    if not text or not engine.state.customer_id:
+    if not text or not engine.state.identity.customer_id:
         return False
     if not any(ch.isdigit() for ch in text):
         return False
     from .evidence import _fold
 
     low = _fold(text)
-    current = _fold(str(engine.state.customer_address or ""))
+    current = _fold(str(engine.state.identity.customer_address or ""))
     return any(len(st) >= 4 and st in low and st not in current for st in _registry_streets_fold())
 
 
@@ -414,7 +419,9 @@ def _holder_name_matches(engine, caller_name: str) -> bool:
     when the holder name is unknown — no basis to challenge."""
     from .evidence import _fold
 
-    holder = engine.state.customer_name or (engine.state.phone_candidate or {}).get("name")
+    holder = engine.state.identity.customer_name or (
+        engine.state.identity.phone_candidate or {}
+    ).get("name")
     if not holder:
         return True
     caller_tokens = [t for t in _fold(caller_name).split() if len(t) >= 3]
@@ -440,7 +447,7 @@ def _conflict_to_clarify(engine, key: str, entry: dict) -> bool:
     consumed here (flagged for clarify or silently settled)."""
     from .evidence import spec_for
 
-    spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
+    spec = spec_for((engine.state.resolution.procedure or {}).get("verdict")) or {}
     if key in (spec.get("client") or {}):
         if engine._evidence_conflict is None:
             from .evidence import EvidenceConflict
@@ -475,11 +482,11 @@ def _story_flip_gate(engine, key: str, value: str, pending: str | None) -> bool:
         return False
     if key == pending:
         return False
-    if s.evidence.get(key) is not None:
+    if s.diagnosis.evidence.get(key) is not None:
         return False
     from .evidence import spec_for
 
-    spec = spec_for((s.resolution or {}).get("verdict")) or {}
+    spec = spec_for((s.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
     gated_values = [str(v) for v in (item.get("patikslinti") or [])]
     if value not in gated_values:
@@ -499,14 +506,14 @@ def ingest_overlay(engine, text: str) -> None:
     if not text:
         return
     s = engine.state
-    if not s.customer_id:
+    if not s.identity.customer_id:
         engine._prefill_slots_from_text(text)  # address parts said over us
     from .evidence import CLIENT, extract_client_facts, read_pending_answer, set_fact, spec_for
 
     facts = dict(extract_client_facts(text))
     pending = getattr(engine, "_evidence_last_ask_key", None)
     if pending and pending not in facts:
-        spec = spec_for((s.resolution or {}).get("verdict"))
+        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
         item = (spec.get("client") or {}).get(pending) if spec else None
         value = read_pending_answer(str(pending), text, item)
         if value is not None:
@@ -514,7 +521,7 @@ def ingest_overlay(engine, text: str) -> None:
     for key, value in facts.items():
         if _story_flip_gate(engine, key, str(value), pending):
             continue
-        entry = set_fact(s.evidence, key, value, CLIENT, s.turn_count)
+        entry = set_fact(s.diagnosis.evidence, key, value, CLIENT, s.dialog.turn_count)
         if entry.get("conflict") and engine._evidence_conflict is None:
             from .evidence import EvidenceConflict
 
@@ -533,7 +540,7 @@ def anchor_text(engine) -> str:
     asked question (deterministic), never the LLM's memory of it. Trimmed
     to the QUESTION sentence only: anchoring the whole reply re-read a long
     announce back at the caller (live 2026-08-10)."""
-    q = (engine.state.last_question or "").strip()
+    q = (engine.state.dialog.last_question or "").strip()
     if not q:
         return "Ar tęsiame gedimo sprendimą?"
     sentences = re.split(r"(?<=[.!?])\s+", q)
@@ -552,7 +559,12 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
 
     s = engine.state
     engine._side_topic_this_turn = False
-    if not user_input or not s.customer_id or s.case_closed or engine._ticket_stage:
+    if (
+        not user_input
+        or not s.identity.customer_id
+        or s.closing.case_closed
+        or engine._ticket_stage
+    ):
         return False
     if engine._evidence_conflict or engine._end_confirm_pending or engine._resume_hold:
         return False
@@ -570,7 +582,8 @@ def classify_side_topic(engine, user_input: str | None) -> bool:
     # TASK by definition (live 2026-08-21: "O kaip tai padaryti?" at the
     # bridge instruction got the FAQ "ne mano sritis") — the step explains.
     if is_howto(user_input) and (
-        getattr(engine, "_evidence_last_ask_key", None) or (s.resolution or {}).get("asked")
+        getattr(engine, "_evidence_last_ask_key", None)
+        or (s.resolution.procedure or {}).get("asked")
     ):
         engine._side_topic_turns = 0
         engine.tracer.emit("decision", intent="side_topic", action="on_task_howto")
@@ -761,8 +774,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
             from .dialog_registry import clear_owner as _q_clear_owner
 
             _q_clear_owner(engine, "ticket")
-            s.case_closed = True
-            s.closed_reason = "callback"
+            s.closing.case_closed = True
+            s.closing.closed_reason = "callback"
             engine._callback_goodbye_due = True
             engine.tracer.emit("decision", intent="ticket_dialogue", action="callback_close")
             return
@@ -776,7 +789,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             ut = _und.understand_ticket(
                 user_input,
                 stage=engine._ticket_stage,
-                anchor=(s.last_question or ""),
+                anchor=(s.dialog.last_question or ""),
                 model=engine.config.model,
             )
             if ut is not None:
@@ -795,8 +808,8 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     if engine._ticket_stage == "phone":
                         from .barge_in import token_overlap
 
-                        if token_overlap(user_input, s.last_question or "") >= 0.8:
-                            s.contact_phone = s.caller_phone
+                        if token_overlap(user_input, s.dialog.last_question or "") >= 0.8:
+                            s.ticket.contact_phone = s.identity.caller_phone
                             engine._ticket_stage = "hours"
                             engine.tracer.emit(
                                 "decision", intent="ticket_dialogue", action="phone_echo_consent"
@@ -835,9 +848,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     if engine._ticket_stage == "phone":
                         digits = re.sub(r"\D", "", value)
                         if value == "tas_pats":
-                            s.contact_phone = s.caller_phone
+                            s.ticket.contact_phone = s.identity.caller_phone
                         elif len(digits) >= 6:
-                            s.contact_phone = re.sub(r"[^\d+]", "", value)[:20]
+                            s.ticket.contact_phone = re.sub(r"[^\d+]", "", value)[:20]
                         else:
                             value = None  # not a usable number — keyword/retry path
                         if value is not None:
@@ -847,7 +860,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
                             engine._ticket_stage = "hours"
                             return
                     else:
-                        s.contact_hours = re.sub(r"[?!]", " ", value).strip(" .,")[:80]
+                        s.ticket.contact_hours = re.sub(r"[?!]", " ", value).strip(" .,")[:80]
                         engine.tracer.emit(
                             "decision", intent="ticket_dialogue", action="hours_captured"
                         )
@@ -926,14 +939,14 @@ def pre_turn_guards(engine, user_input: str) -> None:
 
             digits = re.sub(r"[^\d+]", "", user_input)
             if len(re.sub(r"\D", "", digits)) >= 6:
-                s.contact_phone = digits[:20]
+                s.ticket.contact_phone = digits[:20]
             elif detect_ticket_consent(user_input) == "yes" or is_backchannel(user_input):
                 # "tiks šis" / a garbled yes ("T." — STT of "Taip", observed
                 # live as tel. on the ticket) — the number they call from.
-                s.contact_phone = s.caller_phone
+                s.ticket.contact_phone = s.identity.caller_phone
             elif ctx.get("phone_retry"):
                 # Second unclear answer — default to the caller-ID and move on.
-                s.contact_phone = s.caller_phone
+                s.ticket.contact_phone = s.identity.caller_phone
             else:
                 # Not a number, not a yes — the agent SAYS what it needs and
                 # re-asks ONCE ("understand the answer, re-ask when it is not
@@ -988,7 +1001,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # Strip trailing STT punctuation — "Bet kada?" landed on the ticket
             # (and in the announce) with the question mark. Second unclear
             # answer defaults to "bet kada" (spoken back in the announce).
-            s.contact_hours = clean[:80] if plausible else "bet kada"
+            s.ticket.contact_hours = clean[:80] if plausible else "bet kada"
             engine.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
             engine._ticket_stage = "done"
         return
@@ -998,23 +1011,23 @@ def pre_turn_guards(engine, user_input: str) -> None:
     # call — through the outcome (registration when a strategy is active).
     from .resolution import detect_farewell, detect_ticket_consent
 
-    if engine._end_confirm_pending and not s.case_closed:
+    if engine._end_confirm_pending and not s.closing.case_closed:
         engine._end_confirm_pending = False
         if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
-            if s.resolution is not None:
+            if s.resolution.procedure is not None:
                 from .resolution import get_strategy
 
-                strat = get_strategy(s.resolution.get("verdict"))
+                strat = get_strategy(s.resolution.procedure.get("verdict"))
                 esc = strat.step("escalate") if strat else None
-                s.resolution["escalate_reason"] = "Klientas nutraukė pokalbį."
+                s.resolution.procedure["escalate_reason"] = "Klientas nutraukė pokalbį."
                 if esc is not None:
                     engine._begin_ticket_dialogue(esc)  # contacts, then register+close
                 else:
-                    s.case_closed = True
-                    s.closed_reason = "declined"
+                    s.closing.case_closed = True
+                    s.closing.closed_reason = "declined"
             else:
-                s.case_closed = True
-                s.closed_reason = "declined"
+                s.closing.case_closed = True
+                s.closing.closed_reason = "declined"
             engine.tracer.emit("decision", intent="end_confirmed", action="close")
         else:
             # Changed their mind — hold the walker THIS turn so a "ne, tęskime"
@@ -1048,7 +1061,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # good address (conf 1.0) — the answer's STT garble ("Tildziai
             # 660-3") must not stomp it; the answer is read only when the
             # address is still missing.
-            p = s.profile
+            p = s.identity.profile
             if _looks_like_address(user_input) and not (p.street.value and p.house.value):
                 engine._prefill_slots_from_text(user_input)  # the answer names it
             # A-2R (live 2026-09-07): the new address was usually ALREADY
@@ -1063,7 +1076,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     engine._just_identified = True
                     from .identification import ask_caller
 
-                    if ask_caller() and not s.caller_name:
+                    if ask_caller() and not s.identity.caller_name:
                         engine._result_pending = True
             return
         engine._resume_hold = True  # the answer belongs to THIS question, not the walker
@@ -1088,10 +1101,10 @@ def pre_turn_guards(engine, user_input: str) -> None:
     # registry priority guard holds the walker/solver and the scripted ladder
     # asks its clarify this very turn.
     if (
-        s.customer_id
-        and s.resolution
+        s.identity.customer_id
+        and s.resolution.procedure
         and not engine._ticket_stage
-        and not s.case_closed
+        and not s.closing.case_closed
         and getattr(engine, "_cannot_now_state", None) is None
         and not getattr(engine, "_cannot_now_done", False)
     ):
@@ -1105,11 +1118,11 @@ def pre_turn_guards(engine, user_input: str) -> None:
 
             _q_register(engine, "safety", "cannot_now")  # priority shield this turn
             engine.tracer.emit("decision", intent="cannot_now", action="shield")
-    mid_process = not s.case_closed and (
-        not s.customer_id
-        or s.resolution is not None
+    mid_process = not s.closing.case_closed and (
+        not s.identity.customer_id
+        or s.resolution.procedure is not None
         or engine._result_pending
-        or (bool(s.diagnosis) and not (engine._news_told or s.outage_reported))
+        or (bool(s.diagnosis.verdicts) and not (engine._news_told or s.diagnosis.outage_reported))
     )
     if mid_process and detect_farewell(user_input):
         # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the
@@ -1127,7 +1140,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
     # identification ladder's last rung) — record the answer verbatim (for the
     # RECORD, 5d rule) + a keyword relation read. The deferred check result goes
     # out in THIS turn's reply (see the RESULT facts directive).
-    if s.customer_id and engine._result_pending and not s.caller_name:
+    if s.identity.customer_id and engine._result_pending and not s.identity.caller_name:
         from .identification import detect_caller_relation
         from .resolution import detect_farewell, is_real_question
 
@@ -1157,20 +1170,22 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 "tai",
             }
             if tokens and all(t in _NOT_A_NAME for t in tokens if t):
-                s.caller_name = "nenurodyta"
-                s.caller_relation = "unknown"
+                s.identity.caller_name = "nenurodyta"
+                s.identity.caller_relation = "unknown"
             else:
                 # The bare NAME, not the sentence — "Taip. Mano vardas Andrius.
                 # Taip, aš sutartį sudaręs asmuo." went on the ticket verbatim.
                 from .identification import extract_caller_name
 
-                s.caller_name = extract_caller_name(user_input) or user_input.strip()[:120]
-                s.caller_relation = detect_caller_relation(user_input)
+                s.identity.caller_name = extract_caller_name(user_input) or user_input.strip()[:120]
+                s.identity.caller_relation = detect_caller_relation(user_input)
                 # Frazynas (etalonas, 2026-09-03): the caller JUST introduced
                 # themselves — the next reply opens with a warm acceptance
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
                 engine._name_heard = True
-            engine.tracer.emit("caller_intro", name=s.caller_name, relation=s.caller_relation)
+            engine.tracer.emit(
+                "caller_intro", name=s.identity.caller_name, relation=s.identity.caller_relation
+            )
             # B-wave registry: the caller-name question just got its answer.
             from .dialog_registry import clear as _q_clear
 
@@ -1179,26 +1194,33 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # su DB sutarties vardu — vienas mandagus patikslinimas, DB vardo
             # NEgarsinant (privatumo riba). Fuzzy: STT darkymui („Andrijus" ~
             # „Andrius") užtenka 4 raidžių prefikso sutapimo.
-            if s.caller_relation == "holder" and s.caller_name not in (None, "nenurodyta"):
-                if not _holder_name_matches(engine, s.caller_name):
+            if s.identity.caller_relation == "holder" and s.identity.caller_name not in (
+                None,
+                "nenurodyta",
+            ):
+                if not _holder_name_matches(engine, s.identity.caller_name):
                     engine._holder_clarify_open = True
                     engine._holder_clarify_asked = False
                     engine.tracer.emit("decision", intent="holder_name", action="mismatch_clarify")
         return
-    if not s.customer_id:
+    if not s.identity.customer_id:
         q = (engine._last_agent_question() or "").lower()
         if "skambinate dėl" in q or "dėl šio adreso" in q or "adreso skambinate" in q:
             from .resolution import detect_address_confirm
 
             verdict = detect_address_confirm(user_input)
-            if verdict == "yes" and s.phone_candidate and s.phone_candidate.get("street"):
+            if (
+                verdict == "yes"
+                and s.identity.phone_candidate
+                and s.identity.phone_candidate.get("street")
+            ):
                 # Clean YES to the phone-address OFFER: the ENGINE commits the
                 # identity from the candidate parts right now (the model's own
                 # resolve-then-narrate path kept relapsing into confirm rounds
                 # and skipping the caller question — observed live). The scripted
                 # ladder reply asks WHO is calling next.
-                c = s.phone_candidate
-                p = s.profile
+                c = s.identity.phone_candidate
+                p = s.identity.profile
                 from .slots import SlotStatus
 
                 p.street.propose(c["street"], 1.0, SlotStatus.HEARD)
@@ -1212,7 +1234,7 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     engine._just_identified = True
                     from .identification import ask_caller
 
-                    if ask_caller() and not s.caller_name:
+                    if ask_caller() and not s.identity.caller_name:
                         engine._result_pending = True
                 return
             if verdict == "yes":
@@ -1220,14 +1242,14 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # a phone candidate (e.g. after reopen, address heard in the
                 # slots) — the engine commits from the slots; a block of
                 # flats leaves the apartment note.
-                p_y = s.profile
+                p_y = s.identity.profile
                 if p_y.street.value and p_y.house.value:
                     engine._trace_note("address_confirm", "slots confirmed; engine resolve")
                     if engine._engine_resolve_from_slots():
                         engine._just_identified = True
                         from .identification import ask_caller
 
-                        if ask_caller() and not s.caller_name:
+                        if ask_caller() and not s.identity.caller_name:
                             engine._result_pending = True
                     return
             if verdict != "yes":
@@ -1237,17 +1259,21 @@ def pre_turn_guards(engine, user_input: str) -> None:
                 # tool proved unreliable: it narrated "patikrinsiu" without acting,
                 # then relapsed into a redundant confirm round). The reply then
                 # echoes the address and continues per the identification ladder.
-                p = engine.state.profile
+                p = engine.state.identity.profile
                 # Street/city inherit from the OFFERED address when the correction
                 # names only the house/flat ("Ne, dėl 60 buto 3" — same street;
                 # observed live: the engine path did not fire without this).
-                if not p.street.value and p.house.value and s.phone_candidate:
+                if not p.street.value and p.house.value and s.identity.phone_candidate:
                     from .slots import SlotStatus
 
-                    if s.phone_candidate.get("street"):
-                        p.street.propose(s.phone_candidate["street"], 0.9, SlotStatus.HEARD)
-                    if not p.city.value and s.phone_candidate.get("city"):
-                        p.city.propose(str(s.phone_candidate["city"]), 0.9, SlotStatus.HEARD)
+                    if s.identity.phone_candidate.get("street"):
+                        p.street.propose(
+                            s.identity.phone_candidate["street"], 0.9, SlotStatus.HEARD
+                        )
+                    if not p.city.value and s.identity.phone_candidate.get("city"):
+                        p.city.propose(
+                            str(s.identity.phone_candidate["city"]), 0.9, SlotStatus.HEARD
+                        )
                 if p.street.value and p.house.value:
                     engine._trace_note(
                         "address_confirm",
@@ -1257,11 +1283,11 @@ def pre_turn_guards(engine, user_input: str) -> None:
                         engine._just_identified = True
                         from .identification import ask_caller
 
-                        if ask_caller() and not s.caller_name:
+                        if ask_caller() and not s.identity.caller_name:
                             engine._result_pending = True
                         engine._addr_confirm_note = (
                             "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
-                            f"adresas {s.customer_address}. Atsakymo pradžioje "
+                            f"adresas {s.identity.customer_address}. Atsakymo pradžioje "
                             "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
                             "pagal žemiau esančią kryptį."
                         )
@@ -1296,9 +1322,9 @@ def pre_turn_guards(engine, user_input: str) -> None:
             # diagnosis note (namo 39 nerandu, yra 29/31) for the narrator.
             import re as _re
 
-            p = s.profile
+            p = s.identity.profile
             if (
-                s.anamnesis_asked  # the address ladder is live (not the opener)
+                s.intake.anamnesis_asked  # the address ladder is live (not the opener)
                 and p.street.value
                 and p.house.value
                 and _re.search(r"\d", user_input or "")
@@ -1308,15 +1334,15 @@ def pre_turn_guards(engine, user_input: str) -> None:
                     engine._just_identified = True
                     from .identification import ask_caller
 
-                    if ask_caller() and not s.caller_name:
+                    if ask_caller() and not s.identity.caller_name:
                         engine._result_pending = True
                     engine._addr_confirm_note = (
                         "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
-                        f"adresas {s.customer_address}. Atsakymo pradžioje "
+                        f"adresas {s.identity.customer_address}. Atsakymo pradžioje "
                         "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
                         "pagal žemiau esančią kryptį."
                     )
-    elif not s.case_closed:
+    elif not s.closing.case_closed:
         from .resolution import detect_address_correction
 
         if (
@@ -1334,7 +1360,7 @@ def engine_resolve_from_slots(engine) -> bool:
     """Deterministic identification commit from clearly-heard slots: the ENGINE
     calls resolve_address (+ the silent diagnose) itself — no LLM tool-call
     hesitancy, no confirm-round relapse. True when a customer committed."""
-    p = engine.state.profile
+    p = engine.state.identity.profile
     args: dict[str, str] = {
         "street": str(p.street.value),
         "house_number": str(p.house.value),
@@ -1351,7 +1377,7 @@ def engine_resolve_from_slots(engine) -> bool:
     engine.tracer.emit("tool_call", name="resolve_address", args=args)
     engine._trace_tool_result("resolve_address", obs)
     engine._update_state_from_observation("resolve_address", obs)
-    if not engine.state.customer_id:
+    if not engine.state.identity.customer_id:
         return False
     # B-wave registry: the identification question (address/code) got its
     # answer — a contract committed; the next question (the name) is

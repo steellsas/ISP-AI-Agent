@@ -119,7 +119,7 @@ class TestIntegrationViaAgentTool:
         )
         agent._update_state_from_observation("resolve_address", obs)
 
-        p = agent.state.profile
+        p = agent.state.identity.profile
         assert p.street.status == SlotStatus.RESOLVED
         assert p.house.value == "60"
-        assert agent.state.customer_id == "CUST105"  # existing behaviour unchanged
+        assert agent.state.identity.customer_id == "CUST105"  # existing behaviour unchanged
