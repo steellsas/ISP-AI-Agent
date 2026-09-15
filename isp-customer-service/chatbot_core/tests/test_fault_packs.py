@@ -1,14 +1,9 @@
 """
 Fault packs (R5) — one file per fault + reusable modules + meta/tags.
 
-The heart is the EQUIVALENCE test: the split pack files with module calls must
-build byte-identical Strategy structures to the pre-split monolith (snapshot in
-tests/data/strategies_snapshot.json, captured before the migration). If a pack
-edit changes the tree, the snapshot must be updated DELIBERATELY.
+Packs build their procedure through module calls; the knowledge schema tests
+(test_knowledge_schema.py) guard the structure.
 """
-
-import json
-from pathlib import Path
 
 from agent.faults import (
     _modules,
@@ -33,42 +28,9 @@ from agent.graph_v2.state import (
 
 from tests.engine_fakes import as_call
 
-_SNAPSHOT = json.loads(
-    (Path(__file__).parent / "data" / "strategies_snapshot.json").read_text(encoding="utf-8-sig")
-)
 
-
-def _dump(strat):
-    return {
-        "rag_doc": strat.rag_doc,
-        "steps": [
-            {
-                "id": s.id,
-                "kind": s.kind.value,
-                "detector": s.detector,
-                "on": dict(s.on),
-                "goto": s.goto,
-                "tools": sorted(s.tools),
-                "tool_actions": list(s.tool_actions),
-                "rag_section": s.rag_section,
-                "consent": s.consent,
-            }
-            for s in strat.steps
-        ],
-    }
-
-
-class TestEquivalence:
-    """Split packs + expanded modules == the pre-split monolith, structurally."""
-
-    def test_foreign_mac_matches_snapshot(self):
-        assert _dump(build_strategy("foreign_mac")) == _SNAPSHOT["foreign_mac"]
-
-    def test_healthy_to_router_matches_snapshot(self):
-        assert _dump(build_strategy("healthy_to_router")) == _SNAPSHOT["healthy_to_router"]
-
-    def test_no_mac_observed_matches_snapshot(self):
-        assert _dump(build_strategy("no_mac_observed")) == _SNAPSHOT["no_mac_observed"]
+class TestModuleExpansion:
+    """Packs compose modules; answers resolve through the expanded steps."""
 
     def test_step_options_resolve_through_modules(self):
         # answers must be found for module-expanded ids too (instance override wins)

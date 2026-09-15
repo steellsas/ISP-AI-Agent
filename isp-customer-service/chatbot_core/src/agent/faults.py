@@ -8,8 +8,7 @@ Reads `agent/knowledge/faults.yaml`, which holds:
     procedure (steps: kind, detector, routing, rag section, hint, and what each
     routing key MEANS).
 
-Why: the procedure and the answer meanings used to live in Python (`STRATEGIES`,
-`DETECTOR_GLOSSES`, `_PROBLEM_KEYWORDS`). Moving them here makes a new fault — or a
+Why: the procedure and the answer meanings used to live in Python. Moving them here makes a new fault — or a
 reworded check — a FILE edit rather than a code change, which is the whole point of the
 migration. Code keeps the mechanism and the safety enforcement.
 
@@ -354,6 +353,11 @@ def problem_catalog_options() -> dict[str, str]:
     return out
 
 
+def pack_verdicts() -> frozenset[str]:
+    """Every verdict a loaded fault pack declares (the solver's known hypotheses)."""
+    return frozenset(_faults())
+
+
 def playbook(verdict: str | None) -> str | None:
     """The RAG doc holding this fault's step wording."""
     if not verdict:
@@ -395,7 +399,7 @@ def build_strategy(verdict: str):
             )
         return Strategy(
             verdict=verdict,
-            rag_doc=str(spec.get("playbook", "")),
+            rag_doc=spec.get("playbook") or None,
             steps=tuple(steps),
         )
     except Exception as e:  # a malformed entry must not break the call

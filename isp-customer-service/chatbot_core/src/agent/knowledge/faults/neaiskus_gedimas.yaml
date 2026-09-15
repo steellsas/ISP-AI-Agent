@@ -1,0 +1,21 @@
+# GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
+#
+# NEAIŠKUS GEDIMAS (Andrius 2026-09-03): pranešta problema mūsų srities, klientas
+# identifikuotas, bet jokio paketo jai nėra (pvz. TV šiandien) arba žinios
+# baigėsi. Vienas sąžiningas ESCALATE: gedimas registruojamas su „neaiškus
+# gedimo tipas — perduota analizei" — tiketas maitina analizės/tobulinimo ratą
+# vietoje improvizacijos ne toje srityje. Paketas be `problem:` — jis niekada
+# nėra problemos sprendimo kelias, tik jo nebuvimo pabaiga.
+verdict: unclear_fault
+meta:
+  pavadinimas: "Neaiškus gedimas — telefonu patikrinti ar išspręsti negalima"
+  domenas: any
+steps:
+- id: escalate
+  role: escalate
+  kind: escalate
+  tools: []
+  hint: "Be honest: this kind of fault cannot be checked or solved over the phone with the tools
+    at hand — say you WILL register it ('užregistruosiu', future tense, NEVER 'užregistravau') so a
+    colleague can look into it and call back. Do not improvise diagnostics, do not walk internet
+    steps for a TV fault."

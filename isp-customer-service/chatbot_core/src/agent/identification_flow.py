@@ -1131,14 +1131,14 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             or _DET_CN2["yes_no"](user_input) == "yes"
             or any(m in low_cn for m in vocab("ticket_words"))
         ):
-            from .resolution import STRATEGIES as _STR
+            from .faults import step_by_role
 
             # P-E: the ticket intro must speak the honest state — the caller
             # could not act NOW; nothing was performed.
             if s.resolution.procedure is not None:
                 s.resolution.procedure["escalate_reason"] = "cannot_now"
             rt.tracer.emit("decision", intent="cannot_now", action="ticket")
-            begin_ticket_dialogue(state, rt, _STR["unclear_fault"].step("escalate"))
+            begin_ticket_dialogue(state, rt, step_by_role("unclear_fault", "escalate"))
             return None  # tiketo dialogo intro — kitas žingsnis
         return None
     if (

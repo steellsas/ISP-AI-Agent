@@ -127,8 +127,8 @@ class PackMeta(_Model):
 class FaultPack(_Model):
     verdict: str
     meta: PackMeta
-    problem: str
-    playbook: str
+    problem: str | None = None  # None: never a solving path (unclear_fault)
+    playbook: str | None = None
     evidence: Evidence | None = None
     reikalinga: str | None = None
     isvada: str | None = None
@@ -337,10 +337,10 @@ def _check_pack(
     if dupes:
         errors.append(f"{rel}: duplicate step names {dupes}")
     targets = set(names) | TERMINAL_TARGETS
-    sections = _playbook_sections(kb_dir, pack.playbook)
-    if sections is None:
+    sections = _playbook_sections(kb_dir, pack.playbook) if pack.playbook else None
+    if pack.playbook and sections is None:
         errors.append(f"{rel}: playbook '{pack.playbook}' not found")
-    if problems is not None and pack.problem not in problems:
+    if problems is not None and pack.problem and pack.problem not in problems:
         errors.append(f"{rel}: problem '{pack.problem}' is not in faults.yaml problems")
 
     from ..faults import ENGINE_ROLES

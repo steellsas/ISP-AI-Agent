@@ -5,7 +5,6 @@ the model cannot skip, and each outcome routes to the right next step / terminal
 """
 
 from agent.resolution import (
-    STRATEGIES,
     TERMINALS,
     Outcome,
     StepKind,
@@ -269,7 +268,7 @@ class TestRegistry:
 
 class TestForeignMacSequence:
     def setup_method(self):
-        self.s = STRATEGIES["foreign_mac"]
+        self.s = get_strategy("foreign_mac")
 
     def test_confirm_yes_binds_directly(self):
         # Caller changed a device -> bind (skips the cable check).

@@ -422,7 +422,7 @@ class TestQuestionRegistry:
         registracija uždaro savininką."""
         from agent.dialog_registry import active
         from agent.perception_flow import pre_turn_guards
-        from agent.resolution import STRATEGIES
+        from agent.resolution import get_strategy
         from agent.ticket_flow import (
             begin_ticket_dialogue,
             finish_ticket_dialogue,
@@ -432,7 +432,7 @@ class TestQuestionRegistry:
         agent = self._identified()
         agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
         begin_ticket_dialogue(
-            agent.state, agent.runtime, STRATEGIES["unclear_fault"].step("escalate")
+            agent.state, agent.runtime, get_strategy("unclear_fault").by_role("escalate")
         )
         ticket_stage_reply(agent.state, agent.runtime)
         q = active(agent.state, agent.runtime)
@@ -649,7 +649,7 @@ class TestQuestionRegistry:
     def test_cannot_now_lifecycle(self, db_connection):
         from agent.dialog_registry import active
         from agent.identification_flow import identification_scripted_reply
-        from agent.resolution import STRATEGIES
+        from agent.resolution import get_strategy
 
         agent = self._identified()
         agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
@@ -662,7 +662,6 @@ class TestQuestionRegistry:
         r = identification_scripted_reply(agent.state, agent.runtime, "Gerai, paskambinsiu vėliau")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert active(agent.state, agent.runtime) is None
-        assert STRATEGIES  # naudota fixture kelio įkėlimui
 
 
 class TestHolderNameCheck:

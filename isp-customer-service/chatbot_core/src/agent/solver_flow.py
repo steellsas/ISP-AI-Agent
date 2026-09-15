@@ -139,8 +139,8 @@ def shadow_solve(state: Any, rt: Any, user_input: str | None) -> None:
     if not state.resolution.procedure or state.closing.case_closed:
         return
     try:
+        from .faults import pack_verdicts
         from .gate import DEFAULT_POLICY, INTERNAL_ACTIONS, gate
-        from .resolution import STRATEGIES
         from .solver import solve
 
         decision = solve(
@@ -169,7 +169,7 @@ def shadow_solve(state: Any, rt: Any, user_input: str | None) -> None:
 
         result = gate(
             decision,
-            known_hypotheses=set(STRATEGIES),
+            known_hypotheses=pack_verdicts(),
             low_conf_streak=state.resolution.solver_low_conf_streak,
             cycles_in_step=state.resolution.solver_cycles,
             internal_hops=state.resolution.solver_internal_hops,
@@ -423,8 +423,9 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
 
 
 def drive(state: Any, rt: Any, user_input: str | None) -> str:
+    from .faults import pack_verdicts
     from .gate import DEFAULT_POLICY, gate
-    from .resolution import STRATEGIES, detect_turn_intent
+    from .resolution import detect_turn_intent
     from .solver import solve
 
     state.dialog.last_intent = detect_turn_intent(user_input)
@@ -450,7 +451,7 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
         # (observed: "pririšiu" spoken, update_mac not called). Working the SAME
         # fault in other words is not a new hypothesis; a real pivot names a
         # DIFFERENT known cause, which stays gated.
-        if decision is not None and decision.current_hypothesis not in STRATEGIES:
+        if decision is not None and decision.current_hypothesis not in pack_verdicts():
             decision = decision.model_copy(
                 update={
                     "current_hypothesis": (state.resolution.procedure or {}).get("verdict") or ""
@@ -465,7 +466,7 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
         forced = state.resolution.drive_turns > DRIVE_MAX_TURNS
         result = gate(
             decision,
-            known_hypotheses=set(STRATEGIES),
+            known_hypotheses=pack_verdicts(),
             low_conf_streak=state.resolution.solver_low_conf_streak,
             # The REAL per-question cycle count (the same-reply streak) — with a
             # flat 0 here the gate's stuck detector was blind and the solver

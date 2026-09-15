@@ -20,6 +20,17 @@ def _d(action="ask", hyp="no_mac_observed", conf=0.8):
     )
 
 
+class TestPackHypotheses:
+    def test_router_hung_fix_is_accepted(self):
+        """Known hypotheses come from the loaded packs — a propose_fix on a pack
+        verdict the old in-code registry lacked was downgraded (F-1)."""
+        from agent.faults import pack_verdicts
+
+        for verdict in ("router_hung", "link_down_local", "crc_errors"):
+            r = gate(_d("propose_fix", hyp=verdict), known_hypotheses=pack_verdicts())
+            assert r.accepted and r.action == "propose_fix", verdict
+
+
 class TestAcceptance:
     def test_valid_non_safety_action_accepted(self):
         r = gate(_d("instruct"), known_hypotheses=KNOWN)

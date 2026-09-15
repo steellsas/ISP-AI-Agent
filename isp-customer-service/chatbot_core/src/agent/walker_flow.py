@@ -70,11 +70,11 @@ def ensure_diagnosed(state, rt) -> bool:
     # was led through Wi-Fi questions). The single-escalate strategy begins
     # the ticket dialogue deterministically on arrival.
     if s.intake.problem_type and s.resolution.procedure is None:
-        from .faults import problem_has_path
-        from .resolution import STRATEGIES
+        from .faults import problem_has_path, step_by_role
 
         if not problem_has_path(s.intake.problem_type):
-            s.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
+            escalate = step_by_role("unclear_fault", "escalate")
+            s.resolution.procedure = {"verdict": "unclear_fault", "step": escalate.id}
             s.diagnosis.verdicts["network"] = {"reason": "unclear_fault", "skipped": True}
             rt.tracer.emit(
                 "decision",
@@ -82,7 +82,7 @@ def ensure_diagnosed(state, rt) -> bool:
                 action="unclear_fault_ticket",
                 value=s.intake.problem_type,
             )
-            begin_ticket_dialogue(state, rt, STRATEGIES["unclear_fault"].step("escalate"))
+            begin_ticket_dialogue(state, rt, escalate)
             return True
     try:
         from .tooling import telemetry
