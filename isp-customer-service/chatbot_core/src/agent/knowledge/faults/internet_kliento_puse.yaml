@@ -254,7 +254,7 @@ steps:
     success: resolve
     failure: escalate
   hint: Ask whether it works now on that device. Yes -> resolved. No -> it is beyond simple help (device
-    settings/drivers) -> register the fault.
+    settings/software) -> register the fault.
   answers:
     'yes': "pack.healthy_to_router.steps.cs_verify_dev.answers.yes"
     'no': "pack.healthy_to_router.steps.cs_verify_dev.answers.no"
