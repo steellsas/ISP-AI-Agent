@@ -7,18 +7,19 @@ covers every detector the engine uses and a file edit changes the meaning.
 """
 
 import agent.detectors as det
+from agent.contract import loader
 
 
 def _reload_with(tmp_path, monkeypatch, text):
     p = tmp_path / "detectors.yaml"
     p.write_text(text, encoding="utf-8")
     monkeypatch.setattr(det, "_PATH", p)
-    det.reload()
+    loader.reload()
 
 
 class TestShippedFile:
     def test_covers_every_engine_detector(self):
-        det.reload()
+        loader.reload()
         from agent.contract.schema import CODE_DETECTORS
 
         # Every detector type the engine knows must be editable in the file —
@@ -27,12 +28,12 @@ class TestShippedFile:
             assert det.glosses(name), f"detector '{name}' missing from detectors.yaml"
 
     def test_result_report_counts_as_done(self):
-        det.reload()
+        loader.reload()
         g = det.glosses("instruct_done")
         assert "REZULTAT" in g["done"]  # the live-call lesson stays encoded
 
     def test_lauksiu_is_consent(self):
-        det.reload()
+        loader.reload()
         assert "lauksiu" in det.glosses("ticket_consent")["yes"]
 
 
@@ -47,4 +48,4 @@ class TestFileEdits:
 
         assert det.glosses("yes_no")["yes"] == phrase("detector.lights.yes")
         assert det.glosses("instruct_done") == {}  # no code copy behind the file
-        det.reload()
+        loader.reload()

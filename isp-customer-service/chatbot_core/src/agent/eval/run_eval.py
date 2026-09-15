@@ -332,6 +332,9 @@ def main() -> int:
     args = ap.parse_args()
 
     _load_env()
+    from agent.contract import loader
+
+    loader.startup()
     scenarios = _load_scenarios()
     if args.only:
         scenarios = [s for s in scenarios if s["id"] == args.only]

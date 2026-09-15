@@ -15,33 +15,24 @@ The schema checks the file covers every detector the code implements.
 from __future__ import annotations
 
 import logging
+from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 _PATH = Path(__file__).resolve().parent / "knowledge" / "detectors.yaml"
 
-_cache: dict[str, dict[str, str]] | None = None
 
-
+@lru_cache(maxsize=1)
 def _load() -> dict[str, dict[str, str]]:
-    global _cache
-    if _cache is not None:
-        return _cache
-    try:
-        import yaml
+    from .contract.loader import read_yaml
 
-        raw = yaml.safe_load(_PATH.read_text(encoding="utf-8")) or {}
-        section = raw.get("detectors") or {}
-        _cache = {
-            str(name): {str(k): str(v) for k, v in (opts or {}).items()}
-            for name, opts in section.items()
-            if isinstance(opts, dict)
-        }
-    except Exception as e:  # fail-soft: knowledge must never break the call
-        logger.warning(f"detectors.yaml not loaded ({e}); using code defaults")
-        _cache = {}
-    return _cache
+    section = (read_yaml(_PATH) or {}).get("detectors") or {}
+    return {
+        str(name): {str(k): str(v) for k, v in (opts or {}).items()}
+        for name, opts in section.items()
+        if isinstance(opts, dict)
+    }
 
 
 def glosses(detector: str) -> dict[str, str]:
@@ -52,6 +43,5 @@ def glosses(detector: str) -> dict[str, str]:
 
 
 def reload() -> None:
-    """Drop the cache so the next read re-parses the file (tests / live tuning)."""
-    global _cache
-    _cache = None
+    """Drop the derived cache (contract.loader.reload calls this)."""
+    _load.cache_clear()

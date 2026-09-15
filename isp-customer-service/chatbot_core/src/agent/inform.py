@@ -18,21 +18,17 @@ from .contract.locale import lang
 
 logger = logging.getLogger(__name__)
 
-_CATALOG: dict | None = None
+_PATH = Path(__file__).parent / "knowledge" / "inform.yaml"
 
 
 def _catalog() -> dict:
-    global _CATALOG
-    if _CATALOG is None:
-        try:
-            import yaml
+    from .contract.loader import read_yaml
 
-            path = Path(__file__).parent / "knowledge" / "inform.yaml"
-            _CATALOG = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except Exception:  # pragma: no cover - a missing file just disables templates
-            logger.warning("inform.yaml load failed", exc_info=True)
-            _CATALOG = {}
-    return _CATALOG
+    return read_yaml(_PATH) or {}
+
+
+def reload() -> None:
+    """Nothing derived to drop — the catalog is read_yaml's cache."""
 
 
 def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:

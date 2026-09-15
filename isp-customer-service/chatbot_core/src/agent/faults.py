@@ -10,8 +10,8 @@ Why: the procedure and the answer meanings used to live in Python. Moving them h
 reworded check — a FILE edit rather than a code change, which is the whole point of the
 migration. Code keeps the mechanism and the safety enforcement.
 
-Fail-soft by design: anything missing or malformed yields None/{} and the engine falls
-back to its in-code defaults, so a bad edit can never take the agent down.
+Files are read through contract.loader, which validates them all at startup: a bad
+edit stops the app with a readable error instead of misbehaving in a call.
 """
 
 from __future__ import annotations
@@ -31,45 +31,20 @@ _MODULES_DIR = _KNOWLEDGE / "modules"
 
 @lru_cache(maxsize=1)
 def _doc() -> dict[str, Any]:
-    """Parse the manifest once. Any failure -> empty (engine uses its code defaults)."""
-    try:
-        import yaml
+    """The problem catalog (faults.yaml)."""
+    from .contract.loader import read_yaml
 
-        data = yaml.safe_load(_FAULTS_PATH.read_text(encoding="utf-8")) or {}
-        return data if isinstance(data, dict) else {}
-    except Exception as e:  # pragma: no cover - defensive; never break a call
-        logger.warning(f"faults.yaml not loaded ({e}); using in-code defaults")
-        return {}
-
-
-def _load_yaml_dir(path: Path, key_field: str) -> dict[str, Any]:
-    """Every *.yaml in `path` -> {spec[key_field]: spec}. Fail-soft per file: one
-    broken pack must not take the others (or the call) down."""
-    out: dict[str, Any] = {}
-    if not path.is_dir():
-        return out
-    try:
-        import yaml
-    except Exception:  # pragma: no cover - defensive
-        return out
-    for f in sorted(path.glob("*.yaml")):
-        try:
-            spec = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
-            name = spec.get(key_field)
-            if isinstance(spec, dict) and name:
-                out[str(name)] = spec
-            else:
-                logger.warning(f"{f.name}: missing '{key_field}' — skipped")
-        except Exception as e:
-            logger.warning(f"{f.name} not loaded ({e}) — skipped")
-    return out
+    data = read_yaml(_FAULTS_PATH) or {}
+    return data if isinstance(data, dict) else {}
 
 
 @lru_cache(maxsize=1)
 def _dir_faults() -> dict[str, Any]:
     """Fault PACKS — one file per fault in knowledge/faults/ (R5: 'įkelti naują
     gedimą' = drop a file in). A pack overrides a same-named monolith entry."""
-    return _load_yaml_dir(_FAULTS_DIR, "verdict")
+    from .contract.loader import read_yaml_dir
+
+    return read_yaml_dir(_FAULTS_DIR, "verdict")
 
 
 @lru_cache(maxsize=1)
@@ -77,7 +52,9 @@ def _modules() -> dict[str, Any]:
     """Reusable instruction MODULES (knowledge/modules/): named step sequences
     with declared exits that packs compose via `use:` — the same
     procedure (bind a MAC, verify restored) is written ONCE."""
-    return _load_yaml_dir(_MODULES_DIR, "module")
+    from .contract.loader import read_yaml_dir
+
+    return read_yaml_dir(_MODULES_DIR, "module")
 
 
 def _faults() -> dict[str, Any]:
@@ -121,9 +98,9 @@ _FLAG_DEFAULTS: dict[str, Any] = {
 
 @lru_cache(maxsize=1)
 def _verdict_flags() -> dict[str, dict[str, Any]]:
-    import yaml
+    from .contract.loader import read_yaml
 
-    return yaml.safe_load(_VERDICTS_PATH.read_text(encoding="utf-8")) or {}
+    return read_yaml(_VERDICTS_PATH) or {}
 
 
 def verdict_flag(verdict: str | None, name: str) -> Any:
@@ -151,7 +128,7 @@ def role_of(verdict: str | None, step_id: str | None) -> str | None:
 
 
 def reload() -> None:
-    """Drop the caches so edited knowledge files take effect without a restart."""
+    """Drop the derived caches (contract.loader.reload calls this)."""
     _doc.cache_clear()
     _verdict_flags.cache_clear()
     _dir_faults.cache_clear()

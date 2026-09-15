@@ -61,6 +61,11 @@ async def lifespan(app: FastAPI):
     from . import runtime_config
 
     runtime_config.load_persisted()
+    # Every knowledge file, the locale and the prompts are validated here: a broken
+    # pack stops the app with a readable error instead of failing inside a call.
+    from agent.contract import loader
+
+    loader.startup()
     cleanup = asyncio.create_task(manager.cleanup_loop())
     try:
         yield
@@ -289,6 +294,21 @@ async def config_get():
     from . import runtime_config
 
     return {"settings": runtime_config.current()}
+
+
+@app.post("/admin/knowledge/reload")
+async def knowledge_reload():
+    """Re-read the knowledge files after an edit. The files are validated first; a
+    broken edit is refused with its errors and the running knowledge stays."""
+    from agent.contract import loader
+    from agent.contract.schema import KnowledgeError
+
+    try:
+        knowledge = await asyncio.to_thread(loader.validate)
+    except KnowledgeError as e:
+        raise HTTPException(status_code=422, detail=e.errors) from None
+    loader.reload()
+    return {"status": "reloaded", "packs": len(knowledge.packs), "modules": len(knowledge.modules)}
 
 
 @app.put("/admin/config")

@@ -8,8 +8,7 @@ The engine reflects these in the identification guidance so changing them — in
 an extra question like the caller's name — is a file edit, not a code change.
 
 The GUARDS are NOT here (tool gate, apartment-never-from-DB, street-must-match); security
-boundaries stay in code. Fail-soft: a missing/broken file yields the built-in defaults, so
-a bad edit cannot take identification down.
+boundaries stay in code. An unset knob takes its default.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _PATH = Path(__file__).resolve().parent / "knowledge" / "identification.yaml"
 
-# Built-in defaults = today's behaviour, used when the file is absent/malformed.
+# The knob defaults, used for any knob the file does not set.
 _DEFAULTS: dict[str, Any] = {
     "offer_phone_address": True,
     "require_apartment": True,
@@ -36,15 +35,11 @@ _DEFAULTS: dict[str, Any] = {
 
 @lru_cache(maxsize=1)
 def _cfg() -> dict[str, Any]:
-    try:
-        import yaml
+    from .contract.loader import read_yaml
 
-        data = yaml.safe_load(_PATH.read_text(encoding="utf-8")) or {}
-        cfg = (data.get("identification") or {}) if isinstance(data, dict) else {}
-        return {**_DEFAULTS, **cfg} if isinstance(cfg, dict) else dict(_DEFAULTS)
-    except Exception as e:  # pragma: no cover - defensive; never break a call
-        logger.warning(f"identification.yaml not loaded ({e}); using defaults")
-        return dict(_DEFAULTS)
+    data = read_yaml(_PATH) or {}
+    cfg = (data.get("identification") or {}) if isinstance(data, dict) else {}
+    return {**_DEFAULTS, **cfg} if isinstance(cfg, dict) else dict(_DEFAULTS)
 
 
 def reload() -> None:
