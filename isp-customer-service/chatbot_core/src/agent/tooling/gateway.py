@@ -103,9 +103,9 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
                     "success": False,
                     "error": "city_only",
                     "message": (
-                        "check_outages reikalauja gatvės: perduok area='Miestas, "
-                        "Gatvė' (ne vien miestą) arba customer_id. Tik-miesto "
-                        "patikra grąžina kitų gatvių gedimus."
+                        "check_outages needs a street: pass area='City, "
+                        "Street' (not the city alone) or customer_id. A city-only "
+                        "check returns other streets' outages."
                     ),
                 },
                 ensure_ascii=False,
@@ -123,7 +123,7 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
                     {
                         "success": False,
                         "error": "not_identified",
-                        "message": "Negalima uždaryti kaip 'resolved' neidentifikavus kliento.",
+                        "message": "Cannot close as 'resolved' before the caller is identified.",
                     },
                     ensure_ascii=False,
                 )
@@ -141,9 +141,9 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
                         "success": False,
                         "error": "not_fixed",
                         "message": (
-                            f"Telemetrija dar rodo gedimą ({gloss}) — dar NEsutvarkyta, "
-                            "neuždaryk kaip 'resolved'. Atlik reikiamą veiksmą (pvz. "
-                            "update_mac + reset_port) ir per-tikrink diagnostiką."
+                            f"Telemetry still shows the fault ({gloss}) — NOT fixed yet, "
+                            "do not close as 'resolved'. Take the needed action (e.g. "
+                            "update_mac + reset_port) and re-run the diagnostics."
                         ),
                     },
                     ensure_ascii=False,
@@ -154,8 +154,8 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
                     "success": False,
                     "error": "no_outage",
                     "message": (
-                        "close_case(reason='outage') leidžiama tik po to, kai "
-                        "check_outages patvirtino aktyvų gedimą."
+                        "close_case(reason='outage') is allowed only after "
+                        "check_outages confirmed an active outage."
                     ),
                 },
                 ensure_ascii=False,
@@ -170,8 +170,8 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
                 "success": False,
                 "error": "not_identified",
                 "message": (
-                    "Klientas dar neidentifikuotas. Pirma surask ir patvirtink "
-                    "adresą (resolve_address) — tik tada galima diagnozė ar veiksmai."
+                    "The caller is not identified yet. First find and confirm the "
+                    "address (resolve_address) — only then are diagnostics or actions allowed."
                 ),
             }
         )
@@ -182,8 +182,8 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
                 "success": False,
                 "error": "id_mismatch",
                 "message": (
-                    f"customer_id turi būti identifikuoto kliento: "
-                    f"{state.identity.customer_id}. Nenaudok kito ar spėto id."
+                    f"customer_id must be the identified caller's: "
+                    f"{state.identity.customer_id}. Do not use another or a guessed id."
                 ),
             }
         )

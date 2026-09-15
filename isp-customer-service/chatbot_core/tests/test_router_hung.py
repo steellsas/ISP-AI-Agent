@@ -47,7 +47,7 @@ class TestVerdictRouterHung:
         assert v["side"] == "customer"
         assert v["action"] == "instruct"
         assert v["group"] == "B6"
-        assert "perkrovim" in v["agent_message"]
+        assert "reboot" in v["agent_message"]
 
     def test_dhcp_silent_wins_over_traffic(self):
         """A DHCP-silent device also shows no traffic — the more specific

@@ -83,7 +83,7 @@ def gather_signals(sources: TelemetrySources, customer_id: str) -> dict[str, Any
     if not billing.get("success"):
         return {
             "error": billing.get("error", "billing_check_failed"),
-            "message": billing.get("message", "Nepavyko patikrinti apmokėjimo būsenos."),
+            "message": billing.get("message", "Could not check the billing status."),
         }
 
     # --- Step 2 signal: registered incident (network domain) ---------------
@@ -174,16 +174,16 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
     """
     # ---- Step 1: billing block (B1) ----------------------------------------
     if signals.get("billing_suspended"):
-        reason_txt = signals.get("suspension_reason") or "neapmokėta sąskaita"
+        reason_txt = signals.get("suspension_reason") or "unpaid invoice"
         return _verdict(
             side="provider",
             group="B1",
             action="inform",
             reason="billing_suspended",
             agent_message=(
-                f"Paslauga sustabdyta dėl apmokėjimo ({reason_txt}). "
-                "Informuok klientą, kaip apmokėti ir atstatyti paslaugą. "
-                "Diagnostikos nereikia, tiketo nekurti."
+                f"Service suspended for billing ({reason_txt}). "
+                "Tell the caller how to pay and restore the service. "
+                "No diagnostics needed, do not create a ticket."
             ),
         )
 
@@ -191,15 +191,15 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
     incident = signals.get("incident")
     if incident:
         eta = incident.get("estimated_resolution")
-        eta_txt = f" Numatomas atstatymas: {eta}." if eta else ""
+        eta_txt = f" Estimated restoration: {eta}." if eta else ""
         return _verdict(
             side="provider",
             group="B2",
             action="inform",
             reason="active_outage",
             agent_message=(
-                f"Kliento rajone registruota avarija: {incident.get('description', '')}."
-                f"{eta_txt} Informuok ir užbaik — avarija jau registruota, tiketo nekurti."
+                f"A registered outage in the caller's area: {incident.get('description', '')}."
+                f"{eta_txt} Inform and finish — the outage is already registered, do not create a ticket."
             ),
         )
 
@@ -211,8 +211,8 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="no_port_data",
             agent_message=(
-                "Nerasti kliento porto duomenys — diagnostika iš tiekėjo pusės negalima. "
-                "Tęsk pokalbiu: ar dega routerio lemputės, ar įjungtas maitinimas."
+                "No port data for the caller — provider-side diagnostics are not possible. "
+                "Continue in conversation: are the router lights on, is the power on."
             ),
         )
 
@@ -224,12 +224,12 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="create_ticket",
             reason="switch_unreachable",
             agent_message=(
-                "Kliento tinklo mazgas nepasiekiamas, registruotos avarijos nėra — "
-                "tiekėjo gedimas. INFORMUOK klientą: manomas gedimas TINKLE, jam "
-                "nieko daryti nereikia; kai bus išspręsta, su juo susisieks ir "
-                "informuos apie sutvarkymą. Jei klausia KADA — tikslaus laiko "
-                "nežadėk: darysime, kad kuo greičiau, ir informuosime, kai bus "
-                "išspręsta. Tiketas jau sukurtas automatiškai."
+                "The caller's network node is unreachable, no outage is registered — "
+                "a provider fault. INFORM the caller: a suspected fault in the NETWORK, they "
+                "need to do nothing; once it is fixed, someone will contact them and "
+                "report the repair. If they ask WHEN — promise no exact time: we will "
+                "do it as fast as possible and let them know once it is "
+                "fixed. The ticket was already created automatically."
             ),
         )
 
@@ -243,13 +243,13 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
                 action="create_ticket",
                 reason="node_fault_unregistered",
                 agent_message=(
-                    "Kliento ir kaimynų portai neaktyvūs, bet avarija neregistruota — "
-                    "tikėtinas mazgo gedimas. INFORMUOK klientą: manomas gedimas "
-                    "TINKLE (ne tik pas jį), jam nieko daryti nereikia; kai gedimas "
-                    "bus išspręstas, su juo susisieks ir informuos apie sutvarkymą. "
-                    "Jei klausia KADA — tikslaus laiko nežadėk: darysime, kad kuo "
-                    "greičiau, ir informuosime, kai bus išspręsta. Tiketas jau "
-                    "sukurtas automatiškai."
+                    "The caller's and the neighbours' ports are inactive, but no outage is registered — "
+                    "a likely node fault. INFORM the caller: a suspected fault in the "
+                    "NETWORK (not only at their place), they need to do nothing; once the fault "
+                    "is fixed, someone will contact them and report the repair. "
+                    "If they ask WHEN — promise no exact time: we will do it as "
+                    "fast as possible and let them know once it is fixed. The ticket was "
+                    "already created automatically."
                 ),
             )
         return _verdict(
@@ -258,9 +258,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="link_down_local",
             agent_message=(
-                "Porto ryšys nutrūkęs, kaimynai veikia — gedimas kliento pusėje "
-                "(maitinimas / laidai). Instruktuok pažingsniui: ar dega lemputės, "
-                "ar gerai įkištas WAN laidas. Nepadėjus — tiketas."
+                "The port link is down, the neighbours work — a fault on the caller's side "
+                "(power / cables). Instruct step by step: are the lights on, "
+                "is the WAN cable seated well. If that does not help — a ticket."
             ),
         )
 
@@ -274,8 +274,8 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="no_mac_observed",
             agent_message=(
-                "Linija veikia, bet įrenginio nesimato — routeris greičiausiai "
-                "išjungtas arba neprijungtas. Tikslink pokalbiu: maitinimas, laidai."
+                "The line works, but no device is seen — the router is most likely "
+                "off or not connected. Clarify in conversation: power, cables."
             ),
         )
     if registered and observed != registered:
@@ -285,9 +285,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="foreign_mac",
             agent_message=(
-                "Linijoje matomas kitas įrenginys nei registruota — klientas "
-                "tikriausiai pakeitė routerį. Patvirtinus, atnaujink MAC "
-                "(update_mac) ir perkrauk portą."
+                "A different device than registered is seen on the line — the caller "
+                "probably changed the router. Once confirmed, update the MAC "
+                "(update_mac) and reset the port."
             ),
         )
 
@@ -300,9 +300,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="crc_errors",
             agent_message=(
-                "Linijoje daug CRC klaidų — pažeistas arba blogai įkištas laidas. "
-                "Instruktuok patikrinti/perjungti laidą; nepadėjus — tiketas dėl "
-                "laido keitimo."
+                "Many CRC errors on the line — a damaged or badly seated cable. "
+                "Instruct to check/reconnect the cable; if that does not help — a ticket for "
+                "a cable replacement."
             ),
         )
     if signals.get("dhcp_status") in ("no_requests", "expired"):
@@ -312,9 +312,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="dhcp_silent",
             agent_message=(
-                "Routeris matomas, bet nesiunčia DHCP užklausų — tikėtinas Factory "
-                "Reset ar išsitrynusi konfigūracija. Instruktuok nustatyti DHCP "
-                "routerio valdymo skydelyje."
+                "The router is seen, but sends no DHCP requests — a likely factory "
+                "reset or a wiped configuration. Instruct to set DHCP "
+                "in the router's control panel."
             ),
         )
 
@@ -330,10 +330,10 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="router_hung",
             agent_message=(
-                "Routeris matomas linijoje, bet srautas nevaikšto — routeris "
-                "greičiausiai pakibęs. Paaiškink žmogiškai (taip nutinka, po "
-                "perkrovimo dažniausiai susitvarko) ir vesk per perkrovimą iš "
-                "maitinimo. Tiketo kol kas nekurti."
+                "The router is seen on the line, but no traffic flows — the router "
+                "has most likely hung. Explain it humanly (it happens, a "
+                "reboot usually clears it) and guide a power-cycle "
+                "reboot. Do not create a ticket yet."
             ),
         )
 
@@ -344,9 +344,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
         action="instruct",
         reason="healthy_to_router",
         agent_message=(
-            "Tinklas iki routerio veikia — problema toliau kliento pusėje "
-            "(Wi-Fi, įrenginys). Tikslink: ar neveikia visuose įrenginiuose, "
-            "ar tik viename; laidu ar per Wi-Fi."
+            "The network works up to the router — the problem is further on the caller's side "
+            "(Wi-Fi, a device). Clarify: does it fail on all devices "
+            "or only one; wired or over Wi-Fi."
         ),
     )
 

@@ -931,7 +931,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                         "affected": True,
                         "active_outages": outages,
                         "outage_count": len(outages),
-                        "message": f"Klientas paveiktas {len(outages)} gedimo(-ų)",
+                        "message": f"The caller is affected by {len(outages)} outage(s)",
                     }
                 else:
                     return {
@@ -940,7 +940,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                         "affected": False,
                         "active_outages": [],
                         "outage_count": 0,
-                        "message": "Klientas nėra paveiktas žinomų gedimų",
+                        "message": "The caller is not affected by known outages",
                     }
 
         # Check by area
@@ -956,16 +956,16 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                 outages = result.get("outages", [])
                 summary = result.get("summary", {})
 
-                message = result.get("message", "Patikrinta")
+                message = result.get("message", "Checked")
                 # A city-only check returns outages from OTHER streets too —
                 # observed in testing: the model attributed another street's
                 # outage to the caller. Make the tool itself raise the flag.
                 if outages and not street:
                     message = (
-                        "DĖMESIO: tikrinta visame mieste BE gatvės — rasti gedimai "
-                        "gali būti KITOSE gatvėse. Prieš informuojant klientą "
-                        "PRIVALOMA sutikrinti, ar gedimo gatvė (laukas 'street') "
-                        "sutampa su kliento gatve. " + message
+                        "ATTENTION: checked across the whole city WITHOUT a street — the outages found "
+                        "may be on OTHER streets. Before informing the caller you "
+                        "MUST check that the outage street (the 'street' field) "
+                        "matches the caller's street. " + message
                     )
 
                 return {
@@ -985,7 +985,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
             "affected": False,
             "active_outages": [],
             "outage_count": 0,
-            "message": "Nurodykite rajoną arba kliento ID gedimų patikrinimui",
+            "message": "Give an area or a customer ID to check outages",
         }
 
     except ImportError as e:
@@ -996,7 +996,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
         return {
             "success": False,
             "error": "outage_check_error",
-            "message": f"Klaida tikrinant gedimus: {e}",
+            "message": f"Error checking outages: {e}",
         }
 
 
@@ -1008,7 +1008,7 @@ def _check_outages_fallback(area: str) -> dict:
         "affected": False,
         "active_outages": [],
         "outage_count": 0,
-        "message": "Nėra žinomų gedimų (fallback mode)",
+        "message": "No known outages (fallback mode)",
     }
 
 
@@ -1110,7 +1110,7 @@ def _search_knowledge_fallback(query: str) -> dict:
             "results": [
                 {
                     "title": "Router Troubleshooting",
-                    "content": "Perkraukite routerį: išjunkite 30 sek, įjunkite atgal.",
+                    "content": "Reboot the router: switch it off for 30 s, switch it back on.",
                 }
             ],
         }
@@ -1118,7 +1118,10 @@ def _search_knowledge_fallback(query: str) -> dict:
         return {
             "success": True,
             "results": [
-                {"title": "WiFi", "content": "WiFi slaptažodis yra ant routerio lipduko apačioje."}
+                {
+                    "title": "WiFi",
+                    "content": "The WiFi password is on the sticker under the router.",
+                }
             ],
         }
 
@@ -1324,15 +1327,11 @@ def run_ping_test(customer_id: str) -> dict:
 
             # Generate human-readable summary
             if status == "healthy":
-                summary = f"Ryšys geras. Vidutinis ping: {stats.get('avg_latency_ms', 'N/A')}ms"
+                summary = f"Connection good. Average ping: {stats.get('avg_latency_ms', 'N/A')}ms"
             elif status == "warning":
-                summary = (
-                    f"Aptiktos problemos. Paketų praradimas: {stats.get('packet_loss_percent', 0)}%"
-                )
+                summary = f"Problems detected. Packet loss: {stats.get('packet_loss_percent', 0)}%"
             else:
-                summary = (
-                    f"Kritinė problema. Paketų praradimas: {stats.get('packet_loss_percent', 0)}%"
-                )
+                summary = f"Critical problem. Packet loss: {stats.get('packet_loss_percent', 0)}%"
 
             return {
                 "success": True,
@@ -1358,14 +1357,14 @@ def run_ping_test(customer_id: str) -> dict:
             "customer_id": customer_id,
             "status": "healthy",
             "statistics": {"avg_latency_ms": 25, "packet_loss_percent": 0},
-            "summary": "Ryšys normalus (fallback mode)",
+            "summary": "Connection normal (fallback mode)",
         }
     except Exception as e:
         logger.error(f"Error in run_ping_test: {e}", exc_info=True)
         return {
             "success": False,
             "error": "ping_test_error",
-            "message": f"Klaida atliekant ping testą: {e}",
+            "message": f"Error running the ping test: {e}",
         }
 
 
@@ -1391,7 +1390,7 @@ def close_case(reason: str = "resolved") -> dict:
         "success": True,
         "case_closed": True,
         "reason": reason,
-        "message": "Byla uždaroma — pereinama prie atsisveikinimo.",
+        "message": "Case closing — moving to the goodbye.",
     }
 
 

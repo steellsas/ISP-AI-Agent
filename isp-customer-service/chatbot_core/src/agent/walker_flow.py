@@ -705,7 +705,7 @@ def advance_see_device(state, rt, r: dict) -> None:
     note_evidence(
         state,
         rt,
-        "prijungtas įrenginys matomas linijoje" if seen else "įrenginio linijoje vis dar nematyti",
+        "the connected device is seen on the line" if seen else "still no device seen on the line",
     )
     if seen:
         goto_role(state, rt, r, "bind_device")
@@ -731,7 +731,9 @@ def reject_and_rediagnose(state, rt, r: dict) -> bool:
     verdict = r.get("verdict")
     if verdict and verdict not in s.diagnosis.failed_hypotheses:
         s.diagnosis.failed_hypotheses.append(verdict)
-    settle_hypothesis(state, rt, "rejected", "po veiksmo ryšys neatsistatė (telemetrija)")
+    settle_hypothesis(
+        state, rt, "rejected", "the connection did not recover after the action (telemetry)"
+    )
     s.diagnosis.verdicts.pop("network", None)  # let ensure_diagnosed re-read the line
     ensure_diagnosed(state, rt)
     new = (s.resolution.procedure or {}).get("verdict")
@@ -926,14 +928,16 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
         if r.get("telemetry_fixed") or flap or not telem_ok:
             state.closing.case_closed = True
             state.closing.closed_reason = "resolved"
-            settle_hypothesis(state, rt, "confirmed", "po perkrovimo ryšys atsistatė")
+            settle_hypothesis(state, rt, "confirmed", "the connection recovered after the reboot")
             return
         outcome = Outcome.NO  # fall through to the no-flap retry below
     if outcome != Outcome.NO:
         return  # unclear -> stay on the reboot check, re-ask
     if r.get("telemetry_fixed"):
         note_evidence(
-            state, rt, "telemetrija: srautas grįžo — linija veikia, problema įrenginio pusėje"
+            state,
+            rt,
+            "telemetry: traffic is back — the line works, the problem is on the device side",
         )
         goto_role(state, rt, r, "device_path")
         return
@@ -942,8 +946,8 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
         note_evidence(
             state,
             rt,
-            "telemetrija: įrenginys NEBUVO dingęs iš linijos — pilno perkrovimo nesimatė "
-            "(gal prailgintuvas / mygtukas / kitas įrenginys)",
+            "telemetry: the device NEVER dropped off the line — no full reboot was seen "
+            "(an extension cord / a button / another device?)",
         )
         r["reboot_retries"] = int(r.get("reboot_retries", 0)) + 1
         if r["reboot_retries"] >= 2:
@@ -957,7 +961,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
         note_evidence(
             state,
             rt,
-            "telemetrija: perkrovimas matytas, bet srautas negrįžo — routeris neatsistato",
+            "telemetry: the reboot was seen, but traffic did not return — the router does not recover",
         )
     if not reject_and_rediagnose(state, rt, r):
         goto_role(state, rt, r, "escalate")

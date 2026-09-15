@@ -548,7 +548,7 @@ def close_or_register(state: Any, rt: Any, say: str) -> str:
         return drive_escalate(state, rt, None)
     state.closing.case_closed = True
     state.closing.closed_reason = "resolved"
-    settle_hypothesis(state, rt, "confirmed", "sprendimas suveikė (solveris)")
+    settle_hypothesis(state, rt, "confirmed", "the fix worked (solver)")
     return say or phrase("solver.resolved")
 
 
