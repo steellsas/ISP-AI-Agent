@@ -24,7 +24,6 @@ from .trace import trace_note
 # the turn: it reads the RAG playbook + dialogue + telemetry, decides the next action,
 # the gate validates + the engine executes safety actions by code, and the reply is the
 # solver's spoken text. The walker stays the default and handles every other direction.
-SOLVER_DRIVE_VERDICTS = frozenset({"no_mac_observed"})  # pilot: dead-router / bridge
 
 logger = logging.getLogger(__name__)
 
@@ -237,15 +236,11 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     r = state.resolution.procedure
     if not r or state.closing.case_closed:
         return None
-    # R4b: the PACK declares its driver (meta.driver) — the solver takes a
-    # fault when its file says so; the legacy frozenset stays the fallback for
-    # packs that declare nothing (today: no_mac_observed).
-    from .faults import driver
+    # One driver (D-03): every pack with evidence is led by the evidence layer and
+    # the solver; a pack without evidence (unclear_fault) is its procedure alone.
+    from .faults import evidence_led
 
-    drv = driver(r.get("verdict"))
-    if drv == "walker":
-        return None
-    if drv != "solver" and r.get("verdict") not in SOLVER_DRIVE_VERDICTS:
+    if not evidence_led(r.get("verdict")):
         return None
     # Engine mechanics first: while the ladder / clarify flow owns the turn, the
     # thinker waits (scripted replies and guards are deterministic territory).

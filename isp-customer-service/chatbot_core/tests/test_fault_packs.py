@@ -49,19 +49,27 @@ class TestModulesAndMeta:
     def test_meta(self):
         meta = fault_meta("no_mac_observed")
         assert meta.get("domain") == "internet"
-        assert meta.get("driver") == "solver"
 
 
 class TestSolverMechanics:
-    """R4b mechanics — pack-declared driver + the walker solution kind. The
-    packs themselves stay walker-driven until each is flipped deliberately."""
+    """R4b mechanics — evidence-led packs + the procedure solution kind."""
 
-    def test_all_packs_declare_solver_driver(self):
-        # R4b flip (Andrius 2026-08-13: visus iš karto, tada testuojam)
-        from agent.faults import driver
+    def test_every_pack_with_evidence_is_evidence_led(self):
+        # One driver (D-03): every internet pack declares evidence; the unclear
+        # fault is its procedure alone.
+        from agent.faults import evidence_led, pack_verdicts
 
-        for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
-            assert driver(verdict) == "solver"
+        for verdict in pack_verdicts() - {"unclear_fault"}:
+            assert evidence_led(verdict), verdict
+        assert not evidence_led("unclear_fault")
+
+    def test_line_fault_packs_start_their_procedure_from_telemetry(self):
+        from agent.evidence import hypothesis_status, solution_for, solution_step, spec_for
+
+        for verdict, first in (("link_down_local", "ll_ability"), ("crc_errors", "crc_ability")):
+            assert hypothesis_status({}, spec_for(verdict)) == "confirmed"
+            assert solution_for({}, verdict) == "procedure"
+            assert solution_step({}, verdict) == first
 
     def test_walker_solution_syncs_step_and_hands_over(self, monkeypatch):
         from types import SimpleNamespace

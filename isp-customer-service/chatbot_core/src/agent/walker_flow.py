@@ -220,15 +220,15 @@ def advance_resolution(state, rt, user_input: str | None) -> None:
 
 
 def walker_owns_turn(state, rt, r: dict, step) -> bool:
-    """B2: may the walker READ this turn's answer? Walker-driven packs: always.
-    Solver-driven packs: only once the evidence layer handed over — the
+    """B2: may the walker READ this turn's answer? Packs without evidence: always.
+    Evidence-led packs: only once the evidence layer handed over — the
     solution step was synced (`solution_synced`), the bridge is bound, or the
     step is a verify/escalate outcome step (telemetry + outcome, not a
     diagnostic fact the ledger collects)."""
-    from .faults import driver
+    from .faults import evidence_led
     from .resolution import StepKind
 
-    if driver(r.get("verdict")) != "solver":
+    if not evidence_led(r.get("verdict")):
         return True
     if r.get("solution_synced") or state.resolution.bridge_bound:
         return True

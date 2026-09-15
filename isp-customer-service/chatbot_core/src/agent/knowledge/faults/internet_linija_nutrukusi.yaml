@@ -10,7 +10,6 @@ verdict: link_down_local
 meta:
   title: "No internet — the port link is down while the neighbours work (cable to the flat)"
   domain: internet
-  driver: walker
 problem: internet_down
 playbook: troubleshooting/internet_linija_nutrukusi
 evidence:
@@ -19,6 +18,13 @@ evidence:
   refuted_when: []
 ticket_need_key: "pack.link_down_local.ticket_need"
 conclusion_key: "pack.link_down_local.conclusion"
+# Telemetry alone confirms the fault (confirmed_when: []); the one solution starts the
+# procedure at the ability check.
+solutions:
+- when: []
+  action: procedure
+  step_role: ability_check
+  description_key: "pack.link_down_local.solution.s1"
 steps:
 - id: ll_ability
   role: ability_check

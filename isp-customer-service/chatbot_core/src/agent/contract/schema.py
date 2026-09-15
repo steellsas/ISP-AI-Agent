@@ -135,8 +135,6 @@ class Step(_Model):
 class PackMeta(_Model):
     title: str
     domain: str
-    # Temporary: which engine drives the fault's turns (M4 deletes it, D-03).
-    driver: Literal["solver", "walker"] | None = None
 
 
 class FaultPack(_Model):

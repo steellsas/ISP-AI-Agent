@@ -8,7 +8,6 @@ verdict: crc_errors
 meta:
   title: "Internet drops out / slow — many CRC errors on the line (damaged cable)"
   domain: internet
-  driver: walker
 problem: internet_down
 playbook: troubleshooting/internet_crc_kabelis
 evidence:
@@ -17,6 +16,13 @@ evidence:
   refuted_when: []
 ticket_need_key: "pack.crc_errors.ticket_need"
 conclusion_key: "pack.crc_errors.conclusion"
+# Telemetry alone confirms the fault (confirmed_when: []); the one solution starts the
+# procedure at the ability check.
+solutions:
+- when: []
+  action: procedure
+  step_role: ability_check
+  description_key: "pack.crc_errors.solution.s1"
 steps:
 - id: crc_ability
   role: ability_check

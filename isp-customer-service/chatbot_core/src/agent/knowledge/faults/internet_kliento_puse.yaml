@@ -6,7 +6,6 @@ meta:
   # R4b (2026-08-13): pirmasis walker->solveris perjungimas. Analizės variklis
   # klausinėja iš evidence žinių; sprendimo žingsnius vykdo žingsnių medis
   # (sprendimai: tada:walker). Grąžinti į seną elgesį = ištrinti šią eilutę.
-  driver: solver
 problem: internet_down
 playbook: troubleshooting/kliento_puse_internetas
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +

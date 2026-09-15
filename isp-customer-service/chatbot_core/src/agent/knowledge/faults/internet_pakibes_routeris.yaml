@@ -21,7 +21,6 @@ verdict: router_hung
 meta:
   title: "No internet — the router is visible but no traffic flows (hung router)"
   domain: internet
-  driver: solver
 problem: internet_down
 playbook: troubleshooting/internet_pakibes_routeris
 evidence:

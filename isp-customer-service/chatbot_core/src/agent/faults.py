@@ -197,19 +197,20 @@ def _expanded_steps(verdict: str) -> tuple[dict[str, Any], ...]:
 
 
 def fault_meta(verdict: str | None) -> dict[str, Any]:
-    """The pack's meta block (title, domain, driver)."""
+    """The pack's meta block (title, domain)."""
     if not verdict:
         return {}
     meta = (_faults().get(verdict) or {}).get("meta")
     return meta if isinstance(meta, dict) else {}
 
 
-def driver(verdict: str | None) -> str | None:
-    """meta.driver — who drives this fault's turns: "solver" (the evidence-drive +
-    solver own the flow) or "walker" (the step tree; default). Temporary: M4
-    makes the solver the only driver (D-03)."""
-    v = fault_meta(verdict).get("driver")
-    return str(v) if v in ("solver", "walker") else None
+def evidence_led(verdict: str | None) -> bool:
+    """A pack that declares evidence is led by the evidence layer and the solver
+    (D-03); its procedure reads answers only once the evidence layer hands over.
+    A pack without evidence (unclear_fault) is its procedure alone."""
+    from .evidence import spec_for
+
+    return spec_for(verdict) is not None
 
 
 # --- Purpose: what the CALLER reports -------------------------------------------

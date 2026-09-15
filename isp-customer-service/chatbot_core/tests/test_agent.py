@@ -1722,13 +1722,12 @@ class TestThinkerBoundaries:
     def test_walker_declared_direction_falls_back(self, db_connection, monkeypatch):
         from agent.solver_flow import solver_drive_turn
 
-        # R4b: the PACK declares its driver. A verdict whose pack says walker
-        # (or declares nothing and is not in the legacy pilot set) stays with
-        # the step tree — the solver hands the turn back.
+        # A pack without evidence stays with its procedure — the solver hands the
+        # turn back.
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         from agent import faults
 
-        monkeypatch.setattr(faults, "driver", lambda v: "walker")
+        monkeypatch.setattr(faults, "evidence_led", lambda v: False)
         agent = self._agent(db_connection)
         agent.state.resolution.procedure = {"verdict": "foreign_mac", "step": "confirm_change"}
         assert solver_drive_turn(agent.state, agent.runtime, "taip") is None

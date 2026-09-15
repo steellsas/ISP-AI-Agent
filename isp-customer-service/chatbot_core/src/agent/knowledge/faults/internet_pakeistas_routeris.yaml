@@ -5,7 +5,6 @@ meta:
   domain: internet
   # R4b (2026-08-13): solveris vairuoja — analizė iš evidence, vykdymas per
   # žingsnių medį (sprendimai: tada:walker). Rollback = ištrinti šią eilutę.
-  driver: solver
 problem: internet_down
 playbook: troubleshooting/internet_pakeistas_routeris_mac
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +

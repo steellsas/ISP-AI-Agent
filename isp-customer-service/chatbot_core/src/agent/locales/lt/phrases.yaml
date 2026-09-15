@@ -125,6 +125,8 @@ pack:
   crc_errors:
     ticket_need: "linijoje daug klaidų ir po laido perkišimo routeryje — pažeistas laidas, reikalingas keitimas (perkišimas būtų tik laikinas sprendimas)"
     conclusion: "linijoje daug klaidų — pažeistas arba blogai įkištas laidas"
+    solution:
+      s1: "perkišti interneto laidą routeryje ir patikrinti klaidas; nepadėjus — registruoti laido keitimą"
     steps:
       crc_ability:
         answers:
@@ -226,6 +228,8 @@ pack:
   link_down_local:
     ticket_need: "routeris gyvas, bet signalas iš linijos neateina (interneto lemputė nedega, portas neaktyvus ir po perkišimo) — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
     conclusion: "signalas iki jūsų routerio neateina — greičiausiai pažeistas kabelis trasoje"
+    solution:
+      s1: "perkišti iš sienos ateinantį laidą ir patikrinti liniją; neatsikėlus — registruoti meistrą"
     steps:
       ll_ability:
         answers:
