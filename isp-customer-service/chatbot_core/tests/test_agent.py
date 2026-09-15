@@ -1205,14 +1205,14 @@ class TestAnalysisStep2:
         assert extract_anamnesis("Vakar dar veikė")["when"] == "yesterday"
 
     def test_hypothesis_cites_both_sides(self, db_connection):
-        from agent.decide.hypothesis import open_hypothesis
+        from agent.decide.hypothesis import activate_hypothesis
 
         from tests.calls import make_agent
 
         agent = make_agent("+37060012353")
         agent.state.intake.anamnesis_when = "today"
         agent.state.intake.anamnesis_trigger = "storm"
-        open_hypothesis(agent.state, agent.runtime, "no_mac_observed")
+        activate_hypothesis(agent.state, agent.runtime, "no_mac_observed")
 
         because = " ".join(agent.state.diagnosis.hypothesis["because"])
         assert "klientas sako" in because and "audra" in because

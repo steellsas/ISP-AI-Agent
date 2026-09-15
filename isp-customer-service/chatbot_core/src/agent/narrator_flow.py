@@ -1401,7 +1401,7 @@ def augment_tool_result(state, rt, name: str, observation: str) -> str:
 
 def update_state_from_observation(state, rt, action: str, observation: str):
     """Update agent state based on tool observation."""
-    from .decide.hypothesis import open_hypothesis
+    from .decide.hypothesis import activate_hypothesis
 
     try:
         obs_data = json.loads(observation)
@@ -1539,7 +1539,7 @@ def update_state_from_observation(state, rt, action: str, observation: str):
                 if prev is None:
                     # A verdict IS a hypothesis — record what we now believe and why,
                     # so the agent can say it aloud and later report how it settled.
-                    open_hypothesis(state, rt, v.get("reason"))
+                    activate_hypothesis(state, rt, v.get("reason"))
                     state.resolution.procedure = {
                         "verdict": strat.verdict,
                         "step": strat.steps[0].id,
@@ -1549,7 +1549,7 @@ def update_state_from_observation(state, rt, action: str, observation: str):
 
                     doubt(state, rt, "verdict", "verdict", prev, strat.verdict, source="telemetry")
             elif prev is None:
-                open_hypothesis(state, rt, v.get("reason"))
+                activate_hypothesis(state, rt, v.get("reason"))
 
         # An active outage for the caller's street -> restricted mode (NOT a
         # close): the caller still asks "when fixed? / compensation?", so the

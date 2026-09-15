@@ -13,7 +13,7 @@ from __future__ import annotations
 from ..contract.locale import phrase_or
 
 
-def open_hypothesis(state, rt, reason: str | None) -> None:
+def activate_hypothesis(state, rt, reason: str | None) -> None:
     """A fresh verdict = a new belief. Seeds it with what the telemetry showed."""
     if not reason:
         return
@@ -140,5 +140,5 @@ def change_confirmed(state, rt, c) -> None:
     strat = get_strategy(c.now_value)
     state.resolution.procedure = {"verdict": strat.verdict, "step": strat.steps[0].id}
     state.diagnosis.pivoted_from = before
-    open_hypothesis(state, rt, c.now_value)
+    activate_hypothesis(state, rt, c.now_value)
     rt.tracer.emit("hypothesis", status="changed", kind="verdict", before=before, now=c.now_value)

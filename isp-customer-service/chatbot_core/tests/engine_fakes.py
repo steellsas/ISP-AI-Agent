@@ -42,7 +42,7 @@ _FLOW_OF = {
     "_negation_clarify_reply": "agent.evidence_drive.negation_clarify_reply",
     "_note_evidence": "agent.decide.hypothesis.note_evidence",
     "_on_task_question": "agent.perceive.side_topic.on_task_question",
-    "_open_hypothesis": "agent.decide.hypothesis.open_hypothesis",
+    "_activate_hypothesis": "agent.decide.hypothesis.activate_hypothesis",
     "_plug_report": "agent.solver_flow.plug_report",
     "_pre_turn_guards": "agent.decide.rules.head.turn_head",
     "_prefill_slots_from_text": "agent.perceive.slots.prefill_slots_from_text",
