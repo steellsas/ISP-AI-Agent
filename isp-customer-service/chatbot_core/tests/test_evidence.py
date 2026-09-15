@@ -148,7 +148,7 @@ class TestAgentWiring:
         assert agent.state.diagnosis.evidence["verdict"]["source"] == "telemetry"
 
     def test_ingest_fills_client_facts(self):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(
@@ -160,7 +160,7 @@ class TestAgentWiring:
     def test_contradiction_asks_one_clarify_then_settles(self):
         from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
         from agent.solver_flow import solver_drive_turn
         from agent.walker_flow import advance_resolution
 
@@ -194,7 +194,7 @@ class TestAgentWiring:
 
     def test_bare_polarity_settles_yes_no_conflict(self):
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
@@ -205,7 +205,7 @@ class TestAgentWiring:
 
     def test_unreadable_settle_keeps_latest_and_stops_asking(self):
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
@@ -218,7 +218,7 @@ class TestAgentWiring:
 
     def test_facts_block_and_solver_context_carry_ledger(self):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
         from agent.solver_flow import build_solver_context
 
         agent = _diagnosing_agent()
@@ -230,7 +230,7 @@ class TestAgentWiring:
 
     def test_ticket_carries_client_evidence(self, db_connection):
         from agent.executor_flow import register_ticket_from_state
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
@@ -267,7 +267,7 @@ class TestAgentWiring:
 
     def test_evidence_drive_asks_in_order_with_kada_gates(self):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         # Nothing known -> the first question is the contextual anamnesis
@@ -300,7 +300,7 @@ class TestAgentWiring:
 
     def test_confirmed_with_no_computer_escalates_to_ticket(self):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
@@ -318,7 +318,7 @@ class TestAgentWiring:
 
     def test_confirmed_with_computer_yields_to_solver_bridge(self):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
@@ -337,7 +337,7 @@ class TestAgentWiring:
 
     def test_confirmed_but_device_unknown_asks_has_computer(self):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
@@ -354,7 +354,7 @@ class TestAgentWiring:
 
     def test_refuted_syncs_walker_to_declared_step(self):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         agent.state.resolution.procedure["step"] = "dr_intro"  # stale — the rewind trap
@@ -366,7 +366,7 @@ class TestAgentWiring:
         assert agent.state.resolution.procedure["step"] == "dr_cable"  # pivot, not rewind
 
     def test_pending_key_gives_short_answers_meaning(self):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # Live 2026-08-10 (T1): "Radau." to "Radote?" carried no noun -> the
         # general extractor was blind -> give-up despite a clear answer.
@@ -378,7 +378,7 @@ class TestAgentWiring:
         assert agent.state.diagnosis.pending_evidence_key is None  # answered — context consumed
 
     def test_pending_lights_reads_garbled_negation(self):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # "Ne daganiai 1." (STT of "nedega nė viena") had no 'lemp' word — with
         # the lights question pending it now reads as nedega instead of falling
@@ -390,7 +390,7 @@ class TestAgentWiring:
 
     def test_pending_read_overwrites_gave_up_marker(self):
         from agent.evidence import CLIENT, set_fact
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         set_fact(agent.state.diagnosis.evidence, "device_present", "unknown", CLIENT, 3)
@@ -399,7 +399,7 @@ class TestAgentWiring:
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
 
     def test_pending_read_never_hijacks_other_facts(self):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # A rich utterance that the general extractor understands wins — the
         # pending context only fills the gap when nothing was extracted.
@@ -410,7 +410,7 @@ class TestAgentWiring:
         assert agent.state.diagnosis.evidence["lights"]["value"] == "on"
 
     def test_no_ingest_during_ticket_dialogue_or_before_id(self):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         agent.state.ticket.stage = "phone"

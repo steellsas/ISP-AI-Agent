@@ -24,7 +24,7 @@ def maybe_finish(state: Any, rt: Any, user_input: str | None) -> None:
     if not s.closing.case_closed or s.closing.is_complete:
         return
     s.closing.closing_turns += 1
-    from .resolution import detect_farewell
+    from .perceive.detectors import detect_farewell
 
     if detect_farewell(user_input) or s.closing.closing_turns >= limits.get("closing_max_turns"):
         s.closing.is_complete = True
@@ -64,7 +64,7 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
     )
     if not inform_mode:
         return
-    from .resolution import detect_farewell
+    from .perceive.detectors import detect_farewell
 
     if detect_farewell(user_input):
         s.closing.case_closed = True

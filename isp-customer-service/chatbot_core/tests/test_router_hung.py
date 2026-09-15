@@ -241,8 +241,8 @@ class TestRebootCheckDetector:
     'jo' substring and closed an unresolved call.)"""
 
     def test_live_phrases(self):
+        from agent.perceive.detectors import detect_reboot_check as d
         from agent.resolution import Outcome
-        from agent.resolution import detect_reboot_check as d
 
         assert d("Visos lemputės dega, bet jos nemirksi") is Outcome.NO
         assert d("Pabandžiau, nėra interneto") is Outcome.NO
@@ -251,7 +251,7 @@ class TestRebootCheckDetector:
         assert d("Taip, mirksi ir atsidaro") is Outcome.YES
 
     def test_unclear_stays_unclear(self):
-        from agent.resolution import detect_reboot_check as d
+        from agent.perceive.detectors import detect_reboot_check as d
 
         assert d("Dega lemputės") is None  # burning != working
         assert d("Ned.") is None
@@ -274,7 +274,7 @@ class TestConflictScope:
 
     def test_undeclared_key_conflict_settles_silently(self, db_connection):
         from agent.evidence import CLIENT, set_fact
-        from agent.perception_flow import _conflict_to_clarify
+        from agent.perceive.evidence import _conflict_to_clarify
 
         agent = self._agent()
         set_fact(agent.state.diagnosis.evidence, "lights", "off", CLIENT, 1)
@@ -288,7 +288,7 @@ class TestConflictScope:
 
     def test_declared_key_conflict_still_clarifies(self, db_connection):
         from agent.evidence import CLIENT, set_fact
-        from agent.perception_flow import _conflict_to_clarify
+        from agent.perceive.evidence import _conflict_to_clarify
 
         agent = self._agent()
         set_fact(agent.state.diagnosis.evidence, "fail_scope", "all", CLIENT, 1)

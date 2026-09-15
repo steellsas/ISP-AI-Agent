@@ -238,11 +238,7 @@ def match(state: Any, rt: Any, transcript: str) -> dict[str, Any] | None:
     if state.diagnosis.pending_evidence_key != key:
         return None
     from .evidence import extract_client_facts, read_pending_answer, spec_for
-    from .resolution import (
-        detect_farewell,
-        detect_refuse_or_ticket,
-        is_real_question,
-    )
+    from .perceive.detectors import detect_farewell, detect_refuse_or_ticket, is_real_question
 
     if (
         is_real_question(transcript)

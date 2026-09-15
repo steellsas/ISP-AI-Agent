@@ -159,7 +159,7 @@ class TestCitySuggestionWiring:
     persijungia, paieška vyksta ten (tikslinimas nėra bandymai)."""
 
     def test_confirmation_moves_the_city_slot(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -169,7 +169,7 @@ class TestCitySuggestionWiring:
         assert agent.state.identity.suggested_city is None
 
     def test_bare_yes_also_moves(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -178,7 +178,7 @@ class TestCitySuggestionWiring:
         assert agent.state.identity.profile.city.value == "Ginkūnai"
 
     def test_other_answer_keeps_suggestion_open(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         agent.state.identity.suggested_city = "Ginkūnai"
@@ -450,7 +450,7 @@ class TestQuestionRegistry:
         """B žingsnis 4: įrodymo klausimas registre užsidaro, kai ateina jo
         rakto faktas (kito rakto faktas jo neliečia)."""
         from agent.dialog_registry import active, register
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = self._identified()
         register(agent.state, agent.runtime, "walker", "evidence:lights")
@@ -668,16 +668,16 @@ class TestHolderNameCheck:
     """№4: sakosi savininkas kitu vardu → patikslinimas BE DB vardo."""
 
     def test_fuzzy_match_tolerates_stt(self, db_connection):
-        from agent.perception_flow import _holder_name_matches
+        from agent.perceive.caller import holder_name_matches
 
         agent = _agent()
         agent.state.identity.customer_name = "Andrius Pilienius"
-        assert _holder_name_matches(agent.state, agent.runtime, "Andrijus") is True  # STT darkymas
+        assert holder_name_matches(agent.state, agent.runtime, "Andrijus") is True  # STT darkymas
         agent.state.identity.customer_name = "Giedrius Giedraitis"
-        assert _holder_name_matches(agent.state, agent.runtime, "Petras") is False
+        assert holder_name_matches(agent.state, agent.runtime, "Petras") is False
         agent.state.identity.customer_name = None
         assert (
-            _holder_name_matches(agent.state, agent.runtime, "Bet kas") is True
+            holder_name_matches(agent.state, agent.runtime, "Bet kas") is True
         )  # nėra su kuo lyginti
 
     def test_mismatch_asks_scripted_and_nameless(self, db_connection):
@@ -694,7 +694,7 @@ class TestHolderNameCheck:
         assert "Giedri" not in reply  # DB vardas NIEKADA negarsinamas
 
     def test_clarify_answer_updates_relation(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         agent.state.identity.customer_id = "CUST009"
@@ -765,7 +765,7 @@ class TestCannotNowLadder:
         assert agent.state.dialog.cannot_now_state is None
 
     def test_in_flow_negaliu_is_not_a_signal(self, db_connection):
-        from agent.resolution import detect_cannot_now
+        from agent.perceive.detectors import detect_cannot_now
 
         assert detect_cannot_now("Negaliu prisijungti prie interneto") is False
         assert detect_cannot_now("Negaliu rasti tos dėžutės") is False
@@ -786,7 +786,7 @@ class TestOtherStreetSignal:
         return agent
 
     def _turn(self, agent, text):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
         from agent.perception_flow import pre_turn_guards
 
         # Gyva seka (react_agent ~1416): prefill, tada pre_turn_guards —

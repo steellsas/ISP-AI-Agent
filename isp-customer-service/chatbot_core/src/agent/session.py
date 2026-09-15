@@ -309,7 +309,7 @@ class AgentSession:
 
     def anchor_text(self) -> str:
         """The exact question to re-say after a swallowed backchannel turn."""
-        from .perception_flow import anchor_text
+        from .dialog_utils import anchor_text
 
         try:
             return anchor_text(self._state, self._runtime)

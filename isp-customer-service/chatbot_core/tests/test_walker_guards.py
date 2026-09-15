@@ -10,7 +10,8 @@ from types import SimpleNamespace
 
 from agent import walker_guards
 from agent.graph_v2.state import GraphState
-from agent.resolution import detect_refuse_or_ticket, get_strategy
+from agent.perceive.detectors import detect_refuse_or_ticket
+from agent.resolution import get_strategy
 
 
 class GuardEngine:

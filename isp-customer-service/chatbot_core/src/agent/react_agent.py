@@ -347,7 +347,7 @@ class ReactAgent:
             self.state.turn.understanding = None
 
         self.state.dialog.last_heard = (user_input or "").strip()
-        from .resolution import detect_turn_intent
+        from .perceive.detectors import detect_turn_intent
 
         self.state.dialog.last_intent = detect_turn_intent(user_input)
         # S2 (2026-08-24): a background telemetry read finished while the

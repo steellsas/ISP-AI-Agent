@@ -81,7 +81,7 @@ def wants_to_keep_solving(state: Any, rt: Any, user_input: str | None) -> bool:
     resumed the phone question and the call closed registered while the
     caller was still asking for the bridge."""
     from .evidence import extract_client_facts
-    from .resolution import detect_refuse_or_ticket
+    from .perceive.detectors import detect_refuse_or_ticket
 
     # An explicit registration DEMAND is never a keep-solving signal, no matter
     # what other words ride along ("nenoriu tikrinti toliau, UŽREGISTRUOKIT" —

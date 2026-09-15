@@ -12,7 +12,7 @@ def _agent(phone="unknown"):
 
 
 def _read(text):
-    from agent.nlu import extract_address
+    from agent.perceive.nlu import extract_address
     from agent.tooling import LocalToolProvider
 
     registry = LocalToolProvider().address_registry()
@@ -50,7 +50,7 @@ class TestCodeModeDictation:
     """Blokas 2: pilna diktacija kodo režime prabudina adresų skaitytuvą."""
 
     def test_full_dictation_wakes_reader(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -63,7 +63,7 @@ class TestCodeModeDictation:
         assert p.house.value == "60" and p.apartment.value == "3"
 
     def test_bare_digits_stay_silenced(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -76,7 +76,7 @@ class TestFreshDictationWins:
     """Blokas 3: ŠIO turn'o pilna diktacija permuša senus fragmentus."""
 
     def test_full_dictation_overrides_stale_house(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
         from agent.slots import SlotStatus
 
         agent = _agent()
@@ -151,7 +151,7 @@ class TestSpellingRung:
     def test_denied_street_dropped_and_not_reread(self, db_connection):
         """D1 (gyva 2026-09-10): „apie Žeimių gatvę nieko NESAKIAU" — slotas
         išmetamas ir iš paties neigimo sakinio gatvė NEgrįžta."""
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
         from agent.slots import SlotStatus
 
         agent = _agent()
@@ -164,7 +164,7 @@ class TestSpellingRung:
 
     def test_denial_with_correction_keeps_new_street(self, db_connection):
         """D1: „nesakiau Žeimių — Tilžės gatvė 60" — pataisymas išgyvena."""
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
         from agent.slots import SlotStatus
 
         agent = _agent()
@@ -255,7 +255,7 @@ class TestSpellingRung:
 
     def test_spell_turn_prefill_silent(self, db_connection):
         """„K kaip Kaunas" spell turn'e NEtampa miestu Kaunu."""
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"

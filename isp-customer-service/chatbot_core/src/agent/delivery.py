@@ -19,7 +19,7 @@ def apply_overlay(state: Any, rt: Any, texts: list[str]) -> None:
     (echo already filtered by the transport) — deterministic fact ingest
     through the importance gates + a one-shot narrator note. Overlay may
     FILL facts, never steer routing."""
-    from .perception_flow import ingest_overlay
+    from .perceive.evidence import ingest_overlay
 
     kept = [t.strip() for t in texts if t and t.strip()][: limits.get("overlay_apply_max")]
     if not kept:

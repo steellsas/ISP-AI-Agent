@@ -82,10 +82,10 @@ class FakeEngine:
         self.runtime = _fake_runtime(self)
         recorders = {
             "agent.walker_flow.ensure_diagnosed": ("diagnose", None),
-            "agent.identification_flow.prefill_slots_from_text": ("prefill", None),
+            "agent.perceive.slots.prefill_slots_from_text": ("prefill", None),
             "agent.perception_flow.pre_turn_guards": ("guards", None),
-            "agent.perception_flow.ingest_client_evidence": ("ingest", None),
-            "agent.perception_flow.classify_side_topic": ("classify", side_topic),
+            "agent.perceive.evidence.ingest_client_evidence": ("ingest", None),
+            "agent.perceive.side_topic.classify_side_topic": ("classify", side_topic),
             "agent.solver_flow.solver_drive_turn": ("solver", driven),
             "agent.walker_flow.advance_resolution": ("walker", None),
             "agent.solver_flow.shadow_solve": ("shadow", None),

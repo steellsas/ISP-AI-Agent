@@ -4,16 +4,8 @@ Pure logic — no LLM, no DB. Proves the engine walks a strategy deterministical
 the model cannot skip, and each outcome routes to the right next step / terminal.
 """
 
-from agent.resolution import (
-    TERMINALS,
-    Outcome,
-    StepKind,
-    detect_conn,
-    detect_scope,
-    detect_yes_no,
-    get_strategy,
-    next_step_id,
-)
+from agent.perceive.detectors import detect_conn, detect_scope, detect_yes_no
+from agent.resolution import TERMINALS, Outcome, StepKind, get_strategy, next_step_id
 
 
 class TestDetectYesNo:
@@ -29,7 +21,7 @@ class TestDetectYesNo:
     def test_stt_dropped_i_both_directions(self):
         # STT drops the 'i' in BOTH "keičiau"->"kečiau" (yes) and
         # "nekeičiau"->"nekečiau" (no). The denial must still win.
-        from agent.resolution import confirms_device_change
+        from agent.perceive.detectors import confirms_device_change
 
         assert detect_yes_no("kečiau routerį") == Outcome.YES
         assert confirms_device_change("kečiau routerį") is True
@@ -50,14 +42,14 @@ class TestDetectRestored:
     'veik'."""
 
     def test_restored_yes(self):
-        from agent.resolution import detect_restored
+        from agent.perceive.detectors import detect_restored
 
         assert detect_restored("atsirado internetas") == Outcome.YES
         assert detect_restored("jau veikia") == Outcome.YES
         assert detect_restored("ryšys atsistatė") == Outcome.YES
 
     def test_restored_no(self):
-        from agent.resolution import detect_restored
+        from agent.perceive.detectors import detect_restored
 
         assert detect_restored("vis dar neveikia") == Outcome.NO
         assert detect_restored("nevykia") == Outcome.NO  # STT garble
@@ -65,7 +57,7 @@ class TestDetectRestored:
         assert detect_restored("ne") == Outcome.NO
 
     def test_restored_unclear(self):
-        from agent.resolution import detect_restored
+        from agent.perceive.detectors import detect_restored
 
         assert detect_restored("hmm") is None
         assert detect_restored("supratau") is None
@@ -180,7 +172,7 @@ class TestRegistry:
         assert next_step_id(s, "dr_recheck", "no") == "dr_offer_bridge"
 
     def test_lights_detector(self):
-        from agent.resolution import detect_lights
+        from agent.perceive.detectors import detect_lights
 
         assert detect_lights("nedega") == "no"
         assert detect_lights("dega žalia") == "yes"
@@ -191,7 +183,7 @@ class TestRegistry:
         """A computer is what the bridge needs. Observed: "neturiu kito routerio, tik
         kompiuterį turiu" was read as NO (the sentence contains "neturiu"), and the
         agent told the caller internet was impossible with a usable machine to hand."""
-        from agent.resolution import detect_have_device as f
+        from agent.perceive.detectors import detect_have_device as f
 
         assert f("Aš neturiu kito routerio, aš tik kompiuterį turiu.") == "yes"
         assert f("turiu kompiuterį") == "yes"
@@ -202,7 +194,7 @@ class TestRegistry:
         assert f("ne, turiu tik telefoną") == "no"  # a phone cannot take a cable
 
     def test_turn_intent_classifier(self):
-        from agent.resolution import detect_turn_intent as f
+        from agent.perceive.detectors import detect_turn_intent as f
 
         # Only these two may move the walker.
         assert f("mėlyname lizde") == "answer"
@@ -220,12 +212,12 @@ class TestRegistry:
     def test_still_broken_is_an_answer_not_progress(self):
         # "vis dar neveikia" is a real answer to "does it work?" — it must not be read
         # as work in progress, or the verify step would never settle.
-        from agent.resolution import detect_turn_intent
+        from agent.perceive.detectors import detect_turn_intent
 
         assert detect_turn_intent("vis dar neveikia") == "answer"
 
     def test_confusion_detector(self):
-        from agent.resolution import detect_confusion
+        from agent.perceive.detectors import detect_confusion
 
         assert detect_confusion("nesuprantu kas tas WAN") is True
         assert detect_confusion("neišmanau apie tai") is True

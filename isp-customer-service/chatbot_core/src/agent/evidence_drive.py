@@ -362,7 +362,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # to do the thing — acknowledge and WAIT; never burn a retry or hammer the
     # question at someone who is walking to the router.
     if asks >= 1 and user_input:
-        from .resolution import INTENT_IN_PROGRESS, detect_turn_intent
+        from .perceive.detectors import INTENT_IN_PROGRESS, detect_turn_intent
 
         if detect_turn_intent(user_input) == INTENT_IN_PROGRESS:
             from .contract.locale import phrase
@@ -457,7 +457,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # Bare "Ne." to THIS key's open question: the no has no object — clarify
     # what is denied instead of re-asking the same words (live 2026-08-11).
     if pending_before == key:
-        from .resolution import is_bare_negation
+        from .perceive.detectors import is_bare_negation
 
         if is_bare_negation(user_input):
             from .contract.locale import phrase

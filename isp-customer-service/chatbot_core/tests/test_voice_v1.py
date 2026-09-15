@@ -171,7 +171,7 @@ class TestPerceptionModelKnob:
     PERCEPTION_MODEL overrides; 'default'/empty falls back to the agent model."""
 
     def test_override_and_fallback(self, monkeypatch):
-        from agent.understand import perception_model
+        from agent.perceive.understand import perception_model
 
         monkeypatch.delenv("PERCEPTION_MODEL", raising=False)
         assert perception_model("gpt-4o-mini") == "gpt-4o-mini"
@@ -181,7 +181,7 @@ class TestPerceptionModelKnob:
         assert perception_model("gpt-4o-mini") == "groq/openai/gpt-oss-120b"
 
     def test_understand_call_uses_the_override(self, monkeypatch):
-        from agent import understand
+        from agent.perceive import understand
         from src.services.llm import client as llm_client
 
         seen = {}
@@ -221,7 +221,7 @@ class TestCheckin:
 
     def test_checkin_phrase_and_confusion_markers(self):
         from agent.contract.locale import phrase
-        from agent.resolution import INTENT_CONFUSED, detect_turn_intent
+        from agent.perceive.detectors import INTENT_CONFUSED, detect_turn_intent
 
         assert "sekasi" in phrase("identification.checkin")
         # G1: a struggling caller gets the explain-simpler path…

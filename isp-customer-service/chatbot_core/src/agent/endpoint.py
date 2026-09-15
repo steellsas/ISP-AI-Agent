@@ -85,7 +85,7 @@ def classify_endpoint(state: Any, rt: Any, text: str | None) -> tuple[str, int |
 
     # A farewell is complete by definition — close the turn promptly.
     try:
-        from .resolution import detect_farewell
+        from .perceive.detectors import detect_farewell
 
         if detect_farewell(stripped):
             return ("fast", fast_ms())

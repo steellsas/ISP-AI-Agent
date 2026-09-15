@@ -17,9 +17,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .contract import limits
-from .contract.locale import lang, vocab, vocab_map, vocab_re, vocab_set, vocab_text
-from .tooling.address_matching import locality_match_score, street_match_score
+from ..contract import limits
+from ..contract.locale import lang, vocab, vocab_map, vocab_re, vocab_set, vocab_text
+from ..tooling.address_matching import locality_match_score, street_match_score
 
 # A token is a number (optionally with a trailing letter: "122F") or a word.
 _TOKEN_RE = re.compile(r"(?P<num>\d+[^\W\d_]?)|(?P<word>[^\W\d_]+)", re.UNICODE)
@@ -28,7 +28,7 @@ _TOKEN_RE = re.compile(r"(?P<num>\d+[^\W\d_]?)|(?P<word>[^\W\d_]+)", re.UNICODE)
 def _deaccent(word: str) -> str:
     """Diacritics -> base letters for tolerant marker matching (STT often writes
     the long-vowel form: "būtos" for "butas"). Keyword prefixes only, not values."""
-    from .contract.locale import lang
+    from ..contract.locale import lang
 
     return lang().deaccent(word)
 
@@ -206,7 +206,7 @@ def classify_problem(text: str) -> str | None:
     # not a problem statement.
     if any(m in low for m in vocab("no_problem_marks")):
         return None
-    from .faults import classify_purpose
+    from ..faults import classify_purpose
 
     return classify_purpose(text)
 
@@ -222,13 +222,13 @@ def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[st
     if not text or not text.strip():
         return None, 0.0
     try:
-        from .classifier import classify_step
-        from .faults import problem_catalog_options
+        from ..classifier import classify_step
+        from ..faults import problem_catalog_options
 
         options = problem_catalog_options()
         if not options:
             return None, 0.0
-        from .prompts import load_node_prompt
+        from ..prompts import load_node_prompt
 
         obs = classify_step(
             load_node_prompt("sensors/problem_classifier"),

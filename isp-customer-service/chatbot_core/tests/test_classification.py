@@ -40,7 +40,7 @@ class TestCatalog:
         assert "?" in problem_confirm_question("internet_down")
 
     def test_l1_still_classifies_solvable_types(self):
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem("neveikia internetas") == "internet_down"
         assert classify_problem("baisiai lėtas internetas") == "internet_slow"
@@ -49,7 +49,7 @@ class TestCatalog:
     def test_negated_problem_is_not_a_problem(self):
         """Live G2 (2026-09-02): 'interneto bėdų NETURIU, tik dėl sąskaitos'
         committed internet_down via the bare trigger."""
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem("Ne, interneto bėdų neturiu, tik dėl sąskaitos") is None
         assert classify_problem("internetas veikia, bėdų nėra") is None
@@ -60,7 +60,7 @@ class TestPolitikaIngest:
     riba, identifikacija neprasideda."""
 
     def test_billing_never_sets_problem_type(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
@@ -68,7 +68,8 @@ class TestPolitikaIngest:
         assert agent.state.intake.boundary_problem == "billing"
 
     def test_boundary_reply_states_competence(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply, prefill_slots_from_text
+        from agent.identification_flow import identification_scripted_reply
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
@@ -79,7 +80,7 @@ class TestPolitikaIngest:
         assert agent.state.intake.problem_type is None and not agent.state.closing.case_closed
 
     def test_solvable_problem_still_flows(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         prefill_slots_from_text(agent.state, agent.runtime, "Labas, neveikia internetas")
@@ -121,7 +122,7 @@ class TestGateL2:
         return identification_scripted_reply(agent.state, agent.runtime, text)
 
     def test_high_confidence_commits_implicitly(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(
@@ -133,7 +134,7 @@ class TestGateL2:
         assert not agent.state.closing.case_closed
 
     def test_medium_confidence_asks_confirmation(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(
@@ -146,7 +147,7 @@ class TestGateL2:
         assert reply and "Ar gerai suprantu" in reply
 
     def test_boundary_type_from_context(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(nlu, "classify_problem_llm", lambda t, model=None: ("not_ours", 0.8))
@@ -157,7 +158,7 @@ class TestGateL2:
         assert not agent.state.closing.case_closed
 
     def test_unclear_falls_to_ladder(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(nlu, "classify_problem_llm", lambda t, model=None: (None, 0.0))
@@ -173,8 +174,8 @@ class TestAccumulatedContext:
     replikų uodegos, ne vienos frazės."""
 
     def test_l2_reads_the_joined_tail(self, db_connection, monkeypatch):
-        from agent import nlu
         from agent.identification_flow import identification_scripted_reply
+        from agent.perceive import nlu
 
         got: list = []
 
@@ -256,7 +257,7 @@ class TestPendingFallback:
         from types import SimpleNamespace as NS
         from unittest.mock import patch
 
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         from tests.calls import make_agent
 
@@ -272,14 +273,14 @@ class TestPendingFallback:
             pasitikejimas=1.0,
             atsakymo_kokybe="pilnas",
         )
-        with patch("agent.understand.understand", return_value=canned):
+        with patch("agent.perceive.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "Visuose įrenginiuose")
         assert agent.state.diagnosis.evidence["fail_scope"]["value"] == "all"
 
     def test_unrelated_utterance_commits_nothing(self, db_connection):
         from unittest.mock import patch
 
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         from tests.calls import make_agent
 
@@ -287,7 +288,7 @@ class TestPendingFallback:
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
         agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(agent.state, agent.runtime, "O kiek visa tai kainuos?")
         assert agent.state.diagnosis.evidence.get("fail_scope") is None
 

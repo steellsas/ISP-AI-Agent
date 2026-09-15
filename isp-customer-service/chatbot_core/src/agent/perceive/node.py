@@ -28,8 +28,10 @@ def perceive_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str
 def perceive(state: Any, rt: Any, user_input: str | None) -> None:
     """Read one caller turn into the state (no-op for the greeting turn)."""
     from ..dialog_utils import progress_key
-    from ..identification_flow import prefill_slots_from_text
-    from ..perception_flow import classify_side_topic, ingest_client_evidence, raise_clarity
+    from .evidence import ingest_client_evidence
+    from .node import raise_clarity
+    from .side_topic import classify_side_topic
+    from .slots import prefill_slots_from_text
 
     if user_input is None:
         return
@@ -42,3 +44,13 @@ def perceive(state: Any, rt: Any, user_input: str | None) -> None:
         prefill_slots_from_text(state, rt, user_input)
     ingest_client_evidence(state, rt, user_input)
     state.turn.side_topic_active = bool(classify_side_topic(state, rt, user_input))
+
+
+def raise_clarity(state: Any, user_input: str | None) -> None:
+    """Once the caller says they do not follow the wording ("kas tas WAN?"),
+    stay in plain language for the rest of the call. One-way: a caller who was
+    lost once should not be dropped back into jargon two steps later."""
+    from .detectors import detect_confusion
+
+    if state.dialog.clarity_level == "standard" and detect_confusion(user_input):
+        state.dialog.clarity_level = "basic"

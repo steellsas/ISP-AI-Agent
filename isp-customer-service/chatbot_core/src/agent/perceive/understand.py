@@ -26,7 +26,7 @@ import logging
 import os
 from typing import Any
 
-from .contract import limits
+from ..contract import limits
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ def _system(
     """Render the merged perception prompt from prompts/sensors/*.md (R4:
     understanding + step classification in ONE call; R5: instructions live in
     files, code only fills the tokens)."""
-    from .prompts import load_node_prompt
+    from ..prompts import load_node_prompt
 
     allowed = "; ".join(f"{k}: {sorted(v)}" for k, v in allowed_map.items())
     step_json = ""
@@ -199,7 +199,7 @@ def understand_ticket(
     None on any failure -> the keyword logic decides as before."""
     if not utterance or not utterance.strip() or stage not in ("phone", "hours"):
         return None
-    from .prompts import load_node_prompt
+    from ..prompts import load_node_prompt
 
     task = load_node_prompt(f"sensors/ticket_reader_{stage}")
     system = (

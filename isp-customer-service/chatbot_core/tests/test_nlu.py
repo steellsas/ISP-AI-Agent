@@ -9,7 +9,7 @@ Run: pytest tests/test_nlu.py -v
 """
 
 import pytest
-from agent.nlu import AddressReading, extract_address
+from agent.perceive.nlu import AddressReading, extract_address
 
 STREETS = [
     "Tilžės g.",
@@ -121,13 +121,13 @@ class TestClassifyProblem:
         ],
     )
     def test_keyword_classification(self, text, expected):
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem(text) == expected
 
     def test_slow_beats_down(self):
         """'lėtas internetas' is slow, not down (specific keyword first)."""
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem("internetas lėtas") == "internet_slow"
 
@@ -150,18 +150,18 @@ class TestExtractSymptoms:
         ],
     )
     def test_categorical_symptoms(self, text, expected):
-        from agent.nlu import extract_symptoms
+        from agent.perceive.nlu import extract_symptoms
 
         assert extract_symptoms(text) == expected
 
     def test_negation_beats_positive(self):
         """'nedega' must win over the substring 'dega'."""
-        from agent.nlu import extract_symptoms
+        from agent.perceive.nlu import extract_symptoms
 
         assert extract_symptoms("lemputės nedega")["lights"] == "off"
 
     def test_multiple_categories(self):
-        from agent.nlu import extract_symptoms
+        from agent.perceive.nlu import extract_symptoms
 
         got = extract_symptoms("per wifi, lemputės nedega")
         assert got == {"connection": "wifi", "lights": "off"}

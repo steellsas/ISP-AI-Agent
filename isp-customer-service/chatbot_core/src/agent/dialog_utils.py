@@ -9,7 +9,7 @@ import re
 from difflib import SequenceMatcher
 from typing import Any
 
-from .contract.locale import vocab_set
+from .contract.locale import phrase, vocab_set
 
 
 def last_agent_question(state: Any) -> str | None:
@@ -99,3 +99,16 @@ def assistant_tool_message(message: Any) -> dict:
             for tc in message.tool_calls
         ],
     }
+
+
+def anchor_text(state, rt) -> str:
+    """The exact place to return to after a deviation — the engine's LAST
+    asked question (deterministic), never the LLM's memory of it. Trimmed
+    to the QUESTION sentence only: anchoring the whole reply re-read a long
+    announce back at the caller (live 2026-08-10)."""
+    q = (state.dialog.last_question or "").strip()
+    if not q:
+        return phrase("system.default_anchor")
+    sentences = re.split(r"(?<=[.!?])\s+", q)
+    questions = [x for x in sentences if x.strip().endswith("?")]
+    return (questions[-1] if questions else sentences[-1]).strip()

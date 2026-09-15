@@ -63,7 +63,7 @@ def classify_step(
     try:
         from src.services.llm.client import llm_json_completion
 
-        from .understand import perception_model as _perception_model
+        from .perceive.understand import perception_model as _perception_model
 
         data = llm_json_completion(
             messages=[

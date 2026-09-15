@@ -190,7 +190,7 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     # kompiuterį" is a YES (eval S4 regression: the loose "netur…kompiuter"
     # match read it as no and the solution flipped to ticket instead of bridge).
 
-    from .resolution import detect_no_device
+    from .perceive.detectors import detect_no_device
 
     if any(w in low for w in vocab("fact_computer_words")):
         if vocab_re("fact_no_computer").search(low):

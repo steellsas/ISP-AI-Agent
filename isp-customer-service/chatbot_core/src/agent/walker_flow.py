@@ -255,12 +255,8 @@ def walk_resolution(state, rt, user_input: str | None) -> None:
     individually-named chain; this method keeps only the mechanics — intent
     derivation, the guard iteration and the advancement dispatch below."""
     from . import walker_guards
-    from .resolution import (
-        StepKind,
-        detect_turn_intent,
-        get_strategy,
-        next_step_id,
-    )
+    from .perceive.detectors import detect_turn_intent
+    from .resolution import StepKind, get_strategy, next_step_id
 
     r = state.resolution.procedure
     if not r or state.closing.case_closed:
@@ -351,7 +347,8 @@ def block_uncorroborated_escalate(state, rt, step, strat, label, user_input: str
     Without it, ask the solve-or-ticket clarify ONCE instead and hold
     (Andrius 2026-08-11: clarify what the "ne" means, never rush the
     conclusion). A repeated no on the next turn escalates normally."""
-    from .resolution import StepKind, is_bare_negation, next_step_id
+    from .perceive.detectors import is_bare_negation
+    from .resolution import StepKind, next_step_id
 
     target = next_step_id(strat, step.id, label)
     tstep = strat.step(target) if strat and target else None
@@ -468,7 +465,8 @@ def advance_instruct(state, rt, r: dict, step, strat, user_input: str | None = N
     engine-owned, so resolve it in the SAME turn (reflect the plug-in in the demo, then
     read the line) instead of asking a dead question."""
     from .executor_flow import simulate_bridge_connection, simulate_router_reboot_action
-    from .resolution import Outcome, StepKind, detect_restored, next_step_id
+    from .perceive.detectors import detect_restored
+    from .resolution import Outcome, StepKind, next_step_id
     from .solver_flow import plug_report
 
     route_to(state, rt, r, step.goto or next_step_id(strat, step.id, None))
@@ -564,7 +562,7 @@ def classify_instruct_and_advance(state, rt, step, strat, user_input: str | None
     # "Patikrinau, WiFi įjungtas" held as waiting slipped the resolve a turn).
     # Unclear included: the loose any-'answer' keyword path had advanced INSTRUCT
     # steps on garbage ("Įsitikimu, kad tai yra neturis" climbed dr_plug_pc live).
-    from .resolution import INTENT_DONE, detect_turn_intent
+    from .perceive.detectors import INTENT_DONE, detect_turn_intent
 
     return detect_turn_intent(user_input) != INTENT_DONE
 
@@ -573,7 +571,7 @@ def detect_confirm(state, rt, step, user_input: str | None):
     """Keyword FALLBACK detector for a CONFIRM reply — used when the classifier is off
     or unsure (the classifier-led path is _classify_confirm_and_route). Returns a
     routing key or None."""
-    from .resolution import DETECTORS
+    from .perceive.detectors import DETECTORS
 
     keyword = DETECTORS.get(step.detector or "yes_no", DETECTORS["yes_no"])
     return keyword(user_input)
@@ -638,7 +636,7 @@ def scripted_wait_ack(state, rt) -> str | None:
     question, a standing directive, an announce, a detour note) falls through
     to the narrator. Two phrases alternate so a long wait never sounds like a
     tape loop."""
-    from .resolution import INTENT_IN_PROGRESS
+    from .perceive.detectors import INTENT_IN_PROGRESS
 
     s = state
     if not s.resolution.procedure or s.closing.case_closed or state.ticket.stage:
@@ -672,16 +670,11 @@ def turn_may_advance(state, rt, step) -> bool:
 
     Unknown is deliberately treated as an ANSWER only for CONFIRM steps, where a
     detector still has to agree — elsewhere it holds. Safe default: wait and ask."""
-    from .resolution import (
-        INTENT_ANSWER,
-        INTENT_DONE,
-        INTENT_IN_PROGRESS,
-        INTENT_UNKNOWN,
-        StepKind,
-    )
+    from .perceive.detectors import INTENT_ANSWER, INTENT_DONE, INTENT_IN_PROGRESS, INTENT_UNKNOWN
+    from .resolution import StepKind
 
     s = state
-    from .resolution import INTENT_CONFUSED
+    from .perceive.detectors import INTENT_CONFUSED
 
     intent = s.dialog.last_intent or INTENT_UNKNOWN
     if intent in (INTENT_ANSWER, INTENT_DONE):
@@ -792,7 +785,8 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
     - caller says NO, provider not yet OK   -> wait (reassure); after a second
                                                denial with still-no-line, escalate
     An unclear answer stays and re-asks."""
-    from .resolution import Outcome, detect_restored
+    from .perceive.detectors import detect_restored
+    from .resolution import Outcome
 
     reason_now = fresh_diagnose_reason(state, rt)
     fixed = not verdict_flag(reason_now, "unresolved_after_fix")
@@ -862,7 +856,8 @@ def advance_line_check(state, rt, r: dict, user_input: str | None) -> None:
     - line recovered but caller NO -> escalate (the technician sorts the
       rest; the note says the line itself came back);
     - unclear caller word with a recovered line -> hold, the step re-asks."""
-    from .resolution import Outcome, detect_restored
+    from .perceive.detectors import detect_restored
+    from .resolution import Outcome
 
     if not r.get("asked"):
         return
@@ -918,7 +913,8 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
     — live 2026-08-31: the generic restored vocabulary read "jos nemirksi"
     as YES via the "jo" substring) with the classifier settling the rest
     through the pack's `answers:` glosses."""
-    from .resolution import Outcome, detect_reboot_check
+    from .perceive.detectors import detect_reboot_check
+    from .resolution import Outcome
 
     payload = fresh_diagnose(state, rt)
     verdict = (payload or {}).get("verdict") or {}
@@ -995,7 +991,7 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
         return  # consent question not posed yet — narrator asks it this turn
     from .classifier import classify_step
     from .detectors import glosses as detector_glosses
-    from .resolution import detect_ticket_consent
+    from .perceive.detectors import detect_ticket_consent
 
     label = detect_ticket_consent(user_input)
     routed_by = "keyword"

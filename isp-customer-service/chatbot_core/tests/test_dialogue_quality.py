@@ -49,7 +49,7 @@ class TestW0OrderGuards:
         )  # no computer context
 
     def test_kur_questions_are_on_task(self):
-        from agent.perception_flow import is_howto
+        from agent.perceive.side_topic import is_howto
 
         assert is_howto("Kur įkišti iki galo? Nesupratau.")
         assert is_howto("Kur žiūrėti tą lemputę?")
@@ -144,7 +144,7 @@ class TestW1LivingDialogue:
         # the pass off, so the keyword reader is stubbed to deliver the same.
         import agent.evidence as ev
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         monkeypatch.setattr(
             ev,
@@ -166,7 +166,7 @@ class TestW1LivingDialogue:
         )
 
     def test_confirmed_gate_commits_denied_gate_drops(self, db_connection):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = self._resolving_agent()
         agent.state.diagnosis.fact_confirm_asked = FactConfirm(
@@ -185,7 +185,7 @@ class TestW1LivingDialogue:
 
     def test_direct_answer_is_not_gated(self, db_connection, monkeypatch):
         import agent.evidence as ev
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         monkeypatch.setattr(
             ev, "extract_client_facts", lambda t: {"outlet_works": "not_working"} if t else {}
@@ -325,7 +325,7 @@ class TestTurnGrammar:
 
     def test_fact_meaning_note_is_one_shot(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import _note_fact_meaning
+        from agent.perceive.evidence import _note_fact_meaning
 
         agent = self._agent()
         _note_fact_meaning(agent.state, agent.runtime, "fail_scope", "all")
@@ -336,7 +336,7 @@ class TestTurnGrammar:
         )  # one-shot
 
     def test_fact_meaning_silent_without_declaration(self, db_connection):
-        from agent.perception_flow import _note_fact_meaning
+        from agent.perceive.evidence import _note_fact_meaning
 
         agent = self._agent(verdict="no_mac_observed")
         _note_fact_meaning(
@@ -346,7 +346,7 @@ class TestTurnGrammar:
 
     def test_mires_lights_meaning_declared(self, db_connection):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import _note_fact_meaning
+        from agent.perceive.evidence import _note_fact_meaning
 
         agent = self._agent(verdict="no_mac_observed")
         _note_fact_meaning(agent.state, agent.runtime, "lights", "on")

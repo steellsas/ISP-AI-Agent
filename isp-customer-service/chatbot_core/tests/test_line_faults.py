@@ -152,7 +152,8 @@ class TestBlendGuard:
         assert not agent.state.closing.case_closed
 
     def test_restored_vocabulary_negations(self, db_connection):
-        from agent.resolution import Outcome, detect_restored
+        from agent.perceive.detectors import detect_restored
+        from agent.resolution import Outcome
 
         assert detect_restored("Perkišau, bet nepadėjo") is Outcome.NO
         assert detect_restored("Nieko nepasikeitė") is Outcome.NO

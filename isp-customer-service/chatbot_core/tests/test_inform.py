@@ -291,7 +291,7 @@ class TestCannotNowHearing:
 
     def test_kai_grisiu_is_cannot_now(self, db_connection):
         """N3: „Kai grįšiu, namo padarysiu" — ne laukimas, o cannot_now."""
-        from agent.resolution import detect_cannot_now
+        from agent.perceive.detectors import detect_cannot_now
 
         assert detect_cannot_now("Kai grįšiu, namo padarysiu") is True
         assert detect_cannot_now("Negaliu, nes esu ne mieste") is True
@@ -389,7 +389,8 @@ class TestHomeworkFinale:
 class TestRestoredGarble:
     def test_satsarado_reads_as_restored(self, db_connection):
         """P-B gyva: „interneto satsarado" (STT „atsirado") — restored YES."""
-        from agent.resolution import Outcome, detect_restored
+        from agent.perceive.detectors import detect_restored
+        from agent.resolution import Outcome
 
         assert detect_restored("Mhm, interneto satsarado") is Outcome.YES
         assert detect_restored("interneto atsarado jau") is Outcome.YES

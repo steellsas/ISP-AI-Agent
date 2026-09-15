@@ -108,7 +108,7 @@ class TestVoiceTestFixes:
     """2026-08-13 live-call fixes: polarity, early facts, phase gating, glosses."""
 
     def test_negated_demand_is_not_a_demand(self):
-        from agent.resolution import detect_refuse_or_ticket
+        from agent.perceive.detectors import detect_refuse_or_ticket
 
         assert detect_refuse_or_ticket("Neregistruokite, pajunkim kompiuterį") != "demand"
         assert detect_refuse_or_ticket("užregistruokit gedimą") == "demand"
@@ -130,7 +130,7 @@ class TestVoiceTestFixes:
         assert wants_to_keep_solving(None, None, "Ne, pajunkim tą kompiuterį") is True
 
     def test_aciu_nereikia_is_a_farewell(self):
-        from agent.resolution import detect_farewell
+        from agent.perceive.detectors import detect_farewell
 
         assert detect_farewell("Ačiū, nereikia") is True
         assert detect_farewell("Nebereikia.") is True
@@ -459,7 +459,7 @@ class TestTicketFirst:
     never a side topic; the goodbye hears the demand too."""
 
     def test_garbled_demands_are_demands(self):
-        from agent.resolution import detect_refuse_or_ticket
+        from agent.perceive.detectors import detect_refuse_or_ticket
 
         assert detect_refuse_or_ticket("Išregistruoti meistrą ir paleisti internetą") == "demand"
         assert detect_refuse_or_ticket("Dar prašau, žegistruokit gedimą") == "demand"
@@ -468,7 +468,7 @@ class TestTicketFirst:
     def test_infinitive_needs_intent(self):
         """Live 2026-08-14: small talk with the bare infinitive escalated
         mid-collection and the findings moment never happened."""
-        from agent.resolution import detect_refuse_or_ticket
+        from agent.perceive.detectors import detect_refuse_or_ticket
 
         assert (
             detect_refuse_or_ticket(
@@ -482,7 +482,7 @@ class TestTicketFirst:
     def test_demand_is_never_a_side_topic(self, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         engine = as_call(
             monkeypatch,
@@ -1006,7 +1006,7 @@ class TestDetourResilience:
     findings chain and the agent re-ran diagnostics it already had."""
 
     def test_bare_ne_is_never_a_farewell(self):
-        from agent.resolution import detect_farewell
+        from agent.perceive.detectors import detect_farewell
 
         assert detect_farewell("Ne.") is False
         assert detect_farewell("Ne") is False
@@ -1014,7 +1014,7 @@ class TestDetourResilience:
         assert detect_farewell("Viso gero") is True
 
     def test_split_ne_symptom_polarity(self):
-        from agent.nlu import extract_symptoms
+        from agent.perceive.nlu import extract_symptoms
 
         assert extract_symptoms("Ne 1 lemputė ne dega.").get("lights") == "off"
         assert extract_symptoms("lemputės nedega").get("lights") == "off"
@@ -1041,7 +1041,7 @@ class TestPrimaryGoalFrozen:
     become secondary problems (asked at the end, listed on the ticket)."""
 
     def test_mid_call_mention_becomes_secondary(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         from tests.calls import make_agent
 
@@ -1186,7 +1186,7 @@ class TestOpenerAndClosingHygiene:
         assert "PHONE ACCOUNT" in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_no_secondary_problems_from_ticket_stage_garbles(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
 
         from tests.calls import make_agent
 
@@ -1266,7 +1266,7 @@ class TestLiveCall0821Fixes:
     def test_howto_at_standing_instruction_is_on_task(self, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.perception_flow import classify_side_topic, is_howto
+        from agent.perceive.side_topic import classify_side_topic, is_howto
 
         assert is_howto("O kaip tai padaryti?") and is_howto("Padėkit, nežinau kaip")
         engine = as_call(
@@ -1414,7 +1414,7 @@ class TestD5WaitAckAndClosing:
         return agent
 
     def test_wait_signal_gets_scripted_ack(self, db_connection):
-        from agent.resolution import INTENT_IN_PROGRESS
+        from agent.perceive.detectors import INTENT_IN_PROGRESS
         from agent.walker_flow import scripted_wait_ack
 
         agent = self._agent()
@@ -1429,7 +1429,7 @@ class TestD5WaitAckAndClosing:
         assert scripted_wait_ack(agent.state, agent.runtime) == "Gerai, neskubėkite."
 
     def test_wait_ack_defers_to_directives_and_other_intents(self, db_connection):
-        from agent.resolution import INTENT_IN_PROGRESS
+        from agent.perceive.detectors import INTENT_IN_PROGRESS
         from agent.walker_flow import scripted_wait_ack
 
         agent = self._agent()

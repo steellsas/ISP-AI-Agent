@@ -46,13 +46,13 @@ class TestUnderstandModule:
     def test_disabled_under_classifier_off(self, monkeypatch):
         import os
 
-        from agent import understand
+        from agent.perceive import understand
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         assert understand.enabled() is False
 
     def test_validates_facts_against_allowed_values(self, monkeypatch):
-        from agent import understand
+        from agent.perceive import understand
 
         raw = {
             "facts": {"lights": "off", "lights_color": "raudona", "has_computer": "gal"},
@@ -68,7 +68,7 @@ class TestUnderstandModule:
         assert u["facts"] == {"lights": "off"}  # unknown key + value dropped
 
     def test_any_failure_returns_none(self, monkeypatch):
-        from agent import understand
+        from agent.perceive import understand
 
         with patch(
             "src.services.llm.client.llm_json_completion", side_effect=RuntimeError("api down")
@@ -93,7 +93,7 @@ class TestHallucinationGuards:
         }
 
     def test_question_turns_never_carry_facts(self):
-        from agent import understand
+        from agent.perceive import understand
 
         raw = self._raw(
             {"device_present": "not_found", "lights": "off", "has_computer": "no"},
@@ -107,7 +107,7 @@ class TestHallucinationGuards:
         assert u["type"] == "question"
 
     def test_low_confidence_facts_dropped(self):
-        from agent import understand
+        from agent.perceive import understand
 
         raw = self._raw({"lights": "off"}, conf=0.4)
         with patch("src.services.llm.client.llm_json_completion", return_value=raw):
@@ -115,7 +115,7 @@ class TestHallucinationGuards:
         assert u["facts"] == {}
 
     def test_confident_answer_facts_kept(self):
-        from agent import understand
+        from agent.perceive import understand
 
         raw = self._raw({"lights": "off"}, conf=0.9)
         with patch("src.services.llm.client.llm_json_completion", return_value=raw):
@@ -129,7 +129,7 @@ class TestRound2Fixes:
     backer (corroboration / supplement / safe default)."""
 
     def test_side_entry_requires_corroboration(self, db_connection, monkeypatch):
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         # "Galim dabar patikrinti" got tipas=klausimas and froze the engine —
         # no question word, no FAQ hit -> the single sensor may not decide.
@@ -139,14 +139,14 @@ class TestRound2Fixes:
         assert agent.state.turn.side_topic_active is False
 
     def test_side_entry_allowed_with_question_word(self, db_connection, monkeypatch):
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = _diagnosing_agent(monkeypatch)
         agent.state.turn.understanding = _canned(turn_type="question", understood="klausia kainos")
         assert classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?") is True
 
     def test_side_entry_allowed_with_faq_keyword(self, db_connection, monkeypatch):
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = _diagnosing_agent(monkeypatch)
         agent.state.turn.understanding = _canned(
@@ -158,7 +158,7 @@ class TestRound2Fixes:
         )
 
     def test_supplement_fills_pending_key_on_empty_answer_facts(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # "…sakiau, kad RADAU" came back tipas=atsakymas with facts={} — the
         # pending-context read now SUPPLEMENTS instead of only falling back.
@@ -166,7 +166,7 @@ class TestRound2Fixes:
         agent.state.diagnosis.evidence_ask_counts["device_present"] = 2
         agent.state.diagnosis.pending_evidence_key = "device_present"
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(turn_type="answer", understood="klientas rado routerį"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Atsiprašau, tik sakiau, kad radau")
@@ -180,7 +180,7 @@ class TestRound2Fixes:
         assert read_pending_answer("device_present", "nerasiu niekaip čia", item) == "nerado"
 
     def test_anchor_is_the_question_sentence_only(self, db_connection, monkeypatch):
-        from agent.perception_flow import anchor_text
+        from agent.dialog_utils import anchor_text
 
         agent = _diagnosing_agent(monkeypatch)
         agent.state.dialog.last_question = (
@@ -191,7 +191,7 @@ class TestRound2Fixes:
 
     def test_side_facts_carry_deterministic_topic(self, db_connection, monkeypatch):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = _diagnosing_agent(monkeypatch)
         agent.state.dialog.last_heard = "O kiek man tai kainuos?"
@@ -207,13 +207,13 @@ class TestFindingsAnnounce:
     and the options. Composed from the ledger + faults.yaml (universal)."""
 
     def _confirmed_agent(self, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         agent.state.diagnosis.facts_recap_state = (
             "done"  # recap checkpoint tested separately (round 3)
         )
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė"
             )
@@ -246,10 +246,10 @@ class TestFindingsAnnounce:
 
     def test_announce_prefixes_immediate_ticket(self, db_connection, monkeypatch):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = self._confirmed_agent(monkeypatch)
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
         reply = evidence_drive(agent.state, agent.runtime, "neturiu")
         assert reply is not None
@@ -264,7 +264,7 @@ class TestConfirmationAgent:
 
     def test_done_report_value_dropped_and_asked_back(self, db_connection, monkeypatch):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # "Mhm, patikrinau." carried NO result — the pass invented
         # power_cable=atjungtas (echo of the agent's own explanation) and the
@@ -274,14 +274,14 @@ class TestConfirmationAgent:
         from agent.evidence import CLIENT, set_fact
 
         set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė"
             )
         agent.state.diagnosis.pending_evidence_key = "power_cable"
         agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(
                 facts={"power_cable": "unplugged"}, understood="klientas patikrino laidą", conf=0.8
             ),
@@ -293,14 +293,14 @@ class TestConfirmationAgent:
         assert "laidas" in reply  # ka_radote from faults.yaml
 
     def test_done_report_with_content_still_lands(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # "Taip ir padaryta" to the cable question DOES carry a value ("taip"
         # is the key's own marker) — corroborated, the fact stands.
         agent = _diagnosing_agent(monkeypatch)
         agent.state.diagnosis.pending_evidence_key = "power_cable"
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={"power_cable": "plugged"}, understood="įkišo laidą"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Taip ir padaryta")
@@ -308,10 +308,10 @@ class TestConfirmationAgent:
 
     def test_facts_recap_precedes_announce(self, db_connection, monkeypatch):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė"
             )
@@ -327,12 +327,12 @@ class TestConfirmationAgent:
 
     def test_refute_needs_one_confirm_before_pivot(self, db_connection, monkeypatch):
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # A client-stated "dega" refutes the dead-router path — one confirm
         # question before abandoning the hypothesis (STT garbles flip facts).
         agent = _diagnosing_agent(monkeypatch)
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(agent.state, agent.runtime, "Radau, lemputės dega žaliai")
         first = evidence_drive(agent.state, agent.runtime, "dega")
         assert first is not None and "keičia išvadą" in first  # refute confirm
@@ -348,11 +348,11 @@ class TestKeywordSupplement:
     hypothesis froze. The deterministic layer now ALWAYS supplements."""
 
     def test_keywords_fill_what_the_pass_dropped(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={}, understood="bandė kitą rozetę", conf=0.9),
         ):
             ingest_client_evidence(
@@ -363,11 +363,11 @@ class TestKeywordSupplement:
         assert agent.state.diagnosis.evidence["outlet_works"]["value"] == "tried"
 
     def test_agreeing_readers_land_one_clean_fact(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={"lights": "blinking"}, understood="lemputė mirksi"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Ta lemputė tai mirksi")
@@ -375,11 +375,11 @@ class TestKeywordSupplement:
         assert e["value"] == "blinking" and e["conflict"] is False
 
     def test_disagreeing_readers_open_a_conflict(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={"lights": "blinking"}, understood="lemputė mirksi"),
         ):
             ingest_client_evidence(
@@ -390,7 +390,7 @@ class TestKeywordSupplement:
 
     def test_reader_disagreement_on_fresh_key_asks_clarify(self, db_connection, monkeypatch):
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # Live 2026-08-12: "kiti įrenginiai veikia nuo tos rozetės, bet
         # ROUTERIS neveikia" — the pass pinned neveikia on the OUTLET while
@@ -398,7 +398,7 @@ class TestKeywordSupplement:
         # recap and the announce. Now: conflict -> ONE clarify -> settled.
         agent = _diagnosing_agent(monkeypatch)
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(
                 facts={"outlet_works": "not_working"}, understood="rozetė neveikia"
             ),
@@ -411,7 +411,7 @@ class TestKeywordSupplement:
         e = agent.state.diagnosis.evidence["outlet_works"]
         assert e["conflict"] is True  # neither reader won silently
         assert agent.state.diagnosis.evidence_conflict is not None  # the clarify goes out
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             reply = identification_scripted_reply(agent.state, agent.runtime, "na")
         assert reply is not None and "rozetė" in reply  # "kaip yra iš tiesų?"
 
@@ -420,7 +420,7 @@ class TestGaveUpRevival:
     def test_blocking_neaisku_key_gets_one_revival(self, db_connection, monkeypatch):
         from agent.evidence import CLIENT, set_fact
         from agent.evidence_drive import evidence_drive
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
@@ -431,7 +431,7 @@ class TestGaveUpRevival:
         # C 2026-08-20: reask_reason no longer reads internal labels back —
         # the topic is still named through the patikslinimas question itself.
         assert reply is not None and "laidas" in reply  # the revival names it
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Dabar pažiūrėjau — įkištas gerai, tvirtai"
             )
@@ -457,16 +457,16 @@ class TestGaveUpRevival:
 
 class TestContradictionCorroboration:
     def test_uncorroborated_flip_dropped(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # "Neturi kompiuterio" hallucinated device_present=nerado against a
         # settled "rado" — the keyword layer sees no such flip -> dropped.
         agent = _diagnosing_agent(monkeypatch)
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(agent.state, agent.runtime, "Radau routerį prie lango")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(
                 facts={"device_present": "not_found", "has_computer": "no"},
                 understood="klientas neturi kompiuterio",
@@ -478,13 +478,13 @@ class TestContradictionCorroboration:
         assert agent.state.diagnosis.evidence["has_computer"]["value"] == "no"  # real fact landed
 
     def test_corroborated_flip_still_opens_conflict(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={"lights": "on"}, understood="lemputė užsidegė"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "O, dabar lemputė dega!")
@@ -492,7 +492,7 @@ class TestContradictionCorroboration:
         assert e["conflict"] is True  # keywords agree -> the clarify machinery runs
 
     def test_flip_corroborated_by_key_own_markers(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         # Live 2026-08-11: ledger had power_cable=atjungtas (from "routeris
         # neturi maitinimo"); the caller then answered "Tai ikištas" WITHOUT
@@ -502,7 +502,7 @@ class TestContradictionCorroboration:
         # (read_pending_answer) now corroborate the flip.
         agent = _diagnosing_agent(monkeypatch)
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(
                 facts={"power_cable": "unplugged"}, understood="routeris be maitinimo"
             ),
@@ -510,7 +510,7 @@ class TestContradictionCorroboration:
             ingest_client_evidence(agent.state, agent.runtime, "routeris neturi maitinimo")
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "unplugged"
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={"power_cable": "plugged"}, understood="laidas įkištas"),
         ):
             ingest_client_evidence(
@@ -547,7 +547,7 @@ class TestTicketUnderstanding:
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch(
-            "agent.understand.understand_ticket",
+            "agent.perceive.understand.understand_ticket",
             return_value={"value": "per pietus arba ryte", "type": "answer"},
         ):
             pre_turn_guards(agent.state, agent.runtime, "Bet kada galima per pietus iš ryto")
@@ -559,7 +559,7 @@ class TestTicketUnderstanding:
 
         agent = self._ticket_agent(monkeypatch, stage="phone")
         with patch(
-            "agent.understand.understand_ticket",
+            "agent.perceive.understand.understand_ticket",
             return_value={"value": "same_number", "type": "answer"},
         ):
             pre_turn_guards(agent.state, agent.runtime, "Stengiai tas, iš kurios kambinu")
@@ -571,7 +571,7 @@ class TestTicketUnderstanding:
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch(
-            "agent.understand.understand_ticket",
+            "agent.perceive.understand.understand_ticket",
             return_value={"value": None, "type": "question"},
         ):
             pre_turn_guards(agent.state, agent.runtime, "O kodėl turiu laukti skambučio?")
@@ -582,7 +582,7 @@ class TestTicketUnderstanding:
         from agent.perception_flow import pre_turn_guards
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
-        with patch("agent.understand.understand_ticket", return_value=None):
+        with patch("agent.perceive.understand.understand_ticket", return_value=None):
             pre_turn_guards(agent.state, agent.runtime, "po 17 valandos")
         assert agent.state.ticket.contact_hours == "po 17 valandos"  # keyword plausibility path
 
@@ -594,7 +594,7 @@ class TestTicketUnderstanding:
         # The stream turn entry clears it for ticket-node turns.
         gen = agent.run_turn_scoped_stream("bet kada", frozenset(), None)
         with patch(
-            "agent.understand.understand_ticket",
+            "agent.perceive.understand.understand_ticket",
             return_value={"value": "bet kada", "type": "answer"},
         ):
             reply = "".join(gen)
@@ -606,29 +606,30 @@ class TestTicketUnderstanding:
 
 class TestUnderstandWiring:
     def test_understanding_facts_land_on_ledger(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         canned = _canned(facts={"device_present": "found"}, understood="klientas rado routerį")
-        with patch("agent.understand.understand", return_value=canned):
+        with patch("agent.perceive.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "Radau.")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
         assert agent.state.turn.understanding["understood"] == "klientas rado routerį"
 
     def test_pass_failure_falls_back_to_keywords(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
-        with patch("agent.understand.understand", return_value=None):
+        with patch("agent.perceive.understand.understand", return_value=None):
             ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
         assert agent.state.diagnosis.evidence["lights"]["value"] == "off"  # keyword layer caught it
 
     def test_tipas_klausimas_routes_to_side_topic(self, db_connection, monkeypatch):
-        from agent.perception_flow import classify_side_topic, ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = _diagnosing_agent(monkeypatch)
         canned = _canned(turn_type="question", understood="klausia kainos")
-        with patch("agent.understand.understand", return_value=canned):
+        with patch("agent.perceive.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "O kiek man tai kainuos?")
         assert classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?") is True
 
@@ -636,7 +637,8 @@ class TestUnderstandWiring:
         self, db_connection, monkeypatch
     ):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import classify_side_topic, ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = _diagnosing_agent(monkeypatch)
         canned = _canned(
@@ -644,7 +646,7 @@ class TestUnderstandWiring:
             understood="klientas neranda routerio",
             confusion="nežino, kuri dėžutė yra routeris",
         )
-        with patch("agent.understand.understand", return_value=canned):
+        with patch("agent.perceive.understand.understand", return_value=canned):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Nu nerandu aš čia nieko, kur ta dėžutė?"
             )
@@ -660,11 +662,11 @@ class TestUnderstandWiring:
 
     def test_acknowledgement_directive_carries_supratau(self, db_connection, monkeypatch):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         canned = _canned(facts={"lights": "off"}, understood="lemputės nedega")
-        with patch("agent.understand.understand", return_value=canned):
+        with patch("agent.perceive.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "ne daganiai viena")
         facts = state_facts_block(agent.state, agent.runtime)
         assert "PATVIRTINK" in facts and "lemputės nedega" in facts
@@ -672,16 +674,16 @@ class TestUnderstandWiring:
     def test_contradiction_from_pass_flows_into_conflict_machinery(
         self, db_connection, monkeypatch
     ):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={"has_computer": "no"}),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio")
         with patch(
-            "agent.understand.understand",
+            "agent.perceive.understand.understand",
             return_value=_canned(facts={"has_computer": "yes"}, turn_type="contradiction"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį")
@@ -693,7 +695,7 @@ class TestUnderstandWiring:
         # CLASSIFIER=off (the whole deterministic suite) — the pass never runs.
         import os
 
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         agent = _diagnosing_agent(monkeypatch, understand_on=False)
@@ -703,7 +705,7 @@ class TestUnderstandWiring:
             called["v"] = True
             return None
 
-        with patch("agent.understand.understand", side_effect=_boom):
+        with patch("agent.perceive.understand.understand", side_effect=_boom):
             ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
         assert called["v"] is False
         assert agent.state.diagnosis.evidence["lights"]["value"] == "off"

@@ -444,7 +444,7 @@ class TestHearingAgent:
         return agent
 
     def test_bare_negation_detector(self):
-        from agent.resolution import is_bare_negation
+        from agent.perceive.detectors import is_bare_negation
 
         assert is_bare_negation("Ne.")
         assert is_bare_negation("Ne, nežinau.")
@@ -589,7 +589,7 @@ class TestHearingAgent:
     # --- round 3 (live 2026-08-11, call 3) ------------------------------------
 
     def test_iki_is_a_preposition_not_a_goodbye(self):
-        from agent.resolution import detect_farewell
+        from agent.perceive.detectors import detect_farewell
 
         assert detect_farewell("Pajungtas iki galo.") is False  # killed a live bridge
         assert detect_farewell("Iki 17 valandos") is False  # ticket-hours answer
@@ -599,7 +599,7 @@ class TestHearingAgent:
         assert detect_farewell("viso gero, iki") is True
 
     def test_bare_done_report_detector(self):
-        from agent.resolution import is_bare_done_report
+        from agent.perceive.detectors import is_bare_done_report
 
         assert is_bare_done_report("Mhm, patikrinau.")
         assert is_bare_done_report("Jau padariau")
@@ -607,7 +607,7 @@ class TestHearingAgent:
         assert not is_bare_done_report("Nedega nė viena")
 
     def test_plugged_detector_survives_stt_garbles(self):
-        from agent.resolution import detect_plugged
+        from agent.perceive.detectors import detect_plugged
 
         assert detect_plugged("Jau pajungiu.")  # missed live, instruction repeated 3×
         assert detect_plugged("Pajangių kompiuterį.")
@@ -705,7 +705,7 @@ class TestHearingAgent:
     # --- round 5 (2026-08-12): bridge-failure ladder ---------------------------
 
     def test_bridge_fail_ladder_lan_check_then_technician(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
         from agent.solver_flow import drive_propose_fix
 
         # Plug reported, telemetry never shows the device (no simulation):
@@ -809,7 +809,7 @@ class TestHearingAgent:
         assert read_pending_answer("lan_active", "dega lemputė prie lizdo") == "active"
 
     def test_on_task_question_stays_with_the_flow(self, db_connection, monkeypatch):
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         # "Kur jungti tą kabelį į kompiuterį?" is a question ABOUT the current
         # instruction — side_topic answered it with "tai nėra mano sritis" live.
@@ -860,12 +860,12 @@ class TestAutoRegisterEscalate:
         assert agent.state.closing.closed_reason == "registered"
 
     def test_lauksiu_skambucio_is_consent_not_decline(self):
-        from agent.resolution import detect_ticket_consent
+        from agent.perceive.detectors import detect_ticket_consent
 
         assert detect_ticket_consent("Lauksiu skambučio, ačiū") == "yes"
 
     def test_farewell_stt_garbles_close(self):
-        from agent.resolution import detect_farewell
+        from agent.perceive.detectors import detect_farewell
 
         assert detect_farewell("Neturiu, neturiu, visą gerą") is True
         assert detect_farewell("visa gera, ačiū") is True
@@ -909,7 +909,7 @@ class TestAddressGuards:
     post-identification correction must reopen identification."""
 
     def test_garbled_taip_nebija_is_not_a_confirm(self):
-        from agent.resolution import detect_address_confirm
+        from agent.perceive.detectors import detect_address_confirm
 
         assert detect_address_confirm("Taip, nebija") is None  # mixed -> re-ask
         assert detect_address_confirm("Taip, tvirtinu") == "yes"
@@ -1034,7 +1034,7 @@ class TestIdentificationLadder:
         assert facts and "REZULTATO PRISTATYMAS" in facts
 
     def test_relation_keywords(self):
-        from agent.identification import detect_caller_relation
+        from agent.perceive.caller import detect_caller_relation
 
         assert detect_caller_relation("Jonas, taip, aš sutartį sudaręs") == "holder"
         assert detect_caller_relation("Petras, nuomininkas") == "tenant"
@@ -1042,7 +1042,7 @@ class TestIdentificationLadder:
         assert detect_caller_relation("mmm") == "unknown"
 
     def test_engine_resolves_dictated_correction(self, db_connection):
-        from agent.identification_flow import prefill_slots_from_text
+        from agent.perceive.slots import prefill_slots_from_text
         from agent.perception_flow import pre_turn_guards
 
         from tests.calls import make_agent
@@ -1067,7 +1067,7 @@ class TestIdentificationLadder:
         assert agent.state.identity.result_pending is True
 
     def test_farewell_garble_visai_gero(self):
-        from agent.resolution import detect_farewell
+        from agent.perceive.detectors import detect_farewell
 
         assert detect_farewell("Ne visai gero") is True
 
@@ -1076,7 +1076,7 @@ class TestVoiceGuardsRound5:
     """2026-08-03 live round: garbles must not close calls or climb steps."""
 
     def test_long_ne_sentence_is_not_a_farewell(self):
-        from agent.resolution import detect_farewell
+        from agent.perceive.detectors import detect_farewell
 
         # This exact garble hung up on the caller mid-ladder (observed live).
         assert detect_farewell("Ne, mano vardas Tomas, aš esu kaimynas") is False
@@ -1203,7 +1203,7 @@ class TestAnalysisStep2:
     hypothesis evidence, and rides on the record and the ticket."""
 
     def test_extract_anamnesis_readings(self):
-        from agent.nlu import extract_anamnesis
+        from agent.perceive.nlu import extract_anamnesis
 
         r = extract_anamnesis("Šįryt dingo, po audros")
         assert r == {"when": "today", "trigger": "storm"}
@@ -1279,7 +1279,7 @@ class TestSideTopicNode:
         return agent
 
     def test_question_freezes_engine_and_flags_side_topic(self, db_connection, monkeypatch):
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
         from agent.solver_flow import solver_drive_turn
         from agent.walker_flow import advance_resolution
 
@@ -1293,7 +1293,7 @@ class TestSideTopicNode:
 
     def test_side_facts_carry_faq_and_anchor(self, db_connection, monkeypatch):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = self._diagnosing(monkeypatch)
         agent.state.dialog.last_heard = "O kiek man tai kainuos?"
@@ -1305,7 +1305,7 @@ class TestSideTopicNode:
 
     def test_unknown_topic_gets_not_my_area_directive(self, db_connection, monkeypatch):
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = self._diagnosing(monkeypatch)
         agent.state.dialog.last_heard = "O koks rytoj oras Šiauliuose?"
@@ -1316,7 +1316,7 @@ class TestSideTopicNode:
     def test_third_deviation_is_scripted_frame(self, db_connection, monkeypatch):
         from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = self._diagnosing(monkeypatch)
         for q in ("O kiek kainuos?", "O koks oras?", "O kur jūsų ofisas?"):
@@ -1332,7 +1332,8 @@ class TestSideTopicNode:
     ):
         from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import classify_side_topic, ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = self._diagnosing(monkeypatch)
         ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, nedega nė viena lemputė")
@@ -1343,7 +1344,7 @@ class TestSideTopicNode:
         assert reply == phrase("identification.solve_or_ticket")
 
     def test_informative_interruption_is_not_a_deviation(self, db_connection, monkeypatch):
-        from agent.perception_flow import classify_side_topic
+        from agent.perceive.side_topic import classify_side_topic
 
         agent = self._diagnosing(monkeypatch)
         agent.state.dialog.side_topic_streak = 2
@@ -1401,7 +1402,7 @@ class TestFarewellPurity:
         # Live 2026-08-10: "Ne daganiai 1." (=nedega nė viena) fast-forwarded
         # the ticket dialogue to done-with-defaults. The bare-"ne" fallback now
         # requires EVERY token to be a known closing word.
-        from agent.resolution import detect_farewell
+        from agent.perceive.detectors import detect_farewell
 
         assert detect_farewell("Ne daganiai 1.") is False
         assert detect_farewell("Ne viena") is False
@@ -1423,7 +1424,7 @@ class TestReviewGaps:
 
         from agent.identification_flow import reopen_identification
         from agent.narrator_flow import update_state_from_observation
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
         from agent.ticket_flow import begin_ticket_dialogue
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
@@ -1749,7 +1750,7 @@ class TestDriveRepeatBailout:
     bailout to the registration offer (observed live: 6x verbatim loop)."""
 
     def test_distrust_loop_hands_wheel_to_walker(self, db_connection, monkeypatch):
-        from agent.perception_flow import ingest_client_evidence
+        from agent.perceive.evidence import ingest_client_evidence
         from agent.solver_flow import solver_drive_turn
 
         # Ledger v2: while EVIDENCE is missing, the evidence engine (not the

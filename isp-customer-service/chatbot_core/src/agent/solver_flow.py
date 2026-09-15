@@ -203,7 +203,7 @@ def plug_report(state: Any, rt: Any, user_input: str | None) -> bool:
     if not user_input:
         return False
     from .evidence import _fold
-    from .resolution import detect_plugged
+    from .perceive.detectors import detect_plugged
 
     low = _fold(user_input)
     last_q = _fold(last_agent_question(state) or "")
@@ -269,7 +269,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     # NO ticket, bypassing the refuse→registration policy; a goodbye
     # mid-strategy must go through the end-confirm). Returning None hands
     # the turn to the walker + guards, which own those policies.
-    from .resolution import detect_farewell, detect_refuse_or_ticket
+    from .perceive.detectors import detect_farewell, detect_refuse_or_ticket
 
     if detect_farewell(user_input) or detect_refuse_or_ticket(user_input) is not None:
         return None
@@ -285,7 +285,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     # is read IN CONTEXT (plug_report) and REMEMBERED — "Įkišau, laukiu"
     # without the word "kompiuteris" counted for nothing and the bind never
     # ran while the caller kept repeating they had done it.
-    from .resolution import detect_no_device
+    from .perceive.detectors import detect_no_device
 
     if plug_report(state, rt, user_input):
         state.resolution.bridge_plug_reported = True
@@ -423,7 +423,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
 def drive(state: Any, rt: Any, user_input: str | None) -> str:
     from .faults import pack_verdicts
     from .gate import gate
-    from .resolution import detect_turn_intent
+    from .perceive.detectors import detect_turn_intent
     from .solver import solve
 
     state.dialog.last_intent = detect_turn_intent(user_input)

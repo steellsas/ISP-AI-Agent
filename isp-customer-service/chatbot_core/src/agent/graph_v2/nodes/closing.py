@@ -33,7 +33,7 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
     # "Dar prašau, žegistruokit gedimą…" got "gražios dienos!" and the
     # caller left with ticket=None) — the registration dialogue starts
     # instead of the farewell.
-    from ...resolution import detect_refuse_or_ticket
+    from ...perceive.detectors import detect_refuse_or_ticket
     from ...solver_flow import drive_escalate
 
     s = state
@@ -54,7 +54,8 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
     # A "still not working" at the goodbye contradicts a resolved close —
     # never wave it off (live 2026-09-11: "Internetas neveikia." got
     # "Geros dienos!"). Reopen and register instead of celebrating.
-    from ...resolution import Outcome, detect_restored
+    from ...perceive.detectors import detect_restored
+    from ...resolution import Outcome
 
     if (
         user_input
@@ -79,7 +80,7 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
     # The LLM speaks only for a real question, or ONCE to ask back about
     # secondary problems the caller mentioned mid-call.
     from ...contract.locale import phrase
-    from ...resolution import is_real_question
+    from ...perceive.detectors import is_real_question
 
     if s.ticket.ticket_id and not is_real_question(user_input):
         # D5 (live 2026-08-25): a POST-registration contact correction

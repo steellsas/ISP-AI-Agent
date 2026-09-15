@@ -297,7 +297,7 @@ def state_facts_block(state, rt) -> str | None:
     log), so re-injecting them keeps the model from re-asking for details it
     already resolved. Returns None when nothing has been resolved yet.
     """
-    from .perception_flow import anchor_text
+    from .dialog_utils import anchor_text
     from .ticket_flow import ticket_need
 
     s = state
@@ -789,7 +789,7 @@ def state_facts_block(state, rt) -> str | None:
     # The turn did not move the conversation on. Say WHY, so the agent responds to
     # what the caller actually did instead of re-asking the same sentence.
     if s.dialog.awaiting and not s.closing.case_closed:
-        from .resolution import INTENT_CONFUSED, INTENT_IN_PROGRESS, INTENT_QUESTION
+        from .perceive.detectors import INTENT_CONFUSED, INTENT_IN_PROGRESS, INTENT_QUESTION
 
         if s.dialog.last_intent == INTENT_IN_PROGRESS:
             facts.append(

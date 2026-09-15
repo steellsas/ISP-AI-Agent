@@ -54,8 +54,8 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
         from src.services.llm.client import llm_completion
 
         from .evidence import summary_lt
+        from .perceive.understand import perception_model
         from .prompts import load_node_prompt
-        from .understand import perception_model
 
         # Istorija v2: the analyst is the ONLY reader of the FULL transcript —
         # the narrator's window is short, so type-4 notes (an early detail no

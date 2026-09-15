@@ -83,7 +83,8 @@ def device_change_pre_answer(state: Any, rt: Any, r, strat, step, user_input: st
     (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that step —
     elsewhere "kompiuteris" is a scope answer, not a device change. Runs before the
     intent gate: a clear pre-answer should move regardless of turn phrasing."""
-    from .resolution import confirms_device_change, next_step_id
+    from .perceive.detectors import confirms_device_change
+    from .resolution import next_step_id
     from .walker_flow import route_to
 
     if step.role == "confirm_device_change" and confirms_device_change(user_input):
@@ -98,7 +99,8 @@ def homework_consent(state: Any, rt: Any, r, strat, step, user_input: str | None
     first-person callback promise ("aš perskambinsiu") IS the yes — the
     caller agrees to do the homework and call back. Route to the callback
     terminal; an explicit ticket demand falls through to the refuse guard."""
-    from .resolution import detect_farewell, next_step_id
+    from .perceive.detectors import detect_farewell
+    from .resolution import next_step_id
     from .walker_flow import route_to
 
     if step.role != "homework":
@@ -122,7 +124,8 @@ def backchannel_hold(state: Any, rt: Any, r, strat, step, user_input: str | None
     HOLD asking steps instead of routing garbage (observed: "T." entered the bridge
     path as "yes, I have a computer"; "Mhm." climbed two INSTRUCT steps). ACTION
     steps still advance — their announce needs no answer."""
-    from .resolution import StepKind, is_backchannel
+    from .perceive.detectors import is_backchannel
+    from .resolution import StepKind
 
     if step.kind in (StepKind.CONFIRM, StepKind.INSTRUCT) and is_backchannel(user_input):
         rt.tracer.emit(
@@ -138,7 +141,8 @@ def restored_pre_answer(state: Any, rt: Any, r, strat, step, user_input: str | N
     the YES so the resolve is RECORDED instead of the call dying unclosed on the
     hangup (observed live: resolved Wi-Fi call left outcome=None). Only the clear
     affirmative pre-answers; a "no" still waits for the step's own question."""
-    from .resolution import Outcome, detect_restored, next_step_id
+    from .perceive.detectors import detect_restored
+    from .resolution import Outcome, next_step_id
     from .walker_flow import route_to
 
     if step.detector == "restored" and not r.get("asked"):
@@ -156,7 +160,8 @@ def refuse_or_ticket_redirect(state: Any, rt: Any, r, strat, step, user_input: s
     question doubles as the polite clarification ("užregistruosiu — ar tinka?").
     Observed live: the caller demanded a ticket 3×, the narrator promised it 5×,
     and the walker held cable_check forever — no route existed."""
-    from .resolution import StepKind, detect_refuse_or_ticket
+    from .perceive.detectors import detect_refuse_or_ticket
+    from .resolution import StepKind
     from .ticket_flow import begin_ticket_dialogue
     from .walker_flow import goto_step
 
