@@ -41,10 +41,17 @@ def get_language_name(language: str) -> str:
     return lang().LANGUAGE_NAME
 
 
+class PromptError(Exception):
+    """A prompt cannot be composed (a missing file, include or examples entry)."""
+
+
 def _read(relpath: str) -> str:
     """Read a prompt Markdown file by path relative to PROMPTS_DIR (no extension)."""
-    with open(PROMPTS_DIR / f"{relpath}.md", encoding="utf-8") as f:
-        return f.read()
+    try:
+        with open(PROMPTS_DIR / f"{relpath}.md", encoding="utf-8") as f:
+            return f.read()
+    except OSError as e:
+        raise PromptError(f"prompt '{relpath}': cannot read {relpath}.md ({e.strerror})") from e
 
 
 def _expand(text: str, _seen: frozenset[str] = frozenset()) -> str:
@@ -58,23 +65,35 @@ def _expand(text: str, _seen: frozenset[str] = frozenset()) -> str:
         name = match.group(1)
         if name in _seen:
             return ""
-        return _expand(_read(name), _seen | {name}).strip()
+        try:
+            return _expand(_read(name), _seen | {name}).strip()
+        except PromptError as e:
+            raise PromptError(f"{e} — included from {sorted(_seen) or 'the top prompt'}") from e
 
     return _INCLUDE_RE.sub(repl, text)
 
 
 def _localize(text: str) -> str:
     """Fill the language-specific parts: <<examples:…>> wording and <<language>>."""
-    from ..contract.locale import expand_examples, lang
+    from ..contract.locale import LocaleError, expand_examples, lang
 
-    return expand_examples(text).replace("<<language>>", lang().LANGUAGE_NAME)
+    try:
+        return expand_examples(text).replace("<<language>>", lang().LANGUAGE_NAME)
+    except LocaleError as e:
+        raise PromptError(str(e)) from e
 
 
 def load_node_prompt(name: str) -> str:
     """Load and compose a prompt (e.g. "stages/identification") for the active locale.
-    A missing include or examples entry raises — prompts load at import, so a broken
-    prompt fails at startup."""
+    Raises PromptError on a missing file, include or examples entry."""
     return _localize(_expand(_read(name))).strip()
+
+
+def check_prompts() -> None:
+    """Compose every prompt file for the active locale — run at startup so a broken
+    include or a missing examples entry fails the app, not a call."""
+    for path in sorted(PROMPTS_DIR.rglob("*.md")):
+        load_node_prompt(path.relative_to(PROMPTS_DIR).with_suffix("").as_posix())
 
 
 def load_system_prompt(
