@@ -18,6 +18,7 @@ from __future__ import annotations
 from .state import GraphState
 
 # Node names — the single place they are spelled out.
+PERCEIVE = "perceive"
 ADDRESS_VALIDATION = "address_validation"
 DIAGNOSIS = "diagnosis"
 SIDE_TOPIC = "side_topic"
@@ -54,9 +55,20 @@ DIAG_NARRATOR = "diag_narrator"
 def route_after_diagnose(state: GraphState) -> str:
     """A corroborated deviation FREEZES the engine for the turn: the side-topic
     node answers from FAQ facts and returns to the anchor — no walker/solver/
-    action runs on side chatter. The flag is set by the diagnose node (the
-    classification call mutates engine counters, so it cannot live here)."""
-    return DIAG_SIDE_TOPIC if state.turn.side_topic_active else DIAG_SOLVER_GATE
+    action runs on side chatter. The perceive node sets the signal before the
+    turn head's guards run, so a mechanic those guards opened this turn (the
+    ticket dialogue, the end-confirm, a resume hold) still owns the turn."""
+    if not state.turn.side_topic_active:
+        return DIAG_SOLVER_GATE
+    engaged = (
+        state.ticket.stage
+        or state.closing.case_closed
+        or not state.identity.customer_id
+        or state.diagnosis.evidence_conflict
+        or state.dialog.end_confirm_pending
+        or state.dialog.resume_hold_due
+    )
+    return DIAG_SOLVER_GATE if engaged else DIAG_SIDE_TOPIC
 
 
 def route_after_solver_gate(state: GraphState) -> str:

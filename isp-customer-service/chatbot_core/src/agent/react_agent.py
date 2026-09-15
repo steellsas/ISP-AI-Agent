@@ -320,13 +320,9 @@ class ReactAgent:
         """The scoped turn: deterministic head, scripted replies, then the LLM tool
         loop streaming the final reply token by token."""
         from .executor_flow import execute_tool_calls
-        from .identification_flow import (
-            identification_scripted_reply,
-            prefill_slots_from_text,
-            preflight_phone,
-        )
+        from .identification_flow import identification_scripted_reply, preflight_phone
         from .narrator_flow import build_messages, scoped_tools_schema
-        from .perception_flow import pre_turn_guards, raise_clarity
+        from .perception_flow import pre_turn_guards
         from .speculation import apply_bg_diagnosis, consume_injected_reply
         from .ticket_flow import registration_claim_guard
         from .walker_flow import scripted_wait_ack
@@ -344,9 +340,6 @@ class ReactAgent:
             yield greeting
             return
 
-        # Repeat-guard: snapshot progress BEFORE the deterministic NLU prefill, so a
-        # slot/problem filled THIS turn counts as progress and clears the counter.
-        self.state.turn.progress_key_at_start = progress_key(self.state)
         self.runtime.cancel.clear()  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "understood" directive leaks into their replies.
@@ -357,7 +350,6 @@ class ReactAgent:
         from .resolution import detect_turn_intent
 
         self.state.dialog.last_intent = detect_turn_intent(user_input)
-        raise_clarity(self.state, user_input)
         # S2 (2026-08-24): a background telemetry read finished while the
         # caller was busy — fold it in at the deterministic turn start, but
         # ONLY as a refresh: in the solution/bridge phase, or when the fresh
@@ -369,12 +361,12 @@ class ReactAgent:
         apply_bg_diagnosis(self.state, self.runtime)
         if user_input:
             self.tracer.emit("user_turn", text=user_input)
-            # The deterministic head may have run EARLIER (diagnose node, A-2
-            # 2026-09-07) — the latch prevents a double prefill/guards run.
+            # The guards may have run EARLIER (diagnose node, A-2 2026-09-07) —
+            # the latch prevents a double run. The perceive node already read
+            # the words (slots, evidence).
             if self.state.turn.pre_turn_head_done:
                 self.state.turn.pre_turn_head_done = False
             else:
-                prefill_slots_from_text(self.state, self.runtime, user_input)
                 pre_turn_guards(self.state, self.runtime, user_input)
 
         # The caller's utterance goes on the history for EVERY reply path

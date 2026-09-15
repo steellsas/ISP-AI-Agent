@@ -36,8 +36,12 @@ def _solver_gate(state: Any, rt: Any, user_input: str | None) -> str | None:
     from ....solver_flow import solver_drive_turn
 
     maybe_close_inform(state, rt, user_input)
+    # The repeat guard counts the narrator's re-asks; a solver-driven turn has
+    # always counted as progress (no start snapshot on this path).
+    snapshot, state.turn.progress_key_at_start = state.turn.progress_key_at_start, None
     driven = solver_drive_turn(state, rt, user_input)
     if driven is None:
+        state.turn.progress_key_at_start = snapshot
         return None
     # narrate() will not run this turn — consume the deterministic-head
     # latch here so the NEXT turn's narrate does not skip its head.

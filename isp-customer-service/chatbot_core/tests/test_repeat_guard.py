@@ -21,7 +21,10 @@ def _agent():
 
 
 def _turn(agent, text=None):
-    """One streaming engine turn; returns the full reply."""
+    """One streaming engine turn (perceive, then the narrator loop); returns the reply."""
+    from agent.perceive import perceive
+
+    perceive(agent.state, agent.runtime, text)
     return "".join(t for t in agent._run_turn_stream(text) if isinstance(t, str))
 
 

@@ -183,6 +183,7 @@ class TestPrefillWiring:
         """A caller turn populates the slots before the LLM, via the agent."""
         from unittest.mock import patch
 
+        from agent.perceive import perceive
         from agent.slots import SlotStatus
 
         from tests.calls import make_agent
@@ -195,7 +196,9 @@ class TestPrefillWiring:
             patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            list(agent._run_turn_stream("neveikia internetas Tilžės 60 butas 7"))
+            text = "neveikia internetas Tilžės 60 butas 7"
+            perceive(agent.state, agent.runtime, text)
+            list(agent._run_turn_stream(text))
 
         p = agent.state.identity.profile
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
@@ -209,6 +212,7 @@ class TestPrefillWiring:
         from unittest.mock import patch
 
         from agent.narrator_flow import state_facts_block
+        from agent.perceive import perceive
 
         from tests.calls import make_agent
 
@@ -220,7 +224,9 @@ class TestPrefillWiring:
             patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
             patch("agent.react_agent.get_last_call_stats", return_value={}),
         ):
-            list(agent._run_turn_stream("internetas neveikia, lemputės nedega, jungiuosi per wifi"))
+            text = "internetas neveikia, lemputės nedega, jungiuosi per wifi"
+            perceive(agent.state, agent.runtime, text)
+            list(agent._run_turn_stream(text))
 
         assert agent.state.intake.symptoms["lights"] == "off"
         assert agent.state.intake.symptoms["connection"] == "wifi"
