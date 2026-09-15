@@ -11,7 +11,7 @@ Usage:
     config = get_config()
 
     # Create config with custom settings
-    config = create_config(language="en", model="gpt-4o")
+    config = create_config(model="gpt-4o")
 
     # Update runtime settings
     update_config(temperature=0.5)
@@ -92,67 +92,38 @@ class AgentConfig:
     max_calls_per_session: int = 100
 
     # =========================================================================
-    # Post Init - Set language service
+    # Locale (agent/contract/locale.py)
     # =========================================================================
 
     def __post_init__(self):
-        """Initialize language service with configured language."""
-        from src.services.language_service import set_language
+        """Make the configured language the active locale."""
+        from .contract.locale import set_language
 
         set_language(self.language)
 
-    # =========================================================================
-    # Message Properties (from language service)
-    # =========================================================================
-
     @property
     def greeting_message(self) -> str:
-        """Get greeting message in current language."""
-        from src.services.language_service import t
+        from .contract.locale import phrase
 
-        return t("greeting", company_name=self.company_name)
+        return phrase("system.greeting", company_name=self.company_name)
 
     @property
     def error_message(self) -> str:
-        """Get error message in current language."""
-        from src.services.language_service import t
+        from .contract.locale import phrase
 
-        return t("error")
+        return phrase("system.error")
 
     @property
     def timeout_message(self) -> str:
-        """Get timeout message in current language."""
-        from src.services.language_service import t
+        from .contract.locale import phrase
 
-        return t("timeout")
+        return phrase("system.timeout")
 
     @property
     def max_turns_message(self) -> str:
-        """Get max turns message in current language."""
-        from src.services.language_service import t
+        from .contract.locale import phrase
 
-        return t("max_turns")
-
-    @property
-    def conversation_end_message(self) -> str:
-        """Get conversation end message in current language."""
-        from src.services.language_service import t
-
-        return t("conversation_ended")
-
-    @property
-    def cli_goodbye_message(self) -> str:
-        """Get CLI goodbye message in current language."""
-        from src.services.language_service import t
-
-        return t("cli.goodbye")
-
-    @property
-    def cli_interrupted_message(self) -> str:
-        """Get CLI interrupted message in current language."""
-        from src.services.language_service import t
-
-        return t("cli.interrupted")
+        return phrase("system.max_turns")
 
 
 # =============================================================================
@@ -203,9 +174,8 @@ def update_config(**kwargs) -> AgentConfig:
     global _default_config
     config = get_config()
 
-    # Update language service if language changed
     if "language" in kwargs:
-        from src.services.language_service import set_language
+        from .contract.locale import set_language
 
         set_language(kwargs["language"])
 

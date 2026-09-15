@@ -158,7 +158,7 @@ class TestAgentWiring:
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "įkištas"
 
     def test_contradiction_asks_one_clarify_then_settles(self):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
         from agent.perception_flow import ingest_client_evidence
         from agent.solver_flow import solver_drive_turn
@@ -178,7 +178,10 @@ class TestAgentWiring:
             agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti"
         )
         assert reply == phrase(
-            "evidence_conflict", tema="ar turite kompiuterį", a="neturite", b="turite"
+            "identification.evidence_conflict",
+            tema="ar turite kompiuterį",
+            a="neturite",
+            b="turite",
         )
         # The settling answer resolves the fact; no second clarify.
         ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį")

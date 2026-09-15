@@ -39,6 +39,10 @@ class _Model(BaseModel):
 # --- Fault packs and modules ------------------------------------------------------
 
 
+# Evidence item fields whose value is a phrase key.
+EVIDENCE_PHRASE_FIELDS = ("label", "klausimas", "kodel", "paprasciau", "patikslinimas", "ka_radote")
+
+
 class EvidenceItem(_Model):
     label: str | None = None
     reiksmes: dict[str, str] = {}
@@ -201,9 +205,8 @@ class IdentificationPolicy(_Model):
     offer_phone_address: bool = True
     require_apartment: bool = True
     ask_caller: bool = True
+    # Names of `identification.questions.<name>` phrases.
     extra_questions: list[str] = []
-    questions: dict[str, str] = {}
-    phrases: dict[str, str] = {}
 
 
 class Identification(_Model):
@@ -383,10 +386,55 @@ def _check_pack(
     return errors
 
 
+def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
+    """(where, phrase key) for every locale sentence the knowledge files name."""
+    refs: list[tuple[str, str]] = []
+
+    def add(where: str, key: str | None) -> None:
+        if key:
+            refs.append((where, key))
+
+    for verdict, pack in k.packs.items():
+        where = f"pack {verdict}"
+        for key, item in (pack.evidence.client if pack.evidence else {}).items():
+            for name in EVIDENCE_PHRASE_FIELDS:
+                add(f"{where}: evidence.client.{key}.{name}", getattr(item, name))
+            for value, phrase_key in item.reiksmes.items():
+                add(f"{where}: evidence.client.{key}.reiksmes.{value}", phrase_key)
+        add(f"{where}: reikalinga", pack.reikalinga)
+        add(f"{where}: isvada", pack.isvada)
+        if pack.tiltas_nepavyko:
+            add(f"{where}: tiltas_nepavyko.pastaba", pack.tiltas_nepavyko.pastaba)
+            add(f"{where}: tiltas_nepavyko.prierasas", pack.tiltas_nepavyko.prierasas)
+        for i, rule in enumerate(pack.sprendimai):
+            add(f"{where}: sprendimai.{i}.aprasymas", rule.aprasymas)
+    if k.manifest:
+        for name, problem in k.manifest.problems.items():
+            add(f"faults.yaml: problems.{name}.patvirtinimas", problem.patvirtinimas)
+            add(f"faults.yaml: problems.{name}.atsakymas", problem.atsakymas)
+    if k.faq:
+        for i, entry in enumerate(k.faq.faq):
+            add(f"faq.yaml: faq.{i}.atsakymas", entry.atsakymas)
+    if k.informavimas:
+        for verdict, entry in k.informavimas.root.items():
+            add(f"informavimas.yaml: {verdict}.sakoma", entry.sakoma)
+            add(f"informavimas.yaml: {verdict}.fallback", entry.fallback)
+    if k.identification:
+        for name in k.identification.identification.extra_questions:
+            add("identification.yaml: extra_questions", f"identification.questions.{name}")
+    return refs
+
+
 def validate_knowledge(
-    knowledge_dir: Path = KNOWLEDGE_DIR, playbook_dir: Path = PLAYBOOK_DIR
+    knowledge_dir: Path = KNOWLEDGE_DIR,
+    playbook_dir: Path = PLAYBOOK_DIR,
+    language: str = "lt",
+    locales_dir: Path | None = None,
 ) -> Knowledge:
-    """Validate every knowledge file; raise KnowledgeError listing all problems."""
+    """Validate every knowledge file against the schema and the `language`
+    locale; raise KnowledgeError listing all problems."""
+    from .locale import LOCALES_DIR, LocaleError, load_locale
+
     errors: list[str] = []
     root = knowledge_dir
     k = Knowledge()
@@ -434,6 +482,15 @@ def validate_knowledge(
         errors += _check_pack(
             pack_files[verdict], pack, k.modules, detectors, problems, playbook_dir
         )
+
+    try:
+        locale = load_locale(language, locales_dir or LOCALES_DIR)
+    except LocaleError as e:
+        errors.append(str(e))
+    else:
+        for where, key in phrase_refs(k):
+            if not locale.has(key):
+                errors.append(f"{where}: phrase '{key}' is missing in locale '{language}'")
 
     if errors:
         raise KnowledgeError(errors)

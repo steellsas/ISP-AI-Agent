@@ -637,10 +637,14 @@ def scripted_wait_ack(state, rt) -> str | None:
     d = state.turn.directives
     if d.evidence or d.recap or d.findings or d.ticket or d.ident:
         return None
-    from .identification import phrase
+    from .contract.locale import phrase
 
-    variant = phrase("wait_ack") if s.dialog.awaiting_turns % 2 else phrase("wait_ack_2")
-    return variant or phrase("wait_ack")
+    variant = (
+        phrase("identification.wait_ack")
+        if s.dialog.awaiting_turns % 2
+        else phrase("identification.wait_ack_2")
+    )
+    return variant or phrase("identification.wait_ack")
 
 
 def turn_may_advance(state, rt, step) -> bool:

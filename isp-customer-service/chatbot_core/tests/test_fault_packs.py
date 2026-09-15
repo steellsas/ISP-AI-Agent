@@ -372,9 +372,9 @@ class TestNarratorFindings:
         assert engine.state.diagnosis.evidence_ask_counts["device_present"] == 1  # retry NOT burned
 
     def test_reask_phrase_has_no_internal_labels(self):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
 
-        text = phrase("reask_reason", tema="routeris surastas", klausimas="Radote?")
+        text = phrase("identification.reask_reason", tema="routeris surastas", klausimas="Radote?")
         assert "routeris surastas" not in text and "Radote?" in text
 
     def test_phone_echo_is_consent(self, monkeypatch):
@@ -651,16 +651,9 @@ class TestStepAwareness:
     and the solver reads the walked path from the journal."""
 
     def test_caller_question_is_single(self):
-        from pathlib import Path
+        from agent.contract.locale import phrase
 
-        import yaml
-
-        data = yaml.safe_load(
-            (
-                Path(__file__).parents[1] / "src" / "agent" / "knowledge" / "identification.yaml"
-            ).read_text(encoding="utf-8")
-        )
-        q = data["identification"]["questions"]["caller"]
+        q = phrase("identification.questions.caller")
         assert q.count("?") == 1 and "sudar" not in q
 
     def test_tikslas_flows_through_build(self):
@@ -858,10 +851,13 @@ class TestIdentificationF:
         assert fail and "Vilnaus gatve kazkur" in fail["girdeta"]
 
     def test_short_ladder_phrases(self):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
 
-        assert phrase("address_ask") == "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
-        assert "patikrinsiu ryšį" in phrase("address_offer", adresas="X")
+        assert (
+            phrase("identification.address_ask")
+            == "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
+        )
+        assert "patikrinsiu ryšį" in phrase("identification.address_offer", adresas="X")
 
 
 class TestTicketDirectives:
@@ -1022,8 +1018,10 @@ class TestAnamnesisDirectives:
 
         spec = spec_for("no_mac_observed")
         item = (spec.get("client") or {}).get("ivykiai")
-        assert item and "elektra" in item["klausimas"]
-        assert "linijoje nesimato" in item["kodel"]  # telemetrijos kontekstas
+        from agent.contract.locale import phrase
+
+        assert item and "elektra" in phrase(item["klausimas"])
+        assert "linijoje nesimato" in phrase(item["kodel"])  # telemetrijos kontekstas
 
 
 class TestDirectiveTurnsAreSpeechOnly:
@@ -1121,9 +1119,9 @@ class TestPrimaryGoalFrozen:
         assert "PAPILDOMOS PROBLEMOS" in block and "TV blogai rodo" in block
 
     def test_bridge_bound_phrase_states_visibility(self):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
 
-        text = phrase("bridge_bound")
+        text = phrase("identification.bridge_bound")
         assert "matau" in text.lower() and "pririšau" in text.lower()
 
 

@@ -121,6 +121,7 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
     labels: dict[str, str] = {}
     values: dict[str, str] = {}
     try:
+        from .contract.locale import phrase
         from .faults import _faults
 
         for spec in _faults().values():
@@ -132,9 +133,9 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
             for key, item in (client or {}).items():
                 if isinstance(item, dict):
                     if item.get("label"):
-                        labels[str(key)] = str(item["label"])
+                        labels[str(key)] = phrase(item["label"])
                     for v, gloss in (item.get("reiksmes") or {}).items():
-                        values[str(v)] = str(gloss)
+                        values[str(v)] = phrase(gloss)
     except Exception:  # pragma: no cover - glosses are cosmetic, never break
         pass
     return labels, values
@@ -279,7 +280,9 @@ def fault_isvada(verdict: str | None) -> str | None:
     fault = _faults().get(verdict)
     if not isinstance(fault, dict):
         return None
-    return str(fault.get("isvada") or fault.get("reikalinga") or "") or None
+    from .contract.locale import maybe_phrase
+
+    return maybe_phrase(fault.get("isvada") or fault.get("reikalinga"))
 
 
 def fault_pasiulymas(verdict: str | None) -> str | None:
@@ -327,10 +330,12 @@ def solution_descriptions(verdict: str | None) -> list[str]:
 
     fault = _faults().get(verdict)
     rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    from .contract.locale import maybe_phrase
+
     out = []
     for rule in rules or []:
         if isinstance(rule, dict):
-            out.append(str(rule.get("aprasymas") or rule.get("tada") or "").strip())
+            out.append(str(maybe_phrase(rule.get("aprasymas")) or rule.get("tada") or "").strip())
     return [x for x in out if x]
 
 
@@ -354,7 +359,12 @@ def fault_bridge_fail(verdict: str | None) -> dict[str, str]:
 
     fault = _faults().get(verdict)
     d = fault.get("tiltas_nepavyko") if isinstance(fault, dict) else None
-    return d if isinstance(d, dict) else {}
+    if not isinstance(d, dict):
+        return {}
+    from .contract.locale import template
+
+    # Templates: `prierasas` carries a {lan} placeholder the caller fills.
+    return {name: template(key) for name, key in d.items() if key}
 
 
 def fault_need(verdict: str | None) -> str | None:
@@ -364,8 +374,9 @@ def fault_need(verdict: str | None) -> str | None:
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    need = fault.get("reikalinga") if isinstance(fault, dict) else None
-    return str(need) if need else None
+    from .contract.locale import maybe_phrase
+
+    return maybe_phrase(fault.get("reikalinga")) if isinstance(fault, dict) else None
 
 
 def _cond_holds(evidence: dict[str, Any], cond: str, confirmed: bool) -> bool:

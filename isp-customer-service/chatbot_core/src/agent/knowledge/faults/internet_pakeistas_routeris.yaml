@@ -16,28 +16,28 @@ playbook: troubleshooting/internet_pakeistas_routeris_mac
 evidence:
   client:
     changed_device:
-      label: "routerio keitimas"
+      label: "pack.foreign_mac.changed_device.label"
       reiksmes:
-        keite: "keitė arba prijungė naują įrenginį"
-        nekeite: "nieko nekeitė"
+        keite: "pack.foreign_mac.changed_device.values.keite"
+        nekeite: "pack.foreign_mac.changed_device.values.nekeite"
       reikia: "ar klientas neseniai keitė routerį arba prijungė naują įrenginį prie linijos"
-      klausimas: "Ar neseniai keitėte routerį, o gal prijungėte kokį naują įrenginį prie interneto linijos?"
-      kodel: "Linijoje matome kitą įrenginį nei registruota — norime suprasti, ar tai jūsų naujas."
-      paprasciau: "Gal per paskutines dienas namuose atsirado naujas routeris, kompiuteris ar TV priedėlis, jungtas prie interneto laido?"
-      patikslinimas: "Norėjau patikslinti — ar nieko nekeitėte, ar tiesiog neprisimenat?"
+      klausimas: "pack.foreign_mac.changed_device.question"
+      kodel: "pack.foreign_mac.changed_device.why"
+      paprasciau: "pack.foreign_mac.changed_device.simpler"
+      patikslinimas: "pack.foreign_mac.changed_device.clarify"
       atsakymai:
         keite: [keičiau, keiciau, keciau, pakeičiau, pakeiciau, "naują routerį", nusipirkau, prijungiau, pajungiau, keitėm, keitem]
         nekeite: [nekeičiau, nekeiciau, "nieko nekeit", "nieko naujo", neprijungiau, nepajungiau, "nieko nedariau"]
     cable_port:
-      label: "kabelio lizdas"
+      label: "pack.foreign_mac.cable_port.label"
       reiksmes:
-        wan: "interneto (WAN) lizde"
-        lan: "kitame (LAN) lizde"
+        wan: "pack.foreign_mac.cable_port.values.wan"
+        lan: "pack.foreign_mac.cable_port.values.lan"
       reikia: "į kurį routerio lizdą įkištas iš sienos ateinantis interneto kabelis — WAN ar LAN"
-      klausimas: "Pažiūrėkite, į kurį lizdą įkištas iš sienos ateinantis kabelis — į interneto (WAN) lizdą ar į kitą?"
-      kodel: "Jei kabelis ne tame lizde, linija mato ne tą įrenginį — tai dažniausia priežastis, kai niekas nekeista."
-      paprasciau: "Ant routerio lizdai paprastai pažymėti: vienas atskiras „Internet/WAN“, kiti — vienodi LAN. Kuriame yra laidas iš sienos?"
-      patikslinimas: "Norėjau patikslinti — ar nerandate užrašų prie lizdų, ar negalite dabar patikrinti?"
+      klausimas: "pack.foreign_mac.cable_port.question"
+      kodel: "pack.foreign_mac.cable_port.why"
+      paprasciau: "pack.foreign_mac.cable_port.simpler"
+      patikslinimas: "pack.foreign_mac.cable_port.clarify"
       atsakymai:
         wan: [wan, internet, interneto, mėlyn, melyn, atskir]
         lan: [lan, geltona, geltoname, kitas, kitą, "prie kitų"]
@@ -54,15 +54,15 @@ sprendimai:
 - jei: [changed_device=keite]
   tada: walker
   zingsnis: bind_mac
-  aprasymas: "pririšti jūsų naują įrenginį prie linijos"
+  aprasymas: "pack.foreign_mac.solution.s1"
 - jei: [changed_device=nekeite, cable_port=lan]
   tada: walker
   zingsnis: cable_reconnect
-  aprasymas: "perjungti kabelį į interneto (WAN) lizdą"
+  aprasymas: "pack.foreign_mac.solution.s2"
 - jei: [changed_device=nekeite, cable_port=wan]
   tada: walker
   zingsnis: bind_mac
-  aprasymas: "pririšti linijoje matomą įrenginį"
+  aprasymas: "pack.foreign_mac.solution.s3"
 steps:
 - id: confirm_change
   kind: confirm

@@ -118,3 +118,43 @@ def test_module_exits_must_be_routed(knowledge):
         ),
     )
     assert _errors(root) == [f"{pack}: steps.0 (x): module exits ['nepavyko'] are not routed"]
+
+
+def test_missing_phrase_key_is_reported(knowledge):
+    root, edit = knowledge
+    edit(
+        PACK,
+        lambda d: d["evidence"]["client"]["fail_scope"].update(klausimas="pack.router_hung.nope"),
+    )
+    assert _errors(root) == [
+        "pack router_hung: evidence.client.fail_scope.klausimas: "
+        "phrase 'pack.router_hung.nope' is missing in locale 'lt'"
+    ]
+
+
+def _code_phrase_keys():
+    """(file:line, key) for every literal key passed to a phrase()/template() call."""
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).parents[1] / "src"
+    for path in sorted(src.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.args):
+                continue
+            if "phrase" not in node.func.id and node.func.id != "template":
+                continue
+            arg = node.args[0]
+            for value in [arg.body, arg.orelse] if isinstance(arg, ast.IfExp) else [arg]:
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    yield f"{path.relative_to(src)}:{node.lineno}", value.value
+
+
+def test_every_phrase_key_in_code_exists():
+    from agent.contract.locale import load_locale
+
+    locale = load_locale("lt")
+    keys = list(_code_phrase_keys())
+    assert len(keys) > 50  # the scan finds the calls
+    assert [(where, key) for where, key in keys if not locale.has(key)] == []

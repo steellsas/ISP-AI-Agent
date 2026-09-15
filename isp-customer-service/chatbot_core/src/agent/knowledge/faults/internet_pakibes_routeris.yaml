@@ -29,18 +29,18 @@ playbook: troubleshooting/internet_pakibes_routeris
 evidence:
   client:
     fail_scope:
-      label: "kur neveikia"
+      label: "pack.router_hung.fail_scope.label"
       reiksmes:
-        visuose: "visuose įrenginiuose"
-        viename: "tik viename įrenginyje"
+        visuose: "pack.router_hung.fail_scope.values.visuose"
+        viename: "pack.router_hung.fail_scope.values.viename"
       reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
       reiskia:
         visuose: "greičiausiai pakibo pats routeris — perkrausime jį"
         viename: "routeris veikia — problema tame įrenginyje ar kelyje iki jo"
-      klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
-      kodel: "Linijoje routerį matome, bet srautas nevaikšto — jei neveikia visur, greičiausiai pakibo pats routeris; jei tik viename, problema tame įrenginyje."
-      paprasciau: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
-      patikslinimas: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
+      klausimas: "pack.router_hung.fail_scope.question"
+      kodel: "pack.router_hung.fail_scope.why"
+      paprasciau: "pack.router_hung.fail_scope.simpler"
+      patikslinimas: "pack.router_hung.fail_scope.clarify"
       atsakymai:
         visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
         viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
@@ -48,17 +48,17 @@ evidence:
   paneigta_kai: []
 # reikalinga — tiketo priežastis, kai perkrovimas NEatstato (ticket_flow /
 # TICKET_NEED_LT atitikmuo šiam gedimui).
-reikalinga: "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas"
+reikalinga: "pack.router_hung.ticket_need"
 # Sprendimai pagal surinktus faktus — vykdo ŽINGSNIŲ MEDIS (tada:walker).
 sprendimai:
 - jei: [fail_scope=visuose]
   tada: walker
   zingsnis: rh_ability
-  aprasymas: "perkrauti routerį iš maitinimo — pakibęs routeris po to dažniausiai atsistato; pirma klausiama, ar klientas GALI dabar prieiti"
+  aprasymas: "pack.router_hung.solution.s1"
 - jei: [fail_scope=viename]
   tada: walker
   zingsnis: rh_device
-  aprasymas: "patikrinti tą įrenginį — routeris veikia, problema kelyje iki įrenginio"
+  aprasymas: "pack.router_hung.solution.s2"
 steps:
 # Pirmas žingsnis = masto klausimas (2026-08-31 skambučio pamoka: pradinis
 # žingsnio hint'as turi SUTAPTI su solverio evidence klausimu — kitaip

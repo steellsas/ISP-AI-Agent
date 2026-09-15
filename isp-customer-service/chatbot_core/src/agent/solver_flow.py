@@ -523,9 +523,9 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
             # Verbatim repeat still went out — at least SAY why it repeats
             # (Andrius 2026-08-11: the caller must hear the agent knows it
             # is asking the same thing).
-            from .identification import phrase
+            from .contract.locale import phrase
 
-            reply = phrase("repeat_ack") + reply
+            reply = phrase("identification.repeat_ack") + reply
         return reply
     return "Sekundėlę — patikslinkim dar kartą."
 
@@ -688,9 +688,9 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
     # C (Andrius 2026-08-21): the VISIBILITY status is spoken deterministically
     # — the caller hears that we checked, that we SEE the device, and that the
     # bind happened (the solver's own wording skipped the "matau" part live).
-    from .identification import phrase as _phrase
+    from .contract.locale import phrase as _phrase
 
-    return _phrase("bridge_bound")
+    return _phrase("identification.bridge_bound")
 
 
 def bridge_fail_step(state: Any, rt: Any) -> str:
@@ -700,6 +700,7 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
     cable; (2) check the COMPUTER's network card (lan_active — the answer
     lands on the ledger); (3) name the possible incoming-cable problem and
     register the technician, with what-was-tried on the ticket."""
+    from .contract.locale import maybe_phrase
     from .evidence import LABELS, VALUE_LT, fault_bridge_fail, spec_for
 
     verdict = (state.resolution.procedure or {}).get("verdict")
@@ -721,7 +722,7 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
         )
         rt.tracer.emit("drive_decision", action="bridge_fail_lan_check", accepted=True)
         return str(
-            item.get("klausimas")
+            maybe_phrase(item.get("klausimas"))
             or "Tinkle vis dar nesimato jūsų įrenginio. Ar kompiuterio tinklo (LAN) "
             "ryšys rodomas kaip aktyvus?"
         )

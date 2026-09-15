@@ -21,24 +21,13 @@
 # tyliai praleidžiamas — likę sakiniai sujungiami.
 
 billing_suspended:
-  sakoma: >-
-    Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų.
-    Skola {suma} už {menesiai}.
-    Paskutinis mokėjimas gautas {pask_mokejimas}.
-    Apmokėjus, paslauga įsijungs automatiškai — nieko papildomai daryti nereikia.
-  fallback: >-
-    Patikrinau — paslauga sustabdyta dėl neapmokėtos sąskaitos.
-    Apmokėjus sąskaitą, paslauga bus įjungta automatiškai.
+  sakoma: "inform.billing_suspended.template"
+  fallback: "inform.billing_suspended.fallback"
   aiskumo_salyga: [kas_negerai, ka_daryti, kada_atsistatys]
 
 active_outage:
-  sakoma: >-
-    Patikrinau — jūsų rajone įvykusi tinklo avarija ({vieta}).
-    Meistrai jau dirba, numatomas atstatymas iki {eta}.
-    Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą.
-  fallback: >-
-    Patikrinau — jūsų rajone įvykusi tinklo avarija, meistrai jau dirba.
-    Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą.
+  sakoma: "inform.active_outage.template"
+  fallback: "inform.active_outage.fallback"
   aiskumo_salyga: [kas_negerai, kas_daroma, kada_atsistatys, kaip_suzinos]
 
 # Tinklo gedimas be registruotos avarijos (Andrius 2026-09-11): klientas
@@ -46,16 +35,9 @@ active_outage:
 # užregistruoti (tiketą variklis sukuria pats, žr. _deferred_result),
 # informuosime kai bus pašalinta. Į „o kada?" — tikslaus laiko nežadame.
 node_fault_unregistered:
-  sakoma: >-
-    Patikrinau — matau gedimą tinkle iki jūsų namo, ne tik jūsų bute.
-    Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys.
-    Kai gedimas bus pašalintas, jus informuosime.
+  sakoma: "inform.node_fault_unregistered.template"
   aiskumo_salyga: [kas_negerai, kas_daroma, kaip_suzinos]
 
 switch_unreachable:
-  sakoma: >-
-    Patikrinau — jūsų namą aptarnaujantis tinklo įrenginys nepasiekiamas,
-    gedimas mūsų tinkle.
-    Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys.
-    Kai gedimas bus pašalintas, jus informuosime.
+  sakoma: "inform.switch_unreachable.template"
   aiskumo_salyga: [kas_negerai, kas_daroma, kaip_suzinos]

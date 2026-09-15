@@ -132,9 +132,9 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
     caller hears the transition before the contact questions. Marks the stage
     question as ASKED — only then does the capture accept an answer — and
     speaks the retry phrasing after an unclear answer."""
+    from .contract.locale import phrase
     from .dialog_registry import register as _q_register
     from .graph_v2.state import TicketContext
-    from .identification import phrase
 
     ctx = state.ticket.context or TicketContext()
     if ctx.ask_cancel_confirm:
@@ -142,21 +142,21 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         ctx.cancel_confirm_out = True
         ctx.last_kind = "cancel_confirm"
         _q_register(state, rt, "ticket", "ticket_cancel")
-        return phrase("ticket_cancel_confirm")
+        return phrase("identification.ticket_cancel_confirm")
     retry, ctx.ask_retry = ctx.ask_retry, None
     if retry == "phone":
         ctx.last_kind = "retry_phone"
         _q_register(state, rt, "ticket", "ticket_phone")
-        return phrase("ticket_phone_retry")
+        return phrase("identification.ticket_phone_retry")
     if retry == "hours":
         ctx.last_kind = "retry_hours"
         _q_register(state, rt, "ticket", "ticket_hours")
-        return phrase("ticket_hours_retry")
+        return phrase("identification.ticket_hours_retry")
     if state.ticket.stage == "hours":
         ctx.hours_asked = True
         ctx.last_kind = "hours"
         _q_register(state, rt, "ticket", "ticket_hours")
-        return phrase("ticket_hours")
+        return phrase("identification.ticket_hours")
     parts = []
     if not ctx.intro_done:
         ctx.intro_done = True
@@ -165,14 +165,14 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         # the internet just came back (live 2026-08-12). The intro then
         # states the success and registers the ROUTER replacement.
         if state.resolution.bridge_bound:
-            parts.append(phrase("ticket_intro_bridge"))
+            parts.append(phrase("identification.ticket_intro_bridge"))
         else:
-            parts.append(phrase("ticket_intro", priezastis=ticket_need(state, rt)))
+            parts.append(phrase("identification.ticket_intro", priezastis=ticket_need(state, rt)))
     else:
         ctx.last_kind = "phone"
     ctx.phone_asked = True
     _q_register(state, rt, "ticket", "ticket_phone")
-    parts.append(phrase("ticket_phone"))
+    parts.append(phrase("identification.ticket_phone"))
     return " ".join(parts)
 
 
@@ -217,8 +217,8 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     """All contacts collected (or defaulted) — register, close, announce. The
     announce repeats the number and hours back, so "kokiu numeriu?" never needs
     asking (observed live: the caller asked twice and got a goodbye)."""
+    from .contract.locale import phrase
     from .executor_flow import register_ticket_from_state
-    from .identification import phrase
 
     s = state
     if not s.ticket.contact_phone:
@@ -238,7 +238,9 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
     val = s.ticket.contact_hours
     val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
-    return phrase("ticket_done", nr=fmt_phone(s.ticket.contact_phone), val=val) + note
+    return (
+        phrase("identification.ticket_done", nr=fmt_phone(s.ticket.contact_phone), val=val) + note
+    )
 
 
 def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
@@ -266,7 +268,7 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
         return None
     if s.resolution.procedure is None:
         return None
-    from .identification import phrase
+    from .contract.locale import phrase
     from .resolution import get_strategy
 
     strat = get_strategy(s.resolution.procedure.get("verdict"))
@@ -279,4 +281,4 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
     if state.ticket.context is not None:
         state.ticket.context.intro_done = True  # the claim already announced it
         state.ticket.context.phone_asked = True  # appended below — answers count
-    return " " + phrase("ticket_phone")
+    return " " + phrase("identification.ticket_phone")

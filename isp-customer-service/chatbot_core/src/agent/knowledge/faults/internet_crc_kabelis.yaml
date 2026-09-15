@@ -17,8 +17,8 @@ evidence:
   client: {}
   patvirtinta_kai: []
   paneigta_kai: []
-reikalinga: "linijoje daug klaidų ir po laido perkišimo routeryje — pažeistas laidas, reikalingas keitimas (perkišimas būtų tik laikinas sprendimas)"
-isvada: "linijoje daug klaidų — pažeistas arba blogai įkištas laidas"
+reikalinga: "pack.crc_errors.ticket_need"
+isvada: "pack.crc_errors.conclusion"
 steps:
 - id: crc_ability
   kind: confirm

@@ -1314,7 +1314,7 @@ class TestSideTopicNode:
         assert "ATSAKYMO NĖRA" in facts
 
     def test_third_deviation_is_scripted_frame(self, db_connection, monkeypatch):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
         from agent.perception_flow import classify_side_topic
 
@@ -1323,14 +1323,14 @@ class TestSideTopicNode:
             classify_side_topic(agent.state, agent.runtime, q)
         reply = identification_scripted_reply(agent.state, agent.runtime, "O kur jūsų ofisas?")
         assert reply == phrase(
-            "back_to_issue",
+            "identification.back_to_issue",
             inkaras="Pažiūrėkite, ar ant routerio dega bent viena lemputė.",
         )
 
     def test_third_deviation_with_confirmed_hypothesis_offers_choice(
         self, db_connection, monkeypatch
     ):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
         from agent.perception_flow import classify_side_topic, ingest_client_evidence
 
@@ -1340,7 +1340,7 @@ class TestSideTopicNode:
         for q in ("O kiek kainuos?", "O koks oras?", "O kur jūsų ofisas?"):
             classify_side_topic(agent.state, agent.runtime, q)
         reply = identification_scripted_reply(agent.state, agent.runtime, "O kur jūsų ofisas?")
-        assert reply == phrase("solve_or_ticket")
+        assert reply == phrase("identification.solve_or_ticket")
 
     def test_informative_interruption_is_not_a_deviation(self, db_connection, monkeypatch):
         from agent.perception_flow import classify_side_topic
@@ -1592,15 +1592,15 @@ class TestSmallTalkBeforeProblem:
         return make_agent("+37060012353")
 
     def test_greeting_gets_scripted_ask_problem(self, db_connection):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
 
         agent = self._fresh()
         assert identification_scripted_reply(agent.state, agent.runtime, "Labadiena!") == phrase(
-            "ask_problem"
+            "identification.ask_problem"
         )
         assert identification_scripted_reply(agent.state, agent.runtime, "Sveiki") == phrase(
-            "ask_problem"
+            "identification.ask_problem"
         )
 
     def test_problem_statement_is_not_smalltalk(self, db_connection):
@@ -2082,7 +2082,7 @@ class TestTicketDialogue:
     def test_garbage_phone_answer_reasks_then_defaults(self, db_connection, monkeypatch):
         # Live: "Neturi kompiutera" landed as tel. on the ticket. Now: one
         # scripted retry; a second unclear answer defaults to caller-ID.
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
         from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
@@ -2093,7 +2093,7 @@ class TestTicketDialogue:
         pre_turn_guards(agent.state, agent.runtime, "Kurs komentai")  # STT garbage
         assert agent.state.ticket.contact_phone is None
         reply = identification_scripted_reply(agent.state, agent.runtime, "Kurs komentai")
-        assert reply == phrase("ticket_phone_retry")
+        assert reply == phrase("identification.ticket_phone_retry")
         pre_turn_guards(
             agent.state, agent.runtime, "Visai nesuprantu ko klausiat"
         )  # second garbage
@@ -2102,7 +2102,7 @@ class TestTicketDialogue:
 
     def test_garbage_hours_answer_reasks_then_defaults(self, db_connection, monkeypatch):
         # Live: "Kurs komentai" became "skambinti galima kurs komentai".
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
         from agent.identification_flow import identification_scripted_reply
         from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
@@ -2115,7 +2115,7 @@ class TestTicketDialogue:
         pre_turn_guards(agent.state, agent.runtime, "Kurs komentai")
         assert agent.state.ticket.contact_hours is None
         reply = identification_scripted_reply(agent.state, agent.runtime, "Kurs komentai")
-        assert reply == phrase("ticket_hours_retry")
+        assert reply == phrase("identification.ticket_hours_retry")
         pre_turn_guards(agent.state, agent.runtime, "Nu nezinau visai")  # second garbage -> default
         assert agent.state.ticket.contact_hours == "bet kada"
         assert agent.state.ticket.stage == "done"

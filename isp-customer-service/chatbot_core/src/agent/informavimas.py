@@ -137,8 +137,10 @@ def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
     entry = _catalog().get(reason)
     if not isinstance(entry, dict) or not entry.get("sakoma"):
         return None
+    from .contract.locale import template
+
     vals = _values(state, rt, reason)
-    sentences = re.split(r"(?<=[.!?])\s+", str(entry["sakoma"]).strip())
+    sentences = re.split(r"(?<=[.!?])\s+", template(entry["sakoma"]).strip())
     kept: list[str] = []
     data_sentences = 0
     placeholder_sentences = 0
@@ -154,7 +156,7 @@ def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
     # The fallback kicks in only when the template HAS data sentences and none
     # rendered — a fully static template (node/switch fault) speaks as-is.
     if placeholder_sentences and data_sentences == 0:
-        fb = str(entry.get("fallback") or "").strip()
+        fb = template(entry["fallback"]).strip() if entry.get("fallback") else ""
         return re.sub(r"\s+", " ", fb) if fb else None
     text = re.sub(r"\s+", " ", " ".join(kept)).strip()
     # N4 (live): a value ending in "d." plus the template's own period made

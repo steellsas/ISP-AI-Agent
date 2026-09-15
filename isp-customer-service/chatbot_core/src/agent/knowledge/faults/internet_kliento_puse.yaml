@@ -17,53 +17,53 @@ playbook: troubleshooting/kliento_puse_internetas
 evidence:
   client:
     fail_scope:
-      label: "kur neveikia"
+      label: "pack.healthy_to_router.fail_scope.label"
       reiksmes:
-        visuose: "visuose įrenginiuose"
-        viename: "tik viename įrenginyje"
+        visuose: "pack.healthy_to_router.fail_scope.values.visuose"
+        viename: "pack.healthy_to_router.fail_scope.values.viename"
       reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
       reiskia:
         visuose: "problema greičiausiai routeryje — pradėsime nuo jo perkrovimo"
         viename: "tinklas veikia — žiūrime į tą vieną įrenginį"
-      klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
-      kodel: "Jei neveikia visur — žiūrime į routerį; jei viename — į tą įrenginį."
-      paprasciau: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
-      patikslinimas: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
+      klausimas: "pack.healthy_to_router.fail_scope.question"
+      kodel: "pack.healthy_to_router.fail_scope.why"
+      paprasciau: "pack.healthy_to_router.fail_scope.simpler"
+      patikslinimas: "pack.healthy_to_router.fail_scope.clarify"
       atsakymai:
         visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
         viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
     fail_device:
-      label: "įrenginys"
+      label: "pack.healthy_to_router.fail_device.label"
       reiksmes:
-        telefonas: "telefone"
-        kompiuteris: "kompiuteryje"
+        telefonas: "pack.healthy_to_router.fail_device.values.telefonas"
+        kompiuteris: "pack.healthy_to_router.fail_device.values.kompiuteris"
       reikia: "kuriame įrenginyje neveikia — telefone ar kompiuteryje"
-      klausimas: "Kuriame įrenginyje neveikia — telefone ar kompiuteryje?"
+      klausimas: "pack.healthy_to_router.fail_device.question"
       atsakymai:
         telefonas: [telefon, planšet, planset, mobil]
         kompiuteris: [kompiuter, nešiojam, nesiojam, laptop, pc]
       kada: [fail_scope=viename]
     connection_type:
-      label: "jungimosi būdas"
+      label: "pack.healthy_to_router.connection_type.label"
       reiksmes:
-        laidas: "laidu"
-        wifi: "per WiFi"
+        laidas: "pack.healthy_to_router.connection_type.values.laidas"
+        wifi: "pack.healthy_to_router.connection_type.values.wifi"
       reikia: "ar tas kompiuteris prijungtas laidu, ar per WiFi"
-      klausimas: "O tas kompiuteris prie interneto jungiasi laidu ar per WiFi?"
-      kodel: "Laidinei jungčiai tikrinsime kabelį, bevielei — WiFi nustatymus."
+      klausimas: "pack.healthy_to_router.connection_type.question"
+      kodel: "pack.healthy_to_router.connection_type.why"
       atsakymai:
         laidas: [laidu, laidas, kabeliu, kabelis, "per laidą"]
         wifi: [wifi, "wi-fi", bevielis, bevieliu, belaidžiu, belaidziu]
       kada: [fail_device=kompiuteris]
     rebooted:
-      label: "routerio perkrovimas"
+      label: "pack.healthy_to_router.rebooted.label"
       reiksmes:
-        perkrautas: "jau perkrautas"
-        neperkrautas: "dar neperkrautas"
+        perkrautas: "pack.healthy_to_router.rebooted.values.perkrautas"
+        neperkrautas: "pack.healthy_to_router.rebooted.values.neperkrautas"
       reikia: "ar routeris jau perkrautas (ištrauktas iš rozetės ir įjungtas iš naujo)"
-      klausimas: "Ar bandėte perkrauti routerį — ištraukti iš rozetės, palaukti ir įjungti iš naujo?"
-      kodel: "Perkrovimas išsprendžia didžiąją dalį tokių atvejų — verta pradėti nuo jo."
-      patikslinimas: "Norėjau patikslinti — ar perkrovėte ir nepadėjo, ar dar nebandėte?"
+      klausimas: "pack.healthy_to_router.rebooted.question"
+      kodel: "pack.healthy_to_router.rebooted.why"
+      patikslinimas: "pack.healthy_to_router.rebooted.clarify"
       atsakymai:
         perkrautas: [perkroviau, perkrovėm, perkrovem, perleidau, "jau bandžiau", "jau bandziau"]
         neperkrautas: [neperkroviau, nebandžiau, nebandziau, "dar ne"]
@@ -76,19 +76,19 @@ sprendimai:
 - jei: [fail_scope=visuose]
   tada: walker
   zingsnis: cs_ability
-  aprasymas: "perkrauti routerį — tai išsprendžia daugumą tokių atvejų; pirma klausiama, ar klientas GALI dabar prieiti"
+  aprasymas: "pack.healthy_to_router.solution.s1"
 - jei: [fail_device=telefonas]
   tada: walker
   zingsnis: cs_wifi
-  aprasymas: "patikrinti telefono WiFi ryšį"
+  aprasymas: "pack.healthy_to_router.solution.s2"
 - jei: [connection_type=laidas]
   tada: walker
   zingsnis: cs_cable
-  aprasymas: "patikrinti kabelį tarp routerio ir kompiuterio"
+  aprasymas: "pack.healthy_to_router.solution.s3"
 - jei: [connection_type=wifi]
   tada: walker
   zingsnis: cs_wifi
-  aprasymas: "patikrinti kompiuterio WiFi ryšį"
+  aprasymas: "pack.healthy_to_router.solution.s4"
 steps:
 # Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
 # "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has

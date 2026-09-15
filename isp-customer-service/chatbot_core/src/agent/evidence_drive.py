@@ -14,6 +14,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .contract.locale import maybe_phrase
+
 
 def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
     """ONE second chance for a given-up key that BLOCKS confirmation
@@ -22,8 +24,8 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
     plainly and with the reason; the answer lands through the pending
     machinery (the give-up marker is replaceable by design). Never loops —
     one revival per key per call."""
+    from .contract.locale import phrase
     from .evidence import LABELS
-    from .identification import phrase
 
     ev = state.diagnosis.evidence
     for cond in spec.get("patvirtinta_kai") or []:
@@ -43,9 +45,9 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
         state.diagnosis.pending_evidence_key = key
         rt.tracer.emit("evidence", action="revive_ask", key=key)
         return phrase(
-            "reask_reason",
+            "identification.reask_reason",
             tema=LABELS.get(key, key),
-            klausimas=str(item.get("patikslinimas") or item.get("klausimas") or ""),
+            klausimas=str(maybe_phrase(item.get("patikslinimas") or item.get("klausimas")) or ""),
         )
     return None
 
@@ -63,8 +65,8 @@ def maybe_facts_recap(state: Any, rt: Any) -> str | None:
         state.diagnosis.facts_recap_state = "done"
         rt.tracer.emit("decision", intent="facts_recap", action="answered")
         return None
+    from .contract.locale import phrase
     from .evidence import client_facts_lt
-    from .identification import phrase
 
     faktai = client_facts_lt(state.diagnosis.evidence)
     if not faktai:
@@ -81,7 +83,7 @@ def maybe_facts_recap(state: Any, rt: Any) -> str | None:
         return None  # the narrator speaks the recap
     state.diagnosis.facts_recap_state = "pending"
     rt.tracer.emit("decision", intent="facts_recap", action="ask")
-    return phrase("facts_recap", faktai=faktai)
+    return phrase("identification.facts_recap", faktai=faktai)
 
 
 def refuting_client_fact(state: Any, rt: Any, spec: dict) -> tuple[str, str] | None:
@@ -116,13 +118,13 @@ def maybe_refute_confirm(state: Any, rt: Any, spec: dict) -> str | None:
         state.diagnosis.refute_confirm_state = "done"  # telemetry-backed — trust it
         return None
     key, value = kv
+    from .contract.locale import phrase
     from .evidence import LABELS, VALUE_LT
-    from .identification import phrase
 
     state.diagnosis.refute_confirm_state = "pending"
     rt.tracer.emit("decision", intent="refute_confirm", action="ask", key=key)
     return phrase(
-        "refute_confirm",
+        "identification.refute_confirm",
         tema=LABELS.get(key, key),
         reiksme=VALUE_LT.get(value, value),
     )
@@ -148,8 +150,8 @@ def negation_clarify_reply(state: Any, rt: Any, key: str) -> str | None:
     Wording comes from the fault file (`patikslinimas` per key) so every fault
     can name its own two readings; generic phrase as fallback. Counts as an
     ask — the give-up cap still ends an unreadable loop."""
+    from .contract.locale import phrase
     from .evidence import spec_for
-    from .identification import phrase
 
     if state.diagnosis.evidence_ask_counts.get(key, 0) >= 2:
         return None  # already asked twice — let the drive give up, not loop
@@ -158,8 +160,11 @@ def negation_clarify_reply(state: Any, rt: Any, key: str) -> str | None:
     state.diagnosis.evidence_ask_counts[key] = state.diagnosis.evidence_ask_counts.get(key, 0) + 1
     rt.tracer.emit("evidence", action="negation_clarify", key=key)
     return str(
-        item.get("patikslinimas")
-        or phrase("negation_clarify", klausimas=str(item.get("klausimas") or ""))
+        maybe_phrase(item.get("patikslinimas"))
+        or phrase(
+            "identification.negation_clarify",
+            klausimas=str(maybe_phrase(item.get("klausimas")) or ""),
+        )
     ).strip()
 
 
@@ -210,14 +215,14 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # says "taip" (STT garbles poison exactly these facts).
     fc = state.diagnosis.fact_confirm_pending
     if fc is not None:
+        from .contract.locale import phrase as _phrase
         from .evidence import LABELS, VALUE_LT
-        from .identification import phrase as _phrase
 
         state.diagnosis.fact_confirm_pending = None
         state.diagnosis.fact_confirm_asked = fc
         rt.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.key)
         return _phrase(
-            "refute_confirm",
+            "identification.refute_confirm",
             tema=LABELS.get(fc.key, fc.key),
             reiksme=VALUE_LT.get(fc.value, fc.value),
         )
@@ -268,8 +273,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         if state.turn.directives.recap:
             return None  # the narrator asks the recap; findings come next turn
         state.diagnosis.findings_announced = True
+        from .contract.locale import phrase
         from .evidence import client_facts_lt, fault_isvada, solution_descriptions
-        from .identification import phrase
 
         faktai_lt = client_facts_lt(s.diagnosis.evidence)
         isvada = fault_isvada(r.get("verdict")) or ticket_need(state, rt)
@@ -292,7 +297,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
                 return None  # the narrator speaks the findings + the choice
             announce = (
                 phrase(
-                    "findings_announce",
+                    "identification.findings_announce",
                     faktai=faktai_lt,
                     priezastis=isvada,
                     sprendimai=" ARBA ".join(sprendimai) if sprendimai else "—",
@@ -358,12 +363,12 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         from .resolution import INTENT_IN_PROGRESS, detect_turn_intent
 
         if detect_turn_intent(user_input) == INTENT_IN_PROGRESS:
-            from .identification import phrase
+            from .contract.locale import phrase
 
             rt.tracer.emit(
                 "drive_decision", action="wait", accepted=True, reason="in_progress", key=key
             )
-            reply = phrase("wait_ack")
+            reply = phrase("identification.wait_ack")
             return (announce + reply) if announce else reply
     if asks >= 2:
         # Asked twice (normal + paprasciau), still nothing readable — record
@@ -414,8 +419,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         state.turn.directives.evidence = {
             "key": key,
             "reikia": str(item["reikia"]),
-            "kodel": str(item.get("kodel") or ""),
-            "klausimas": str(item.get("klausimas") or ""),
+            "kodel": str(maybe_phrase(item.get("kodel")) or ""),
+            "klausimas": str(maybe_phrase(item.get("klausimas")) or ""),
         }
         rt.tracer.emit(
             "drive_decision",
@@ -428,39 +433,42 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         if announce:
             state.diagnosis.pending_announcement = announce
         return None  # the narrator asks — walker holds on the open question
-    text = item.get("klausimas") if asks == 0 else (item.get("paprasciau") or item.get("klausimas"))
+    text = maybe_phrase(
+        item.get("klausimas") if asks == 0 else (item.get("paprasciau") or item.get("klausimas"))
+    )
     # The caller hears WHY we ask before what to press (Andrius 2026-08-11:
     # "kad klientas žinotų kodėl prašo to ar kito") — once, on the first ask.
     if asks == 0 and item.get("kodel"):
-        text = f"{text} {item['kodel']}"
+        text = f"{text} {maybe_phrase(item['kodel'])}"
     # Re-ask says WHY it repeats (garsus mąstymas, Andrius 2026-08-11): the
     # caller hears the agent is unsure about the SAME thing, not deaf.
     if asks == 1:
+        from .contract.locale import phrase
         from .evidence import LABELS
-        from .identification import phrase
 
-        text = phrase("reask_reason", tema=LABELS.get(key, key), klausimas=str(text))
+        text = phrase("identification.reask_reason", tema=LABELS.get(key, key), klausimas=str(text))
     # Bare "Ne." to THIS key's open question: the no has no object — clarify
     # what is denied instead of re-asking the same words (live 2026-08-11).
     if pending_before == key:
         from .resolution import is_bare_negation
 
         if is_bare_negation(user_input):
-            from .identification import phrase
+            from .contract.locale import phrase
 
-            text = item.get("patikslinimas") or phrase(
-                "negation_clarify", klausimas=str(item.get("klausimas") or "")
+            text = maybe_phrase(item.get("patikslinimas")) or phrase(
+                "identification.negation_clarify",
+                klausimas=str(maybe_phrase(item.get("klausimas")) or ""),
             )
             rt.tracer.emit("evidence", action="negation_clarify", key=key)
         # DONE-report without a result ("Mhm, patikrinau") — acknowledge the
         # work and ask WHAT was found (ka_radote from faults.yaml).
         if state.turn.done_report_key == key:
-            from .identification import phrase
+            from .contract.locale import phrase
 
             state.turn.done_report_key = None
             text = phrase(
-                "done_report_clarify",
-                klausimas=str(item.get("ka_radote") or item.get("klausimas") or ""),
+                "identification.done_report_clarify",
+                klausimas=str(maybe_phrase(item.get("ka_radote") or item.get("klausimas")) or ""),
             )
             rt.tracer.emit("evidence", action="done_report_clarify", key=key)
     rt.tracer.emit(

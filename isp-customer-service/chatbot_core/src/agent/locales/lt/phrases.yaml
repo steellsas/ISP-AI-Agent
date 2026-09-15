@@ -1,0 +1,284 @@
+# Lithuanian phrases — every sentence the caller hears, by dotted key.
+#
+# Code and knowledge files name a sentence by its key (identification.ask_problem,
+# pack.router_hung.fail_scope.question); agent/contract/locale.py renders it with
+# the {placeholders} filled. A new language is a copy of this file with the same keys.
+
+identification:
+  questions:
+    name: "O kaip į jus kreiptis — koks jūsų vardas?"
+    # L1 (VOICE_PLAN 1 žingsnis): be „ar sutartį sudaręs?" uodegos — klientas
+    # atsako į pirmą klausimą ir antro neišgirsta. Ryšys su sutartimi skaitomas
+    # iš atsakymo, jei pats pasako (detect_caller_relation).
+    caller: "O su kuo kalbu — koks jūsų vardas?"
+    contact_phone: "Kokiu numeriu geriausia su jumis susisiekti, jei nutrūktų ryšys?"
+
+  # SCRIPTED identification replies (2026-07-31): the mechanical ladder turns are
+  # COMPOSED by the ENGINE from these phrases — the LLM kept reordering/skipping them
+  # (promised a check without the result, relapsed into confirm rounds, skipped the
+  # caller question). Editing the wording is an edit HERE; {placeholders} are filled
+  # from state. Scope: IDENTIFICATION ONLY — troubleshooting and free dialogue stay
+  # with the LLM, and an off-script caller turn (a question) falls back to the LLM.
+  ask_problem: "Klausau! Kuo galiu padėti — kokia problema?"
+  anamnesis_question: "Supratau. O kada dingo — gal po ko nors, tarkim audros ar remonto?"
+  address_offer: "Gerai — patikrinsiu ryšį. Ar skambinate dėl {adresas}?"
+  address_ask: "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
+  echo_address: "Supratau — {adresas}."
+  check_result: "Patikrinau ryšį iki jūsų buto. {zinia}"
+  billing_extra: "Apmokėjus sąskaitą, paslauga bus įjungta."
+  anything_else: "Ar dar kuo galiu padėti?"
+  thanks: "Ačiū!"
+  confirm_end: "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, kad kolegos su jumis susisiektų."
+  goodbye: "Ačiū, kad paskambinote. Geros dienos!"
+  turn_error: "Atsiprašau, įvyko trikdis mano pusėje. Pakartokite, prašau, ką sakėte."
+  ticket_intro: "Telefonu neišspręsim — {priezastis}. Registruoju meistrą."
+  ticket_phone: "Ar tiks numeris, iš kurio skambinate?"
+  ticket_phone_retry: "Nesupratau numerio. Pasakykite skaitmenimis arba „tiks šis“."
+  ticket_hours: "Gerai. O kada patogiausia jums skambinti?"
+  ticket_hours_retry: "Nesupratau. Pavyzdžiui — „bet kada“ arba „po 17 valandos“?"
+  ticket_done: "Užregistravau. Skambinsime {nr}, {val}. Ar dar kuo padėti?"
+  evidence_conflict: "Norėčiau patikslinti dėl „{tema}“: pirmiau supratau „{a}“, o dabar — „{b}“. Kaip yra iš tiesų?"
+  back_to_issue: "Grįžkime prie jūsų gedimo. {inkaras}"
+  solve_or_ticket: "Grįžkime prie gedimo — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
+  checking_note: "Tuoj patikrinsiu ryšį iki jūsų buto."
+  findings_announce: "Ką patikrinome: {faktai}. Panašu — {priezastis}. Galime: {sprendimai}."
+  negation_clarify: "Norėjau patikslinti — išgirdau „ne“. {klausimas}"
+  done_report_clarify: "Supratau — patikrinote. {klausimas}"
+  facts_recap: "Pasitikslinu, ar teisingai supratau: {faktai}. Ar taip?"
+  refute_confirm: "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
+  # C (2026-08-20): be vidinių etikečių („routeris surastas") klientui —
+  # trumpa žmogiška įžanga ir pats klausimas.
+  reask_reason: "Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"
+  wait_ack: "Gerai, lauksiu — pasakykite, kai būsite pasiruošę."
+  # D5 (2026-08-25): laukimo reakcijos be LLM (buvo iki 12 s tylos); antra
+  # frazė, kad kartotinis laukimas neskambėtų kaip įrašas.
+  wait_ack_2: "Gerai, neskubėkite."
+  # D5: numerio patikslinimas PO registracijos — patvirtinimas, kad užrašyta.
+  ticket_phone_fixed: "Užsirašiau — skambinsime numeriu {nr}."
+  # D5 backchannels: trumpi pritarimai ilgo kliento pasakojimo metu.
+  backchannel_1: "Mhm."
+  backchannel_2: "Aha, klausau."
+  # P1b interrupt-ack (2026-08-26): po pertraukimo, kol LLM mąsto — trumpas
+  # ženklas, kad išgirdome (iš TTS kešo, <1 s).
+  interrupt_ack_1: "Aha, girdžiu."
+  interrupt_ack_2: "Taip, klausau."
+  # E (2026-08-20): antroji anamnezės pakopa, kai klientas nežino, kada dingo —
+  # paskutinio veikimo laikas siaurina analizės langą („vakar veikė“ → dingo naktį).
+  anamnesis_last_used: "O kada paskutinį kartą internetas tikrai veikė?"
+  # G3 (2026-08-20): aktyvus pasiteiravimas po tylos, kai klientas kažką daro.
+  checkin: "Kaip sekasi — ar pavyksta?"
+  # Problemos vartai (2026-08-21): po kelių bandymų be aiškios mūsų srities problemos.
+  no_problem_goodbye: "Supratau. Čia interneto ir televizijos gedimų pagalba — jei kils ryšio ar TV bėda, drąsiai skambinkite. Geros dienos!"
+  # Identifikacijos etalonas (Andrius 2026-09-03): adresui nepavykus ~4
+  # bandymus — KITAS METODAS: abonento kodas; jo nesant — pagalba tik
+  # abonentams ir mandagus uždarymas.
+  # Paraidžiui liko TIK pasyvus (Andrius 2026-09-10 rev.2): agentas pats
+  # raidžių NEklausia (fuzzy + pasiūlymai — pagrindinis kelias), bet jei
+  # klientas PATS raidžiuoja („kaip Vilnius, kaip Ieva") — supranta.
+  spell_result: "Supratau raides {raides} — tai turbūt {gatve}. Koks namo numeris?"
+  # SĄŽININGA riba (Andrius 2026-09-10): tas pats žodis kartojasi — agentas
+  # girdi STABILIAI, vadinasi išgirdo teisingai, o tokios gatvės tiesiog
+  # nėra zonoje. Eilė: pirma MIESTAS, tada kodas (klausymas jau įjungtas),
+  # galiausiai esamas mandagus uždarymas („paskambinkite, kai galėsite
+  # pasakyti adresą ar kodą").
+  street_not_exists: "Girdžiu aiškiai, bet tokios gatvės aptarnaujamose vietovėse nerandu. Paslaugas teikiame Šiaulių mieste ir rajone — gal jūsų adresas kitame mieste?"
+  account_code_ask: "Pabandykime kitaip — ar galite pasakyti abonento kodą? Jį rasite sąskaitoje, prasideda raidėmis A B ir skaičiais."
+  account_code_retry: "Kodas atrodo taip: A B brūkšnys ir penki skaitmenys, pavyzdžiui sąskaitos viršuje. Ar pavyksta jį rasti?"
+  not_client_goodbye: "Deja, jūsų duomenų mūsų sistemoje rasti nepavyko — pagalba teikiama tik mūsų abonentams. Jei esate abonentas, paskambinkite turėdami sutarties adresą ar abonento kodą. Geros dienos!"
+  # 2026-09-04 (Andrius): miestas ne aptarnavimo zonoje — pasakoma IŠ KARTO,
+  # tai ne bandymas; perspėjimas prieš uždarymą; uždarymas be vietos.
+  city_not_served: "Šiame mieste mūsų abonentų nėra — paslaugas teikiame Šiaulių mieste ir rajone. Gal adresas, dėl kurio skambinate, yra Šiauliuose ar Šiaulių rajone?"
+  address_need_warning: "Norėčiau padėti, bet nežinodamas adreso negalėsiu nei patikrinti gedimo, nei jo užregistruoti. Gal galite pasakyti adresą — arba abonento kodą iš sąskaitos?"
+  no_location_goodbye: "Suprantu. Deja, nenustačius gedimo vietos negaliu nei patikrinti, nei užregistruoti. Kai galėsite pasakyti adresą ar abonento kodą — paskambinkite, mielai padėsiu. Geros dienos!"
+  # Adreso keitimas po identifikacijos — TIK su patvirtinimu (taisyklė №3).
+  reopen_confirm: "Norėčiau patikslinti — ar tikrai skambinate dėl KITO adreso, ne dėl {adresas}?"
+  # A-2b (2026-09-07): patvirtintas adresas nėra paslaptis — paklaustas agentas
+  # jį pasako; frazė pati kviečia pasitaisyti, jei adresas ne tas.
+  current_address_info: "Kalbame dėl adreso {adresas}. Jei skambinate dėl kito adreso — pasakykite."
+  # A-2R-b (2026-09-07): klausimas „dėl kokio adreso?" VIDURY identifikacijos —
+  # sakome girdėtą (dar nepatvirtintą) adresą; šerdis „dėl šio adreso" verbatim,
+  # nuo jos raktuojasi patvirtinimo sargas.
+  ident_address_heard: "Girdėjau adresą {adresas}, bet dar nepatvirtinau. Ar skambinate dėl šio adreso?"
+  ident_address_none: "Adreso dar nenustatėme — kaip tik jį tikslinuosi. Koks adresas, dėl kurio skambinate?"
+  # A-3 skaidrumas (2026-09-07): agentas pasako, KOKĮ kodą išgirdo — ir radęs
+  # (patvirtinimui kartu su adresu), ir neradęs (klientas girdi, kur klaida).
+  account_code_echo_offer: "Išgirdau kodą {kodas}. Radau adresą — ar skambinate dėl {adresas}?"
+  account_code_miss: "Išgirdau kodą {kodas}, bet tokio sistemoje nerandu. Patikrinkite, prašau — kodas prasideda raidėmis A B ir penki skaitmenys."
+  # A-banga P1 (2026-09-04): „nepatogu / negaliu dabar" — pirma išsiaiškinti
+  # KAS nepatogu, tada pasiūlyti kelią (ne ignoruoti, ne iškart tiketas).
+  cannot_now_clarify: "Suprantu. O kas nepatogu — ar tiesiog negalite dabar patikrinti?"
+  cannot_now_offer: "Gerai — tada galiu užregistruoti gedimą meistrui, arba paskambinkite, kai būsite prie routerio, ir patikrinsime kartu. Kaip patogiau?"
+  callback_goodbye: "Gerai — paskambinkite, kai galėsite patikrinti, padėsime iš karto. Geros dienos!"
+  # Savininko vardo patikra (taisyklė №4): DB vardo NIEKADA negarsiname.
+  holder_mismatch_clarify: "Sistemoje sutartis šiuo adresu registruota kitu vardu — gal ji sudaryta šeimos nario ar kito asmens vardu?"
+  repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
+  escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
+  ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"
+  ticket_intro_bridge: "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, registruoju meistrą dėl naujo routerio."
+  # C (2026-08-21): tilto būsenos paskelbimas — klientas girdi, kad patikrinom,
+  # kad įrenginį MATOME ir kad pririšom.
+  bridge_bound: "Patikrinau — matau jūsų kompiuterį linijoje. Pririšau, patikrinkite — internetas turėtų atsirasti."
+
+pack:
+  crc_errors:
+    ticket_need: "linijoje daug klaidų ir po laido perkišimo routeryje — pažeistas laidas, reikalingas keitimas (perkišimas būtų tik laikinas sprendimas)"
+    conclusion: "linijoje daug klaidų — pažeistas arba blogai įkištas laidas"
+  healthy_to_router:
+    fail_scope:
+      label: "kur neveikia"
+      values:
+        visuose: "visuose įrenginiuose"
+        viename: "tik viename įrenginyje"
+      question: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
+      why: "Jei neveikia visur — žiūrime į routerį; jei viename — į tą įrenginį."
+      simpler: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
+      clarify: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
+    fail_device:
+      label: "įrenginys"
+      values:
+        telefonas: "telefone"
+        kompiuteris: "kompiuteryje"
+      question: "Kuriame įrenginyje neveikia — telefone ar kompiuteryje?"
+    connection_type:
+      label: "jungimosi būdas"
+      values:
+        laidas: "laidu"
+        wifi: "per WiFi"
+      question: "O tas kompiuteris prie interneto jungiasi laidu ar per WiFi?"
+      why: "Laidinei jungčiai tikrinsime kabelį, bevielei — WiFi nustatymus."
+    rebooted:
+      label: "routerio perkrovimas"
+      values:
+        perkrautas: "jau perkrautas"
+        neperkrautas: "dar neperkrautas"
+      question: "Ar bandėte perkrauti routerį — ištraukti iš rozetės, palaukti ir įjungti iš naujo?"
+      why: "Perkrovimas išsprendžia didžiąją dalį tokių atvejų — verta pradėti nuo jo."
+      clarify: "Norėjau patikslinti — ar perkrovėte ir nepadėjo, ar dar nebandėte?"
+    solution:
+      s1: "perkrauti routerį — tai išsprendžia daugumą tokių atvejų; pirma klausiama, ar klientas GALI dabar prieiti"
+      s2: "patikrinti telefono WiFi ryšį"
+      s3: "patikrinti kabelį tarp routerio ir kompiuterio"
+      s4: "patikrinti kompiuterio WiFi ryšį"
+  link_down_local:
+    ticket_need: "routeris gyvas, bet signalas iš linijos neateina (interneto lemputė nedega, portas neaktyvus ir po perkišimo) — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
+    conclusion: "signalas iki jūsų routerio neateina — greičiausiai pažeistas kabelis trasoje"
+  no_mac_observed:
+    ivykiai:
+      label: "įvykiai prieš dingstant"
+      values:
+        buvo: "buvo įvykis (elektra/laidai/audra)"
+        nebuvo: "nieko neįvyko"
+      question: "Ar neseniai buvo dingusi elektra, gal kas nors tvarkė laidus?"
+      why: "Jūsų įrenginio linijoje nesimato — po elektros dingimo routeris dažnai lieka neįsijungęs."
+      clarify: "Norėjau patikslinti — ar buvo koks įvykis prieš dingstant internetui, ar viskas kaip visada?"
+      simpler: "Gal buvo dingusi šviesa, gal kas nors namuose jungė ar tvarkė laidus? Jei nieko tokio — taip ir sakykite."
+    device_present:
+      question: "Susiraskite routerį — dėžutę, į kurią ateina interneto kabelis. Pasakykite, kai būsite prie jo."
+      simpler: "Ieškokite nedidelės dėžutės su lemputėmis, dažnai su antenomis — į ją ateina laidas iš sienos. Radote?"
+      clarify: "Norėjau patikslinti — ar nerandate routerio, ar radote, bet kažkas kita negerai?"
+    lights:
+      question: "Pažiūrėkite, ar ant routerio dega bent viena lemputė."
+      why: "Pagal lemputes matysime, ar routeris išvis gauna maitinimą."
+      simpler: "Dėžutės priekyje yra mažos švieselės. Ar nors viena šviečia arba mirksi?"
+      clarify: "Norėjau patikslinti — ar nė viena lemputė nedega, ar tiesiog nematote, kur žiūrėti?"
+      ask_result: "Ar dega bent viena lemputė, ar nė viena?"
+    power_cable:
+      question: "Patikrinkite, ar maitinimo laidas gerai įkištas į rozetę ir į patį routerį."
+      why: "Atsilaisvinęs laidas — dažniausia priežastis, kodėl routeris negauna srovės."
+      simpler: "Juodas laidas apvaliu antgaliu turi eiti iš dėžutės į rozetę. Ištraukite ir vėl tvirtai įkiškite abiejuose galuose."
+      clarify: "Norėjau patikslinti — ar laidas neįkištas, ar negalite dabar patikrinti?"
+      ask_result: "O kaip radote — ar laidas buvo įkištas tvirtai, ar atsilaisvinęs?"
+    outlet_works:
+      question: "Pabandykite kitą rozetę — arba pasakykite, ar kiti įrenginiai nuo tos rozetės veikia."
+      why: "Taip atskirsime, ar sugedusi rozetė, ar pats routeris."
+      clarify: "Norėjau patikslinti — ar kita rozetė nepadėjo, ar negalite jos išbandyti?"
+      ask_result: "Ar iš kitos rozetės lemputės užsidegė, ar ne?"
+    has_computer:
+      question: "Kol gausite naują routerį, galime laikinai paleisti internetą per kompiuterį. Ar turite kompiuterį?"
+      clarify: "Norėjau patikslinti — ar neturite kompiuterio, ar tiesiog nenorite bandyti per jį?"
+    lan_active:
+      question: "Tinkle vis dar nesimato jūsų įrenginio. Pažiūrėkite kompiuteryje — ar tinklo (LAN) ryšys rodomas kaip aktyvus, ar dega lemputė prie tinklo lizdo?"
+    ticket_need: "reikalingas naujas maršrutizatorius"
+    bridge_failed:
+      notice: "Įrenginio linijoje vis dar nesimato — gali būti problema ir su ateinančiu kabeliu. Telefonu to nebeišspręsime."
+      ticket_note: "Laikinai pajungti internetą per kompiuterį NEPAVYKO (kompiuterio LAN: {lan}) — įrenginio linijoje nesimato, galima atvedimo kabelio problema."
+    conclusion: "routeris sugedęs — telefonu jo neprikelsime"
+    solution:
+      s1: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
+      s2: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
+  foreign_mac:
+    changed_device:
+      label: "routerio keitimas"
+      values:
+        keite: "keitė arba prijungė naują įrenginį"
+        nekeite: "nieko nekeitė"
+      question: "Ar neseniai keitėte routerį, o gal prijungėte kokį naują įrenginį prie interneto linijos?"
+      why: "Linijoje matome kitą įrenginį nei registruota — norime suprasti, ar tai jūsų naujas."
+      simpler: "Gal per paskutines dienas namuose atsirado naujas routeris, kompiuteris ar TV priedėlis, jungtas prie interneto laido?"
+      clarify: "Norėjau patikslinti — ar nieko nekeitėte, ar tiesiog neprisimenat?"
+    cable_port:
+      label: "kabelio lizdas"
+      values:
+        wan: "interneto (WAN) lizde"
+        lan: "kitame (LAN) lizde"
+      question: "Pažiūrėkite, į kurį lizdą įkištas iš sienos ateinantis kabelis — į interneto (WAN) lizdą ar į kitą?"
+      why: "Jei kabelis ne tame lizde, linija mato ne tą įrenginį — tai dažniausia priežastis, kai niekas nekeista."
+      simpler: "Ant routerio lizdai paprastai pažymėti: vienas atskiras „Internet/WAN“, kiti — vienodi LAN. Kuriame yra laidas iš sienos?"
+      clarify: "Norėjau patikslinti — ar nerandate užrašų prie lizdų, ar negalite dabar patikrinti?"
+    solution:
+      s1: "pririšti jūsų naują įrenginį prie linijos"
+      s2: "perjungti kabelį į interneto (WAN) lizdą"
+      s3: "pririšti linijoje matomą įrenginį"
+  router_hung:
+    fail_scope:
+      label: "kur neveikia"
+      values:
+        visuose: "visuose įrenginiuose"
+        viename: "tik viename įrenginyje"
+      question: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
+      why: "Linijoje routerį matome, bet srautas nevaikšto — jei neveikia visur, greičiausiai pakibo pats routeris; jei tik viename, problema tame įrenginyje."
+      simpler: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
+      clarify: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
+    ticket_need: "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas"
+    solution:
+      s1: "perkrauti routerį iš maitinimo — pakibęs routeris po to dažniausiai atsistato; pirma klausiama, ar klientas GALI dabar prieiti"
+      s2: "patikrinti tą įrenginį — routeris veikia, problema kelyje iki įrenginio"
+
+problem:
+  internet_slow:
+    confirm: "Ar gerai suprantu — internetas veikia, bet per lėtai?"
+  tv:
+    confirm: "Ar gerai suprantu — bėda su televizija?"
+  internet_down:
+    confirm: "Ar gerai suprantu — dingo internetas?"
+  saskaitos:
+    boundary_reply: "Esu techninės pagalbos asistentas — sąskaitų ir sutarčių klausimais nepadėsiu, kreipkitės į klientų aptarnavimą. O ar su internetu ar televizija bėdų neturite?"
+  pokalbis:
+    boundary_reply: "Ačiū, kad paskambinote! Aš padedu dėl interneto ir televizijos gedimų — ar tokių bėdų turite?"
+  kita_ne_musu:
+    boundary_reply: "Čia, deja, nepadėsiu — esu interneto ir televizijos gedimų pagalba. O ryšio bėdų neturite?"
+
+faq:
+  kaina: "Skambutis ir gedimo sprendimas telefonu nieko nekainuoja. Jei prireiktų meistro vizito — kolegos prieš tai pasakys įkainius."
+  skolos_suma: "Tikslios sumos aš nematau — ją rasite savitarnoje arba pasakys kolegos iš buhalterijos. Matau tik, kad paslauga sustabdyta dėl neapmokėtos sąskaitos."
+  kiek_uztruks: "Telefonu patikrinimas trunka kelias minutes. Jei reikės meistro — kolegos susisieks ir suderins laiką, dažniausiai kitą darbo dieną."
+  meistras: "Meistrą registruoju tik jei telefonu išspręsti nepavyks — pirmiausia pabandykime kartu, dažnai pavyksta be vizito."
+  darbo_laikas: "Konsultacijos telefonu — visą parą; meistrai lanko darbo dienomis darbo valandomis."
+
+inform:
+  billing_suspended:
+    template: "Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų. Skola {suma} už {menesiai}. Paskutinis mokėjimas gautas {pask_mokejimas}. Apmokėjus, paslauga įsijungs automatiškai — nieko papildomai daryti nereikia."
+    fallback: "Patikrinau — paslauga sustabdyta dėl neapmokėtos sąskaitos. Apmokėjus sąskaitą, paslauga bus įjungta automatiškai."
+  active_outage:
+    template: "Patikrinau — jūsų rajone įvykusi tinklo avarija ({vieta}). Meistrai jau dirba, numatomas atstatymas iki {eta}. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
+    fallback: "Patikrinau — jūsų rajone įvykusi tinklo avarija, meistrai jau dirba. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
+  node_fault_unregistered:
+    template: "Patikrinau — matau gedimą tinkle iki jūsų namo, ne tik jūsų bute. Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys. Kai gedimas bus pašalintas, jus informuosime."
+  switch_unreachable:
+    template: "Patikrinau — jūsų namą aptarnaujantis tinklo įrenginys nepasiekiamas, gedimas mūsų tinkle. Jums nieko daryti nereikia — gedimą užregistravau, meistrai jį tvarkys. Kai gedimas bus pašalintas, jus informuosime."
+
+system:
+  greeting: "Labas! Čia {company_name}. Esu dirbtinio intelekto asistentas — padedu dėl interneto ir televizijos gedimų. Kuo galiu padėti?"
+  error: "Atsiprašau, įvyko techninė klaida. Pabandykite dar kartą."
+  timeout: "Atsiprašau, negaliu apdoroti užklausos. Ar galite pakartoti?"
+  max_turns: "Atsiprašau, pokalbis užtruko per ilgai. Registruoju jūsų problemą."

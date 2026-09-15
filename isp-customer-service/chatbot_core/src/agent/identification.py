@@ -29,10 +29,7 @@ _DEFAULTS: dict[str, Any] = {
     "require_apartment": True,
     "ask_caller": True,
     "extra_questions": [],
-    "questions": {},
 }
-
-_CALLER_QUESTION_DEFAULT = "O su kuo kalbu — koks jūsų vardas? Ar jūs sutartį sudaręs asmuo?"
 
 
 @lru_cache(maxsize=1)
@@ -67,105 +64,9 @@ def ask_caller() -> bool:
 
 
 def caller_question() -> str:
-    q = (_cfg().get("questions") or {}).get("caller")
-    return str(q) if q else _CALLER_QUESTION_DEFAULT
+    from .contract.locale import phrase
 
-
-# Scripted identification phrases — engine-composed replies (see the yaml note).
-_PHRASES_DEFAULTS: dict[str, str] = {
-    "ask_problem": "Klausau! Kuo galiu padėti — kokia problema?",
-    "anamnesis_question": (
-        "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, "
-        "pavyzdžiui, audros ar remonto?"
-    ),
-    "address_offer": "Gerai — patikrinsiu ryšį. Ar skambinate dėl {adresas}?",
-    "address_ask": "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?",
-    "echo_address": "Supratau — {adresas}.",
-    "check_result": "Patikrinau ryšį iki jūsų buto. {zinia}",
-    "billing_extra": "Apmokėjus sąskaitą, paslauga bus įjungta.",
-    "anything_else": "Ar dar kuo galiu padėti?",
-    "thanks": "Ačiū!",
-    "confirm_end": (
-        "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, "
-        "kad kolegos su jumis susisiektų."
-    ),
-    "goodbye": "Ačiū, kad paskambinote. Geros dienos!",
-    "ticket_intro": (
-        "Telefonu šio gedimo išspręsti nepavyks — {priezastis}. Registruoju gedimą meistrui."
-    ),
-    "ticket_phone": (
-        "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
-    ),
-    "ticket_phone_retry": (
-        "Atsiprašau, nesupratau numerio. Pasakykite jį skaitmenimis arba sakykite "
-        "„tiks šis“, jei tinka numeris, iš kurio skambinate."
-    ),
-    "ticket_hours": "Gerai. O kada patogiausia jums skambinti?",
-    "ticket_hours_retry": (
-        "Atsiprašau, nesupratau. Kada jums patogiausia sulaukti skambučio — "
-        "pavyzdžiui, „bet kada“ arba „po 17 valandos“?"
-    ),
-    "ticket_done": (
-        "Užregistravau gedimą. Susisieksime numeriu {nr}, skambinti galima {val}. "
-        "Ar dar kuo galiu padėti?"
-    ),
-    "evidence_conflict": (
-        "Norėčiau patikslinti dėl „{tema}“: pirmiau supratau „{a}“, o dabar — "
-        "„{b}“. Kaip yra iš tiesų?"
-    ),
-    "back_to_issue": "Grįžkime prie jūsų gedimo. {inkaras}",
-    "solve_or_ticket": (
-        "Grįžkime prie gedimo — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
-    ),
-    "checking_note": "Tuoj patikrinsiu ryšį iki jūsų buto.",
-    "findings_announce": ("Ką patikrinome: {faktai}. Panašu — {priezastis}. Galime: {sprendimai}."),
-    "negation_clarify": ("Norėjau patikslinti — išgirdau „ne“. {klausimas}"),
-    "done_report_clarify": ("Supratau — patikrinote. {klausimas}"),
-    "facts_recap": ("Pasitikslinu, ar teisingai supratau: {faktai}. Ar taip?"),
-    "refute_confirm": (
-        "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
-    ),
-    "reask_reason": ("Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"),
-    "wait_ack": ("Gerai, lauksiu — pasakykite, kai būsite pasiruošę."),
-    "wait_ack_2": "Gerai, neskubėkite.",
-    "ticket_phone_fixed": "Užsirašiau — skambinsime numeriu {nr}.",
-    "backchannel_1": "Mhm.",
-    "backchannel_2": "Aha, klausau.",
-    "interrupt_ack_1": "Aha, girdžiu.",
-    "interrupt_ack_2": "Taip, klausau.",
-    "anamnesis_last_used": ("O kada paskutinį kartą internetas tikrai veikė?"),
-    "checkin": ("Kaip sekasi — ar pavyksta?"),
-    "no_problem_goodbye": (
-        "Supratau. Čia interneto tiekėjo pagalba — jei kils ryšio ar paslaugos "
-        "problema, drąsiai skambinkite. Geros dienos!"
-    ),
-    "bridge_bound": (
-        "Patikrinau — matau jūsų kompiuterį linijoje. Pririšau, patikrinkite — "
-        "internetas turėtų atsirasti."
-    ),
-    "repeat_ack": ("Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "),
-    "escalate_clarify": (
-        "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
-    ),
-    "ticket_cancel_confirm": (
-        "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau "
-        "registruoti meistrą. Registruoti, ar tikrai nereikia?"
-    ),
-    "ticket_intro_bridge": (
-        "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, "
-        "registruoju meistrą dėl naujo routerio."
-    ),
-}
-
-
-def phrase(key: str, **fmt: str) -> str:
-    """A scripted identification phrase (file first, code default), with the
-    {placeholders} filled. Unknown key returns '' (fail-soft)."""
-    raw = (_cfg().get("phrases") or {}).get(key) or _PHRASES_DEFAULTS.get(key, "")
-    try:
-        return str(raw).format(**fmt)
-    except Exception:  # a bad placeholder edit must not break the call
-        return str(raw)
+    return phrase("identification.questions.caller")
 
 
 _RELATION_MARKS: dict[str, tuple[str, ...]] = {
@@ -280,10 +181,10 @@ def extra_questions_guidance() -> str | None:
     """A guidance line for any configured extra verification questions, injected into the
     identification facts so the agent asks + confirms them before proceeding. None when
     none are configured (today's default = address only)."""
-    cfg = _cfg()
-    wanted = cfg.get("extra_questions") or []
-    phrasings = cfg.get("questions") or {}
-    asks = [str(phrasings.get(q, q)) for q in wanted if q]
+    from .contract.locale import phrase
+
+    wanted = _cfg().get("extra_questions") or []
+    asks = [phrase(f"identification.questions.{q}") for q in wanted if q]
     if not asks:
         return None
     joined = " ".join(f'"{a}"' for a in asks)

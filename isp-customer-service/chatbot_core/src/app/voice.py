@@ -259,10 +259,14 @@ def run_voice_turn_stream(
         if got_audio.is_set() or ms.cancel.is_set():
             return
         try:
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
             ms.ack_count = getattr(ms, "ack_count", 0) + 1
-            text = phrase("interrupt_ack_1" if ms.ack_count % 2 else "interrupt_ack_2")
+            text = phrase(
+                "identification.interrupt_ack_1"
+                if ms.ack_count % 2
+                else "identification.interrupt_ack_2"
+            )
             fa = synthesize_text(text) if text else b""
             if fa and not got_audio.is_set():
                 pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
@@ -313,9 +317,9 @@ def run_voice_turn_stream(
         logger.exception("voice turn failed — speaking fallback")
         try:
             ms.session.tracer.emit("error", where="voice_turn", detail=str(e)[:300])
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
-            fallback = phrase("turn_error")
+            fallback = phrase("identification.turn_error")
             fb_audio = synthesize_text(fallback) if fallback else b""
             if fb_audio:
                 pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)

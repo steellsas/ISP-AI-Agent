@@ -468,8 +468,8 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
          conversation that is moving forward."""
     import os as _os
 
+    from .contract.locale import phrase
     from .faults import problem_atsakymas, problem_patvirtinimas, problem_politika
-    from .identification import phrase
     from .resolution import DETECTORS, is_real_question
 
     # 1) the caller answers last turn's "Ar gerai suprantu — …?"
@@ -488,7 +488,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
         state.intake.boundary_problem = None
         state.intake.ask_problem_count = state.intake.ask_problem_count + 1
         rt.tracer.emit("decision", intent="problem_gate", action="boundary", value=bp)
-        return problem_atsakymas(bp) or phrase("ask_problem")
+        return problem_atsakymas(bp) or phrase("identification.ask_problem")
     p_asks = state.intake.ask_problem_count
     state.intake.ask_problem_count = p_asks + 1
     asking = "?" in user_input or is_real_question(user_input)
@@ -503,7 +503,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
         s.closing.case_closed = True
         s.closing.closed_reason = "declined"
         rt.tracer.emit("decision", intent="problem_gate", action="close")
-        return phrase("no_problem_goodbye")
+        return phrase("identification.no_problem_goodbye")
     # 3) L2 — context classification against the file catalog. The LLM reads
     # the ACCUMULATED tail, not just this turn (2026-09-02, Andrius: „kai
     # informacija pasipildo, ateina supratimas" — VAD/STT splits a story into
@@ -534,20 +534,20 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
                     if q:
                         return q
             elif conf >= 0.5:  # nelieciam / pokalbis from context
-                return problem_atsakymas(label) or phrase("ask_problem")
+                return problem_atsakymas(label) or phrase("identification.ask_problem")
     # 4) the pre-cascade ladder
     if p_asks < 2 and not asking:
-        return phrase("ask_problem")
+        return phrase("identification.ask_problem")
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
         state.turn.directives.ident = {
             "kind": "problem_gate",
             "adresas": None,
-            "fallback": phrase("ask_problem"),
+            "fallback": phrase("identification.ask_problem"),
         }
         return None  # the narrator words it (isolated directive turn)
     if asking:
         return None  # scripted mode: a question goes to the LLM
-    return phrase("ask_problem")
+    return phrase("identification.ask_problem")
 
 
 def _looks_like_address(text: str | None) -> bool:
@@ -712,7 +712,7 @@ def _lookup_by_code(state: Any, rt: Any, s: Any, code: str):
     # move on. The code path is always scripted (never the narrator's whim);
     # the "ar skambinate dėl" core stays verbatim — the confirm guard keys
     # off it.
-    from .identification import phrase as _phrase
+    from .contract.locale import phrase as _phrase
 
     c = s.identity.phone_candidate
     if c.get("street"):
@@ -724,7 +724,9 @@ def _lookup_by_code(state: Any, rt: Any, s: Any, code: str):
         from .dialog_registry import register as _q_register
 
         _q_register(state, rt, "ident", "address_offer", adresas=adresas)
-        return _phrase("account_code_echo_offer", kodas=_speak_code(code), adresas=adresas)
+        return _phrase(
+            "identification.account_code_echo_offer", kodas=_speak_code(code), adresas=adresas
+        )
     # The address is OFFERED aloud for confirmation, never assumed.
     return _address_move(state, rt, s)
 
@@ -749,7 +751,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     Returns (handled, reply)."""
     import os as _os
 
-    from .identification import phrase
+    from .contract.locale import phrase
 
     if not user_input:
         return False, None
@@ -787,14 +789,16 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             rt.tracer.emit(
                 "decision", intent="street_spell", action="matched", value=cand, prefix=prefix
             )
-            return True, phrase("spell_result", raides=" ".join(prefix.upper()), gatve=cand)
+            return True, phrase(
+                "identification.spell_result", raides=" ".join(prefix.upper()), gatve=cand
+            )
         rt.tracer.emit("decision", intent="street_spell", action="miss", prefix=prefix)
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
         from .dialog_registry import register as _q_register
 
         _q_register(state, rt, "ident", "account_code")
-        return True, phrase("account_code_ask")
+        return True, phrase("identification.account_code_ask")
     # 0) Kodas girdimas VISADA (ne tik „režime") — klientas gali jį pasakyti
     # bet kada, taip pat po perspėjimo frazės.
     code = _extract_account_code(user_input)
@@ -808,7 +812,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             from .dialog_registry import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
-            return True, phrase("account_code_miss", kodas=_speak_code(code))
+            return True, phrase("identification.account_code_miss", kodas=_speak_code(code))
     if state.identity.account_code_mode:
         low = user_input.lower()
         explicit_no = any(
@@ -827,7 +831,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             s.closing.case_closed = True
             s.closing.closed_reason = "declined"
             rt.tracer.emit("decision", intent="account_code", action="not_client_close")
-            return True, phrase("not_client_goodbye")
+            return True, phrase("identification.not_client_goodbye")
         # A-banga P3c (gyva #3: „A. B." → LLM haliucinavo „nerastas"): klientas
         # KALBA apie kodą, bet skaitmenų neperskaitėm — scripted pagalba, ne LLM.
         if "kod" in low:
@@ -835,7 +839,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
             _q_register(state, rt, "ident", "account_code")
             rt.tracer.emit("decision", intent="account_code", action="retry_help")
-            return True, phrase("account_code_retry")
+            return True, phrase("identification.account_code_retry")
         # Ne kodas, o TURINYS (adresas, pavardė, pasakojimas) — praleidžiam į
         # normalią eigą; po poros tokių turn'ų kodo režimas tyliai užgęsta.
         # NE return: tušti turn'ai toliau artina perspėjimo/uždarymo ribą
@@ -860,7 +864,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "street_not_exists")
         rt.tracer.emit("decision", intent="street_not_exists", action="say")
-        return True, phrase("street_not_exists")
+        return True, phrase("identification.street_not_exists")
     # 1) Miestas ne aptarnavimo zonoje — IŠ KARTO, vieną kartą. SVARBU:
     # „Vilniaus GATVĖ" yra Šiaulių gatvė, ne miestas — miesto žodis, po kurio
     # eina gatvės indikatorius, yra GATVĖS pavadinimas (gyvas testų lūžis).
@@ -883,7 +887,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "city_not_served")
         rt.tracer.emit("decision", intent="account_code", action="city_not_served")
-        return True, phrase("city_not_served")
+        return True, phrase("identification.city_not_served")
     # 1b) LOOP'as (Andrius: „kai loopas prasideda — galvojama apie kitus
     # būdus"): trys TIKROS gatvės/namo paieškos nesėkmės (tikslinimai —
     # butas/pavardė/vietovė — nesiskaito) → PIRMA paraidžiui, tada kodas.
@@ -895,7 +899,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "account_code")
         rt.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
-        return True, phrase("account_code_ask")
+        return True, phrase("identification.account_code_ask")
     # 2) Skaitikliai. TIKSLINIMO fazė (pavardės klausimas, diagnozės nota,
     # vietovės pasiūlymas) skaitiklių NEliečia.
     last_q = (last_agent_question(state) or "").lower()
@@ -946,7 +950,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
             _q_register(state, rt, "ident", "street_not_exists")
             rt.tracer.emit("decision", intent="street_not_exists", action="say")
-            return True, phrase("street_not_exists")
+            return True, phrase("identification.street_not_exists")
     if _has_address_content(user_input) or alpha_attempt:
         state.identity.address_empty_turns = 0
         # Turinys yra, bet registras jo VISAI neatpažįsta (nei sloto, nei
@@ -963,7 +967,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
                 rt.tracer.emit(
                     "decision", intent="account_code", action="ask", reason="unrecognized"
                 )
-                return True, phrase("account_code_ask")
+                return True, phrase("identification.account_code_ask")
         else:
             state.identity.address_unrecognized_turns = 0
         return False, None
@@ -980,12 +984,12 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "address_need")
         rt.tracer.emit("decision", intent="account_code", action="warn")
-        return True, phrase("address_need_warning")
+        return True, phrase("identification.address_need_warning")
     if n >= limit:
         s.closing.case_closed = True
         s.closing.closed_reason = "declined"
         rt.tracer.emit("decision", intent="account_code", action="no_location_close")
-        return True, phrase("no_location_goodbye")
+        return True, phrase("identification.no_location_goodbye")
     return False, None
 
 
@@ -1007,12 +1011,13 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     # (homework agreed) — the goodbye is scripted, warm and deterministic.
     if state.closing.callback_goodbye_due:
         state.closing.callback_goodbye_due = False
-        from .identification import phrase as _cb_phrase
+        from .contract.locale import phrase as _cb_phrase
 
-        return _cb_phrase("callback_goodbye")
+        return _cb_phrase("identification.callback_goodbye")
     if s.closing.case_closed:
         return None
-    from .identification import caller_question, phrase
+    from .contract.locale import phrase
+    from .identification import caller_question
     from .resolution import is_real_question
 
     # Adreso KEITIMO patvirtinimas (etalonas №3, Andrius 2026-09-03): kliento
@@ -1029,7 +1034,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
 
         _q_register(state, rt, "ident", "holder_clarify")
         rt.tracer.emit("decision", intent="holder_name", action="clarify_ask")
-        return phrase("holder_mismatch_clarify")
+        return phrase("identification.holder_mismatch_clarify")
     # A-2b (Andrius 2026-09-07, live: "negaliu pasakyti, dėl kokio adreso"):
     # the caller ASKS which address the call is about — the CONFIRMED address
     # is not a secret; on the contrary, this is how the caller catches our
@@ -1044,7 +1049,9 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         if s.identity.customer_id and s.identity.customer_address:
             state.identity.reopen_reask_due = False  # the info answer replaces the re-ask
             rt.tracer.emit("decision", intent="address_info", action="disclose")
-            return phrase("current_address_info", adresas=s.identity.customer_address)
+            return phrase(
+                "identification.current_address_info", adresas=s.identity.customer_address
+            )
         if not s.identity.customer_id:
             # A-2R-b follow-up (live 2026-09-07): the question arrived MID
             # identification (after reopen) — say WHAT we are clarifying:
@@ -1054,9 +1061,9 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             if p.street.value:
                 adr = f"{p.street.value} {p.house.value or ''}".strip()
                 rt.tracer.emit("decision", intent="address_info", action="progress")
-                return phrase("ident_address_heard", adresas=adr)
+                return phrase("identification.ident_address_heard", adresas=adr)
             rt.tracer.emit("decision", intent="address_info", action="none_yet")
-            return phrase("ident_address_none")
+            return phrase("identification.ident_address_none")
     # This layer ASKS the address-change question; the ANSWER is read by
     # pre_turn_guards (the deterministic turn head) so the solver/walker
     # cannot consume it (live A-2 defect). Only the ask/re-ask side is here.
@@ -1070,12 +1077,14 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             state.identity.reopen_confirm_asks = 1
             _q_register(state, rt, "safety", "reopen_confirm", adresas=adresas)
             rt.tracer.emit("decision", intent="reopen_confirm", action="ask")
-            return phrase("reopen_confirm", adresas=adresas)
+            return phrase("identification.reopen_confirm", adresas=adresas)
         if state.identity.reopen_reask_due:
             state.identity.reopen_reask_due = False
             state.identity.reopen_confirm_asks = state.identity.reopen_confirm_asks + 1
             _q_register(state, rt, "safety", "reopen_confirm", adresas=adresas)
-            return phrase("repeat_ack") + phrase("reopen_confirm", adresas=adresas)
+            return phrase("identification.repeat_ack") + phrase(
+                "identification.reopen_confirm", adresas=adresas
+            )
         return None  # the guards already read the answer; the narrator continues
 
     # A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" ignoruotas):
@@ -1096,7 +1105,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             s.closing.case_closed = True
             s.closing.closed_reason = "callback"
             rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
-            return phrase("callback_goodbye")
+            return phrase("identification.callback_goodbye")
         # N2 (live 2026-09-09: "Negaliu, nes esu nenuose" got RESUME and the
         # walker pushed another check): the caller was just asked "ar negalite
         # dabar patikrinti?" — a rambling answer about being away IS a yes.
@@ -1109,7 +1118,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             state.dialog.cannot_now_state = "offered"
             _q_register(state, rt, "safety", "cannot_now_offer")
             rt.tracer.emit("decision", intent="cannot_now", action="offer")
-            return phrase("cannot_now_offer")
+            return phrase("identification.cannot_now_offer")
         rt.tracer.emit("decision", intent="cannot_now", action="resume")
         return None  # paaiškino kitaip — tęsiam kelią (turinys jau ingest'e)
     if cn_state == "offered" and user_input:
@@ -1126,7 +1135,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             s.closing.case_closed = True
             s.closing.closed_reason = "callback"
             rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
-            return phrase("callback_goodbye")
+            return phrase("identification.callback_goodbye")
         from .resolution import DETECTORS as _DET_CN2
         from .resolution import detect_refuse_or_ticket
 
@@ -1165,7 +1174,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             state.dialog.cannot_now_state = "asked"
             _q_register(state, rt, "safety", "cannot_now_clarify")
             rt.tracer.emit("decision", intent="cannot_now", action="clarify_ask")
-            return phrase("cannot_now_clarify")
+            return phrase("identification.cannot_now_clarify")
 
     # Ticket-confirmation dialogue: contacts before every registration. An
     # off-script question falls to the ticket node's LLM (facts carry the
@@ -1198,7 +1207,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         s.closing.case_closed = True
         s.closing.closed_reason = "declined"
         s.closing.is_complete = True
-        return "Gerai — gedimo neregistruoju. " + phrase("goodbye")
+        return "Gerai — gedimo neregistruoju. " + phrase("identification.goodbye")
     # Side-topic FRAME (3rd consecutive deviation): the LLM answered twice
     # and the caller keeps drifting — the return is scripted now. With a
     # CONFIRMED hypothesis the frame is the solve-together-or-technician
@@ -1209,8 +1218,8 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
 
         spec = spec_for((s.resolution.procedure or {}).get("verdict"))
         if spec is not None and hypothesis_status(s.diagnosis.evidence, spec) == "confirmed":
-            return phrase("solve_or_ticket")
-        return phrase("back_to_issue", inkaras=anchor_text(state, rt))
+            return phrase("identification.solve_or_ticket")
+        return phrase("identification.back_to_issue", inkaras=anchor_text(state, rt))
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
     if state.diagnosis.evidence_conflict:
@@ -1221,20 +1230,20 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         state.diagnosis.evidence_conflict = None
         state.diagnosis.evidence_conflict_asked_key = key
         return phrase(
-            "evidence_conflict",
+            "identification.evidence_conflict",
             tema=LABELS.get(key, key),
             a=VALUE_LT.get(old, old),
             b=VALUE_LT.get(new, new),
         )
     # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
     if state.dialog.end_confirm_pending:
-        return phrase("confirm_end")
+        return phrase("identification.confirm_end")
     # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
     # the solve-or-register choice instead of crossing the one-way door
     # (2026-08-11). The next turn routes normally: a repeated no escalates.
     if state.resolution.escalate_clarify_due:
         state.resolution.escalate_clarify_due = False
-        return phrase("escalate_clarify")
+        return phrase("identification.escalate_clarify")
     # Bare "ne" while the evidence drive's question is open, on the WALKER
     # path (farewell/refuse-shaped turns land here; the drive words its own
     # clarify): say what the "ne" could mean instead of acting on it.
@@ -1271,7 +1280,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             from .resolution import is_greeting
 
             if is_greeting(user_input):
-                return phrase("ask_problem")
+                return phrase("identification.ask_problem")
             # Live 2026-08-21: a garbled opener ("Atsikai, daro") fell to the
             # LLM, which offered the address before any problem was stated.
             # 2026-09-02: the gate grew the L2 classification ladder — see
@@ -1396,7 +1405,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
                 told=state.diagnosis.news_delivered,
             )
         rt.tracer.emit("decision", intent="wrap_up", action="close", to=s.closing.closed_reason)
-        return phrase("goodbye")
+        return phrase("identification.goodbye")
     if not state.identity.result_pending:
         return None
     if not s.identity.caller_name:
@@ -1406,8 +1415,8 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         # (live 2026-08-07: "nepasako, kad patikrins").
         parts = []
         if state.identity.just_identified and s.identity.customer_address:
-            parts.append(phrase("echo_address", adresas=s.identity.customer_address))
-            parts.append(phrase("checking_note"))
+            parts.append(phrase("identification.echo_address", adresas=s.identity.customer_address))
+            parts.append(phrase("identification.checking_note"))
         state.identity.just_identified = False
         from .dialog_registry import register as _q_register
 
@@ -1439,18 +1448,23 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         state.identity.result_pending = False
         state.diagnosis.news_delivered = True
         rt.tracer.emit("decision", intent="inform", action="template", reason=reason)
-        return " ".join([phrase("thanks"), inf, phrase("anything_else")])
+        return " ".join(
+            [phrase("identification.thanks"), inf, phrase("identification.anything_else")]
+        )
     zinia = DIAGNOSIS_LT.get(reason, reason or "")
     if not zinia:
         return None
     zinia = zinia[0].upper() + zinia[1:]  # sentence-cased after "…iki jūsų buto."
-    bits = [phrase("thanks"), phrase("check_result", zinia=zinia + ".")]
+    bits = [
+        phrase("identification.thanks"),
+        phrase("identification.check_result", zinia=zinia + "."),
+    ]
     if reason == "billing_suspended":
-        bits.append(phrase("billing_extra"))
+        bits.append(phrase("identification.billing_extra"))
     # Outage news carries the ETA when the preflight knows it.
     if reason == "active_outage" and (s.identity.preflight_outage or {}).get("eta"):
         bits.append(f"Numatomas atstatymas iki {s.identity.preflight_outage['eta']}.")
-    bits.append(phrase("anything_else"))
+    bits.append(phrase("identification.anything_else"))
     state.identity.result_pending = False
     state.diagnosis.news_delivered = True
     return " ".join(b for b in bits if b)
@@ -1464,17 +1478,18 @@ def _address_move(state, rt, s):
     deterministic confirm guard keys off it. Off-switch keeps the scripts."""
     import os as _os
 
+    from .contract.locale import phrase
     from .dialog_registry import register as _q_register
-    from .identification import offer_phone_address, phrase
+    from .identification import offer_phone_address
 
     c = s.identity.phone_candidate
     if offer_phone_address() and c and c.get("street") and not s.identity.preflight_outage:
         flat = f", butas {c['apartment']}" if c.get("apartment") else ""
         adresas = f"{c['street']} {c.get('house')}{flat}"
-        kind, fallback = "address_offer", phrase("address_offer", adresas=adresas)
+        kind, fallback = "address_offer", phrase("identification.address_offer", adresas=adresas)
     else:
         adresas = None
-        kind, fallback = "address_ask", phrase("address_ask")
+        kind, fallback = "address_ask", phrase("identification.address_ask")
     _q_register(state, rt, "ident", kind, adresas=adresas)
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
         state.turn.directives.ident = {

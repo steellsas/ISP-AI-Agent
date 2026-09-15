@@ -19,8 +19,8 @@ evidence:
   client: {}
   patvirtinta_kai: []
   paneigta_kai: []
-reikalinga: "routeris gyvas, bet signalas iš linijos neateina (interneto lemputė nedega, portas neaktyvus ir po perkišimo) — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
-isvada: "signalas iki jūsų routerio neateina — greičiausiai pažeistas kabelis trasoje"
+reikalinga: "pack.link_down_local.ticket_need"
+isvada: "pack.link_down_local.conclusion"
 steps:
 - id: ll_ability
   kind: confirm

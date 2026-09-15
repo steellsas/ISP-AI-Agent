@@ -220,10 +220,10 @@ class TestCheckin:
         assert session.awaiting_caller() is False
 
     def test_checkin_phrase_and_confusion_markers(self):
-        from agent.identification import phrase
+        from agent.contract.locale import phrase
         from agent.resolution import INTENT_CONFUSED, detect_turn_intent
 
-        assert "sekasi" in phrase("checkin")
+        assert "sekasi" in phrase("identification.checkin")
         # G1: a struggling caller gets the explain-simpler path…
         assert detect_turn_intent("Man neišeina to padaryti") == INTENT_CONFUSED
         assert detect_turn_intent("Nežinau kaip ten žiūrėti") == INTENT_CONFUSED

@@ -26,6 +26,8 @@ import logging
 import os
 from typing import Any
 
+from .contract.locale import maybe_phrase
+
 logger = logging.getLogger(__name__)
 
 
@@ -140,8 +142,8 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
                 "evidence",
                 {
                     "reikia": str(item2["reikia"]),
-                    "kodel": str(item2.get("kodel") or ""),
-                    "klausimas": str(item2.get("klausimas") or ""),
+                    "kodel": str(maybe_phrase(item2.get("kodel")) or ""),
+                    "klausimas": str(maybe_phrase(item2.get("klausimas")) or ""),
                 },
             ),
         }

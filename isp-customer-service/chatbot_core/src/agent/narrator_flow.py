@@ -305,10 +305,11 @@ def state_facts_block(state, rt) -> str | None:
     # (or an honest "not my area"), then the RETURN ANCHOR — the engine's
     # exact pending question. Leads the block; nothing else competes.
     if state.turn.side_topic_active:
+        from .contract.locale import phrase as _phrase
         from .faq import match as faq_match
 
         hits = faq_match(s.dialog.last_heard)
-        zinios = " ".join(f"[{e.get('tema')}] {e['atsakymas']}" for e in hits) or (
+        zinios = " ".join(f"[{e.get('tema')}] {_phrase(e['atsakymas'])}" for e in hits) or (
             "(šiai temai ŽINOMO ATSAKYMO NĖRA — mandagiai pasakyk, kad tai ne tavo sritis)"
         )
         # The topic is DETERMINISTIC when the FAQ matched — the model once
@@ -331,10 +332,12 @@ def state_facts_block(state, rt) -> str | None:
     # answering the stage question — give the LLM the answers it may need and
     # the EXACT question to re-ask. Leads the block; nothing else competes.
     if state.ticket.stage in ("phone", "hours"):
-        from .identification import phrase
+        from .contract.locale import phrase
 
         pending = (
-            phrase("ticket_phone") if state.ticket.stage == "phone" else phrase("ticket_hours")
+            phrase("identification.ticket_phone")
+            if state.ticket.stage == "phone"
+            else phrase("identification.ticket_hours")
         )
         facts.append(
             "- TIKETO DIALOGAS: registruojame gedimą (priežastis: "

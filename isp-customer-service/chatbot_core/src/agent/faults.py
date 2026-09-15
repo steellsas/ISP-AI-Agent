@@ -259,14 +259,16 @@ def problem_politika(problem: str | None) -> str:
 
 def problem_atsakymas(problem: str | None) -> str | None:
     """The scripted boundary reply for a nelieciam/pokalbis type."""
-    v = problem_entry(problem).get("atsakymas")
-    return str(v) if v else None
+    from .contract.locale import maybe_phrase
+
+    return maybe_phrase(problem_entry(problem).get("atsakymas"))
 
 
 def problem_patvirtinimas(problem: str | None) -> str | None:
     """The explicit-confirmation question for a medium-confidence LLM guess."""
-    v = problem_entry(problem).get("patvirtinimas")
-    return str(v) if v else None
+    from .contract.locale import maybe_phrase
+
+    return maybe_phrase(problem_entry(problem).get("patvirtinimas"))
 
 
 def problem_catalog_options() -> dict[str, str]:

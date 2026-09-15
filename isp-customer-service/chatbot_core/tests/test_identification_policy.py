@@ -30,12 +30,10 @@ class TestKnobs:
         _reload_with(
             tmp_path,
             monkeypatch,
-            "identification:\n"
-            "  extra_questions: [name]\n"
-            '  questions: {name: "Kokiu vardu registruota sutartis?"}\n',
+            "identification:\n  extra_questions: [name]\n",
         )
         g = ident.extra_questions_guidance()
-        assert g and "Kokiu vardu registruota sutartis?" in g
+        assert g and "O kaip į jus kreiptis — koks jūsų vardas?" in g
         ident.reload()  # restore shipped file for other tests
 
     def test_offer_phone_address_knob_off(self, tmp_path, monkeypatch):

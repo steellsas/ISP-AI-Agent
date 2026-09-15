@@ -79,7 +79,7 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
     # closing LLM re-asked the call-back hours after the ticket was done).
     # The LLM speaks only for a real question, or ONCE to ask back about
     # secondary problems the caller mentioned mid-call.
-    from ...identification import phrase
+    from ...contract.locale import phrase
     from ...resolution import is_real_question
 
     if s.ticket.ticket_id and not is_real_question(user_input):
@@ -100,13 +100,13 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
                 intent="ticket_amend",
                 action="phone_noted" if noted else "note_failed",
             )
-            reply = phrase("ticket_phone_fixed", nr=fmt_phone(nr))
+            reply = phrase("identification.ticket_phone_fixed", nr=fmt_phone(nr))
             speak_scripted(state, rt, CLOSING, user_input, reply)
             return reply
         if s.intake.secondary_problems and not state.closing.secondary_problems_asked:
             state.closing.secondary_problems_asked = True  # the facts directive carries the list
         else:
-            reply = phrase("goodbye")
+            reply = phrase("identification.goodbye")
             speak_scripted(state, rt, CLOSING, user_input, reply)
             return reply
     # Closing wave block 4 (live 2026-09-08: three near-identical
@@ -115,7 +115,7 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
     # personalised close — every trailing non-question turn gets the
     # short scripted goodbye instead of a fresh re-explanation.
     if not is_real_question(user_input) and (s.closing.is_complete or s.closing.closing_turns >= 1):
-        reply = phrase("goodbye")
+        reply = phrase("identification.goodbye")
         speak_scripted(state, rt, CLOSING, user_input, reply)
         return reply
     reply = narrate(state, rt, user_input, CLOSING_TOOLS, CLOSING_NODE_PROMPT, CLOSING)

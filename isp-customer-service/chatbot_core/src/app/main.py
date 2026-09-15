@@ -404,11 +404,11 @@ async def ws_call(ws: WebSocket, session_id: str):
         if not callable(awaiting) or not awaiting():
             return
         try:
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
             from . import voice as voice_mod
 
-            text = phrase("checkin")
+            text = phrase("identification.checkin")
             audio = await asyncio.to_thread(voice_mod.synthesize_text, text)
             if audio:
                 ms.session.tracer.emit("checkin", text=text)
@@ -539,12 +539,16 @@ async def ws_call(ws: WebSocket, session_id: str):
         try:
             import base64
 
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
             from . import voice as voice_mod
 
             ms.bc_count = getattr(ms, "bc_count", 0) + 1
-            text = phrase("backchannel_1" if ms.bc_count % 2 else "backchannel_2")
+            text = phrase(
+                "identification.backchannel_1"
+                if ms.bc_count % 2
+                else "identification.backchannel_2"
+            )
             if not text:
                 return
             audio = await asyncio.to_thread(voice_mod.synthesize_text, text)
