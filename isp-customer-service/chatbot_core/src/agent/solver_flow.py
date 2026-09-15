@@ -234,7 +234,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     r = state.resolution.procedure
     if not r or state.closing.case_closed:
         return None
-    # R4b: the PACK declares its driver (meta.vairuotojas) — the solver takes a
+    # R4b: the PACK declares its driver (meta.driver) — the solver takes a
     # fault when its file says so; the legacy frozenset stays the fallback for
     # packs that declare nothing (today: no_mac_observed).
     from .faults import driver
@@ -242,7 +242,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     drv = driver(r.get("verdict"))
     if drv == "walker":
         return None
-    if drv != "solveris" and r.get("verdict") not in SOLVER_DRIVE_VERDICTS:
+    if drv != "solver" and r.get("verdict") not in SOLVER_DRIVE_VERDICTS:
         return None
     # Engine mechanics first: while the ladder / clarify flow owns the turn, the
     # thinker waits (scripted replies and guards are deterministic territory).
@@ -339,7 +339,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     if (
         _spec is not None
         and hypothesis_status(state.diagnosis.evidence, _spec) == "confirmed"
-        and solution_for(state.diagnosis.evidence, r.get("verdict")) in ("walker", "bridge")
+        and solution_for(state.diagnosis.evidence, r.get("verdict")) in ("procedure", "bridge")
         and r.get("solution_synced")
     ):
         return None  # the walker takes this and every following turn
@@ -371,7 +371,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
         # Ledger-position sync (round 4, 2026-08-11): a mid-bridge bailout
         # resumed at a long-stale dr_intro and improvised into a ticket one
         # step from a working bridge. With a CONFIRMED hypothesis the walker
-        # lands on the solution step the fault file declares (`zingsnis`).
+        # lands on the solution step the fault file declares (`step_role`).
         from .evidence import hypothesis_status, solution_step, spec_for
         from .resolution import get_strategy
 
@@ -711,13 +711,13 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
             state.diagnosis.evidence_ask_counts.get("lan_active", 0) + 1
         )
         rt.tracer.emit("drive_decision", action="bridge_fail_lan_check", accepted=True)
-        return str(maybe_phrase(item.get("klausimas")) or phrase("solver.bridge_lan_check"))
+        return str(maybe_phrase(item.get("question_key")) or phrase("solver.bridge_lan_check"))
     # Stage 2+: LAN answered (or unreadable) and the line is still empty —
     # the technician takes it from here; the attempt goes on the ticket.
     texts = fault_bridge_fail(verdict)
     lan = (state.diagnosis.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
     state.ticket.bridge_fail_note = (
-        texts.get("prierasas") or template("ticket.details.bridge_failed")
+        texts.get("ticket_note") or template("ticket.details.bridge_failed")
     ).format(lan=phrase_or(f"evidence.value.{lan}", lan))
     rt.tracer.emit(
         "drive_decision",
@@ -725,7 +725,7 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
         accepted=True,
         reason=f"{phrase('evidence.label.lan_active')}: {lan}",
     )
-    pastaba = texts.get("pastaba") or phrase("solver.bridge_failed_notice")
+    pastaba = texts.get("notice") or phrase("solver.bridge_failed_notice")
     return pastaba + " " + drive_escalate(state, rt, None)
 
 

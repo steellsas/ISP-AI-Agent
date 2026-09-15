@@ -23,7 +23,7 @@ def test_all_knowledge_files_validate():
         "link_down_local",
         "crc_errors",
     }
-    assert set(k.modules) == {"patikrinti_ar_atsirado", "priristi_mac"}
+    assert set(k.modules) == {"verify_restored", "bind_mac"}
 
 
 @pytest.fixture
@@ -62,9 +62,9 @@ def test_unknown_goto_target(knowledge):
 
 def test_unknown_key_is_rejected(knowledge):
     root, edit = knowledge
-    edit(PACK, lambda d: d["evidence"]["client"]["fail_scope"].update(klausimass="?"))
+    edit(PACK, lambda d: d["evidence"]["client"]["fail_scope"].update(question_keyy="?"))
     (err,) = _errors(root)
-    assert err.startswith(f"{PACK}: evidence.client.fail_scope.klausimass:")
+    assert err.startswith(f"{PACK}: evidence.client.fail_scope.question_keyy:")
 
 
 def test_unquoted_yaml_on_key_is_caught(knowledge):
@@ -83,7 +83,7 @@ def test_unknown_module_detector_and_section(knowledge):
 
     def broken(d):
         _step(d, "rh_check").update(detector="telepathy", rag_section=99)
-        d["steps"].append({"use": "no_such_module", "kaip": "x"})
+        d["steps"].append({"use": "no_such_module", "as": "x"})
 
     edit(PACK, broken)
     errors = _errors(root)
@@ -102,9 +102,9 @@ def test_answers_must_be_routing_keys(knowledge):
 
 def test_conditions_name_declared_evidence(knowledge):
     root, edit = knowledge
-    edit(PACK, lambda d: d["sprendimai"][0].update(jei=["fail_scop=visuose"]))
+    edit(PACK, lambda d: d["solutions"][0].update(when=["fail_scop=visuose"]))
     assert _errors(root) == [
-        f"{PACK}: sprendimai.0.jei: condition 'fail_scop=visuose' names an undeclared evidence key"
+        f"{PACK}: solutions.0.when: condition 'fail_scop=visuose' names an undeclared evidence key"
     ]
 
 
@@ -114,20 +114,22 @@ def test_module_exits_must_be_routed(knowledge):
     edit(
         pack,
         lambda d: d["steps"].insert(
-            0, {"use": "patikrinti_ar_atsirado", "kaip": "x", "on": {"pavyko": "resolve"}}
+            0, {"use": "verify_restored", "as": "x", "on": {"success": "resolve"}}
         ),
     )
-    assert _errors(root) == [f"{pack}: steps.0 (x): module exits ['nepavyko'] are not routed"]
+    assert _errors(root) == [f"{pack}: steps.0 (x): module exits ['failure'] are not routed"]
 
 
 def test_missing_phrase_key_is_reported(knowledge):
     root, edit = knowledge
     edit(
         PACK,
-        lambda d: d["evidence"]["client"]["fail_scope"].update(klausimas="pack.router_hung.nope"),
+        lambda d: d["evidence"]["client"]["fail_scope"].update(
+            question_key="pack.router_hung.nope"
+        ),
     )
     assert _errors(root) == [
-        "pack router_hung: evidence.client.fail_scope.klausimas: "
+        "pack router_hung: evidence.client.fail_scope.question_key: "
         "phrase 'pack.router_hung.nope' is missing in locale 'lt'"
     ]
 

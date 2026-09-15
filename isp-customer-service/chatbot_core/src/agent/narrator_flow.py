@@ -1090,7 +1090,7 @@ def state_facts_block(state, rt) -> str | None:
     # words (never the 'label: value; label: value' template dump).
     fd = state.turn.directives.findings
     if fd:
-        # Ticket-first faults script their own offer (`pasiulymas` in the
+        # Ticket-first faults script their own offer (`offer_goal` in the
         # pack): the primary outcome first, the convenience as the question.
         if fd.get("pasiulymas"):
             spr = f" {fd['pasiulymas']}"
@@ -1121,9 +1121,9 @@ def state_facts_block(state, rt) -> str | None:
 
         _strat = _get_strategy(_r.get("verdict"))
         _step = _strat.step(_r.get("step", "")) if _strat else None
-        if _step is not None and getattr(_step, "tikslas", ""):
+        if _step is not None and getattr(_step, "goal", ""):
             facts.append(
-                f"- ŠIO ŽINGSNIO TIKSLAS: {_step.tikslas}. Reaguodamas į kliento "
+                f"- ŠIO ŽINGSNIO TIKSLAS: {_step.goal}. Reaguodamas į kliento "
                 "atsakymą ĮVERTINK, ar tikslas pasiektas — trumpa vertinanti "
                 "reakcija („Gerai — radote“ / „Ne, ne šis kabelis“), tada tęsk."
             )

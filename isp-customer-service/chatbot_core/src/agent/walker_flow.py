@@ -115,7 +115,7 @@ def _seed_evidence_from_anamnesis(state, rt) -> None:
     for key, item in (spec.get("client") or {}).items():
         if key in s.diagnosis.evidence:
             continue
-        for value, marks in ((item or {}).get("atsakymai") or {}).items():
+        for value, marks in ((item or {}).get("answers") or {}).items():
             hits = [m for m in marks or [] if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
             if hits:
                 set_fact(s.diagnosis.evidence, key, str(value), CLIENT, s.dialog.turn_count)
@@ -226,7 +226,7 @@ def walker_owns_turn(state, rt, r: dict, step) -> bool:
     from .faults import driver
     from .resolution import StepKind
 
-    if driver(r.get("verdict")) != "solveris":
+    if driver(r.get("verdict")) != "solver":
         return True
     if r.get("solution_synced") or state.resolution.bridge_bound:
         return True

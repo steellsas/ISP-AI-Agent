@@ -1,10 +1,9 @@
 # MODULIS — daugkartinė instrukcija (docs/FAULT_PACKS.md).
 # Veiksmo žingsnis be išėjimų: pririšus srautas teka į KITĄ paketo žingsnį
 # pagal eilės tvarką (paprastai — atsiradimo patikra).
-modulis: priristi_mac
+module: bind_mac
 meta:
-  aprasymas: "Pririšti linijoje matomą naują įrenginį (MAC) — variklis vykdo tyliai"
-  tags: [internet, mac, veiksmas, bind]
+  description: "Pririšti linijoje matomą naują įrenginį (MAC) — variklis vykdo tyliai"
 steps:
 - id: bind
   role: bind_device

@@ -106,9 +106,9 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
             )
             for key, item in (client or {}).items():
                 if isinstance(item, dict):
-                    if item.get("label"):
-                        labels[str(key)] = phrase(item["label"])
-                    for v, gloss in (item.get("reiksmes") or {}).items():
+                    if item.get("label_key"):
+                        labels[str(key)] = phrase(item["label_key"])
+                    for v, gloss in (item.get("value_label_keys") or {}).items():
                         values[str(v)] = phrase(gloss)
     except Exception:  # pragma: no cover - glosses are cosmetic, never break
         pass
@@ -231,8 +231,8 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
 
 
 def spec_for(verdict: str | None) -> dict[str, Any] | None:
-    """The fault's evidence spec from faults.yaml ({client, patvirtinta_kai,
-    paneigta_kai, paneigta_veda}), or None when the fault declares none
+    """The fault's evidence spec from faults.yaml ({client, confirmed_when,
+    refuted_when, on_refuted}), or None when the fault declares none
     (fail-soft: the walker/solver flow runs as before)."""
     if not verdict:
         return None
@@ -245,9 +245,9 @@ def spec_for(verdict: str | None) -> dict[str, Any] | None:
     return spec if isinstance(spec, dict) and isinstance(spec.get("client"), dict) else None
 
 
-def fault_isvada(verdict: str | None) -> str | None:
+def fault_conclusion(verdict: str | None) -> str | None:
     """How to ANNOUNCE the confirmed hypothesis ("Panašu — {isvada}") —
-    `isvada:` in faults.yaml; falls back to `reikalinga`."""
+    `conclusion_key:` in the pack; falls back to `ticket_need_key`."""
     if not verdict:
         return None
     from .faults import _faults
@@ -257,11 +257,11 @@ def fault_isvada(verdict: str | None) -> str | None:
         return None
     from .contract.locale import maybe_phrase
 
-    return maybe_phrase(fault.get("isvada") or fault.get("reikalinga"))
+    return maybe_phrase(fault.get("conclusion_key") or fault.get("ticket_need_key"))
 
 
-def fault_pasiulymas(verdict: str | None) -> str | None:
-    """The fault's OWN findings-moment offer script (`pasiulymas:` in the pack) —
+def fault_offer_goal(verdict: str | None) -> str | None:
+    """The fault's OWN findings-moment offer script (`offer_goal:` in the pack) —
     ticket-first faults use it to frame the primary outcome (the technician)
     before the optional convenience (the bridge). None -> the generic
     'Pasiūlyk pasirinkimą (A ARBA B)' framing."""
@@ -272,7 +272,7 @@ def fault_pasiulymas(verdict: str | None) -> str | None:
     fault = _faults().get(verdict)
     if not isinstance(fault, dict):
         return None
-    return str(fault.get("pasiulymas") or "") or None
+    return str(fault.get("offer_goal") or "") or None
 
 
 def open_goals_lt(evidence: dict[str, Any], verdict: str | None) -> str:
@@ -289,28 +289,30 @@ def open_goals_lt(evidence: dict[str, Any], verdict: str | None) -> str:
         entry = evidence.get(key)
         if entry is not None and not entry.get("conflict"):
             continue
-        if not all(_cond_holds(evidence, c, confirmed) for c in item.get("kada") or []):
+        if not all(_cond_holds(evidence, c, confirmed) for c in item.get("when") or []):
             continue
-        if item.get("reikia"):
-            goals.append(str(item["reikia"]))
+        if item.get("goal"):
+            goals.append(str(item["goal"]))
     return "; ".join(goals)
 
 
 def solution_descriptions(verdict: str | None) -> list[str]:
-    """Human wording of the declared solutions (`aprasymas` on each sprendimai
-    entry; the bare `tada` key as fallback) — feeds the findings announce."""
+    """Human wording of the declared solutions (`description_key` on each solutions
+    entry; the bare `action` as fallback) — feeds the findings announce."""
     if not verdict:
         return []
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    rules = fault.get("solutions") if isinstance(fault, dict) else None
     from .contract.locale import maybe_phrase
 
     out = []
     for rule in rules or []:
         if isinstance(rule, dict):
-            out.append(str(maybe_phrase(rule.get("aprasymas")) or rule.get("tada") or "").strip())
+            out.append(
+                str(maybe_phrase(rule.get("description_key")) or rule.get("action") or "").strip()
+            )
     return [x for x in out if x]
 
 
@@ -325,7 +327,7 @@ def client_facts_lt(evidence: dict[str, Any]) -> str:
 
 
 def fault_bridge_fail(verdict: str | None) -> dict[str, str]:
-    """The fault's declared bridge-failure texts (`tiltas_nepavyko:` in
+    """The fault's declared bridge-failure texts (`bridge_failed:` in
     faults.yaml): `pastaba` spoken to the caller before the technician
     registration, `prierasas` appended to the ticket details."""
     if not verdict:
@@ -333,17 +335,20 @@ def fault_bridge_fail(verdict: str | None) -> dict[str, str]:
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    d = fault.get("tiltas_nepavyko") if isinstance(fault, dict) else None
+    d = fault.get("bridge_failed") if isinstance(fault, dict) else None
     if not isinstance(d, dict):
         return {}
     from .contract.locale import template
 
-    # Templates: `prierasas` carries a {lan} placeholder the caller fills.
-    return {name: template(key) for name, key in d.items() if key}
+    # Templates: the ticket note carries a {lan} placeholder the caller fills.
+    return {
+        "notice": template(d["notice_key"]),
+        "ticket_note": template(d["ticket_note_key"]),
+    }
 
 
 def fault_need(verdict: str | None) -> str | None:
-    """The human wording of WHY a ticket is needed (`reikalinga:` in the file)."""
+    """The human wording of WHY a ticket is needed (`ticket_need_key:` in the pack)."""
     if not verdict:
         return None
     from .faults import _faults
@@ -351,12 +356,12 @@ def fault_need(verdict: str | None) -> str | None:
     fault = _faults().get(verdict)
     from .contract.locale import maybe_phrase
 
-    return maybe_phrase(fault.get("reikalinga")) if isinstance(fault, dict) else None
+    return maybe_phrase(fault.get("ticket_need_key")) if isinstance(fault, dict) else None
 
 
 def _cond_holds(evidence: dict[str, Any], cond: str, confirmed: bool) -> bool:
     cond = cond.strip()
-    if cond == "patvirtinta":
+    if cond == "confirmed":
         return confirmed
     if "=" not in cond:
         return False
@@ -366,12 +371,12 @@ def _cond_holds(evidence: dict[str, Any], cond: str, confirmed: bool) -> bool:
 
 
 def hypothesis_status(evidence: dict[str, Any], spec: dict[str, Any]) -> str | None:
-    """'confirmed' when ALL patvirtinta_kai hold, 'refuted' when ANY paneigta_kai
+    """'confirmed' when ALL confirmed_when hold, 'refuted' when ANY refuted_when
     holds, else None (still collecting). Refute wins — a lit lamp disproves the
     dead-router path no matter what else was gathered."""
-    if any(_cond_holds(evidence, c, False) for c in (spec.get("paneigta_kai") or [])):
+    if any(_cond_holds(evidence, c, False) for c in (spec.get("refuted_when") or [])):
         return "refuted"
-    confirm = spec.get("patvirtinta_kai")
+    confirm = spec.get("confirmed_when")
     # An EXPLICIT empty list means "confirmed by telemetry from the start" —
     # the client facts pick the SOLUTION, not the hypothesis (R4b packs:
     # foreign_mac, healthy_to_router). An ABSENT key keeps the old meaning
@@ -392,7 +397,7 @@ def next_missing(
         entry = evidence.get(key)
         if entry is not None and not entry.get("conflict"):
             continue  # established (a conflict is settled by the clarify, not here)
-        conds = item.get("kada") or []
+        conds = item.get("when") or []
         if all(_cond_holds(evidence, c, confirmed) for c in conds):
             return key, item
     return None
@@ -405,17 +410,17 @@ def solution_for(evidence: dict[str, Any], verdict: str | None) -> str | None:
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    rules = fault.get("solutions") if isinstance(fault, dict) else None
     for rule in rules or []:
         if isinstance(rule, dict) and all(
-            _cond_holds(evidence, c, True) for c in (rule.get("jei") or [])
+            _cond_holds(evidence, c, True) for c in (rule.get("when") or [])
         ):
-            return rule.get("tada")
+            return rule.get("action")
     return None
 
 
 def solution_step(evidence: dict[str, Any], verdict: str | None) -> str | None:
-    """The walker STEP declared on the matching sprendimai rule (`zingsnis` in
+    """The walker STEP declared on the matching solutions rule (`step_role` in
     faults.yaml) — where the flow RESUMES if the solver is benched
     mid-solution (live 2026-08-11: a bailout landed on a long-stale dr_intro
     and improvised into a ticket one step from a working bridge)."""
@@ -424,19 +429,22 @@ def solution_step(evidence: dict[str, Any], verdict: str | None) -> str | None:
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    rules = fault.get("solutions") if isinstance(fault, dict) else None
     for rule in rules or []:
         if isinstance(rule, dict) and all(
-            _cond_holds(evidence, c, True) for c in (rule.get("jei") or [])
+            _cond_holds(evidence, c, True) for c in (rule.get("when") or [])
         ):
-            return rule.get("zingsnis")
+            from .faults import step_by_role
+
+            step = step_by_role(verdict, rule.get("step_role") or "")
+            return step.id if step else None
     return None
 
 
 def read_pending_answer(key: str, text: str | None, spec_item: dict | None = None) -> str | None:
     """Interpret a short utterance as the answer to the PENDING evidence key —
     the question context resolves what a bare "Radau." / "Ne" means. UNIVERSAL:
-    a fault may declare its own `atsakymai: {reikšmė: [požymiai]}` on the
+    a fault may declare its own `answers: {value: [markers]}` on the
     evidence item in faults.yaml (checked FIRST), so newly added faults get
     this mechanic by file edit; the built-in map covers the piloted keys.
     Matching is diacritics-folded with the negation-prefix guard (_mark_hit)."""
@@ -444,7 +452,7 @@ def read_pending_answer(key: str, text: str | None, spec_item: dict | None = Non
         return None
     low = _fold(text.strip())
     if spec_item:
-        for value, marks in (spec_item.get("atsakymai") or {}).items():
+        for value, marks in (spec_item.get("answers") or {}).items():
             if isinstance(marks, list | tuple) and any(_mark_hit(low, str(m)) for m in marks):
                 return str(value)
     for value, marks in vocab_map("pending_answers").get(key, []):

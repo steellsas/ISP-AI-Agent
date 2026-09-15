@@ -1,13 +1,11 @@
 # GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
 verdict: foreign_mac
 meta:
-  pavadinimas: "Nėra interneto — pakeistas/prijungtas kitas įrenginys (svetimas MAC)"
-  domenas: internet
-  priklauso_nuo: []
-  tags: [internet, nera_interneto, mac, routeris, keitimas]
+  title: "Nėra interneto — pakeistas/prijungtas kitas įrenginys (svetimas MAC)"
+  domain: internet
   # R4b (2026-08-13): solveris vairuoja — analizė iš evidence, vykdymas per
   # žingsnių medį (sprendimai: tada:walker). Rollback = ištrinti šią eilutę.
-  vairuotojas: solveris
+  driver: solver
 problem: internet_down
 playbook: troubleshooting/internet_pakeistas_routeris_mac
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
@@ -16,53 +14,53 @@ playbook: troubleshooting/internet_pakeistas_routeris_mac
 evidence:
   client:
     changed_device:
-      label: "pack.foreign_mac.changed_device.label"
-      reiksmes:
+      label_key: "pack.foreign_mac.changed_device.label"
+      value_label_keys:
         keite: "pack.foreign_mac.changed_device.values.keite"
         nekeite: "pack.foreign_mac.changed_device.values.nekeite"
-      reikia: "ar klientas neseniai keitė routerį arba prijungė naują įrenginį prie linijos"
-      klausimas: "pack.foreign_mac.changed_device.question"
-      kodel: "pack.foreign_mac.changed_device.why"
-      paprasciau: "pack.foreign_mac.changed_device.simpler"
-      patikslinimas: "pack.foreign_mac.changed_device.clarify"
-      atsakymai:
+      goal: "ar klientas neseniai keitė routerį arba prijungė naują įrenginį prie linijos"
+      question_key: "pack.foreign_mac.changed_device.question"
+      why_key: "pack.foreign_mac.changed_device.why"
+      simpler_key: "pack.foreign_mac.changed_device.simpler"
+      clarify_key: "pack.foreign_mac.changed_device.clarify"
+      answers:
         keite: [keičiau, keiciau, keciau, pakeičiau, pakeiciau, "naują routerį", nusipirkau, prijungiau, pajungiau, keitėm, keitem]
         nekeite: [nekeičiau, nekeiciau, "nieko nekeit", "nieko naujo", neprijungiau, nepajungiau, "nieko nedariau"]
     cable_port:
-      label: "pack.foreign_mac.cable_port.label"
-      reiksmes:
+      label_key: "pack.foreign_mac.cable_port.label"
+      value_label_keys:
         wan: "pack.foreign_mac.cable_port.values.wan"
         lan: "pack.foreign_mac.cable_port.values.lan"
-      reikia: "į kurį routerio lizdą įkištas iš sienos ateinantis interneto kabelis — WAN ar LAN"
-      klausimas: "pack.foreign_mac.cable_port.question"
-      kodel: "pack.foreign_mac.cable_port.why"
-      paprasciau: "pack.foreign_mac.cable_port.simpler"
-      patikslinimas: "pack.foreign_mac.cable_port.clarify"
-      atsakymai:
+      goal: "į kurį routerio lizdą įkištas iš sienos ateinantis interneto kabelis — WAN ar LAN"
+      question_key: "pack.foreign_mac.cable_port.question"
+      why_key: "pack.foreign_mac.cable_port.why"
+      simpler_key: "pack.foreign_mac.cable_port.simpler"
+      clarify_key: "pack.foreign_mac.cable_port.clarify"
+      answers:
         wan: [wan, internet, interneto, mėlyn, melyn, atskir]
         lan: [lan, geltona, geltoname, kitas, kitą, "prie kitų"]
-      kada: [changed_device=nekeite]
+      when: [changed_device=nekeite]
   # Hipotezė (linijoje kitas įrenginys) — TELEMETRIJOS faktas, patvirtinta nuo
   # pat pradžių; kliento faktai parenka SPRENDIMĄ, ne hipotezę.
-  patvirtinta_kai: []
-  paneigta_kai: []
+  confirmed_when: []
+  refuted_when: []
 # pasiulymas — IŠVADOS MOMENTO scenarijus naratoriui (2026-08-21): žodis
 # „pririšiu", ne „užregistruosiu" — registravimo žodžiai reiškia TIKETĄ, o čia
 # tik įrenginio pririšimas prie linijos.
-pasiulymas: "Pasakyk, kad linijoje matome naują įrenginį — tai jų routeris. Jei klientas keitė routerį: pasakyk, kad dabar PRIRIŠI jį prie linijos (sakyk „pririšiu“, niekada „užregistruosiu“) ir paprašyk akimirką palaukti. Jei nekeitė — paklausk, į kurį lizdą įkištas kabelis iš sienos."
-sprendimai:
-- jei: [changed_device=keite]
-  tada: walker
-  zingsnis: bind_mac
-  aprasymas: "pack.foreign_mac.solution.s1"
-- jei: [changed_device=nekeite, cable_port=lan]
-  tada: walker
-  zingsnis: cable_reconnect
-  aprasymas: "pack.foreign_mac.solution.s2"
-- jei: [changed_device=nekeite, cable_port=wan]
-  tada: walker
-  zingsnis: bind_mac
-  aprasymas: "pack.foreign_mac.solution.s3"
+offer_goal: "Pasakyk, kad linijoje matome naują įrenginį — tai jų routeris. Jei klientas keitė routerį: pasakyk, kad dabar PRIRIŠI jį prie linijos (sakyk „pririšiu“, niekada „užregistruosiu“) ir paprašyk akimirką palaukti. Jei nekeitė — paklausk, į kurį lizdą įkištas kabelis iš sienos."
+solutions:
+- when: [changed_device=keite]
+  action: procedure
+  step_role: bind_device
+  description_key: "pack.foreign_mac.solution.s1"
+- when: [changed_device=nekeite, cable_port=lan]
+  action: procedure
+  step_role: move_cable_to_wan
+  description_key: "pack.foreign_mac.solution.s2"
+- when: [changed_device=nekeite, cable_port=wan]
+  action: procedure
+  step_role: bind_device
+  description_key: "pack.foreign_mac.solution.s3"
 steps:
 - id: confirm_change
   role: confirm_device_change
@@ -102,8 +100,8 @@ steps:
   hint: 'The cable is in the wrong (yellow LAN) port. Give ONE instruction and wait: unplug it and
     plug it into the blue WAN port, and say when done. Do NOT suggest rebooting — it changes nothing
     if the cable is misplugged.'
-- use: priristi_mac
-  kaip: bind_mac
+- use: bind_mac
+  as: bind_mac
   role: bind_device
   rag_section: 3
   hint: 'The engine binds the device silently — you do NOT call the tool. Announce it naturally:
@@ -118,13 +116,13 @@ steps:
     and wait. Do NOT say you 'will' bind, do NOT say it is 'not yet bound', do NOT re-explain that
     another device is on the line — that is done. Do NOT declare it fixed yourself. If not yet, reassure
     it may take a minute or two and ask them to check again.
-- use: patikrinti_ar_atsirado
-  kaip: client_side
+- use: verify_restored
+  as: client_side
   role: client_side_check
   rag_section: 5
   'on':
-    pavyko: resolve
-    nepavyko: escalate
+    success: resolve
+    failure: escalate
   hint: The provider side is restored (telemetry OK) but the caller still has no internet, so the
     fault is INSIDE their home — Wi-Fi off, device settings, or the cable to the device. Guide ONE
     simple client-side check (restart the device, check Wi-Fi is on, try a cable straight into the

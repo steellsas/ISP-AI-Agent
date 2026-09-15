@@ -1,14 +1,12 @@
 # GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
 verdict: healthy_to_router
 meta:
-  pavadinimas: "Nėra interneto — tinklas iki routerio veikia, problema kliento pusėje"
-  domenas: internet
-  priklauso_nuo: []
-  tags: [internet, nera_interneto, kliento_puse, wifi, irenginys]
+  title: "Nėra interneto — tinklas iki routerio veikia, problema kliento pusėje"
+  domain: internet
   # R4b (2026-08-13): pirmasis walker->solveris perjungimas. Analizės variklis
   # klausinėja iš evidence žinių; sprendimo žingsnius vykdo žingsnių medis
   # (sprendimai: tada:walker). Grąžinti į seną elgesį = ištrinti šią eilutę.
-  vairuotojas: solveris
+  driver: solver
 problem: internet_down
 playbook: troubleshooting/kliento_puse_internetas
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
@@ -17,78 +15,78 @@ playbook: troubleshooting/kliento_puse_internetas
 evidence:
   client:
     fail_scope:
-      label: "pack.healthy_to_router.fail_scope.label"
-      reiksmes:
+      label_key: "pack.healthy_to_router.fail_scope.label"
+      value_label_keys:
         visuose: "pack.healthy_to_router.fail_scope.values.visuose"
         viename: "pack.healthy_to_router.fail_scope.values.viename"
-      reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
-      reiskia:
+      goal: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
+      meaning:
         visuose: "problema greičiausiai routeryje — pradėsime nuo jo perkrovimo"
         viename: "tinklas veikia — žiūrime į tą vieną įrenginį"
-      klausimas: "pack.healthy_to_router.fail_scope.question"
-      kodel: "pack.healthy_to_router.fail_scope.why"
-      paprasciau: "pack.healthy_to_router.fail_scope.simpler"
-      patikslinimas: "pack.healthy_to_router.fail_scope.clarify"
-      atsakymai:
+      question_key: "pack.healthy_to_router.fail_scope.question"
+      why_key: "pack.healthy_to_router.fail_scope.why"
+      simpler_key: "pack.healthy_to_router.fail_scope.simpler"
+      clarify_key: "pack.healthy_to_router.fail_scope.clarify"
+      answers:
         visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
         viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
     fail_device:
-      label: "pack.healthy_to_router.fail_device.label"
-      reiksmes:
+      label_key: "pack.healthy_to_router.fail_device.label"
+      value_label_keys:
         telefonas: "pack.healthy_to_router.fail_device.values.telefonas"
         kompiuteris: "pack.healthy_to_router.fail_device.values.kompiuteris"
-      reikia: "kuriame įrenginyje neveikia — telefone ar kompiuteryje"
-      klausimas: "pack.healthy_to_router.fail_device.question"
-      atsakymai:
+      goal: "kuriame įrenginyje neveikia — telefone ar kompiuteryje"
+      question_key: "pack.healthy_to_router.fail_device.question"
+      answers:
         telefonas: [telefon, planšet, planset, mobil]
         kompiuteris: [kompiuter, nešiojam, nesiojam, laptop, pc]
-      kada: [fail_scope=viename]
+      when: [fail_scope=viename]
     connection_type:
-      label: "pack.healthy_to_router.connection_type.label"
-      reiksmes:
+      label_key: "pack.healthy_to_router.connection_type.label"
+      value_label_keys:
         laidas: "pack.healthy_to_router.connection_type.values.laidas"
         wifi: "pack.healthy_to_router.connection_type.values.wifi"
-      reikia: "ar tas kompiuteris prijungtas laidu, ar per WiFi"
-      klausimas: "pack.healthy_to_router.connection_type.question"
-      kodel: "pack.healthy_to_router.connection_type.why"
-      atsakymai:
+      goal: "ar tas kompiuteris prijungtas laidu, ar per WiFi"
+      question_key: "pack.healthy_to_router.connection_type.question"
+      why_key: "pack.healthy_to_router.connection_type.why"
+      answers:
         laidas: [laidu, laidas, kabeliu, kabelis, "per laidą"]
         wifi: [wifi, "wi-fi", bevielis, bevieliu, belaidžiu, belaidziu]
-      kada: [fail_device=kompiuteris]
+      when: [fail_device=kompiuteris]
     rebooted:
-      label: "pack.healthy_to_router.rebooted.label"
-      reiksmes:
+      label_key: "pack.healthy_to_router.rebooted.label"
+      value_label_keys:
         perkrautas: "pack.healthy_to_router.rebooted.values.perkrautas"
         neperkrautas: "pack.healthy_to_router.rebooted.values.neperkrautas"
-      reikia: "ar routeris jau perkrautas (ištrauktas iš rozetės ir įjungtas iš naujo)"
-      klausimas: "pack.healthy_to_router.rebooted.question"
-      kodel: "pack.healthy_to_router.rebooted.why"
-      patikslinimas: "pack.healthy_to_router.rebooted.clarify"
-      atsakymai:
+      goal: "ar routeris jau perkrautas (ištrauktas iš rozetės ir įjungtas iš naujo)"
+      question_key: "pack.healthy_to_router.rebooted.question"
+      why_key: "pack.healthy_to_router.rebooted.why"
+      clarify_key: "pack.healthy_to_router.rebooted.clarify"
+      answers:
         perkrautas: [perkroviau, perkrovėm, perkrovem, perleidau, "jau bandžiau", "jau bandziau"]
         neperkrautas: [neperkroviau, nebandžiau, nebandziau, "dar ne"]
-      kada: [fail_scope=visuose]
-  patvirtinta_kai: []
-  paneigta_kai: []
+      when: [fail_scope=visuose]
+  confirmed_when: []
+  refuted_when: []
 # Sprendimai pagal surinktus faktus — visi vykdomi ŽINGSNIŲ MEDŽIO (tada:walker):
 # solveris nustato KUR eiti, medis žino KAIP vesti (instrukcija + patikra).
-sprendimai:
-- jei: [fail_scope=visuose]
-  tada: walker
-  zingsnis: cs_ability
-  aprasymas: "pack.healthy_to_router.solution.s1"
-- jei: [fail_device=telefonas]
-  tada: walker
-  zingsnis: cs_wifi
-  aprasymas: "pack.healthy_to_router.solution.s2"
-- jei: [connection_type=laidas]
-  tada: walker
-  zingsnis: cs_cable
-  aprasymas: "pack.healthy_to_router.solution.s3"
-- jei: [connection_type=wifi]
-  tada: walker
-  zingsnis: cs_wifi
-  aprasymas: "pack.healthy_to_router.solution.s4"
+solutions:
+- when: [fail_scope=visuose]
+  action: procedure
+  step_role: ability_check
+  description_key: "pack.healthy_to_router.solution.s1"
+- when: [fail_device=telefonas]
+  action: procedure
+  step_role: check_wifi
+  description_key: "pack.healthy_to_router.solution.s2"
+- when: [connection_type=laidas]
+  action: procedure
+  step_role: check_device_cable
+  description_key: "pack.healthy_to_router.solution.s3"
+- when: [connection_type=wifi]
+  action: procedure
+  step_role: check_wifi
+  description_key: "pack.healthy_to_router.solution.s4"
 steps:
 # Scope split (Phase 3.11, universality): callers answer in ANY order — "visuose",
 # "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has
@@ -160,7 +158,7 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 1
-  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio ir jį perkrauti"
+  goal: "aišku, ar klientas gali DABAR prieiti prie routerio ir jį perkrauti"
   'on':
     'yes': cs_reboot
     'no': cs_homework
@@ -177,7 +175,7 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 1
-  tikslas: "klientas surado routerį"
+  goal: "klientas surado routerį"
   'on':
     'yes': cs_reboot
     'no': cs_homework
@@ -193,7 +191,7 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 1
-  tikslas: "sutarta: grįžęs perkraus routerį, o jei neatsistatys — paskambins"
+  goal: "sutarta: grįžęs perkraus routerį, o jei neatsistatys — paskambins"
   'on':
     'yes': callback
     'no': escalate
@@ -213,13 +211,13 @@ steps:
   hint: 'All devices are down -> the cheapest, highest-yield fix first: ask them to reboot the router
     (unplug from the socket 10 seconds, plug back in, wait for the lights) and to tell you when it
     is back. ONE instruction.'
-- use: patikrinti_ar_atsirado
-  kaip: cs_verify_all
+- use: verify_restored
+  as: cs_verify_all
   role: ask_restored
   rag_section: 2
   'on':
-    pavyko: resolve
-    nepavyko: escalate
+    success: resolve
+    failure: escalate
   hint: Ask whether the internet works now. If yes -> resolved. If not, it is beyond simple self-service
     (router/DNS/config) -> register the fault.
   answers:
@@ -259,13 +257,13 @@ steps:
   goto: cs_verify_dev
   hint: 'Next Wi-Fi step: ask them to ''forget'' the network and reconnect with the password (watch
     upper/lowercase), then restart the device. Tell you when done. ONE instruction.'
-- use: patikrinti_ar_atsirado
-  kaip: cs_verify_dev
+- use: verify_restored
+  as: cs_verify_dev
   role: ask_restored
   rag_section: 7
   'on':
-    pavyko: resolve
-    nepavyko: escalate
+    success: resolve
+    failure: escalate
   hint: Ask whether it works now on that device. Yes -> resolved. No -> it is beyond simple help (device
     settings/drivers) -> register the fault.
   answers:

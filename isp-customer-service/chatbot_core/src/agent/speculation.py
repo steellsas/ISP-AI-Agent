@@ -3,7 +3,7 @@ S1 speculation (VOICE_PLAN, sutarta 2026-08-24) — the agent thinks WHILE the
 caller is answering.
 
 After a question goes out, the pack already names the possible answers
-(`atsakymai`: dega/nedega, radau/neradau, yes/no). A background thread applies
+(`answers`: dega/nedega, radau/neradau, yes/no). A background thread applies
 each candidate to a COPY of the ledger (pure functions — no state touched),
 computes what the next directive would be (ask the next fact / recap /
 findings), words it with a standalone narrator call (persona+style prompt, no
@@ -71,8 +71,8 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
     from .evidence import (
         CLIENT,
         client_facts_lt,
-        fault_isvada,
-        fault_pasiulymas,
+        fault_conclusion,
+        fault_offer_goal,
         hypothesis_status,
         next_missing,
         set_fact,
@@ -90,7 +90,7 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
     if not spec:
         return None
     item = (spec.get("client") or {}).get(key) or {}
-    values = list((item.get("atsakymai") or {}).keys())
+    values = list((item.get("answers") or {}).keys())
     if not values:
         from .contract.locale import vocab_map
 
@@ -122,9 +122,9 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
                         "findings",
                         {
                             "faktai": client_facts_lt(ev2),
-                            "isvada": fault_isvada(verdict) or "",
+                            "isvada": fault_conclusion(verdict) or "",
                             "sprendimai": " ARBA ".join(solution_descriptions(verdict)),
-                            "pasiulymas": fault_pasiulymas(verdict) or "",
+                            "pasiulymas": fault_offer_goal(verdict) or "",
                         },
                     ),
                 }
@@ -133,7 +133,7 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
         if nxt is None:
             continue
         key2, item2 = nxt
-        if not item2.get("reikia"):
+        if not item2.get("goal"):
             continue
         branches[str(value)] = {
             "kind": "evidence",
@@ -141,9 +141,9 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
             "directive": _directive_line(
                 "evidence",
                 {
-                    "reikia": str(item2["reikia"]),
-                    "kodel": str(maybe_phrase(item2.get("kodel")) or ""),
-                    "klausimas": str(maybe_phrase(item2.get("klausimas")) or ""),
+                    "reikia": str(item2["goal"]),
+                    "kodel": str(maybe_phrase(item2.get("why_key")) or ""),
+                    "klausimas": str(maybe_phrase(item2.get("question_key")) or ""),
                 },
             ),
         }

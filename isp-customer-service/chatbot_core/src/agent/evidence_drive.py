@@ -27,7 +27,7 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
     from .contract.locale import phrase
 
     ev = state.diagnosis.evidence
-    for cond in spec.get("patvirtinta_kai") or []:
+    for cond in spec.get("confirmed_when") or []:
         if "=" not in cond:
             continue
         key = cond.split("=", 1)[0].strip()
@@ -46,7 +46,7 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
         return phrase(
             "identification.reask_reason",
             tema=phrase_or(f"evidence.label.{key}", key),
-            klausimas=str(maybe_phrase(item.get("patikslinimas") or item.get("klausimas")) or ""),
+            klausimas=str(maybe_phrase(item.get("clarify_key") or item.get("question_key")) or ""),
         )
     return None
 
@@ -91,7 +91,7 @@ def refuting_client_fact(state: Any, rt: Any, spec: dict) -> tuple[str, str] | N
     from .evidence import CLIENT, _cond_holds
 
     ev = state.diagnosis.evidence
-    for cond in spec.get("paneigta_kai") or []:
+    for cond in spec.get("refuted_when") or []:
         if "=" in cond and _cond_holds(ev, cond, False):
             key = cond.split("=", 1)[0].strip()
             entry = ev.get(key)
@@ -158,10 +158,10 @@ def negation_clarify_reply(state: Any, rt: Any, key: str) -> str | None:
     state.diagnosis.evidence_ask_counts[key] = state.diagnosis.evidence_ask_counts.get(key, 0) + 1
     rt.tracer.emit("evidence", action="negation_clarify", key=key)
     return str(
-        maybe_phrase(item.get("patikslinimas"))
+        maybe_phrase(item.get("clarify_key"))
         or phrase(
             "identification.negation_clarify",
-            klausimas=str(maybe_phrase(item.get("klausimas")) or ""),
+            klausimas=str(maybe_phrase(item.get("question_key")) or ""),
         )
     ).strip()
 
@@ -235,7 +235,10 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             return refute_reply
         # A lit lamp disproves the dead-router path — sync the walker to the
         # declared pivot step so NOTHING rewinds, then let it continue.
-        target = spec.get("paneigta_veda")
+        from .faults import step_by_role
+
+        pivot = step_by_role(r.get("verdict"), spec.get("on_refuted") or "")
+        target = pivot.id if pivot else None
         if target and r.get("step") != target:
             goto_step(state, rt, r, target)
             rt.tracer.emit(
@@ -247,7 +250,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # transition the caller must HEAR — what we checked together, the
     # conclusion, the options — before any solution question. Composed
     # deterministically from the ledger + the fault's file (isvada,
-    # sprendimai aprasymai), so every newly declared fault gets it free.
+    # solution descriptions), so every newly declared fault gets it free.
     announce = ""
     if confirmed and not state.diagnosis.findings_announced:
         from .evidence import solution_for as _solution_for
@@ -259,7 +262,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         # `tada: walker` step, the ritual only delays the sync a turn (or
         # more), the walker never takes over and the narrator improvises.
         # The step's own hint explains the finding and instructs in ONE move.
-        if _solution_for(s.diagnosis.evidence, r.get("verdict")) == "walker":
+        if _solution_for(s.diagnosis.evidence, r.get("verdict")) == "procedure":
             state.diagnosis.findings_announced = True
             return _sync_walker_solution(state, rt, s, r)
         # Recap checkpoint FIRST: read the gathered facts back and let the
@@ -271,10 +274,10 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             return None  # the narrator asks the recap; findings come next turn
         state.diagnosis.findings_announced = True
         from .contract.locale import phrase
-        from .evidence import client_facts_lt, fault_isvada, solution_descriptions
+        from .evidence import client_facts_lt, fault_conclusion, solution_descriptions
 
         faktai_lt = client_facts_lt(s.diagnosis.evidence)
-        isvada = fault_isvada(r.get("verdict")) or ticket_need(state, rt)
+        isvada = fault_conclusion(r.get("verdict")) or ticket_need(state, rt)
         sprendimai = solution_descriptions(r.get("verdict"))
         if faktai_lt and isvada:
             # Persona (Andrius 2026-08-13: the template dump "Ką patikrinome:
@@ -282,13 +285,13 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             # in narrator mode the findings go out as a GOAL directive and the
             # narrator says them briefly in its own words.
             if os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
-                from .evidence import fault_pasiulymas
+                from .evidence import fault_offer_goal
 
                 state.turn.directives.findings = {
                     "faktai": faktai_lt,
                     "isvada": isvada,
                     "sprendimai": " ARBA ".join(sprendimai) if sprendimai else "",
-                    "pasiulymas": fault_pasiulymas(r.get("verdict")) or "",
+                    "pasiulymas": fault_offer_goal(r.get("verdict")) or "",
                 }
                 rt.tracer.emit("decision", intent="findings", action="announce_narrator")
                 return None  # the narrator speaks the findings + the choice
@@ -332,7 +335,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             if announce:
                 state.diagnosis.pending_announcement = announce
             return None  # the walker owns the bridge steps from here
-        if solution == "walker":
+        if solution == "procedure":
             # R4b: the declared solution is a WALKER step — sync the walker to
             # it ONCE and hand the turn over. The findings announce, if any,
             # goes out as THIS reply; the step's question follows next turn.
@@ -383,14 +386,14 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             return None
         return announce + inner
     # B2 pointer (2026-08-21): a fact may name the walker step that carries
-    # its RAG section / hint / tikslas (`zingsnis:` on the evidence item) —
+    # its RAG section / hint / goal (`step_role:` on the evidence item) —
     # the walker FOLLOWS the ledger instead of reading answers itself.
-    z = item.get("zingsnis")
-    if z and r.get("step") != z:
-        from .resolution import get_strategy
+    from .faults import step_by_role
 
-        strat = get_strategy(r.get("verdict"))
-        if strat is not None and strat.step(str(z)) is not None:
+    pointed = step_by_role(r.get("verdict"), item.get("step_role") or "")
+    z = pointed.id if pointed else None
+    if z and r.get("step") != z:
+        if pointed is not None:
             goto_step(state, rt, r, str(z))
             rt.tracer.emit(
                 "decision", intent="evidence", action="pivot", to=str(z), reason="fact pointer"
@@ -405,19 +408,19 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     _q_register(state, rt, "walker", f"evidence:{key}")
     # Persona (R5c): the FIRST ask goes to the NARRATOR as a goal directive —
     # it words the question naturally with its full persona + context. Retries,
-    # clarifies and facts with `formuluote: skriptas` stay scripted (precision
+    # clarifies and facts with `wording: scripted` stay scripted (precision
     # beats style on a repeat). NARRATOR_QUESTIONS=off reverts everything.
     if (
         asks == 0
         and os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on"
-        and str(item.get("formuluote") or "") != "skriptas"
-        and item.get("reikia")
+        and str(item.get("wording") or "") != "scripted"
+        and item.get("goal")
     ):
         state.turn.directives.evidence = {
             "key": key,
-            "reikia": str(item["reikia"]),
-            "kodel": str(maybe_phrase(item.get("kodel")) or ""),
-            "klausimas": str(maybe_phrase(item.get("klausimas")) or ""),
+            "reikia": str(item["goal"]),
+            "kodel": str(maybe_phrase(item.get("why_key")) or ""),
+            "klausimas": str(maybe_phrase(item.get("question_key")) or ""),
         }
         rt.tracer.emit(
             "drive_decision",
@@ -431,12 +434,14 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             state.diagnosis.pending_announcement = announce
         return None  # the narrator asks — walker holds on the open question
     text = maybe_phrase(
-        item.get("klausimas") if asks == 0 else (item.get("paprasciau") or item.get("klausimas"))
+        item.get("question_key")
+        if asks == 0
+        else (item.get("simpler_key") or item.get("question_key"))
     )
     # The caller hears WHY we ask before what to press (Andrius 2026-08-11:
     # "kad klientas žinotų kodėl prašo to ar kito") — once, on the first ask.
-    if asks == 0 and item.get("kodel"):
-        text = f"{text} {maybe_phrase(item['kodel'])}"
+    if asks == 0 and item.get("why_key"):
+        text = f"{text} {maybe_phrase(item['why_key'])}"
     # Re-ask says WHY it repeats (garsus mąstymas, Andrius 2026-08-11): the
     # caller hears the agent is unsure about the SAME thing, not deaf.
     if asks == 1:
@@ -455,9 +460,9 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         if is_bare_negation(user_input):
             from .contract.locale import phrase
 
-            text = maybe_phrase(item.get("patikslinimas")) or phrase(
+            text = maybe_phrase(item.get("clarify_key")) or phrase(
                 "identification.negation_clarify",
-                klausimas=str(maybe_phrase(item.get("klausimas")) or ""),
+                klausimas=str(maybe_phrase(item.get("question_key")) or ""),
             )
             rt.tracer.emit("evidence", action="negation_clarify", key=key)
         # DONE-report without a result ("Mhm, patikrinau") — acknowledge the
@@ -468,7 +473,9 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             state.turn.done_report_key = None
             text = phrase(
                 "identification.done_report_clarify",
-                klausimas=str(maybe_phrase(item.get("ka_radote") or item.get("klausimas")) or ""),
+                klausimas=str(
+                    maybe_phrase(item.get("ask_result_key") or item.get("question_key")) or ""
+                ),
             )
             rt.tracer.emit("evidence", action="done_report_clarify", key=key)
     rt.tracer.emit(

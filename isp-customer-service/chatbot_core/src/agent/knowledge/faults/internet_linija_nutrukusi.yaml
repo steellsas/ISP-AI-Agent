@@ -8,26 +8,24 @@
 # tikėtinas kabelio pažeidimas trasoje, vyksta meistras.
 verdict: link_down_local
 meta:
-  pavadinimas: "Nėra interneto — porto ryšys nutrūkęs, kaimynai veikia (kabelis iki buto)"
-  domenas: internet
-  priklauso_nuo: []
-  tags: [internet, nera_interneto, linija, kabelis, portas]
-  vairuotojas: walker
+  title: "Nėra interneto — porto ryšys nutrūkęs, kaimynai veikia (kabelis iki buto)"
+  domain: internet
+  driver: walker
 problem: internet_down
 playbook: troubleshooting/internet_linija_nutrukusi
 evidence:
   client: {}
-  patvirtinta_kai: []
-  paneigta_kai: []
-reikalinga: "pack.link_down_local.ticket_need"
-isvada: "pack.link_down_local.conclusion"
+  confirmed_when: []
+  refuted_when: []
+ticket_need_key: "pack.link_down_local.ticket_need"
+conclusion_key: "pack.link_down_local.conclusion"
 steps:
 - id: ll_ability
   role: ability_check
   kind: confirm
   detector: yes_no
   rag_section: 0
-  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio"
+  goal: "aišku, ar klientas gali DABAR prieiti prie routerio"
   'on':
     'yes': ll_lights
     'no': ll_homework
@@ -46,7 +44,7 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 0
-  tikslas: "klientas surado routerį"
+  goal: "klientas surado routerį"
   'on':
     'yes': ll_lights
     'no': ll_homework
@@ -61,7 +59,7 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 0
-  tikslas: "sutarta: grįžęs perkiš laidą, o jei neatsistatys — paskambins"
+  goal: "sutarta: grįžęs perkiš laidą, o jei neatsistatys — paskambins"
   'on':
     'yes': callback
     'no': escalate
@@ -78,7 +76,7 @@ steps:
   kind: confirm
   detector: lights
   rag_section: 1
-  tikslas: "aišku, ar routeris gyvas (dega bent viena lemputė)"
+  goal: "aišku, ar routeris gyvas (dega bent viena lemputė)"
   'on':
     'yes': ll_wan
     'no': ll_power
@@ -94,7 +92,7 @@ steps:
   kind: confirm
   detector: lights
   rag_section: 1
-  tikslas: "aišku, ar dega INTERNETO (WAN) lemputė — signalo iš linijos požymis"
+  goal: "aišku, ar dega INTERNETO (WAN) lemputė — signalo iš linijos požymis"
   'on':
     'yes': ll_cable
     'no': ll_cable
@@ -110,7 +108,7 @@ steps:
   kind: confirm
   detector: lights
   rag_section: 2
-  tikslas: "maitinimas patikrintas — aišku, ar lemputės užsidegė"
+  goal: "maitinimas patikrintas — aišku, ar lemputės užsidegė"
   'on':
     'yes': ll_cable
     'no': escalate
@@ -133,7 +131,7 @@ steps:
   kind: confirm
   detector: restored
   rag_section: 4
-  tikslas: "aišku, ar po laido perkišimo linija atsistatė (variklis perskaito portą)"
+  goal: "aišku, ar po laido perkišimo linija atsistatė (variklis perskaito portą)"
   'on':
     'yes': resolve
     'no': escalate

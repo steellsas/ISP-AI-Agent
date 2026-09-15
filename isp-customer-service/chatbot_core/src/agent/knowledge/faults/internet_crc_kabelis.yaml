@@ -6,26 +6,24 @@
 # keis laidą.
 verdict: crc_errors
 meta:
-  pavadinimas: "Internetas trūkinėja / lėtas — linijoje daug CRC klaidų (pažeistas laidas)"
-  domenas: internet
-  priklauso_nuo: []
-  tags: [internet, crc, kabelis, laidas, trukcioja]
-  vairuotojas: walker
+  title: "Internetas trūkinėja / lėtas — linijoje daug CRC klaidų (pažeistas laidas)"
+  domain: internet
+  driver: walker
 problem: internet_down
 playbook: troubleshooting/internet_crc_kabelis
 evidence:
   client: {}
-  patvirtinta_kai: []
-  paneigta_kai: []
-reikalinga: "pack.crc_errors.ticket_need"
-isvada: "pack.crc_errors.conclusion"
+  confirmed_when: []
+  refuted_when: []
+ticket_need_key: "pack.crc_errors.ticket_need"
+conclusion_key: "pack.crc_errors.conclusion"
 steps:
 - id: crc_ability
   role: ability_check
   kind: confirm
   detector: yes_no
   rag_section: 0
-  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio"
+  goal: "aišku, ar klientas gali DABAR prieiti prie routerio"
   'on':
     'yes': crc_cable
     'no': crc_homework
@@ -43,7 +41,7 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 0
-  tikslas: "klientas surado routerį"
+  goal: "klientas surado routerį"
   'on':
     'yes': crc_cable
     'no': crc_homework
@@ -57,7 +55,7 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 0
-  tikslas: "sutarta: grįžęs perkiš interneto laidą routeryje, o jei nepadės — paskambins"
+  goal: "sutarta: grįžęs perkiš interneto laidą routeryje, o jei nepadės — paskambins"
   'on':
     'yes': callback
     'no': escalate
@@ -84,7 +82,7 @@ steps:
   kind: confirm
   detector: restored
   rag_section: 2
-  tikslas: "aišku, ar po perkišimo klaidos dingo (variklis perskaito liniją)"
+  goal: "aišku, ar po perkišimo klaidos dingo (variklis perskaito liniją)"
   'on':
     'yes': resolve
     'no': escalate

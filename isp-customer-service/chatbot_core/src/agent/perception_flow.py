@@ -93,15 +93,15 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         spec = spec_for((s.resolution.procedure or {}).get("verdict"))
         needs = (
             "; ".join(
-                f"{k}: {item.get('reikia', '')}" for k, item in (spec.get("client") or {}).items()
+                f"{k}: {item.get('goal', '')}" for k, item in (spec.get("client") or {}).items()
             )
             if spec
             else ""
         )
         allowed_extra = {
-            k: set((item.get("atsakymai") or {}).keys())
+            k: set((item.get("answers") or {}).keys())
             for k, item in ((spec.get("client") or {}) if spec else {}).items()
-            if item.get("atsakymai")
+            if item.get("answers")
         }
         # R4 perception merge: when an asked step awaits its answer, the SAME
         # call classifies the reply against the step's routing keys — the
@@ -175,7 +175,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     # then diagnosis.pending_evidence_key is still None and the deterministic answer
     # read was skipped, leaving the fact to the LLM pass's mercy. When no ask
     # is pending, the NEXT MISSING evidence key of the active pack stands in:
-    # its conservative `atsakymai` marks still have to hit, so an unrelated
+    # its conservative `answers` marks still have to hit, so an unrelated
     # utterance commits nothing.
     if pending is None:
         try:
@@ -231,7 +231,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     # TYPED the turn as "atsakymas" — gpt-oss occasionally mislabels a clean
     # answer ("Visuose įrenginiuose" while fail_scope is pending) and the
     # deterministic vocabulary hit was thrown away with it. The pack's
-    # `atsakymai` marks are the conservative floor: a hit on the PENDING key
+    # `answers` marks are the conservative floor: a hit on the PENDING key
     # is a hit, whatever the LLM called the sentence.
     if (
         pending
@@ -321,7 +321,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     for key, value in facts.items():
         # W1-2 svarbos vartai (Andrius 2026-08-25, live: STT „rozetė NEVEIKĖ"
         # tyliai užnuodijo žurnalą ir solveris pasiklydo): NAUJAS faktas su
-        # pack'o pažymėta `patikslinti:` reikšme, atėjęs NE kaip atsakymas į
+        # pack'o pažymėta `confirm_values:` reikšme, atėjęs NE kaip atsakymas į
         # užduotą klausimą, pirma PATIKSLINAMAS — ne komituojamas. Kai
         # skaitytuvai NESUTARIA dėl šio rakto, jį valdo konflikto mechanika
         # (jos scriptinis klausimas — tas pats pasitikslinimas).
@@ -356,7 +356,7 @@ def _note_fact_meaning(state, rt, key: str, value: str) -> None:
 
     spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
-    meaning = (item.get("reiskia") or {}).get(value)
+    meaning = (item.get("meaning") or {}).get(value)
     if meaning:
         state.diagnosis.fact_meaning = [
             phrase_or(f"evidence.label.{key}", key),
@@ -451,7 +451,7 @@ def _conflict_to_clarify(state, rt, key: str, entry: dict) -> bool:
 def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bool:
     """W1-2 svarbos vartai: should this NEW volunteered fact be parked for a
     confirm question instead of a silent commit? The pack DECLARES which
-    values deserve it (`patikslinti:` on the evidence item — file-editable,
+    values deserve it (`confirm_values:` on the evidence item — file-editable,
     like every behaviour), so only genuinely story-flipping, STT-garble-prone
     values gate (live 2026-08-25: 'rozetė NEVEIKĖ'). True only when ALL hold:
     no gate already open, the key is NOT the one just asked (direct answers
@@ -469,7 +469,7 @@ def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bo
 
     spec = spec_for((s.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
-    gated_values = [str(v) for v in (item.get("patikslinti") or [])]
+    gated_values = [str(v) for v in (item.get("confirm_values") or [])]
     if value not in gated_values:
         return False
     from .evidence import FactConfirm

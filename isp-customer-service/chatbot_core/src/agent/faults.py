@@ -77,9 +77,9 @@ def _dir_faults() -> dict[str, Any]:
 @lru_cache(maxsize=1)
 def _modules() -> dict[str, Any]:
     """Reusable instruction MODULES (knowledge/modules/): named step sequences
-    with declared exits (isejimai) that packs compose via `use:` — the same
+    with declared exits that packs compose via `use:` — the same
     procedure (bind a MAC, verify restored) is written ONCE."""
-    return _load_yaml_dir(_MODULES_DIR, "modulis")
+    return _load_yaml_dir(_MODULES_DIR, "module")
 
 
 def _faults() -> dict[str, Any]:
@@ -172,8 +172,8 @@ def _expanded_steps(verdict: str) -> tuple[dict[str, Any], ...]:
     """The fault's steps with every `use:` module call EXPANDED inline.
 
     Rules (docs/FAULT_PACKS.md): a single-step module's step id becomes the
-    instance name (`kaip:`); a multi-step module's ids become `<kaip>_<id>`.
-    Module-declared exits (isejimai) route through the instance's `on:` map;
+    instance name (`as:`); a multi-step module's ids become `<as>_<id>`.
+    Module-declared exits route through the instance's `on:` map;
     internal targets are renamed by the same id rule. Instance-level `hint`,
     `rag_section` override the module's FIRST step. Fail-soft: an unknown
     module logs and is skipped."""
@@ -186,12 +186,12 @@ def _expanded_steps(verdict: str) -> tuple[dict[str, Any], ...]:
             out.append(raw)
             continue
         mod = _modules().get(str(raw["use"]))
-        instance = str(raw.get("kaip") or raw["use"])
+        instance = str(raw.get("as") or raw["use"])
         if not isinstance(mod, dict) or not mod.get("steps"):
             logger.warning(f"{verdict}: unknown module '{raw.get('use')}' — skipped")
             continue
         msteps = [dict(m) for m in mod["steps"] if isinstance(m, dict)]
-        exits = {str(x) for x in (mod.get("isejimai") or [])}
+        exits = {str(x) for x in (mod.get("exits") or [])}
         exit_map = {str(k): str(v) for k, v in (raw.get("on") or {}).items()}
         single = len(msteps) == 1
 
@@ -213,7 +213,7 @@ def _expanded_steps(verdict: str) -> tuple[dict[str, Any], ...]:
                 # Instance-level overrides: the module is generic, the CALL SITE
                 # supplies the contextual wording ("prijungtame kompiuteryje…"
                 # vs "po perkrovimo…") and the RAG section for this fault.
-                for key in ("hint", "rag_section", "answers", "detector", "tikslas", "role"):
+                for key in ("hint", "rag_section", "answers", "detector", "goal", "role"):
                     if raw.get(key) is not None:
                         m[key] = raw[key]
             out.append(m)
@@ -224,37 +224,19 @@ def _expanded_steps(verdict: str) -> tuple[dict[str, Any], ...]:
 
 
 def fault_meta(verdict: str | None) -> dict[str, Any]:
-    """The pack's meta block (pavadinimas, domenas, priklauso_nuo, tags, …)."""
+    """The pack's meta block (title, domain, driver)."""
     if not verdict:
         return {}
     meta = (_faults().get(verdict) or {}).get("meta")
     return meta if isinstance(meta, dict) else {}
 
 
-def find_by_tag(tag: str) -> list[str]:
-    """Verdicts whose meta.tags contain `tag` — the knowledge-discovery index."""
-    low = tag.lower()
-    return [
-        v
-        for v, spec in _faults().items()
-        if isinstance(spec, dict)
-        and low in [str(t).lower() for t in (spec.get("meta") or {}).get("tags") or []]
-    ]
-
-
 def driver(verdict: str | None) -> str | None:
-    """meta.vairuotojas — who drives this fault's turns: "solveris" (the
-    evidence-drive + solver own the flow) or "walker" (the step tree; default).
-    R4b rollout is PER PACK: flipping a fault to the solver is a file edit."""
-    v = fault_meta(verdict).get("vairuotojas")
-    return str(v) if v in ("solveris", "walker") else None
-
-
-def depends_on(verdict: str | None) -> list[str]:
-    """meta.priklauso_nuo — upstream domains to check FIRST (mixed faults:
-    'neveikia TV' whose real cause is the internet being down)."""
-    dep = fault_meta(verdict).get("priklauso_nuo")
-    return [str(x) for x in dep] if isinstance(dep, list) else []
+    """meta.driver — who drives this fault's turns: "solver" (the evidence-drive +
+    solver own the flow) or "walker" (the step tree; default). Temporary: M4
+    makes the solver the only driver (D-03)."""
+    v = fault_meta(verdict).get("driver")
+    return str(v) if v in ("solver", "walker") else None
 
 
 # --- Purpose: what the CALLER reports -------------------------------------------
@@ -387,7 +369,7 @@ def build_strategy(verdict: str):
                     kind=StepKind(str(raw["kind"])),
                     role=str(raw.get("role", "")),
                     hint=str(raw.get("hint", "")),
-                    tikslas=str(raw.get("tikslas", "")),
+                    goal=str(raw.get("goal", "")),
                     tools=frozenset(raw.get("tools") or ()),
                     tool_actions=tuple(raw.get("tool_actions") or ()),
                     rag_section=raw.get("rag_section"),

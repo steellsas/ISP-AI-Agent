@@ -8,9 +8,7 @@ Packs build their procedure through module calls; the knowledge schema tests
 from agent.faults import (
     _modules,
     build_strategy,
-    depends_on,
     fault_meta,
-    find_by_tag,
     step_options,
 )
 from agent.graph_v2.state import (
@@ -44,26 +42,14 @@ class TestModuleExpansion:
 class TestModulesAndMeta:
     def test_modules_load(self):
         mods = _modules()
-        assert "patikrinti_ar_atsirado" in mods
-        assert "priristi_mac" in mods
-        assert mods["patikrinti_ar_atsirado"]["isejimai"] == ["pavyko", "nepavyko"]
+        assert "verify_restored" in mods
+        assert "bind_mac" in mods
+        assert mods["verify_restored"]["exits"] == ["success", "failure"]
 
-    def test_meta_and_tags(self):
+    def test_meta(self):
         meta = fault_meta("no_mac_observed")
-        assert meta.get("domenas") == "internet"
-        assert "tiltas" in meta.get("tags", [])
-        by_tag = find_by_tag("nera_interneto")
-        assert set(by_tag) == {
-            "foreign_mac",
-            "healthy_to_router",
-            "no_mac_observed",
-            "router_hung",
-            "link_down_local",  # NT (2026-09-11): kabelis iki buto
-        }
-
-    def test_depends_on_default_empty(self):
-        assert depends_on("foreign_mac") == []
-        assert depends_on("nezinomas") == []
+        assert meta.get("domain") == "internet"
+        assert meta.get("driver") == "solver"
 
 
 class TestSolverMechanics:
@@ -75,7 +61,7 @@ class TestSolverMechanics:
         from agent.faults import driver
 
         for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
-            assert driver(verdict) == "solveris"
+            assert driver(verdict) == "solver"
 
     def test_walker_solution_syncs_step_and_hands_over(self, monkeypatch):
         from types import SimpleNamespace
@@ -85,7 +71,7 @@ class TestSolverMechanics:
 
         monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
         monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: "confirmed")
-        monkeypatch.setattr(ev, "solution_for", lambda e, v: "walker")
+        monkeypatch.setattr(ev, "solution_for", lambda e, v: "procedure")
         monkeypatch.setattr(ev, "solution_step", lambda e, v: "bind_mac")
 
         gotos = []
@@ -272,7 +258,7 @@ class TestNarratorFindings:
         monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
         monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: "confirmed")
         monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
-        monkeypatch.setattr(ev, "fault_isvada", lambda v: "routeris sugedęs")
+        monkeypatch.setattr(ev, "fault_conclusion", lambda v: "routeris sugedęs")
         monkeypatch.setattr(
             ev, "solution_descriptions", lambda v: ["paleisti per kompiuterį", "meistras"]
         )
@@ -561,9 +547,9 @@ class TestTicketFirst:
         assert engine.state.closing.case_closed is True
 
     def test_pack_declares_ticket_first_offer(self):
-        from agent.evidence import fault_pasiulymas
+        from agent.evidence import fault_offer_goal
 
-        text = fault_pasiulymas("no_mac_observed")
+        text = fault_offer_goal("no_mac_observed")
         assert text and "meistr" in text and "kompiuter" in text
 
     def test_open_goals_follow_the_ledger(self):
@@ -618,15 +604,15 @@ class TestStepAwareness:
         q = phrase("identification.questions.caller")
         assert q.count("?") == 1 and "sudar" not in q
 
-    def test_tikslas_flows_through_build(self):
+    def test_goal_flows_through_build(self):
         from agent.faults import build_strategy
 
         strat = build_strategy("no_mac_observed")
         by_id = {st.id: st for st in strat.steps}
-        assert "sutinka" in by_id["dr_intro"].tikslas
-        assert "lemput" in by_id["dr_lights"].tikslas
+        assert "sutinka" in by_id["dr_intro"].goal
+        assert "lemput" in by_id["dr_lights"].goal
         # module instance override (kaip: dr_verify) carries its own goal
-        assert "kompiuteryje internetas" in by_id["dr_verify"].tikslas
+        assert "kompiuteryje internetas" in by_id["dr_verify"].goal
 
     def test_goto_step_writes_the_journal(self):
         from types import SimpleNamespace
@@ -706,26 +692,26 @@ class TestEvidenceDeclared:
         spec = spec_for("foreign_mac")
         assert set(spec["client"]) == {"changed_device", "cable_port"}
         # hypothesis is a TELEMETRY fact — confirmed from the start; client
-        # facts pick the SOLUTION (sprendimai), not the hypothesis
-        assert spec["patvirtinta_kai"] == []
+        # facts pick the SOLUTION (solutions), not the hypothesis
+        assert spec["confirmed_when"] == []
         # perception vocabulary: canonical values are declared per fact
-        assert set(spec["client"]["changed_device"]["atsakymai"]) == {"keite", "nekeite"}
+        assert set(spec["client"]["changed_device"]["answers"]) == {"keite", "nekeite"}
 
     def test_healthy_to_router_conditional_asking(self):
         from agent.evidence import spec_for
 
         spec = spec_for("healthy_to_router")
-        assert spec["client"]["connection_type"]["kada"] == ["fail_device=kompiuteris"]
-        assert spec["client"]["rebooted"]["kada"] == ["fail_scope=visuose"]
+        assert spec["client"]["connection_type"]["when"] == ["fail_device=kompiuteris"]
+        assert spec["client"]["rebooted"]["when"] == ["fail_scope=visuose"]
 
-    def test_reikia_present_for_narrator_directives(self):
-        """`reikia` is the future narrator directive (skriptas -> mąstymas) —
-        every declared fact must state its GOAL, not only the wording."""
+    def test_goal_present_for_narrator_directives(self):
+        """`goal` is the narrator directive — every declared fact must state
+        its GOAL, not only the wording."""
         from agent.evidence import spec_for
 
         for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed"):
             for key, item in spec_for(verdict)["client"].items():
-                assert item.get("reikia"), f"{verdict}.{key} be 'reikia'"
+                assert item.get("goal"), f"{verdict}.{key} has no goal"
 
 
 class TestIdentificationF:
@@ -982,8 +968,8 @@ class TestAnamnesisDirectives:
         item = (spec.get("client") or {}).get("ivykiai")
         from agent.contract.locale import phrase
 
-        assert item and "elektra" in phrase(item["klausimas"])
-        assert "linijoje nesimato" in phrase(item["kodel"])  # telemetrijos kontekstas
+        assert item and "elektra" in phrase(item["question_key"])
+        assert "linijoje nesimato" in phrase(item["why_key"])  # telemetrijos kontekstas
 
 
 class TestDirectiveTurnsAreSpeechOnly:

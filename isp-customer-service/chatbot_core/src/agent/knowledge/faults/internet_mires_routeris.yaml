@@ -1,11 +1,9 @@
 # GEDIMO PAKETAS (docs/FAULT_PACKS.md): vienas failas = vienas gedimas.
 verdict: no_mac_observed
 meta:
-  pavadinimas: "Nėra interneto — linijoje nematoma jokio įrenginio (miręs routeris / tiltas)"
-  domenas: internet
-  priklauso_nuo: []
-  tags: [internet, nera_interneto, mires_routeris, tiltas, bridge]
-  vairuotojas: solveris   # nuo seno solverio pilotas — dabar deklaruota faile
+  title: "Nėra interneto — linijoje nematoma jokio įrenginio (miręs routeris / tiltas)"
+  domain: internet
+  driver: solver   # nuo seno solverio pilotas — dabar deklaruota faile
 problem: internet_down
 playbook: troubleshooting/internet_mires_routeris_tiltas
 # Ledger v2 (Phase 4.5 step 2): the KNOWLEDGE form of this fault — what must
@@ -23,124 +21,124 @@ evidence:
     # laidų tvarkymas tampa diagnostiškai svarbus). Jei klientas jau minėjo
     # (capture-first / anamnesis seed) — solveris nebeklausia.
     ivykiai:
-      label: "pack.no_mac_observed.ivykiai.label"
-      reiksmes:
+      label_key: "pack.no_mac_observed.ivykiai.label"
+      value_label_keys:
         buvo: "pack.no_mac_observed.ivykiai.values.buvo"
         nebuvo: "pack.no_mac_observed.ivykiai.values.nebuvo"
-      reikia: "ar prieš dingstant internetui buvo koks įvykis — dingusi elektra, laidų tvarkymas, audra"
-      klausimas: "pack.no_mac_observed.ivykiai.question"
-      kodel: "pack.no_mac_observed.ivykiai.why"
-      patikslinimas: "pack.no_mac_observed.ivykiai.clarify"
-      paprasciau: "pack.no_mac_observed.ivykiai.simpler"
-      reiskia:
+      goal: "ar prieš dingstant internetui buvo koks įvykis — dingusi elektra, laidų tvarkymas, audra"
+      question_key: "pack.no_mac_observed.ivykiai.question"
+      why_key: "pack.no_mac_observed.ivykiai.why"
+      clarify_key: "pack.no_mac_observed.ivykiai.clarify"
+      simpler_key: "pack.no_mac_observed.ivykiai.simpler"
+      meaning:
         buvo: "tai gali paaiškinti, kodėl įrenginys dingo iš linijos — patikrinsime nuo maitinimo"
-      atsakymai:
+      answers:
         buvo: ["dingo elektra", "dingusi elektra", "buvo dingus", tvarkė, tvarke, remont, audra, perkūn, perkun, keitėm, keitem]
         nebuvo: [nebuvo, "nieko neįvyko", "nieko nevyko", "viskas kaip", "ne,", "ne "]
-      zingsnis: dr_lights
+      step_role: check_lights
     device_present:
-      reikia: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
-      zingsnis: dr_lights   # B2: walker rodyklė (RAG/hint/tikslas), ne skaitytuvas
-      klausimas: "pack.no_mac_observed.device_present.question"
-      paprasciau: "pack.no_mac_observed.device_present.simpler"
+      goal: "klientas surado routerį (dėžutę, į kurią ateina interneto kabelis)"
+      step_role: check_lights   # B2: walker rodyklė (RAG/hint/tikslas), ne skaitytuvas
+      question_key: "pack.no_mac_observed.device_present.question"
+      simpler_key: "pack.no_mac_observed.device_present.simpler"
       # patikslinimas — kai atsakymas buvo plikas „ne“ be objekto: įvardijami
       # abu galimi perskaitymai, klientas pasirenka (2026-08-11, Andrius).
-      patikslinimas: "pack.no_mac_observed.device_present.clarify"
+      clarify_key: "pack.no_mac_observed.device_present.clarify"
       # atsakymai: kaip trumpi/darkyti atsakymai skaitomi, kai KĄ TIK klaustas
       # ŠITAS klausimas (universalu — naujas gedimas deklaruoja savus čia pat).
-      atsakymai:
+      answers:
         rado: [radau, suradau, taip, matau, "stoviu prie", "prie jo", "esu prie", priėjau, priejau]
         nerado: [nerandu, neradau, "nėra tokios", nematau, nerasiu]
     lights:
-      reikia: "ar dega bent viena routerio lemputė"
-      zingsnis: dr_lights
+      goal: "ar dega bent viena routerio lemputė"
+      step_role: check_lights
       # reiskia — KĄ atsakymas reiškia (turn'o gramatika, 2026-09-03):
       # naratorius reakcijoje įvardija reikšmę, ne patį faktą.
-      reiskia:
+      meaning:
         dega: "routeris srovę gauna, bet linija jo nemato — žiūrime į kabelį"
         nedega: "routeris greičiausiai negauna srovės — tikriname maitinimą"
-      klausimas: "pack.no_mac_observed.lights.question"
+      question_key: "pack.no_mac_observed.lights.question"
       # kodel — pasakoma kartu su PIRMU klausimu, kad klientas žinotų, kam to
       # reikia (2026-08-11, Andrius: paaiškinti ką tikrinam ir kodėl).
-      kodel: "pack.no_mac_observed.lights.why"
-      paprasciau: "pack.no_mac_observed.lights.simpler"
-      patikslinimas: "pack.no_mac_observed.lights.clarify"
+      why_key: "pack.no_mac_observed.lights.why"
+      simpler_key: "pack.no_mac_observed.lights.simpler"
+      clarify_key: "pack.no_mac_observed.lights.clarify"
       # ka_radote — kai klientas sako TIK „patikrinau“ be rezultato: agentas
       # padėkoja ir paklausia, KĄ rado (2026-08-11, „pasitikslinti, o ne kurti“).
-      ka_radote: "pack.no_mac_observed.lights.ask_result"
-      kada: [device_present=rado]
+      ask_result_key: "pack.no_mac_observed.lights.ask_result"
+      when: [device_present=rado]
     power_cable:
-      reikia: "maitinimo laidas įkištas į rozetę IR į routerį"
-      zingsnis: dr_power
-      klausimas: "pack.no_mac_observed.power_cable.question"
-      kodel: "pack.no_mac_observed.power_cable.why"
-      paprasciau: "pack.no_mac_observed.power_cable.simpler"
-      patikslinimas: "pack.no_mac_observed.power_cable.clarify"
-      ka_radote: "pack.no_mac_observed.power_cable.ask_result"
-      kada: [lights=nedega]
+      goal: "maitinimo laidas įkištas į rozetę IR į routerį"
+      step_role: check_power
+      question_key: "pack.no_mac_observed.power_cable.question"
+      why_key: "pack.no_mac_observed.power_cable.why"
+      simpler_key: "pack.no_mac_observed.power_cable.simpler"
+      clarify_key: "pack.no_mac_observed.power_cable.clarify"
+      ask_result_key: "pack.no_mac_observed.power_cable.ask_result"
+      when: [lights=nedega]
     outlet_works:
-      reikia: "rozetė veikia — pabandyta kita arba kiti įrenginiai nuo jos veikia"
-      zingsnis: dr_power
-      klausimas: "pack.no_mac_observed.outlet_works.question"
-      kodel: "pack.no_mac_observed.outlet_works.why"
-      patikslinimas: "pack.no_mac_observed.outlet_works.clarify"
-      ka_radote: "pack.no_mac_observed.outlet_works.ask_result"
-      kada: [lights=nedega, power_cable=įkištas]
+      goal: "rozetė veikia — pabandyta kita arba kiti įrenginiai nuo jos veikia"
+      step_role: check_power
+      question_key: "pack.no_mac_observed.outlet_works.question"
+      why_key: "pack.no_mac_observed.outlet_works.why"
+      clarify_key: "pack.no_mac_observed.outlet_works.clarify"
+      ask_result_key: "pack.no_mac_observed.outlet_works.ask_result"
+      when: [lights=nedega, power_cable=įkištas]
       # W1-2 svarbos vartai (2026-08-25): "rozetė neveikia" keičia visą išvadą
       # (elektra, ne routeris) ir dažnai būna STT klaida — prieš įrašant į
       # žurnalą SAVANORIŠKAI pasakytą tokią reikšmę, agentas pasitikslina.
-      patikslinti: ['neveikia']
+      confirm_values: ['neveikia']
     has_computer:
-      reikia: "ar klientas turi kompiuterį ir nori, kad laikinai paleistume internetą per jį, kol gaus naują routerį"
-      zingsnis: dr_offer_bridge
-      klausimas: "pack.no_mac_observed.has_computer.question"
-      patikslinimas: "pack.no_mac_observed.has_computer.clarify"
-      kada: [patvirtinta]
+      goal: "ar klientas turi kompiuterį ir nori, kad laikinai paleistume internetą per jį, kol gaus naują routerį"
+      step_role: offer_bridge
+      question_key: "pack.no_mac_observed.has_computer.question"
+      clarify_key: "pack.no_mac_observed.has_computer.clarify"
+      when: [confirmed]
     lan_active:
       # Tilto NESĖKMĖS kelias (2026-08-12): kabelis įkištas, o telemetrija
       # įrenginio nemato — tikrinama kompiuterio tinklo plokštė. `kada` gate
       # variklio automatiškai NIEKADA netenkinamas (klausimą užduoda tik
       # tilto nesėkmės laiptai _drive_propose_fix viduje).
-      reikia: "ar kompiuterio tinklo (LAN) ryšys aktyvus prijungus kabelį"
-      klausimas: "pack.no_mac_observed.lan_active.question"
-      atsakymai:
+      goal: "ar kompiuterio tinklo (LAN) ryšys aktyvus prijungus kabelį"
+      question_key: "pack.no_mac_observed.lan_active.question"
+      answers:
         neaktyvus: [neaktyv, nedega, nerodo, "nėra", nera, "ne,", "ne "]
         aktyvus: [aktyv, veikia, dega, rodo, taip, yra]
-      kada: [tilto_fazeje]
-  patvirtinta_kai: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
-  paneigta_kai: [lights=dega]
-  paneigta_veda: dr_cable
-reikalinga: "pack.no_mac_observed.ticket_need"
+      when: [bridge_phase]
+  confirmed_when: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
+  refuted_when: [lights=dega]
+  on_refuted: reseat_cable
+ticket_need_key: "pack.no_mac_observed.ticket_need"
 # Tilto nesėkmės pabaiga (2026-08-12, Andrius): LAN patikrintas, įrenginio
 # linijoje vis tiek nesimato — garsiai pasakoma galima kabelio problema ir
 # registruojamas meistras; prierašas nugula ant tiketo.
-tiltas_nepavyko:
-  pastaba: "pack.no_mac_observed.bridge_failed.notice"
-  prierasas: "pack.no_mac_observed.bridge_failed.ticket_note"
+bridge_failed:
+  notice_key: "pack.no_mac_observed.bridge_failed.notice"
+  ticket_note_key: "pack.no_mac_observed.bridge_failed.ticket_note"
 # isvada — kaip PASKELBTI patvirtintą hipotezę žmogui ("Panašu — {isvada}");
 # aprasymas prie sprendimo — kaip jį pasiūlyti. Abu skaitomi findings
 # paskelbimo šablono (identification.yaml: findings_announce).
-isvada: "pack.no_mac_observed.conclusion"
+conclusion_key: "pack.no_mac_observed.conclusion"
 # pasiulymas — IŠVADOS MOMENTO scenarijus naratoriui (tiketas-pirmas, Andrius
 # 2026-08-13: "esmė yra sugedęs routeris ir tiketas turi būti registruotas;
 # šalutinis dalykas — paleisti internetą laikinai"). Meistras — ne pasirinkimas,
 # o pažadas; klientas renkasi tik laikiną internetą.
-pasiulymas: "Pasakyk, kad dėl sugedusio routerio užregistruosi meistrą — jis atveš ir pajungs naują (tai padarysime bet kokiu atveju). Tada pasiūlyk: kol laukiate, galime laikinai paleisti internetą per kompiuterį — ir paklausk, ar turi kompiuterį."
+offer_goal: "Pasakyk, kad dėl sugedusio routerio užregistruosi meistrą — jis atveš ir pajungs naują (tai padarysime bet kokiu atveju). Tada pasiūlyk: kol laukiate, galime laikinai paleisti internetą per kompiuterį — ir paklausk, ar turi kompiuterį."
 # zingsnis — walker'io žingsnis, į kurį grįžtama, jei solveris nušalinamas
 # vidury sprendimo (bailout sync, 2026-08-11) — niekada ne į seną dr_intro.
-sprendimai:
-- jei: [has_computer=yes]
-  tada: bridge
-  zingsnis: dr_pick_cable   # vedimas nuo TEISINGO kabelio (2026-08-21)
-  aprasymas: "pack.no_mac_observed.solution.s1"
-- jei: [has_computer=no]
-  tada: ticket
-  zingsnis: escalate
-  aprasymas: "pack.no_mac_observed.solution.s2"
+solutions:
+- when: [has_computer=yes]
+  action: bridge
+  step_role: locate_cable   # vedimas nuo TEISINGO kabelio (2026-08-21)
+  description_key: "pack.no_mac_observed.solution.s1"
+- when: [has_computer=no]
+  action: ticket
+  step_role: escalate
+  description_key: "pack.no_mac_observed.solution.s2"
 steps:
 - id: dr_intro
   role: consent_to_check
-  tikslas: "klientas sutinka kartu patikrinti dabar"
+  goal: "klientas sutinka kartu patikrinti dabar"
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -159,7 +157,7 @@ steps:
 # „perskambinsiu" laimi, ragelis čia = callback be tiketo.
 - id: dr_homework
   role: homework
-  tikslas: "sutarta: grįžęs patikrins lemputes ir laidus, o jei neatsiras — paskambins"
+  goal: "sutarta: grįžęs patikrins lemputes ir laidus, o jei neatsiras — paskambins"
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -177,7 +175,7 @@ steps:
     'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 - id: dr_lights
   role: check_lights
-  tikslas: "klientas prie routerio ir aišku, ar dega bent viena lemputė"
+  goal: "klientas prie routerio ir aišku, ar dega bent viena lemputė"
   kind: confirm
   detector: lights
   rag_section: 1
@@ -193,7 +191,7 @@ steps:
       „neda", „nedega gan viena" — neiginys visada reiškia NEDEGA)
 - id: dr_power
   role: check_power
-  tikslas: "maitinimas ir kita rozetė patikrinti — aišku, ar lemputės užsidegė"
+  goal: "maitinimas ir kita rozetė patikrinti — aišku, ar lemputės užsidegė"
   kind: confirm
   detector: lights
   rag_section: 2
@@ -207,20 +205,20 @@ steps:
     'no': net ir patikrinus maitinimą / kitą rozetę lemputės vis tiek nedega
 - id: dr_cable
   role: reseat_cable
-  tikslas: "interneto kabelis routeryje perkištas (ištrauktas ir vėl įkištas)"
+  goal: "interneto kabelis routeryje perkištas (ištrauktas ir vėl įkištas)"
   kind: instruct
   rag_section: 2
   goto: dr_recheck
   hint: 'It has power but the line does not see it. ONE instruction, then wait: reseat the cable coming
     from the wall into the router''s internet port and say when done.'
-- use: patikrinti_ar_atsirado
-  kaip: dr_recheck
+- use: verify_restored
+  as: dr_recheck
   role: ask_restored
-  tikslas: "aišku, ar internetas atsirado po kabelio perkišimo"
+  goal: "aišku, ar internetas atsirado po kabelio perkišimo"
   rag_section: 8
   'on':
-    pavyko: resolve
-    nepavyko: dr_offer_bridge
+    success: resolve
+    failure: dr_offer_bridge
   hint: Ask whether the internet is back now. If yes -> resolved. If not, the router is likely dead
     — move on to offering the temporary bridge.
   answers:
@@ -228,7 +226,7 @@ steps:
     'no': internetas vis tiek neatsirado
 - id: dr_offer_bridge
   role: offer_bridge
-  tikslas: "aišku, ar klientas turi kompiuterį laikinam pajungimui"
+  goal: "aišku, ar klientas turi kompiuterį laikinam pajungimui"
   kind: confirm
   detector: have_device
   rag_section: 3
@@ -244,7 +242,7 @@ steps:
     'no': klientas neturi jokio kito įrenginio (tik telefoną)
 - id: dr_pick_cable
   role: locate_cable
-  tikslas: "klientas rankoje laiko TĄ kabelį, kuris ateina iš sienos (ne maitinimo)"
+  goal: "klientas rankoje laiko TĄ kabelį, kuris ateina iš sienos (ne maitinimo)"
   kind: instruct
   rag_section: 4
   goto: dr_plug_pc
@@ -254,7 +252,7 @@ steps:
     the power lead, not a cable between the router and a device.'
 - id: dr_plug_pc
   role: plug_computer
-  tikslas: "kabelis įkištas į kompiuterio tinklo lizdą iki spragtelėjimo"
+  goal: "kabelis įkištas į kompiuterio tinklo lizdą iki spragtelėjimo"
   kind: instruct
   rag_section: 5
   goto: dr_see_device
@@ -270,22 +268,22 @@ steps:
   hint: The engine re-reads the line to see whether the newly connected device actually shows up.
     If it does NOT, the cable is in the wrong socket or not seated — walk that back calmly, do not
     bind blindly.
-- use: priristi_mac
-  kaip: dr_bind
+- use: bind_mac
+  as: dr_bind
   role: bind_device
   rag_section: 7
   hint: 'We can now SEE their computer on the line. The engine binds it silently — you do NOT call
     the tool. Announce it: ''Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo — turėtų
     atsirasti internetas. Palaukite akimirką.'' Do not ask yet if it works. (The anamnesis question
     was already asked at the START of the call — do not repeat it here.)'
-- use: patikrinti_ar_atsirado
-  kaip: dr_verify
+- use: verify_restored
+  as: dr_verify
   role: ask_restored
-  tikslas: "aišku, ar prijungtame kompiuteryje internetas jau veikia"
+  goal: "aišku, ar prijungtame kompiuteryje internetas jau veikia"
   rag_section: 8
   'on':
-    pavyko: dr_register_router
-    nepavyko: escalate
+    success: dr_register_router
+    failure: escalate
   hint: 'Ask whether the internet is now up on that computer. If yes: say plainly that this is TEMPORARY
     (that one computer only), that the router is dead and needs replacing, and go register the fault
     for it. If no -> register too. Either way the caller leaves with a registration.'

@@ -174,7 +174,7 @@ class TestRound2Fixes:
         # faults.yaml may declare per-key answer marks — universal for new faults.
         from agent.evidence import read_pending_answer
 
-        item = {"atsakymai": {"nerado": ["nerasiu niekaip"]}}
+        item = {"answers": {"nerado": ["nerasiu niekaip"]}}
         assert read_pending_answer("device_present", "nerasiu niekaip čia", item) == "nerado"
 
     def test_anchor_is_the_question_sentence_only(self, db_connection, monkeypatch):

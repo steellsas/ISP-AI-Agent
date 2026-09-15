@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, RootModel, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_validator
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
 KNOWLEDGE_DIR = AGENT_DIR / "knowledge"
@@ -24,7 +24,7 @@ PLAYBOOK_DIR = AGENT_DIR.parent / "rag" / "knowledge_base"
 # Routing targets handled by the walker itself, not by a pack step.
 TERMINAL_TARGETS = frozenset({"resolve", "callback", "end"})
 # Condition tokens that are not `evidence_key=value`.
-CONDITION_TOKENS = frozenset({"patvirtinta", "tilto_fazeje"})
+CONDITION_TOKENS = frozenset({"confirmed", "bridge_phase"})
 # Detectors implemented in code (resolution.DETECTORS); detectors.yaml may add
 # LLM-only ones.
 CODE_DETECTORS = frozenset(
@@ -40,61 +40,68 @@ class _Model(BaseModel):
 
 
 # Evidence item fields whose value is a phrase key.
-EVIDENCE_PHRASE_FIELDS = ("label", "klausimas", "kodel", "paprasciau", "patikslinimas", "ka_radote")
+EVIDENCE_PHRASE_FIELDS = (
+    "label_key",
+    "question_key",
+    "why_key",
+    "simpler_key",
+    "clarify_key",
+    "ask_result_key",
+)
 
 
 class EvidenceItem(_Model):
-    label: str | None = None
-    reiksmes: dict[str, str] = {}
-    reikia: str | None = None
-    klausimas: str | None = None
-    kodel: str | None = None
-    paprasciau: str | None = None
-    patikslinimas: str | None = None
-    ka_radote: str | None = None
-    reiskia: dict[str, str] = {}
-    atsakymai: dict[str, list[str]] = {}
-    zingsnis: str | None = None
-    kada: list[str] = []
-    patikslinti: list[str] = []
-    formuluote: Literal["skriptas"] | None = None
+    label_key: str | None = None
+    value_label_keys: dict[str, str] = {}
+    goal: str | None = None  # what must be established (for the LLM)
+    question_key: str | None = None
+    why_key: str | None = None
+    simpler_key: str | None = None
+    clarify_key: str | None = None
+    ask_result_key: str | None = None
+    meaning: dict[str, str] = {}  # value -> what it means (for the LLM)
+    answers: dict[str, list[str]] = {}
+    step_role: str | None = None
+    when: list[str] = []
+    confirm_values: list[str] = []
+    wording: Literal["scripted"] | None = None
 
 
 class Evidence(_Model):
     client: dict[str, EvidenceItem] = {}
     # Absent = still collecting; [] = confirmed by telemetry from the start.
-    patvirtinta_kai: list[str] | None = None
-    paneigta_kai: list[str] = []
-    paneigta_veda: str | None = None
+    confirmed_when: list[str] | None = None
+    refuted_when: list[str] = []
+    on_refuted: str | None = None  # a step role
 
 
 class Solution(_Model):
-    jei: list[str]
-    tada: Literal["walker", "bridge", "ticket"]
-    zingsnis: str | None = None
-    aprasymas: str | None = None
+    when: list[str]
+    action: Literal["procedure", "bridge", "ticket"]
+    step_role: str | None = None
+    description_key: str | None = None
 
 
 class BridgeFailed(_Model):
-    pastaba: str
-    prierasas: str
+    notice_key: str
+    ticket_note_key: str
 
 
 class Step(_Model):
-    """A procedure step (`id` + `kind`) or a module call (`use` + `kaip`)."""
+    """A procedure step (`id` + `kind` + `role`) or a module call (`use` + `as`)."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
     id: str | None = None
     use: str | None = None
-    kaip: str | None = None
+    as_: str | None = Field(default=None, alias="as")
     kind: Literal["confirm", "action", "instruct", "verify", "escalate"] | None = None
     detector: str | None = None
     rag_section: int | None = None
     on: dict[str, str] = {}
     goto: str | None = None
     hint: str | None = None
-    tikslas: str | None = None
+    goal: str | None = None
     answers: dict[str, str] = {}
     tools: list[str] = []
     tool_actions: list[str] = []
@@ -113,15 +120,14 @@ class Step(_Model):
 
     @property
     def name(self) -> str:
-        return str(self.id or self.kaip or self.use)
+        return str(self.id or self.as_ or self.use)
 
 
 class PackMeta(_Model):
-    pavadinimas: str
-    domenas: str
-    priklauso_nuo: list[str] = []
-    tags: list[str] = []
-    vairuotojas: Literal["solveris", "walker"] | None = None
+    title: str
+    domain: str
+    # Temporary: which engine drives the fault's turns (M4 deletes it, D-03).
+    driver: Literal["solver", "walker"] | None = None
 
 
 class FaultPack(_Model):
@@ -130,23 +136,22 @@ class FaultPack(_Model):
     problem: str | None = None  # None: never a solving path (unclear_fault)
     playbook: str | None = None
     evidence: Evidence | None = None
-    reikalinga: str | None = None
-    isvada: str | None = None
-    pasiulymas: str | None = None
-    tiltas_nepavyko: BridgeFailed | None = None
-    sprendimai: list[Solution] = []
+    ticket_need_key: str | None = None
+    conclusion_key: str | None = None
+    offer_goal: str | None = None  # the findings-moment directive (for the LLM)
+    bridge_failed: BridgeFailed | None = None
+    solutions: list[Solution] = []
     steps: list[Step]
 
 
 class ModuleMeta(_Model):
-    aprasymas: str
-    tags: list[str] = []
+    description: str
 
 
 class Module(_Model):
-    modulis: str
+    module: str
     meta: ModuleMeta
-    isejimai: list[str] = []
+    exits: list[str] = []
     steps: list[Step]
 
     @model_validator(mode="after")
@@ -310,7 +315,7 @@ def _condition_errors(conds: list[str], keys: set[str], where: str) -> list[str]
 def _check_module(rel: str, module: Module, detectors: set[str]) -> list[str]:
     errors = []
     ids = [s.name for s in module.steps]
-    targets = set(ids) | set(module.isejimai)
+    targets = set(ids) | set(module.exits)
     for i, step in enumerate(module.steps):
         where = f"{rel}: steps.{i} ({step.name})"
         for key, target in step.on.items():
@@ -377,12 +382,12 @@ def _check_pack(
             if module is None:
                 errors.append(f"{where}: unknown module '{step.use}'")
                 continue
-            if not step.kaip:
-                errors.append(f"{where}: a module call needs kaip (the instance name)")
-            unknown_exits = set(step.on) - set(module.isejimai)
+            if not step.as_:
+                errors.append(f"{where}: a module call needs `as` (the instance name)")
+            unknown_exits = set(step.on) - set(module.exits)
             if unknown_exits:
                 errors.append(f"{where}: on keys {sorted(unknown_exits)} are not module exits")
-            missing_exits = set(module.isejimai) - set(step.on)
+            missing_exits = set(module.exits) - set(step.on)
             if missing_exits:
                 errors.append(f"{where}: module exits {sorted(missing_exits)} are not routed")
             routing = set(module.steps[0].on) if module.steps else set()
@@ -392,22 +397,29 @@ def _check_pack(
 
     ev = pack.evidence
     keys = set(ev.client) if ev else set()
-    step_names = set(names)
+    declared_roles = {r for r in roles if r}
+
+    def role_errors(where: str, role: str | None) -> list[str]:
+        if not role:
+            return []
+        if role not in declared_roles:
+            return [f"{where}: step_role '{role}' is not a role of this pack"]
+        if roles.count(role) > 1:
+            return [f"{where}: step_role '{role}' names more than one step"]
+        return []
+
     if ev:
         for key, item in ev.client.items():
             where = f"{rel}: evidence.client.{key}"
-            if item.zingsnis and item.zingsnis not in step_names:
-                errors.append(f"{where}: zingsnis -> unknown step '{item.zingsnis}'")
-            errors += _condition_errors(item.kada, keys, f"{where}.kada")
-        for name in ("patvirtinta_kai", "paneigta_kai"):
+            errors += role_errors(f"{where}.step_role", item.step_role)
+            errors += _condition_errors(item.when, keys, f"{where}.when")
+        for name in ("confirmed_when", "refuted_when"):
             errors += _condition_errors(getattr(ev, name) or [], keys, f"{rel}: evidence.{name}")
-        if ev.paneigta_veda and ev.paneigta_veda not in step_names:
-            errors.append(f"{rel}: evidence.paneigta_veda -> unknown step '{ev.paneigta_veda}'")
-    for i, rule in enumerate(pack.sprendimai):
-        where = f"{rel}: sprendimai.{i}"
-        if rule.zingsnis and rule.zingsnis not in step_names:
-            errors.append(f"{where}: zingsnis -> unknown step '{rule.zingsnis}'")
-        errors += _condition_errors(rule.jei, keys, f"{where}.jei")
+        errors += role_errors(f"{rel}: evidence.on_refuted", ev.on_refuted)
+    for i, rule in enumerate(pack.solutions):
+        where = f"{rel}: solutions.{i}"
+        errors += role_errors(f"{where}.step_role", rule.step_role)
+        errors += _condition_errors(rule.when, keys, f"{where}.when")
     return errors
 
 
@@ -424,15 +436,15 @@ def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
         for key, item in (pack.evidence.client if pack.evidence else {}).items():
             for name in EVIDENCE_PHRASE_FIELDS:
                 add(f"{where}: evidence.client.{key}.{name}", getattr(item, name))
-            for value, phrase_key in item.reiksmes.items():
-                add(f"{where}: evidence.client.{key}.reiksmes.{value}", phrase_key)
-        add(f"{where}: reikalinga", pack.reikalinga)
-        add(f"{where}: isvada", pack.isvada)
-        if pack.tiltas_nepavyko:
-            add(f"{where}: tiltas_nepavyko.pastaba", pack.tiltas_nepavyko.pastaba)
-            add(f"{where}: tiltas_nepavyko.prierasas", pack.tiltas_nepavyko.prierasas)
-        for i, rule in enumerate(pack.sprendimai):
-            add(f"{where}: sprendimai.{i}.aprasymas", rule.aprasymas)
+            for value, phrase_key in item.value_label_keys.items():
+                add(f"{where}: evidence.client.{key}.value_label_keys.{value}", phrase_key)
+        add(f"{where}: ticket_need_key", pack.ticket_need_key)
+        add(f"{where}: conclusion_key", pack.conclusion_key)
+        if pack.bridge_failed:
+            add(f"{where}: bridge_failed.notice_key", pack.bridge_failed.notice_key)
+            add(f"{where}: bridge_failed.ticket_note_key", pack.bridge_failed.ticket_note_key)
+        for i, rule in enumerate(pack.solutions):
+            add(f"{where}: solutions.{i}.description_key", rule.description_key)
     if k.manifest:
         for name, problem in k.manifest.problems.items():
             add(f"faults.yaml: problems.{name}.patvirtinimas", problem.patvirtinimas)
@@ -481,12 +493,10 @@ def validate_knowledge(
         if module is None:
             continue
         rel = path.relative_to(root).as_posix()
-        if module.modulis in k.modules:
-            errors.append(
-                f"{rel}: module '{module.modulis}' also in {module_files[module.modulis]}"
-            )
-        k.modules[module.modulis] = module
-        module_files[module.modulis] = rel
+        if module.module in k.modules:
+            errors.append(f"{rel}: module '{module.module}' also in {module_files[module.module]}")
+        k.modules[module.module] = module
+        module_files[module.module] = rel
 
     pack_files: dict[str, str] = {}
     for path in sorted((root / "faults").glob("*.yaml")):
