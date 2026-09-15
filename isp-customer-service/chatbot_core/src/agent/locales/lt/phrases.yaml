@@ -47,6 +47,9 @@ identification:
   done_report_clarify: "Supratau — patikrinote. {question}"
   facts_recap: "Pasitikslinu, ar teisingai supratau: {facts}. Ar taip?"
   refute_confirm: "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {topic} — {value}. Ar tikrai?"
+  # A telemetry recheck points at another cause — the caller confirms its symptom first.
+  hypothesis_change_confirm: "Patikrinau liniją dar kartą — dabar matau kitą vaizdą: {news}. {question}"
+  hypothesis_change_confirm_generic: "Patikrinau liniją dar kartą — dabar matau kitą vaizdą: {news}. Ar pas jus taip ir yra?"
   # C (2026-08-20): be vidinių etikečių („routeris surastas") klientui —
   # trumpa žmogiška įžanga ir pats klausimas.
   reask_reason: "Dar kartą pasitikslinsiu, kad būčiau tikras. {question}"
@@ -123,6 +126,7 @@ identification:
 
 pack:
   crc_errors:
+    confirm: "Ar internetas trūkinėja arba veikia labai lėtai?"
     ticket_need: "linijoje daug klaidų ir po laido perkišimo routeryje — pažeistas laidas, reikalingas keitimas (perkišimas būtų tik laikinas sprendimas)"
     conclusion: "linijoje daug klaidų — pažeistas arba blogai įkištas laidas"
     solution:
@@ -146,6 +150,7 @@ pack:
           "yes": "internetas dabar veikia normaliai"
           "no": "vis tiek trūkinėja / neveikia"
   healthy_to_router:
+    confirm: "Ar internetas veikia bent viename jūsų įrenginyje?"
     fail_scope:
       label: "kur neveikia"
       values:
@@ -226,6 +231,7 @@ pack:
           "yes": "tame įrenginyje internetas dabar veikia"
           "no": "tame įrenginyje internetas vis tiek neveikia"
   link_down_local:
+    confirm: "Ar interneto (WAN) lemputė routeryje nedega?"
     ticket_need: "routeris gyvas, bet signalas iš linijos neateina (interneto lemputė nedega, portas neaktyvus ir po perkišimo) — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
     conclusion: "signalas iki jūsų routerio neateina — greičiausiai pažeistas kabelis trasoje"
     solution:
@@ -261,6 +267,7 @@ pack:
           "yes": "interneto lemputė užsidegė / internetas atsirado"
           "no": "lemputė toliau nedega / internetas neatsirado"
   no_mac_observed:
+    confirm: "Ar routerio lemputės dabar visai nedega?"
     recent_events:
       label: "įvykiai prieš dingstant"
       values:
@@ -334,6 +341,7 @@ pack:
           "yes": "prijungtame kompiuteryje internetas dabar veikia"
           "no": "prijungtame kompiuteryje interneto vis tiek nėra"
   foreign_mac:
+    confirm: "Ar neseniai keitėte routerį ar prie laido prijungėte kitą įrenginį?"
     changed_device:
       label: "routerio keitimas"
       values:
@@ -370,6 +378,7 @@ pack:
           "yes": "internetas dabar veikia"
           "no": "internetas vis dar neveikia"
   router_hung:
+    confirm: "Ar routerio lemputės dega, bet internetas vis tiek neveikia?"
     fail_scope:
       label: "kur neveikia"
       values:

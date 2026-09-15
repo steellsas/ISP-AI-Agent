@@ -39,6 +39,7 @@ understand_facts_min_confidence: 0.6  # understanding facts below this are dropp
 classifier_accept_confidence: 0.5   # a step classification at or above this is accepted
 classifier_max_tokens: 150
 evidence_max_asks: 2                # asks per evidence key before it is recorded as unknown
+hypothesis_confirm_max_asks: 2      # confirm questions per contradiction before it is dropped
 bridge_plug_retries_max: 2          # tries with no device seen on the line before escalating
 restored_denials_max: 2             # "still not working" answers before rediagnose/escalate
 reboot_retries_max: 2               # reboots with no port flap seen before escalating

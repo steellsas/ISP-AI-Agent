@@ -8,6 +8,8 @@ meta:
   # (sprendimai: tada:walker). Grąžinti į seną elgesį = ištrinti šią eilutę.
 problem: internet_down
 playbook: troubleshooting/kliento_puse_internetas
+# The symptom the caller can see — asked when a recheck points here (D-05).
+confirm_key: "pack.healthy_to_router.confirm"
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
 # hipotezės logika. Hipotezę patvirtina TELEMETRIJA (tinklas iki routerio
 # sveikas) — kliento faktai tarnauja analizei ir (R4b) solverio keliui.

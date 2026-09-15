@@ -145,6 +145,7 @@ class FaultPack(_Model):
     evidence: Evidence | None = None
     ticket_need_key: str | None = None
     conclusion_key: str | None = None
+    confirm_key: str | None = None  # the symptom question when a recheck points here
     offer_goal: str | None = None  # the findings-moment directive (for the LLM)
     bridge_failed: BridgeFailed | None = None
     solutions: list[Solution] = []
@@ -483,6 +484,7 @@ def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
                 add(f"{where}: evidence.client.{key}.value_label_keys.{value}", phrase_key)
         add(f"{where}: ticket_need_key", pack.ticket_need_key)
         add(f"{where}: conclusion_key", pack.conclusion_key)
+        add(f"{where}: confirm_key", pack.confirm_key)
         if pack.bridge_failed:
             add(f"{where}: bridge_failed.notice_key", pack.bridge_failed.notice_key)
             add(f"{where}: bridge_failed.ticket_note_key", pack.bridge_failed.ticket_note_key)

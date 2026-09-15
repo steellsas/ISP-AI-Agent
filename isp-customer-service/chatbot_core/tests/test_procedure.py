@@ -172,6 +172,17 @@ class TestEngineDrivenAction:
         assert agent.state.resolution.procedure["step"] == "bind_mac"
 
 
+def _confirm_change(agent, answer):
+    """D-05: the recheck's new cause is asked about, then the caller answers."""
+    from agent.decide.rules import hypothesis_confirm
+    from agent.decide.rules.reply import scripted_words
+
+    question = scripted_words(agent.state, agent.runtime, None)
+    agent.state.turn.user_input = answer
+    hypothesis_confirm.plan(agent.state, agent.runtime)
+    return question
+
+
 class TestIdentifyThenDiagnoseSameTurn:
     """resolve_address identifies -> the engine diagnoses in the SAME turn, so one
     reply confirms the address AND delivers the finding. Without this the
@@ -330,6 +341,8 @@ class TestHypothesisObject:
             ),
         )
         advance(agent.state, agent.runtime, "vis dar neveikia")
+        assert agent.state.diagnosis.hypothesis["cause"] == "foreign_mac"  # only in doubt (D-05)
+        _confirm_change(agent, "Taip")
 
         assert [x["cause"] for x in agent.state.diagnosis.rejected_hypotheses] == ["foreign_mac"]
         assert agent.state.diagnosis.hypothesis["cause"] == "healthy_to_router"  # a new belief
@@ -486,6 +499,16 @@ class TestHypothesisRejection:
 
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
         advance(agent.state, agent.runtime, "vis dar neveikia")
+        # D-05: the recheck only puts the belief in doubt — nothing switches yet.
+        assert agent.state.resolution.procedure["verdict"] == "foreign_mac"
+        c = agent.state.diagnosis.contradiction
+        assert (c.kind, c.before_value, c.now_value) == (
+            "verdict",
+            "foreign_mac",
+            "healthy_to_router",
+        )
+        question = _confirm_change(agent, "Taip, veikia telefone")
+        assert "kitą vaizdą" in question  # the symptom question went out
 
         assert agent.state.diagnosis.failed_hypotheses == ["foreign_mac"]
         assert agent.state.resolution.procedure["verdict"] == "healthy_to_router"  # Plan B
@@ -508,6 +531,7 @@ class TestHypothesisRejection:
 
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
         advance(agent.state, agent.runtime, "vis dar neveikia")
+        _confirm_change(agent, "Taip")
 
         facts = state_facts_block(agent.state, agent.runtime) or ""
         assert "PERSIGALVOJIMAS" in facts
@@ -551,3 +575,32 @@ class TestStepOutcome:
         state = self._state(make_state, "escalate")
         state.ticket.stage = "phone"
         assert _outcome(state, "rh_check").exit == "failure"
+
+
+class TestHypothesisChangeDenied:
+    """D-05: a denied (or twice unclear) symptom keeps the belief; the failed fix ends
+    in the old procedure's registration."""
+
+    def _doubted(self, monkeypatch):
+        agent = TestHypothesisRejection()._at_restored(
+            monkeypatch, telemetry_after="healthy_to_router"
+        )
+        from agent.decide.procedure import advance
+
+        advance(agent.state, agent.runtime, "vis dar neveikia")
+        return agent
+
+    def test_no_keeps_the_belief_and_escalates(self, monkeypatch):
+        agent = self._doubted(monkeypatch)
+        _confirm_change(agent, "Ne")
+        assert agent.state.resolution.procedure["verdict"] == "foreign_mac"
+        assert agent.state.resolution.procedure["step"] == "escalate"
+        assert agent.state.diagnosis.contradiction is None
+        assert agent.state.dialog.resume_hold_due  # the "ne" is not the escalate consent
+
+    def test_unclear_asks_again_then_keeps(self, monkeypatch):
+        agent = self._doubted(monkeypatch)
+        _confirm_change(agent, "hmm")
+        assert agent.state.diagnosis.contradiction is not None  # asked again next
+        _confirm_change(agent, "nežinau ką")
+        assert agent.state.resolution.procedure["step"] == "escalate"

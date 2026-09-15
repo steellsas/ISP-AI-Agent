@@ -114,3 +114,31 @@ def answered(state, rt, kind: str):
     state.diagnosis.contradiction = None
     rt.tracer.emit("hypothesis", status="active", kind=kind, key=c.fact_key)
     return c
+
+
+def change_question(c) -> str:
+    """The confirm question for a telemetry recheck that names another cause: what the
+    line shows now, and the symptom of that cause the caller can see."""
+    from ..contract.locale import maybe_phrase, phrase
+    from ..faults import _faults
+
+    news = phrase_or(f"verdict.{c.now_value}.gloss", c.now_value or "")
+    question = maybe_phrase((_faults().get(c.now_value or "") or {}).get("confirm_key"))
+    if question:
+        return phrase("identification.hypothesis_change_confirm", news=news, question=question)
+    return phrase("identification.hypothesis_change_confirm_generic", news=news)
+
+
+def change_confirmed(state, rt, c) -> None:
+    """The caller confirmed the new symptom: the belief changes and the new cause's
+    procedure starts (the rethink is voiced once)."""
+    from ..resolution import get_strategy
+
+    before = c.before_value
+    if before and before not in state.diagnosis.failed_hypotheses:
+        state.diagnosis.failed_hypotheses.append(before)
+    strat = get_strategy(c.now_value)
+    state.resolution.procedure = {"verdict": strat.verdict, "step": strat.steps[0].id}
+    state.diagnosis.pivoted_from = before
+    open_hypothesis(state, rt, c.now_value)
+    rt.tracer.emit("hypothesis", status="changed", kind="verdict", before=before, now=c.now_value)

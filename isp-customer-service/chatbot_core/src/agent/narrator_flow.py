@@ -1525,24 +1525,31 @@ def update_state_from_observation(state, rt, action: str, observation: str):
                 set_fact(state.diagnosis.evidence, "verdict", v["reason"], TELEMETRY, turn)
             if v.get("side"):
                 set_fact(state.diagnosis.evidence, "side", v["side"], TELEMETRY, turn)
-            # A verdict IS a hypothesis — record what we now believe and why, so
-            # the agent can say it aloud and later report how it settled.
-            open_hypothesis(state, rt, v.get("reason"))
-            # Activate / re-evaluate the resolution strategy for this verdict
-            # (dynamic pivot: a re-diagnose with a different verdict switches
-            # strategy). None = generic inform/instruct flow.
+            # Activate the resolution strategy for this verdict. A procedure already
+            # running on another cause is NOT switched (D-05): the recheck only puts
+            # the belief in doubt, and the caller confirms the new symptom first
+            # (decide/rules/hypothesis_confirm). None = generic inform/instruct flow.
             from .resolution import get_strategy
 
             strat = get_strategy(v.get("reason"))
+            prev = (state.resolution.procedure or {}).get("verdict")
             # Never pivot back into a hypothesis the telemetry already disproved —
             # that is how a re-diagnose after a failed fix would loop forever.
             if strat is not None and strat.verdict not in state.diagnosis.failed_hypotheses:
-                prev = (state.resolution.procedure or {}).get("verdict")
-                if prev != strat.verdict:  # new or pivoted
+                if prev is None:
+                    # A verdict IS a hypothesis — record what we now believe and why,
+                    # so the agent can say it aloud and later report how it settled.
+                    open_hypothesis(state, rt, v.get("reason"))
                     state.resolution.procedure = {
                         "verdict": strat.verdict,
                         "step": strat.steps[0].id,
                     }
+                elif prev != strat.verdict:
+                    from .decide.hypothesis import doubt
+
+                    doubt(state, rt, "verdict", "verdict", prev, strat.verdict, source="telemetry")
+            elif prev is None:
+                open_hypothesis(state, rt, v.get("reason"))
 
         # An active outage for the caller's street -> restricted mode (NOT a
         # close): the caller still asks "when fixed? / compensation?", so the

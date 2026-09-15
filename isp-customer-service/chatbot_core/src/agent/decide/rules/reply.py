@@ -256,6 +256,9 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
     from .. import hypothesis
 
+    change = hypothesis.ask(state, rt, "verdict")
+    if change is not None:
+        return _words("diagnosis.hypothesis_confirm", hypothesis.change_question(change))
     conflict = hypothesis.ask(state, rt, "conflict")
     if conflict is not None:
         from ...evidence import gloss_label, gloss_value

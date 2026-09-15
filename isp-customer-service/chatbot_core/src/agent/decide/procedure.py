@@ -491,12 +491,12 @@ def reject_and_rediagnose(state, rt, r: dict) -> bool:
     """The fix ran but the line is still down: reject THIS hypothesis and look for
     another one before giving up.
 
-    Re-reads telemetry through the normal path so state.diagnosis and the strategy
-    pivot both update (the pivot skips anything already in failed_hypotheses).
-    Returns True when a genuinely NEW strategy took over — the agent has a Plan B
-    and says so (see `pivoted_from`); False when nothing new is left, so the caller
-    escalates. Without this the FIRST failed fix ended in a ticket even when the
-    telemetry had started pointing at a different fault."""
+    Re-reads telemetry through the normal path. A genuinely NEW cause only puts the
+    belief in doubt (D-05): the caller confirms its symptom next turn and only then
+    the procedure switches (decide/rules/hypothesis_confirm). Returns True when such
+    a Plan B is pending; False when nothing new is left, so the caller escalates.
+    Without this the FIRST failed fix ended in a ticket even when the telemetry had
+    started pointing at a different fault."""
     s = state
     verdict = r.get("verdict")
     if verdict and verdict not in s.diagnosis.failed_hypotheses:
@@ -506,11 +506,7 @@ def reject_and_rediagnose(state, rt, r: dict) -> bool:
     )
     s.diagnosis.verdicts.pop("network", None)  # let ensure_diagnosed re-read the line
     _diagnosis.ensure_diagnosed(state, rt)
-    new = (s.resolution.procedure or {}).get("verdict")
-    if new and new != verdict and new not in s.diagnosis.failed_hypotheses:
-        s.diagnosis.pivoted_from = verdict  # narrate the rethink once, then clear
-        return True
-    return False
+    return _hypothesis.due(state, "verdict") is not None
 
 
 def route_to(state, rt, r: dict, target: str) -> None:

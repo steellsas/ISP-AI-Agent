@@ -262,8 +262,8 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
         return None  # the ticket dialogue owns the turn
     from .decide.hypothesis import due
 
-    if due(state, "conflict") is not None:
-        return None  # the scripted conflict clarification owns the turn
+    if due(state, "conflict") is not None or due(state, "verdict") is not None:
+        return None  # the scripted clarification / hypothesis confirm owns the turn
     if state.turn.side_topic_active:
         return None  # the side_topic node owns the turn (answer + anchor)
     # POLICY turns never belong to the thinker (2026-08-07: a refusal

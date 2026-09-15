@@ -5,6 +5,8 @@ meta:
   domain: internet
 problem: internet_down
 playbook: troubleshooting/internet_mires_routeris_tiltas
+# The symptom the caller can see — asked when a recheck points here (D-05).
+confirm_key: "pack.no_mac_observed.confirm"
 # Ledger v2 (Phase 4.5 step 2): the KNOWLEDGE form of this fault — what must
 # be ESTABLISHED, not which step number. The engine asks the FIRST missing
 # evidence whose `kada` conditions hold (order below = asking order);

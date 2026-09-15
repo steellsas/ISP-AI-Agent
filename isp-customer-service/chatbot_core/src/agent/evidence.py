@@ -47,6 +47,7 @@ class Contradiction(BaseModel):
     now_value: str | None = None
     before_quote: str | None = None  # what the client said earlier, for the question
     asked: bool = False
+    asks: int = 0
 
 
 CLIENT = "client"

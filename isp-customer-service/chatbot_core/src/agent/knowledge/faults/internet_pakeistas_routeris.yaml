@@ -7,6 +7,8 @@ meta:
   # žingsnių medį (sprendimai: tada:walker). Rollback = ištrinti šią eilutę.
 problem: internet_down
 playbook: troubleshooting/internet_pakeistas_routeris_mac
+# The symptom the caller can see — asked when a recheck points here (D-05).
+confirm_key: "pack.foreign_mac.confirm"
 # Analizės žinios (A variantas, 2026-08-13): faktų žodynas percepcijai +
 # hipotezės logika. Žingsnių medis kol kas lieka vieninteliu vairuotoju;
 # sprendimai (tada: bind) prisijungs kartu su solverio centralizavimu (R4b).

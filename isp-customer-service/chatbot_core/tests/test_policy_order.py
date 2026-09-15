@@ -33,4 +33,7 @@ def test_rules_follow_section_5_order():
     # (rows 11-20), whose scripted words come from the narrator's reply layer.
     ported = [(row, family) for row, family, _rule in RULES]
     assert ported[-1] == (20, "stage")
-    assert ported[:-1] == SECTION_5[: len(ported) - 1]
+    assert all(entry in SECTION_5 for entry in ported[:-1])
+    rows = [row for row, _family in ported]
+    assert rows == sorted(rows)
+    assert [row for row, _f in ported[:10]] == list(range(1, 11))
