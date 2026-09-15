@@ -25,7 +25,7 @@ def engine_resolve_from_slots(state, rt) -> bool:
     """Deterministic identification commit from clearly-heard slots: the ENGINE
     calls resolve_address (+ the silent diagnose) itself — no LLM tool-call
     hesitancy, no confirm-round relapse. True when a customer committed."""
-    from .walker_flow import ensure_diagnosed
+    from .execute.diagnosis import ensure_diagnosed
 
     p = state.identity.profile
     args: dict[str, str] = {

@@ -1,5 +1,5 @@
 """
-Walker guard chain — the ordered pre-checks that decide whether a caller's
+Procedure step guards — the ordered pre-checks that decide whether a caller's
 turn may touch the active strategy step at all.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md §5): moved verbatim out of
@@ -23,9 +23,9 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .contract.locale import vocab, vocab_set
-from .dialog_utils import asked_recently
-from .faults import CANNOT_NOW_ROLES
+from ..contract.locale import vocab, vocab_set
+from ..dialog_utils import asked_recently
+from ..faults import CANNOT_NOW_ROLES
 
 # --- prelude (no step resolved yet) -----------------------------------------
 
@@ -37,7 +37,7 @@ def question_priority_hold(state: Any, rt: Any, user_input: str | None) -> bool:
     step's answer — live P6: "Ne patogu" + an address question in one turn
     had the walker start a ticket over the safety ladder. The content is not
     lost: the evidence ingest still reads facts; the walker just holds."""
-    from .dialog_registry import OWNER_PRIORITY, active
+    from ..dialog_registry import OWNER_PRIORITY, active
 
     q = active(state, rt)
     if q is not None and OWNER_PRIORITY.get(q.owner, 99) < OWNER_PRIORITY["walker"]:
@@ -83,9 +83,9 @@ def device_change_pre_answer(state: Any, rt: Any, r, strat, step, user_input: st
     (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that step —
     elsewhere "kompiuteris" is a scope answer, not a device change. Runs before the
     intent gate: a clear pre-answer should move regardless of turn phrasing."""
-    from .perceive.detectors import confirms_device_change
-    from .resolution import next_step_id
-    from .walker_flow import route_to
+    from ..perceive.detectors import confirms_device_change
+    from ..resolution import next_step_id
+    from .procedure import route_to
 
     if step.role == "confirm_device_change" and confirms_device_change(user_input):
         route_to(state, rt, r, next_step_id(strat, step.id, "yes"))
@@ -99,9 +99,9 @@ def homework_consent(state: Any, rt: Any, r, strat, step, user_input: str | None
     first-person callback promise ("aš perskambinsiu") IS the yes — the
     caller agrees to do the homework and call back. Route to the callback
     terminal; an explicit ticket demand falls through to the refuse guard."""
-    from .perceive.detectors import detect_farewell
-    from .resolution import next_step_id
-    from .walker_flow import route_to
+    from ..perceive.detectors import detect_farewell
+    from ..resolution import next_step_id
+    from .procedure import route_to
 
     if step.role != "homework":
         return False
@@ -124,8 +124,8 @@ def backchannel_hold(state: Any, rt: Any, r, strat, step, user_input: str | None
     HOLD asking steps instead of routing garbage (observed: "T." entered the bridge
     path as "yes, I have a computer"; "Mhm." climbed two INSTRUCT steps). ACTION
     steps still advance — their announce needs no answer."""
-    from .perceive.detectors import is_backchannel
-    from .resolution import StepKind
+    from ..perceive.detectors import is_backchannel
+    from ..resolution import StepKind
 
     if step.kind in (StepKind.CONFIRM, StepKind.INSTRUCT) and is_backchannel(user_input):
         rt.tracer.emit(
@@ -141,9 +141,9 @@ def restored_pre_answer(state: Any, rt: Any, r, strat, step, user_input: str | N
     the YES so the resolve is RECORDED instead of the call dying unclosed on the
     hangup (observed live: resolved Wi-Fi call left outcome=None). Only the clear
     affirmative pre-answers; a "no" still waits for the step's own question."""
-    from .perceive.detectors import detect_restored
-    from .resolution import Outcome, next_step_id
-    from .walker_flow import route_to
+    from ..perceive.detectors import detect_restored
+    from ..resolution import Outcome, next_step_id
+    from .procedure import route_to
 
     if step.detector == "restored" and not r.get("asked"):
         if detect_restored(user_input) is Outcome.YES:
@@ -160,10 +160,10 @@ def refuse_or_ticket_redirect(state: Any, rt: Any, r, strat, step, user_input: s
     question doubles as the polite clarification ("užregistruosiu — ar tinka?").
     Observed live: the caller demanded a ticket 3×, the narrator promised it 5×,
     and the walker held cable_check forever — no route existed."""
-    from .perceive.detectors import detect_refuse_or_ticket
-    from .resolution import StepKind
-    from .ticket_flow import begin_ticket_dialogue
-    from .walker_flow import goto_step
+    from ..perceive.detectors import detect_refuse_or_ticket
+    from ..resolution import StepKind
+    from ..ticket_flow import begin_ticket_dialogue
+    from .procedure import goto_step
 
     if step.kind is StepKind.ESCALATE:
         return False
@@ -201,7 +201,7 @@ def evidence_question_open_hold(
     together" → escalate → ticket → dead call. The asked-step routing below
     (classify + keyword) must not consume such a reply; explicit refusals and
     restored pre-answers were already handled above."""
-    from .evidence_drive import evidence_question_open
+    from ..evidence_drive import evidence_question_open
 
     if evidence_question_open(state, rt):
         rt.tracer.emit(
@@ -222,8 +222,8 @@ def classifier_confirm_route(state: Any, rt: Any, r, strat, step, user_input: st
     advances even when the brittle keyword turn-intent would veto it (observed:
     "gerai, bandau… nė viena lemputė neužsidegė" was read as in_progress and froze
     dr_power). The keyword detector + intent gate stay as the fallback."""
-    from .resolution import StepKind
-    from .walker_flow import classify_confirm_and_route
+    from ..resolution import StepKind
+    from .procedure import classify_confirm_and_route
 
     if (
         step.kind is StepKind.CONFIRM
@@ -242,8 +242,8 @@ def classifier_instruct_route(state: Any, rt: Any, r, strat, step, user_input: s
     it" phrased messily ("Gerai, jau įkišau") advances even when the keyword
     turn-intent reads it as in_progress and freezes the step (observed: dr_plug_pc
     froze, the bridge never bound). Keyword intent gate stays the fallback."""
-    from .resolution import StepKind
-    from .walker_flow import classify_instruct_and_advance
+    from ..resolution import StepKind
+    from .procedure import classify_instruct_and_advance
 
     if (
         step.kind is StepKind.INSTRUCT
@@ -268,7 +268,7 @@ STEP_GUARDS = (
 
 # B2 (2026-08-21): the guards that READ the caller's answer into a route. In
 # solver-driven packs they stay silent until the ledger hands over (see
-# walker_flow.walker_owns_turn); the policy guards above keep running.
+# procedure.owns_answer); the policy guards above keep running.
 ANSWER_GUARDS = (
     device_change_pre_answer,
     restored_pre_answer,

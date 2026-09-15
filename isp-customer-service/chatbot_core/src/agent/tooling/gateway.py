@@ -89,7 +89,7 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
     out of the prompt and into code, so a hallucinated `diagnose_connection`
     cannot fire (observed: customer_id='1' on an unidentified caller).
     """
-    from ..walker_flow import fresh_diagnose_reason
+    from ..execute.diagnosis import fresh_diagnose_reason
 
     # check_outages must be street-specific. A city-only query returns OTHER
     # streets' outages, which the model then misattributes to the caller

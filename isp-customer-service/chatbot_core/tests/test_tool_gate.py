@@ -104,14 +104,16 @@ class TestCloseCaseGate:
     def test_resolved_allowed_when_line_healthy(self, agent):
         # Identified AND a fresh diagnose shows no line fault -> resolved allowed.
         agent.state.identity.customer_id = "CUST105"
-        with patch("agent.walker_flow.fresh_diagnose_reason", return_value="healthy_to_router"):
+        with patch(
+            "agent.execute.diagnosis.fresh_diagnose_reason", return_value="healthy_to_router"
+        ):
             assert gate(agent.state, agent.runtime, "close_case", {"reason": "resolved"}) is None
 
     def test_resolved_blocked_when_line_still_broken(self, agent):
         # Verify-gate: telemetry still shows a line fault, so "resolved" is
         # premature and must be blocked (source of truth = telemetry, not caller).
         agent.state.identity.customer_id = "CUST105"
-        with patch("agent.walker_flow.fresh_diagnose_reason", return_value="foreign_mac"):
+        with patch("agent.execute.diagnosis.fresh_diagnose_reason", return_value="foreign_mac"):
             out = gate(agent.state, agent.runtime, "close_case", {"reason": "resolved"})
         assert out is not None
         assert json.loads(out)["error"] == "not_fixed"

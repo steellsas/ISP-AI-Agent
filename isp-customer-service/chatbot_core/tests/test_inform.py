@@ -342,30 +342,28 @@ class TestHomeworkFinale:
     def test_farewell_consent_routes_to_callback(self, db_connection):
         """F1+F2: „Gerai, sutariam, viso gero" = sutikimas → callback, be
         end-confirm rato."""
+        from agent.decide.procedure import advance
         from agent.decide.rules.head import turn_head
-        from agent.walker_flow import advance_resolution
 
         agent = self._at_homework()
         turn_head(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
         assert agent.state.dialog.end_confirm_pending is False  # end-confirm nekilo
-        advance_resolution(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
+        advance(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
 
     def test_callback_promise_routes_to_callback(self, db_connection):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_homework()
-        advance_resolution(
-            agent.state, agent.runtime, "Nereikia susitikti, aš perskambinsiu, sakiau."
-        )
+        advance(agent.state, agent.runtime, "Nereikia susitikti, aš perskambinsiu, sakiau.")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
 
     def test_ticket_demand_still_wins(self, db_connection):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_homework()
-        advance_resolution(agent.state, agent.runtime, "Gerai, bet registruokite meistrą dabar.")
+        advance(agent.state, agent.runtime, "Gerai, bet registruokite meistrą dabar.")
         assert not (
             agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         )

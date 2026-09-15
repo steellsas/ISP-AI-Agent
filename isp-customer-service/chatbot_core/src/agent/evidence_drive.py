@@ -173,8 +173,8 @@ def _sync_walker_solution(state: Any, rt: Any, s: Any, r: dict) -> None:
     (solution_synced marker: re-syncing every turn would drag the tree back
     to the solution step it has already walked past) and hand the turn over
     — the step's own hint/question goes out next."""
+    from .decide.procedure import goto_step
     from .evidence import solution_step
-    from .walker_flow import goto_step
 
     target = solution_step(s.diagnosis.evidence, r.get("verdict"))
     if target and r.get("solution_synced") != target and r.get("step") != target:
@@ -192,6 +192,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     declared solution. Returns the reply text, or None when the spec is
     absent / the solver should take the turn (bridge instructions, refuted
     pivot, nothing left to ask)."""
+    from .decide.procedure import goto_step
     from .evidence import (
         CLIENT,
         hypothesis_status,
@@ -202,7 +203,6 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     )
     from .solver_flow import drive_escalate
     from .ticket_flow import ticket_need
-    from .walker_flow import goto_step
 
     s = state
     r = s.resolution.procedure or {}

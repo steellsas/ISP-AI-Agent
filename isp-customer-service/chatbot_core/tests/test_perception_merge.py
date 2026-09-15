@@ -7,9 +7,9 @@ second round-trip. Tests patch the LLM boundary only.
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from agent.decide.procedure import _cached_perception
 from agent.graph_v2.state import GraphState, TurnScratch
 from agent.perceive import understand as und
-from agent.walker_flow import _cached_perception
 
 from tests.engine_fakes import as_call
 

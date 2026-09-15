@@ -13,7 +13,7 @@ from ..dialog_utils import anchor_text, asked_recently
 
 def step_perception_options(state: Any, rt: Any):
     """(options, step) for the merged perception call — the SAME routing-key
-    meanings walker_flow.classify_confirm_and_route / classify_instruct_and_advance
+    meanings procedure.classify_confirm_and_route / classify_instruct_and_advance
     build for the standalone classifier, computed once at perception time.
     Returns (None, None) when no asked step awaits an answer (or CLASSIFIER=off,
     the deterministic test mode)."""

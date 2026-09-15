@@ -8,7 +8,6 @@ import pytest
 
 
 def _agent(verdict, step, monkeypatch, reason_now):
-    from agent import walker_flow
 
     from tests.calls import make_agent
 
@@ -16,8 +15,9 @@ def _agent(verdict, step, monkeypatch, reason_now):
     agent.state.identity.customer_id = "CUST305"
     agent.state.intake.problem_type = "internet_down"
     agent.state.resolution.procedure = {"verdict": verdict, "step": step, "asked": True}
-    monkeypatch.setattr("agent.walker_flow.fresh_diagnose_reason", lambda state, rt: reason_now)
-    assert walker_flow  # imported for parity with other suites
+    monkeypatch.setattr(
+        "agent.execute.diagnosis.fresh_diagnose_reason", lambda state, rt: reason_now
+    )
     return agent
 
 
@@ -68,7 +68,7 @@ class TestAdvanceLineCheck:
     """Variklis perskaito liniją ir sulieja su kliento žodžiu."""
 
     def test_line_still_down_escalates_honestly(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_line_check
+        from agent.decide.procedure import advance_line_check
 
         agent = _agent("link_down_local", "ll_recheck", monkeypatch, "link_down_local")
         advance_line_check(
@@ -79,7 +79,7 @@ class TestAdvanceLineCheck:
         assert r["escalate_reason"] == "line_not_restored"
 
     def test_line_ok_caller_yes_resolves(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_line_check
+        from agent.decide.procedure import advance_line_check
 
         agent = _agent("link_down_local", "ll_recheck", monkeypatch, "healthy_to_router")
         advance_line_check(
@@ -92,7 +92,7 @@ class TestAdvanceLineCheck:
         assert agent.state.ticket.ticket_id is None
 
     def test_line_ok_caller_no_escalates(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_line_check
+        from agent.decide.procedure import advance_line_check
 
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
         advance_line_check(
@@ -101,7 +101,7 @@ class TestAdvanceLineCheck:
         assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_unclear_with_recovered_line_holds(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_line_check
+        from agent.decide.procedure import advance_line_check
 
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
         advance_line_check(
@@ -134,8 +134,8 @@ class TestBlendGuard:
     resolved. Blend žingsniai (ll/crc_recheck) — variklio, žodis jų nevaro."""
 
     def test_nepadejo_at_cable_never_resolves(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance_instruct
         from agent.resolution import get_strategy
-        from agent.walker_flow import advance_instruct
 
         agent = _agent("crc_errors", "crc_cable", monkeypatch, "crc_errors")
         st = get_strategy("crc_errors")

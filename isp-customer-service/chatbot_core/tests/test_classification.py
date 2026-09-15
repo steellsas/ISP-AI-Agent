@@ -331,7 +331,7 @@ class TestNoPathTicket:
         assert problem_has_path(None) is False
 
     def test_tv_goes_to_unclear_ticket_not_internet_pack(self, db_connection):
-        from agent.walker_flow import ensure_diagnosed
+        from agent.execute.diagnosis import ensure_diagnosed
 
         agent = _agent()
         agent.state.identity.customer_id = "CUST009"
@@ -345,7 +345,7 @@ class TestNoPathTicket:
         assert "neaiškus" in ticket_need(agent.state, agent.runtime)
 
     def test_internet_down_still_diagnoses(self, db_connection):
-        from agent.walker_flow import ensure_diagnosed
+        from agent.execute.diagnosis import ensure_diagnosed
 
         agent = _agent()
         agent.state.identity.customer_id = "CUST009"

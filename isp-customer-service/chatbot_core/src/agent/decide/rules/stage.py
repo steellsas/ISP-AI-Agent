@@ -27,7 +27,7 @@ def plan(state: Any, rt: Any) -> TurnPlan:
             rule="identification.stage",
             say=Say(kind="directive", stage="intake", reply_layer=True),
         )
-    from ...walker_flow import ensure_diagnosed
+    from ...execute.diagnosis import ensure_diagnosed
 
     ensure_diagnosed(state, rt)
     if _side_topic(s):
@@ -52,13 +52,15 @@ def plan(state: Any, rt: Any) -> TurnPlan:
         )
     s.turn.progress_key_at_start = snapshot
     from ...solver_flow import shadow_solve
-    from ...walker_flow import advance_resolution
+    from ..procedure import advance
 
-    advance_resolution(state, rt, user_input)
+    active = s.resolution.procedure is not None
+    outcome = advance(state, rt, user_input)
     shadow_solve(state, rt, user_input)
     return TurnPlan(
-        owner="diagnosis",
-        rule="diagnosis.stage",
+        owner="procedure" if active else "diagnosis",
+        rule=f"procedure.{outcome.kind}" if active else "diagnosis.stage",
+        awaiting=outcome.role,
         action=Action(type="procedure_step", name="run_due_action"),
         say=Say(kind="directive", stage="diagnosis", reply_layer=True),
     )

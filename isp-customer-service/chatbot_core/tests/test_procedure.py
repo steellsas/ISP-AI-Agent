@@ -4,7 +4,7 @@ deleted legacy-graph test module): engine-run actions, identify-then-diagnose in
 one turn, the hypothesis object, turn holding, the bridge device check and
 hypothesis rejection.
 
-Run: pytest tests/test_walker_flow.py -v
+Run: pytest tests/test_procedure.py -v
 """
 
 import json
@@ -52,11 +52,14 @@ class TestEngineDrivenAction:
         install_fake_tools(
             monkeypatch, lambda name, args: json.dumps({"success": True, "new_mac": "X"})
         )
-        monkeypatch.setattr("agent.walker_flow.fresh_diagnose_reason", lambda state, rt: telemetry)
+        monkeypatch.setattr(
+            "agent.execute.diagnosis.fresh_diagnose_reason", lambda state, rt: telemetry
+        )
 
     def test_bind_announces_then_walks_to_confirm(self, monkeypatch):
+        from agent.decide.procedure import advance
+        from agent.execute.diagnosis import ensure_action_done
         from agent.narrator_flow import mark_step_presented
-        from agent.walker_flow import advance_resolution, ensure_action_done
 
         agent = self._agent()
         self._at_bind(agent)
@@ -70,11 +73,11 @@ class TestEngineDrivenAction:
         assert agent.state.resolution.procedure["action_done"] is True
         # Once the announce is presented, the caller's next reply advances to verify.
         mark_step_presented(agent.state, agent.runtime)
-        advance_resolution(agent.state, agent.runtime, "laukiu")
+        advance(agent.state, agent.runtime, "laukiu")
         assert agent.state.resolution.procedure["step"] == "confirm_restored"
 
     def test_bind_runs_once(self, monkeypatch):
-        from agent.walker_flow import ensure_action_done
+        from agent.execute.diagnosis import ensure_action_done
 
         agent = self._agent()
         self._at_bind(agent)
@@ -85,8 +88,8 @@ class TestEngineDrivenAction:
         )  # action_done guard — no re-bind
 
     def test_bind_tool_withheld_after_engine_ran(self, monkeypatch):
+        from agent.execute.diagnosis import ensure_action_done
         from agent.narrator_flow import scoped_tools_schema
-        from agent.walker_flow import ensure_action_done
 
         # Once the engine has bound (action_done), update_mac must NOT be exposed to
         # the model, or the single-tool step gets re-called to the limit (observed:
@@ -101,42 +104,40 @@ class TestEngineDrivenAction:
         assert "update_mac" not in names
 
     def test_restored_yes_resolves(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._agent()
         self._at_restored(agent)
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")
-        advance_resolution(agent.state, agent.runtime, "taip, veikia")
+        advance(agent.state, agent.runtime, "taip, veikia")
         assert agent.state.closing.case_closed is True
         assert agent.state.closing.closed_reason == "resolved"
 
     def test_restored_no_but_provider_ok_pivots_client_side(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._agent()
         self._at_restored(agent)
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")  # provider OK
-        advance_resolution(agent.state, agent.runtime, "ne, vis dar neveikia")
+        advance(agent.state, agent.runtime, "ne, vis dar neveikia")
         # Provider OK but caller has no internet -> in-home fault, not escalate.
         assert agent.state.closing.case_closed is False
         assert agent.state.resolution.procedure["step"] == "client_side"
 
     def test_restored_no_and_line_still_down_waits_then_escalates(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._agent()
         self._at_restored(agent)
         self._stub_tools(monkeypatch, telemetry="foreign_mac")  # line not restored yet
-        advance_resolution(
-            agent.state, agent.runtime, "ne"
-        )  # 1st denial -> wait (may take a few minutes)
+        advance(agent.state, agent.runtime, "ne")  # 1st denial -> wait (may take a few minutes)
         assert agent.state.resolution.procedure["step"] == "confirm_restored"
         agent.state.resolution.procedure["asked"] = True
-        advance_resolution(agent.state, agent.runtime, "vis dar ne")  # 2nd denial -> escalate
+        advance(agent.state, agent.runtime, "vis dar ne")  # 2nd denial -> escalate
         assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_ensure_action_noop_on_confirm_step(self, monkeypatch):
-        from agent.walker_flow import ensure_action_done
+        from agent.execute.diagnosis import ensure_action_done
 
         agent = self._agent()
         self._at_restored(agent)  # a CONFIRM step, not ACTION
@@ -145,8 +146,8 @@ class TestEngineDrivenAction:
         assert agent.state.closing.case_closed is False
 
     def test_instruct_steps_walk_one_per_turn(self):
+        from agent.decide.procedure import advance
         from agent.narrator_flow import mark_step_presented
-        from agent.walker_flow import advance_resolution
 
         # "nieko nekeičiau" -> the cable INSTRUCT steps are walked ONE per reply:
         # each advances only after its instruction was presented last turn.
@@ -159,15 +160,15 @@ class TestEngineDrivenAction:
         }
 
         # Instruction not presented yet -> a reply does NOT skip ahead.
-        advance_resolution(agent.state, agent.runtime, "gerai")
+        advance(agent.state, agent.runtime, "gerai")
         assert agent.state.resolution.procedure["step"] == "cable_check"
         # Present it, then the next reply advances to the reconnect instruction.
         mark_step_presented(agent.state, agent.runtime)
-        advance_resolution(agent.state, agent.runtime, "geltoname")
+        advance(agent.state, agent.runtime, "geltoname")
         assert agent.state.resolution.procedure["step"] == "cable_reconnect"
         # And one more reply (after presenting) reaches the bind action.
         mark_step_presented(agent.state, agent.runtime)
-        advance_resolution(agent.state, agent.runtime, "padariau")
+        advance(agent.state, agent.runtime, "padariau")
         assert agent.state.resolution.procedure["step"] == "bind_mac"
 
 
@@ -286,8 +287,8 @@ class TestHypothesisObject:
         assert h["because"]  # seeded with what the telemetry showed
 
     def test_a_working_fix_confirms_it(self):
+        from agent.decide.procedure import route_to
         from agent.narrator_flow import state_facts_block
-        from agent.walker_flow import route_to
 
         agent = self._agent()
         agent.state.identity.customer_id = "CUST009"
@@ -299,8 +300,8 @@ class TestHypothesisObject:
 
     def test_rejected_causes_are_remembered_and_not_re_offered(self, monkeypatch):
         import agent.react_agent as ra
+        from agent.decide.procedure import advance
         from agent.narrator_flow import state_facts_block
-        from agent.walker_flow import advance_resolution
 
         agent = self._agent()
         agent.state.identity.customer_id = "CUST105"
@@ -317,7 +318,7 @@ class TestHypothesisObject:
             "restored_denials": 1,
         }
         monkeypatch.setattr(
-            "agent.walker_flow.fresh_diagnose_reason", lambda state, rt: "foreign_mac"
+            "agent.execute.diagnosis.fresh_diagnose_reason", lambda state, rt: "foreign_mac"
         )
         install_fake_tools(
             monkeypatch,
@@ -328,7 +329,7 @@ class TestHypothesisObject:
                 }
             ),
         )
-        advance_resolution(agent.state, agent.runtime, "vis dar neveikia")
+        advance(agent.state, agent.runtime, "vis dar neveikia")
 
         assert [x["cause"] for x in agent.state.diagnosis.rejected_hypotheses] == ["foreign_mac"]
         assert agent.state.diagnosis.hypothesis["cause"] == "healthy_to_router"  # a new belief
@@ -350,59 +351,61 @@ class TestTurnHolding:
             "step": step_id,
             "asked": True,
         }
-        monkeypatch.setattr("agent.walker_flow.fresh_diagnose_reason", lambda state, rt: reason)
+        monkeypatch.setattr(
+            "agent.execute.diagnosis.fresh_diagnose_reason", lambda state, rt: reason
+        )
         return agent
 
     def test_in_progress_waits_instead_of_checking(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         # Observed: "atsinešiu kompiuterį" advanced the step, so the engine read the
         # line before anything was plugged in and concluded the bridge had failed.
         agent = self._at_step(monkeypatch, "dr_plug_pc")
-        advance_resolution(agent.state, agent.runtime, "Gerai, atsinešiu kompiuterį, pajungsiu.")
+        advance(agent.state, agent.runtime, "Gerai, atsinešiu kompiuterį, pajungsiu.")
         assert agent.state.resolution.procedure["step"] == "dr_plug_pc"  # held
         assert agent.state.dialog.awaiting == "client_action"
 
     def test_done_advances(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_step(monkeypatch, "dr_plug_pc")
-        advance_resolution(agent.state, agent.runtime, "įkišau")
+        advance(agent.state, agent.runtime, "įkišau")
         assert agent.state.resolution.procedure["step"] != "dr_plug_pc"
         assert agent.state.dialog.awaiting is None
 
     def test_question_and_confusion_hold(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         for reply in ("o kiek tai kainuos?", "nesuprantu, kas tas kabelis"):
             agent = self._at_step(monkeypatch, "dr_offer_bridge")
-            advance_resolution(agent.state, agent.runtime, reply)
+            advance(agent.state, agent.runtime, reply)
             assert agent.state.resolution.procedure["step"] == "dr_offer_bridge"
 
     def test_repeated_confusion_breaks_the_step_down(self, monkeypatch):
+        from agent.decide.procedure import advance
         from agent.narrator_flow import state_facts_block
-        from agent.walker_flow import advance_resolution
 
         agent = self._at_step(monkeypatch, "dr_lights")
-        advance_resolution(agent.state, agent.runtime, "nesuprantu ko norit")
+        advance(agent.state, agent.runtime, "nesuprantu ko norit")
         assert agent.state.dialog.step_confusions == 1
         assert "NESUPRATO" in (state_facts_block(agent.state, agent.runtime) or "")
-        advance_resolution(agent.state, agent.runtime, "vis tiek nesuprantu")
+        advance(agent.state, agent.runtime, "vis tiek nesuprantu")
         assert agent.state.dialog.step_confusions == 2
         assert "MAŽIAUSIĄ" in (
             state_facts_block(agent.state, agent.runtime) or ""
         )  # finest breakdown
         # a real answer clears it and moves on
-        advance_resolution(agent.state, agent.runtime, "nedega")
+        advance(agent.state, agent.runtime, "nedega")
         assert agent.state.dialog.step_confusions == 0
 
     def test_waiting_turns_accumulate_for_a_check_in(self, monkeypatch):
+        from agent.decide.procedure import advance
         from agent.narrator_flow import state_facts_block
-        from agent.walker_flow import advance_resolution
 
         agent = self._at_step(monkeypatch, "dr_plug_pc")
         for _ in range(3):
-            advance_resolution(agent.state, agent.runtime, "tuoj, ieškau")
+            advance(agent.state, agent.runtime, "tuoj, ieškau")
         assert agent.state.dialog.awaiting_turns == 3
         assert "ILGAI LAUKIAM" in (state_facts_block(agent.state, agent.runtime) or "")
 
@@ -422,31 +425,33 @@ class TestBridgeSeesDevice:
             "step": "dr_plug_pc",
             "asked": True,
         }
-        monkeypatch.setattr("agent.walker_flow.fresh_diagnose_reason", lambda state, rt: reason)
+        monkeypatch.setattr(
+            "agent.execute.diagnosis.fresh_diagnose_reason", lambda state, rt: reason
+        )
         return agent
 
     def test_device_seen_goes_to_bind(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_plug(monkeypatch, "foreign_mac")  # anything but no_mac_observed
-        advance_resolution(agent.state, agent.runtime, "įkišiau")
+        advance(agent.state, agent.runtime, "įkišiau")
         assert agent.state.resolution.procedure["step"] == "dr_bind"
         assert agent.state.resolution.procedure["device_seen"] is True
 
     def test_not_seen_walks_back_to_the_cable(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_plug(monkeypatch, "no_mac_observed")  # still nothing on the line
-        advance_resolution(agent.state, agent.runtime, "įkišiau")
+        advance(agent.state, agent.runtime, "įkišiau")
         assert agent.state.resolution.procedure["step"] == "dr_pick_cable"  # wrong cable — retry
         assert agent.state.resolution.procedure["device_seen"] is False
 
     def test_second_failure_escalates(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_plug(monkeypatch, "no_mac_observed")
         agent.state.resolution.procedure["plug_retries"] = 1  # already tried once
-        advance_resolution(agent.state, agent.runtime, "įkišiau")
+        advance(agent.state, agent.runtime, "įkišiau")
         assert agent.state.resolution.procedure["step"] == "escalate"
 
 
@@ -466,7 +471,7 @@ class TestHypothesisRejection:
             "restored_denials": 1,  # one denial already: the next one decides
         }
         monkeypatch.setattr(
-            "agent.walker_flow.fresh_diagnose_reason", lambda state, rt: "foreign_mac"
+            "agent.execute.diagnosis.fresh_diagnose_reason", lambda state, rt: "foreign_mac"
         )
         install_fake_tools(
             monkeypatch,
@@ -477,10 +482,10 @@ class TestHypothesisRejection:
         return agent
 
     def test_new_verdict_switches_strategy_and_flags_the_rethink(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
-        advance_resolution(agent.state, agent.runtime, "vis dar neveikia")
+        advance(agent.state, agent.runtime, "vis dar neveikia")
 
         assert agent.state.diagnosis.failed_hypotheses == ["foreign_mac"]
         assert agent.state.resolution.procedure["verdict"] == "healthy_to_router"  # Plan B
@@ -488,24 +493,61 @@ class TestHypothesisRejection:
         assert agent.state.diagnosis.pivoted_from == "foreign_mac"  # narrate it once
 
     def test_same_verdict_has_no_plan_b_so_it_escalates(self, monkeypatch):
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._at_restored(monkeypatch, telemetry_after="foreign_mac")
-        advance_resolution(agent.state, agent.runtime, "vis dar neveikia")
+        advance(agent.state, agent.runtime, "vis dar neveikia")
 
         assert agent.state.diagnosis.failed_hypotheses == ["foreign_mac"]
         assert agent.state.resolution.procedure["step"] == "escalate"
         assert agent.state.diagnosis.pivoted_from is None
 
     def test_rethink_is_voiced_once_then_cleared(self, monkeypatch):
+        from agent.decide.procedure import advance
         from agent.narrator_flow import mark_step_presented, state_facts_block
-        from agent.walker_flow import advance_resolution
 
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
-        advance_resolution(agent.state, agent.runtime, "vis dar neveikia")
+        advance(agent.state, agent.runtime, "vis dar neveikia")
 
         facts = state_facts_block(agent.state, agent.runtime) or ""
         assert "PERSIGALVOJIMAS" in facts
         mark_step_presented(agent.state, agent.runtime)  # the reply carried it
         assert agent.state.diagnosis.pivoted_from is None
         assert "PERSIGALVOJIMAS" not in (state_facts_block(agent.state, agent.runtime) or "")
+
+
+class TestStepOutcome:
+    """procedure.advance reports what the answer did: advance / hold / exit."""
+
+    def _state(self, make_state, step="rh_ability"):
+        state = make_state("+37060020112")
+        state.identity.customer_id = "CUST112"
+        state.resolution.procedure = {"verdict": "router_hung", "step": step}
+        return state
+
+    def test_hold_names_the_awaited_role(self, make_state):
+        from agent.decide.procedure import _outcome
+
+        outcome = _outcome(self._state(make_state), "rh_ability")
+        assert outcome.kind == "hold" and outcome.role == "ability_check"
+
+    def test_advance_names_the_next_role(self, make_state):
+        from agent.decide.procedure import _outcome
+
+        outcome = _outcome(self._state(make_state, "rh_reboot"), "rh_ability")
+        assert outcome.kind == "advance" and outcome.role == "reboot"
+
+    def test_resolved_close_is_a_success_exit(self, make_state):
+        from agent.decide.procedure import _outcome
+
+        state = self._state(make_state, "rh_check")
+        state.closing.case_closed = True
+        state.closing.closed_reason = "resolved"
+        assert _outcome(state, "rh_check").exit == "success"
+
+    def test_a_started_registration_is_a_failure_exit(self, make_state):
+        from agent.decide.procedure import _outcome
+
+        state = self._state(make_state, "escalate")
+        state.ticket.stage = "phone"
+        assert _outcome(state, "rh_check").exit == "failure"

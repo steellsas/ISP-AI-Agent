@@ -1,208 +1,42 @@
-"""
-Walker flow — deterministic step walking: diagnose-once, the guard-chain
-walker, per-kind advancement, hypothesis bookkeeping and the escalate outcome.
+"""The procedure runner — walks the active fault's steps from the caller's answer.
 
-R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent.
-The pure sequencer (next_step_id, detectors, strategies) stays in
-agent/resolution.py; the guard chain lives in agent/walker_guards.py. Functions take
-(state, rt) — the call state and the AgentRuntime; flows call each other directly;
-tools run through rt.tools (the gateway).
-"""
+While a procedure is active, the caller's answer to its awaited step belongs to the
+procedure (`owns_answer`); the diagnosis rules regain control when it exits, on a
+contradiction, a refusal or ticket demand, or a new problem / side topic. `advance`
+returns the StepOutcome: advance to a step role, exit (success / failure), or hold.
+The step guards (decide/procedure_guards.py) run first, in their load-bearing order."""
 
 from __future__ import annotations
 
-import json  # noqa: F401  (used by moved bodies)
-import logging
-import os  # noqa: F401
-from typing import Any  # noqa: F401
+import os
+from dataclasses import dataclass
+from typing import Literal
 
-from .contract import limits
-from .contract.locale import phrase, phrase_or, vocab
-from .dialog_utils import asked_recently, last_agent_question
-from .faults import role_of, verdict_flag
-from .trace import emit_decision, trace_note
-
-logger = logging.getLogger(__name__)
-
-
-def fresh_diagnose(state, rt) -> dict | None:
-    """Re-read telemetry now and return the full diagnose payload
-    ({verdict, signals}) or None on error. Read-only — used to VERIFY a fix
-    actually took before closing/acting."""
-    if not state.identity.customer_id:
-        return None
-    try:
-        from .tooling import telemetry
-
-        return telemetry(state, rt, mode="recheck", reason="verify").data
-    except Exception:  # pragma: no cover - best-effort
-        return None
+from ..contract import limits
+from ..contract.locale import phrase
+from ..dialog_utils import asked_recently, last_agent_question
+from ..execute import diagnosis as _diagnosis
+from ..faults import role_of, verdict_flag
+from ..trace import emit_decision, trace_note
+from . import hypothesis as _hypothesis
 
 
-def fresh_diagnose_reason(state, rt) -> str | None:
-    """The fresh verdict reason alone (or None on error)."""
-    d = fresh_diagnose(state, rt)
-    if not isinstance(d, dict):
-        return None
-    return (d.get("verdict") or {}).get("reason")
+@dataclass(frozen=True)
+class StepOutcome:
+    """What the caller's answer did to the procedure this turn."""
+
+    kind: Literal["advance", "hold", "exit"]
+    role: str | None = None  # the step role now awaited (advance / hold)
+    exit: Literal["success", "failure", "callback"] | None = None
 
 
-def ensure_diagnosed(state, rt) -> bool:
-    """Deterministically run diagnose_connection the first time we enter the
-    diagnosis stage (customer identified), so the verdict + strategy are set
-    BEFORE the model narrates. The flow no longer depends on the model choosing
-    to diagnose — which it did inconsistently (sometimes jumping straight to
-    update_mac, sometimes re-diagnosing into another branch).
-
-    Returns True if it ran diagnose on THIS call (first entry), so the caller
-    skips a step advance that turn — the strategy's first question is only being
-    asked now, not yet answered."""
-    from .ticket_flow import begin_ticket_dialogue
-
-    s = state
-    if not s.identity.customer_id or s.closing.case_closed:
-        return False
-    if s.diagnosis.verdicts.get("network") or s.diagnosis.outage_reported:
-        return False  # already diagnosed this stage (or an outage short-circuited it)
-    # NO-PATH rule (Andrius 2026-09-03): the reported problem is in-scope and
-    # the caller is IDENTIFIED, but no fault pack declares a path for it
-    # (e.g. TV today) — an honest "neaiškus gedimas" ticket instead of running
-    # the INTERNET telemetry and walking a wrong-domain pack (live: a TV call
-    # was led through Wi-Fi questions). The single-escalate strategy begins
-    # the ticket dialogue deterministically on arrival.
-    if s.intake.problem_type and s.resolution.procedure is None:
-        from .faults import problem_has_path, step_by_role
-
-        if not problem_has_path(s.intake.problem_type):
-            escalate = step_by_role("unclear_fault", "escalate")
-            s.resolution.procedure = {"verdict": "unclear_fault", "step": escalate.id}
-            s.diagnosis.verdicts["network"] = {"reason": "unclear_fault", "skipped": True}
-            rt.tracer.emit(
-                "decision",
-                intent="no_path",
-                action="unclear_fault_ticket",
-                value=s.intake.problem_type,
-            )
-            begin_ticket_dialogue(state, rt, escalate)
-            return True
-    try:
-        from .tooling import telemetry
-
-        telemetry(state, rt, mode="snapshot", reason="first_diagnosis")
-    except Exception:  # pragma: no cover - best-effort
-        return False
-    _seed_evidence_from_anamnesis(state, rt)
-    return True
-
-
-def _seed_evidence_from_anamnesis(state, rt) -> None:
-    """Facts the caller stated EARLY must not die in anamnesis_raw (Andrius
-    2026-08-13: 'pakeičiau routerį' answered at the ANAMNESIS question was
-    re-asked later in the fault flow). Once the verdict activates a pack, the
-    anamnesis answer is scanned against the pack's declared answer markers and
-    matching facts land on the ledger — the drive then never asks them again.
-    Only specific markers (>=5 chars) seed; generic affirmations never do."""
-    s = state
-    raw = s.intake.anamnesis_raw
-    verdict = (s.resolution.procedure or {}).get("verdict")
-    if not raw or not verdict:
-        return
-    from .evidence import CLIENT, _fold, _mark_hit, set_fact, spec_for
-
-    spec = spec_for(verdict)
-    if not spec:
-        return
-    low = _fold(raw)
-    for key, item in (spec.get("client") or {}).items():
-        if key in s.diagnosis.evidence:
-            continue
-        for value, name in ((item or {}).get("answers") or {}).items():
-            marks = vocab(name)
-            hits = [m for m in marks if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
-            if hits:
-                set_fact(s.diagnosis.evidence, key, str(value), CLIENT, s.dialog.turn_count)
-                rt.tracer.emit("evidence", action="anamnesis_seed", key=key, value=str(value))
-                break
-
-
-def ensure_action_done(state, rt) -> bool:
-    """Run the current strategy's ACTION step deterministically (engine-driven,
-    not model-invoked), the same way ensure_diagnosed runs the first diagnose.
-
-    Model-invoked update_mac caused two bugs: a single-tool loop (the bind step
-    exposes only update_mac, so the model re-called it to the limit) and a
-    contradictory narration (the model ignored the verified result and re-told
-    the problem — "nepririštas, dabar pririšiu" — right after binding). Binding
-    is a pure engine action: the engine runs it + reset_port + re-diagnose (via
-    _augment_tool_result, which also sets case_closed on success or advances to
-    escalate on failure), so by the time the LLM narrates it only PHRASES the
-    verified outcome. Returns True if it ran an action this call."""
-    from .narrator_flow import augment_tool_result
-    from .ticket_flow import begin_ticket_dialogue
-
-    s = state
-    if not s.identity.customer_id or s.closing.case_closed:
-        return False
-    r = s.resolution.procedure
-    if not r:
-        return False
-    from .resolution import StepKind, get_strategy
-
-    strat = get_strategy(r.get("verdict"))
-    step = strat.step(r.get("step", "")) if strat else None
-    if step is None:
-        return False
-    # Auto-register ESCALATE (consent=False, e.g. register_after_bridge after a working
-    # bridge): the registration is a NECESSITY, not an offer — the engine registers
-    # ON ARRIVAL and closes; the narrator only ANNOUNCES it ("užregistravau...,
-    # kolegos susisieks ir detaliau paaiškins"). Asking permission here misread a
-    # non-consent reply as a decline and the caller left WITHOUT the ticket they
-    # were promised (observed live).
-    # ESCALATE arrival (consented or not) begins the ticket dialogue THE SAME
-    # TURN — deterministically. Leaving the arrival to the LLM narrator had it
-    # claim "užregistravau…" before anything was registered and before the
-    # contact questions (observed live 2026-08-04). The dialogue's intro
-    # announces the registration; an explicit refusal during it still declines.
-    if step.kind is StepKind.ESCALATE:
-        begin_ticket_dialogue(state, rt, step)  # contacts first, then register+close
-        return True
-    if step.kind != StepKind.ACTION:
-        return False
-    if r.get("action_done"):
-        return False  # already ran this action; the walker advances it next turn
-    ran = False
-    for action in step.tool_actions:
-        try:
-            result = rt.tools.run(
-                state,
-                rt,
-                action,
-                {"customer_id": s.identity.customer_id},
-                reason=f"step_action:{step.id}",
-                apply=False,
-            )
-        except Exception:  # pragma: no cover - best-effort
-            continue
-        augment_tool_result(
-            state, rt, action, result.observation
-        )  # chains reset_port + re-diagnose
-        ran = True
-    if ran:
-        r["action_done"] = True  # the announce is narrated this turn; advance next
-        if "update_mac" in step.tool_actions:
-            # Only a TEMPORARY bridge marks resolution.bridge_bound (ticket-first close,
-            # bridged intro) — foreign_mac's bind IS the fix, not a bridge.
-            from .evidence import solution_for
-
-            if solution_for(s.diagnosis.evidence, r.get("verdict")) == "bridge":
-                state.resolution.bridge_bound = True
-    return ran
-
-
-def advance_resolution(state, rt, user_input: str | None) -> None:
-    """Walk the strategy from the caller's reply, then trace WHY it moved (or did
-    not) — the decision record is what makes a failed call debuggable."""
-    # Ledger: a fresh evidence conflict holds the walker THIS turn — the
+def advance(state, rt, user_input: str | None) -> StepOutcome:
+    """Walk the procedure from the caller's reply, trace WHY it moved (or did not) —
+    the decision record is what makes a failed call debuggable — and return the
+    outcome."""
+    r = state.resolution.procedure
+    before = r.get("step") if r else None
+    # Ledger: a fresh evidence conflict holds the procedure THIS turn — the
     # contradicting utterance must not double as a step answer; the scripted
     # clarification goes out instead and the settling answer resumes.
     if state.diagnosis.evidence_conflict:
@@ -212,21 +46,36 @@ def advance_resolution(state, rt, user_input: str | None) -> None:
             action="hold",
             key=state.diagnosis.evidence_conflict.key,
         )
-        return
-    r = state.resolution.procedure
-    before = r.get("step") if r else None
-    walk_resolution(state, rt, user_input)
-    emit_decision(rt.tracer, state, before)
+    else:
+        walk_resolution(state, rt, user_input)
+        emit_decision(rt.tracer, state, before)
+    return _outcome(state, before)
 
 
-def walker_owns_turn(state, rt, r: dict, step) -> bool:
+def _outcome(state, before: str | None) -> StepOutcome:
+    r = state.resolution.procedure or {}
+    if state.closing.case_closed:
+        reason = state.closing.closed_reason
+        return StepOutcome(
+            "exit",
+            exit="success"
+            if reason == "resolved"
+            else ("callback" if reason == "callback" else "failure"),
+        )
+    if state.ticket.stage:
+        return StepOutcome("exit", exit="failure")  # the procedure escalated to a registration
+    role = role_of(r.get("verdict"), r.get("step")) if r.get("step") else None
+    return StepOutcome("advance" if r.get("step") != before else "hold", role=role)
+
+
+def owns_answer(state, rt, r: dict, step) -> bool:
     """B2: may the walker READ this turn's answer? Packs without evidence: always.
     Evidence-led packs: only once the evidence layer handed over — the
     solution step was synced (`solution_synced`), the bridge is bound, or the
     step is a verify/escalate outcome step (telemetry + outcome, not a
     diagnostic fact the ledger collects)."""
-    from .faults import evidence_led
-    from .resolution import StepKind
+    from ..faults import evidence_led
+    from ..resolution import StepKind
 
     if not evidence_led(r.get("verdict")):
         return True
@@ -251,17 +100,17 @@ def walk_resolution(state, rt, user_input: str | None) -> None:
     This is what leads the caller one step at a time instead of dumping the
     whole playbook, and stops the model binding a device they never confirmed.
 
-    The pre-checks live in walker_guards.py (R3, roadmap §5) as an ordered,
+    The pre-checks live in procedure_guards.py (R3, roadmap §5) as an ordered,
     individually-named chain; this method keeps only the mechanics — intent
     derivation, the guard iteration and the advancement dispatch below."""
-    from . import walker_guards
-    from .perceive.detectors import detect_turn_intent
-    from .resolution import StepKind, get_strategy, next_step_id
+    from ..perceive.detectors import detect_turn_intent
+    from ..resolution import StepKind, get_strategy, next_step_id
+    from . import procedure_guards
 
     r = state.resolution.procedure
     if not r or state.closing.case_closed:
         return
-    for guard in walker_guards.PRELUDE_GUARDS:
+    for guard in procedure_guards.PRELUDE_GUARDS:
         if guard(state, rt, user_input):
             return
     # Derive the intent from THIS call's input rather than trusting it was set
@@ -278,9 +127,9 @@ def walk_resolution(state, rt, user_input: str | None) -> None:
     # "taip, turiu kompiuterį" as "dega" and sent the call down the healthy-
     # router branch. One source of truth: the walker is a pointer, synced
     # FROM the ledger, until it legitimately owns the execution.
-    owns = walker_owns_turn(state, rt, r, step)
-    for guard in walker_guards.STEP_GUARDS:
-        if not owns and guard in walker_guards.ANSWER_GUARDS:
+    owns = owns_answer(state, rt, r, step)
+    for guard in procedure_guards.STEP_GUARDS:
+        if not owns and guard in procedure_guards.ANSWER_GUARDS:
             continue  # policy guards still run; answer readers stay silent
         if guard(state, rt, r, strat, step, user_input):
             return
@@ -347,8 +196,8 @@ def block_uncorroborated_escalate(state, rt, step, strat, label, user_input: str
     Without it, ask the solve-or-ticket clarify ONCE instead and hold
     (Andrius 2026-08-11: clarify what the "ne" means, never rush the
     conclusion). A repeated no on the next turn escalates normally."""
-    from .perceive.detectors import is_bare_negation
-    from .resolution import StepKind, next_step_id
+    from ..perceive.detectors import is_bare_negation
+    from ..resolution import StepKind, next_step_id
 
     target = next_step_id(strat, step.id, label)
     tstep = strat.step(target) if strat and target else None
@@ -384,7 +233,7 @@ def _cached_perception(state, rt, step, user_input: str | None):
     cached = state.turn.perception_step
     if not cached or cached.get("step_id") != step.id or cached.get("input") != user_input:
         return None
-    from .classifier import CandidateObservation
+    from ..classifier import CandidateObservation
 
     try:
         return CandidateObservation(**cached["obs"])
@@ -397,10 +246,10 @@ def classify_confirm_and_route(state, rt, step, strat, user_input: str | None) -
     answer (into a routing key) and whether it IS an answer. A confident answer
     advances the walker (overriding a brittle keyword turn-intent); anything unsure
     returns False → the keyword detector + intent gate handle it. Sensor only."""
-    from .classifier import classify_step
-    from .detectors import glosses as detector_glosses
-    from .faults import step_options
-    from .resolution import next_step_id
+    from ..classifier import classify_step
+    from ..detectors import glosses as detector_glosses
+    from ..faults import step_options
+    from ..resolution import next_step_id
 
     # R4 perception merge: the understanding pass already classified this reply
     # against THIS step's keys in the same LLM call — consume the cached read
@@ -464,10 +313,10 @@ def advance_instruct(state, rt, r: dict, step, strat, user_input: str | None = N
     Shared by the keyword path and the classifier gate. The verify_device_visible VERIFY is
     engine-owned, so resolve it in the SAME turn (reflect the plug-in in the demo, then
     read the line) instead of asking a dead question."""
-    from .executor_flow import simulate_bridge_connection, simulate_router_reboot_action
-    from .perceive.detectors import detect_restored
-    from .resolution import Outcome, StepKind, next_step_id
-    from .solver_flow import plug_report
+    from ..executor_flow import simulate_bridge_connection, simulate_router_reboot_action
+    from ..perceive.detectors import detect_restored
+    from ..resolution import Outcome, StepKind, next_step_id
+    from ..solver_flow import plug_report
 
     route_to(state, rt, r, step.goto or next_step_id(strat, step.id, None))
     # Skipped-ahead caller (live 2026-08-24): still on locate_cable, the caller
@@ -526,8 +375,8 @@ def classify_instruct_and_advance(state, rt, step, strat, user_input: str | None
     DO it, or are they still doing it / asking? A confident 'done' advances even when
     the keyword turn-intent misreads a messy done-signal as in_progress. Anything else
     returns False → the keyword intent gate decides. Sensor only."""
-    from .classifier import classify_step
-    from .detectors import glosses as detector_glosses
+    from ..classifier import classify_step
+    from ..detectors import glosses as detector_glosses
 
     # R4 perception merge first (cached same-call read), classifier fallback.
     obs = _cached_perception(state, rt, step, user_input)
@@ -562,7 +411,7 @@ def classify_instruct_and_advance(state, rt, step, strat, user_input: str | None
     # "Patikrinau, WiFi įjungtas" held as waiting slipped the resolve a turn).
     # Unclear included: the loose any-'answer' keyword path had advanced INSTRUCT
     # steps on garbage ("Įsitikimu, kad tai yra neturis" climbed dr_plug_pc live).
-    from .perceive.detectors import INTENT_DONE, detect_turn_intent
+    from ..perceive.detectors import INTENT_DONE, detect_turn_intent
 
     return detect_turn_intent(user_input) != INTENT_DONE
 
@@ -571,91 +420,10 @@ def detect_confirm(state, rt, step, user_input: str | None):
     """Keyword FALLBACK detector for a CONFIRM reply — used when the classifier is off
     or unsure (the classifier-led path is _classify_confirm_and_route). Returns a
     routing key or None."""
-    from .perceive.detectors import DETECTORS
+    from ..perceive.detectors import DETECTORS
 
     keyword = DETECTORS.get(step.detector or "yes_no", DETECTORS["yes_no"])
     return keyword(user_input)
-
-
-def open_hypothesis(state, rt, reason: str | None) -> None:
-    """A fresh verdict = a new belief. Seeds it with what the telemetry showed."""
-    if not reason:
-        return
-    h = state.diagnosis.hypothesis
-    if h and h.get("cause") == reason and h.get("status") == "testing":
-        return  # same belief, still being tested — keep its evidence
-    # The ANALYSIS fuses BOTH sides (Step 2): telemetry is the first evidence,
-    # the caller's anamnesis (when it broke / after what) the second — so the
-    # agent reasons and narrates from the full picture ("telemetrija rodo X, o
-    # klientas sako dingo po audros").
-    because = [phrase_or(f"verdict.{reason}.gloss", reason)]
-    s = state
-    if s.intake.anamnesis_when or s.intake.anamnesis_trigger:
-        bits = []
-        if s.intake.anamnesis_when:
-            when = phrase_or(f"anamnesis.when.{s.intake.anamnesis_when}", s.intake.anamnesis_when)
-            bits.append(f"dingo {when}")
-        if s.intake.anamnesis_trigger:
-            trigger = phrase_or(
-                f"anamnesis.trigger.{s.intake.anamnesis_trigger}", s.intake.anamnesis_trigger
-            )
-            bits.append(f"po: {trigger}")
-        because.append("klientas sako " + ", ".join(bits))
-    state.diagnosis.hypothesis = {
-        "cause": reason,
-        "because": because,
-        "status": "testing",
-        "settled_by": None,
-    }
-
-
-def note_evidence(state, rt, text: str) -> None:
-    """Add something the ENGINE learned (a telemetry read, a check outcome)."""
-    h = state.diagnosis.hypothesis
-    if h and text and text not in h["because"]:
-        h["because"].append(text)
-
-
-def settle_hypothesis(state, rt, status: str, settled_by: str) -> None:
-    """Close the belief: confirmed (the fix worked / the cause was proven) or
-    rejected (it did not hold). Rejected ones are remembered so the engine never
-    re-tries them and the agent can say what it already ruled out."""
-    h = state.diagnosis.hypothesis
-    if not h or h.get("status") != "testing":
-        return
-    h["status"] = status
-    h["settled_by"] = settled_by
-    if status == "rejected":
-        state.diagnosis.rejected_hypotheses.append({"cause": h["cause"], "settled_by": settled_by})
-
-
-def scripted_wait_ack(state, rt) -> str | None:
-    """D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
-    work-in-progress signal while the walker awaits a CLIENT ACTION gets the
-    scripted acknowledgement — zero LLM, zero latency. Anything richer (a
-    question, a standing directive, an announce, a detour note) falls through
-    to the narrator. Two phrases alternate so a long wait never sounds like a
-    tape loop."""
-    from .perceive.detectors import INTENT_IN_PROGRESS
-
-    s = state
-    if not s.resolution.procedure or s.closing.case_closed or state.ticket.stage:
-        return None
-    if s.dialog.last_intent != INTENT_IN_PROGRESS or s.dialog.awaiting != "client_action":
-        return None
-    if state.diagnosis.pending_announcement or state.diagnosis.evidence_conflict:
-        return None
-    if state.dialog.resync_note or state.voice.undelivered_tail:
-        return None
-    d = state.turn.directives
-    if d.evidence or d.recap or d.findings or d.ticket or d.ident:
-        return None
-    variant = (
-        phrase("identification.wait_ack")
-        if s.dialog.awaiting_turns % 2
-        else phrase("identification.wait_ack_2")
-    )
-    return variant or phrase("identification.wait_ack")
 
 
 def turn_may_advance(state, rt, step) -> bool:
@@ -670,11 +438,11 @@ def turn_may_advance(state, rt, step) -> bool:
 
     Unknown is deliberately treated as an ANSWER only for CONFIRM steps, where a
     detector still has to agree — elsewhere it holds. Safe default: wait and ask."""
-    from .perceive.detectors import INTENT_ANSWER, INTENT_DONE, INTENT_IN_PROGRESS, INTENT_UNKNOWN
-    from .resolution import StepKind
+    from ..perceive.detectors import INTENT_ANSWER, INTENT_DONE, INTENT_IN_PROGRESS, INTENT_UNKNOWN
+    from ..resolution import StepKind
 
     s = state
-    from .perceive.detectors import INTENT_CONFUSED
+    from ..perceive.detectors import INTENT_CONFUSED
 
     intent = s.dialog.last_intent or INTENT_UNKNOWN
     if intent in (INTENT_ANSWER, INTENT_DONE):
@@ -701,10 +469,10 @@ def advance_see_device(state, rt, r: dict) -> None:
     line actually SEE a device? Telemetry answers this, not the caller — binding
     blindly when the cable is in the wrong socket would fail confusingly. Seen ->
     bind; not seen after two tries -> the cable is wrong, walk it back."""
-    reason = fresh_diagnose_reason(state, rt)
+    reason = _diagnosis.fresh_diagnose_reason(state, rt)
     seen = verdict_flag(reason, "device_visible")  # any other verdict means a device is there
     r["device_seen"] = seen
-    note_evidence(
+    _hypothesis.note_evidence(
         state,
         rt,
         "the connected device is seen on the line" if seen else "still no device seen on the line",
@@ -733,11 +501,11 @@ def reject_and_rediagnose(state, rt, r: dict) -> bool:
     verdict = r.get("verdict")
     if verdict and verdict not in s.diagnosis.failed_hypotheses:
         s.diagnosis.failed_hypotheses.append(verdict)
-    settle_hypothesis(
+    _hypothesis.settle_hypothesis(
         state, rt, "rejected", "the connection did not recover after the action (telemetry)"
     )
     s.diagnosis.verdicts.pop("network", None)  # let ensure_diagnosed re-read the line
-    ensure_diagnosed(state, rt)
+    _diagnosis.ensure_diagnosed(state, rt)
     new = (s.resolution.procedure or {}).get("verdict")
     if new and new != verdict and new not in s.diagnosis.failed_hypotheses:
         s.diagnosis.pivoted_from = verdict  # narrate the rethink once, then clear
@@ -755,7 +523,7 @@ def route_to(state, rt, r: dict, target: str) -> None:
         state.closing.closed_reason = "resolved"
         # The fix worked, so the cause we were testing was the right one — the
         # agent can now say so ("taigi dėl X ir nebuvo interneto").
-        settle_hypothesis(state, rt, "confirmed", "sutvarkius problema dingo")
+        _hypothesis.settle_hypothesis(state, rt, "confirmed", "sutvarkius problema dingo")
     elif target == "callback":
         # P-C (Andrius 2026-09-08): the caller agreed to do the homework and
         # call back — a warm callback close, never pressure into a ticket.
@@ -785,10 +553,10 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
     - caller says NO, provider not yet OK   -> wait (reassure); after a second
                                                denial with still-no-line, escalate
     An unclear answer stays and re-asks."""
-    from .perceive.detectors import detect_restored
-    from .resolution import Outcome
+    from ..perceive.detectors import detect_restored
+    from ..resolution import Outcome
 
-    reason_now = fresh_diagnose_reason(state, rt)
+    reason_now = _diagnosis.fresh_diagnose_reason(state, rt)
     fixed = not verdict_flag(reason_now, "unresolved_after_fix")
     r["telemetry_fixed"] = fixed
     if not r.get("asked"):
@@ -797,7 +565,7 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
     if outcome == Outcome.YES:
         state.closing.case_closed = True
         state.closing.closed_reason = "resolved"
-        settle_hypothesis(state, rt, "confirmed", "klientas patvirtino, kad veikia")
+        _hypothesis.settle_hypothesis(state, rt, "confirmed", "klientas patvirtino, kad veikia")
         return
     if outcome == Outcome.NO:
         if fixed:
@@ -814,7 +582,6 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
                     goto_role(state, rt, r, "escalate")
             # else: stay, reassure it may take a couple of minutes (see hint)
         return
-    # unclear -> stay on the verify step, re-ask
 
 
 def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
@@ -823,9 +590,9 @@ def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
     `answers:` (step_options), generic reboot_check glosses as fallback."""
     if os.getenv("CLASSIFIER", "on").lower() == "off":
         return None
-    from .classifier import classify_step
-    from .detectors import glosses as detector_glosses
-    from .faults import step_options
+    from ..classifier import classify_step
+    from ..detectors import glosses as detector_glosses
+    from ..faults import step_options
 
     r = state.resolution.procedure or {}
     options = step_options(r.get("verdict"), r.get("step")) or detector_glosses("reboot_check")
@@ -856,12 +623,12 @@ def advance_line_check(state, rt, r: dict, user_input: str | None) -> None:
     - line recovered but caller NO -> escalate (the technician sorts the
       rest; the note says the line itself came back);
     - unclear caller word with a recovered line -> hold, the step re-asks."""
-    from .perceive.detectors import detect_restored
-    from .resolution import Outcome
+    from ..perceive.detectors import detect_restored
+    from ..resolution import Outcome
 
     if not r.get("asked"):
         return
-    reason_now = fresh_diagnose_reason(state, rt)
+    reason_now = _diagnosis.fresh_diagnose_reason(state, rt)
     if verdict_flag(reason_now, "line_fault"):
         r["escalate_reason"] = "line_not_restored"
         goto_role(state, rt, r, "escalate")
@@ -913,10 +680,10 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
     — live 2026-08-31: the generic restored vocabulary read "jos nemirksi"
     as YES via the "jo" substring) with the classifier settling the rest
     through the pack's `answers:` glosses."""
-    from .perceive.detectors import detect_reboot_check
-    from .resolution import Outcome
+    from ..perceive.detectors import detect_reboot_check
+    from ..resolution import Outcome
 
-    payload = fresh_diagnose(state, rt)
+    payload = _diagnosis.fresh_diagnose(state, rt)
     verdict = (payload or {}).get("verdict") or {}
     signals = (payload or {}).get("signals") or {}
     reason_now = verdict.get("reason")
@@ -937,13 +704,15 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
         if r.get("telemetry_fixed") or flap or not telem_ok:
             state.closing.case_closed = True
             state.closing.closed_reason = "resolved"
-            settle_hypothesis(state, rt, "confirmed", "the connection recovered after the reboot")
+            _hypothesis.settle_hypothesis(
+                state, rt, "confirmed", "the connection recovered after the reboot"
+            )
             return
         outcome = Outcome.NO  # fall through to the no-flap retry below
     if outcome != Outcome.NO:
         return  # unclear -> stay on the reboot check, re-ask
     if r.get("telemetry_fixed"):
-        note_evidence(
+        _hypothesis.note_evidence(
             state,
             rt,
             "telemetry: traffic is back — the line works, the problem is on the device side",
@@ -952,7 +721,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
         return
     if telem_ok and not flap:
         # The device never dropped off the line — no real power-cycle happened.
-        note_evidence(
+        _hypothesis.note_evidence(
             state,
             rt,
             "telemetry: the device NEVER dropped off the line — no full reboot was seen "
@@ -967,7 +736,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
     # Rebooted (or telemetry unavailable) and still no traffic — give the other
     # hypotheses a chance before the ticket, exactly like a failed bind.
     if telem_ok:
-        note_evidence(
+        _hypothesis.note_evidence(
             state,
             rt,
             "telemetry: the reboot was seen, but traffic did not return — the router does not recover",
@@ -983,15 +752,15 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
       decline  -> close WITHOUT a ticket (closed_reason='declined'),
       unclear  -> hold; the narrator re-asks (stuck-guard still backstops).
     The LLM only phrases — it can no longer call create_ticket itself."""
-    from .ticket_flow import begin_ticket_dialogue
+    from ..ticket_flow import begin_ticket_dialogue
 
     if not step.consent:
         return  # auto-register step — ensure_action_done handles it on arrival
     if not r.get("asked"):
         return  # consent question not posed yet — narrator asks it this turn
-    from .classifier import classify_step
-    from .detectors import glosses as detector_glosses
-    from .perceive.detectors import detect_ticket_consent
+    from ..classifier import classify_step
+    from ..detectors import glosses as detector_glosses
+    from ..perceive.detectors import detect_ticket_consent
 
     label = detect_ticket_consent(user_input)
     routed_by = "keyword"
@@ -1027,12 +796,11 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
     elif label == "no":
         state.closing.case_closed = True
         state.closing.closed_reason = "declined"
-    # unclear -> stay; the step's question is re-asked
 
 
 def goto_role(state, rt, r: dict, role: str) -> bool:
     """Move the strategy to its step with `role` (False when the pack has none)."""
-    from .faults import step_by_role
+    from ..faults import step_by_role
 
     step = step_by_role(r.get("verdict"), role)
     if step is None:

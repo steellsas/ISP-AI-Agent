@@ -480,10 +480,10 @@ class TestQuestionRegistry:
         """P-D gyva: „nepatogu, nesu namuose" — anksčiau walker'io refuse
         guard'as tą patį turn'ą startavo tiketą; dabar galvos skydas
         registruoja safety klausimą ir walker'is laiko."""
+        from agent.decide.procedure import advance
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
         from agent.dialog_registry import active
-        from agent.walker_flow import advance_resolution
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -495,14 +495,14 @@ class TestQuestionRegistry:
         turn_head(agent.state, agent.runtime, msg)
         q = active(agent.state, agent.runtime)
         assert q and q.owner == "safety" and q.key == "cannot_now"
-        advance_resolution(agent.state, agent.runtime, msg)
+        advance(agent.state, agent.runtime, msg)
         assert agent.state.ticket.stage is None  # tiketas NEprasidėjo
         r = scripted_words(agent.state, agent.runtime, msg)
         assert r and "nepatogu" in r  # laiptelis klausia KAS nepatogu
 
     def test_ability_yes_routes_to_reboot(self, db_connection):
         """P-C: gebėjimo klausimas — „taip" veda į perkrovimo instrukciją."""
-        from agent.walker_flow import advance_resolution
+        from agent.decide.procedure import advance
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -511,14 +511,14 @@ class TestQuestionRegistry:
             "asked": True,
             "solution_synced": True,
         }
-        advance_resolution(agent.state, agent.runtime, "Taip, galiu, esu prie routerio")
+        advance(agent.state, agent.runtime, "Taip, galiu, esu prie routerio")
         assert agent.state.resolution.procedure["step"] == "rh_reboot"
 
     def test_ability_no_routes_to_homework_then_callback(self, db_connection):
         """P-C: „ne" → namų darbas; sutikimas → callback uždarymas su scripted
         atsisveikinimu, be tiketo."""
+        from agent.decide.procedure import advance
         from agent.decide.rules.reply import scripted_words
-        from agent.walker_flow import advance_resolution
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -527,10 +527,10 @@ class TestQuestionRegistry:
             "asked": True,
             "solution_synced": True,
         }
-        advance_resolution(agent.state, agent.runtime, "Ne.")
+        advance(agent.state, agent.runtime, "Ne.")
         assert agent.state.resolution.procedure["step"] == "rh_homework"
         agent.state.resolution.procedure["asked"] = True
-        advance_resolution(agent.state, agent.runtime, "Taip, sutinku.")
+        advance(agent.state, agent.runtime, "Taip, sutinku.")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
         r = scripted_words(agent.state, agent.runtime, "Taip, sutinku.")
@@ -560,8 +560,8 @@ class TestQuestionRegistry:
         assert agent.state.ticket.stage is None
 
     def test_homework_no_escalates_with_honest_reason(self, db_connection):
+        from agent.decide.procedure import advance
         from agent.ticket_flow import ticket_need
-        from agent.walker_flow import advance_resolution
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -570,7 +570,7 @@ class TestQuestionRegistry:
             "asked": True,
             "solution_synced": True,
         }
-        advance_resolution(agent.state, agent.runtime, "Ne, geriau meistrą registruokim")
+        advance(agent.state, agent.runtime, "Ne, geriau meistrą registruokim")
         assert agent.state.resolution.procedure.get("escalate_reason")
         need = ticket_need(agent.state, agent.runtime)
         assert "nepavyko" in need and "perkrautas" not in need
@@ -593,8 +593,8 @@ class TestQuestionRegistry:
     def test_priority_guard_holds_walker_on_safety_question(self, db_connection):
         """PERJUNGIMAS (P6): kol atviras safety/ident/ticket klausimas, walker'is
         turn'o neskaito kaip savo žingsnio atsakymo."""
+        from agent.decide.procedure import advance
         from agent.dialog_registry import active, clear_owner, register
-        from agent.walker_flow import advance_resolution
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -603,14 +603,14 @@ class TestQuestionRegistry:
             "asked": True,
         }
         register(agent.state, agent.runtime, "safety", "cannot_now_offer")
-        advance_resolution(agent.state, agent.runtime, "Registruokite meistrą")
+        advance(agent.state, agent.runtime, "Registruokite meistrą")
         assert agent.state.ticket.stage is None  # walker'is nepradėjo tiketo — laiko
         assert (
             active(agent.state, agent.runtime) is not None
         )  # klausimas gyvas, jį skaito savininkas
         # Klausimui užsidarius — walker'is vėl skaito normaliai.
         clear_owner(agent.state, agent.runtime, "safety")
-        advance_resolution(agent.state, agent.runtime, "Registruokite meistrą")
+        advance(agent.state, agent.runtime, "Registruokite meistrą")
         assert agent.state.ticket.stage is not None  # dabar tiketo dialogas prasidėjo
 
     def test_caller_name_closes_on_capture(self, db_connection):

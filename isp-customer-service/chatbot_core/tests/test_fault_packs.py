@@ -139,7 +139,7 @@ class TestVoiceTestFixes:
     def test_anamnesis_seeds_ledger_on_activation(self, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.walker_flow import _seed_evidence_from_anamnesis
+        from agent.execute.diagnosis import _seed_evidence_from_anamnesis
 
         engine = as_call(
             monkeypatch,
@@ -627,7 +627,7 @@ class TestStepAwareness:
     def test_goto_step_writes_the_journal(self):
         from types import SimpleNamespace
 
-        from agent.walker_flow import goto_step
+        from agent.decide.procedure import goto_step
 
         state = GraphState()
         rt = SimpleNamespace(tracer=SimpleNamespace(emit=lambda *a, **k: None))
@@ -1084,8 +1084,8 @@ class TestWalkerFollowsLedger:
     def test_walker_silent_during_evidence_collection(self, monkeypatch):
         from types import SimpleNamespace
 
+        from agent.decide.procedure import owns_answer
         from agent.resolution import get_strategy
-        from agent.walker_flow import walker_owns_turn
 
         strat = get_strategy("no_mac_observed")
         engine = as_call(
@@ -1093,16 +1093,14 @@ class TestWalkerFollowsLedger:
             SimpleNamespace(state=GraphState(resolution=ResolutionState(bridge_bound=False))),
         )
         r = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        assert walker_owns_turn(engine.state, engine.runtime, r, strat.step("dr_lights")) is False
-        assert walker_owns_turn(engine.state, engine.runtime, r, strat.step("escalate")) is True
-        assert (
-            walker_owns_turn(engine.state, engine.runtime, r, strat.step("dr_see_device")) is True
-        )
+        assert owns_answer(engine.state, engine.runtime, r, strat.step("dr_lights")) is False
+        assert owns_answer(engine.state, engine.runtime, r, strat.step("escalate")) is True
+        assert owns_answer(engine.state, engine.runtime, r, strat.step("dr_see_device")) is True
         r["solution_synced"] = "dr_plug_pc"
-        assert walker_owns_turn(engine.state, engine.runtime, r, strat.step("dr_plug_pc")) is True
+        assert owns_answer(engine.state, engine.runtime, r, strat.step("dr_plug_pc")) is True
         engine.state.resolution.bridge_bound = True
         del r["solution_synced"]
-        assert walker_owns_turn(engine.state, engine.runtime, r, strat.step("dr_verify")) is True
+        assert owns_answer(engine.state, engine.runtime, r, strat.step("dr_verify")) is True
 
     def test_fact_pointer_moves_the_walker(self, monkeypatch):
         from types import SimpleNamespace
@@ -1347,8 +1345,8 @@ class TestLiveCall0824Fixes:
         assert "THIS STEP" not in block and "PLAYBOOK" not in block
 
     def test_plug_report_skips_the_dead_instruct_step(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance_instruct
         from agent.resolution import get_strategy
-        from agent.walker_flow import advance_instruct
 
         agent = self._ticket_agent()
         r = {"verdict": "no_mac_observed", "step": "dr_pick_cable", "asked": True}
@@ -1360,7 +1358,7 @@ class TestLiveCall0824Fixes:
             lambda state, rt: reached.append("sim"),
         )
         monkeypatch.setattr(
-            "agent.walker_flow.advance_see_device", lambda state, rt, rr: reached.append("see")
+            "agent.decide.procedure.advance_see_device", lambda state, rt, rr: reached.append("see")
         )
         advance_instruct(
             agent.state,
@@ -1373,8 +1371,8 @@ class TestLiveCall0824Fixes:
         assert r["step"] == "dr_see_device" and reached == ["sim", "see"]
 
     def test_plain_done_still_advances_one_step(self, db_connection):
+        from agent.decide.procedure import advance_instruct
         from agent.resolution import get_strategy
-        from agent.walker_flow import advance_instruct
 
         agent = self._ticket_agent()
         r = {"verdict": "no_mac_observed", "step": "dr_pick_cable", "asked": True}
@@ -1401,8 +1399,8 @@ class TestD5WaitAckAndClosing:
         return agent
 
     def test_wait_signal_gets_scripted_ack(self, db_connection):
+        from agent.decide.rules.dialog import scripted_wait_ack
         from agent.perceive.detectors import INTENT_IN_PROGRESS
-        from agent.walker_flow import scripted_wait_ack
 
         agent = self._agent()
         agent.state.dialog.last_intent = INTENT_IN_PROGRESS
@@ -1416,8 +1414,8 @@ class TestD5WaitAckAndClosing:
         assert scripted_wait_ack(agent.state, agent.runtime) == "Gerai, neskubėkite."
 
     def test_wait_ack_defers_to_directives_and_other_intents(self, db_connection):
+        from agent.decide.rules.dialog import scripted_wait_ack
         from agent.perceive.detectors import INTENT_IN_PROGRESS
-        from agent.walker_flow import scripted_wait_ack
 
         agent = self._agent()
         agent.state.dialog.last_intent = INTENT_IN_PROGRESS

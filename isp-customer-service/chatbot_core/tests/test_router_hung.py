@@ -133,7 +133,7 @@ class TestAdvanceRebootCheck:
     """rh_check: caller's word + traffic + the reboot witness, all together."""
 
     def _agent(self, monkeypatch, payload):
-        from agent import walker_flow
+        from agent.execute import diagnosis
 
         from tests.calls import make_agent
 
@@ -145,11 +145,11 @@ class TestAdvanceRebootCheck:
             "step": "rh_check",
             "asked": True,
         }
-        monkeypatch.setattr(walker_flow, "fresh_diagnose", lambda state, rt: payload)
+        monkeypatch.setattr(diagnosis, "fresh_diagnose", lambda state, rt: payload)
         return agent
 
     def test_caller_yes_with_witness_resolves_without_ticket(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload(flap=True))
         advance_reboot_check(
@@ -159,7 +159,7 @@ class TestAdvanceRebootCheck:
         assert agent.state.ticket.ticket_id is None
 
     def test_caller_yes_with_traffic_back_resolves(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload(reason="healthy_to_router"))
         advance_reboot_check(
@@ -174,7 +174,7 @@ class TestAdvanceRebootCheck:
         """VERIFICATION RULE (Andrius 2026-08-31, DIALOGO_ETALONAS #8): the
         caller's word alone must NOT close a line fault the telemetry still
         sees as hung with NO reboot witnessed — ask to redo the power-cycle."""
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload(flap=False))
         advance_reboot_check(
@@ -185,7 +185,7 @@ class TestAdvanceRebootCheck:
         assert agent.state.resolution.procedure["reboot_retries"] == 1
 
     def test_no_but_traffic_back_goes_to_device(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload(reason="healthy_to_router"))
         advance_reboot_check(
@@ -194,7 +194,7 @@ class TestAdvanceRebootCheck:
         assert agent.state.resolution.procedure["step"] == "rh_device"
 
     def test_no_flap_retries_once_then_escalates(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload(flap=False))
         r = agent.state.resolution.procedure
@@ -205,17 +205,19 @@ class TestAdvanceRebootCheck:
         assert r["step"] == "escalate"
 
     def test_flap_seen_but_dead_escalates(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload(flap=True))
-        monkeypatch.setattr("agent.walker_flow.reject_and_rediagnose", lambda state, rt, r: False)
+        monkeypatch.setattr(
+            "agent.decide.procedure.reject_and_rediagnose", lambda state, rt, r: False
+        )
         advance_reboot_check(
             agent.state, agent.runtime, agent.state.resolution.procedure, "Ne, neveikia"
         )
         assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_unclear_answer_holds_the_step(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload())
         advance_reboot_check(
@@ -225,7 +227,7 @@ class TestAdvanceRebootCheck:
         assert not agent.state.closing.case_closed
 
     def test_unasked_turn_only_records_telemetry(self, db_connection, monkeypatch):
-        from agent.walker_flow import advance_reboot_check
+        from agent.decide.procedure import advance_reboot_check
 
         agent = self._agent(monkeypatch, _hung_payload())
         agent.state.resolution.procedure["asked"] = False

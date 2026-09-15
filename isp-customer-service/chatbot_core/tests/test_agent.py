@@ -379,7 +379,7 @@ class TestEscalateOutcome:
         return agent
 
     def test_consent_registers_ticket_and_closes(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent_on_escalate(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "gerai, tinka")
@@ -390,7 +390,7 @@ class TestEscalateOutcome:
         assert agent.state.closing.closed_reason == "registered"
 
     def test_decline_closes_without_ticket(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent_on_escalate(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "ne, nenoriu, ačiū")
@@ -399,7 +399,7 @@ class TestEscalateOutcome:
         assert agent.state.closing.closed_reason == "declined"
 
     def test_unclear_holds_the_step(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent_on_escalate(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "hmm palaukite sekundėlę")
@@ -407,7 +407,7 @@ class TestEscalateOutcome:
         assert agent.state.closing.case_closed is False  # re-ask, don't register on a garble
 
     def test_not_asked_yet_never_advances(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent_on_escalate(monkeypatch)
         agent.state.resolution.procedure["asked"] = False
@@ -454,7 +454,7 @@ class TestHearingAgent:
         assert not is_bare_negation(None)
 
     def test_walker_holds_while_evidence_question_open(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent(monkeypatch)
         agent.state.diagnosis.pending_evidence_key = "power_cable"
@@ -498,7 +498,7 @@ class TestHearingAgent:
 
     @pytest.mark.usefixtures("walker_driven")
     def test_bare_ne_to_escalate_clarifies_once_then_escalates(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         # P-C (2026-09-10): plikas "Ne." dr_intro žingsnyje dabar veda į
         # NAMŲ DARBO sutikimą (ne tiesiai į escalate) — vienpusės durys
@@ -511,7 +511,7 @@ class TestHearingAgent:
         assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_rich_refusal_still_escalates_directly(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "Nieko nedarysiu, įregistruokit gedimą")
@@ -547,7 +547,7 @@ class TestHearingAgent:
     # --- round 2 (live 2026-08-11, call 2) ------------------------------------
 
     def test_end_confirm_answer_never_routes_the_walker(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         # "Iki šau." (STT of "Įkišau") triggered confirm-end; the answer "Ne,
         # nenoriu" (= don't END) then advanced stale dr_intro -> escalate ->
@@ -615,7 +615,7 @@ class TestHearingAgent:
         assert not detect_plugged("tuoj pajungsiu")  # future tense — not done yet
 
     def test_stale_step_question_reads_no_answers(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         # dr_intro presented ~15 turns earlier consumed "Dar interneto nėra."
         # as its own "no" -> escalate -> ticket (three live calls in a row).
@@ -627,7 +627,7 @@ class TestHearingAgent:
         assert agent.state.ticket.stage is None
 
     def test_fresh_step_question_still_routes(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent(monkeypatch)
         agent.state.resolution.procedure["asked_at"] = len(agent.state.messages)
@@ -760,8 +760,8 @@ class TestHearingAgent:
         # here flips CUST009 healthy and breaks later ordering-dependent tests).
         import json as _json
 
+        from agent.decide.procedure import walk_resolution
         from agent.solver_flow import drive_propose_fix
-        from agent.walker_flow import walk_resolution
 
         agent = self._agent(monkeypatch)
         agent.state.resolution.bridge_plug_reported = True
@@ -836,7 +836,7 @@ class TestAutoRegisterEscalate:
     def test_arrival_registers_and_closes(self, db_connection, monkeypatch):
         import os
 
-        from agent.walker_flow import ensure_action_done
+        from agent.execute.diagnosis import ensure_action_done
 
         from tests.calls import make_agent
 
@@ -880,7 +880,7 @@ class TestRestoredPreAnswer:
     def test_restored_yes_advances_unasked_verify(self, db_connection, monkeypatch):
         import os
 
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         from tests.calls import make_agent
 
@@ -975,7 +975,7 @@ class TestRefuseOrTicket:
         return agent
 
     def test_demand_registers_immediately(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent_mid_flow(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "Nieko nedarysiu, įregistruokit gedimą")
@@ -986,7 +986,7 @@ class TestRefuseOrTicket:
         assert agent.state.closing.closed_reason == "registered"
 
     def test_refuse_routes_to_escalate_consent(self, db_connection, monkeypatch):
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         agent = self._agent_mid_flow(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "Aš nenamosiu")  # garbled refusal
@@ -1084,7 +1084,7 @@ class TestVoiceGuardsRound5:
     def test_backchannel_holds_asking_steps(self, db_connection, monkeypatch):
         import os
 
-        from agent.walker_flow import walk_resolution
+        from agent.decide.procedure import walk_resolution
 
         from tests.calls import make_agent
 
@@ -1169,8 +1169,8 @@ class TestVoiceGuardsRound5:
     def test_farewell_mid_strategy_declined_resumes(self, db_connection, monkeypatch):
         import os
 
+        from agent.decide.procedure import walk_resolution
         from agent.decide.rules.head import turn_head
-        from agent.walker_flow import walk_resolution
 
         from tests.calls import make_agent
 
@@ -1207,7 +1207,7 @@ class TestAnalysisStep2:
         assert extract_anamnesis("Vakar dar veikė")["when"] == "yesterday"
 
     def test_hypothesis_cites_both_sides(self, db_connection):
-        from agent.walker_flow import open_hypothesis
+        from agent.decide.hypothesis import open_hypothesis
 
         from tests.calls import make_agent
 
@@ -1222,7 +1222,7 @@ class TestAnalysisStep2:
     def test_ticket_carries_anamnesis(self, db_connection, monkeypatch):
         import os
 
-        from agent.walker_flow import ensure_action_done
+        from agent.execute.diagnosis import ensure_action_done
 
         from tests.calls import make_agent
 
@@ -1275,16 +1275,16 @@ class TestSideTopicNode:
         return agent
 
     def test_question_freezes_engine_and_flags_side_topic(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance
         from agent.perceive.side_topic import classify_side_topic
         from agent.solver_flow import solver_drive_turn
-        from agent.walker_flow import advance_resolution
 
         agent = self._diagnosing(monkeypatch)
         assert classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?") is True
         assert (
             solver_drive_turn(agent.state, agent.runtime, "O kiek man tai kainuos?") is None
         )  # thinker yields
-        advance_resolution(agent.state, agent.runtime, "O kiek man tai kainuos?")
+        advance(agent.state, agent.runtime, "O kiek man tai kainuos?")
         assert agent.state.resolution.procedure["step"] == "dr_lights"  # frozen, not advanced
 
     def test_side_facts_carry_faq_and_anchor(self, db_connection, monkeypatch):
@@ -1911,8 +1911,8 @@ class TestTicketDialogue:
         return agent
 
     def test_consent_starts_dialogue_not_immediate_ticket(self, db_connection, monkeypatch):
+        from agent.decide.procedure import walk_resolution
         from agent.decide.rules.reply import scripted_words
-        from agent.walker_flow import walk_resolution
 
         agent = self._agent_at_consent(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "gerai, tinka")
@@ -2279,7 +2279,7 @@ class TestTicketDialogue:
     def test_escalate_arrival_starts_dialogue_even_with_consent_step(
         self, db_connection, monkeypatch
     ):
-        from agent.walker_flow import ensure_action_done
+        from agent.execute.diagnosis import ensure_action_done
 
         # Live 2026-08-04: arrival at a consent ESCALATE was narrated by the LLM
         # ("užregistravau…" before anything happened). Arrival now begins the

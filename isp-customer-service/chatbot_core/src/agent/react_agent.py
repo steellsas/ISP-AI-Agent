@@ -323,13 +323,13 @@ class ReactAgent:
         loop streaming the final reply token by token. A `planned` turn was already
         decided by the policy chain — the head's guards, the stuck backstop and the
         scripted replies do not run again; the LLM words the plan."""
+        from .decide.rules.dialog import scripted_wait_ack
         from .decide.rules.reply import plan_reply
         from .execute.actions import run_action
         from .executor_flow import execute_tool_calls
         from .narrator_flow import build_messages, scoped_tools_schema
         from .speculation import apply_bg_diagnosis, consume_injected_reply
         from .ticket_flow import registration_claim_guard
-        from .walker_flow import scripted_wait_ack
 
         self.runtime.cancel.clear()  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the

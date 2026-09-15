@@ -159,10 +159,10 @@ class TestAgentWiring:
 
     def test_contradiction_asks_one_clarify_then_settles(self):
         from agent.contract.locale import phrase
+        from agent.decide.procedure import advance
         from agent.decide.rules.reply import scripted_words
         from agent.perceive.evidence import ingest_client_evidence
         from agent.solver_flow import solver_drive_turn
-        from agent.walker_flow import advance_resolution
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
@@ -172,7 +172,7 @@ class TestAgentWiring:
         assert (
             solver_drive_turn(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti") is None
         )
-        advance_resolution(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
+        advance(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
         assert agent.state.resolution.procedure["step"] == "dr_lights"  # held, not advanced
         reply = scripted_words(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
         assert reply == phrase(

@@ -1288,7 +1288,7 @@ def augment_resolve_result(state, rt, observation: str) -> str:
     debt a turn later — or the caller goes quiet and the call stalls before any
     diagnosis. Running it here lets ONE reply confirm the address and deliver the
     finding."""
-    from .walker_flow import ensure_diagnosed
+    from .execute.diagnosis import ensure_diagnosed
 
     try:
         obs = json.loads(observation)
@@ -1358,7 +1358,7 @@ def augment_tool_result(state, rt, name: str, observation: str) -> str:
     chains it: after a successful update_mac it runs reset_port and re-reads the
     telemetry, and hands the model a VERIFIED outcome to narrate (what the
     provider side actually shows, not what the caller claims)."""
-    from .walker_flow import fresh_diagnose_reason
+    from .execute.diagnosis import fresh_diagnose_reason
 
     if name == "resolve_address":
         return augment_resolve_result(state, rt, observation)
@@ -1401,7 +1401,7 @@ def augment_tool_result(state, rt, name: str, observation: str) -> str:
 
 def update_state_from_observation(state, rt, action: str, observation: str):
     """Update agent state based on tool observation."""
-    from .walker_flow import open_hypothesis
+    from .decide.hypothesis import open_hypothesis
 
     try:
         obs_data = json.loads(observation)

@@ -228,8 +228,8 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     direction, a solver failure — or DETERMINISTIC MECHANICS in progress: the
     identification ladder, the clarify contract and the wrap-up stay engine-owned,
     the thinker never overrides them)."""
+    from .decide.procedure import goto_step
     from .evidence_drive import evidence_drive
-    from .walker_flow import goto_step
 
     if os.getenv("SOLVER_DRIVE", "on").lower() != "on":
         return None
@@ -536,7 +536,7 @@ def close_or_register(state: Any, rt: Any, say: str) -> str:
     bridge is TEMPORARY, so a solver 'close' after a successful bridge may not
     end the call without the router-replacement registration — it becomes the
     escalate (live: 'Aš radu internetas' -> close -> ticket=None)."""
-    from .walker_flow import settle_hypothesis
+    from .decide.hypothesis import settle_hypothesis
 
     r = state.resolution.procedure or {}
     bridged = bool(r.get("telemetry_fixed")) or state.resolution.bridge_bound
@@ -557,7 +557,7 @@ def close_or_register(state: Any, rt: Any, say: str) -> str:
 def refresh_diagnosis(state: Any, rt: Any) -> None:
     """Re-read the line so the solver reasons over CURRENT telemetry (fixes the stale-
     snapshot issue). Keeps the active strategy; only refreshes the signals."""
-    from .walker_flow import ensure_diagnosed
+    from .execute.diagnosis import ensure_diagnosed
 
     state.diagnosis.verdicts.pop("network", None)
     ensure_diagnosed(state, rt)
@@ -575,9 +575,9 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
       2. never twice — a completed bind is recorded and not repeated;
       3. after the (demo) simulation, bind only if a device is actually observed —
          never bind blind."""
+    from .decide.procedure import goto_step
     from .executor_flow import simulate_bridge_connection
     from .narrator_flow import augment_tool_result
-    from .walker_flow import goto_step
 
     cid = state.identity.customer_id
     if state.resolution.bridge_bound:
