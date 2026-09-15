@@ -19,10 +19,8 @@ beats consent at any length ("ne!" stops the agent, always).
 
 from __future__ import annotations
 
+from .contract import limits
 from .contract.locale import vocab
-
-_ECHO_OVERLAP = 0.8  # fuzzy token overlap (>=) that reads as our own echo
-_MAX_CONSENT_WORDS = 3  # longer than this is content, not a backchannel
 
 
 def _fold(text: str) -> str:
@@ -61,8 +59,14 @@ def classify_interruption(transcript: str, agent_text: str | None) -> str:
         t in vocab("barge_stop_tokens") or t.startswith(vocab("barge_stop_prefixes")) for t in toks
     ):
         return "stop"
-    if agent_text and len(toks) >= 2 and token_overlap(transcript, agent_text) >= _ECHO_OVERLAP:
+    if (
+        agent_text
+        and len(toks) >= 2
+        and token_overlap(transcript, agent_text) >= limits.get("echo_overlap_threshold")
+    ):
         return "echo"
-    if len(toks) <= _MAX_CONSENT_WORDS and all(t in vocab("barge_consent_tokens") for t in toks):
+    if len(toks) <= limits.get("barge_consent_max_words") and all(
+        t in vocab("barge_consent_tokens") for t in toks
+    ):
         return "consent"
     return "substantive"

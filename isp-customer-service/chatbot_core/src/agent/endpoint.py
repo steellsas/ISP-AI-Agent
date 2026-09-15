@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import functools
 import logging
-import os
 from typing import Any
 
+from .contract import limits
 from .contract.locale import active_language
 
 logger = logging.getLogger(__name__)
@@ -39,23 +39,16 @@ def _trailing_words(language: str) -> frozenset[str]:
     return frozenset(_fold(w) for w in vocab("continuation_words"))
 
 
-def _ms(env_key: str, default: int) -> int:
-    try:
-        return int(float(os.environ.get(env_key, str(default))))
-    except ValueError:
-        return default
-
-
 def fast_ms() -> int:
-    return _ms("ENDPOINT_FAST_MS", 350)
+    return limits.get("endpoint_fast_ms")
 
 
 def slow_ms() -> int:
-    return _ms("ENDPOINT_SLOW_MS", 1400)
+    return limits.get("endpoint_slow_ms")
 
 
 def story_ms() -> int:
-    return _ms("ENDPOINT_STORY_MS", 1800)
+    return limits.get("endpoint_story_ms")
 
 
 def classify_endpoint(state: Any, rt: Any, text: str | None) -> tuple[str, int | None]:

@@ -17,13 +17,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .contract import limits
 from .contract.locale import lang, vocab, vocab_map, vocab_re, vocab_set, vocab_text
 from .tooling.address_matching import locality_match_score, street_match_score
 
 # A token is a number (optionally with a trailing letter: "122F") or a word.
 _TOKEN_RE = re.compile(r"(?P<num>\d+[^\W\d_]?)|(?P<word>[^\W\d_]+)", re.UNICODE)
-_STREET_THRESHOLD = 0.75
-_CITY_THRESHOLD = 0.85
 
 
 def _deaccent(word: str) -> str:
@@ -125,10 +124,17 @@ def extract_address(
     if not seq:
         return AddressReading()
 
-    sc, street, s_start, s_end = _best_span(seq, streets, street_match_score, _STREET_THRESHOLD)
+    sc, street, s_start, s_end = _best_span(
+        seq, streets, street_match_score, limits.get("nlu_street_match_threshold")
+    )
     street_span = set(range(s_start, s_end + 1)) if street else set()
     _, city, _, _ = _best_span(
-        seq, localities, locality_match_score, _CITY_THRESHOLD, max_n=2, exclude=street_span
+        seq,
+        localities,
+        locality_match_score,
+        limits.get("nlu_city_match_threshold"),
+        max_n=2,
+        exclude=street_span,
     )
 
     nums = [(i, v) for i, (k, v) in enumerate(seq) if k == "num"]

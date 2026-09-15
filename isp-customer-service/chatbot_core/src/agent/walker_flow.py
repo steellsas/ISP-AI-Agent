@@ -16,6 +16,7 @@ import logging
 import os  # noqa: F401
 from typing import Any  # noqa: F401
 
+from .contract import limits
 from .contract.locale import phrase, phrase_or, vocab
 from .dialog_utils import asked_recently, last_agent_question
 from .faults import role_of, verdict_flag
@@ -361,7 +362,11 @@ def block_uncorroborated_escalate(state, rt, step, strat, label, user_input: str
     if state.resolution.escalate_clarify_asked:
         return False  # clarified once already — a repeated no is a real no
     u = state.turn.understanding
-    if u is not None and u.get("type") == "answer" and (u.get("confidence") or 0) >= 0.6:
+    if (
+        u is not None
+        and u.get("type") == "answer"
+        and (u.get("confidence") or 0) >= limits.get("understand_facts_min_confidence")
+    ):
         return False  # two sources agree on the refusal — escalate may proceed
     state.resolution.escalate_clarify_asked = True
     state.resolution.escalate_clarify_due = True
@@ -429,7 +434,11 @@ def classify_confirm_and_route(state, rt, step, strat, user_input: str | None) -
             f"{step.detector or 'yes_no'}: no result → keyword",
         )
         return False
-    answered = obs.is_answer and obs.label in step.on and obs.confidence >= 0.5
+    answered = (
+        obs.is_answer
+        and obs.label in step.on
+        and obs.confidence >= limits.get("classifier_accept_confidence")
+    )
     rt.tracer.emit(
         "classify",
         detector=step.detector or "yes_no",
@@ -531,7 +540,7 @@ def classify_instruct_and_advance(state, rt, step, strat, user_input: str | None
         obs = classify_step(question, user_input or "", options, model=rt.config.model)
     if obs is None:
         return False
-    done = obs.label == "done" and obs.confidence >= 0.5
+    done = obs.label == "done" and obs.confidence >= limits.get("classifier_accept_confidence")
     rt.tracer.emit(
         "classify",
         detector="instruct_done",
@@ -711,7 +720,7 @@ def advance_see_device(state, rt, r: dict) -> None:
         goto_role(state, rt, r, "bind_device")
         return
     r["plug_retries"] = int(r.get("plug_retries", 0)) + 1
-    if r["plug_retries"] >= 2:
+    if r["plug_retries"] >= limits.get("bridge_plug_retries_max"):
         goto_role(state, rt, r, "escalate")
     else:
         goto_role(state, rt, r, "locate_cable")  # wrong cable/socket — try again
@@ -803,7 +812,7 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
             goto_role(state, rt, r, "client_side_check")
         else:
             r["restored_denials"] = int(r.get("restored_denials", 0)) + 1
-            if r["restored_denials"] >= 2:
+            if r["restored_denials"] >= limits.get("restored_denials_max"):
                 # The bind has not taken after waiting. Don't register yet: reject
                 # this hypothesis and see whether the telemetry now points at a
                 # different fault. Only escalate when there is no Plan B.
@@ -832,7 +841,11 @@ def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
         options,
         model=rt.config.model,
     )
-    if obs is not None and obs.is_answer and obs.confidence >= 0.5:
+    if (
+        obs is not None
+        and obs.is_answer
+        and obs.confidence >= limits.get("classifier_accept_confidence")
+    ):
         return str(obs.label)
     return None
 
@@ -950,7 +963,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
             "(an extension cord / a button / another device?)",
         )
         r["reboot_retries"] = int(r.get("reboot_retries", 0)) + 1
-        if r["reboot_retries"] >= 2:
+        if r["reboot_retries"] >= limits.get("reboot_retries_max"):
             goto_role(state, rt, r, "escalate")
         else:
             goto_role(state, rt, r, "reboot_retry")
@@ -996,7 +1009,11 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
             detector_glosses("ticket_consent"),
             model=rt.config.model,
         )
-        if obs is not None and obs.is_answer and obs.confidence >= 0.5:
+        if (
+            obs is not None
+            and obs.is_answer
+            and obs.confidence >= limits.get("classifier_accept_confidence")
+        ):
             label = obs.label
             routed_by = "classifier"
     rt.tracer.emit(
@@ -1038,6 +1055,7 @@ def goto_step(state, rt, r: dict, next_id: str) -> None:
         # solver reads WHAT already happened instead of re-deriving it.
         journal = r.setdefault("journal", [])
         journal.append(f"{r.get('step') or '—'}→{next_id}")
-        if len(journal) > 12:
-            del journal[:-12]
+        keep = limits.get("process_journal_max")
+        if len(journal) > keep:
+            del journal[:-keep]
     r["step"] = next_id

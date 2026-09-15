@@ -23,6 +23,8 @@ import logging
 
 from pydantic import BaseModel, Field
 
+from .contract import limits
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,7 +76,7 @@ def classify_step(
             ],
             model=_perception_model(model),
             temperature=0.0,
-            max_tokens=150,
+            max_tokens=limits.get("classifier_max_tokens"),
             validate_schema=CandidateObservation,
         )
         obs = CandidateObservation(**data)

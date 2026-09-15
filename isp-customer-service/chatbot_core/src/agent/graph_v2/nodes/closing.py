@@ -15,6 +15,7 @@ from typing import Any
 from langgraph.runtime import Runtime
 
 from ...closing_flow import maybe_finish
+from ...contract import limits
 from ...runtime import AgentRuntime
 from ..router import CLOSING
 from ..runtime import CLOSING_NODE_PROMPT, CLOSING_TOOLS, narrate, node_update, speak_scripted
@@ -112,7 +113,9 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
     # goodbye moment): the FIRST closing reply may be the LLM's warm,
     # personalised close — every trailing non-question turn gets the
     # short scripted goodbye instead of a fresh re-explanation.
-    if not is_real_question(user_input) and (s.closing.is_complete or s.closing.closing_turns >= 1):
+    if not is_real_question(user_input) and (
+        s.closing.is_complete or s.closing.closing_turns >= limits.get("closing_llm_replies_max")
+    ):
         reply = phrase("identification.goodbye")
         speak_scripted(state, rt, CLOSING, user_input, reply)
         return reply

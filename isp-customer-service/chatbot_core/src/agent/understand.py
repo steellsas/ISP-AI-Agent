@@ -26,6 +26,8 @@ import logging
 import os
 from typing import Any
 
+from .contract import limits
+
 logger = logging.getLogger(__name__)
 
 TURN_TYPES = {"answer", "question", "deviation", "confusion", "contradiction"}
@@ -133,7 +135,7 @@ def understand(
                 "content": _system(anchor, needs, ledger_summary, allowed_map, step_options),
             }
         ]
-        for m in (history_tail or [])[-4:]:
+        for m in (history_tail or [])[-limits.get("understand_history_messages") :]:
             role = "assistant" if m.get("role") == "assistant" else "user"
             content = (m.get("content") or "")[:200]
             if content:
@@ -157,7 +159,9 @@ def understand(
         # poisoning the ledger and forcing two phantom clarifies):
         # a question/confusion does not STATE facts, and low-confidence facts
         # are worse than no facts — the deterministic layers cover the gap.
-        if turn_type not in ("answer", "contradiction") or confidence < 0.6:
+        if turn_type not in ("answer", "contradiction") or confidence < limits.get(
+            "understand_facts_min_confidence"
+        ):
             facts = {}
         # Merged step classification (R4): validated exactly like the standalone
         # classifier — unknown labels are dropped so the walker falls back.

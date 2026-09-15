@@ -16,7 +16,7 @@ Responsibilities:
 4. Bailout — a low-confidence streak or too many cycles on the same step forces
    `escalate` (register the fault) so the agent never grinds the caller forever.
 
-Thresholds live in DEFAULT_POLICY here for now; they move to policy.yaml (⚙️) later.
+Thresholds come from knowledge/limits.yaml (`default_policy()`).
 The counters are owned by the caller and passed in, so the gate stays pure.
 """
 
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .contract import limits
 from .solver import ALLOWED_ACTIONS, SolverDecision
 
 # Actions executed by CODE, never by the solver. propose_fix is a MUTATION (bind/reset);
@@ -34,12 +35,15 @@ MUTATION_ACTIONS = frozenset({"propose_fix"})
 # "Silent" internal actions that do not face the caller — capped so we cannot spin.
 INTERNAL_ACTIONS = frozenset({"reread_telemetry", "pivot"})
 
-DEFAULT_POLICY = {
-    "confidence_floor": 0.4,  # below this counts toward the low-confidence streak
-    "low_conf_max": 3,  # this many low-confidence turns in a row -> bail out
-    "cycles_max": 3,  # more than this many turns on the SAME step -> bail out
-    "internal_hops_max": 2,  # consecutive silent actions before a client action is forced
-}
+
+def default_policy() -> dict:
+    """The gate thresholds (knowledge/limits.yaml `solver_*`)."""
+    return {
+        "confidence_floor": limits.get("solver_confidence_floor"),
+        "low_conf_max": limits.get("solver_low_conf_max"),
+        "cycles_max": limits.get("solver_cycles_max"),
+        "internal_hops_max": limits.get("solver_internal_hops_max"),
+    }
 
 
 @dataclass
@@ -66,7 +70,7 @@ def gate(
     Order matters — the bailout safeguard wins over everything (a stuck/uncertain agent
     escalates rather than acting), then structural validity, then the safety-mapping rule.
     """
-    p = {**DEFAULT_POLICY, **(policy or {})}
+    p = {**default_policy(), **(policy or {})}
 
     # No decision at all (solver failed) -> ask, so the turn never stalls.
     if decision is None:

@@ -18,6 +18,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from agent.contract import limits
+
 if TYPE_CHECKING:
     from .sessions import ManagedSession
 
@@ -165,7 +167,7 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
         pass
     if is_answer:
         echo, kind = False, "answer"
-    elif len(text.split()) >= 2 and sim >= 0.8:
+    elif len(text.split()) >= 2 and sim >= limits.get("echo_overlap_threshold"):
         echo, kind = True, "echo"
     else:
         echo = False
@@ -173,7 +175,7 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     if not echo:
         # Stage 2: queue for the NEXT turn's engine hand-over (capped).
         notes = getattr(ms, "overlay_notes", None)
-        if notes is not None and len(notes) < 6:
+        if notes is not None and len(notes) < limits.get("overlay_notes_max"):
             notes.append(text)
     ms.session.tracer.emit("overlay", text=text, echo=echo, sim=sim, who=kind, ms=took)
     return {"type": "overlay", "text": text, "echo": echo, "sim": sim, "who": kind}
@@ -242,10 +244,7 @@ def run_voice_turn_stream(
     # Default OFF (Andrius 2026-08-20: the canned cue reads as junk — natural
     # LLM speech only; the knob stays for experiments).
     if os.environ.get("VOICE_FILLER", "off").lower() == "on":
-        try:
-            delay = float(os.environ.get("VOICE_FILLER_AFTER_S", "1.2"))
-        except ValueError:
-            delay = 1.2
+        delay = limits.get("voice_filler_after_s")
         filler_timer = threading.Timer(delay, _maybe_filler)
         filler_timer.daemon = True
         filler_timer.start()
@@ -277,10 +276,7 @@ def run_voice_turn_stream(
 
     ack_timer = None
     if interruption is not None and os.environ.get("INTERRUPT_ACK", "on").lower() == "on":
-        try:
-            ack_delay = float(os.environ.get("INTERRUPT_ACK_AFTER_S", "0.8"))
-        except ValueError:
-            ack_delay = 0.8
+        ack_delay = limits.get("interrupt_ack_after_s")
         ack_timer = threading.Timer(ack_delay, _maybe_ack)
         ack_timer.daemon = True
         ack_timer.start()

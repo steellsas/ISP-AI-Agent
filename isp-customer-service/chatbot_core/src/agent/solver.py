@@ -27,6 +27,8 @@ import logging
 
 from pydantic import BaseModel, Field
 
+from .contract import limits
+
 logger = logging.getLogger(__name__)
 
 # The bounded action space. The gate validates `next_action` against this; anything
@@ -88,7 +90,7 @@ def solve(context: str, model: str | None = None) -> SolverDecision | None:
             ],
             model=model,
             temperature=0.0,
-            max_tokens=400,
+            max_tokens=limits.get("solver_max_tokens"),
             validate_schema=SolverDecision,
         )
         decision = SolverDecision(**data)

@@ -18,13 +18,13 @@ later, with no change here.
 from __future__ import annotations
 
 import io
-import os
 import time
 import wave
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .contract import limits
 from .session import AgentSession
 
 if TYPE_CHECKING:
@@ -50,10 +50,7 @@ def audio_duration_s(audio: bytes, sample_rate: int = 16_000) -> float | None:
 def _min_audio_s() -> float:
     """Too-short-audio floor (VOICE_PLAN V1): fragments under this are DROPPED
     before ASR — Whisper hallucinates words from sub-word blips ("Įvėtojai")."""
-    try:
-        return float(os.getenv("ASR_MIN_AUDIO_S", "0.3"))
-    except ValueError:
-        return 0.3
+    return limits.get("asr_min_audio_s")
 
 
 def speech_text(text: str) -> str:

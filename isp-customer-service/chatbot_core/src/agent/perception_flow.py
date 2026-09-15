@@ -17,6 +17,7 @@ import os  # noqa: F401
 import re
 from typing import Any  # noqa: F401
 
+from .contract import limits
 from .contract.locale import phrase, vocab, vocab_set
 from .dialog_utils import asked_recently, last_agent_question
 from .trace import trace_note
@@ -765,7 +766,9 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                     if state.ticket.stage == "phone":
                         from .barge_in import token_overlap
 
-                        if token_overlap(user_input, s.dialog.last_question or "") >= 0.8:
+                        if token_overlap(user_input, s.dialog.last_question or "") >= limits.get(
+                            "echo_overlap_threshold"
+                        ):
                             s.ticket.contact_phone = s.identity.caller_phone
                             state.ticket.stage = "hours"
                             rt.tracer.emit(
@@ -997,7 +1000,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
             state.identity.reopen_confirm_asked = False
             _q_clear(state, rt, "reopen_confirm")
             rt.tracer.emit("decision", intent="reopen_confirm", action="declined")
-        elif state.identity.reopen_confirm_asks < 2:
+        elif state.identity.reopen_confirm_asks < limits.get("reopen_confirm_max_asks"):
             state.identity.reopen_reask_due = True  # the scripted layer re-asks the question
             rt.tracer.emit("decision", intent="reopen_confirm", action="reask")
         else:

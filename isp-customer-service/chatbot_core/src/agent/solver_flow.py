@@ -14,6 +14,7 @@ import logging
 import os
 from typing import Any
 
+from .contract import limits
 from .contract.locale import phrase, vocab
 from .dialog_utils import last_agent_question
 from .trace import trace_note
@@ -24,7 +25,6 @@ from .trace import trace_note
 # the gate validates + the engine executes safety actions by code, and the reply is the
 # solver's spoken text. The walker stays the default and handles every other direction.
 SOLVER_DRIVE_VERDICTS = frozenset({"no_mac_observed"})  # pilot: dead-router / bridge
-DRIVE_MAX_TURNS = 14  # hard bailout — never grind the caller forever
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
         m
         for m in s.messages
         if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
-    ][-8:]
+    ][-limits.get("solver_context_messages") :]
     if recent:
         convo = "\n".join(
             f"{'Caller' if m['role'] == 'user' else 'Agent'}: {m['content']}" for m in recent
@@ -117,7 +117,10 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     # thinker sees the path ("kas jau vyko"), so it never re-proposes a step
     # the call has moved past.
     if r.get("journal"):
-        lines.append("STEPS WALKED (already happened): " + "; ".join(r["journal"][-8:]))
+        lines.append(
+            "STEPS WALKED (already happened): "
+            + "; ".join(r["journal"][-limits.get("solver_context_journal_entries") :])
+        )
     # The full procedure for this fault (the solver reasons over the WHOLE playbook to
     # pick the next action — unlike the narrator, which sees one isolated step).
     if r.get("verdict"):
@@ -140,7 +143,7 @@ def shadow_solve(state: Any, rt: Any, user_input: str | None) -> None:
         return
     try:
         from .faults import pack_verdicts
-        from .gate import DEFAULT_POLICY, INTERNAL_ACTIONS, gate
+        from .gate import INTERNAL_ACTIONS, gate
         from .solver import solve
 
         decision = solve(
@@ -159,7 +162,7 @@ def shadow_solve(state: Any, rt: Any, user_input: str | None) -> None:
         conf = decision.confidence if decision else 0.0
         state.resolution.solver_low_conf_streak = (
             state.resolution.solver_low_conf_streak + 1
-            if conf < DEFAULT_POLICY["confidence_floor"]
+            if conf < limits.get("solver_confidence_floor")
             else 0
         )
         if decision and decision.next_action in INTERNAL_ACTIONS:
@@ -351,7 +354,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     # the call; its own guards (stuck counter, escalate) handle the endgame.
     if state.resolution.drive_disabled:
         return None
-    if state.resolution.drive_repeats >= 2:
+    if state.resolution.drive_repeats >= limits.get("solver_drive_repeat_bailout"):
         state.resolution.drive_disabled = True
         state.resolution.drive_repeats = 0
         state.resolution.drive_last_reply = None
@@ -424,7 +427,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
 
 def drive(state: Any, rt: Any, user_input: str | None) -> str:
     from .faults import pack_verdicts
-    from .gate import DEFAULT_POLICY, gate
+    from .gate import gate
     from .resolution import detect_turn_intent
     from .solver import solve
 
@@ -434,7 +437,7 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
     context = build_solver_context(state, rt, user_input)
     # Anti-repeat nudge: last reply repeated an earlier one — tell the solver the
     # answer is already GIVEN and it must take a DIFFERENT next step.
-    if state.resolution.drive_repeats >= 1:
+    if state.resolution.drive_repeats >= limits.get("solver_drive_repeat_nudge_at"):
         context += (
             "\nIMPORTANT: your previous question REPEATED, and the caller has already answered "
             "and confirmed. ACCEPT that answer as a fact and take the NEXT step (another "
@@ -442,7 +445,7 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
         )
     # A few internal (silent) hops are allowed — reread/pivot re-read the line — before
     # a client-facing action is forced. Hard turn cap escalates rather than looping.
-    for _ in range(DEFAULT_POLICY["internal_hops_max"] + 1):
+    for _ in range(limits.get("solver_internal_hops_max") + 1):
         decision = solve(context, model=rt.config.solver_model or rt.config.model)
         # Normalize the free-form hypothesis to the ACTIVE direction before the
         # gate: the solver words the same belief freely ("routeris sugedęs,
@@ -460,10 +463,10 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
         conf = decision.confidence if decision else 0.0
         state.resolution.solver_low_conf_streak = (
             state.resolution.solver_low_conf_streak + 1
-            if conf < DEFAULT_POLICY["confidence_floor"]
+            if conf < limits.get("solver_confidence_floor")
             else 0
         )
-        forced = state.resolution.drive_turns > DRIVE_MAX_TURNS
+        forced = state.resolution.drive_turns > limits.get("solver_drive_max_turns")
         result = gate(
             decision,
             known_hypotheses=pack_verdicts(),
@@ -471,7 +474,11 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
             # The REAL per-question cycle count (the same-reply streak) — with a
             # flat 0 here the gate's stuck detector was blind and the solver
             # looped one question 6x (observed live).
-            cycles_in_step=(DRIVE_MAX_TURNS + 1 if forced else state.resolution.drive_repeats),
+            cycles_in_step=(
+                limits.get("solver_drive_max_turns") + 1
+                if forced
+                else state.resolution.drive_repeats
+            ),
             internal_hops=state.resolution.solver_internal_hops,
         )
         action = result.action

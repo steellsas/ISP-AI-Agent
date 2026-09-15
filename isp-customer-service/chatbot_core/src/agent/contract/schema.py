@@ -15,7 +15,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    RootModel,
+    StrictFloat,
+    StrictInt,
+    ValidationError,
+    model_validator,
+)
 
 AGENT_DIR = Path(__file__).resolve().parents[1]
 KNOWLEDGE_DIR = AGENT_DIR / "knowledge"
@@ -230,6 +239,22 @@ class Verdicts(RootModel[dict[str, VerdictFlags]]):
     pass
 
 
+class Limit(_Model):
+    value: StrictInt | StrictFloat
+    env: str | None = None  # an environment variable that wins when set
+
+
+class Limits(RootModel[dict[str, StrictInt | StrictFloat | Limit]]):
+    def entries(self) -> dict[str, Limit]:
+        return {k: v if isinstance(v, Limit) else Limit(value=v) for k, v in self.root.items()}
+
+
+class Policies(_Model):
+    identified_customer_required: list[str] = []  # tools refused before identification
+    forbidden_actions: list[str] = []
+    forbidden_topics: list[str] = []
+
+
 # --- Validation -------------------------------------------------------------------
 
 
@@ -251,6 +276,8 @@ class Knowledge:
     inform: Inform | None = None
     identification: Identification | None = None
     verdicts: Verdicts | None = None
+    limits: Limits | None = None
+    policies: Policies | None = None
 
 
 def _non_string_keys(data: Any, loc: str = "") -> list[str]:
@@ -512,6 +539,8 @@ def validate_knowledge(
         "inform": ("inform.yaml", Inform),
         "identification": ("identification.yaml", Identification),
         "verdicts": ("verdicts.yaml", Verdicts),
+        "limits": ("limits.yaml", Limits),
+        "policies": ("policies.yaml", Policies),
     }
     for attr, (name, model) in single_files.items():
         setattr(k, attr, _read(root / name, model, errors, root))

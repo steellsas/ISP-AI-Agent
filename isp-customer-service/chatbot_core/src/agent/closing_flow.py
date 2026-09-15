@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .contract import limits
 from .contract.locale import vocab
 from .faults import verdict_flag
 
@@ -25,7 +26,7 @@ def maybe_finish(state: Any, rt: Any, user_input: str | None) -> None:
     s.closing.closing_turns += 1
     from .resolution import detect_farewell
 
-    if detect_farewell(user_input) or s.closing.closing_turns >= 2:
+    if detect_farewell(user_input) or s.closing.closing_turns >= limits.get("closing_max_turns"):
         s.closing.is_complete = True
 
 

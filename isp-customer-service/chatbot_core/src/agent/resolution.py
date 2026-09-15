@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .contract import limits
 from .contract.locale import vocab, vocab_re, vocab_set
 
 
@@ -431,7 +432,7 @@ def is_greeting(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    if len(low.split()) > 4:
+    if len(low.split()) > limits.get("greeting_max_words"):
         return False
     return any(m in low for m in vocab("greeting"))
 
@@ -521,7 +522,7 @@ def detect_farewell(text: str | None) -> bool:
     if any(w in tokens and _standalone_goodbye(w) for w in vocab("standalone_goodbye")):
         return True
     has_followup = any(w in low for w in vocab("followup_marks"))
-    short = len(low.split()) <= 3
+    short = len(low.split()) <= limits.get("short_utterance_max_words")
     # Bare "ne" is NEVER a farewell (Andrius 2026-08-20): a lone "Ne." to a
     # standing question is an ANSWER — its owner clarifies what the "ne"
     # means. Only "viskas"-style closers reach the pure-decline fallback.
@@ -554,7 +555,7 @@ def is_bare_done_report(text: str | None) -> bool:
         return False
     tokens = [t.strip(".,!?…") for t in text.lower().split()]
     tokens = [t for t in tokens if t and t not in vocab_set("done_acks")]
-    if not tokens or len(tokens) > 3:
+    if not tokens or len(tokens) > limits.get("short_utterance_max_words"):
         return False
     return all(any(t.startswith(s) for s in vocab("done_stems")) for t in tokens)
 
@@ -570,7 +571,7 @@ def is_bare_negation(text: str | None) -> bool:
         return False
     tokens = [t.strip(".,!?…") for t in text.lower().split()]
     tokens = [t for t in tokens if t]
-    if not tokens or len(tokens) > 3:
+    if not tokens or len(tokens) > limits.get("short_utterance_max_words"):
         return False
     return any(t in vocab_set("negation_tokens") for t in tokens) and all(
         t in vocab_set("negation_tokens") or len(t) <= 2 for t in tokens

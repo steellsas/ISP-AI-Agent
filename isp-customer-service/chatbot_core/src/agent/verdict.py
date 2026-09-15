@@ -25,21 +25,16 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from .contract import limits
+
 logger = logging.getLogger(__name__)
 
-# Sustained CRC errors above this rate (errors/min) indicate a damaged or
-# poorly seated cable (B5) even while the link stays up.
-CRC_ERROR_THRESHOLD = 1.0
 
-# A port status flap (down->up) within this window counts as "the router WAS
-# power-cycled" (S6 hung router): a real reboot drops the device off the line,
-# so last_status_change refreshes. "Perkroviau" with a stale timestamp means
-# the wrong device (a second router) or just the extension cord was cycled.
-REBOOT_FLAP_WINDOW_S = 600
-
-
-def _flap_recent(last_status_change: str | None, window_s: int = REBOOT_FLAP_WINDOW_S) -> bool:
-    """True when the port's last status change is within the reboot window.
+def _flap_recent(last_status_change: str | None, window_s: int | None = None) -> bool:
+    """True when the port's last status change is within the reboot window
+    (`reboot_flap_window_s`): a real reboot drops the device off the line, so
+    last_status_change refreshes; a stale stamp means the wrong device (a second
+    router) or just the extension cord was power-cycled.
     SQLite CURRENT_TIMESTAMP / datetime('now') stamps are UTC 'YYYY-MM-DD HH:MM:SS'."""
     if not last_status_change:
         return False
@@ -47,6 +42,8 @@ def _flap_recent(last_status_change: str | None, window_s: int = REBOOT_FLAP_WIN
         ts = datetime.fromisoformat(str(last_status_change)).replace(tzinfo=UTC)
     except ValueError:
         return False
+    if window_s is None:
+        window_s = limits.get("reboot_flap_window_s")
     return (datetime.now(UTC) - ts).total_seconds() <= window_s
 
 
@@ -293,7 +290,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
 
     # ---- Step 4, BŪSENA C: link UP, correct MAC -----------------------------
     crc = signals.get("crc_error_rate")
-    if crc is not None and crc > CRC_ERROR_THRESHOLD:
+    # Sustained CRC errors above this rate (errors/min) mean a damaged or poorly
+    # seated cable (B5) even while the link stays up.
+    if crc is not None and crc > limits.get("crc_error_rate_threshold"):
         return _verdict(
             side="customer",
             group="B5",

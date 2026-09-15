@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .contract import limits
+
 
 def apply_overlay(state: Any, rt: Any, texts: list[str]) -> None:
     """Duplex-hearing 2: the caller's words spoken OVER the agent's voice
@@ -19,7 +21,7 @@ def apply_overlay(state: Any, rt: Any, texts: list[str]) -> None:
     FILL facts, never steer routing."""
     from .perception_flow import ingest_overlay
 
-    kept = [t.strip() for t in texts if t and t.strip()][:3]
+    kept = [t.strip() for t in texts if t and t.strip()][: limits.get("overlay_apply_max")]
     if not kept:
         return
     for text in kept:

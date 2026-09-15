@@ -15,12 +15,12 @@ from typing import Any
 
 from src.ports.tools import ToolProvider
 
+from ..contract import policies
 from ..contract.locale import phrase_or
 from ..trace import trace_tool_result
 
 # Technical tools that must NOT run before the customer is identified
 # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
-GATED_TOOLS = frozenset({"diagnose_connection", "update_mac", "reset_port", "create_ticket"})
 
 
 @dataclass(frozen=True)
@@ -162,7 +162,7 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
             )
         return None
 
-    if name not in GATED_TOOLS:
+    if name not in policies.get().identified_customer_required:
         return None
     if not state.identity.customer_id:
         return json.dumps(

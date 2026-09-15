@@ -391,10 +391,9 @@ async def ws_call(ws: WebSocket, session_id: str):
 
         if _os.getenv("VOICE_CHECKIN", "on").lower() != "on":
             return
-        try:
-            delay = float(_os.getenv("VOICE_CHECKIN_AFTER_S", "35"))
-        except ValueError:
-            delay = 35.0
+        from agent.contract import limits
+
+        delay = float(limits.get("voice_checkin_after_s"))
         await asyncio.sleep(delay)
         try:
             ms = manager.get(session_id)
@@ -442,14 +441,11 @@ async def ws_call(ws: WebSocket, session_id: str):
         # agent's voice — its segments become observations, never turns.
         ms = manager.get(session_id)
         if ms.overlay_front is None:
-            import os as _os
+            from agent.contract import limits
 
             from . import audio_front
 
-            try:
-                sil = int(float(_os.environ.get("OVERLAY_SIL_MS", "4000")))
-            except ValueError:
-                sil = 4000
+            sil = limits.get("overlay_silence_ms")
             ms.overlay_front = audio_front.AudioFront(silence_ms_override=sil)
         return ms.overlay_front
 

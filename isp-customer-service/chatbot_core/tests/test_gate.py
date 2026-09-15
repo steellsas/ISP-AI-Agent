@@ -5,7 +5,7 @@ The gate is pure 🔒 mechanism (no LLM / IO / state), so it is fully determinis
 unit-testable — the first new must-hold safety logic of the thinking-agent phase.
 """
 
-from agent.gate import DEFAULT_POLICY, gate
+from agent.gate import default_policy, gate
 from agent.solver import SolverDecision
 
 KNOWN = {"foreign_mac", "no_mac_observed", "healthy_to_router"}
@@ -68,7 +68,7 @@ class TestActionConvergence:
 
 class TestInternalLoopCap:
     def test_internal_action_capped_forces_ask(self):
-        cap = DEFAULT_POLICY["internal_hops_max"]
+        cap = default_policy()["internal_hops_max"]
         r = gate(_d("reread_telemetry"), known_hypotheses=KNOWN, internal_hops=cap)
         assert not r.accepted and r.action == "ask"
 
@@ -82,7 +82,7 @@ class TestBailout:
         r = gate(
             _d("ask"),
             known_hypotheses=KNOWN,
-            low_conf_streak=DEFAULT_POLICY["low_conf_max"],
+            low_conf_streak=default_policy()["low_conf_max"],
         )
         assert r.bailout and r.action == "escalate"
 
@@ -90,7 +90,7 @@ class TestBailout:
         r = gate(
             _d("instruct"),
             known_hypotheses=KNOWN,
-            cycles_in_step=DEFAULT_POLICY["cycles_max"] + 1,
+            cycles_in_step=default_policy()["cycles_max"] + 1,
         )
         assert r.bailout and r.action == "escalate"
 
@@ -99,6 +99,6 @@ class TestBailout:
         r = gate(
             _d("propose_fix", hyp="foreign_mac"),
             known_hypotheses=KNOWN,
-            cycles_in_step=DEFAULT_POLICY["cycles_max"] + 1,
+            cycles_in_step=default_policy()["cycles_max"] + 1,
         )
         assert r.bailout and r.action == "escalate"

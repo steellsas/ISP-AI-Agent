@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .contract import limits
 from .contract.locale import maybe_phrase
 from .evidence import UNKNOWN, gloss_label, gloss_value
 
@@ -152,7 +153,7 @@ def negation_clarify_reply(state: Any, rt: Any, key: str) -> str | None:
     from .contract.locale import phrase
     from .evidence import spec_for
 
-    if state.diagnosis.evidence_ask_counts.get(key, 0) >= 2:
+    if state.diagnosis.evidence_ask_counts.get(key, 0) >= limits.get("evidence_max_asks"):
         return None  # already asked twice — let the drive give up, not loop
     spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
@@ -371,7 +372,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             )
             reply = phrase("identification.wait_ack")
             return (announce + reply) if announce else reply
-    if asks >= 2:
+    if asks >= limits.get("evidence_max_asks"):
         # Asked twice (normal + paprasciau), still nothing readable — record
         # "neaišku" and move on; an unreadable caller must never loop us.
         set_fact(s.diagnosis.evidence, key, UNKNOWN, CLIENT, s.dialog.turn_count)

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .contract import limits
 from .contract.locale import phrase_or, vocab
 from .dialog_utils import last_agent_question
 from .faults import verdict_flag
@@ -493,10 +494,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     # N riba (Andrius 2026-09-03): ne klientas / neaiški situacija — po
     # GATE_MAX_TURNS nevaisingų apsikeitimų mandagus uždarymas BE tiketo
     # (tiketas be customer_id mechaniškai neįmanomas). Configurable knob.
-    try:
-        gate_max = int(_os.environ.get("GATE_MAX_TURNS", "5"))
-    except ValueError:
-        gate_max = 5
+    gate_max = limits.get("problem_gate_max_turns")
     if p_asks + 1 >= gate_max:
         s.closing.case_closed = True
         s.closing.closed_reason = "declined"
@@ -510,7 +508,13 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     if _os.getenv("CLASSIFIER", "on").lower() != "off":
         from .nlu import classify_problem_llm
 
-        tail = [u for u in getattr(s.intake, "heard_utterances", [])[-3:] if u]
+        tail = [
+            u
+            for u in getattr(s.intake, "heard_utterances", [])[
+                -limits.get("problem_classifier_heard_tail") :
+            ]
+            if u
+        ]
         ctx = " ".join(tail)[-400:] or (user_input or "")
         label, conf = classify_problem_llm(ctx, model=rt.config.model)
         if label:
@@ -523,18 +527,20 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
                 reason=f"{pol}:{conf:.2f}",
             )
             if pol in ("solve", "register"):
-                if conf >= 0.8:
+                if conf >= limits.get("problem_llm_commit_confidence"):
                     s.intake.problem_type = label  # implicit confirmation — the
                     return None  # narrator acknowledges it naturally
-                if conf >= 0.5:
+                if conf >= limits.get("problem_llm_confirm_confidence"):
                     state.intake.problem_guess = label
                     q = problem_confirm_question(label)
                     if q:
                         return q
-            elif conf >= 0.5:  # not_ours / chat from context
+            elif conf >= limits.get(
+                "problem_llm_confirm_confidence"
+            ):  # not_ours / chat from context
                 return problem_boundary_reply(label) or phrase("identification.ask_problem")
     # 4) the pre-cascade ladder
-    if p_asks < 2 and not asking:
+    if p_asks < limits.get("problem_gate_scripted_asks") and not asking:
         return phrase("identification.ask_problem")
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
         state.turn.directives.ident = {
@@ -742,7 +748,6 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         „nenustatyta gedimo vieta".
 
     Returns (handled, reply)."""
-    import os as _os
 
     from .contract.locale import phrase
 
@@ -834,7 +839,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         # (kodo režimas jos nebeįšaldo).
         grace = state.identity.account_code_grace_turns + 1
         state.identity.account_code_grace_turns = grace
-        if grace >= 2:
+        if grace >= limits.get("account_code_grace_turns"):
             state.identity.account_code_mode = False
     if not s.intake.problem_type:
         return False, None
@@ -878,7 +883,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # 1b) LOOP'as (Andrius: „kai loopas prasideda — galvojama apie kitus
     # būdus"): trys TIKROS gatvės/namo paieškos nesėkmės (tikslinimai —
     # butas/pavardė/vietovė — nesiskaito) → PIRMA paraidžiui, tada kodas.
-    if state.identity.address_resolve_failures >= 3:
+    if state.identity.address_resolve_failures >= limits.get("address_resolve_failures_max"):
         state.identity.address_resolve_failures = 0
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
@@ -911,10 +916,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # tuščias bandymas ir perspėjimas iššoko per anksti).
     if not s.intake.anamnesis_asked:
         return False, None
-    try:
-        limit = int(_os.environ.get("IDENT_MAX_TURNS", "4"))
-    except ValueError:
-        limit = 4
+    limit = limits.get("ident_max_empty_turns")
     # R4 (live 2026-09-10: "Tilžiukos." counted as an EMPTY turn and the call
     # CLOSED on a cooperating caller): when the last question asked for the
     # street/address, a bare word attempt IS address content — a garbled
@@ -948,7 +950,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         if not s.identity.profile.street.value and not state.turn.address_lookup_note:
             n = state.identity.address_unrecognized_turns + 1
             state.identity.address_unrecognized_turns = n
-            if n >= 2:
+            if n >= limits.get("address_unrecognized_turns_max"):
                 state.identity.account_code_mode = True
                 state.identity.account_code_grace_turns = 0
                 from .dialog_registry import register as _q_register
@@ -964,7 +966,10 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # 3) Tuščias turn'as (jokio adreso turinio): perspėjimas → uždarymas.
     n = state.identity.address_empty_turns + 1
     state.identity.address_empty_turns = n
-    if n == max(2, limit - 2) and not state.identity.address_warned:
+    if (
+        n == max(limits.get("ident_warn_min_empty_turns"), limit - 2)
+        and not state.identity.address_warned
+    ):
         state.identity.address_warned = True
         # A-banga P3a (gyva #3): perspėjimas MINI kodą — nuo šio momento kodo
         # klausymas įjungtas (praleidimo semantika turinį saugo).
@@ -1196,7 +1201,9 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     # and the caller keeps drifting — the return is scripted now. With a
     # CONFIRMED hypothesis the frame is the solve-together-or-technician
     # choice (Andrius 2026-08-07: maximise solving by phone).
-    if state.turn.side_topic_active and state.dialog.side_topic_streak >= 3:
+    if state.turn.side_topic_active and state.dialog.side_topic_streak >= limits.get(
+        "side_topic_streak_max"
+    ):
         state.dialog.side_topic_streak = 0
         from .evidence import hypothesis_status, spec_for
 
@@ -1347,7 +1354,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
 
         content = bool(user_input) and not _df(user_input) and not _bc(user_input)
         n = state.closing.wrap_content_turns
-        if content and n < 2:
+        if content and n < limits.get("wrap_content_turns_max"):
             state.closing.wrap_content_turns = n + 1
             state.closing.wrap_react_note = True
             rt.tracer.emit("decision", intent="wrap_up", action="react", turns=n + 1)

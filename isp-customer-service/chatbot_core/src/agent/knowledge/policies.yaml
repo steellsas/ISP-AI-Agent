@@ -1,0 +1,17 @@
+# Business policies — what the agent must not do.
+#
+# Filled with the owner; it starts with what the code enforced before. Consent for a
+# procedure step is declared on the step (`consent:`) and checked by the gate.
+
+# Tools the gateway refuses until the caller is identified (their customer_id is known).
+identified_customer_required:
+  - diagnose_connection
+  - update_mac
+  - reset_port
+  - create_ticket
+
+# Solver actions that are never allowed (none yet).
+forbidden_actions: []
+
+# Topics the agent does not discuss (none yet).
+forbidden_topics: []

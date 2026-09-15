@@ -22,6 +22,7 @@ import logging
 import os
 from typing import Any
 
+from .contract import limits
 from .contract.locale import vocab
 
 logger = logging.getLogger(__name__)
@@ -61,7 +62,7 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
         # longer visible) depend on this breadth. Capped to keep tokens sane.
         history = "\n".join(
             f"{'CALLER' if m['role'] == 'user' else 'AGENT'}: {(m.get('content') or '')[:200]}"
-            for m in s.messages[-60:]
+            for m in s.messages[-limits.get("analyst_history_messages") :]
             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
         )
         ledger = summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "(empty)"
@@ -76,7 +77,9 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
         # yet — flagging "neatsako" then is noise. The deviation read only
         # makes sense once the same question needed a re-ask (asks >= 2).
         aktyvus = (
-            f"{q.owner}/{q.key} (attempt {q.asks})" if q is not None and q.asks >= 2 else "(none)"
+            f"{q.owner}/{q.key} (attempt {q.asks})"
+            if q is not None and q.asks >= limits.get("analyst_active_question_min_asks")
+            else "(none)"
         )
         user = (
             f"CONVERSATION:\n{history}\n\nLEDGER (deterministic facts): {ledger}\n"
@@ -92,7 +95,7 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
             temperature=0.2,
             # Reasoning models (gpt-oss) burn tokens on hidden thinking BEFORE
             # the answer — 180 returned an empty string (observed 2026-08-25).
-            max_tokens=700,
+            max_tokens=limits.get("analyst_max_tokens"),
         )
         notes = [
             line.strip().lstrip("-•* ").strip()
@@ -104,7 +107,7 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
         # "paprašykite patikrinti maitinimą" — which is the engine's job).
         # Deterministic whitelist: only the three agreed note types survive —
         # already-said, suspicious-fact, concept-confusion.
-        notes = [n for n in notes if _allowed(n)][:2]
+        notes = [n for n in notes if _allowed(n)][: limits.get("analyst_notes_max")]
         if notes:
             rt.tracer.emit("analyst", notes=notes)
             # C wave: the deviation note is FLAG-ONLY — a separate trace event
