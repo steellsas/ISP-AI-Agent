@@ -72,8 +72,46 @@ def ensure_diagnosed(state, rt) -> bool:
         telemetry(state, rt, mode="snapshot", reason="first_diagnosis")
     except Exception:  # pragma: no cover - best-effort
         return False
+    _unclear_fault_when_unknown(state, rt)
     _seed_evidence_from_anamnesis(state, rt)
     return True
+
+
+def _unclear_fault_when_unknown(state, rt) -> None:
+    """D-04 / F-8: a verdict no pack solves and no inform template tells (dhcp_silent,
+    no_port_data) never goes to a free LLM with all tools — the honest "unclear fault"
+    ticket starts instead."""
+    from ..faults import step_by_role, verdict_flag
+    from ..resolution import get_strategy
+    from ..ticket_flow import begin_ticket_dialogue
+
+    s = state
+    reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+    if not reason or s.resolution.procedure is not None or s.diagnosis.outage_reported:
+        return
+    if get_strategy(reason) is not None or verdict_flag(reason, "inform"):
+        return
+    escalate = step_by_role("unclear_fault", "escalate")
+    s.resolution.procedure = {"verdict": "unclear_fault", "step": escalate.id}
+    # No belief to voice and no telemetry jargon for the narrator (the raw reading stays
+    # in verdicts["network"]["telemetry"] and on the ticket); the conversation hears
+    # "unclear fault".
+    from ..evidence import TELEMETRY, set_fact
+
+    set_fact(s.diagnosis.evidence, "verdict", "unclear_fault", TELEMETRY, s.dialog.turn_count)
+    s.diagnosis.hypothesis = {
+        "cause": reason,
+        "because": [],
+        "status": "unsolved",
+        "settled_by": None,
+    }
+    s.diagnosis.verdicts["network"] = {
+        "reason": "unclear_fault",
+        "telemetry": reason,
+        "skipped": True,
+    }
+    rt.tracer.emit("decision", intent="no_pack", action="unclear_fault_ticket", value=reason)
+    begin_ticket_dialogue(state, rt, escalate)
 
 
 def _seed_evidence_from_anamnesis(state, rt) -> None:

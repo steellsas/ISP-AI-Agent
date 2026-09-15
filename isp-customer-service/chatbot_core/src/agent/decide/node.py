@@ -14,10 +14,11 @@ from ..runtime import AgentRuntime
 
 
 def decide_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
+    from .gate import check_plan
     from .plan import record
     from .policy import plan_turn
 
     rt = runtime.context
     state = state.model_copy(deep=True)
-    record(state, plan_turn(state, rt))
+    record(state, check_plan(state, rt, plan_turn(state, rt)))
     return node_update(state)

@@ -114,7 +114,9 @@ class Step(_Model):
     answers: dict[str, str] = {}
     tools: list[str] = []
     tool_actions: list[str] = []
-    consent: bool | None = None
+    # required: the caller agrees before the step's action runs (the default);
+    # not_required: it runs without asking (e.g. the post-bridge registration).
+    consent: Literal["required", "not_required"] | None = None
     # What the step does (D-18); a module call inherits the module step's role.
     role: str | None = None
 

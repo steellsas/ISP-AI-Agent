@@ -579,8 +579,8 @@
   {
    "id": "X_dhcp_silent",
    "phone": "+37060020106",
-   "desc": "dhcp_silent (CUST106, factory reset — MAC teisingas, DHCP užklausų nėra): pack'o nėra -> šiandien laisvas LLM (žargonas 'DHCP', siūlo gamyklinį atstatymą, baigia be tiketo; Findings F-8). Tikslas po M4: uždaras veiksmų rinkinys -> neaiškaus gedimo tiketas",
-   "known_bug": true,
+   "desc": "dhcp_silent (CUST106, factory reset — MAC teisingas, DHCP užklausų nėra): pack'o nėra -> neaiškaus gedimo tiketas be telemetrijos žargono (F-8 ištaisyta M4 step 8)",
+   "known_bug": false,
    "turns": [
     "Labas, neveikia internetas",
     "Taip",

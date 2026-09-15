@@ -56,6 +56,9 @@ def ticket_need(state: Any, rt: Any) -> str:
     # went out when the caller never rebooted (not at home). A refusal /
     # cannot-now escalation speaks the honest state instead of the fault
     # file's post-action wording.
+    # The unclear fault names no cause to the caller (no telemetry jargon).
+    if (s.resolution.procedure or {}).get("verdict") == "unclear_fault":
+        return phrase("ticket.need_unclear")
     reason = (s.resolution.procedure or {}).get("escalate_reason")
     if reason in NOTHING_DONE_REASONS:
         gloss = phrase_or(f"verdict.{cause}.gloss", None)

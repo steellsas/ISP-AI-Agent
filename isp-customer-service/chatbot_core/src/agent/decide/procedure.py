@@ -788,6 +788,7 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
         routed_by=routed_by,
     )
     if label == "yes":
+        state.dialog.consents[step.role] = True
         begin_ticket_dialogue(state, rt, step)  # contacts first, then register+close
     elif label == "no":
         state.closing.case_closed = True
