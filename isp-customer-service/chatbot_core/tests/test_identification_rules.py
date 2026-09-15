@@ -592,7 +592,7 @@ class TestQuestionRegistry:
         agent.state.resolution.procedure = {
             "verdict": "router_hung",
             "step": "escalate",
-            "escalate_reason": "Klientas negali dabar atlikti veiksmų prie įrenginio.",
+            "escalate_reason": "cannot_now",
         }
         need = ticket_need(agent.state, agent.runtime)
         assert "nepavyko" in need

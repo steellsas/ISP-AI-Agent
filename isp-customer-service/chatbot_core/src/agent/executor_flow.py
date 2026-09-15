@@ -15,6 +15,7 @@ import logging
 import os
 from typing import Any
 
+from .contract.locale import phrase_or
 from .dialog_utils import assistant_tool_message
 from .trace import tools_called_this_session, trace_note
 
@@ -62,7 +63,6 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     the model's free text (which once invented an invalid ticket_type). Idempotent:
     an existing ticket is never duplicated. Best-effort: a failure is traced and the
     close still proceeds (the call record keeps the outcome)."""
-    from .glossary import DIAGNOSIS_LT, TICKET_NEED_LT
 
     s = state
     if s.ticket.ticket_id or not s.identity.customer_id:
@@ -72,9 +72,15 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         or (s.resolution.procedure or {}).get("verdict")
         or ""
     )
-    gloss = DIAGNOSIS_LT.get(cause, cause or "nenustatyta")
-    details = f"Gedimas: {s.intake.problem_type or 'internetas'} — {gloss}."
-    need = TICKET_NEED_LT.get(cause)
+    from .contract.locale import phrase
+
+    gloss = phrase_or(f"verdict.{cause}.gloss", cause or phrase("ticket.details.unknown_cause"))
+    details = phrase(
+        "ticket.details.fault",
+        problem=s.intake.problem_type or phrase("ticket.details.default_problem"),
+        gloss=gloss,
+    )
+    need = phrase_or(f"verdict.{cause}.ticket_need", None)
     if need:
         # Sentence-cased as its own sentence — "Reikalinga: reikalingas…" doubled up.
         details += f" {need[0].upper()}{need[1:]}."
@@ -85,44 +91,49 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         details += f" {state.ticket.bridge_fail_note}"
     # Contacts from the ticket dialogue (2026-08-04): who to reach and when.
     if s.ticket.contact_phone or s.identity.caller_name:
-        kas = s.identity.caller_name or "skambinęs asmuo"
+        kas = s.identity.caller_name or phrase("ticket.details.default_contact")
         rel = f" ({s.identity.caller_relation})" if s.identity.caller_relation else ""
-        details += (
-            f" Kontaktas: {kas}{rel}, tel. {s.ticket.contact_phone or s.identity.caller_phone}"
+        details += phrase(
+            "ticket.details.contact",
+            who=kas,
+            relation=rel,
+            phone=s.ticket.contact_phone or s.identity.caller_phone,
         )
         if s.ticket.contact_hours:
-            details += f", skambinti: {s.ticket.contact_hours}"
+            details += phrase("ticket.details.contact_hours", hours=s.ticket.contact_hours)
         details += "."
     # The caller's anamnesis rides on the ticket — the human sees WHEN it broke
     # and after what, not just the telemetry verdict (Step 2 analysis).
     if s.intake.anamnesis_when or s.intake.anamnesis_trigger or s.intake.anamnesis_raw:
         bits = []
         if s.intake.anamnesis_when:
-            bits.append(f"dingo {s.intake.anamnesis_when}")
+            bits.append(phrase("ticket.details.anamnesis_when", when=s.intake.anamnesis_when))
         if s.intake.anamnesis_trigger:
-            bits.append(f"po: {s.intake.anamnesis_trigger}")
-        details += f" Klientas: {', '.join(bits) if bits else s.intake.anamnesis_raw}."
+            bits.append(
+                phrase("ticket.details.anamnesis_trigger", trigger=s.intake.anamnesis_trigger)
+            )
+        details += phrase(
+            "ticket.details.anamnesis", text=", ".join(bits) if bits else s.intake.anamnesis_raw
+        )
     if step_id == "dr_register_router":
-        details += " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
+        details += phrase("ticket.details.bridge_router")
     # Ledger: what the CALLER established (client-side evidence) — the human
     # taking over sees the checked physical facts, not just telemetry.
     client_bits = []
     from .evidence import CLIENT as _EV_CLIENT
-    from .evidence import LABELS as _EV_LABELS
-    from .evidence import VALUE_LT as _EV_VALUES
 
     for key, e in s.diagnosis.evidence.items():
         if e.get("source") == _EV_CLIENT and not e.get("conflict"):
             client_bits.append(
-                f"{_EV_LABELS.get(key, key)}: {_EV_VALUES.get(e['value'], e['value'])}"
+                f"{phrase_or(f'evidence.label.{key}', key)}: {phrase_or(f'evidence.value.{e["value"]}', e['value'])}"
             )
     if client_bits:
-        details += f" Patikrinta su klientu: {'; '.join(client_bits)}."
+        details += phrase("ticket.details.checked", facts="; ".join(client_bits))
     # Why it was not solved (refusal / demand / not home) — recorded on the ticket
     # so the technician knows the context (policy 2026-07-30).
-    reason_note = (s.resolution.procedure or {}).get("escalate_reason")
-    if reason_note:
-        details += f" {reason_note}"
+    reason = (s.resolution.procedure or {}).get("escalate_reason")
+    if reason:
+        details += f" {phrase(f'ticket.reason.{reason}')}"
     # What was already TRIED and ruled out — the human taking over must not redo
     # it (after-hours philosophy 2026-08-03: the agent attempts, a person takes
     # over via the ticket with the full attempt history).
@@ -130,20 +141,23 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         x.get("cause") for x in s.diagnosis.rejected_hypotheses if x.get("cause")
     ]
     if tried:
-        glosses = ", ".join(DIAGNOSIS_LT.get(c, c) for c in dict.fromkeys(tried))
-        details += f" Bandyta/atmesta: {glosses}."
+        glosses = ", ".join(phrase_or(f"verdict.{c}.gloss", c) for c in dict.fromkeys(tried))
+        details += phrase("ticket.details.tried", causes=glosses)
     # A (2026-08-21): secondary problems the caller mentioned mid-call — the
     # technician checks them on the same visit.
     if getattr(s.intake, "secondary_problems", None):
-        extra = "; ".join(f"{x['tipas']}: „{x['tekstas']}“" for x in s.intake.secondary_problems)
-        details += f" Papildomai patikrinti: {extra}."
+        extra = "; ".join(
+            phrase("ticket.details.extra_item", type=x["tipas"], text=x["tekstas"])
+            for x in s.intake.secondary_problems
+        )
+        details += phrase("ticket.details.extra", items=extra)
     actions = tools_called_this_session(rt.tracer)
     args = {
         "customer_id": s.identity.customer_id,
         "problem_type": "technician_visit",
         "problem_description": details,
         "priority": "high",
-        "notes": ("Atlikta: " + ", ".join(actions)) if actions else "",
+        "notes": phrase("ticket.details.actions", tools=", ".join(actions)) if actions else "",
     }
     try:
         # The state update sets ticket_id.

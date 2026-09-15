@@ -118,7 +118,7 @@ class TestStepGuards:
         assert consumed is True
         assert engine.gotos == ["escalate"]
         assert engine.dialogue_started  # demand IS the consent — dialogue begins now
-        assert "paprašė registracijos" in r["escalate_reason"]
+        assert r["escalate_reason"] == "caller_asked_ticket"
 
     def test_plain_answer_passes_every_guard(self, monkeypatch):
         """A normal asked-step answer must fall through the whole chain to the

@@ -14,6 +14,7 @@ import logging
 import os
 from typing import Any
 
+from .contract.locale import phrase, phrase_or
 from .dialog_utils import last_agent_question
 from .trace import trace_note
 
@@ -503,11 +504,9 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
         # client-facing: ask / disambiguate / instruct / verify / wait — track the
         # DISTRUST streak so the next turn's nudge/gate/bailout see the loop:
         # a verbatim repeat OR consecutive disambiguates (any wording) count.
-        defaults = {
-            "verify": "Patikrinkite, prašau, ar internetas jau atsirado.",
-            "wait": "Gerai, palauksiu — pasakykite, kai būsite pasiruošę.",
-        }
-        reply = say or defaults.get(action, "Atsiprašau, ar galėtumėte pakartoti?")
+        reply = say or phrase(
+            f"solver.{action}" if action in ("verify", "wait") else "solver.repeat_please"
+        )
         norm = " ".join(reply.lower().split())
         repeated = norm == state.resolution.drive_last_reply
         re_disambiguate = (
@@ -523,11 +522,9 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
             # Verbatim repeat still went out — at least SAY why it repeats
             # (Andrius 2026-08-11: the caller must hear the agent knows it
             # is asking the same thing).
-            from .contract.locale import phrase
-
             reply = phrase("identification.repeat_ack") + reply
         return reply
-    return "Sekundėlę — patikslinkim dar kartą."
+    return phrase("solver.clarify_again")
 
 
 def close_or_register(state: Any, rt: Any, say: str) -> str:
@@ -551,7 +548,7 @@ def close_or_register(state: Any, rt: Any, say: str) -> str:
     state.closing.case_closed = True
     state.closing.closed_reason = "resolved"
     settle_hypothesis(state, rt, "confirmed", "sprendimas suveikė (solveris)")
-    return say or "Puiku, džiaugiuosi, kad sutvarkėme!"
+    return say or phrase("solver.resolved")
 
 
 def refresh_diagnosis(state: Any, rt: Any) -> None:
@@ -581,7 +578,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
 
     cid = state.identity.customer_id
     if state.resolution.bridge_bound:
-        return say or "Įrenginys jau pririštas — patikrinkite, ar internetas atsirado."
+        return say or phrase("solver.already_bound")
 
     def _device_visible() -> bool:
         # The tool's verdict envelope carries no signals — device presence is read
@@ -627,11 +624,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
         rt.tracer.emit(
             "drive_decision", action="fix_deferred", accepted=False, reason="bridge not offered"
         )
-        return (
-            "Panašu, kad routeris sugedęs — telefonu jo neprikelsime. Galiu "
-            "laikinai paleisti internetą per kompiuterį, kol gausite naują "
-            "routerį. Ar turite kompiuterį?"
-        )
+        return phrase("solver.bridge_offer")
     if not state.resolution.bridge_plug_reported and not visible:
         # The work is not done yet — the fix must WAIT for the client. And the
         # FIRST deferral must be the actual TRANSITION + OFFER: live 2026-08-05
@@ -643,12 +636,8 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
         )
         if not state.resolution.bridge_offered:
             state.resolution.bridge_offered = True
-            return (
-                "Panašu, kad routeris sugedęs — telefonu jo neprikelsime. Galiu "
-                "laikinai paleisti internetą per kompiuterį, kol gausite naują "
-                "routerį. Ar turite kompiuterį?"
-            )
-        return "Kai prijungsite kabelį prie kompiuterio, pasakykite — tada pririšiu įrenginį."
+            return phrase("solver.bridge_offer")
+        return phrase("solver.bridge_wait_plug")
     simulate_bridge_connection(state, rt)
     # Bind only when the line ACTUALLY sees a device now (never blind).
     if not _device_visible():
@@ -700,17 +689,14 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
     cable; (2) check the COMPUTER's network card (lan_active — the answer
     lands on the ledger); (3) name the possible incoming-cable problem and
     register the technician, with what-was-tried on the ticket."""
-    from .contract.locale import maybe_phrase
-    from .evidence import LABELS, VALUE_LT, fault_bridge_fail, spec_for
+    from .contract.locale import maybe_phrase, phrase, template
+    from .evidence import fault_bridge_fail, spec_for
 
     verdict = (state.resolution.procedure or {}).get("verdict")
     stage = state.resolution.bridge_fail_stage
     if stage == 0:
         state.resolution.bridge_fail_stage = 1
-        return (
-            "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar "
-            "kabelis įkištas iki galo, ir pasakykite."
-        )
+        return phrase("solver.bridge_not_seen")
     if stage == 1:
         state.resolution.bridge_fail_stage = 2
         spec = spec_for(verdict) or {}
@@ -721,26 +707,21 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
             state.diagnosis.evidence_ask_counts.get("lan_active", 0) + 1
         )
         rt.tracer.emit("drive_decision", action="bridge_fail_lan_check", accepted=True)
-        return str(
-            maybe_phrase(item.get("klausimas"))
-            or "Tinkle vis dar nesimato jūsų įrenginio. Ar kompiuterio tinklo (LAN) "
-            "ryšys rodomas kaip aktyvus?"
-        )
+        return str(maybe_phrase(item.get("klausimas")) or phrase("solver.bridge_lan_check"))
     # Stage 2+: LAN answered (or unreadable) and the line is still empty —
     # the technician takes it from here; the attempt goes on the ticket.
     texts = fault_bridge_fail(verdict)
     lan = (state.diagnosis.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
     state.ticket.bridge_fail_note = (
-        texts.get("prierasas")
-        or "Laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: {lan})."
-    ).format(lan=VALUE_LT.get(lan, lan))
+        texts.get("prierasas") or template("ticket.details.bridge_failed")
+    ).format(lan=phrase_or(f"evidence.value.{lan}", lan))
     rt.tracer.emit(
         "drive_decision",
         action="bridge_fail_escalate",
         accepted=True,
-        reason=f"{LABELS.get('lan_active')}: {lan}",
+        reason=f"{phrase('evidence.label.lan_active')}: {lan}",
     )
-    pastaba = texts.get("pastaba") or "Įrenginio linijoje vis dar nesimato."
+    pastaba = texts.get("pastaba") or phrase("solver.bridge_failed_notice")
     return pastaba + " " + drive_escalate(state, rt, None)
 
 
@@ -765,14 +746,11 @@ def drive_escalate(state: Any, rt: Any, decision) -> str:
         if step is None:
             step = strat.step("escalate")
     if not r.get("escalate_reason"):
-        r["escalate_reason"] = "Sprendimas telefonu nepavyko."
+        r["escalate_reason"] = "phone_fix_failed"
     # Contacts first (2026-08-04): the dialogue collects the number + hours, then
     # _finish_ticket_dialogue registers and closes. The bridged note rides on the
     # final announce via the ctx.
     begin_ticket_dialogue(state, rt, step)
     if state.ticket.context is not None and bridged:
-        state.ticket.context.note = (
-            " Internetas kol kas veiks per kompiuterį; kai turėsite naują routerį, "
-            "paskambinkite — pririšime, ir veiks visi namai."
-        )
+        state.ticket.context.note = phrase("solver.bridged_ticket_note")
     return ticket_stage_reply(state, rt)

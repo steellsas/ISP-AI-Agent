@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .contract.locale import maybe_phrase
+from .contract.locale import maybe_phrase, phrase_or
 
 
 def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
@@ -25,7 +25,6 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
     machinery (the give-up marker is replaceable by design). Never loops —
     one revival per key per call."""
     from .contract.locale import phrase
-    from .evidence import LABELS
 
     ev = state.diagnosis.evidence
     for cond in spec.get("patvirtinta_kai") or []:
@@ -46,7 +45,7 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
         rt.tracer.emit("evidence", action="revive_ask", key=key)
         return phrase(
             "identification.reask_reason",
-            tema=LABELS.get(key, key),
+            tema=phrase_or(f"evidence.label.{key}", key),
             klausimas=str(maybe_phrase(item.get("patikslinimas") or item.get("klausimas")) or ""),
         )
     return None
@@ -119,14 +118,13 @@ def maybe_refute_confirm(state: Any, rt: Any, spec: dict) -> str | None:
         return None
     key, value = kv
     from .contract.locale import phrase
-    from .evidence import LABELS, VALUE_LT
 
     state.diagnosis.refute_confirm_state = "pending"
     rt.tracer.emit("decision", intent="refute_confirm", action="ask", key=key)
     return phrase(
         "identification.refute_confirm",
-        tema=LABELS.get(key, key),
-        reiksme=VALUE_LT.get(value, value),
+        tema=phrase_or(f"evidence.label.{key}", key),
+        reiksme=phrase_or(f"evidence.value.{value}", value),
     )
 
 
@@ -216,15 +214,14 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     fc = state.diagnosis.fact_confirm_pending
     if fc is not None:
         from .contract.locale import phrase as _phrase
-        from .evidence import LABELS, VALUE_LT
 
         state.diagnosis.fact_confirm_pending = None
         state.diagnosis.fact_confirm_asked = fc
         rt.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.key)
         return _phrase(
             "identification.refute_confirm",
-            tema=LABELS.get(fc.key, fc.key),
-            reiksme=VALUE_LT.get(fc.value, fc.value),
+            tema=phrase_or(f"evidence.label.{fc.key}", fc.key),
+            reiksme=phrase_or(f"evidence.value.{fc.value}", fc.value),
         )
     # Captured BEFORE any new ask below overwrites it: was a question already
     # out when the caller spoke? Needed for the bare-"ne" clarify.
@@ -444,9 +441,12 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # caller hears the agent is unsure about the SAME thing, not deaf.
     if asks == 1:
         from .contract.locale import phrase
-        from .evidence import LABELS
 
-        text = phrase("identification.reask_reason", tema=LABELS.get(key, key), klausimas=str(text))
+        text = phrase(
+            "identification.reask_reason",
+            tema=phrase_or(f"evidence.label.{key}", key),
+            klausimas=str(text),
+        )
     # Bare "Ne." to THIS key's open question: the no has no object — clarify
     # what is denied instead of re-asking the same words (live 2026-08-11).
     if pending_before == key:

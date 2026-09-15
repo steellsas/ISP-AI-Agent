@@ -15,6 +15,7 @@ from typing import Any
 
 from src.ports.tools import ToolProvider
 
+from ..contract.locale import phrase_or
 from ..trace import trace_tool_result
 from ..verdict import UNRESOLVED_LINE_FAULTS
 
@@ -133,9 +134,7 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
             # (observed: B6 closed as resolved without ever binding the MAC).
             reason_now = fresh_diagnose_reason(state, rt)
             if reason_now in UNRESOLVED_LINE_FAULTS:
-                from ..glossary import DIAGNOSIS_LT
-
-                gloss = DIAGNOSIS_LT.get(reason_now, reason_now)
+                gloss = phrase_or(f"verdict.{reason_now}.gloss", reason_now)
                 return json.dumps(
                     {
                         "success": False,

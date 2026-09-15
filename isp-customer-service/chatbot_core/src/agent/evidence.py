@@ -45,34 +45,6 @@ class FactConfirm(BaseModel):
 
 CLIENT = "client"
 
-# Canonical client-side evidence keys for the piloted fault (no_mac_observed).
-# Values are canonical strings so conflicts are detectable; labels feed the
-# clarify phrase and the ticket summary.
-LABELS = {
-    "has_computer": "ar turite kompiuterį",
-    "lights": "routerio lemputės",
-    "power_cable": "maitinimo laidas",
-    "outlet_works": "rozetė",
-    "device_present": "routeris surastas",
-    "lan_active": "kompiuterio LAN ryšys",
-    "verdict": "telemetrijos diagnozė",
-    "side": "gedimo pusė",
-}
-
-VALUE_LT = {
-    "yes": "turite",
-    "no": "neturite",
-    "nedega": "nedega",
-    "dega": "dega",
-    "mirksi": "mirksi",
-    "įkištas": "įkištas",
-    "atjungtas": "atjungtas",
-    "bandyta": "bandyta",
-    "rado": "rado",
-    "aktyvus": "aktyvus",
-    "neaktyvus": "neaktyvus",
-}
-
 
 def set_fact(
     evidence: dict[str, Any], key: str, value: str, source: str, turn: int
@@ -143,12 +115,16 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
 
 def gloss_label(key: str) -> str:
     labels, _ = _pack_glosses()
-    return labels.get(key) or LABELS.get(key, key)
+    from .contract.locale import phrase_or
+
+    return labels.get(key) or phrase_or(f"evidence.label.{key}", key)
 
 
 def gloss_value(value: Any) -> str:
     _, values = _pack_glosses()
-    return values.get(value) or VALUE_LT.get(value, value)
+    from .contract.locale import phrase_or
+
+    return values.get(value) or phrase_or(f"evidence.value.{value}", value)
 
 
 def summary_lt(evidence: dict[str, Any]) -> str:
@@ -160,7 +136,9 @@ def summary_lt(evidence: dict[str, Any]) -> str:
         if e.get("conflict"):
             a = gloss_value(e["value"])
             b = gloss_value(e.get("pending"))
-            bits.append(f"{label}: KONFLIKTAS ({a} ↔ {b})")
+            from .contract.locale import phrase
+
+            bits.append(phrase("evidence.conflict", label=label, a=a, b=b))
         else:
             bits.append(f"{label}: {gloss_value(e['value'])}")
     return "; ".join(bits)

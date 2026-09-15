@@ -173,15 +173,9 @@ def refuse_or_ticket_redirect(state: Any, rt: Any, r, strat, step, user_input: s
     if step.id.endswith(("_ability", "_locate", "_homework")):
         if refusal == "refuse":
             return False
-        r["escalate_reason"] = (
-            "Klientas negali dabar atlikti veiksmų prie įrenginio — prašo registracijos."
-        )
+        r["escalate_reason"] = "cannot_now_asks_ticket"
     else:
-        r["escalate_reason"] = (
-            "Klientas paprašė registracijos."
-            if refusal == "demand"
-            else "Neišspręsta — klientas atsisakė tęsti tikrinimą."
-        )
+        r["escalate_reason"] = "caller_asked_ticket" if refusal == "demand" else "caller_refused"
     goto_step(state, rt, r, "escalate")
     rt.tracer.emit(
         "decision", intent="refuse_or_ticket", action=refusal, from_step=step.id, to="escalate"

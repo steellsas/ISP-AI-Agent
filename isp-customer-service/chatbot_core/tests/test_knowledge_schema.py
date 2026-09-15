@@ -158,3 +158,20 @@ def test_every_phrase_key_in_code_exists():
     keys = list(_code_phrase_keys())
     assert len(keys) > 50  # the scan finds the calls
     assert [(where, key) for where, key in keys if not locale.has(key)] == []
+
+
+def test_every_escalate_reason_code_has_ticket_text():
+    import re
+    from pathlib import Path
+
+    from agent.contract.locale import load_locale
+
+    locale = load_locale("lt")
+    src = Path(__file__).parents[1] / "src" / "agent"
+    pattern = re.compile(r"escalate_reason\"\]? ?(?:=|,) ?\"(\w+)\"|\"escalate_reason\", \"(\w+)\"")
+    codes = set()
+    for path in src.rglob("*.py"):
+        for m in pattern.finditer(path.read_text(encoding="utf-8")):
+            codes.add(m.group(1) or m.group(2))
+    assert len(codes) >= 8
+    assert sorted(c for c in codes if not locale.has(f"ticket.reason.{c}")) == []

@@ -995,7 +995,7 @@ class TestRefuseOrTicket:
         r = agent.state.resolution.procedure
         assert r["step"] == "escalate"  # polite consent question comes next
         assert agent.state.ticket.ticket_id is None  # not registered yet — clarify first
-        assert "atsisakė" in r["escalate_reason"]
+        assert r["escalate_reason"] == "caller_refused"
 
 
 class TestAddressSpeech:

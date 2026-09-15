@@ -76,7 +76,7 @@ class TestAdvanceLineCheck:
         )
         r = agent.state.resolution.procedure
         assert r["step"] == "escalate"  # žodis „gerai" NEnusveria linijos fakto
-        assert "kabelio pažeidimas" in r["escalate_reason"]
+        assert r["escalate_reason"] == "line_not_restored"
 
     def test_line_ok_caller_yes_resolves(self, db_connection, monkeypatch):
         from agent.walker_flow import advance_line_check
@@ -180,7 +180,7 @@ class TestBlendGuard:
         assert upd["turn"].reply  # registracijos dialogas, ne „geros dienos"
         assert "geros dienos" not in upd["turn"].reply.lower()
         assert not s.closing.is_complete
-        assert "vis tiek neveikia" in (s.resolution.procedure.get("escalate_reason") or "")
+        assert s.resolution.procedure.get("escalate_reason") == "still_down_at_closing"
 
 
 @pytest.mark.usefixtures("db_connection")

@@ -16,8 +16,8 @@ import logging
 import os  # noqa: F401
 from typing import Any  # noqa: F401
 
+from .contract.locale import phrase, phrase_or
 from .dialog_utils import asked_recently, last_agent_question
-from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
 from .trace import emit_decision, trace_note
 from .verdict import UNRESOLVED_LINE_FAULTS
 
@@ -579,7 +579,7 @@ def open_hypothesis(state, rt, reason: str | None) -> None:
     # the caller's anamnesis (when it broke / after what) the second — so the
     # agent reasons and narrates from the full picture ("telemetrija rodo X, o
     # klientas sako dingo po audros").
-    because = [_DIAGNOSIS_LT.get(reason, reason)]
+    because = [phrase_or(f"verdict.{reason}.gloss", reason)]
     s = state
     if s.intake.anamnesis_when or s.intake.anamnesis_trigger:
         bits = []
@@ -637,8 +637,6 @@ def scripted_wait_ack(state, rt) -> str | None:
     d = state.turn.directives
     if d.evidence or d.recap or d.findings or d.ticket or d.ident:
         return None
-    from .contract.locale import phrase
-
     variant = (
         phrase("identification.wait_ack")
         if s.dialog.awaiting_turns % 2
@@ -762,7 +760,7 @@ def route_to(state, rt, r: dict, target: str) -> None:
         # P-E: escalating out of the homework step means nothing was done at
         # the device — the ticket intro must speak the honest state.
         if target == "escalate" and str(r.get("step") or "").endswith("_homework"):
-            r.setdefault("escalate_reason", "Klientas negali dabar atlikti veiksmų prie įrenginio.")
+            r.setdefault("escalate_reason", "cannot_now")
         goto_step(state, rt, r, target)
 
 
@@ -818,7 +816,7 @@ def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
 
     options = step_options("router_hung", "rh_check") or detector_glosses("reboot_check")
     obs = classify_step(
-        last_agent_question(state) or "Ar interneto lemputė mirksi? Ar atsidaro puslapis?",
+        last_agent_question(state) or phrase("solver.reboot_check_question"),
         user_input or "",
         options,
         model=rt.config.model,
@@ -853,10 +851,7 @@ def advance_line_check(state, rt, r: dict, user_input: str | None) -> None:
         "no_port_data",
     )
     if line_bad:
-        r["escalate_reason"] = (
-            "Routeris gyvas, bet linija neatsistatė po laido perkišimo — "
-            "tikėtinas kabelio pažeidimas trasoje."
-        )
+        r["escalate_reason"] = "line_not_restored"
         goto_step(state, rt, r, "escalate")
         rt.tracer.emit("decision", intent="line_check", action="still_down", reason=reason_now)
         return
@@ -866,9 +861,7 @@ def advance_line_check(state, rt, r: dict, user_input: str | None) -> None:
         rt.tracer.emit("decision", intent="line_check", action="resolved")
         return
     if outcome is Outcome.NO:
-        r["escalate_reason"] = (
-            "Linija atsistatė, bet klientas sako, kad internetas vis tiek neveikia."
-        )
+        r["escalate_reason"] = "caller_still_down"
         goto_step(state, rt, r, "escalate")
         rt.tracer.emit("decision", intent="line_check", action="line_ok_caller_no")
         return

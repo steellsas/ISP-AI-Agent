@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from .contract.locale import phrase_or
 from .dialog_utils import last_agent_question
 from .trace import trace_note
 
@@ -1150,9 +1151,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             # P-E: the ticket intro must speak the honest state — the caller
             # could not act NOW; nothing was performed.
             if s.resolution.procedure is not None:
-                s.resolution.procedure["escalate_reason"] = (
-                    "Klientas negali dabar atlikti veiksmų prie įrenginio."
-                )
+                s.resolution.procedure["escalate_reason"] = "cannot_now"
             rt.tracer.emit("decision", intent="cannot_now", action="ticket")
             begin_ticket_dialogue(state, rt, _STR["unclear_fault"].step("escalate"))
             return None  # tiketo dialogo intro — kitas žingsnis
@@ -1207,7 +1206,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         s.closing.case_closed = True
         s.closing.closed_reason = "declined"
         s.closing.is_complete = True
-        return "Gerai — gedimo neregistruoju. " + phrase("identification.goodbye")
+        return phrase("ticket.declined") + phrase("identification.goodbye")
     # Side-topic FRAME (3rd consecutive deviation): the LLM answered twice
     # and the caller keeps drifting — the return is scripted now. With a
     # CONFIRMED hypothesis the frame is the solve-together-or-technician
@@ -1223,17 +1222,15 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
     if state.diagnosis.evidence_conflict:
-        from .evidence import LABELS, VALUE_LT
-
         conflict = state.diagnosis.evidence_conflict
         key, old, new = conflict.key, conflict.old, conflict.new
         state.diagnosis.evidence_conflict = None
         state.diagnosis.evidence_conflict_asked_key = key
         return phrase(
             "identification.evidence_conflict",
-            tema=LABELS.get(key, key),
-            a=VALUE_LT.get(old, old),
-            b=VALUE_LT.get(new, new),
+            tema=phrase_or(f"evidence.label.{key}", key),
+            a=phrase_or(f"evidence.value.{old}", old),
+            b=phrase_or(f"evidence.value.{new}", new),
         )
     # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
     if state.dialog.end_confirm_pending:
@@ -1428,7 +1425,6 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     # stays with the LLM (returns None; the REZULTATO facts directive drives it).
     if s.resolution.procedure is not None:
         return None
-    from .glossary import DIAGNOSIS_LT
 
     d = s.diagnosis.verdicts.get("network") or {}
     reason = d.get("reason")
@@ -1451,7 +1447,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         return " ".join(
             [phrase("identification.thanks"), inf, phrase("identification.anything_else")]
         )
-    zinia = DIAGNOSIS_LT.get(reason, reason or "")
+    zinia = phrase_or(f"verdict.{reason}.gloss", reason or "")
     if not zinia:
         return None
     zinia = zinia[0].upper() + zinia[1:]  # sentence-cased after "…iki jūsų buto."

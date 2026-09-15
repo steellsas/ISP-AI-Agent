@@ -17,8 +17,8 @@ import os  # noqa: F401
 import re
 from typing import Any  # noqa: F401
 
+from .contract.locale import phrase, phrase_or
 from .dialog_utils import asked_recently, last_agent_question
-from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
 from .trace import trace_note
 
 logger = logging.getLogger(__name__)
@@ -352,13 +352,17 @@ def _note_fact_meaning(state, rt, key: str, value: str) -> None:
     maitinimą, bet nemato tinklo") — the narrator's reaction then CARRIES the
     meaning instead of parroting the fact. One-shot note; declared per value
     in the ACTIVE pack's evidence item, so wording is a file edit."""
-    from .evidence import LABELS, spec_for
+    from .evidence import spec_for
 
     spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
     meaning = (item.get("reiskia") or {}).get(value)
     if meaning:
-        state.diagnosis.fact_meaning = [LABELS.get(key, key), value, str(meaning)]
+        state.diagnosis.fact_meaning = [
+            phrase_or(f"evidence.label.{key}", key),
+            value,
+            str(meaning),
+        ]
         rt.tracer.emit("evidence", action="fact_meaning", key=key, value=value)
 
 
@@ -521,7 +525,7 @@ def anchor_text(state, rt) -> str:
     announce back at the caller (live 2026-08-10)."""
     q = (state.dialog.last_question or "").strip()
     if not q:
-        return "Ar tęsiame gedimo sprendimą?"
+        return phrase("system.default_anchor")
     sentences = re.split(r"(?<=[.!?])\s+", q)
     questions = [x for x in sentences if x.strip().endswith("?")]
     return (questions[-1] if questions else sentences[-1]).strip()
@@ -1001,7 +1005,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
 
                 strat = get_strategy(s.resolution.procedure.get("verdict"))
                 esc = strat.step("escalate") if strat else None
-                s.resolution.procedure["escalate_reason"] = "Klientas nutraukė pokalbį."
+                s.resolution.procedure["escalate_reason"] = "caller_ended_call"
                 if esc is not None:
                     begin_ticket_dialogue(state, rt, esc)  # contacts, then register+close
                 else:

@@ -211,12 +211,12 @@ class VoicePipeline:
     # (ASR + agent + TTS) is still computing — masks per-turn latency (step 2.2).
     # Synthesized once and cached (it never changes); the general static-phrase
     # audio cache is step 2.3.
-    _FILLER_TEXT = {"lt": "Sekundėlę, tikrinu.", "en": "One moment, let me check."}
-
     def filler_audio(self) -> bytes:
         """Cached audio for the short 'let me check' cue (lazily synthesized)."""
         if self._filler_audio is None:
-            text = self._FILLER_TEXT.get(self._language, self._FILLER_TEXT["lt"])
+            from .contract.locale import phrase
+
+            text = phrase("system.filler")
             self._filler_audio = self._tts.synthesize(text, language=self._language)
         return self._filler_audio
 

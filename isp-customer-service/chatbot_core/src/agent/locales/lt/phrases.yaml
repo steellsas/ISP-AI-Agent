@@ -282,3 +282,123 @@ system:
   error: "Atsiprašau, įvyko techninė klaida. Pabandykite dar kartą."
   timeout: "Atsiprašau, negaliu apdoroti užklausos. Ar galite pakartoti?"
   max_turns: "Atsiprašau, pokalbis užtruko per ilgai. Registruoju jūsų problemą."
+  stuck_offer_code: "Atsiprašau, vis nepavyksta išgirsti. Gal turite abonento kodą nuo sąskaitos?"
+  stuck_register: "Užregistruosiu jūsų problemą ir mūsų specialistas su jumis susisieks. Geros dienos!"
+  default_anchor: "Ar tęsiame gedimo sprendimą?"
+  filler: "Sekundėlę, tikrinu."
+
+verdict:
+  # How a verdict is named to the caller (gloss) and why a ticket is needed.
+  billing_suspended:
+    gloss: "paslauga sustabdyta dėl neapmokėtos sąskaitos"
+  active_outage:
+    gloss: "rajone šiuo metu vyksta masinė avarija"
+  switch_unreachable:
+    gloss: "tinklo mazgas nepasiekiamas (tiekėjo gedimas)"
+  node_fault_unregistered:
+    gloss: "mazgo gedimas (neregistruotas)"
+  link_down_local:
+    gloss: "ryšys iki kliento įrangos nutrūkęs (maitinimas/laidas)"
+    ticket_need: "reikia patikrinti liniją iki jūsų buto"
+  foreign_mac:
+    gloss: "linijoje matomas kitas įrenginys (MAC) nei registruota"
+  crc_errors:
+    gloss: "linijos klaidos (CRC) — kabelio/jungties problema"
+  dhcp_silent:
+    gloss: "įranga negauna IP (DHCP tyli) — galbūt po gamyklinio atstatymo"
+  no_mac_observed:
+    gloss: "linijoje nematoma jokio įrenginio"
+    ticket_need: "reikalingas naujas maršrutizatorius"
+  router_hung:
+    gloss: "routeris matomas linijoje, bet srautas nevaikšto — greičiausiai pakibęs"
+    ticket_need: "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas"
+  healthy_to_router:
+    gloss: "tinklas iki routerio veikia — problema kliento pusėje"
+  no_port_data:
+    gloss: "nėra prievado duomenų"
+  unclear_fault:
+    gloss: "gedimo tipas neaiškus — telefonu nenustatytas"
+    ticket_need: "gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei"
+
+problem_label:
+  # The caller's problem type in their own words, for acknowledgements.
+  internet_down: "dingo internetas"
+  internet_slow: "internetas veikia lėtai"
+  tv: "bėda su televizija"
+
+evidence:
+  # Built-in evidence facts: label per key and wording per value (packs add their own).
+  label:
+    has_computer: "ar turite kompiuterį"
+    lights: "routerio lemputės"
+    power_cable: "maitinimo laidas"
+    outlet_works: "rozetė"
+    device_present: "routeris surastas"
+    lan_active: "kompiuterio LAN ryšys"
+    verdict: "telemetrijos diagnozė"
+    side: "gedimo pusė"
+  value:
+    "yes": "turite"
+    "no": "neturite"
+    nedega: "nedega"
+    dega: "dega"
+    mirksi: "mirksi"
+    "įkištas": "įkištas"
+    atjungtas: "atjungtas"
+    bandyta: "bandyta"
+    rado: "rado"
+    aktyvus: "aktyvus"
+    neaktyvus: "neaktyvus"
+  conflict: "{label}: KONFLIKTAS ({a} ↔ {b})"
+
+solver:
+  verify: "Patikrinkite, prašau, ar internetas jau atsirado."
+  wait: "Gerai, palauksiu — pasakykite, kai būsite pasiruošę."
+  repeat_please: "Atsiprašau, ar galėtumėte pakartoti?"
+  clarify_again: "Sekundėlę — patikslinkim dar kartą."
+  resolved: "Puiku, džiaugiuosi, kad sutvarkėme!"
+  already_bound: "Įrenginys jau pririštas — patikrinkite, ar internetas atsirado."
+  bridge_offer: "Panašu, kad routeris sugedęs — telefonu jo neprikelsime. Galiu laikinai paleisti internetą per kompiuterį, kol gausite naują routerį. Ar turite kompiuterį?"
+  bridge_wait_plug: "Kai prijungsite kabelį prie kompiuterio, pasakykite — tada pririšiu įrenginį."
+  bridge_not_seen: "Kol kas linijoje dar nematome jūsų kompiuterio — patikrinkite, ar kabelis įkištas iki galo, ir pasakykite."
+  bridge_lan_check: "Tinkle vis dar nesimato jūsų įrenginio. Ar kompiuterio tinklo (LAN) ryšys rodomas kaip aktyvus?"
+  bridge_failed_notice: "Įrenginio linijoje vis dar nesimato."
+  bridged_ticket_note: " Internetas kol kas veiks per kompiuterį; kai turėsite naują routerį, paskambinkite — pririšime, ir veiks visi namai."
+  reboot_check_question: "Ar interneto lemputė mirksi? Ar atsidaro puslapis?"
+
+ticket:
+  # Ticket dialogue and the ticket text a technician reads.
+  declined: "Gerai — gedimo neregistruoju. "
+  default_hours: "bet kada"
+  need_suspected: "įtariama, kad {gloss}; "
+  need_not_checked: "patikrinti kartu telefonu nepavyko"
+  need_unclear: "gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei"
+  # Why it was not solved (procedure escalate_reason code).
+  reason:
+    cannot_now: "Klientas negali dabar atlikti veiksmų prie įrenginio."
+    cannot_now_asks_ticket: "Klientas negali dabar atlikti veiksmų prie įrenginio — prašo registracijos."
+    caller_asked_ticket: "Klientas paprašė registracijos."
+    caller_refused: "Neišspręsta — klientas atsisakė tęsti tikrinimą."
+    caller_ended_call: "Klientas nutraukė pokalbį."
+    caller_hung_up: "Pokalbis nutrūko — klientas padėjo ragelį."
+    phone_fix_failed: "Sprendimas telefonu nepavyko."
+    line_not_restored: "Routeris gyvas, bet linija neatsistatė po laido perkišimo — tikėtinas kabelio pažeidimas trasoje."
+    caller_still_down: "Linija atsistatė, bet klientas sako, kad internetas vis tiek neveikia."
+    still_down_at_closing: "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
+  details:
+    fault: "Gedimas: {problem} — {gloss}."
+    default_problem: "internetas"
+    unknown_cause: "nenustatyta"
+    bridge_failed: "Laikinai pajungti internetą per kompiuterį NEPAVYKO (LAN: {lan})."
+    default_contact: "skambinęs asmuo"
+    contact: " Kontaktas: {who}{relation}, tel. {phone}"
+    contact_hours: ", skambinti: {hours}"
+    anamnesis_when: "dingo {when}"
+    anamnesis_trigger: "po: {trigger}"
+    anamnesis: " Klientas: {text}."
+    bridge_router: " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
+    checked: " Patikrinta su klientu: {facts}."
+    tried: " Bandyta/atmesta: {causes}."
+    extra: " Papildomai patikrinti: {items}."
+    extra_item: "{type}: „{text}“"
+    actions: "Atlikta: {tools}"

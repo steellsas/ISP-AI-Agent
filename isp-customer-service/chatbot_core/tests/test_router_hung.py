@@ -115,10 +115,10 @@ class TestRouterHungPack:
         assert st.step("rh_verify_dev").on == {"yes": "resolve", "no": "escalate"}
 
     def test_glossary_entries(self):
-        from agent.glossary import DIAGNOSIS_LT, TICKET_NEED_LT
+        from agent.contract.locale import phrase
 
-        assert "pakib" in DIAGNOSIS_LT["router_hung"]
-        assert "neatsistat" in TICKET_NEED_LT["router_hung"]
+        assert "pakib" in phrase("verdict.router_hung.gloss")
+        assert "neatsistat" in phrase("verdict.router_hung.ticket_need")
 
 
 def _hung_payload(reason="router_hung", flap=False):

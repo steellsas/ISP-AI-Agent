@@ -15,6 +15,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .contract.locale import phrase_or
+
 # A ticket refusal that CARRIES solving content — the caller is refusing the
 # REGISTRATION, not the help.
 CONTINUE_SOLVING_MARKS = (
@@ -50,12 +52,17 @@ def begin_ticket_dialogue(state: Any, rt: Any, step) -> None:
     rt.tracer.emit("decision", intent="ticket_dialogue", action="start")
 
 
+# Escalate reasons after which nothing was done at the device: the ticket must
+# not claim the pack's post-action wording.
+NOTHING_DONE_REASONS = frozenset({"caller_refused", "cannot_now", "cannot_now_asks_ticket"})
+
+
 def ticket_need(state: Any, rt: Any) -> str:
     """Human wording of WHY the ticket is needed ("reikalingas naujas
     maršrutizatorius"), for the intro announce and the ticket itself — never
     the raw verdict key."""
+    from .contract.locale import phrase
     from .evidence import fault_need
-    from .glossary import DIAGNOSIS_LT, TICKET_NEED_LT
 
     s = state
     cause = (
@@ -68,20 +75,22 @@ def ticket_need(state: Any, rt: Any) -> str:
     # went out when the caller never rebooted (not at home). A refusal /
     # cannot-now escalation speaks the honest state instead of the fault
     # file's post-action wording.
-    reason = str((s.resolution.procedure or {}).get("escalate_reason") or "")
-    if "atsisakė" in reason or "negali" in reason:
-        gloss = DIAGNOSIS_LT.get(cause)
-        prefix = f"įtariama, kad {gloss}; " if gloss else ""
-        return prefix + "patikrinti kartu telefonu nepavyko"
-    need = fault_need(cause) or TICKET_NEED_LT.get(cause)  # file first, code fallback
+    reason = (s.resolution.procedure or {}).get("escalate_reason")
+    if reason in NOTHING_DONE_REASONS:
+        gloss = phrase_or(f"verdict.{cause}.gloss", None)
+        prefix = phrase("ticket.need_suspected", gloss=gloss) if gloss else ""
+        return prefix + phrase("ticket.need_not_checked")
+    need = fault_need(cause) or phrase_or(
+        f"verdict.{cause}.ticket_need", None
+    )  # file first, code fallback
     if need:
         return need
     # No verdict at all — an in-scope fault the agent's knowledge cannot
     # resolve. HONEST ticket type (Andrius 2026-09-02): "neaiškus gedimas" —
     # feeds the analysis/improvement loop instead of an improvised cause.
     if not cause:
-        return "gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei"
-    return DIAGNOSIS_LT.get(cause, cause)
+        return phrase("ticket.need_unclear")
+    return phrase_or(f"verdict.{cause}.gloss", cause)
 
 
 def wants_to_keep_solving(state: Any, rt: Any, user_input: str | None) -> bool:
@@ -224,7 +233,7 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     if not s.ticket.contact_phone:
         s.ticket.contact_phone = s.identity.caller_phone  # default: the number they call from
     if not s.ticket.contact_hours:
-        s.ticket.contact_hours = "bet kada"
+        s.ticket.contact_hours = phrase("ticket.default_hours")
     ctx = state.ticket.context
     step_id = ctx.step_id if ctx else None
     note = (ctx.note if ctx else None) or ""
@@ -273,7 +282,7 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
 
     strat = get_strategy(s.resolution.procedure.get("verdict"))
     esc = strat.step("escalate") if strat else None
-    s.resolution.procedure.setdefault("escalate_reason", "Sprendimas telefonu nepavyko.")
+    s.resolution.procedure.setdefault("escalate_reason", "phone_fix_failed")
     begin_ticket_dialogue(state, rt, esc)
     if state.ticket.stage != "phone":
         return None  # could not start (defensive) — nothing to append

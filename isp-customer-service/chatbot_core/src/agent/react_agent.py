@@ -23,6 +23,7 @@ from src.services.llm.client import (
     stream_tool_completion,
 )
 
+from .contract.locale import phrase
 from .dialog_utils import is_question, progress_key, similar
 from .graph_v2.state import GraphState
 from .prompts import load_system_prompt
@@ -57,20 +58,6 @@ def system_prompt_for(caller_phone: str, language: str) -> str:
         caller_phone=caller_phone,
         language=language,
     )
-
-
-# Closing rules moved to closing_flow.py (R3, docs/ROADMAP_REFACTORING.md §4);
-# the alias keeps existing imports/tests working during the migration.
-
-# Verdict glossaries moved to glossary.py (R3); aliases keep call sites working.
-
-
-# Deterministic backstops (LT), used when the prompt-level nudge fails to break a
-# loop. Kept here (not the language service) so the escalation is self-contained.
-_STUCK_OFFER_CODE = "Atsiprašau, vis nepavyksta išgirsti. Gal turite abonento kodą nuo sąskaitos?"
-_STUCK_REGISTER = (
-    "Užregistruosiu jūsų problemą ir mūsų specialistas su jumis susisieks. Geros dienos!"
-)
 
 
 class ReactAgent:
@@ -187,9 +174,7 @@ class ReactAgent:
                 s.closing.closed_reason = "resolved"
                 self.tracer.emit("decision", intent="hangup_net", action="skip_solved")
             else:
-                s.resolution.procedure.setdefault(
-                    "escalate_reason", "Pokalbis nutrūko — klientas padėjo ragelį."
-                )
+                s.resolution.procedure.setdefault("escalate_reason", "caller_hung_up")
                 if not s.ticket.contact_phone:
                     s.ticket.contact_phone = s.identity.caller_phone
                 if not s.ticket.contact_hours:
@@ -519,9 +504,9 @@ class ReactAgent:
         offer the account code, at 4 register + close. None below that."""
         n = self.state.dialog.stuck_count
         if n >= 4:
-            return (_STUCK_REGISTER, True)
+            return (phrase("system.stuck_register"), True)
         if n >= 3:
-            return (_STUCK_OFFER_CODE, False)
+            return (phrase("system.stuck_offer_code"), False)
         return None
 
     def _track_stuck(self, reply: str) -> None:

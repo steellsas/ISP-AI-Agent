@@ -16,8 +16,7 @@ import os  # noqa: F401
 import re  # noqa: F401
 from typing import Any  # noqa: F401
 
-from .glossary import DIAGNOSIS_LT as _DIAGNOSIS_LT  # noqa: F401
-from .glossary import PROBLEM_LT as _PROBLEM_LT
+from .contract.locale import phrase_or
 from .graph_v2.tool_scopes import STRATEGY_ACTION_TOOLS, STRATEGY_DIAG_TOOLS
 from .ticket_flow import fmt_phone
 from .verdict import UNRESOLVED_LINE_FAULTS
@@ -211,9 +210,7 @@ def history_summary(state, rt) -> str | None:
         bits.append(f"skambina {s.identity.caller_name}")
     r = s.resolution.procedure or {}
     if r.get("verdict"):
-        from .glossary import DIAGNOSIS_LT
-
-        gloss = DIAGNOSIS_LT.get(r["verdict"], r["verdict"])
+        gloss = phrase_or(f"verdict.{r['verdict']}.gloss", r["verdict"])
         bits.append(f"Diagnozė: {gloss}")
     if s.diagnosis.evidence:
         from .evidence import summary_lt
@@ -756,7 +753,7 @@ def state_facts_block(state, rt) -> str | None:
             )
     if not past_action and not caller_pending:
         for domain, d in s.diagnosis.verdicts.items():
-            gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+            gloss = phrase_or(f"verdict.{d.get('reason')}.gloss", d.get("reason") or "—")
             facts.append(
                 f"- DIAGNOSTIKA [{domain}] ({d.get('group')}, pusė={d.get('side')}): {gloss}."
             )
@@ -767,19 +764,20 @@ def state_facts_block(state, rt) -> str | None:
         because = "; ".join(h["because"])
         if h["status"] == "confirmed":
             facts.append(
-                f"- HIPOTEZĖ PASITVIRTINO: „{_DIAGNOSIS_LT.get(h['cause'], h['cause'])}“ "
+                f"- HIPOTEZĖ PASITVIRTINO: „{phrase_or(f'verdict.{h["cause"]}.gloss', h['cause'])}“ "
                 f"({h['settled_by']}). Trumpai pasakyk klientui, kad būtent dėl to ir "
                 "neveikė — jam svarbu suprasti, kas buvo."
             )
         elif h["status"] == "testing":
             facts.append(
-                f"- KO DABAR IEŠKAU: „{_DIAGNOSIS_LT.get(h['cause'], h['cause'])}“. "
+                f"- KO DABAR IEŠKAU: „{phrase_or(f'verdict.{h["cause"]}.gloss', h['cause'])}“. "
                 f"Kuo remiuosi: {because}. Kai tinka, pasakyk tai savais žodžiais "
                 "(„matau X, todėl manau, kad Y“) — bet trumpai ir ne kas ėjimą."
             )
     if s.diagnosis.rejected_hypotheses and not s.closing.case_closed:
         ruled = ", ".join(
-            _DIAGNOSIS_LT.get(x["cause"], x["cause"]) for x in s.diagnosis.rejected_hypotheses
+            phrase_or(f"verdict.{x['cause']}.gloss", x["cause"])
+            for x in s.diagnosis.rejected_hypotheses
         )
         facts.append(f"- JAU ATMESTA (nebesiūlyk ir nebetikrink): {ruled}.")
     # The turn did not move the conversation on. Say WHY, so the agent responds to
@@ -836,7 +834,7 @@ def state_facts_block(state, rt) -> str | None:
     # a failed first attempt reads as an engineer working the problem (we have a
     # Plan B) rather than a script that silently restarts.
     if s.diagnosis.pivoted_from and not s.closing.case_closed:
-        old = _DIAGNOSIS_LT.get(s.diagnosis.pivoted_from, s.diagnosis.pivoted_from)
+        old = phrase_or(f"verdict.{s.diagnosis.pivoted_from}.gloss", s.diagnosis.pivoted_from)
         facts.append(
             f"- PERSIGALVOJIMAS: bandėme priežastį „{old}“ ir tai NEPADĖJO "
             "(telemetrija). Pradėk atsakymą tuo, žmogiškai ir trumpai: kad tai "
@@ -1018,7 +1016,7 @@ def state_facts_block(state, rt) -> str | None:
             # problemos iškart nuskambėjo plika šerdis be išgirdimo): pirma
             # trumpa reakcija į tai, ką klientas KĄ TIK pasakė, tada jungtis
             # į adresą. Šerdis lieka žodis į žodį — sargas nuo jos priklauso.
-            prob = _PROBLEM_LT.get(s.intake.problem_type or "", "")
+            prob = phrase_or(f"problem_label.{s.intake.problem_type or ''}", "")
             girdejimas = f" („Suprantu — {prob}.“)" if prob else ""
             facts.append(
                 "- IDENTIFIKACIJOS ŽINGSNIS: pirmu TRUMPU sakiniu parodyk, kad "
@@ -1318,7 +1316,7 @@ def result_narration_tail(state, rt) -> str:
             "patvirtinti adresą prieš klausimą). Jokio rezultato, jokių instrukcijų."
         )
     d = state.diagnosis.verdicts.get("network") or {}
-    gloss = _DIAGNOSIS_LT.get(d.get("reason"), d.get("reason") or "—")
+    gloss = phrase_or(f"verdict.{d.get('reason')}.gloss", d.get("reason") or "—")
     if state.resolution.procedure:
         return (
             f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
@@ -1370,7 +1368,7 @@ def augment_tool_result(state, rt, name: str, observation: str) -> str:
     fixed = reason_now not in UNRESOLVED_LINE_FAULTS
     obs["telemetry_after"] = reason_now
     obs["fixed"] = fixed
-    gloss = _DIAGNOSIS_LT.get(reason_now, reason_now or "—")
+    gloss = phrase_or(f"verdict.{reason_now}.gloss", reason_now or "—")
 
     # Do NOT close or advance here. The bind was announced THIS turn; the walker
     # advances bind_mac -> confirm_restored on the caller's next reply, where we

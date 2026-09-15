@@ -112,6 +112,12 @@ def template(key: str) -> str:
     return current().template(key)
 
 
+def phrase_or(key: str, default: Any, **values: Any) -> Any:
+    """phrase() when the locale has `key`, else `default` (a lookup by data,
+    e.g. a verdict the locale has no gloss for)."""
+    return phrase(key, **values) if current().has(key) else default
+
+
 def maybe_phrase(key: str | None, **values: Any) -> str | None:
     """phrase() for an optional key (a knowledge field that may be absent)."""
     return phrase(key, **values) if key else None

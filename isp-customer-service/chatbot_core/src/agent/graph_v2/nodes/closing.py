@@ -64,9 +64,7 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
     ):
         s.closing.case_closed = False
         s.closing.is_complete = False
-        s.resolution.procedure["escalate_reason"] = (
-            "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
-        )
+        s.resolution.procedure["escalate_reason"] = "still_down_at_closing"
         rt.tracer.emit("decision", intent="still_down", action="reopen_at_closing")
         reply = drive_escalate(state, rt, None)
         if reply:
