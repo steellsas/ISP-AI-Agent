@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .contract.locale import vocab, vocab_set
 from .dialog_utils import asked_recently
 
 # --- prelude (no step resolved yet) -----------------------------------------
@@ -105,11 +106,9 @@ def homework_consent(state: Any, rt: Any, r, strat, step, user_input: str | None
     tokens = {t.strip(".,!?") for t in low.split()}
     # A first-person callback promise wins outright — "nereikia susitikti,
     # aš perskambinsiu" refuses the MEETING, not the agreement.
-    callback = any(m in low for m in ("perskambin", "paskambinsiu", "pats paskambin"))
-    consent = detect_farewell(user_input) or bool(
-        tokens & {"gerai", "sutariam", "sutarėm", "sutarem", "sutinku", "taip"}
-    )
-    blocked = any(m in low for m in ("registruok", "meistr", "nereikia", "nesutink"))
+    callback = any(m in low for m in vocab("will_call_back"))
+    consent = detect_farewell(user_input) or bool(tokens & vocab_set("homework_agreed"))
+    blocked = any(m in low for m in vocab("homework_blocked"))
     if callback or (consent and not blocked):
         route_to(state, rt, r, next_step_id(strat, step.id, "yes"))
         rt.tracer.emit("decision", intent="cannot_now", action="homework_agreed", from_step=step.id)

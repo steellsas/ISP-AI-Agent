@@ -14,7 +14,7 @@ import logging
 import os
 from typing import Any
 
-from .contract.locale import phrase, phrase_or
+from .contract.locale import phrase, phrase_or, vocab
 from .dialog_utils import last_agent_question
 from .trace import trace_note
 
@@ -205,19 +205,18 @@ def plug_report(state: Any, rt: Any, user_input: str | None) -> bool:
 
     low = _fold(user_input)
     last_q = _fold(last_agent_question(state) or "")
-    if "kompiuter" not in low and "kompiuter" not in last_q:
+    computer = vocab("fact_computer_words")
+    if not any(w in low for w in computer) and not any(w in last_q for w in computer):
         return False  # not the bridge context — a cable reseat is not a bind
     if detect_plugged(user_input):
         return True
     from .evidence import _mark_hit
 
-    if _mark_hit(low, "pririsk"):  # "pririškite tada" — asks for the bind itself
+    if any(_mark_hit(low, m) for m in vocab("bind_request")):
         return True
     # Passive done-forms answering the plug instruction (live 2026-08-13:
     # "jungtas, LAN rodo" — STT drops the prefix — never unlocked the bind).
-    return any(
-        _mark_hit(low, m) for m in ("įkištas", "prijungtas", "pajungtas", "jungtas", "kištas")
-    )
+    return any(_mark_hit(low, m) for m in vocab("plugged_passive"))
 
 
 def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
@@ -305,7 +304,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
 
     last_q = (last_agent_question(state) or "").lower()
     has_pc = extract_client_facts(user_input).get("has_computer")
-    if "kompiuter" in last_q and (
+    if any(w in last_q for w in vocab("fact_computer_words")) and (
         has_pc == "no" or (has_pc is None and detect_no_device(user_input))
     ):
         rt.tracer.emit(

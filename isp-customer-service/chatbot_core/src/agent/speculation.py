@@ -26,7 +26,7 @@ import logging
 import os
 from typing import Any
 
-from .contract.locale import maybe_phrase
+from .contract.locale import maybe_phrase, vocab
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +92,9 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
     item = (spec.get("client") or {}).get(key) or {}
     values = list((item.get("atsakymai") or {}).keys())
     if not values:
-        from .evidence import _PENDING_ANSWERS
+        from .contract.locale import vocab_map
 
-        values = [v for v, _marks in _PENDING_ANSWERS.get(str(key), [])]
+        values = [v for v, _marks in vocab_map("pending_answers").get(str(key), [])]
     if not values and key == "has_computer":
         values = ["yes", "no"]
     if not values:
@@ -263,9 +263,7 @@ def match(state: Any, rt: Any, transcript: str) -> dict[str, Any] | None:
     # content our extractors do not model ("Nedega, bet keičiau routerį") —
     # conservative by design, the normal path handles it.
     low = f" {transcript.lower()} "
-    if len(transcript.split()) > 4 or any(
-        m in low for m in (" bet ", " o ", " taip pat ", " dar ")
-    ):
+    if len(transcript.split()) > 4 or any(m in low for m in vocab("compound_marks")):
         return None
     branch = cache["branches"].get(str(value))
     if not branch:

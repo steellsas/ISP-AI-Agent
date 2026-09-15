@@ -22,6 +22,8 @@ import logging
 import os
 from typing import Any
 
+from .contract.locale import vocab
+
 logger = logging.getLogger(__name__)
 
 _SYSTEM = (
@@ -47,41 +49,13 @@ def enabled() -> bool:
     return os.getenv("ANALYST", "on").lower() == "on"
 
 
-# The three agreed note types, by their tell-tale words (diacritics-folded
-# matching below). Anything else — including action suggestions — is dropped.
-_ALLOWED_MARKS = (
-    # (1) the caller ALREADY said it — do not re-ask
-    "jau pasake", "jau sake", "jau minejo", "jau atsake", "jau patvirtino",
-    "nebeklausk", "neklausk", "jau teige", "jau nurodė", "jau nurode",
-    # (2) a fact looks wrong / contradicts what the caller keeps saying
-    "priestarau", "itartin", "nesutampa", "pasitikslin", "patikslin",
-    "galejo buti blogai isgirsta", "zurnal",
-    # (3) the caller is mixing up concepts/devices — name things clearer
-    "painioj", "ivardink", "ivardyk", "aiskiau", "supainio", "paaiskink", "turejo omenyje",
-    # (4) an important earlier detail no longer visible in the recent window
-    "pradzioje", "anksciau", "primink", "priminti", "nepamirsk",
-    # (5) C wave (2026-09-08): the conversation drifted off the ACTIVE question
-    "nukryp", "neatsako", "nesiejami su klausimu", "aktyvu klausim", "aktyvaus klausimo",
-)  # fmt: skip
-
-
-# Action suggestions aimed at the caller are FORBIDDEN outright — the
-# blacklist beats the whitelist (live 2026-08-28: "butu naudinga PAPRASYTI
-# kliento pateikti MAC adresa" slipped through on the word "zurnalo" and the
-# narrator obeyed — asked the caller for a MAC the engine reads itself).
-_FORBIDDEN_MARKS = (
-    "paprasy", "papras", "pateikti", "paklausk", "pasiulyk", "patikrinkite",
-    "perkrauti", "perjunkite", "atjunkite", "ijunkite", "mac adres",
-)  # fmt: skip
-
-
 def _allowed(note: str) -> bool:
     from .evidence import _fold
 
     low = _fold(note)
-    if any(m in low for m in _FORBIDDEN_MARKS):
+    if any(m in low for m in vocab("analyst_forbidden_marks")):
         return False
-    return any(m in low for m in _ALLOWED_MARKS)
+    return any(m in low for m in vocab("analyst_allowed_marks"))
 
 
 def run_analyst(state: Any, rt: Any) -> list[str] | None:

@@ -175,10 +175,6 @@ class Detectors(_Model):
     detectors: dict[str, dict[str, str]]
 
 
-class Endpoint(_Model):
-    tesiniai: list[str]
-
-
 class FaqEntry(_Model):
     tema: str
     raktazodziai: list[str]
@@ -230,7 +226,6 @@ class Knowledge:
     packs: dict[str, FaultPack] = field(default_factory=dict)
     modules: dict[str, Module] = field(default_factory=dict)
     detectors: Detectors | None = None
-    endpoint: Endpoint | None = None
     faq: Faq | None = None
     informavimas: Informavimas | None = None
     identification: Identification | None = None
@@ -442,7 +437,6 @@ def validate_knowledge(
     single_files: dict[str, tuple[str, type[BaseModel]]] = {
         "manifest": ("faults.yaml", FaultsManifest),
         "detectors": ("detectors.yaml", Detectors),
-        "endpoint": ("endpoint.yaml", Endpoint),
         "faq": ("faq.yaml", Faq),
         "informavimas": ("informavimas.yaml", Informavimas),
         "identification": ("identification.yaml", Identification),
@@ -474,7 +468,10 @@ def validate_knowledge(
         k.packs[pack.verdict] = pack
         pack_files[pack.verdict] = rel
 
-    detectors = set(CODE_DETECTORS) | set(k.detectors.detectors if k.detectors else {})
+    declared = set(k.detectors.detectors) if k.detectors else set()
+    for name in sorted(CODE_DETECTORS - declared):
+        errors.append(f"detectors.yaml: detector '{name}' has no answer meanings")
+    detectors = set(CODE_DETECTORS) | declared
     problems = set(k.manifest.problems) if k.manifest else None
     for name, module in k.modules.items():
         errors += _check_module(module_files[name], module, detectors)

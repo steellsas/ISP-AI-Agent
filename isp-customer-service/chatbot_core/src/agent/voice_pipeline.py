@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import io
 import os
-import re
 import time
 import wave
 from collections.abc import Callable, Iterator
@@ -31,14 +30,6 @@ from .session import AgentSession
 if TYPE_CHECKING:
     from src.ports.asr import ASRProvider
     from src.ports.tts import TTSProvider
-
-
-# "Tilžės g. 60-7" is written form — TTS reads it "g. šešiasdešimt minus septyni".
-# Speak addresses like a human: "Tilžės gatvė, namas 60, butas 7". Applied ONLY to
-# the text sent to TTS; the reply text (traces, UI) keeps the canonical form.
-_ADDR_HOUSE_FLAT = re.compile(r"\bg\.\s*(\d+)\s*-\s*(\d+)\b")
-_ADDR_HOUSE = re.compile(r"\bg\.(?=\s*\d)")
-_ADDR_ABBR = re.compile(r"\bg\.(?=\s|$)")
 
 
 def audio_duration_s(audio: bytes, sample_rate: int = 16_000) -> float | None:
@@ -65,14 +56,12 @@ def _min_audio_s() -> float:
         return 0.3
 
 
-def normalize_lt_address_speech(text: str) -> str:
-    """Spoken form for LT street addresses: 'X g. 60-7' -> 'X gatvė, namas 60, butas 7',
-    'X g. 60' -> 'X gatvė 60', a dangling 'g.' -> 'gatvė'."""
-    if not text or "g." not in text:
-        return text
-    out = _ADDR_HOUSE_FLAT.sub(r"gatvė, namas \1, butas \2", text)
-    out = _ADDR_HOUSE.sub("gatvė", out)
-    return _ADDR_ABBR.sub("gatvė", out)
+def speech_text(text: str) -> str:
+    """The text sent to TTS in the spoken form of the active language (e.g.
+    street abbreviations read out). Traces and the UI keep the canonical form."""
+    from .contract.locale import lang
+
+    return lang().speech_text(text)
 
 
 @dataclass
@@ -151,11 +140,9 @@ class VoicePipeline:
         """Per-sentence TTS for a ready reply text (stream() when available)."""
         stream = getattr(self._tts, "stream", None)
         chunks = (
-            stream(normalize_lt_address_speech(text), language=self._language)
+            stream(speech_text(text), language=self._language)
             if callable(stream)
-            else iter(
-                [self._tts.synthesize(normalize_lt_address_speech(text), language=self._language)]
-            )
+            else iter([self._tts.synthesize(speech_text(text), language=self._language)])
         )
         for chunk in chunks:
             if chunk:
@@ -272,9 +259,7 @@ class VoicePipeline:
 
         reply_text = self._session.handle_turn(transcript)
         t2 = time.perf_counter()
-        reply_audio = self._tts.synthesize(
-            normalize_lt_address_speech(reply_text), language=self._language
-        )
+        reply_audio = self._tts.synthesize(speech_text(reply_text), language=self._language)
         t3 = time.perf_counter()
 
         asr_ms = (t1 - t0) * 1000.0
@@ -385,9 +370,7 @@ class VoicePipeline:
             anchor = getattr(self._session, "anchor_text", None)
             text = anchor() if callable(anchor) else ""
             if text:
-                chunk = self._tts.synthesize(
-                    normalize_lt_address_speech(text), language=self._language
-                )
+                chunk = self._tts.synthesize(speech_text(text), language=self._language)
                 if chunk:
                     self.last_turn_sentences.append(text)
                     yield chunk
@@ -454,9 +437,7 @@ class VoicePipeline:
                 while sentence:
                     if should_stop is not None and should_stop():
                         return
-                    chunk = self._tts.synthesize(
-                        normalize_lt_address_speech(sentence), language=self._language
-                    )
+                    chunk = self._tts.synthesize(speech_text(sentence), language=self._language)
                     if chunk:
                         _emit_latency(time.perf_counter())
                         self.last_turn_sentences.append(sentence)
@@ -464,9 +445,7 @@ class VoicePipeline:
                     sentence, buf = pop_sentence(buf)
             tail = buf.strip()
             if tail:
-                chunk = self._tts.synthesize(
-                    normalize_lt_address_speech(tail), language=self._language
-                )
+                chunk = self._tts.synthesize(speech_text(tail), language=self._language)
                 if chunk:
                     _emit_latency(time.perf_counter())
                     self.last_turn_sentences.append(tail)
@@ -486,15 +465,9 @@ class VoicePipeline:
         reply_text = self._session.handle_turn(transcript)
         stream = getattr(self._tts, "stream", None)
         if callable(stream):
-            chunks = stream(normalize_lt_address_speech(reply_text), language=self._language)
+            chunks = stream(speech_text(reply_text), language=self._language)
         else:
-            chunks = iter(
-                [
-                    self._tts.synthesize(
-                        normalize_lt_address_speech(reply_text), language=self._language
-                    )
-                ]
-            )
+            chunks = iter([self._tts.synthesize(speech_text(reply_text), language=self._language)])
         for chunk in chunks:
             if not chunk:
                 continue

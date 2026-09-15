@@ -10,18 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# When the agent's reply contains one of these, the call is over — end it (hang up)
-# no matter which path produced the goodbye. Kept to clear terminal farewells so a
-# mid-conversation "gero" never trips it.
-GOODBYE_MARKERS = (
-    "geros dienos",
-    "geros jums dienos",
-    "gražios dienos",
-    "gero vakaro",
-    "gražaus vakaro",
-    "viso gero",
-    "viso labo",
-)
+from .contract.locale import vocab
 
 
 def maybe_finish(state: Any, rt: Any, user_input: str | None) -> None:
@@ -97,5 +86,5 @@ def maybe_end_on_goodbye(state: Any, rt: Any, text: str) -> None:
     if state.closing.is_complete or not text:
         return
     low = text.lower()
-    if any(m in low for m in GOODBYE_MARKERS):
+    if any(m in low for m in vocab("goodbye_markers")):
         state.closing.is_complete = True

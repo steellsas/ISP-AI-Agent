@@ -14,22 +14,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .contract.locale import lang
+
 logger = logging.getLogger(__name__)
 
 _CATALOG: dict | None = None
-
-# Lithuanian month names: accusative ("skola už liepą") and genitive
-# ("birželio 5 d.") — keyed by the two-digit month.
-_MONTH_ACC = {
-    "01": "sausį", "02": "vasarį", "03": "kovą", "04": "balandį",
-    "05": "gegužę", "06": "birželį", "07": "liepą", "08": "rugpjūtį",
-    "09": "rugsėjį", "10": "spalį", "11": "lapkritį", "12": "gruodį",
-}  # fmt: skip
-_MONTH_GEN = {
-    "01": "sausio", "02": "vasario", "03": "kovo", "04": "balandžio",
-    "05": "gegužės", "06": "birželio", "07": "liepos", "08": "rugpjūčio",
-    "09": "rugsėjo", "10": "spalio", "11": "lapkričio", "12": "gruodžio",
-}  # fmt: skip
 
 
 def _catalog() -> dict:
@@ -46,47 +35,6 @@ def _catalog() -> dict:
     return _CATALOG
 
 
-def _eur(amount: float) -> str:
-    """TTS-friendly money: 49.98 -> "49 eurai 98 centai" (correct LT forms)."""
-
-    def _form(n: int, one: str, few: str, many: str) -> str:
-        if n % 10 == 1 and n % 100 != 11:
-            return one
-        if 2 <= n % 10 <= 9 and not 11 <= n % 100 <= 19:
-            return few
-        return many
-
-    eur = int(amount)
-    ct = round((amount - eur) * 100)
-    text = f"{eur} {_form(eur, 'euras', 'eurai', 'eurų')}"
-    if ct:
-        text += f" {ct} {_form(ct, 'centas', 'centai', 'centų')}"
-    return text
-
-
-def _months_acc(periods: list[str]) -> str | None:
-    """['2026-07','2026-08'] -> "liepą ir rugpjūtį"."""
-    names = [_MONTH_ACC.get(p[5:7]) for p in periods if len(p) >= 7]
-    names = [n for n in names if n]
-    if not names:
-        return None
-    if len(names) == 1:
-        return names[0]
-    return ", ".join(names[:-1]) + " ir " + names[-1]
-
-
-def _date_gen(date: str | None) -> str | None:
-    """'2026-06-05' -> "birželio 5 d."."""
-    if not date or len(date) < 10:
-        return None
-    month = _MONTH_GEN.get(date[5:7])
-    try:
-        day = int(date[8:10])
-    except ValueError:
-        return None
-    return f"{month} {day} d." if month else None
-
-
 def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
     """Placeholder values from the diagnose signals — only the ones that
     genuinely exist; the renderer drops sentences for the missing ones."""
@@ -95,11 +43,11 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
     if reason == "billing_suspended":
         debt = signals.get("billing_debt") or {}
         if debt.get("amount"):
-            vals["suma"] = _eur(float(debt["amount"]))
-        m = _months_acc(debt.get("months") or [])
+            vals["suma"] = lang().money(float(debt["amount"]))
+        m = lang().months(debt.get("months") or [])
         if m:
             vals["menesiai"] = m
-        lp = _date_gen(debt.get("last_payment"))
+        lp = lang().date(debt.get("last_payment"))
         if lp:
             vals["pask_mokejimas"] = lp
     elif reason == "active_outage":

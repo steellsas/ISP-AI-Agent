@@ -14,9 +14,9 @@ partial transcript (E1) and hints how much trailing silence to require:
 
 Deterministic by design: partials are jittery, so the reading relies only on
 the same word-level readers the engine already trusts (read_pending_answer,
-detect_farewell) plus a file-editable trailing-word list
-(knowledge/endpoint.yaml). Behaviour lives in the file; this module is the
-mechanics. Fail-soft: any hiccup means "normal".
+detect_farewell) plus the locale's trailing-word list
+(vocabulary `continuation_words`). This module is the mechanics. Fail-soft: any
+hiccup means "normal".
 """
 
 from __future__ import annotations
@@ -24,36 +24,19 @@ from __future__ import annotations
 import functools
 import logging
 import os
-from pathlib import Path
 from typing import Any
+
+from .contract.locale import active_language
 
 logger = logging.getLogger(__name__)
 
-_PATH = Path(__file__).resolve().parent / "knowledge" / "endpoint.yaml"
 
-# Fallback when the knowledge file is missing/broken — the same piloted list.
-_DEFAULT_TRAILING = [
-    "bet", "ir", "o", "tai", "nes", "kad", "kai", "arba", "tada", "dar",
-    "gal", "nu", "na", "taigi", "vadinasi", "pavyzdžiui",
-    "į", "iš", "su", "prie", "ant", "per", "apie",
-]  # fmt: skip
-
-
-@functools.lru_cache(maxsize=1)
-def _trailing_words() -> frozenset[str]:
+@functools.lru_cache(maxsize=4)
+def _trailing_words(language: str) -> frozenset[str]:
+    from .contract.locale import vocab
     from .evidence import _fold
 
-    words = _DEFAULT_TRAILING
-    try:
-        import yaml
-
-        raw = yaml.safe_load(_PATH.read_text(encoding="utf-8")) or {}
-        loaded = [str(w) for w in (raw.get("tesiniai") or []) if str(w).strip()]
-        if loaded:
-            words = loaded
-    except Exception as e:  # fail-soft: knowledge must never break the call
-        logger.warning(f"endpoint vocab load failed ({e}); using built-ins")
-    return frozenset(_fold(w) for w in words)
+    return frozenset(_fold(w) for w in vocab("continuation_words"))
 
 
 def _ms(env_key: str, default: int) -> int:
@@ -89,7 +72,7 @@ def classify_endpoint(state: Any, rt: Any, text: str | None) -> tuple[str, int |
     if bare.endswith((",", "-", "—", "…")):
         return ("slow", slow_ms())
     last = _fold(bare).split()[-1] if _fold(bare).split() else ""
-    if last in _trailing_words():
+    if last in _trailing_words(active_language()):
         return ("slow", slow_ms())
 
     # Complete expected answer: the pending evidence question's deterministic

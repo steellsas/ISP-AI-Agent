@@ -19,6 +19,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from .contract.locale import vocab, vocab_map, vocab_set, vocab_text
+
 logger = logging.getLogger(__name__)
 
 _PATH = Path(__file__).resolve().parent / "knowledge" / "identification.yaml"
@@ -69,33 +71,6 @@ def caller_question() -> str:
     return phrase("identification.questions.caller")
 
 
-_RELATION_MARKS: dict[str, tuple[str, ...]] = {
-    "holder": ("sutart", "savinink", "mano vardu", "aš sudariau", "as sudariau"),
-    "family": (
-        "vyras",
-        "vyro",
-        "žmona",
-        "zmona",
-        "žmonos",
-        "zmonos",
-        "vaikas",
-        "sūnus",
-        "sunus",
-        "dukt",
-        "dukra",
-        "mama",
-        "tėv",
-        "tev",
-        "brolis",
-        "sesuo",
-        "šeim",
-        "seim",
-    ),
-    "tenant": ("nuominink", "nuomoju", "nuomuoju"),
-    "helper": ("kaimyn", "padedu", "padėti", "padeti", "draug"),
-}
-
-
 def detect_caller_relation(text: str | None) -> str:
     """Keyword-read the caller's relation to the contract from their intro. Record
     + confidence signal only — never a gate."""
@@ -105,58 +80,15 @@ def detect_caller_relation(text: str | None) -> str:
     # Relation words WIN over a contract mention: "žmona sutartį sudariusio" names the
     # HOLDER'S wife — the caller is family, even though "sutart..." appears.
     for rel in ("family", "tenant", "helper"):
-        if any(m in low for m in _RELATION_MARKS[rel]):
+        if any(m in low for m in vocab_map("caller_relation_marks")[rel]):
             return rel
-    if any(m in low for m in ("ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar")):
+    if any(m in low for m in vocab("caller_not_holder")):
         return "other"  # explicitly not the holder, relation unstated
-    if any(m in low for m in _RELATION_MARKS["holder"]):
+    if any(m in low for m in vocab_map("caller_relation_marks")["holder"]):
         return "holder"
-    if any(m in low for m in ("taip", "aš", "as ")):
+    if any(m in low for m in vocab("caller_plain_yes")):
         return "holder"  # a plain yes to "ar jūs sutartį sudaręs asmuo?"
     return "unknown"
-
-
-# Words that are never a NAME in an intro sentence ("Taip. Mano vardas Andrius.
-# Taip, aš sutartį sudaręs asmuo." landed VERBATIM in the ticket's Kontaktas field
-# — observed live 2026-08-04). Lowercase; sentence-leading fillers included.
-_NAME_STOP = {
-    "taip",
-    "ne",
-    "gerai",
-    "čia",
-    "cia",
-    "aš",
-    "as",
-    "mano",
-    "vardas",
-    "vardu",
-    "esu",
-    "yra",
-    "labas",
-    "laba",
-    "diena",
-    "sveiki",
-    "sutartį",
-    "sutarti",
-    "sutartis",
-    "sutarties",
-    "sudaręs",
-    "sudares",
-    "sudariusi",
-    "asmuo",
-    "žmona",
-    "zmona",
-    "vyras",
-    "sūnus",
-    "sunus",
-    "dukra",
-    "nuomininkas",
-    "nuomininkė",
-    "kaimynas",
-    "kaimynė",
-}
-
-_NAME_WORD = r"[A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+"
 
 
 def extract_caller_name(text: str | None) -> str | None:
@@ -168,11 +100,11 @@ def extract_caller_name(text: str | None) -> str | None:
         return None
     import re as _re
 
-    m = _re.search(rf"vard(?:as|u)(?:\s+yra)?\s+({_NAME_WORD})", text, _re.IGNORECASE)
+    m = _re.search(rf"vard(?:as|u)(?:\s+yra)?\s+({vocab_text('name_word')})", text, _re.IGNORECASE)
     if m:
         return m.group(1).capitalize()
-    for tok in _re.findall(_NAME_WORD, text):
-        if tok.lower() not in _NAME_STOP and len(tok) >= 3:
+    for tok in _re.findall(vocab_text("name_word"), text):
+        if tok.lower() not in vocab_set("name_stop_words") and len(tok) >= 3:
             return tok
     return None
 

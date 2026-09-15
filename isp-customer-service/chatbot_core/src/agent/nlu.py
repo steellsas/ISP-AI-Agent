@@ -17,8 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from adapters.asr.lt_text import normalize_lt_numbers
-
+from .contract.locale import lang, vocab, vocab_map, vocab_re, vocab_set, vocab_text
 from .tooling.address_matching import locality_match_score, street_match_score
 
 # A token is a number (optionally with a trailing letter: "122F") or a word.
@@ -26,13 +25,13 @@ _TOKEN_RE = re.compile(r"(?P<num>\d+[^\W\d_]?)|(?P<word>[^\W\d_]+)", re.UNICODE)
 _STREET_THRESHOLD = 0.75
 _CITY_THRESHOLD = 0.85
 
-# Lithuanian diacritics → base letters, for tolerant marker matching (STT often writes
-# the long-vowel form: "būtos" for "butas"). Used only for keyword prefixes, not values.
-_LT_DEACCENT = str.maketrans("ąčęėįšųūž", "aceeisuuz")
 
+def _deaccent(word: str) -> str:
+    """Diacritics -> base letters for tolerant marker matching (STT often writes
+    the long-vowel form: "būtos" for "butas"). Keyword prefixes only, not values."""
+    from .contract.locale import lang
 
-def _deaccent_lt(word: str) -> str:
-    return word.translate(_LT_DEACCENT)
+    return lang().deaccent(word)
 
 
 @dataclass
@@ -121,7 +120,7 @@ def extract_address(
     among the remaining words. House = the first number after the street (or the
     first number); apartment = the number right after a "but*" marker.
     """
-    norm = normalize_lt_numbers(text or "")
+    norm = lang().normalize_numbers(text or "")
     seq = _tokenize(norm)
     if not seq:
         return AddressReading()
@@ -139,11 +138,10 @@ def extract_address(
     # truncated "but" matched the flat marker); "60 būtų namas" lost the
     # house. The number nearest to an explicit house word (namo/namas/namą,
     # within 3 tokens either side) is the HOUSE — no marker may claim it.
-    _HOUSE_WORDS = {"namo", "namas", "nama", "name", "namu"}
     house_anchor = None
     house_anchor_i = None
     for i, (k, v) in enumerate(seq):
-        if k == "word" and _deaccent_lt(v.lower()) in _HOUSE_WORDS:
+        if k == "word" and _deaccent(v.lower()) in vocab_set("house_words"):
             near = [(abs(j - i), j, nv) for j, nv in nums if abs(j - i) <= 3]
             if near:
                 _, house_anchor_i, house_anchor = min(near)
@@ -157,7 +155,11 @@ def extract_address(
     apt = None
     apt_i = None
     for i, (k, v) in enumerate(seq):
-        if k == "word" and _deaccent_lt(v.lower()).startswith("but") and len(v) >= 4:
+        if (
+            k == "word"
+            and _deaccent(v.lower()).startswith(vocab("apartment_marker"))
+            and len(v) >= 4
+        ):
             nxt = next(((j, nv) for j, nv in nums if j > i and j != house_anchor_i), None)
             if nxt:
                 apt_i, apt = nxt
@@ -182,57 +184,25 @@ def extract_address(
 
 
 # --- Problem classification (R1) ---------------------------------------------
-# Deterministic keyword classifier for the stated problem. A first hypothesis,
-# revisable on a later turn (docs/pokalbio_variklis.md §12.2). Order matters:
-# more specific first ("lėtas internetas" -> slow, not down).
-_PROBLEM_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("internet_slow", ("lėtas", "lėtai", "lėta", "stringa", "lūžinėja", "buferiuoja")),
-    ("tv", ("televizij", "televizor", " tv", "kanalai", "kanalų")),
-    ("saskaitos", ("sąskait", "saskait", "mokė", "skola", "kaina", "tarif")),
-    ("internet_down", ("internet", "ryši", "ryšys", "neveikia", "nėra interneto", "wifi", "wi-fi")),
-)
+# The stated problem from the utterance: the knowledge catalog's triggers
+# (`knowledge/faults.yaml`); a first hypothesis, revisable on a later turn.
 
 
 def classify_problem(text: str) -> str | None:
     """Best-effort problem type (the call's PURPOSE) from the utterance, or None.
 
-    Prefers the DECLARATIVE triggers in `knowledge/faults.yaml` — so adding a problem
-    ("lėtai veikia") is a file edit — and falls back to the table below when the manifest
-    does not match or cannot be read."""
+    Reads the DECLARATIVE triggers in `knowledge/faults.yaml` — adding a problem is a
+    file edit."""
     low = f" {(text or '').lower()} "
     # Negation guard FIRST — before EITHER trigger layer (2026-09-02, live G2:
     # "interneto bėdų NETURIU, tik dėl sąskaitos" committed internet_down via
     # the bare trigger and the agent asked "kada dingo?"): a denied problem is
     # not a problem statement.
-    if any(m in low for m in _NO_PROBLEM_MARKS):
+    if any(m in low for m in vocab("no_problem_marks")):
         return None
-    try:
-        from .faults import classify_purpose
+    from .faults import classify_purpose
 
-        declared = classify_purpose(text)
-        if declared:
-            return declared
-    except Exception:  # pragma: no cover - defensive; never break extraction
-        pass
-    for problem, keywords in _PROBLEM_KEYWORDS:
-        if any(kw in low for kw in keywords):
-            return problem
-    return None
-
-
-_NO_PROBLEM_MARKS = (
-    "bėdų neturiu",
-    "bedu neturiu",
-    "problemų neturiu",
-    "problemu neturiu",
-    "neturiu bėdų",
-    "neturiu bedu",
-    "neturiu problemų",
-    "neturiu problemu",
-    "bėdų nėra",
-    "bedu nera",
-    "viskas veikia",
-)
+    return classify_purpose(text)
 
 
 def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[str | None, float]:
@@ -266,49 +236,17 @@ def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[st
         return None, 0.0
 
 
-# --- Symptom extraction (A3) -------------------------------------------------
-# Deterministic categorical symptoms from the utterance. Order WITHIN a category
-# matters (negations/specifics first: "nedega" before "dega"). Free-form symptoms
-# (exact onset time) are left to the LLM / a future SLM (§12.7).
-_SYMPTOM_KEYWORDS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
-    # STT-tolerant stems (Whisper mishears "nedega"->"nedaga", "dega"->"dagą").
-    # Order matters: negation/specific first ("nedeg" before "deg").
-    "lights": (
-        ("nedega", ("nedeg", "nedag", "užges", "negyv", "nešvie")),
-        ("mirksi", ("mirks", "mirg", "blyks")),
-        ("dega", ("dega", "dag", "švie", "žali")),
-    ),
-    "connection": (
-        ("wifi", ("wifi", "wi-fi", "vaifai", "belaid", "beviel")),
-        ("laidinis", ("laid", "kabel")),
-    ),
-    "devices": (
-        ("visi", ("visi", "visur", "visuose", "viskas")),
-        ("vienas", ("viename", "tik vien", "vienam", "vienas įreng")),
-    ),
-    "frequency": (
-        ("nuolat", ("nuolat", "visada", "visą laiką")),
-        ("protarpiais", ("kartais", "protarpiais", "retkarčiais", "dingsta", "lūžinėja")),
-    ),
-    "services": (
-        ("tv", ("televizij", "televizor", "kanal")),
-        ("telefonas", ("telefon",)),
-    ),
-}
-
-
 def extract_symptoms(text: str) -> dict[str, str]:
     """Categorical symptoms present in the utterance, e.g. {'lights': 'nedega'}."""
-    import re as _re
 
     # STT splits the negation prefix ("ne dega" for "nedega") — glue a bare
     # "ne " to the following word so polarity survives (live 2026-08-20: the
     # SYMPTOMS line said dega while the ledger said nedega and the narrator
     # got a contradiction). "ne," stays split — that is a real standalone no.
-    glued = _re.sub(r"\bne (?=[a-ząčęėįšųūž])", "ne", (text or "").lower())
+    glued = vocab_re("split_negation").sub(vocab_text("split_negation_glued"), (text or "").lower())
     low = f" {glued} "
     out: dict[str, str] = {}
-    for category, options in _SYMPTOM_KEYWORDS.items():
+    for category, options in vocab_map("symptom_keywords").items():
         for value, keywords in options:
             if any(kw in low for kw in keywords):
                 out[category] = value
@@ -321,25 +259,6 @@ def extract_symptoms(text: str) -> dict[str, str]:
 # carries WHEN it broke and an optional TRIGGER event. Keyword-read, best-effort —
 # the raw text is kept alongside either way.
 
-_ANAMN_WHEN: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("ką tik", ("ką tik", "ka tik", "dabar dingo", "prieš minutę", "pries minute")),
-    ("šiandien", ("šiandien", "siandien", "šįryt", "siryt", "ryte")),
-    ("vakar", ("vakar",)),
-    (
-        "prieš kelias dienas",
-        ("prieš kelias", "pries kelias", "užvakar", "uzvakar", "kelios dienos"),
-    ),
-    ("prieš valandą", ("prieš valand", "pries valand")),
-)
-
-_ANAMN_TRIGGER: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("audra", ("audr", "udra", "žaib", "zaib", "perkūn", "perkun")),
-    ("elektros dingimas", ("elektr", "šviesos ding", "sviesos ding")),
-    ("remontas", ("remont",)),
-    ("kraustymasis", ("kraust", "persikraust")),
-    ("įrangos keitimas", ("keičiau", "keiciau", "pakeič", "pakeic", "prijungiau")),
-)
-
 
 def extract_anamnesis(text: str | None) -> dict:
     """{'when': str|None, 'trigger': str|None} from the intake anamnesis answer.
@@ -348,14 +267,14 @@ def extract_anamnesis(text: str | None) -> dict:
     if not text:
         return out
     low = text.lower()
-    for label, marks in _ANAMN_WHEN:
+    for label, marks in vocab("anamnesis_when"):
         if any(m in low for m in marks):
             out["when"] = label
             break
-    for label, marks in _ANAMN_TRIGGER:
+    for label, marks in vocab("anamnesis_trigger"):
         if any(m in low for m in marks):
             out["trigger"] = label
             break
-    if out["when"] is None and ("nežin" in low or "nezin" in low):
+    if out["when"] is None and any(m in low for m in vocab("dont_know")):
         out["when"] = "nežino"
     return out

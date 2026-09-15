@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from .contract.locale import phrase_or
+from .contract.locale import phrase_or, vocab
 from .dialog_utils import last_agent_question
 from .trace import trace_note
 
@@ -175,7 +175,7 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     # in the turn — wakes the reader; bare digits stay silenced (the code).
     if state.identity.account_code_mode:
         low_cd = (text or "").lower()
-        if not any(w in low_cd for w in ("gatv", " g.", "prospekt", "alėj", "alej", "aikšt")):
+        if not any(w in low_cd for w in vocab("street_words")):
             return
     # NLU wave block 4: the spelling turn carries LETTERS ("K kaip Kaunas"),
     # not an address — the fuzzy reader would turn the anchor words into a
@@ -188,9 +188,7 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     # DROPS it — and counts as a real miss on the road to the spelling round.
     denied_street = None
     _low_d = (text or "").lower()
-    if s.identity.profile.street.value and any(
-        m in _low_d for m in ("nesakiau", "nesakau", "ne apie")
-    ):
+    if s.identity.profile.street.value and any(m in _low_d for m in vocab("street_denial")):
         from .evidence import _fold as _fd
 
         _st = _fd(str(s.identity.profile.street.value).replace(" g.", ""))[:5]
@@ -235,11 +233,11 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
 
     low = (text or "").lower()
     has_addr_evidence = any(ch.isdigit() for ch in low) or any(
-        w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
+        w in low for w in vocab("address_words")
     )
     if not has_addr_evidence:
         q = (last_agent_question(state) or "").lower()
-        asked_address = any(w in q for w in ("adres", "gatv", "namo", "numer", "but"))
+        asked_address = any(w in q for w in vocab("address_question_words"))
         if not asked_address:
             return  # no address in sight — do not fuzzy-match one into the slots
     try:
@@ -292,9 +290,7 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     # neturi nuriedėti į kodo klausimą). Pažanga skaitosi tik su TIKRA adreso
     # Adreso PAŽANGA nulina pakopos skaitiklius (2026-09-04 perdirbimas:
     # skaitliukai gyvena _account_code_rung; čia tik pažangos signalas).
-    _evid = any(ch.isdigit() for ch in low) or any(
-        w in low for w in ("gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but")
-    )
+    _evid = any(ch.isdigit() for ch in low) or any(w in low for w in vocab("address_words"))
     if _evid and (reading.street or reading.house or reading.apartment):
         state.identity.address_empty_turns = 0
         state.identity.address_unrecognized_turns = 0
@@ -555,9 +551,7 @@ def _looks_like_address(text: str | None) -> bool:
     """A reply that itself NAMES an address (street word or a digit) — counts
     as a yes to 'ar tikrai kitas adresas?'."""
     low = (text or "").lower()
-    return any(ch.isdigit() for ch in low) or any(
-        w in low for w in ("gatv", " g.", "prospekt", "alėj", "kaim", "but")
-    )
+    return any(ch.isdigit() for ch in low) or any(w in low for w in vocab("address_named_words"))
 
 
 def _extract_account_code(text: str | None) -> str | None:
@@ -576,16 +570,12 @@ def _extract_account_code(text: str | None) -> str | None:
     return None
 
 
-_BIG_CITIES = ("vilni", "kaun", "klaipėd", "klaiped", "panevėž", "panevez", "alyt", "marijampol")
-
-
 def _has_address_content(text: str | None) -> bool:
     """The turn CARRIES address material (a digit, a street word, a place) —
     such a turn is never a 'fruitless' one, whatever the resolver said."""
     low = (text or "").lower()
     return any(ch.isdigit() for ch in low) or any(
-        w in low
-        for w in ("gatv", " g.", "prospekt", "alėj", "alej", "aikšt", "kaim", "šiaul", "siaul")
+        w in low for w in (*vocab("address_content_words"), *vocab("served_city_stems"))
     )
 
 
@@ -606,9 +596,10 @@ def _spell_prefix(text: str | None) -> str:
     if not toks:
         return ""
     letters: list[str] = []
-    if "kaip" in toks:
+    anchor = vocab("spell_anchor")[0]
+    if anchor in toks:
         for i, t in enumerate(toks):
-            if t != "kaip":
+            if t != anchor:
                 continue
             before = toks[i - 1] if i > 0 else ""
             after = toks[i + 1] if i + 1 < len(toks) else ""
@@ -761,8 +752,14 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # address-phase turn ARE a letters answer, no mode needed.
     if (
         not state.identity.spell_mode
-        and user_input.lower().count(" kaip ") >= 2
-        and (state.identity.street_attempts or "gatv" in (last_agent_question(state) or "").lower())
+        and user_input.lower().count(f" {vocab('spell_anchor')[0]} ") >= 2
+        and (
+            state.identity.street_attempts
+            or any(
+                w in (last_agent_question(state) or "").lower()
+                for w in vocab("street_question_words")
+            )
+        )
     ):
         state.identity.spell_mode = True
         rt.tracer.emit("decision", intent="street_spell", action="client_initiated")
@@ -816,18 +813,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             return True, phrase("identification.account_code_miss", kodas=_speak_code(code))
     if state.identity.account_code_mode:
         low = user_input.lower()
-        explicit_no = any(
-            m in low
-            for m in (
-                "neturiu",
-                "nėra jokio",
-                "nera jokio",
-                "nežinau kodo",
-                "nezinau kodo",
-                "nesu klientas",
-                "nesu abonent",
-            )
-        )
+        explicit_no = any(m in low for m in vocab("no_account_code"))
         if explicit_no:
             s.closing.case_closed = True
             s.closing.closed_reason = "declined"
@@ -835,7 +821,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             return True, phrase("identification.not_client_goodbye")
         # A-banga P3c (gyva #3: „A. B." → LLM haliucinavo „nerastas"): klientas
         # KALBA apie kodą, bet skaitmenų neperskaitėm — scripted pagalba, ne LLM.
-        if "kod" in low:
+        if any(m in low for m in vocab("account_code_words")):
             from .dialog_registry import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
@@ -874,13 +860,12 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     low = user_input.lower()
     _city_mention = any(
         _re.search(c + r"\w*", low) and not _re.search(c + r"\w*\s+(g\.|g\b|gatv)", low)
-        for c in _BIG_CITIES
+        for c in vocab("big_city_stems")
         if c in low
     )
     if (
         _city_mention
-        and "šiaul" not in low
-        and "siaul" not in low
+        and not any(c in low for c in vocab("served_city_stems"))
         and not state.identity.city_not_served_said
     ):
         state.identity.city_not_served_said = True
@@ -905,13 +890,16 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # vietovės pasiūlymas) skaitiklių NEliečia.
     last_q = (last_agent_question(state) or "").lower()
     clarifying = (
-        "pavard" in last_q
+        any(w in last_q for w in vocab("surname_words"))
         # P3 (live 2026-09-07): a question that ECHOES a concrete address
         # (including an LLM-worded one — "Taigi, Tilžės g. 60, butas 3,
         # taip?") — a "Taip." answering it is clarification, not an empty
         # turn. Narrow rule: digit + street word, so "Koks adresas?" and the
         # warning (no digits) cannot freeze the counters.
-        or (any(ch.isdigit() for ch in last_q) and ("gatv" in last_q or " g." in last_q))
+        or (
+            any(ch.isdigit() for ch in last_q)
+            and any(w in last_q for w in vocab("street_mark_words"))
+        )
         or state.turn.address_lookup_note
         or state.identity.suggested_city
     )
@@ -931,7 +919,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # street/address, a bare word attempt IS address content — a garbled
     # street name, not silence. It also feeds the repeat tracker: the same
     # word coming back arms the letters round.
-    street_asked = any(w in last_q for w in ("gatv", "adres", "pavadinim"))
+    street_asked = any(w in last_q for w in vocab("street_asked_words"))
     alpha_attempt = (
         street_asked
         and not _has_address_content(user_input)
@@ -1043,8 +1031,8 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     # phrase itself invites a correction.
     if (
         user_input
-        and "adres" in user_input.lower()
-        and any(k in user_input.lower() for k in ("kok", "kur"))
+        and any(w in user_input.lower() for w in vocab("address_topic_words"))
+        and any(k in user_input.lower() for k in vocab("which_words"))
         and is_real_question(user_input)
     ):
         if s.identity.customer_id and s.identity.customer_address:
@@ -1101,7 +1089,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         low_cl = user_input.lower()
         # N2b (live 2026-09-09): "Aš Jums perskambinsiu" IN the clarify answer
         # is the whole decision — close warm right here, no offer round.
-        if any(m in low_cl for m in ("perskambin", "paskambinsiu", "pats paskambin")):
+        if any(m in low_cl for m in vocab("will_call_back")):
             state.dialog.cannot_now_done = True
             s.closing.case_closed = True
             s.closing.closed_reason = "callback"
@@ -1112,9 +1100,9 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         # dabar patikrinti?" — a rambling answer about being away IS a yes.
         # RESUME only on a clear back-to-solving signal; everything else
         # offers the way out.
-        resumed = any(
-            m in low_cl for m in ("galiu", "radau", "viskas gerai", "veikia", "nereikia", "jau ")
-        ) and not any(m in low_cl for m in ("negaliu", "nerandu"))
+        resumed = any(m in low_cl for m in vocab("resume_solving")) and not any(
+            m in low_cl for m in vocab("resume_solving_denied")
+        )
         if not resumed:
             state.dialog.cannot_now_state = "offered"
             _q_register(state, rt, "safety", "cannot_now_offer")
@@ -1129,10 +1117,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         state.dialog.cannot_now_done = True
         _q_clear(state, rt, "cannot_now_offer")
         low_cn = user_input.lower()
-        if any(
-            m in low_cn
-            for m in ("perskambin", "paskambinsiu", "pats paskambin", "vėliau", "veliau")
-        ):
+        if any(m in low_cn for m in (*vocab("will_call_back"), *vocab("later_words"))):
             s.closing.case_closed = True
             s.closing.closed_reason = "callback"
             rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
@@ -1143,8 +1128,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         if (
             detect_refuse_or_ticket(user_input) == "demand"
             or _DET_CN2["yes_no"](user_input) == "yes"
-            or "registr" in low_cn
-            or "meistr" in low_cn
+            or any(m in low_cn for m in vocab("ticket_words"))
         ):
             from .resolution import STRATEGIES as _STR
 
@@ -1346,27 +1330,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     ):
         low = (user_input or "").lower()
         wants_more = is_real_question(user_input) or any(
-            m in low
-            for m in (
-                "klausim",
-                "palauk",
-                "dar ",
-                "noriu",
-                "minut",
-                "sekund",
-                "skol",
-                # Closing wave block 2 (live: these were swallowed by the
-                # goodbye): payment claims and follow-up asks are CONTENT.
-                "sumokėj",
-                "sumokej",
-                "apmokėj",
-                "apmokej",
-                "kiek",
-                "kada",
-                "anks",
-                "neveik",
-                "kain",
-            )
+            m in low for m in vocab("inform_wants_more")
         )
         if wants_more:
             return None  # a question / wants something — the LLM handles it

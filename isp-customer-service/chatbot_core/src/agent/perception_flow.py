@@ -17,7 +17,7 @@ import os  # noqa: F401
 import re
 from typing import Any  # noqa: F401
 
-from .contract.locale import phrase, phrase_or
+from .contract.locale import phrase, phrase_or, vocab, vocab_set
 from .dialog_utils import asked_recently, last_agent_question
 from .trace import trace_note
 
@@ -257,7 +257,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         from .evidence import _fold, _mark_hit
 
         low_c = _fold(user_input)
-        if any(_mark_hit(low_c, m) for m in ("taip", "tikrai", "jo", "aha", "sakiau")):
+        if any(_mark_hit(low_c, m) for m in vocab("fact_confirm_yes")):
             set_fact(s.diagnosis.evidence, g_key, g_value, CLIENT, turn)
             rt.tracer.emit("evidence", action="fact_confirmed", key=g_key, value=g_value)
             facts.pop(g_key, None)
@@ -635,41 +635,10 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
     return True
 
 
-_HOWTO = (
-    "kaip ",
-    "kaip?",
-    "padėk",
-    "padek",
-    "nežinau kaip",
-    "nezinau kaip",
-    "kokie kabel",
-    "kokį kabel",
-    "koki kabel",
-    "kur jung",
-    "kur kišt",
-    "kur kist",
-    # W0-B (live 2026-08-25): "Kur įkišti iki galo? Nesupratau." went to the
-    # side-topic FAQ and got "ne mano sritis" — a where-question about our own
-    # instruction is ON TASK.
-    "kur įkišti",
-    "kur ikišti",
-    "kur ikisti",
-    "kur žiūrėti",
-    "kur ziureti",
-    "kur spausti",
-    "kur tas",
-    "kur ta ",
-    "ką daryti",
-    "ka daryti",
-    "paaiškink",
-    "paaiskink",
-)
-
-
 def is_howto(text: str | None) -> bool:
     """A 'how do I do that / help me' request — about the standing task."""
     low = f" {(text or '').lower()} "
-    return any(m in low for m in _HOWTO)
+    return any(m in low for m in vocab("howto_marks"))
 
 
 def on_task_question(state, rt, user_input: str | None) -> bool:
@@ -738,7 +707,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                 abort_ticket_to_solving(state, rt)
                 return
             if is_bare_negation(user_input) or any(
-                m in low_q for m in ("neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu")
+                m in low_q for m in vocab("ticket_cancel_confirmed")
             ):
                 state.ticket.stage = "cancelled"
                 from .dialog_registry import clear_owner as _q_clear_owner
@@ -756,7 +725,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
         # call back" IS a callback wish, not a contact answer — the caller
         # does not want the registration now. Same warm close as the
         # cannot-now ladder: no ticket, callback goodbye.
-        if any(m in low_q for m in ("paskambinsiu", "perskambinsiu", "pats paskambin")):
+        if any(m in low_q for m in vocab("will_call_back_first_person")):
             state.ticket.stage = None
             state.ticket.context = None
             from .dialog_registry import clear_owner as _q_clear_owner
@@ -867,22 +836,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
         if (
             not und_handled
             and not _answer_content
-            and any(
-                m in low_q
-                for m in (
-                    "kodėl",
-                    "kodel",
-                    "kiek",
-                    "kam ",
-                    "kas čia",
-                    "kas cia",
-                    "kokiu",
-                    "koks ",
-                    "kokia ",
-                    "galima",
-                    "ar ",
-                )
-            )
+            and any(m in low_q for m in vocab("ticket_offscript_question"))
         ):
             # Keyword question-divert (fallback only): the pass, when it ran,
             # already said this is NOT a question.
@@ -892,10 +846,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
         # Explicit "do not register" cancels the dialogue (their call, their
         # choice) — after ONE confirm round; the scripted reply closes with a
         # goodbye only on the confirmed refusal.
-        if not und_handled and any(
-            m in low_q
-            for m in ("neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk")
-        ):
+        if not und_handled and any(m in low_q for m in vocab("ticket_cancel")):
             if wants_to_keep_solving(state, rt, user_input):
                 abort_ticket_to_solving(state, rt)
                 return
@@ -949,35 +900,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
             clean = re.sub(r"\s+", " ", re.sub(r"[?!]", " ", clean)).strip(" .,")
             low_h = clean.lower()
             plausible = bool(re.search(r"\d", low_h)) or any(
-                m in low_h
-                for m in (
-                    "bet kada",
-                    "bet kad",
-                    "kada nor",
-                    "visada",
-                    "ryt",
-                    "vakar",
-                    "val",
-                    "darbo",
-                    "diena",
-                    "dien",
-                    "po ",
-                    "iki ",
-                    "nuo ",
-                    "savait",
-                    "pirmad",
-                    "antrad",
-                    "trečiad",
-                    "treciad",
-                    "ketvirtad",
-                    "penktad",
-                    "šeštad",
-                    "sestad",
-                    "sekmad",
-                    "dabar",
-                    "šiandien",
-                    "siandien",
-                )
+                m in low_h for m in vocab("contact_hours_marks")
             )
             if not plausible and not ctx.hours_retry:
                 ctx.hours_retry = True
@@ -1144,24 +1067,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
             # Wait/consent-only replies are NOT a name ("Taip.", "Laukiu, laukiu"
             # were captured as names live) — record "nenurodyta" and move on.
             tokens = [t.strip(".,!?") for t in user_input.lower().split()]
-            _NOT_A_NAME = {
-                "taip",
-                "ne",
-                "gerai",
-                "laukiu",
-                "aha",
-                "mhm",
-                "jo",
-                "ačiū",
-                "aciu",
-                "ok",
-                "okey",
-                "nesu",
-                "na",
-                "nu",
-                "tai",
-            }
-            if tokens and all(t in _NOT_A_NAME for t in tokens if t):
+            if tokens and all(t in vocab_set("not_a_name") for t in tokens if t):
                 s.identity.caller_name = "nenurodyta"
                 s.identity.caller_relation = "unknown"
             else:
@@ -1197,7 +1103,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
         return
     if not s.identity.customer_id:
         q = (last_agent_question(state) or "").lower()
-        if "skambinate dėl" in q or "dėl šio adreso" in q or "adreso skambinate" in q:
+        if any(m in q for m in vocab("address_offer_question")):
             from .resolution import detect_address_confirm
 
             verdict = detect_address_confirm(user_input)

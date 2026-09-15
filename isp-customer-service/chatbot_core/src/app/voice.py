@@ -88,9 +88,9 @@ def get_pipeline(ms: ManagedSession):
 def synthesize_text(text: str) -> bytes:
     """Speak an arbitrary agent line (greeting) with the same TTS + LT address
     normalization the turn path uses."""
-    from agent.voice_pipeline import normalize_lt_address_speech
+    from agent.voice_pipeline import speech_text
 
-    return _build_tts().synthesize(normalize_lt_address_speech(text), language=_LANGUAGE)
+    return _build_tts().synthesize(speech_text(text), language=_LANGUAGE)
 
 
 def duplex_enabled() -> bool:

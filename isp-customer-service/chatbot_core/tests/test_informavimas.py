@@ -87,11 +87,11 @@ class TestInformTemplates:
         assert inform_text(agent.state, agent.runtime, None) is None
 
     def test_eur_forms(self):
-        from agent.informavimas import _eur
+        from agent.contract.locale import lang
 
-        assert _eur(1.0) == "1 euras"
-        assert _eur(24.99) == "24 eurai 99 centai"
-        assert _eur(10.01) == "10 eurų 1 centas"
+        assert lang().money(1.0) == "1 euras"
+        assert lang().money(24.99) == "24 eurai 99 centai"
+        assert lang().money(10.01) == "10 eurų 1 centas"
 
 
 class TestWrapUpHearing:

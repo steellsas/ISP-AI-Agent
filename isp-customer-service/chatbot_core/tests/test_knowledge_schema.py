@@ -132,8 +132,9 @@ def test_missing_phrase_key_is_reported(knowledge):
     ]
 
 
-def _code_phrase_keys():
-    """(file:line, key) for every literal key passed to a phrase()/template() call."""
+def _code_literal_args(accepts):
+    """(file:line, name, key) for every literal first argument of a call whose
+    function name `accepts(name)` (phrase keys, vocabulary names)."""
     import ast
     from pathlib import Path
 
@@ -143,21 +144,44 @@ def _code_phrase_keys():
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.args):
                 continue
-            if "phrase" not in node.func.id and node.func.id != "template":
+            if not accepts(node.func.id):
                 continue
             arg = node.args[0]
             for value in [arg.body, arg.orelse] if isinstance(arg, ast.IfExp) else [arg]:
                 if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                    yield f"{path.relative_to(src)}:{node.lineno}", value.value
+                    yield f"{path.relative_to(src)}:{node.lineno}", node.func.id, value.value
 
 
 def test_every_phrase_key_in_code_exists():
     from agent.contract.locale import load_locale
 
     locale = load_locale("lt")
-    keys = list(_code_phrase_keys())
+    keys = list(_code_literal_args(lambda f: "phrase" in f or f == "template"))
     assert len(keys) > 50  # the scan finds the calls
-    assert [(where, key) for where, key in keys if not locale.has(key)] == []
+    assert [(where, key) for where, _f, key in keys if not locale.has(key)] == []
+
+
+def test_every_vocabulary_name_in_code_exists_with_its_type():
+    from agent.contract.locale import load_locale
+
+    vocabulary = load_locale("lt").vocabulary
+    kinds = {
+        "vocab": tuple,
+        "vocab_set": tuple,
+        "vocab_map": (dict, tuple),
+        "vocab_text": str,
+        "vocab_re": str,
+    }
+    uses = list(_code_literal_args(lambda f: f in kinds))
+    assert len(uses) > 100
+    wrong = [
+        (where, name)
+        for where, func, name in uses
+        if not isinstance(vocabulary.get(name), kinds[func])
+    ]
+    assert wrong == []
+    unused = sorted(set(vocabulary) - {name for _w, _f, name in uses})
+    assert unused == []
 
 
 def test_every_escalate_reason_code_has_ticket_text():

@@ -23,6 +23,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .contract.locale import vocab, vocab_map, vocab_re
+
 TELEMETRY = "telemetry"
 
 
@@ -146,14 +148,13 @@ def summary_lt(evidence: dict[str, Any]) -> str:
 
 # --- deterministic client-fact extraction (v1) --------------------------------
 
-# STT routinely drops Lithuanian diacritics ("Tai ikištas", "razetė") — every
-# keyword match here folds BOTH sides so a dropped nosinė never hides a fact
-# (live 2026-08-11: "įkištas" heard without į failed the flip corroboration).
-_FOLD = str.maketrans("ąčęėįšųūž", "aceeisuuz")
-
 
 def _fold(text: str) -> str:
-    return text.lower().translate(_FOLD)
+    """Every keyword match here folds BOTH sides (the language's fold), so a
+    diacritic STT dropped never hides a fact (live 2026-08-11)."""
+    from .contract.locale import lang
+
+    return lang().fold(text)
 
 
 def _mark_hit(low_folded: str, mark: str) -> bool:
@@ -165,19 +166,12 @@ def _mark_hit(low_folded: str, mark: str) -> bool:
     m = _fold(mark)
     if m not in low_folded:
         return False
-    if m.startswith("ne") or " " in m:
+    negation = vocab("negation_prefixes")
+    if m.startswith(negation) or " " in m:
         return True
     return any(
-        m in tok and not tok.startswith("ne") for tok in low_folded.replace(",", " ").split()
+        m in tok and not tok.startswith(negation) for tok in low_folded.replace(",", " ").split()
     )
-
-
-_NEG_LIGHTS = ("nedega", "ne dega", "nei viena", "nė viena", "ne viena", "jokia lemp", "nešvie")
-_POS_LIGHTS = ("dega", "šviečia", "sviecia", "žiba", "ziba")
-_HAS_PC = ("turiu kompiuter", "yra kompiuter", "turim kompiuter", "kompiuteris yra", "turiu pc")
-_CABLE_WORDS = ("laid", "kabel", "maitinim")
-_CABLE_IN = ("įkišt", "ikist", "įkišau", "ikisau", "pajungt", "prijungt", "gerai įkiš", "abiejuose")
-_CABLE_OUT = ("nepajungt", "neprijungt", "atjungt", "ištraukt", "istraukt", "iškrit", "iskrit")
 
 
 def extract_client_facts(text: str | None) -> dict[str, str]:
@@ -191,34 +185,37 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     # Negation must attach to the COMPUTER itself: "Neturiu KITO ROUTERIO, tik
     # kompiuterį" is a YES (eval S4 regression: the loose "netur…kompiuter"
     # match read it as no and the solution flipped to ticket instead of bridge).
-    import re as _re
 
     from .resolution import detect_no_device
 
-    if "kompiuter" in low:
-        if _re.search(r"(netur\w*|nera)\s+(?:\w+\s+){0,2}kompiuter", low):
+    if any(w in low for w in vocab("fact_computer_words")):
+        if vocab_re("fact_no_computer").search(low):
             facts["has_computer"] = "no"
-        elif any(_mark_hit(low, m) for m in _HAS_PC) or _re.search(r"tik\s+(su\s+)?kompiuter", low):
+        elif any(_mark_hit(low, m) for m in vocab("fact_has_computer")) or vocab_re(
+            "fact_only_computer"
+        ).search(low):
             facts["has_computer"] = "yes"
-        elif detect_no_device(low) and "tik" not in low:
+        elif detect_no_device(low) and not any(w in low for w in vocab("only_words")):
             facts["has_computer"] = "no"
-    if "lemp" in low or "sviesel" in low:
-        if any(_fold(m) in low for m in _NEG_LIGHTS):
+    if any(w in low for w in vocab("fact_lights_words")):
+        if any(_fold(m) in low for m in vocab("fact_lights_no")):
             facts["lights"] = "nedega"
-        elif "mirksi" in low or "mirkcioja" in low:
+        elif any(w in low for w in vocab("fact_lights_blinking")):
             facts["lights"] = "mirksi"
-        elif any(_mark_hit(low, m) for m in _POS_LIGHTS):
+        elif any(_mark_hit(low, m) for m in vocab("fact_lights_yes")):
             facts["lights"] = "dega"
-    if any(_fold(w) in low for w in _CABLE_WORDS):
-        if any(_fold(m) in low for m in _CABLE_OUT):
+    if any(_fold(w) in low for w in vocab("fact_cable_words")):
+        if any(_fold(m) in low for m in vocab("fact_cable_out")):
             facts["power_cable"] = "atjungtas"
-        elif any(_mark_hit(low, m) for m in _CABLE_IN):
+        elif any(_mark_hit(low, m) for m in vocab("fact_cable_in")):
             facts["power_cable"] = "įkištas"
     # "razet" — the STT routinely hears "rozetė" as "razetė" (both live calls).
-    if ("rozet" in low or "razet" in low) and any(m in low for m in ("kit", "band", "perjung")):
+    if any(w in low for w in vocab("fact_outlet_words")) and any(
+        m in low for m in vocab("fact_outlet_tried")
+    ):
         facts["outlet_works"] = "bandyta"
-    if ("router" in low or "dezut" in low) and any(
-        _fold(m) in low for m in ("radau", "priėjau", "matau", "esu prie", "suradau")
+    if any(w in low for w in vocab("fact_router_words")) and any(
+        _fold(m) in low for m in vocab("fact_device_found")
     ):
         facts["device_present"] = "rado"
     # Domain inference: answering about the LIGHTS or the POWER CABLE means the
@@ -436,64 +433,6 @@ def solution_step(evidence: dict[str, Any], verdict: str | None) -> str | None:
     return None
 
 
-# Context reads for the JUST-ASKED evidence key (2026-08-10): a bare "Radau."
-# to "Radote?" carries no noun, so the general extractor (which demands one)
-# finds nothing — and a clear answer became a give-up. When the engine knows
-# WHICH question is pending, short answers read against THAT key only.
-_PENDING_ANSWERS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
-    "device_present": [
-        (
-            "rado",
-            (
-                "radau",
-                "radome",
-                "suradau",
-                "taip",
-                "yra",
-                "matau",
-                "priėjau",
-                "priejau",
-                "stoviu prie",
-            ),
-        ),
-    ],
-    "lights": [
-        # Negation first — "nedega" contains "dega".
-        (
-            "nedega",
-            (
-                "nedega",
-                "ne dega",
-                "nešvie",
-                "nesvie",
-                "jokia",
-                "nė viena",
-                "ne viena",
-                "ne,",
-                "ne ",
-            ),
-        ),
-        ("mirksi", ("mirksi", "mirkčioja", "mirkcioja")),
-        ("dega", ("dega", "šviečia", "sviecia", "taip")),
-    ],
-    "power_cable": [
-        ("atjungtas", ("atjungt", "ištraukt", "istraukt", "nepajungt", "ne,", "ne ")),
-        ("įkištas", ("įkišt", "ikist", "pajungt", "prijungt", "gerai", "taip", "tvirtai")),
-    ],
-    "outlet_works": [
-        ("bandyta", ("bandž", "bandz", "band", "taip", "kita", "veikia", "perjung")),
-    ],
-    "has_computer": [
-        ("no", ("netur", "nėra", "nera", "ne,", "ne ")),
-        ("yes", ("turiu", "turim", "taip", "yra")),
-    ],
-    "lan_active": [
-        ("neaktyvus", ("neaktyv", "nedega", "nerodo", "nėra", "nera", "ne,", "ne ")),
-        ("aktyvus", ("aktyv", "veikia", "dega", "rodo", "taip", "yra")),
-    ],
-}
-
-
 def read_pending_answer(key: str, text: str | None, spec_item: dict | None = None) -> str | None:
     """Interpret a short utterance as the answer to the PENDING evidence key —
     the question context resolves what a bare "Radau." / "Ne" means. UNIVERSAL:
@@ -508,7 +447,7 @@ def read_pending_answer(key: str, text: str | None, spec_item: dict | None = Non
         for value, marks in (spec_item.get("atsakymai") or {}).items():
             if isinstance(marks, list | tuple) and any(_mark_hit(low, str(m)) for m in marks):
                 return str(value)
-    for value, marks in _PENDING_ANSWERS.get(key, []):
+    for value, marks in vocab_map("pending_answers").get(key, []):
         if any(_mark_hit(low, m) for m in marks):
             return value
     return None
@@ -521,8 +460,8 @@ def polarity(text: str | None) -> str | None:
     if not text:
         return None
     low = _fold(text)
-    if any(m in low for m in ("netur", "ne,", "ne ", "nera")):
+    if any(m in low for m in vocab("polarity_no")):
         return "no"
-    if any(_mark_hit(low, m) for m in ("turiu", "turim", "taip", "yra")):
+    if any(_mark_hit(low, m) for m in vocab("polarity_yes")):
         return "yes"
     return None

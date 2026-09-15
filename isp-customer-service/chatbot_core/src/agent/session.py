@@ -157,14 +157,15 @@ class AgentSession:
             pending = a.state.diagnosis.pending_evidence_key
             r = a.state.resolution.procedure or {}
             if pending and r.get("verdict"):
-                from .evidence import _PENDING_ANSWERS, spec_for
+                from .contract.locale import vocab_map
+                from .evidence import spec_for
 
                 spec = spec_for(r.get("verdict"))
                 item = (spec.get("client") or {}).get(pending) if spec else None
                 for marks in ((item or {}).get("atsakymai") or {}).values():
                     words += [str(m) for m in marks]
                 if not words:  # built-in vocabulary for the piloted keys
-                    for _value, marks in _PENDING_ANSWERS.get(pending, []):
+                    for _value, marks in vocab_map("pending_answers").get(pending, []):
                         words += [str(m) for m in marks]
             if words:
                 parts.append("Galimi atsakymai: " + ", ".join(dict.fromkeys(words)) + ".")

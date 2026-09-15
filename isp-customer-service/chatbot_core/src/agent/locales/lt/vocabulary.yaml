@@ -1,0 +1,1139 @@
+# Lithuanian vocabulary — the words the deterministic readers match.
+#
+# Each entry is a named list of substring markers / stems / whole words, a regex
+# (text), or a label -> markers table. Code reads them by name through
+# agent/contract/locale.py (vocab, vocab_set, vocab_re, vocab_text, vocab_map).
+# ORDER MATTERS inside lists that are scanned first-match (negations before
+# affirmatives), exactly as the comments say.
+
+# --- agent/resolution.py ---------------------------------------------------------
+
+# Deterministic yes/no read of a caller reply, to advance a CONFIRM step. Coarse
+# on purpose: a clear affirmative advances (e.g. to bind), anything with a denial
+# or "nothing changed" does NOT advance to an action — so the agent never binds a
+# device the caller did not knowingly connect.
+neg:
+  - "nekeič"
+  - "nekeit"
+  - "nekyč"  # STT garbling of "nekeičiau"
+  - "nekėč"
+  - "nekič"
+  - "nekie"  # STT garbling of "nekeičiau" -> "nekiečiau"
+  - "nekeč"  # STT drop of the 'i' -> "nekečiau" (must beat the "keč" positive)
+  - "nieko nekeit"
+  - "nieko nedar"
+  - "nieko nekyč"
+  - "neprijung"
+  - "nemaiš"
+  - "nežinau"
+  - "neatsimen"
+
+pos:
+  - "taip"
+  - "aha"
+  - "teisingai"
+  - "keičiau"
+  - "keč"  # STT drop of the 'i' in "keičiau" -> "kečiau"
+  - "pakeič"
+  - "prijungiau"
+  - "prijungėm"
+  - "naują"
+  - "naujas"
+  - "nusipirk"
+
+# A STRONG device-change signal (not a bare "taip"): the caller volunteered that
+# they changed/connected equipment, so a CONFIRM step can advance even if its
+# question was not asked yet (they pre-answered — common: "neveikia, keičiau
+# routerį"). A bare affirmative alone must NOT advance a confirm before it is asked.
+device_change:
+  - "keičiau"
+  - "keč"  # STT drop of the 'i' in "keičiau" -> "kečiau"
+  - "keitėm"
+  - "pakeič"
+  - "prijungiau"
+  - "prijungėm"
+  - "prijungiau naują"
+  - "nusipirk"
+  - "naują router"
+  - "naujas router"
+  - "kitą įrenginį"
+  - "kitą router"
+  - "router"  # a bare "routerį/routerė" answer to "did you change the router?" = yes
+  - "kompiuter"  # PC plugged straight into the line (temporary bridge)
+  - "kompiuterį"
+  - "televizor"
+  - "prijungiau tv"
+
+# "Is the internet back?" answers use DIFFERENT vocabulary than the device-change
+# confirm (veikia/atsirado vs keičiau) — so confirm_restored needs its own reader.
+# Negatives are tested first because "neveikia" contains "veik".
+restored_no:
+  - "neveik"
+  - "nevyk"  # STT garble of "neveikia"
+  - "neatsirad"
+  - "vis dar ne"
+  - "vis tiek ne"
+  - "dar ne"
+  - "nėra internet"
+  - "nesat"
+  # Live 2026-09-11: "perkišau, nepadėjo" — the negated report vocabulary was
+  # missing, so the trailing "jo" substring matched _RESTORED_YES and a damaged
+  # cable closed as resolved.
+  - "nepadėjo"
+  - "nepadejo"
+  - "nepadeda"
+  - "nepasikeit"
+  - "nedirba"
+  - "neprisijung"
+
+restored_yes:
+  - "taip"  # the plain answer to "ar internetas atsirado?" — was missing, so a
+  - "aha"  # confirmed fix looked unanswered and ended in a needless ticket
+  - "veikia"
+  - "atsirad"  # atsirado internetas
+  - "atsarad"  # STT garble of "atsirado" (live 2026-09-08: "interneto satsarado")
+  - "satsarad"  # the same garble with a leading s
+  - "atsistat"  # ryšys atsistatė
+  - "prisijung"
+  - "jau yra"
+  - "yra internet"
+  - "dirba"
+  - "atgal"
+
+# S6 rh_check (2026-09-02): the post-reboot check asks about the INTERNET
+# LIGHT and a web page — "dega" vocabulary must NOT read as restored (live:
+# "Visos lemputės dega, bet jos nemirksi" closed the call as resolved — the
+# generic _RESTORED_YES "jo" substring matched "jos"). Negation wins.
+reboot_no:
+  - "nemirksi"
+  - "nemirks"
+  - "neveikia"
+  - "nevaikšto"
+  - "nevaiksto"
+  - "neatsidaro"
+  - "neatsidarė"
+  - "neatsidare"
+  - "nėra internet"
+  - "nera internet"
+  - "pastoviai dega"
+  - "dega pastoviai"
+  - "vis tiek ne"
+  - "vis dar ne"
+  - "dar ne"
+
+reboot_yes:
+  - "mirksi"
+  - "mirkčioja"
+  - "mirkcioja"
+  - "atsidaro"
+  - "atsidarė"
+  - "atsidare"
+  - "veikia"
+  - "atsirad"
+  - "atsistat"
+  - "jau yra"
+  - "yra internet"
+
+# --- Client-side branch detectors (healthy_to_router) ------------------------
+# "all devices or one?" — and, when one, WHICH device, because a phone/tablet can
+# only be Wi-Fi (never suggest a cable to it).
+wireless_only: ["telefon", "planšet", "planset", "mobil", "išmanij", "ismanij"]
+
+# Devices that answer "one device, and it is wireless". "tv" needs a word boundary
+# (see _TV_RE) or it fires inside words like "tvarkinga".
+one_phone: ["telefon", "planšet", "planset", "mobil", "išmanij", "ismanij", "televizor"]
+
+tv_word: "\\btv\\b"
+
+one_computer: ["kompiuter", "kompas", "nešiojam", "nesiojam", "laptop", "stacionar"]
+
+all_mark: ["visuose", "visur", "visuos", "visi ", "visų", "nei viename", "niekur"]
+
+# "one device, unnamed" — routes to the WHICH-device step (cs_which), never a guess.
+one_mark: ["viename", "vienam", "tik vien", "viena"]
+
+conn_wired: ["laid", "kabel", "eternet", "ethernet", "lan"]
+
+conn_wifi: ["wifi", "wi-fi", "wi fi", " wf", "vaifa", "vaifai", "belaid", "bevieli"]
+
+# Route by PORT FUNCTION, not colour (a caller may not see colours; STT garbles
+# "LAN lizdą" -> "laną lėsdą"). WAN/Internet port = correct; LAN/other = must move.
+port_lan: ["lan", "laną", "lėsd", "kit", "antr", "treči", "eternet", "gelton"]
+
+port_wan: ["wan", "internet", "pirm", "atskir", "mėlyn", "melyn"]
+
+# "Are any lights on?" — NO is tested first because "nedega" contains "dega".
+# STT mangles these badly ("nedega" -> "nedaga"/"neusidaga"), and a stuck detector
+# here made the agent repeat the same question six times. Keep the NO markers loose.
+lights_no:
+  - "nedega"
+  - "nedaga"
+  - "neusidaga"
+  - "neužsidega"
+  - "neuzsidega"
+  - "neišdegė"
+  - "neisdege"
+  - "nešviečia"
+  - "nesviecia"
+  - "nemirksi"
+  - "tamsu"
+  - "jokių"
+  - "jokia"
+  - "niekas"
+  - "vis tiek ne"
+  - "negyv"
+
+lights_yes:
+  - "dega"
+  - "šviečia"
+  - "sviecia"
+  - "mirksi"
+  - "užsidegė"
+  - "uzsidege"
+  - "žalia"
+  - "raudona"
+
+device_yes:
+  - "turiu"
+  - "yra"
+  - "kompiuter"
+  - "nešiojam"
+  - "nesiojam"
+  - "router"
+  - "atsineš"
+  - "atsines"
+  - "pajung"
+  - "prijung"
+
+usable_device: ["kompiuter", "nešiojam", "nesiojam", "laptop", "router", "kompas"]
+
+farewell:
+  - "viso gero"
+  - "viso labo"
+  - "geros dienos"
+  - "gero vakaro"
+  - "sudie"
+  - "ačiū, viskas"
+  - "tai viskas"
+  - "viskas ačiū"
+  - "daugiau ne"
+  - "nieko daugiau"
+  - "pakaks"
+  - "ne ačiū"
+  - "ne, ačiū"
+  - "ne, aciu"
+  - "nebereikia"
+  # NOTE: "iki" and "ate" are NOT in this substring list — they hide inside
+  # "neveIKIa"/"ATEina"; detect_farewell checks them as whole words instead.
+  # STT garbles of "viso gero / viso labo" heard in live calls — a farewell must
+  # still close the call when whisper mangles the vowels.
+  - "visą gerą"
+  - "visa gera"
+  - "visą gera"
+  - "viso gera"
+  - "visai ger"  # "Ne visai gero" = garbled "ne, viso gero" (observed live)
+
+confused:
+  - "nesuprantu"
+  - "nesupratau"
+  - "kas tai"
+  - "kas tas"
+  - "kas ta "
+  - "ką reiškia"
+  - "ka reiskia"
+  - "nesigaudau"
+  - "nežinau kur"
+  - "nezinau kur"
+  - "nežinau kas"
+  - "neišmanau"
+  - "neismanau"
+  - "nemoku"
+  - "nesu tech"
+  - "paaiškinkite"
+  - "paaiskinkite"
+  # G1 (2026-08-20): a struggling caller ("neišeina", "nesiseka", "nežinau
+  # kaip") gets the explain-simpler path, not a repeat of the same words.
+  # NOT "nepavyko" — that is a step ROUTING answer (modules' isejimai).
+  - "neišeina"
+  - "neiseina"
+  - "nesiseka"
+  - "nežinau kaip"
+  - "nezinau kaip"
+
+in_progress:
+  - "einu"
+  - "eisiu"
+  - "nueisiu"
+  - "atsineš"
+  - "atsines"
+  - "tuoj"
+  - "tuojau"
+  - "palauk"
+  - "sekundėl"
+  - "sekundel"
+  - "minutėl"
+  - "minutel"
+  - "bandau"
+  - "bandysiu"
+  - "darau"
+  - "darysiu"
+  - "žiūriu"
+  - "ziuriu"
+  - "ieškau"
+  - "iesk"
+  - "einam"
+
+done:
+  - "padariau"
+  - "padaryta"
+  - "atlikau"
+  - "įkišau"
+  - "ikisau"
+  - "įjungiau"
+  - "ijungiau"
+  - "išjungiau"
+  - "isjungiau"
+  - "perkroviau"
+  - "perjungiau"
+  - "ištraukiau"
+  - "istraukiau"
+  - "prijungiau"
+  - "pajungiau"
+  - "jau"
+  - "gatava"
+  - "viskas"
+
+question_marks:
+  - "kiek"
+  - "kodėl"
+  - "kodel"
+  - "kada"
+  - "ar galima"
+  - "o kaip"
+  - "kur "
+  - "kuris"
+  - "kokiu"
+  - "koks "
+  - "kokia "
+
+# Ticket-registration consent (Phase 3.11 B): the ESCALATE step asks "užregistruosiu
+# gedimą — ar tinka?" and the ENGINE registers on consent. Vocabulary differs from the
+# device-change confirm (tinka/gerai/sutinku vs keičiau), so it needs its own reader.
+consent_yes:
+  - "taip"
+  - "tinka"
+  - "gerai"
+  - "sutinku"
+  - "sutariam"
+  - "sutinkam"
+  - "jo"
+  - "aha"
+  - "mhm"
+  - "registruok"
+  - "užregistruok"
+  - "uzregistruok"
+  - "darykit"
+  - "darykite"
+  - "lauksiu"  # "lauksiu skambučio" = expects the registration — consent, not decline
+  - "lauksim"
+
+consent_no:
+  - "nenoriu"
+  - "nereikia"
+  - "atsisak"
+  - "neregistruok"
+  - "nedarykit"
+  - "ne ačiū"
+  - "ne, ačiū"
+  - "ne, aciu"
+  - "ne aciu"
+
+addr_no:
+  - "ne dėl"
+  - "ne del"
+  - "ne tas adres"
+  - "ne to adres"
+  - "ne tuo adres"
+  - "kitas adres"
+  - "kito adres"
+  - "kitu adres"
+  - "kitas butas"
+  - "kito buto"
+  - "kitam bute"
+  - "ne šit"
+  - "ne sit"
+
+# A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" buvo ignoruotas ir
+# agentas toliau liepė ieškoti routerio): negalėjimo-DABAR signalai. Sąmoningai
+# be pliko „negaliu" — „negaliu prisijungti/rasti" yra eigos turinys.
+cannot_now:
+  - "nepatogu"
+  - "ne patogu"
+  - "ne namie"
+  - "ne namuose"
+  - "nesu namie"
+  - "nesu namuose"
+  - "nenamie"
+  - "negaliu dabar"
+  - "dabar negaliu"
+  - "negalėsiu dabar"
+  - "negalesiu dabar"
+  - "neturiu laiko"
+  - "kitu metu"
+  - "kitą kartą"
+  - "kita karta"
+  # N3 (live 2026-09-09: "Kai grįšiu, namo padarysiu" got "Gerai, lauksiu"
+  # — the agent waited while the caller was away): a promise to do it upon
+  # RETURNING is a cannot-now, not an in-progress report.
+  - "kai grįšiu"
+  - "kai grisiu"
+  - "grįžęs pad"
+  - "grizes pad"
+  - "kai būsiu nam"
+  - "kai busiu nam"
+  - "negaliu, nes"
+  - "negaliu kalbėti"
+  - "negaliu kalbeti"
+
+# Refusal to troubleshoot / explicit demand for a registration. Either way the
+# troubleshooting ENDS in a registration (policy 2026-07-30): a clear DEMAND registers
+# immediately (the demand IS the consent); a softer refusal routes to the escalate
+# step whose consent question doubles as the polite clarification.
+ticket_demand:
+  - "registruok"
+  - "įregistruok"
+  - "iregistruok"
+  - "užregistruok"
+  - "uzregistruok"
+  - "iškviesk"
+  - "iskviesk"
+  - "kvieskit"
+  - "atsiųsk technik"
+  - "atsiusk technik"
+  - "tegul atvažiuoj"
+  - "tegul atvaziuoj"
+  # Live 2026-08-13: "žegistruokit gedimą" (STT garble) missed the exact
+  # imperative marks — the -k stem covers registruok/registruokit(e) and
+  # the ž-/iš- garbled variants. Imperatives are unconditional demands.
+  - "gistruok"
+
+# The INFINITIVE stem (registruoti/išregistruoti) appears in innocent speech
+# too — live 2026-08-14: "O jums dažnai taip skambina gedimus? Registruoti."
+# (small talk + a done-report) escalated mid-collection and the findings
+# moment never happened. It counts as a demand only next to an INTENT word.
+ticket_demand_inf: ["gistruot"]
+
+ticket_demand_intent:
+  - "prašau"
+  - "prasau"
+  - "noriu"
+  - "norėč"
+  - "norec"
+  - "meistr"
+  - "galite"
+  - "galit"
+  - "reikia"
+  - "reikėt"
+  - "reiket"
+
+ticket_refuse:
+  - "nedarysiu"
+  - "nedarysim"
+  - "nenoriu daryti"
+  - "nenoriu tikrinti"
+  - "nenoriu nieko"
+  - "neturiu laiko"
+  - "nesu namuose"
+  - "ne namuose"  # "nepatogu, ne namuose" (observed live — must offer registration)
+  - "nebūsiu nam"
+  - "nebusiu nam"
+  - "ne namie"
+  - "negaliu dabar"
+  - "nenam"  # STT garbles of "nedarysiu / ne namie" ("nenamosiu")
+  # Live 2026-08-13: "Nebe noriu tikrinti toliau… nebesprendžiam" — the stop
+  # words themselves were missing, so the demand path had to carry the turn.
+  - "nutrauk"
+  - "nebenoriu"
+  - "nebe noriu"
+  - "nebespren"
+  - "nebespręs"
+  - "nebespres"
+
+# "netur" prefix covers neturiu/neturi/neturim(e) — live 2026-08-05 the caller
+# said "Neturi kompiutera" (3rd person + garble) and "neturiu"/"netur " missed it.
+no_device:
+  - "netur"
+  - "nėra kompiuter"
+  - "nera kompiuter"
+  - "tik telefon"
+  - "vien telefon"
+  - "tik su telefon"
+  - "negaliu prijungti"
+  - "negaliu pasijungti"
+
+greeting: ["laba", "labas", "sveiki", "labadien", "alio", "sveikas", "gera dien"]
+
+plugged:
+  - "įkišau"
+  - "ikisau"
+  - "prijungiau"
+  - "pajungiau"
+  - "įjungiau"
+  - "ijungiau"
+  - "sujungiau"
+  # STT-tolerant stems (live 2026-08-11: "Jau pajungiu", "Pajangių kompiuterį"
+  # were missed and the bridge instruction repeated 3×).
+  - "pajungi"
+  - "prijungi"
+  - "pajang"
+
+# Bare backchannels / one-letter STT crumbs — acknowledgement noises, NOT answers.
+# Treating them as answers advanced steps through garbage (observed: "T." was read
+# as "yes, I have a computer"; "Mhm." advanced two INSTRUCT steps).
+backchannel: ["mhm", "aha", "m", "t", "hm", "mm", "nu", "na", "e", "a"]
+
+negation_tokens:
+  - "ne"
+  - "nė"
+  - "nea"
+  - "nėra"
+  - "nera"
+  - "nežinau"
+  - "nezinau"
+  - "nematau"
+  - "nieko"
+  - "niekas"
+
+done_stems: ["patikrin", "padar", "atlik", "isband", "išband", "baig"]
+
+done_acks: ["mhm", "aha", "gerai", "nu", "tai", "jo", "ok", "jau", "viskas", "as", "aš"]
+
+question_tokens:
+  - "kiek"
+  - "kodėl"
+  - "kodel"
+  - "kada"
+  - "kur"
+  - "kuris"
+  - "kuri"
+  - "koks"
+  - "kokia"
+  - "kokie"
+  - "kokiu"
+  - "kokią"
+  - "kokio"
+  - "kam"
+  - "kaip"
+  - "negi"
+
+# --- agent/nlu.py ----------------------------------------------------------------
+
+no_problem_marks:
+  - "bėdų neturiu"
+  - "bedu neturiu"
+  - "problemų neturiu"
+  - "problemu neturiu"
+  - "neturiu bėdų"
+  - "neturiu bedu"
+  - "neturiu problemų"
+  - "neturiu problemu"
+  - "bėdų nėra"
+  - "bedu nera"
+  - "viskas veikia"
+
+# --- Symptom extraction (A3) -------------------------------------------------
+# Deterministic categorical symptoms from the utterance. Order WITHIN a category
+# matters (negations/specifics first: "nedega" before "dega"). Free-form symptoms
+# (exact onset time) are left to the LLM / a future SLM (§12.7).
+symptom_keywords:
+  lights:
+    -
+      - "nedega"
+      - ["nedeg", "nedag", "užges", "negyv", "nešvie"]
+    -
+      - "mirksi"
+      - ["mirks", "mirg", "blyks"]
+    -
+      - "dega"
+      - ["dega", "dag", "švie", "žali"]
+  connection:
+    -
+      - "wifi"
+      - ["wifi", "wi-fi", "vaifai", "belaid", "beviel"]
+    -
+      - "laidinis"
+      - ["laid", "kabel"]
+  devices:
+    -
+      - "visi"
+      - ["visi", "visur", "visuose", "viskas"]
+    -
+      - "vienas"
+      - ["viename", "tik vien", "vienam", "vienas įreng"]
+  frequency:
+    -
+      - "nuolat"
+      - ["nuolat", "visada", "visą laiką"]
+    -
+      - "protarpiais"
+      - ["kartais", "protarpiais", "retkarčiais", "dingsta", "lūžinėja"]
+  services:
+    -
+      - "tv"
+      - ["televizij", "televizor", "kanal"]
+    -
+      - "telefonas"
+      - ["telefon"]
+
+anamnesis_when:
+  -
+    - "ką tik"
+    - ["ką tik", "ka tik", "dabar dingo", "prieš minutę", "pries minute"]
+  -
+    - "šiandien"
+    - ["šiandien", "siandien", "šįryt", "siryt", "ryte"]
+  -
+    - "vakar"
+    - ["vakar"]
+  -
+    - "prieš kelias dienas"
+    - ["prieš kelias", "pries kelias", "užvakar", "uzvakar", "kelios dienos"]
+  -
+    - "prieš valandą"
+    - ["prieš valand", "pries valand"]
+
+anamnesis_trigger:
+  -
+    - "audra"
+    - ["audr", "udra", "žaib", "zaib", "perkūn", "perkun"]
+  -
+    - "elektros dingimas"
+    - ["elektr", "šviesos ding", "sviesos ding"]
+  -
+    - "remontas"
+    - ["remont"]
+  -
+    - "kraustymasis"
+    - ["kraust", "persikraust"]
+  -
+    - "įrangos keitimas"
+    - ["keičiau", "keiciau", "pakeič", "pakeic", "prijungiau"]
+
+# --- agent/evidence.py -----------------------------------------------------------
+
+fact_lights_no:
+  - "nedega"
+  - "ne dega"
+  - "nei viena"
+  - "nė viena"
+  - "ne viena"
+  - "jokia lemp"
+  - "nešvie"
+
+fact_lights_yes: ["dega", "šviečia", "sviecia", "žiba", "ziba"]
+
+fact_has_computer:
+  - "turiu kompiuter"
+  - "yra kompiuter"
+  - "turim kompiuter"
+  - "kompiuteris yra"
+  - "turiu pc"
+
+fact_cable_words: ["laid", "kabel", "maitinim"]
+
+fact_cable_in:
+  - "įkišt"
+  - "ikist"
+  - "įkišau"
+  - "ikisau"
+  - "pajungt"
+  - "prijungt"
+  - "gerai įkiš"
+  - "abiejuose"
+
+fact_cable_out:
+  - "nepajungt"
+  - "neprijungt"
+  - "atjungt"
+  - "ištraukt"
+  - "istraukt"
+  - "iškrit"
+  - "iskrit"
+
+# Context reads for the JUST-ASKED evidence key (2026-08-10): a bare "Radau."
+# to "Radote?" carries no noun, so the general extractor (which demands one)
+# finds nothing — and a clear answer became a give-up. When the engine knows
+# WHICH question is pending, short answers read against THAT key only.
+pending_answers:
+  device_present:
+    -
+      - "rado"
+      -
+        - "radau"
+        - "radome"
+        - "suradau"
+        - "taip"
+        - "yra"
+        - "matau"
+        - "priėjau"
+        - "priejau"
+        - "stoviu prie"
+  lights:
+    -
+      - "nedega"
+      -
+        - "nedega"
+        - "ne dega"
+        - "nešvie"
+        - "nesvie"
+        - "jokia"
+        - "nė viena"
+        - "ne viena"
+        - "ne,"
+        - "ne "
+    -
+      - "mirksi"
+      - ["mirksi", "mirkčioja", "mirkcioja"]
+    -
+      - "dega"
+      - ["dega", "šviečia", "sviecia", "taip"]
+  power_cable:
+    -
+      - "atjungtas"
+      - ["atjungt", "ištraukt", "istraukt", "nepajungt", "ne,", "ne "]
+    -
+      - "įkištas"
+      - ["įkišt", "ikist", "pajungt", "prijungt", "gerai", "taip", "tvirtai"]
+  outlet_works:
+    -
+      - "bandyta"
+      - ["bandž", "bandz", "band", "taip", "kita", "veikia", "perjung"]
+  has_computer:
+    -
+      - "no"
+      - ["netur", "nėra", "nera", "ne,", "ne "]
+    -
+      - "yes"
+      - ["turiu", "turim", "taip", "yra"]
+  lan_active:
+    -
+      - "neaktyvus"
+      - ["neaktyv", "nedega", "nerodo", "nėra", "nera", "ne,", "ne "]
+    -
+      - "aktyvus"
+      - ["aktyv", "veikia", "dega", "rodo", "taip", "yra"]
+
+# --- agent/closing_flow.py -------------------------------------------------------
+
+# When the agent's reply contains one of these, the call is over — end it (hang up)
+# no matter which path produced the goodbye. Kept to clear terminal farewells so a
+# mid-conversation "gero" never trips it.
+goodbye_markers:
+  - "geros dienos"
+  - "geros jums dienos"
+  - "gražios dienos"
+  - "gero vakaro"
+  - "gražaus vakaro"
+  - "viso gero"
+  - "viso labo"
+
+# --- agent/barge_in.py -----------------------------------------------------------
+
+# Positive backchannel tokens — the ONLY words treated as agreeing-along.
+barge_consent_tokens:
+  - "taip"
+  - "gerai"
+  - "aha"
+  - "mhm"
+  - "mhmm"
+  - "aišku"
+  - "aisku"
+  - "klausau"
+  - "supratau"
+  - "ok"
+  - "okey"
+  - "jo"
+  - "nu"
+  - "puiku"
+
+# Halt/negation tokens — hard stop regardless of the utterance length.
+barge_stop_tokens:
+  - "ne"
+  - "ne."
+  - "stop"
+  - "stok"
+  - "palauk"
+  - "palaukit"
+  - "palaukite"
+  - "blogai"
+  - "nereikia"
+  - "netaip"
+  - "nesupratau"
+
+# --- agent/ticket_flow.py --------------------------------------------------------
+
+# A ticket refusal that CARRIES solving content — the caller is refusing the
+# REGISTRATION, not the help.
+continue_solving_marks:
+  - "jung"  # jungiu / pajunkim / prijunkite
+  - "kompiuter"
+  - "kabel"
+  - "bandom"
+  - "bandyk"
+  - "pabandy"
+  - "tikrin"
+  - "tęs"
+  - "tes "
+  - "teskim"
+  - "toliau"
+  - "darom"
+  - "spręs"
+  - "spres"
+
+# --- agent/identification.py -----------------------------------------------------
+
+caller_relation_marks:
+  holder: ["sutart", "savinink", "mano vardu", "aš sudariau", "as sudariau"]
+  family:
+    - "vyras"
+    - "vyro"
+    - "žmona"
+    - "zmona"
+    - "žmonos"
+    - "zmonos"
+    - "vaikas"
+    - "sūnus"
+    - "sunus"
+    - "dukt"
+    - "dukra"
+    - "mama"
+    - "tėv"
+    - "tev"
+    - "brolis"
+    - "sesuo"
+    - "šeim"
+    - "seim"
+  tenant: ["nuominink", "nuomoju", "nuomuoju"]
+  helper: ["kaimyn", "padedu", "padėti", "padeti", "draug"]
+
+# Words that are never a NAME in an intro sentence ("Taip. Mano vardas Andrius.
+# Taip, aš sutartį sudaręs asmuo." landed VERBATIM in the ticket's Kontaktas field
+# — observed live 2026-08-04). Lowercase; sentence-leading fillers included.
+name_stop_words:
+  - "taip"
+  - "ne"
+  - "gerai"
+  - "čia"
+  - "cia"
+  - "aš"
+  - "as"
+  - "mano"
+  - "vardas"
+  - "vardu"
+  - "esu"
+  - "yra"
+  - "labas"
+  - "laba"
+  - "diena"
+  - "sveiki"
+  - "sutartį"
+  - "sutarti"
+  - "sutartis"
+  - "sutarties"
+  - "sudaręs"
+  - "sudares"
+  - "sudariusi"
+  - "asmuo"
+  - "žmona"
+  - "zmona"
+  - "vyras"
+  - "sūnus"
+  - "sunus"
+  - "dukra"
+  - "nuomininkas"
+  - "nuomininkė"
+  - "kaimynas"
+  - "kaimynė"
+
+name_word: "[A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+"
+
+# --- agent/identification_flow.py ------------------------------------------------
+
+big_city_stems:
+  - "vilni"
+  - "kaun"
+  - "klaipėd"
+  - "klaiped"
+  - "panevėž"
+  - "panevez"
+  - "alyt"
+  - "marijampol"
+
+# --- agent/perception_flow.py ----------------------------------------------------
+
+howto_marks:
+  - "kaip "
+  - "kaip?"
+  - "padėk"
+  - "padek"
+  - "nežinau kaip"
+  - "nezinau kaip"
+  - "kokie kabel"
+  - "kokį kabel"
+  - "koki kabel"
+  - "kur jung"
+  - "kur kišt"
+  - "kur kist"
+  # W0-B (live 2026-08-25): "Kur įkišti iki galo? Nesupratau." went to the
+  # side-topic FAQ and got "ne mano sritis" — a where-question about our own
+  # instruction is ON TASK.
+  - "kur įkišti"
+  - "kur ikišti"
+  - "kur ikisti"
+  - "kur žiūrėti"
+  - "kur ziureti"
+  - "kur spausti"
+  - "kur tas"
+  - "kur ta "
+  - "ką daryti"
+  - "ka daryti"
+  - "paaiškink"
+  - "paaiskink"
+
+# --- agent/analyst.py ------------------------------------------------------------
+
+# The three agreed note types, by their tell-tale words (diacritics-folded
+# matching below). Anything else — including action suggestions — is dropped.
+analyst_allowed_marks:
+  # (1) the caller ALREADY said it — do not re-ask
+  - "jau pasake"
+  - "jau sake"
+  - "jau minejo"
+  - "jau atsake"
+  - "jau patvirtino"
+  - "nebeklausk"
+  - "neklausk"
+  - "jau teige"
+  - "jau nurodė"
+  - "jau nurode"
+  # (2) a fact looks wrong / contradicts what the caller keeps saying
+  - "priestarau"
+  - "itartin"
+  - "nesutampa"
+  - "pasitikslin"
+  - "patikslin"
+  - "galejo buti blogai isgirsta"
+  - "zurnal"
+  # (3) the caller is mixing up concepts/devices — name things clearer
+  - "painioj"
+  - "ivardink"
+  - "ivardyk"
+  - "aiskiau"
+  - "supainio"
+  - "paaiskink"
+  - "turejo omenyje"
+  # (4) an important earlier detail no longer visible in the recent window
+  - "pradzioje"
+  - "anksciau"
+  - "primink"
+  - "priminti"
+  - "nepamirsk"
+  # (5) C wave (2026-09-08): the conversation drifted off the ACTIVE question
+  - "nukryp"
+  - "neatsako"
+  - "nesiejami su klausimu"
+  - "aktyvu klausim"
+  - "aktyvaus klausimo"
+
+# Action suggestions aimed at the caller are FORBIDDEN outright — the
+# blacklist beats the whitelist (live 2026-08-28: "butu naudinga PAPRASYTI
+# kliento pateikti MAC adresa" slipped through on the word "zurnalo" and the
+# narrator obeyed — asked the caller for a MAC the engine reads itself).
+analyst_forbidden_marks:
+  - "paprasy"
+  - "papras"
+  - "pateikti"
+  - "paklausk"
+  - "pasiulyk"
+  - "patikrinkite"
+  - "perkrauti"
+  - "perjunkite"
+  - "atjunkite"
+  - "ijunkite"
+  - "mac adres"
+
+# --- agent/dialog_utils.py -------------------------------------------------------
+
+# Repeat-guard: politeness/acknowledgement words stripped before comparing two
+# questions, so "Atsiprašau, ar galėtumėte ..." matches "Ar galėtumėte ..." as a
+# verbatim re-ask instead of looking different because of the prefix.
+stuck_filler:
+  - "atsiprašau"
+  - "gerai"
+  - "supratau"
+  - "prašau"
+  - "ačiū"
+  - "sakykite"
+  - "pasakykite"
+
+# --- agent/endpoint.py (E2 semantic turn-taking) ------------------------------
+
+# An utterance whose LAST word is in this list is an unfinished thought
+# ("nedega, bet…", "patikrinau ir…") — the endpointer waits longer, never cuts
+# the caller mid-sentence.
+continuation_words: ["bet", "ir", "o", "tai", "nes", "kad", "kai", "arba", "tada", "dar", "gal", "nu", "na", "taigi", "vadinasi", "pavyzdžiui", "į", "iš", "su", "prie", "ant", "per", "apie"]
+
+# --- agent/resolution.py: words inside the readers -----------------------------
+
+# A standalone "ne" — a denial in almost every reader.
+bare_no: "\\bne\\b"
+# A whole reply that is just "ne".
+bare_no_replies: ["ne", "ne."]
+# "jo" only as a standalone word — as a substring it matched "nepadėjo"/"jos"
+# (live 2026-09-11 / S6) and flipped a NO report to YES.
+bare_yes_jo: "\\bjo\\b"
+# have_device reads CLAUSE BY CLAUSE ("neturiu kito routerio, aš tik kompiuterį turiu").
+clause_split: "[,;]| bet | tačiau "
+# A clause naming a device is denied by these words (first = the plain denial).
+device_denial: ["neturiu", "nėra"]
+# address confirm: any "ne-" word is a denial ...
+negated_word: "\\bne\\w*"
+# ... unless it negates the PROBLEM ("neveikia", "nėra interneto"), not the address.
+problem_negations: ["neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber"]
+address_yes: ["taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo"]
+# A word starting with these is negated ("NEregistruokite" is not a ticket demand).
+negation_prefixes: ["ne", "nebe"]
+# "Ačiū, nereikia" / "nebereikia" = polite done-signal (live 2026-08-13).
+no_longer_needed: ["nebereikia"]
+not_needed: ["nereikia"]
+thanks_words: ["ačiū", "aciu"]
+# "iki"/"ate" are goodbyes only as the LAST word or leading a farewell phrase
+# ("iki pasimatymo") — as a preposition "iki" is content ("iki galo", "iki 17 valandos").
+standalone_goodbye: ["iki", "ate"]
+goodbye_followers: ["pasimatymo", "viso", "gero", "ate", "iki"]
+# A short closer carrying one of these is still going on, not leaving.
+followup_marks: ["klausim", "dar ", "bet ", "problem", "taip", "tęs", "tes", "toliau", "nebaik"]
+closing_done: ["viskas"]
+# The pure-decline fallback: EVERY token a known closing word ("Ne daganiai 1." is content).
+closing_words: ["ne", "viskas", "ačiū", "aciu", "gerai", "jau", "tiek", "nieko"]
+# A question by its opening words (STT sticks '?' onto rising intonation).
+question_openers: ["kas ", "kaip ", "kam ", "kodėl", "kodel", "negi"]
+
+# --- agent/identification_flow.py ----------------------------------------------
+
+# An explicit street WORD wakes the address reader during account-code mode.
+street_words: ["gatv", " g.", "prospekt", "alėj", "alej", "aikšt"]
+# "aš apie Žeimių gatvę nieko NESAKIAU" — a denial naming the heard street drops it.
+street_denial: ["nesakiau", "nesakau", "ne apie"]
+# The turn carries address evidence (with a digit, or one of these words).
+address_words: ["gatv", " g.", "prospekt", "alėj", "aikšt", "kaim", "adres", "but"]
+# The agent's last question asked for the address.
+address_question_words: ["adres", "gatv", "namo", "numer", "but"]
+# A reply that itself NAMES an address (a yes to "ar tikrai kitas adresas?").
+address_named_words: ["gatv", " g.", "prospekt", "alėj", "kaim", "but"]
+# Address material in a turn (never a "fruitless" turn) — plus the served-city stems.
+address_content_words: ["gatv", " g.", "prospekt", "alėj", "alej", "aikšt", "kaim"]
+# The served area's city stems (a city outside them is "not served").
+served_city_stems: ["šiaul", "siaul"]
+# Spelling by anchor words: "K kaip Kaunas".
+spell_anchor: ["kaip"]
+street_question_words: ["gatv"]
+# Account-code mode: the caller has no code / is not a customer.
+no_account_code: ["neturiu", "nėra jokio", "nera jokio", "nežinau kodo", "nezinau kodo", "nesu klientas", "nesu abonent"]
+account_code_words: ["kod"]
+# Clarifying phase: the last question asked for a surname.
+surname_words: ["pavard"]
+# A question echoing a concrete address: a digit plus one of these.
+street_mark_words: ["gatv", " g."]
+# The last question asked for the street / address name.
+street_asked_words: ["gatv", "adres", "pavadinim"]
+# "Koks mano adresas?" / "Dėl kokio adreso kalbam?"
+address_topic_words: ["adres"]
+which_words: ["kok", "kur"]
+# "Aš Jums perskambinsiu" — the caller will call back.
+will_call_back: ["perskambin", "paskambinsiu", "pats paskambin"]
+later_words: ["vėliau", "veliau"]
+# After "ar negalite dabar patikrinti?": a clear back-to-solving signal ...
+resume_solving: ["galiu", "radau", "viskas gerai", "veikia", "nereikia", "jau "]
+# ... unless negated.
+resume_solving_denied: ["negaliu", "nerandu"]
+# Asking for a technician / registration outright.
+ticket_words: ["registr", "meistr"]
+# After the news: a turn with these is CONTENT, not a goodbye (closing wave
+# block 2: payment claims and follow-up asks were swallowed by the goodbye).
+inform_wants_more: ["klausim", "palauk", "dar ", "noriu", "minut", "sekund", "skol", "sumokėj", "sumokej", "apmokėj", "apmokej", "kiek", "kada", "anks", "neveik", "kain"]
+
+# --- agent/perception_flow.py --------------------------------------------------
+
+# Confirming a volunteered, conclusion-changing fact ("taip, tikrai").
+fact_confirm_yes: ["taip", "tikrai", "jo", "aha", "sakiau"]
+# The ticket cancel is confirmed ("Registruoti, ar tikrai nereikia?" -> "nereikia").
+ticket_cancel_confirmed: ["neregistruok", "nereikia", "atšauk", "atsauk", "nenoriu"]
+# "Gerai, aš paskambinsiu vėliau" mid ticket dialogue — a callback wish, not a contact answer.
+will_call_back_first_person: ["paskambinsiu", "perskambinsiu", "pats paskambin"]
+# Keyword question-divert in the ticket dialogue (fallback when the reader did not run).
+ticket_offscript_question: ["kodėl", "kodel", "kiek", "kam ", "kas čia", "kas cia", "kokiu", "koks ", "kokia ", "galima", "ar "]
+# An explicit "do not register" (one confirm round first).
+ticket_cancel: ["neregistruok", "nereikia regi", "nereikia tiket", "atšauk", "atsauk"]
+# A plausible call-back-hours answer (a digit or one of these).
+contact_hours_marks: ["bet kada", "bet kad", "kada nor", "visada", "ryt", "vakar", "val", "darbo", "diena", "dien", "po ", "iki ", "nuo ", "savait", "pirmad", "antrad", "trečiad", "treciad", "ketvirtad", "penktad", "šeštad", "sestad", "sekmad", "dabar", "šiandien", "siandien"]
+# Wait/consent-only replies to "who is calling?" are not a name ("Taip.", "Laukiu, laukiu").
+not_a_name: ["taip", "ne", "gerai", "laukiu", "aha", "mhm", "jo", "ačiū", "aciu", "ok", "okey", "nesu", "na", "nu", "tai"]
+# The last question offered an address ("Ar skambinate dėl X?").
+address_offer_question: ["skambinate dėl", "dėl šio adreso", "adreso skambinate"]
+
+# --- agent/nlu.py, agent/evidence.py: fact readers ------------------------------
+
+# The number nearest an explicit house word is the HOUSE (NLU wave block 1).
+house_words: ["namo", "namas", "nama", "name", "namu"]
+# Apartment = the first number after a word starting with this (deaccented; 4+ letters).
+apartment_marker: ["but"]
+# STT splits the negation prefix ("ne dega" for "nedega") — glue it back.
+split_negation: "\\bne (?=[a-ząčęėįšųūž])"
+split_negation_glued: "ne"
+# "Nežinau, kada dingo" — a valid anamnesis reading.
+dont_know: ["nežin", "nezin"]
+# Folded words (see lang.fold) the fact extractor reads:
+fact_computer_words: ["kompiuter"]
+# "Neturiu kompiuterio" / "nėra ... kompiuterio" — negation attached to the COMPUTER itself.
+fact_no_computer: "(netur\\w*|nera)\\s+(?:\\w+\\s+){0,2}kompiuter"
+# "tik su kompiuteriu" — a YES.
+fact_only_computer: "tik\\s+(su\\s+)?kompiuter"
+only_words: ["tik"]
+fact_lights_words: ["lemp", "sviesel"]
+fact_lights_blinking: ["mirksi", "mirkcioja"]
+# "razet" — the STT routinely hears "rozetė" as "razetė".
+fact_outlet_words: ["rozet", "razet"]
+fact_outlet_tried: ["kit", "band", "perjung"]
+fact_router_words: ["router", "dezut"]
+fact_device_found: ["radau", "priėjau", "matau", "esu prie", "suradau"]
+# A bare yes/no for a pending yes/no conflict ("turiu" / "ne, neturiu").
+polarity_no: ["netur", "ne,", "ne ", "nera"]
+polarity_yes: ["turiu", "turim", "taip", "yra"]
+
+# --- agent/ticket_flow.py, walker_guards.py, solver_flow.py, barge_in.py, speculation.py ---
+
+# The narrator CLAIMED a registration ("Užregistravau gedimą…") ...
+registration_claim: ["užregistrav", "uzregistrav", "registruoju gedim"]
+# ... about the ticket/technician (not a MAC bind "užregistravau routerį").
+registration_claim_subject: ["gedim", "meistr", "tiket", "koleg", "technik"]
+# "ne aš sudariau sutartį" — explicitly not the contract holder.
+caller_not_holder: ["ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar"]
+# A plain yes to "ar jūs sutartį sudaręs asmuo?".
+caller_plain_yes: ["taip", "aš", "as "]
+# Homework step: consent words; a ticket/technician wish blocks the consent.
+homework_agreed: ["gerai", "sutariam", "sutarėm", "sutarem", "sutinku", "taip"]
+homework_blocked: ["registruok", "meistr", "nereikia", "nesutink"]
+# "pririškite tada" — asks for the bind itself.
+bind_request: ["pririsk"]
+# Passive done-forms answering the plug instruction ("jungtas, LAN rodo").
+plugged_passive: ["įkištas", "prijungtas", "pajungtas", "jungtas", "kištas"]
+# Barge-in: a word starting with these halts the agent ("nestabdykit" is still a stop).
+barge_stop_prefixes: ["nesta", "nebe"]
+# Speculation: a compound utterance may carry content the extractors do not model.
+compound_marks: [" bet ", " o ", " taip pat ", " dar "]
+
+# --- rag/hybrid_retriever.py ----------------------------------------------------
+
+# Glue words dropped from BM25 tokens (Lithuanian knowledge base + English terms).
+rag_stop_words: ["ir", "ar", "su", "be", "per", "nuo", "iki", "apie", "pas", "tai", "kas", "kaip", "kur", "kada", "kodėl", "kodel", "yra", "buvo", "bus", "būti", "buti", "turi", "gali", "labai", "dabar", "jau", "dar", "tik", "net", "vis", "man", "mano", "jums", "jūsų", "jusu", "the", "a", "an", "is", "are", "was", "were", "been", "have", "has", "had", "do", "does", "did", "will", "would", "can", "could", "may", "might", "must", "shall", "should", "and", "or", "but", "if", "then", "else", "when", "where", "what", "which", "who", "how", "why", "this", "that", "these", "those", "my", "your", "his", "her", "its", "our", "their", "not", "no", "yes", "very", "just", "only", "also"]

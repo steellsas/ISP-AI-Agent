@@ -19,38 +19,7 @@ beats consent at any length ("ne!" stops the agent, always).
 
 from __future__ import annotations
 
-# Positive backchannel tokens — the ONLY words treated as agreeing-along.
-CONSENT_TOKENS = (
-    "taip",
-    "gerai",
-    "aha",
-    "mhm",
-    "mhmm",
-    "aišku",
-    "aisku",
-    "klausau",
-    "supratau",
-    "ok",
-    "okey",
-    "jo",
-    "nu",
-    "puiku",
-)
-
-# Halt/negation tokens — hard stop regardless of the utterance length.
-STOP_TOKENS = (
-    "ne",
-    "ne.",
-    "stop",
-    "stok",
-    "palauk",
-    "palaukit",
-    "palaukite",
-    "blogai",
-    "nereikia",
-    "netaip",
-    "nesupratau",
-)
+from .contract.locale import vocab
 
 _ECHO_OVERLAP = 0.8  # fuzzy token overlap (>=) that reads as our own echo
 _MAX_CONSENT_WORDS = 3  # longer than this is content, not a backchannel
@@ -88,10 +57,12 @@ def classify_interruption(transcript: str, agent_text: str | None) -> str:
     if not toks:
         return "substantive"  # unreadable — default-deny
     # Negation wins at any length — an urgent halt must never be swallowed.
-    if any(t in STOP_TOKENS or t.startswith(("nesta", "nebe")) for t in toks):
+    if any(
+        t in vocab("barge_stop_tokens") or t.startswith(vocab("barge_stop_prefixes")) for t in toks
+    ):
         return "stop"
     if agent_text and len(toks) >= 2 and token_overlap(transcript, agent_text) >= _ECHO_OVERLAP:
         return "echo"
-    if len(toks) <= _MAX_CONSENT_WORDS and all(t in CONSENT_TOKENS for t in toks):
+    if len(toks) <= _MAX_CONSENT_WORDS and all(t in vocab("barge_consent_tokens") for t in toks):
         return "consent"
     return "substantive"

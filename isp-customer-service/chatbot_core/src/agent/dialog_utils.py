@@ -9,18 +9,7 @@ import re
 from difflib import SequenceMatcher
 from typing import Any
 
-# Repeat-guard: politeness/acknowledgement words stripped before comparing two
-# questions, so "Atsiprašau, ar galėtumėte ..." matches "Ar galėtumėte ..." as a
-# verbatim re-ask instead of looking different because of the prefix.
-STUCK_FILLER = {
-    "atsiprašau",
-    "gerai",
-    "supratau",
-    "prašau",
-    "ačiū",
-    "sakykite",
-    "pasakykite",
-}
+from .contract.locale import vocab_set
 
 
 def last_agent_question(state: Any) -> str | None:
@@ -51,7 +40,7 @@ def sanitize_question(text: str) -> str:
     """Lowercase, drop punctuation + politeness fillers, collapse whitespace —
     so two questions compare on their CORE, not their wording trim."""
     cleaned = re.sub(r"[^\w\s]", " ", text.lower(), flags=re.UNICODE)
-    return " ".join(w for w in cleaned.split() if w not in STUCK_FILLER)
+    return " ".join(w for w in cleaned.split() if w not in vocab_set("stuck_filler"))
 
 
 def similar(a: str, b: str) -> bool:

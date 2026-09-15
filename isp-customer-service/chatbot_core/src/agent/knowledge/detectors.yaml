@@ -31,6 +31,10 @@ detectors:
     'yes': internetas dabar veikia / atsirado
     'no': internetas vis dar neveikia
 
+  reboot_check:
+    'yes': po perkrovimo internetas atsistatė — lemputė MIRKSI ir/ar puslapis atsidaro
+    'no': po perkrovimo vis dar neveikia — lemputė nemirksi / dega pastoviai / puslapis neatsidaro
+
   scope:
     all: sako, kad internetas neveikia VISUOSE įrenginiuose
     one: sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame

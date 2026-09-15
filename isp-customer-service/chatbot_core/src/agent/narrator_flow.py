@@ -16,7 +16,7 @@ import os  # noqa: F401
 import re  # noqa: F401
 from typing import Any  # noqa: F401
 
-from .contract.locale import phrase_or
+from .contract.locale import phrase_or, vocab
 from .graph_v2.tool_scopes import STRATEGY_ACTION_TOOLS, STRATEGY_DIAG_TOOLS
 from .ticket_flow import fmt_phone
 from .verdict import UNRESOLVED_LINE_FAULTS
@@ -482,13 +482,13 @@ def state_facts_block(state, rt) -> str | None:
     if _net.get("reason") == "billing_suspended":
         _debt = (_net.get("signals") or {}).get("billing_debt") or {}
         if _debt.get("amount"):
-            from .informavimas import _date_gen, _eur, _months_acc
+            from .contract.locale import lang
 
-            _bits = [f"skola {_eur(float(_debt['amount']))}"]
-            _m = _months_acc(_debt.get("months") or [])
+            _bits = [f"skola {lang().money(float(_debt['amount']))}"]
+            _m = lang().months(_debt.get("months") or [])
             if _m:
                 _bits.append(f"už {_m}")
-            _lp = _date_gen(_debt.get("last_payment"))
+            _lp = lang().date(_debt.get("last_payment"))
             if _lp:
                 _bits.append(f"paskutinis mokėjimas gautas {_lp}")
             facts.append(
@@ -1434,7 +1434,9 @@ def update_state_from_observation(state, rt, action: str, observation: str):
                 clarification = (
                     street_lvl.get("status") == "not_in_city"
                     or apt_lvl.get("status") == "required"
-                    or "pavard" in str(obs_data.get("hint") or "").lower()
+                    or any(
+                        w in str(obs_data.get("hint") or "").lower() for w in vocab("surname_words")
+                    )
                 )
                 if not clarification and (
                     street_lvl.get("status") not in (None, "ok")

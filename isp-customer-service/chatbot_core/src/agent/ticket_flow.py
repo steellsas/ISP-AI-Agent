@@ -15,26 +15,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .contract.locale import phrase_or
-
-# A ticket refusal that CARRIES solving content — the caller is refusing the
-# REGISTRATION, not the help.
-CONTINUE_SOLVING_MARKS = (
-    "jung",  # jungiu / pajunkim / prijunkite
-    "kompiuter",
-    "kabel",
-    "bandom",
-    "bandyk",
-    "pabandy",
-    "tikrin",
-    "tęs",
-    "tes ",
-    "teskim",
-    "toliau",
-    "darom",
-    "spręs",
-    "spres",
-)
+from .contract.locale import phrase_or, vocab
 
 
 def begin_ticket_dialogue(state: Any, rt: Any, step) -> None:
@@ -116,7 +97,9 @@ def wants_to_keep_solving(state: Any, rt: Any, user_input: str | None) -> bool:
     # mark only counts when the word carrying it is not itself negated.
     for token in low.split():
         word = token.strip(".,!?…")
-        if any(m in word for m in CONTINUE_SOLVING_MARKS) and not word.startswith(("ne", "nebe")):
+        if any(m in word for m in vocab("continue_solving_marks")) and not word.startswith(
+            vocab("negation_prefixes")
+        ):
             return True
     return False
 
@@ -261,12 +244,12 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
     the promise becomes the process. Returns the appended text or None."""
     s = state
     low = (content or "").lower()
-    if not any(m in low for m in ("užregistrav", "uzregistrav", "registruoju gedim")):
+    if not any(m in low for m in vocab("registration_claim")):
         return None
     # A DEVICE registration ("užregistravau jūsų naują routerį prie linijos" —
     # the MAC bind, live eval 2026-08-21) is not a fault-ticket claim: the
     # guard fires only when the sentence is about the ticket/technician.
-    if not any(m in low for m in ("gedim", "meistr", "tiket", "koleg", "technik")):
+    if not any(m in low for m in vocab("registration_claim_subject")):
         return None
     if (
         s.ticket.ticket_id

@@ -1000,7 +1000,7 @@ class TestRefuseOrTicket:
 
 class TestAddressSpeech:
     def test_spoken_address_form(self):
-        from agent.voice_pipeline import normalize_lt_address_speech as n
+        from agent.voice_pipeline import speech_text as n
 
         assert n("Ar skambinate dėl Tilžės g. 60-7?") == (
             "Ar skambinate dėl Tilžės gatvė, namas 60, butas 7?"

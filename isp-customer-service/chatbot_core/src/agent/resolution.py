@@ -19,9 +19,10 @@ Adding a fault = one Strategy here + one RAG doc — the skeleton does not chang
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from enum import Enum
+
+from .contract.locale import vocab, vocab_re, vocab_set
 
 
 class StepKind(str, Enum):
@@ -647,74 +648,15 @@ STRATEGIES: dict[str, Strategy] = {
     "unclear_fault": _UNCLEAR_FAULT,
 }
 
-# Deterministic yes/no read of a caller reply, to advance a CONFIRM step. Coarse
-# on purpose: a clear affirmative advances (e.g. to bind), anything with a denial
-# or "nothing changed" does NOT advance to an action — so the agent never binds a
-# device the caller did not knowingly connect.
-_NEG = (
-    "nekeič",
-    "nekeit",
-    "nekyč",  # STT garbling of "nekeičiau"
-    "nekėč",
-    "nekič",
-    "nekie",  # STT garbling of "nekeičiau" -> "nekiečiau"
-    "nekeč",  # STT drop of the 'i' -> "nekečiau" (must beat the "keč" positive)
-    "nieko nekeit",
-    "nieko nedar",
-    "nieko nekyč",
-    "neprijung",
-    "nemaiš",
-    "nežinau",
-    "neatsimen",
-)
-_POS = (
-    "taip",
-    "aha",
-    "teisingai",
-    "keičiau",
-    "keč",  # STT drop of the 'i' in "keičiau" -> "kečiau"
-    "pakeič",
-    "prijungiau",
-    "prijungėm",
-    "naują",
-    "naujas",
-    "nusipirk",
-)
-
-
-# A STRONG device-change signal (not a bare "taip"): the caller volunteered that
-# they changed/connected equipment, so a CONFIRM step can advance even if its
-# question was not asked yet (they pre-answered — common: "neveikia, keičiau
-# routerį"). A bare affirmative alone must NOT advance a confirm before it is asked.
-_DEVICE_CHANGE = (
-    "keičiau",
-    "keč",  # STT drop of the 'i' in "keičiau" -> "kečiau"
-    "keitėm",
-    "pakeič",
-    "prijungiau",
-    "prijungėm",
-    "prijungiau naują",
-    "nusipirk",
-    "naują router",
-    "naujas router",
-    "kitą įrenginį",
-    "kitą router",
-    "router",  # a bare "routerį/routerė" answer to "did you change the router?" = yes
-    "kompiuter",  # PC plugged straight into the line (temporary bridge)
-    "kompiuterį",
-    "televizor",
-    "prijungiau tv",
-)
-
 
 def confirms_device_change(text: str | None) -> bool:
     """True if the caller clearly stated they changed/connected a device."""
     if not text:
         return False
     low = text.lower()
-    if any(m in low for m in _NEG):
+    if any(m in low for m in vocab("neg")):
         return False
-    return any(m in low for m in _DEVICE_CHANGE)
+    return any(m in low for m in vocab("device_change"))
 
 
 def detect_yes_no(text: str | None) -> Outcome | None:
@@ -724,51 +666,13 @@ def detect_yes_no(text: str | None) -> Outcome | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _NEG):
+    if any(m in low for m in vocab("neg")):
         return Outcome.NO
-    if re.search(r"\bne\b", low):
+    if vocab_re("bare_no").search(low):
         return Outcome.NO
-    if any(m in low for m in _POS):
+    if any(m in low for m in vocab("pos")):
         return Outcome.YES
     return None
-
-
-# "Is the internet back?" answers use DIFFERENT vocabulary than the device-change
-# confirm (veikia/atsirado vs keičiau) — so confirm_restored needs its own reader.
-# Negatives are tested first because "neveikia" contains "veik".
-_RESTORED_NO = (
-    "neveik",
-    "nevyk",  # STT garble of "neveikia"
-    "neatsirad",
-    "vis dar ne",
-    "vis tiek ne",
-    "dar ne",
-    "nėra internet",
-    "nesat",
-    # Live 2026-09-11: "perkišau, nepadėjo" — the negated report vocabulary was
-    # missing, so the trailing "jo" substring matched _RESTORED_YES and a damaged
-    # cable closed as resolved.
-    "nepadėjo",
-    "nepadejo",
-    "nepadeda",
-    "nepasikeit",
-    "nedirba",
-    "neprisijung",
-)
-_RESTORED_YES = (
-    "taip",  # the plain answer to "ar internetas atsirado?" — was missing, so a
-    "aha",  # confirmed fix looked unanswered and ended in a needless ticket
-    "veikia",
-    "atsirad",  # atsirado internetas
-    "atsarad",  # STT garble of "atsirado" (live 2026-09-08: "interneto satsarado")
-    "satsarad",  # the same garble with a leading s
-    "atsistat",  # ryšys atsistatė
-    "prisijung",
-    "jau yra",
-    "yra internet",
-    "dirba",
-    "atgal",
-)
 
 
 def detect_restored(text: str | None) -> Outcome | None:
@@ -778,53 +682,17 @@ def detect_restored(text: str | None) -> Outcome | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _RESTORED_NO):
+    if any(m in low for m in vocab("restored_no")):
         return Outcome.NO
-    if re.search(r"\bne\b", low) or low.strip() in ("ne", "ne."):
+    if vocab_re("bare_no").search(low) or low.strip() in vocab("bare_no_replies"):
         return Outcome.NO
-    if any(m in low for m in _RESTORED_YES):
+    if any(m in low for m in vocab("restored_yes")):
         return Outcome.YES
     # "jo" only as a standalone word — as a substring it matched "nepadėjo"/"jos"
     # (live 2026-09-11 / S6) and flipped a NO report to YES.
-    if re.search(r"\bjo\b", low):
+    if vocab_re("bare_yes_jo").search(low):
         return Outcome.YES
     return None
-
-
-# S6 rh_check (2026-09-02): the post-reboot check asks about the INTERNET
-# LIGHT and a web page — "dega" vocabulary must NOT read as restored (live:
-# "Visos lemputės dega, bet jos nemirksi" closed the call as resolved — the
-# generic _RESTORED_YES "jo" substring matched "jos"). Negation wins.
-_REBOOT_NO = (
-    "nemirksi",
-    "nemirks",
-    "neveikia",
-    "nevaikšto",
-    "nevaiksto",
-    "neatsidaro",
-    "neatsidarė",
-    "neatsidare",
-    "nėra internet",
-    "nera internet",
-    "pastoviai dega",
-    "dega pastoviai",
-    "vis tiek ne",
-    "vis dar ne",
-    "dar ne",
-)
-_REBOOT_YES = (
-    "mirksi",
-    "mirkčioja",
-    "mirkcioja",
-    "atsidaro",
-    "atsidarė",
-    "atsidare",
-    "veikia",
-    "atsirad",
-    "atsistat",
-    "jau yra",
-    "yra internet",
-)
 
 
 def detect_reboot_check(text: str | None) -> Outcome | None:
@@ -836,28 +704,13 @@ def detect_reboot_check(text: str | None) -> Outcome | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _REBOOT_NO):
+    if any(m in low for m in vocab("reboot_no")):
         return Outcome.NO
-    if re.search(r"\bne\b", low) or low.strip() in ("ne", "ne."):
+    if vocab_re("bare_no").search(low) or low.strip() in vocab("bare_no_replies"):
         return Outcome.NO
-    if any(m in low for m in _REBOOT_YES):
+    if any(m in low for m in vocab("reboot_yes")):
         return Outcome.YES
     return None
-
-
-# --- Client-side branch detectors (healthy_to_router) ------------------------
-# "all devices or one?" — and, when one, WHICH device, because a phone/tablet can
-# only be Wi-Fi (never suggest a cable to it).
-_WIRELESS_ONLY = ("telefon", "planšet", "planset", "mobil", "išmanij", "ismanij")
-# Devices that answer "one device, and it is wireless". "tv" needs a word boundary
-# (see _TV_RE) or it fires inside words like "tvarkinga".
-_ONE_PHONE = (*_WIRELESS_ONLY, "televizor")
-_TV_RE = re.compile(r"\btv\b")
-_ONE_COMPUTER = ("kompiuter", "kompas", "nešiojam", "nesiojam", "laptop", "stacionar")
-_ONE_MARK = ("tik ", "viename", "vienam", "vien ", "tik vien")
-_ALL_MARK = ("visuose", "visur", "visuos", "visi ", "visų", "nei viename", "niekur")
-# "one device, unnamed" — routes to the WHICH-device step (cs_which), never a guess.
-_ONE_MARK = ("viename", "vienam", "tik vien", "viena")
 
 
 def detect_scope(text: str | None) -> str | None:
@@ -867,23 +720,19 @@ def detect_scope(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _ONE_PHONE) or _TV_RE.search(low):
+    if any(m in low for m in vocab("one_phone")) or vocab_re("tv_word").search(low):
         return "phone"
-    if any(m in low for m in _ONE_COMPUTER):
+    if any(m in low for m in vocab("one_computer")):
         return "computer"
-    if any(m in low for m in _ALL_MARK):
+    if any(m in low for m in vocab("all_mark")):
         return "all"
     # "tik viename" WITHOUT naming the device: scope answered, device not — route to
     # the WHICH-device step ('one'), never guess a device (guessing "computer" once
     # made the agent ask a phone user about cables). Checked AFTER _ALL_MARK so "nei
     # viename" (= none work = all down) is not misread as one.
-    if any(m in low for m in _ONE_MARK):
+    if any(m in low for m in vocab("one_mark")):
         return "one"
     return None
-
-
-_CONN_WIRED = ("laid", "kabel", "eternet", "ethernet", "lan")
-_CONN_WIFI = ("wifi", "wi-fi", "wi fi", " wf", "vaifa", "vaifai", "belaid", "bevieli")
 
 
 def detect_conn(text: str | None) -> str | None:
@@ -893,17 +742,11 @@ def detect_conn(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _CONN_WIFI) or any(m in low for m in _WIRELESS_ONLY):
+    if any(m in low for m in vocab("conn_wifi")) or any(m in low for m in vocab("wireless_only")):
         return "wifi"
-    if any(m in low for m in _CONN_WIRED):
+    if any(m in low for m in vocab("conn_wired")):
         return "wired"
     return None
-
-
-# Route by PORT FUNCTION, not colour (a caller may not see colours; STT garbles
-# "LAN lizdą" -> "laną lėsdą"). WAN/Internet port = correct; LAN/other = must move.
-_PORT_LAN = ("lan", "laną", "lėsd", "kit", "antr", "treči", "eternet", "gelton")
-_PORT_WAN = ("wan", "internet", "pirm", "atskir", "mėlyn", "melyn")
 
 
 def detect_port(text: str | None) -> str | None:
@@ -913,35 +756,11 @@ def detect_port(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _PORT_LAN):
+    if any(m in low for m in vocab("port_lan")):
         return "lan"
-    if any(m in low for m in _PORT_WAN):
+    if any(m in low for m in vocab("port_wan")):
         return "wan"
     return None
-
-
-# "Are any lights on?" — NO is tested first because "nedega" contains "dega".
-# STT mangles these badly ("nedega" -> "nedaga"/"neusidaga"), and a stuck detector
-# here made the agent repeat the same question six times. Keep the NO markers loose.
-_LIGHTS_NO = (
-    "nedega",
-    "nedaga",
-    "neusidaga",
-    "neužsidega",
-    "neuzsidega",
-    "neišdegė",
-    "neisdege",
-    "nešviečia",
-    "nesviecia",
-    "nemirksi",
-    "tamsu",
-    "jokių",
-    "jokia",
-    "niekas",
-    "vis tiek ne",
-    "negyv",
-)
-_LIGHTS_YES = ("dega", "šviečia", "sviecia", "mirksi", "užsidegė", "uzsidege", "žalia", "raudona")
 
 
 def detect_lights(text: str | None) -> str | None:
@@ -949,28 +768,11 @@ def detect_lights(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _LIGHTS_NO) or re.search(r"\bne\b", low):
+    if any(m in low for m in vocab("lights_no")) or vocab_re("bare_no").search(low):
         return "no"
-    if any(m in low for m in _LIGHTS_YES):
+    if any(m in low for m in vocab("lights_yes")):
         return "yes"
     return None
-
-
-_DEVICE_YES = (
-    "turiu",
-    "yra",
-    "kompiuter",
-    "nešiojam",
-    "nesiojam",
-    "router",
-    "atsineš",
-    "atsines",
-    "pajung",
-    "prijung",
-)
-
-
-_USABLE_DEVICE = ("kompiuter", "nešiojam", "nesiojam", "laptop", "router", "kompas")
 
 
 def detect_have_device(text: str | None) -> str | None:
@@ -983,20 +785,24 @@ def detect_have_device(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    clauses = [c for c in re.split(r"[,;]| bet | tačiau ", low) if c.strip()]
+    clauses = [c for c in vocab_re("clause_split").split(low) if c.strip()]
     saw_device_clause = False
     for c in clauses:
-        if not any(d in c for d in _USABLE_DEVICE):
+        if not any(d in c for d in vocab("usable_device")):
             continue
         saw_device_clause = True
-        if "neturiu" not in c and "nėra" not in c and not re.search(r"\bne\b", c):
+        if not any(m in c for m in vocab("device_denial")) and not vocab_re("bare_no").search(c):
             return "yes"  # a device named without being denied — that is enough
     if saw_device_clause:
         return "no"  # every device they mentioned was denied
     # No device named at all — fall back to a plain yes/no, denial first.
-    if any(m in low for m in _NEG) or "neturiu" in low or re.search(r"\bne\b", low):
+    if (
+        any(m in low for m in vocab("neg"))
+        or vocab("device_denial")[0] in low
+        or vocab_re("bare_no").search(low)
+    ):
         return "no"
-    if any(m in low for m in _DEVICE_YES) or any(m in low for m in _POS):
+    if any(m in low for m in vocab("device_yes")) or any(m in low for m in vocab("pos")):
         return "yes"
     return None
 
@@ -1029,101 +835,6 @@ DETECTORS = {
     "have_device": detect_have_device,
 }
 
-# What each detector's routing keys MEAN, in plain Lithuanian. The keys are abstract
-# (yes/no/all/phone…) so the LLM classifier cannot map a reply to them without knowing
-# the meaning — passing these glosses is what lets it pick "no" for "nedega jokia
-# lemputė" while refusing to force "yes" onto "susiradau routerį" (→ unclear, hold).
-DETECTOR_GLOSSES: dict[str, dict[str, str]] = {
-    "yes_no": {"yes": "sutinka / patvirtina / taip", "no": "atsisako / neigia / ne"},
-    "lights": {
-        "yes": "ant įrenginio dega bent viena lemputė",
-        "no": "nedega jokia lemputė",
-    },
-    "restored": {
-        "yes": "internetas dabar veikia / atsirado",
-        "no": "internetas vis dar neveikia",
-    },
-    "reboot_check": {
-        "yes": "po perkrovimo internetas atsistatė — lemputė MIRKSI ir/ar puslapis atsidaro",
-        "no": "po perkrovimo vis dar neveikia — lemputė nemirksi / dega pastoviai / puslapis neatsidaro",
-    },
-    "scope": {
-        "all": "sako, kad internetas neveikia VISUOSE įrenginiuose",
-        "one": "sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame",
-        "phone": "AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')",
-        "computer": "AIŠKIAI įvardija kompiuterį ar nešiojamą",
-    },
-    "conn": {
-        "wifi": "įrenginys jungiasi per WiFi (bevielį)",
-        "wired": "įrenginys jungiasi laidu",
-    },
-    "port": {
-        "wan": "kabelis įkištas į interneto (WAN) lizdą",
-        "lan": "kabelis įkištas į kitą (LAN) lizdą",
-    },
-    "have_device": {
-        "yes": "klientas turi kompiuterį arba kitą routerį",
-        "no": "klientas neturi jokio kito įrenginio",
-    },
-}
-
-
-_FAREWELL = (
-    "viso gero",
-    "viso labo",
-    "geros dienos",
-    "gero vakaro",
-    "sudie",
-    "ačiū, viskas",
-    "tai viskas",
-    "viskas ačiū",
-    "daugiau ne",
-    "nieko daugiau",
-    "pakaks",
-    "ne ačiū",
-    "ne, ačiū",
-    "ne, aciu",
-    "nebereikia",
-    # NOTE: "iki" and "ate" are NOT in this substring list — they hide inside
-    # "neveIKIa"/"ATEina"; detect_farewell checks them as whole words instead.
-    # STT garbles of "viso gero / viso labo" heard in live calls — a farewell must
-    # still close the call when whisper mangles the vowels.
-    "visą gerą",
-    "visa gera",
-    "visą gera",
-    "viso gera",
-    "visai ger",  # "Ne visai gero" = garbled "ne, viso gero" (observed live)
-)
-
-
-_CONFUSED = (
-    "nesuprantu",
-    "nesupratau",
-    "kas tai",
-    "kas tas",
-    "kas ta ",
-    "ką reiškia",
-    "ka reiskia",
-    "nesigaudau",
-    "nežinau kur",
-    "nezinau kur",
-    "nežinau kas",
-    "neišmanau",
-    "neismanau",
-    "nemoku",
-    "nesu tech",
-    "paaiškinkite",
-    "paaiskinkite",
-    # G1 (2026-08-20): a struggling caller ("neišeina", "nesiseka", "nežinau
-    # kaip") gets the explain-simpler path, not a repeat of the same words.
-    # NOT "nepavyko" — that is a step ROUTING answer (modules' isejimai).
-    "neišeina",
-    "neiseina",
-    "nesiseka",
-    "nežinau kaip",
-    "nezinau kaip",
-)
-
 
 # --- Turn intent -------------------------------------------------------------
 # What KIND of turn the caller just took. Only ANSWER and DONE may advance a step;
@@ -1138,63 +849,6 @@ INTENT_CONFUSED = "confused"  # does not follow -> explain finer, stay
 INTENT_SILENCE = "silence"  # nothing usable -> wait, do not scold
 INTENT_UNKNOWN = "unknown"  # safe default: hold and ask, never advance
 
-_IN_PROGRESS = (
-    "einu",
-    "eisiu",
-    "nueisiu",
-    "atsineš",
-    "atsines",
-    "tuoj",
-    "tuojau",
-    "palauk",
-    "sekundėl",
-    "sekundel",
-    "minutėl",
-    "minutel",
-    "bandau",
-    "bandysiu",
-    "darau",
-    "darysiu",
-    "žiūriu",
-    "ziuriu",
-    "ieškau",
-    "iesk",
-    "einam",
-)
-_DONE = (
-    "padariau",
-    "padaryta",
-    "atlikau",
-    "įkišau",
-    "ikisau",
-    "įjungiau",
-    "ijungiau",
-    "išjungiau",
-    "isjungiau",
-    "perkroviau",
-    "perjungiau",
-    "ištraukiau",
-    "istraukiau",
-    "prijungiau",
-    "pajungiau",
-    "jau",
-    "gatava",
-    "viskas",
-)
-_QUESTION = (
-    "kiek",
-    "kodėl",
-    "kodel",
-    "kada",
-    "ar galima",
-    "o kaip",
-    "kur ",
-    "kuris",
-    "kokiu",
-    "koks ",
-    "kokia ",
-)
-
 
 def detect_turn_intent(text: str | None) -> str:
     """Classify the caller's turn before the walker routes it.
@@ -1208,11 +862,11 @@ def detect_turn_intent(text: str | None) -> str:
     low = text.lower()
     if detect_confusion(low):
         return INTENT_CONFUSED
-    if "?" in low or any(m in low for m in _QUESTION):
+    if "?" in low or any(m in low for m in vocab("question_marks")):
         return INTENT_QUESTION
-    if any(m in low for m in _IN_PROGRESS):
+    if any(m in low for m in vocab("in_progress")):
         return INTENT_IN_PROGRESS
-    if any(m in low for m in _DONE):
+    if any(m in low for m in vocab("done")):
         return INTENT_DONE
     return INTENT_ANSWER
 
@@ -1224,41 +878,7 @@ def detect_confusion(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    return any(m in low for m in _CONFUSED)
-
-
-# Ticket-registration consent (Phase 3.11 B): the ESCALATE step asks "užregistruosiu
-# gedimą — ar tinka?" and the ENGINE registers on consent. Vocabulary differs from the
-# device-change confirm (tinka/gerai/sutinku vs keičiau), so it needs its own reader.
-_CONSENT_YES = (
-    "taip",
-    "tinka",
-    "gerai",
-    "sutinku",
-    "sutariam",
-    "sutinkam",
-    "jo",
-    "aha",
-    "mhm",
-    "registruok",
-    "užregistruok",
-    "uzregistruok",
-    "darykit",
-    "darykite",
-    "lauksiu",  # "lauksiu skambučio" = expects the registration — consent, not decline
-    "lauksim",
-)
-_CONSENT_NO = (
-    "nenoriu",
-    "nereikia",
-    "atsisak",
-    "neregistruok",
-    "nedarykit",
-    "ne ačiū",
-    "ne, ačiū",
-    "ne, aciu",
-    "ne aciu",
-)
+    return any(m in low for m in vocab("confused"))
 
 
 def detect_address_confirm(text: str | None) -> str | None:
@@ -1272,73 +892,18 @@ def detect_address_confirm(text: str | None) -> str | None:
     if not text or not text.strip():
         return None
     low = text.lower()
-    if any(m in low for m in _ADDR_NO):
+    if any(m in low for m in vocab("addr_no")):
         return "no"
     ne_tokens = [
         t
-        for t in re.findall(r"\bne\w*", low)
+        for t in vocab_re("negated_word").findall(low)
         # the PROBLEM being negated is not an address denial:
-        if not t.startswith(
-            ("neveik", "nevyk", "nėra", "nera", "netur", "nebeveik", "nebėr", "neber")
-        )
+        if not t.startswith(vocab("problem_negations"))
     ]
-    has_yes = any(
-        m in low for m in ("taip", "tvirtinu", "to adreso", "dėl šio", "del sio", "aha", "jo")
-    )
+    has_yes = any(m in low for m in vocab("address_yes"))
     if ne_tokens:
         return "no" if not has_yes else None  # mixed "taip…ne…" garble -> re-ask
     return "yes" if has_yes else None
-
-
-_ADDR_NO = (
-    "ne dėl",
-    "ne del",
-    "ne tas adres",
-    "ne to adres",
-    "ne tuo adres",
-    "kitas adres",
-    "kito adres",
-    "kitu adres",
-    "kitas butas",
-    "kito buto",
-    "kitam bute",
-    "ne šit",
-    "ne sit",
-)
-
-
-# A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" buvo ignoruotas ir
-# agentas toliau liepė ieškoti routerio): negalėjimo-DABAR signalai. Sąmoningai
-# be pliko „negaliu" — „negaliu prisijungti/rasti" yra eigos turinys.
-_CANNOT_NOW = (
-    "nepatogu",
-    "ne patogu",
-    "ne namie",
-    "ne namuose",
-    "nesu namie",
-    "nesu namuose",
-    "nenamie",
-    "negaliu dabar",
-    "dabar negaliu",
-    "negalėsiu dabar",
-    "negalesiu dabar",
-    "neturiu laiko",
-    "kitu metu",
-    "kitą kartą",
-    "kita karta",
-    # N3 (live 2026-09-09: "Kai grįšiu, namo padarysiu" got "Gerai, lauksiu"
-    # — the agent waited while the caller was away): a promise to do it upon
-    # RETURNING is a cannot-now, not an in-progress report.
-    "kai grįšiu",
-    "kai grisiu",
-    "grįžęs pad",
-    "grizes pad",
-    "kai būsiu nam",
-    "kai busiu nam",
-    "negaliu, nes",
-    "negaliu kalbėti",
-    "negaliu kalbeti",
-)
 
 
 def detect_cannot_now(text: str | None) -> bool:
@@ -1348,7 +913,7 @@ def detect_cannot_now(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    return any(m in low for m in _CANNOT_NOW)
+    return any(m in low for m in vocab("cannot_now"))
 
 
 def detect_address_correction(text: str | None) -> bool:
@@ -1358,72 +923,7 @@ def detect_address_correction(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    return any(m in low for m in _ADDR_NO)
-
-
-# Refusal to troubleshoot / explicit demand for a registration. Either way the
-# troubleshooting ENDS in a registration (policy 2026-07-30): a clear DEMAND registers
-# immediately (the demand IS the consent); a softer refusal routes to the escalate
-# step whose consent question doubles as the polite clarification.
-_TICKET_DEMAND = (
-    "registruok",
-    "įregistruok",
-    "iregistruok",
-    "užregistruok",
-    "uzregistruok",
-    "iškviesk",
-    "iskviesk",
-    "kvieskit",
-    "atsiųsk technik",
-    "atsiusk technik",
-    "tegul atvažiuoj",
-    "tegul atvaziuoj",
-    # Live 2026-08-13: "žegistruokit gedimą" (STT garble) missed the exact
-    # imperative marks — the -k stem covers registruok/registruokit(e) and
-    # the ž-/iš- garbled variants. Imperatives are unconditional demands.
-    "gistruok",
-)
-# The INFINITIVE stem (registruoti/išregistruoti) appears in innocent speech
-# too — live 2026-08-14: "O jums dažnai taip skambina gedimus? Registruoti."
-# (small talk + a done-report) escalated mid-collection and the findings
-# moment never happened. It counts as a demand only next to an INTENT word.
-_TICKET_DEMAND_INF = ("gistruot",)
-_TICKET_DEMAND_INTENT = (
-    "prašau",
-    "prasau",
-    "noriu",
-    "norėč",
-    "norec",
-    "meistr",
-    "galite",
-    "galit",
-    "reikia",
-    "reikėt",
-    "reiket",
-)
-_TICKET_REFUSE = (
-    "nedarysiu",
-    "nedarysim",
-    "nenoriu daryti",
-    "nenoriu tikrinti",
-    "nenoriu nieko",
-    "neturiu laiko",
-    "nesu namuose",
-    "ne namuose",  # "nepatogu, ne namuose" (observed live — must offer registration)
-    "nebūsiu nam",
-    "nebusiu nam",
-    "ne namie",
-    "negaliu dabar",
-    "nenam",  # STT garbles of "nedarysiu / ne namie" ("nenamosiu")
-    # Live 2026-08-13: "Nebe noriu tikrinti toliau… nebesprendžiam" — the stop
-    # words themselves were missing, so the demand path had to carry the turn.
-    "nutrauk",
-    "nebenoriu",
-    "nebe noriu",
-    "nebespren",
-    "nebespręs",
-    "nebespres",
-)
+    return any(m in low for m in vocab("addr_no"))
 
 
 def detect_refuse_or_ticket(text: str | None) -> str | None:
@@ -1437,34 +937,17 @@ def detect_refuse_or_ticket(text: str | None) -> str | None:
     low = text.lower()
     for token in low.split():
         word = token.strip(".,!?…")
-        if word.startswith(("ne", "nebe")):
+        if word.startswith(vocab("negation_prefixes")):
             continue
-        if any(m in word for m in _TICKET_DEMAND):
+        if any(m in word for m in vocab("ticket_demand")):
             return "demand"
-        if any(m in word for m in _TICKET_DEMAND_INF) and any(
-            c in low for c in _TICKET_DEMAND_INTENT
+        if any(m in word for m in vocab("ticket_demand_inf")) and any(
+            c in low for c in vocab("ticket_demand_intent")
         ):
             return "demand"
-    if any(m in low for m in _TICKET_REFUSE):
+    if any(m in low for m in vocab("ticket_refuse")):
         return "refuse"
     return None
-
-
-# "netur" prefix covers neturiu/neturi/neturim(e) — live 2026-08-05 the caller
-# said "Neturi kompiutera" (3rd person + garble) and "neturiu"/"netur " missed it.
-_NO_DEVICE = (
-    "netur",
-    "nėra kompiuter",
-    "nera kompiuter",
-    "tik telefon",
-    "vien telefon",
-    "tik su telefon",
-    "negaliu prijungti",
-    "negaliu pasijungti",
-)
-
-
-_GREETING = ("laba", "labas", "sveiki", "labadien", "alio", "sveikas", "gera dien")
 
 
 def is_greeting(text: str | None) -> bool:
@@ -1477,7 +960,7 @@ def is_greeting(text: str | None) -> bool:
     low = text.lower()
     if len(low.split()) > 4:
         return False
-    return any(m in low for m in _GREETING)
+    return any(m in low for m in vocab("greeting"))
 
 
 def detect_no_device(text: str | None) -> bool:
@@ -1490,23 +973,7 @@ def detect_no_device(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    return any(m in low for m in _NO_DEVICE)
-
-
-_PLUGGED = (
-    "įkišau",
-    "ikisau",
-    "prijungiau",
-    "pajungiau",
-    "įjungiau",
-    "ijungiau",
-    "sujungiau",
-    # STT-tolerant stems (live 2026-08-11: "Jau pajungiu", "Pajangių kompiuterį"
-    # were missed and the bridge instruction repeated 3×).
-    "pajungi",
-    "prijungi",
-    "pajang",
-)
+    return any(m in low for m in vocab("no_device"))
 
 
 def detect_plugged(text: str | None) -> bool:
@@ -1520,7 +987,7 @@ def detect_plugged(text: str | None) -> bool:
     from .evidence import _fold, _mark_hit
 
     low = _fold(text)
-    return any(_mark_hit(low, m) for m in _PLUGGED)
+    return any(_mark_hit(low, m) for m in vocab("plugged"))
 
 
 def detect_ticket_consent(text: str | None) -> str | None:
@@ -1530,11 +997,11 @@ def detect_ticket_consent(text: str | None) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(m in low for m in _CONSENT_NO):
+    if any(m in low for m in vocab("consent_no")):
         return "no"
-    if re.search(r"\bne\b", low):
+    if vocab_re("bare_no").search(low):
         return "no"
-    if any(m in low for m in _CONSENT_YES):
+    if any(m in low for m in vocab("consent_yes")):
         return "yes"
     return None
 
@@ -1555,7 +1022,8 @@ def detect_farewell(text: str | None) -> bool:
     # "Ačiū, nereikia" / "nebereikia" = polite done-signal (live 2026-08-13:
     # the thanks swallowed the refusal and the agent read it as gratitude).
     if "?" not in low and (
-        "nebereikia" in tokens or ("nereikia" in tokens and ("ačiū" in tokens or "aciu" in tokens))
+        tokens & vocab_set("no_longer_needed")
+        or (tokens & vocab_set("not_needed") and tokens & vocab_set("thanks_words"))
     ):
         return True
 
@@ -1571,36 +1039,26 @@ def detect_farewell(text: str | None) -> bool:
             if w != word:
                 continue
             nxt = words[i + 1] if i + 1 < len(words) else None
-            if nxt is None or nxt in ("pasimatymo", "viso", "gero", "ate", "iki"):
+            if nxt is None or nxt in vocab_set("goodbye_followers"):
                 return True
         return False
 
-    if any(m in low for m in _FAREWELL):
+    if any(m in low for m in vocab("farewell")):
         return True
-    if (tokens & {"iki", "ate"}) and (_standalone_goodbye("iki") or _standalone_goodbye("ate")):
+    if any(w in tokens and _standalone_goodbye(w) for w in vocab("standalone_goodbye")):
         return True
-    has_followup = any(
-        w in low
-        for w in ("klausim", "dar ", "bet ", "problem", "taip", "tęs", "tes", "toliau", "nebaik")
-    )
+    has_followup = any(w in low for w in vocab("followup_marks"))
     short = len(low.split()) <= 3
     # Bare "ne" is NEVER a farewell (Andrius 2026-08-20): a lone "Ne." to a
     # standing question is an ANSWER — its owner clarifies what the "ne"
     # means. Only "viskas"-style closers reach the pure-decline fallback.
-    if not (short and not has_followup and "viskas" in low):
+    if not (short and not has_followup and any(w in low for w in vocab("closing_done"))):
         return False
     # The bare-"ne" fallback must be a PURE decline — every token a known
     # closing word. "Ne daganiai 1." (STT of "nedega nė viena") fast-forwarded
     # the ticket dialogue to done-with-defaults (observed live 2026-08-10):
     # unknown content words mean the caller is SAYING something, not leaving.
-    _CLOSING = {"ne", "viskas", "ačiū", "aciu", "gerai", "jau", "tiek", "nieko", ""}
-    return all(t in _CLOSING for t in tokens)
-
-
-# Bare backchannels / one-letter STT crumbs — acknowledgement noises, NOT answers.
-# Treating them as answers advanced steps through garbage (observed: "T." was read
-# as "yes, I have a computer"; "Mhm." advanced two INSTRUCT steps).
-_BACKCHANNEL = frozenset({"mhm", "aha", "m", "t", "hm", "mm", "nu", "na", "e", "a"})
+    return all(not t or t in vocab_set("closing_words") for t in tokens)
 
 
 def is_backchannel(text: str | None) -> bool:
@@ -1609,25 +1067,7 @@ def is_backchannel(text: str | None) -> bool:
         return False
     tokens = [t.strip(".,!?…") for t in text.lower().split()]
     tokens = [t for t in tokens if t]
-    return bool(tokens) and all(t in _BACKCHANNEL for t in tokens)
-
-
-_NEGATION_TOKENS = {
-    "ne",
-    "nė",
-    "nea",
-    "nėra",
-    "nera",
-    "nežinau",
-    "nezinau",
-    "nematau",
-    "nieko",
-    "niekas",
-}
-
-
-_DONE_STEMS = ("patikrin", "padar", "atlik", "isband", "išband", "baig")
-_DONE_ACKS = {"mhm", "aha", "gerai", "nu", "tai", "jo", "ok", "jau", "viskas", "as", "aš"}
+    return bool(tokens) and all(t in vocab_set("backchannel") for t in tokens)
 
 
 def is_bare_done_report(text: str | None) -> bool:
@@ -1640,10 +1080,10 @@ def is_bare_done_report(text: str | None) -> bool:
     if not text:
         return False
     tokens = [t.strip(".,!?…") for t in text.lower().split()]
-    tokens = [t for t in tokens if t and t not in _DONE_ACKS]
+    tokens = [t for t in tokens if t and t not in vocab_set("done_acks")]
     if not tokens or len(tokens) > 3:
         return False
-    return all(any(t.startswith(s) for s in _DONE_STEMS) for t in tokens)
+    return all(any(t.startswith(s) for s in vocab("done_stems")) for t in tokens)
 
 
 def is_bare_negation(text: str | None) -> bool:
@@ -1659,29 +1099,9 @@ def is_bare_negation(text: str | None) -> bool:
     tokens = [t for t in tokens if t]
     if not tokens or len(tokens) > 3:
         return False
-    return any(t in _NEGATION_TOKENS for t in tokens) and all(
-        t in _NEGATION_TOKENS or len(t) <= 2 for t in tokens
+    return any(t in vocab_set("negation_tokens") for t in tokens) and all(
+        t in vocab_set("negation_tokens") or len(t) <= 2 for t in tokens
     )
-
-
-_QUESTION_TOKENS = {
-    "kiek",
-    "kodėl",
-    "kodel",
-    "kada",
-    "kur",
-    "kuris",
-    "kuri",
-    "koks",
-    "kokia",
-    "kokie",
-    "kokiu",
-    "kokią",
-    "kokio",
-    "kam",
-    "kaip",
-    "negi",
-}
 
 
 def is_real_question(text: str | None) -> bool:
@@ -1692,12 +1112,12 @@ def is_real_question(text: str | None) -> bool:
     if not text:
         return False
     low = text.lower()
-    if any(m in low for m in _QUESTION) or any(
-        low.startswith(w) for w in ("kas ", "kaip ", "kam ", "kodėl", "kodel", "negi")
+    if any(m in low for m in vocab("question_marks")) or any(
+        low.startswith(w) for w in vocab("question_openers")
     ):
         return True
     tokens = [t.strip(".,!?") for t in low.split()]
-    return any(t in _QUESTION_TOKENS for t in tokens)
+    return any(t in vocab_set("question_tokens") for t in tokens)
 
 
 def get_strategy(verdict: str | None) -> Strategy | None:
