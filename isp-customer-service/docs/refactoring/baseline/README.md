@@ -57,3 +57,12 @@ uv run python src/agent/eval/run_eval.py --json report.json
 
 Compare `report.json` against `eval_run1.json` per scenario (checks, `verdicts_seen`,
 `disposition`). Reply text is not compared — the LLM rephrases between runs.
+
+## Shadow turn plans (M4 step 2)
+
+`plans/<scenario>.jsonl` — one line per turn with the `turn_plan` the pre-M4 engine
+effectively executed (owner, rule id, action, say kind, hypothesis, awaited answer,
+plus the raw `shadow` path/decisions/tools). Recorded on `89a5e3d` from a full eval run
+(105/108, identical to the M0 baseline). M4 step 10 compares the policy chain's plans
+with these. Regenerate: run the eval with `--json report.json`, then
+`python docs/refactoring/baseline/extract_plans.py report.json docs/refactoring/baseline/plans`.
