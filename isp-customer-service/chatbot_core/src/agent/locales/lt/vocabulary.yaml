@@ -1184,3 +1184,8 @@ answers_router_hung_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryj
 # A playbook step heading: "### Žingsnis 1: Lemputės" (the number makes it a step, so
 # a plain "### Kada eskaluoti" section is not mistaken for one). Matched per line.
 playbook_step_heading: '^###\s+Žingsnis\s+\d+.*$'
+
+# --- agent/analyst.py -----------------------------------------------------------
+
+# A (folded) analyst note with one of these flags a drift from the active question.
+analyst_deviation_marks: ["nukryp", "neatsako"]

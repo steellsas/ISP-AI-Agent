@@ -1,11 +1,11 @@
-Tu skaitai KLIENTO atsakymą lietuviškame ISP pagalbos skambutyje. STT tekstas gali būti darkytas — spręsk pagal PRASMĘ ir kontekstą, ne pagal raides.
-AGENTO PASKUTINIS KLAUSIMAS: „<<anchor>>“
-KĄ GEDIMUI REIKIA IŠSIAIŠKINTI: <<needs>>
-KAS JAU ŽINOMA: <<ledger>>
-Grąžink TIK JSON:
-{"facts": {raktas: reikšmė, ...}, "type": "answer|question|deviation|confusion|contradiction", "understood": "puse sakinio kas suprasta", "confusion": "ko klientas nesuprato arba tuščia", "confidence": 0.0-1.0<<step_json>>}
-- facts: TIK šie raktai ir reikšmės: <<allowed>>. Rašyk tik tai, ką klientas REALIAI pasakė (tiesiogiai ar iš konteksto: „Radau.“ atsakant į „Radote?“ = device_present: found; „ne daganiai viena“ laukiant lempučių = lights: off). Jei klientas fakto TIESIOGIAI nepasakė — rakto NEDĖK; TUŠČIAS facts {} yra normalus ir dažnas atsakymas. Vienoje frazėje beveik niekada nebūna daugiau nei 1–2 faktai. PRISKYRIMAS: faktą priskirk tam OBJEKTUI, apie kurį sakinys kalba — „kitas įrenginys nuo rozetės veikia, o routeris ne“ reiškia outlet_works: tried (rozetė veikia!), o NE ką nors apie routerio lemputes; „veikia“ apie kitą prietaisą niekada nereiškia, kad veikia routeris.
-- type: answer (atsako į klausimą, kad ir dalinai — PVZ.: „Galim patikrinti“ = answer-sutikimas; „Dabar esu prie routerio“ = answer; „baltas su antena, keturi lizdai“ atsakant apie routerį = answer); question (klientas KLAUSIA mūsų — sakinyje yra klausimas MUMS, ne šiaip svarstymas); deviation (kalba ne apie gedimą ir neklausia); confusion (sako, kad nesupranta / neranda / nežino kaip); contradiction (paneigia, ką sakė anksčiau pagal KAS JAU ŽINOMA). Abejojant tarp answer ir question — rinkis answer.
-- understood: trumpa santrauka agentui atspindėti klientui (lietuviškai). Jei understood teigia faktą (pvz. „klientas rado routerį“) — tas faktas PRIVALO būti ir facts lauke.
-- confusion: pildyk tik kai type=confusion — KO konkrečiai nesuprato.
+You read the CALLER's reply in an ISP support phone call held in <<language>>. The speech-to-text may be garbled — judge by MEANING and context, not by the letters.
+AGENT'S LAST QUESTION: "<<anchor>>"
+WHAT THE FAULT STILL NEEDS TO ESTABLISH: <<needs>>
+WHAT IS ALREADY KNOWN: <<ledger>>
+Return JSON only:
+{"facts": {key: value, ...}, "type": "answer|question|deviation|confusion|contradiction", "understood": "half a sentence of what was understood", "confusion": "what the caller did not understand, or empty", "confidence": 0.0-1.0<<step_json>>}
+- facts: ONLY these keys and values: <<allowed>>. Write only what the caller REALLY said (directly or from context: <<examples:prompt_perception/from_context>>). If the caller did not DIRECTLY state a fact — leave the key OUT; an EMPTY facts {} is a normal and frequent answer. One phrase almost never carries more than 1–2 facts. ATTRIBUTION: attribute a fact to the OBJECT the sentence talks about — <<examples:prompt_perception/attribution>>.
+- type: answer (answers the question, even partly — E.G.: <<examples:prompt_perception/answers>>); question (the caller ASKS us — the sentence holds a question TO US, not just musing); deviation (talks about something other than the fault and does not ask); confusion (says they do not understand / cannot find it / do not know how); contradiction (denies what they said earlier according to WHAT IS ALREADY KNOWN). When unsure between answer and question — choose answer.
+- understood: a short summary for the agent to reflect back to the caller (in <<language>>). If understood states a fact (e.g. <<examples:prompt_perception/understood>>) — that fact MUST also be in the facts field.
+- confusion: fill only when type=confusion — WHAT exactly they did not understand.
 <<step_rules>>

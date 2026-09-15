@@ -27,20 +27,18 @@ _INCLUDE_RE = re.compile(r"^[ \t]*<<include:\s*([\w./_-]+)\s*>>[ \t]*$", re.MULT
 
 
 def get_language_instruction(language: str) -> str:
-    """Get the output-language instruction (the model writes in this language)."""
-    if language == "lt":
-        return """You MUST respond in POLITE formal Lithuanian ("Jūs" form). This is mandatory!
-- ✅ CORRECT: "Ar galėtumėte patikrinti?", "Palaukite, patikrinsiu", "Perkraukite routerį"
-- ❌ WRONG: informal "tu" forms ("ar gali", "palauk", "perkrauk")
-- Polite and warm, but professional - no "gerbiamas kliente" stiffness"""
-    return """You MUST respond in English. Be friendly and casual.
-- Use simple, clear language
-- Be helpful and professional"""
+    """The output-language instruction (the model writes in this language) — the
+    locale's `language_instruction` example."""
+    from ..contract.locale import examples
+
+    return examples("language_instruction")
 
 
 def get_language_name(language: str) -> str:
-    """Get language name for prompts."""
-    return "Lithuanian" if language == "lt" else "English"
+    """The active locale's language name, for prompts."""
+    from ..contract.locale import lang
+
+    return lang().LANGUAGE_NAME
 
 
 def _read(relpath: str) -> str:
@@ -65,9 +63,18 @@ def _expand(text: str, _seen: frozenset[str] = frozenset()) -> str:
     return _INCLUDE_RE.sub(repl, text)
 
 
+def _localize(text: str) -> str:
+    """Fill the language-specific parts: <<examples:…>> wording and <<language>>."""
+    from ..contract.locale import expand_examples, lang
+
+    return expand_examples(text).replace("<<language>>", lang().LANGUAGE_NAME)
+
+
 def load_node_prompt(name: str) -> str:
-    """Load and compose a stage prompt (e.g. "stages/identification")."""
-    return _expand(_read(name)).strip()
+    """Load and compose a prompt (e.g. "stages/identification") for the active locale.
+    A missing include or examples entry raises — prompts load at import, so a broken
+    prompt fails at startup."""
+    return _localize(_expand(_read(name))).strip()
 
 
 def load_system_prompt(
@@ -76,7 +83,7 @@ def load_system_prompt(
     language: str = "lt",
 ) -> str:
     """Load the CORE system prompt (composes its partials, then fills placeholders)."""
-    template = _expand(_read("system"))
+    template = _localize(_expand(_read("system")))
     return template.format(
         tools_description=tools_description,
         caller_phone=caller_phone,

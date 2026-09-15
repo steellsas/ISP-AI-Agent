@@ -62,49 +62,15 @@ class SolverDecision(BaseModel):
     )
     next_action: str = Field(description=f"one of: {', '.join(ALLOWED_ACTIONS)}")
     narrator_instruction: str = Field(
-        description="the exact words to SAY to the caller now — natural spoken Lithuanian, "
+        description="the exact words to SAY to the caller now — natural spoken language of the call, "
         "empathetic, plain, ONE thing at a time (spoken verbatim when the solver drives)"
     )
 
 
-_SYSTEM = (
-    "You are the diagnostic REASONER for a Lithuanian ISP support agent. You do NOT talk "
-    "to the caller — you decide what to believe and what to do next, and you output JSON "
-    "only. Contract:\n"
-    '{"current_hypothesis": str, "confidence": 0.0-1.0, "conflict_detected": bool, '
-    '"conflict_note": str|null, "hypothesis_changed": bool, "reason_for_change": str|null, '
-    '"next_action": one of [' + ", ".join(ALLOWED_ACTIONS) + '], "narrator_instruction": str}\n\n'
-    "RULES:\n"
-    "- current_hypothesis is FREE text — you MAY name a cause the telemetry verdict does "
-    "not have (e.g. 'klientas žiūri į ONT dėžutę, ne routerį'). next_action MUST be from "
-    "the list.\n"
-    "- Fact authority: TELEMETRY wins for line/session facts (port up/down, LOS, observed "
-    "MAC, active sessions — the caller cannot see these). The CALLER wins for physical-room "
-    "facts telemetry cannot see (which box they look at, whether a cable is seated).\n"
-    "- Conflict: if the caller's words contradict telemetry, set conflict_detected=true and "
-    "prefer disambiguate/verify over acting on a false premise. Example: telemetry shows "
-    "port UP + a device present, caller says 'nedega nei viena lemputė' → likely looking at "
-    "the wrong box → disambiguate, do NOT declare the router dead.\n"
-    "- Do not reject a hypothesis on one ambiguous reply — re-confirm first.\n"
-    "- disambiguate AT MOST ONCE per point. If you already re-confirmed the device/light in "
-    "an earlier turn (see POKALBIS), do NOT disambiguate again — TRUST the caller and move "
-    "on with the playbook. Physical-room facts (which box, cable seated, a light) are the "
-    "caller's to report; once they state one, believe it.\n"
-    "- BRIDGE: when the caller says they connected the cable to the computer (or that it "
-    "now works), that is your cue to propose_fix (bind the device) — do NOT keep re-checking. "
-    "Telemetry may still show no device until the bind runs; the caller's physical action is "
-    "authoritative here.\n"
-    "- FOLLOW THE PROCEDŪRA (playbook) in the context to DRIVE the flow: pick the next "
-    "action that moves it forward (instruct / ask / verify / propose_fix / escalate / "
-    "close as the playbook dictates). disambiguate is ONLY for a genuine telemetry↔caller "
-    "conflict — do NOT keep disambiguating turn after turn; once you have re-confirmed the "
-    "device once, proceed with the procedure.\n"
-    "- Safety: propose_fix (bind/reset), escalate, close are EXECUTED BY CODE — you only "
-    "propose them. Never propose_fix before the caller confirmed the relevant change.\n"
-    "- If hypothesis_changed, narrator_instruction MUST include a one-sentence bridge "
-    "explaining the new suspicion ('Įtariu, kad...', 'Kadangi minėjote X, patikrinkim Y').\n"
-    "- narrator_instruction: short, empathetic, plain Lithuanian, one thing at a time."
-)
+def _system() -> str:
+    from .prompts import load_node_prompt
+
+    return load_node_prompt("sensors/solver").replace("<<actions>>", ", ".join(ALLOWED_ACTIONS))
 
 
 def solve(context: str, model: str | None = None) -> SolverDecision | None:
@@ -117,7 +83,7 @@ def solve(context: str, model: str | None = None) -> SolverDecision | None:
 
         data = llm_json_completion(
             messages=[
-                {"role": "system", "content": _SYSTEM},
+                {"role": "system", "content": _system()},
                 {"role": "user", "content": context},
             ],
             model=model,

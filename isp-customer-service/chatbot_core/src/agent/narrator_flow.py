@@ -39,9 +39,11 @@ def _directive_system_prompt() -> str:
                 parts.append(load_node_prompt(name))
             except Exception:  # pragma: no cover - a missing partial degrades soft
                 pass
+        from .contract.locale import lang
+
         parts.append(
-            "Kalbi telefonu lietuviškai. Vykdyk TIK žemiau esančią KNOWN FACTS "
-            "bloko direktyvą — nieko daugiau nesiūlyk ir neklausk."
+            f"You are on a phone call in {lang().LANGUAGE_NAME}. Carry out ONLY the KNOWN "
+            "FACTS block directive below — offer and ask nothing else."
         )
         _DIRECTIVE_PROMPT = "\n\n".join(p for p in parts if p)
     return _DIRECTIVE_PROMPT

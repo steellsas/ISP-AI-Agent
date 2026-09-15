@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import re
 
+# The language's name in English, for prompts ("the call is held in Lithuanian").
+LANGUAGE_NAME = "Lithuanian"
+
 # Spoken number words -> digits ("šešiasdešimt" -> 60), shared with the ASR adapter.
 from adapters.asr.lt_text import normalize_lt_numbers as normalize_numbers  # noqa: F401
 

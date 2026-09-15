@@ -222,9 +222,10 @@ def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[st
         options = problem_catalog_options()
         if not options:
             return None, 0.0
+        from .prompts import load_node_prompt
+
         obs = classify_step(
-            "Kodėl klientas skambina į interneto/TV techninės pagalbos liniją? "
-            "Priskirk skambučio tipą pagal aprašymus.",
+            load_node_prompt("sensors/problem_classifier"),
             text,
             options,
             model=model,

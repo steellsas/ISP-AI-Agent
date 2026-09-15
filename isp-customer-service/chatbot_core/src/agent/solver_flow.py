@@ -14,7 +14,7 @@ import logging
 import os
 from typing import Any
 
-from .contract.locale import phrase, phrase_or, vocab
+from .contract.locale import phrase, vocab
 from .dialog_utils import last_agent_question
 from .trace import trace_note
 
@@ -54,36 +54,32 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     ][-8:]
     if recent:
         convo = "\n".join(
-            f"{'Klientas' if m['role'] == 'user' else 'Agentas'}: {m['content']}" for m in recent
+            f"{'Caller' if m['role'] == 'user' else 'Agent'}: {m['content']}" for m in recent
         )
-        lines.append(f"POKALBIS IKI ŠIOL:\n{convo}\n")
+        lines.append(f"CONVERSATION SO FAR:\n{convo}\n")
     lines.append(
-        f'KLIENTAS KĄ TIK PASAKĖ: "{user_input or ""}" (intent={s.dialog.last_intent or "?"})'
+        f'THE CALLER JUST SAID: "{user_input or ""}" (intent={s.dialog.last_intent or "?"})'
     )
     if h:
         because = "; ".join(h.get("because", []) or [])
-        lines.append(f"HIPOTEZĖ: {h.get('cause')} (status={h.get('status')}); nes: {because}")
+        lines.append(f"HYPOTHESIS: {h.get('cause')} (status={h.get('status')}); because: {because}")
     # The ANALYSIS (Step 2): the caller's half of the picture — the thinker reasons
     # from BOTH sides, not telemetry alone.
     if s.intake.anamnesis_raw:
-        bits = [f'žodžiais: "{s.intake.anamnesis_raw}"']
+        bits = [f'in words: "{s.intake.anamnesis_raw}"']
         if s.intake.anamnesis_when:
-            bits.append(
-                f"dingo {phrase_or(f'anamnesis.when.{s.intake.anamnesis_when}', s.intake.anamnesis_when)}"
-            )
+            bits.append(f"went down: {s.intake.anamnesis_when}")
         if s.intake.anamnesis_trigger:
-            bits.append(
-                f"po: {phrase_or(f'anamnesis.trigger.{s.intake.anamnesis_trigger}', s.intake.anamnesis_trigger)}"
-            )
-        lines.append("ANAMNEZĖ (klientas): " + "; ".join(bits))
+            bits.append(f"after: {s.intake.anamnesis_trigger}")
+        lines.append("ANAMNESIS (caller): " + "; ".join(bits))
     if s.intake.symptoms:
-        lines.append("SIMPTOMAI: " + ", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items()))
+        lines.append("SYMPTOMS: " + ", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items()))
     if s.identity.caller_name:
         lines.append(
-            f"SKAMBINA: {s.identity.caller_name} (ryšys su sutartimi: {s.identity.caller_relation})"
+            f"CALLER: {s.identity.caller_name} (relation to the contract: {s.identity.caller_relation})"
         )
     if net.get("reason"):
-        lines.append(f"TELEMETRIJOS KANDIDATAS (verdict tree): {net.get('reason')}")
+        lines.append(f"TELEMETRY CANDIDATE (verdict tree): {net.get('reason')}")
     if sig:
         keys = (
             "port_link",
@@ -97,31 +93,31 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
         )
         facts = ", ".join(f"{k}={sig.get(k)}" for k in keys if sig.get(k) is not None)
         if facts:
-            lines.append(f"TELEMETRIJA (signalai): {facts}")
+            lines.append(f"TELEMETRY (signals): {facts}")
     # Evidence ledger (Ledger v1): what is already ESTABLISHED — the thinker
     # asks only for what is missing and never re-asks a settled fact.
     if s.diagnosis.evidence:
         from .evidence import summary_lt
 
         lines.append(
-            f"ĮRODYMŲ ŽURNALAS (nustatyta — NEBEKLAUSK): {summary_lt(s.diagnosis.evidence)}"
+            f"EVIDENCE LEDGER (established — DO NOT ASK AGAIN): {summary_lt(s.diagnosis.evidence)}"
         )
     # Bridge-phase anchor (2026-08-12): after the plug report the solver
     # kept sliding back to router/power questions — the router is HISTORY.
     if state.resolution.bridge_plug_reported:
         lines.append(
-            "TILTO FAZĖ: routeris jau pripažintas sugedusiu ir kabelis PERKIŠTAS į "
-            "kompiuterį — apie routerio lemputes/maitinimą NEBEKLAUSK. Darbas dabar: "
-            "kompiuterio prijungimas (linijos matomumas, kompiuterio LAN būsena)."
+            "BRIDGE PHASE: the router is already considered dead and the cable is MOVED to "
+            "the computer — do NOT ask about the router lights/power any more. The work now: "
+            "connecting the computer (visibility on the line, the computer's LAN state)."
         )
     lines.append(
-        f"WALKER dabar: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.dialog.awaiting}"
+        f"WALKER now: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.dialog.awaiting}"
     )
     # Process journal (sąmoningumas №3): the transitions already walked — the
     # thinker sees the path ("kas jau vyko"), so it never re-proposes a step
     # the call has moved past.
     if r.get("journal"):
-        lines.append("ŽINGSNIŲ EIGA (jau vyko): " + "; ".join(r["journal"][-8:]))
+        lines.append("STEPS WALKED (already happened): " + "; ".join(r["journal"][-8:]))
     # The full procedure for this fault (the solver reasons over the WHOLE playbook to
     # pick the next action — unlike the narrator, which sees one isolated step).
     if r.get("verdict"):
@@ -131,7 +127,7 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
         strat = get_strategy(r.get("verdict"))
         doc = full_doc(strat.rag_doc) if strat and strat.rag_doc else None
         if doc:
-            lines.append(f"\nPROCEDŪRA (playbook — sek ja, kad vestum srautą):\n{doc}")
+            lines.append(f"\nPROCEDURE (playbook — follow it to drive the flow):\n{doc}")
     return "\n".join(lines)
 
 
@@ -440,9 +436,9 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
     # answer is already GIVEN and it must take a DIFFERENT next step.
     if state.resolution.drive_repeats >= 1:
         context += (
-            "\nSVARBU: tavo praėjęs klausimas KARTOJOSI, o klientas jau atsakė ir "
-            "patvirtino. PRIIMK tą atsakymą kaip faktą ir ženk KITĄ žingsnį (kita "
-            "hipotezė, pasiūlymas ar registracija) — to paties NEBEKLAUSK."
+            "\nIMPORTANT: your previous question REPEATED, and the caller has already answered "
+            "and confirmed. ACCEPT that answer as a fact and take the NEXT step (another "
+            "hypothesis, an offer or the registration) — do NOT ask the same again."
         )
     # A few internal (silent) hops are allowed — reread/pivot re-read the line — before
     # a client-facing action is forced. Hard turn cap escalates rather than looping.

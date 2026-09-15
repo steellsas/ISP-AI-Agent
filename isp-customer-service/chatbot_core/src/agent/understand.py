@@ -195,38 +195,20 @@ def understand_ticket(
     None on any failure -> the keyword logic decides as before."""
     if not utterance or not utterance.strip() or stage not in ("phone", "hours"):
         return None
-    if stage == "phone":
-        task = (
-            "Klausėme, KOKIU TELEFONO NUMERIU susisiekti. value: skaitmenys be "
-            'tarpų, ARBA "same_number" TIK kai klientas AIŠKIAI patvirtina, kad '
-            "tinka numeris, iš kurio skambina (pvz. „tinka tas“, „šitas gerai“, "
-            "„iš kurio skambinu“). Darkytas / neaiškus / nesusijęs tekstas -> "
-            "null (tada agentas perklaus — tai saugu)."
-        )
-    else:
-        task = (
-            "Klausėme, KADA PATOGIAUSIA SKAMBINTI. value: laikas žmogaus kalba, "
-            "sunormalintas (pvz. „bet kada“, „po 17 val“, „per pietus arba ryte“, "
-            "„darbo dienomis iki 15“), ARBA null jei atsakymo nėra."
-        )
+    from .prompts import load_node_prompt
+
+    task = load_node_prompt(f"sensors/ticket_reader_{stage}")
+    system = (
+        load_node_prompt("sensors/ticket_reader")
+        .replace("<<anchor>>", anchor)
+        .replace("<<task>>", task)
+    )
     try:
         from src.services.llm.client import llm_json_completion
 
         data = llm_json_completion(
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Tu skaitai KLIENTO atsakymą registruojant gedimą (lietuvių "
-                        "kalba, STT tekstas gali būti darkytas — spręsk pagal prasmę). "
-                        f"AGENTO KLAUSIMAS: „{anchor}“\n{task}\n"
-                        'Grąžink TIK JSON: {"value": ... arba null, "type": '
-                        '"answer|question|refusal|other"}\n'
-                        "- type=question: klientas KLAUSIA mūsų, o ne atsako.\n"
-                        "- type=refusal: nenori registracijos.\n"
-                        "- NIEKO neišgalvok: nesant atsakymo value=null."
-                    ),
-                },
+                {"role": "system", "content": system},
                 {"role": "user", "content": utterance[:300]},
             ],
             model=perception_model(model),

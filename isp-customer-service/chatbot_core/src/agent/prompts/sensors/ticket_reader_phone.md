@@ -1,0 +1,1 @@
+We asked WHICH PHONE NUMBER to call back on. value: the digits without spaces, OR "same_number" ONLY when the caller CLEARLY confirms the number they are calling from will do (e.g. <<examples:prompt_ticket_reader/same_number>>). Garbled / unclear / unrelated text -> null (the agent then asks again — that is safe).

@@ -673,7 +673,7 @@ class TestStepAwareness:
             "journal": ["dr_intro→dr_lights", "dr_lights→dr_power"],
         }
         ctx = build_solver_context(agent.state, agent.runtime, "nedega")
-        assert "ŽINGSNIŲ EIGA" in ctx and "dr_intro→dr_lights" in ctx
+        assert "STEPS WALKED" in ctx and "dr_intro→dr_lights" in ctx
 
 
 class TestEvidenceDeclared:

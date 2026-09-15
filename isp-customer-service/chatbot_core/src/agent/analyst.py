@@ -26,24 +26,6 @@ from .contract.locale import vocab
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM = (
-    "Tu — TYLUSIS ANALITIKAS, padedantis interneto tiekėjo balso agentui. "
-    "Skaitai pokalbį ir žurnalą, bet pats NEkalbi su klientu. Tavo darbas — "
-    "iki 2 TRUMPŲ patariamųjų pastabų agentui apie KITĄ repliką, lietuviškai, "
-    "kiekviena naujoje eilutėje su „- “ pradžioje. Pastabos gali būti TIK "
-    "šių tipų: (1) klientas JAU pasakė kažką, ko agentas gali nebeklausti; "
-    "(2) žurnalo faktas įtartinas — prieštarauja tam, ką klientas kartoja "
-    "(gali būti blogai išgirsta) — verta pasitikslinti; (3) klientas painioja "
-    "sąvokas ar įrenginius — įvardinti aiškiau; (4) SVARBI ankstesnė detalė, "
-    "kurios naujausioje pokalbio dalyje nebesimato — priminti agentui; "
-    "(5) pokalbis NUKRYPO nuo aktyvaus klausimo — paskutiniai kliento "
-    "atsakymai nesiejami su tuo, ko agentas KLAUSĖ (žr. AKTYVUS KLAUSIMAS), "
-    "pažymėk nukrypimą (pvz. „klientas neatsako į aktyvų klausimą apie X — "
-    "pokalbis nukrypo“). DRAUDŽIAMA: siūlyti diagnozę, "
-    "kurti faktus, siūlyti veiksmus ar žingsnius, kartoti tai, kas akivaizdu. "
-    "Jei vertingų pastabų nėra — parašyk tik OK."
-)
-
 
 def enabled() -> bool:
     return os.getenv("ANALYST", "on").lower() == "on"
@@ -71,18 +53,19 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
         from src.services.llm.client import llm_completion
 
         from .evidence import summary_lt
+        from .prompts import load_node_prompt
         from .understand import perception_model
 
         # Istorija v2: the analyst is the ONLY reader of the FULL transcript —
         # the narrator's window is short, so type-4 notes (an early detail no
         # longer visible) depend on this breadth. Capped to keep tokens sane.
         history = "\n".join(
-            f"{'KLIENTAS' if m['role'] == 'user' else 'AGENTAS'}: {(m.get('content') or '')[:200]}"
+            f"{'CALLER' if m['role'] == 'user' else 'AGENT'}: {(m.get('content') or '')[:200]}"
             for m in s.messages[-60:]
             if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
         )
-        ledger = summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "(tuščias)"
-        verdict = (s.resolution.procedure or {}).get("verdict") or "(nenustatyta)"
+        ledger = summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "(empty)"
+        verdict = (s.resolution.procedure or {}).get("verdict") or "(not set)"
         # C wave (2026-09-08): the analyst sees the QUESTION REGISTRY's active
         # entry — the deterministic "what we are asking right now" — so the
         # type-5 deviation note compares reality against the plan.
@@ -93,16 +76,16 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
         # yet — flagging "neatsako" then is noise. The deviation read only
         # makes sense once the same question needed a re-ask (asks >= 2).
         aktyvus = (
-            f"{q.owner}/{q.key} (bandymas {q.asks})" if q is not None and q.asks >= 2 else "(nėra)"
+            f"{q.owner}/{q.key} (attempt {q.asks})" if q is not None and q.asks >= 2 else "(none)"
         )
         user = (
-            f"POKALBIS:\n{history}\n\nŽURNALAS (deterministiniai faktai): {ledger}\n"
-            f"HIPOTEZĖ: {verdict}\nAKTYVUS KLAUSIMAS (registras): {aktyvus}\n\n"
-            "Pastabos agentui (arba OK):"
+            f"CONVERSATION:\n{history}\n\nLEDGER (deterministic facts): {ledger}\n"
+            f"HYPOTHESIS: {verdict}\nACTIVE QUESTION (registry): {aktyvus}\n\n"
+            "Notes for the agent (or OK):"
         )
         content = llm_completion(
             messages=[
-                {"role": "system", "content": _SYSTEM},
+                {"role": "system", "content": load_node_prompt("sensors/analyst")},
                 {"role": "user", "content": user},
             ],
             model=perception_model(rt.config.model),
@@ -129,8 +112,8 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
             # nothing routes on it yet.
             from .evidence import _fold as _f
 
-            if any("nukryp" in _f(n) or "neatsako" in _f(n) for n in notes):
-                rt.tracer.emit("analyst_flag", type="nukrypimas_nuo_plano")
+            if any(m in _f(n) for n in notes for m in vocab("analyst_deviation_marks")):
+                rt.tracer.emit("analyst_flag", type="deviation_from_plan")
         return notes or None
     except Exception:  # pragma: no cover - the analyst must never break a call
         logger.debug("analyst failed", exc_info=True)

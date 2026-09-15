@@ -226,7 +226,7 @@ class TestAgentWiring:
         facts = state_facts_block(agent.state, agent.runtime)
         assert facts and "ĮRODYMŲ ŽURNALAS" in facts and "nedega" in facts
         ctx = build_solver_context(agent.state, agent.runtime, "tęsiam")
-        assert "ĮRODYMŲ ŽURNALAS" in ctx
+        assert "EVIDENCE LEDGER" in ctx
 
     def test_ticket_carries_client_evidence(self, db_connection):
         from agent.executor_flow import register_ticket_from_state

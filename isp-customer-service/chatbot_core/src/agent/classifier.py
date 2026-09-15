@@ -43,24 +43,10 @@ class CandidateObservation(BaseModel):
 
 
 def _system(options: dict[str, str]) -> str:
+    from .prompts import load_node_prompt
+
     opts = "\n".join(f'  - "{k}": {v}' for k, v in options.items())
-    return (
-        "You read a caller's reply in a Lithuanian ISP phone support call. The agent asked "
-        "a question; pick which option MATCHES the caller's answer and whether they actually "
-        "ANSWERED. The options (label: meaning):\n" + opts + "\n"
-        "Reply with JSON only:\n"
-        '{"label": one of the labels above or "unclear", "is_answer": bool, '
-        '"internally_inconsistent": bool, "confidence": 0.0-1.0}\n'
-        "- label: choose ONLY by MEANING (judge meaning, not keywords; tolerate speech-to-"
-        "text noise). If the reply matches NONE of the meanings, label='unclear' — do NOT "
-        "force a fit (e.g. 'susiradau routerį' is NOT a lights answer → unclear).\n"
-        "- is_answer: true if the caller actually answered THIS question — even if they also "
-        "said they were about to try ('gerai, bandau… nė viena lemputė neužsidegė' IS an "
-        "answer). false if they are still doing it with no result, asked a question back, "
-        "said they do not understand, or the reply does not address the question.\n"
-        "- internally_inconsistent: true if they contradict themselves in one sentence.\n"
-        "- 'unclear' + is_answer=false whenever you cannot confidently match a meaning."
-    )
+    return load_node_prompt("sensors/classifier").replace("<<options>>", opts)
 
 
 def classify_step(
@@ -82,8 +68,8 @@ def classify_step(
                 {"role": "system", "content": _system(options)},
                 {
                     "role": "user",
-                    "content": f"Agento klausimas: {question or '(patvirtinimas)'}\n"
-                    f"Kliento atsakymas: {answer}",
+                    "content": f"Agent's question: {question or '(confirmation)'}\n"
+                    f"Caller's reply: {answer}",
                 },
             ],
             model=_perception_model(model),
