@@ -469,6 +469,7 @@ system:
   max_turns: "Atsiprašau, pokalbis užtruko per ilgai. Registruoju jūsų problemą."
   stuck_offer_code: "Atsiprašau, vis nepavyksta išgirsti. Gal turite abonento kodą nuo sąskaitos?"
   stuck_register: "Užregistruosiu jūsų problemą ir mūsų specialistas su jumis susisieks. Geros dienos!"
+  stuck_unidentified_close: "Atsiprašau, nepavyksta jūsų išgirsti ir rasti jūsų sutarties. Paskambinkite dar kartą, kai bus patogu — mielai padėsime. Geros dienos!"
   default_anchor: "Ar tęsiame gedimo sprendimą?"
   filler: "Sekundėlę, tikrinu."
 
@@ -571,6 +572,7 @@ ticket:
     line_not_restored: "Routeris gyvas, bet linija neatsistatė po laido perkišimo — tikėtinas kabelio pažeidimas trasoje."
     caller_still_down: "Linija atsistatė, bet klientas sako, kad internetas vis tiek neveikia."
     still_down_at_closing: "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
+    stuck: "Pokalbis užstrigo — agentas kelis kartus nesuprato kliento."
   details:
     fault: "Gedimas: {problem} — {gloss}."
     default_problem: "internetas"

@@ -283,6 +283,9 @@ class ClosingState(BaseModel):
     callback_goodbye_due: bool = False
     # The caller's secondary problems were asked about at the end.
     secondary_problems_asked: bool = False
+    # Why a call ended before the caller was identified ("stuck"); M6 turns it into a
+    # contact record that needs review.
+    unidentified_reason: str | None = None
 
 
 class VoiceState(BaseModel):

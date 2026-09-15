@@ -102,12 +102,27 @@ class TestStuckCounter:
         a._apply_backstop(("Gal turite abonento kodą?", False))
         assert a.state.dialog.stuck_count == 4
 
-    def test_apply_backstop_register_closes(self):
+    def test_apply_backstop_unidentified_closes_as_unidentified(self):
         a = _agent()
         a.state.dialog.stuck_count = 4
-        a._apply_backstop(("Užregistruosiu jūsų problemą.", True))
+        text, should_close = a._stuck_backstop()
+        assert "Užregistruosiu" not in text  # no registration promised without an account
+        a._apply_backstop((text, should_close))
         assert a.state.closing.case_closed is True
         assert a.state.closing.closed_reason == "declined"
+        assert a.state.closing.unidentified_reason == "stuck"
+
+    def test_apply_backstop_identified_registers_the_promised_ticket(self, db_connection):
+        a = _agent()
+        a.state.identity.customer_id = "CUST009"
+        a.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
+        a.state.dialog.stuck_count = 4
+        text, should_close = a._stuck_backstop()
+        assert "Užregistruosiu" in text
+        a._apply_backstop((text, should_close))
+        assert a.state.ticket.ticket_id  # F-5: the promise is kept
+        assert a.state.closing.closed_reason == "registered"
+        assert a.state.resolution.procedure["escalate_reason"] == "stuck"
 
 
 class TestBackstop:

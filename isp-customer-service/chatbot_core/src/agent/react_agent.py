@@ -487,12 +487,34 @@ class ReactAgent:
 
         yield self.config.timeout_message
 
-    def _record_plan(self, rule: str) -> None:
+    def _record_plan(self, rule: str, action=None) -> None:
         """The narrator's own scripted exits are plans too (§5 rows 18-19)."""
-        from .decide.plan import Say, TurnPlan, record
+        from .decide.plan import Action, Say, TurnPlan, record
 
         owner = "diagnosis" if self.state.identity.customer_id else "identification"
-        record(self.state, TurnPlan(owner=owner, rule=rule, say=Say(kind="phrase")))
+        plan = TurnPlan(
+            owner=owner, rule=rule, action=action or Action(type="none"), say=Say(kind="phrase")
+        )
+        record(self.state, plan)
+
+    def _close_stuck(self) -> None:
+        """F-5: the stuck backstop's close — an identified caller's ticket is registered
+        (reason stuck) so the promised call-back happens; an unidentified caller's call
+        ends recorded as unidentified (reason stuck)."""
+        from .decide.plan import Action
+        from .executor_flow import register_ticket_from_state
+
+        s = self.state
+        s.closing.case_closed = True
+        if s.identity.customer_id:
+            if s.resolution.procedure is not None:
+                s.resolution.procedure["escalate_reason"] = "stuck"
+            register_ticket_from_state(s, self.runtime, None)
+            s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
+            self._record_plan("dialog.stuck_backstop", Action(type="register_ticket", name="stuck"))
+            return
+        s.closing.closed_reason = "declined"
+        s.closing.unidentified_reason = "stuck"
 
     def _stuck_backstop(self) -> tuple[str, bool] | None:
         """Deterministic escalation (text, should_close) once the prompt-level nudge
@@ -500,7 +522,10 @@ class ReactAgent:
         offer the account code, at 4 register + close. None below that."""
         n = self.state.dialog.stuck_count
         if n >= 4:
-            return (phrase("system.stuck_register"), True)
+            # F-5: the words promise a registration only when one can be made.
+            if self.state.identity.customer_id:
+                return (phrase("system.stuck_register"), True)
+            return (phrase("system.stuck_unidentified_close"), True)
         if n >= 3:
             return (phrase("system.stuck_offer_code"), False)
         return None
@@ -546,8 +571,7 @@ class ReactAgent:
 
         text, should_close = backstop
         if should_close:
-            self.state.closing.case_closed = True
-            self.state.closing.closed_reason = "declined"
+            self._close_stuck()
         else:
             self.state.dialog.stuck_count += 1  # advance the ladder for the next turn
         self.state.messages.append({"role": "assistant", "content": text})
