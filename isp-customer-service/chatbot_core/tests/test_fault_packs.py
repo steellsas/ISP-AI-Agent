@@ -148,13 +148,13 @@ class TestVoiceTestFixes:
             ),
         )
         _seed_evidence_from_anamnesis(engine.state, engine.runtime)
-        assert engine.state.diagnosis.evidence.get("changed_device", {}).get("value") == "keite"
+        assert engine.state.diagnosis.evidence.get("changed_device", {}).get("value") == "yes"
 
     def test_pack_glosses_replace_raw_keys(self):
         from agent.evidence import gloss_label, gloss_value
 
         assert gloss_label("changed_device") == "routerio keitimas"
-        assert gloss_value("keite") == "keitė arba prijungė naują įrenginį"
+        assert gloss_value("yes", "changed_device") == "keitė arba prijungė naują įrenginį"
         assert gloss_label("lights") == "routerio lemputės"  # built-ins keep working
 
 
@@ -193,8 +193,10 @@ class TestNarratorWordedQuestions:
         engine = self._engine()
         assert evidence_drive(engine.state, engine.runtime, "labas") is None
         d = engine.state.turn.directives.evidence
-        assert d and d["key"] == "ivykiai" and d["reikia"]  # contextual anamnesis first
-        assert engine.state.diagnosis.evidence_ask_counts["ivykiai"] == 1  # ask bookkeeping intact
+        assert d and d["key"] == "recent_events" and d["reikia"]  # contextual anamnesis first
+        assert (
+            engine.state.diagnosis.evidence_ask_counts["recent_events"] == 1
+        )  # ask bookkeeping intact
 
     def test_off_switch_keeps_scripted_wording(self, monkeypatch):
         from agent.evidence_drive import evidence_drive
@@ -344,7 +346,7 @@ class TestNarratorFindings:
             SimpleNamespace(
                 state=GraphState(
                     diagnosis=DiagnosisState(
-                        evidence={"lights": {"value": "nedega", "source": "client"}},
+                        evidence={"lights": {"value": "off", "source": "client"}},
                         facts_recap_state="",
                     )
                 ),
@@ -557,8 +559,8 @@ class TestTicketFirst:
 
         assert "found the router" in open_goals_lt({}, "no_mac_observed")
         ev = {
-            "device_present": {"value": "rado", "source": CLIENT, "turn": 1},
-            "lights": {"value": "nedega", "source": CLIENT, "turn": 2},
+            "device_present": {"value": "found", "source": CLIENT, "turn": 1},
+            "lights": {"value": "off", "source": CLIENT, "turn": 2},
         }
         goals = open_goals_lt(ev, "no_mac_observed")
         assert "power lead" in goals and "found the router" not in goals
@@ -695,14 +697,14 @@ class TestEvidenceDeclared:
         # facts pick the SOLUTION (solutions), not the hypothesis
         assert spec["confirmed_when"] == []
         # perception vocabulary: canonical values are declared per fact
-        assert set(spec["client"]["changed_device"]["answers"]) == {"keite", "nekeite"}
+        assert set(spec["client"]["changed_device"]["answers"]) == {"yes", "no"}
 
     def test_healthy_to_router_conditional_asking(self):
         from agent.evidence import spec_for
 
         spec = spec_for("healthy_to_router")
-        assert spec["client"]["connection_type"]["when"] == ["fail_device=kompiuteris"]
-        assert spec["client"]["rebooted"]["when"] == ["fail_scope=visuose"]
+        assert spec["client"]["connection_type"]["when"] == ["fail_device=computer"]
+        assert spec["client"]["rebooted"]["when"] == ["fail_scope=all"]
 
     def test_goal_present_for_narrator_directives(self):
         """`goal` is the narrator directive — every declared fact must state
@@ -965,7 +967,7 @@ class TestAnamnesisDirectives:
         from agent.evidence import spec_for
 
         spec = spec_for("no_mac_observed")
-        item = (spec.get("client") or {}).get("ivykiai")
+        item = (spec.get("client") or {}).get("recent_events")
         from agent.contract.locale import phrase
 
         assert item and "elektra" in phrase(item["question_key"])
@@ -1006,8 +1008,8 @@ class TestDetourResilience:
     def test_split_ne_symptom_polarity(self):
         from agent.nlu import extract_symptoms
 
-        assert extract_symptoms("Ne 1 lemputė ne dega.").get("lights") == "nedega"
-        assert extract_symptoms("lemputės nedega").get("lights") == "nedega"
+        assert extract_symptoms("Ne 1 lemputė ne dega.").get("lights") == "off"
+        assert extract_symptoms("lemputės nedega").get("lights") == "off"
 
     def test_resync_note_renders_once(self, db_connection):
         from agent.narrator_flow import state_facts_block
@@ -1019,7 +1021,7 @@ class TestDetourResilience:
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         from agent.evidence import CLIENT, set_fact
 
-        set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 1)
+        set_fact(agent.state.diagnosis.evidence, "lights", "off", CLIENT, 1)
         agent.state.dialog.resync_note = True
         block = state_facts_block(agent.state, agent.runtime)
         assert "GRĮŽTAME PRIE SPRENDIMO" in block and "nustatyta" in block

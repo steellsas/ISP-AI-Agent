@@ -162,8 +162,10 @@ class AgentSession:
 
                 spec = spec_for(r.get("verdict"))
                 item = (spec.get("client") or {}).get(pending) if spec else None
-                for marks in ((item or {}).get("answers") or {}).values():
-                    words += [str(m) for m in marks]
+                from .contract.locale import vocab
+
+                for name in ((item or {}).get("answers") or {}).values():
+                    words += [str(m) for m in vocab(name)]
                 if not words:  # built-in vocabulary for the piloted keys
                     for _value, marks in vocab_map("pending_answers").get(pending, []):
                         words += [str(m) for m in marks]

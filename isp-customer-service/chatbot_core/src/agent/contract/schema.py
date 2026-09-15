@@ -60,7 +60,7 @@ class EvidenceItem(_Model):
     clarify_key: str | None = None
     ask_result_key: str | None = None
     meaning: dict[str, str] = {}  # value -> what it means (for the LLM)
-    answers: dict[str, list[str]] = {}
+    answers: dict[str, str] = {}  # value -> vocabulary list of reply markers
     step_role: str | None = None
     when: list[str] = []
     confirm_values: list[str] = []
@@ -560,6 +560,13 @@ def validate_knowledge(
                 errors.append(f"{where}: phrase '{key}' is missing in locale '{language}'")
         from .locale import _examples, example_refs
 
+        for verdict, pack in k.packs.items():
+            for key, item in (pack.evidence.client if pack.evidence else {}).items():
+                for value, name in item.answers.items():
+                    if not isinstance(locale.vocabulary.get(name), tuple):
+                        errors.append(
+                            f"pack {verdict}: evidence.client.{key}.answers.{value} '{name}' is not a vocabulary list"
+                        )
         for i, entry in enumerate(k.faq.faq if k.faq else []):
             if not isinstance(locale.vocabulary.get(entry.keywords_vocab), tuple):
                 errors.append(

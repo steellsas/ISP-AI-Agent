@@ -277,26 +277,26 @@ class TestConflictScope:
         from agent.perception_flow import _conflict_to_clarify
 
         agent = self._agent()
-        set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 1)
-        entry = set_fact(agent.state.diagnosis.evidence, "lights", "dega", CLIENT, 2)
+        set_fact(agent.state.diagnosis.evidence, "lights", "off", CLIENT, 1)
+        entry = set_fact(agent.state.diagnosis.evidence, "lights", "on", CLIENT, 2)
         assert entry["conflict"]
         assert (
             _conflict_to_clarify(agent.state, agent.runtime, "lights", entry) is True
         )  # consumed silently
         assert agent.state.diagnosis.evidence_conflict is None  # no clarify loop
-        assert entry["value"] == "dega" and not entry["conflict"]  # newest stands
+        assert entry["value"] == "on" and not entry["conflict"]  # newest stands
 
     def test_declared_key_conflict_still_clarifies(self, db_connection):
         from agent.evidence import CLIENT, set_fact
         from agent.perception_flow import _conflict_to_clarify
 
         agent = self._agent()
-        set_fact(agent.state.diagnosis.evidence, "fail_scope", "visuose", CLIENT, 1)
-        entry = set_fact(agent.state.diagnosis.evidence, "fail_scope", "viename", CLIENT, 2)
+        set_fact(agent.state.diagnosis.evidence, "fail_scope", "all", CLIENT, 1)
+        entry = set_fact(agent.state.diagnosis.evidence, "fail_scope", "one", CLIENT, 2)
         assert entry["conflict"]
         assert _conflict_to_clarify(agent.state, agent.runtime, "fail_scope", entry) is True
         c = agent.state.diagnosis.evidence_conflict
-        assert (c.key, c.old, c.new) == ("fail_scope", "visuose", "viename")
+        assert (c.key, c.old, c.new) == ("fail_scope", "all", "one")
 
 
 class TestSimRebootSeed:

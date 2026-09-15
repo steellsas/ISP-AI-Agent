@@ -200,8 +200,11 @@ def history_summary(state, rt) -> str | None:
         return None  # nothing was cut — no summary needed
     bits: list[str] = []
     if s.intake.problem_type:
-        when = f", dingo {s.intake.anamnesis_when}" if s.intake.anamnesis_when else ""
-        trig = f", po: {s.intake.anamnesis_trigger}" if s.intake.anamnesis_trigger else ""
+        when_code, trig_code = s.intake.anamnesis_when, s.intake.anamnesis_trigger
+        when = f", dingo {phrase_or(f'anamnesis.when.{when_code}', when_code)}" if when_code else ""
+        trig = (
+            f", po: {phrase_or(f'anamnesis.trigger.{trig_code}', trig_code)}" if trig_code else ""
+        )
         bits.append(f"Problema: {s.intake.problem_type}{when}{trig}")
     if s.identity.customer_id:
         bits.append(f"Klientas: {s.identity.customer_address or s.identity.customer_id}")
@@ -1005,7 +1008,15 @@ def state_facts_block(state, rt) -> str | None:
         # before the address ask, never a repeated "kada dingo?".
         if state.intake.opening_heard_note:
             state.intake.opening_heard_note = False
-            when = s.intake.anamnesis_when or s.intake.anamnesis_trigger or ""
+            when = (
+                phrase_or(f"anamnesis.when.{s.intake.anamnesis_when}", s.intake.anamnesis_when)
+                if s.intake.anamnesis_when
+                else phrase_or(
+                    f"anamnesis.trigger.{s.intake.anamnesis_trigger}", s.intake.anamnesis_trigger
+                )
+                if s.intake.anamnesis_trigger
+                else ""
+            )
             facts.append(
                 "- KLIENTAS JAU PASAKĖ, kada dingo"
                 + (f" („{when}“)" if when else "")

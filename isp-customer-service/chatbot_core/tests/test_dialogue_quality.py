@@ -149,32 +149,34 @@ class TestW1LivingDialogue:
         monkeypatch.setattr(
             ev,
             "extract_client_facts",
-            lambda t: {"lights": "nedega", "outlet_works": "neveikia"} if t else {},
+            lambda t: {"lights": "off", "outlet_works": "not_working"} if t else {},
         )
         agent = self._resolving_agent()
         agent.state.diagnosis.pending_evidence_key = "lights"  # we asked about the LIGHTS
         ingest_client_evidence(agent.state, agent.runtime, "nedega nė viena, ir rozetė neveikia")
-        assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
+        assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "off"
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked, not committed
         assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
-            key="outlet_works", value="neveikia"
+            key="outlet_works", value="not_working"
         )
         reply = evidence_drive(agent.state, agent.runtime, "nedega nė viena, ir rozetė neveikia")
         assert reply and "sitikinti" in reply  # the one confirm question
         assert agent.state.diagnosis.fact_confirm_asked == FactConfirm(
-            key="outlet_works", value="neveikia"
+            key="outlet_works", value="not_working"
         )
 
     def test_confirmed_gate_commits_denied_gate_drops(self, db_connection):
         from agent.perception_flow import ingest_client_evidence
 
         agent = self._resolving_agent()
-        agent.state.diagnosis.fact_confirm_asked = FactConfirm(key="outlet_works", value="neveikia")
+        agent.state.diagnosis.fact_confirm_asked = FactConfirm(
+            key="outlet_works", value="not_working"
+        )
         ingest_client_evidence(agent.state, agent.runtime, "Taip, tikrai neveikia")
-        assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
+        assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "not_working"
         agent2 = self._resolving_agent()
         agent2.state.diagnosis.fact_confirm_asked = FactConfirm(
-            key="outlet_works", value="neveikia"
+            key="outlet_works", value="not_working"
         )
         ingest_client_evidence(agent2.state, agent2.runtime, "Ne ne, rozetė veikia, viskas gerai")
         assert (agent2.state.diagnosis.evidence.get("outlet_works") or {}).get(
@@ -186,12 +188,12 @@ class TestW1LivingDialogue:
         from agent.perception_flow import ingest_client_evidence
 
         monkeypatch.setattr(
-            ev, "extract_client_facts", lambda t: {"outlet_works": "neveikia"} if t else {}
+            ev, "extract_client_facts", lambda t: {"outlet_works": "not_working"} if t else {}
         )
         agent = self._resolving_agent()
         agent.state.diagnosis.pending_evidence_key = "outlet_works"  # we ASKED about the outlet
         ingest_client_evidence(agent.state, agent.runtime, "neveikia rozetė")
-        assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "neveikia"
+        assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "not_working"
         assert agent.state.diagnosis.fact_confirm_pending is None
 
 
@@ -326,7 +328,7 @@ class TestTurnGrammar:
         from agent.perception_flow import _note_fact_meaning
 
         agent = self._agent()
-        _note_fact_meaning(agent.state, agent.runtime, "fail_scope", "visuose")
+        _note_fact_meaning(agent.state, agent.runtime, "fail_scope", "all")
         block = state_facts_block(agent.state, agent.runtime) or ""
         assert "TAI REIŠKIA" in block and "router itself has most likely hung" in block
         assert "TAI REIŠKIA" not in (
@@ -347,7 +349,7 @@ class TestTurnGrammar:
         from agent.perception_flow import _note_fact_meaning
 
         agent = self._agent(verdict="no_mac_observed")
-        _note_fact_meaning(agent.state, agent.runtime, "lights", "dega")
+        _note_fact_meaning(agent.state, agent.runtime, "lights", "on")
         assert "the line does not see it" in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_name_acceptance_is_one_shot(self, db_connection):

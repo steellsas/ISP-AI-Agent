@@ -147,8 +147,8 @@ pack:
     fail_scope:
       label: "kur neveikia"
       values:
-        visuose: "visuose įrenginiuose"
-        viename: "tik viename įrenginyje"
+        all: "visuose įrenginiuose"
+        one: "tik viename įrenginyje"
       question: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
       why: "Jei neveikia visur — žiūrime į routerį; jei viename — į tą įrenginį."
       simpler: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
@@ -156,21 +156,21 @@ pack:
     fail_device:
       label: "įrenginys"
       values:
-        telefonas: "telefone"
-        kompiuteris: "kompiuteryje"
+        phone: "telefone"
+        computer: "kompiuteryje"
       question: "Kuriame įrenginyje neveikia — telefone ar kompiuteryje?"
     connection_type:
       label: "jungimosi būdas"
       values:
-        laidas: "laidu"
+        wired: "laidu"
         wifi: "per WiFi"
       question: "O tas kompiuteris prie interneto jungiasi laidu ar per WiFi?"
       why: "Laidinei jungčiai tikrinsime kabelį, bevielei — WiFi nustatymus."
     rebooted:
       label: "routerio perkrovimas"
       values:
-        perkrautas: "jau perkrautas"
-        neperkrautas: "dar neperkrautas"
+        "yes": "jau perkrautas"
+        "no": "dar neperkrautas"
       question: "Ar bandėte perkrauti routerį — ištraukti iš rozetės, palaukti ir įjungti iš naujo?"
       why: "Perkrovimas išsprendžia didžiąją dalį tokių atvejų — verta pradėti nuo jo."
       clarify: "Norėjau patikslinti — ar perkrovėte ir nepadėjo, ar dar nebandėte?"
@@ -257,11 +257,11 @@ pack:
           "yes": "interneto lemputė užsidegė / internetas atsirado"
           "no": "lemputė toliau nedega / internetas neatsirado"
   no_mac_observed:
-    ivykiai:
+    recent_events:
       label: "įvykiai prieš dingstant"
       values:
-        buvo: "buvo įvykis (elektra/laidai/audra)"
-        nebuvo: "nieko neįvyko"
+        "yes": "buvo įvykis (elektra/laidai/audra)"
+        "no": "nieko neįvyko"
       question: "Ar neseniai buvo dingusi elektra, gal kas nors tvarkė laidus?"
       why: "Jūsų įrenginio linijoje nesimato — po elektros dingimo routeris dažnai lieka neįsijungęs."
       clarify: "Norėjau patikslinti — ar buvo koks įvykis prieš dingstant internetui, ar viskas kaip visada?"
@@ -333,8 +333,8 @@ pack:
     changed_device:
       label: "routerio keitimas"
       values:
-        keite: "keitė arba prijungė naują įrenginį"
-        nekeite: "nieko nekeitė"
+        "yes": "keitė arba prijungė naują įrenginį"
+        "no": "nieko nekeitė"
       question: "Ar neseniai keitėte routerį, o gal prijungėte kokį naują įrenginį prie interneto linijos?"
       why: "Linijoje matome kitą įrenginį nei registruota — norime suprasti, ar tai jūsų naujas."
       simpler: "Gal per paskutines dienas namuose atsirado naujas routeris, kompiuteris ar TV priedėlis, jungtas prie interneto laido?"
@@ -369,8 +369,8 @@ pack:
     fail_scope:
       label: "kur neveikia"
       values:
-        visuose: "visuose įrenginiuose"
-        viename: "tik viename įrenginyje"
+        all: "visuose įrenginiuose"
+        one: "tik viename įrenginyje"
       question: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
       why: "Linijoje routerį matome, bet srautas nevaikšto — jei neveikia visur, greičiausiai pakibo pats routeris; jei tik viename, problema tame įrenginyje."
       simpler: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
@@ -512,15 +512,16 @@ evidence:
   value:
     "yes": "turite"
     "no": "neturite"
-    nedega: "nedega"
-    dega: "dega"
-    mirksi: "mirksi"
-    "įkištas": "įkištas"
-    atjungtas: "atjungtas"
-    bandyta: "bandyta"
-    rado: "rado"
-    aktyvus: "aktyvus"
-    neaktyvus: "neaktyvus"
+    "off": "nedega"
+    "on": "dega"
+    blinking: "mirksi"
+    plugged: "įkištas"
+    unplugged: "atjungtas"
+    tried: "bandyta"
+    found: "rado"
+    active: "aktyvus"
+    inactive: "neaktyvus"
+    not_checked: "nepatikrinta"
   conflict: "{label}: KONFLIKTAS ({a} ↔ {b})"
 
 solver:
@@ -615,3 +616,19 @@ detector:
   ticket_consent:
     "yes": "sutinka, kad užregistruotume gedimą (pritaria, sako gerai/tinka, arba laukia skambučio — 'lauksiu skambučio' irgi yra sutikimas)"
     "no": "AIŠKIAI atsisako registracijos — NE šiaip nerišlus atsakymas"
+
+anamnesis:
+  # How the caller's anamnesis reads in Lithuanian (the state keeps the codes).
+  when:
+    just_now: "ką tik"
+    today: "šiandien"
+    yesterday: "vakar"
+    days_ago: "prieš kelias dienas"
+    hour_ago: "prieš valandą"
+    unknown: "nežino"
+  trigger:
+    storm: "audra"
+    power_cut: "elektros dingimas"
+    renovation: "remontas"
+    moving: "kraustymasis"
+    equipment_change: "įrangos keitimas"

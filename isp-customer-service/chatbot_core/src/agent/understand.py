@@ -32,15 +32,15 @@ _TIPAI = {"atsakymas", "klausimas", "nukrypimas", "nesupratimas", "prieštaravim
 
 # Canonical values per key — the model may only pick from these (plus omit).
 _ALLOWED = {
-    "device_present": {"rado", "nerado"},
-    "lights": {"nedega", "dega", "mirksi"},
-    "power_cable": {"įkištas", "atjungtas"},
-    "outlet_works": {"bandyta", "neveikia"},
+    "device_present": {"found", "not_found"},
+    "lights": {"off", "on", "blinking"},
+    "power_cable": {"plugged", "unplugged"},
+    "outlet_works": {"tried", "not_working"},
     "has_computer": {"yes", "no"},
     # Bridge phase (2026-08-12): the COMPUTER's network state after the cable
     # was replugged — without this key, "rodo LAN veikia" landed on the ROUTER
     # lights and dragged the call back to a buried hypothesis (live).
-    "lan_active": {"aktyvus", "neaktyvus"},
+    "lan_active": {"active", "inactive"},
 }
 
 

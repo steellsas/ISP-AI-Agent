@@ -264,8 +264,8 @@ class TestSpeculation:
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         from agent.evidence import CLIENT, set_fact
 
-        set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
-        set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "found", CLIENT, 1)
         agent.state.diagnosis.pending_evidence_key = "lights"
         return agent
 
@@ -275,9 +275,9 @@ class TestSpeculation:
         agent = self._agent()
         plan = plan_branches(agent.state, agent.runtime)
         assert plan and plan["pending_key"] == "lights"
-        assert plan["branches"]["nedega"]["kind"] == "evidence"
-        assert plan["branches"]["nedega"]["key"] == "power_cable"
-        assert "dega" not in plan["branches"]  # refuted -> pivot path, not speculated
+        assert plan["branches"]["off"]["kind"] == "evidence"
+        assert plan["branches"]["off"]["key"] == "power_cable"
+        assert "on" not in plan["branches"]  # refuted -> pivot path, not speculated
 
     def test_match_gates_are_conservative(self, db_connection):
         from agent.speculation import match
@@ -286,7 +286,7 @@ class TestSpeculation:
         base = {
             "pending_key": "lights",
             "verdict": "no_mac_observed",
-            "branches": {"nedega": {"kind": "evidence", "key": "power_cable", "text": "x?"}},
+            "branches": {"off": {"kind": "evidence", "key": "power_cable", "text": "x?"}},
         }
         agent.runtime.speculation["cache"] = dict(base)
         assert match(agent.state, agent.runtime, "O kiek tai kainuos?") is None  # question

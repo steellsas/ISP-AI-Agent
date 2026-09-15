@@ -136,16 +136,16 @@ class TestExtractSymptoms:
     @pytest.mark.parametrize(
         "text,expected",
         [
-            ("lemputės nedega", {"lights": "nedega"}),
-            ("routerio lemputės dega žaliai", {"lights": "dega"}),
-            ("lemputė mirksi", {"lights": "mirksi"}),
+            ("lemputės nedega", {"lights": "off"}),
+            ("routerio lemputės dega žaliai", {"lights": "on"}),
+            ("lemputė mirksi", {"lights": "blinking"}),
             ("jungiuosi per wifi", {"connection": "wifi"}),
-            ("prijungta laidu", {"connection": "laidinis"}),
-            ("neveikia visuose įrenginiuose", {"devices": "visi"}),
-            ("internetas dingsta kartais", {"frequency": "protarpiais"}),
+            ("prijungta laidu", {"connection": "wired"}),
+            ("neveikia visuose įrenginiuose", {"devices": "all"}),
+            ("internetas dingsta kartais", {"frequency": "intermittent"}),
             ("dar ir televizija neveikia", {"services": "tv"}),
-            ("lamputės nedaga", {"lights": "nedega"}),  # STT misspelling (live)
-            ("lemputės dagą", {"lights": "dega"}),  # STT misspelling (live)
+            ("lamputės nedaga", {"lights": "off"}),  # STT misspelling (live)
+            ("lemputės dagą", {"lights": "on"}),  # STT misspelling (live)
             ("labas", {}),
         ],
     )
@@ -158,13 +158,13 @@ class TestExtractSymptoms:
         """'nedega' must win over the substring 'dega'."""
         from agent.nlu import extract_symptoms
 
-        assert extract_symptoms("lemputės nedega")["lights"] == "nedega"
+        assert extract_symptoms("lemputės nedega")["lights"] == "off"
 
     def test_multiple_categories(self):
         from agent.nlu import extract_symptoms
 
         got = extract_symptoms("per wifi, lemputės nedega")
-        assert got == {"connection": "wifi", "lights": "nedega"}
+        assert got == {"connection": "wifi", "lights": "off"}
 
 
 def _stream_of(message):
@@ -222,7 +222,7 @@ class TestPrefillWiring:
         ):
             list(agent._run_turn_stream("internetas neveikia, lemputės nedega, jungiuosi per wifi"))
 
-        assert agent.state.intake.symptoms["lights"] == "nedega"
+        assert agent.state.intake.symptoms["lights"] == "off"
         assert agent.state.intake.symptoms["connection"] == "wifi"
         facts = state_facts_block(agent.state, agent.runtime)
-        assert "SYMPTOMAI" in facts and "lights=nedega" in facts
+        assert "SYMPTOMAI" in facts and "lights=off" in facts

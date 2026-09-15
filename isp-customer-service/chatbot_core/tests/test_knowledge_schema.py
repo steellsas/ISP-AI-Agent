@@ -190,6 +190,12 @@ def test_every_vocabulary_name_in_code_exists_with_its_type():
     k = validate_knowledge()
     from_knowledge = {p.triggers_vocab for p in k.manifest.problems.values() if p.triggers_vocab}
     from_knowledge |= {entry.keywords_vocab for entry in k.faq.faq}
+    from_knowledge |= {
+        name
+        for pack in k.packs.values()
+        for item in (pack.evidence.client if pack.evidence else {}).values()
+        for name in item.answers.values()
+    }
     unused = sorted(set(vocabulary) - {name for _w, _f, name in uses} - from_knowledge)
     assert unused == []
 

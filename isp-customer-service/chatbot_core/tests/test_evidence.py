@@ -53,8 +53,8 @@ class TestSetFact:
         from agent.evidence import CLIENT, set_fact
 
         ev = {}
-        set_fact(ev, "lights", "nedega", CLIENT, 2)
-        entry = set_fact(ev, "lights", "nedega", CLIENT, 4)
+        set_fact(ev, "lights", "off", CLIENT, 2)
+        entry = set_fact(ev, "lights", "off", CLIENT, 4)
         assert entry["conflict"] is False and entry["turn"] == 4
 
 
@@ -64,13 +64,13 @@ class TestExtraction:
 
         assert x("Neturi kompiutera, tik telefonas") == {"has_computer": "no"}
         assert x("Turiu kompiuterį namuose")["has_computer"] == "yes"
-        assert x("Nedega nė viena lemputė")["lights"] == "nedega"
-        assert x("Lemputės dega žaliai")["lights"] == "dega"
-        assert x("Lemputė mirksi raudonai")["lights"] == "mirksi"
-        assert x("Maitinimo laidas gerai įkištas į rozetę")["power_cable"] == "įkištas"
-        assert x("Kabelis buvo atjungtas nuo routerio")["power_cable"] == "atjungtas"
-        assert x("Pabandžiau kitą rozetę, nepadėjo")["outlet_works"] == "bandyta"
-        assert x("Radau tą routerio dėžutę su antena")["device_present"] == "rado"
+        assert x("Nedega nė viena lemputė")["lights"] == "off"
+        assert x("Lemputės dega žaliai")["lights"] == "on"
+        assert x("Lemputė mirksi raudonai")["lights"] == "blinking"
+        assert x("Maitinimo laidas gerai įkištas į rozetę")["power_cable"] == "plugged"
+        assert x("Kabelis buvo atjungtas nuo routerio")["power_cable"] == "unplugged"
+        assert x("Pabandžiau kitą rozetę, nepadėjo")["outlet_works"] == "tried"
+        assert x("Radau tą routerio dėžutę su antena")["device_present"] == "found"
 
     def test_negation_attaches_to_the_right_noun(self):
         # Eval S4 regression: "Neturiu KITO ROUTERIO, tik kompiuterį" was read
@@ -90,16 +90,16 @@ class TestExtraction:
         from agent.evidence import extract_client_facts as x
 
         facts = x("Ne, nešviečia jokia lemputė")
-        assert facts["lights"] == "nedega"
-        assert facts["device_present"] == "rado"
+        assert facts["lights"] == "off"
+        assert facts["device_present"] == "found"
 
     def test_real_value_replaces_gave_up_marker_without_conflict(self):
         from agent.evidence import CLIENT, set_fact
 
         ev = {}
-        set_fact(ev, "power_cable", "neaišku", CLIENT, 5)  # give-up marker
-        entry = set_fact(ev, "power_cable", "įkištas", CLIENT, 7)
-        assert entry["value"] == "įkištas" and entry["conflict"] is False
+        set_fact(ev, "power_cable", "unknown", CLIENT, 5)  # give-up marker
+        entry = set_fact(ev, "power_cable", "plugged", CLIENT, 7)
+        assert entry["value"] == "plugged" and entry["conflict"] is False
 
     def test_conservative_on_garble_and_unrelated(self):
         from agent.evidence import extract_client_facts as x
@@ -154,8 +154,8 @@ class TestAgentWiring:
         ingest_client_evidence(
             agent.state, agent.runtime, "Nedega nė viena lemputė, laidas įkištas"
         )
-        assert agent.state.diagnosis.evidence["lights"]["value"] == "nedega"
-        assert agent.state.diagnosis.evidence["power_cable"]["value"] == "įkištas"
+        assert agent.state.diagnosis.evidence["lights"]["value"] == "off"
+        assert agent.state.diagnosis.evidence["power_cable"]["value"] == "plugged"
 
     def test_contradiction_asks_one_clarify_then_settles(self):
         from agent.contract.locale import phrase
@@ -254,7 +254,7 @@ class TestAgentWiring:
         spec = spec_for("no_mac_observed")
         assert spec is not None
         assert list(spec["client"]) == [
-            "ivykiai",  # kontekstinė anamnezė (DIALOGO_ETALONAS #2, 2026-09-03)
+            "recent_events",  # kontekstinė anamnezė (DIALOGO_ETALONAS #2, 2026-09-03)
             "device_present",
             "lights",
             "power_cable",
@@ -293,9 +293,9 @@ class TestAgentWiring:
         q2 = evidence_drive(agent.state, agent.runtime, "Kurs komentai")  # extractor got nothing
         assert "šviesa" in q2  # paprasciau (level 2)
         q3 = evidence_drive(agent.state, agent.runtime, "Vis tiek nesuprantu")
-        # Gave up on ivykiai -> recorded "neaišku"; the plan moves on to the
+        # Gave up on ivykiai -> recorded "unknown"; the plan moves on to the
         # next fact (device_present) instead of stalling.
-        assert agent.state.diagnosis.evidence["ivykiai"]["value"] == "neaišku"
+        assert agent.state.diagnosis.evidence["recent_events"]["value"] == "unknown"
         assert q3 is not None and "Susiraskite routerį" in q3
 
     def test_confirmed_with_no_computer_escalates_to_ticket(self):
@@ -374,7 +374,7 @@ class TestAgentWiring:
         agent.state.diagnosis.evidence_ask_counts["device_present"] = 2
         agent.state.diagnosis.pending_evidence_key = "device_present"
         ingest_client_evidence(agent.state, agent.runtime, "Radau.")
-        assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
+        assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
         assert agent.state.diagnosis.pending_evidence_key is None  # answered — context consumed
 
     def test_pending_lights_reads_garbled_negation(self):
@@ -386,17 +386,17 @@ class TestAgentWiring:
         agent = _diagnosing_agent()
         agent.state.diagnosis.pending_evidence_key = "lights"
         ingest_client_evidence(agent.state, agent.runtime, "Ne daganiai 1.")
-        assert agent.state.diagnosis.evidence["lights"]["value"] == "nedega"
+        assert agent.state.diagnosis.evidence["lights"]["value"] == "off"
 
     def test_pending_read_overwrites_gave_up_marker(self):
         from agent.evidence import CLIENT, set_fact
         from agent.perception_flow import ingest_client_evidence
 
         agent = _diagnosing_agent()
-        set_fact(agent.state.diagnosis.evidence, "device_present", "neaišku", CLIENT, 3)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "unknown", CLIENT, 3)
         agent.state.diagnosis.pending_evidence_key = "device_present"
         ingest_client_evidence(agent.state, agent.runtime, "Taip, radau tą dėžutę")
-        assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
+        assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
 
     def test_pending_read_never_hijacks_other_facts(self):
         from agent.perception_flow import ingest_client_evidence
@@ -406,8 +406,8 @@ class TestAgentWiring:
         agent = _diagnosing_agent()
         agent.state.diagnosis.pending_evidence_key = "device_present"
         ingest_client_evidence(agent.state, agent.runtime, "Radau routerį, lemputės dega žaliai")
-        assert agent.state.diagnosis.evidence["device_present"]["value"] == "rado"
-        assert agent.state.diagnosis.evidence["lights"]["value"] == "dega"
+        assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
+        assert agent.state.diagnosis.evidence["lights"]["value"] == "on"
 
     def test_no_ingest_during_ticket_dialogue_or_before_id(self):
         from agent.perception_flow import ingest_client_evidence
@@ -441,9 +441,9 @@ class TestFoldedAndNegationAwareReaders:
     def test_diacritics_folded_matching(self):
         from agent.evidence import extract_client_facts, read_pending_answer
 
-        assert read_pending_answer("power_cable", "Tai ikistas, viskas gerai") == "įkištas"
-        assert extract_client_facts("laidas ikistas tvirtai")["power_cable"] == "įkištas"
+        assert read_pending_answer("power_cable", "Tai ikistas, viskas gerai") == "plugged"
+        assert extract_client_facts("laidas ikistas tvirtai")["power_cable"] == "plugged"
         assert (
             extract_client_facts("kiti irenginiai nuo tos razetes veikia")["outlet_works"]
-            == "bandyta"
+            == "tried"
         )

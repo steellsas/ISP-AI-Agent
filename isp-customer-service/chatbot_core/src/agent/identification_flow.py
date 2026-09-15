@@ -1207,15 +1207,17 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
     if state.diagnosis.evidence_conflict:
+        from .evidence import gloss_label, gloss_value
+
         conflict = state.diagnosis.evidence_conflict
         key, old, new = conflict.key, conflict.old, conflict.new
         state.diagnosis.evidence_conflict = None
         state.diagnosis.evidence_conflict_asked_key = key
         return phrase(
             "identification.evidence_conflict",
-            topic=phrase_or(f"evidence.label.{key}", key),
-            a=phrase_or(f"evidence.value.{old}", old),
-            b=phrase_or(f"evidence.value.{new}", new),
+            topic=gloss_label(key),
+            a=gloss_value(old, key),
+            b=gloss_value(new, key),
         )
     # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
     if state.dialog.end_confirm_pending:
@@ -1305,7 +1307,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
                 from .nlu import extract_anamnesis
 
                 read = extract_anamnesis(user_input)
-                if read.get("when") not in (None, "nežino") or read.get("trigger"):
+                if read.get("when") not in (None, "unknown") or read.get("trigger"):
                     s.intake.anamnesis_raw = user_input.strip()[:200]
                     s.intake.anamnesis_when = read.get("when")
                     s.intake.anamnesis_trigger = read.get("trigger")

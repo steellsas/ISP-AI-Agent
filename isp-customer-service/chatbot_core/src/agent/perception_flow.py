@@ -17,7 +17,7 @@ import os  # noqa: F401
 import re
 from typing import Any  # noqa: F401
 
-from .contract.locale import phrase, phrase_or, vocab, vocab_set
+from .contract.locale import phrase, vocab, vocab_set
 from .dialog_utils import asked_recently, last_agent_question
 from .trace import trace_note
 
@@ -202,7 +202,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         from .resolution import is_bare_done_report
 
         if is_bare_done_report(user_input) and (
-            pending_entry is None or pending_entry.get("value") == "neaišku"
+            pending_entry is None or pending_entry.get("value") == "unknown"
         ):
             from .evidence import read_pending_answer as _rpa
             from .evidence import spec_for as _spec_for
@@ -236,7 +236,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     if (
         pending
         and pending not in facts
-        and (pending_entry is None or pending_entry.get("value") == "neaišku")
+        and (pending_entry is None or pending_entry.get("value") == "unknown")
     ):
         from .evidence import read_pending_answer, spec_for
 
@@ -299,7 +299,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
                 entry is not None
                 and entry.get("source") == CLIENT
                 and not entry.get("conflict")
-                and entry.get("value") not in ("neaišku",)
+                and entry.get("value") not in ("unknown",)
                 and entry.get("value") != facts[key]
                 and kw.get(key) != facts[key]
             ):
@@ -352,14 +352,14 @@ def _note_fact_meaning(state, rt, key: str, value: str) -> None:
     maitinimą, bet nemato tinklo") — the narrator's reaction then CARRIES the
     meaning instead of parroting the fact. One-shot note; declared per value
     in the ACTIVE pack's evidence item, so wording is a file edit."""
-    from .evidence import spec_for
+    from .evidence import gloss_label, spec_for
 
     spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
     item = (spec.get("client") or {}).get(key) or {}
     meaning = (item.get("meaning") or {}).get(value)
     if meaning:
         state.diagnosis.fact_meaning = [
-            phrase_or(f"evidence.label.{key}", key),
+            gloss_label(key),
             value,
             str(meaning),
         ]

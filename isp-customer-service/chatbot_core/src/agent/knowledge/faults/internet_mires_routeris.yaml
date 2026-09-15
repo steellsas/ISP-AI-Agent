@@ -20,21 +20,21 @@ evidence:
     # kontekstu (verdiktas: įrenginio linijoje nesimato → elektros dingimas /
     # laidų tvarkymas tampa diagnostiškai svarbus). Jei klientas jau minėjo
     # (capture-first / anamnesis seed) — solveris nebeklausia.
-    ivykiai:
-      label_key: "pack.no_mac_observed.ivykiai.label"
+    recent_events:
+      label_key: "pack.no_mac_observed.recent_events.label"
       value_label_keys:
-        buvo: "pack.no_mac_observed.ivykiai.values.buvo"
-        nebuvo: "pack.no_mac_observed.ivykiai.values.nebuvo"
+        'yes': "pack.no_mac_observed.recent_events.values.yes"
+        'no': "pack.no_mac_observed.recent_events.values.no"
       goal: "whether something happened before the internet went down — a power cut, work on the wiring, a storm"
-      question_key: "pack.no_mac_observed.ivykiai.question"
-      why_key: "pack.no_mac_observed.ivykiai.why"
-      clarify_key: "pack.no_mac_observed.ivykiai.clarify"
-      simpler_key: "pack.no_mac_observed.ivykiai.simpler"
+      question_key: "pack.no_mac_observed.recent_events.question"
+      why_key: "pack.no_mac_observed.recent_events.why"
+      clarify_key: "pack.no_mac_observed.recent_events.clarify"
+      simpler_key: "pack.no_mac_observed.recent_events.simpler"
       meaning:
-        buvo: "this can explain why the device dropped off the line — we check from the power supply"
+        'yes': "this can explain why the device dropped off the line — we check from the power supply"
       answers:
-        buvo: ["dingo elektra", "dingusi elektra", "buvo dingus", tvarkė, tvarke, remont, audra, perkūn, perkun, keitėm, keitem]
-        nebuvo: [nebuvo, "nieko neįvyko", "nieko nevyko", "viskas kaip", "ne,", "ne "]
+        'yes': answers_no_mac_observed_recent_events_yes
+        'no': answers_no_mac_observed_recent_events_no
       step_role: check_lights
     device_present:
       goal: "the customer found the router (the box the internet cable goes into)"
@@ -47,16 +47,16 @@ evidence:
       # atsakymai: kaip trumpi/darkyti atsakymai skaitomi, kai KĄ TIK klaustas
       # ŠITAS klausimas (universalu — naujas gedimas deklaruoja savus čia pat).
       answers:
-        rado: [radau, suradau, taip, matau, "stoviu prie", "prie jo", "esu prie", priėjau, priejau]
-        nerado: [nerandu, neradau, "nėra tokios", nematau, nerasiu]
+        found: answers_no_mac_observed_device_present_found
+        not_found: answers_no_mac_observed_device_present_not_found
     lights:
       goal: "whether at least one router light is on"
       step_role: check_lights
       # reiskia — KĄ atsakymas reiškia (turn'o gramatika, 2026-09-03):
       # naratorius reakcijoje įvardija reikšmę, ne patį faktą.
       meaning:
-        dega: "the router gets power but the line does not see it — we look at the cable"
-        nedega: "the router most likely gets no power — we check the power supply"
+        'on': "the router gets power but the line does not see it — we look at the cable"
+        'off': "the router most likely gets no power — we check the power supply"
       question_key: "pack.no_mac_observed.lights.question"
       # kodel — pasakoma kartu su PIRMU klausimu, kad klientas žinotų, kam to
       # reikia (2026-08-11, Andrius: paaiškinti ką tikrinam ir kodėl).
@@ -66,7 +66,7 @@ evidence:
       # ka_radote — kai klientas sako TIK „patikrinau“ be rezultato: agentas
       # padėkoja ir paklausia, KĄ rado (2026-08-11, „pasitikslinti, o ne kurti“).
       ask_result_key: "pack.no_mac_observed.lights.ask_result"
-      when: [device_present=rado]
+      when: [device_present=found]
     power_cable:
       goal: "the power lead is plugged into the socket AND into the router"
       step_role: check_power
@@ -75,7 +75,7 @@ evidence:
       simpler_key: "pack.no_mac_observed.power_cable.simpler"
       clarify_key: "pack.no_mac_observed.power_cable.clarify"
       ask_result_key: "pack.no_mac_observed.power_cable.ask_result"
-      when: [lights=nedega]
+      when: [lights=off]
     outlet_works:
       goal: "the socket works — another one was tried, or other devices work from it"
       step_role: check_power
@@ -83,11 +83,11 @@ evidence:
       why_key: "pack.no_mac_observed.outlet_works.why"
       clarify_key: "pack.no_mac_observed.outlet_works.clarify"
       ask_result_key: "pack.no_mac_observed.outlet_works.ask_result"
-      when: [lights=nedega, power_cable=įkištas]
+      when: [lights=off, power_cable=plugged]
       # W1-2 svarbos vartai (2026-08-25): "rozetė neveikia" keičia visą išvadą
       # (elektra, ne routeris) ir dažnai būna STT klaida — prieš įrašant į
       # žurnalą SAVANORIŠKAI pasakytą tokią reikšmę, agentas pasitikslina.
-      confirm_values: ['neveikia']
+      confirm_values: ['not_working']
     has_computer:
       goal: "whether the customer has a computer and wants us to run the internet through it temporarily until they get a new router"
       step_role: offer_bridge
@@ -102,11 +102,11 @@ evidence:
       goal: "whether the computer's network (LAN) connection is active with the cable plugged in"
       question_key: "pack.no_mac_observed.lan_active.question"
       answers:
-        neaktyvus: [neaktyv, nedega, nerodo, "nėra", nera, "ne,", "ne "]
-        aktyvus: [aktyv, veikia, dega, rodo, taip, yra]
+        inactive: answers_no_mac_observed_lan_active_inactive
+        active: answers_no_mac_observed_lan_active_active
       when: [bridge_phase]
-  confirmed_when: [lights=nedega, power_cable=įkištas, outlet_works=bandyta]
-  refuted_when: [lights=dega]
+  confirmed_when: [lights=off, power_cable=plugged, outlet_works=tried]
+  refuted_when: [lights=on]
   on_refuted: reseat_cable
 ticket_need_key: "pack.no_mac_observed.ticket_need"
 # Tilto nesėkmės pabaiga (2026-08-12, Andrius): LAN patikrintas, įrenginio

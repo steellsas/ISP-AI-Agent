@@ -276,5 +276,5 @@ def extract_anamnesis(text: str | None) -> dict:
             out["trigger"] = label
             break
     if out["when"] is None and any(m in low for m in vocab("dont_know")):
-        out["when"] = "nežino"
+        out["when"] = "unknown"
     return out

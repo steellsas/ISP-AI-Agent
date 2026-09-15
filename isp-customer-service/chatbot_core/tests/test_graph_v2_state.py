@@ -127,8 +127,8 @@ class TestCheckpointSerde:
         state = _populated()
         values = [
             ActiveQuestion(owner="ticket", key="ticket_phone", asks=2, data={"retry": True}),
-            EvidenceConflict(key="lights", old="dega", new="nedega"),
-            FactConfirm(key="outlet_works", value="neveikia"),
+            EvidenceConflict(key="lights", old="on", new="off"),
+            FactConfirm(key="outlet_works", value="not_working"),
             state,
             *(getattr(state, group) for group in type(state).model_fields),
         ]

@@ -477,9 +477,9 @@ class TestHearingAgent:
         from agent.evidence_drive import evidence_drive
 
         agent = self._agent(monkeypatch)
-        set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
-        set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
-        set_fact(agent.state.diagnosis.evidence, "lights", "nedega", CLIENT, 2)
+        set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "found", CLIENT, 1)
+        set_fact(agent.state.diagnosis.evidence, "lights", "off", CLIENT, 2)
         agent.state.diagnosis.pending_evidence_key = "power_cable"
         agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
         reply = evidence_drive(agent.state, agent.runtime, "Ne.")
@@ -490,8 +490,8 @@ class TestHearingAgent:
         from agent.evidence_drive import evidence_drive
 
         agent = self._agent(monkeypatch)
-        set_fact(agent.state.diagnosis.evidence, "ivykiai", "nebuvo", CLIENT, 0)
-        set_fact(agent.state.diagnosis.evidence, "device_present", "rado", CLIENT, 1)
+        set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
+        set_fact(agent.state.diagnosis.evidence, "device_present", "found", CLIENT, 1)
         reply = evidence_drive(agent.state, agent.runtime, "radau")
         assert reply is not None and "lemputė" in reply
         assert "maitinimą" in reply  # the kodel sentence
@@ -685,10 +685,10 @@ class TestHearingAgent:
         monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(monkeypatch)
         for k, v in (
-            ("device_present", "rado"),
-            ("lights", "nedega"),
-            ("power_cable", "įkištas"),
-            ("outlet_works", "bandyta"),
+            ("device_present", "found"),
+            ("lights", "off"),
+            ("power_cable", "plugged"),
+            ("outlet_works", "tried"),
             ("has_computer", "yes"),
         ):
             set_fact(agent.state.diagnosis.evidence, k, v, CLIENT, 1)
@@ -721,7 +721,7 @@ class TestHearingAgent:
         assert "LAN" in r2  # the computer's network card, not the router
         assert agent.state.diagnosis.pending_evidence_key == "lan_active"
         ingest_client_evidence(agent.state, agent.runtime, "Nerodo nieko, neaktyvus")
-        assert agent.state.diagnosis.evidence["lan_active"]["value"] == "neaktyvus"
+        assert agent.state.diagnosis.evidence["lan_active"]["value"] == "inactive"
         r3 = drive_propose_fix(agent.state, agent.runtime, "", "ir dabar nieko")
         assert "kabeliu" in r3  # the possible incoming-cable problem is NAMED
         assert "Ar tiks numeris" in r3  # technician registration begins
@@ -744,10 +744,10 @@ class TestHearingAgent:
         agent = self._agent(monkeypatch)
         agent.state.identity.caller_name = "Andrius"
         for k, v in (
-            ("ivykiai", "nebuvo"),
-            ("device_present", "rado"),
-            ("lights", "nedega"),
-            ("power_cable", "neaišku"),  # gave up — hypothesis unconfirmable
+            ("recent_events", "no"),
+            ("device_present", "found"),
+            ("lights", "off"),
+            ("power_cable", "unknown"),  # gave up — hypothesis unconfirmable
         ):
             set_fact(agent.state.diagnosis.evidence, k, v, CLIENT, 1)
         agent.state.diagnosis.revived_evidence_keys = ["power_cable"]  # revival already spent
@@ -804,9 +804,9 @@ class TestHearingAgent:
     def test_lan_pending_answers(self):
         from agent.evidence import read_pending_answer
 
-        assert read_pending_answer("lan_active", "Rodo, kad aktyvus") == "aktyvus"
-        assert read_pending_answer("lan_active", "Nerodo nieko") == "neaktyvus"
-        assert read_pending_answer("lan_active", "dega lemputė prie lizdo") == "aktyvus"
+        assert read_pending_answer("lan_active", "Rodo, kad aktyvus") == "active"
+        assert read_pending_answer("lan_active", "Nerodo nieko") == "inactive"
+        assert read_pending_answer("lan_active", "dega lemputė prie lizdo") == "active"
 
     def test_on_task_question_stays_with_the_flow(self, db_connection, monkeypatch):
         from agent.perception_flow import classify_side_topic
@@ -1206,9 +1206,9 @@ class TestAnalysisStep2:
         from agent.nlu import extract_anamnesis
 
         r = extract_anamnesis("Šįryt dingo, po audros")
-        assert r == {"when": "šiandien", "trigger": "audra"}
-        assert extract_anamnesis("Nežinau, dingo ir viskas")["when"] == "nežino"
-        assert extract_anamnesis("Vakar dar veikė")["when"] == "vakar"
+        assert r == {"when": "today", "trigger": "storm"}
+        assert extract_anamnesis("Nežinau, dingo ir viskas")["when"] == "unknown"
+        assert extract_anamnesis("Vakar dar veikė")["when"] == "yesterday"
 
     def test_hypothesis_cites_both_sides(self, db_connection):
         from agent.walker_flow import open_hypothesis
@@ -1216,8 +1216,8 @@ class TestAnalysisStep2:
         from tests.calls import make_agent
 
         agent = make_agent("+37060012353")
-        agent.state.intake.anamnesis_when = "šiandien"
-        agent.state.intake.anamnesis_trigger = "audra"
+        agent.state.intake.anamnesis_when = "today"
+        agent.state.intake.anamnesis_trigger = "storm"
         open_hypothesis(agent.state, agent.runtime, "no_mac_observed")
 
         because = " ".join(agent.state.diagnosis.hypothesis["because"])
@@ -1234,8 +1234,8 @@ class TestAnalysisStep2:
         agent = make_agent("+37060012353")
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
-        agent.state.intake.anamnesis_when = "vakar"
-        agent.state.intake.anamnesis_trigger = "audra"
+        agent.state.intake.anamnesis_when = "yesterday"
+        agent.state.intake.anamnesis_trigger = "storm"
         agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
         agent.state.resolution.procedure = {
             "verdict": "no_mac_observed",
@@ -1819,8 +1819,8 @@ class TestBindDiscipline:
         agent.state.identity.customer_id = "CUST009"
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.caller_name = "Andrius"
-        agent.state.intake.anamnesis_when = "vakar"
-        agent.state.intake.anamnesis_trigger = "audra"
+        agent.state.intake.anamnesis_when = "yesterday"
+        agent.state.intake.anamnesis_trigger = "storm"
         agent.state.diagnosis.hypothesis = {"cause": "no_mac_observed", "status": "testing"}
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
         return agent
@@ -1909,7 +1909,7 @@ class TestTicketDialogue:
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.caller_name = "Andrius"
         agent.state.identity.caller_relation = "holder"
-        agent.state.intake.anamnesis_when = "vakar"
+        agent.state.intake.anamnesis_when = "yesterday"
         agent.state.diagnosis.hypothesis = {
             "cause": "no_mac_observed",
             "status": "testing",

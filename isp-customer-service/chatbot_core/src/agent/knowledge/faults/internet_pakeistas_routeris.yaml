@@ -16,16 +16,16 @@ evidence:
     changed_device:
       label_key: "pack.foreign_mac.changed_device.label"
       value_label_keys:
-        keite: "pack.foreign_mac.changed_device.values.keite"
-        nekeite: "pack.foreign_mac.changed_device.values.nekeite"
+        'yes': "pack.foreign_mac.changed_device.values.yes"
+        'no': "pack.foreign_mac.changed_device.values.no"
       goal: "whether the customer recently changed the router or connected a new device to the line"
       question_key: "pack.foreign_mac.changed_device.question"
       why_key: "pack.foreign_mac.changed_device.why"
       simpler_key: "pack.foreign_mac.changed_device.simpler"
       clarify_key: "pack.foreign_mac.changed_device.clarify"
       answers:
-        keite: [keičiau, keiciau, keciau, pakeičiau, pakeiciau, "naują routerį", nusipirkau, prijungiau, pajungiau, keitėm, keitem]
-        nekeite: [nekeičiau, nekeiciau, "nieko nekeit", "nieko naujo", neprijungiau, nepajungiau, "nieko nedariau"]
+        'yes': answers_foreign_mac_changed_device_yes
+        'no': answers_foreign_mac_changed_device_no
     cable_port:
       label_key: "pack.foreign_mac.cable_port.label"
       value_label_keys:
@@ -37,9 +37,9 @@ evidence:
       simpler_key: "pack.foreign_mac.cable_port.simpler"
       clarify_key: "pack.foreign_mac.cable_port.clarify"
       answers:
-        wan: [wan, internet, interneto, mėlyn, melyn, atskir]
-        lan: [lan, geltona, geltoname, kitas, kitą, "prie kitų"]
-      when: [changed_device=nekeite]
+        wan: answers_foreign_mac_cable_port_wan
+        lan: answers_foreign_mac_cable_port_lan
+      when: [changed_device=no]
   # Hipotezė (linijoje kitas įrenginys) — TELEMETRIJOS faktas, patvirtinta nuo
   # pat pradžių; kliento faktai parenka SPRENDIMĄ, ne hipotezę.
   confirmed_when: []
@@ -49,15 +49,15 @@ evidence:
 # tik įrenginio pririšimas prie linijos.
 offer_goal: "Say that the line shows a new device — it is their router. If the customer changed the router: say you will now BIND it to the line (<<examples:foreign_mac/offer.bind>>) and ask them to wait a moment. If they changed nothing — ask which socket the cable from the wall is plugged into."
 solutions:
-- when: [changed_device=keite]
+- when: [changed_device=yes]
   action: procedure
   step_role: bind_device
   description_key: "pack.foreign_mac.solution.s1"
-- when: [changed_device=nekeite, cable_port=lan]
+- when: [changed_device=no, cable_port=lan]
   action: procedure
   step_role: move_cable_to_wan
   description_key: "pack.foreign_mac.solution.s2"
-- when: [changed_device=nekeite, cable_port=wan]
+- when: [changed_device=no, cable_port=wan]
   action: procedure
   step_role: bind_device
   description_key: "pack.foreign_mac.solution.s3"

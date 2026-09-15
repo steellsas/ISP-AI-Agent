@@ -27,7 +27,7 @@ class TestApplyOverlay:
         agent = _agent()
         agent.state.diagnosis.pending_evidence_key = "lights"
         apply_overlay(agent.state, agent.runtime, ["ne, nedega nė viena"])
-        assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "nedega"
+        assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "off"
         block = state_facts_block(agent.state, agent.runtime) or ""
         assert "ĮSITERPĖ" in block and "nedega" in block
         assert "ĮSITERPĖ" not in (state_facts_block(agent.state, agent.runtime) or "")  # one-shot
@@ -46,14 +46,14 @@ class TestApplyOverlay:
         import agent.evidence as ev
 
         monkeypatch.setattr(
-            ev, "extract_client_facts", lambda t: {"outlet_works": "neveikia"} if t else {}
+            ev, "extract_client_facts", lambda t: {"outlet_works": "not_working"} if t else {}
         )
         agent = _agent()
         agent.state.diagnosis.pending_evidence_key = "lights"  # volunteered, not the asked key
         apply_overlay(agent.state, agent.runtime, ["rozetė neveikia"])
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked
         assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
-            key="outlet_works", value="neveikia"
+            key="outlet_works", value="not_working"
         )
 
     def test_empty_and_capped(self, db_connection):

@@ -274,7 +274,7 @@ class TestPendingFallback:
         )
         with patch("agent.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "Visuose įrenginiuose")
-        assert agent.state.diagnosis.evidence["fail_scope"]["value"] == "visuose"
+        assert agent.state.diagnosis.evidence["fail_scope"]["value"] == "all"
 
     def test_unrelated_utterance_commits_nothing(self, db_connection):
         from unittest.mock import patch

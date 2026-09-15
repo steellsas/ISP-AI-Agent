@@ -68,9 +68,13 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     if s.intake.anamnesis_raw:
         bits = [f'žodžiais: "{s.intake.anamnesis_raw}"']
         if s.intake.anamnesis_when:
-            bits.append(f"dingo {s.intake.anamnesis_when}")
+            bits.append(
+                f"dingo {phrase_or(f'anamnesis.when.{s.intake.anamnesis_when}', s.intake.anamnesis_when)}"
+            )
         if s.intake.anamnesis_trigger:
-            bits.append(f"po: {s.intake.anamnesis_trigger}")
+            bits.append(
+                f"po: {phrase_or(f'anamnesis.trigger.{s.intake.anamnesis_trigger}', s.intake.anamnesis_trigger)}"
+            )
         lines.append("ANAMNEZĖ (klientas): " + "; ".join(bits))
     if s.intake.symptoms:
         lines.append("SIMPTOMAI: " + ", ".join(f"{k}={v}" for k, v in s.intake.symptoms.items()))
@@ -694,7 +698,7 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
     lands on the ledger); (3) name the possible incoming-cable problem and
     register the technician, with what-was-tried on the ticket."""
     from .contract.locale import maybe_phrase, phrase, template
-    from .evidence import fault_bridge_fail, spec_for
+    from .evidence import fault_bridge_fail, gloss_value, spec_for
 
     verdict = (state.resolution.procedure or {}).get("verdict")
     stage = state.resolution.bridge_fail_stage
@@ -715,10 +719,10 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
     # Stage 2+: LAN answered (or unreadable) and the line is still empty —
     # the technician takes it from here; the attempt goes on the ticket.
     texts = fault_bridge_fail(verdict)
-    lan = (state.diagnosis.evidence.get("lan_active") or {}).get("value") or "nepatikrinta"
+    lan = (state.diagnosis.evidence.get("lan_active") or {}).get("value") or "not_checked"
     state.ticket.bridge_fail_note = (
         texts.get("ticket_note") or template("ticket.details.bridge_failed")
-    ).format(lan=phrase_or(f"evidence.value.{lan}", lan))
+    ).format(lan=gloss_value(lan, "lan_active"))
     rt.tracer.emit(
         "drive_decision",
         action="bridge_fail_escalate",

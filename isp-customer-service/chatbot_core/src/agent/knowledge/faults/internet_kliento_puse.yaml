@@ -17,69 +17,69 @@ evidence:
     fail_scope:
       label_key: "pack.healthy_to_router.fail_scope.label"
       value_label_keys:
-        visuose: "pack.healthy_to_router.fail_scope.values.visuose"
-        viename: "pack.healthy_to_router.fail_scope.values.viename"
+        all: "pack.healthy_to_router.fail_scope.values.all"
+        one: "pack.healthy_to_router.fail_scope.values.one"
       goal: "whether the internet fails on all devices or only on one"
       meaning:
-        visuose: "the problem is most likely the router — we start by rebooting it"
-        viename: "the network works — we look at that one device"
+        all: "the problem is most likely the router — we start by rebooting it"
+        one: "the network works — we look at that one device"
       question_key: "pack.healthy_to_router.fail_scope.question"
       why_key: "pack.healthy_to_router.fail_scope.why"
       simpler_key: "pack.healthy_to_router.fail_scope.simpler"
       clarify_key: "pack.healthy_to_router.fail_scope.clarify"
       answers:
-        visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
-        viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
+        all: answers_healthy_to_router_fail_scope_all
+        one: answers_healthy_to_router_fail_scope_one
     fail_device:
       label_key: "pack.healthy_to_router.fail_device.label"
       value_label_keys:
-        telefonas: "pack.healthy_to_router.fail_device.values.telefonas"
-        kompiuteris: "pack.healthy_to_router.fail_device.values.kompiuteris"
+        phone: "pack.healthy_to_router.fail_device.values.phone"
+        computer: "pack.healthy_to_router.fail_device.values.computer"
       goal: "which device fails — the phone or the computer"
       question_key: "pack.healthy_to_router.fail_device.question"
       answers:
-        telefonas: [telefon, planšet, planset, mobil]
-        kompiuteris: [kompiuter, nešiojam, nesiojam, laptop, pc]
-      when: [fail_scope=viename]
+        phone: answers_healthy_to_router_fail_device_phone
+        computer: answers_healthy_to_router_fail_device_computer
+      when: [fail_scope=one]
     connection_type:
       label_key: "pack.healthy_to_router.connection_type.label"
       value_label_keys:
-        laidas: "pack.healthy_to_router.connection_type.values.laidas"
+        wired: "pack.healthy_to_router.connection_type.values.wired"
         wifi: "pack.healthy_to_router.connection_type.values.wifi"
       goal: "whether that computer connects by cable or over Wi-Fi"
       question_key: "pack.healthy_to_router.connection_type.question"
       why_key: "pack.healthy_to_router.connection_type.why"
       answers:
-        laidas: [laidu, laidas, kabeliu, kabelis, "per laidą"]
-        wifi: [wifi, "wi-fi", bevielis, bevieliu, belaidžiu, belaidziu]
-      when: [fail_device=kompiuteris]
+        wired: answers_healthy_to_router_connection_type_wired
+        wifi: answers_healthy_to_router_connection_type_wifi
+      when: [fail_device=computer]
     rebooted:
       label_key: "pack.healthy_to_router.rebooted.label"
       value_label_keys:
-        perkrautas: "pack.healthy_to_router.rebooted.values.perkrautas"
-        neperkrautas: "pack.healthy_to_router.rebooted.values.neperkrautas"
+        'yes': "pack.healthy_to_router.rebooted.values.yes"
+        'no': "pack.healthy_to_router.rebooted.values.no"
       goal: "whether the router has already been rebooted (unplugged from the socket and switched on again)"
       question_key: "pack.healthy_to_router.rebooted.question"
       why_key: "pack.healthy_to_router.rebooted.why"
       clarify_key: "pack.healthy_to_router.rebooted.clarify"
       answers:
-        perkrautas: [perkroviau, perkrovėm, perkrovem, perleidau, "jau bandžiau", "jau bandziau"]
-        neperkrautas: [neperkroviau, nebandžiau, nebandziau, "dar ne"]
-      when: [fail_scope=visuose]
+        'yes': answers_healthy_to_router_rebooted_yes
+        'no': answers_healthy_to_router_rebooted_no
+      when: [fail_scope=all]
   confirmed_when: []
   refuted_when: []
 # Sprendimai pagal surinktus faktus — visi vykdomi ŽINGSNIŲ MEDŽIO (tada:walker):
 # solveris nustato KUR eiti, medis žino KAIP vesti (instrukcija + patikra).
 solutions:
-- when: [fail_scope=visuose]
+- when: [fail_scope=all]
   action: procedure
   step_role: ability_check
   description_key: "pack.healthy_to_router.solution.s1"
-- when: [fail_device=telefonas]
+- when: [fail_device=phone]
   action: procedure
   step_role: check_wifi
   description_key: "pack.healthy_to_router.solution.s2"
-- when: [connection_type=laidas]
+- when: [connection_type=wired]
   action: procedure
   step_role: check_device_cable
   description_key: "pack.healthy_to_router.solution.s3"

@@ -29,19 +29,19 @@ evidence:
     fail_scope:
       label_key: "pack.router_hung.fail_scope.label"
       value_label_keys:
-        visuose: "pack.router_hung.fail_scope.values.visuose"
-        viename: "pack.router_hung.fail_scope.values.viename"
+        all: "pack.router_hung.fail_scope.values.all"
+        one: "pack.router_hung.fail_scope.values.one"
       goal: "whether the internet fails on all devices or only on one"
       meaning:
-        visuose: "the router itself has most likely hung — we will reboot it"
-        viename: "the router works — the problem is in that device or on the way to it"
+        all: "the router itself has most likely hung — we will reboot it"
+        one: "the router works — the problem is in that device or on the way to it"
       question_key: "pack.router_hung.fail_scope.question"
       why_key: "pack.router_hung.fail_scope.why"
       simpler_key: "pack.router_hung.fail_scope.simpler"
       clarify_key: "pack.router_hung.fail_scope.clarify"
       answers:
-        visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
-        viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
+        all: answers_router_hung_fail_scope_all
+        one: answers_router_hung_fail_scope_one
   confirmed_when: []
   refuted_when: []
 # reikalinga — tiketo priežastis, kai perkrovimas NEatstato (ticket_flow /
@@ -49,11 +49,11 @@ evidence:
 ticket_need_key: "pack.router_hung.ticket_need"
 # Sprendimai pagal surinktus faktus — vykdo ŽINGSNIŲ MEDIS (tada:walker).
 solutions:
-- when: [fail_scope=visuose]
+- when: [fail_scope=all]
   action: procedure
   step_role: ability_check
   description_key: "pack.router_hung.solution.s1"
-- when: [fail_scope=viename]
+- when: [fail_scope=one]
   action: procedure
   step_role: device_path
   description_key: "pack.router_hung.solution.s2"

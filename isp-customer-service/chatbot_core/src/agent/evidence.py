@@ -46,6 +46,8 @@ class FactConfirm(BaseModel):
 
 
 CLIENT = "client"
+# The give-up marker: the caller's answer could not be read (replaceable by any real value).
+UNKNOWN = "unknown"
 
 
 def set_fact(
@@ -68,7 +70,7 @@ def set_fact(
     # client value onto a telemetry-backed fact: words never overwrite.
     if entry["source"] == TELEMETRY:
         return entry
-    if entry["value"] == "neaišku":
+    if entry["value"] == UNKNOWN:
         # Our own give-up marker — any real value replaces it, no conflict.
         entry.update(stamp)
         entry["conflict"] = False
@@ -93,7 +95,7 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
     human ('routerio keitimas: keitė įrangą'), never as raw English keys
     (live 2026-08-13: the recap spoke 'changed_device: keite')."""
     labels: dict[str, str] = {}
-    values: dict[str, str] = {}
+    values: dict[tuple[str, str], str] = {}
     try:
         from .contract.locale import phrase
         from .faults import _faults
@@ -109,7 +111,7 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
                     if item.get("label_key"):
                         labels[str(key)] = phrase(item["label_key"])
                     for v, gloss in (item.get("value_label_keys") or {}).items():
-                        values[str(v)] = phrase(gloss)
+                        values[(str(key), str(v))] = phrase(gloss)
     except Exception:  # pragma: no cover - glosses are cosmetic, never break
         pass
     return labels, values
@@ -122,11 +124,13 @@ def gloss_label(key: str) -> str:
     return labels.get(key) or phrase_or(f"evidence.label.{key}", key)
 
 
-def gloss_value(value: Any) -> str:
+def gloss_value(value: Any, key: str | None = None) -> str:
+    """How an evidence value reads: the pack's label for this key, else the
+    built-in value wording, else the value itself."""
     _, values = _pack_glosses()
     from .contract.locale import phrase_or
 
-    return values.get(value) or phrase_or(f"evidence.value.{value}", value)
+    return values.get((str(key), str(value))) or phrase_or(f"evidence.value.{value}", value)
 
 
 def summary_lt(evidence: dict[str, Any]) -> str:
@@ -136,13 +140,13 @@ def summary_lt(evidence: dict[str, Any]) -> str:
     for key, e in evidence.items():
         label = gloss_label(key)
         if e.get("conflict"):
-            a = gloss_value(e["value"])
-            b = gloss_value(e.get("pending"))
+            a = gloss_value(e["value"], key)
+            b = gloss_value(e.get("pending"), key)
             from .contract.locale import phrase
 
             bits.append(phrase("evidence.conflict", label=label, a=a, b=b))
         else:
-            bits.append(f"{label}: {gloss_value(e['value'])}")
+            bits.append(f"{label}: {gloss_value(e['value'], key)}")
     return "; ".join(bits)
 
 
@@ -199,31 +203,31 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
             facts["has_computer"] = "no"
     if any(w in low for w in vocab("fact_lights_words")):
         if any(_fold(m) in low for m in vocab("fact_lights_no")):
-            facts["lights"] = "nedega"
+            facts["lights"] = "off"
         elif any(w in low for w in vocab("fact_lights_blinking")):
-            facts["lights"] = "mirksi"
+            facts["lights"] = "blinking"
         elif any(_mark_hit(low, m) for m in vocab("fact_lights_yes")):
-            facts["lights"] = "dega"
+            facts["lights"] = "on"
     if any(_fold(w) in low for w in vocab("fact_cable_words")):
         if any(_fold(m) in low for m in vocab("fact_cable_out")):
-            facts["power_cable"] = "atjungtas"
+            facts["power_cable"] = "unplugged"
         elif any(_mark_hit(low, m) for m in vocab("fact_cable_in")):
-            facts["power_cable"] = "įkištas"
+            facts["power_cable"] = "plugged"
     # "razet" — the STT routinely hears "rozetė" as "razetė" (both live calls).
     if any(w in low for w in vocab("fact_outlet_words")) and any(
         m in low for m in vocab("fact_outlet_tried")
     ):
-        facts["outlet_works"] = "bandyta"
+        facts["outlet_works"] = "tried"
     if any(w in low for w in vocab("fact_router_words")) and any(
         _fold(m) in low for m in vocab("fact_device_found")
     ):
-        facts["device_present"] = "rado"
+        facts["device_present"] = "found"
     # Domain inference: answering about the LIGHTS or the POWER CABLE means the
     # caller is standing AT the device — device_present is implied (eval S4:
     # "nešviečia jokia lemputė" while device_present was still being asked led
     # to a pointless re-ask and a give-up).
     if ("lights" in facts or "power_cable" in facts) and "device_present" not in facts:
-        facts["device_present"] = "rado"
+        facts["device_present"] = "found"
     return facts
 
 
@@ -323,8 +327,8 @@ def client_facts_lt(evidence: dict[str, Any]) -> str:
     "ką patikrinome kartu" part of the findings announce."""
     bits = []
     for key, e in evidence.items():
-        if e.get("source") == CLIENT and not e.get("conflict") and e.get("value") != "neaišku":
-            bits.append(f"{gloss_label(key)}: {gloss_value(e['value'])}")
+        if e.get("source") == CLIENT and not e.get("conflict") and e.get("value") != UNKNOWN:
+            bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
     return "; ".join(bits)
 
 
@@ -454,7 +458,8 @@ def read_pending_answer(key: str, text: str | None, spec_item: dict | None = Non
         return None
     low = _fold(text.strip())
     if spec_item:
-        for value, marks in (spec_item.get("answers") or {}).items():
+        for value, name in (spec_item.get("answers") or {}).items():
+            marks = vocab(name) if isinstance(name, str) else name
             if isinstance(marks, list | tuple) and any(_mark_hit(low, str(m)) for m in marks):
                 return str(value)
     for value, marks in vocab_map("pending_answers").get(key, []):

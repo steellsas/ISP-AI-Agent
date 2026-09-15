@@ -107,10 +107,23 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     if s.intake.anamnesis_when or s.intake.anamnesis_trigger or s.intake.anamnesis_raw:
         bits = []
         if s.intake.anamnesis_when:
-            bits.append(phrase("ticket.details.anamnesis_when", when=s.intake.anamnesis_when))
+            bits.append(
+                phrase(
+                    "ticket.details.anamnesis_when",
+                    when=phrase_or(
+                        f"anamnesis.when.{s.intake.anamnesis_when}", s.intake.anamnesis_when
+                    ),
+                )
+            )
         if s.intake.anamnesis_trigger:
             bits.append(
-                phrase("ticket.details.anamnesis_trigger", trigger=s.intake.anamnesis_trigger)
+                phrase(
+                    "ticket.details.anamnesis_trigger",
+                    trigger=phrase_or(
+                        f"anamnesis.trigger.{s.intake.anamnesis_trigger}",
+                        s.intake.anamnesis_trigger,
+                    ),
+                )
             )
         details += phrase(
             "ticket.details.anamnesis", text=", ".join(bits) if bits else s.intake.anamnesis_raw
@@ -123,12 +136,11 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     # taking over sees the checked physical facts, not just telemetry.
     client_bits = []
     from .evidence import CLIENT as _EV_CLIENT
+    from .evidence import gloss_label, gloss_value
 
     for key, e in s.diagnosis.evidence.items():
         if e.get("source") == _EV_CLIENT and not e.get("conflict"):
-            client_bits.append(
-                f"{phrase_or(f'evidence.label.{key}', key)}: {phrase_or(f'evidence.value.{e["value"]}', e['value'])}"
-            )
+            client_bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
     if client_bits:
         details += phrase("ticket.details.checked", facts="; ".join(client_bits))
     # Why it was not solved (refusal / demand / not home) — recorded on the ticket

@@ -14,7 +14,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .contract.locale import maybe_phrase, phrase_or
+from .contract.locale import maybe_phrase
+from .evidence import UNKNOWN, gloss_label, gloss_value
 
 
 def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
@@ -32,7 +33,7 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
             continue
         key = cond.split("=", 1)[0].strip()
         entry = ev.get(key)
-        if entry is None or entry.get("value") != "neaišku":
+        if entry is None or entry.get("value") != UNKNOWN:
             continue
         if key in state.diagnosis.revived_evidence_keys:
             continue
@@ -45,7 +46,7 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
         rt.tracer.emit("evidence", action="revive_ask", key=key)
         return phrase(
             "identification.reask_reason",
-            topic=phrase_or(f"evidence.label.{key}", key),
+            topic=gloss_label(key),
             question=str(maybe_phrase(item.get("clarify_key") or item.get("question_key")) or ""),
         )
     return None
@@ -123,8 +124,8 @@ def maybe_refute_confirm(state: Any, rt: Any, spec: dict) -> str | None:
     rt.tracer.emit("decision", intent="refute_confirm", action="ask", key=key)
     return phrase(
         "identification.refute_confirm",
-        topic=phrase_or(f"evidence.label.{key}", key),
-        value=phrase_or(f"evidence.value.{value}", value),
+        topic=gloss_label(key),
+        value=gloss_value(value),
     )
 
 
@@ -137,7 +138,7 @@ def evidence_question_open(state: Any, rt: Any) -> str | None:
     if not key:
         return None
     entry = state.diagnosis.evidence.get(key)
-    if entry is not None and entry.get("value") not in (None, "neaišku"):
+    if entry is not None and entry.get("value") not in (None, UNKNOWN):
         return None
     return key
 
@@ -220,8 +221,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         rt.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.key)
         return _phrase(
             "identification.refute_confirm",
-            topic=phrase_or(f"evidence.label.{fc.key}", fc.key),
-            value=phrase_or(f"evidence.value.{fc.value}", fc.value),
+            topic=gloss_label(fc.key),
+            value=gloss_value(fc.value),
         )
     # Captured BEFORE any new ask below overwrites it: was a question already
     # out when the caller spoke? Needed for the bare-"ne" clarify.
@@ -373,7 +374,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     if asks >= 2:
         # Asked twice (normal + paprasciau), still nothing readable — record
         # "neaišku" and move on; an unreadable caller must never loop us.
-        set_fact(s.diagnosis.evidence, key, "neaišku", CLIENT, s.dialog.turn_count)
+        set_fact(s.diagnosis.evidence, key, UNKNOWN, CLIENT, s.dialog.turn_count)
         rt.tracer.emit("evidence", action="gave_up", key=key)
         if state.diagnosis.pending_evidence_key == key:
             # A given-up key must not read as an OPEN question forever —
@@ -449,7 +450,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
 
         text = phrase(
             "identification.reask_reason",
-            topic=phrase_or(f"evidence.label.{key}", key),
+            topic=gloss_label(key),
             question=str(text),
         )
     # Bare "Ne." to THIS key's open question: the no has no object — clarify

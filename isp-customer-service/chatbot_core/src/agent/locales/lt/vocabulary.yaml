@@ -548,75 +548,75 @@ no_problem_marks:
 symptom_keywords:
   lights:
     -
-      - "nedega"
+      - "off"
       - ["nedeg", "nedag", "užges", "negyv", "nešvie"]
     -
-      - "mirksi"
+      - "blinking"
       - ["mirks", "mirg", "blyks"]
     -
-      - "dega"
+      - "on"
       - ["dega", "dag", "švie", "žali"]
   connection:
     -
       - "wifi"
       - ["wifi", "wi-fi", "vaifai", "belaid", "beviel"]
     -
-      - "laidinis"
+      - "wired"
       - ["laid", "kabel"]
   devices:
     -
-      - "visi"
+      - "all"
       - ["visi", "visur", "visuose", "viskas"]
     -
-      - "vienas"
+      - "one"
       - ["viename", "tik vien", "vienam", "vienas įreng"]
   frequency:
     -
-      - "nuolat"
+      - "constant"
       - ["nuolat", "visada", "visą laiką"]
     -
-      - "protarpiais"
+      - "intermittent"
       - ["kartais", "protarpiais", "retkarčiais", "dingsta", "lūžinėja"]
   services:
     -
       - "tv"
       - ["televizij", "televizor", "kanal"]
     -
-      - "telefonas"
+      - "phone"
       - ["telefon"]
 
 anamnesis_when:
   -
-    - "ką tik"
+    - "just_now"
     - ["ką tik", "ka tik", "dabar dingo", "prieš minutę", "pries minute"]
   -
-    - "šiandien"
+    - "today"
     - ["šiandien", "siandien", "šįryt", "siryt", "ryte"]
   -
-    - "vakar"
+    - "yesterday"
     - ["vakar"]
   -
-    - "prieš kelias dienas"
+    - "days_ago"
     - ["prieš kelias", "pries kelias", "užvakar", "uzvakar", "kelios dienos"]
   -
-    - "prieš valandą"
+    - "hour_ago"
     - ["prieš valand", "pries valand"]
 
 anamnesis_trigger:
   -
-    - "audra"
+    - "storm"
     - ["audr", "udra", "žaib", "zaib", "perkūn", "perkun"]
   -
-    - "elektros dingimas"
+    - "power_cut"
     - ["elektr", "šviesos ding", "sviesos ding"]
   -
-    - "remontas"
+    - "renovation"
     - ["remont"]
   -
-    - "kraustymasis"
+    - "moving"
     - ["kraust", "persikraust"]
   -
-    - "įrangos keitimas"
+    - "equipment_change"
     - ["keičiau", "keiciau", "pakeič", "pakeic", "prijungiau"]
 
 # --- agent/evidence.py -----------------------------------------------------------
@@ -667,7 +667,7 @@ fact_cable_out:
 pending_answers:
   device_present:
     -
-      - "rado"
+      - "found"
       -
         - "radau"
         - "radome"
@@ -680,7 +680,7 @@ pending_answers:
         - "stoviu prie"
   lights:
     -
-      - "nedega"
+      - "off"
       -
         - "nedega"
         - "ne dega"
@@ -692,21 +692,21 @@ pending_answers:
         - "ne,"
         - "ne "
     -
-      - "mirksi"
+      - "blinking"
       - ["mirksi", "mirkčioja", "mirkcioja"]
     -
-      - "dega"
+      - "on"
       - ["dega", "šviečia", "sviecia", "taip"]
   power_cable:
     -
-      - "atjungtas"
+      - "unplugged"
       - ["atjungt", "ištraukt", "istraukt", "nepajungt", "ne,", "ne "]
     -
-      - "įkištas"
+      - "plugged"
       - ["įkišt", "ikist", "pajungt", "prijungt", "gerai", "taip", "tvirtai"]
   outlet_works:
     -
-      - "bandyta"
+      - "tried"
       - ["bandž", "bandz", "band", "taip", "kita", "veikia", "perjung"]
   has_computer:
     -
@@ -717,10 +717,10 @@ pending_answers:
       - ["turiu", "turim", "taip", "yra"]
   lan_active:
     -
-      - "neaktyvus"
+      - "inactive"
       - ["neaktyv", "nedega", "nerodo", "nėra", "nera", "ne,", "ne "]
     -
-      - "aktyvus"
+      - "active"
       - ["aktyv", "veikia", "dega", "rodo", "taip", "yra"]
 
 # --- agent/closing_flow.py -------------------------------------------------------
@@ -1154,3 +1154,27 @@ faq_keywords_debt_amount: ["skol", "sąskait", "saskait", "suma"]
 faq_keywords_duration: ["užtruks", "uztruks", "ilgai", "greitai sutvarky"]
 faq_keywords_technician: ["meistr", "technik", "atvažiuo", "atvaziuo", "vizit"]
 faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki kelių"]
+
+# --- knowledge/faults/*.yaml: evidence answer markers ---------------------------
+
+# How a short reply to THIS evidence question reads (value -> markers), per pack.
+answers_healthy_to_router_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur"]
+answers_healthy_to_router_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryje", "planšetėje", "plansete"]
+answers_healthy_to_router_fail_device_phone: ["telefon", "planšet", "planset", "mobil"]
+answers_healthy_to_router_fail_device_computer: ["kompiuter", "nešiojam", "nesiojam", "laptop", "pc"]
+answers_healthy_to_router_connection_type_wired: ["laidu", "laidas", "kabeliu", "kabelis", "per laidą"]
+answers_healthy_to_router_connection_type_wifi: ["wifi", "wi-fi", "bevielis", "bevieliu", "belaidžiu", "belaidziu"]
+answers_healthy_to_router_rebooted_yes: ["perkroviau", "perkrovėm", "perkrovem", "perleidau", "jau bandžiau", "jau bandziau"]
+answers_healthy_to_router_rebooted_no: ["neperkroviau", "nebandžiau", "nebandziau", "dar ne"]
+answers_no_mac_observed_recent_events_yes: ["dingo elektra", "dingusi elektra", "buvo dingus", "tvarkė", "tvarke", "remont", "audra", "perkūn", "perkun", "keitėm", "keitem"]
+answers_no_mac_observed_recent_events_no: ["nebuvo", "nieko neįvyko", "nieko nevyko", "viskas kaip", "ne,", "ne "]
+answers_no_mac_observed_device_present_found: ["radau", "suradau", "taip", "matau", "stoviu prie", "prie jo", "esu prie", "priėjau", "priejau"]
+answers_no_mac_observed_device_present_not_found: ["nerandu", "neradau", "nėra tokios", "nematau", "nerasiu"]
+answers_no_mac_observed_lan_active_inactive: ["neaktyv", "nedega", "nerodo", "nėra", "nera", "ne,", "ne "]
+answers_no_mac_observed_lan_active_active: ["aktyv", "veikia", "dega", "rodo", "taip", "yra"]
+answers_foreign_mac_changed_device_yes: ["keičiau", "keiciau", "keciau", "pakeičiau", "pakeiciau", "naują routerį", "nusipirkau", "prijungiau", "pajungiau", "keitėm", "keitem"]
+answers_foreign_mac_changed_device_no: ["nekeičiau", "nekeiciau", "nieko nekeit", "nieko naujo", "neprijungiau", "nepajungiau", "nieko nedariau"]
+answers_foreign_mac_cable_port_wan: ["wan", "internet", "interneto", "mėlyn", "melyn", "atskir"]
+answers_foreign_mac_cable_port_lan: ["lan", "geltona", "geltoname", "kitas", "kitą", "prie kitų"]
+answers_router_hung_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur"]
+answers_router_hung_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryje", "planšetėje", "plansete"]

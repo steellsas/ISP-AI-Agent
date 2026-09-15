@@ -16,7 +16,7 @@ import logging
 import os  # noqa: F401
 from typing import Any  # noqa: F401
 
-from .contract.locale import phrase, phrase_or
+from .contract.locale import phrase, phrase_or, vocab
 from .dialog_utils import asked_recently, last_agent_question
 from .faults import role_of, verdict_flag
 from .trace import emit_decision, trace_note
@@ -115,8 +115,9 @@ def _seed_evidence_from_anamnesis(state, rt) -> None:
     for key, item in (spec.get("client") or {}).items():
         if key in s.diagnosis.evidence:
             continue
-        for value, marks in ((item or {}).get("answers") or {}).items():
-            hits = [m for m in marks or [] if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
+        for value, name in ((item or {}).get("answers") or {}).items():
+            marks = vocab(name)
+            hits = [m for m in marks if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
             if hits:
                 set_fact(s.diagnosis.evidence, key, str(value), CLIENT, s.dialog.turn_count)
                 rt.tracer.emit("evidence", action="anamnesis_seed", key=key, value=str(value))
@@ -585,9 +586,13 @@ def open_hypothesis(state, rt, reason: str | None) -> None:
     if s.intake.anamnesis_when or s.intake.anamnesis_trigger:
         bits = []
         if s.intake.anamnesis_when:
-            bits.append(f"dingo {s.intake.anamnesis_when}")
+            when = phrase_or(f"anamnesis.when.{s.intake.anamnesis_when}", s.intake.anamnesis_when)
+            bits.append(f"dingo {when}")
         if s.intake.anamnesis_trigger:
-            bits.append(f"po: {s.intake.anamnesis_trigger}")
+            trigger = phrase_or(
+                f"anamnesis.trigger.{s.intake.anamnesis_trigger}", s.intake.anamnesis_trigger
+            )
+            bits.append(f"po: {trigger}")
         because.append("klientas sako " + ", ".join(bits))
     state.diagnosis.hypothesis = {
         "cause": reason,
