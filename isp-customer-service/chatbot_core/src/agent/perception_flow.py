@@ -66,7 +66,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     the call never loops on the clarify)."""
     s = state
     # Stale-understanding hygiene (2026-08-10): the acknowledgement directive
-    # leaked a PREVIOUS turn's "supratau" into the ticket dialogue's reply
+    # leaked a PREVIOUS turn's "understood" into the ticket dialogue's reply
     # ("Routeris sugedęs, laukiame naujo. Gerai. O kada…"). Every turn starts
     # with a clean read — the early-returns below must not keep the old one.
     state.turn.understanding = None
@@ -120,24 +120,24 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         )
         if u is not None:
             state.turn.understanding = u
-            facts = dict(u["faktai"])
-            if u.get("zingsnis") and active_step is not None:
+            facts = dict(u["facts"])
+            if u.get("step") and active_step is not None:
                 state.turn.perception_step = {
                     "step_id": active_step.id,
                     "input": user_input,
-                    "obs": u["zingsnis"],
+                    "obs": u["step"],
                 }
             rt.tracer.emit(
                 "understand",
-                tipas=u["tipas"],
-                supratau=u["supratau"],
-                neaiskumas=u["neaiskumas"],
-                pasitikejimas=u["pasitikejimas"],
-                faktai=u["faktai"],
-                zingsnis=u.get("zingsnis"),
+                type=u["type"],
+                understood=u["understood"],
+                confusion=u["confusion"],
+                confidence=u["confidence"],
+                facts=u["facts"],
+                step=u.get("step"),
             )
     # The deterministic keyword layer ALWAYS runs (2026-08-12): it used to be
-    # a fallback only, so when the pass answered with EMPTY faktai (the
+    # a fallback only, so when the pass answered with EMPTY facts (the
     # confidence guard wipes low-confidence reads) the extractor never got a
     # chance — "Pabandžiau kitą rozetę, kiti įrenginiai veikia" lost
     # outlet_works and the hypothesis froze (live). Pass facts win on
@@ -223,12 +223,12 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
                 del facts[pending]
                 state.turn.done_report_key = pending
     # SUPPLEMENT, not just fallback (2026-08-10 round 2): the pass returned
-    # tipas=atsakymas with an empty faktai for "…sakiau, kad RADAU" and the
+    # type=answer with empty facts for "…sakiau, kad RADAU" and the
     # key was given up on. When the pass failed OR answered without the
     # pending key, the deterministic context read fills that ONE key —
     # conservative marks + the conflict machinery guard against misreads.
     # 2026-09-03 (eval S6 flake): the read no longer requires the pass to have
-    # TYPED the turn as "atsakymas" — gpt-oss occasionally mislabels a clean
+    # TYPED the turn as "answer" — gpt-oss occasionally mislabels a clean
     # answer ("Visuose įrenginiuose" while fail_scope is pending) and the
     # deterministic vocabulary hit was thrown away with it. The pack's
     # `answers` marks are the conservative floor: a hit on the PENDING key
@@ -551,7 +551,7 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
     ):
         return False
     # Ticket demand is NEVER a side topic (live 2026-08-13: "Išregistruoti
-    # meistrą ir paleisti internetą…" got tipas=nukrypimas and the side_topic
+    # meistrą ir paleisti internetą…" got type=deviation and the side_topic
     # LLM talked the caller OUT of the registration) — the demand machinery
     # in the solving path owns this turn.
     from .resolution import detect_refuse_or_ticket
@@ -569,15 +569,15 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
         state.dialog.side_topic_streak = 0
         rt.tracer.emit("decision", intent="side_topic", action="on_task_howto")
         return False
-    # The understanding pass judged this turn IN CONTEXT — but its tipas is
+    # The understanding pass judged this turn IN CONTEXT — but its type is
     # ONE model field, and side_topic FREEZES the engine, so a single sensor
     # may not decide alone (live 2026-08-10: "Galim dabar patikrinti" got
-    # tipas=klausimas and the answer was answered with a price non-sequitur).
+    # type=question and the answer was answered with a price non-sequitur).
     # CORROBORATION rule: enter only when a deterministic signal agrees —
     # a question word in the text or a FAQ keyword hit.
     u = state.turn.understanding
     if u is not None:
-        if u["tipas"] in ("klausimas", "nukrypimas") and not u["faktai"]:
+        if u["type"] in ("question", "deviation") and not u["facts"]:
             if extract_client_facts(user_input):
                 # The keyword layer read facts the pass missed — an
                 # informative interruption, not a deviation (they already
@@ -754,10 +754,10 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                 rt.tracer.emit(
                     "understand_ticket",
                     stage=state.ticket.stage,
-                    tipas=ut["tipas"],
-                    reiksme=ut.get("reiksme"),
+                    type=ut["type"],
+                    value=ut.get("value"),
                 )
-                if ut["tipas"] == "klausimas":
+                if ut["type"] == "question":
                     # Echo of our own offer (D, live 2026-08-20): "Ar tiks tas,
                     # iš kurio skambinu?" repeated back with rising intonation
                     # is CONSENT — answering it and re-asking doubled the
@@ -775,7 +775,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                     state.turn.ticket_offscript_question = True
                     rt.tracer.emit("decision", intent="ticket_dialogue", action="question")
                     return
-                if ut["tipas"] == "atsisakymas":
+                if ut["type"] == "refusal":
                     # Refusal WITH solving content skips the confirm — the
                     # caller told us what they want: keep fixing.
                     if wants_to_keep_solving(state, rt, user_input):
@@ -798,11 +798,11 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                     return
                 if not getattr(ctx, f"{state.ticket.stage}_asked", False):
                     return  # trigger-swallow guard (question not asked yet)
-                value = ut.get("reiksme")
+                value = ut.get("value")
                 if value:
                     if state.ticket.stage == "phone":
                         digits = re.sub(r"\D", "", value)
-                        if value == "tas_pats":
+                        if value == "same_number":
                             s.ticket.contact_phone = s.identity.caller_phone
                         elif len(digits) >= 6:
                             s.ticket.contact_phone = re.sub(r"[^\d+]", "", value)[:20]
@@ -821,7 +821,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                         )
                         state.ticket.stage = "done"
                         return
-                # No reiksme — fall through to the keyword/retry machinery.
+                # No value — fall through to the keyword/retry machinery.
         # W0-C (live 2026-08-25): STT turned "patogiausia" into "KODĖL
         # tokiausia skambinti nuo 17-18 val." — the question keyword diverted
         # a perfectly good answer to the LLM and the capture never saw it.

@@ -146,11 +146,11 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
                 and not state.ticket.stage
                 and len((text or "").split()) >= 3  # garbles ("Žemės gatvės") are not complaints
             ):
-                if not any(x.get("tipas") == problem for x in s.intake.secondary_problems):
+                if not any(x.get("type") == problem for x in s.intake.secondary_problems):
                     s.intake.secondary_problems.append(
                         {
-                            "tipas": problem,
-                            "tekstas": (text or "").strip()[:120],
+                            "type": problem,
+                            "text": (text or "").strip()[:120],
                             "turn": s.dialog.turn_count,
                         }
                     )

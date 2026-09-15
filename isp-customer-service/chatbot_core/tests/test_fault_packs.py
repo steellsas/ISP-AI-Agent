@@ -484,7 +484,7 @@ class TestTicketFirst:
                     closing=ClosingState(case_closed=False),
                     diagnosis=DiagnosisState(evidence_conflict=None),
                     turn=TurnScratch(
-                        side_topic_active=False, understanding={"tipas": "nukrypimas", "faktai": {}}
+                        side_topic_active=False, understanding={"type": "deviation", "facts": {}}
                     ),
                     dialog=DialogState(
                         side_topic_streak=0, end_confirm_pending=False, resume_hold_due=False
@@ -1045,14 +1045,14 @@ class TestPrimaryGoalFrozen:
         s.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
         prefill_slots_from_text(agent.state, agent.runtime, "O dar televizorius man blogai rodo")
         assert s.intake.problem_type == "internet_down"  # frozen
-        assert s.intake.secondary_problems and s.intake.secondary_problems[0]["tipas"] == "tv"
+        assert s.intake.secondary_problems and s.intake.secondary_problems[0]["type"] == "tv"
         # dedupe: the same type mentioned again does not duplicate
         prefill_slots_from_text(agent.state, agent.runtime, "Tas televizorius vis dar blogai")
         assert len(s.intake.secondary_problems) == 1
         # Competence policy (2026-09-02): a not_ours type (billing) never
         # becomes a secondary TECH problem — it is not ours to put on a ticket.
         prefill_slots_from_text(agent.state, agent.runtime, "O dar sąskaitos klausimas turiu")
-        assert all(x["tipas"] != "billing" for x in s.intake.secondary_problems)
+        assert all(x["type"] != "billing" for x in s.intake.secondary_problems)
 
     def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
         from agent.narrator_flow import state_facts_block
@@ -1063,7 +1063,7 @@ class TestPrimaryGoalFrozen:
         s = agent.state
         s.identity.customer_id = "CUST009"
         s.intake.problem_type = "internet_down"
-        s.intake.secondary_problems.append({"tipas": "tv", "tekstas": "TV blogai rodo", "turn": 5})
+        s.intake.secondary_problems.append({"type": "tv", "text": "TV blogai rodo", "turn": 5})
         s.closing.case_closed = True
         block = state_facts_block(agent.state, agent.runtime)
         assert "PAPILDOMOS PROBLEMOS" in block and "TV blogai rodo" in block
@@ -1194,7 +1194,7 @@ class TestOpenerAndClosingHygiene:
         prefill_slots_from_text(agent.state, agent.runtime, "Žemės gatvės")  # 2 words: a garble
         assert s.intake.secondary_problems == []
         prefill_slots_from_text(agent.state, agent.runtime, "O dar televizorius man blogai rodo")
-        assert s.intake.secondary_problems and s.intake.secondary_problems[0]["tipas"] == "tv"
+        assert s.intake.secondary_problems and s.intake.secondary_problems[0]["type"] == "tv"
 
 
 class TestLiveCall0821Fixes:
@@ -1276,7 +1276,7 @@ class TestLiveCall0821Fixes:
                     ),
                     diagnosis=DiagnosisState(evidence_conflict=None, pending_evidence_key=None),
                     turn=TurnScratch(
-                        side_topic_active=False, understanding={"tipas": "klausimas", "faktai": {}}
+                        side_topic_active=False, understanding={"type": "question", "facts": {}}
                     ),
                     dialog=DialogState(
                         side_topic_streak=0, end_confirm_pending=False, resume_hold_due=False

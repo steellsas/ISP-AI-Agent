@@ -161,7 +161,7 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     # technician checks them on the same visit.
     if getattr(s.intake, "secondary_problems", None):
         extra = "; ".join(
-            phrase("ticket.details.extra_item", type=x["tipas"], text=x["tekstas"])
+            phrase("ticket.details.extra_item", type=x["type"], text=x["text"])
             for x in s.intake.secondary_problems
         )
         details += phrase("ticket.details.extra", items=extra)

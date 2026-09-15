@@ -32,13 +32,13 @@ def _diagnosing_agent(monkeypatch, understand_on=True):
     return agent
 
 
-def _canned(faktai=None, tipas="atsakymas", supratau="", neaiskumas="", conf=0.9):
+def _canned(facts=None, turn_type="answer", understood="", confusion="", conf=0.9):
     return {
-        "faktai": faktai or {},
-        "tipas": tipas,
-        "supratau": supratau,
-        "neaiskumas": neaiskumas,
-        "pasitikejimas": conf,
+        "facts": facts or {},
+        "type": turn_type,
+        "understood": understood,
+        "confusion": confusion,
+        "confidence": conf,
     }
 
 
@@ -55,17 +55,17 @@ class TestUnderstandModule:
         from agent import understand
 
         raw = {
-            "faktai": {"lights": "off", "lights_color": "raudona", "has_computer": "gal"},
-            "tipas": "atsakymas",
-            "supratau": "lemputės nedega",
-            "neaiskumas": "",
-            "pasitikejimas": 0.9,
+            "facts": {"lights": "off", "lights_color": "raudona", "has_computer": "gal"},
+            "type": "answer",
+            "understood": "lemputės nedega",
+            "confusion": "",
+            "confidence": 0.9,
         }
         with patch("src.services.llm.client.llm_json_completion", return_value=raw):
             u = understand.understand(
                 "ne daganiai viena", anchor="Ar dega lemputės?", needs="", ledger_summary=""
             )
-        assert u["faktai"] == {"lights": "off"}  # unknown key + value dropped
+        assert u["facts"] == {"lights": "off"}  # unknown key + value dropped
 
     def test_any_failure_returns_none(self, monkeypatch):
         from agent import understand
@@ -83,13 +83,13 @@ class TestHallucinationGuards:
     """Live 2026-08-10: a question came back with FIVE facts the caller never
     said — the ledger was poisoned and two phantom clarifies followed."""
 
-    def _raw(self, faktai, tipas="atsakymas", conf=0.9):
+    def _raw(self, facts, turn_type="answer", conf=0.9):
         return {
-            "faktai": faktai,
-            "tipas": tipas,
-            "supratau": "x",
-            "neaiskumas": "",
-            "pasitikejimas": conf,
+            "facts": facts,
+            "type": turn_type,
+            "understood": "x",
+            "confusion": "",
+            "confidence": conf,
         }
 
     def test_question_turns_never_carry_facts(self):
@@ -97,14 +97,14 @@ class TestHallucinationGuards:
 
         raw = self._raw(
             {"device_present": "not_found", "lights": "off", "has_computer": "no"},
-            tipas="klausimas",
+            turn_type="question",
         )
         with patch("src.services.llm.client.llm_json_completion", return_value=raw):
             u = understand.understand(
                 "Galim patikrinti, ką man daryti toliau?", anchor="x", needs="", ledger_summary=""
             )
-        assert u["faktai"] == {}  # a question does not STATE facts
-        assert u["tipas"] == "klausimas"
+        assert u["facts"] == {}  # a question does not STATE facts
+        assert u["type"] == "question"
 
     def test_low_confidence_facts_dropped(self):
         from agent import understand
@@ -112,7 +112,7 @@ class TestHallucinationGuards:
         raw = self._raw({"lights": "off"}, conf=0.4)
         with patch("src.services.llm.client.llm_json_completion", return_value=raw):
             u = understand.understand("mmm nu gal", anchor="x", needs="", ledger_summary="")
-        assert u["faktai"] == {}
+        assert u["facts"] == {}
 
     def test_confident_answer_facts_kept(self):
         from agent import understand
@@ -120,7 +120,7 @@ class TestHallucinationGuards:
         raw = self._raw({"lights": "off"}, conf=0.9)
         with patch("src.services.llm.client.llm_json_completion", return_value=raw):
             u = understand.understand("nedega nė viena", anchor="x", needs="", ledger_summary="")
-        assert u["faktai"] == {"lights": "off"}
+        assert u["facts"] == {"lights": "off"}
 
 
 class TestRound2Fixes:
@@ -134,7 +134,7 @@ class TestRound2Fixes:
         # "Galim dabar patikrinti" got tipas=klausimas and froze the engine —
         # no question word, no FAQ hit -> the single sensor may not decide.
         agent = _diagnosing_agent(monkeypatch)
-        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="nori patikrinti")
+        agent.state.turn.understanding = _canned(turn_type="question", understood="nori patikrinti")
         assert classify_side_topic(agent.state, agent.runtime, "Galim dabar patikrinti") is False
         assert agent.state.turn.side_topic_active is False
 
@@ -142,14 +142,16 @@ class TestRound2Fixes:
         from agent.perception_flow import classify_side_topic
 
         agent = _diagnosing_agent(monkeypatch)
-        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="klausia kainos")
+        agent.state.turn.understanding = _canned(turn_type="question", understood="klausia kainos")
         assert classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?") is True
 
     def test_side_entry_allowed_with_faq_keyword(self, db_connection, monkeypatch):
         from agent.perception_flow import classify_side_topic
 
         agent = _diagnosing_agent(monkeypatch)
-        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="klausia apie meistrą")
+        agent.state.turn.understanding = _canned(
+            turn_type="question", understood="klausia apie meistrą"
+        )
         assert (
             classify_side_topic(agent.state, agent.runtime, "Man atrodo reikės meistro vizito")
             is True
@@ -158,14 +160,14 @@ class TestRound2Fixes:
     def test_supplement_fills_pending_key_on_empty_answer_facts(self, db_connection, monkeypatch):
         from agent.perception_flow import ingest_client_evidence
 
-        # "…sakiau, kad RADAU" came back tipas=atsakymas with faktai={} — the
+        # "…sakiau, kad RADAU" came back tipas=atsakymas with facts={} — the
         # pending-context read now SUPPLEMENTS instead of only falling back.
         agent = _diagnosing_agent(monkeypatch)
         agent.state.diagnosis.evidence_ask_counts["device_present"] = 2
         agent.state.diagnosis.pending_evidence_key = "device_present"
         with patch(
             "agent.understand.understand",
-            return_value=_canned(tipas="atsakymas", supratau="klientas rado routerį"),
+            return_value=_canned(turn_type="answer", understood="klientas rado routerį"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Atsiprašau, tik sakiau, kad radau")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
@@ -193,7 +195,7 @@ class TestRound2Fixes:
 
         agent = _diagnosing_agent(monkeypatch)
         agent.state.dialog.last_heard = "O kiek man tai kainuos?"
-        agent.state.turn.understanding = _canned(tipas="klausimas", supratau="klausia kainos")
+        agent.state.turn.understanding = _canned(turn_type="question", understood="klausia kainos")
         classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?")
         facts = state_facts_block(agent.state, agent.runtime)
         assert "Kliento tema: kaina" in facts  # from the FAQ hit, not a template
@@ -281,7 +283,7 @@ class TestConfirmationAgent:
         with patch(
             "agent.understand.understand",
             return_value=_canned(
-                faktai={"power_cable": "unplugged"}, supratau="klientas patikrino laidą", conf=0.8
+                facts={"power_cable": "unplugged"}, understood="klientas patikrino laidą", conf=0.8
             ),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Mhm, patikrinau.")
@@ -299,7 +301,7 @@ class TestConfirmationAgent:
         agent.state.diagnosis.pending_evidence_key = "power_cable"
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={"power_cable": "plugged"}, supratau="įkišo laidą"),
+            return_value=_canned(facts={"power_cable": "plugged"}, understood="įkišo laidą"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Taip ir padaryta")
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "plugged"
@@ -351,7 +353,7 @@ class TestKeywordSupplement:
         agent = _diagnosing_agent(monkeypatch)
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={}, supratau="bandė kitą rozetę", conf=0.9),
+            return_value=_canned(facts={}, understood="bandė kitą rozetę", conf=0.9),
         ):
             ingest_client_evidence(
                 agent.state,
@@ -366,7 +368,7 @@ class TestKeywordSupplement:
         agent = _diagnosing_agent(monkeypatch)
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={"lights": "blinking"}, supratau="lemputė mirksi"),
+            return_value=_canned(facts={"lights": "blinking"}, understood="lemputė mirksi"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Ta lemputė tai mirksi")
         e = agent.state.diagnosis.evidence["lights"]
@@ -378,7 +380,7 @@ class TestKeywordSupplement:
         agent = _diagnosing_agent(monkeypatch)
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={"lights": "blinking"}, supratau="lemputė mirksi"),
+            return_value=_canned(facts={"lights": "blinking"}, understood="lemputė mirksi"),
         ):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Lemputė dega žaliai"
@@ -398,7 +400,7 @@ class TestKeywordSupplement:
         with patch(
             "agent.understand.understand",
             return_value=_canned(
-                faktai={"outlet_works": "not_working"}, supratau="rozetė neveikia"
+                facts={"outlet_works": "not_working"}, understood="rozetė neveikia"
             ),
         ):
             ingest_client_evidence(
@@ -466,8 +468,8 @@ class TestContradictionCorroboration:
         with patch(
             "agent.understand.understand",
             return_value=_canned(
-                faktai={"device_present": "not_found", "has_computer": "no"},
-                supratau="klientas neturi kompiuterio",
+                facts={"device_present": "not_found", "has_computer": "no"},
+                understood="klientas neturi kompiuterio",
             ),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Neturi kompiuterio.")
@@ -483,7 +485,7 @@ class TestContradictionCorroboration:
             ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={"lights": "on"}, supratau="lemputė užsidegė"),
+            return_value=_canned(facts={"lights": "on"}, understood="lemputė užsidegė"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "O, dabar lemputė dega!")
         e = agent.state.diagnosis.evidence["lights"]
@@ -502,14 +504,14 @@ class TestContradictionCorroboration:
         with patch(
             "agent.understand.understand",
             return_value=_canned(
-                faktai={"power_cable": "unplugged"}, supratau="routeris be maitinimo"
+                facts={"power_cable": "unplugged"}, understood="routeris be maitinimo"
             ),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "routeris neturi maitinimo")
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "unplugged"
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={"power_cable": "plugged"}, supratau="laidas įkištas"),
+            return_value=_canned(facts={"power_cable": "plugged"}, understood="laidas įkištas"),
         ):
             ingest_client_evidence(
                 agent.state, agent.runtime, "Tai ikištas, viskas gerai"
@@ -546,7 +548,7 @@ class TestTicketUnderstanding:
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch(
             "agent.understand.understand_ticket",
-            return_value={"reiksme": "per pietus arba ryte", "tipas": "atsakymas"},
+            return_value={"value": "per pietus arba ryte", "type": "answer"},
         ):
             pre_turn_guards(agent.state, agent.runtime, "Bet kada galima per pietus iš ryto")
         assert agent.state.ticket.contact_hours == "per pietus arba ryte"
@@ -558,7 +560,7 @@ class TestTicketUnderstanding:
         agent = self._ticket_agent(monkeypatch, stage="phone")
         with patch(
             "agent.understand.understand_ticket",
-            return_value={"reiksme": "tas_pats", "tipas": "atsakymas"},
+            return_value={"value": "same_number", "type": "answer"},
         ):
             pre_turn_guards(agent.state, agent.runtime, "Stengiai tas, iš kurios kambinu")
         assert agent.state.ticket.contact_phone == "+37060012353"
@@ -570,7 +572,7 @@ class TestTicketUnderstanding:
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch(
             "agent.understand.understand_ticket",
-            return_value={"reiksme": None, "tipas": "klausimas"},
+            return_value={"value": None, "type": "question"},
         ):
             pre_turn_guards(agent.state, agent.runtime, "O kodėl turiu laukti skambučio?")
         assert agent.state.turn.ticket_offscript_question is True
@@ -588,12 +590,12 @@ class TestTicketUnderstanding:
         from agent.narrator_flow import state_facts_block
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
-        agent.state.turn.understanding = {"supratau": "Routeris sugedęs", "tipas": "atsakymas"}
+        agent.state.turn.understanding = {"understood": "Routeris sugedęs", "type": "answer"}
         # The stream turn entry clears it for ticket-node turns.
         gen = agent.run_turn_scoped_stream("bet kada", frozenset(), None)
         with patch(
             "agent.understand.understand_ticket",
-            return_value={"reiksme": "bet kada", "tipas": "atsakymas"},
+            return_value={"value": "bet kada", "type": "answer"},
         ):
             reply = "".join(gen)
         assert agent.state.turn.understanding is None
@@ -607,11 +609,11 @@ class TestUnderstandWiring:
         from agent.perception_flow import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
-        canned = _canned(faktai={"device_present": "found"}, supratau="klientas rado routerį")
+        canned = _canned(facts={"device_present": "found"}, understood="klientas rado routerį")
         with patch("agent.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "Radau.")
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
-        assert agent.state.turn.understanding["supratau"] == "klientas rado routerį"
+        assert agent.state.turn.understanding["understood"] == "klientas rado routerį"
 
     def test_pass_failure_falls_back_to_keywords(self, db_connection, monkeypatch):
         from agent.perception_flow import ingest_client_evidence
@@ -625,7 +627,7 @@ class TestUnderstandWiring:
         from agent.perception_flow import classify_side_topic, ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
-        canned = _canned(tipas="klausimas", supratau="klausia kainos")
+        canned = _canned(turn_type="question", understood="klausia kainos")
         with patch("agent.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "O kiek man tai kainuos?")
         assert classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?") is True
@@ -638,9 +640,9 @@ class TestUnderstandWiring:
 
         agent = _diagnosing_agent(monkeypatch)
         canned = _canned(
-            tipas="nesupratimas",
-            supratau="klientas neranda routerio",
-            neaiskumas="nežino, kuri dėžutė yra routeris",
+            turn_type="confusion",
+            understood="klientas neranda routerio",
+            confusion="nežino, kuri dėžutė yra routeris",
         )
         with patch("agent.understand.understand", return_value=canned):
             ingest_client_evidence(
@@ -661,7 +663,7 @@ class TestUnderstandWiring:
         from agent.perception_flow import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
-        canned = _canned(faktai={"lights": "off"}, supratau="lemputės nedega")
+        canned = _canned(facts={"lights": "off"}, understood="lemputės nedega")
         with patch("agent.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "ne daganiai viena")
         facts = state_facts_block(agent.state, agent.runtime)
@@ -675,12 +677,12 @@ class TestUnderstandWiring:
         agent = _diagnosing_agent(monkeypatch)
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={"has_computer": "no"}),
+            return_value=_canned(facts={"has_computer": "no"}),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio")
         with patch(
             "agent.understand.understand",
-            return_value=_canned(faktai={"has_computer": "yes"}, tipas="prieštaravimas"),
+            return_value=_canned(facts={"has_computer": "yes"}, turn_type="contradiction"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį")
         assert (

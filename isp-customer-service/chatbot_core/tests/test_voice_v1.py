@@ -188,7 +188,7 @@ class TestPerceptionModelKnob:
 
         def fake(messages=None, model=None, **k):
             seen["model"] = model
-            return {"tipas": "atsakymas", "faktai": {}, "pasitikejimas": 0.9}
+            return {"type": "answer", "facts": {}, "confidence": 0.9}
 
         monkeypatch.setattr(llm_client, "llm_json_completion", fake)
         monkeypatch.setenv("PERCEPTION_MODEL", "groq/openai/gpt-oss-120b")

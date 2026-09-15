@@ -156,7 +156,7 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     # vocabulary): (a) an utterance that maps to the OPEN evidence key via
     # the deterministic reader is the CALLER'S ANSWER, whatever the overlap;
     # (b) 1-word utterances are never auto-echo (barge_in's own guard).
-    kind = "klientas"
+    kind = "caller"
     is_answer = False
     try:
         pending = getattr(ms.session, "is_pending_answer", None)
@@ -164,9 +164,9 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     except Exception:  # pragma: no cover - the filter must never break
         pass
     if is_answer:
-        echo, kind = False, "atsakymas"
+        echo, kind = False, "answer"
     elif len(text.split()) >= 2 and sim >= 0.8:
-        echo, kind = True, "aidas"
+        echo, kind = True, "echo"
     else:
         echo = False
     took = round((time.perf_counter() - t0) * 1000)

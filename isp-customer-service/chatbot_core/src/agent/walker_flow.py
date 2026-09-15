@@ -361,7 +361,7 @@ def block_uncorroborated_escalate(state, rt, step, strat, label, user_input: str
     if state.resolution.escalate_clarify_asked:
         return False  # clarified once already — a repeated no is a real no
     u = state.turn.understanding
-    if u is not None and u.get("tipas") == "atsakymas" and (u.get("pasitikejimas") or 0) >= 0.6:
+    if u is not None and u.get("type") == "answer" and (u.get("confidence") or 0) >= 0.6:
         return False  # two sources agree on the refusal — escalate may proceed
     state.resolution.escalate_clarify_asked = True
     state.resolution.escalate_clarify_due = True

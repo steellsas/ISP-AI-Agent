@@ -28,15 +28,15 @@ class TestMergedUnderstand:
     def test_zingsnis_parsed_and_validated(self):
         u = self._call(
             {
-                "faktai": {},
-                "tipas": "atsakymas",
-                "supratau": "keitė routerį",
-                "pasitikejimas": 0.9,
-                "zingsnis": {"label": "yes", "is_answer": True, "confidence": 0.95},
+                "facts": {},
+                "type": "answer",
+                "understood": "keitė routerį",
+                "confidence": 0.9,
+                "step": {"label": "yes", "is_answer": True, "confidence": 0.95},
             },
             step_options={"yes": "keitė įrangą", "no": "nekeitė"},
         )
-        assert u["zingsnis"] == {
+        assert u["step"] == {
             "label": "yes",
             "is_answer": True,
             "internally_inconsistent": False,
@@ -46,31 +46,31 @@ class TestMergedUnderstand:
     def test_unknown_label_is_dropped(self):
         u = self._call(
             {
-                "faktai": {},
-                "tipas": "atsakymas",
-                "pasitikejimas": 0.9,
-                "zingsnis": {"label": "maybe", "is_answer": True},
+                "facts": {},
+                "type": "answer",
+                "confidence": 0.9,
+                "step": {"label": "maybe", "is_answer": True},
             },
             step_options={"yes": "keitė", "no": "nekeitė"},
         )
-        assert u["zingsnis"] is None
+        assert u["step"] is None
 
     def test_no_step_options_means_no_zingsnis(self):
         u = self._call(
             {
-                "faktai": {},
-                "tipas": "atsakymas",
-                "pasitikejimas": 0.9,
-                "zingsnis": {"label": "yes", "is_answer": True},
+                "facts": {},
+                "type": "answer",
+                "confidence": 0.9,
+                "step": {"label": "yes", "is_answer": True},
             }
         )
-        assert u["zingsnis"] is None
+        assert u["step"] is None
 
     def test_step_block_rendered_only_with_options(self):
         base = und._system("K?", "", "", {})
         merged = und._system("K?", "", "", {}, {"yes": "sutinka", "no": "nesutinka"})
-        assert "zingsnis" not in base
-        assert '"zingsnis"' in merged
+        assert "step" not in base
+        assert '"step"' in merged
         assert "sutinka" in merged
 
 

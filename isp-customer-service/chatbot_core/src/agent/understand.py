@@ -4,16 +4,16 @@ ONE small-model JSON call per caller turn in the diagnosis stage reads the
 reply IN CONTEXT (the pending question, the fault's evidence needs, the ledger,
 the last conversation turns) and returns:
 
-    faktai      — canonical evidence values it heard (validated against the spec),
-    tipas       — atsakymas | klausimas | nukrypimas | nesupratimas | prieštaravimas,
-    supratau    — half-sentence of WHAT was understood (the narrator's
+    facts       — canonical evidence values it heard (validated against the spec),
+    type        — answer | question | deviation | confusion | contradiction,
+    understood  — half-sentence of WHAT was understood (the narrator's
                   acknowledgement: "Gerai — routerį radote."),
-    neaiskumas  — what exactly the caller did not understand (drives the
+    confusion   — what exactly the caller did not understand (drives the
                   re-explain-DIFFERENTLY wording),
-    pasitikejimas — 0..1.
+    confidence  — 0..1.
 
 It is a SENSOR: it never touches state. The ENGINE decides — facts go through
-the same set_fact discipline (conflicts, telemetry-over-words), tipas feeds the
+the same set_fact discipline (conflicts, telemetry-over-words), type feeds the
 existing routes (side_topic, clarify). Returns None on ANY failure so the
 caller falls back to the deterministic keyword extractor — a conversation must
 never stall on a model hiccup. Gated by UNDERSTAND=on (config page); unit
@@ -28,7 +28,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_TIPAI = {"atsakymas", "klausimas", "nukrypimas", "nesupratimas", "prieštaravimas"}
+TURN_TYPES = {"answer", "question", "deviation", "confusion", "contradiction"}
 
 # Canonical values per key — the model may only pick from these (plus omit).
 _ALLOWED = {
@@ -62,7 +62,7 @@ def enabled() -> bool:
 
 def _merged_allowed(extra: dict[str, set[str]] | None) -> dict[str, set[str]]:
     """Built-in keys + whatever the fault's evidence spec declares via
-    `atsakymai` (universal: a NEW fault extends the vocabulary by file edit)."""
+    `answers` (universal: a NEW fault extends the vocabulary by file edit)."""
     merged = {k: set(v) for k, v in _ALLOWED.items()}
     for k, vals in (extra or {}).items():
         merged[k] = merged.get(k, set()) | {str(v) for v in vals}
@@ -87,7 +87,7 @@ def _system(
     if step_options:
         opts = "\n".join(f'    - "{k}": {v}' for k, v in step_options.items())
         step_json = (
-            ', "zingsnis": {"label": "...", "is_answer": bool, '
+            ', "step": {"label": "...", "is_answer": bool, '
             '"internally_inconsistent": bool, "confidence": 0.0-1.0}'
         )
         step_rules = load_node_prompt("sensors/perception_step").replace("<<options>>", opts)
@@ -118,7 +118,7 @@ def understand(
 
     R4 perception merge: when `step_options` is given (an asked CONFIRM/INSTRUCT
     step awaits its answer), the SAME call also classifies the reply against the
-    step's routing keys — the result rides back as `zingsnis` and replaces the
+    step's routing keys — the result rides back as `step` and replaces the
     separate classifier.classify_step call (one LLM round-trip fewer per turn).
     """
     if not utterance or not utterance.strip():
@@ -142,43 +142,43 @@ def understand(
         data = llm_json_completion(messages=messages, model=perception_model(model))
         if not isinstance(data, dict):
             return None
-        tipas = str(data.get("tipas") or "atsakymas").lower()
-        if tipas not in _TIPAI:
-            tipas = "atsakymas"
-        raw_facts = data.get("faktai")
+        turn_type = str(data.get("type") or "answer").lower()
+        if turn_type not in TURN_TYPES:
+            turn_type = "answer"
+        raw_facts = data.get("facts")
         facts: dict[str, str] = {}
         if isinstance(raw_facts, dict):
             for k, v in raw_facts.items():
                 if k in allowed_map and str(v) in allowed_map[k]:
                     facts[k] = str(v)
-        confidence = float(data.get("pasitikejimas") or 0.5)
+        confidence = float(data.get("confidence") or 0.5)
         # Hallucination guards (live 2026-08-10: "Galim patikrinti, ką man
         # reikia daryti?" came back with FIVE facts the caller never said,
         # poisoning the ledger and forcing two phantom clarifies):
         # a question/confusion does not STATE facts, and low-confidence facts
         # are worse than no facts — the deterministic layers cover the gap.
-        if tipas not in ("atsakymas", "prieštaravimas") or confidence < 0.6:
+        if turn_type not in ("answer", "contradiction") or confidence < 0.6:
             facts = {}
         # Merged step classification (R4): validated exactly like the standalone
         # classifier — unknown labels are dropped so the walker falls back.
-        zingsnis: dict[str, Any] | None = None
-        raw_step = data.get("zingsnis")
+        step: dict[str, Any] | None = None
+        raw_step = data.get("step")
         if step_options and isinstance(raw_step, dict):
             label = str(raw_step.get("label") or "unclear")
             if label in set(step_options) | {"unclear"}:
-                zingsnis = {
+                step = {
                     "label": label,
                     "is_answer": bool(raw_step.get("is_answer", True)),
                     "internally_inconsistent": bool(raw_step.get("internally_inconsistent", False)),
                     "confidence": max(0.0, min(1.0, float(raw_step.get("confidence") or 0.5))),
                 }
         return {
-            "faktai": facts,
-            "tipas": tipas,
-            "supratau": str(data.get("supratau") or "")[:200],
-            "neaiskumas": str(data.get("neaiskumas") or "")[:200],
-            "pasitikejimas": confidence,
-            "zingsnis": zingsnis,
+            "facts": facts,
+            "type": turn_type,
+            "understood": str(data.get("understood") or "")[:200],
+            "confusion": str(data.get("confusion") or "")[:200],
+            "confidence": confidence,
+            "step": step,
         }
     except Exception as e:  # any failure -> deterministic fallback
         logger.warning(f"understand pass failed: {e}")
@@ -191,21 +191,21 @@ def understand_ticket(
     """Read one TICKET-DIALOGUE answer (stage: 'phone' | 'hours') in context —
     predicting caller phrasing is impossible ("Bet kada galima per pietus iš
     ryto" is an HOURS answer, not a question). Returns
-    {"reiksme": str|None, "tipas": "atsakymas|klausimas|atsisakymas|kita"};
+    {"value": str|None, "type": "answer|question|refusal|other"};
     None on any failure -> the keyword logic decides as before."""
     if not utterance or not utterance.strip() or stage not in ("phone", "hours"):
         return None
     if stage == "phone":
         task = (
-            "Klausėme, KOKIU TELEFONO NUMERIU susisiekti. reiksme: skaitmenys be "
-            'tarpų, ARBA "tas_pats" TIK kai klientas AIŠKIAI patvirtina, kad '
+            "Klausėme, KOKIU TELEFONO NUMERIU susisiekti. value: skaitmenys be "
+            'tarpų, ARBA "same_number" TIK kai klientas AIŠKIAI patvirtina, kad '
             "tinka numeris, iš kurio skambina (pvz. „tinka tas“, „šitas gerai“, "
             "„iš kurio skambinu“). Darkytas / neaiškus / nesusijęs tekstas -> "
             "null (tada agentas perklaus — tai saugu)."
         )
     else:
         task = (
-            "Klausėme, KADA PATOGIAUSIA SKAMBINTI. reiksme: laikas žmogaus kalba, "
+            "Klausėme, KADA PATOGIAUSIA SKAMBINTI. value: laikas žmogaus kalba, "
             "sunormalintas (pvz. „bet kada“, „po 17 val“, „per pietus arba ryte“, "
             "„darbo dienomis iki 15“), ARBA null jei atsakymo nėra."
         )
@@ -220,11 +220,11 @@ def understand_ticket(
                         "Tu skaitai KLIENTO atsakymą registruojant gedimą (lietuvių "
                         "kalba, STT tekstas gali būti darkytas — spręsk pagal prasmę). "
                         f"AGENTO KLAUSIMAS: „{anchor}“\n{task}\n"
-                        'Grąžink TIK JSON: {"reiksme": ... arba null, "tipas": '
-                        '"atsakymas|klausimas|atsisakymas|kita"}\n'
-                        "- tipas=klausimas: klientas KLAUSIA mūsų, o ne atsako.\n"
-                        "- tipas=atsisakymas: nenori registracijos.\n"
-                        "- NIEKO neišgalvok: nesant atsakymo reiksme=null."
+                        'Grąžink TIK JSON: {"value": ... arba null, "type": '
+                        '"answer|question|refusal|other"}\n'
+                        "- type=question: klientas KLAUSIA mūsų, o ne atsako.\n"
+                        "- type=refusal: nenori registracijos.\n"
+                        "- NIEKO neišgalvok: nesant atsakymo value=null."
                     ),
                 },
                 {"role": "user", "content": utterance[:300]},
@@ -233,12 +233,12 @@ def understand_ticket(
         )
         if not isinstance(data, dict):
             return None
-        tipas = str(data.get("tipas") or "kita").lower()
-        if tipas not in ("atsakymas", "klausimas", "atsisakymas", "kita"):
-            tipas = "kita"
-        reiksme = data.get("reiksme")
-        reiksme = str(reiksme)[:80].strip() if reiksme not in (None, "", "null") else None
-        return {"reiksme": reiksme, "tipas": tipas}
+        answer_type = str(data.get("type") or "other").lower()
+        if answer_type not in ("answer", "question", "refusal", "other"):
+            answer_type = "other"
+        value = data.get("value")
+        value = str(value)[:80].strip() if value not in (None, "", "null") else None
+        return {"value": value, "type": answer_type}
     except Exception as e:  # pragma: no cover - defensive
         logger.warning(f"understand_ticket failed: {e}")
         return None

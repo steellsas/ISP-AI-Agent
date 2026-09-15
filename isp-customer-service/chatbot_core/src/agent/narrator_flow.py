@@ -359,7 +359,7 @@ def state_facts_block(state, rt) -> str | None:
     # back about the OTHER complaints heard mid-call ("minėjot, kad lėtai
     # veikė — ar dabar gerai?"); they are already on the ticket.
     if s.closing.case_closed and getattr(s.intake, "secondary_problems", None):
-        temos = "; ".join(f"„{x['tekstas']}“" for x in s.intake.secondary_problems)
+        temos = "; ".join(f"„{x['text']}“" for x in s.intake.secondary_problems)
         facts.append(
             "- PAPILDOMOS PROBLEMOS (prieš atsisveikinant PASITEIRAUK): klientas "
             f"pokalbyje minėjo: {temos}. Paklausk, ar tai dar aktualu; pasakyk, "
@@ -423,7 +423,7 @@ def state_facts_block(state, rt) -> str | None:
     # re-EXPLANATIONS aimed at what was actually not understood.
     u = state.turn.understanding
     if u is not None and not state.turn.side_topic_active and not s.closing.case_closed:
-        sup = (u.get("supratau") or "").strip()
+        sup = (u.get("understood") or "").strip()
         # P-A (live 2026-09-08: "Supratau — Paulius atliko veiksmą" spoken TO
         # Paulius): the pass's summary is INTERNAL wording, often third-person
         # about the caller — quoted verbatim it becomes the agent's broadcast
@@ -447,9 +447,9 @@ def state_facts_block(state, rt) -> str | None:
                 "(„Supratau — …“), niekada nekalbėk apie jį trečiuoju asmeniu "
                 "(NE „Klientas sutinka…“)."
             )
-        if u.get("tipas") == "nesupratimas" and u.get("neaiskumas"):
+        if u.get("type") == "confusion" and u.get("confusion"):
             facts.append(
-                f"- KLIENTAS NESUPRATO: {u['neaiskumas']} — paaiškink KITAIS "
+                f"- KLIENTAS NESUPRATO: {u['confusion']} — paaiškink KITAIS "
                 "žodžiais, paprasčiau, buitiškai; to paties sakinio nekartok."
             )
     # Per-turn guards (deterministic, set in _pre_turn_guards) lead the block —

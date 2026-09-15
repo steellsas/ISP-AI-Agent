@@ -348,7 +348,7 @@ class ReactAgent:
         self.state.turn.progress_key_at_start = progress_key(self.state)
         self.runtime.cancel.clear()  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the
-        # PREVIOUS turn's "supratau" directive leaks into their replies.
+        # PREVIOUS turn's "understood" directive leaks into their replies.
         if self.state.ticket.stage:
             self.state.turn.understanding = None
 

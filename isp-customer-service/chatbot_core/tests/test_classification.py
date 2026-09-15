@@ -266,8 +266,8 @@ class TestPendingFallback:
         agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
         assert agent.state.diagnosis.pending_evidence_key is None  # no ask yet
         canned = NS(
-            tipas="atsakymas",
-            faktai={},
+            type="answer",
+            facts={},
             supratau="x",
             pasitikejimas=1.0,
             atsakymo_kokybe="pilnas",
