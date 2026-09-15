@@ -51,12 +51,10 @@ def plan(state: Any, rt: Any) -> TurnPlan:
             say=Say(kind="phrase", text=driven, committed=True),
         )
     s.turn.progress_key_at_start = snapshot
-    from ...solver_flow import shadow_solve
     from ..procedure import advance
 
     active = s.resolution.procedure is not None
     outcome = advance(state, rt, user_input)
-    shadow_solve(state, rt, user_input)
     return TurnPlan(
         owner="procedure" if active else "diagnosis",
         rule=f"procedure.{outcome.kind}" if active else "diagnosis.stage",

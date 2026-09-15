@@ -561,7 +561,7 @@ class TestConfigPage:
     def test_get_lists_settings_with_values_and_scopes(self, client):
         items = client.get("/admin/config").json()["settings"]
         keys = {i["key"] for i in items}
-        assert {"agent_model", "SOLVER_DRIVE", "ASR_BACKEND", "TTS_VOICE"} <= keys
+        assert {"agent_model", "CLASSIFIER", "ASR_BACKEND", "TTS_VOICE"} <= keys
         for i in items:
             assert i["value"] in i["options"] or i["key"] == "agent_model"
             assert i["scope"] in ("immediate", "new_calls")
@@ -570,12 +570,12 @@ class TestConfigPage:
         import json as _json
         import os
 
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
-        resp = client.put("/admin/config", json={"SOLVER_DRIVE": "off"})
+        monkeypatch.setenv("CLASSIFIER", "on")
+        resp = client.put("/admin/config", json={"CLASSIFIER": "off"})
         assert resp.status_code == 200
-        assert os.environ["SOLVER_DRIVE"] == "off"
-        assert _json.loads(self.persist.read_text(encoding="utf-8"))["SOLVER_DRIVE"] == "off"
-        client.put("/admin/config", json={"SOLVER_DRIVE": "on"})  # restore
+        assert os.environ["CLASSIFIER"] == "off"
+        assert _json.loads(self.persist.read_text(encoding="utf-8"))["CLASSIFIER"] == "off"
+        client.put("/admin/config", json={"CLASSIFIER": "on"})  # restore
 
     def test_put_model_reaches_agent_config(self, client):
         from agent.config import get_config

@@ -682,7 +682,6 @@ class TestHearingAgent:
         from agent.evidence import CLIENT, set_fact
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(monkeypatch)
         for k, v in (
             ("device_present", "found"),
@@ -740,7 +739,6 @@ class TestHearingAgent:
         from agent.evidence import CLIENT, set_fact
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(monkeypatch)
         agent.state.identity.caller_name = "Andrius"
         for k, v in (
@@ -1357,7 +1355,6 @@ class TestSideTopicNode:
 
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
         agent = self._diagnosing(monkeypatch)
         # "neturiu laiko" got a solver wait->close and NO ticket live — the
         # thinker must hand policy turns to the walker + guards.
@@ -1680,7 +1677,6 @@ class TestThinkerBoundaries:
     def test_defers_while_ladder_open(self, db_connection, monkeypatch):
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
         agent.state.identity.result_pending = True  # caller-intro / result still owed
         assert solver_drive_turn(agent.state, agent.runtime, "taip") is None
@@ -1688,7 +1684,6 @@ class TestThinkerBoundaries:
     def test_defers_while_end_confirm_pending(self, db_connection, monkeypatch):
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
         agent.state.dialog.end_confirm_pending = True
         assert solver_drive_turn(agent.state, agent.runtime, "taip") is None
@@ -1696,25 +1691,15 @@ class TestThinkerBoundaries:
     def test_defers_until_caller_intro_done(self, db_connection, monkeypatch):
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
         agent.state.identity.caller_name = None  # ladder's last rung not done
         assert solver_drive_turn(agent.state, agent.runtime, "taip") is None
 
-    def test_off_switch_reverts_to_walker(self, db_connection, monkeypatch):
-        from agent.solver_flow import solver_drive_turn
-
-        monkeypatch.setenv("SOLVER_DRIVE", "off")
-        agent = self._agent(db_connection)
-        assert solver_drive_turn(agent.state, agent.runtime, "taip") is None
-
     def test_walker_declared_direction_falls_back(self, db_connection, monkeypatch):
-        from agent.solver_flow import solver_drive_turn
-
         # A pack without evidence stays with its procedure — the solver hands the
         # turn back.
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         from agent import faults
+        from agent.solver_flow import solver_drive_turn
 
         monkeypatch.setattr(faults, "evidence_led", lambda v: False)
         agent = self._agent(db_connection)
@@ -1726,7 +1711,6 @@ class TestThinkerBoundaries:
 
         # All internet packs now declare vairuotojas: solveris (2026-08-13) —
         # the evidence engine asks the first missing fact from the pack.
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         agent = self._agent(db_connection)
         agent.state.resolution.procedure = {"verdict": "foreign_mac", "step": "confirm_change"}
         reply = solver_drive_turn(agent.state, agent.runtime, "taip")
@@ -1745,7 +1729,6 @@ class TestDriveRepeatBailout:
         # solver) asks — deterministically, bench or no bench. The distrust
         # bailout now matters where the SOLVER actually drives: the bridge
         # phase (evidence confirmed, has_computer=yes -> _evidence_drive None).
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         from tests.calls import make_agent
 
         agent = make_agent("+37060012353")
@@ -1778,7 +1761,6 @@ class TestDriveRepeatBailout:
 
         # The rewind trap is dead: a benched solver no longer strands the call
         # at a stale step — missing evidence still gets asked deterministically.
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
         from tests.calls import make_agent
 
         agent = make_agent("+37060012353")
@@ -2123,7 +2105,6 @@ class TestTicketDialogue:
 
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
         agent = self._agent_at_consent(monkeypatch)
         agent.state.resolution.procedure["step"] = "dr_offer_bridge"
         called = {}
@@ -2147,7 +2128,6 @@ class TestTicketDialogue:
 
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
         agent = self._agent_at_consent(monkeypatch)
         agent.state.messages.append(
             {"role": "assistant", "content": "Ar turite kompiuterį, kad paleistume internetą?"}
@@ -2169,7 +2149,6 @@ class TestTicketDialogue:
 
         from agent.solver_flow import solver_drive_turn
 
-        monkeypatch.setitem(os.environ, "SOLVER_DRIVE", "on")
         agent = self._agent_at_consent(monkeypatch)
         agent.state.resolution.procedure["step"] = "dr_offer_bridge"
         agent.state.messages.append(

@@ -16,9 +16,6 @@ Principles baked in:
 - Fact authority: telemetry wins for line/session facts (LOS, port, sessions — the
   caller cannot see them); the caller wins for physical-room facts telemetry cannot see
   (which box they look at, whether they seated a cable).
-
-Slice-1 wiring is SHADOW-ONLY (react_agent._shadow_solve): it computes + logs a decision
-next to the walker's move so we can compare on real calls before it ever drives a reply.
 """
 
 from __future__ import annotations

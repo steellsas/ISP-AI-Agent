@@ -170,8 +170,6 @@ class ResolutionState(BaseModel):
     procedure: dict[str, Any] | None = None
 
     # --- solver ---------------------------------------------------------------
-    solver_prev_step: str | None = None
-    solver_cycles: int = 0
     # Consecutive low-confidence solver decisions.
     solver_low_conf_streak: int = 0
     solver_internal_hops: int = 0

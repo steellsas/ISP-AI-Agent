@@ -10,7 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class ApiSettings(BaseSettings):
     """Host/runtime knobs for the FastAPI service. Engine behaviour flags
-    (SOLVER_DRIVE, CLASSIFIER, TRACE_*) stay plain env vars the engine already
+    (CLASSIFIER, TRACE_*) stay plain env vars the engine already
     reads — this class only configures the SERVICE around it."""
 
     model_config = SettingsConfigDict(env_prefix="API_", extra="ignore")

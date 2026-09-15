@@ -58,7 +58,6 @@ _FLOW_OF = {
     "_scoped_tools_schema": "agent.narrator_flow.scoped_tools_schema",
     "_scripted_wait_ack": "agent.decide.rules.dialog.scripted_wait_ack",
     "_settle_hypothesis": "agent.decide.hypothesis.settle_hypothesis",
-    "_shadow_solve": "agent.solver_flow.shadow_solve",
     "_simulate_bridge_connection": "agent.executor_flow.simulate_bridge_connection",
     "_simulate_router_reboot": "agent.executor_flow.simulate_router_reboot_action",
     "_state_facts_block": "agent.narrator_flow.state_facts_block",

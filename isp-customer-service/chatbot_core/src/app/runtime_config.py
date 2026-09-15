@@ -83,13 +83,6 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        "key": "SOLVER_DRIVE",
-        "label": "Mąstytojas vairuoja (solver drive)",
-        "options": ["on", "off"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
         "key": "SIMULATE_BRIDGE",
         "label": "Bridge simuliacija (demo DB)",
         "options": ["on", "off"],

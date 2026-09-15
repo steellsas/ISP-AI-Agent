@@ -65,7 +65,6 @@ class FakeEngine:
             "agent.perceive.side_topic.classify_side_topic": ("classify", side_topic),
             "agent.solver_flow.solver_drive_turn": ("solver", driven),
             "agent.decide.procedure.advance": ("walker", StepOutcome("hold")),
-            "agent.solver_flow.shadow_solve": ("shadow", None),
             "agent.execute.diagnosis.ensure_action_done": ("action", None),
             "agent.narrator_flow.mark_step_presented": ("mark", None),
         }
@@ -140,7 +139,6 @@ class TestGraphCallOrder:
             "diagnose",
             "solver",
             "walker",
-            "shadow",
             "action",
             "narrate",
             "mark",

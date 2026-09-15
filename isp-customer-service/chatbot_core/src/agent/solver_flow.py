@@ -11,19 +11,12 @@ through rt.tools (the gateway).
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from .contract import limits
 from .contract.locale import phrase, vocab
 from .dialog_utils import last_agent_question
 from .trace import trace_note
-
-# --- Solver DRIVES (Phase 3.8 step 5a) -----------------------------------
-# Behind SOLVER_DRIVE (default off), for the piloted directions only, the solver runs
-# the turn: it reads the RAG playbook + dialogue + telemetry, decides the next action,
-# the gate validates + the engine executes safety actions by code, and the reply is the
-# solver's spoken text. The walker stays the default and handles every other direction.
 
 logger = logging.getLogger(__name__)
 
@@ -133,66 +126,6 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     return "\n".join(lines)
 
 
-def shadow_solve(state: Any, rt: Any, user_input: str | None) -> None:
-    """SHADOW: compute the solver's decision and log it next to the walker's move.
-    Never drives the reply. No-op unless SOLVER_SHADOW=on and a strategy is active."""
-    if os.getenv("SOLVER_SHADOW", "off").lower() != "on":
-        return
-    if not state.resolution.procedure or state.closing.case_closed:
-        return
-    try:
-        from .decide.gate import INTERNAL_ACTIONS, gate
-        from .decide.solver import solve
-        from .faults import pack_verdicts
-
-        decision = solve(
-            build_solver_context(state, rt, user_input),
-            model=rt.config.solver_model or rt.config.model,
-        )
-        r = state.resolution.procedure or {}
-        step = r.get("step")
-
-        # Counters the gate reasons over (owned here so the gate stays pure). Track
-        # them even in shadow so the bailout/loop safeguards are exercised for real.
-        state.resolution.solver_cycles = (
-            state.resolution.solver_cycles + 1 if step == state.resolution.solver_prev_step else 0
-        )
-        state.resolution.solver_prev_step = step
-        conf = decision.confidence if decision else 0.0
-        state.resolution.solver_low_conf_streak = (
-            state.resolution.solver_low_conf_streak + 1
-            if conf < limits.get("solver_confidence_floor")
-            else 0
-        )
-        if decision and decision.next_action in INTERNAL_ACTIONS:
-            state.resolution.solver_internal_hops += 1
-        else:
-            state.resolution.solver_internal_hops = 0
-
-        result = gate(
-            decision,
-            known_hypotheses=pack_verdicts(),
-            low_conf_streak=state.resolution.solver_low_conf_streak,
-            cycles_in_step=state.resolution.solver_cycles,
-            internal_hops=state.resolution.solver_internal_hops,
-        )
-        rt.tracer.emit(
-            "shadow_decision",
-            walker_verdict=r.get("verdict"),
-            walker_step=step,
-            solver=(decision.model_dump() if decision else None),
-            gate={
-                "action": result.action,
-                "accepted": result.accepted,
-                "bailout": result.bailout,
-                "reason": result.reason,
-            },
-        )
-    except Exception as e:  # shadow must never affect the live turn
-        logger.warning(f"shadow solver failed: {e}")
-        trace_note(rt.tracer, state, "solver_shadow", str(e))
-
-
 def plug_report(state: Any, rt: Any, user_input: str | None) -> bool:
     """A completed plug-into-computer report, read IN CONTEXT: when the
     agent's LAST question was about the computer cable, the plug verb alone
@@ -222,21 +155,18 @@ def plug_report(state: Any, rt: Any, user_input: str | None) -> bool:
 
 
 def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
-    """Solver-driven turn — the THINKER drives the piloted directions (Step 3,
-    default ON since 2026-08-03; SOLVER_DRIVE=off reverts to the walker). Returns
-    the reply text, or None to fall back to the walker (no strategy, not a piloted
-    direction, a solver failure — or DETERMINISTIC MECHANICS in progress: the
-    identification ladder, the clarify contract and the wrap-up stay engine-owned,
-    the thinker never overrides them)."""
+    """Solver-led turn for an evidence-led pack: the evidence layer and the solver word
+    the turn. Returns the reply text, or None when the procedure words it (no strategy,
+    a pack without evidence, a solver failure — or DETERMINISTIC MECHANICS in progress:
+    the identification ladder, the clarify contract and the wrap-up stay engine-owned,
+    the solver never overrides them)."""
     from .decide.procedure import goto_step
     from .evidence_drive import evidence_drive
 
-    if os.getenv("SOLVER_DRIVE", "on").lower() != "on":
-        return None
     r = state.resolution.procedure
     if not r or state.closing.case_closed:
         return None
-    # One driver (D-03): every pack with evidence is led by the evidence layer and
+    # D-03: every pack with evidence is led by the evidence layer and
     # the solver; a pack without evidence (unclear_fault) is its procedure alone.
     from .faults import evidence_led
 
