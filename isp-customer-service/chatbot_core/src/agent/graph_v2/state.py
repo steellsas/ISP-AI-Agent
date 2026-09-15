@@ -334,6 +334,9 @@ class TurnScratch(BaseModel):
     progress_key_at_start: list[Any] | None = None
     # The deterministic head (prefill + guards) already ran in the diagnose node.
     pre_turn_head_done: bool = False
+    # Which exit produced the reply (greeting, scripted, llm, solver, …) — the shadow
+    # TurnPlan reads it (M4 step 2).
+    reply_path: str | None = None
 
 
 # The persisted groups, in declaration order (everything but the turn scratch).

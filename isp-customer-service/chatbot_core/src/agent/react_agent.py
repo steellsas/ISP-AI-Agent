@@ -339,6 +339,7 @@ class ReactAgent:
             greeting = self.config.greeting_message
             self.state.messages.append({"role": "assistant", "content": greeting})
             self.state.dialog.turn_count += 1
+            self.state.turn.reply_path = "greeting"
             self.tracer.emit("agent_reply", text=greeting)
             yield greeting
             return
@@ -388,6 +389,7 @@ class ReactAgent:
         # genuine repeat loop has escalated.
         backstop = self._stuck_backstop()
         if backstop is not None:
+            self.state.turn.reply_path = "stuck_backstop"
             yield self._apply_backstop(backstop)
             return
 
@@ -397,6 +399,7 @@ class ReactAgent:
             self.state, self.runtime, self.state.dialog.last_heard
         )
         if scripted is not None:
+            self.state.turn.reply_path = "scripted"
             yield self._emit_scripted_reply(scripted)
             return
 
@@ -404,6 +407,7 @@ class ReactAgent:
         # wait signal at a standing client action is acknowledged scripted.
         wait = scripted_wait_ack(self.state, self.runtime)
         if wait is not None:
+            self.state.turn.reply_path = "wait_ack"
             yield self._emit_scripted_reply(wait)
             return
 
@@ -412,6 +416,7 @@ class ReactAgent:
         while tool_rounds < max_calls:
             self.state.dialog.turn_count += 1
             if self.state.dialog.turn_count > self.state.dialog.max_turns:
+                self.state.turn.reply_path = "max_turns"
                 yield self.config.max_turns_message
                 return
 
@@ -421,6 +426,7 @@ class ReactAgent:
             # the drive actually produced the predicted directive.
             injected = consume_injected_reply(self.state, self.runtime)
             if injected is not None:
+                self.state.turn.reply_path = "speculation"
                 yield injected
                 self.state.messages.append({"role": "assistant", "content": injected})
                 self._finalize_reply(injected)
@@ -460,6 +466,7 @@ class ReactAgent:
             except Exception as e:
                 logger.error(f"LLM stream error: {e}")
                 trace_note(self.tracer, self.state, "llm_stream", str(e), level="error")
+                self.state.turn.reply_path = "llm_error"
                 yield self.config.error_message
                 return
 
@@ -489,6 +496,7 @@ class ReactAgent:
             # The final reply text was already streamed via `yield from`; persist it
             # to history and run end-of-turn bookkeeping (no extra yield).
             self.state.messages.append({"role": "assistant", "content": content})
+            self.state.turn.reply_path = "llm"
             # Registration-claim guard: the narrator said "užregistravau" with no
             # ticket behind it — the contact dialogue starts NOW and its first
             # question rides on the same reply, so the claim becomes true.
@@ -500,6 +508,7 @@ class ReactAgent:
             self._finalize_reply(content)
             return
 
+        self.state.turn.reply_path = "timeout"
         yield self.config.timeout_message
 
     def _stuck_backstop(self) -> tuple[str, bool] | None:

@@ -43,6 +43,7 @@ def _solver_gate(state: Any, rt: Any, user_input: str | None) -> str | None:
     # latch here so the NEXT turn's narrate does not skip its head.
     state.turn.pre_turn_head_done = False
     state.turn.active_node = DIAGNOSIS
+    state.turn.reply_path = "solver"
     rt.tracer.emit("node", node="diagnosis_solver", customer_id=state.identity.customer_id)
     get_stream_writer()(driven)
     return driven
