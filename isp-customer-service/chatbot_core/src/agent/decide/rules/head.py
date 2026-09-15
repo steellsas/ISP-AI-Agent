@@ -14,13 +14,13 @@ from typing import Any
 from ...contract import limits
 from ...contract.locale import vocab, vocab_set
 from ...dialog_utils import last_agent_question
-from ...identification_flow import reopen_identification
+from ...execute.ticket import begin_ticket_dialogue
 from ...perceive.caller import holder_name_matches
 from ...perceive.detectors import detect_farewell, detect_ticket_consent
 from ...perceive.slots import mentions_other_street, prefill_slots_from_text
-from ...perception_flow import engine_resolve_from_slots, ticket_capture
-from ...ticket_flow import begin_ticket_dialogue
 from ...trace import trace_note
+from .identification import engine_resolve_from_slots, reopen_identification
+from .ticket import ticket_capture
 
 
 def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
@@ -69,9 +69,9 @@ def reopen_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     # the turn. An unclear answer does NOT burn the question — one re-ask,
     # only then written off as "stay with the current address".
     if state.identity.reopen_confirm_utterance is not None and state.identity.reopen_confirm_asked:
-        from ...identification_flow import _looks_like_address
         from ...perceive.detectors import DETECTORS
         from ..question import clear as _q_clear
+        from .identification import _looks_like_address
 
         pending = state.identity.reopen_confirm_utterance
         verdict = DETECTORS["yes_no"](user_input)

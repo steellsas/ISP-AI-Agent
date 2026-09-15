@@ -11,8 +11,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...closing_flow import maybe_finish
 from ...contract import limits
+from ...faults import verdict_flag
 from ..plan import Action, Say, TurnPlan
 
 STAGE = "closing"
@@ -63,7 +63,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         # must land on the ticket, not vanish into the goodbye (D5, live 2026-08-25).
         digits = re.sub(r"\D", "", user_input or "")
         if len(digits) >= 6 and not s.closing.is_complete:
-            from ...ticket_flow import fmt_phone
+            from ...execute.ticket import fmt_phone
 
             nr = re.sub(r"[^\d+]", "", user_input or "")[:20]
             s.ticket.contact_phone = nr
@@ -108,3 +108,69 @@ def _goodbye(rule: str) -> TurnPlan:
         rule=rule,
         say=Say(kind="phrase", key="identification.goodbye", stage=STAGE),
     )
+
+
+def maybe_finish(state: Any, rt: Any, user_input: str | None) -> None:
+    """In the closing stage, decide whether to end the call. The case is already
+    closed; the agent offered "ar dar kuo nors padėti?". If the caller says a
+    goodbye / "no", or we have lingered a second closing turn, set is_complete so
+    the transport hangs up — no endless goodbyes."""
+    s = state
+    if not s.closing.case_closed or s.closing.is_complete:
+        return
+    s.closing.closing_turns += 1
+    from ...perceive.detectors import detect_farewell
+
+    if detect_farewell(user_input) or s.closing.closing_turns >= limits.get("closing_max_turns"):
+        s.closing.is_complete = True
+
+
+def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
+    """Deterministic close for INFORM mode (mass outage, billing, or any verdict with
+    NO troubleshooting strategy to walk). Once the caller has been informed and
+    signals they are done — a goodbye or a plain 'no more questions' — the engine
+    closes the call ITSELF and ends it on one farewell.
+
+    Without this, closing depended on the model calling close_case, which it did not:
+    the caller said goodbye repeatedly, the call stayed open, and the diagnosis node
+    re-narrated the outage every turn (observed: 'repeats the fault')."""
+    s = state
+    if s.closing.case_closed or not s.identity.customer_id:
+        return
+    # Farewell may close the INFORM call only after the BUSINESS is done: the
+    # identification ladder finished AND the news actually delivered. A garbled
+    # mid-ladder "Ne, mano vardas Tomas…" matched the loose farewell heuristic and
+    # HUNG UP on the caller before they ever heard the debt (observed live).
+    # An OUTAGE report counts as the news told — it is delivered the moment
+    # outage_reported flips (a different path than the billing script).
+    if (
+        state.identity.result_pending
+        or state.ticket.stage
+        or not (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
+    ):
+        return
+    reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
+    # INFORM mode: an outage was flagged, OR we identified + diagnosed but there is no
+    # resolution strategy to walk (active_outage, billing_suspended, generic inform).
+    # A live strategy (foreign_mac, dead-router, client-side) keeps s.resolution set
+    # and is handled by the walker instead — never closed here.
+    inform_mode = s.diagnosis.outage_reported or (
+        s.resolution.procedure is None and bool(s.diagnosis.verdicts)
+    )
+    if not inform_mode:
+        return
+    from ...perceive.detectors import detect_farewell
+
+    if detect_farewell(user_input):
+        s.closing.case_closed = True
+        s.closing.closed_reason = (
+            "outage"
+            if (s.diagnosis.outage_reported or verdict_flag(reason, "inform") == "outage")
+            else "inform"
+        )
+        s.closing.is_complete = True  # caller already said goodbye — end on ONE farewell
+        # Observability: the close moment was invisible in the trace (this made a
+        # stuck-close analysis needlessly hard) — record it.
+        rt.tracer.emit(
+            "decision", intent="inform_close", action="close", to=s.closing.closed_reason
+        )

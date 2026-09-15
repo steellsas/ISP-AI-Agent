@@ -32,10 +32,10 @@ class GuardEngine:
             "agent.decide.procedure.goto_step": lambda state, rt, r, target: self.gotos.append(
                 target
             ),
-            "agent.ticket_flow.begin_ticket_dialogue": (
+            "agent.execute.ticket.begin_ticket_dialogue": (
                 lambda state, rt, step: self.dialogue_started.append(step)
             ),
-            "agent.evidence_drive.evidence_question_open": lambda state, rt: False,
+            "agent.decide.rules.evidence.evidence_question_open": lambda state, rt: False,
             "agent.decide.procedure.classify_confirm_and_route": lambda state, rt, *a: False,
             "agent.decide.procedure.classify_instruct_and_advance": lambda state, rt, *a: False,
         }

@@ -63,7 +63,7 @@ class FakeEngine:
             "agent.perceive.slots.prefill_slots_from_text": ("prefill", None),
             "agent.perceive.evidence.ingest_client_evidence": ("ingest", None),
             "agent.perceive.side_topic.classify_side_topic": ("classify", side_topic),
-            "agent.solver_flow.solver_drive_turn": ("solver", driven),
+            "agent.decide.rules.diagnosis.solver_drive_turn": ("solver", driven),
             "agent.decide.procedure.advance": ("walker", StepOutcome("hold")),
             "agent.execute.diagnosis.ensure_action_done": ("action", None),
             "agent.narrator_flow.mark_step_presented": ("mark", None),
@@ -266,7 +266,7 @@ class TestRouting:
         assert "check_outages" not in names  # the looped tool in the failing trace
 
     def test_ticket_dialogue_routes_to_ticket_node_with_no_tools(self, db_connection, tmp_path):
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         # Mid-dialogue turns run in the dedicated ticket_registration node: the
         # walker/solver stay frozen and the LLM (off-script question only) has NO

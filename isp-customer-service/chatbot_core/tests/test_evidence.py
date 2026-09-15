@@ -160,9 +160,9 @@ class TestAgentWiring:
     def test_contradiction_asks_one_clarify_then_settles(self):
         from agent.contract.locale import phrase
         from agent.decide.procedure import advance
+        from agent.decide.rules.diagnosis import solver_drive_turn
         from agent.decide.rules.reply import scripted_words
         from agent.perceive.evidence import ingest_client_evidence
-        from agent.solver_flow import solver_drive_turn
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
@@ -215,9 +215,9 @@ class TestAgentWiring:
         assert agent.state.diagnosis.contradiction is None
 
     def test_facts_block_and_solver_context_carry_ledger(self):
+        from agent.decide.rules.diagnosis import build_solver_context
         from agent.narrator_flow import state_facts_block
         from agent.perceive.evidence import ingest_client_evidence
-        from agent.solver_flow import build_solver_context
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
@@ -264,7 +264,7 @@ class TestAgentWiring:
         assert spec_for("nesamas_verdiktas") is None
 
     def test_evidence_drive_asks_in_order_with_kada_gates(self):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
@@ -283,7 +283,7 @@ class TestAgentWiring:
         assert "maitinimo laidas" in q3
 
     def test_unreadable_answers_escalate_wording_then_give_up(self):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         agent = _diagnosing_agent()
         q1 = evidence_drive(agent.state, agent.runtime, "x")
@@ -297,7 +297,7 @@ class TestAgentWiring:
         assert q3 is not None and "Susiraskite routerį" in q3
 
     def test_confirmed_with_no_computer_escalates_to_ticket(self):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
@@ -315,7 +315,7 @@ class TestAgentWiring:
         assert agent.state.ticket.stage == "phone"
 
     def test_confirmed_with_computer_yields_to_solver_bridge(self):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
@@ -334,7 +334,7 @@ class TestAgentWiring:
         )  # then solver drives the bridge
 
     def test_confirmed_but_device_unknown_asks_has_computer(self):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
@@ -351,7 +351,7 @@ class TestAgentWiring:
         assert q is not None and "kompiuterį" in q
 
     def test_refuted_syncs_walker_to_declared_step(self):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()

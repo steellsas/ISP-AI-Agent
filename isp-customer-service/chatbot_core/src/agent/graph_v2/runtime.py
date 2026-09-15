@@ -87,7 +87,7 @@ def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply
     # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
     # END the call like an LLM one — the hang-up detector ran only on the LLM
     # path, so every trailing garbled turn earned a fresh goodbye.
-    from ..closing_flow import maybe_end_on_goodbye
+    from ..execute.say import maybe_end_on_goodbye
 
     maybe_end_on_goodbye(state, rt, reply)
     try:

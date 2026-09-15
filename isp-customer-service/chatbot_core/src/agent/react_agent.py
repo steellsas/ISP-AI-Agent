@@ -106,18 +106,6 @@ class ReactAgent:
             self.state.diagnosis.evidence_ask_counts[key] -= 1
         self.tracer.emit("turn_cancelled", spoken=spoken[:160])
 
-    def _commit_driven_reply(self, user_input: str | None, reply: str) -> str:
-        """End-of-turn bookkeeping for an engine/solver-driven reply (mirrors the
-        walker path's run_turn_scoped_stream): user_turn trace, dialogue history, shared
-        finalisation (case snapshot + agent_reply)."""
-        if user_input:
-            self.state.dialog.last_heard = user_input.strip()
-            self.tracer.emit("user_turn", text=user_input)
-            self.state.messages.append({"role": "user", "content": user_input})
-        self.state.messages.append({"role": "assistant", "content": reply})
-        self._finalize_reply(reply)
-        return reply
-
     def end_session(self, outcome: str | None = None) -> None:
         """Emit session_end once (idempotent). Call when the conversation ends."""
         from .executor_flow import register_ticket_from_state
@@ -341,10 +329,10 @@ class ReactAgent:
 
     def llm_reply(self, allowed_tools: frozenset[str] | None, node_prompt: str | None):
         """The LLM tool loop streaming the final reply token by token."""
+        from .execute.ticket import registration_claim_guard
         from .executor_flow import execute_tool_calls
         from .narrator_flow import build_messages, scoped_tools_schema
         from .speculation import consume_injected_reply
-        from .ticket_flow import registration_claim_guard
 
         max_calls = self.config.max_tool_calls_per_response
         tool_rounds = 0
@@ -468,7 +456,7 @@ class ReactAgent:
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the
         repeat-guard, emit the case snapshot + the reply trace."""
-        from .closing_flow import maybe_end_on_goodbye
+        from .execute.say import maybe_end_on_goodbye
 
         self._track_stuck(text)
         maybe_end_on_goodbye(self.state, self.runtime, text)

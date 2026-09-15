@@ -17,8 +17,8 @@ import re  # noqa: F401
 from typing import Any  # noqa: F401
 
 from .contract.locale import phrase_or, vocab
+from .execute.ticket import fmt_phone
 from .graph_v2.tool_scopes import STRATEGY_ACTION_TOOLS, STRATEGY_DIAG_TOOLS
-from .ticket_flow import fmt_phone
 
 logger = logging.getLogger(__name__)
 
@@ -297,8 +297,8 @@ def state_facts_block(state, rt) -> str | None:
     log), so re-injecting them keeps the model from re-asking for details it
     already resolved. Returns None when nothing has been resolved yet.
     """
+    from .decide.rules.ticket import ticket_need
     from .dialog_utils import anchor_text
-    from .ticket_flow import ticket_need
 
     s = state
     facts: list[str] = []
@@ -1062,7 +1062,7 @@ def state_facts_block(state, rt) -> str | None:
     # owns the stages and the capture; only the WORDING is free.
     td = state.turn.directives.ticket
     if td:
-        from .ticket_flow import ticket_need
+        from .decide.rules.ticket import ticket_need
 
         if td["kind"] == "phone_intro":
             if state.resolution.bridge_bound:
@@ -1416,7 +1416,7 @@ def update_state_from_observation(state, rt, action: str, observation: str):
             # found and what was not — so the caller can correct themselves
             # ("Vilniaus gatvę randu, bet 39 numerio nematau").
             if not obs_data.get("success"):
-                from .identification_flow import address_diag_note
+                from .execute.identification import address_diag_note
 
                 state.turn.address_lookup_note = address_diag_note(obs_data)
                 res_levels = obs_data.get("resolution") or {}
@@ -1428,7 +1428,7 @@ def update_state_from_observation(state, rt, action: str, observation: str):
                 # codes/letters at a correctly-heard address.
                 _given = str(street_lvl.get("given") or "")
                 if _given and street_lvl.get("status") not in (None, "ok", "not_in_city"):
-                    from .identification_flow import _register_street_attempt
+                    from .decide.rules.identification import _register_street_attempt
 
                     if (
                         _register_street_attempt(state, rt, _given) == "identical"

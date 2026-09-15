@@ -31,7 +31,7 @@ class TestW0OrderGuards:
         return agent
 
     def test_bridge_fix_waits_for_the_offer(self, db_connection):
-        from agent.solver_flow import drive_propose_fix
+        from agent.decide.rules.diagnosis import drive_propose_fix
 
         agent = self._agent()
         agent.state.resolution.bridge_plug_reported = True  # poisoned by a garbled power reseat
@@ -41,7 +41,7 @@ class TestW0OrderGuards:
         assert agent.state.resolution.bridge_offered is True
 
     def test_power_reseat_is_not_a_bridge_plug(self, db_connection):
-        from agent.solver_flow import plug_report
+        from agent.decide.rules.diagnosis import plug_report
 
         agent = self._agent()
         assert (
@@ -139,7 +139,7 @@ class TestW1LivingDialogue:
         # Live the poisoned fact came from the UNDERSTAND pass; tests run with
         # the pass off, so the keyword reader is stubbed to deliver the same.
         import agent.evidence as ev
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         monkeypatch.setattr(

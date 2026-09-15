@@ -23,7 +23,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from .contract import limits
+from ..contract import limits
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ class CandidateObservation(BaseModel):
 
 
 def _system(options: dict[str, str]) -> str:
-    from .prompts import load_node_prompt
+    from ..prompts import load_node_prompt
 
     opts = "\n".join(f'  - "{k}": {v}' for k, v in options.items())
     return load_node_prompt("sensors/classifier").replace("<<options>>", opts)
@@ -63,7 +63,7 @@ def classify_step(
     try:
         from src.services.llm.client import llm_json_completion
 
-        from .perceive.understand import perception_model as _perception_model
+        from ..perceive.understand import perception_model as _perception_model
 
         data = llm_json_completion(
             messages=[

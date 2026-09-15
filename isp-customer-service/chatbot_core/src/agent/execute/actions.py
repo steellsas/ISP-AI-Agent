@@ -14,7 +14,7 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
     if action.type == "none":
         return None
     if action.type == "tool" and action.name == "preflight_phone":
-        from ..identification_flow import preflight_phone
+        from .identification import preflight_phone
 
         preflight_phone(state, rt)
         return None
@@ -24,7 +24,7 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
         ensure_action_done(state, rt)
         return None
     if action.type == "procedure_step" and action.name == "escalate":
-        from ..solver_flow import drive_escalate
+        from ..decide.rules.diagnosis import drive_escalate
 
         return drive_escalate(state, rt, None)
     if action.type == "register_ticket" and action.name == "auto":
@@ -33,11 +33,11 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
         register_ticket_from_state(state, rt, None)  # the inform news promises it
         return None
     if action.type == "register_ticket":
-        from ..ticket_flow import finish_ticket_dialogue
+        from .ticket import finish_ticket_dialogue
 
         return finish_ticket_dialogue(state, rt)
     if action.type == "append_ticket":
-        from ..ticket_flow import amend_ticket_note
+        from .ticket import amend_ticket_note
 
         noted = amend_ticket_note(state, rt, action.args.get("note", ""))
         rt.tracer.emit(

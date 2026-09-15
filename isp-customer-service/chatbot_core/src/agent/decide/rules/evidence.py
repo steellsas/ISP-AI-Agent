@@ -1,22 +1,15 @@
-"""
-Evidence-declared drive (Ledger v2) — question selection, hypothesis routing
-and the one-shot checkpoints around it.
-
-R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent.
-Pure ledger mechanics (set_fact, hypothesis_status, next_missing, solution_for) stay
-in agent/evidence.py; this module is the CONVERSATIONAL drive over them: what to ask
-next, when to recap, when to double-check a refuting fact, when to give up on a key.
-Functions take (state, rt) — the call state and the AgentRuntime.
-"""
+"""Evidence questions — the conversational drive over the ledger (agent/evidence.py): what
+to ask next, when to recap, when to double-check a refuting fact, when to give up on a
+key."""
 
 from __future__ import annotations
 
 import os
 from typing import Any
 
-from .contract import limits
-from .contract.locale import maybe_phrase
-from .evidence import UNKNOWN, gloss_label, gloss_value
+from ...contract import limits
+from ...contract.locale import maybe_phrase
+from ...evidence import UNKNOWN, gloss_label, gloss_value
 
 
 def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
@@ -26,7 +19,7 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
     plainly and with the reason; the answer lands through the pending
     machinery (the give-up marker is replaceable by design). Never loops —
     one revival per key per call."""
-    from .contract.locale import phrase
+    from ...contract.locale import phrase
 
     ev = state.diagnosis.evidence
     for cond in spec.get("confirmed_when") or []:
@@ -66,8 +59,8 @@ def maybe_facts_recap(state: Any, rt: Any) -> str | None:
         state.diagnosis.facts_recap_state = "done"
         rt.tracer.emit("decision", intent="facts_recap", action="answered")
         return None
-    from .contract.locale import phrase
-    from .evidence import client_facts_lt
+    from ...contract.locale import phrase
+    from ...evidence import client_facts_lt
 
     faktai = client_facts_lt(state.diagnosis.evidence)
     if not faktai:
@@ -90,7 +83,7 @@ def maybe_facts_recap(state: Any, rt: Any) -> str | None:
 def refuting_client_fact(state: Any, rt: Any, spec: dict) -> tuple[str, str] | None:
     """The CLIENT-stated fact that currently refutes the hypothesis — the
     one worth double-checking before pivoting (telemetry needs no confirm)."""
-    from .evidence import CLIENT, _cond_holds
+    from ...evidence import CLIENT, _cond_holds
 
     ev = state.diagnosis.evidence
     for cond in spec.get("refuted_when") or []:
@@ -107,7 +100,7 @@ def maybe_refute_confirm(state: Any, rt: Any, spec: dict) -> str | None:
     CLIENT-stated fact (Andrius 2026-08-11: guard against premature
     rejection — STT garbles flip facts). 'Taip' -> pivot proceeds; a
     correction lands via ingest and un-refutes on its own."""
-    from .decide import hypothesis
+    from ...decide import hypothesis
 
     if state.diagnosis.refute_confirmed:
         return None
@@ -120,7 +113,7 @@ def maybe_refute_confirm(state: Any, rt: Any, spec: dict) -> str | None:
         state.diagnosis.refute_confirmed = True  # telemetry-backed — trust it
         return None
     key, value = kv
-    from .contract.locale import phrase
+    from ...contract.locale import phrase
 
     if not hypothesis.doubt(state, rt, "refute", key, None, value):
         return None
@@ -153,8 +146,8 @@ def negation_clarify_reply(state: Any, rt: Any, key: str) -> str | None:
     Wording comes from the fault file (`patikslinimas` per key) so every fault
     can name its own two readings; generic phrase as fallback. Counts as an
     ask — the give-up cap still ends an unreadable loop."""
-    from .contract.locale import phrase
-    from .evidence import spec_for
+    from ...contract.locale import phrase
+    from ...evidence import spec_for
 
     if state.diagnosis.evidence_ask_counts.get(key, 0) >= limits.get("evidence_max_asks"):
         return None  # already asked twice — let the drive give up, not loop
@@ -176,8 +169,8 @@ def _sync_walker_solution(state: Any, rt: Any, s: Any, r: dict) -> None:
     (solution_synced marker: re-syncing every turn would drag the tree back
     to the solution step it has already walked past) and hand the turn over
     — the step's own hint/question goes out next."""
-    from .decide.procedure import goto_step
-    from .evidence import solution_step
+    from ...decide.procedure import goto_step
+    from ...evidence import solution_step
 
     target = solution_step(s.diagnosis.evidence, r.get("verdict"))
     if target and r.get("solution_synced") != target and r.get("step") != target:
@@ -195,8 +188,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     declared solution. Returns the reply text, or None when the spec is
     absent / the solver should take the turn (bridge instructions, refuted
     pivot, nothing left to ask)."""
-    from .decide.procedure import goto_step
-    from .evidence import (
+    from ...decide.procedure import goto_step
+    from ...evidence import (
         CLIENT,
         hypothesis_status,
         next_missing,
@@ -204,8 +197,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         solution_for,
         spec_for,
     )
-    from .solver_flow import drive_escalate
-    from .ticket_flow import ticket_need
+    from .diagnosis import drive_escalate
+    from .ticket import ticket_need
 
     s = state
     r = s.resolution.procedure or {}
@@ -216,11 +209,11 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # (see _sync_walker_solution below for the shared solution-sync mechanics)
     # question before anything else — the ledger stays clean until the caller
     # says "taip" (STT garbles poison exactly these facts).
-    from .decide import hypothesis
+    from ...decide import hypothesis
 
     fc = hypothesis.ask(state, rt, "flip")
     if fc is not None:
-        from .contract.locale import phrase as _phrase
+        from ...contract.locale import phrase as _phrase
 
         rt.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.fact_key)
         return _phrase(
@@ -240,7 +233,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             return refute_reply
         # A lit lamp disproves the dead-router path — sync the walker to the
         # declared pivot step so NOTHING rewinds, then let it continue.
-        from .faults import step_by_role
+        from ...faults import step_by_role
 
         pivot = step_by_role(r.get("verdict"), spec.get("on_refuted") or "")
         target = pivot.id if pivot else None
@@ -258,7 +251,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # solution descriptions), so every newly declared fault gets it free.
     announce = ""
     if confirmed and not state.diagnosis.findings_announced:
-        from .evidence import solution_for as _solution_for
+        from ...evidence import solution_for as _solution_for
 
         # A fully DETERMINED walker solution needs no findings ritual (S6
         # frozen router, 2026-08-31): the recap+announce checkpoint exists
@@ -278,8 +271,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         if state.turn.directives.recap:
             return None  # the narrator asks the recap; findings come next turn
         state.diagnosis.findings_announced = True
-        from .contract.locale import phrase
-        from .evidence import client_facts_lt, fault_conclusion, solution_descriptions
+        from ...contract.locale import phrase
+        from ...evidence import client_facts_lt, fault_conclusion, solution_descriptions
 
         faktai_lt = client_facts_lt(s.diagnosis.evidence)
         isvada = fault_conclusion(r.get("verdict")) or ticket_need(state, rt)
@@ -290,7 +283,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             # in narrator mode the findings go out as a GOAL directive and the
             # narrator says them briefly in its own words.
             if os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
-                from .evidence import fault_offer_goal
+                from ...evidence import fault_offer_goal
 
                 state.turn.directives.findings = {
                     "faktai": faktai_lt,
@@ -326,7 +319,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             # instead of the solver's one-liner "kai prijungsite — pasakykite":
             # the step hints say WHICH cable and WHERE, and a "kaip tai
             # padaryti?" gets the step explained. Synced ONCE, like walker.
-            from .evidence import solution_step
+            from ...evidence import solution_step
 
             target = solution_step(s.diagnosis.evidence, r.get("verdict"))
             if target and r.get("solution_synced") != target and r.get("step") != target:
@@ -365,10 +358,10 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # to do the thing — acknowledge and WAIT; never burn a retry or hammer the
     # question at someone who is walking to the router.
     if asks >= 1 and user_input:
-        from .perceive.detectors import INTENT_IN_PROGRESS, detect_turn_intent
+        from ...perceive.detectors import INTENT_IN_PROGRESS, detect_turn_intent
 
         if detect_turn_intent(user_input) == INTENT_IN_PROGRESS:
-            from .contract.locale import phrase
+            from ...contract.locale import phrase
 
             rt.tracer.emit(
                 "drive_decision", action="wait", accepted=True, reason="in_progress", key=key
@@ -393,7 +386,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # B2 pointer (2026-08-21): a fact may name the walker step that carries
     # its RAG section / hint / goal (`step_role:` on the evidence item) —
     # the walker FOLLOWS the ledger instead of reading answers itself.
-    from .faults import step_by_role
+    from ...faults import step_by_role
 
     pointed = step_by_role(r.get("verdict"), item.get("step_role") or "")
     z = pointed.id if pointed else None
@@ -408,7 +401,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # B-wave registry (shadow): the evidence question is the walker family's
     # ask — both the narrator-worded first ask and the scripted retries pass
     # through here, so the asks counter mirrors the retry ladder.
-    from .decide.question import register as _q_register
+    from ...decide.question import register as _q_register
 
     _q_register(state, rt, "walker", f"evidence:{key}")
     # Persona (R5c): the FIRST ask goes to the NARRATOR as a goal directive —
@@ -450,7 +443,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # Re-ask says WHY it repeats (thinking aloud, Andrius 2026-08-11): the
     # caller hears the agent is unsure about the SAME thing, not deaf.
     if asks == 1:
-        from .contract.locale import phrase
+        from ...contract.locale import phrase
 
         text = phrase(
             "identification.reask_reason",
@@ -460,10 +453,10 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # Bare "Ne." to THIS key's open question: the no has no object — clarify
     # what is denied instead of re-asking the same words (live 2026-08-11).
     if pending_before == key:
-        from .perceive.detectors import is_bare_negation
+        from ...perceive.detectors import is_bare_negation
 
         if is_bare_negation(user_input):
-            from .contract.locale import phrase
+            from ...contract.locale import phrase
 
             text = maybe_phrase(item.get("clarify_key")) or phrase(
                 "identification.negation_clarify",
@@ -473,7 +466,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         # DONE-report without a result ("Mhm, patikrinau") — acknowledge the
         # work and ask WHAT was found (ka_radote from faults.yaml).
         if state.turn.done_report_key == key:
-            from .contract.locale import phrase
+            from ...contract.locale import phrase
 
             state.turn.done_report_key = None
             text = phrase(

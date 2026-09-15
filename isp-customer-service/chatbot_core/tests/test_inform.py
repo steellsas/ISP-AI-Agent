@@ -148,8 +148,9 @@ class TestTicketCallback:
     def test_callback_wish_mid_ticket_closes_warm(self, db_connection):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import begin_ticket_dialogue
         from agent.resolution import get_strategy
-        from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
@@ -167,8 +168,9 @@ class TestTicketCallback:
 
     def test_normal_hours_answer_still_captured(self, db_connection):
         from agent.decide.rules.head import turn_head
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import begin_ticket_dialogue
         from agent.resolution import get_strategy
-        from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
         agent = _agent()
         agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}

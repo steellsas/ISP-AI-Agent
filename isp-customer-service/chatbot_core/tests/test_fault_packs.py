@@ -75,7 +75,7 @@ class TestSolverMechanics:
         from types import SimpleNamespace
 
         from agent import evidence as ev
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
         monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: "confirmed")
@@ -116,7 +116,7 @@ class TestVoiceTestFixes:
     def test_demand_with_stop_words_keeps_the_dialogue(self):
         from types import SimpleNamespace
 
-        from agent.ticket_flow import wants_to_keep_solving
+        from agent.decide.rules.ticket import wants_to_keep_solving
 
         # live phrase: negated solving verbs + explicit demand -> NOT keep-solving
         assert (
@@ -195,7 +195,7 @@ class TestNarratorWordedQuestions:
         )
 
     def test_first_ask_delegates_to_narrator(self, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         engine = self._engine()
@@ -207,7 +207,7 @@ class TestNarratorWordedQuestions:
         )  # ask bookkeeping intact
 
     def test_off_switch_keeps_scripted_wording(self, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         engine = self._engine()
@@ -295,7 +295,7 @@ class TestNarratorFindings:
         from types import SimpleNamespace
 
         from agent import evidence as ev
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
@@ -344,7 +344,7 @@ class TestNarratorFindings:
         assert token_overlap("O kiek kainuoja meistras?", q) < 0.8
 
     def test_recap_delegates_to_narrator(self, monkeypatch):
-        from agent.evidence_drive import maybe_facts_recap
+        from agent.decide.rules.evidence import maybe_facts_recap
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         from types import SimpleNamespace
@@ -375,7 +375,7 @@ class TestNarratorFindings:
         from types import SimpleNamespace
 
         from agent import evidence as ev
-        from agent.evidence_drive import maybe_facts_recap
+        from agent.decide.rules.evidence import maybe_facts_recap
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         monkeypatch.setattr(ev, "client_facts_lt", lambda e: "routerio lemputės: nedega")
@@ -402,7 +402,7 @@ class TestNarratorFindings:
         assert "PASITIKSLINK" in block and "nedega" in block
 
     def test_findings_delegate_to_narrator(self, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         self._mock_confirmed(monkeypatch)
@@ -416,7 +416,7 @@ class TestNarratorFindings:
         assert engine.state.diagnosis.findings_announced is True  # said once, never re-dumped
 
     def test_off_switch_keeps_scripted_announce(self, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         self._mock_confirmed(monkeypatch)
@@ -513,7 +513,7 @@ class TestTicketFirst:
     def test_solver_close_after_bridge_registers(self, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.solver_flow import close_or_register
+        from agent.decide.rules.diagnosis import close_or_register
 
         calls = []
         engine = as_call(
@@ -551,7 +551,7 @@ class TestTicketFirst:
                 tracer=SimpleNamespace(emit=lambda *a, **k: None),
             ),
         )
-        from agent.solver_flow import close_or_register
+        from agent.decide.rules.diagnosis import close_or_register
 
         assert "Puiku" in close_or_register(engine.state, engine.runtime, "")
         assert engine.state.closing.case_closed is True
@@ -669,7 +669,7 @@ class TestStepAwareness:
         assert "ŽINGSNIS KARTOJAMAS" not in block
 
     def test_solver_context_includes_the_journey(self, db_connection):
-        from agent.solver_flow import build_solver_context
+        from agent.decide.rules.diagnosis import build_solver_context
 
         from tests.calls import make_agent
 
@@ -729,7 +729,7 @@ class TestIdentificationF:
     ne; paragink su KODĖL; nesėkmę užfiksuok įraše."""
 
     def test_diag_street_found_house_not(self):
-        from agent.identification_flow import address_diag_note
+        from agent.execute.identification import address_diag_note
 
         note = address_diag_note(
             {
@@ -745,7 +745,7 @@ class TestIdentificationF:
         assert note and "RANDU" in note and "39" in note and "29" in note
 
     def test_diag_street_elsewhere_and_fuzzy(self):
-        from agent.identification_flow import address_diag_note
+        from agent.execute.identification import address_diag_note
 
         note = address_diag_note(
             {
@@ -1105,7 +1105,7 @@ class TestWalkerFollowsLedger:
     def test_fact_pointer_moves_the_walker(self, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         gotos = []
@@ -1225,7 +1225,7 @@ class TestLiveCall0821Fixes:
         from types import SimpleNamespace
 
         from agent import evidence as ev
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         monkeypatch.setattr(ev, "spec_for", lambda v: {"client": {}})
         monkeypatch.setattr(ev, "hypothesis_status", lambda e, s: "confirmed")

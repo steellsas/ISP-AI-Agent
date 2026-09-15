@@ -1,89 +1,18 @@
-"""
-Identification flow — the deterministic identification ladder around the pure
-helpers in agent/identification.py (phrases, policy); the caller's words reach the
-slots through agent/perceive (slots, nlu).
-
-R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent —
-the phone preflight, the identity reopen, and the scripted-ladder reply composer. Functions take (state, rt)
-— the call state and the AgentRuntime. tools run through rt.tools (the gateway).
-"""
+"""Identification rules (§5 rows 5, 8-10) — the ladder around agent/identification.py:
+the identity reopen, the problem gate, the account-code rung, the address ladder and the
+street spelling round. The caller's words reach the slots through agent/perceive."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from .contract import limits
-from .contract.locale import vocab
-from .dialog_utils import last_agent_question
-from .trace import trace_note
+from ...contract import limits
+from ...contract.locale import vocab
+from ...dialog_utils import last_agent_question
+from ...trace import trace_note
 
 logger = logging.getLogger(__name__)
-
-
-def preflight_phone(state: Any, rt: Any) -> None:
-    """Look up the caller's number at the START of the call (deterministic).
-
-    Runs once, in code (not via the LLM), so by the customer's first turn the
-    phone account — if any — is already known and the agent can offer its
-    address for confirmation without a tool round-trip. Stored as an
-    UNCONFIRMED candidate (anchor rule), never as a confirmed customer.
-    """
-    phone = state.identity.caller_phone
-    if not phone or phone == "unknown":
-        return
-    state.identity.preflight_done = True
-    try:
-        result = rt.tools.run(
-            state, rt, "find_customer", {"phone": phone}, reason="preflight_phone", apply=False
-        ).data
-    except Exception:
-        return
-    if not result.get("success"):
-        rt.tracer.emit("preflight", found=False)
-        return
-    addresses = result.get("addresses") or []
-    primary = next(
-        (a for a in addresses if a.get("is_primary")),
-        addresses[0] if addresses else {},
-    )
-    state.identity.phone_candidate = {
-        "customer_id": result.get("customer_id"),
-        "name": result.get("name"),
-        "address": primary.get("full_address"),
-        # Structured parts for the phone cross-check: if the caller names this
-        # street, offer the full address to confirm instead of making them
-        # dictate the house/apartment (spoken numbers are STT-fragile).
-        "city": primary.get("city"),
-        "street": primary.get("street"),
-        "house": primary.get("house_number"),
-        "apartment": primary.get("apartment_number"),
-    }
-    rt.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
-
-    # Proactive mass-outage awareness (roadmap 6b): if this caller's street
-    # has an active outage, remember it so the FIRST reply can inform right
-    # away — no full identification needed (everyone at that street is down).
-    try:
-        outage = rt.tools.run(
-            state,
-            rt,
-            "check_outages",
-            {"customer_id": result.get("customer_id")},
-            reason="preflight_outage",
-            apply=False,
-        ).data
-    except Exception:
-        return
-    if outage.get("affected") and outage.get("active_outages"):
-        first = outage["active_outages"][0]
-        eta = first.get("estimated_resolution") or ""
-        state.identity.preflight_outage = {
-            "street": first.get("street"),
-            "eta": eta[11:16] if len(eta) >= 16 else eta,  # HH:MM, voice-friendly
-            "description": first.get("description"),
-        }
-        rt.tracer.emit("preflight_outage", street=first.get("street"))
 
 
 def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
@@ -156,7 +85,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     state.resolution.bridge_fail_stage = 0
     state.ticket.bridge_fail_note = None
     state.diagnosis.revived_evidence_keys = []
-    from .slots import ClientProfileState
+    from ...slots import ClientProfileState
 
     s.identity.profile = ClientProfileState()
     state.turn.db_address_note = None
@@ -167,7 +96,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     state.resolution.bridge_bound = False  # a different account starts clean
     # Re-extract address parts from THIS utterance (the correction often carries
     # the new address: "ne, skambinu dėl Dainų 5").
-    from .perceive.slots import prefill_slots_from_text
+    from ...perceive.slots import prefill_slots_from_text
 
     prefill_slots_from_text(state, rt, user_input)
     state.turn.reopen_note = True
@@ -190,9 +119,9 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
          conversation that is moving forward."""
     import os as _os
 
-    from .contract.locale import phrase
-    from .faults import problem_boundary_reply, problem_confirm_question, problem_policy
-    from .perceive.detectors import DETECTORS, is_real_question
+    from ...contract.locale import phrase
+    from ...faults import problem_boundary_reply, problem_confirm_question, problem_policy
+    from ...perceive.detectors import DETECTORS, is_real_question
 
     # 1) the caller answers last turn's "Ar gerai suprantu — …?"
     pg = state.intake.problem_guess
@@ -229,7 +158,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     # fragments, but the meaning lives across them: „Oras kažkoks netoks." +
     # „gal dėl to neturiu interneto?" is ONE thought).
     if _os.getenv("CLASSIFIER", "on").lower() != "off":
-        from .perceive.nlu import classify_problem_llm
+        from ...perceive.nlu import classify_problem_llm
 
         tail = [
             u
@@ -349,8 +278,8 @@ def _register_street_attempt(state: Any, rt: Any, garble: str) -> str | None:
     registry (the honest not-exists / are-you-our-client branch);
     'similar' — a close-but-different garble, the ASR is unstable (fuzzy
     suggestions and the code rung handle it); None — first sighting."""
-    from .evidence import _fold
-    from .perceive.nlu import street_match_score
+    from ...evidence import _fold
+    from ...perceive.nlu import street_match_score
 
     g = _fold((garble or "").replace("gatvė", "").replace(" g.", "").strip())[:24].strip()
     if len(g) < 3:
@@ -376,8 +305,8 @@ def _street_by_prefix_and_garble(
     garble is fuzzy-matched inside that small subset with a LOWERED bar —
     letter + garble together beat either alone. Without a garble, the
     shortest prefix match wins (the caller spelled the name itself)."""
-    from .evidence import _fold
-    from .perceive.nlu import street_match_score
+    from ...evidence import _fold
+    from ...perceive.nlu import street_match_score
 
     streets = rt.tools.address_registry().streets
     want = _fold(prefix)
@@ -394,7 +323,7 @@ def _street_by_prefix_and_garble(
 def _street_by_prefix(state: Any, rt: Any, prefix: str) -> str | None:
     """The registry street whose folded name starts with the spelled prefix —
     the shortest match wins (the caller spelled the NAME, not the suffix)."""
-    from .evidence import _fold
+    from ...evidence import _fold
 
     streets = rt.tools.address_registry().streets
     want = _fold(prefix)
@@ -434,7 +363,7 @@ def _lookup_by_code(state: Any, rt: Any, s: Any, code: str):
     # move on. The code path is always scripted (never the narrator's whim);
     # the "ar skambinate dėl" core stays verbatim — the confirm guard keys
     # off it.
-    from .contract.locale import phrase as _phrase
+    from ...contract.locale import phrase as _phrase
 
     c = s.identity.phone_candidate
     if c.get("street"):
@@ -443,7 +372,7 @@ def _lookup_by_code(state: Any, rt: Any, s: Any, code: str):
         # B-wave registry: the echo-offer IS the address-offer question
         # (live 2026-09-08: this path bypassed _address_move and the offer
         # went out unregistered).
-        from .decide.question import register as _q_register
+        from ...decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "address_offer", address=adresas)
         return _phrase(
@@ -472,7 +401,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
     Returns (handled, reply)."""
 
-    from .contract.locale import phrase
+    from ...contract.locale import phrase
 
     if not user_input:
         return False, None
@@ -506,8 +435,8 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             else None
         )
         if cand:
-            from .decide.question import register as _q_register
-            from .slots import SlotStatus
+            from ...decide.question import register as _q_register
+            from ...slots import SlotStatus
 
             s.identity.profile.street.propose(cand, 0.9, SlotStatus.HEARD)
             state.identity.address_unrecognized_turns = 0
@@ -522,7 +451,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         rt.tracer.emit("decision", intent="street_spell", action="miss", prefix=prefix)
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .decide.question import register as _q_register
+        from ...decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "account_code")
         return True, phrase("identification.account_code_ask")
@@ -536,7 +465,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         if state.identity.account_code_mode:
             # A-3 transparency: say WHAT we heard — the caller sees where
             # the mishearing happened.
-            from .decide.question import register as _q_register
+            from ...decide.question import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
             return True, phrase("identification.account_code_miss", code=_speak_code(code))
@@ -551,7 +480,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         # A-wave P3c (live #3: „A. B." → the LLM hallucinated „nerastas"): the caller
         # TALKS about the code but we read no digits — scripted help, not the LLM.
         if any(m in low for m in vocab("account_code_words")):
-            from .decide.question import register as _q_register
+            from ...decide.question import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
             rt.tracer.emit("decision", intent="account_code", action="retry_help")
@@ -576,7 +505,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         state.identity.street_not_exists_said = True
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .decide.question import register as _q_register
+        from ...decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "street_not_exists")
         rt.tracer.emit("decision", intent="street_not_exists", action="say")
@@ -598,7 +527,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         and not state.identity.city_not_served_said
     ):
         state.identity.city_not_served_said = True
-        from .decide.question import register as _q_register
+        from ...decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "city_not_served")
         rt.tracer.emit("decision", intent="account_code", action="city_not_served")
@@ -610,7 +539,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         state.identity.address_resolve_failures = 0
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .decide.question import register as _q_register
+        from ...decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "account_code")
         rt.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
@@ -661,7 +590,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             state.identity.street_not_exists_said = True
             state.identity.account_code_mode = True
             state.identity.account_code_grace_turns = 0
-            from .decide.question import register as _q_register
+            from ...decide.question import register as _q_register
 
             _q_register(state, rt, "ident", "street_not_exists")
             rt.tracer.emit("decision", intent="street_not_exists", action="say")
@@ -676,7 +605,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             if n >= limits.get("address_unrecognized_turns_max"):
                 state.identity.account_code_mode = True
                 state.identity.account_code_grace_turns = 0
-                from .decide.question import register as _q_register
+                from ...decide.question import register as _q_register
 
                 _q_register(state, rt, "ident", "account_code")
                 rt.tracer.emit(
@@ -698,7 +627,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         # listening is on (the pass-through semantics keep the content).
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .decide.question import register as _q_register
+        from ...decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "address_need")
         rt.tracer.emit("decision", intent="account_code", action="warn")
@@ -719,9 +648,9 @@ def _address_move(state, rt, s):
     deterministic confirm guard keys off it. Off-switch keeps the scripts."""
     import os as _os
 
-    from .contract.locale import phrase
-    from .decide.question import register as _q_register
-    from .identification import offer_phone_address
+    from ...contract.locale import phrase
+    from ...decide.question import register as _q_register
+    from ...identification import offer_phone_address
 
     c = s.identity.phone_candidate
     if offer_phone_address() and c and c.get("street") and not s.identity.preflight_outage:
@@ -742,49 +671,33 @@ def _address_move(state, rt, s):
     return fallback
 
 
-def address_diag_note(obs: dict) -> str | None:
-    """F2 (Andrius 2026-08-20): a FAILED address lookup must tell the caller
-    exactly what WAS found and what was not — 'Vilniaus gatvę randu, bet 39
-    numerio nematau' lets the caller correct themselves. Composed from the
-    resolver's per-level diagnosis into a narrator directive; None when there
-    is nothing more specific than the generic re-ask."""
-    res = obs.get("resolution") or {}
-    city = res.get("city") or {}
-    street = res.get("street") or {}
-    house = res.get("house") or {}
-    place = city.get("matched") or city.get("given") or ""
-    vieta = f" mieste {place}" if place else ""
-    bits: list[str] = []
-    st = street.get("status")
-    if st in ("not_found", "not_in_city"):
-        g = street.get("given") or "nurodytos gatvės"
-        line = f"gatvės „{g}“{vieta} NERANDU"
-        elsewhere = street.get("found_elsewhere") or []
-        if elsewhere:
-            kur = ", ".join(str(e.get("city") or e) for e in elsewhere[:3])
-            line += f", bet tokia gatvė yra: {kur} — paklausk, ar ne ten"
-        else:
-            line += " (gal ji vadinasi kitaip? pavadinimai keičiasi)"
-        bits.append(line)
-    elif st == "unclear" and street.get("fuzzy_candidates"):
-        cands = ", ".join(str(c) for c in street["fuzzy_candidates"][:3])
-        bits.append(f"gatvės neišgirdau tiksliai — panašios: {cands}; paklausk, kuri")
-    elif st in ("ok", "derived", "recovered") and house.get("status") == "not_found":
-        g = street.get("matched") or street.get("given") or "gatvę"
-        line = f"gatvę {g}{vieta} RANDU, bet namo {house.get('given')} numerio NĖRA"
-        known = house.get("known_houses") or []
-        if known:
-            line += f" (toje gatvėje yra: {', '.join(str(h) for h in known[:6])})"
-        line += " — paprašyk patikslinti namo numerį"
-        bits.append(line)
-    elif city.get("status") == "ambiguous":
-        alts = city.get("alternatives") or city.get("candidates") or []
-        kur = ", ".join(str(a.get("city") if isinstance(a, dict) else a) for a in alts[:3])
-        bits.append(f"tokia gatvė yra keliuose miestuose ({kur}) — paklausk, kuriame")
-    if not bits:
-        return None
-    return (
-        "- ADRESO PAIEŠKOS DIAGNOZĖ (pasakyk klientui BŪTENT tai — kas rasta ir ko "
-        "ne, savais žodžiais, trumpai — ir paprašyk patikslinti TIK trūkstamą "
-        "dalį): " + "; ".join(bits) + ". Neišgalvok adresų."
-    )
+def engine_resolve_from_slots(state, rt) -> bool:
+    """Deterministic identification commit from clearly-heard slots: the ENGINE
+    calls resolve_address (+ the silent diagnose) itself — no LLM tool-call
+    hesitancy, no confirm-round relapse. True when a customer committed."""
+    from ...execute.diagnosis import ensure_diagnosed
+
+    p = state.identity.profile
+    args: dict[str, str] = {
+        "street": str(p.street.value),
+        "house_number": str(p.house.value),
+    }
+    if p.apartment.value:
+        args["apartment_number"] = str(p.apartment.value)
+    if p.city.value:
+        args["city"] = str(p.city.value)
+    try:
+        rt.tools.run(state, rt, "resolve_address", args, reason="resolve_from_slots")
+    except Exception as e:  # pragma: no cover - best-effort
+        trace_note(rt.tracer, state, "engine_resolve", str(e), level="error")
+        return False
+    if not state.identity.customer_id:
+        return False
+    # B-wave registry: the identification question (address/code) got its
+    # answer — a contract committed; the next question (the name) is
+    # registered by its own owner.
+    from ...decide.question import clear_owner as _q_clear_owner
+
+    _q_clear_owner(state, rt, "ident")
+    ensure_diagnosed(state, rt)
+    return True

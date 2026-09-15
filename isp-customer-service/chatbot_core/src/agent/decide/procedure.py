@@ -233,7 +233,7 @@ def _cached_perception(state, rt, step, user_input: str | None):
     cached = state.turn.perception_step
     if not cached or cached.get("step_id") != step.id or cached.get("input") != user_input:
         return None
-    from ..classifier import CandidateObservation
+    from ..perceive.classifier import CandidateObservation
 
     try:
         return CandidateObservation(**cached["obs"])
@@ -246,9 +246,9 @@ def classify_confirm_and_route(state, rt, step, strat, user_input: str | None) -
     answer (into a routing key) and whether it IS an answer. A confident answer
     advances the walker (overriding a brittle keyword turn-intent); anything unsure
     returns False → the keyword detector + intent gate handle it. Sensor only."""
-    from ..classifier import classify_step
     from ..detectors import glosses as detector_glosses
     from ..faults import step_options
+    from ..perceive.classifier import classify_step
     from ..resolution import next_step_id
 
     # R4 perception merge: the understanding pass already classified this reply
@@ -316,7 +316,7 @@ def advance_instruct(state, rt, r: dict, step, strat, user_input: str | None = N
     from ..executor_flow import simulate_bridge_connection, simulate_router_reboot_action
     from ..perceive.detectors import detect_restored
     from ..resolution import Outcome, StepKind, next_step_id
-    from ..solver_flow import plug_report
+    from .rules.diagnosis import plug_report
 
     route_to(state, rt, r, step.goto or next_step_id(strat, step.id, None))
     # Skipped-ahead caller (live 2026-08-24): still on locate_cable, the caller
@@ -375,8 +375,8 @@ def classify_instruct_and_advance(state, rt, step, strat, user_input: str | None
     DO it, or are they still doing it / asking? A confident 'done' advances even when
     the keyword turn-intent misreads a messy done-signal as in_progress. Anything else
     returns False → the keyword intent gate decides. Sensor only."""
-    from ..classifier import classify_step
     from ..detectors import glosses as detector_glosses
+    from ..perceive.classifier import classify_step
 
     # R4 perception merge first (cached same-call read), classifier fallback.
     obs = _cached_perception(state, rt, step, user_input)
@@ -586,9 +586,9 @@ def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
     `answers:` (step_options), generic reboot_check glosses as fallback."""
     if os.getenv("CLASSIFIER", "on").lower() == "off":
         return None
-    from ..classifier import classify_step
     from ..detectors import glosses as detector_glosses
     from ..faults import step_options
+    from ..perceive.classifier import classify_step
 
     r = state.resolution.procedure or {}
     options = step_options(r.get("verdict"), r.get("step")) or detector_glosses("reboot_check")
@@ -748,14 +748,14 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
       decline  -> close WITHOUT a ticket (closed_reason='declined'),
       unclear  -> hold; the narrator re-asks (stuck-guard still backstops).
     The LLM only phrases — it can no longer call create_ticket itself."""
-    from ..ticket_flow import begin_ticket_dialogue
+    from ..execute.ticket import begin_ticket_dialogue
 
     if not step.consent:
         return  # auto-register step — ensure_action_done handles it on arrival
     if not r.get("asked"):
         return  # consent question not posed yet — narrator asks it this turn
-    from ..classifier import classify_step
     from ..detectors import glosses as detector_glosses
+    from ..perceive.classifier import classify_step
     from ..perceive.detectors import detect_ticket_consent
 
     label = detect_ticket_consent(user_input)

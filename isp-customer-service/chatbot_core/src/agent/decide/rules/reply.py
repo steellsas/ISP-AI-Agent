@@ -29,9 +29,10 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     returns None so the LLM answers it; the ladder resumes next turn. Solving and
     free dialogue never come here."""
     from ...dialog_utils import anchor_text
-    from ...evidence_drive import evidence_question_open, negation_clarify_reply
-    from ...identification_flow import _account_code_rung, _address_move, _problem_gate_reply
-    from ...ticket_flow import begin_ticket_dialogue, ticket_question_turn
+    from ...execute.ticket import begin_ticket_dialogue
+    from .evidence import evidence_question_open, negation_clarify_reply
+    from .identification import _account_code_rung, _address_move, _problem_gate_reply
+    from .ticket import ticket_question_turn
 
     s = state
     # P-C (2026-09-08): the walker's 'callback' terminal just closed the case

@@ -36,8 +36,8 @@ def plan(state: Any, rt: Any) -> TurnPlan:
             rule="side_topic.answer",
             say=Say(kind="directive", stage="side_topic", reply_layer=True),
         )
-    from ...closing_flow import maybe_close_inform
-    from ...solver_flow import solver_drive_turn
+    from .closing import maybe_close_inform
+    from .diagnosis import solver_drive_turn
 
     maybe_close_inform(state, rt, user_input)
     # The repeat guard counts the narrator's re-asks; a solver-driven turn has always

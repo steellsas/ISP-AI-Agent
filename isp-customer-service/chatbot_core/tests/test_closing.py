@@ -17,7 +17,7 @@ class TestClosing:
         return make_agent("unknown")
 
     def test_farewell_ends_the_call(self):
-        from agent.closing_flow import maybe_finish
+        from agent.decide.rules.closing import maybe_finish
 
         agent = self._agent()
         agent.state.closing.case_closed = True
@@ -25,7 +25,7 @@ class TestClosing:
         assert agent.state.closing.is_complete is True
 
     def test_question_keeps_it_open_then_caps(self):
-        from agent.closing_flow import maybe_finish
+        from agent.decide.rules.closing import maybe_finish
 
         agent = self._agent()
         agent.state.closing.case_closed = True
@@ -35,14 +35,14 @@ class TestClosing:
         assert agent.state.closing.is_complete is True
 
     def test_noop_when_not_closed(self):
-        from agent.closing_flow import maybe_finish
+        from agent.decide.rules.closing import maybe_finish
 
         agent = self._agent()
         maybe_finish(agent.state, agent.runtime, "viso gero")  # case not closed -> ignore
         assert agent.state.closing.is_complete is False
 
     def test_goodbye_reply_ends_call_any_path(self):
-        from agent.closing_flow import maybe_end_on_goodbye
+        from agent.execute.say import maybe_end_on_goodbye
 
         # Catch-all: the agent's own farewell ends the call even without case_closed
         # (e.g. the stuck backstop's "užregistruosiu… geros dienos" that used to loop).
@@ -55,7 +55,7 @@ class TestClosing:
         assert agent.state.closing.is_complete is True
 
     def test_midconversation_reply_does_not_end(self):
-        from agent.closing_flow import maybe_end_on_goodbye
+        from agent.execute.say import maybe_end_on_goodbye
 
         agent = self._agent()
         maybe_end_on_goodbye(

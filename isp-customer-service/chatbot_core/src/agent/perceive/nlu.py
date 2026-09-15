@@ -222,8 +222,8 @@ def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[st
     if not text or not text.strip():
         return None, 0.0
     try:
-        from ..classifier import classify_step
         from ..faults import problem_catalog_options
+        from .classifier import classify_step
 
         options = problem_catalog_options()
         if not options:

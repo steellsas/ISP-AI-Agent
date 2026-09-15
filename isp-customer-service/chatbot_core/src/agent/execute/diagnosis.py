@@ -38,7 +38,7 @@ def ensure_diagnosed(state, rt) -> bool:
     Returns True if it ran diagnose on THIS call (first entry), so the caller
     skips a step advance that turn — the strategy's first question is only being
     asked now, not yet answered."""
-    from ..ticket_flow import begin_ticket_dialogue
+    from .ticket import begin_ticket_dialogue
 
     s = state
     if not s.identity.customer_id or s.closing.case_closed:
@@ -83,7 +83,7 @@ def _unclear_fault_when_unknown(state, rt) -> None:
     ticket starts instead."""
     from ..faults import step_by_role, verdict_flag
     from ..resolution import get_strategy
-    from ..ticket_flow import begin_ticket_dialogue
+    from .ticket import begin_ticket_dialogue
 
     s = state
     reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
@@ -157,7 +157,7 @@ def ensure_action_done(state, rt) -> bool:
     escalate on failure), so by the time the LLM narrates it only PHRASES the
     verified outcome. Returns True if it ran an action this call."""
     from ..narrator_flow import augment_tool_result
-    from ..ticket_flow import begin_ticket_dialogue
+    from .ticket import begin_ticket_dialogue
 
     s = state
     if not s.identity.customer_id or s.closing.case_closed:

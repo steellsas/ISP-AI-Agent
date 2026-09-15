@@ -314,7 +314,7 @@ class TestDeterministicInformClose:
         return agent
 
     def test_farewell_closes_outage_call(self, db_connection):
-        from agent.closing_flow import maybe_close_inform
+        from agent.decide.rules.closing import maybe_close_inform
 
         agent = self._informed_agent()
         maybe_close_inform(agent.state, agent.runtime, "Ačiū, viso gero, sudie")
@@ -323,7 +323,7 @@ class TestDeterministicInformClose:
         assert agent.state.closing.is_complete is True
 
     def test_no_farewell_keeps_call_open(self, db_connection):
-        from agent.closing_flow import maybe_close_inform
+        from agent.decide.rules.closing import maybe_close_inform
 
         agent = self._informed_agent()
         maybe_close_inform(agent.state, agent.runtime, "O kada tiksliai sutvarkysite?")
@@ -332,7 +332,7 @@ class TestDeterministicInformClose:
     def test_active_strategy_never_closed_here(self, db_connection):
         """A live troubleshooting strategy belongs to the walker — a mid-flow 'ne'
         must not end the call."""
-        from agent.closing_flow import maybe_close_inform
+        from agent.decide.rules.closing import maybe_close_inform
 
         agent = self._informed_agent()
         agent.state.diagnosis.outage_reported = False
@@ -473,8 +473,8 @@ class TestHearingAgent:
         assert reply is not None and "neįkištas" in reply  # patikslinimas wording
 
     def test_drive_negation_clarify_replaces_reask(self, db_connection, monkeypatch):
+        from agent.decide.rules.evidence import evidence_drive
         from agent.evidence import CLIENT, set_fact
-        from agent.evidence_drive import evidence_drive
 
         agent = self._agent(monkeypatch)
         set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
@@ -486,8 +486,8 @@ class TestHearingAgent:
         assert reply is not None and "neįkištas" in reply
 
     def test_kodel_rides_on_first_evidence_ask(self, db_connection, monkeypatch):
+        from agent.decide.rules.evidence import evidence_drive
         from agent.evidence import CLIENT, set_fact
-        from agent.evidence_drive import evidence_drive
 
         agent = self._agent(monkeypatch)
         set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
@@ -519,7 +519,7 @@ class TestHearingAgent:
 
     def test_ticket_cancel_needs_one_confirm(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.ticket_flow import ticket_stage_reply
+        from agent.decide.rules.ticket import ticket_stage_reply
 
         agent = self._agent(monkeypatch, step="escalate")
         agent.state.ticket.stage = "phone"
@@ -533,7 +533,7 @@ class TestHearingAgent:
 
     def test_ticket_cancel_confirm_can_resume(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.ticket_flow import ticket_stage_reply
+        from agent.decide.rules.ticket import ticket_stage_reply
 
         agent = self._agent(monkeypatch, step="escalate")
         agent.state.ticket.stage = "phone"
@@ -637,7 +637,7 @@ class TestHearingAgent:
     # --- round 4 (live 2026-08-11, call 4: bind never ran) --------------------
 
     def test_plug_report_reads_context_not_one_sentence(self, db_connection, monkeypatch):
-        from agent.solver_flow import plug_report
+        from agent.decide.rules.diagnosis import plug_report
 
         agent = self._agent(monkeypatch)
         agent.state.messages.append(
@@ -665,7 +665,7 @@ class TestHearingAgent:
         assert plug_report(agent.state, agent.runtime, "Įkišau gerai.") is False
 
     def test_plug_report_memory_unlocks_the_bind_gate(self, db_connection, monkeypatch):
-        from agent.solver_flow import drive_propose_fix
+        from agent.decide.rules.diagnosis import drive_propose_fix
 
         # "Įkišau, laukiu" three turns ago — the gate demanded the verb in THIS
         # turn's utterance and kept repeating "Kai prijungsite…" (live).
@@ -679,8 +679,8 @@ class TestHearingAgent:
         )  # bind ran (or line check)
 
     def test_bailout_lands_on_declared_solution_step(self, db_connection, monkeypatch):
+        from agent.decide.rules.diagnosis import solver_drive_turn
         from agent.evidence import CLIENT, set_fact
-        from agent.solver_flow import solver_drive_turn
 
         agent = self._agent(monkeypatch)
         for k, v in (
@@ -704,8 +704,8 @@ class TestHearingAgent:
     # --- round 5 (2026-08-12): bridge-failure ladder ---------------------------
 
     def test_bridge_fail_ladder_lan_check_then_technician(self, db_connection, monkeypatch):
+        from agent.decide.rules.diagnosis import drive_propose_fix
         from agent.perceive.evidence import ingest_client_evidence
-        from agent.solver_flow import drive_propose_fix
 
         # Plug reported, telemetry never shows the device (no simulation):
         # (1) say the line sees nothing + cable re-check, (2) the LAN question,
@@ -736,8 +736,8 @@ class TestHearingAgent:
     # --- round 6 (live 2026-08-12): dead ends resolve, success is heard -------
 
     def test_unconfirmed_bailout_goes_to_escalate_not_intro(self, db_connection, monkeypatch):
+        from agent.decide.rules.diagnosis import solver_drive_turn
         from agent.evidence import CLIENT, set_fact
-        from agent.solver_flow import solver_drive_turn
 
         agent = self._agent(monkeypatch)
         agent.state.identity.caller_name = "Andrius"
@@ -759,7 +759,7 @@ class TestHearingAgent:
         import json as _json
 
         from agent.decide.procedure import walk_resolution
-        from agent.solver_flow import drive_propose_fix
+        from agent.decide.rules.diagnosis import drive_propose_fix
 
         agent = self._agent(monkeypatch)
         agent.state.resolution.bridge_plug_reported = True
@@ -786,7 +786,8 @@ class TestHearingAgent:
         assert agent.state.resolution.procedure["step"] == "dr_register_router"  # success HEARD
 
     def test_ticket_intro_after_working_bridge_states_the_success(self, db_connection, monkeypatch):
-        from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import begin_ticket_dialogue
 
         # "Telefonu šio gedimo išspręsti nepavyks" right after the internet
         # CAME BACK read as a failure (live 2026-08-12) — the post-bridge
@@ -1118,7 +1119,7 @@ class TestVoiceGuardsRound5:
         assert agent.state.identity.caller_relation == "helper"
 
     def test_inform_close_gated_until_news_told(self, db_connection):
-        from agent.closing_flow import maybe_close_inform
+        from agent.decide.rules.closing import maybe_close_inform
 
         from tests.calls import make_agent
 
@@ -1274,8 +1275,8 @@ class TestSideTopicNode:
 
     def test_question_freezes_engine_and_flags_side_topic(self, db_connection, monkeypatch):
         from agent.decide.procedure import advance
+        from agent.decide.rules.diagnosis import solver_drive_turn
         from agent.perceive.side_topic import classify_side_topic
-        from agent.solver_flow import solver_drive_turn
 
         agent = self._diagnosing(monkeypatch)
         assert classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?") is True
@@ -1353,7 +1354,7 @@ class TestSideTopicNode:
     def test_refusal_and_farewell_yield_to_walker_policies(self, db_connection, monkeypatch):
         import os
 
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         agent = self._diagnosing(monkeypatch)
         # "neturiu laiko" got a solver wait->close and NO ticket live — the
@@ -1367,7 +1368,7 @@ class TestSideTopicNode:
     def test_hours_scrubbed_of_inner_question_marks(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = self._diagnosing(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
@@ -1415,10 +1416,10 @@ class TestReviewGaps:
         # telemetry facts (the verdict!) survived in the ledger.
         import os
 
-        from agent.identification_flow import reopen_identification
+        from agent.decide.rules.identification import reopen_identification
+        from agent.execute.ticket import begin_ticket_dialogue
         from agent.narrator_flow import update_state_from_observation
         from agent.perceive.evidence import ingest_client_evidence
-        from agent.ticket_flow import begin_ticket_dialogue
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
         from tests.calls import make_agent
@@ -1675,21 +1676,21 @@ class TestThinkerBoundaries:
         return agent
 
     def test_defers_while_ladder_open(self, db_connection, monkeypatch):
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         agent = self._agent(db_connection)
         agent.state.identity.result_pending = True  # caller-intro / result still owed
         assert solver_drive_turn(agent.state, agent.runtime, "taip") is None
 
     def test_defers_while_end_confirm_pending(self, db_connection, monkeypatch):
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         agent = self._agent(db_connection)
         agent.state.dialog.end_confirm_pending = True
         assert solver_drive_turn(agent.state, agent.runtime, "taip") is None
 
     def test_defers_until_caller_intro_done(self, db_connection, monkeypatch):
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         agent = self._agent(db_connection)
         agent.state.identity.caller_name = None  # ladder's last rung not done
@@ -1699,7 +1700,7 @@ class TestThinkerBoundaries:
         # A pack without evidence stays with its procedure — the solver hands the
         # turn back.
         from agent import faults
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         monkeypatch.setattr(faults, "evidence_led", lambda v: False)
         agent = self._agent(db_connection)
@@ -1707,7 +1708,7 @@ class TestThinkerBoundaries:
         assert solver_drive_turn(agent.state, agent.runtime, "taip") is None
 
     def test_solver_declared_direction_is_driven(self, db_connection, monkeypatch):
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         # All internet packs now declare vairuotojas: solveris (2026-08-13) —
         # the evidence engine asks the first missing fact from the pack.
@@ -1722,8 +1723,8 @@ class TestDriveRepeatBailout:
     bailout to the registration offer (observed live: 6x verbatim loop)."""
 
     def test_distrust_loop_hands_wheel_to_walker(self, db_connection, monkeypatch):
+        from agent.decide.rules.diagnosis import solver_drive_turn
         from agent.perceive.evidence import ingest_client_evidence
-        from agent.solver_flow import solver_drive_turn
 
         # Ledger v2: while EVIDENCE is missing, the evidence engine (not the
         # solver) asks — deterministically, bench or no bench. The distrust
@@ -1757,7 +1758,7 @@ class TestDriveRepeatBailout:
         )  # and keeps owning it
 
     def test_evidence_keeps_driving_after_solver_bench(self, db_connection, monkeypatch):
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         # The rewind trap is dead: a benched solver no longer strands the call
         # at a stale step — missing evidence still gets asked deterministically.
@@ -1796,7 +1797,7 @@ class TestBindDiscipline:
         return agent
 
     def test_fix_deferred_until_plugged(self, db_connection, monkeypatch):
-        from agent.solver_flow import drive_propose_fix
+        from agent.decide.rules.diagnosis import drive_propose_fix
 
         agent = self._driving_agent(monkeypatch)
         # First deferral = the transition + bridge OFFER (2026-08-05); later
@@ -1816,7 +1817,7 @@ class TestBindDiscipline:
         # flipped CUST009 healthy and broke a later ordering-dependent graph test).
         import json as _json
 
-        from agent.solver_flow import drive_propose_fix
+        from agent.decide.rules.diagnosis import drive_propose_fix
 
         agent = self._driving_agent(monkeypatch)
         calls = []
@@ -1846,7 +1847,7 @@ class TestBindDiscipline:
         assert calls.count("update_mac") == 1
 
     def test_drive_escalate_uses_state_ticket(self, db_connection, monkeypatch):
-        from agent.solver_flow import drive_escalate
+        from agent.decide.rules.diagnosis import drive_escalate
 
         agent = self._driving_agent(monkeypatch)
         q1 = drive_escalate(agent.state, agent.runtime, None)
@@ -1905,7 +1906,7 @@ class TestTicketDialogue:
     def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
@@ -1932,7 +1933,7 @@ class TestTicketDialogue:
     def test_dictated_number_captured(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
@@ -1943,7 +1944,7 @@ class TestTicketDialogue:
     def test_farewell_mid_dialogue_registers_with_defaults(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
@@ -1957,7 +1958,8 @@ class TestTicketDialogue:
 
     def test_intro_announces_cause_once(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import begin_ticket_dialogue
 
         # The FIRST stage reply carries "Registruoju gedimą — {priežastis}"; a
         # re-ask does not repeat the intro.
@@ -1972,8 +1974,8 @@ class TestTicketDialogue:
     def test_question_mid_dialogue_goes_to_llm_and_stage_holds(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
+        from agent.execute.ticket import begin_ticket_dialogue
         from agent.narrator_flow import state_facts_block
-        from agent.ticket_flow import begin_ticket_dialogue
 
         # "Bet kada galima skambinti?" is the caller ASKING — live it was captured
         # verbatim as the HOURS answer and landed on the ticket. It must divert to
@@ -1998,7 +2000,7 @@ class TestTicketDialogue:
         assert agent.state.ticket.contact_hours == "bet kada"
 
     def test_done_announce_repeats_number_and_hours(self, db_connection, monkeypatch):
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         # "Kokiu numeriu?" was asked twice live and got a goodbye — the announce
         # now repeats the number + hours so the question never arises.
@@ -2011,7 +2013,7 @@ class TestTicketDialogue:
     def test_garbled_yes_and_stt_punctuation_stay_off_the_ticket(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         # Live: STT "T." (of "Taip") became tel. "T." and "Bet kada?" kept the "?"
         # on the ticket and in the announce.
@@ -2029,7 +2031,7 @@ class TestTicketDialogue:
     def test_trigger_utterance_not_swallowed_as_phone(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         # Live 2026-08-05: escalate fired mid-turn and the SAME utterance
         # ("Neturi kompiutera") was captured as the phone number, question
@@ -2048,7 +2050,7 @@ class TestTicketDialogue:
         from agent.contract.locale import phrase
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
@@ -2066,7 +2068,7 @@ class TestTicketDialogue:
         from agent.contract.locale import phrase
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
@@ -2082,7 +2084,7 @@ class TestTicketDialogue:
         assert agent.state.ticket.stage == "done"
 
     def test_first_fix_deferral_is_transition_and_offer(self, db_connection, monkeypatch):
-        from agent.solver_flow import drive_propose_fix
+        from agent.decide.rules.diagnosis import drive_propose_fix
 
         # Live: solver jumped to bind-speak ("pririšiu įrenginį") with no
         # transition — caller asked "Apie kokį kompiuterį kalbat?". The FIRST
@@ -2103,7 +2105,7 @@ class TestTicketDialogue:
         # device to actually be visible before any bind).
         import os
 
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         agent = self._agent_at_consent(monkeypatch)
         agent.state.resolution.procedure["step"] = "dr_offer_bridge"
@@ -2114,7 +2116,7 @@ class TestTicketDialogue:
             return "Pririšu įrenginį."
 
         monkeypatch.setattr(
-            "agent.solver_flow.drive_propose_fix",
+            "agent.decide.rules.diagnosis.drive_propose_fix",
             lambda state, rt, say, text: fake_propose(say, text),
         )
         reply = solver_drive_turn(agent.state, agent.runtime, "Įkišau į kompiuterį")
@@ -2126,7 +2128,7 @@ class TestTicketDialogue:
         # NOT escalate — the caller HAS a computer (eval S4 regression).
         import os
 
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         agent = self._agent_at_consent(monkeypatch)
         agent.state.messages.append(
@@ -2147,7 +2149,7 @@ class TestTicketDialogue:
         # is ENGINE territory now: escalate the same turn, no solver involved.
         import os
 
-        from agent.solver_flow import solver_drive_turn
+        from agent.decide.rules.diagnosis import solver_drive_turn
 
         agent = self._agent_at_consent(monkeypatch)
         agent.state.resolution.procedure["step"] = "dr_offer_bridge"
@@ -2167,7 +2169,7 @@ class TestTicketDialogue:
         assert agent.state.ticket.stage == "phone"
 
     def test_registration_claim_without_ticket_starts_dialogue(self, db_connection, monkeypatch):
-        from agent.ticket_flow import registration_claim_guard
+        from agent.execute.ticket import registration_claim_guard
 
         # Live 2026-08-05: narrator said "Užregistravau gedimą…", ticket_id None,
         # caller hung up trusting it. The claim now pulls the real dialogue in.
@@ -2239,7 +2241,8 @@ class TestTicketDialogue:
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)

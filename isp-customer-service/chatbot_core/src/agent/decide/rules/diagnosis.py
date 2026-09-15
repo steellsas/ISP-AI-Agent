@@ -1,30 +1,19 @@
-"""
-Solver flow — the THINKER drive: context building, the gated solve loop,
-the disciplined bridge fix, the failure ladder and the escalate hand-off.
-
-R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent.
-The pure pieces stay put: solver.py (the LLM reasoner), gate.py (the deterministic
-policy). Functions take (state, rt) — the call state and the AgentRuntime. tools run
-through rt.tools (the gateway).
-"""
+"""Diagnosis rules (§5 row 17) — the solver-led turn for an evidence-led pack: the plug
+report, the next missing evidence, the proposed fix (bridge), the failure ladder and the
+escalate hand-off. The solver (decide/solver.py) reasons; the gate (decide/gate.py)
+validates; tools run through rt.tools."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
-from .contract import limits
-from .contract.locale import phrase, vocab
-from .dialog_utils import last_agent_question
-from .trace import trace_note
+from ...contract import limits
+from ...contract.locale import phrase, vocab
+from ...dialog_utils import last_agent_question
+from ...trace import trace_note
 
 logger = logging.getLogger(__name__)
-
-
-def narrator(state, rt):
-    from .graph_v2.runtime import narrator as _narrator
-
-    return _narrator(state, rt)
 
 
 def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
@@ -89,7 +78,7 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     # Evidence ledger (Ledger v1): what is already ESTABLISHED — the thinker
     # asks only for what is missing and never re-asks a settled fact.
     if s.diagnosis.evidence:
-        from .evidence import summary_lt
+        from ...evidence import summary_lt
 
         lines.append(
             f"EVIDENCE LEDGER (established — DO NOT ASK AGAIN): {summary_lt(s.diagnosis.evidence)}"
@@ -116,8 +105,8 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     # The full procedure for this fault (the solver reasons over the WHOLE playbook to
     # pick the next action — unlike the narrator, which sees one isolated step).
     if r.get("verdict"):
-        from .playbook import full_doc
-        from .resolution import get_strategy
+        from ...playbook import full_doc
+        from ...resolution import get_strategy
 
         strat = get_strategy(r.get("verdict"))
         doc = full_doc(strat.rag_doc) if strat and strat.rag_doc else None
@@ -135,8 +124,8 @@ def plug_report(state: Any, rt: Any, user_input: str | None) -> bool:
     same-sentence rule and the bind never ran."""
     if not user_input:
         return False
-    from .evidence import _fold
-    from .perceive.detectors import detect_plugged
+    from ...evidence import _fold
+    from ...perceive.detectors import detect_plugged
 
     low = _fold(user_input)
     last_q = _fold(last_agent_question(state) or "")
@@ -145,7 +134,7 @@ def plug_report(state: Any, rt: Any, user_input: str | None) -> bool:
         return False  # not the bridge context — a cable reseat is not a bind
     if detect_plugged(user_input):
         return True
-    from .evidence import _mark_hit
+    from ...evidence import _mark_hit
 
     if any(_mark_hit(low, m) for m in vocab("bind_request")):
         return True
@@ -160,15 +149,15 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     a pack without evidence, a solver failure — or DETERMINISTIC MECHANICS in progress:
     the identification ladder, the clarify contract and the wrap-up stay engine-owned,
     the solver never overrides them)."""
-    from .decide.procedure import goto_step
-    from .evidence_drive import evidence_drive
+    from ...decide.procedure import goto_step
+    from .evidence import evidence_drive
 
     r = state.resolution.procedure
     if not r or state.closing.case_closed:
         return None
     # D-03: every pack with evidence is led by the evidence layer and
     # the solver; a pack without evidence (unclear_fault) is its procedure alone.
-    from .faults import evidence_led
+    from ...faults import evidence_led
 
     if not evidence_led(r.get("verdict")):
         return None
@@ -182,15 +171,15 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
         return None
     # B-wave switch (2026-09-08): a higher-priority open question (safety/
     # ident/ticket) owns the turn — the solver waits like the walker does.
-    from .decide.question import OWNER_PRIORITY
-    from .decide.question import active as _q_active
+    from ...decide.question import OWNER_PRIORITY
+    from ...decide.question import active as _q_active
 
     _q = _q_active(state, rt)
     if _q is not None and OWNER_PRIORITY.get(_q.owner, 99) < OWNER_PRIORITY["walker"]:
         return None
     if state.ticket.stage:
         return None  # the ticket dialogue owns the turn
-    from .decide.hypothesis import due
+    from ...decide.hypothesis import due
 
     if due(state, "conflict") is not None or due(state, "verdict") is not None:
         return None  # the scripted clarification / hypothesis confirm owns the turn
@@ -201,11 +190,11 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     # NO ticket, bypassing the refuse→registration policy; a goodbye
     # mid-strategy must go through the end-confirm). Returning None hands
     # the turn to the walker + guards, which own those policies.
-    from .perceive.detectors import detect_farewell, detect_refuse_or_ticket
+    from ...perceive.detectors import detect_farewell, detect_refuse_or_ticket
 
     if detect_farewell(user_input) or detect_refuse_or_ticket(user_input) is not None:
         return None
-    from .identification import ask_caller
+    from ...identification import ask_caller
 
     if ask_caller() and not state.identity.caller_name:
         return None  # identification ladder not finished yet
@@ -217,12 +206,12 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     # is read IN CONTEXT (plug_report) and REMEMBERED — "Įkišau, laukiu"
     # without the word "kompiuteris" counted for nothing and the bind never
     # ran while the caller kept repeating they had done it.
-    from .perceive.detectors import detect_no_device
+    from ...perceive.detectors import detect_no_device
 
     if plug_report(state, rt, user_input):
         state.resolution.bridge_plug_reported = True
         reply = drive_propose_fix(state, rt, "", user_input)
-        return narrator(state, rt)._commit_driven_reply(user_input, reply)
+        return _commit(state, rt, user_input, reply)
     # Discipline rule (2026-08-05): "no device" after the bridge OFFER is
     # ENGINE territory — with nothing to bridge through, the only solutions
     # are ticket-shaped, so escalate NOW. Left to the solver, this answer
@@ -230,7 +219,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     # after the bailout, a full walker rewind to dr_intro (observed live).
     # The EXTRACTOR reads the answer ("Neturiu kito routerio, tik
     # kompiuterį" is a YES — the loose detector escalated on it).
-    from .evidence import extract_client_facts
+    from ...evidence import extract_client_facts
 
     last_q = (last_agent_question(state) or "").lower()
     has_pc = extract_client_facts(user_input).get("has_computer")
@@ -243,14 +232,14 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
             accepted=True,
             reason="no device after bridge offer — deterministic",
         )
-        return narrator(state, rt)._commit_driven_reply(user_input, drive_escalate(state, rt, None))
+        return _commit(state, rt, user_input, drive_escalate(state, rt, None))
     # Ledger v2: the fault declares its EVIDENCE (faults.yaml) — the engine
     # asks the first missing fact, confirms/refutes from the ledger and picks
     # the declared solution. Deterministic; runs even after a solver bench,
     # so there is never a "step to rewind to". None -> the solver's turn.
     evidence_reply = evidence_drive(state, rt, user_input)
     if evidence_reply is not None:
-        return narrator(state, rt)._commit_driven_reply(user_input, evidence_reply)
+        return _commit(state, rt, user_input, evidence_reply)
     # Persona (R5c): the drive delegated the question's WORDING to the narrator
     # (goal directive in the facts block) — hand the turn to the narrator path.
     # Same for the FINDINGS moment (facts + conclusion + choice, said humanly).
@@ -263,7 +252,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     # R4b: a confirmed hypothesis with a WALKER solution means the step tree
     # owns the execution from here — hand every turn to the walker instead of
     # improvising with the LLM solver (which is for gaps, not for declared paths).
-    from .evidence import hypothesis_status, solution_for, spec_for
+    from ...evidence import hypothesis_status, solution_for, spec_for
 
     _spec = spec_for(r.get("verdict"))
     if (
@@ -302,8 +291,8 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
         # resumed at a long-stale dr_intro and improvised into a ticket one
         # step from a working bridge. With a CONFIRMED hypothesis the walker
         # lands on the solution step the fault file declares (`step_role`).
-        from .evidence import hypothesis_status, solution_step, spec_for
-        from .resolution import get_strategy
+        from ...evidence import hypothesis_status, solution_step, spec_for
+        from ...resolution import get_strategy
 
         r = state.resolution.procedure or {}
         spec = spec_for(r.get("verdict"))
@@ -340,23 +329,16 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
     if pending_announce:
         reply = pending_announce + reply
         state.diagnosis.pending_announcement = ""
-    # Committed to driving this turn — do the same end-of-turn bookkeeping the walker
-    # path gets from run_turn_scoped_stream: user_turn trace, dialogue history (the solver reads
-    # it next turn), and the shared reply finalisation (case snapshot + agent_reply).
-    if user_input:
-        state.dialog.last_heard = user_input.strip()
-        rt.tracer.emit("user_turn", text=user_input)
-        state.messages.append({"role": "user", "content": user_input})
-    state.messages.append({"role": "assistant", "content": reply})
-    narrator(state, rt)._finalize_reply(reply)
-    return reply
+    # Committed to leading this turn: the dialogue history (the solver reads it next
+    # turn) and the shared reply finalisation.
+    return _commit(state, rt, user_input, reply)
 
 
 def drive(state: Any, rt: Any, user_input: str | None) -> str:
-    from .decide.gate import gate
-    from .decide.solver import solve
-    from .faults import pack_verdicts
-    from .perceive.detectors import detect_turn_intent
+    from ...decide.gate import gate
+    from ...decide.solver import solve
+    from ...faults import pack_verdicts
+    from ...perceive.detectors import detect_turn_intent
 
     state.dialog.last_intent = detect_turn_intent(user_input)
     state.resolution.drive_turns = state.resolution.drive_turns + 1
@@ -468,7 +450,7 @@ def close_or_register(state: Any, rt: Any, say: str) -> str:
     bridge is TEMPORARY, so a solver 'close' after a successful bridge may not
     end the call without the router-replacement registration — it becomes the
     escalate (live: 'Aš radu internetas' -> close -> ticket=None)."""
-    from .decide.hypothesis import settle_hypothesis
+    from ...decide.hypothesis import settle_hypothesis
 
     r = state.resolution.procedure or {}
     bridged = bool(r.get("telemetry_fixed")) or state.resolution.bridge_bound
@@ -489,7 +471,7 @@ def close_or_register(state: Any, rt: Any, say: str) -> str:
 def refresh_diagnosis(state: Any, rt: Any) -> None:
     """Re-read the line so the solver reasons over CURRENT telemetry (fixes the stale-
     snapshot issue). Keeps the active strategy; only refreshes the signals."""
-    from .execute.diagnosis import ensure_diagnosed
+    from ...execute.diagnosis import ensure_diagnosed
 
     state.diagnosis.verdicts.pop("network", None)
     ensure_diagnosed(state, rt)
@@ -507,9 +489,9 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
       2. never twice — a completed bind is recorded and not repeated;
       3. after the (demo) simulation, bind only if a device is actually observed —
          never bind blind."""
-    from .decide.procedure import goto_step
-    from .executor_flow import simulate_bridge_connection
-    from .narrator_flow import augment_tool_result
+    from ...decide.procedure import goto_step
+    from ...executor_flow import simulate_bridge_connection
+    from ...narrator_flow import augment_tool_result
 
     cid = state.identity.customer_id
     if state.resolution.bridge_bound:
@@ -520,10 +502,10 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
         # from the REASON: "no_mac_observed" = the line still sees nothing; any
         # other verdict (foreign_mac after the plug-in) = a device is there.
         try:
-            from .tooling import telemetry
+            from ...tooling import telemetry
 
             d = telemetry(state, rt, mode="recheck", reason="bridge_device_check").data
-            from .faults import verdict_flag
+            from ...faults import verdict_flag
 
             return verdict_flag((d.get("verdict") or {}).get("reason"), "device_visible")
         except Exception:  # pragma: no cover - best-effort read
@@ -595,7 +577,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
     # caller's "jau atsistatė!" must route as RESTORED. Live 2026-08-12 the
     # walker sat on a stale instruct step and the success died unheard: the
     # call drifted into ticket talk over a WORKING line.
-    from .resolution import get_strategy, next_step_id
+    from ...resolution import get_strategy, next_step_id
 
     r = state.resolution.procedure or {}
     strat = get_strategy(r.get("verdict"))
@@ -606,7 +588,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
             goto_step(state, rt, r, target)
             r["asked"] = True  # the verify question goes out in THIS reply
             r["asked_at"] = len(state.messages) + 1
-            from .decide.question import register as _q_register
+            from ...decide.question import register as _q_register
 
             _q_register(state, rt, "walker", f"step:{target}")
             rt.tracer.emit(
@@ -615,7 +597,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
     # C (Andrius 2026-08-21): the VISIBILITY status is spoken deterministically
     # — the caller hears that we checked, that we SEE the device, and that the
     # bind happened (the solver's own wording skipped the "matau" part live).
-    from .contract.locale import phrase as _phrase
+    from ...contract.locale import phrase as _phrase
 
     return _phrase("identification.bridge_bound")
 
@@ -627,8 +609,8 @@ def bridge_fail_step(state: Any, rt: Any) -> str:
     cable; (2) check the COMPUTER's network card (lan_active — the answer
     lands on the ledger); (3) name the possible incoming-cable problem and
     register the technician, with what-was-tried on the ticket."""
-    from .contract.locale import maybe_phrase, phrase, template
-    from .evidence import fault_bridge_fail, gloss_value, spec_for
+    from ...contract.locale import maybe_phrase, phrase, template
+    from ...evidence import fault_bridge_fail, gloss_value, spec_for
 
     verdict = (state.resolution.procedure or {}).get("verdict")
     stage = state.resolution.bridge_fail_stage
@@ -669,8 +651,9 @@ def drive_escalate(state: Any, rt: Any, decision) -> str:
     the details, lose ticket_id from the record, and then ASK permission for a
     ticket it had already created — observed live). The announce is deterministic:
     the ticket exists, so the words state a fact, never ask."""
-    from .resolution import get_strategy
-    from .ticket_flow import begin_ticket_dialogue, ticket_stage_reply
+    from ...execute.ticket import begin_ticket_dialogue
+    from ...resolution import get_strategy
+    from .ticket import ticket_stage_reply
 
     s = state
     r = s.resolution.procedure or {}
@@ -692,3 +675,9 @@ def drive_escalate(state: Any, rt: Any, decision) -> str:
     if state.ticket.context is not None and bridged:
         state.ticket.context.note = phrase("solver.bridged_ticket_note")
     return ticket_stage_reply(state, rt)
+
+
+def _commit(state: Any, rt: Any, user_input: str | None, reply: str) -> str:
+    from ...execute.say import commit_driven
+
+    return commit_driven(state, rt, user_input, reply)

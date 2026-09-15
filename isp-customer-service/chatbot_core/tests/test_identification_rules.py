@@ -49,7 +49,7 @@ class TestAccountCodeRung:
     spąstai; tikslinimas nėra bandymai; kodo režimas praleidžia turinį."""
 
     def test_extract_account_code_forms(self):
-        from agent.identification_flow import _extract_account_code
+        from agent.decide.rules.identification import _extract_account_code
 
         assert _extract_account_code("Mano kodas AB-10104") == "AB-10104"
         assert _extract_account_code("ab 10104") == "AB-10104"
@@ -104,7 +104,7 @@ class TestAccountCodeRung:
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.account_code_mode = True
-        from agent.identification_flow import _account_code_rung
+        from agent.decide.rules.identification import _account_code_rung
 
         handled, reply = _account_code_rung(
             agent.state, agent.runtime, agent.state, "Petraitis, pasižiūrėkit pavardę"
@@ -142,7 +142,7 @@ class TestAccountCodeRung:
         agent.state.messages.append(
             {"role": "assistant", "content": "Kokia pavardė, kad galėčiau patvirtinti sutartį?"}
         )
-        from agent.identification_flow import _account_code_rung
+        from agent.decide.rules.identification import _account_code_rung
 
         for txt in ("Tetraitos", "Petraitis", "Pet raitis sakau"):
             handled, reply = _account_code_rung(agent.state, agent.runtime, agent.state, txt)
@@ -294,7 +294,7 @@ class TestReopenConfirmation:
                 "content": "Taigi, adresas yra Šiauliai, Tilžės g. 60, butas 3, taip?",
             }
         )
-        from agent.identification_flow import _account_code_rung
+        from agent.decide.rules.identification import _account_code_rung
 
         handled, reply = _account_code_rung(agent.state, agent.runtime, agent.state, "Taip.")
         assert handled is False and reply is None
@@ -414,12 +414,9 @@ class TestQuestionRegistry:
         registracija uždaro savininką."""
         from agent.decide.question import active
         from agent.decide.rules.head import turn_head
+        from agent.decide.rules.ticket import ticket_stage_reply
+        from agent.execute.ticket import begin_ticket_dialogue, finish_ticket_dialogue
         from agent.resolution import get_strategy
-        from agent.ticket_flow import (
-            begin_ticket_dialogue,
-            finish_ticket_dialogue,
-            ticket_stage_reply,
-        )
 
         agent = self._identified()
         agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
@@ -561,7 +558,7 @@ class TestQuestionRegistry:
 
     def test_homework_no_escalates_with_honest_reason(self, db_connection):
         from agent.decide.procedure import advance
-        from agent.ticket_flow import ticket_need
+        from agent.decide.rules.ticket import ticket_need
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -578,7 +575,7 @@ class TestQuestionRegistry:
     def test_ticket_need_honest_on_refusal(self, db_connection):
         """P-E gyva: „routeris perkrautas, bet ryšys neatsistatė" — melas, kai
         veiksmo nebuvo; atsisakymo/negalėjimo eskalacija sako sąžiningai."""
-        from agent.ticket_flow import ticket_need
+        from agent.decide.rules.ticket import ticket_need
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -629,7 +626,7 @@ class TestQuestionRegistry:
         """Gyva 2026-09-08: kodo echo pasiūla apeidavo _address_move ir likdavo
         neregistruota."""
         from agent.decide.question import active
-        from agent.identification_flow import _account_code_rung
+        from agent.decide.rules.identification import _account_code_rung
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -846,7 +843,7 @@ class TestCodeHoles:
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.account_code_mode = True
-        from agent.identification_flow import _account_code_rung
+        from agent.decide.rules.identification import _account_code_rung
 
         handled, r = _account_code_rung(
             agent.state, agent.runtime, agent.state, "Kodas dešimt šimtas keturi, 10104"
@@ -859,7 +856,7 @@ class TestCodeHoles:
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.account_code_mode = True
-        from agent.identification_flow import _account_code_rung
+        from agent.decide.rules.identification import _account_code_rung
 
         handled, r = _account_code_rung(agent.state, agent.runtime, agent.state, "AB 99999")
         assert handled and r

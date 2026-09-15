@@ -7,6 +7,8 @@ from typing import Any
 
 from langgraph.config import get_stream_writer
 
+from ..contract.locale import vocab
+
 # Stage -> the node name the narrator traces (kept for trace/test parity).
 NODES = {
     "intake": "address_validation",
@@ -142,9 +144,9 @@ def emit_scripted(state: Any, rt: Any, text: str) -> str:
 def apply_backstop(state: Any, rt: Any, backstop: tuple[str, bool]) -> str:
     """Speak the stuck backstop (it climbs 3 -> 4 -> close); F-5: its close keeps the
     registration promise for an identified caller and records an unidentified one."""
-    from ..closing_flow import maybe_end_on_goodbye
     from ..dialog_utils import is_question
     from ..trace import emit_case
+    from .say import maybe_end_on_goodbye
 
     text, should_close = backstop
     if should_close:
@@ -186,3 +188,30 @@ def _record(state: Any, rule: str, action: Any = None) -> None:
         owner=owner, rule=rule, action=action or Action(type="none"), say=Say(kind="phrase")
     )
     record(state, plan)
+
+
+def maybe_end_on_goodbye(state: Any, rt: Any, text: str) -> None:
+    """Catch-all hang-up: if the agent JUST said a terminal goodbye — on ANY path
+    (resolved, registered, declined, or the stuck backstop) — end the call so the
+    transport stops instead of looping the goodbye. Covers the cases the
+    case_closed/closing flow misses (e.g. the model says 'geros dienos' on a stuck
+    turn without close_case ever firing)."""
+    if state.closing.is_complete or not text:
+        return
+    low = text.lower()
+    if any(m in low for m in vocab("goodbye_markers")):
+        state.closing.is_complete = True
+
+
+def commit_driven(state: Any, rt: Any, user_input: str | None, reply: str) -> str:
+    """End-of-turn bookkeeping for a solver-led reply (the narrator's path does the same
+    in begin_turn): the user_turn trace, the dialogue history, the shared finalisation."""
+    from ..graph_v2.runtime import narrator
+
+    if user_input:
+        state.dialog.last_heard = user_input.strip()
+        rt.tracer.emit("user_turn", text=user_input)
+        state.messages.append({"role": "user", "content": user_input})
+    state.messages.append({"role": "assistant", "content": reply})
+    narrator(state, rt)._finalize_reply(reply)
+    return reply

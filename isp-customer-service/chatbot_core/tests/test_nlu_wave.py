@@ -95,14 +95,14 @@ class TestSpellingRung:
     """Blokas 4 (Andriaus idėja): paraidžiui su inkaro žodžiais."""
 
     def test_spell_prefix_parsing(self):
-        from agent.identification_flow import _spell_prefix
+        from agent.decide.rules.identification import _spell_prefix
 
         assert _spell_prefix("V kaip Vilnius, I kaip Ieva, L kaip Lina") == "vil"
         assert _spell_prefix("Kaunas Upė Kelias") == "kuk"  # be „kaip" — pirmos raidės
         assert _spell_prefix("") == ""
 
     def test_prefix_narrows_registry(self, db_connection):
-        from agent.identification_flow import _street_by_prefix
+        from agent.decide.rules.identification import _street_by_prefix
 
         agent = _agent()
         cand = _street_by_prefix(agent.state, agent.runtime, "vil")
@@ -176,7 +176,7 @@ class TestSpellingRung:
     def test_spell_prefix_client_form(self):
         """Kliento spontaniška forma: inkaras PO „kaip" (gyva: „Taip kaip
         tėtis ir kaip Ignas" = T, I)."""
-        from agent.identification_flow import _spell_prefix
+        from agent.decide.rules.identification import _spell_prefix
 
         assert _spell_prefix("Taip kaip tėtis ir kaip Ignas") == "ti"
         assert _spell_prefix("K kaip Kaunas, U kaip upė") == "ku"
@@ -184,7 +184,7 @@ class TestSpellingRung:
     def test_attempt_tracker_verdicts(self, db_connection):
         """rev.2: identiškas pakartojimas = išgirsta TEISINGAI (gatvės nėra);
         panašus-bet-kitoks = ASR nestabilus; skirtingi žodžiai — nieko."""
-        from agent.identification_flow import _register_street_attempt
+        from agent.decide.rules.identification import _register_street_attempt
 
         agent = _agent()
         assert _register_street_attempt(agent.state, agent.runtime, "Kosmonautų") is None
@@ -208,7 +208,7 @@ class TestSpellingRung:
         agent.state.messages.append(
             {"role": "assistant", "content": "Gal galėtumėte pakartoti gatvės pavadinimą?"}
         )
-        from agent.identification_flow import _account_code_rung, _register_street_attempt
+        from agent.decide.rules.identification import _account_code_rung, _register_street_attempt
 
         _register_street_attempt(agent.state, agent.runtime, "Kosmonautų")  # pirmas girdėjimas
         handled, r = _account_code_rung(agent.state, agent.runtime, agent.state, "Kosmonautų.")
@@ -219,7 +219,7 @@ class TestSpellingRung:
     def test_letters_filter_garble_in_subset(self, db_connection):
         """Raidė + darkinys kartu: prefiksas „t" + girdėtas „Tilžiuko" →
         Tilžės g. (fuzzy pogrupyje)."""
-        from agent.identification_flow import _street_by_prefix_and_garble
+        from agent.decide.rules.identification import _street_by_prefix_and_garble
 
         agent = _agent()
         cand = _street_by_prefix_and_garble(agent.state, agent.runtime, "t", "tilziuko")
@@ -227,8 +227,8 @@ class TestSpellingRung:
 
     def test_client_initiated_kaip_pairs_read_as_letters(self, db_connection):
         """R3: klientas pats raidžiuoja be režimo — „kaip X" poros girdimos."""
+        from agent.decide.rules.identification import _register_street_attempt
         from agent.decide.rules.reply import scripted_words
-        from agent.identification_flow import _register_street_attempt
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -241,7 +241,7 @@ class TestSpellingRung:
 
     def test_first_sighting_triggers_nothing(self, db_connection):
         """Andrius: pirmas girdėjimas — jokių specialių šakų."""
-        from agent.identification_flow import _register_street_attempt
+        from agent.decide.rules.identification import _register_street_attempt
 
         agent = _agent()
         assert _register_street_attempt(agent.state, agent.runtime, "Kosmonautų") is None

@@ -224,7 +224,7 @@ class TestFindingsAnnounce:
         return agent
 
     def test_announce_precedes_first_solution_question(self, db_connection, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         agent = self._confirmed_agent(monkeypatch)
         reply = evidence_drive(agent.state, agent.runtime, "nepadėjo")
@@ -236,7 +236,7 @@ class TestFindingsAnnounce:
         assert "kompiuterį" in reply.split("Galime:")[-1]  # then the question
 
     def test_announce_spoken_once(self, db_connection, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
 
         agent = self._confirmed_agent(monkeypatch)
         first = evidence_drive(agent.state, agent.runtime, "nepadėjo")
@@ -245,7 +245,7 @@ class TestFindingsAnnounce:
         assert second is None or "Ką patikrinome" not in second
 
     def test_announce_prefixes_immediate_ticket(self, db_connection, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = self._confirmed_agent(monkeypatch)
@@ -263,7 +263,7 @@ class TestConfirmationAgent:
     premature hypothesis rejection."""
 
     def test_done_report_value_dropped_and_asked_back(self, db_connection, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         # "Mhm, patikrinau." carried NO result — the pass invented
@@ -307,7 +307,7 @@ class TestConfirmationAgent:
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "plugged"
 
     def test_facts_recap_precedes_announce(self, db_connection, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
@@ -326,7 +326,7 @@ class TestConfirmationAgent:
         assert second is not None and "Ką patikrinome" in second  # then announce
 
     def test_refute_needs_one_confirm_before_pivot(self, db_connection, monkeypatch):
-        from agent.evidence_drive import evidence_drive
+        from agent.decide.rules.evidence import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         # A client-stated "dega" refutes the dead-router path — one confirm
@@ -418,8 +418,8 @@ class TestKeywordSupplement:
 
 class TestGaveUpRevival:
     def test_blocking_neaisku_key_gets_one_revival(self, db_connection, monkeypatch):
+        from agent.decide.rules.evidence import evidence_drive
         from agent.evidence import CLIENT, set_fact
-        from agent.evidence_drive import evidence_drive
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent(monkeypatch)
@@ -440,8 +440,8 @@ class TestGaveUpRevival:
         assert follow_up is not None and "rozet" in follow_up  # the plan resumes
 
     def test_revival_happens_once_then_hands_over(self, db_connection, monkeypatch):
+        from agent.decide.rules.evidence import evidence_drive
         from agent.evidence import CLIENT, set_fact
-        from agent.evidence_drive import evidence_drive
 
         agent = _diagnosing_agent(monkeypatch)
         set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
@@ -528,7 +528,7 @@ class TestTicketUnderstanding:
     def _ticket_agent(self, monkeypatch, stage="hours"):
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.ticket_flow import begin_ticket_dialogue
+        from agent.execute.ticket import begin_ticket_dialogue
 
         agent = _diagnosing_agent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)

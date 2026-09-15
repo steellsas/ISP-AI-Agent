@@ -293,14 +293,14 @@ class TestPendingFallback:
 
 class TestUnclearFaultTicket:
     def test_ticket_need_without_verdict_is_honest(self, db_connection):
-        from agent.ticket_flow import ticket_need
+        from agent.decide.rules.ticket import ticket_need
 
         agent = _agent()
         agent.state.intake.problem_type = "tv"
         assert "neaiškus" in ticket_need(agent.state, agent.runtime)
 
     def test_ticket_need_with_verdict_unchanged(self, db_connection):
-        from agent.ticket_flow import ticket_need
+        from agent.decide.rules.ticket import ticket_need
 
         agent = _agent()
         agent.state.resolution.procedure = {"verdict": "no_mac_observed"}
@@ -340,7 +340,7 @@ class TestNoPathTicket:
         r = agent.state.resolution.procedure
         assert r["verdict"] == "unclear_fault" and r["step"] == "escalate"
         assert agent.state.ticket.stage == "phone"  # dialogue began deterministically
-        from agent.ticket_flow import ticket_need
+        from agent.decide.rules.ticket import ticket_need
 
         assert "neaiškus" in ticket_need(agent.state, agent.runtime)
 

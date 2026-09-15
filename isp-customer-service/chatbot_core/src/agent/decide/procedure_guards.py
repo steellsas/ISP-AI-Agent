@@ -160,9 +160,9 @@ def refuse_or_ticket_redirect(state: Any, rt: Any, r, strat, step, user_input: s
     question doubles as the polite clarification ("užregistruosiu — ar tinka?").
     Observed live: the caller demanded a ticket 3×, the narrator promised it 5×,
     and the walker held cable_check forever — no route existed."""
+    from ..execute.ticket import begin_ticket_dialogue
     from ..perceive.detectors import detect_refuse_or_ticket
     from ..resolution import StepKind
-    from ..ticket_flow import begin_ticket_dialogue
     from .procedure import goto_step
 
     if step.kind is StepKind.ESCALATE:
@@ -201,7 +201,7 @@ def evidence_question_open_hold(
     together" → escalate → ticket → dead call. The asked-step routing below
     (classify + keyword) must not consume such a reply; explicit refusals and
     restored pre-answers were already handled above."""
-    from ..evidence_drive import evidence_question_open
+    from .rules.evidence import evidence_question_open
 
     if evidence_question_open(state, rt):
         rt.tracer.emit(

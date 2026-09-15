@@ -195,7 +195,7 @@ class TestReactAgentEmits:
         assert "Ginkūnai" in result["summary"]["hint"]
 
     def test_preflight_phone_sets_unconfirmed_candidate(self, db_connection):
-        from agent.identification_flow import preflight_phone
+        from agent.execute.identification import preflight_phone
         from agent.narrator_flow import state_facts_block
 
         cap = _CaptureTracer()
@@ -217,7 +217,7 @@ class TestReactAgentEmits:
         assert any(e["type"] == "preflight" and e["found"] for e in cap.events)
 
     def test_preflight_unknown_phone_no_candidate(self, db_connection):
-        from agent.identification_flow import preflight_phone
+        from agent.execute.identification import preflight_phone
 
         cap = _CaptureTracer()
         from tests.calls import make_agent
