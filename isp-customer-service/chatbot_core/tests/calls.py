@@ -57,3 +57,14 @@ def make_agent(caller_phone="unknown", language="lt", tracer=None, tools=None):
     """The narrator loop over a new call; tests read `.state` / `.runtime` from it."""
     state, runtime = make_call(caller_phone, language, tracer=tracer, tools=tools)
     return ReactAgent(state, runtime)
+
+
+def run_turn_nodes(state, runtime):
+    """decide -> execute -> narrate on a perceived state (Runtime-wrapped rt); the
+    last node's update (the whole state) — a turn without the perceive node."""
+    from agent.decide.node import decide_node
+    from agent.execute.node import execute_node, narrate_node
+
+    upd = decide_node(state, runtime)
+    upd = execute_node(GraphState(**upd), runtime)
+    return narrate_node(GraphState(**upd), runtime)

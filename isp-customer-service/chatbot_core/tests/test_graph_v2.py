@@ -6,7 +6,6 @@ per-stage tool scopes, and the checkpointed GraphState (SqliteSaver).
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agent.graph_v2.router import route_entry
 from agent.graph_v2.state import ClosingState, GraphState, IdentityState, TicketState
 
 
@@ -45,26 +44,6 @@ def _sync_checkpoint(session):
     state = session.state
     updates = {name: getattr(state, name) for name in type(state).model_fields if name != "turn"}
     session._graph.update_state(session._graph_config, updates)
-
-
-class TestRouteEntryPure:
-    def test_defaults_route_to_identification(self):
-        assert route_entry(GraphState()) == "address_validation"
-
-    def test_identified_routes_to_diagnosis(self):
-        assert route_entry(GraphState(identity=IdentityState(customer_id="CUST-1"))) == "diagnosis"
-
-    def test_a_planned_turn_ends_after_decide(self):
-        from agent.graph_v2.router import route_after_decide
-
-        state = GraphState(
-            identity=IdentityState(customer_id="CUST-1"),
-            ticket=TicketState(stage="phone"),
-            closing=ClosingState(case_closed=True),
-        )
-        assert route_after_decide(state) == "diagnosis"  # no plan: a stage node
-        state.turn.plan = {"rule": "closing.goodbye"}
-        assert route_after_decide(state) == "end"
 
 
 class FakeEngine:
@@ -140,8 +119,8 @@ def _diag_input():
 _CFG = {"configurable": {"thread_id": "t-subgraph"}}
 
 
-class TestDiagnosisSubgraph:
-    """The legacy 9-step pipeline order must survive the split into subgraph nodes."""
+class TestGraphCallOrder:
+    """The legacy pipeline order survives perceive -> decide -> execute -> narrate."""
 
     def test_normal_path_keeps_legacy_call_order(self, monkeypatch):
         engine = FakeEngine(monkeypatch)
@@ -176,10 +155,10 @@ class TestDiagnosisSubgraph:
         assert engine.calls == ["prefill", "ingest", "classify", "diagnose", "solver"]
         assert out["turn"].reply == "Atsakau pats."
 
-    def test_tokens_stream_out_of_the_subgraph(self, monkeypatch):
-        """The voice pipeline consumes stream_mode='custom' — narrator tokens
-        emitted INSIDE the subgraph must surface on the parent stream. Mirrors
-        AgentSession.handle_turn_stream's v2 path (subgraphs=True + unwrap)."""
+    def test_tokens_stream_out_of_the_graph(self, monkeypatch):
+        """The voice pipeline consumes stream_mode='custom' — narrator tokens must
+        surface on the stream. Mirrors AgentSession.handle_turn_stream (subgraphs=True
+        + unwrap)."""
         engine = FakeEngine(monkeypatch)
         chunks = [
             chunk

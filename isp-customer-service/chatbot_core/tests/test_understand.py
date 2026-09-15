@@ -585,11 +585,12 @@ class TestTicketUnderstanding:
         assert agent.state.ticket.contact_hours == "po 17 valandos"  # keyword plausibility path
 
     def test_stale_supratau_cleared_on_ticket_turns(self, db_connection, monkeypatch):
-        from agent.decide.node import decide_node
         from agent.graph_v2.state import GraphState
         from agent.narrator_flow import state_facts_block
         from agent.perceive import perceive
         from langgraph.runtime import Runtime
+
+        from tests.calls import run_turn_nodes
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
         agent.state.turn.understanding = {"understood": "Routeris sugedęs", "type": "answer"}
@@ -600,7 +601,7 @@ class TestTicketUnderstanding:
             "agent.perceive.understand.understand_ticket",
             return_value={"value": "bet kada", "type": "answer"},
         ):
-            upd = decide_node(agent.state, Runtime(context=agent.runtime))
+            upd = run_turn_nodes(agent.state, Runtime(context=agent.runtime))
         state = GraphState(**upd)
         assert state.turn.understanding is None
         assert "Užregistravau" in state.turn.reply  # dialogue completed

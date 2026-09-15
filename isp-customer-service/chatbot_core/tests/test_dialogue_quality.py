@@ -75,16 +75,17 @@ class TestW0OrderGuards:
         assert agent.state.turn.ticket_offscript_question is True
 
     def test_scripted_goodbye_ends_the_call(self, db_connection):
-        from agent.decide.node import decide_node
         from agent.tools import create_ticket
         from langgraph.runtime import Runtime
+
+        from tests.calls import run_turn_nodes
 
         agent = self._agent()
         res = create_ticket("CUST009", "network_issue", "test")
         agent.state.ticket.ticket_id = res["ticket_id"]
         agent.state.closing.case_closed = True
         runtime = Runtime(context=agent.runtime)
-        upd = decide_node(_turn_state(agent, "Gerai, ačiū"), runtime)
+        upd = run_turn_nodes(_turn_state(agent, "Gerai, ačiū"), runtime)
         assert upd["closing"].is_complete is True  # one goodbye, then hang up
 
 

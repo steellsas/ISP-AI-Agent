@@ -334,8 +334,10 @@ class TurnScratch(BaseModel):
     progress_key_at_start: list[Any] | None = None
     # The turn-head family that owned the head this turn (decide/rules/head.py).
     head_owner: str | None = None
-    # The TurnPlan the policy chain produced (None: a stage node owned the turn).
+    # The TurnPlan decide produced; execute and narrate carry it out.
     plan: dict[str, Any] | None = None
+    # The words the plan's action composed (e.g. the ticket dialogue's first question).
+    action_text: str | None = None
 
 
 # The persisted groups, in declaration order (everything but the turn scratch).

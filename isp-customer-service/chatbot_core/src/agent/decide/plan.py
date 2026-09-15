@@ -35,6 +35,12 @@ class Say(BaseModel):
     stage: str | None = None
     # A spoken question becomes the anchor the next turn is read against.
     remember_question: bool = True
+    # The words were already committed to the history by the engine (the solver drive):
+    # narrate only streams them.
+    committed: bool = False
+    # A stage directive: the narrator's own scripted exits (stuck backstop, the scripted
+    # reply layer, the wait acknowledgement) still run before the LLM words it.
+    reply_layer: bool = False
 
 
 class Action(BaseModel):

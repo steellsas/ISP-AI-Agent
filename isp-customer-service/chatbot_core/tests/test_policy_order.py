@@ -29,5 +29,8 @@ SECTION_5 = [
 
 
 def test_rules_follow_section_5_order():
+    # Rows 1-10 are rule families of their own; the last entry is the stage families
+    # (rows 11-20), whose scripted words come from the narrator's reply layer.
     ported = [(row, family) for row, family, _rule in RULES]
-    assert ported == SECTION_5[: len(ported)]
+    assert ported[-1] == (20, "stage")
+    assert ported[:-1] == SECTION_5[: len(ported) - 1]

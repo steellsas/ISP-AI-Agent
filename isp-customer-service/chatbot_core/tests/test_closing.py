@@ -120,13 +120,14 @@ class TestCaseStateTransitions:
 
 
 class TestClosingNode:
-    """The node contract on a bare state + runtime: `decide_node(state, runtime)`
+    """The node contract on a bare state + runtime: `run_turn_nodes(state, runtime)`
     returns the whole state as its update and reaches tools only via the gateway."""
 
     def test_number_correction_is_noted_through_the_gateway(self, make_state, make_runtime):
-        from agent.decide.node import decide_node
         from agent.graph_v2.state import ClosingState, TicketState, TurnScratch
         from langgraph.runtime import Runtime
+
+        from tests.calls import run_turn_nodes
 
         rt = make_runtime(lambda name, args: {"success": True})
         state = make_state(
@@ -135,7 +136,7 @@ class TestClosingNode:
             closing=ClosingState(case_closed=True),
             turn=TurnScratch(user_input="Skambinkite kitu numeriu 868321007"),
         )
-        upd = decide_node(state, Runtime(context=rt))
+        upd = run_turn_nodes(state, Runtime(context=rt))
         assert "Užsirašiau" in upd["turn"].reply
         assert [c[0] for c in rt.tools.provider.calls] == ["append_ticket_note"]
         assert "868321007" in rt.tools.provider.calls[0][1]["note"]

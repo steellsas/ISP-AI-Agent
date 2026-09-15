@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .plan import TurnPlan
-from .rules import closing, dialog, head, ticket
+from .rules import closing, dialog, head, stage, ticket
 
 Rule = Callable[[Any, Any], TurnPlan | None]
 
@@ -31,11 +31,15 @@ RULES: list[tuple[int, str, Rule]] = [
     (8, "identification.caller_intro", head.head_rule(head.caller_intro)),
     (9, "identification", head.head_rule(head.unidentified_address)),
     (10, "identification.address_correction", head.head_rule(head.address_correction)),
+    # Rows 11-20: the stage families (side topic, inform close, solver drive, procedure)
+    # plan the rest; their scripted words (rows 11-15, 18-19) come from the narrator's
+    # reply layer after the procedure moved (decide/rules/reply.py).
+    (20, "stage", stage.plan),
 ]
 
 
 def plan_turn(state: Any, rt: Any) -> TurnPlan | None:
-    """The first rule family that owns this turn, or None (the stage nodes decide)."""
+    """The first rule family that owns this turn (the stage families always do)."""
     for _row, _family, rule in RULES:
         plan = rule(state, rt)
         if plan is not None:

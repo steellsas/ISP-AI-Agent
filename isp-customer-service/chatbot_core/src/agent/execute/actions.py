@@ -18,6 +18,11 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
 
         preflight_phone(state, rt)
         return None
+    if action.type == "procedure_step" and action.name == "run_due_action":
+        from ..walker_flow import ensure_action_done
+
+        ensure_action_done(state, rt)
+        return None
     if action.type == "procedure_step" and action.name == "escalate":
         from ..solver_flow import drive_escalate
 
