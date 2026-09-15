@@ -454,7 +454,7 @@ def detect_plugged(text: str | None) -> bool:
     """True when the caller reports a COMPLETED plug-in ("įkišau į kompiuterį") — the
     discipline gate for a bind: the change runs only after the client actually did
     the work (and thereby agreed to it), never on the solver's anticipation.
-    Diacritics-folded (STT drops nosinės); negation-prefix aware ("dar
+    Diacritics-folded (STT drops ogonek letters); negation-prefix aware ("dar
     NEprijungiau" is not a report)."""
     if not text:
         return False

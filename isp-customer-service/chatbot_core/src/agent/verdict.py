@@ -3,7 +3,7 @@ diagnose_connection verdict — the "thick" deterministic diagnostic composite.
 
 One call gathers all provider-side signals (billing, incident, switch, port
 telemetry, neighbour correlation) and runs the decision tree from
-docs/scenarijus_neveikia_internetas.md §3.2 (Steps 1-4, BŪSENA A/B/C). The
+docs/scenarijus_neveikia_internetas.md §3.2 (Steps 1-4, STATE A/B/C). The
 tree lives HERE in code — not in the prompt — so the provider/customer split
 is fast and deterministic (voice-friendly: one tool call, no LLM reasoning
 over raw telemetry).
@@ -136,7 +136,7 @@ def gather_signals(sources: TelemetrySources, customer_id: str) -> dict[str, Any
     }
 
     # Neighbour correlation only matters when the customer's link is down
-    # (BŪSENA A: local fault vs unregistered node fault).
+    # (STATE A: local fault vs unregistered node fault).
     if port and port.get("status") != "up":
         neighbors = sources.switch_neighbors(port["switch_id"], exclude_customer_id=customer_id)
         if neighbors.get("success"):
@@ -230,7 +230,7 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             ),
         )
 
-    # ---- Step 4, BŪSENA A: link DOWN ----------------------------------------
+    # ---- Step 4, STATE A: link DOWN -----------------------------------------
     if signals.get("port_link") != "up":
         neighbors_up = signals.get("neighbors_up")
         if neighbors_up == 0 and (signals.get("neighbors_down") or 0) > 0:
@@ -261,7 +261,7 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             ),
         )
 
-    # ---- Step 4, BŪSENA B: link UP, MAC missing or foreign ------------------
+    # ---- Step 4, STATE B: link UP, MAC missing or foreign -------------------
     observed = (signals.get("observed_mac") or "").lower() or None
     registered = (signals.get("registered_mac") or "").lower() or None
     if observed is None:
@@ -288,7 +288,7 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             ),
         )
 
-    # ---- Step 4, BŪSENA C: link UP, correct MAC -----------------------------
+    # ---- Step 4, STATE C: link UP, correct MAC ------------------------------
     crc = signals.get("crc_error_rate")
     # Sustained CRC errors above this rate (errors/min) mean a damaged or poorly
     # seated cable (B5) even while the link stays up.
@@ -317,7 +317,7 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             ),
         )
 
-    # ---- Step 4, BŪSENA C tęsinys: device visible, DHCP fine, NO traffic ----
+    # ---- Step 4, STATE C continued: device visible, DHCP fine, NO traffic ---
     # S6 "pakibęs routeris": everything up to the router looks alive, but no
     # frames flow — the router hung. A power-cycle usually clears it, so the
     # fix is an INSTRUCT (guided reboot), not a ticket. port_flap_recent is

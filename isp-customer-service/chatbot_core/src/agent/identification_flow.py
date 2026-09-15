@@ -112,8 +112,8 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
         from .nlu import classify_problem, extract_symptoms
 
         problem = classify_problem(text)
-        # №4 tęsinys (etalonas 2026-09-03): atsakymas į savininko patikslinimą
-        # atnaujina santykį („žmonos vardu sudaryta" → family) — vienas skaitymas.
+        # №4 continued (reference dialogue 2026-09-03): the answer to the holder
+        # clarification updates the relation („žmonos vardu sudaryta" → family) — one read.
         if state.identity.holder_clarify_open and state.identity.holder_clarify_asked and text:
             state.identity.holder_clarify_open = False
             state.identity.holder_clarify_asked = False
@@ -169,9 +169,10 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     if s.identity.customer_id:
         return
 
-    # №2 (etalonas 2026-09-03): kodo laukimo fazėje adresų skaitytuvas TYLI —
-    # kodo skaitmenys ne namo numeris, o fuzzy gatvių paieška iš tokių frazių
-    # („Neturiu jokio KODO" → „Sodo g.", gyva I5) tik teršia slotus.
+    # №2 (reference dialogue 2026-09-03): while waiting for the code the address
+    # reader stays SILENT — code digits are not a house number, and a fuzzy street
+    # search over such phrases („Neturiu jokio KODO" → „Sodo g.", live I5) only
+    # pollutes the slots.
     # NLU wave block 2 (live 2026-09-07: "Šiauliai, Tilžės gatvė 60, butas 3"
     # was swallowed in code mode): a FULL dictation — an explicit street WORD
     # in the turn — wakes the reader; bare digits stay silenced (the code).
@@ -208,18 +209,18 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
                 action="slot_dropped",
                 fails=state.identity.address_resolve_failures,
             )
-            # NE return: sakinys gali nešti ir PATAISYMĄ ("nesakiau Žeimių,
-            # sakiau TILŽĖS gatvė 60") — skaitymas tęsiasi, tik paneigtos
-            # gatvės nebesiūlome (žr. propose žemiau).
+            # NO return: the sentence may also carry a CORRECTION ("nesakiau Žeimių,
+            # sakiau TILŽĖS gatvė 60") — reading continues, we just no longer
+            # offer the denied street (see propose below).
     # Address-evidence gate: only scan the turn for an address when it plausibly
     # CONTAINS one — a digit or an address word in the utterance, or the agent just
     # asked for the address. Without this, fuzzy street matching read an ADDRESS out
     # of the anamnesis answer ("po AUDROS" -> "Aušros g.") and the bogus street slot
     # blocked the phone-address offer, derailing identification (observed).
-    # Vietovės pasiūlymo VIELOS (gyva T-5, Andrius: „agentas pasiūlė ir
-    # klientas patvirtino — tikrinamas kitas regionas"): resolveris pasakė
-    # „Žeimių g. yra Ginkūnuose", klientas patvirtina (arba pamini kaimą) —
-    # miesto slotas persijungia ir kita paieška vyksta TEN, ne Šiauliuose.
+    # Locality suggestion WIRING (live T-5, Andrius: "the agent suggested and
+    # the caller confirmed — another region is checked"): the resolver said
+    # „Žeimių g. yra Ginkūnuose", the caller confirms (or names the village) —
+    # the city slot switches and the next lookup runs THERE, not in Šiauliai.
     sug = state.identity.suggested_city
     if sug and text:
         from .evidence import _fold as _fold_sug
@@ -287,11 +288,11 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
         p.house.propose(reading.house, conf, SlotStatus.HEARD)
     if reading.apartment and (reading.street or p.street.value):
         p.apartment.propose(reading.apartment, conf, SlotStatus.HEARD)
-    # №2 (etalonas 2026-09-03): ŠIS turn'as davė adreso pažangos — abonento
-    # kodo pakopos skaitiklis nulinamas (dalimis diktuojamas adresas niekada
-    # neturi nuriedėti į kodo klausimą). Pažanga skaitosi tik su TIKRA adreso
-    # Adreso PAŽANGA nulina pakopos skaitiklius (2026-09-04 perdirbimas:
-    # skaitliukai gyvena _account_code_rung; čia tik pažangos signalas).
+    # №2 (reference dialogue 2026-09-03): THIS turn made address progress — the
+    # subscriber-code rung counter resets (an address dictated in parts must never
+    # slide into the code question). Progress only counts with REAL address
+    # Address PROGRESS resets the rung counters (2026-09-04 rework: the
+    # counters live in _account_code_rung; this is only the progress signal).
     _evid = any(ch.isdigit() for ch in low) or any(w in low for w in vocab("address_words"))
     if _evid and (reading.street or reading.house or reading.apartment):
         state.identity.address_empty_turns = 0
@@ -491,9 +492,9 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     p_asks = state.intake.ask_problem_count
     state.intake.ask_problem_count = p_asks + 1
     asking = "?" in user_input or is_real_question(user_input)
-    # N riba (Andrius 2026-09-03): ne klientas / neaiški situacija — po
-    # GATE_MAX_TURNS nevaisingų apsikeitimų mandagus uždarymas BE tiketo
-    # (tiketas be customer_id mechaniškai neįmanomas). Configurable knob.
+    # N limit (Andrius 2026-09-03): not a customer / unclear situation — after
+    # GATE_MAX_TURNS fruitless exchanges a polite close WITHOUT a ticket
+    # (a ticket without customer_id is mechanically impossible). Configurable knob.
     gate_max = limits.get("problem_gate_max_turns")
     if p_asks + 1 >= gate_max:
         s.closing.case_closed = True
@@ -501,8 +502,8 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
         rt.tracer.emit("decision", intent="problem_gate", action="close")
         return phrase("identification.no_problem_goodbye")
     # 3) L2 — context classification against the file catalog. The LLM reads
-    # the ACCUMULATED tail, not just this turn (2026-09-02, Andrius: „kai
-    # informacija pasipildo, ateina supratimas" — VAD/STT splits a story into
+    # the ACCUMULATED tail, not just this turn (2026-09-02, Andrius: "as the
+    # information adds up, understanding comes" — VAD/STT splits a story into
     # fragments, but the meaning lives across them: „Oras kažkoks netoks." +
     # „gal dėl to neturiu interneto?" is ONE thought).
     if _os.getenv("CLASSIFIER", "on").lower() != "off":
@@ -731,20 +732,20 @@ def _lookup_by_code(state: Any, rt: Any, s: Any, code: str):
 
 
 def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
-    """Etalonas №2/№5, PERDIRBTA po gyvų T-5/T-6 (Andrius 2026-09-04: pakopa
-    skaičiavo ir PRODUKTYVIUS patikslinimo turn'us, o kodo režimas tapo
-    kurčias — kliento adreso/pavardės patikslinimai atsimušdavo į „kodas
-    atrodo taip"). Principai:
+    """Reference dialogue №2/№5, REWORKED after live T-5/T-6 (Andrius 2026-09-04:
+    the rung also counted PRODUCTIVE clarification turns, and code mode went
+    deaf — the caller's address/surname clarifications bounced off „kodas
+    atrodo taip"). Principles:
 
-      * TIKSLINIMAS NĖRA BANDYMAI — pavardės/vietovės/diagnozės ratai
-        skaitiklių nekelia; bet koks adreso turinys tuščių skaitiklį nulina.
-      * Miestas ne zonoje (Vilnius, Kaunas…) — pasakoma IŠ KARTO, be jokių
-        skaitiklių („šiame mieste abonentų nėra — gal Šiauliuose?").
-      * Kodo režimas — PASIŪLYMAS, ne spąstai: kodas skaitomas kiekvieną
-        turn'ą; ne-kodo TURINYS praleidžiamas į normalią eigą (agentas
-        klauso!); tik AIŠKUS „neturiu kodo" veda į sąžiningą pabaigą.
-      * Nenorint sakyti adreso: 2 tušti turn'ai → PERSPĖJIMAS (be adreso nei
-        išspręsti, nei registruoti negalėsiu), dar 2 → uždarymas
+      * CLARIFYING IS NOT AN ATTEMPT — surname/locality/diagnosis rounds do
+        not raise the counters; any address content resets the empty counter.
+      * City outside the zone (Vilnius, Kaunas…) — said AT ONCE, without any
+        counters („šiame mieste abonentų nėra — gal Šiauliuose?").
+      * Code mode is an OFFER, not a trap: the code is read every turn;
+        non-code CONTENT passes through to the normal flow (the agent
+        listens!); only a CLEAR „neturiu kodo" leads to an honest ending.
+      * Unwilling to give the address: 2 empty turns → WARNING (without an
+        address I can neither solve nor register), 2 more → close
         „nenustatyta gedimo vieta".
 
     Returns (handled, reply)."""
@@ -754,7 +755,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     if not user_input:
         return False, None
     # R3 (live 2026-09-10: "Taip kaip tėtis ir kaip Ignas" went unheard): the
-    # caller may START spelling on their own — two "kaip <žodis>" pairs in an
+    # caller may START spelling on their own — two "kaip <word>" pairs in an
     # address-phase turn ARE a letters answer, no mode needed.
     if (
         not state.identity.spell_mode
@@ -769,7 +770,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     ):
         state.identity.spell_mode = True
         rt.tracer.emit("decision", intent="street_spell", action="client_initiated")
-    # NLU wave block 4 (paraidžiui): the spelling answer is read FIRST — the
+    # NLU wave block 4 (letter by letter): the spelling answer is read FIRST — the
     # anchor-word first letters narrow the registry by prefix AND fuzzy the
     # last heard garble inside that subset (letters help fuzzy, never replace
     # it — Andrius 2026-09-10); a miss falls to the account-code rung.
@@ -803,8 +804,8 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
 
         _q_register(state, rt, "ident", "account_code")
         return True, phrase("identification.account_code_ask")
-    # 0) Kodas girdimas VISADA (ne tik „režime") — klientas gali jį pasakyti
-    # bet kada, taip pat po perspėjimo frazės.
+    # 0) The code is heard ALWAYS (not only "in mode") — the caller may say it
+    # at any time, including after the warning phrase.
     code = _extract_account_code(user_input)
     if code and (state.identity.account_code_mode or "ab" in user_input.lower()):
         reply = _lookup_by_code(state, rt, s, code)
@@ -825,18 +826,18 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             s.closing.closed_reason = "declined"
             rt.tracer.emit("decision", intent="account_code", action="not_client_close")
             return True, phrase("identification.not_client_goodbye")
-        # A-banga P3c (gyva #3: „A. B." → LLM haliucinavo „nerastas"): klientas
-        # KALBA apie kodą, bet skaitmenų neperskaitėm — scripted pagalba, ne LLM.
+        # A-wave P3c (live #3: „A. B." → the LLM hallucinated „nerastas"): the caller
+        # TALKS about the code but we read no digits — scripted help, not the LLM.
         if any(m in low for m in vocab("account_code_words")):
             from .dialog_registry import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
             rt.tracer.emit("decision", intent="account_code", action="retry_help")
             return True, phrase("identification.account_code_retry")
-        # Ne kodas, o TURINYS (adresas, pavardė, pasakojimas) — praleidžiam į
-        # normalią eigą; po poros tokių turn'ų kodo režimas tyliai užgęsta.
-        # NE return: tušti turn'ai toliau artina perspėjimo/uždarymo ribą
-        # (kodo režimas jos nebeįšaldo).
+        # Not a code but CONTENT (address, surname, story) — pass it through to
+        # the normal flow; after a couple of such turns code mode quietly turns off.
+        # NO return: empty turns keep moving toward the warning/close limit
+        # (code mode no longer freezes it).
         grace = state.identity.account_code_grace_turns + 1
         state.identity.account_code_grace_turns = grace
         if grace >= limits.get("account_code_grace_turns"):
@@ -846,7 +847,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     # HONEST not-exists branch (Andrius 2026-09-10 rev.2): the SAME transcript
     # repeated — the agent hears it consistently, so it heard RIGHT and such
     # a street simply is not in the service area. Say so and draw the client
-    # boundary (paslaugos tik savo klientams); code listening arms so an
+    # boundary (services for our own customers only); code listening arms so an
     # insisting client has a way in.
     if state.identity.street_not_exists_due and not state.identity.street_not_exists_said:
         state.identity.street_not_exists_due = False
@@ -858,9 +859,9 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         _q_register(state, rt, "ident", "street_not_exists")
         rt.tracer.emit("decision", intent="street_not_exists", action="say")
         return True, phrase("identification.street_not_exists")
-    # 1) Miestas ne aptarnavimo zonoje — IŠ KARTO, vieną kartą. SVARBU:
-    # „Vilniaus GATVĖ" yra Šiaulių gatvė, ne miestas — miesto žodis, po kurio
-    # eina gatvės indikatorius, yra GATVĖS pavadinimas (gyvas testų lūžis).
+    # 1) City outside the service area — AT ONCE, only once. IMPORTANT:
+    # „Vilniaus GATVĖ" is a street in Šiauliai, not a city — a city word followed
+    # by a street marker is a STREET name (a live test break).
     import re as _re
 
     low = user_input.lower()
@@ -880,9 +881,9 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         _q_register(state, rt, "ident", "city_not_served")
         rt.tracer.emit("decision", intent="account_code", action="city_not_served")
         return True, phrase("identification.city_not_served")
-    # 1b) LOOP'as (Andrius: „kai loopas prasideda — galvojama apie kitus
-    # būdus"): trys TIKROS gatvės/namo paieškos nesėkmės (tikslinimai —
-    # butas/pavardė/vietovė — nesiskaito) → PIRMA paraidžiui, tada kodas.
+    # 1b) LOOP (Andrius: "when a loop starts — think of other ways"): three
+    # REAL street/house lookup failures (clarifications — apartment/surname/
+    # locality — do not count) → FIRST letter by letter, then the code.
     if state.identity.address_resolve_failures >= limits.get("address_resolve_failures_max"):
         state.identity.address_resolve_failures = 0
         state.identity.account_code_mode = True
@@ -892,8 +893,8 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         _q_register(state, rt, "ident", "account_code")
         rt.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
         return True, phrase("identification.account_code_ask")
-    # 2) Skaitikliai. TIKSLINIMO fazė (pavardės klausimas, diagnozės nota,
-    # vietovės pasiūlymas) skaitiklių NEliečia.
+    # 2) Counters. The CLARIFICATION phase (surname question, diagnosis note,
+    # locality suggestion) does NOT touch the counters.
     last_q = (last_agent_question(state) or "").lower()
     clarifying = (
         any(w in last_q for w in vocab("surname_words"))
@@ -911,9 +912,9 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
     )
     if clarifying:
         return False, None
-    # Skaitikliai gyvi tik kai adreso KLAUSIMAS jau nuskambėjo (eval I4:
-    # pati problemos frazė „Neveikia internetas" buvo suskaičiuota kaip
-    # tuščias bandymas ir perspėjimas iššoko per anksti).
+    # Counters are live only once the address QUESTION has been asked (eval I4:
+    # the problem phrase itself „Neveikia internetas" was counted as an
+    # empty attempt and the warning fired too early).
     if not s.intake.anamnesis_asked:
         return False, None
     limit = limits.get("ident_max_empty_turns")
@@ -945,8 +946,8 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             return True, phrase("identification.street_not_exists")
     if _has_address_content(user_input) or alpha_attempt:
         state.identity.address_empty_turns = 0
-        # Turinys yra, bet registras jo VISAI neatpažįsta (nei sloto, nei
-        # diagnozės) — po dviejų tokių siūlom kodą.
+        # There is content, but the registry does NOT recognise it at all (no
+        # slot, no diagnosis) — after two such turns we offer the code.
         if not s.identity.profile.street.value and not state.turn.address_lookup_note:
             n = state.identity.address_unrecognized_turns + 1
             state.identity.address_unrecognized_turns = n
@@ -963,7 +964,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         else:
             state.identity.address_unrecognized_turns = 0
         return False, None
-    # 3) Tuščias turn'as (jokio adreso turinio): perspėjimas → uždarymas.
+    # 3) Empty turn (no address content): warning → close.
     n = state.identity.address_empty_turns + 1
     state.identity.address_empty_turns = n
     if (
@@ -971,8 +972,8 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         and not state.identity.address_warned
     ):
         state.identity.address_warned = True
-        # A-banga P3a (gyva #3): perspėjimas MINI kodą — nuo šio momento kodo
-        # klausymas įjungtas (praleidimo semantika turinį saugo).
+        # A-wave P3a (live #3): the warning MENTIONS the code — from now on code
+        # listening is on (the pass-through semantics keep the content).
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
         from .dialog_registry import register as _q_register
@@ -1015,14 +1016,15 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     from .identification import caller_question
     from .resolution import is_real_question
 
-    # Adreso KEITIMO patvirtinimas (etalonas №3, Andrius 2026-09-03): kliento
-    # užsiminimas apie kitą adresą po identifikacijos NEbeperjungia iš karto —
-    # pirma vienas patvirtinimo klausimas; „taip" (ar aiškus naujas adresas)
-    # atidaro identifikaciją iš naujo, kitoks atsakymas — liekam prie esamo.
-    # №4 (etalonas 2026-09-03): sakosi savininkas kitu vardu — SCRIPTED
-    # patikslinimas (naratorius gyvai nurungė notą ir patvirtino „Jūs, Petrai,
-    # esate savininkas"; privatumo taisyklė per svarbi improvizacijai). DB
-    # vardo frazėje NĖRA; atsakymas kitą turn'ą atnaujina santykį (prefill).
+    # Address CHANGE confirmation (reference dialogue №3, Andrius 2026-09-03): a
+    # caller's mention of another address after identification NO longer switches
+    # at once — first one confirmation question; „taip" (or a clear new address)
+    # reopens identification, any other answer — we stay with the current one.
+    # №4 (reference dialogue 2026-09-03): the caller claims to be the holder under
+    # another name — a SCRIPTED clarification (live, the narrator overrode the note
+    # and confirmed „Jūs, Petrai, esate savininkas"; the privacy rule is too
+    # important to improvise). The DB name is NOT in the phrase; the answer next
+    # turn updates the relation (prefill).
     if state.identity.holder_clarify_open and not state.identity.holder_clarify_asked:
         state.identity.holder_clarify_asked = True
         from .dialog_registry import register as _q_register
@@ -1082,9 +1084,9 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             )
         return None  # the guards already read the answer; the narrator continues
 
-    # A-banga P1 (Andrius 2026-09-04, gyva #6: „Ne patogu" ignoruotas):
-    # negalėjimo-DABAR mini-kopėčios sprendimo fazėje — STOP, išsiaiškinti KAS
-    # nepatogu, tada pasiūlyti kelią (registracija / perskambinimas / tęsiam).
+    # A-wave P1 (Andrius 2026-09-04, live #6: „Ne patogu" ignored): the
+    # cannot-do-it-NOW mini-ladder in the solving phase — STOP, find out WHAT is
+    # inconvenient, then offer a way (registration / call back / continue).
     cn_state = state.dialog.cannot_now_state
     if cn_state == "asked" and user_input:
         from .dialog_registry import clear as _q_clear
@@ -1115,7 +1117,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             rt.tracer.emit("decision", intent="cannot_now", action="offer")
             return phrase("identification.cannot_now_offer")
         rt.tracer.emit("decision", intent="cannot_now", action="resume")
-        return None  # paaiškino kitaip — tęsiam kelią (turinys jau ingest'e)
+        return None  # explained otherwise — continue the path (content already ingested)
     if cn_state == "offered" and user_input:
         from .dialog_registry import clear as _q_clear
 
@@ -1144,7 +1146,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
                 s.resolution.procedure["escalate_reason"] = "cannot_now"
             rt.tracer.emit("decision", intent="cannot_now", action="ticket")
             begin_ticket_dialogue(state, rt, step_by_role("unclear_fault", "escalate"))
-            return None  # tiketo dialogo intro — kitas žingsnis
+            return None  # ticket dialogue intro — the next step
         return None
     if (
         cn_state is None
@@ -1172,7 +1174,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         if state.turn.ticket_offscript_question:
             return None
         scripted = ticket_stage_reply(state, rt)
-        # Zone 1 (skriptai -> direktyvos, Andrius 2026-08-20): the QUESTION
+        # Zone 1 (scripts -> directives, Andrius 2026-08-20): the QUESTION
         # moments go to the narrator as a goal directive — it words them into
         # the conversation's flow; retries and the cancel-confirm stay
         # scripted (precision beats style on a repeat). Off-switch reverts.
@@ -1249,8 +1251,8 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         user_input
         and is_real_question(user_input)
         and (s.intake.problem_type or s.identity.customer_id)
-        # Kodo fazės klausimas („o kur jį rasti?") eina į pakopą — retry
-        # frazė su UŽUOMINA kur ieškoti ir YRA atsakymas (etalonas №2).
+        # A code-phase question („o kur jį rasti?") goes to the rung — the retry
+        # phrase with a HINT where to look IS the answer (reference dialogue №2).
         and not state.identity.account_code_mode
         # NLU wave block 4: "V KAIP Vilnius" is the spelling answer, not a
         # question — the rung's spell reader owns the armed turn; two "kaip"
@@ -1286,10 +1288,10 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
                 # gate commit — continue to anamnesis/address this turn
         p = s.identity.profile
         has_addr = bool(p.street.value or p.house.value)
-        # №2/№5 (etalonas 2026-09-03): abonento kodo pakopa — kai adresas
-        # neaiškėja, metodas keičiamas; kodo laukimo fazė skaito atsakymą.
-        # Telefono kandidato pasiūlymo srautas neskaičiuojamas (jis turi savo
-        # patvirtinimo mechaniką).
+        # №2/№5 (reference dialogue 2026-09-03): the subscriber-code rung — when
+        # the address does not clear up, the method changes; the code-waiting phase
+        # reads the answer. The phone-candidate offer flow is not counted (it has
+        # its own confirmation mechanics).
         if state.identity.account_code_mode or not s.identity.phone_candidate:
             handled, reply = _account_code_rung(state, rt, s, user_input)
             if handled:
@@ -1443,7 +1445,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
 
 
 def _address_move(state, rt, s):
-    """Zone 2 (skriptai -> direktyvos): the transition to the address — offer
+    """Zone 2 (scripts -> directives): the transition to the address — offer
     the phone-candidate address or ask for one. In narrator mode the moment
     becomes a goal directive (a smooth hand-over from the problem talk); the
     OFFER question's core stays verbatim ("Ar skambinate dėl X?") because the

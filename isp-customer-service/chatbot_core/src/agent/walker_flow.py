@@ -899,7 +899,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
     - caller YES, telemetry disagrees (still hung, no flap) -> the words say
       "works" but the system saw neither traffic nor a reboot — treat like
       the wrong-device case: ONE retry with the clarification (VERIFICATION
-      RULE, DIALOGO_ETALONAS.md #8: vien kliento žodžio neužtenka)
+      RULE, DIALOGO_ETALONAS.md #8: the caller's word alone is not enough)
     - caller NO + traffic returned                -> the router is alive;
                                                      the problem is on the path
                                                      to one device (device_path)
@@ -1051,7 +1051,7 @@ def goto_step(state, rt, r: dict, next_id: str) -> None:
     for its OWN question to be asked before a plain yes/no can advance it."""
     if next_id != r.get("step"):
         r["asked"] = False
-        # Process journal (sąmoningumas №3): the walk's transitions — the
+        # Process journal (awareness №3): the walk's transitions — the
         # solver reads WHAT already happened instead of re-deriving it.
         journal = r.setdefault("journal", [])
         journal.append(f"{r.get('step') or '—'}→{next_id}")

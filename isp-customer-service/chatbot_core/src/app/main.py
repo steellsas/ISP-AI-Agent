@@ -191,7 +191,7 @@ async def simulate_plug(session_id: str, unplug: bool = False):
 
 @app.post("/sessions/{session_id}/simulate-reboot")
 async def simulate_reboot(session_id: str):
-    """DEMO (S6 pakibęs routeris): the tester presses the button the moment the
+    """DEMO (S6 frozen router): the tester presses the button the moment the
     CALLER would power-cycle the router — the demo line reflects the physical
     act (traffic returns + the port flap a real reboot produces, the witness
     the verify step reads). Manual by design, same as simulate-plug: the human
@@ -341,7 +341,7 @@ async def db_reset():
 
 
 def _final_flush(ms) -> None:
-    """FINAL FLUSH (2026-09-02, Andrius: „svarbu, kad nedingtų informacija"):
+    """FINAL FLUSH (2026-09-02, Andrius: "it matters that no information is lost"):
     a hangup mid-sentence leaves an OPEN segment the silence window never
     closed — the caller's last words existed only as a partial. Transcribe the
     leftover segment(s) and hand them to the engine as overlay facts, so the

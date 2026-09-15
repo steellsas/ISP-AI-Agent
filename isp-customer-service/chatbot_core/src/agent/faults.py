@@ -40,8 +40,8 @@ def _doc() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def _dir_faults() -> dict[str, Any]:
-    """Fault PACKS — one file per fault in knowledge/faults/ (R5: 'įkelti naują
-    gedimą' = drop a file in). A pack overrides a same-named monolith entry."""
+    """Fault PACKS — one file per fault in knowledge/faults/ (R5: 'upload a new
+    fault' = drop a file in). A pack overrides a same-named monolith entry."""
     from .contract.loader import read_yaml_dir
 
     return read_yaml_dir(_FAULTS_DIR, "verdict")

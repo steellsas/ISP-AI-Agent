@@ -36,8 +36,8 @@ def _tokens(text: str) -> list[str]:
 def token_overlap(utterance: str, reference: str) -> float:
     """Share of the utterance's tokens present in the reference — FUZZY: a
     token counts when its 4-char prefix appears in the folded reference, so a
-    dropped ending ("lempute" vs "lemputės") still matches (sutarta
-    2026-08-14: Levenshtein/prefix overlap, ne griežtas `in`)."""
+    dropped ending ("lempute" vs "lemputės") still matches (agreed
+    2026-08-14: Levenshtein/prefix overlap, not a strict `in`)."""
     toks = _tokens(utterance)
     if not toks:
         return 0.0

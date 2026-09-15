@@ -21,7 +21,7 @@ from .evidence import UNKNOWN, gloss_label, gloss_value
 
 def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
     """ONE second chance for a given-up key that BLOCKS confirmation
-    (Andrius 2026-08-12): 'neaišku' on a patvirtinta-required key froze the
+    (Andrius 2026-08-12): 'neaišku' on a confirmation-required key froze the
     hypothesis forever. At the dead-end moment the agent asks it once more,
     plainly and with the reason; the answer lands through the pending
     machinery (the give-up marker is replaceable by design). Never loops —
@@ -258,7 +258,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         from .evidence import solution_for as _solution_for
 
         # A fully DETERMINED walker solution needs no findings ritual (S6
-        # pakibęs routeris, 2026-08-31): the recap+announce checkpoint exists
+        # frozen router, 2026-08-31): the recap+announce checkpoint exists
         # for real decision points — the caller still choosing between
         # solutions (bridge vs ticket). When the facts already pin a single
         # `tada: walker` step, the ritual only delays the sync a turn (or
@@ -441,10 +441,10 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         else (item.get("simpler_key") or item.get("question_key"))
     )
     # The caller hears WHY we ask before what to press (Andrius 2026-08-11:
-    # "kad klientas žinotų kodėl prašo to ar kito") — once, on the first ask.
+    # "so the caller knows why we ask for this or that") — once, on the first ask.
     if asks == 0 and item.get("why_key"):
         text = f"{text} {maybe_phrase(item['why_key'])}"
-    # Re-ask says WHY it repeats (garsus mąstymas, Andrius 2026-08-11): the
+    # Re-ask says WHY it repeats (thinking aloud, Andrius 2026-08-11): the
     # caller hears the agent is unsure about the SAME thing, not deaf.
     if asks == 1:
         from .contract.locale import phrase

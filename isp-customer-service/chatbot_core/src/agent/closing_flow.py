@@ -38,7 +38,7 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
 
     Without this, closing depended on the model calling close_case, which it did not:
     the caller said goodbye repeatedly, the call stayed open, and the diagnosis node
-    re-narrated the outage every turn (observed: 'kartoja gedimą')."""
+    re-narrated the outage every turn (observed: 'repeats the fault')."""
     s = state
     if s.closing.case_closed or not s.identity.customer_id:
         return

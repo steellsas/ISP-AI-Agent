@@ -1,4 +1,4 @@
-"""SUPRATIMO pass'as — the understanding layer (Ledger v2.5, agreed 2026-08-10).
+"""Understanding pass — the understanding layer (Ledger v2.5, agreed 2026-08-10).
 
 ONE small-model JSON call per caller turn in the diagnosis stage reads the
 reply IN CONTEXT (the pending question, the fault's evidence needs, the ledger,

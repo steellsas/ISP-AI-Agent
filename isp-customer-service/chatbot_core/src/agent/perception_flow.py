@@ -1,6 +1,6 @@
 """
 Perception flow — reading the caller's turn before anyone acts on it: the
-evidence ingest (SUPRATIMO pass + keyword extractor), side-topic
+evidence ingest (understanding pass + keyword extractor), side-topic
 classification, the anchor question, and the pre-turn guard sweep.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent; R4
@@ -80,7 +80,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         return
     from .evidence import CLIENT, extract_client_facts, polarity, set_fact
 
-    # SUPRATIMO pass'as (2026-08-10): the primary sensor — one small-model
+    # Understanding pass (2026-08-10): the primary sensor — one small-model
     # call reads the reply IN CONTEXT (pending question, fault needs,
     # ledger, history). Any failure -> the deterministic keyword layer
     # below, so the call never stalls on a model hiccup.
@@ -197,7 +197,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     # the hypothesis never confirmed. A pass fact for the pending key on
     # such a turn stands only if the utterance itself corroborates it
     # (the key's markers / the keyword extractor); otherwise it is dropped
-    # and the drive asks WHAT was found ("pasitikslinti, o ne kurti").
+    # and the drive asks WHAT was found ("clarify, don't invent").
     state.turn.done_report_key = None
     if state.turn.understanding is not None and pending and pending in facts:
         from .resolution import is_bare_done_report
@@ -247,7 +247,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         if value is not None:
             facts[pending] = value
     turn = s.dialog.turn_count
-    # W1-2 svarbos vartai — the ANSWER to a standing fact-confirm question
+    # W1-2 importance gate — the ANSWER to a standing fact-confirm question
     # ("Tik pasitikslinsiu — sakėte, kad rozetė neveikia?"): a yes commits the
     # parked value; anything else drops it (a correction lands as a normal
     # fact from THIS utterance below).
@@ -320,12 +320,12 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
                 )
                 del facts[key]
     for key, value in facts.items():
-        # W1-2 svarbos vartai (Andrius 2026-08-25, live: STT „rozetė NEVEIKĖ"
-        # tyliai užnuodijo žurnalą ir solveris pasiklydo): NAUJAS faktas su
-        # pack'o pažymėta `confirm_values:` reikšme, atėjęs NE kaip atsakymas į
-        # užduotą klausimą, pirma PATIKSLINAMAS — ne komituojamas. Kai
-        # skaitytuvai NESUTARIA dėl šio rakto, jį valdo konflikto mechanika
-        # (jos scriptinis klausimas — tas pats pasitikslinimas).
+        # W1-2 importance gate (Andrius 2026-08-25, live: STT „rozetė NEVEIKĖ"
+        # silently poisoned the journal and the solver got lost): a NEW fact with
+        # a value the pack marks in `confirm_values:`, arriving NOT as the answer
+        # to an asked question, is first CLARIFIED — not committed. When the
+        # readers DISAGREE on this key, the conflict machinery owns it
+        # (its scripted question is the same clarification).
         if key not in kw_disagreements and _story_flip_gate(state, rt, key, str(value), pending):
             continue
         entry = set_fact(s.diagnosis.evidence, key, value, CLIENT, turn)
@@ -348,8 +348,8 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
 
 
 def _note_fact_meaning(state, rt, key: str, value: str) -> None:
-    """Turn'o gramatikos 2 dalis (etalonas, 2026-09-03): pack'o `reiskia:`
-    laukas deklaruoja, KĄ atsakymas reiškia („dega tik pirma" → „gauna
+    """Turn grammar part 2 (reference dialogue, 2026-09-03): the pack's `reiskia:`
+    field declares WHAT the answer means („dega tik pirma" → „gauna
     maitinimą, bet nemato tinklo") — the narrator's reaction then CARRIES the
     meaning instead of parroting the fact. One-shot note; declared per value
     in the ACTIVE pack's evidence item, so wording is a file edit."""
@@ -368,7 +368,8 @@ def _note_fact_meaning(state, rt, key: str, value: str) -> None:
 
 
 def _registry_streets_fold(state, rt) -> list[str]:
-    """Folded registry street names (be „g." uodegos) — kito-adreso signalui."""
+    """Folded registry street names (without the „g." suffix) — for the other-address
+    signal."""
     try:
         from .evidence import _fold
 
@@ -379,11 +380,11 @@ def _registry_streets_fold(state, rt) -> list[str]:
 
 
 def _mentions_other_street(state, rt, text: str | None) -> bool:
-    """A-banga P2 (gyva #4, 2026-09-04: „mano ADARAS yra Tilžės gatvė 60" —
-    STT sudarkė žodį „adresas" ir korekcijos detektorius tylėjo, o naratorius
-    ŽODŽIU „pripažino" keitimą): identifikuoto kliento turn'as, kuriame yra
-    KITOS registro gatvės vardas + skaitmuo, yra korekcijos kandidatas —
-    nesvarbu, ar nuskambėjo žodis „adresas"."""
+    """A-wave P2 (live #4, 2026-09-04: „mano ADARAS yra Tilžės gatvė 60" —
+    STT garbled the word „adresas", the correction detector stayed silent, and
+    the narrator "acknowledged" the change IN WORDS only): an identified
+    caller's turn carrying ANOTHER registry street name + a digit is a
+    correction candidate — whether or not the word „adresas" was said."""
     if not text or not state.identity.customer_id:
         return False
     if not any(ch.isdigit() for ch in text):
@@ -450,7 +451,7 @@ def _conflict_to_clarify(state, rt, key: str, entry: dict) -> bool:
 
 
 def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bool:
-    """W1-2 svarbos vartai: should this NEW volunteered fact be parked for a
+    """W1-2 importance gate: should this NEW volunteered fact be parked for a
     confirm question instead of a silent commit? The pack DECLARES which
     values deserve it (`confirm_values:` on the evidence item — file-editable,
     like every behaviour), so only genuinely story-flipping, STT-garble-prone
@@ -481,7 +482,7 @@ def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bo
 
 
 def ingest_overlay(state, rt, text: str) -> None:
-    """Duplex-hearing 2 ŽINGSNIS: deterministic-only ingest for words spoken
+    """Duplex-hearing STEP 2: deterministic-only ingest for words spoken
     OVER the agent's voice — address slots and evidence vocabularies, through
     the same importance gates as normal turns. No LLM pass, no turn, no
     routing: overlay speech may only FILL facts, never steer."""
@@ -719,7 +720,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
             # Anything else resumes the registration — the stage re-asks.
             rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_confirm_resumed")
             return
-        # SUPRATIMO pass'as pirmiau (2026-08-10, Andrius): caller phrasing
+        # Understanding pass first (2026-08-10, Andrius): caller phrasing
         # cannot be predicted — "Bet kada galima per pietus iš ryto" IS an
         # P5 (closing wave, live 2026-09-07: "Gerai, aš paskambinsiu vėliau"
         # mid-ticket-dialogue got "ar tiks numeris?"): a first-person "I will
@@ -1087,7 +1088,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
 
                 s.identity.caller_name = extract_caller_name(user_input) or user_input.strip()[:120]
                 s.identity.caller_relation = detect_caller_relation(user_input)
-                # Frazynas (etalonas, 2026-09-03): the caller JUST introduced
+                # Phrasebook (reference dialogue, 2026-09-03): the caller JUST introduced
                 # themselves — the next reply opens with a warm acceptance
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
                 state.identity.caller_name_heard = True
@@ -1098,10 +1099,10 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
             from .dialog_registry import clear as _q_clear
 
             _q_clear(state, rt, "caller_name")
-            # №4 (etalonas 2026-09-03): sakosi SAVININKAS, bet vardas nesutampa
-            # su DB sutarties vardu — vienas mandagus patikslinimas, DB vardo
-            # NEgarsinant (privatumo riba). Fuzzy: STT darkymui („Andrijus" ~
-            # „Andrius") užtenka 4 raidžių prefikso sutapimo.
+            # №4 (reference dialogue 2026-09-03): the caller claims to be the HOLDER,
+            # but the name does not match the DB contract name — one polite
+            # clarification WITHOUT saying the DB name (privacy boundary). Fuzzy: for
+            # STT garbling („Andrijus" ~ „Andrius") a 4-letter prefix match is enough.
             if s.identity.caller_relation == "holder" and s.identity.caller_name not in (
                 None,
                 "nenurodyta",
@@ -1234,7 +1235,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                         level="warn",
                     )
         else:
-            # arc v3.2 (eval I2 2026-08-27, po prompt-prefix pertvarkos): the
+            # arc v3.2 (eval I2 2026-08-27, after the prompt-prefix rework): the
             # caller dictated or CORRECTED the address ("Ai, atsiprašau — 29
             # namas") and the model either answered "Radau…" for a NONEXISTENT
             # house without calling the tool, or relapsed into a confirm round.
@@ -1270,9 +1271,9 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
         if (
             detect_address_correction(user_input) or _mentions_other_street(state, rt, user_input)
         ) and not state.identity.reopen_confirm_utterance:
-            # Etalonas №3 (2026-09-03): PIRMA patvirtinimo klausimas, tik tada
-            # identifikacija atsidaro iš naujo — STT darkymas nebemeta pokalbio
-            # ant kito adreso be kliento „taip".
+            # Reference dialogue №3 (2026-09-03): FIRST a confirmation question, only
+            # then identification reopens — an STT garble no longer throws the call
+            # onto another address without the caller's „taip".
             state.identity.reopen_confirm_utterance = user_input
             state.identity.reopen_confirm_asked = False
             rt.tracer.emit("decision", intent="reopen_confirm", action="pending")

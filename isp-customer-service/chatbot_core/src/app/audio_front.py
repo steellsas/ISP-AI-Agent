@@ -50,8 +50,9 @@ def partial_interval_ms() -> int:
 
 
 def interrupt_fast_ms() -> int:
-    """P1 (live 2026-08-26: TTFA po pertraukimo 6–10 s): kirtęs agentą žmogus
-    mintį jau turi — po cut'o segmentui užtenka greito tylos lango."""
+    """P1 (live 2026-08-26: TTFA after an interruption 6–10 s): a caller who cut
+    the agent off already has the thought — after the cut the segment only needs
+    the fast silence window."""
     return limits.get("endpoint_fast_ms")
 
 

@@ -1,5 +1,5 @@
 """
-Solver flow — the MĄSTYTOJAS drive: context building, the gated solve loop,
+Solver flow — the THINKER drive: context building, the gated solve loop,
 the disciplined bridge fix, the failure ladder and the escalate hand-off.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent.
@@ -113,8 +113,8 @@ def build_solver_context(state: Any, rt: Any, user_input: str | None) -> str:
     lines.append(
         f"WALKER now: verdict={r.get('verdict')} step={r.get('step')} awaiting={s.dialog.awaiting}"
     )
-    # Process journal (sąmoningumas №3): the transitions already walked — the
-    # thinker sees the path ("kas jau vyko"), so it never re-proposes a step
+    # Process journal (awareness №3): the transitions already walked — the
+    # thinker sees the path ("what already happened"), so it never re-proposes a step
     # the call has moved past.
     if r.get("journal"):
         lines.append(
@@ -223,7 +223,7 @@ def plug_report(state: Any, rt: Any, user_input: str | None) -> bool:
 
 
 def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None:
-    """Solver-driven turn — the MĄSTYTOJAS drives the piloted directions (Step 3,
+    """Solver-driven turn — the THINKER drives the piloted directions (Step 3,
     default ON since 2026-08-03; SOLVER_DRIVE=off reverts to the walker). Returns
     the reply text, or None to fall back to the walker (no strategy, not a piloted
     direction, a solver failure — or DETERMINISTIC MECHANICS in progress: the
@@ -536,8 +536,8 @@ def drive(state: Any, rt: Any, user_input: str | None) -> str:
 
 
 def close_or_register(state: Any, rt: Any, say: str) -> str:
-    """Ticket-first close (Andrius 2026-08-13: 'esmė yra sugedęs routeris ir
-    tiketas turi būti registruotas; šalutinis — internetas laikinai'): the
+    """Ticket-first close (Andrius 2026-08-13: 'the point is a broken router and
+    the ticket must be registered; secondary — temporary internet'): the
     bridge is TEMPORARY, so a solver 'close' after a successful bridge may not
     end the call without the router-replacement registration — it becomes the
     escalate (live: 'Aš radu internetas' -> close -> ticket=None)."""

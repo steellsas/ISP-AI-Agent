@@ -128,7 +128,7 @@ def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None
 
 
 def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
-    """Duplex-hearing 1 ŽINGSNIS (Andrius 2026-08-28) — OBSERVE ONLY: speech
+    """Duplex-hearing STEP 1 (Andrius 2026-08-28) — OBSERVE ONLY: speech
     spoken OVER the agent's voice is transcribed and echo-filtered against the
     agent's own words, then traced + shown in the transcript. The ENGINE never
     sees it — stage 2 will hand the non-echo residue to the fact ingest once
@@ -221,7 +221,7 @@ def run_voice_turn_stream(
 
             return classify_interruption(transcript, ms.session.last_spoken_text())
 
-    # Filler (live 2026-08-14: "spragos tarp klausimų" — tts_first 5–10 s is
+    # Filler (live 2026-08-14: "gaps between questions" — tts_first 5–10 s is
     # the LLM thinking): if no real audio is ready within VOICE_FILLER_AFTER_S,
     # speak the cached "Sekundėlę, tikrinu." cue. The delay keeps it away from
     # dropped noise/backchannel turns (they finish silently well under it).
@@ -249,7 +249,7 @@ def run_voice_turn_stream(
         filler_timer.daemon = True
         filler_timer.start()
 
-    # P1b interrupt-ack (architektūros peržiūra 2026-08-26): the caller who CUT
+    # P1b interrupt-ack (architecture review 2026-08-26): the caller who CUT
     # the agent off expects an instant sign of being heard — when the real
     # reply is not ready within ~0.8 s, a short cached "Aha, girdžiu." goes out
     # first. Scoped to INTERRUPTED turns only (prev_cancelled), so normal turns
@@ -380,8 +380,8 @@ def run_voice_turn_stream(
 
 
 def _manifest(d: Path, side: str, filename: str, **extra: Any) -> None:
-    """Timeline entry for the replay bench (VOICE_PLAN: dviejų takelių įrašymas
-    su laiko manifestu) — best-effort append to manifest.jsonl."""
+    """Timeline entry for the replay bench (VOICE_PLAN: two-track recording
+    with a timing manifest) — best-effort append to manifest.jsonl."""
     import json
     import time
 
