@@ -43,7 +43,7 @@ _STATE_TYPES: list[tuple[str, str]] = [
     ("graph_v2.state", "VoiceState"),
     ("graph_v2.state", "TurnDirectives"),
     ("graph_v2.state", "TurnScratch"),
-    ("dialog_registry", "ActiveQuestion"),
+    ("graph_v2.state", "ActiveQuestion"),
     ("evidence", "Contradiction"),
 ]
 _ALLOWED: list[tuple[str, str]] = [

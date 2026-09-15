@@ -408,7 +408,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # B-wave registry (shadow): the evidence question is the walker family's
     # ask — both the narrator-worded first ask and the scripted retries pass
     # through here, so the asks counter mirrors the retry ladder.
-    from .dialog_registry import register as _q_register
+    from .decide.question import register as _q_register
 
     _q_register(state, rt, "walker", f"evidence:{key}")
     # Persona (R5c): the FIRST ask goes to the NARRATOR as a goal directive —

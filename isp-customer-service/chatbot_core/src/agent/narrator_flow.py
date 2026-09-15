@@ -1257,9 +1257,9 @@ def mark_step_presented(state, rt) -> None:
         # presented — it is now the walker's active question. Live 2026-09-08:
         # the end-confirm and wrap-up replies are NOT the step's question, so
         # they must not re-register it (asks inflated to 5 on a solved call).
-        from .dialog_registry import active as _q_active
-        from .dialog_registry import clear_owner as _q_clear_owner
-        from .dialog_registry import register as _q_register
+        from .decide.question import active as _q_active
+        from .decide.question import clear_owner as _q_clear_owner
+        from .decide.question import register as _q_register
 
         _q = _q_active(state, rt)
         if state.dialog.end_confirm_pending:
@@ -1467,7 +1467,7 @@ def update_state_from_observation(state, rt, action: str, observation: str):
                 # B-wave registry: identification committed on ANY successful
                 # resolve (the LLM's own tool call included) — the ident
                 # question must never outlive it and freeze the walker.
-                from .dialog_registry import clear_owner as _q_clear_owner
+                from .decide.question import clear_owner as _q_clear_owner
 
                 _q_clear_owner(state, rt, "ident")
                 state.identity.address_resolve_failures = 0

@@ -443,7 +443,7 @@ def _lookup_by_code(state: Any, rt: Any, s: Any, code: str):
         # B-wave registry: the echo-offer IS the address-offer question
         # (live 2026-09-08: this path bypassed _address_move and the offer
         # went out unregistered).
-        from .dialog_registry import register as _q_register
+        from .decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "address_offer", address=adresas)
         return _phrase(
@@ -506,7 +506,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             else None
         )
         if cand:
-            from .dialog_registry import register as _q_register
+            from .decide.question import register as _q_register
             from .slots import SlotStatus
 
             s.identity.profile.street.propose(cand, 0.9, SlotStatus.HEARD)
@@ -522,7 +522,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         rt.tracer.emit("decision", intent="street_spell", action="miss", prefix=prefix)
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .dialog_registry import register as _q_register
+        from .decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "account_code")
         return True, phrase("identification.account_code_ask")
@@ -536,7 +536,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         if state.identity.account_code_mode:
             # A-3 transparency: say WHAT we heard — the caller sees where
             # the mishearing happened.
-            from .dialog_registry import register as _q_register
+            from .decide.question import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
             return True, phrase("identification.account_code_miss", code=_speak_code(code))
@@ -551,7 +551,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         # A-wave P3c (live #3: „A. B." → the LLM hallucinated „nerastas"): the caller
         # TALKS about the code but we read no digits — scripted help, not the LLM.
         if any(m in low for m in vocab("account_code_words")):
-            from .dialog_registry import register as _q_register
+            from .decide.question import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
             rt.tracer.emit("decision", intent="account_code", action="retry_help")
@@ -576,7 +576,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         state.identity.street_not_exists_said = True
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .dialog_registry import register as _q_register
+        from .decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "street_not_exists")
         rt.tracer.emit("decision", intent="street_not_exists", action="say")
@@ -598,7 +598,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         and not state.identity.city_not_served_said
     ):
         state.identity.city_not_served_said = True
-        from .dialog_registry import register as _q_register
+        from .decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "city_not_served")
         rt.tracer.emit("decision", intent="account_code", action="city_not_served")
@@ -610,7 +610,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         state.identity.address_resolve_failures = 0
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .dialog_registry import register as _q_register
+        from .decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "account_code")
         rt.tracer.emit("decision", intent="account_code", action="ask", reason="resolve_loop")
@@ -661,7 +661,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             state.identity.street_not_exists_said = True
             state.identity.account_code_mode = True
             state.identity.account_code_grace_turns = 0
-            from .dialog_registry import register as _q_register
+            from .decide.question import register as _q_register
 
             _q_register(state, rt, "ident", "street_not_exists")
             rt.tracer.emit("decision", intent="street_not_exists", action="say")
@@ -676,7 +676,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             if n >= limits.get("address_unrecognized_turns_max"):
                 state.identity.account_code_mode = True
                 state.identity.account_code_grace_turns = 0
-                from .dialog_registry import register as _q_register
+                from .decide.question import register as _q_register
 
                 _q_register(state, rt, "ident", "account_code")
                 rt.tracer.emit(
@@ -698,7 +698,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         # listening is on (the pass-through semantics keep the content).
         state.identity.account_code_mode = True
         state.identity.account_code_grace_turns = 0
-        from .dialog_registry import register as _q_register
+        from .decide.question import register as _q_register
 
         _q_register(state, rt, "ident", "address_need")
         rt.tracer.emit("decision", intent="account_code", action="warn")
@@ -720,7 +720,7 @@ def _address_move(state, rt, s):
     import os as _os
 
     from .contract.locale import phrase
-    from .dialog_registry import register as _q_register
+    from .decide.question import register as _q_register
     from .identification import offer_phone_address
 
     c = s.identity.phone_candidate

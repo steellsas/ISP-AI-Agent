@@ -115,7 +115,7 @@ def abort_ticket_to_solving(state: Any, rt: Any) -> None:
     state.ticket.context = None
     state.ticket.resume_fix_note = True
     state.dialog.resync_note = True  # C: re-anchor from the ledger, no improvising
-    from .dialog_registry import clear_owner as _q_clear_owner
+    from .decide.question import clear_owner as _q_clear_owner
 
     _q_clear_owner(state, rt, "ticket")
     rt.tracer.emit("decision", intent="ticket_dialogue", action="cancel_to_solving")
@@ -128,7 +128,7 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
     question as ASKED — only then does the capture accept an answer — and
     speaks the retry phrasing after an unclear answer."""
     from .contract.locale import phrase
-    from .dialog_registry import register as _q_register
+    from .decide.question import register as _q_register
     from .graph_v2.state import TicketContext
 
     ctx = state.ticket.context or TicketContext()
@@ -248,7 +248,7 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     note = (ctx.note if ctx else None) or ""
     state.ticket.stage = None
     state.ticket.context = None
-    from .dialog_registry import clear_owner as _q_clear_owner
+    from .decide.question import clear_owner as _q_clear_owner
 
     _q_clear_owner(state, rt, "ticket")  # contacts collected — the dialogue is over
     register_ticket_from_state(state, rt, step_id)

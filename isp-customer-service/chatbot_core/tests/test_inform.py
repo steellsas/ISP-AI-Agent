@@ -290,7 +290,7 @@ class TestCannotNowHearing:
 
     def test_safety_question_survives_step_presentation(self, db_connection):
         """N1: clarify klausimo registro įrašo mark_step_presented neperrašo."""
-        from agent.dialog_registry import active, register
+        from agent.decide.question import active, register
         from agent.narrator_flow import mark_step_presented
 
         agent = self._solving()
@@ -334,7 +334,7 @@ class TestHomeworkFinale:
             "asked": True,
             "solution_synced": True,
         }
-        from agent.dialog_registry import register
+        from agent.decide.question import register
 
         register(agent.state, agent.runtime, "walker", "step:rh_homework")
         return agent

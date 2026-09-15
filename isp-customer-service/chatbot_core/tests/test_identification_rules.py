@@ -379,9 +379,9 @@ class TestQuestionRegistry:
         return agent
 
     def test_reopen_lifecycle_ask_reask_close(self, db_connection):
+        from agent.decide.question import active
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.dialog_registry import active
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
@@ -397,9 +397,9 @@ class TestQuestionRegistry:
         assert active(agent.state, agent.runtime) is None
 
     def test_reopen_confirmed_clears(self, db_connection):
+        from agent.decide.question import active
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.dialog_registry import active
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Vilniaus gatvės 29"
@@ -412,8 +412,8 @@ class TestQuestionRegistry:
     def test_ticket_question_lifecycle(self, db_connection):
         """B žingsnis 3: tiketo klausimai (numeris → valandos) registre;
         registracija uždaro savininką."""
+        from agent.decide.question import active
         from agent.decide.rules.head import turn_head
-        from agent.dialog_registry import active
         from agent.resolution import get_strategy
         from agent.ticket_flow import (
             begin_ticket_dialogue,
@@ -441,7 +441,7 @@ class TestQuestionRegistry:
     def test_walker_evidence_question_closes_on_fact(self, db_connection):
         """B žingsnis 4: įrodymo klausimas registre užsidaro, kai ateina jo
         rakto faktas (kito rakto faktas jo neliečia)."""
-        from agent.dialog_registry import active, register
+        from agent.decide.question import active, register
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = self._identified()
@@ -454,7 +454,7 @@ class TestQuestionRegistry:
         assert active(agent.state, agent.runtime) is not None
 
     def test_step_presentation_registers(self, db_connection):
-        from agent.dialog_registry import active
+        from agent.decide.question import active
         from agent.narrator_flow import mark_step_presented
 
         agent = self._identified()
@@ -481,9 +481,9 @@ class TestQuestionRegistry:
         guard'as tą patį turn'ą startavo tiketą; dabar galvos skydas
         registruoja safety klausimą ir walker'is laiko."""
         from agent.decide.procedure import advance
+        from agent.decide.question import active
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
-        from agent.dialog_registry import active
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -548,12 +548,12 @@ class TestQuestionRegistry:
             "asked": True,
             "solution_synced": True,
         }
-        from agent.dialog_registry import register
+        from agent.decide.question import register
 
         register(agent.state, agent.runtime, "walker", "step:rh_ability")
         turn_head(agent.state, agent.runtime, "Nepatogu, nesu namuose dabar")
         # skydas NEkyla (pack'o žingsnis valdo), tiketas NEprasidėjo
-        from agent.dialog_registry import active
+        from agent.decide.question import active
 
         q = active(agent.state, agent.runtime)
         assert q and q.key == "step:rh_ability"
@@ -594,7 +594,7 @@ class TestQuestionRegistry:
         """PERJUNGIMAS (P6): kol atviras safety/ident/ticket klausimas, walker'is
         turn'o neskaito kaip savo žingsnio atsakymo."""
         from agent.decide.procedure import advance
-        from agent.dialog_registry import active, clear_owner, register
+        from agent.decide.question import active, clear_owner, register
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -615,8 +615,8 @@ class TestQuestionRegistry:
 
     def test_caller_name_closes_on_capture(self, db_connection):
         """Gyva 2026-09-08: vardo klausimas registre kabėjo atviras po atsakymo."""
+        from agent.decide.question import active, register
         from agent.decide.rules.head import turn_head
-        from agent.dialog_registry import active, register
 
         agent = self._identified()
         agent.state.identity.result_pending = True
@@ -628,7 +628,7 @@ class TestQuestionRegistry:
     def test_code_echo_offer_registers_as_address_offer(self, db_connection):
         """Gyva 2026-09-08: kodo echo pasiūla apeidavo _address_move ir likdavo
         neregistruota."""
-        from agent.dialog_registry import active
+        from agent.decide.question import active
         from agent.identification_flow import _account_code_rung
 
         agent = _agent()
@@ -639,8 +639,8 @@ class TestQuestionRegistry:
         assert q and q.owner == "ident" and q.key == "address_offer"
 
     def test_cannot_now_lifecycle(self, db_connection):
+        from agent.decide.question import active
         from agent.decide.rules.reply import scripted_words
-        from agent.dialog_registry import active
         from agent.resolution import get_strategy
 
         agent = self._identified()

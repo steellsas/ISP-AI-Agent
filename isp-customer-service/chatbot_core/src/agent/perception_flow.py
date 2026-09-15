@@ -46,7 +46,7 @@ def engine_resolve_from_slots(state, rt) -> bool:
     # B-wave registry: the identification question (address/code) got its
     # answer — a contract committed; the next question (the name) is
     # registered by its own owner.
-    from .dialog_registry import clear_owner as _q_clear_owner
+    from .decide.question import clear_owner as _q_clear_owner
 
     _q_clear_owner(state, rt, "ident")
     ensure_diagnosed(state, rt)
@@ -86,7 +86,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
             m in low_q for m in vocab("ticket_cancel_confirmed")
         ):
             state.ticket.stage = "cancelled"
-            from .dialog_registry import clear_owner as _q_clear_owner
+            from .decide.question import clear_owner as _q_clear_owner
 
             _q_clear_owner(state, rt, "ticket")
             rt.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
@@ -104,7 +104,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
     if any(m in low_q for m in vocab("will_call_back_first_person")):
         state.ticket.stage = None
         state.ticket.context = None
-        from .dialog_registry import clear_owner as _q_clear_owner
+        from .decide.question import clear_owner as _q_clear_owner
 
         _q_clear_owner(state, rt, "ticket")
         s.closing.case_closed = True
@@ -165,7 +165,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
                 # ticket the caller was just promised.
                 if ctx.cancel_confirm_asked:
                     state.ticket.stage = "cancelled"
-                    from .dialog_registry import clear_owner as _q_clear_owner
+                    from .decide.question import clear_owner as _q_clear_owner
 
                     _q_clear_owner(state, rt, "ticket")
                     rt.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")
@@ -228,7 +228,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
             return
         if ctx.cancel_confirm_asked:
             state.ticket.stage = "cancelled"
-            from .dialog_registry import clear_owner as _q_clear_owner
+            from .decide.question import clear_owner as _q_clear_owner
 
             _q_clear_owner(state, rt, "ticket")
             rt.tracer.emit("decision", intent="ticket_dialogue", action="cancelled")

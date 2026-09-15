@@ -58,7 +58,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # turn updates the relation (prefill).
     if state.identity.holder_clarify_open and not state.identity.holder_clarify_asked:
         state.identity.holder_clarify_asked = True
-        from ...dialog_registry import register as _q_register
+        from ..question import register as _q_register
 
         _q_register(state, rt, "ident", "holder_clarify")
         rt.tracer.emit("decision", intent="holder_name", action="clarify_ask")
@@ -105,7 +105,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # cannot consume it (live A-2 defect). Only the ask/re-ask side is here.
     pending_reopen = state.identity.reopen_confirm_utterance
     if pending_reopen is not None:
-        from ...dialog_registry import register as _q_register
+        from ..question import register as _q_register
 
         adresas = s.identity.customer_address or phrase("identification.current_address_unknown")
         if not state.identity.reopen_confirm_asked:
@@ -135,8 +135,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # inconvenient, then offer a way (registration / call back / continue).
     cn_state = state.dialog.cannot_now_state
     if cn_state == "asked" and user_input:
-        from ...dialog_registry import clear as _q_clear
-        from ...dialog_registry import register as _q_register
+        from ..question import clear as _q_clear
+        from ..question import register as _q_register
 
         state.dialog.cannot_now_state = None
         _q_clear(state, rt, "cannot_now_clarify")
@@ -167,7 +167,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
             "dialog.cannot_now_resume", None, directive=True
         )  # explained otherwise — continue the path (content already ingested)
     if cn_state == "offered" and user_input:
-        from ...dialog_registry import clear as _q_clear
+        from ..question import clear as _q_clear
 
         state.dialog.cannot_now_state = None
         state.dialog.cannot_now_done = True
@@ -206,11 +206,11 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         and not state.ticket.stage
         and user_input
     ):
-        from ...dialog_registry import pack_owns_cannot_now as _pack_cn
         from ...perceive.detectors import detect_cannot_now as _dcn
+        from ..question import pack_owns_cannot_now as _pack_cn
 
         if _dcn(user_input) and not _pack_cn(state, rt):
-            from ...dialog_registry import register as _q_register
+            from ..question import register as _q_register
 
             state.dialog.cannot_now_state = "asked"
             _q_register(state, rt, "safety", "cannot_now_clarify")
@@ -442,7 +442,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
             parts.append(phrase("identification.echo_address", address=s.identity.customer_address))
             parts.append(phrase("identification.checking_note"))
         state.identity.just_identified = False
-        from ...dialog_registry import register as _q_register
+        from ..question import register as _q_register
 
         _q_register(state, rt, "ident", "caller_name")
         parts.append(caller_question())

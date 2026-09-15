@@ -37,7 +37,7 @@ def question_priority_hold(state: Any, rt: Any, user_input: str | None) -> bool:
     step's answer — live P6: "Ne patogu" + an address question in one turn
     had the walker start a ticket over the safety ladder. The content is not
     lost: the evidence ingest still reads facts; the walker just holds."""
-    from ..dialog_registry import OWNER_PRIORITY, active
+    from .question import OWNER_PRIORITY, active
 
     q = active(state, rt)
     if q is not None and OWNER_PRIORITY.get(q.owner, 99) < OWNER_PRIORITY["walker"]:

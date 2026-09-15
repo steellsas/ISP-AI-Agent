@@ -182,8 +182,8 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
         return None
     # B-wave switch (2026-09-08): a higher-priority open question (safety/
     # ident/ticket) owns the turn — the solver waits like the walker does.
-    from .dialog_registry import OWNER_PRIORITY
-    from .dialog_registry import active as _q_active
+    from .decide.question import OWNER_PRIORITY
+    from .decide.question import active as _q_active
 
     _q = _q_active(state, rt)
     if _q is not None and OWNER_PRIORITY.get(_q.owner, 99) < OWNER_PRIORITY["walker"]:
@@ -606,7 +606,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
             goto_step(state, rt, r, target)
             r["asked"] = True  # the verify question goes out in THIS reply
             r["asked_at"] = len(state.messages) + 1
-            from .dialog_registry import register as _q_register
+            from .decide.question import register as _q_register
 
             _q_register(state, rt, "walker", f"step:{target}")
             rt.tracer.emit(

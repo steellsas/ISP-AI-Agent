@@ -69,9 +69,9 @@ def reopen_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     # the turn. An unclear answer does NOT burn the question — one re-ask,
     # only then written off as "stay with the current address".
     if state.identity.reopen_confirm_utterance is not None and state.identity.reopen_confirm_asked:
-        from ...dialog_registry import clear as _q_clear
         from ...identification_flow import _looks_like_address
         from ...perceive.detectors import DETECTORS
+        from ..question import clear as _q_clear
 
         pending = state.identity.reopen_confirm_utterance
         verdict = DETECTORS["yes_no"](user_input)
@@ -143,13 +143,13 @@ def cannot_now_shield(state: Any, rt: Any, user_input: str) -> bool:
         and state.dialog.cannot_now_state is None
         and not state.dialog.cannot_now_done
     ):
-        from ...dialog_registry import pack_owns_cannot_now
         from ...perceive.detectors import detect_cannot_now as _dcn_head
+        from ..question import pack_owns_cannot_now
 
         # P-C: an ability_check/locate_device/homework step's question IS the pack's
         # own cannot-now handling — the shield stands down, the walker routes.
         if _dcn_head(user_input) and not pack_owns_cannot_now(state, rt):
-            from ...dialog_registry import register as _q_register
+            from ..question import register as _q_register
 
             _q_register(state, rt, "safety", "cannot_now")  # priority shield this turn
             rt.tracer.emit("decision", intent="cannot_now", action="shield")
@@ -173,7 +173,7 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
         # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the
         # homework step a farewell IS the consent — the walker routes it
         # to the callback terminal; the end-confirm must not intercept.
-        from ...dialog_registry import active as _q_act
+        from ..question import active as _q_act
 
         _qa = _q_act(state, rt)
         from ...faults import role_of
@@ -227,7 +227,7 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
                 "caller_intro", name=s.identity.caller_name, relation=s.identity.caller_relation
             )
             # B-wave registry: the caller-name question just got its answer.
-            from ...dialog_registry import clear as _q_clear
+            from ..question import clear as _q_clear
 
             _q_clear(state, rt, "caller_name")
             # №4 (reference dialogue 2026-09-03): the caller claims to be the HOLDER,

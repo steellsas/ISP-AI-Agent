@@ -321,7 +321,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
             _note_fact_meaning(state, rt, key, str(value))
             # B-wave registry: the asked evidence question just got its
             # answer — close it (a different key's fact leaves it open).
-            from ..dialog_registry import clear as _q_clear
+            from ..decide.question import clear as _q_clear
 
             _q_clear(state, rt, f"evidence:{key}")
     # Reader disagreements land SECOND: on a fresh key this flags the

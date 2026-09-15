@@ -1,41 +1,23 @@
 """
-Question registry — the B-wave foundation (Andrius 2026-09-07): a universal
-dialogue engine where the LAST question asked has ONE owner, and every caller
-turn is first read against THAT question (answered / partial / unclear ->
-clarify / deviation -> return to the path).
+The active question — the last question asked has ONE owner, and every caller turn is
+first read against it (answered / partial / unclear -> clarify / deviation -> return to
+the path). Question owners register it, readers close it; the decide rules read it for
+precedence (safety > identification > ticket > procedure).
 
-Step 1 (shadow): the registry MIRRORS reality — question owners fill it,
-readers clear it, and the trace shows `question` events. It does not change
-behavior yet: routing still runs on the existing flags
-(identity.reopen_confirm_utterance, dialog.cannot_now_state, ticket.stage...). Steps 2-4
-migrate the identification, ticket and walker questions one owner at a time
-until the registry becomes the single routing source and the priority judge
-(safety > active clarification > stage owner > side topic).
-
-Owners: "safety" (reopen_confirm, cannot_now...), "ident" (address,
-apartment, name, account code), "ticket" (phone, hours), "walker"
-(evidence/steps).
+Owners: "safety" (reopen_confirm, cannot_now...), "ident" (address, apartment, name,
+account code), "ticket" (phone, hours), "walker" (the procedure's evidence and steps).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from ..graph_v2.state import ActiveQuestion
 
 # Priority order for a multi-signal turn (live P6 2026-09-07: "negaliu
 # dabar" + "ne namuose" + an address question in ONE turn) — the lower
 # number wins.
 OWNER_PRIORITY = {"safety": 0, "ident": 1, "ticket": 2, "walker": 3}
-
-
-class ActiveQuestion(BaseModel):
-    """One asked question: who asked, what for, and which attempt this is."""
-
-    owner: str  # "safety" | "ident" | "ticket" | "walker"
-    key: str  # e.g. "reopen_confirm", "cannot_now_clarify", "ticket_phone"
-    asks: int = 1  # attempt count for the SAME question (clarify limit)
-    data: dict[str, Any] = Field(default_factory=dict)  # owner context
 
 
 def register(state: Any, rt: Any, owner: str, key: str, **data: Any) -> ActiveQuestion:
@@ -73,7 +55,7 @@ def pack_owns_cannot_now(state: Any, rt: Any) -> bool:
     now?"). While such a step's question is active, the generic cannot-now
     ladder and its head shield stand down — the walker routes the answer per
     the pack file."""
-    from .faults import CANNOT_NOW_ROLES, role_of
+    from ..faults import CANNOT_NOW_ROLES, role_of
 
     q = state.dialog.active_question
     if q is None or not q.key.startswith("step:"):

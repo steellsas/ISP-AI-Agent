@@ -70,7 +70,7 @@ def run_analyst(state: Any, rt: Any) -> list[str] | None:
         # C wave (2026-09-08): the analyst sees the QUESTION REGISTRY's active
         # entry — the deterministic "what we are asking right now" — so the
         # type-5 deviation note compares reality against the plan.
-        from .dialog_registry import active as _q_active
+        from .decide.question import active as _q_active
 
         q = _q_active(state, rt)
         # Damping (live 2026-09-08): a question asked THIS turn has no answer

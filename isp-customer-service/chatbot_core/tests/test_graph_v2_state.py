@@ -119,9 +119,9 @@ class TestCheckpointSerde:
     serializer as the same model — not a plain dict, not a blocked type."""
 
     def test_state_models_round_trip_through_the_checkpoint_serializer(self, tmp_path):
-        from agent.dialog_registry import ActiveQuestion
         from agent.evidence import Contradiction
         from agent.graph_v2.checkpoint import make_checkpointer
+        from agent.graph_v2.state import ActiveQuestion
 
         serde = make_checkpointer(tmp_path / "cp.sqlite").serde
         state = _populated()

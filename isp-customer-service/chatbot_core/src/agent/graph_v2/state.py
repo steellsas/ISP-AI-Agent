@@ -22,9 +22,17 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..config import AgentConfig
-from ..dialog_registry import ActiveQuestion
 from ..evidence import Contradiction
 from ..slots import ClientProfileState
+
+
+class ActiveQuestion(BaseModel):
+    """One asked question: who asked, what for, and which attempt this is."""
+
+    owner: str  # "safety" | "ident" | "ticket" | "walker"
+    key: str  # e.g. "reopen_confirm", "cannot_now_clarify", "ticket_phone"
+    asks: int = 1  # attempt count for the SAME question (clarify limit)
+    data: dict[str, Any] = Field(default_factory=dict)  # owner context
 
 
 class IdentityState(BaseModel):
@@ -251,7 +259,7 @@ class DialogState(BaseModel):
     last_intent: str = ""
     turn_count: int = 0
     max_turns: int = AgentConfig.max_turns
-    # The ONE question that owns the next caller turn (agent/dialog_registry.py).
+    # The ONE question that owns the next caller turn (agent/decide/question.py).
     active_question: ActiveQuestion | None = None
     # A farewell mid-process: the confirm question is out.
     end_confirm_pending: bool = False
