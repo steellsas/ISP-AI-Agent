@@ -1146,3 +1146,11 @@ problem_triggers_internet_slow: ["lėtas", "lėtai", "lėta", "stringa", "lūži
 problem_triggers_tv: ["televizij", "televizor", " tv", "kanalai", "kanalų"]
 problem_triggers_internet_down: ["internet", "ryši", "ryšys", "neveikia", "nėra interneto", "wifi", "wi-fi"]
 problem_triggers_billing: ["sąskait", "saskait", "mokė", "skola", "kaina", "tarif"]
+
+# --- knowledge/faq.yaml: side-topic keywords -----------------------------------
+
+faq_keywords_price: ["kainuo", "kaina", "mokam", "mokėti", "moketi", "sumokė", "apmokestin"]
+faq_keywords_debt_amount: ["skol", "sąskait", "saskait", "suma"]
+faq_keywords_duration: ["užtruks", "uztruks", "ilgai", "greitai sutvarky"]
+faq_keywords_technician: ["meistr", "technik", "atvažiuo", "atvaziuo", "vizit"]
+faq_keywords_working_hours: ["darbo laik", "kada dirbat", "iki keliu", "iki kelių"]

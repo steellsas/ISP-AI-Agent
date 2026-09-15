@@ -1,6 +1,6 @@
 """
 Informavimo paketai (uždarymo banga, Andrius 2026-09-08): inform verdiktų
-kalba iš knowledge/informavimas.yaml — skolos detalės (suma, mėnesiai,
+kalba iš knowledge/inform.yaml — skolos detalės (suma, mėnesiai,
 paskutinis mokėjimas) iš invoices lentelės; sakinys be duomenų IŠMETAMAS,
 be jokių — fallback. „Pokalbis visuomet baigiasi aiškumu."
 """
@@ -39,7 +39,7 @@ class TestBillingDebtSignal:
 
 class TestInformTemplates:
     def test_billing_template_speaks_details(self, db_connection):
-        from agent.informavimas import inform_text
+        from agent.inform import inform_text
 
         agent = _agent()
         agent.state.diagnosis.verdicts["network"] = {
@@ -60,7 +60,7 @@ class TestInformTemplates:
 
     def test_missing_data_drops_sentences_no_lies(self, db_connection):
         """Nėra paskutinio mokėjimo — TAS sakinys išmetamas, kiti lieka."""
-        from agent.informavimas import inform_text
+        from agent.inform import inform_text
 
         agent = _agent()
         agent.state.diagnosis.verdicts["network"] = {
@@ -72,7 +72,7 @@ class TestInformTemplates:
         assert "mokėjimas" not in t  # be duomens — be sakinio
 
     def test_no_data_falls_back(self, db_connection):
-        from agent.informavimas import inform_text
+        from agent.inform import inform_text
 
         agent = _agent()
         agent.state.diagnosis.verdicts["network"] = {"reason": "billing_suspended", "signals": {}}
@@ -80,7 +80,7 @@ class TestInformTemplates:
         assert t and "Apmokėjus sąskaitą" in t  # fallback, ne tuščios skylės
 
     def test_unknown_reason_returns_none(self, db_connection):
-        from agent.informavimas import inform_text
+        from agent.inform import inform_text
 
         agent = _agent()
         assert inform_text(agent.state, agent.runtime, "router_hung") is None
@@ -220,7 +220,7 @@ class TestDebtSignalsReachState:
         )
         sig = agent.state.diagnosis.verdicts["network"]["signals"]
         assert sig and sig["billing_debt"]["amount"] == 49.98
-        from agent.informavimas import inform_text
+        from agent.inform import inform_text
 
         t = inform_text(agent.state, agent.runtime, "billing_suspended")
         assert t and "49 eurai 98 centai" in t
@@ -310,7 +310,7 @@ class TestCannotNowHearing:
 
     def test_double_dot_collapsed(self, db_connection):
         """N4: „birželio 5 d.." → vienas taškas."""
-        from agent.informavimas import inform_text
+        from agent.inform import inform_text
 
         agent = _agent()
         agent.state.diagnosis.verdicts["network"] = {
@@ -400,7 +400,7 @@ class TestNodeFaultInform:
     kalba (be placeholder'ių), variklis pats sukuria tiketą prieš žodžius."""
 
     def test_static_templates_speak(self, db_connection):
-        from agent.informavimas import inform_text
+        from agent.inform import inform_text
 
         a = _agent()
         t = inform_text(a.state, a.runtime, "node_fault_unregistered")

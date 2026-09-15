@@ -98,7 +98,7 @@ def _closing(state: Any, rt: Any, user_input: str | None) -> str:
                 intent="ticket_amend",
                 action="phone_noted" if noted else "note_failed",
             )
-            reply = phrase("identification.ticket_phone_fixed", nr=fmt_phone(nr))
+            reply = phrase("identification.ticket_phone_fixed", phone=fmt_phone(nr))
             speak_scripted(state, rt, CLOSING, user_input, reply)
             return reply
         if s.intake.secondary_problems and not state.closing.secondary_problems_asked:

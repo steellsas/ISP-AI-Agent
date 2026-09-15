@@ -45,8 +45,8 @@ def revive_gave_up_key(state: Any, rt: Any, spec: dict) -> str | None:
         rt.tracer.emit("evidence", action="revive_ask", key=key)
         return phrase(
             "identification.reask_reason",
-            tema=phrase_or(f"evidence.label.{key}", key),
-            klausimas=str(maybe_phrase(item.get("clarify_key") or item.get("question_key")) or ""),
+            topic=phrase_or(f"evidence.label.{key}", key),
+            question=str(maybe_phrase(item.get("clarify_key") or item.get("question_key")) or ""),
         )
     return None
 
@@ -82,7 +82,7 @@ def maybe_facts_recap(state: Any, rt: Any) -> str | None:
         return None  # the narrator speaks the recap
     state.diagnosis.facts_recap_state = "pending"
     rt.tracer.emit("decision", intent="facts_recap", action="ask")
-    return phrase("identification.facts_recap", faktai=faktai)
+    return phrase("identification.facts_recap", facts=faktai)
 
 
 def refuting_client_fact(state: Any, rt: Any, spec: dict) -> tuple[str, str] | None:
@@ -123,8 +123,8 @@ def maybe_refute_confirm(state: Any, rt: Any, spec: dict) -> str | None:
     rt.tracer.emit("decision", intent="refute_confirm", action="ask", key=key)
     return phrase(
         "identification.refute_confirm",
-        tema=phrase_or(f"evidence.label.{key}", key),
-        reiksme=phrase_or(f"evidence.value.{value}", value),
+        topic=phrase_or(f"evidence.label.{key}", key),
+        value=phrase_or(f"evidence.value.{value}", value),
     )
 
 
@@ -161,7 +161,7 @@ def negation_clarify_reply(state: Any, rt: Any, key: str) -> str | None:
         maybe_phrase(item.get("clarify_key"))
         or phrase(
             "identification.negation_clarify",
-            klausimas=str(maybe_phrase(item.get("question_key")) or ""),
+            question=str(maybe_phrase(item.get("question_key")) or ""),
         )
     ).strip()
 
@@ -220,8 +220,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         rt.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.key)
         return _phrase(
             "identification.refute_confirm",
-            tema=phrase_or(f"evidence.label.{fc.key}", fc.key),
-            reiksme=phrase_or(f"evidence.value.{fc.value}", fc.value),
+            topic=phrase_or(f"evidence.label.{fc.key}", fc.key),
+            value=phrase_or(f"evidence.value.{fc.value}", fc.value),
         )
     # Captured BEFORE any new ask below overwrites it: was a question already
     # out when the caller spoke? Needed for the bare-"ne" clarify.
@@ -298,9 +298,9 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             announce = (
                 phrase(
                     "identification.findings_announce",
-                    faktai=faktai_lt,
-                    priezastis=isvada,
-                    sprendimai=" ARBA ".join(sprendimai) if sprendimai else "—",
+                    facts=faktai_lt,
+                    reason=isvada,
+                    solutions=" ARBA ".join(sprendimai) if sprendimai else "—",
                 )
                 + " "
             )
@@ -449,8 +449,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
 
         text = phrase(
             "identification.reask_reason",
-            tema=phrase_or(f"evidence.label.{key}", key),
-            klausimas=str(text),
+            topic=phrase_or(f"evidence.label.{key}", key),
+            question=str(text),
         )
     # Bare "Ne." to THIS key's open question: the no has no object — clarify
     # what is denied instead of re-asking the same words (live 2026-08-11).
@@ -462,7 +462,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
 
             text = maybe_phrase(item.get("clarify_key")) or phrase(
                 "identification.negation_clarify",
-                klausimas=str(maybe_phrase(item.get("question_key")) or ""),
+                question=str(maybe_phrase(item.get("question_key")) or ""),
             )
             rt.tracer.emit("evidence", action="negation_clarify", key=key)
         # DONE-report without a result ("Mhm, patikrinau") — acknowledge the
@@ -473,7 +473,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             state.turn.done_report_key = None
             text = phrase(
                 "identification.done_report_clarify",
-                klausimas=str(
+                question=str(
                     maybe_phrase(item.get("ask_result_key") or item.get("question_key")) or ""
                 ),
             )

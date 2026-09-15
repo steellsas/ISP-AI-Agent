@@ -17,7 +17,7 @@ def _write(root, language, text):
 
 
 def test_phrase_renders_placeholders():
-    text = locale.phrase("identification.echo_address", adresas="Vilniaus g. 29")
+    text = locale.phrase("identification.echo_address", address="Vilniaus g. 29")
     assert text == "Supratau — Vilniaus g. 29."
 
 
@@ -27,13 +27,13 @@ def test_missing_key_fails_loudly():
 
 
 def test_unfilled_placeholder_keeps_the_template():
-    assert locale.phrase("identification.echo_address", wrong="x") == "Supratau — {adresas}."
+    assert locale.phrase("identification.echo_address", wrong="x") == "Supratau — {address}."
 
 
 def test_another_language_needs_no_code_change(tmp_path):
-    root = _write(tmp_path, "xx", "identification:\n  echo_address: 'Got it — {adresas}.'\n")
+    root = _write(tmp_path, "xx", "identification:\n  echo_address: 'Got it — {address}.'\n")
     xx = load_locale("xx", root)
-    assert xx.phrase("identification.echo_address", adresas="Main St 1") == "Got it — Main St 1."
+    assert xx.phrase("identification.echo_address", address="Main St 1") == "Got it — Main St 1."
     assert not xx.has("identification.ask_problem")
 
 

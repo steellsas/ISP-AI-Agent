@@ -41,8 +41,10 @@ class TestFileEdits:
         _reload_with(
             tmp_path,
             monkeypatch,
-            "detectors:\n  yes_no:\n    'yes': mano nauja reikšmė\n    'no': ne\n",
+            "detectors:\n  yes_no:\n    'yes': detector.lights.yes\n    'no': detector.yes_no.no\n",
         )
-        assert det.glosses("yes_no")["yes"] == "mano nauja reikšmė"
+        from agent.contract.locale import phrase
+
+        assert det.glosses("yes_no")["yes"] == phrase("detector.lights.yes")
         assert det.glosses("instruct_done") == {}  # no code copy behind the file
         det.reload()

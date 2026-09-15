@@ -1,14 +1,9 @@
-# Universal detector glosses — DECLARATIVE perception meanings (Phase 3.11).
-#
-# WHAT the caller's answers MEAN for each detector TYPE, in plain Lithuanian, handed
-# to the LLM step-classifier as the option definitions. Priority when classifying a
-# step: the step's own `answers:` in faults.yaml (most specific) → THIS file (the
-# detector's universal meaning) → the code defaults (fallback of last resort).
-#
-# Refining how the agent UNDERSTANDS callers is an edit HERE (or in a step's
-# `answers:`), never in code. The code keeps only the MECHANISM: hold on unclear,
-# the done-over-waiting veto hierarchy, carry-through, bailout — those guarantees
-# do not change when flows are added or reworded.
+# Universal detector meanings (Phase 3.11): WHAT the caller's answers mean for each
+# detector TYPE, handed to the LLM step classifier as the option definitions.
+# Priority when classifying a step: the step's own `answers:` in the pack (most
+# specific) → THIS file (the detector's universal meaning). The wording lives in the
+# locale (detector.<name>.<key>); refining how the agent UNDERSTANDS callers is a
+# locale/file edit, never code. The code keeps only the MECHANISM.
 #
 # Editing rules of thumb (learned from live calls):
 #   - Spell out negation garbles: STT mangles "nedega" into "nede"/"neda" — a "ne-"
@@ -19,48 +14,34 @@
 
 detectors:
   yes_no:
-    'yes': sutinka / patvirtina / taip
-    'no': atsisako / neigia / ne
-
+    "yes": "detector.yes_no.yes"
+    "no": "detector.yes_no.no"
   lights:
-    'yes': AIŠKIAI sako, kad dega / šviečia / mirksi bent viena lemputė — be jokio neiginio
-    'no': sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-" šaknimi —
-      „nede", „neda" — neiginys visada reiškia NEDEGA)
-
+    "yes": "detector.lights.yes"
+    "no": "detector.lights.no"
   restored:
-    'yes': internetas dabar veikia / atsirado
-    'no': internetas vis dar neveikia
-
+    "yes": "detector.restored.yes"
+    "no": "detector.restored.no"
   reboot_check:
-    'yes': po perkrovimo internetas atsistatė — lemputė MIRKSI ir/ar puslapis atsidaro
-    'no': po perkrovimo vis dar neveikia — lemputė nemirksi / dega pastoviai / puslapis neatsidaro
-
+    "yes": "detector.reboot_check.yes"
+    "no": "detector.reboot_check.no"
   scope:
-    all: sako, kad internetas neveikia VISUOSE įrenginiuose
-    one: sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame
-    phone: AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')
-    computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
-
+    all: "detector.scope.all"
+    one: "detector.scope.one"
+    phone: "detector.scope.phone"
+    computer: "detector.scope.computer"
   conn:
-    wifi: įrenginys jungiasi per WiFi (bevielį)
-    wired: įrenginys jungiasi laidu
-
+    wifi: "detector.conn.wifi"
+    wired: "detector.conn.wired"
   port:
-    wan: kabelis įkištas į interneto (WAN) lizdą
-    lan: kabelis įkištas į kitą (LAN) lizdą
-
+    wan: "detector.port.wan"
+    lan: "detector.port.lan"
   have_device:
-    'yes': klientas turi kompiuterį arba kitą routerį
-    'no': klientas neturi jokio kito įrenginio
-
+    "yes": "detector.have_device.yes"
+    "no": "detector.have_device.no"
   instruct_done:
-    done: klientas atliko / jau padarė tai, ko buvo prašyta, ARBA praneša REZULTATĄ po
-      veiksmo ('įkišau', 'ryšys yra, bet interneto nėra', 'vis tiek neveikia') — rezultato
-      pranešimas reiškia, kad veiksmas atliktas
-    waiting: klientas dar daro, ruošiasi, ką tik pradėjo, klausia KAIP atlikti, arba
-      nesupranta instrukcijos
-
+    done: "detector.instruct_done.done"
+    waiting: "detector.instruct_done.waiting"
   ticket_consent:
-    'yes': sutinka, kad užregistruotume gedimą (pritaria, sako gerai/tinka, arba laukia
-      skambučio — 'lauksiu skambučio' irgi yra sutikimas)
-    'no': AIŠKIAI atsisako registracijos — NE šiaip nerišlus atsakymas
+    "yes": "detector.ticket_consent.yes"
+    "no": "detector.ticket_consent.no"

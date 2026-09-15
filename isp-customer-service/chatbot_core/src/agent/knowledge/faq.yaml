@@ -1,22 +1,23 @@
-# ŽINOMI ATSAKYMAI šalutiniams klausimams (side_topic node, 2026-08-07).
-# Nauja tema = naujas įrašas ČIA, ne kodas. `raktazodziai` — substring match
-# (mažosiomis) prieš kliento frazę; sutapus, `atsakymas` paduodamas LLM'ui kaip
-# VIENINTELIS leidžiamas turinys tuo klausimu. Nesutapus niekam — agentas
-# mandagiai pasako, kad tai ne jo sritis, ir grįžta prie gedimo.
+# KNOWN ANSWERS to side-topic questions (side_topic node, 2026-08-07).
+# A new topic = a new entry HERE (plus its locale words and answer), not code.
+# `keywords_vocab` names a vocabulary list matched as lower-case substrings of the
+# caller's phrase; on a match the `answer_key` phrase is the ONLY content the LLM
+# may give on that question. No match — the agent politely says it is not its
+# area and returns to the fault.
 
 faq:
-  - tema: kaina
-    raktazodziai: [kainuo, kaina, mokam, mokėti, moketi, sumokė, apmokestin]
-    atsakymas: "faq.kaina"
-  - tema: skolos_suma
-    raktazodziai: [skol, sąskait, saskait, suma]
-    atsakymas: "faq.skolos_suma"
-  - tema: kiek_uztruks
-    raktazodziai: [užtruks, uztruks, ilgai, greitai sutvarky]
-    atsakymas: "faq.kiek_uztruks"
-  - tema: meistras
-    raktazodziai: [meistr, technik, atvažiuo, atvaziuo, vizit]
-    atsakymas: "faq.meistras"
-  - tema: darbo_laikas
-    raktazodziai: [darbo laik, kada dirbat, iki keliu, iki kelių]
-    atsakymas: "faq.darbo_laikas"
+  - topic: price
+    keywords_vocab: faq_keywords_price
+    answer_key: "faq.price"
+  - topic: debt_amount
+    keywords_vocab: faq_keywords_debt_amount
+    answer_key: "faq.debt_amount"
+  - topic: duration
+    keywords_vocab: faq_keywords_duration
+    answer_key: "faq.duration"
+  - topic: technician
+    keywords_vocab: faq_keywords_technician
+    answer_key: "faq.technician"
+  - topic: working_hours
+    keywords_vocab: faq_keywords_working_hours
+    answer_key: "faq.working_hours"

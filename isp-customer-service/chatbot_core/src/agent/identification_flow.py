@@ -716,9 +716,9 @@ def _lookup_by_code(state: Any, rt: Any, s: Any, code: str):
         # went out unregistered).
         from .dialog_registry import register as _q_register
 
-        _q_register(state, rt, "ident", "address_offer", adresas=adresas)
+        _q_register(state, rt, "ident", "address_offer", address=adresas)
         return _phrase(
-            "identification.account_code_echo_offer", kodas=_speak_code(code), adresas=adresas
+            "identification.account_code_echo_offer", code=_speak_code(code), address=adresas
         )
     # The address is OFFERED aloud for confirmation, never assumed.
     return _address_move(state, rt, s)
@@ -789,7 +789,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
                 "decision", intent="street_spell", action="matched", value=cand, prefix=prefix
             )
             return True, phrase(
-                "identification.spell_result", raides=" ".join(prefix.upper()), gatve=cand
+                "identification.spell_result", letters=" ".join(prefix.upper()), street=cand
             )
         rt.tracer.emit("decision", intent="street_spell", action="miss", prefix=prefix)
         state.identity.account_code_mode = True
@@ -811,7 +811,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
             from .dialog_registry import register as _q_register
 
             _q_register(state, rt, "ident", "account_code")
-            return True, phrase("identification.account_code_miss", kodas=_speak_code(code))
+            return True, phrase("identification.account_code_miss", code=_speak_code(code))
     if state.identity.account_code_mode:
         low = user_input.lower()
         explicit_no = any(m in low for m in vocab("no_account_code"))
@@ -1040,7 +1040,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             state.identity.reopen_reask_due = False  # the info answer replaces the re-ask
             rt.tracer.emit("decision", intent="address_info", action="disclose")
             return phrase(
-                "identification.current_address_info", adresas=s.identity.customer_address
+                "identification.current_address_info", address=s.identity.customer_address
             )
         if not s.identity.customer_id:
             # A-2R-b follow-up (live 2026-09-07): the question arrived MID
@@ -1051,7 +1051,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
             if p.street.value:
                 adr = f"{p.street.value} {p.house.value or ''}".strip()
                 rt.tracer.emit("decision", intent="address_info", action="progress")
-                return phrase("identification.ident_address_heard", adresas=adr)
+                return phrase("identification.ident_address_heard", address=adr)
             rt.tracer.emit("decision", intent="address_info", action="none_yet")
             return phrase("identification.ident_address_none")
     # This layer ASKS the address-change question; the ANSWER is read by
@@ -1061,19 +1061,19 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     if pending_reopen is not None:
         from .dialog_registry import register as _q_register
 
-        adresas = s.identity.customer_address or "dabartinio adreso"
+        adresas = s.identity.customer_address or phrase("identification.current_address_unknown")
         if not state.identity.reopen_confirm_asked:
             state.identity.reopen_confirm_asked = True
             state.identity.reopen_confirm_asks = 1
-            _q_register(state, rt, "safety", "reopen_confirm", adresas=adresas)
+            _q_register(state, rt, "safety", "reopen_confirm", address=adresas)
             rt.tracer.emit("decision", intent="reopen_confirm", action="ask")
-            return phrase("identification.reopen_confirm", adresas=adresas)
+            return phrase("identification.reopen_confirm", address=adresas)
         if state.identity.reopen_reask_due:
             state.identity.reopen_reask_due = False
             state.identity.reopen_confirm_asks = state.identity.reopen_confirm_asks + 1
-            _q_register(state, rt, "safety", "reopen_confirm", adresas=adresas)
+            _q_register(state, rt, "safety", "reopen_confirm", address=adresas)
             return phrase("identification.repeat_ack") + phrase(
-                "identification.reopen_confirm", adresas=adresas
+                "identification.reopen_confirm", address=adresas
             )
         return None  # the guards already read the answer; the narrator continues
 
@@ -1203,7 +1203,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         spec = spec_for((s.resolution.procedure or {}).get("verdict"))
         if spec is not None and hypothesis_status(s.diagnosis.evidence, spec) == "confirmed":
             return phrase("identification.solve_or_ticket")
-        return phrase("identification.back_to_issue", inkaras=anchor_text(state, rt))
+        return phrase("identification.back_to_issue", anchor=anchor_text(state, rt))
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
     if state.diagnosis.evidence_conflict:
@@ -1213,7 +1213,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         state.diagnosis.evidence_conflict_asked_key = key
         return phrase(
             "identification.evidence_conflict",
-            tema=phrase_or(f"evidence.label.{key}", key),
+            topic=phrase_or(f"evidence.label.{key}", key),
             a=phrase_or(f"evidence.value.{old}", old),
             b=phrase_or(f"evidence.value.{new}", new),
         )
@@ -1353,17 +1353,17 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         s.closing.case_closed = True
         s.closing.closed_reason = "outage" if s.diagnosis.outage_reported else "inform"
         s.closing.is_complete = True
-        # aiskumo_salyga (declared in informavimas.yaml): the inform template
+        # clarity requirements (declared in inform.yaml): the inform template
         # spoke all its elements before this close — trace it for the audits.
-        from .informavimas import clarity_declaration
+        from .inform import clarity_declaration
 
         _reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
-        _salyga = clarity_declaration(_reason)
-        if _salyga:
+        _required = clarity_declaration(_reason)
+        if _required:
             rt.tracer.emit(
                 "clarity",
                 reason=_reason,
-                salyga=_salyga,
+                required=_required,
                 told=state.diagnosis.news_delivered,
             )
         rt.tracer.emit("decision", intent="wrap_up", action="close", to=s.closing.closed_reason)
@@ -1377,7 +1377,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         # (live 2026-08-07: "nepasako, kad patikrins").
         parts = []
         if state.identity.just_identified and s.identity.customer_address:
-            parts.append(phrase("identification.echo_address", adresas=s.identity.customer_address))
+            parts.append(phrase("identification.echo_address", address=s.identity.customer_address))
             parts.append(phrase("identification.checking_note"))
         state.identity.just_identified = False
         from .dialog_registry import register as _q_register
@@ -1394,10 +1394,10 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     d = s.diagnosis.verdicts.get("network") or {}
     reason = d.get("reason")
     # Closing wave (2026-09-08): the inform SPEECH lives in
-    # knowledge/informavimas.yaml — the template carries the details (debt
+    # knowledge/inform.yaml — the template carries the details (debt
     # amount, months, last payment; outage place and ETA) and its own
     # "Patikrinau…" opening, so check_result/billing_extra are not repeated.
-    from .informavimas import inform_text
+    from .inform import inform_text
 
     inf = inform_text(state, rt, reason)
     if inf:
@@ -1418,7 +1418,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     zinia = zinia[0].upper() + zinia[1:]  # sentence-cased after "…iki jūsų buto."
     bits = [
         phrase("identification.thanks"),
-        phrase("identification.check_result", zinia=zinia + "."),
+        phrase("identification.check_result", news=zinia + "."),
     ]
     if verdict_flag(reason, "inform") == "debt":
         bits.append(phrase("identification.billing_extra"))
@@ -1449,11 +1449,11 @@ def _address_move(state, rt, s):
     if offer_phone_address() and c and c.get("street") and not s.identity.preflight_outage:
         flat = f", butas {c['apartment']}" if c.get("apartment") else ""
         adresas = f"{c['street']} {c.get('house')}{flat}"
-        kind, fallback = "address_offer", phrase("identification.address_offer", adresas=adresas)
+        kind, fallback = "address_offer", phrase("identification.address_offer", address=adresas)
     else:
         adresas = None
         kind, fallback = "address_ask", phrase("identification.address_ask")
-    _q_register(state, rt, "ident", kind, adresas=adresas)
+    _q_register(state, rt, "ident", kind, address=adresas)
     if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on":
         state.turn.directives.ident = {
             "kind": kind,

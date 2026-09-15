@@ -182,9 +182,9 @@ class Detectors(_Model):
 
 
 class FaqEntry(_Model):
-    tema: str
-    raktazodziai: list[str]
-    atsakymas: str
+    topic: str
+    keywords_vocab: str
+    answer_key: str
 
 
 class Faq(_Model):
@@ -192,14 +192,16 @@ class Faq(_Model):
 
 
 class InformEntry(_Model):
-    sakoma: str
-    fallback: str | None = None
-    aiskumo_salyga: list[
-        Literal["kas_negerai", "ka_daryti", "kas_daroma", "kada_atsistatys", "kaip_suzinos"]
+    template_key: str
+    fallback_key: str | None = None
+    clarity_requirements: list[
+        Literal[
+            "what_is_wrong", "what_to_do", "what_is_being_done", "when_restored", "how_notified"
+        ]
     ] = []
 
 
-class Informavimas(RootModel[dict[str, InformEntry]]):
+class Inform(RootModel[dict[str, InformEntry]]):
     pass
 
 
@@ -246,7 +248,7 @@ class Knowledge:
     modules: dict[str, Module] = field(default_factory=dict)
     detectors: Detectors | None = None
     faq: Faq | None = None
-    informavimas: Informavimas | None = None
+    inform: Inform | None = None
     identification: Identification | None = None
     verdicts: Verdicts | None = None
 
@@ -474,11 +476,15 @@ def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
             add(f"faults.yaml: problems.{name}.boundary_reply_key", problem.boundary_reply_key)
     if k.faq:
         for i, entry in enumerate(k.faq.faq):
-            add(f"faq.yaml: faq.{i}.atsakymas", entry.atsakymas)
-    if k.informavimas:
-        for verdict, entry in k.informavimas.root.items():
-            add(f"informavimas.yaml: {verdict}.sakoma", entry.sakoma)
-            add(f"informavimas.yaml: {verdict}.fallback", entry.fallback)
+            add(f"faq.yaml: faq.{i}.answer_key", entry.answer_key)
+    if k.inform:
+        for verdict, entry in k.inform.root.items():
+            add(f"inform.yaml: {verdict}.template_key", entry.template_key)
+            add(f"inform.yaml: {verdict}.fallback_key", entry.fallback_key)
+    if k.detectors:
+        for name, options in k.detectors.detectors.items():
+            for key, phrase_key in options.items():
+                add(f"detectors.yaml: {name}.{key}", phrase_key)
     if k.identification:
         for name in k.identification.identification.extra_questions:
             add("identification.yaml: extra_questions", f"identification.questions.{name}")
@@ -503,7 +509,7 @@ def validate_knowledge(
         "manifest": ("faults.yaml", FaultsManifest),
         "detectors": ("detectors.yaml", Detectors),
         "faq": ("faq.yaml", Faq),
-        "informavimas": ("informavimas.yaml", Informavimas),
+        "inform": ("inform.yaml", Inform),
         "identification": ("identification.yaml", Identification),
         "verdicts": ("verdicts.yaml", Verdicts),
     }
@@ -554,6 +560,11 @@ def validate_knowledge(
                 errors.append(f"{where}: phrase '{key}' is missing in locale '{language}'")
         from .locale import _examples, example_refs
 
+        for i, entry in enumerate(k.faq.faq if k.faq else []):
+            if not isinstance(locale.vocabulary.get(entry.keywords_vocab), tuple):
+                errors.append(
+                    f"faq.yaml: faq.{i}.keywords_vocab '{entry.keywords_vocab}' is not a vocabulary list"
+                )
         for name, problem in (k.manifest.problems if k.manifest else {}).items():
             if problem.triggers_vocab and not isinstance(
                 locale.vocabulary.get(problem.triggers_vocab), tuple

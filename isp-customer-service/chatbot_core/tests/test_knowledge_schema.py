@@ -187,11 +187,9 @@ def test_every_vocabulary_name_in_code_exists_with_its_type():
         if not isinstance(vocabulary.get(name), kinds[func])
     ]
     assert wrong == []
-    from_knowledge = {
-        problem.triggers_vocab
-        for problem in validate_knowledge().manifest.problems.values()
-        if problem.triggers_vocab
-    }
+    k = validate_knowledge()
+    from_knowledge = {p.triggers_vocab for p in k.manifest.problems.values() if p.triggers_vocab}
+    from_knowledge |= {entry.keywords_vocab for entry in k.faq.faq}
     unused = sorted(set(vocabulary) - {name for _w, _f, name in uses} - from_knowledge)
     assert unused == []
 

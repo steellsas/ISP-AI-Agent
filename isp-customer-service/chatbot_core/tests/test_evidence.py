@@ -179,7 +179,7 @@ class TestAgentWiring:
         )
         assert reply == phrase(
             "identification.evidence_conflict",
-            tema="ar turite kompiuterį",
+            topic="ar turite kompiuterį",
             a="neturite",
             b="turite",
         )

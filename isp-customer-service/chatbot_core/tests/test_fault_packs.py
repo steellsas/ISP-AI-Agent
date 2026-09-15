@@ -322,7 +322,7 @@ class TestNarratorFindings:
     def test_reask_phrase_has_no_internal_labels(self):
         from agent.contract.locale import phrase
 
-        text = phrase("identification.reask_reason", tema="routeris surastas", klausimas="Radote?")
+        text = phrase("identification.reask_reason", topic="routeris surastas", question="Radote?")
         assert "routeris surastas" not in text and "Radote?" in text
 
     def test_phone_echo_is_consent(self, monkeypatch):
@@ -805,7 +805,7 @@ class TestIdentificationF:
             phrase("identification.address_ask")
             == "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?"
         )
-        assert "patikrinsiu ryšį" in phrase("identification.address_offer", adresas="X")
+        assert "patikrinsiu ryšį" in phrase("identification.address_offer", address="X")
 
 
 class TestTicketDirectives:

@@ -1324,7 +1324,7 @@ class TestSideTopicNode:
         reply = identification_scripted_reply(agent.state, agent.runtime, "O kur jūsų ofisas?")
         assert reply == phrase(
             "identification.back_to_issue",
-            inkaras="Pažiūrėkite, ar ant routerio dega bent viena lemputė.",
+            anchor="Pažiūrėkite, ar ant routerio dega bent viena lemputė.",
         )
 
     def test_third_deviation_with_confirmed_hypothesis_offers_choice(

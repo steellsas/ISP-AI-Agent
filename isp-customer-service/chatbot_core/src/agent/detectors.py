@@ -46,7 +46,9 @@ def _load() -> dict[str, dict[str, str]]:
 
 def glosses(detector: str) -> dict[str, str]:
     """The universal answer meanings for a detector type ({} when undeclared)."""
-    return _load().get(detector) or {}
+    from .contract.locale import phrase
+
+    return {key: phrase(text) for key, text in (_load().get(detector) or {}).items()}
 
 
 def reload() -> None:

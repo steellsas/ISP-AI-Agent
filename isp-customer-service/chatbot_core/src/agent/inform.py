@@ -1,6 +1,6 @@
 """
 Inform packages (closing wave, Andrius 2026-09-08): what the caller HEARS on
-an inform verdict (debt, outage) lives in knowledge/informavimas.yaml — a
+an inform verdict (debt, outage) lives in knowledge/inform.yaml — a
 file edit, not code. This module is only the mechanics: load the catalog,
 build the placeholder values from the diagnose signals, and render the
 template with the drop-a-sentence rule (a sentence whose placeholder has no
@@ -27,10 +27,10 @@ def _catalog() -> dict:
         try:
             import yaml
 
-            path = Path(__file__).parent / "knowledge" / "informavimas.yaml"
+            path = Path(__file__).parent / "knowledge" / "inform.yaml"
             _CATALOG = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except Exception:  # pragma: no cover - a missing file just disables templates
-            logger.warning("informavimas.yaml load failed", exc_info=True)
+            logger.warning("inform.yaml load failed", exc_info=True)
             _CATALOG = {}
     return _CATALOG
 
@@ -46,17 +46,17 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
     if kind == "debt":
         debt = signals.get("billing_debt") or {}
         if debt.get("amount"):
-            vals["suma"] = lang().money(float(debt["amount"]))
+            vals["amount"] = lang().money(float(debt["amount"]))
         m = lang().months(debt.get("months") or [])
         if m:
-            vals["menesiai"] = m
+            vals["months"] = m
         lp = lang().date(debt.get("last_payment"))
         if lp:
-            vals["pask_mokejimas"] = lp
+            vals["last_payment"] = lp
     elif kind == "outage":
         incident = signals.get("incident") or {}
         if incident.get("description"):
-            vals["vieta"] = str(incident["description"])
+            vals["location"] = str(incident["description"])
         eta = str(incident.get("estimated_resolution") or "")
         if len(eta) >= 16:
             vals["eta"] = eta[11:16]  # HH:MM, voice-friendly
@@ -66,16 +66,17 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
 
 
 def clarity_declaration(reason: str | None) -> list[str] | None:
-    """The declared aiskumo_salyga for a verdict — what the caller must know
-    before the goodbye (kas_negerai / ka_daryti / kas_daroma / kada_atsistatys).
+    """The declared clarity requirements for a verdict — what the caller must
+    know before the goodbye (what_is_wrong / what_to_do / what_is_being_done /
+    when_restored / how_notified).
     The wrap-up traces it on close; block-2+ enforcement reads it."""
     if not reason:
         return None
     entry = _catalog().get(reason)
     if not isinstance(entry, dict):
         return None
-    salyga = entry.get("aiskumo_salyga")
-    return list(salyga) if isinstance(salyga, list) else None
+    required = entry.get("clarity_requirements")
+    return list(required) if isinstance(required, list) else None
 
 
 def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
@@ -86,12 +87,12 @@ def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
     if not reason:
         return None
     entry = _catalog().get(reason)
-    if not isinstance(entry, dict) or not entry.get("sakoma"):
+    if not isinstance(entry, dict) or not entry.get("template_key"):
         return None
     from .contract.locale import template
 
     vals = _values(state, rt, reason)
-    sentences = re.split(r"(?<=[.!?])\s+", template(entry["sakoma"]).strip())
+    sentences = re.split(r"(?<=[.!?])\s+", template(entry["template_key"]).strip())
     kept: list[str] = []
     data_sentences = 0
     placeholder_sentences = 0
@@ -107,7 +108,7 @@ def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
     # The fallback kicks in only when the template HAS data sentences and none
     # rendered — a fully static template (node/switch fault) speaks as-is.
     if placeholder_sentences and data_sentences == 0:
-        fb = template(entry["fallback"]).strip() if entry.get("fallback") else ""
+        fb = template(entry["fallback_key"]).strip() if entry.get("fallback_key") else ""
         return re.sub(r"\s+", " ", fb) if fb else None
     text = re.sub(r"\s+", " ", " ".join(kept)).strip()
     # N4 (live): a value ending in "d." plus the template's own period made

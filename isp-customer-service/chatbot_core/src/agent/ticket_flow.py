@@ -159,7 +159,7 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         if state.resolution.bridge_bound:
             parts.append(phrase("identification.ticket_intro_bridge"))
         else:
-            parts.append(phrase("identification.ticket_intro", priezastis=ticket_need(state, rt)))
+            parts.append(phrase("identification.ticket_intro", reason=ticket_need(state, rt)))
     else:
         ctx.last_kind = "phone"
     ctx.phone_asked = True
@@ -231,7 +231,8 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     val = s.ticket.contact_hours
     val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
     return (
-        phrase("identification.ticket_done", nr=fmt_phone(s.ticket.contact_phone), val=val) + note
+        phrase("identification.ticket_done", phone=fmt_phone(s.ticket.contact_phone), hours=val)
+        + note
     )
 
 

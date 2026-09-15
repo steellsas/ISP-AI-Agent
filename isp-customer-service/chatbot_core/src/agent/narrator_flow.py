@@ -305,13 +305,13 @@ def state_facts_block(state, rt) -> str | None:
         from .faq import match as faq_match
 
         hits = faq_match(s.dialog.last_heard)
-        zinios = " ".join(f"[{e.get('tema')}] {_phrase(e['atsakymas'])}" for e in hits) or (
+        zinios = " ".join(f"[{e.get('topic')}] {_phrase(e['answer_key'])}" for e in hits) or (
             "(šiai temai ŽINOMO ATSAKYMO NĖRA — mandagiai pasakyk, kad tai ne tavo sritis)"
         )
         # The topic is DETERMINISTIC when the FAQ matched — the model once
         # copied a prompt example ("Klausiate apie kainą") for topics the
         # caller never raised; naming the real topic removes the template.
-        tema = str(hits[0].get("tema", "")).replace("_", " ") if hits else ""
+        tema = _phrase(f"faq_topic.{hits[0]['topic']}") if hits else ""
         tema_line = (
             f"Kliento tema: {tema}. "
             if tema
