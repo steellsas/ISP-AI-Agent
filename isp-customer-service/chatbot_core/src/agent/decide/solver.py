@@ -27,7 +27,7 @@ import logging
 
 from pydantic import BaseModel, Field
 
-from .contract import limits
+from ..contract import limits
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class SolverDecision(BaseModel):
 
 
 def _system() -> str:
-    from .prompts import load_node_prompt
+    from ..prompts import load_node_prompt
 
     return load_node_prompt("sensors/solver").replace("<<actions>>", ", ".join(ALLOWED_ACTIONS))
 

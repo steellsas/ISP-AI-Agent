@@ -141,9 +141,9 @@ def shadow_solve(state: Any, rt: Any, user_input: str | None) -> None:
     if not state.resolution.procedure or state.closing.case_closed:
         return
     try:
+        from .decide.gate import INTERNAL_ACTIONS, gate
+        from .decide.solver import solve
         from .faults import pack_verdicts
-        from .gate import INTERNAL_ACTIONS, gate
-        from .solver import solve
 
         decision = solve(
             build_solver_context(state, rt, user_input),
@@ -423,10 +423,10 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
 
 
 def drive(state: Any, rt: Any, user_input: str | None) -> str:
+    from .decide.gate import gate
+    from .decide.solver import solve
     from .faults import pack_verdicts
-    from .gate import gate
     from .perceive.detectors import detect_turn_intent
-    from .solver import solve
 
     state.dialog.last_intent = detect_turn_intent(user_input)
     state.resolution.drive_turns = state.resolution.drive_turns + 1

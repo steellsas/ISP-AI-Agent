@@ -43,7 +43,7 @@ def test_unknown_limit_fails():
 
 
 def test_gate_policy_comes_from_limits():
-    from agent.gate import default_policy
+    from agent.decide.gate import default_policy
 
     assert default_policy() == {
         "confidence_floor": 0.4,

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .contract import limits
+from ..contract import limits
 from .solver import ALLOWED_ACTIONS, SolverDecision
 
 # Actions executed by CODE, never by the solver. propose_fix is a MUTATION (bind/reset);
