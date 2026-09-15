@@ -39,7 +39,7 @@ def step_perception_options(state: Any, rt: Any):
     step = strat.step(r.get("step", "")) if strat else None
     if step is None or not r.get("asked") or not asked_recently(state, r):
         return None, None
-    if step.kind is StepKind.CONFIRM and step.on and step.id != "confirm_restored":
+    if step.kind is StepKind.CONFIRM and step.on and step.role != "verify_restored":
         from .detectors import glosses as detector_glosses
         from .faults import step_options as declared_options
 
@@ -927,7 +927,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
                 from .resolution import get_strategy
 
                 strat = get_strategy(s.resolution.procedure.get("verdict"))
-                esc = strat.step("escalate") if strat else None
+                esc = strat.by_role("escalate") if strat else None
                 s.resolution.procedure["escalate_reason"] = "caller_ended_call"
                 if esc is not None:
                     begin_ticket_dialogue(state, rt, esc)  # contacts, then register+close
@@ -1023,7 +1023,7 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
         from .dialog_registry import pack_owns_cannot_now
         from .resolution import detect_cannot_now as _dcn_head
 
-        # P-C: an *_ability/*_locate/*_homework step's question IS the pack's
+        # P-C: an ability_check/locate_device/homework step's question IS the pack's
         # own cannot-now handling — the shield stands down, the walker routes.
         if _dcn_head(user_input) and not pack_owns_cannot_now(state, rt):
             from .dialog_registry import register as _q_register
@@ -1042,12 +1042,19 @@ def pre_turn_guards(state, rt, user_input: str) -> None:
     if mid_process and detect_farewell(user_input):
         # F1 (live 2026-09-09: "Gerai, sutariam, viso gero" answering the
         # HOMEWORK consent got "Ar tikrai norite baigti?" twice): on the
-        # *_homework step a farewell IS the consent — the walker routes it
+        # homework step a farewell IS the consent — the walker routes it
         # to the callback terminal; the end-confirm must not intercept.
         from .dialog_registry import active as _q_act
 
         _qa = _q_act(state, rt)
-        if not (_qa is not None and _qa.key.endswith("_homework")):
+        from .faults import role_of
+
+        _qa_role = (
+            role_of((s.resolution.procedure or {}).get("verdict"), _qa.key.removeprefix("step:"))
+            if _qa is not None and _qa.key.startswith("step:")
+            else None
+        )
+        if _qa_role != "homework":
             state.dialog.end_confirm_pending = True
             rt.tracer.emit("decision", intent="farewell_mid_process", action="confirm_end")
             return

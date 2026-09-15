@@ -10,6 +10,7 @@ meta:
 isejimai: [pavyko, nepavyko]
 steps:
 - id: patikra
+  role: ask_restored
   kind: confirm
   detector: restored
   'on':

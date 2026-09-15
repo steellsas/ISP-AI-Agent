@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 from agent import walker_guards
 from agent.graph_v2.state import GraphState
-from agent.resolution import STRATEGIES, detect_refuse_or_ticket
+from agent.resolution import detect_refuse_or_ticket, get_strategy
 
 
 class GuardEngine:
@@ -39,7 +39,7 @@ class GuardEngine:
 
 
 def _strat(verdict="foreign_mac"):
-    return STRATEGIES[verdict]
+    return get_strategy(verdict)
 
 
 class TestChainOrder:

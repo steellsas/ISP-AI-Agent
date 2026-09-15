@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from .contract.locale import vocab
+from .faults import verdict_flag
 
 
 def maybe_finish(state: Any, rt: Any, user_input: str | None) -> None:
@@ -55,7 +56,7 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
     reason = (s.diagnosis.verdicts.get("network") or {}).get("reason")
     # INFORM mode: an outage was flagged, OR we identified + diagnosed but there is no
     # resolution strategy to walk (active_outage, billing_suspended, generic inform).
-    # A live strategy (foreign_mac, dead-router, client_side) keeps s.resolution set
+    # A live strategy (foreign_mac, dead-router, client-side) keeps s.resolution set
     # and is handled by the walker instead — never closed here.
     inform_mode = s.diagnosis.outage_reported or (
         s.resolution.procedure is None and bool(s.diagnosis.verdicts)
@@ -67,7 +68,9 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
     if detect_farewell(user_input):
         s.closing.case_closed = True
         s.closing.closed_reason = (
-            "outage" if (s.diagnosis.outage_reported or reason == "active_outage") else "inform"
+            "outage"
+            if (s.diagnosis.outage_reported or verdict_flag(reason, "inform") == "outage")
+            else "inform"
         )
         s.closing.is_complete = True  # caller already said goodbye — end on ONE farewell
         # Observability: the close moment was invisible in the trace (this made a

@@ -65,6 +65,7 @@ sprendimai:
   aprasymas: "pack.foreign_mac.solution.s3"
 steps:
 - id: confirm_change
+  role: confirm_device_change
   kind: confirm
   rag_section: 0
   'on':
@@ -79,6 +80,7 @@ steps:
     'yes': klientas keitė routerį arba prijungė naują įrenginį
     'no': klientas nieko nekeitė ir nieko naujo neprijungė
 - id: cable_check
+  role: check_cable_port
   kind: confirm
   detector: port
   rag_section: 1
@@ -94,6 +96,7 @@ steps:
     wan: kabelis įkištas į interneto (WAN) lizdą
     lan: kabelis įkištas į kitą (LAN) lizdą
 - id: cable_reconnect
+  role: move_cable_to_wan
   kind: instruct
   rag_section: 2
   hint: 'The cable is in the wrong (yellow LAN) port. Give ONE instruction and wait: unplug it and
@@ -101,12 +104,14 @@ steps:
     if the cable is misplugged.'
 - use: priristi_mac
   kaip: bind_mac
+  role: bind_device
   rag_section: 3
   hint: 'The engine binds the device silently — you do NOT call the tool. Announce it naturally:
     ''Dabar pririšiu jūsų naujai matomą įrenginį — turėtų atsirasti internetas. Palaukite
     akimirką.'' Do NOT ask yet whether it works — that is the next step. (The anamnesis question
     was already asked at the START of the call — do not repeat it here.)'
 - id: confirm_restored
+  role: verify_restored
   kind: confirm
   rag_section: 4
   hint: The device is ALREADY bound. ASK whether the internet is back now ('ar internetas jau atsirado?')
@@ -115,6 +120,7 @@ steps:
     it may take a minute or two and ask them to check again.
 - use: patikrinti_ar_atsirado
   kaip: client_side
+  role: client_side_check
   rag_section: 5
   'on':
     pavyko: resolve
@@ -127,6 +133,7 @@ steps:
     'yes': internetas dabar veikia
     'no': internetas vis dar neveikia
 - id: escalate
+  role: escalate
   kind: escalate
   tools: []
   hint: Binding did not restore the line (or the in-home checks did not help). Register the fault

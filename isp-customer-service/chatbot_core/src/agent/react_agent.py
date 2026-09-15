@@ -25,6 +25,7 @@ from src.services.llm.client import (
 
 from .contract.locale import phrase
 from .dialog_utils import is_question, progress_key, similar
+from .faults import role_of, verdict_flag
 from .graph_v2.state import GraphState
 from .prompts import load_system_prompt
 from .runtime import AgentRuntime
@@ -138,7 +139,11 @@ class ReactAgent:
             s.identity.customer_id
             and not s.ticket.ticket_id
             and not s.closing.case_closed
-            and str((s.resolution.procedure or {}).get("step") or "").endswith("_homework")
+            and role_of(
+                (s.resolution.procedure or {}).get("verdict"),
+                (s.resolution.procedure or {}).get("step"),
+            )
+            == "homework"
         ):
             s.closing.case_closed = True
             s.closing.closed_reason = "callback"
@@ -164,9 +169,8 @@ class ReactAgent:
                     d = telemetry(
                         self.state, self.runtime, mode="recheck", reason="hangup_net"
                     ).data
-                    solved = ((d.get("verdict") or {}).get("reason") or "healthy_to_router") == (
-                        "healthy_to_router"
-                    )
+                    reason = (d.get("verdict") or {}).get("reason")
+                    solved = reason is None or verdict_flag(reason, "healthy_up_to_router")
                 except Exception:  # pragma: no cover - defensive
                     solved = False
             if solved:
@@ -178,9 +182,9 @@ class ReactAgent:
                 if not s.ticket.contact_phone:
                     s.ticket.contact_phone = s.identity.caller_phone
                 if not s.ticket.contact_hours:
-                    s.ticket.contact_hours = "bet kada"
+                    s.ticket.contact_hours = phrase("ticket.default_hours")
                 strat = get_strategy(s.resolution.procedure.get("verdict"))
-                esc = strat.step("escalate") if strat else None
+                esc = strat.by_role("escalate") if strat else None
                 register_ticket_from_state(
                     self.state, self.runtime, esc.id if esc is not None else None
                 )
@@ -359,7 +363,7 @@ class ReactAgent:
         # verdict FLIPS the story, it is discarded (live: the bg read saw the
         # just-plugged PC, the narrative turned foreign_mac mid-bridge and the
         # agent asked "ar keitėte routerį?" over a working bind). The solution
-        # steps (dr_see_device / dr_verify) do their own reads at the right
+        # steps (verify_device_visible / the bridge verify) do their own reads at the right
         # moments.
         apply_bg_diagnosis(self.state, self.runtime)
         if user_input:

@@ -15,6 +15,7 @@ from typing import Any
 
 from .contract.locale import phrase_or, vocab
 from .dialog_utils import last_agent_question
+from .faults import verdict_flag
 from .trace import trace_note
 
 logger = logging.getLogger(__name__)
@@ -1403,7 +1404,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         # B3 inform verdicts (node/switch fault, Andrius 2026-09-11): the
         # template PROMISES "meistrai jau užregistruoti" — the engine makes it
         # true by registering the ticket itself before the words go out.
-        if reason in ("node_fault_unregistered", "switch_unreachable") and not s.ticket.ticket_id:
+        if verdict_flag(reason, "auto_ticket") and not s.ticket.ticket_id:
             register_ticket_from_state(state, rt, None)
         state.identity.result_pending = False
         state.diagnosis.news_delivered = True
@@ -1419,11 +1420,13 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
         phrase("identification.thanks"),
         phrase("identification.check_result", zinia=zinia + "."),
     ]
-    if reason == "billing_suspended":
+    if verdict_flag(reason, "inform") == "debt":
         bits.append(phrase("identification.billing_extra"))
     # Outage news carries the ETA when the preflight knows it.
-    if reason == "active_outage" and (s.identity.preflight_outage or {}).get("eta"):
-        bits.append(f"Numatomas atstatymas iki {s.identity.preflight_outage['eta']}.")
+    if verdict_flag(reason, "inform") == "outage" and (s.identity.preflight_outage or {}).get(
+        "eta"
+    ):
+        bits.append(phrase("identification.outage_eta", eta=s.identity.preflight_outage["eta"]))
     bits.append(phrase("identification.anything_else"))
     state.identity.result_pending = False
     state.diagnosis.news_delivered = True

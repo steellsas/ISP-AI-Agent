@@ -40,7 +40,10 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
     genuinely exist; the renderer drops sentences for the missing ones."""
     signals = ((state.diagnosis.verdicts.get("network") or {}).get("signals")) or {}
     vals: dict[str, str] = {}
-    if reason == "billing_suspended":
+    from .faults import verdict_flag
+
+    kind = verdict_flag(reason, "inform")
+    if kind == "debt":
         debt = signals.get("billing_debt") or {}
         if debt.get("amount"):
             vals["suma"] = lang().money(float(debt["amount"]))
@@ -50,7 +53,7 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
         lp = lang().date(debt.get("last_payment"))
         if lp:
             vals["pask_mokejimas"] = lp
-    elif reason == "active_outage":
+    elif kind == "outage":
         incident = signals.get("incident") or {}
         if incident.get("description"):
             vals["vieta"] = str(incident["description"])

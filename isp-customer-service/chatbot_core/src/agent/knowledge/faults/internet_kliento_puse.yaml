@@ -94,6 +94,7 @@ steps:
 # "tik viename" (device unnamed), or straight "telefone neveikia". Each answer has
 # its OWN route, so the classifier never guesses a device from "tik viename".
 - id: cs_scope
+  role: ask_scope
   kind: confirm
   detector: scope
   rag_section: 0
@@ -111,6 +112,7 @@ steps:
     phone: AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')
     computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
 - id: cs_which
+  role: ask_which_device
   kind: confirm
   detector: scope
   rag_section: 0
@@ -125,6 +127,7 @@ steps:
 # The caller NAMED a device before the scope was known ("telefone nėra interneto").
 # Cross-check whether the others work — all down means the router path instead.
 - id: cs_cross_phone
+  role: cross_check_phone
   kind: confirm
   detector: restored
   rag_section: 0
@@ -137,6 +140,7 @@ steps:
     'yes': kituose įrenginiuose internetas VEIKIA
     'no': kituose įrenginiuose interneto irgi NĖRA
 - id: cs_cross_computer
+  role: cross_check_computer
   kind: confirm
   detector: restored
   rag_section: 0
@@ -152,6 +156,7 @@ steps:
 # klientas GALI dabar prieiti; galūnės _ability/_locate/_homework šventos
 # (docs/FAULT_PACKS.md — Ability-first šablonas).
 - id: cs_ability
+  role: ability_check
   kind: confirm
   detector: yes_no
   rag_section: 1
@@ -168,6 +173,7 @@ steps:
     'no': negali dabar / nėra namie / nepatogu šiuo metu
     lost: nežino, kur routeris yra arba kaip jis atrodo
 - id: cs_locate
+  role: locate_device
   kind: confirm
   detector: yes_no
   rag_section: 1
@@ -183,6 +189,7 @@ steps:
     'yes': surado routerį / mato tokią dėžutę
     'no': neranda / negali dabar ieškoti
 - id: cs_homework
+  role: homework
   kind: confirm
   detector: yes_no
   rag_section: 1
@@ -199,6 +206,7 @@ steps:
     'yes': sutinka — perkraus grįžęs ir paskambins, jei neveiks
     'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 - id: cs_reboot
+  role: reboot
   kind: instruct
   rag_section: 1
   goto: cs_verify_all
@@ -207,6 +215,7 @@ steps:
     is back. ONE instruction.'
 - use: patikrinti_ar_atsirado
   kaip: cs_verify_all
+  role: ask_restored
   rag_section: 2
   'on':
     pavyko: resolve
@@ -217,6 +226,7 @@ steps:
     'yes': po perkrovimo internetas veikia
     'no': po perkrovimo internetas vis tiek neveikia
 - id: cs_conn
+  role: ask_connection
   kind: confirm
   detector: conn
   rag_section: 3
@@ -228,6 +238,7 @@ steps:
     wired: įrenginys prijungtas laidu
     wifi: įrenginys jungiasi per WiFi (bevielį)
 - id: cs_cable
+  role: check_device_cable
   kind: instruct
   rag_section: 4
   goto: cs_verify_dev
@@ -235,12 +246,14 @@ steps:
     (a click), not damaged — and reseat it. Tell you when done. ONE instruction. (Do NOT mention cables
     for a phone/tablet — that branch never reaches here.)'
 - id: cs_wifi
+  role: check_wifi
   kind: instruct
   rag_section: 5
   goto: cs_wifi2
   hint: 'Wi-Fi device (phone/tablet/laptop): ask them to check Wi-Fi is ON and that they are connected
     to THEIR OWN network (not a neighbour''s). ONE thing, wait.'
 - id: cs_wifi2
+  role: reconnect_wifi
   kind: instruct
   rag_section: 6
   goto: cs_verify_dev
@@ -248,6 +261,7 @@ steps:
     upper/lowercase), then restart the device. Tell you when done. ONE instruction.'
 - use: patikrinti_ar_atsirado
   kaip: cs_verify_dev
+  role: ask_restored
   rag_section: 7
   'on':
     pavyko: resolve
@@ -258,6 +272,7 @@ steps:
     'yes': tame įrenginyje internetas dabar veikia
     'no': tame įrenginyje internetas vis tiek neveikia
 - id: escalate
+  role: escalate
   kind: escalate
   tools: []
   hint: The simple self-service steps did not help — the fault is deeper (router/DNS/config/device).

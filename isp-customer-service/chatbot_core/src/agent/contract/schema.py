@@ -99,14 +99,16 @@ class Step(_Model):
     tools: list[str] = []
     tool_actions: list[str] = []
     consent: bool | None = None
+    # What the step does (D-18); a module call inherits the module step's role.
+    role: str | None = None
 
     @model_validator(mode="after")
     def _step_or_module_call(self) -> Step:
         if self.use:
             if self.id or self.kind:
                 raise ValueError("a module call (use) takes no id/kind")
-        elif not (self.id and self.kind):
-            raise ValueError("a step needs id and kind (or use for a module call)")
+        elif not (self.id and self.kind and self.role):
+            raise ValueError("a step needs id, kind and role (or use for a module call)")
         return self
 
     @property
@@ -209,6 +211,19 @@ class Identification(_Model):
     identification: IdentificationPolicy
 
 
+class VerdictFlags(_Model):
+    unresolved_after_fix: bool = False
+    line_fault: bool = False
+    device_visible: bool = True
+    healthy_up_to_router: bool = False
+    inform: Literal["debt", "outage", "network"] | None = None
+    auto_ticket: bool = False
+
+
+class Verdicts(RootModel[dict[str, VerdictFlags]]):
+    pass
+
+
 # --- Validation -------------------------------------------------------------------
 
 
@@ -229,6 +244,7 @@ class Knowledge:
     faq: Faq | None = None
     informavimas: Informavimas | None = None
     identification: Identification | None = None
+    verdicts: Verdicts | None = None
 
 
 def _non_string_keys(data: Any, loc: str = "") -> list[str]:
@@ -327,6 +343,20 @@ def _check_pack(
     if problems is not None and pack.problem not in problems:
         errors.append(f"{rel}: problem '{pack.problem}' is not in faults.yaml problems")
 
+    from ..faults import ENGINE_ROLES
+
+    roles = [
+        step.role
+        or (
+            modules[step.use].steps[0].role
+            if step.use in modules and modules[step.use].steps
+            else None
+        )
+        for step in pack.steps
+    ]
+    repeated = sorted({r for r in roles if r in ENGINE_ROLES and roles.count(r) > 1})
+    if repeated:
+        errors.append(f"{rel}: engine roles {repeated} appear on more than one step")
     for i, step in enumerate(pack.steps):
         where = f"{rel}: steps.{i} ({step.name})"
         for key, target in step.on.items():
@@ -440,6 +470,7 @@ def validate_knowledge(
         "faq": ("faq.yaml", Faq),
         "informavimas": ("informavimas.yaml", Informavimas),
         "identification": ("identification.yaml", Identification),
+        "verdicts": ("verdicts.yaml", Verdicts),
     }
     for attr, (name, model) in single_files.items():
         setattr(k, attr, _read(root / name, model, errors, root))

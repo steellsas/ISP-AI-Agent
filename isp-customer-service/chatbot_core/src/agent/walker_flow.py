@@ -18,8 +18,8 @@ from typing import Any  # noqa: F401
 
 from .contract.locale import phrase, phrase_or
 from .dialog_utils import asked_recently, last_agent_question
+from .faults import role_of, verdict_flag
 from .trace import emit_decision, trace_note
-from .verdict import UNRESOLVED_LINE_FAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ def ensure_action_done(state, rt) -> bool:
     step = strat.step(r.get("step", "")) if strat else None
     if step is None:
         return False
-    # Auto-register ESCALATE (consent=False, e.g. dr_register_router after a working
+    # Auto-register ESCALATE (consent=False, e.g. register_after_bridge after a working
     # bridge): the registration is a NECESSITY, not an offer — the engine registers
     # ON ARRIVAL and closes; the narrator only ANNOUNCES it ("užregistravau...,
     # kolegos susisieks ir detaliau paaiškins"). Asking permission here misread a
@@ -232,7 +232,7 @@ def walker_owns_turn(state, rt, r: dict, step) -> bool:
         return True
     if step.kind in (StepKind.ESCALATE, StepKind.VERIFY):
         return True
-    return step.id in ("confirm_restored", "dr_see_device")
+    return step.role in ("verify_restored", "verify_device_visible")
 
 
 def walk_resolution(state, rt, user_input: str | None) -> None:
@@ -243,7 +243,7 @@ def walk_resolution(state, rt, user_input: str | None) -> None:
       announce) has been presented, ANY caller reply — they did it / answered —
       advances to the next step. One instruction per turn, listen, move on.
     - CONFIRM: branches on yes/no (and a strong device-change pre-answer).
-    - confirm_restored: a VERIFY that blends the caller's word with a fresh
+    - verify_restored: a VERIFY that blends the caller's word with a fresh
       telemetry read — routed separately (_advance_restored).
 
     This is what leads the caller one step at a time instead of dumping the
@@ -302,22 +302,22 @@ def walk_resolution(state, rt, user_input: str | None) -> None:
     # HOLD the step — the agent responds to them instead of running ahead.
     if not turn_may_advance(state, rt, step):
         return
-    # confirm_restored blends the caller's word with a fresh telemetry read.
-    if step.id == "confirm_restored":
+    # verify_restored blends the caller's word with a fresh telemetry read.
+    if step.role == "verify_restored":
         advance_restored(state, rt, r, user_input)
         return
-    # rh_check (S6 hung router): caller's word + fresh telemetry + the reboot
+    # verify_reboot (S6 hung router): caller's word + fresh telemetry + the reboot
     # witness (did the device actually drop off the line?) — routed separately.
-    if step.id == "rh_check":
+    if step.role == "verify_reboot":
         advance_reboot_check(state, rt, r, user_input)
         return
     # NT line faults (2026-09-11): the cable-reseat check re-reads the port /
     # CRC level and blends it with the caller's word.
-    if step.id in ("ll_recheck", "crc_recheck"):
+    if step.role == "verify_line":
         advance_line_check(state, rt, r, user_input)
         return
     # Bridge: did the device they just plugged in actually appear on the line?
-    if step.id == "dr_see_device":
+    if step.role == "verify_device_visible":
         advance_see_device(state, rt, r)
         return
     # A guided instruction / the bind announce: advance on ANY reply, once it was
@@ -454,7 +454,7 @@ def classify_confirm_and_route(state, rt, step, strat, user_input: str | None) -
 
 def advance_instruct(state, rt, r: dict, step, strat, user_input: str | None = None) -> None:
     """Advance a presented INSTRUCT/ACTION step to its goto (or the next step in order).
-    Shared by the keyword path and the classifier gate. The dr_see_device VERIFY is
+    Shared by the keyword path and the classifier gate. The verify_device_visible VERIFY is
     engine-owned, so resolve it in the SAME turn (reflect the plug-in in the demo, then
     read the line) instead of asking a dead question."""
     from .executor_flow import simulate_bridge_connection, simulate_router_reboot_action
@@ -462,7 +462,7 @@ def advance_instruct(state, rt, r: dict, step, strat, user_input: str | None = N
     from .solver_flow import plug_report
 
     route_to(state, rt, r, step.goto or next_step_id(strat, step.id, None))
-    # Skipped-ahead caller (live 2026-08-24): still on dr_pick_cable, the caller
+    # Skipped-ahead caller (live 2026-08-24): still on locate_cable, the caller
     # reported the cable ALREADY in the computer ("jau įkišau į kompiuterį").
     # One advance lands on the plug step and dictates an instruction they have
     # done. When the SAME utterance is a completed plug-into-computer report,
@@ -476,25 +476,26 @@ def advance_instruct(state, rt, r: dict, step, strat, user_input: str | None = N
         and plug_report(state, rt, user_input)
     ):
         route_to(state, rt, r, skipped.goto or next_step_id(strat, skipped.id, None))
-    if r.get("step") == "dr_see_device":
+    current_role = role_of(r.get("verdict"), r.get("step"))
+    if current_role == "verify_device_visible":
         simulate_bridge_connection(state, rt)
         advance_see_device(state, rt, r)
         return
-    # rh_check (S6): an engine-owned BLEND step — never keyword-route it from
+    # verify_reboot (S6): an engine-owned BLEND step — never keyword-route it from
     # the completing utterance (a false "gerai" YES sent the flow into the
     # retry branch, eval S6). Reflect the claimed reboot in the demo world
     # (SIMULATE_REBOOT, eval only — live calls use the button), record
     # telemetry; the check question goes out this turn and the caller's
     # ANSWER decides on the next one.
-    if r.get("step") == "rh_check":
+    if current_role == "verify_reboot":
         simulate_router_reboot_action(state, rt)
         advance_reboot_check(state, rt, r, user_input)
         return
-    # ll_recheck / crc_recheck are engine-owned BLEND steps too — never let the
+    # verify_line steps are engine-owned BLEND steps too — never let the
     # completing utterance keyword-route them (live 2026-09-11: "perkišau,
     # nepadėjo" matched the loose restored-YES vocabulary and closed a damaged
     # cable as resolved without the telemetry read).
-    if r.get("step") in ("ll_recheck", "crc_recheck"):
+    if current_role == "verify_line":
         advance_line_check(state, rt, r, user_input)
         return
     # Carry-through pre-answer: the utterance that completed the instruction often
@@ -694,7 +695,7 @@ def advance_see_device(state, rt, r: dict) -> None:
     blindly when the cable is in the wrong socket would fail confusingly. Seen ->
     bind; not seen after two tries -> the cable is wrong, walk it back."""
     reason = fresh_diagnose_reason(state, rt)
-    seen = reason != "no_mac_observed"  # any other verdict means a device is there
+    seen = verdict_flag(reason, "device_visible")  # any other verdict means a device is there
     r["device_seen"] = seen
     note_evidence(
         state,
@@ -702,13 +703,13 @@ def advance_see_device(state, rt, r: dict) -> None:
         "prijungtas įrenginys matomas linijoje" if seen else "įrenginio linijoje vis dar nematyti",
     )
     if seen:
-        goto_step(state, rt, r, "dr_bind")
+        goto_role(state, rt, r, "bind_device")
         return
     r["plug_retries"] = int(r.get("plug_retries", 0)) + 1
     if r["plug_retries"] >= 2:
-        goto_step(state, rt, r, "escalate")
+        goto_role(state, rt, r, "escalate")
     else:
-        goto_step(state, rt, r, "dr_pick_cable")  # wrong cable/socket — try again
+        goto_role(state, rt, r, "locate_cable")  # wrong cable/socket — try again
 
 
 def reject_and_rediagnose(state, rt, r: dict) -> bool:
@@ -738,7 +739,7 @@ def reject_and_rediagnose(state, rt, r: dict) -> bool:
 def route_to(state, rt, r: dict, target: str) -> None:
     """Apply a routing target: the 'resolve'/'end'/'callback' terminals close
     the case; any other id is a real step to advance to. Centralises terminal
-    handling so every branch (including client_side -> resolve) actually
+    handling so every branch (including client-side check -> resolve) actually
     closes."""
     if target == "resolve":
         state.closing.case_closed = True
@@ -759,7 +760,9 @@ def route_to(state, rt, r: dict, target: str) -> None:
     else:
         # P-E: escalating out of the homework step means nothing was done at
         # the device — the ticket intro must speak the honest state.
-        if target == "escalate" and str(r.get("step") or "").endswith("_homework"):
+        if role_of(r.get("verdict"), target) == "escalate" and (
+            role_of(r.get("verdict"), r.get("step")) == "homework"
+        ):
             r.setdefault("escalate_reason", "cannot_now")
         goto_step(state, rt, r, target)
 
@@ -776,7 +779,7 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
     from .resolution import Outcome, detect_restored
 
     reason_now = fresh_diagnose_reason(state, rt)
-    fixed = reason_now not in UNRESOLVED_LINE_FAULTS
+    fixed = not verdict_flag(reason_now, "unresolved_after_fix")
     r["telemetry_fixed"] = fixed
     if not r.get("asked"):
         return  # question not asked yet (the bind turn) — just record telemetry
@@ -790,7 +793,7 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
         if fixed:
             # Provider side restored but the caller still has no internet — the
             # fault is inside the home. Pivot to the client-side step.
-            goto_step(state, rt, r, "client_side")
+            goto_role(state, rt, r, "client_side_check")
         else:
             r["restored_denials"] = int(r.get("restored_denials", 0)) + 1
             if r["restored_denials"] >= 2:
@@ -798,14 +801,14 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
                 # this hypothesis and see whether the telemetry now points at a
                 # different fault. Only escalate when there is no Plan B.
                 if not reject_and_rediagnose(state, rt, r):
-                    goto_step(state, rt, r, "escalate")
+                    goto_role(state, rt, r, "escalate")
             # else: stay, reassure it may take a couple of minutes (see hint)
         return
-    # unclear -> stay on confirm_restored, re-ask
+    # unclear -> stay on the verify step, re-ask
 
 
 def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
-    """Classifier fallback for the rh_check answer when the keyword detector
+    """Classifier fallback for the verify_reboot answer when the keyword detector
     is unsure — same order as CONFIRM steps. Meanings come from the pack's
     `answers:` (step_options), generic reboot_check glosses as fallback."""
     if os.getenv("CLASSIFIER", "on").lower() == "off":
@@ -814,7 +817,8 @@ def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
     from .detectors import glosses as detector_glosses
     from .faults import step_options
 
-    options = step_options("router_hung", "rh_check") or detector_glosses("reboot_check")
+    r = state.resolution.procedure or {}
+    options = step_options(r.get("verdict"), r.get("step")) or detector_glosses("reboot_check")
     obs = classify_step(
         last_agent_question(state) or phrase("solver.reboot_check_question"),
         user_input or "",
@@ -827,7 +831,7 @@ def _classify_reboot_check(state, rt, user_input: str | None) -> str | None:
 
 
 def advance_line_check(state, rt, r: dict, user_input: str | None) -> None:
-    """ll_recheck / crc_recheck (NT, Andrius 2026-09-11): after the cable
+    """verify_line (NT, Andrius 2026-09-11): after the cable
     reseat the ENGINE re-reads the line and blends it with the caller's word
     — the reboot-check pattern for the LINE faults.
 
@@ -843,16 +847,9 @@ def advance_line_check(state, rt, r: dict, user_input: str | None) -> None:
     if not r.get("asked"):
         return
     reason_now = fresh_diagnose_reason(state, rt)
-    line_bad = reason_now in (
-        "link_down_local",
-        "crc_errors",
-        "switch_unreachable",
-        "node_fault_unregistered",
-        "no_port_data",
-    )
-    if line_bad:
+    if verdict_flag(reason_now, "line_fault"):
         r["escalate_reason"] = "line_not_restored"
-        goto_step(state, rt, r, "escalate")
+        goto_role(state, rt, r, "escalate")
         rt.tracer.emit("decision", intent="line_check", action="still_down", reason=reason_now)
         return
     outcome = detect_restored(user_input)
@@ -862,7 +859,7 @@ def advance_line_check(state, rt, r: dict, user_input: str | None) -> None:
         return
     if outcome is Outcome.NO:
         r["escalate_reason"] = "caller_still_down"
-        goto_step(state, rt, r, "escalate")
+        goto_role(state, rt, r, "escalate")
         rt.tracer.emit("decision", intent="line_check", action="line_ok_caller_no")
         return
     rt.tracer.emit("decision", intent="line_check", action="hold")
@@ -885,7 +882,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
       RULE, DIALOGO_ETALONAS.md #8: vien kliento žodžio neužtenka)
     - caller NO + traffic returned                -> the router is alive;
                                                      the problem is on the path
-                                                     to one device (rh_device)
+                                                     to one device (device_path)
     - caller NO + no flap seen                    -> the wrong thing was
                                                      power-cycled (extension
                                                      cord / button / a second
@@ -909,7 +906,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
     reason_now = verdict.get("reason")
     telem_ok = isinstance(payload, dict) and reason_now is not None
     flap = bool(signals.get("port_flap_recent"))
-    r["telemetry_fixed"] = telem_ok and reason_now not in UNRESOLVED_LINE_FAULTS
+    r["telemetry_fixed"] = telem_ok and not verdict_flag(reason_now, "unresolved_after_fix")
     if not r.get("asked"):
         return  # the check question goes out this turn — just record telemetry
     outcome = detect_reboot_check(user_input)
@@ -928,12 +925,12 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
             return
         outcome = Outcome.NO  # fall through to the no-flap retry below
     if outcome != Outcome.NO:
-        return  # unclear -> stay on rh_check, re-ask
+        return  # unclear -> stay on the reboot check, re-ask
     if r.get("telemetry_fixed"):
         note_evidence(
             state, rt, "telemetrija: srautas grįžo — linija veikia, problema įrenginio pusėje"
         )
-        goto_step(state, rt, r, "rh_device")
+        goto_role(state, rt, r, "device_path")
         return
     if telem_ok and not flap:
         # The device never dropped off the line — no real power-cycle happened.
@@ -945,9 +942,9 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
         )
         r["reboot_retries"] = int(r.get("reboot_retries", 0)) + 1
         if r["reboot_retries"] >= 2:
-            goto_step(state, rt, r, "escalate")
+            goto_role(state, rt, r, "escalate")
         else:
-            goto_step(state, rt, r, "rh_reboot_retry")
+            goto_role(state, rt, r, "reboot_retry")
         return
     # Rebooted (or telemetry unavailable) and still no traffic — give the other
     # hypotheses a chance before the ticket, exactly like a failed bind.
@@ -958,7 +955,7 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
             "telemetrija: perkrovimas matytas, bet srautas negrįžo — routeris neatsistato",
         )
     if not reject_and_rediagnose(state, rt, r):
-        goto_step(state, rt, r, "escalate")
+        goto_role(state, rt, r, "escalate")
 
 
 def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
@@ -1009,6 +1006,17 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
         state.closing.case_closed = True
         state.closing.closed_reason = "declined"
     # unclear -> stay; the step's question is re-asked
+
+
+def goto_role(state, rt, r: dict, role: str) -> bool:
+    """Move the strategy to its step with `role` (False when the pack has none)."""
+    from .faults import step_by_role
+
+    step = step_by_role(r.get("verdict"), role)
+    if step is None:
+        return False
+    goto_step(state, rt, r, step.id)
+    return True
 
 
 def goto_step(state, rt, r: dict, next_id: str) -> None:

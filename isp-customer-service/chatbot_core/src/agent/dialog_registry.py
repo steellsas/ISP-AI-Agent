@@ -67,17 +67,19 @@ def clear(state: Any, rt: Any, key: str | None = None) -> None:
     rt.tracer.emit("question", owner=q.owner, key=q.key, asks=q.asks, action="closed")
 
 
-_PACK_CANNOT_NOW_SUFFIXES = ("_ability", "_locate", "_homework")
-
-
 def pack_owns_cannot_now(state: Any, rt: Any) -> bool:
-    """File convention (P-C, 2026-09-08): a strategy step named *_ability /
-    *_locate / *_homework IS the pack's own cannot-now handling ("can you get
-    to the router now?"). While such a step's question is active, the generic
-    cannot-now ladder and its head shield stand down — the walker routes the
-    answer per the pack file."""
+    """P-C (2026-09-08): a step with an ability_check / locate_device / homework
+    role IS the pack's own cannot-now handling ("can you get to the router
+    now?"). While such a step's question is active, the generic cannot-now
+    ladder and its head shield stand down — the walker routes the answer per
+    the pack file."""
+    from .faults import CANNOT_NOW_ROLES, role_of
+
     q = state.dialog.active_question
-    return q is not None and q.key.startswith("step:") and q.key.endswith(_PACK_CANNOT_NOW_SUFFIXES)
+    if q is None or not q.key.startswith("step:"):
+        return False
+    verdict = (state.resolution.procedure or {}).get("verdict")
+    return role_of(verdict, q.key.removeprefix("step:")) in CANNOT_NOW_ROLES
 
 
 def clear_owner(state: Any, rt: Any, owner: str) -> None:

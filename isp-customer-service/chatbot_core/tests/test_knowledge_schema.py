@@ -199,3 +199,40 @@ def test_every_escalate_reason_code_has_ticket_text():
             codes.add(m.group(1) or m.group(2))
     assert len(codes) >= 8
     assert sorted(c for c in codes if not locale.has(f"ticket.reason.{c}")) == []
+
+
+def test_engine_roles_are_declared_and_used():
+    """Every role the code acts on is an ENGINE_ROLE present in some pack."""
+    import re
+    from pathlib import Path
+
+    from agent.faults import ENGINE_ROLES
+
+    src = Path(__file__).parents[1] / "src" / "agent"
+    code = "\n".join(p.read_text(encoding="utf-8") for p in src.rglob("*.py"))
+    used = set(re.findall(r"role(?:_of\([^)]*\))? ?[!=]= ?\"(\w+)\"", code))
+    used |= set(
+        re.findall(r"(?:by_role|goto_role\(state, rt, r,|step_by_role\([^,]+,) ?\(?\"(\w+)\"", code)
+    )
+    assert used, "the scan finds role checks"
+    assert sorted(used - ENGINE_ROLES) == []
+    k = validate_knowledge()
+    declared = {s.role for p in k.packs.values() for s in p.steps if s.role} | {
+        s.role for m in k.modules.values() for s in m.steps if s.role
+    }
+    assert sorted(ENGINE_ROLES - declared) == []
+
+
+def test_every_verdict_has_flags():
+    import re
+    from pathlib import Path
+
+    produced = set(
+        re.findall(
+            r'reason="(\w+)"',
+            (Path(__file__).parents[1] / "src/agent/verdict.py").read_text(encoding="utf-8"),
+        )
+    )
+    k = validate_knowledge()
+    assert produced <= set(k.verdicts.root)
+    assert set(k.packs) <= set(k.verdicts.root)

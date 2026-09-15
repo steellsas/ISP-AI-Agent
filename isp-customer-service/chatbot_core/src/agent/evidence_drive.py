@@ -314,7 +314,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             return announce + drive_escalate(state, rt, None)
         if solution == "bridge":
             # Fix 2 (Andrius 2026-08-21): the bridge is WALKED through the pack's
-            # guided steps (dr_pick_cable -> dr_plug_pc -> see/bind/verify)
+            # guided steps (locate_cable -> plug -> see/bind/verify)
             # instead of the solver's one-liner "kai prijungsite — pasakykite":
             # the step hints say WHICH cable and WHERE, and a "kaip tai
             # padaryti?" gets the step explained. Synced ONCE, like walker.

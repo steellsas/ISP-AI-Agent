@@ -25,6 +25,7 @@ from typing import Any
 
 from .contract.locale import vocab, vocab_set
 from .dialog_utils import asked_recently
+from .faults import CANNOT_NOW_ROLES
 
 # --- prelude (no step resolved yet) -----------------------------------------
 
@@ -78,21 +79,21 @@ PRELUDE_GUARDS = (question_priority_hold, resume_hold, end_confirm_pending)
 
 
 def device_change_pre_answer(state: Any, rt: Any, r, strat, step, user_input: str | None) -> bool:
-    """A strong device-change signal advances confirm_change before it is even asked
+    """A strong device-change signal advances confirm_device_change before it is even asked
     (the caller pre-answered, e.g. "neveikia, keičiau routerį"). ONLY for that step —
     elsewhere "kompiuteris" is a scope answer, not a device change. Runs before the
     intent gate: a clear pre-answer should move regardless of turn phrasing."""
     from .resolution import confirms_device_change, next_step_id
     from .walker_flow import route_to
 
-    if step.id == "confirm_change" and confirms_device_change(user_input):
+    if step.role == "confirm_device_change" and confirms_device_change(user_input):
         route_to(state, rt, r, next_step_id(strat, step.id, "yes"))
         return True
     return False
 
 
 def homework_consent(state: Any, rt: Any, r, strat, step, user_input: str | None) -> bool:
-    """P-C follow-up (live 2026-09-09, F1/F2): on the *_homework step a
+    """P-C follow-up (live 2026-09-09, F1/F2): on the homework step a
     farewell ("Gerai, sutariam, viso gero"), a plain consent word or a
     first-person callback promise ("aš perskambinsiu") IS the yes — the
     caller agrees to do the homework and call back. Route to the callback
@@ -100,7 +101,7 @@ def homework_consent(state: Any, rt: Any, r, strat, step, user_input: str | None
     from .resolution import detect_farewell, next_step_id
     from .walker_flow import route_to
 
-    if not step.id.endswith("_homework"):
+    if step.role != "homework":
         return False
     low = (user_input or "").lower()
     tokens = {t.strip(".,!?") for t in low.split()}
@@ -162,25 +163,26 @@ def refuse_or_ticket_redirect(state: Any, rt: Any, r, strat, step, user_input: s
     if step.kind is StepKind.ESCALATE:
         return False
     refusal = detect_refuse_or_ticket(user_input)
-    if refusal is None or strat.step("escalate") is None:
+    escalate = strat.by_role("escalate")
+    if refusal is None or escalate is None:
         return False
-    # P-C (2026-09-08): an *_ability/*_locate/*_homework step's question IS
+    # P-C (2026-09-08): an ability_check/locate_device/homework step's question IS
     # the pack's own cannot-now handling — a SOFT refusal ("nesu namuose")
     # is that question's answer and routes per the pack file (homework +
     # callback), never the generic escalate. An explicit ticket DEMAND
     # still wins — with the HONEST reason (nothing was done at the device).
-    if step.id.endswith(("_ability", "_locate", "_homework")):
+    if step.role in CANNOT_NOW_ROLES:
         if refusal == "refuse":
             return False
         r["escalate_reason"] = "cannot_now_asks_ticket"
     else:
         r["escalate_reason"] = "caller_asked_ticket" if refusal == "demand" else "caller_refused"
-    goto_step(state, rt, r, "escalate")
+    goto_step(state, rt, r, escalate.id)
     rt.tracer.emit(
-        "decision", intent="refuse_or_ticket", action=refusal, from_step=step.id, to="escalate"
+        "decision", intent="refuse_or_ticket", action=refusal, from_step=step.id, to=escalate.id
     )
     if refusal == "demand":
-        begin_ticket_dialogue(state, rt, strat.step("escalate"))
+        begin_ticket_dialogue(state, rt, escalate)
     return True
 
 
@@ -223,7 +225,7 @@ def classifier_confirm_route(state: Any, rt: Any, r, strat, step, user_input: st
         and r.get("asked")
         and asked_recently(state, r)
         and step.on
-        and step.id != "confirm_restored"
+        and step.role != "verify_restored"
         and os.getenv("CLASSIFIER", "on").lower() != "off"
     ):
         return bool(classify_confirm_and_route(state, rt, step, strat, user_input))

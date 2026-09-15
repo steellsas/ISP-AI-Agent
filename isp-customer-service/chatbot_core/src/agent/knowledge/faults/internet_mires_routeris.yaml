@@ -139,6 +139,7 @@ sprendimai:
   aprasymas: "pack.no_mac_observed.solution.s2"
 steps:
 - id: dr_intro
+  role: consent_to_check
   tikslas: "klientas sutinka kartu patikrinti dabar"
   kind: confirm
   detector: yes_no
@@ -157,6 +158,7 @@ steps:
 # meistras tik paprašius. Galūnė _homework šventa: farewell = sutikimas,
 # „perskambinsiu" laimi, ragelis čia = callback be tiketo.
 - id: dr_homework
+  role: homework
   tikslas: "sutarta: grįžęs patikrins lemputes ir laidus, o jei neatsiras — paskambins"
   kind: confirm
   detector: yes_no
@@ -174,6 +176,7 @@ steps:
     'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
     'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 - id: dr_lights
+  role: check_lights
   tikslas: "klientas prie routerio ir aišku, ar dega bent viena lemputė"
   kind: confirm
   detector: lights
@@ -189,6 +192,7 @@ steps:
     'no': sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-" šaknimi — „nede",
       „neda", „nedega gan viena" — neiginys visada reiškia NEDEGA)
 - id: dr_power
+  role: check_power
   tikslas: "maitinimas ir kita rozetė patikrinti — aišku, ar lemputės užsidegė"
   kind: confirm
   detector: lights
@@ -202,6 +206,7 @@ steps:
     'yes': patikrinus maitinimą lemputės užsidegė
     'no': net ir patikrinus maitinimą / kitą rozetę lemputės vis tiek nedega
 - id: dr_cable
+  role: reseat_cable
   tikslas: "interneto kabelis routeryje perkištas (ištrauktas ir vėl įkištas)"
   kind: instruct
   rag_section: 2
@@ -210,6 +215,7 @@ steps:
     from the wall into the router''s internet port and say when done.'
 - use: patikrinti_ar_atsirado
   kaip: dr_recheck
+  role: ask_restored
   tikslas: "aišku, ar internetas atsirado po kabelio perkišimo"
   rag_section: 8
   'on':
@@ -221,6 +227,7 @@ steps:
     'yes': internetas atsirado po kabelio patikrinimo
     'no': internetas vis tiek neatsirado
 - id: dr_offer_bridge
+  role: offer_bridge
   tikslas: "aišku, ar klientas turi kompiuterį laikinam pajungimui"
   kind: confirm
   detector: have_device
@@ -236,6 +243,7 @@ steps:
     'yes': klientas turi kompiuterį arba kitą routerį, kurį galima prijungti
     'no': klientas neturi jokio kito įrenginio (tik telefoną)
 - id: dr_pick_cable
+  role: locate_cable
   tikslas: "klientas rankoje laiko TĄ kabelį, kuris ateina iš sienos (ne maitinimo)"
   kind: instruct
   rag_section: 4
@@ -245,6 +253,7 @@ steps:
     port — ask them to unplug THAT one from the router and tell you when it is in their hand. Not
     the power lead, not a cable between the router and a device.'
 - id: dr_plug_pc
+  role: plug_computer
   tikslas: "kabelis įkištas į kompiuterio tinklo lizdą iki spragtelėjimo"
   kind: instruct
   rag_section: 5
@@ -255,6 +264,7 @@ steps:
     told the caller ''atgal į routerio lizdą''). If they say it does not fit or they cannot find
     it, help with WHERE to look — do not move on.'
 - id: dr_see_device
+  role: verify_device_visible
   kind: verify
   rag_section: 6
   hint: The engine re-reads the line to see whether the newly connected device actually shows up.
@@ -262,6 +272,7 @@ steps:
     bind blindly.
 - use: priristi_mac
   kaip: dr_bind
+  role: bind_device
   rag_section: 7
   hint: 'We can now SEE their computer on the line. The engine binds it silently — you do NOT call
     the tool. Announce it: ''Matau jūsų kompiuterį linijoje. Dabar pririšiu jį prie tinklo — turėtų
@@ -269,6 +280,7 @@ steps:
     was already asked at the START of the call — do not repeat it here.)'
 - use: patikrinti_ar_atsirado
   kaip: dr_verify
+  role: ask_restored
   tikslas: "aišku, ar prijungtame kompiuteryje internetas jau veikia"
   rag_section: 8
   'on':
@@ -281,6 +293,7 @@ steps:
     'yes': prijungtame kompiuteryje internetas dabar veikia
     'no': prijungtame kompiuteryje interneto vis tiek nėra
 - id: dr_register_router
+  role: register_after_bridge
   kind: escalate
   tools: []
   consent: false
@@ -290,6 +303,7 @@ steps:
     tense), NEVER "užregistravau". Add that the internet works on this computer for now, and once
     they have a new router they should call so we bind it.'
 - id: escalate
+  role: escalate
   kind: escalate
   tools: []
   hint: 'The bridge is not possible (no computer / cannot connect) or it did not help. Say you WILL

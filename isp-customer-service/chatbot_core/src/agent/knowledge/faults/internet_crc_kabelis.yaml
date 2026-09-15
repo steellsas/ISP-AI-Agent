@@ -21,6 +21,7 @@ reikalinga: "pack.crc_errors.ticket_need"
 isvada: "pack.crc_errors.conclusion"
 steps:
 - id: crc_ability
+  role: ability_check
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -38,6 +39,7 @@ steps:
     'no': negali dabar / nėra namie / nepatogu šiuo metu
     lost: nežino, kur routeris yra arba kaip jis atrodo
 - id: crc_locate
+  role: locate_device
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -51,6 +53,7 @@ steps:
     'yes': surado routerį / mato tokią dėžutę
     'no': neranda / negali dabar ieškoti
 - id: crc_homework
+  role: homework
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -67,6 +70,7 @@ steps:
     'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
     'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 - id: crc_cable
+  role: reseat_cable
   kind: instruct
   rag_section: 1
   goto: crc_recheck
@@ -76,6 +80,7 @@ steps:
     straight out of the wall). While they are at it, ask whether the cable shows any visible
     damage (a kink, a pinch, a chewed spot). Say when done.'
 - id: crc_recheck
+  role: verify_line
   kind: confirm
   detector: restored
   rag_section: 2
@@ -90,6 +95,7 @@ steps:
     'yes': internetas dabar veikia normaliai
     'no': vis tiek trūkinėja / neveikia
 - id: escalate
+  role: escalate
   kind: escalate
   tools: []
   rag_section: 3

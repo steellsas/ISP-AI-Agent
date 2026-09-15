@@ -17,7 +17,6 @@ from src.ports.tools import ToolProvider
 
 from ..contract.locale import phrase_or
 from ..trace import trace_tool_result
-from ..verdict import UNRESOLVED_LINE_FAULTS
 
 # Technical tools that must NOT run before the customer is identified
 # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
@@ -133,7 +132,9 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
             # block "resolved" so the agent can't close on the caller's word
             # (observed: B6 closed as resolved without ever binding the MAC).
             reason_now = fresh_diagnose_reason(state, rt)
-            if reason_now in UNRESOLVED_LINE_FAULTS:
+            from ..faults import verdict_flag
+
+            if verdict_flag(reason_now, "unresolved_after_fix"):
                 gloss = phrase_or(f"verdict.{reason_now}.gloss", reason_now)
                 return json.dumps(
                     {

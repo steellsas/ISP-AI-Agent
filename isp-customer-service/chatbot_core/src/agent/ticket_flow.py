@@ -264,7 +264,7 @@ def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
     from .resolution import get_strategy
 
     strat = get_strategy(s.resolution.procedure.get("verdict"))
-    esc = strat.step("escalate") if strat else None
+    esc = strat.by_role("escalate") if strat else None
     s.resolution.procedure.setdefault("escalate_reason", "phone_fix_failed")
     begin_ticket_dialogue(state, rt, esc)
     if state.ticket.stage != "phone":

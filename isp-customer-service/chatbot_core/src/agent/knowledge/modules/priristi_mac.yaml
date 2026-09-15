@@ -7,6 +7,7 @@ meta:
   tags: [internet, mac, veiksmas, bind]
 steps:
 - id: bind
+  role: bind_device
   kind: action
   tools:
   - update_mac

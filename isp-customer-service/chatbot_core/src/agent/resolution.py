@@ -52,6 +52,9 @@ class Step:
 
     id: str
     kind: StepKind
+    # What the step DOES in the procedure (`role:` in the pack) — the engine acts
+    # on roles, never on step ids (D-18).
+    role: str = ""
     hint: str = ""  # LT guidance shown to the LLM for THIS step only
     # The step's GOAL in the caller's terms (`tikslas:` in the pack) — the
     # narrator states it, evaluates the caller's move against it ("Gerai —
@@ -87,6 +90,9 @@ class Strategy:
 
     def step(self, step_id: str) -> Step | None:
         return next((s for s in self.steps if s.id == step_id), None)
+
+    def by_role(self, role: str) -> Step | None:
+        return next((s for s in self.steps if s.role == role), None)
 
     def index_of(self, step_id: str) -> int:
         for i, s in enumerate(self.steps):

@@ -19,7 +19,6 @@ from typing import Any  # noqa: F401
 from .contract.locale import phrase_or, vocab
 from .graph_v2.tool_scopes import STRATEGY_ACTION_TOOLS, STRATEGY_DIAG_TOOLS
 from .ticket_flow import fmt_phone
-from .verdict import UNRESOLVED_LINE_FAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -479,7 +478,9 @@ def state_facts_block(state, rt) -> str | None:
     # the DEBT FACTS of the suspended service are OURS to state — they explain
     # why the internet is off. Only billing DISPUTES go to buhalterija.
     _net = s.diagnosis.verdicts.get("network") or {}
-    if _net.get("reason") == "billing_suspended":
+    from .faults import verdict_flag as _vflag
+
+    if _vflag(_net.get("reason"), "inform") == "debt":
         _debt = (_net.get("signals") or {}).get("billing_debt") or {}
         if _debt.get("amount"):
             from .contract.locale import lang
@@ -1365,13 +1366,15 @@ def augment_tool_result(state, rt, name: str, observation: str) -> str:
     except Exception:  # pragma: no cover - best-effort
         obs["auto_reset_port"] = None
     reason_now = fresh_diagnose_reason(state, rt)
-    fixed = reason_now not in UNRESOLVED_LINE_FAULTS
+    from .faults import verdict_flag
+
+    fixed = not verdict_flag(reason_now, "unresolved_after_fix")
     obs["telemetry_after"] = reason_now
     obs["fixed"] = fixed
     gloss = phrase_or(f"verdict.{reason_now}.gloss", reason_now or "—")
 
     # Do NOT close or advance here. The bind was announced THIS turn; the walker
-    # advances bind_mac -> confirm_restored on the caller's next reply, where we
+    # advances bind_device -> verify_restored on the caller's next reply, where we
     # ASK them and re-read telemetry before deciding resolve / client-side /
     # escalate (_advance_restored). Just record the telemetry reading.
     r = state.resolution.procedure

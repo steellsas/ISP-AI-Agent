@@ -149,24 +149,6 @@ def gather_signals(sources: TelemetrySources, customer_id: str) -> dict[str, Any
     return signals
 
 
-# Line/provider-side faults that a remote or instructed fix is supposed to
-# clear. If a fresh diagnose still shows one of these, the fix has NOT taken —
-# so "resolved" is premature (telemetry is the source of truth, not the
-# caller's word). healthy_to_router is deliberately absent: the line is fine,
-# any remaining fault is client-side (Wi-Fi/device) which telemetry can't see,
-# so that close is the caller's call.
-UNRESOLVED_LINE_FAULTS = frozenset(
-    {
-        "foreign_mac",
-        "link_down_local",
-        "dhcp_silent",
-        "crc_errors",
-        "no_mac_observed",
-        "router_hung",
-    }
-)
-
-
 # =============================================================================
 # DECISION TREE (pure — no I/O, unit-testable)
 # =============================================================================

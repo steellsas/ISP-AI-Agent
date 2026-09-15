@@ -23,6 +23,7 @@ reikalinga: "pack.link_down_local.ticket_need"
 isvada: "pack.link_down_local.conclusion"
 steps:
 - id: ll_ability
+  role: ability_check
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -41,6 +42,7 @@ steps:
     'no': negali dabar / nėra namie / nepatogu šiuo metu
     lost: nežino, kur routeris yra arba kaip jis atrodo
 - id: ll_locate
+  role: locate_device
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -55,6 +57,7 @@ steps:
     'yes': surado routerį / mato tokią dėžutę
     'no': neranda / negali dabar ieškoti
 - id: ll_homework
+  role: homework
   kind: confirm
   detector: yes_no
   rag_section: 0
@@ -71,6 +74,7 @@ steps:
     'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
     'no': nesutinka / nori, kad meistras būtų registruojamas dabar
 - id: ll_lights
+  role: check_lights
   kind: confirm
   detector: lights
   rag_section: 1
@@ -86,6 +90,7 @@ steps:
 # Aiškus simptomas (Andrius 2026-09-11): routeris gyvas, bet INTERNETO/WAN
 # lemputė nedega — signalas iš linijos neateina; tai patvirtina hipotezę.
 - id: ll_wan
+  role: check_wan_light
   kind: confirm
   detector: lights
   rag_section: 1
@@ -101,6 +106,7 @@ steps:
     'yes': interneto/WAN lemputė dega ar mirksi
     'no': interneto/WAN lemputė nedega / tamsi
 - id: ll_power
+  role: check_power
   kind: confirm
   detector: lights
   rag_section: 2
@@ -115,6 +121,7 @@ steps:
     'yes': patikrinus maitinimą lemputės užsidegė
     'no': net ir patikrinus maitinimą lemputės nedega
 - id: ll_cable
+  role: reseat_cable
   kind: instruct
   rag_section: 3
   goto: ll_recheck
@@ -122,6 +129,7 @@ steps:
     that comes from the wall/stairwell into the router''s internet port — pull it out, push back
     until it clicks — and say when done.'
 - id: ll_recheck
+  role: verify_line
   kind: confirm
   detector: restored
   rag_section: 4
@@ -136,6 +144,7 @@ steps:
     'yes': interneto lemputė užsidegė / internetas atsirado
     'no': lemputė toliau nedega / internetas neatsirado
 - id: escalate
+  role: escalate
   kind: escalate
   tools: []
   rag_section: 5

@@ -66,6 +66,7 @@ steps:
 # LEDGER'is (fail_scope evidence, walker'is dar nevairuoja); on: čia tik
 # rodyklė, sprendimai sync'ina tą patį kelią.
 - id: rh_scope
+  role: ask_scope
   kind: confirm
   detector: scope
   rag_section: 0
@@ -88,6 +89,7 @@ steps:
 # „taip" → instrukcija; „nežinau kur" → pagalba surasti; „negaliu/ne namie"
 # → namų darbas + callback (be spaudimo į tiketą).
 - id: rh_ability
+  role: ability_check
   kind: confirm
   detector: yes_no
   rag_section: 1
@@ -107,6 +109,7 @@ steps:
 # P-C pagalba: klientas nežino, kur routeris — padedam surasti (agento
 # pagalba, Andrius 2026-09-08).
 - id: rh_locate
+  role: locate_device
   kind: confirm
   detector: yes_no
   rag_section: 1
@@ -125,6 +128,7 @@ steps:
 # P-C namų darbas: negali dabar — instrukcija ATEIČIAI + callback uždarymas;
 # meistras tik jei pats paprašo ('no' į „Gerai?" = nori meistro dabar).
 - id: rh_homework
+  role: homework
   kind: confirm
   detector: yes_no
   rag_section: 1
@@ -144,6 +148,7 @@ steps:
 # Perkrovimo instrukcija — kortelės šerdis. Dažniausios klaidos įaustos į hint:
 # prailgintuvas / mygtukas = nepilnas perkrovimas; du įrenginiai = perkrauna ne tą.
 - id: rh_reboot
+  role: reboot
   kind: instruct
   rag_section: 1
   goto: rh_check
@@ -158,6 +163,7 @@ steps:
 # sprendžia pats (advance_reboot_check): srautas grįžo / perkrovimo nesimatė
 # (port flap = liudininkas) / perkrauta bet neatsistatė — trys skirtingi keliai.
 - id: rh_check
+  role: verify_reboot
   kind: confirm
   detector: reboot_check
   rag_section: 2
@@ -172,6 +178,7 @@ steps:
 # Kartojimas su patikslinimu (patvirtinta kortelėje: 1 bandymas) — telemetrija
 # NEMATĖ, kad įrenginys būtų dingęs, t. y. pilno perkrovimo nebuvo.
 - id: rh_reboot_retry
+  role: reboot_retry
   kind: instruct
   rag_section: 3
   goto: rh_check
@@ -184,6 +191,7 @@ steps:
 # Kliento pusės kelias: neveikia tik viename įrenginyje ARBA srautas grįžo, bet
 # klientui vis dar neveikia — routeris gyvas, problema kelyje iki įrenginio.
 - id: rh_device
+  role: device_path
   kind: instruct
   rag_section: 4
   goto: rh_verify_dev
@@ -192,6 +200,7 @@ steps:
     for that device and wait: Wi-Fi on and connected to their own network (reconnect if needed),
     or the cable firmly plugged if wired. Do not mention cables for a phone/tablet.'
 - id: rh_verify_dev
+  role: ask_restored
   kind: confirm
   detector: restored
   rag_section: 5
@@ -205,6 +214,7 @@ steps:
     'yes': tame įrenginyje internetas dabar veikia
     'no': tame įrenginyje interneto vis tiek nėra
 - id: escalate
+  role: escalate
   kind: escalate
   tools: []
   rag_section: 6

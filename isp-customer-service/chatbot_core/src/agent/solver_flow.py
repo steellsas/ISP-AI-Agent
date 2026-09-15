@@ -386,7 +386,8 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
             # resuming at the long-stale intro re-walked the WHOLE ladder
             # (live 2026-08-12: power cable re-asked from scratch). The
             # honest endgame is the registration offer.
-            target = "escalate"
+            esc = strat.by_role("escalate") if strat else None
+            target = esc.id if esc else None
         if target and strat and strat.step(target) and r.get("step") != target:
             goto_step(state, rt, r, target)
             rt.tracer.emit(
@@ -587,7 +588,9 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
             from .tooling import telemetry
 
             d = telemetry(state, rt, mode="recheck", reason="bridge_device_check").data
-            return ((d.get("verdict") or {}).get("reason")) != "no_mac_observed"
+            from .faults import verdict_flag
+
+            return verdict_flag((d.get("verdict") or {}).get("reason"), "device_visible")
         except Exception:  # pragma: no cover - best-effort read
             return False
 
@@ -661,8 +664,9 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
 
     r = state.resolution.procedure or {}
     strat = get_strategy(r.get("verdict"))
-    if strat and strat.step("dr_bind"):
-        target = next_step_id(strat, "dr_bind", None)
+    bind = strat.by_role("bind_device") if strat else None
+    if bind is not None:
+        target = next_step_id(strat, bind.id, None)
         if strat.step(target) is not None and r.get("step") != target:
             goto_step(state, rt, r, target)
             r["asked"] = True  # the verify question goes out in THIS reply
@@ -741,9 +745,9 @@ def drive_escalate(state: Any, rt: Any, decision) -> str:
     bridged = bool(r.get("telemetry_fixed")) or state.resolution.bridge_bound
     step = None
     if strat is not None:
-        step = strat.step("dr_register_router") if bridged else strat.step("escalate")
+        step = strat.by_role("register_after_bridge") if bridged else strat.by_role("escalate")
         if step is None:
-            step = strat.step("escalate")
+            step = strat.by_role("escalate")
     if not r.get("escalate_reason"):
         r["escalate_reason"] = "phone_fix_failed"
     # Contacts first (2026-08-04): the dialogue collects the number + hours, then

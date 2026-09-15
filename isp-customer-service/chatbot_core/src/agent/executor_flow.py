@@ -115,7 +115,9 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         details += phrase(
             "ticket.details.anamnesis", text=", ".join(bits) if bits else s.intake.anamnesis_raw
         )
-    if step_id == "dr_register_router":
+    from .faults import role_of
+
+    if role_of((s.resolution.procedure or {}).get("verdict"), step_id) == "register_after_bridge":
         details += phrase("ticket.details.bridge_router")
     # Ledger: what the CALLER established (client-side evidence) — the human
     # taking over sees the checked physical facts, not just telemetry.
