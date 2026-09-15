@@ -168,6 +168,8 @@ Line numbers from `develop` @ `c7be3ba`; re-locate with grep.
   new columns filled per the table.
 - No reply before confirmation contains account, debt or outage information (automated check).
 - `grep -rn "PROACTIVE OUTAGE\|preflight_outage\|amend_ticket_note\|technician_visit\" *, *\"high\"" chatbot_core/src` → nothing.
+- Finding moved from M4 (`REFACTORING_PLAN.md` §6): F-20 ("Ne, ačiū, viskas" after a resolved close
+  reopens the case) — fixed with a test, or re-deferred by the owner.
 - `uv run pytest` green; eval ≥ baseline + new scenarios; owner live test: outage call (announce
   after confirmation), repeat call with an open ticket, billing request.
 
