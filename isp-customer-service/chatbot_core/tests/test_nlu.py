@@ -198,7 +198,7 @@ class TestPrefillWiring:
         ):
             text = "neveikia internetas Tilžės 60 butas 7"
             perceive(agent.state, agent.runtime, text)
-            list(agent._run_turn_stream(text))
+            list(agent.run_turn_scoped_stream(text, None, None))
 
         p = agent.state.identity.profile
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
@@ -226,7 +226,7 @@ class TestPrefillWiring:
         ):
             text = "internetas neveikia, lemputės nedega, jungiuosi per wifi"
             perceive(agent.state, agent.runtime, text)
-            list(agent._run_turn_stream(text))
+            list(agent.run_turn_scoped_stream(text, None, None))
 
         assert agent.state.intake.symptoms["lights"] == "off"
         assert agent.state.intake.symptoms["connection"] == "wifi"

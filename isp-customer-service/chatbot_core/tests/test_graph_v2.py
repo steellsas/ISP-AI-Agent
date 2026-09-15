@@ -72,6 +72,7 @@ class FakeEngine:
         for target, (label, result) in recorders.items():
             monkeypatch.setattr(target, self._recorder(label, result))
         monkeypatch.setattr("agent.graph_v2.runtime.narrator", lambda state, rt: self)
+        monkeypatch.setattr("agent.execute.say.scripted_exit", lambda state, rt: None)
 
     def _recorder(self, label, result):
         def record(state, rt, *args):
@@ -80,7 +81,10 @@ class FakeEngine:
 
         return record
 
-    def run_turn_scoped_stream(self, user_input, allowed_tools, node_prompt, planned=False):
+    def begin_turn(self, user_input):
+        pass
+
+    def llm_reply(self, allowed_tools, node_prompt):
         self.calls.append("narrate")
         yield "ok-"
         yield "reply"

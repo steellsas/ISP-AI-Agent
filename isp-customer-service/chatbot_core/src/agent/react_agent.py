@@ -304,93 +304,47 @@ class ReactAgent:
         user_input: str | None,
         allowed_tools: frozenset[str] | None,
         node_prompt: str | None,
-        planned: bool = False,
     ):
-        """Run ONE scoped turn (Pillar C3): a generator that YIELDS
-        the FINAL reply's text tokens as the LLM produces them. Tool rounds run
-        silently (no yields). Called from inside the LangGraph nodes, which forward
-        the tokens via the stream writer — so LangGraph stays the orchestrator."""
-        yield from self._run_turn_stream(user_input, allowed_tools, node_prompt, planned)
+        """Run ONE scoped LLM turn (Pillar C3): a generator that YIELDS the FINAL
+        reply's text tokens as the LLM produces them. Tool rounds run silently (no
+        yields). The decisions — including the scripted exits — happened before."""
+        self.begin_turn(user_input)
+        yield from self.llm_reply(allowed_tools, node_prompt)
 
-    def _run_turn_stream(
-        self,
-        user_input: str | None = None,
-        allowed_tools: frozenset[str] | None = None,
-        node_prompt: str | None = None,
-        planned: bool = False,
-    ):
-        """The scoped turn: deterministic head, scripted replies, then the LLM tool
-        loop streaming the final reply token by token. A `planned` turn was already
-        decided by the policy chain — the head's guards, the stuck backstop and the
-        scripted replies do not run again; the LLM words the plan."""
-        from .decide.rules.dialog import scripted_wait_ack
-        from .decide.rules.reply import plan_reply
-        from .execute.actions import run_action
-        from .executor_flow import execute_tool_calls
-        from .narrator_flow import build_messages, scoped_tools_schema
-        from .speculation import apply_bg_diagnosis, consume_injected_reply
-        from .ticket_flow import registration_claim_guard
+    def begin_turn(self, user_input: str | None) -> None:
+        """The narrator's turn bookkeeping before any words: the barge-in flag, the
+        heard text and intent, the background telemetry fold, the history."""
+        from .perceive.detectors import detect_turn_intent
+        from .speculation import apply_bg_diagnosis
 
         self.runtime.cancel.clear()  # a stale barge-in never cancels a NEW turn
-        # Ticket-node turns skip the diagnosis ingest — without this, the
+        # Ticket-dialogue turns skip the diagnosis ingest — without this, the
         # PREVIOUS turn's "understood" directive leaks into their replies.
         if self.state.ticket.stage:
             self.state.turn.understanding = None
-
         self.state.dialog.last_heard = (user_input or "").strip()
-        from .perceive.detectors import detect_turn_intent
-
         self.state.dialog.last_intent = detect_turn_intent(user_input)
         # S2 (2026-08-24): a background telemetry read finished while the
         # caller was busy — fold it in at the deterministic turn start, but
         # ONLY as a refresh: in the solution/bridge phase, or when the fresh
         # verdict FLIPS the story, it is discarded (live: the bg read saw the
         # just-plugged PC, the narrative turned foreign_mac mid-bridge and the
-        # agent asked "ar keitėte routerį?" over a working bind). The solution
-        # steps (verify_device_visible / the bridge verify) do their own reads at the right
-        # moments.
+        # agent asked "ar keitėte routerį?" over a working bind).
         apply_bg_diagnosis(self.state, self.runtime)
-        if user_input:
-            # The perceive node read the words; the turn head ran in decide.
-            self.tracer.emit("user_turn", text=user_input)
-
         # The caller's utterance goes on the history for EVERY reply path
         # (review 2026-08-07): scripted turns used to skip it, so the LLM
         # narrator later saw a conversation with holes and re-asked answered
-        # questions. One append, up front — the LLM loop below no longer does it.
+        # questions.
         if user_input:
+            self.tracer.emit("user_turn", text=user_input)
             self.state.messages.append({"role": "user", "content": user_input})
-            user_input = None
 
-        # Deterministic backstop (before the LLM, so it works with streaming) once a
-        # genuine repeat loop has escalated.
-        backstop = None if planned else self._stuck_backstop()
-        if backstop is not None:
-            self._record_plan("dialog.stuck_backstop")
-            yield self._apply_backstop(backstop)
-            return
-
-        # The scripted reply layer (engine-composed words, LLM skipped): the node
-        # calls the rules after the procedure moved; a directive plan leaves the
-        # words to the LLM below.
-        if not planned:
-            plan = plan_reply(self.state, self.runtime, self.state.dialog.last_heard)
-            if plan is not None:
-                self.state.turn.plan = plan.model_dump(mode="json")
-                if plan.say.kind == "phrase":
-                    action_text = run_action(self.state, self.runtime, plan)
-                    words = plan.say.text or action_text
-                    if words:
-                        yield self._emit_scripted_reply(words)
-                        return
-
-        # D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
-        # wait signal at a standing client action is acknowledged scripted.
-        wait = None if planned else scripted_wait_ack(self.state, self.runtime)
-        if wait is not None:
-            self._record_plan("dialog.wait_ack")
-            yield self._emit_scripted_reply(wait)
-            return
+    def llm_reply(self, allowed_tools: frozenset[str] | None, node_prompt: str | None):
+        """The LLM tool loop streaming the final reply token by token."""
+        from .executor_flow import execute_tool_calls
+        from .narrator_flow import build_messages, scoped_tools_schema
+        from .speculation import consume_injected_reply
+        from .ticket_flow import registration_claim_guard
 
         max_calls = self.config.max_tool_calls_per_response
         tool_rounds = 0
@@ -487,49 +441,6 @@ class ReactAgent:
 
         yield self.config.timeout_message
 
-    def _record_plan(self, rule: str, action=None) -> None:
-        """The narrator's own scripted exits are plans too (§5 rows 18-19)."""
-        from .decide.plan import Action, Say, TurnPlan, record
-
-        owner = "diagnosis" if self.state.identity.customer_id else "identification"
-        plan = TurnPlan(
-            owner=owner, rule=rule, action=action or Action(type="none"), say=Say(kind="phrase")
-        )
-        record(self.state, plan)
-
-    def _close_stuck(self) -> None:
-        """F-5: the stuck backstop's close — an identified caller's ticket is registered
-        (reason stuck) so the promised call-back happens; an unidentified caller's call
-        ends recorded as unidentified (reason stuck)."""
-        from .decide.plan import Action
-        from .executor_flow import register_ticket_from_state
-
-        s = self.state
-        s.closing.case_closed = True
-        if s.identity.customer_id:
-            if s.resolution.procedure is not None:
-                s.resolution.procedure["escalate_reason"] = "stuck"
-            register_ticket_from_state(s, self.runtime, None)
-            s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
-            self._record_plan("dialog.stuck_backstop", Action(type="register_ticket", name="stuck"))
-            return
-        s.closing.closed_reason = "declined"
-        s.closing.unidentified_reason = "stuck"
-
-    def _stuck_backstop(self) -> tuple[str, bool] | None:
-        """Deterministic escalation (text, should_close) once the prompt-level nudge
-        has failed — fired BEFORE the LLM (so it works with token streaming): at 3
-        offer the account code, at 4 register + close. None below that."""
-        n = self.state.dialog.stuck_count
-        if n >= 4:
-            # F-5: the words promise a registration only when one can be made.
-            if self.state.identity.customer_id:
-                return (phrase("system.stuck_register"), True)
-            return (phrase("system.stuck_unidentified_close"), True)
-        if n >= 3:
-            return (phrase("system.stuck_offer_code"), False)
-        return None
-
     def _track_stuck(self, reply: str) -> None:
         """Update the stuck counter from this turn's outcome. Increment ONLY when the
         agent actually RE-ASKS the same question (a genuine loop) — a new/different
@@ -553,35 +464,6 @@ class ReactAgent:
         if is_q:
             self.state.dialog.last_question = reply
         self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=repeat)
-
-    def _emit_scripted_reply(self, text: str) -> str:
-        """Bookkeeping for an engine-composed reply (mirrors _apply_backstop)."""
-        self.state.messages.append({"role": "assistant", "content": text})
-        if is_question(text):
-            self.state.dialog.last_question = text
-        emit_case(self.tracer, self.state)
-        self.tracer.emit("scripted", where="identification")
-        self.tracer.emit("agent_reply", text=text)
-        return text
-
-    def _apply_backstop(self, backstop: tuple[str, bool]) -> str:
-        """Emit a deterministic backstop reply (manages the counter itself so a
-        repeat backstop climbs 3 -> 4 -> close). Returns the text to yield/return."""
-        from .closing_flow import maybe_end_on_goodbye
-
-        text, should_close = backstop
-        if should_close:
-            self._close_stuck()
-        else:
-            self.state.dialog.stuck_count += 1  # advance the ladder for the next turn
-        self.state.messages.append({"role": "assistant", "content": text})
-        if is_question(text):
-            self.state.dialog.last_question = text
-        maybe_end_on_goodbye(self.state, self.runtime, text)
-        emit_case(self.tracer, self.state)
-        self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=False)
-        self.tracer.emit("agent_reply", text=text)
-        return text
 
     def _finalize_reply(self, text: str) -> None:
         """Shared end-of-turn bookkeeping for a customer-facing reply: update the

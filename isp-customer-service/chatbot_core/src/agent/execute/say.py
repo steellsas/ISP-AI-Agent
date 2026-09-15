@@ -82,7 +82,7 @@ def _narrate(state: Any, rt: Any, stage: str | None, user_input: str | None, pla
         "side_topic": (frozenset(), gr.SIDE_TOPIC_PROMPT),
     }[stage or "intake"]
     return gr.narrate(
-        state, rt, user_input, tools, prompt, NODES[stage or "intake"], planned=planned
+        state, rt, user_input, tools, prompt, NODES[stage or "intake"], exits=not planned
     )
 
 
@@ -91,3 +91,98 @@ def _stream(text: str) -> None:
         get_stream_writer()(text)
     except Exception:  # outside a live stream (tests / .invoke) — the text is in state
         pass
+
+
+# --- The narrator's scripted exits (§5 rows 11-15 and 18-19) -----------------------------
+
+
+def scripted_exit(state: Any, rt: Any) -> str | None:
+    """The engine's words for a stage turn, after the narrator's turn bookkeeping: the
+    stuck backstop, the scripted reply layer, the wait acknowledgement. Each records its
+    plan; None = the LLM words the stage."""
+    from ..decide.rules.dialog import scripted_wait_ack, stuck_backstop
+    from ..decide.rules.reply import plan_reply
+    from .actions import run_action
+
+    backstop = stuck_backstop(state)
+    if backstop is not None:
+        _record(state, "dialog.stuck_backstop")
+        return apply_backstop(state, rt, backstop)
+    plan = plan_reply(state, rt, state.dialog.last_heard)
+    if plan is not None:
+        from ..decide.plan import record
+
+        record(state, plan)
+        if plan.say.kind == "phrase":
+            action_text = run_action(state, rt, plan)
+            words = plan.say.text or action_text
+            if words:
+                return emit_scripted(state, rt, words)
+    wait = scripted_wait_ack(state, rt)
+    if wait is not None:
+        _record(state, "dialog.wait_ack")
+        return emit_scripted(state, rt, wait)
+    return None
+
+
+def emit_scripted(state: Any, rt: Any, text: str) -> str:
+    """Bookkeeping for an engine-composed reply: history, the anchor question, trace."""
+    from ..dialog_utils import is_question
+    from ..trace import emit_case
+
+    state.messages.append({"role": "assistant", "content": text})
+    if is_question(text):
+        state.dialog.last_question = text
+    emit_case(rt.tracer, state)
+    rt.tracer.emit("scripted", where="identification")
+    rt.tracer.emit("agent_reply", text=text)
+    return text
+
+
+def apply_backstop(state: Any, rt: Any, backstop: tuple[str, bool]) -> str:
+    """Speak the stuck backstop (it climbs 3 -> 4 -> close); F-5: its close keeps the
+    registration promise for an identified caller and records an unidentified one."""
+    from ..closing_flow import maybe_end_on_goodbye
+    from ..dialog_utils import is_question
+    from ..trace import emit_case
+
+    text, should_close = backstop
+    if should_close:
+        _close_stuck(state, rt)
+    else:
+        state.dialog.stuck_count += 1  # advance the ladder for the next turn
+    state.messages.append({"role": "assistant", "content": text})
+    if is_question(text):
+        state.dialog.last_question = text
+    maybe_end_on_goodbye(state, rt, text)
+    emit_case(rt.tracer, state)
+    rt.tracer.emit("stuck", count=state.dialog.stuck_count, repeated=False)
+    rt.tracer.emit("agent_reply", text=text)
+    return text
+
+
+def _close_stuck(state: Any, rt: Any) -> None:
+    from ..decide.plan import Action
+    from ..executor_flow import register_ticket_from_state
+
+    s = state
+    s.closing.case_closed = True
+    if s.identity.customer_id:
+        if s.resolution.procedure is not None:
+            s.resolution.procedure["escalate_reason"] = "stuck"
+        register_ticket_from_state(s, rt, None)
+        s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
+        _record(state, "dialog.stuck_backstop", Action(type="register_ticket", name="stuck"))
+        return
+    s.closing.closed_reason = "declined"
+    s.closing.unidentified_reason = "stuck"
+
+
+def _record(state: Any, rule: str, action: Any = None) -> None:
+    from ..decide.plan import Action, Say, TurnPlan, record
+
+    owner = "diagnosis" if state.identity.customer_id else "identification"
+    plan = TurnPlan(
+        owner=owner, rule=rule, action=action or Action(type="none"), say=Say(kind="phrase")
+    )
+    record(state, plan)

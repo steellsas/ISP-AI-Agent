@@ -35,23 +35,38 @@ def narrate(
     rt: Any,
     user_input: str | None,
     allowed_tools,
-    node_prompt: str,
+    node_prompt: str | None,
     node: str,
-    planned: bool = False,
+    exits: bool = False,
 ) -> str:
-    """Run the engine's scoped LLM turn, streaming tokens out via the LangGraph
-    stream writer (a no-op under .invoke(), live under .stream(stream_mode='custom'))
-    while collecting the full reply for the checkpoint."""
+    """Speak a stage turn: the narrator's bookkeeping, the engine's scripted exits when
+    `exits` (a stage directive), else / then the LLM turn — streaming out via the
+    LangGraph stream writer (a no-op outside a live stream) while collecting the full
+    reply for the checkpoint."""
     state.turn.active_node = node
     rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
-    writer = get_stream_writer()
+    writer = _writer()
+    agent = narrator(state, rt)
+    agent.begin_turn(user_input)
+    if exits:
+        from ..execute.say import scripted_exit
+
+        words = scripted_exit(state, rt)
+        if words is not None:
+            writer(words)
+            return words
     parts: list[str] = []
-    for token in narrator(state, rt).run_turn_scoped_stream(
-        user_input, allowed_tools, node_prompt, planned
-    ):
+    for token in agent.llm_reply(allowed_tools, node_prompt):
         writer(token)
         parts.append(token)
     return "".join(parts)
+
+
+def _writer():
+    try:
+        return get_stream_writer()
+    except Exception:  # outside a graph run (tests) — the text is in state
+        return lambda _chunk: None
 
 
 def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply: str) -> None:
@@ -66,7 +81,9 @@ def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply
         state.dialog.last_heard = user_input.strip()
         rt.tracer.emit("user_turn", text=user_input)
         state.messages.append({"role": "user", "content": user_input})
-    narrator(state, rt)._emit_scripted_reply(reply)
+    from ..execute.say import emit_scripted
+
+    emit_scripted(state, rt, reply)
     # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
     # END the call like an LLM one — the hang-up detector ran only on the LLM
     # path, so every trailing garbled turn earned a fresh goodbye.

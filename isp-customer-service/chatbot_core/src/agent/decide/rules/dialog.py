@@ -8,6 +8,22 @@ from ...contract.locale import phrase
 from ..plan import Action, Say, TurnPlan
 
 
+def stuck_backstop(state: Any) -> tuple[str, bool] | None:
+    """Deterministic escalation (text, should_close) once the prompt-level nudge has
+    failed (§5 row 18): at 3 offer the account code, at 4 close — with the
+    registration an identified caller was promised (F-5). None below that."""
+    from ...contract.locale import phrase
+
+    n = state.dialog.stuck_count
+    if n >= 4:
+        if state.identity.customer_id:
+            return (phrase("system.stuck_register"), True)
+        return (phrase("system.stuck_unidentified_close"), True)
+    if n >= 3:
+        return (phrase("system.stuck_offer_code"), False)
+    return None
+
+
 def greeting(state: Any, rt: Any) -> TurnPlan | None:
     """The first turn has no caller words: the fixed opening line, with the caller's
     number looked up while it plays."""

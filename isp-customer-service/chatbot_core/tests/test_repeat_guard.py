@@ -11,7 +11,9 @@ Run: pytest tests/test_repeat_guard.py -v
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from agent.decide.rules.dialog import stuck_backstop
 from agent.dialog_utils import is_question, progress_key, similar
+from agent.execute.say import apply_backstop
 
 
 def _agent():
@@ -21,11 +23,12 @@ def _agent():
 
 
 def _turn(agent, text=None):
-    """One streaming engine turn (perceive, then the narrator loop); returns the reply."""
+    """One stage turn (perceive, then the narrator with its scripted exits); the reply."""
+    from agent.graph_v2.runtime import narrate
     from agent.perceive import perceive
 
     perceive(agent.state, agent.runtime, text)
-    return "".join(t for t in agent._run_turn_stream(text) if isinstance(t, str))
+    return narrate(agent.state, agent.runtime, text, None, None, "diagnosis", exits=True)
 
 
 def _stream_of(message):
@@ -99,15 +102,15 @@ class TestStuckCounter:
     def test_apply_backstop_offer_climbs_ladder(self):
         a = _agent()
         a.state.dialog.stuck_count = 3
-        a._apply_backstop(("Gal turite abonento kodą?", False))
+        apply_backstop(a.state, a.runtime, ("Gal turite abonento kodą?", False))
         assert a.state.dialog.stuck_count == 4
 
     def test_apply_backstop_unidentified_closes_as_unidentified(self):
         a = _agent()
         a.state.dialog.stuck_count = 4
-        text, should_close = a._stuck_backstop()
+        text, should_close = stuck_backstop(a.state)
         assert "Užregistruosiu" not in text  # no registration promised without an account
-        a._apply_backstop((text, should_close))
+        apply_backstop(a.state, a.runtime, (text, should_close))
         assert a.state.closing.case_closed is True
         assert a.state.closing.closed_reason == "declined"
         assert a.state.closing.unidentified_reason == "stuck"
@@ -117,9 +120,9 @@ class TestStuckCounter:
         a.state.identity.customer_id = "CUST009"
         a.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
         a.state.dialog.stuck_count = 4
-        text, should_close = a._stuck_backstop()
+        text, should_close = stuck_backstop(a.state)
         assert "Užregistruosiu" in text
-        a._apply_backstop((text, should_close))
+        apply_backstop(a.state, a.runtime, (text, should_close))
         assert a.state.ticket.ticket_id  # F-5: the promise is kept
         assert a.state.closing.closed_reason == "registered"
         assert a.state.resolution.procedure["escalate_reason"] == "stuck"
@@ -129,19 +132,19 @@ class TestBackstop:
     def test_none_below_three(self):
         a = _agent()
         a.state.dialog.stuck_count = 2
-        assert a._stuck_backstop() is None
+        assert stuck_backstop(a.state) is None
 
     def test_offer_code_at_three(self):
         a = _agent()
         a.state.dialog.stuck_count = 3
-        text, should_close = a._stuck_backstop()
+        text, should_close = stuck_backstop(a.state)
         assert "abonento kodą" in text
         assert should_close is False
 
     def test_register_and_close_at_four(self):
         a = _agent()
         a.state.dialog.stuck_count = 4
-        _text, should_close = a._stuck_backstop()
+        _text, should_close = stuck_backstop(a.state)
         assert should_close is True
 
     def test_backstop_fires_before_llm(self, db_connection):
