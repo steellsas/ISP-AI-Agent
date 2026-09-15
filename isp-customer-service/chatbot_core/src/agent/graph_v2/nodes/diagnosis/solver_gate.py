@@ -43,9 +43,6 @@ def _solver_gate(state: Any, rt: Any, user_input: str | None) -> str | None:
     if driven is None:
         state.turn.progress_key_at_start = snapshot
         return None
-    # narrate() will not run this turn — consume the deterministic-head
-    # latch here so the NEXT turn's narrate does not skip its head.
-    state.turn.pre_turn_head_done = False
     state.turn.active_node = DIAGNOSIS
     state.turn.reply_path = "solver"
     rt.tracer.emit("node", node="diagnosis_solver", customer_id=state.identity.customer_id)

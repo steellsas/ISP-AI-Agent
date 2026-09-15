@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .plan import TurnPlan
-from .rules import closing, dialog, ticket
+from .rules import closing, dialog, head, ticket
 
 Rule = Callable[[Any, Any], TurnPlan | None]
 
@@ -24,6 +24,13 @@ RULES: list[tuple[int, str, Rule]] = [
     (1, "dialog.greeting", dialog.greeting),
     (2, "closing", closing.plan),
     (3, "ticket", ticket.plan),
+    (4, "dialog.end_confirm_answer", head.head_rule(head.end_confirm_answer)),
+    (5, "identification.reopen_confirm_answer", head.head_rule(head.reopen_confirm_answer)),
+    (6, "dialog.cannot_now", head.head_rule(head.cannot_now_shield)),
+    (7, "dialog.farewell_mid_process", head.head_rule(head.farewell_mid_process)),
+    (8, "identification.caller_intro", head.head_rule(head.caller_intro)),
+    (9, "identification", head.head_rule(head.unidentified_address)),
+    (10, "identification.address_correction", head.head_rule(head.address_correction)),
 ]
 
 

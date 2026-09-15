@@ -526,15 +526,15 @@ class TestTicketUnderstanding:
     the keyword list diverted it on "galima" and the hours defaulted."""
 
     def _ticket_agent(self, monkeypatch, stage="hours"):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = _diagnosing_agent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)  # asks phone
         if stage == "hours":
-            pre_turn_guards(
+            turn_head(
                 agent.state, agent.runtime, "taip, tiks šis"
             )  # keyword consent (pass mocked off below)
             identification_scripted_reply(
@@ -543,64 +543,70 @@ class TestTicketUnderstanding:
         return agent
 
     def test_hours_with_galima_captured_not_diverted(self, db_connection, monkeypatch):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch(
             "agent.perceive.understand.understand_ticket",
             return_value={"value": "per pietus arba ryte", "type": "answer"},
         ):
-            pre_turn_guards(agent.state, agent.runtime, "Bet kada galima per pietus iš ryto")
+            turn_head(agent.state, agent.runtime, "Bet kada galima per pietus iš ryto")
         assert agent.state.ticket.contact_hours == "per pietus arba ryte"
         assert agent.state.ticket.stage == "done"
 
     def test_phone_tas_pats_via_pass(self, db_connection, monkeypatch):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._ticket_agent(monkeypatch, stage="phone")
         with patch(
             "agent.perceive.understand.understand_ticket",
             return_value={"value": "same_number", "type": "answer"},
         ):
-            pre_turn_guards(agent.state, agent.runtime, "Stengiai tas, iš kurios kambinu")
+            turn_head(agent.state, agent.runtime, "Stengiai tas, iš kurios kambinu")
         assert agent.state.ticket.contact_phone == "+37060012353"
         assert agent.state.ticket.stage == "hours"
 
     def test_real_question_still_diverts(self, db_connection, monkeypatch):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch(
             "agent.perceive.understand.understand_ticket",
             return_value={"value": None, "type": "question"},
         ):
-            pre_turn_guards(agent.state, agent.runtime, "O kodėl turiu laukti skambučio?")
+            turn_head(agent.state, agent.runtime, "O kodėl turiu laukti skambučio?")
         assert agent.state.turn.ticket_offscript_question is True
         assert agent.state.ticket.contact_hours is None
 
     def test_pass_failure_falls_back_to_keywords(self, db_connection, monkeypatch):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
         with patch("agent.perceive.understand.understand_ticket", return_value=None):
-            pre_turn_guards(agent.state, agent.runtime, "po 17 valandos")
+            turn_head(agent.state, agent.runtime, "po 17 valandos")
         assert agent.state.ticket.contact_hours == "po 17 valandos"  # keyword plausibility path
 
     def test_stale_supratau_cleared_on_ticket_turns(self, db_connection, monkeypatch):
+        from agent.decide.node import decide_node
+        from agent.graph_v2.state import GraphState
         from agent.narrator_flow import state_facts_block
+        from agent.perceive import perceive
+        from langgraph.runtime import Runtime
 
         agent = self._ticket_agent(monkeypatch, stage="hours")
         agent.state.turn.understanding = {"understood": "Routeris sugedęs", "type": "answer"}
-        # The stream turn entry clears it for ticket-node turns.
-        gen = agent.run_turn_scoped_stream("bet kada", frozenset(), None)
+        agent.state.turn.user_input = "bet kada"
+        # The perceive node starts every turn with a clean read.
+        perceive(agent.state, agent.runtime, "bet kada")
         with patch(
             "agent.perceive.understand.understand_ticket",
             return_value={"value": "bet kada", "type": "answer"},
         ):
-            reply = "".join(gen)
-        assert agent.state.turn.understanding is None
-        assert "Užregistravau" in reply  # dialogue completed
-        facts = state_facts_block(agent.state, agent.runtime) or ""
+            upd = decide_node(agent.state, Runtime(context=agent.runtime))
+        state = GraphState(**upd)
+        assert state.turn.understanding is None
+        assert "Užregistravau" in state.turn.reply  # dialogue completed
+        facts = state_facts_block(state, agent.runtime) or ""
         assert "Routeris sugedęs" not in facts
 
 

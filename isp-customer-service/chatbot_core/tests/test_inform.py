@@ -148,8 +148,8 @@ class TestTicketCallback:
     callback noras, ne kontaktų atsakymas; šiltas uždarymas be tiketo."""
 
     def test_callback_wish_mid_ticket_closes_warm(self, db_connection):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.resolution import get_strategy
         from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
@@ -160,7 +160,7 @@ class TestTicketCallback:
             agent.state, agent.runtime, get_strategy("unclear_fault").by_role("escalate")
         )
         ticket_stage_reply(agent.state, agent.runtime)  # numerio klausimas išėjo
-        pre_turn_guards(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
+        turn_head(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
         assert agent.state.ticket.stage is None
@@ -170,7 +170,7 @@ class TestTicketCallback:
         assert r and "paskambinkite" in r  # callback_goodbye
 
     def test_normal_hours_answer_still_captured(self, db_connection):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
         from agent.resolution import get_strategy
         from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
@@ -180,9 +180,9 @@ class TestTicketCallback:
             agent.state, agent.runtime, get_strategy("unclear_fault").by_role("escalate")
         )
         ticket_stage_reply(agent.state, agent.runtime)
-        pre_turn_guards(agent.state, agent.runtime, "Taip, tiks")
+        turn_head(agent.state, agent.runtime, "Taip, tiks")
         ticket_stage_reply(agent.state, agent.runtime)
-        pre_turn_guards(
+        turn_head(
             agent.state, agent.runtime, "Skambinkite po 17 valandos"
         )  # JŪS skambinkite — ne callback
         assert not agent.state.closing.case_closed
@@ -350,11 +350,11 @@ class TestHomeworkFinale:
     def test_farewell_consent_routes_to_callback(self, db_connection):
         """F1+F2: „Gerai, sutariam, viso gero" = sutikimas → callback, be
         end-confirm rato."""
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
         from agent.walker_flow import advance_resolution
 
         agent = self._at_homework()
-        pre_turn_guards(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
+        turn_head(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
         assert agent.state.dialog.end_confirm_pending is False  # end-confirm nekilo
         advance_resolution(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"

@@ -55,22 +55,22 @@ class TestW0OrderGuards:
         assert is_howto("Kur žiūrėti tą lemputę?")
 
     def test_question_shaped_hours_answer_is_captured(self, db_connection):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._agent()
         agent.state.ticket.stage = "hours"
         agent.state.ticket.context = TicketContext(step_id=None, hours_asked=True, intro_done=True)
-        pre_turn_guards(agent.state, agent.runtime, "Kodėl tokiausia skambinti nuo 17-18 val.")
+        turn_head(agent.state, agent.runtime, "Kodėl tokiausia skambinti nuo 17-18 val.")
         assert agent.state.ticket.contact_hours and "17-18" in agent.state.ticket.contact_hours
         assert agent.state.ticket.stage == "done"
 
     def test_real_question_without_content_still_diverts(self, db_connection):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._agent()
         agent.state.ticket.stage = "hours"
         agent.state.ticket.context = TicketContext(step_id=None, hours_asked=True, intro_done=True)
-        pre_turn_guards(agent.state, agent.runtime, "Kodėl jums reikia mano laiko?")
+        turn_head(agent.state, agent.runtime, "Kodėl jums reikia mano laiko?")
         assert not agent.state.ticket.contact_hours
         assert agent.state.turn.ticket_offscript_question is True
 

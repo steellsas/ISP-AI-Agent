@@ -210,40 +210,40 @@ class TestReopenConfirmation:
         assert agent.state.identity.customer_id == "CUST112"  # dar NEperjungta
 
     def test_yes_reopens_no_keeps(self, db_connection):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         # Atsakymą skaito pre_turn_guards (A-2: kad solveris/walker'is jo
         # nesuvartotų) — testas kviečia gyvą kelią.
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
         agent.state.identity.reopen_confirm_asked = True
-        pre_turn_guards(agent.state, agent.runtime, "Taip, dėl kito")
+        turn_head(agent.state, agent.runtime, "Taip, dėl kito")
         assert agent.state.identity.customer_id is None  # atidaryta iš naujo
 
         agent2 = self._identified()
         agent2.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
         agent2.state.identity.reopen_confirm_asked = True
-        pre_turn_guards(agent2.state, agent2.runtime, "Ne ne, likim prie šito")
+        turn_head(agent2.state, agent2.runtime, "Ne ne, likim prie šito")
         assert agent2.state.identity.customer_id == "CUST112"  # liko
         assert agent2.state.identity.reopen_confirm_utterance is None
 
     def test_unclear_answer_reasks_not_burns(self, db_connection):
         """A-2 gyva yda: neaiškus atsakymas klausimo nebesudegina — vienas
         pakartojimas, o walker'is tą turn'ą laikomas (hold)."""
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
         agent.state.identity.reopen_confirm_asked = True
         agent.state.identity.reopen_confirm_asks = 1
-        pre_turn_guards(agent.state, agent.runtime, "Nu kaip čia dabar pasakyt")
+        turn_head(agent.state, agent.runtime, "Nu kaip čia dabar pasakyt")
         assert agent.state.identity.reopen_confirm_utterance is not None  # klausimas gyvas
         assert agent.state.dialog.resume_hold_due is True  # walker'is nesuvartos turn'o
         r = identification_scripted_reply(agent.state, agent.runtime, "Nu kaip čia dabar pasakyt")
         assert r and "KITO adreso" in r  # pakartojimas
         # Antras neaiškus — nurašom (liekam prie esamo), be amžino ciklo.
-        pre_turn_guards(agent.state, agent.runtime, "Mhm chm")
+        turn_head(agent.state, agent.runtime, "Mhm chm")
         assert agent.state.identity.reopen_confirm_utterance is None
         assert agent.state.identity.customer_id == "CUST112"
 
@@ -262,7 +262,7 @@ class TestReopenConfirmation:
         """A-2R gyva yda: po „taip" foninis telemetrijos skaitymas atstatydavo
         senos sąskaitos diagnozę, o identifikacija nesitęsė — dabar bg išmetamas
         ir variklis IŠ KARTO bando naują adresą (Tilžės 60 → buto klausimas)."""
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._identified()
         agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "router_hung"}
@@ -270,7 +270,7 @@ class TestReopenConfirmation:
         agent.state.identity.phone_candidate = {"customer_id": "CUST112", "street": "Vilniaus g."}
         agent.state.identity.reopen_confirm_utterance = "mano adresas yra Tilžės gatvė 60"
         agent.state.identity.reopen_confirm_asked = True
-        pre_turn_guards(agent.state, agent.runtime, "Taip taip, dėl KITO adreso skambinu")
+        turn_head(agent.state, agent.runtime, "Taip taip, dėl KITO adreso skambinu")
         assert agent.state.identity.customer_id is None  # sena tapatybė numesta
         assert agent.state.turn.bg_diagnosis is None  # telemetrija išmesta kartu
         assert agent.state.diagnosis.verdicts == {}  # senų išvadų nebėra
@@ -282,12 +282,12 @@ class TestReopenConfirmation:
     def test_garbled_answer_does_not_stomp_good_pending_slots(self, db_connection):
         """P1 gyva: pending davė Tilžės 60 (conf 1.0), atsakymo darkymas
         „Tildžiai 660-3" jo nebeperrašo — resolve eina su 60."""
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "mano adresas yra Tilžės gatvė 60"
         agent.state.identity.reopen_confirm_asked = True
-        pre_turn_guards(agent.state, agent.runtime, "Taip, dėl KITO adreso. Dėl Tildžiai 660-3.")
+        turn_head(agent.state, agent.runtime, "Taip, dėl KITO adreso. Dėl Tildžiai 660-3.")
         assert agent.state.identity.profile.house.value == "60"  # ne 660
 
     def test_address_echo_question_freezes_counters(self, db_connection):
@@ -311,12 +311,12 @@ class TestReopenConfirmation:
     def test_confirmed_reopen_commits_single_contract_address(self, db_connection):
         """Naujas adresas be butų (Vilniaus g. 29) — po „taip" identifikacija
         įvyksta TĄ PATĮ turn'ą, be papildomų klausimų."""
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "skambinu dėl Vilniaus gatvės 29"
         agent.state.identity.reopen_confirm_asked = True
-        pre_turn_guards(agent.state, agent.runtime, "Taip")
+        turn_head(agent.state, agent.runtime, "Taip")
         assert agent.state.identity.customer_id == "CUST009"  # nauja sutartis prisirišo
 
     def test_address_question_mid_ident_names_heard_address(self, db_connection):
@@ -348,7 +348,7 @@ class TestReopenConfirmation:
     def test_yes_to_heard_address_commits_from_slots(self, db_connection):
         """„Taip" į „ar skambinate dėl šio adreso?" be telefono kandidato —
         variklis riša iš slotų (vienos sutarties adresas prisiriša iš karto)."""
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -362,7 +362,7 @@ class TestReopenConfirmation:
                 "content": "Girdėjau adresą Vilniaus g. 29, bet dar nepatvirtinau. Ar skambinate dėl šio adreso?",
             }
         )
-        pre_turn_guards(agent.state, agent.runtime, "Taip taip.")
+        turn_head(agent.state, agent.runtime, "Taip taip.")
         assert agent.state.identity.customer_id == "CUST009"
 
     def test_bg_diagnosis_never_applies_without_customer(self, db_connection):
@@ -387,9 +387,9 @@ class TestQuestionRegistry:
         return agent
 
     def test_reopen_lifecycle_ask_reask_close(self, db_connection):
+        from agent.decide.rules.head import turn_head
         from agent.dialog_registry import active
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
@@ -397,31 +397,31 @@ class TestQuestionRegistry:
         identification_scripted_reply(agent.state, agent.runtime, "dėl Tilžės g. 60")  # ask
         q = active(agent.state, agent.runtime)
         assert q and q.owner == "safety" and q.key == "reopen_confirm" and q.asks == 1
-        pre_turn_guards(agent.state, agent.runtime, "Nu kaip čia pasakyt")  # unclear → reask
+        turn_head(agent.state, agent.runtime, "Nu kaip čia pasakyt")  # unclear → reask
         identification_scripted_reply(agent.state, agent.runtime, "Nu kaip čia pasakyt")
         q = active(agent.state, agent.runtime)
         assert q and q.asks == 2  # pakartojimas registruotas
-        pre_turn_guards(agent.state, agent.runtime, "Mhm chm")  # antras neaiškus → nurašyta
+        turn_head(agent.state, agent.runtime, "Mhm chm")  # antras neaiškus → nurašyta
         assert active(agent.state, agent.runtime) is None
 
     def test_reopen_confirmed_clears(self, db_connection):
+        from agent.decide.rules.head import turn_head
         from agent.dialog_registry import active
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Vilniaus gatvės 29"
         agent.state.identity.reopen_confirm_asked = False
         identification_scripted_reply(agent.state, agent.runtime, "dėl Vilniaus gatvės 29")
-        pre_turn_guards(agent.state, agent.runtime, "Taip")
+        turn_head(agent.state, agent.runtime, "Taip")
         assert active(agent.state, agent.runtime) is None
         assert agent.state.identity.customer_id == "CUST009"
 
     def test_ticket_question_lifecycle(self, db_connection):
         """B žingsnis 3: tiketo klausimai (numeris → valandos) registre;
         registracija uždaro savininką."""
+        from agent.decide.rules.head import turn_head
         from agent.dialog_registry import active
-        from agent.perception_flow import pre_turn_guards
         from agent.resolution import get_strategy
         from agent.ticket_flow import (
             begin_ticket_dialogue,
@@ -437,11 +437,11 @@ class TestQuestionRegistry:
         ticket_stage_reply(agent.state, agent.runtime)
         q = active(agent.state, agent.runtime)
         assert q and q.owner == "ticket" and q.key == "ticket_phone"
-        pre_turn_guards(agent.state, agent.runtime, "Taip, tiks")
+        turn_head(agent.state, agent.runtime, "Taip, tiks")
         ticket_stage_reply(agent.state, agent.runtime)
         q = active(agent.state, agent.runtime)
         assert q and q.key == "ticket_hours"
-        pre_turn_guards(agent.state, agent.runtime, "Po 17 valandos")
+        turn_head(agent.state, agent.runtime, "Po 17 valandos")
         finish_ticket_dialogue(agent.state, agent.runtime)
         assert agent.state.ticket.ticket_id
         assert active(agent.state, agent.runtime) is None  # dialogas baigtas — registras švarus
@@ -488,9 +488,9 @@ class TestQuestionRegistry:
         """P-D gyva: „nepatogu, nesu namuose" — anksčiau walker'io refuse
         guard'as tą patį turn'ą startavo tiketą; dabar galvos skydas
         registruoja safety klausimą ir walker'is laiko."""
+        from agent.decide.rules.head import turn_head
         from agent.dialog_registry import active
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.walker_flow import advance_resolution
 
         agent = self._identified()
@@ -500,7 +500,7 @@ class TestQuestionRegistry:
             "asked": True,
         }
         msg = "Nepatogu man tai daryt, aš nesu namuose dabar."
-        pre_turn_guards(agent.state, agent.runtime, msg)
+        turn_head(agent.state, agent.runtime, msg)
         q = active(agent.state, agent.runtime)
         assert q and q.owner == "safety" and q.key == "cannot_now"
         advance_resolution(agent.state, agent.runtime, msg)
@@ -547,7 +547,7 @@ class TestQuestionRegistry:
     def test_soft_refuse_at_ability_stays_with_pack(self, db_connection):
         """P-C: švelnus „nesu namuose" ability žingsnyje NEeskaluoja į tiketą —
         pack'as pats nuves į homework; aiškus reikalavimas vis tiek laimi."""
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._identified()
         agent.state.resolution.procedure = {
@@ -559,7 +559,7 @@ class TestQuestionRegistry:
         from agent.dialog_registry import register
 
         register(agent.state, agent.runtime, "walker", "step:rh_ability")
-        pre_turn_guards(agent.state, agent.runtime, "Nepatogu, nesu namuose dabar")
+        turn_head(agent.state, agent.runtime, "Nepatogu, nesu namuose dabar")
         # skydas NEkyla (pack'o žingsnis valdo), tiketas NEprasidėjo
         from agent.dialog_registry import active
 
@@ -623,13 +623,13 @@ class TestQuestionRegistry:
 
     def test_caller_name_closes_on_capture(self, db_connection):
         """Gyva 2026-09-08: vardo klausimas registre kabėjo atviras po atsakymo."""
+        from agent.decide.rules.head import turn_head
         from agent.dialog_registry import active, register
-        from agent.perception_flow import pre_turn_guards
 
         agent = self._identified()
         agent.state.identity.result_pending = True
         register(agent.state, agent.runtime, "ident", "caller_name")
-        pre_turn_guards(agent.state, agent.runtime, "Paulius mano vardas")
+        turn_head(agent.state, agent.runtime, "Paulius mano vardas")
         assert agent.state.identity.caller_name == "Paulius"
         assert active(agent.state, agent.runtime) is None
 
@@ -786,13 +786,13 @@ class TestOtherStreetSignal:
         return agent
 
     def _turn(self, agent, text):
+        from agent.decide.rules.head import turn_head
         from agent.perceive.slots import prefill_slots_from_text
-        from agent.perception_flow import pre_turn_guards
 
         # Gyva seka (react_agent ~1416): prefill, tada pre_turn_guards —
         # reopen trigeris gyvena guards'uose, ne prefill'e.
         prefill_slots_from_text(agent.state, agent.runtime, text)
-        pre_turn_guards(agent.state, agent.runtime, text)
+        turn_head(agent.state, agent.runtime, text)
 
     def test_garbled_correction_triggers_confirm(self, db_connection):
         from agent.identification_flow import identification_scripted_reply

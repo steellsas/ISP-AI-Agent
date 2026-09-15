@@ -332,8 +332,8 @@ class TurnScratch(BaseModel):
     ticket_offscript_question: bool = False
     # Repeat-guard progress snapshot taken at the start of the turn.
     progress_key_at_start: list[Any] | None = None
-    # The deterministic head (prefill + guards) already ran in the diagnose node.
-    pre_turn_head_done: bool = False
+    # The turn-head family that owned the head this turn (decide/rules/head.py).
+    head_owner: str | None = None
     # Which exit produced the reply (greeting, scripted, llm, solver, …) — the shadow
     # TurnPlan reads it (M4 step 2).
     reply_path: str | None = None

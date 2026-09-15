@@ -326,7 +326,6 @@ class ReactAgent:
         from .executor_flow import execute_tool_calls
         from .identification_flow import identification_scripted_reply
         from .narrator_flow import build_messages, scoped_tools_schema
-        from .perception_flow import pre_turn_guards
         from .speculation import apply_bg_diagnosis, consume_injected_reply
         from .ticket_flow import registration_claim_guard
         from .walker_flow import scripted_wait_ack
@@ -351,14 +350,8 @@ class ReactAgent:
         # moments.
         apply_bg_diagnosis(self.state, self.runtime)
         if user_input:
+            # The perceive node read the words; the turn head ran in decide.
             self.tracer.emit("user_turn", text=user_input)
-            # The guards may have run EARLIER (diagnose node, A-2 2026-09-07) —
-            # the latch prevents a double run. The perceive node already read
-            # the words (slots, evidence).
-            if self.state.turn.pre_turn_head_done:
-                self.state.turn.pre_turn_head_done = False
-            elif not planned:
-                pre_turn_guards(self.state, self.runtime, user_input)
 
         # The caller's utterance goes on the history for EVERY reply path
         # (review 2026-08-07): scripted turns used to skip it, so the LLM

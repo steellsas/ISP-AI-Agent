@@ -345,13 +345,13 @@ class TestDeterministicInformClose:
 def _complete_ticket_dialogue(agent):
     """Walk the 2-question contact dialogue (2026-08-04) to the registration.
     Each stage question must be ASKED before its answer counts (2026-08-05)."""
+    from agent.decide.rules.head import turn_head
     from agent.identification_flow import identification_scripted_reply
-    from agent.perception_flow import pre_turn_guards
 
     identification_scripted_reply(agent.state, agent.runtime, None)  # intro + phone question
-    pre_turn_guards(agent.state, agent.runtime, "taip, tiks šis")
+    turn_head(agent.state, agent.runtime, "taip, tiks šis")
     identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")  # hours question
-    pre_turn_guards(agent.state, agent.runtime, "bet kada")
+    turn_head(agent.state, agent.runtime, "bet kada")
     return identification_scripted_reply(agent.state, agent.runtime, "bet kada")
 
 
@@ -518,29 +518,29 @@ class TestHearingAgent:
         assert agent.state.ticket.stage == "phone"  # refuse/demand path untouched
 
     def test_ticket_cancel_needs_one_confirm(self, db_connection, monkeypatch):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
         from agent.ticket_flow import ticket_stage_reply
 
         agent = self._agent(monkeypatch, step="escalate")
         agent.state.ticket.stage = "phone"
         agent.state.ticket.context = TicketContext(phone_asked=True, intro_done=True)
-        pre_turn_guards(agent.state, agent.runtime, "Neregistruokite nieko")
+        turn_head(agent.state, agent.runtime, "Neregistruokite nieko")
         assert agent.state.ticket.stage == "phone"  # not cancelled yet
         reply = ticket_stage_reply(agent.state, agent.runtime)
         assert "tikrai nereikia" in reply  # the confirm question went out
-        pre_turn_guards(agent.state, agent.runtime, "nereikia")
+        turn_head(agent.state, agent.runtime, "nereikia")
         assert agent.state.ticket.stage == "cancelled"  # confirmed refusal cancels
 
     def test_ticket_cancel_confirm_can_resume(self, db_connection, monkeypatch):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
         from agent.ticket_flow import ticket_stage_reply
 
         agent = self._agent(monkeypatch, step="escalate")
         agent.state.ticket.stage = "phone"
         agent.state.ticket.context = TicketContext(phone_asked=True, intro_done=True)
-        pre_turn_guards(agent.state, agent.runtime, "Neregistruokite nieko")
+        turn_head(agent.state, agent.runtime, "Neregistruokite nieko")
         ticket_stage_reply(agent.state, agent.runtime)  # confirm question goes out
-        pre_turn_guards(agent.state, agent.runtime, "gerai, registruokite vis dėlto")
+        turn_head(agent.state, agent.runtime, "gerai, registruokite vis dėlto")
         assert agent.state.ticket.stage == "phone"  # resumed, not cancelled
         assert "numeris" in ticket_stage_reply(agent.state, agent.runtime)  # stage re-asks
 
@@ -559,12 +559,12 @@ class TestHearingAgent:
         assert agent.state.ticket.stage is None
 
     def test_ticket_refusal_with_solving_content_returns_to_fix(self, db_connection, monkeypatch):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._agent(monkeypatch, step="escalate")
         agent.state.ticket.stage = "phone"
         agent.state.ticket.context = TicketContext(phone_asked=True, intro_done=True)
-        pre_turn_guards(agent.state, agent.runtime, "Neregistruokite, pajunkim tą kompiuterį")
+        turn_head(agent.state, agent.runtime, "Neregistruokite, pajunkim tą kompiuterį")
         assert agent.state.ticket.stage is None  # dialogue dropped…
         assert agent.state.closing.case_closed is False  # …but the call stays OPEN
         assert agent.state.ticket.resume_fix_note is True  # narrator returns to the fix
@@ -572,14 +572,14 @@ class TestHearingAgent:
     def test_cancel_confirm_answer_with_solving_content_returns_to_fix(
         self, db_connection, monkeypatch
     ):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         agent = self._agent(monkeypatch, step="escalate")
         agent.state.ticket.stage = "phone"
         agent.state.ticket.context = TicketContext(
             phone_asked=True, intro_done=True, cancel_confirm_asked=True, cancel_confirm_out=True
         )
-        pre_turn_guards(
+        turn_head(
             agent.state, agent.runtime, "Ne, tai mes pajunkim tą kompiuterį. Aš jungiu kabelį."
         )
         assert agent.state.ticket.stage is None
@@ -918,8 +918,8 @@ class TestAddressGuards:
         assert detect_address_confirm("Taip, neveikia internetas dėl to adreso") == "yes"
 
     def test_pre_turn_guard_vetoes_commit(self, db_connection):
+        from agent.decide.rules.head import turn_head
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import pre_turn_guards
 
         from tests.calls import make_agent
 
@@ -927,14 +927,14 @@ class TestAddressGuards:
         agent.state.messages.append(
             {"role": "assistant", "content": "Ar skambinate dėl Tilžės g. 60, butas 3?"}
         )
-        pre_turn_guards(agent.state, agent.runtime, "Taip, nebija")
+        turn_head(agent.state, agent.runtime, "Taip, nebija")
         assert agent.state.turn.address_confirm_note is not None  # veto: do not resolve the offer
         facts = state_facts_block(agent.state, agent.runtime)
         assert facts and "NEPATVIRTINTAS" in facts
 
     def test_correction_asks_confirmation_then_reopens(self, db_connection):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
 
         # Etalonas №3 (2026-09-03): a correction no longer reopens INSTANTLY —
         # one confirmation question first; a "taip" (or a named new address)
@@ -945,7 +945,7 @@ class TestAddressGuards:
         agent.state.identity.customer_id = "CUST101"
         agent.state.identity.customer_address = "Šiauliai, Tilžės g. 60-3"
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
-        pre_turn_guards(agent.state, agent.runtime, "Tai ne dėl to adresų skambinu")
+        turn_head(agent.state, agent.runtime, "Tai ne dėl to adresų skambinu")
         assert agent.state.identity.customer_id == "CUST101"  # NOT dropped yet
         assert agent.state.identity.reopen_confirm_utterance
         reply = identification_scripted_reply(
@@ -954,7 +954,7 @@ class TestAddressGuards:
         assert reply and "tikrai" in reply  # the confirmation question
         # A-2 (2026-09-07): the ANSWER is read in pre_turn_guards (the turn head,
         # before the solver/walker can consume it) — mirror the live sequence.
-        pre_turn_guards(agent.state, agent.runtime, "Taip, dėl kito adreso")
+        turn_head(agent.state, agent.runtime, "Taip, dėl kito adreso")
         assert agent.state.identity.customer_id is None  # identity dropped after the yes
         assert agent.state.diagnosis.verdicts == {}  # per-account conclusions dropped
         assert agent.state.turn.reopen_note is True
@@ -1015,8 +1015,8 @@ class TestIdentificationLadder:
     correction address is resolved by the ENGINE (no LLM tool hesitancy)."""
 
     def test_caller_intro_captured_and_result_released(self, db_connection):
+        from agent.decide.rules.head import turn_head
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import pre_turn_guards
 
         from tests.calls import make_agent
 
@@ -1025,7 +1025,7 @@ class TestIdentificationLadder:
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent.state.identity.result_pending = True  # the caller question was posed last reply
 
-        pre_turn_guards(agent.state, agent.runtime, "Ona, aš žmona sutartį sudariusio")
+        turn_head(agent.state, agent.runtime, "Ona, aš žmona sutartį sudariusio")
 
         assert agent.state.identity.caller_name == "Ona"  # the NAME, not the sentence
         assert agent.state.identity.caller_relation == "family"
@@ -1042,8 +1042,8 @@ class TestIdentificationLadder:
         assert detect_caller_relation("mmm") == "unknown"
 
     def test_engine_resolves_dictated_correction(self, db_connection):
+        from agent.decide.rules.head import turn_head
         from agent.perceive.slots import prefill_slots_from_text
-        from agent.perception_flow import pre_turn_guards
 
         from tests.calls import make_agent
 
@@ -1054,7 +1054,7 @@ class TestIdentificationLadder:
         prefill_slots_from_text(
             agent.state, agent.runtime, "Ne, skambinu dėl Tilžės gatvės 60 buto 3"
         )
-        pre_turn_guards(agent.state, agent.runtime, "Ne, skambinu dėl Tilžės gatvės 60 buto 3")
+        turn_head(agent.state, agent.runtime, "Ne, skambinu dėl Tilžės gatvės 60 buto 3")
 
         # The ENGINE committed the corrected identity and diagnosed silently.
         assert agent.state.identity.customer_id == "CUST101"
@@ -1108,7 +1108,7 @@ class TestVoiceGuardsRound5:
         assert agent.state.resolution.procedure["step"] == "dr_offer_bridge"  # held
 
     def test_caller_intro_with_stt_question_mark_is_captured(self, db_connection):
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
 
         from tests.calls import make_agent
 
@@ -1117,9 +1117,7 @@ class TestVoiceGuardsRound5:
         agent.state.diagnosis.verdicts["network"] = {"group": "B1", "reason": "billing_suspended"}
         agent.state.identity.result_pending = True
 
-        pre_turn_guards(
-            agent.state, agent.runtime, "Tomas? Ne, mano vardas Tomas, aš esu kaimynas."
-        )
+        turn_head(agent.state, agent.runtime, "Tomas? Ne, mano vardas Tomas, aš esu kaimynas.")
         assert agent.state.identity.caller_name is not None  # captured, not skipped as a question
         assert agent.state.identity.caller_relation == "helper"
 
@@ -1139,8 +1137,8 @@ class TestVoiceGuardsRound5:
     def test_farewell_mid_strategy_confirms_then_registers(self, db_connection, monkeypatch):
         import os
 
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
 
         from tests.calls import make_agent
 
@@ -1155,13 +1153,13 @@ class TestVoiceGuardsRound5:
             "asked": True,
         }
 
-        pre_turn_guards(agent.state, agent.runtime, "viso gero")  # mid-troubleshooting goodbye
+        turn_head(agent.state, agent.runtime, "viso gero")  # mid-troubleshooting goodbye
         assert agent.state.dialog.end_confirm_pending is True
         assert agent.state.closing.case_closed is False  # clarify first, never hang up
         reply = identification_scripted_reply(agent.state, agent.runtime, "viso gero")
         assert reply and "tikrai norite baigti" in reply
 
-        pre_turn_guards(
+        turn_head(
             agent.state, agent.runtime, "taip, baikim"
         )  # confirmed -> contacts, then registration
         assert agent.state.ticket.stage == "phone"
@@ -1173,7 +1171,7 @@ class TestVoiceGuardsRound5:
     def test_farewell_mid_strategy_declined_resumes(self, db_connection, monkeypatch):
         import os
 
-        from agent.perception_flow import pre_turn_guards
+        from agent.decide.rules.head import turn_head
         from agent.walker_flow import walk_resolution
 
         from tests.calls import make_agent
@@ -1188,8 +1186,8 @@ class TestVoiceGuardsRound5:
             "asked": True,
         }
 
-        pre_turn_guards(agent.state, agent.runtime, "viso gero")
-        pre_turn_guards(agent.state, agent.runtime, "ne ne, tęskime")  # changed their mind
+        turn_head(agent.state, agent.runtime, "viso gero")
+        turn_head(agent.state, agent.runtime, "ne ne, tęskime")  # changed their mind
         assert agent.state.closing.case_closed is False
         assert agent.state.dialog.end_confirm_pending is False
         walk_resolution(
@@ -1372,16 +1370,16 @@ class TestSideTopicNode:
         assert solver_drive_turn(agent.state, agent.runtime, "gerai, viso gero") is None
 
     def test_hours_scrubbed_of_inner_question_marks(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._diagnosing(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)
-        pre_turn_guards(agent.state, agent.runtime, "taip, tiks šis")
+        turn_head(agent.state, agent.runtime, "taip, tiks šis")
         identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")
-        pre_turn_guards(agent.state, agent.runtime, "Bet kada? Bet kurio laiko?")
+        turn_head(agent.state, agent.runtime, "Bet kada? Bet kurio laiko?")
         assert agent.state.ticket.contact_hours == "Bet kada Bet kurio laiko"
 
     def test_checking_cue_spoken_on_identity_commit(self, db_connection, monkeypatch):
@@ -1935,22 +1933,22 @@ class TestTicketDialogue:
         )
 
     def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)  # asks the phone question
         # Q1 answer: "tiks šis" -> the number they call from.
-        pre_turn_guards(agent.state, agent.runtime, "Taip, tiks šis numeris")
+        turn_head(agent.state, agent.runtime, "Taip, tiks šis numeris")
         assert agent.state.ticket.contact_phone == "+37060012353"
         assert agent.state.ticket.stage == "hours"
         identification_scripted_reply(
             agent.state, agent.runtime, "Taip, tiks šis numeris"
         )  # asks hours
         # Q2 answer -> hours; the scripted turn then registers + closes.
-        pre_turn_guards(agent.state, agent.runtime, "Po penkių vakare")
+        turn_head(agent.state, agent.runtime, "Po penkių vakare")
         assert agent.state.ticket.stage == "done"
         reply = identification_scripted_reply(agent.state, agent.runtime, "Po penkių vakare")
         assert "Užregistravau" in reply
@@ -1964,24 +1962,24 @@ class TestTicketDialogue:
         assert "skambinti: Po penkių vakare" in details
 
     def test_dictated_number_captured(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)
-        pre_turn_guards(agent.state, agent.runtime, "Geriau skambinkit 8 612 34 567")
+        turn_head(agent.state, agent.runtime, "Geriau skambinkit 8 612 34 567")
         assert agent.state.ticket.contact_phone == "861234567"
 
     def test_farewell_mid_dialogue_registers_with_defaults(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        pre_turn_guards(agent.state, agent.runtime, "viso gero")  # done talking — defaults kick in
+        turn_head(agent.state, agent.runtime, "viso gero")  # done talking — defaults kick in
         assert agent.state.ticket.stage == "done"
         reply = identification_scripted_reply(agent.state, agent.runtime, "viso gero")
         assert "Užregistravau" in reply
@@ -2004,9 +2002,9 @@ class TestTicketDialogue:
         assert "Registruoju gedimą" not in again  # intro said once
 
     def test_question_mid_dialogue_goes_to_llm_and_stage_holds(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
         from agent.narrator_flow import state_facts_block
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         # "Bet kada galima skambinti?" is the caller ASKING — live it was captured
@@ -2015,10 +2013,10 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)
-        pre_turn_guards(agent.state, agent.runtime, "taip, tiks šis")
+        turn_head(agent.state, agent.runtime, "taip, tiks šis")
         assert agent.state.ticket.stage == "hours"
         identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")
-        pre_turn_guards(
+        turn_head(
             agent.state, agent.runtime, "Tu sakė, užregistravai jau. Bet kada galima skambinti?"
         )
         assert agent.state.ticket.stage == "hours"  # held, not captured
@@ -2031,7 +2029,7 @@ class TestTicketDialogue:
         assert facts and "TIKETO DIALOGAS" in facts and "kada patogiausia" in facts
         # A plain answer next turn still lands.
         agent.state.turn.ticket_offscript_question = False
-        pre_turn_guards(agent.state, agent.runtime, "bet kada")
+        turn_head(agent.state, agent.runtime, "bet kada")
         assert agent.state.ticket.contact_hours == "bet kada"
 
     def test_done_announce_repeats_number_and_hours(self, db_connection, monkeypatch):
@@ -2046,8 +2044,8 @@ class TestTicketDialogue:
         assert "bet kada" in reply
 
     def test_garbled_yes_and_stt_punctuation_stay_off_the_ticket(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         # Live: STT "T." (of "Taip") became tel. "T." and "Bet kada?" kept the "?"
@@ -2055,17 +2053,17 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)
-        pre_turn_guards(agent.state, agent.runtime, "T.")
+        turn_head(agent.state, agent.runtime, "T.")
         assert agent.state.ticket.contact_phone == "+37060012353"  # backchannel yes -> caller-ID
         identification_scripted_reply(agent.state, agent.runtime, "T.")
-        pre_turn_guards(agent.state, agent.runtime, "Bet kada?")
+        turn_head(agent.state, agent.runtime, "Bet kada?")
         assert agent.state.ticket.contact_hours == "Bet kada"
         reply = identification_scripted_reply(agent.state, agent.runtime, "Bet kada?")
         assert "bet kada" in reply
 
     def test_trigger_utterance_not_swallowed_as_phone(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         # Live 2026-08-05: escalate fired mid-turn and the SAME utterance
@@ -2073,7 +2071,7 @@ class TestTicketDialogue:
         # never asked. Answers count only after the question was asked.
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        pre_turn_guards(agent.state, agent.runtime, "Neturi kompiutera")  # same-turn trigger phrase
+        turn_head(agent.state, agent.runtime, "Neturi kompiutera")  # same-turn trigger phrase
         assert agent.state.ticket.contact_phone is None
         assert agent.state.ticket.stage == "phone"  # still waiting for its question
         first = identification_scripted_reply(agent.state, agent.runtime, "Neturi kompiutera")
@@ -2083,40 +2081,38 @@ class TestTicketDialogue:
         # Live: "Neturi kompiutera" landed as tel. on the ticket. Now: one
         # scripted retry; a second unclear answer defaults to caller-ID.
         from agent.contract.locale import phrase
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)  # phone asked
-        pre_turn_guards(agent.state, agent.runtime, "Kurs komentai")  # STT garbage
+        turn_head(agent.state, agent.runtime, "Kurs komentai")  # STT garbage
         assert agent.state.ticket.contact_phone is None
         reply = identification_scripted_reply(agent.state, agent.runtime, "Kurs komentai")
         assert reply == phrase("identification.ticket_phone_retry")
-        pre_turn_guards(
-            agent.state, agent.runtime, "Visai nesuprantu ko klausiat"
-        )  # second garbage
+        turn_head(agent.state, agent.runtime, "Visai nesuprantu ko klausiat")  # second garbage
         assert agent.state.ticket.contact_phone == "+37060012353"  # caller-ID default
         assert agent.state.ticket.stage == "hours"
 
     def test_garbage_hours_answer_reasks_then_defaults(self, db_connection, monkeypatch):
         # Live: "Kurs komentai" became "skambinti galima kurs komentai".
         from agent.contract.locale import phrase
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         identification_scripted_reply(agent.state, agent.runtime, None)
-        pre_turn_guards(agent.state, agent.runtime, "taip, tiks šis")
+        turn_head(agent.state, agent.runtime, "taip, tiks šis")
         identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")  # hours asked
-        pre_turn_guards(agent.state, agent.runtime, "Kurs komentai")
+        turn_head(agent.state, agent.runtime, "Kurs komentai")
         assert agent.state.ticket.contact_hours is None
         reply = identification_scripted_reply(agent.state, agent.runtime, "Kurs komentai")
         assert reply == phrase("identification.ticket_hours_retry")
-        pre_turn_guards(agent.state, agent.runtime, "Nu nezinau visai")  # second garbage -> default
+        turn_head(agent.state, agent.runtime, "Nu nezinau visai")  # second garbage -> default
         assert agent.state.ticket.contact_hours == "bet kada"
         assert agent.state.ticket.stage == "done"
 
@@ -2279,18 +2275,18 @@ class TestTicketDialogue:
         assert agent.state.closing.closed_reason == "registered"
 
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
+        from agent.decide.rules.head import turn_head
         from agent.identification_flow import identification_scripted_reply
-        from agent.perception_flow import pre_turn_guards
         from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         # Cancelling is a one-way door (2026-08-11): the first refusal gets ONE
         # confirm question; only the confirmed refusal cancels and closes.
-        pre_turn_guards(agent.state, agent.runtime, "ne, nereikia registruoti nieko")
+        turn_head(agent.state, agent.runtime, "ne, nereikia registruoti nieko")
         assert agent.state.ticket.stage == "phone"
         assert "tikrai nereikia" in ticket_stage_reply(agent.state, agent.runtime)
-        pre_turn_guards(agent.state, agent.runtime, "nereikia")
+        turn_head(agent.state, agent.runtime, "nereikia")
         assert agent.state.ticket.stage == "cancelled"
         reply = identification_scripted_reply(agent.state, agent.runtime, "nereikia")
         assert "neregistruoju" in reply

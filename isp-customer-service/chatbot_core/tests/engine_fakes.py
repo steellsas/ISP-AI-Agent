@@ -44,7 +44,7 @@ _FLOW_OF = {
     "_on_task_question": "agent.perceive.side_topic.on_task_question",
     "_open_hypothesis": "agent.walker_flow.open_hypothesis",
     "_plug_report": "agent.solver_flow.plug_report",
-    "_pre_turn_guards": "agent.perception_flow.pre_turn_guards",
+    "_pre_turn_guards": "agent.decide.rules.head.turn_head",
     "_prefill_slots_from_text": "agent.perceive.slots.prefill_slots_from_text",
     "_preflight_phone": "agent.identification_flow.preflight_phone",
     "_prune_history": "agent.narrator_flow.prune_history",

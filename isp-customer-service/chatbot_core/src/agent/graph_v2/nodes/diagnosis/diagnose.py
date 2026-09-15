@@ -1,13 +1,10 @@
 """
-Diagnose node — the telemetry read and the turn head's guards.
+Diagnose node — the telemetry read: diagnose ONCE on entering the stage, so the
+verdict + resolution strategy no longer depend on the model.
 
-1. ensure_diagnosed — diagnose ONCE on entering the stage, so the verdict +
-   resolution strategy no longer depend on the model.
-2. pre_turn_guards — the deterministic turn head (decisions; M4 step 4 turns
-   them into policy rules).
-
-The caller's words were already read by the perceive node (evidence ledger,
-side-topic signal).
+The caller's words were already read by the perceive node and the turn head's
+families ran in decide (one-owner principle, live A-2 2026-09-07: the head reads a
+safety-question answer before the solver/walker can consume it).
 """
 
 from __future__ import annotations
@@ -28,16 +25,6 @@ def diagnose_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str
 
 
 def _diagnose(state: Any, rt: Any, user_input: str | None) -> None:
-    from ....perception_flow import pre_turn_guards
     from ....walker_flow import ensure_diagnosed
 
     ensure_diagnosed(state, rt)
-    # One-owner principle (live A-2, 2026-09-07): the turn head's guards run
-    # BEFORE the solver/walker — solver_gate used to answer before narrate()'s
-    # guards could read a safety-question answer, and "Taip taip dėl KITO
-    # adreso" leaked into the walker's question. The latch prevents a double
-    # run when the narrator later finishes the same turn via narrate().
-    if user_input:
-        # user_turn trace stays with narrate()/the solver commit — no duplicates.
-        pre_turn_guards(state, rt, user_input)
-        state.turn.pre_turn_head_done = True

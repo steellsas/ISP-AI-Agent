@@ -81,7 +81,6 @@ class FakeEngine:
         recorders = {
             "agent.walker_flow.ensure_diagnosed": ("diagnose", None),
             "agent.perceive.slots.prefill_slots_from_text": ("prefill", None),
-            "agent.perception_flow.pre_turn_guards": ("guards", None),
             "agent.perceive.evidence.ingest_client_evidence": ("ingest", None),
             "agent.perceive.side_topic.classify_side_topic": ("classify", side_topic),
             "agent.solver_flow.solver_drive_turn": ("solver", driven),
@@ -155,7 +154,6 @@ class TestDiagnosisSubgraph:
             "ingest",
             "classify",
             "diagnose",
-            "guards",
             "solver",
             "walker",
             "shadow",
@@ -169,13 +167,13 @@ class TestDiagnosisSubgraph:
         engine = FakeEngine(monkeypatch, side_topic=True)
         out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         # No close-inform/solver/walker/action on side chatter — only the frozen narration.
-        assert engine.calls == ["prefill", "ingest", "classify", "diagnose", "guards", "narrate"]
+        assert engine.calls == ["prefill", "ingest", "classify", "diagnose", "narrate"]
         assert out["turn"].reply == "ok-reply"
 
     def test_solver_drive_skips_walker_and_narrator(self, monkeypatch):
         engine = FakeEngine(monkeypatch, driven="Atsakau pats.")
         out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
-        assert engine.calls == ["prefill", "ingest", "classify", "diagnose", "guards", "solver"]
+        assert engine.calls == ["prefill", "ingest", "classify", "diagnose", "solver"]
         assert out["turn"].reply == "Atsakau pats."
 
     def test_tokens_stream_out_of_the_subgraph(self, monkeypatch):
