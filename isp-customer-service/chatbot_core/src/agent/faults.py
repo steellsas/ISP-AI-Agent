@@ -1,12 +1,10 @@
 """
 Fault knowledge loader — the declarative layer (Phase 3.8 step 5b/5c).
 
-Reads `agent/knowledge/faults.yaml`, which holds:
-  * `problems` — the call's PURPOSE and the phrases that signal it (what the CALLER
-    reports), and
-  * `faults`   — each CAUSE the telemetry can reach: its playbook, and the full
-    procedure (steps: kind, detector, routing, rag section, hint, and what each
-    routing key MEANS).
+Reads `agent/knowledge/faults.yaml` — the call's PURPOSE catalog (what the CALLER
+reports) — and the fault packs in `agent/knowledge/faults/`: each CAUSE the telemetry
+can reach, its playbook and its procedure (steps: kind, role, detector, routing,
+rag section, hint, and what each routing key MEANS).
 
 Why: the procedure and the answer meanings used to live in Python. Moving them here makes a new fault — or a
 reworded check — a FILE edit rather than a code change, which is the whole point of the
@@ -83,9 +81,7 @@ def _modules() -> dict[str, Any]:
 
 
 def _faults() -> dict[str, Any]:
-    merged = dict(_doc().get("faults") or {})
-    merged.update(_dir_faults())
-    return merged
+    return _dir_faults()
 
 
 # Step roles the engine acts on (D-18). Each is unique within a pack; every other
@@ -248,12 +244,15 @@ def classify_purpose(text: str | None) -> str | None:
     Returns None when nothing matches, so the caller can fall back to its own table."""
     if not text:
         return None
+    from .contract.locale import vocab
+
     low = f" {text.lower()} "
     problems = _doc().get("problems")
     if not isinstance(problems, dict):
         return None
     for problem, spec in problems.items():
-        for trig in (spec or {}).get("triggers") or []:
+        name = (spec or {}).get("triggers_vocab")
+        for trig in vocab(name) if name else ():
             if str(trig).lower() in low:
                 return str(problem)
     return None
@@ -280,7 +279,7 @@ def step_options(verdict: str | None, step_id: str | None) -> dict[str, str] | N
 
 def problem_has_path(problem: str | None) -> bool:
     """Does ANY fault pack declare a solving path for this reported problem
-    (`problem:` field)? A sprendzia-classified problem WITHOUT one is an
+    (`problem:` field)? A solve-policy problem WITHOUT one is an
     UNCLEAR fault (Andrius 2026-09-03): an identified customer gets an honest
     'neaiškus gedimas' ticket instead of a wrong-domain improvisation (live:
     a TV call was walked down the internet client-side pack)."""
@@ -299,41 +298,47 @@ def problem_entry(problem: str | None) -> dict[str, Any]:
     return entry if isinstance(entry, dict) else {}
 
 
-def problem_politika(problem: str | None) -> str:
-    """The competence policy for a problem type: sprendzia (default) |
-    registruoja | nelieciam | pokalbis. Files declare WHAT the agent solves
-    (onboarding C blokas); code only enforces the behaviour per policy."""
-    v = problem_entry(problem).get("politika")
-    return str(v) if v in ("sprendzia", "registruoja", "nelieciam", "pokalbis") else "sprendzia"
+BOUNDARY_POLICIES = frozenset({"not_ours", "chat"})
 
 
-def problem_atsakymas(problem: str | None) -> str | None:
-    """The scripted boundary reply for a nelieciam/pokalbis type."""
+def problem_policy(problem: str | None) -> str:
+    """The competence policy for a problem type: solve (default) | register |
+    not_ours | chat. Files declare WHAT the agent solves; code only enforces the
+    behaviour per policy."""
+    v = problem_entry(problem).get("policy")
+    return str(v) if v in ("solve", "register", "not_ours", "chat") else "solve"
+
+
+def problem_boundary_reply(problem: str | None) -> str | None:
+    """The scripted boundary reply for a not_ours / chat type."""
     from .contract.locale import maybe_phrase
 
-    return maybe_phrase(problem_entry(problem).get("atsakymas"))
+    return maybe_phrase(problem_entry(problem).get("boundary_reply_key"))
 
 
-def problem_patvirtinimas(problem: str | None) -> str | None:
+def problem_confirm_question(problem: str | None) -> str | None:
     """The explicit-confirmation question for a medium-confidence LLM guess."""
     from .contract.locale import maybe_phrase
 
-    return maybe_phrase(problem_entry(problem).get("patvirtinimas"))
+    return maybe_phrase(problem_entry(problem).get("confirm_question_key"))
 
 
 def problem_catalog_options() -> dict[str, str]:
-    """{type: human meaning} for the L2 LLM classifier — built from each
-    entry's `aprasymas` (+ a couple of `pavyzdziai`). Only entries WITH an
-    aprasymas participate (a triggers-only legacy entry stays L1-only)."""
+    """{type: meaning} for the L2 LLM classifier — each entry's `description`
+    plus a couple of the locale's example phrasings. Only entries WITH a
+    description participate (a triggers-only entry stays L1-only)."""
+    from .contract.locale import examples
+
     out: dict[str, str] = {}
     for name, entry in (_doc().get("problems") or {}).items():
         if not isinstance(entry, dict):
             continue
-        desc = entry.get("aprasymas")
+        desc = entry.get("description")
         if not desc:
             continue
-        pvz = [str(x) for x in (entry.get("pavyzdziai") or [])[:2]]
-        out[str(name)] = str(desc) + (f" (pvz.: {'; '.join(pvz)})" if pvz else "")
+        key = entry.get("examples_key")
+        samples = [ln for ln in examples(key).splitlines() if ln.strip()][:2] if key else []
+        out[str(name)] = str(desc) + (f" (e.g.: {'; '.join(samples)})" if samples else "")
     return out
 
 

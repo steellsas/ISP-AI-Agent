@@ -1,104 +1,55 @@
-# Fault knowledge — DECLARATIVE, not code (Phase 3.8 step 5b/5c).
+# Call purpose catalog — what the CALLER reports (moved to intents.yaml in M6).
 #
-# A new fault should be an entry HERE + a playbook .md + seed data + an eval scenario.
-# Two sections, because they answer two different questions:
+# Cascade: L1 — `triggers_vocab` (the locale's trigger word list, a fast
+# deterministic lane for the most common phrasings; not grown without end);
+# L2 — the LLM picks a type from each entry's `description` + examples when no
+# trigger fired. A new type is one block here plus its locale entries.
 #
-#   problems: — the call's PURPOSE, i.e. what the CALLER reports ("neveikia" vs "lėtai").
-#               `triggers` are matched against the utterance; ORDER MATTERS (a more
-#               specific problem must come before a broader one).
-#   faults:   — a CAUSE the telemetry can reach, and how to resolve it:
-#               `problem`   which reported problem it explains
-#               `playbook`  the RAG doc holding each step's WORDING
-#               `steps`     the procedure: id, kind, detector, routing (`on`), rag_section,
-#                           the LLM hint, and `answers` = what each routing key MEANS
-#                           (what the classifier must detect in the caller's reply).
+#   policy:  solve     - the full fault path (identification, telemetry, …)
+#            register  - identification + ticket WITHOUT diagnostics (not used yet)
+#            not_ours  - not the agent's competence: the boundary reply, NO
+#                        identification, problem_type is not set
+#            chat      - a social call: a warm reply naming the area, no identification
+#   confirm_question_key: the explicit confirmation when the LLM guesses from
+#            context with medium confidence ("Ar gerai suprantu — …?").
 #
-# The engine keeps SAFETY: which actions may run, the identity gate, executing a
-# bind/ticket/close. Knowledge says what to do; code guarantees what cannot be done.
-# A missing/broken entry is fail-soft — the engine falls back to its in-code defaults.
-
-# KLASIFIKACIJOS KATALOGAS (2026-09-02, DIALOGO_ETALONAS diskusija).
-# Kaskada: L1 — `triggers` (greitoji deterministinė juosta dažniausiems;
-# į begalybę NEBEPILDOMA); L2 — LLM renkasi tipą iš `aprasymas`+`pavyzdziai`
-# KONTEKSTO, kai trigger nepagavo (problemos vartuose). Naujo tipo įdiegimas
-# = vienas šio failo blokas, jokių formuluočių enumeracijų.
-#
-#   politika:  sprendzia   - pilnas gedimo kelias (identifikacija, telemetrija…)
-#              registruoja - identifikacija + tiketas BE diagnostikos (dar nenaudojama)
-#              nelieciam   - ne agento kompetencija: `atsakymas` frazė, JOKIOS
-#                            identifikacijos, problem_type nenustatomas
-#              pokalbis    - socialinis skambutis: šiltai atsakyti, įvardinti
-#                            sritį, be identifikacijos
-#   patvirtinimas: tiesioginio patvirtinimo frazė, kai LLM spėja iš konteksto
-#              su vidutiniu pasitikėjimu („Ar gerai suprantu — …?").
-#
-# KOMPETENCIJA (Andrius 2026-09-02): agentas — IT pagalbos asistentas,
-# sprendžia TIK interneto ir TV techninius gedimus. Sąskaitų/paslaugų
-# klausimais neatsakinėja (tai NE gedimo diagnozė: skolos VERDIKTAS
-# telemetrijoje lieka — „neveikia internetas" dėl skolos toliau informuojamas).
-# Neaiški, bet mūsų srities bėda („vienas kanalas nerodo", „negaliu žaisti
-# per internetą") — NE atmetama: klasifikuojama į artimiausią tipą ir
-# gilinamasi klausimais.
+# COMPETENCE (Andrius 2026-09-02): the agent is an IT support assistant and solves
+# ONLY internet and TV technical faults. It does not handle bills/services (not a
+# fault diagnosis: the debt VERDICT in telemetry stays — "internet down" because of
+# a debt is still informed). An unclear but in-scope trouble is NOT rejected: it is
+# classified to the nearest type and clarified with questions.
 problems:
   internet_slow:
-    aprasymas: "internetas veikia, bet lėtai / stringa / trūkinėja (puslapiai krauna ilgai, video buferiuoja, žaidimai laguoja)"
-    pavyzdziai: ["baisiai lėtas internetas", "video vis stringa", "žaidimai laguoja, pingas didžiulis"]
-    politika: sprendzia
-    patvirtinimas: "problem.internet_slow.confirm"
-    triggers:
-    - lėtas
-    - lėtai
-    - lėta
-    - stringa
-    - lūžinėja
-    - buferiuoja
+    description: "the internet works but slowly / stalls / drops out (pages take long to load, video buffers, games lag)"
+    examples_key: problems/internet_slow
+    policy: solve
+    confirm_question_key: "problem.internet_slow.confirm"
+    triggers_vocab: problem_triggers_internet_slow
   tv:
-    aprasymas: "televizijos gedimas — nerodo TV ar atskiri kanalai, stringa vaizdas, nėra signalo"
-    pavyzdziai: ["nerodo televizorius", "dingo kanalai", "vienas kanalas nerodo, kiti veikia"]
-    politika: sprendzia
-    patvirtinimas: "problem.tv.confirm"
-    triggers:
-    - televizij
-    - televizor
-    - ' tv'
-    - kanalai
-    - kanalų
+    description: "a TV fault — the TV or some channels do not show, the picture freezes, no signal"
+    examples_key: problems/tv
+    policy: solve
+    confirm_question_key: "problem.tv.confirm"
+    triggers_vocab: problem_triggers_tv
   internet_down:
-    aprasymas: "dingo/neveikia interneto ryšys — visai nekrauna, neprisijungia, nėra ryšio (bet kuriame įrenginyje ar visuose)"
-    pavyzdziai: ["dingo internetas", "niekas man nekrauna nuo ryto", "negaliu prisijungti, vaikai pyksta"]
-    politika: sprendzia
-    patvirtinimas: "problem.internet_down.confirm"
-    triggers:
-    - internet
-    - ryši
-    - ryšys
-    - neveikia
-    - nėra interneto
-    - wifi
-    - wi-fi
-  saskaitos:
-    aprasymas: "sąskaitų, mokėjimų, kainų, tarifų ar sutarties/plano klausimai — ne techninis gedimas"
-    pavyzdziai: ["kodėl tokia didelė sąskaita?", "noriu pakeisti planą", "kiek moku per mėnesį?"]
-    politika: nelieciam
-    atsakymas: "problem.saskaitos.boundary_reply"
-    triggers:
-    - sąskait
-    - saskait
-    - mokė
-    - skola
-    - kaina
-    - tarif
-  pokalbis:
-    aprasymas: "skambina šiaip pasikalbėti / pabendrauti / pasiskųsti su paslaugomis nesusijusiais dalykais — be techninės problemos"
-    pavyzdziai: ["nuobodu, norėjau pašnekėti", "kaimynai triukšmauja, kas man daryti?"]
-    politika: pokalbis
-    atsakymas: "problem.pokalbis.boundary_reply"
-  kita_ne_musu:
-    aprasymas: "su interneto/TV paslaugomis nesusijęs klausimas ar kitos įmonės reikalas"
-    pavyzdziai: ["neišveža šiukšlių", "neveikia mano skalbyklė"]
-    politika: nelieciam
-    atsakymas: "problem.kita_ne_musu.boundary_reply"
-# faults: persikėlė į knowledge/faults/ katalogą — VIENAS FAILAS = VIENAS GEDIMAS
-# (docs/FAULT_PACKS.md). Čia liko tik `problems` klasifikacija; katalogo paketas
-# visada nugali to paties verdikto įrašą šiame faile.
-faults: {}
+    description: "the internet connection is gone / does not work — nothing loads, cannot connect, no connection (on any device or on all)"
+    examples_key: problems/internet_down
+    policy: solve
+    confirm_question_key: "problem.internet_down.confirm"
+    triggers_vocab: problem_triggers_internet_down
+  billing:
+    description: "questions about bills, payments, prices, tariffs or the contract/plan — not a technical fault"
+    examples_key: problems/billing
+    policy: not_ours
+    boundary_reply_key: "problem.billing.boundary_reply"
+    triggers_vocab: problem_triggers_billing
+  chat:
+    description: "calling just to talk / chat / complain about things unrelated to the services — no technical problem"
+    examples_key: problems/chat
+    policy: chat
+    boundary_reply_key: "problem.chat.boundary_reply"
+  not_ours:
+    description: "a question unrelated to the internet/TV services, or another company's business"
+    examples_key: problems/not_ours
+    policy: not_ours
+    boundary_reply_key: "problem.not_ours.boundary_reply"

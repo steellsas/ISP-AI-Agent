@@ -1047,10 +1047,10 @@ class TestPrimaryGoalFrozen:
         # dedupe: the same type mentioned again does not duplicate
         prefill_slots_from_text(agent.state, agent.runtime, "Tas televizorius vis dar blogai")
         assert len(s.intake.secondary_problems) == 1
-        # Competence policy (2026-09-02): a nelieciam type (sąskaitos) never
+        # Competence policy (2026-09-02): a not_ours type (billing) never
         # becomes a secondary TECH problem — it is not ours to put on a ticket.
         prefill_slots_from_text(agent.state, agent.runtime, "O dar sąskaitos klausimas turiu")
-        assert all(x["tipas"] != "saskaitos" for x in s.intake.secondary_problems)
+        assert all(x["tipas"] != "billing" for x in s.intake.secondary_problems)
 
     def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
         from agent.narrator_flow import state_facts_block

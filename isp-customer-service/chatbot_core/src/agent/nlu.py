@@ -208,7 +208,7 @@ def classify_problem(text: str) -> str | None:
 def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[str | None, float]:
     """L2 of the classification cascade (DIALOGO_ETALONAS, 2026-09-02): when
     the trigger layer catches nothing, the LLM reads the CONTEXT against the
-    file-declared catalog (aprasymas + pavyzdziai per type) — "niekas man
+    file-declared catalog (description + examples per type) — "niekas man
     nekrauna" is internet_down without any trigger enumeration. Returns
     (type, confidence) or (None, 0.0); the CALLER decides what a given
     confidence earns (commit / explicit confirm / keep asking). Fail-soft:

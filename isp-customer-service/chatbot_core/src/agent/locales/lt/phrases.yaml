@@ -414,11 +414,11 @@ problem:
     confirm: "Ar gerai suprantu — bėda su televizija?"
   internet_down:
     confirm: "Ar gerai suprantu — dingo internetas?"
-  saskaitos:
+  billing:
     boundary_reply: "Esu techninės pagalbos asistentas — sąskaitų ir sutarčių klausimais nepadėsiu, kreipkitės į klientų aptarnavimą. O ar su internetu ar televizija bėdų neturite?"
-  pokalbis:
+  chat:
     boundary_reply: "Ačiū, kad paskambinote! Aš padedu dėl interneto ir televizijos gedimų — ar tokių bėdų turite?"
-  kita_ne_musu:
+  not_ours:
     boundary_reply: "Čia, deja, nepadėsiu — esu interneto ir televizijos gedimų pagalba. O ryšio bėdų neturite?"
 
 faq:

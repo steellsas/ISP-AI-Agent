@@ -165,17 +165,16 @@ class Module(_Model):
 
 
 class Problem(_Model):
-    aprasymas: str | None = None
-    pavyzdziai: list[str] = []
-    politika: Literal["sprendzia", "registruoja", "nelieciam", "pokalbis"] = "sprendzia"
-    patvirtinimas: str | None = None
-    atsakymas: str | None = None
-    triggers: list[str] = []
+    description: str | None = None  # for the LLM classifier
+    examples_key: str | None = None  # locale examples file/section, one phrasing per line
+    policy: Literal["solve", "register", "not_ours", "chat"] = "solve"
+    confirm_question_key: str | None = None
+    boundary_reply_key: str | None = None
+    triggers_vocab: str | None = None  # a vocabulary list name
 
 
 class FaultsManifest(_Model):
     problems: dict[str, Problem]
-    faults: dict[str, FaultPack] = {}
 
 
 class Detectors(_Model):
@@ -471,8 +470,8 @@ def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
                 add(f"module {name}: steps.{step.name}.answers.{answer}", phrase_key)
     if k.manifest:
         for name, problem in k.manifest.problems.items():
-            add(f"faults.yaml: problems.{name}.patvirtinimas", problem.patvirtinimas)
-            add(f"faults.yaml: problems.{name}.atsakymas", problem.atsakymas)
+            add(f"faults.yaml: problems.{name}.confirm_question_key", problem.confirm_question_key)
+            add(f"faults.yaml: problems.{name}.boundary_reply_key", problem.boundary_reply_key)
     if k.faq:
         for i, entry in enumerate(k.faq.faq):
             add(f"faq.yaml: faq.{i}.atsakymas", entry.atsakymas)
@@ -555,6 +554,18 @@ def validate_knowledge(
                 errors.append(f"{where}: phrase '{key}' is missing in locale '{language}'")
         from .locale import _examples, example_refs
 
+        for name, problem in (k.manifest.problems if k.manifest else {}).items():
+            if problem.triggers_vocab and not isinstance(
+                locale.vocabulary.get(problem.triggers_vocab), tuple
+            ):
+                errors.append(
+                    f"faults.yaml: problems.{name}.triggers_vocab '{problem.triggers_vocab}' is not a vocabulary list"
+                )
+            if problem.examples_key:
+                try:
+                    _examples(language, problem.examples_key)
+                except LocaleError as e:
+                    errors.append(f"faults.yaml: problems.{name}.examples_key: {e}")
         for where, text in llm_texts(k):
             for ref in example_refs(text):
                 try:

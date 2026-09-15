@@ -107,7 +107,7 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     # even if address extraction fails. A revisable hypothesis: a clearer later
     # statement overrides (docs/pokalbio_variklis.md §12.2).
     try:
-        from .faults import problem_politika
+        from .faults import BOUNDARY_POLICIES, problem_policy
         from .nlu import classify_problem, extract_symptoms
 
         problem = classify_problem(text)
@@ -124,11 +124,11 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
                 rt.tracer.emit(
                     "caller_intro", name=s.identity.caller_name, relation=_rel, clarified=True
                 )
-        # Competence policy (2026-09-02): nelieciam/pokalbis types NEVER become
+        # Competence policy (2026-09-02): not_ours/chat types NEVER become
         # the call's problem_type — the gate answers with the declared boundary
         # phrase instead of opening identification ("kodėl tokia sąskaita?" is
         # not a fault). Stashed one-shot for the reply layer.
-        if problem and problem_politika(problem) in ("nelieciam", "pokalbis"):
+        if problem and problem_policy(problem) in BOUNDARY_POLICIES:
             if s.intake.problem_type is None:
                 state.intake.boundary_problem = problem
             problem = None
@@ -455,11 +455,11 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
 
       1. a pending explicit-confirm guess: „taip" commits (problem_type set,
          caller falls through to the intake ladder THIS turn);
-      2. an L1-recognized boundary type (nelieciam/pokalbis) gets its
-         file-declared `atsakymas` — competence stated, no identification;
-      3. L2: the LLM reads the CONTEXT against the catalog — sprendzia with
+      2. an L1-recognized boundary type (not_ours/chat) gets its
+         file-declared boundary reply — competence stated, no identification;
+      3. L2: the LLM reads the CONTEXT against the catalog — solve with
          high confidence commits (implicit confirmation), medium asks the
-         type's `patvirtinimas` question, a boundary type answers its phrase;
+         type's confirm question, a boundary type answers its reply;
       4. otherwise the old ladder: scripted ask x2, narrator directive, and
          only after ~5 fruitless exchanges the polite close. Reaching a
          problem at ANY rung reopens the flow — the counter never kills a
@@ -467,7 +467,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     import os as _os
 
     from .contract.locale import phrase
-    from .faults import problem_atsakymas, problem_patvirtinimas, problem_politika
+    from .faults import problem_boundary_reply, problem_confirm_question, problem_policy
     from .resolution import DETECTORS, is_real_question
 
     # 1) the caller answers last turn's "Ar gerai suprantu — …?"
@@ -486,7 +486,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
         state.intake.boundary_problem = None
         state.intake.ask_problem_count = state.intake.ask_problem_count + 1
         rt.tracer.emit("decision", intent="problem_gate", action="boundary", value=bp)
-        return problem_atsakymas(bp) or phrase("identification.ask_problem")
+        return problem_boundary_reply(bp) or phrase("identification.ask_problem")
     p_asks = state.intake.ask_problem_count
     state.intake.ask_problem_count = p_asks + 1
     asking = "?" in user_input or is_real_question(user_input)
@@ -514,7 +514,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
         ctx = " ".join(tail)[-400:] or (user_input or "")
         label, conf = classify_problem_llm(ctx, model=rt.config.model)
         if label:
-            pol = problem_politika(label)
+            pol = problem_policy(label)
             rt.tracer.emit(
                 "decision",
                 intent="problem_gate",
@@ -522,17 +522,17 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
                 value=label,
                 reason=f"{pol}:{conf:.2f}",
             )
-            if pol in ("sprendzia", "registruoja"):
+            if pol in ("solve", "register"):
                 if conf >= 0.8:
                     s.intake.problem_type = label  # implicit confirmation — the
                     return None  # narrator acknowledges it naturally
                 if conf >= 0.5:
                     state.intake.problem_guess = label
-                    q = problem_patvirtinimas(label)
+                    q = problem_confirm_question(label)
                     if q:
                         return q
-            elif conf >= 0.5:  # nelieciam / pokalbis from context
-                return problem_atsakymas(label) or phrase("identification.ask_problem")
+            elif conf >= 0.5:  # not_ours / chat from context
+                return problem_boundary_reply(label) or phrase("identification.ask_problem")
     # 4) the pre-cascade ladder
     if p_asks < 2 and not asking:
         return phrase("identification.ask_problem")

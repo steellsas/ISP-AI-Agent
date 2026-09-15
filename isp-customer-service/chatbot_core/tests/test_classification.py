@@ -1,7 +1,7 @@
 """
 Klasifikacijos kaskada ir kompetencijų politika (DIALOGO_ETALONAS diskusija,
 2026-09-02): L1 trigger'iai + L2 LLM iš failo katalogo, politikos
-(sprendzia / nelieciam / pokalbis), patvirtinimo laiptai, vartų kopėčios ir
+(solve / not_ours / chat), patvirtinimo laiptai, vartų kopėčios ir
 „neaiškaus gedimo" tiketo tipas.
 """
 
@@ -15,36 +15,36 @@ def _agent():
 
 
 class TestCatalog:
-    def test_politika_declared_and_default(self):
-        from agent.faults import problem_politika
+    def test_policy_declared_and_default(self):
+        from agent.faults import problem_policy
 
-        assert problem_politika("internet_down") == "sprendzia"
-        assert problem_politika("tv") == "sprendzia"
-        assert problem_politika("saskaitos") == "nelieciam"
-        assert problem_politika("pokalbis") == "pokalbis"
-        assert problem_politika("nezinomas_tipas") == "sprendzia"  # default
-        assert problem_politika(None) == "sprendzia"
+        assert problem_policy("internet_down") == "solve"
+        assert problem_policy("tv") == "solve"
+        assert problem_policy("billing") == "not_ours"
+        assert problem_policy("chat") == "chat"
+        assert problem_policy("nezinomas_tipas") == "solve"  # default
+        assert problem_policy(None) == "solve"
 
     def test_catalog_options_built_from_descriptions(self):
         from agent.faults import problem_catalog_options
 
         opts = problem_catalog_options()
         assert "internet_down" in opts and "nekrauna" in opts["internet_down"]
-        assert "saskaitos" in opts and "pokalbis" in opts
+        assert "billing" in opts and "chat" in opts
 
     def test_boundary_phrases_exist(self):
-        from agent.faults import problem_atsakymas, problem_patvirtinimas
+        from agent.faults import problem_boundary_reply, problem_confirm_question
 
-        assert "techninės pagalbos" in problem_atsakymas("saskaitos")
-        assert "internet" in problem_atsakymas("pokalbis")
-        assert "?" in problem_patvirtinimas("internet_down")
+        assert "techninės pagalbos" in problem_boundary_reply("billing")
+        assert "internet" in problem_boundary_reply("chat")
+        assert "?" in problem_confirm_question("internet_down")
 
     def test_l1_still_classifies_solvable_types(self):
         from agent.nlu import classify_problem
 
         assert classify_problem("neveikia internetas") == "internet_down"
         assert classify_problem("baisiai lėtas internetas") == "internet_slow"
-        assert classify_problem("skambinu dėl sąskaitos") == "saskaitos"
+        assert classify_problem("skambinu dėl sąskaitos") == "billing"
 
     def test_negated_problem_is_not_a_problem(self):
         """Live G2 (2026-09-02): 'interneto bėdų NETURIU, tik dėl sąskaitos'
@@ -56,16 +56,16 @@ class TestCatalog:
 
 
 class TestPolitikaIngest:
-    """nelieciam/pokalbis tipai NIEKADA netampa problem_type — vartai atsako
+    """not_ours/chat tipai NIEKADA netampa problem_type — vartai atsako
     riba, identifikacija neprasideda."""
 
-    def test_saskaitos_never_sets_problem_type(self, db_connection):
+    def test_billing_never_sets_problem_type(self, db_connection):
         from agent.identification_flow import prefill_slots_from_text
 
         agent = _agent()
         prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
         assert agent.state.intake.problem_type is None
-        assert agent.state.intake.boundary_problem == "saskaitos"
+        assert agent.state.intake.boundary_problem == "billing"
 
     def test_boundary_reply_states_competence(self, db_connection):
         from agent.identification_flow import identification_scripted_reply, prefill_slots_from_text
@@ -149,9 +149,7 @@ class TestGateL2:
         from agent import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
-        monkeypatch.setattr(
-            nlu, "classify_problem_llm", lambda t, model=None: ("kita_ne_musu", 0.8)
-        )
+        monkeypatch.setattr(nlu, "classify_problem_llm", lambda t, model=None: ("not_ours", 0.8))
         agent = _agent()
         reply = self._gate(agent, "Man šiukšlių neišveža jau savaitę")
         assert agent.state.intake.problem_type is None
