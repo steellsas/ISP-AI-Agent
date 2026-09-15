@@ -203,6 +203,43 @@ def vocab_map(name: str) -> Any:
     return current().vocab_entry(name)
 
 
+# --- examples ---------------------------------------------------------------------
+
+_EXAMPLE_REF = re.compile(r"<<examples:([\w./-]+)>>")
+
+
+def examples(key: str) -> str:
+    """Language-specific wording quoted by LLM-facing text: `file` is a whole
+    `examples/<file>.md`, `file/section` its `## section` body."""
+    return _examples(_active_language, key)
+
+
+@lru_cache(maxsize=512)
+def _examples(language: str, key: str) -> str:
+    file, _, section = key.partition("/")
+    path = LOCALES_DIR / language / "examples" / f"{file}.md"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise LocaleError(f"examples '{key}': cannot read {path} ({e})") from e
+    if not section:
+        return text.strip()
+    parts = re.split(r"^## (.+?)\s*$", text, flags=re.M)
+    sections = {parts[i]: parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
+    if section not in sections:
+        raise LocaleError(f"examples '{key}': no section '{section}' in {path.name}")
+    return sections[section]
+
+
+def example_refs(text: str | None) -> list[str]:
+    return _EXAMPLE_REF.findall(text or "")
+
+
+def expand_examples(text: str) -> str:
+    """Replace every <<examples:key>> in `text` with the active language's wording."""
+    return _EXAMPLE_REF.sub(lambda m: examples(m.group(1)), text) if "<<examples:" in text else text
+
+
 def lang() -> ModuleType:
     """The active language's algorithms module (`agent.locales.<lang>.lang`)."""
     return _lang_module(_active_language)
@@ -217,3 +254,4 @@ def reload() -> None:
     load_locale.cache_clear()
     _vocab_set.cache_clear()
     _vocab_re.cache_clear()
+    _examples.cache_clear()

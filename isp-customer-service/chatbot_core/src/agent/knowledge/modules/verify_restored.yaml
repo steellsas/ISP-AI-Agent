@@ -5,7 +5,7 @@
 #                       answers: { ... }   # kontekstinė formuluotė (nebūtina)
 module: verify_restored
 meta:
-  description: "Patikrinti su klientu, ar internetas jau atsirado"
+  description: "Check with the customer whether the internet is back"
 exits: [success, failure]
 steps:
 - id: check
@@ -19,5 +19,5 @@ steps:
     it fixed yourself; if not yet, reassure it may take a minute and ask them to
     check again.
   answers:
-    'yes': internetas dabar veikia
-    'no': internetas vis dar neveikia
+    'yes': "module.verify_restored.answers.yes"
+    'no': "module.verify_restored.answers.no"

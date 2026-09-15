@@ -124,6 +124,24 @@ pack:
   crc_errors:
     ticket_need: "linijoje daug klaidų ir po laido perkišimo routeryje — pažeistas laidas, reikalingas keitimas (perkišimas būtų tik laikinas sprendimas)"
     conclusion: "linijoje daug klaidų — pažeistas arba blogai įkištas laidas"
+    steps:
+      crc_ability:
+        answers:
+          "yes": "gali dabar prieiti prie routerio"
+          "no": "negali dabar / nėra namie / nepatogu šiuo metu"
+          lost: "nežino, kur routeris yra arba kaip jis atrodo"
+      crc_locate:
+        answers:
+          "yes": "surado routerį / mato tokią dėžutę"
+          "no": "neranda / negali dabar ieškoti"
+      crc_homework:
+        answers:
+          "yes": "sutinka — patikrins grįžęs ir paskambins, jei neveiks"
+          "no": "nesutinka / nori, kad meistras būtų registruojamas dabar"
+      crc_recheck:
+        answers:
+          "yes": "internetas dabar veikia normaliai"
+          "no": "vis tiek trūkinėja / neveikia"
   healthy_to_router:
     fail_scope:
       label: "kur neveikia"
@@ -160,9 +178,83 @@ pack:
       s2: "patikrinti telefono WiFi ryšį"
       s3: "patikrinti kabelį tarp routerio ir kompiuterio"
       s4: "patikrinti kompiuterio WiFi ryšį"
+    steps:
+      cs_scope:
+        answers:
+          all: "sako, kad internetas neveikia VISUOSE įrenginiuose"
+          one: "sako, kad neveikia tik VIENAME įrenginyje, bet NEĮVARDIJA kuriame"
+          phone: "AIŠKIAI įvardija telefoną ar planšetę (pvz. 'telefone nėra interneto')"
+          computer: "AIŠKIAI įvardija kompiuterį ar nešiojamą"
+      cs_which:
+        answers:
+          phone: "telefonas ar planšetė"
+          computer: "kompiuteris ar nešiojamas"
+      cs_cross_phone:
+        answers:
+          "yes": "kituose įrenginiuose internetas VEIKIA"
+          "no": "kituose įrenginiuose interneto irgi NĖRA"
+      cs_cross_computer:
+        answers:
+          "yes": "kituose įrenginiuose internetas VEIKIA"
+          "no": "kituose įrenginiuose interneto irgi NĖRA"
+      cs_ability:
+        answers:
+          "yes": "gali dabar prieiti prie routerio"
+          "no": "negali dabar / nėra namie / nepatogu šiuo metu"
+          lost: "nežino, kur routeris yra arba kaip jis atrodo"
+      cs_locate:
+        answers:
+          "yes": "surado routerį / mato tokią dėžutę"
+          "no": "neranda / negali dabar ieškoti"
+      cs_homework:
+        answers:
+          "yes": "sutinka — perkraus grįžęs ir paskambins, jei neveiks"
+          "no": "nesutinka / nori, kad meistras būtų registruojamas dabar"
+      cs_verify_all:
+        answers:
+          "yes": "po perkrovimo internetas veikia"
+          "no": "po perkrovimo internetas vis tiek neveikia"
+      cs_conn:
+        answers:
+          wired: "įrenginys prijungtas laidu"
+          wifi: "įrenginys jungiasi per WiFi (bevielį)"
+      cs_verify_dev:
+        answers:
+          "yes": "tame įrenginyje internetas dabar veikia"
+          "no": "tame įrenginyje internetas vis tiek neveikia"
   link_down_local:
     ticket_need: "routeris gyvas, bet signalas iš linijos neateina (interneto lemputė nedega, portas neaktyvus ir po perkišimo) — tikėtinas kabelio pažeidimas trasoje, reikia meistro apžiūros vietoje"
     conclusion: "signalas iki jūsų routerio neateina — greičiausiai pažeistas kabelis trasoje"
+    steps:
+      ll_ability:
+        answers:
+          "yes": "gali dabar prieiti prie routerio"
+          "no": "negali dabar / nėra namie / nepatogu šiuo metu"
+          lost: "nežino, kur routeris yra arba kaip jis atrodo"
+      ll_locate:
+        answers:
+          "yes": "surado routerį / mato tokią dėžutę"
+          "no": "neranda / negali dabar ieškoti"
+      ll_homework:
+        answers:
+          "yes": "sutinka — patikrins grįžęs ir paskambins, jei neveiks"
+          "no": "nesutinka / nori, kad meistras būtų registruojamas dabar"
+      ll_lights:
+        answers:
+          "yes": "dega / šviečia / mirksi bent viena lemputė"
+          "no": "nedega nė viena (įskaitant darkytas neiginio formas)"
+      ll_wan:
+        answers:
+          "yes": "interneto/WAN lemputė dega ar mirksi"
+          "no": "interneto/WAN lemputė nedega / tamsi"
+      ll_power:
+        answers:
+          "yes": "patikrinus maitinimą lemputės užsidegė"
+          "no": "net ir patikrinus maitinimą lemputės nedega"
+      ll_recheck:
+        answers:
+          "yes": "interneto lemputė užsidegė / internetas atsirado"
+          "no": "lemputė toliau nedega / internetas neatsirado"
   no_mac_observed:
     ivykiai:
       label: "įvykiai prieš dingstant"
@@ -207,6 +299,35 @@ pack:
     solution:
       s1: "laikinai paleisti internetą per kompiuterį, kol gausite naują routerį"
       s2: "registruoti meistrą, kuris atveš ir pajungs naują routerį"
+    steps:
+      dr_intro:
+        answers:
+          "yes": "sutinka tikrinti, gali dabar, ARBA jau pradėjo / kažką bandė / dalyvauja pokalbyje (net jei atsakymas nerišlus)"
+          "no": "AIŠKIAI atsisako arba negali dabar tikrinti (ne namie, nepatogu, neturi laiko, nenori) — NE šiaip nerišlus atsakymas"
+      dr_homework:
+        answers:
+          "yes": "sutinka — patikrins grįžęs ir paskambins, jei neveiks"
+          "no": "nesutinka / nori, kad meistras būtų registruojamas dabar"
+      dr_lights:
+        answers:
+          "yes": "AIŠKIAI sako, kad dega / šviečia / mirksi bent viena lemputė — be jokio neiginio"
+          "no": "sako, kad nedega / nešviečia (įskaitant darkytas STT formas su „ne-\" šaknimi — „nede\", „neda\", „nedega gan viena\" — neiginys visada reiškia NEDEGA)"
+      dr_power:
+        answers:
+          "yes": "patikrinus maitinimą lemputės užsidegė"
+          "no": "net ir patikrinus maitinimą / kitą rozetę lemputės vis tiek nedega"
+      dr_recheck:
+        answers:
+          "yes": "internetas atsirado po kabelio patikrinimo"
+          "no": "internetas vis tiek neatsirado"
+      dr_offer_bridge:
+        answers:
+          "yes": "klientas turi kompiuterį arba kitą routerį, kurį galima prijungti"
+          "no": "klientas neturi jokio kito įrenginio (tik telefoną)"
+      dr_verify:
+        answers:
+          "yes": "prijungtame kompiuteryje internetas dabar veikia"
+          "no": "prijungtame kompiuteryje interneto vis tiek nėra"
   foreign_mac:
     changed_device:
       label: "routerio keitimas"
@@ -230,6 +351,19 @@ pack:
       s1: "pririšti jūsų naują įrenginį prie linijos"
       s2: "perjungti kabelį į interneto (WAN) lizdą"
       s3: "pririšti linijoje matomą įrenginį"
+    steps:
+      confirm_change:
+        answers:
+          "yes": "klientas keitė routerį arba prijungė naują įrenginį"
+          "no": "klientas nieko nekeitė ir nieko naujo neprijungė"
+      cable_check:
+        answers:
+          wan: "kabelis įkištas į interneto (WAN) lizdą"
+          lan: "kabelis įkištas į kitą (LAN) lizdą"
+      client_side:
+        answers:
+          "yes": "internetas dabar veikia"
+          "no": "internetas vis dar neveikia"
   router_hung:
     fail_scope:
       label: "kur neveikia"
@@ -244,6 +378,34 @@ pack:
     solution:
       s1: "perkrauti routerį iš maitinimo — pakibęs routeris po to dažniausiai atsistato; pirma klausiama, ar klientas GALI dabar prieiti"
       s2: "patikrinti tą įrenginį — routeris veikia, problema kelyje iki įrenginio"
+    steps:
+      rh_scope:
+        answers:
+          all: "sako, kad internetas neveikia VISUOSE įrenginiuose"
+          one: "sako, kad neveikia tik VIENAME įrenginyje"
+          phone: "AIŠKIAI įvardija telefoną ar planšetę"
+          computer: "AIŠKIAI įvardija kompiuterį ar nešiojamą"
+      rh_ability:
+        answers:
+          "yes": "gali dabar prieiti prie routerio ir jį perkrauti"
+          "no": "negali dabar / nėra namie / nepatogu šiuo metu"
+          lost: "nežino, kur routeris yra arba kaip jis atrodo"
+      rh_locate:
+        answers:
+          "yes": "surado routerį / mato tokią dėžutę"
+          "no": "neranda / negali dabar ieškoti"
+      rh_homework:
+        answers:
+          "yes": "sutinka — perkraus grįžęs ir paskambins, jei neveiks"
+          "no": "nesutinka / nori, kad meistras būtų registruojamas dabar"
+      rh_check:
+        answers:
+          "yes": "internetas atsistatė — lemputė mirksi, puslapis atsidaro, veikia"
+          "no": "internetas vis dar neveikia po perkrovimo"
+      rh_verify_dev:
+        answers:
+          "yes": "tame įrenginyje internetas dabar veikia"
+          "no": "tame įrenginyje interneto vis tiek nėra"
 
 problem:
   internet_slow:
@@ -403,3 +565,9 @@ ticket:
     extra: " Papildomai patikrinti: {items}."
     extra_item: "{type}: „{text}“"
     actions: "Atlikta: {tools}"
+
+module:
+  verify_restored:
+    answers:
+      "yes": "internetas dabar veikia"
+      "no": "internetas vis dar neveikia"

@@ -8,14 +8,11 @@
 # nėra problemos sprendimo kelias, tik jo nebuvimo pabaiga.
 verdict: unclear_fault
 meta:
-  title: "Neaiškus gedimas — telefonu patikrinti ar išspręsti negalima"
+  title: "Unclear fault — cannot be checked or solved over the phone"
   domain: any
 steps:
 - id: escalate
   role: escalate
   kind: escalate
   tools: []
-  hint: "Be honest: this kind of fault cannot be checked or solved over the phone with the tools
-    at hand — say you WILL register it ('užregistruosiu', future tense, NEVER 'užregistravau') so a
-    colleague can look into it and call back. Do not improvise diagnostics, do not walk internet
-    steps for a TV fault."
+  hint: "Be honest: this kind of fault cannot be checked or solved over the phone with the tools at hand — say you WILL register it (<<examples:common/register_future_paren>>) so a colleague can look into it and call back. Do not improvise diagnostics, do not walk internet steps for a TV fault."

@@ -6,7 +6,7 @@
 # keis laidą.
 verdict: crc_errors
 meta:
-  title: "Internetas trūkinėja / lėtas — linijoje daug CRC klaidų (pažeistas laidas)"
+  title: "Internet drops out / slow — many CRC errors on the line (damaged cable)"
   domain: internet
   driver: walker
 problem: internet_down
@@ -23,50 +23,43 @@ steps:
   kind: confirm
   detector: yes_no
   rag_section: 0
-  goal: "aišku, ar klientas gali DABAR prieiti prie routerio"
+  goal: "clear whether the customer can get to the router RIGHT NOW"
   'on':
     'yes': crc_cable
     'no': crc_homework
     lost: crc_locate
-  hint: 'Explain in ONE short sentence what you see — the line works but carries a lot of errors,
-    which usually means a damaged or loose cable — then ONE question and WAIT: can they get to the
-    router right now? Length model: "Linija veikia, bet matau daug klaidų — dažniausiai tai
-    pažeistas ar atsilaisvinęs laidas. Ar galite dabar prieiti prie routerio?"'
+  hint: "Explain in ONE short sentence what you see — the line works but carries a lot of errors, which usually means a damaged or loose cable — then ONE question and WAIT: can they get to the router right now? Length model: <<examples:crc_errors/crc_ability>>"
   answers:
-    'yes': gali dabar prieiti prie routerio
-    'no': negali dabar / nėra namie / nepatogu šiuo metu
-    lost: nežino, kur routeris yra arba kaip jis atrodo
+    'yes': "pack.crc_errors.steps.crc_ability.answers.yes"
+    'no': "pack.crc_errors.steps.crc_ability.answers.no"
+    lost: "pack.crc_errors.steps.crc_ability.answers.lost"
 - id: crc_locate
   role: locate_device
   kind: confirm
   detector: yes_no
   rag_section: 0
-  goal: "klientas surado routerį"
+  goal: "the customer found the router"
   'on':
     'yes': crc_cable
     'no': crc_homework
   hint: 'They do not know where the router is. Describe it simply and ask if they can see it: a
     small box with little lights; the internet cable runs into it.'
   answers:
-    'yes': surado routerį / mato tokią dėžutę
-    'no': neranda / negali dabar ieškoti
+    'yes': "pack.crc_errors.steps.crc_locate.answers.yes"
+    'no': "pack.crc_errors.steps.crc_locate.answers.no"
 - id: crc_homework
   role: homework
   kind: confirm
   detector: yes_no
   rag_section: 0
-  goal: "sutarta: grįžęs perkiš interneto laidą routeryje, o jei nepadės — paskambins"
+  goal: "agreed: when back, they reseat the internet cable at the router, and call if it does not help"
   'on':
     'yes': callback
     'no': escalate
-  hint: 'They cannot check now — homework warmly, then consent: when back, firmly reseat the
-    internet cable AT THE ROUTER (we do not know how their wiring runs, so never mention wall
-    sockets or both ends); if it still misbehaves — call again and we will register a cable
-    replacement. Length model: "Suprantu. Tada kai grįšite — ištraukite ir tvirtai įkiškite
-    interneto laidą routeryje. Jei nepadės — paskambinkite, registruosime laido keitimą. Gerai?"'
+  hint: "They cannot check now — homework warmly, then consent: when back, firmly reseat the internet cable AT THE ROUTER (we do not know how their wiring runs, so never mention wall sockets or both ends); if it still misbehaves — call again and we will register a cable replacement. Length model: <<examples:crc_errors/crc_homework>>"
   answers:
-    'yes': sutinka — patikrins grįžęs ir paskambins, jei neveiks
-    'no': nesutinka / nori, kad meistras būtų registruojamas dabar
+    'yes': "pack.crc_errors.steps.crc_homework.answers.yes"
+    'no': "pack.crc_errors.steps.crc_homework.answers.no"
 - id: crc_cable
   role: reseat_cable
   kind: instruct
@@ -82,7 +75,7 @@ steps:
   kind: confirm
   detector: restored
   rag_section: 2
-  goal: "aišku, ar po perkišimo klaidos dingo (variklis perskaito liniją)"
+  goal: "clear whether the errors are gone after the reseat (the engine re-reads the line)"
   'on':
     'yes': resolve
     'no': escalate
@@ -90,14 +83,11 @@ steps:
     success yourself. Ask ONE thing: does the internet behave now? The engine blends their answer
     with the fresh reading.'
   answers:
-    'yes': internetas dabar veikia normaliai
-    'no': vis tiek trūkinėja / neveikia
+    'yes': "pack.crc_errors.steps.crc_recheck.answers.yes"
+    'no': "pack.crc_errors.steps.crc_recheck.answers.no"
 - id: escalate
   role: escalate
   kind: escalate
   tools: []
   rag_section: 3
-  hint: 'The errors persist after the reseat — even if reseating had helped a little, a damaged
-    cable is a TEMPORARY state, so the fault gets registered: a technician will replace the
-    cable. Say it honestly; say you WILL register — "užregistruosiu" (future tense), NEVER
-    "užregistravau". Include any visible damage the caller mentioned on the ticket note.'
+  hint: "The errors persist after the reseat — even if reseating had helped a little, a damaged cable is a TEMPORARY state, so the fault gets registered: a technician will replace the cable. Say it honestly; say you WILL register — <<examples:common/register_future>>. Include any visible damage the caller mentioned on the ticket note."

@@ -272,7 +272,9 @@ def fault_offer_goal(verdict: str | None) -> str | None:
     fault = _faults().get(verdict)
     if not isinstance(fault, dict):
         return None
-    return str(fault.get("offer_goal") or "") or None
+    from .contract.locale import expand_examples
+
+    return expand_examples(str(fault.get("offer_goal") or "")) or None
 
 
 def open_goals_lt(evidence: dict[str, Any], verdict: str | None) -> str:

@@ -423,6 +423,23 @@ def _check_pack(
     return errors
 
 
+def llm_texts(k: Knowledge) -> list[tuple[str, str]]:
+    """(where, text) for the LLM-facing texts that may quote <<examples:…>>."""
+    out: list[tuple[str, str]] = []
+    for verdict, pack in k.packs.items():
+        if pack.offer_goal:
+            out.append((f"pack {verdict}: offer_goal", pack.offer_goal))
+        for step in pack.steps:
+            for name in ("hint", "goal"):
+                if getattr(step, name):
+                    out.append((f"pack {verdict}: steps.{step.name}.{name}", getattr(step, name)))
+    for name, module in k.modules.items():
+        for step in module.steps:
+            if step.hint:
+                out.append((f"module {name}: steps.{step.name}.hint", step.hint))
+    return out
+
+
 def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
     """(where, phrase key) for every locale sentence the knowledge files name."""
     refs: list[tuple[str, str]] = []
@@ -445,6 +462,13 @@ def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
             add(f"{where}: bridge_failed.ticket_note_key", pack.bridge_failed.ticket_note_key)
         for i, rule in enumerate(pack.solutions):
             add(f"{where}: solutions.{i}.description_key", rule.description_key)
+        for step in pack.steps:
+            for answer, phrase_key in step.answers.items():
+                add(f"{where}: steps.{step.name}.answers.{answer}", phrase_key)
+    for name, module in k.modules.items():
+        for step in module.steps:
+            for answer, phrase_key in step.answers.items():
+                add(f"module {name}: steps.{step.name}.answers.{answer}", phrase_key)
     if k.manifest:
         for name, problem in k.manifest.problems.items():
             add(f"faults.yaml: problems.{name}.patvirtinimas", problem.patvirtinimas)
@@ -529,6 +553,14 @@ def validate_knowledge(
         for where, key in phrase_refs(k):
             if not locale.has(key):
                 errors.append(f"{where}: phrase '{key}' is missing in locale '{language}'")
+        from .locale import _examples, example_refs
+
+        for where, text in llm_texts(k):
+            for ref in example_refs(text):
+                try:
+                    _examples(language, ref)
+                except LocaleError as e:
+                    errors.append(f"{where}: {e}")
 
     if errors:
         raise KnowledgeError(errors)

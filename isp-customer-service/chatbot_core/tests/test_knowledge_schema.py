@@ -94,7 +94,12 @@ def test_unknown_module_detector_and_section(knowledge):
 
 def test_answers_must_be_routing_keys(knowledge):
     root, edit = knowledge
-    edit(PACK, lambda d: _step(d, "rh_ability")["answers"].update(maybe="nežino"))
+    edit(
+        PACK,
+        lambda d: _step(d, "rh_ability")["answers"].update(
+            maybe="pack.router_hung.steps.rh_ability.answers.lost"
+        ),
+    )
     assert _errors(root) == [
         f"{PACK}: steps.1 (rh_ability): answers keys ['maybe'] are not routing keys"
     ]

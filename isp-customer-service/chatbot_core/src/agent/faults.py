@@ -271,7 +271,9 @@ def step_options(verdict: str | None, step_id: str | None) -> dict[str, str] | N
         if isinstance(step, dict) and step.get("id") == step_id:
             answers = step.get("answers")
             if isinstance(answers, dict) and answers:
-                return {str(k): str(v) for k, v in answers.items()}
+                from .contract.locale import phrase
+
+                return {str(k): phrase(str(v)) for k, v in answers.items()}
             return None
     return None
 
@@ -359,6 +361,7 @@ def build_strategy(verdict: str):
     if not isinstance(spec, dict) or not spec.get("steps"):
         return None
     try:
+        from .contract.locale import expand_examples
         from .resolution import Step, StepKind, Strategy
 
         steps = []
@@ -368,8 +371,8 @@ def build_strategy(verdict: str):
                     id=str(raw["id"]),
                     kind=StepKind(str(raw["kind"])),
                     role=str(raw.get("role", "")),
-                    hint=str(raw.get("hint", "")),
-                    goal=str(raw.get("goal", "")),
+                    hint=expand_examples(str(raw.get("hint", ""))),
+                    goal=expand_examples(str(raw.get("goal", ""))),
                     tools=frozenset(raw.get("tools") or ()),
                     tool_actions=tuple(raw.get("tool_actions") or ()),
                     rag_section=raw.get("rag_section"),

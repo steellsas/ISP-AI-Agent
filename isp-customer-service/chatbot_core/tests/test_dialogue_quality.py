@@ -328,7 +328,7 @@ class TestTurnGrammar:
         agent = self._agent()
         _note_fact_meaning(agent.state, agent.runtime, "fail_scope", "visuose")
         block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "TAI REIŠKIA" in block and "pakibo pats routeris" in block
+        assert "TAI REIŠKIA" in block and "router itself has most likely hung" in block
         assert "TAI REIŠKIA" not in (
             state_facts_block(agent.state, agent.runtime) or ""
         )  # one-shot
@@ -348,7 +348,7 @@ class TestTurnGrammar:
 
         agent = self._agent(verdict="no_mac_observed")
         _note_fact_meaning(agent.state, agent.runtime, "lights", "dega")
-        assert "linija jo nemato" in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "the line does not see it" in (state_facts_block(agent.state, agent.runtime) or "")
 
     def test_name_acceptance_is_one_shot(self, db_connection):
         from agent.narrator_flow import state_facts_block

@@ -550,20 +550,20 @@ class TestTicketFirst:
         from agent.evidence import fault_offer_goal
 
         text = fault_offer_goal("no_mac_observed")
-        assert text and "meistr" in text and "kompiuter" in text
+        assert text and "technician" in text and "computer" in text
 
     def test_open_goals_follow_the_ledger(self):
         from agent.evidence import CLIENT, open_goals_lt
 
-        assert "surado routerį" in open_goals_lt({}, "no_mac_observed")
+        assert "found the router" in open_goals_lt({}, "no_mac_observed")
         ev = {
             "device_present": {"value": "rado", "source": CLIENT, "turn": 1},
             "lights": {"value": "nedega", "source": CLIENT, "turn": 2},
         }
         goals = open_goals_lt(ev, "no_mac_observed")
-        assert "maitinimo laidas" in goals and "surado routerį" not in goals
-        # kada-gated keys stay hidden until eligible; engine-only gates never show
-        assert "kompiuter" not in goals and "LAN" not in goals
+        assert "power lead" in goals and "found the router" not in goals
+        # when-gated keys stay hidden until eligible; engine-only gates never show
+        assert "computer" not in goals and "LAN" not in goals
 
     def test_situational_block_lands_in_narrator_facts(self, db_connection):
         from agent.narrator_flow import state_facts_block
@@ -609,10 +609,10 @@ class TestStepAwareness:
 
         strat = build_strategy("no_mac_observed")
         by_id = {st.id: st for st in strat.steps}
-        assert "sutinka" in by_id["dr_intro"].goal
-        assert "lemput" in by_id["dr_lights"].goal
-        # module instance override (kaip: dr_verify) carries its own goal
-        assert "kompiuteryje internetas" in by_id["dr_verify"].goal
+        assert "agrees" in by_id["dr_intro"].goal
+        assert "light" in by_id["dr_lights"].goal
+        # module instance override (as: dr_verify) carries its own goal
+        assert "connected computer" in by_id["dr_verify"].goal
 
     def test_goto_step_writes_the_journal(self):
         from types import SimpleNamespace
