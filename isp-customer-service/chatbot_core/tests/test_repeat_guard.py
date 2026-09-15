@@ -132,7 +132,7 @@ class TestBackstop:
     def test_backstop_fires_before_llm(self, db_connection):
         """At stuck>=3 the engine answers deterministically — no LLM call."""
         a = _agent()
-        _turn(a)  # greeting (turn 0)
+        a.state.dialog.turn_count = 1  # past the greeting turn (a policy plan)
         a.state.dialog.stuck_count = 3
         with patch("agent.react_agent.stream_tool_completion") as stream_mock:
             reply = _turn(a, "nesąmonė")
@@ -141,7 +141,7 @@ class TestBackstop:
 
     def test_backstop_at_four_closes_case(self, db_connection):
         a = _agent()
-        _turn(a)
+        a.state.dialog.turn_count = 1  # past the greeting turn (a policy plan)
         a.state.dialog.stuck_count = 4
         with patch("agent.react_agent.stream_tool_completion"):
             _turn(a, "vis dar nesąmonė")
@@ -154,7 +154,7 @@ class TestProgressReset:
 
     def test_nlu_street_fill_resets_stuck(self, db_connection):
         a = _agent()
-        _turn(a)  # greeting
+        a.state.dialog.turn_count = 1  # past the greeting turn (a policy plan)
         a.state.dialog.stuck_count = 2
         a.state.intake.problem_type = "internet_down"
         msg = SimpleNamespace(content="Radau gatvę. Koks namo numeris?", tool_calls=None)

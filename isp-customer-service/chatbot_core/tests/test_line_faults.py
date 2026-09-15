@@ -165,7 +165,7 @@ class TestBlendGuard:
     def test_still_down_at_closing_reopens(self, db_connection, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.graph_v2.nodes.closing import closing_node
+        from agent.decide.node import decide_node
         from agent.graph_v2.state import GraphState, TurnScratch
         from langgraph.runtime import Runtime
 
@@ -173,7 +173,7 @@ class TestBlendGuard:
         agent.state.closing.case_closed = True
         agent.state.closing.closed_reason = "resolved"
         runtime = Runtime(context=agent.runtime)
-        upd = closing_node(
+        upd = decide_node(
             agent.state.model_copy(update={"turn": TurnScratch(user_input="Internetas neveikia.")}),
             runtime,
         )

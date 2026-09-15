@@ -1444,7 +1444,7 @@ class TestD5WaitAckAndClosing:
     def test_closing_goodbye_is_spoken_and_number_correction_lands(self, db_connection):
         from types import SimpleNamespace
 
-        from agent.graph_v2.nodes.closing import closing_node
+        from agent.decide.node import decide_node
         from agent.tools import create_ticket
         from langgraph.runtime import Runtime
 
@@ -1455,7 +1455,7 @@ class TestD5WaitAckAndClosing:
         agent.state.closing.case_closed = True
         runtime = Runtime(context=agent.runtime)
         # 1) number correction: acknowledged aloud AND noted on the ticket
-        upd = closing_node(
+        upd = decide_node(
             agent.state.model_copy(
                 update={"turn": TurnScratch(user_input="Skambinkite kitu numeriu 868321007")}
             ),
@@ -1475,7 +1475,7 @@ class TestD5WaitAckAndClosing:
             details = dict(cur.fetchone())["details"]
         assert "PATIKSLINTA" in details and "868321007" in details
         # 2) a plain 'gerai' now gets the SPOKEN scripted goodbye
-        upd2 = closing_node(
+        upd2 = decide_node(
             agent.state.model_copy(update={"turn": TurnScratch(user_input="Gerai, ačiū")}), runtime
         )
         assert upd2["turn"].reply and "Geros dienos" in upd2["turn"].reply

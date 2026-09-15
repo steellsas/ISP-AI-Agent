@@ -337,6 +337,8 @@ class TurnScratch(BaseModel):
     # Which exit produced the reply (greeting, scripted, llm, solver, …) — the shadow
     # TurnPlan reads it (M4 step 2).
     reply_path: str | None = None
+    # The TurnPlan the policy chain produced (None: a stage node owned the turn).
+    plan: dict[str, Any] | None = None
 
 
 # The persisted groups, in declaration order (everything but the turn scratch).

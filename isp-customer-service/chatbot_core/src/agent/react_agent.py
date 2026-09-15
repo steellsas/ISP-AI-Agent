@@ -320,25 +320,12 @@ class ReactAgent:
         """The scoped turn: deterministic head, scripted replies, then the LLM tool
         loop streaming the final reply token by token."""
         from .executor_flow import execute_tool_calls
-        from .identification_flow import identification_scripted_reply, preflight_phone
+        from .identification_flow import identification_scripted_reply
         from .narrator_flow import build_messages, scoped_tools_schema
         from .perception_flow import pre_turn_guards
         from .speculation import apply_bg_diagnosis, consume_injected_reply
         from .ticket_flow import registration_claim_guard
         from .walker_flow import scripted_wait_ack
-
-        # Hardcoded greeting (first turn, no input) — the node yields the fixed
-        # opening line, not an LLM call. The caller's number is pre-flighted
-        # while the greeting plays.
-        if user_input is None and self.state.dialog.turn_count == 0:
-            preflight_phone(self.state, self.runtime)
-            greeting = self.config.greeting_message
-            self.state.messages.append({"role": "assistant", "content": greeting})
-            self.state.dialog.turn_count += 1
-            self.state.turn.reply_path = "greeting"
-            self.tracer.emit("agent_reply", text=greeting)
-            yield greeting
-            return
 
         self.runtime.cancel.clear()  # a stale barge-in never cancels a NEW turn
         # Ticket-node turns skip the diagnosis ingest — without this, the

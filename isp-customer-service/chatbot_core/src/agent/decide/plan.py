@@ -26,9 +26,14 @@ Owner = Literal[
 
 class Say(BaseModel):
     kind: Literal["phrase", "directive", "none"]
-    key: str | None = None  # locale phrase key (kind=phrase)
+    key: str | None = None  # locale phrase key (kind=phrase); None = the action's own words
     goal: str | None = None  # English goal for the LLM (kind=directive)
     vars: dict[str, Any] = Field(default_factory=dict)
+    # The stage whose narrator speaks a directive — and a phrase whose action had no
+    # words (until M5's speak node, the stage prompts carry the goal).
+    stage: str | None = None
+    # A spoken question becomes the anchor the next turn is read against.
+    remember_question: bool = True
 
 
 class Action(BaseModel):

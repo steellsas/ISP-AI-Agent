@@ -19,24 +19,28 @@ from .state import GraphState
 
 # Node names — the single place they are spelled out.
 PERCEIVE = "perceive"
+DECIDE = "decide"
 ADDRESS_VALIDATION = "address_validation"
 DIAGNOSIS = "diagnosis"
 SIDE_TOPIC = "side_topic"
 TICKET_REGISTRATION = "ticket_registration"
 CLOSING = "closing"
 
-ENTRY_TARGETS = (ADDRESS_VALIDATION, DIAGNOSIS, TICKET_REGISTRATION, CLOSING)
+ENTRY_TARGETS = (ADDRESS_VALIDATION, DIAGNOSIS, TICKET_REGISTRATION)
+
+
+def route_after_decide(state: GraphState) -> str:
+    """A turn the policy chain planned is done; otherwise a stage node takes it."""
+    return "end" if state.turn.plan is not None else route_entry(state)
 
 
 def route_entry(state: GraphState) -> str:
-    """Deterministic entry routing.
+    """Deterministic entry routing for the turns no policy rule owned.
 
-    Priority: case_closed wins (END stage); a mid-ticket-dialogue turn goes to
-    the dedicated node so diagnosis narration cannot compete with the contact
-    questions; then identified -> diagnosis, else keep identifying.
+    A mid-ticket-dialogue turn goes to the dedicated node so diagnosis narration
+    cannot compete with the contact questions; then identified -> diagnosis, else
+    keep identifying. (A closed case is always planned by the closing rules.)
     """
-    if state.closing.case_closed:
-        return CLOSING
     if state.ticket.stage:
         return TICKET_REGISTRATION
     return DIAGNOSIS if state.identity.customer_id else ADDRESS_VALIDATION

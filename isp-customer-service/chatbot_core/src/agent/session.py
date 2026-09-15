@@ -117,12 +117,17 @@ class AgentSession:
         """One `turn_plan` trace event per turn: the plan the engine effectively ran."""
         from .decide.shadow import shadow_plan
 
+        if self._state.turn.plan is not None:
+            self._recorder.emit("turn_plan", **self._state.turn.plan, source="policy")
+            return
         try:
             plan, details = shadow_plan(before, self._state, self._recorder.turn_events)
         except Exception as e:  # pragma: no cover - a trace aid must never break a turn
             logger.warning(f"shadow turn plan failed: {e}")
             return
-        self._recorder.emit("turn_plan", **plan.model_dump(mode="json"), shadow=details)
+        self._recorder.emit(
+            "turn_plan", **plan.model_dump(mode="json"), source="shadow", shadow=details
+        )
 
     def _write_between_turns(self, write) -> None:
         """Run a write outside a turn — `write(state, rt)` on a copy of the

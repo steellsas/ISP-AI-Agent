@@ -32,12 +32,14 @@ def test_every_turn_emits_one_plan(db_connection, tmp_path):
     session.greeting()
     plans = _plans(tracer)
     assert len(plans) == 1
-    assert plans[0]["rule"] == "intake.dialog.greeting"
+    assert plans[0]["rule"] == "dialog.greeting" and plans[0]["source"] == "policy"
     assert plans[0]["say"]["kind"] == "phrase"
 
     with patch("agent.react_agent.stream_tool_completion", _fake_stream("Kuo galiu padėti?")):
         session.handle_turn("O kas jūs tokie?")
     plans = _plans(tracer)
     assert len(plans) == 2
-    TurnPlan.model_validate({k: v for k, v in plans[1].items() if k not in ("type", "shadow")})
+    TurnPlan.model_validate(
+        {k: v for k, v in plans[1].items() if k not in ("type", "shadow", "source")}
+    )
     assert plans[1]["rule"] and plans[1]["shadow"]["path"] in {"llm", "scripted"}

@@ -60,13 +60,17 @@ class TestRouteEntryPure:
         )
         assert route_entry(state) == "ticket_registration"
 
-    def test_case_closed_wins_over_everything(self):
+    def test_a_planned_turn_ends_after_decide(self):
+        from agent.graph_v2.router import route_after_decide
+
         state = GraphState(
             identity=IdentityState(customer_id="CUST-1"),
             ticket=TicketState(stage="phone"),
             closing=ClosingState(case_closed=True),
         )
-        assert route_entry(state) == "closing"
+        assert route_after_decide(state) == "ticket_registration"  # no plan: a stage node
+        state.turn.plan = {"rule": "closing.goodbye"}
+        assert route_after_decide(state) == "end"
 
 
 class FakeEngine:
