@@ -66,3 +66,26 @@ class TurnPlan(BaseModel):
     hypothesis: HypothesisView | None = None
     awaiting: str | None = None  # evidence key / step role / question key we wait for
     redecide_after_action: bool = False
+
+
+def record(state: Any, plan: TurnPlan) -> None:
+    """The turn's plan, as the trace and the checkpoint see it."""
+    state.turn.plan = plan.model_dump(mode="json")
+
+
+def record_stage_reply(state: Any, stage_rule: str) -> None:
+    """A stage node's LLM reply that no rule planned: the procedure step it words, or
+    the stage's free reply."""
+    if state.turn.plan is not None:
+        return
+    proc = state.resolution.procedure or {}
+    if proc.get("step") and state.identity.customer_id and not state.closing.case_closed:
+        from ..faults import role_of
+
+        role = role_of(proc.get("verdict"), proc.get("step")) or proc.get("step")
+        record(
+            state, TurnPlan(owner="procedure", rule=f"procedure.{role}", say=Say(kind="directive"))
+        )
+        return
+    owner = stage_rule.split(".", 1)[0]
+    record(state, TurnPlan(owner=owner, rule=stage_rule, say=Say(kind="directive")))

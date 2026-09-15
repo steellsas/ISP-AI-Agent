@@ -29,8 +29,11 @@ def narrator_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str
 
     def body() -> str:
         user_input = state.turn.user_input
+        from ....decide.plan import record_stage_reply
+
         reply = narrate(state, rt, user_input, None, DIAGNOSIS_NODE_PROMPT, DIAGNOSIS)
         mark_step_presented(state, rt)
+        record_stage_reply(state, "diagnosis.free_reply")
         return reply
 
     return node_update(state, body())

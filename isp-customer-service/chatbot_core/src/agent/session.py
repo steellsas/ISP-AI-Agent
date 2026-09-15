@@ -61,13 +61,6 @@ class AgentSession:
         # The initial state seeds the first invoke; afterwards the checkpoint
         # holds the call and _state is the last committed snapshot.
         self._state, self._runtime = new_call(caller_phone, language, config, tracer)
-        # Shadow TurnPlan (M4 step 2): the tracer keeps each turn's events.
-        from dataclasses import replace
-
-        from .decide.shadow import TurnEventRecorder
-
-        self._recorder = TurnEventRecorder(self._runtime.tracer)
-        self._runtime = replace(self._runtime, tracer=self._recorder)
         self._graph = build_graph(checkpointer)
         self._graph_config = {"configurable": {"thread_id": thread_id or self._runtime.session_id}}
         if thread_id:
@@ -108,26 +101,17 @@ class AgentSession:
     def _refresh_state(self) -> None:
         self._state = self._current_state()
 
-    def _begin_turn(self) -> GraphState:
-        """The state the turn starts from (for the shadow TurnPlan)."""
-        self._recorder.begin_turn()
-        return self._current_state()
+    def _emit_turn_plan(self) -> None:
+        """One `turn_plan` trace event per turn — the plan the turn ran."""
+        from .decide.plan import Say, TurnPlan
 
-    def _emit_turn_plan(self, before: GraphState) -> None:
-        """One `turn_plan` trace event per turn: the plan the engine effectively ran."""
-        from .decide.shadow import shadow_plan
-
-        if self._state.turn.plan is not None:
-            self._recorder.emit("turn_plan", **self._state.turn.plan, source="policy")
-            return
-        try:
-            plan, details = shadow_plan(before, self._state, self._recorder.turn_events)
-        except Exception as e:  # pragma: no cover - a trace aid must never break a turn
-            logger.warning(f"shadow turn plan failed: {e}")
-            return
-        self._recorder.emit(
-            "turn_plan", **plan.model_dump(mode="json"), source="shadow", shadow=details
-        )
+        plan = self._state.turn.plan
+        if plan is None:  # a cancelled or failed turn
+            owner = "diagnosis" if self._state.identity.customer_id else "identification"
+            plan = TurnPlan(owner=owner, rule="dialog.no_reply", say=Say(kind="none")).model_dump(
+                mode="json"
+            )
+        self._runtime.tracer.emit("turn_plan", **plan)
 
     def _write_between_turns(self, write) -> None:
         """Run a write outside a turn — `write(state, rt)` on a copy of the
@@ -328,10 +312,9 @@ class AgentSession:
         The first turn has no user input — the agent greets, then waits for the
         customer's problem. Voice/telephony speak this before listening.
         """
-        before = self._begin_turn()
         out = self._graph.invoke(self._graph_input(None), self._graph_config, context=self._runtime)
         self._refresh_state()
-        self._emit_turn_plan(before)
+        self._emit_turn_plan()
         return self._graph_reply(out)
 
     def handle_turn(self, text: str) -> str:
@@ -347,10 +330,9 @@ class AgentSession:
         Returns:
             The agent's reply string.
         """
-        before = self._begin_turn()
         out = self._graph.invoke(self._graph_input(text), self._graph_config, context=self._runtime)
         self._refresh_state()
-        self._emit_turn_plan(before)
+        self._emit_turn_plan()
         return self._graph_reply(out)
 
     def handle_turn_stream(self, text: str):
@@ -364,7 +346,6 @@ class AgentSession:
         # The diagnosis stage is a SUBGRAPH — custom writer events only surface
         # with subgraphs=True, which wraps every chunk in a (namespace, chunk)
         # pair; unwrap so transports receive raw tokens.
-        before = self._begin_turn()
         try:
             for _ns, chunk in self._graph.stream(
                 self._graph_input(text),
@@ -376,7 +357,7 @@ class AgentSession:
                 yield chunk
         finally:
             self._refresh_state()
-            self._emit_turn_plan(before)
+            self._emit_turn_plan()
 
     def request_cancel(self) -> None:
         """Barge-in (Phase 5 PR3): stop the running streaming turn — the engine's

@@ -39,6 +39,9 @@ def identification_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> di
             ADDRESS_VALIDATION,
         )
         mark_step_presented(state, rt)
+        from ...decide.plan import record_stage_reply
+
+        record_stage_reply(state, "identification.free_reply")
         return reply
 
     return node_update(state, body())

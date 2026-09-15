@@ -334,9 +334,6 @@ class TurnScratch(BaseModel):
     progress_key_at_start: list[Any] | None = None
     # The turn-head family that owned the head this turn (decide/rules/head.py).
     head_owner: str | None = None
-    # Which exit produced the reply (greeting, scripted, llm, solver, …) — the shadow
-    # TurnPlan reads it (M4 step 2).
-    reply_path: str | None = None
     # The TurnPlan the policy chain produced (None: a stage node owned the turn).
     plan: dict[str, Any] | None = None
 

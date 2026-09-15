@@ -33,7 +33,6 @@ def _speak_text(state: Any, rt: Any, say: Any, user_input: str | None, text: str
     state.turn.active_node = _node(say.stage)
     rt.tracer.emit("node", node=state.turn.active_node, customer_id=state.identity.customer_id)
     state.messages.append({"role": "assistant", "content": text})
-    state.turn.reply_path = "greeting" if say.key == "system.greeting" else "scripted"
     rt.tracer.emit("agent_reply", text=text)
     try:
         get_stream_writer()(text)

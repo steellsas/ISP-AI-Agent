@@ -44,7 +44,14 @@ def _solver_gate(state: Any, rt: Any, user_input: str | None) -> str | None:
         state.turn.progress_key_at_start = snapshot
         return None
     state.turn.active_node = DIAGNOSIS
-    state.turn.reply_path = "solver"
+    from ....decide.plan import Say, TurnPlan, record
+
+    record(
+        state,
+        TurnPlan(
+            owner="diagnosis", rule="diagnosis.solver_drive", say=Say(kind="phrase", text=driven)
+        ),
+    )
     rt.tracer.emit("node", node="diagnosis_solver", customer_id=state.identity.customer_id)
     get_stream_writer()(driven)
     return driven

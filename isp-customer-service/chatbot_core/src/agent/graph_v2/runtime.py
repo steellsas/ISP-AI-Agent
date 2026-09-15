@@ -66,7 +66,6 @@ def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply
         state.dialog.last_heard = user_input.strip()
         rt.tracer.emit("user_turn", text=user_input)
         state.messages.append({"role": "user", "content": user_input})
-    state.turn.reply_path = "closing_scripted"
     narrator(state, rt)._emit_scripted_reply(reply)
     # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
     # END the call like an LLM one — the hang-up detector ran only on the LLM

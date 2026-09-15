@@ -367,7 +367,6 @@ class ReactAgent:
         backstop = None if planned else self._stuck_backstop()
         if backstop is not None:
             self._record_plan("dialog.stuck_backstop")
-            self.state.turn.reply_path = "stuck_backstop"
             yield self._apply_backstop(backstop)
             return
 
@@ -382,7 +381,6 @@ class ReactAgent:
                     action_text = run_action(self.state, self.runtime, plan)
                     words = plan.say.text or action_text
                     if words:
-                        self.state.turn.reply_path = "scripted"
                         yield self._emit_scripted_reply(words)
                         return
 
@@ -391,7 +389,6 @@ class ReactAgent:
         wait = None if planned else scripted_wait_ack(self.state, self.runtime)
         if wait is not None:
             self._record_plan("dialog.wait_ack")
-            self.state.turn.reply_path = "wait_ack"
             yield self._emit_scripted_reply(wait)
             return
 
@@ -400,7 +397,6 @@ class ReactAgent:
         while tool_rounds < max_calls:
             self.state.dialog.turn_count += 1
             if self.state.dialog.turn_count > self.state.dialog.max_turns:
-                self.state.turn.reply_path = "max_turns"
                 yield self.config.max_turns_message
                 return
 
@@ -410,7 +406,6 @@ class ReactAgent:
             # the drive actually produced the predicted directive.
             injected = consume_injected_reply(self.state, self.runtime)
             if injected is not None:
-                self.state.turn.reply_path = "speculation"
                 yield injected
                 self.state.messages.append({"role": "assistant", "content": injected})
                 self._finalize_reply(injected)
@@ -450,7 +445,6 @@ class ReactAgent:
             except Exception as e:
                 logger.error(f"LLM stream error: {e}")
                 trace_note(self.tracer, self.state, "llm_stream", str(e), level="error")
-                self.state.turn.reply_path = "llm_error"
                 yield self.config.error_message
                 return
 
@@ -480,7 +474,6 @@ class ReactAgent:
             # The final reply text was already streamed via `yield from`; persist it
             # to history and run end-of-turn bookkeeping (no extra yield).
             self.state.messages.append({"role": "assistant", "content": content})
-            self.state.turn.reply_path = "llm"
             # Registration-claim guard: the narrator said "užregistravau" with no
             # ticket behind it — the contact dialogue starts NOW and its first
             # question rides on the same reply, so the claim becomes true.
@@ -492,16 +485,14 @@ class ReactAgent:
             self._finalize_reply(content)
             return
 
-        self.state.turn.reply_path = "timeout"
         yield self.config.timeout_message
 
     def _record_plan(self, rule: str) -> None:
         """The narrator's own scripted exits are plans too (§5 rows 18-19)."""
-        from .decide.plan import Say, TurnPlan
+        from .decide.plan import Say, TurnPlan, record
 
         owner = "diagnosis" if self.state.identity.customer_id else "identification"
-        plan = TurnPlan(owner=owner, rule=rule, say=Say(kind="phrase"))
-        self.state.turn.plan = plan.model_dump(mode="json")
+        record(self.state, TurnPlan(owner=owner, rule=rule, say=Say(kind="phrase")))
 
     def _stuck_backstop(self) -> tuple[str, bool] | None:
         """Deterministic escalation (text, should_close) once the prompt-level nudge

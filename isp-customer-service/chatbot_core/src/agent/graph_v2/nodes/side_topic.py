@@ -24,7 +24,15 @@ def side_topic_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[s
     state = state.model_copy(deep=True)
 
     def body() -> str:
+        from ...decide.plan import Say, TurnPlan, record
+
         user_input = state.turn.user_input
-        return narrate(state, rt, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
+        reply = narrate(state, rt, user_input, frozenset(), SIDE_TOPIC_PROMPT, SIDE_TOPIC)
+        if state.turn.plan is None:
+            record(
+                state,
+                TurnPlan(owner="side_topic", rule="side_topic.answer", say=Say(kind="directive")),
+            )
+        return reply
 
     return node_update(state, body())
