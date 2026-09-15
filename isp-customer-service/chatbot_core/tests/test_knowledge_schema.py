@@ -1,0 +1,120 @@
+"""
+Knowledge contract: every knowledge file validates against its schema, and a
+broken file is reported with the file, the path and the reason.
+
+Run: pytest tests/test_knowledge_schema.py -v
+"""
+
+import shutil
+
+import pytest
+import yaml
+from agent.contract import KnowledgeError, validate_knowledge
+from agent.contract.schema import KNOWLEDGE_DIR
+
+
+def test_all_knowledge_files_validate():
+    k = validate_knowledge()
+    assert set(k.packs) >= {
+        "no_mac_observed",
+        "foreign_mac",
+        "healthy_to_router",
+        "router_hung",
+        "link_down_local",
+        "crc_errors",
+    }
+    assert set(k.modules) == {"patikrinti_ar_atsirado", "priristi_mac"}
+
+
+@pytest.fixture
+def knowledge(tmp_path):
+    """A writable copy of the knowledge directory: edit(file, fn) mutates one YAML file."""
+    root = tmp_path / "knowledge"
+    shutil.copytree(KNOWLEDGE_DIR, root)
+
+    def edit(name, fn):
+        path = root / name
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        fn(data)
+        path.write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    return root, edit
+
+
+def _errors(root):
+    with pytest.raises(KnowledgeError) as exc:
+        validate_knowledge(root)
+    return exc.value.errors
+
+
+def _step(data, step_id):
+    return next(s for s in data["steps"] if s.get("id") == step_id or s.get("kaip") == step_id)
+
+
+PACK = "faults/internet_pakibes_routeris.yaml"
+
+
+def test_unknown_goto_target(knowledge):
+    root, edit = knowledge
+    edit(PACK, lambda d: _step(d, "rh_reboot").update(goto="rh_nowhere"))
+    assert _errors(root) == [f"{PACK}: steps.4 (rh_reboot): goto -> unknown step 'rh_nowhere'"]
+
+
+def test_unknown_key_is_rejected(knowledge):
+    root, edit = knowledge
+    edit(PACK, lambda d: d["evidence"]["client"]["fail_scope"].update(klausimass="?"))
+    (err,) = _errors(root)
+    assert err.startswith(f"{PACK}: evidence.client.fail_scope.klausimass:")
+
+
+def test_unquoted_yaml_on_key_is_caught(knowledge):
+    root, _edit = knowledge
+    path = root / PACK
+    text = path.read_text(encoding="utf-8").replace(
+        "  'on':\n    all: rh_ability", "  on:\n    all: rh_ability"
+    )
+    path.write_text(text, encoding="utf-8")
+    errors = _errors(root)
+    assert errors == [f"{PACK}: steps.0: key True is not a string (quote it: 'on', 'yes', 'no')"]
+
+
+def test_unknown_module_detector_and_section(knowledge):
+    root, edit = knowledge
+
+    def broken(d):
+        _step(d, "rh_check").update(detector="telepathy", rag_section=99)
+        d["steps"].append({"use": "no_such_module", "kaip": "x"})
+
+    edit(PACK, broken)
+    errors = _errors(root)
+    assert f"{PACK}: steps.5 (rh_check): unknown detector 'telepathy'" in errors
+    assert any("rag_section 99 but the playbook has" in e for e in errors)
+    assert any("unknown module 'no_such_module'" in e for e in errors)
+
+
+def test_answers_must_be_routing_keys(knowledge):
+    root, edit = knowledge
+    edit(PACK, lambda d: _step(d, "rh_ability")["answers"].update(maybe="nežino"))
+    assert _errors(root) == [
+        f"{PACK}: steps.1 (rh_ability): answers keys ['maybe'] are not routing keys"
+    ]
+
+
+def test_conditions_name_declared_evidence(knowledge):
+    root, edit = knowledge
+    edit(PACK, lambda d: d["sprendimai"][0].update(jei=["fail_scop=visuose"]))
+    assert _errors(root) == [
+        f"{PACK}: sprendimai.0.jei: condition 'fail_scop=visuose' names an undeclared evidence key"
+    ]
+
+
+def test_module_exits_must_be_routed(knowledge):
+    root, edit = knowledge
+    pack = "faults/internet_crc_kabelis.yaml"
+    edit(
+        pack,
+        lambda d: d["steps"].insert(
+            0, {"use": "patikrinti_ar_atsirado", "kaip": "x", "on": {"pavyko": "resolve"}}
+        ),
+    )
+    assert _errors(root) == [f"{pack}: steps.0 (x): module exits ['nepavyko'] are not routed"]
