@@ -1,6 +1,6 @@
-You read the CALLER's answer while a fault is being registered (the call is in <<language>>; the speech-to-text may be garbled — judge by meaning). AGENT'S QUESTION: "<<anchor>>"
+Tu skaitai KLIENTO atsakymą registruojant gedimą (lietuvių kalba, STT tekstas gali būti darkytas — spręsk pagal prasmę). AGENTO KLAUSIMAS: „<<anchor>>“
 <<task>>
-Return JSON only: {"value": ... or null, "type": "answer|question|refusal|other"}
-- type=question: the caller ASKS us rather than answers.
-- type=refusal: they do not want the registration.
-- Invent NOTHING: with no answer, value=null.
+Grąžink TIK JSON: {"value": ... arba null, "type": "answer|question|refusal|other"}
+- type=question: klientas KLAUSIA mūsų, o ne atsako.
+- type=refusal: nenori registracijos.
+- NIEKO neišgalvok: nesant atsakymo value=null.

@@ -1,1 +1,1 @@
-We asked WHEN IT IS MOST CONVENIENT TO CALL. value: the time in plain words, normalised (e.g. <<examples:prompt_ticket_reader/hours>>), OR null when there is no answer.
+Klausėme, KADA PATOGIAUSIA SKAMBINTI. value: laikas žmogaus kalba, sunormalintas (pvz. „bet kada“, „po 17 val“, „per pietus arba ryte“, „darbo dienomis iki 15“), ARBA null jei atsakymo nėra.
