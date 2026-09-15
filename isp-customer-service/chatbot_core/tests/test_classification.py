@@ -68,14 +68,12 @@ class TestPolitikaIngest:
         assert agent.state.intake.boundary_problem == "billing"
 
     def test_boundary_reply_states_competence(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
-        reply = identification_scripted_reply(
-            agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?"
-        )
+        reply = scripted_words(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
         assert reply and "techninės pagalbos" in reply
         assert agent.state.intake.problem_type is None and not agent.state.closing.case_closed
 
@@ -92,22 +90,22 @@ class TestGateGuessConfirm:
     pokalbis TĘSIASI tą patį turn'ą (vartai nebaigia pokalbio, kuris juda)."""
 
     def test_yes_commits_and_falls_through(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_guess = "internet_down"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Taip, būtent")
+        reply = scripted_words(agent.state, agent.runtime, "Taip, būtent")
         assert agent.state.intake.problem_type == "internet_down"
         assert not agent.state.closing.case_closed
         # fall-through reached the intake ladder (anamnesis asked this turn)
         assert agent.state.intake.anamnesis_asked or reply is not None
 
     def test_no_keeps_gate_open(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_guess = "internet_down"
-        identification_scripted_reply(agent.state, agent.runtime, "Ne, ne dėl to skambinu")
+        scripted_words(agent.state, agent.runtime, "Ne, ne dėl to skambinu")
         assert agent.state.intake.problem_type is None
         assert not agent.state.closing.case_closed
         assert agent.state.intake.problem_guess is None  # spėjimas nunaudotas, kopėčios tęsiasi
@@ -117,9 +115,9 @@ class TestGateL2:
     """L2 LLM spėjimas iš konteksto (klasifikatorius mock'intas)."""
 
     def _gate(self, agent, text):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
-        return identification_scripted_reply(agent.state, agent.runtime, text)
+        return scripted_words(agent.state, agent.runtime, text)
 
     def test_high_confidence_commits_implicitly(self, db_connection, monkeypatch):
         from agent.perceive import nlu
@@ -174,7 +172,7 @@ class TestAccumulatedContext:
     replikų uodegos, ne vienos frazės."""
 
     def test_l2_reads_the_joined_tail(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive import nlu
 
         got: list = []
@@ -188,7 +186,7 @@ class TestAccumulatedContext:
         agent = _agent()
         agent.state.intake.heard_utterances.extend(["Labai diena.", "Ora šiandien kažkoks netoks."])
         agent.state.intake.heard_utterances.append("gal dėl to neturiu interneto?")
-        identification_scripted_reply(agent.state, agent.runtime, "gal dėl to neturiu interneto?")
+        scripted_words(agent.state, agent.runtime, "gal dėl to neturiu interneto?")
         assert got and "netoks" in got[0] and "neturiu interneto" in got[0]
         assert agent.state.intake.problem_type == "internet_down"
 
@@ -358,14 +356,14 @@ class TestNoPathTicket:
 
 class TestGateMaxTurns:
     def test_knob_controls_the_close(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         monkeypatch.setenv("GATE_MAX_TURNS", "2")
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         agent = _agent()
-        r1 = identification_scripted_reply(agent.state, agent.runtime, "Mendulija kadulija")
+        r1 = scripted_words(agent.state, agent.runtime, "Mendulija kadulija")
         assert not agent.state.closing.case_closed and r1
-        r2 = identification_scripted_reply(agent.state, agent.runtime, "Kadulija mendulija")
+        r2 = scripted_words(agent.state, agent.runtime, "Kadulija mendulija")
         assert agent.state.closing.case_closed and "skambinkite" in r2
         assert agent.state.ticket.ticket_id is None  # no customer -> no ticket, ever
 

@@ -94,7 +94,7 @@ class TestW1LivingDialogue:
     before it may poison the ledger."""
 
     def test_opening_anamnesis_skips_the_question(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
 
         from tests.calls import make_agent
@@ -102,7 +102,7 @@ class TestW1LivingDialogue:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
-        reply = identification_scripted_reply(
+        reply = scripted_words(
             agent.state,
             agent.runtime,
             "Laba diena, neveikia internetas. Vakar dingo, šiandien nebėra.",
@@ -114,7 +114,7 @@ class TestW1LivingDialogue:
         assert "KLIENTAS JAU PASAKĖ" in block and "NEKLAUSK" in block
 
     def test_opening_without_when_goes_to_address(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         # etalonas #2 (2026-09-03): no opening anamnesis question — the flow
         # goes straight to the address; targeted anamnesis lives in the packs.
@@ -123,12 +123,7 @@ class TestW1LivingDialogue:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
-        assert (
-            identification_scripted_reply(
-                agent.state, agent.runtime, "Neveikia internetas pas mane"
-            )
-            is None
-        )
+        assert scripted_words(agent.state, agent.runtime, "Neveikia internetas pas mane") is None
         assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
 
     def _resolving_agent(self):

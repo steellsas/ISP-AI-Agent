@@ -159,7 +159,7 @@ class TestAgentWiring:
 
     def test_contradiction_asks_one_clarify_then_settles(self):
         from agent.contract.locale import phrase
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive.evidence import ingest_client_evidence
         from agent.solver_flow import solver_drive_turn
         from agent.walker_flow import advance_resolution
@@ -174,9 +174,7 @@ class TestAgentWiring:
         )
         advance_resolution(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
         assert agent.state.resolution.procedure["step"] == "dr_lights"  # held, not advanced
-        reply = identification_scripted_reply(
-            agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti"
-        )
+        reply = scripted_words(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
         assert reply == phrase(
             "identification.evidence_conflict",
             topic="ar turite kompiuterį",
@@ -193,24 +191,24 @@ class TestAgentWiring:
         )
 
     def test_bare_polarity_settles_yes_no_conflict(self):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
         ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį vis dėlto")
-        identification_scripted_reply(agent.state, agent.runtime, "x")  # asks the clarify
+        scripted_words(agent.state, agent.runtime, "x")  # asks the clarify
         ingest_client_evidence(agent.state, agent.runtime, "Taip.")  # bare yes
         assert agent.state.diagnosis.evidence["has_computer"]["value"] == "yes"
 
     def test_unreadable_settle_keeps_latest_and_stops_asking(self):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
         ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį vis dėlto")
-        identification_scripted_reply(agent.state, agent.runtime, "x")
+        scripted_words(agent.state, agent.runtime, "x")
         ingest_client_evidence(agent.state, agent.runtime, "Kurs komentai")  # garble
         e = agent.state.diagnosis.evidence["has_computer"]
         assert e["conflict"] is False and e["value"] == "yes"  # latest stated wins

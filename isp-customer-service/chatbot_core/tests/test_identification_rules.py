@@ -59,11 +59,11 @@ class TestAccountCodeRung:
 
     def test_code_heard_anytime_without_mode(self, db_connection):
         """Kodas girdimas VISADA — klientas gali jį pasakyti nelaukiamas."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        identification_scripted_reply(
+        scripted_words(
             agent.state, agent.runtime, "Adreso nežinau, bet turiu abonento kodą AB-10104"
         )
         assert agent.state.identity.phone_candidate
@@ -71,32 +71,30 @@ class TestAccountCodeRung:
         assert agent.state.identity.customer_id is None  # adresas SIŪLOMAS, ne prisiimamas
 
     def test_empty_turns_warn_then_close_no_location(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True  # adreso klausimas jau nuskambėjo
-        r1 = identification_scripted_reply(agent.state, agent.runtime, "Nežinau adreso")
+        r1 = scripted_words(agent.state, agent.runtime, "Nežinau adreso")
         assert not agent.state.closing.case_closed
-        r2 = identification_scripted_reply(agent.state, agent.runtime, "Negaliu pasakyti")
+        r2 = scripted_words(agent.state, agent.runtime, "Negaliu pasakyti")
         assert r2 and "negalėsiu" in r2  # PERSPĖJIMAS (su kodo užuomina)
-        identification_scripted_reply(agent.state, agent.runtime, "Na nežinau")
-        r4 = identification_scripted_reply(agent.state, agent.runtime, "Nieko nesakysiu")
+        scripted_words(agent.state, agent.runtime, "Na nežinau")
+        r4 = scripted_words(agent.state, agent.runtime, "Nieko nesakysiu")
         assert agent.state.closing.case_closed and r4 and "nenustačius" in r4
         assert agent.state.ticket.ticket_id is None
 
     def test_unrecognized_address_offers_code(self, db_connection):
         """Turinys yra, bet registras jo visai neatpažįsta — po 2 siūlom kodą
         (rev.2 2026-09-10: automatinių raidžių nebėra, fuzzy — pagrindinis)."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
-        identification_scripted_reply(agent.state, agent.runtime, "Kosmonautų alėja 7")
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Sakau — Kosmonautų alėja septyni"
-        )
+        scripted_words(agent.state, agent.runtime, "Kosmonautų alėja 7")
+        r = scripted_words(agent.state, agent.runtime, "Sakau — Kosmonautų alėja septyni")
         assert r and "abonento kodą" in r
         assert agent.state.identity.account_code_mode is True
 
@@ -119,22 +117,20 @@ class TestAccountCodeRung:
         assert agent.state.identity.account_code_mode is False  # režimas tyliai užgeso
 
     def test_explicit_no_code_closes(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.account_code_mode = True
-        r = identification_scripted_reply(agent.state, agent.runtime, "Neturiu jokio kodo")
+        r = scripted_words(agent.state, agent.runtime, "Neturiu jokio kodo")
         assert agent.state.closing.case_closed and r and "abonentams" in r
 
     def test_city_not_served_is_instant(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Vilnius, Gedimino prospektas 1"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Vilnius, Gedimino prospektas 1")
         assert r and "Šiaulių mieste ir rajone" in r
         assert not agent.state.closing.case_closed
         assert agent.state.identity.address_empty_turns == 0  # ne bandymas
@@ -198,14 +194,12 @@ class TestReopenConfirmation:
         return agent
 
     def test_correction_asks_before_reopening(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "iš tikrųjų skambinu dėl Tilžės g. 60"
         agent.state.identity.reopen_confirm_asked = False
-        reply = identification_scripted_reply(
-            agent.state, agent.runtime, "iš tikrųjų skambinu dėl Tilžės g. 60"
-        )
+        reply = scripted_words(agent.state, agent.runtime, "iš tikrųjų skambinu dėl Tilžės g. 60")
         assert reply and "tikrai" in reply and "Vilniaus g. 33-2" in reply
         assert agent.state.identity.customer_id == "CUST112"  # dar NEperjungta
 
@@ -231,7 +225,7 @@ class TestReopenConfirmation:
         """A-2 gyva yda: neaiškus atsakymas klausimo nebesudegina — vienas
         pakartojimas, o walker'is tą turn'ą laikomas (hold)."""
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
@@ -240,7 +234,7 @@ class TestReopenConfirmation:
         turn_head(agent.state, agent.runtime, "Nu kaip čia dabar pasakyt")
         assert agent.state.identity.reopen_confirm_utterance is not None  # klausimas gyvas
         assert agent.state.dialog.resume_hold_due is True  # walker'is nesuvartos turn'o
-        r = identification_scripted_reply(agent.state, agent.runtime, "Nu kaip čia dabar pasakyt")
+        r = scripted_words(agent.state, agent.runtime, "Nu kaip čia dabar pasakyt")
         assert r and "KITO adreso" in r  # pakartojimas
         # Antras neaiškus — nurašom (liekam prie esamo), be amžino ciklo.
         turn_head(agent.state, agent.runtime, "Mhm chm")
@@ -250,12 +244,10 @@ class TestReopenConfirmation:
     def test_address_question_is_answered(self, db_connection):
         """A-2b: „dėl kokio adreso mes bendraujame?" — agentas SAKO adresą
         (patvirtintas adresas nėra paslaptis; taip klientas pagauna klaidą)."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._identified()
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Dėl kokio adreso mes dabar bendraujame?"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Dėl kokio adreso mes dabar bendraujame?")
         assert r and "Vilniaus g. 33-2" in r
 
     def test_confirmed_reopen_drops_bg_and_continues_ident(self, db_connection):
@@ -322,7 +314,7 @@ class TestReopenConfirmation:
     def test_address_question_mid_ident_names_heard_address(self, db_connection):
         """A-2R-b gyva: „kokiu adresu bendraujam?" PO reopen (klientas numestas,
         adresas slotuose) — agentas sako, KĄ tikslina, ne improvizuoja."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
@@ -330,17 +322,17 @@ class TestReopenConfirmation:
 
         agent.state.identity.profile.street.propose("Tilžės g.", 1.0, SlotStatus.HEARD)
         agent.state.identity.profile.house.propose("60", 1.0, SlotStatus.HEARD)
-        r = identification_scripted_reply(
+        r = scripted_words(
             agent.state, agent.runtime, "Tai kokiu adresu dabar bendraujam, tikrinam?"
         )
         assert r and "Tilžės g. 60" in r and "dėl šio adreso" in r
 
     def test_address_question_mid_ident_without_slots(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
-        r = identification_scripted_reply(
+        r = scripted_words(
             agent.state, agent.runtime, "Galite pasakyti tikslų adresą, kur tikrinat?"
         )
         assert r and "nenustat" in r
@@ -388,17 +380,17 @@ class TestQuestionRegistry:
 
     def test_reopen_lifecycle_ask_reask_close(self, db_connection):
         from agent.decide.rules.head import turn_head
+        from agent.decide.rules.reply import scripted_words
         from agent.dialog_registry import active
-        from agent.identification_flow import identification_scripted_reply
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Tilžės g. 60"
         agent.state.identity.reopen_confirm_asked = False
-        identification_scripted_reply(agent.state, agent.runtime, "dėl Tilžės g. 60")  # ask
+        scripted_words(agent.state, agent.runtime, "dėl Tilžės g. 60")  # ask
         q = active(agent.state, agent.runtime)
         assert q and q.owner == "safety" and q.key == "reopen_confirm" and q.asks == 1
         turn_head(agent.state, agent.runtime, "Nu kaip čia pasakyt")  # unclear → reask
-        identification_scripted_reply(agent.state, agent.runtime, "Nu kaip čia pasakyt")
+        scripted_words(agent.state, agent.runtime, "Nu kaip čia pasakyt")
         q = active(agent.state, agent.runtime)
         assert q and q.asks == 2  # pakartojimas registruotas
         turn_head(agent.state, agent.runtime, "Mhm chm")  # antras neaiškus → nurašyta
@@ -406,13 +398,13 @@ class TestQuestionRegistry:
 
     def test_reopen_confirmed_clears(self, db_connection):
         from agent.decide.rules.head import turn_head
+        from agent.decide.rules.reply import scripted_words
         from agent.dialog_registry import active
-        from agent.identification_flow import identification_scripted_reply
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "dėl Vilniaus gatvės 29"
         agent.state.identity.reopen_confirm_asked = False
-        identification_scripted_reply(agent.state, agent.runtime, "dėl Vilniaus gatvės 29")
+        scripted_words(agent.state, agent.runtime, "dėl Vilniaus gatvės 29")
         turn_head(agent.state, agent.runtime, "Taip")
         assert active(agent.state, agent.runtime) is None
         assert agent.state.identity.customer_id == "CUST009"
@@ -489,8 +481,8 @@ class TestQuestionRegistry:
         guard'as tą patį turn'ą startavo tiketą; dabar galvos skydas
         registruoja safety klausimą ir walker'is laiko."""
         from agent.decide.rules.head import turn_head
+        from agent.decide.rules.reply import scripted_words
         from agent.dialog_registry import active
-        from agent.identification_flow import identification_scripted_reply
         from agent.walker_flow import advance_resolution
 
         agent = self._identified()
@@ -505,7 +497,7 @@ class TestQuestionRegistry:
         assert q and q.owner == "safety" and q.key == "cannot_now"
         advance_resolution(agent.state, agent.runtime, msg)
         assert agent.state.ticket.stage is None  # tiketas NEprasidėjo
-        r = identification_scripted_reply(agent.state, agent.runtime, msg)
+        r = scripted_words(agent.state, agent.runtime, msg)
         assert r and "nepatogu" in r  # laiptelis klausia KAS nepatogu
 
     def test_ability_yes_routes_to_reboot(self, db_connection):
@@ -525,7 +517,7 @@ class TestQuestionRegistry:
     def test_ability_no_routes_to_homework_then_callback(self, db_connection):
         """P-C: „ne" → namų darbas; sutikimas → callback uždarymas su scripted
         atsisveikinimu, be tiketo."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.walker_flow import advance_resolution
 
         agent = self._identified()
@@ -541,7 +533,7 @@ class TestQuestionRegistry:
         advance_resolution(agent.state, agent.runtime, "Taip, sutinku.")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
-        r = identification_scripted_reply(agent.state, agent.runtime, "Taip, sutinku.")
+        r = scripted_words(agent.state, agent.runtime, "Taip, sutinku.")
         assert r and "paskambinkite" in r  # callback_goodbye
 
     def test_soft_refuse_at_ability_stays_with_pack(self, db_connection):
@@ -647,19 +639,19 @@ class TestQuestionRegistry:
         assert q and q.owner == "ident" and q.key == "address_offer"
 
     def test_cannot_now_lifecycle(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
         from agent.dialog_registry import active
-        from agent.identification_flow import identification_scripted_reply
         from agent.resolution import get_strategy
 
         agent = self._identified()
         agent.state.resolution.procedure = {"verdict": "unclear_fault", "step": "escalate"}
-        identification_scripted_reply(agent.state, agent.runtime, "Ne patogu man dabar")
+        scripted_words(agent.state, agent.runtime, "Ne patogu man dabar")
         q = active(agent.state, agent.runtime)
         assert q and q.key == "cannot_now_clarify"
-        identification_scripted_reply(agent.state, agent.runtime, "Nesu namie dabar")
+        scripted_words(agent.state, agent.runtime, "Nesu namie dabar")
         q = active(agent.state, agent.runtime)
         assert q and q.key == "cannot_now_offer"
-        r = identification_scripted_reply(agent.state, agent.runtime, "Gerai, paskambinsiu vėliau")
+        r = scripted_words(agent.state, agent.runtime, "Gerai, paskambinsiu vėliau")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert active(agent.state, agent.runtime) is None
 
@@ -681,7 +673,7 @@ class TestHolderNameCheck:
         )  # nėra su kuo lyginti
 
     def test_mismatch_asks_scripted_and_nameless(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.identity.customer_id = "CUST009"
@@ -689,7 +681,7 @@ class TestHolderNameCheck:
         agent.state.identity.caller_name = "Petras"
         agent.state.identity.holder_clarify_open = True
         agent.state.identity.holder_clarify_asked = False
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Petras, aš savininkas")
+        reply = scripted_words(agent.state, agent.runtime, "Petras, aš savininkas")
         assert reply and "kitu vardu" in reply  # scripted, deterministinis
         assert "Giedri" not in reply  # DB vardas NIEKADA negarsinamas
 
@@ -718,49 +710,45 @@ class TestCannotNowLadder:
         return agent
 
     def test_cannot_now_asks_what_is_wrong(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
-        r = identification_scripted_reply(agent.state, agent.runtime, "Ne patogu")
+        r = scripted_words(agent.state, agent.runtime, "Ne patogu")
         assert r and "kas nepatogu" in r
         assert agent.state.dialog.cannot_now_state == "asked"
 
     def test_confirmed_cannot_offers_paths(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
         agent.state.dialog.cannot_now_state = "asked"
-        r = identification_scripted_reply(agent.state, agent.runtime, "Na, aš ne namie dabar")
+        r = scripted_words(agent.state, agent.runtime, "Na, aš ne namie dabar")
         assert r and "užregistruoti" in r and "paskambinkite" in r
 
     def test_callback_choice_closes_politely(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
         agent.state.dialog.cannot_now_state = "offered"
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Geriau pats perskambinsiu vėliau"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Geriau pats perskambinsiu vėliau")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert r and "paskambinkite" in r
         assert agent.state.ticket.ticket_id is None
 
     def test_ticket_choice_starts_dialogue(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
         agent.state.dialog.cannot_now_state = "offered"
-        identification_scripted_reply(agent.state, agent.runtime, "Registruokite meistrą")
+        scripted_words(agent.state, agent.runtime, "Registruokite meistrą")
         assert agent.state.ticket.stage == "phone"
 
     def test_explained_otherwise_resumes(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
         agent.state.dialog.cannot_now_state = "asked"
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Ne ne, viskas gerai, jau radau routerį"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Ne ne, viskas gerai, jau radau routerį")
         assert r is None  # kelias tęsiasi
         assert agent.state.dialog.cannot_now_state is None
 
@@ -795,13 +783,13 @@ class TestOtherStreetSignal:
         turn_head(agent.state, agent.runtime, text)
 
     def test_garbled_correction_triggers_confirm(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._identified()
         msg = "Atsiprašau su maišiu, mano adaras yra Tilžės gatvė 60"
         self._turn(agent, msg)
         assert agent.state.identity.reopen_confirm_utterance  # kandidatas užfiksuotas
-        r = identification_scripted_reply(agent.state, agent.runtime, msg)
+        r = scripted_words(agent.state, agent.runtime, msg)
         assert r and "KITO adreso" in r  # patvirtinimo klausimas
 
     def test_own_street_number_is_content(self, db_connection):
@@ -820,16 +808,16 @@ class TestCodeHoles:
     STT kodą; „kodą mini be skaičių" gauna scripted pagalbą."""
 
     def test_warning_arms_listening_then_bare_digits_work(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
-        identification_scripted_reply(agent.state, agent.runtime, "Nežinau adreso")
-        r = identification_scripted_reply(agent.state, agent.runtime, "Negaliu pasakyti")  # warn
+        scripted_words(agent.state, agent.runtime, "Nežinau adreso")
+        r = scripted_words(agent.state, agent.runtime, "Negaliu pasakyti")  # warn
         assert r and "negalėsiu" in r
         assert agent.state.identity.account_code_mode is True
-        identification_scripted_reply(agent.state, agent.runtime, "10104")
+        scripted_words(agent.state, agent.runtime, "10104")
         assert agent.state.identity.phone_candidate
         assert agent.state.identity.phone_candidate["customer_id"] == "CUST104"
 
@@ -844,14 +832,12 @@ class TestCodeHoles:
         assert r["success"] and r["customer_id"] == "CUST101"
 
     def test_code_talk_without_digits_gets_scripted_help(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.account_code_mode = True
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Nu, gerai, abonento kodą pasakysiu. A. B."
-        )
+        r = scripted_words(agent.state, agent.runtime, "Nu, gerai, abonento kodą pasakysiu. A. B.")
         assert r and "penki skaitmenys" in r  # scripted, ne LLM haliucinacija
 
     def test_found_code_is_echoed_with_address(self, db_connection):

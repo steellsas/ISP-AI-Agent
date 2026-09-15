@@ -33,7 +33,7 @@ _FLOW_OF = {
     "_finish_ticket_dialogue": "agent.ticket_flow.finish_ticket_dialogue",
     "_fresh_diagnose_reason": "agent.walker_flow.fresh_diagnose_reason",
     "_goto_step": "agent.walker_flow.goto_step",
-    "_identification_scripted_reply": "agent.identification_flow.identification_scripted_reply",
+    "_identification_scripted_reply": "agent.decide.rules.reply.scripted_words",
     "_ingest_client_evidence": "agent.perceive.evidence.ingest_client_evidence",
     "_mark_step_presented": "agent.narrator_flow.mark_step_presented",
     "_maybe_close_inform": "agent.closing_flow.maybe_close_inform",

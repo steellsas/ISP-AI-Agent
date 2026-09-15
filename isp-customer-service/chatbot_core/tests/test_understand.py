@@ -389,7 +389,7 @@ class TestKeywordSupplement:
         assert e["conflict"] is True  # neither reader wins silently
 
     def test_reader_disagreement_on_fresh_key_asks_clarify(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive.evidence import ingest_client_evidence
 
         # Live 2026-08-12: "kiti įrenginiai veikia nuo tos rozetės, bet
@@ -412,7 +412,7 @@ class TestKeywordSupplement:
         assert e["conflict"] is True  # neither reader won silently
         assert agent.state.diagnosis.evidence_conflict is not None  # the clarify goes out
         with patch("agent.perceive.understand.understand", return_value=None):
-            reply = identification_scripted_reply(agent.state, agent.runtime, "na")
+            reply = scripted_words(agent.state, agent.runtime, "na")
         assert reply is not None and "rozetė" in reply  # "kaip yra iš tiesų?"
 
 
@@ -527,19 +527,17 @@ class TestTicketUnderstanding:
 
     def _ticket_agent(self, monkeypatch, stage="hours"):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = _diagnosing_agent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)  # asks phone
+        scripted_words(agent.state, agent.runtime, None)  # asks phone
         if stage == "hours":
             turn_head(
                 agent.state, agent.runtime, "taip, tiks šis"
             )  # keyword consent (pass mocked off below)
-            identification_scripted_reply(
-                agent.state, agent.runtime, "taip, tiks šis"
-            )  # asks hours
+            scripted_words(agent.state, agent.runtime, "taip, tiks šis")  # asks hours
         return agent
 
     def test_hours_with_galima_captured_not_diverted(self, db_connection, monkeypatch):

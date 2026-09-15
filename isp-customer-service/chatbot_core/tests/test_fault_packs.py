@@ -278,7 +278,7 @@ class TestNarratorFindings:
         """DIALOGO_ETALONAS #2 (2026-09-03): the E follow-up ladder went away
         with the opening question — after the problem the flow goes straight
         to the address; targeted anamnesis lives in the packs."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         from tests.calls import make_agent
 
@@ -286,7 +286,7 @@ class TestNarratorFindings:
         agent = make_agent("unknown")
         s = agent.state
         s.intake.problem_type = "internet_down"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Nežinau, nepastebėjau.")
+        reply = scripted_words(agent.state, agent.runtime, "Nežinau, nepastebėjau.")
         assert reply and "adres" in reply.lower()
         assert "paskutinį kartą" not in (reply or "")
 
@@ -833,12 +833,12 @@ class TestTicketDirectives:
         return agent
 
     def test_phone_intro_goes_to_narrator(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
-        reply = identification_scripted_reply(agent.state, agent.runtime, "nepatogu, ne namuose")
+        reply = scripted_words(agent.state, agent.runtime, "nepatogu, ne namuose")
         assert reply is None  # the narrator takes the turn
         td = agent.state.turn.directives.ticket
         assert td and td["kind"] == "phone_intro" and "numeris" in td["fallback"]
@@ -846,33 +846,33 @@ class TestTicketDirectives:
         assert "TIKETO ŽINGSNIS" in block and "registruoji meistrą" in block
 
     def test_off_switch_keeps_scripted(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         agent = self._agent()
-        reply = identification_scripted_reply(agent.state, agent.runtime, "gerai")
+        reply = scripted_words(agent.state, agent.runtime, "gerai")
         assert reply and "Ar tiks numeris" in reply
         assert agent.state.turn.directives.ticket is None
 
     def test_retry_stays_scripted_even_in_narrator_mode(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
         agent.state.ticket.context.ask_retry = "phone"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "kazkas neaisku")
+        reply = scripted_words(agent.state, agent.runtime, "kazkas neaisku")
         assert reply and "skaitmenimis" in reply  # precision repeat, no LLM
         assert agent.state.turn.directives.ticket is None
 
     def test_hours_directive(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
         agent.state.ticket.stage = "hours"
         agent.state.ticket.context = TicketContext(step_id=None, intro_done=True)
-        assert identification_scripted_reply(agent.state, agent.runtime, "tiks tas") is None
+        assert scripted_words(agent.state, agent.runtime, "tiks tas") is None
         assert agent.state.turn.directives.ticket["kind"] == "hours"
         assert "patogiausia" in state_facts_block(agent.state, agent.runtime)
 
@@ -899,12 +899,12 @@ class TestIdentDirectives:
         return agent
 
     def test_offer_goes_to_narrator_with_verbatim_core(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Vakar po audros dingo")
+        reply = scripted_words(agent.state, agent.runtime, "Vakar po audros dingo")
         assert reply is None
         idd = agent.state.turn.directives.ident
         assert idd and idd["kind"] == "address_offer" and "Vilniaus g. 29" in idd["adresas"]
@@ -912,24 +912,21 @@ class TestIdentDirectives:
         assert "Ar skambinate dėl Vilniaus g. 29?" in block  # verbatim core kept
 
     def test_ask_goes_to_narrator_without_candidate(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent(candidate=False)
-        assert (
-            identification_scripted_reply(agent.state, agent.runtime, "Vakar po audros dingo")
-            is None
-        )
+        assert scripted_words(agent.state, agent.runtime, "Vakar po audros dingo") is None
         assert agent.state.turn.directives.ident["kind"] == "address_ask"
         assert "IDENTIFIKACIJOS ŽINGSNIS" in state_facts_block(agent.state, agent.runtime)
 
     def test_off_switch_keeps_scripted_offer(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         agent = self._agent()
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Vakar po audros dingo")
+        reply = scripted_words(agent.state, agent.runtime, "Vakar po audros dingo")
         assert reply and "Ar skambinate dėl Vilniaus g. 29?" in reply
         assert agent.state.turn.directives.ident is None
 
@@ -940,7 +937,7 @@ class TestAnamnesisDirectives:
     the opener already said; the targeted anamnesis lives in the packs."""
 
     def test_no_opening_question_straight_to_address(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
 
         from tests.calls import make_agent
@@ -948,9 +945,7 @@ class TestAnamnesisDirectives:
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
-        assert (
-            identification_scripted_reply(agent.state, agent.runtime, "Neveikia internetas") is None
-        )
+        assert scripted_words(agent.state, agent.runtime, "Neveikia internetas") is None
         assert agent.state.intake.anamnesis_asked is True  # ladder-live marker stays
         assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
         block = state_facts_block(agent.state, agent.runtime)
@@ -958,16 +953,14 @@ class TestAnamnesisDirectives:
         assert "IDENTIFIKACIJOS ŽINGSNIS" in block
 
     def test_opening_capture_still_lands(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
-        identification_scripted_reply(
-            agent.state, agent.runtime, "Neveikia internetas nuo vakar, po audros"
-        )
+        scripted_words(agent.state, agent.runtime, "Neveikia internetas nuo vakar, po audros")
         assert agent.state.intake.anamnesis_when  # capture-first read the opener
         assert agent.state.intake.opening_heard_note is True
 
@@ -1150,20 +1143,20 @@ class TestOpenerAndClosingHygiene:
     the closing LLM re-asked the hours after registration."""
 
     def test_garbled_opener_asks_for_the_problem(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
-        r1 = identification_scripted_reply(agent.state, agent.runtime, "Atsikai, daro.")
+        r1 = scripted_words(agent.state, agent.runtime, "Atsikai, daro.")
         assert r1 and "problema" in r1
-        r2 = identification_scripted_reply(agent.state, agent.runtime, "Mmm kažkas.")
+        r2 = scripted_words(agent.state, agent.runtime, "Mmm kažkas.")
         assert r2 and "problema" in r2
         # scripted mode (NARRATOR_QUESTIONS=off in tests): keeps asking, then
         # the gate closes politely on the 5th attempt
-        assert "problema" in identification_scripted_reply(agent.state, agent.runtime, "Nu...")
-        assert "problema" in identification_scripted_reply(agent.state, agent.runtime, "Eee...")
-        bye = identification_scripted_reply(agent.state, agent.runtime, "Mmm.")
+        assert "problema" in scripted_words(agent.state, agent.runtime, "Nu...")
+        assert "problema" in scripted_words(agent.state, agent.runtime, "Eee...")
+        bye = scripted_words(agent.state, agent.runtime, "Mmm.")
         assert bye and "skambinkite" in bye
 
     def test_phone_account_block_waits_for_the_problem(self, db_connection):
@@ -1297,27 +1290,21 @@ class TestLiveCall0821Fixes:
         assert classify_side_topic(engine.state, engine.runtime, "O kaip tai padaryti?") is False
 
     def test_problem_gate_scripted_then_directive_then_close(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
 
         from tests.calls import make_agent
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = make_agent("unknown")
-        assert "problema" in identification_scripted_reply(
-            agent.state, agent.runtime, "Atsikai daro"
-        )
-        assert "problema" in identification_scripted_reply(
-            agent.state, agent.runtime, "Vaikai neklauso"
-        )
-        assert (
-            identification_scripted_reply(agent.state, agent.runtime, "Viki kur neklauso") is None
-        )
+        assert "problema" in scripted_words(agent.state, agent.runtime, "Atsikai daro")
+        assert "problema" in scripted_words(agent.state, agent.runtime, "Vaikai neklauso")
+        assert scripted_words(agent.state, agent.runtime, "Viki kur neklauso") is None
         assert agent.state.turn.directives.ident["kind"] == "problem_gate"
         assert "PROBLEMOS VARTAI" in state_facts_block(agent.state, agent.runtime)
-        assert identification_scripted_reply(agent.state, agent.runtime, "Kokiu problemu?") is None
+        assert scripted_words(agent.state, agent.runtime, "Kokiu problemu?") is None
         assert agent.state.turn.directives.ident["kind"] == "problem_gate"
-        bye = identification_scripted_reply(agent.state, agent.runtime, "Mendulija")
+        bye = scripted_words(agent.state, agent.runtime, "Mendulija")
         assert bye and "skambinkite" in bye and agent.state.closing.case_closed
 
 

@@ -106,40 +106,38 @@ class TestWrapUpHearing:
         return agent
 
     def test_payment_claim_is_heard(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._informed()
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Tai aš vakar sumokėjau sąskaitą"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Tai aš vakar sumokėjau sąskaitą")
         assert r is None  # LLM atsako (wants_more), ne goodbye
         assert not agent.state.closing.case_closed
 
     def test_name_statement_gets_reaction_not_goodbye(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._informed()
         agent.state.identity.caller_name = None
-        r = identification_scripted_reply(agent.state, agent.runtime, "Vilma")
+        r = scripted_words(agent.state, agent.runtime, "Vilma")
         assert r is None  # naratorius reaguoja su direktyva
         assert agent.state.closing.wrap_react_note is True
         assert not agent.state.closing.case_closed
 
     def test_farewell_closes_immediately(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._informed()
-        r = identification_scripted_reply(agent.state, agent.runtime, "Ačiū, viso gero")
+        r = scripted_words(agent.state, agent.runtime, "Ačiū, viso gero")
         assert agent.state.closing.case_closed and r and "Geros dienos" in r
 
     def test_content_turns_capped_then_close(self, db_connection):
         """Darkytas atsisveikinimas („Nusigaro") — po 2 reakcijų uždaroma."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._informed()
-        assert identification_scripted_reply(agent.state, agent.runtime, "Nusigaro") is None
-        assert identification_scripted_reply(agent.state, agent.runtime, "Nusigaro visai") is None
-        r = identification_scripted_reply(agent.state, agent.runtime, "Nusigaro vėl")
+        assert scripted_words(agent.state, agent.runtime, "Nusigaro") is None
+        assert scripted_words(agent.state, agent.runtime, "Nusigaro visai") is None
+        r = scripted_words(agent.state, agent.runtime, "Nusigaro vėl")
         assert agent.state.closing.case_closed and r and "Geros dienos" in r
 
 
@@ -149,7 +147,7 @@ class TestTicketCallback:
 
     def test_callback_wish_mid_ticket_closes_warm(self, db_connection):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.resolution import get_strategy
         from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
@@ -164,9 +162,7 @@ class TestTicketCallback:
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
         assert agent.state.ticket.stage is None
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Gerai, aš paskambinsiu vėliau pats")
         assert r and "paskambinkite" in r  # callback_goodbye
 
     def test_normal_hours_answer_still_captured(self, db_connection):
@@ -259,33 +255,29 @@ class TestCannotNowHearing:
 
     def test_rambling_cannot_answer_offers_not_resumes(self, db_connection):
         """N2: neaiškus atsakymas į „ar negalite dabar?" = patvirtinimas."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
         agent.state.dialog.cannot_now_state = "asked"
-        r = identification_scripted_reply(agent.state, agent.runtime, "Negaliu, nes esu nenuose")
+        r = scripted_words(agent.state, agent.runtime, "Negaliu, nes esu nenuose")
         assert r and "užregistruoti" in r  # pasiūlymas, ne resume
 
     def test_callback_in_clarify_answer_closes_warm(self, db_connection):
         """N2b: „Aš Jums perskambinsiu" clarify atsakyme — iškart callback."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
         agent.state.dialog.cannot_now_state = "asked"
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Negaliu, aš Jums perskambinsiu"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Negaliu, aš Jums perskambinsiu")
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
         assert r and "paskambinkite" in r
 
     def test_clear_resume_still_resumes(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._solving()
         agent.state.dialog.cannot_now_state = "asked"
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Ne ne, galiu, jau radau routerį"
-        )
+        r = scripted_words(agent.state, agent.runtime, "Ne ne, galiu, jau radau routerį")
         assert r is None and agent.state.dialog.cannot_now_state is None
         assert not agent.state.closing.case_closed
 
@@ -411,7 +403,7 @@ class TestNodeFaultInform:
         assert t2 and "nieko daryti nereikia" in t2 and "informuosime" in t2
 
     def test_deferred_result_registers_ticket_and_informs(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         from tests.calls import make_agent
 
@@ -428,7 +420,7 @@ class TestNodeFaultInform:
             "status": "testing",
             "settled_by": None,
         }
-        r = identification_scripted_reply(a.state, a.runtime, "Lina čia")
+        r = scripted_words(a.state, a.runtime, "Lina čia")
         assert r and "meistrai" in r.lower() and "informuosime" in r
         assert "neregistruotas" not in r  # žalias gloss'as nebekalba
         assert a.state.ticket.ticket_id  # „meistrai jau užregistruoti" — tiesa
@@ -438,7 +430,7 @@ class TestInformResultComposer:
     def test_deferred_result_uses_template(self, db_connection):
         """Pilnas kelias: diagnozė su skola → atidėtas rezultatas kalba
         šablonu (viena žinia su detalėm), be billing_extra dubliavimo."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.identity.caller_name = "Tomas"
@@ -453,6 +445,6 @@ class TestInformResultComposer:
                 }
             },
         }
-        r = identification_scripted_reply(agent.state, agent.runtime, "Tomas čia")
+        r = scripted_words(agent.state, agent.runtime, "Tomas čia")
         assert r and "49 eurai 98 centai" in r and "liepą ir rugpjūtį" in r
         assert r.count("Apmokėjus") == 1  # šablonas vietoj billing_extra, ne kartu

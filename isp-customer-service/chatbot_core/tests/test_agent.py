@@ -346,13 +346,13 @@ def _complete_ticket_dialogue(agent):
     """Walk the 2-question contact dialogue (2026-08-04) to the registration.
     Each stage question must be ASKED before its answer counts (2026-08-05)."""
     from agent.decide.rules.head import turn_head
-    from agent.identification_flow import identification_scripted_reply
+    from agent.decide.rules.reply import scripted_words
 
-    identification_scripted_reply(agent.state, agent.runtime, None)  # intro + phone question
+    scripted_words(agent.state, agent.runtime, None)  # intro + phone question
     turn_head(agent.state, agent.runtime, "taip, tiks šis")
-    identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")  # hours question
+    scripted_words(agent.state, agent.runtime, "taip, tiks šis")  # hours question
     turn_head(agent.state, agent.runtime, "bet kada")
-    return identification_scripted_reply(agent.state, agent.runtime, "bet kada")
+    return scripted_words(agent.state, agent.runtime, "bet kada")
 
 
 class TestEscalateOutcome:
@@ -464,12 +464,12 @@ class TestHearingAgent:
         assert agent.state.ticket.stage is None
 
     def test_open_question_negation_gets_fault_file_clarify(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._agent(monkeypatch)
         agent.state.diagnosis.pending_evidence_key = "power_cable"
         agent.state.diagnosis.evidence_ask_counts["power_cable"] = 1
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Ne.")
+        reply = scripted_words(agent.state, agent.runtime, "Ne.")
         assert reply is not None and "neįkištas" in reply  # patikslinimas wording
 
     def test_drive_negation_clarify_replaces_reask(self, db_connection, monkeypatch):
@@ -934,7 +934,7 @@ class TestAddressGuards:
 
     def test_correction_asks_confirmation_then_reopens(self, db_connection):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         # Etalonas №3 (2026-09-03): a correction no longer reopens INSTANTLY —
         # one confirmation question first; a "taip" (or a named new address)
@@ -948,9 +948,7 @@ class TestAddressGuards:
         turn_head(agent.state, agent.runtime, "Tai ne dėl to adresų skambinu")
         assert agent.state.identity.customer_id == "CUST101"  # NOT dropped yet
         assert agent.state.identity.reopen_confirm_utterance
-        reply = identification_scripted_reply(
-            agent.state, agent.runtime, "Tai ne dėl to adresų skambinu"
-        )
+        reply = scripted_words(agent.state, agent.runtime, "Tai ne dėl to adresų skambinu")
         assert reply and "tikrai" in reply  # the confirmation question
         # A-2 (2026-09-07): the ANSWER is read in pre_turn_guards (the turn head,
         # before the solver/walker can consume it) — mirror the live sequence.
@@ -1138,7 +1136,7 @@ class TestVoiceGuardsRound5:
         import os
 
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         from tests.calls import make_agent
 
@@ -1156,7 +1154,7 @@ class TestVoiceGuardsRound5:
         turn_head(agent.state, agent.runtime, "viso gero")  # mid-troubleshooting goodbye
         assert agent.state.dialog.end_confirm_pending is True
         assert agent.state.closing.case_closed is False  # clarify first, never hang up
-        reply = identification_scripted_reply(agent.state, agent.runtime, "viso gero")
+        reply = scripted_words(agent.state, agent.runtime, "viso gero")
         assert reply and "tikrai norite baigti" in reply
 
         turn_head(
@@ -1313,13 +1311,13 @@ class TestSideTopicNode:
 
     def test_third_deviation_is_scripted_frame(self, db_connection, monkeypatch):
         from agent.contract.locale import phrase
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive.side_topic import classify_side_topic
 
         agent = self._diagnosing(monkeypatch)
         for q in ("O kiek kainuos?", "O koks oras?", "O kur jūsų ofisas?"):
             classify_side_topic(agent.state, agent.runtime, q)
-        reply = identification_scripted_reply(agent.state, agent.runtime, "O kur jūsų ofisas?")
+        reply = scripted_words(agent.state, agent.runtime, "O kur jūsų ofisas?")
         assert reply == phrase(
             "identification.back_to_issue",
             anchor="Pažiūrėkite, ar ant routerio dega bent viena lemputė.",
@@ -1329,7 +1327,7 @@ class TestSideTopicNode:
         self, db_connection, monkeypatch
     ):
         from agent.contract.locale import phrase
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.perceive.evidence import ingest_client_evidence
         from agent.perceive.side_topic import classify_side_topic
 
@@ -1338,7 +1336,7 @@ class TestSideTopicNode:
         ingest_client_evidence(agent.state, agent.runtime, "Laidas įkištas, bandžiau kitą rozetę")
         for q in ("O kiek kainuos?", "O koks oras?", "O kur jūsų ofisas?"):
             classify_side_topic(agent.state, agent.runtime, q)
-        reply = identification_scripted_reply(agent.state, agent.runtime, "O kur jūsų ofisas?")
+        reply = scripted_words(agent.state, agent.runtime, "O kur jūsų ofisas?")
         assert reply == phrase("identification.solve_or_ticket")
 
     def test_informative_interruption_is_not_a_deviation(self, db_connection, monkeypatch):
@@ -1371,26 +1369,26 @@ class TestSideTopicNode:
 
     def test_hours_scrubbed_of_inner_question_marks(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._diagnosing(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)
+        scripted_words(agent.state, agent.runtime, None)
         turn_head(agent.state, agent.runtime, "taip, tiks šis")
-        identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")
+        scripted_words(agent.state, agent.runtime, "taip, tiks šis")
         turn_head(agent.state, agent.runtime, "Bet kada? Bet kurio laiko?")
         assert agent.state.ticket.contact_hours == "Bet kada Bet kurio laiko"
 
     def test_checking_cue_spoken_on_identity_commit(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._diagnosing(monkeypatch)
         agent.state.resolution.procedure = None
         agent.state.identity.customer_address = "Šiauliai, Vilniaus g. 29"
         agent.state.identity.just_identified = True
         agent.state.identity.result_pending = True
-        reply = identification_scripted_reply(agent.state, agent.runtime, None)
+        reply = scripted_words(agent.state, agent.runtime, None)
         assert "Tuoj patikrinsiu ryšį" in reply
         assert "su kuo kalbu" in reply
 
@@ -1569,13 +1567,13 @@ class TestBargeInCancel:
         assert agent.state.messages[-1]["content"].endswith("—")
 
     def test_stale_cancel_never_kills_the_next_turn(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         from tests.calls import make_agent
 
         agent = make_agent("+37060012353")
         agent.runtime.cancel.set()  # interrupt raced past the turn's end
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Labadiena!")
+        reply = scripted_words(agent.state, agent.runtime, "Labadiena!")
         assert reply  # scripted path unaffected
         assert agent.runtime.cancel.is_set()  # cleared only at a STREAM turn start
 
@@ -1592,22 +1590,22 @@ class TestSmallTalkBeforeProblem:
 
     def test_greeting_gets_scripted_ask_problem(self, db_connection):
         from agent.contract.locale import phrase
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._fresh()
-        assert identification_scripted_reply(agent.state, agent.runtime, "Labadiena!") == phrase(
+        assert scripted_words(agent.state, agent.runtime, "Labadiena!") == phrase(
             "identification.ask_problem"
         )
-        assert identification_scripted_reply(agent.state, agent.runtime, "Sveiki") == phrase(
+        assert scripted_words(agent.state, agent.runtime, "Sveiki") == phrase(
             "identification.ask_problem"
         )
 
     def test_problem_statement_is_not_smalltalk(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._fresh()
         agent.state.intake.problem_type = "internet_down"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "neveikia internetas")
+        reply = scripted_words(agent.state, agent.runtime, "neveikia internetas")
         # etalonas #2 (2026-09-03): straight to the address, not ask_problem
         assert reply is not None and "adres" in reply.lower()
 
@@ -1636,41 +1634,33 @@ class TestScriptedWrapUp:
         return agent
 
     def test_garbled_goodbye_wraps_up(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         # Closing wave block 2 (2026-09-09): a content-bearing turn first gets
         # a REACTION (the caller may have said something real — "Vilma",
         # "sumokėjau"); the cap of 2 still guarantees a garbled goodbye
         # ("Nusigaro") cannot loop the wrap-up — the third turn closes.
         agent = self._informed(db_connection)
-        assert identification_scripted_reply(agent.state, agent.runtime, "Nusigaro.") is None
-        assert identification_scripted_reply(agent.state, agent.runtime, "Nusigaro.") is None
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Nusigaro.")
+        assert scripted_words(agent.state, agent.runtime, "Nusigaro.") is None
+        assert scripted_words(agent.state, agent.runtime, "Nusigaro.") is None
+        reply = scripted_words(agent.state, agent.runtime, "Nusigaro.")
         assert reply and "Ačiū, kad paskambinote" in reply
         assert agent.state.closing.case_closed is True
         assert agent.state.closing.closed_reason == "inform"
         assert agent.state.closing.is_complete is True
 
     def test_question_after_news_goes_to_llm(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._informed(db_connection)
-        assert (
-            identification_scripted_reply(agent.state, agent.runtime, "O kiek turiu sumokėti?")
-            is None
-        )
+        assert scripted_words(agent.state, agent.runtime, "O kiek turiu sumokėti?") is None
         assert agent.state.closing.case_closed is False
 
     def test_wants_more_goes_to_llm(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = self._informed(db_connection)
-        assert (
-            identification_scripted_reply(
-                agent.state, agent.runtime, "Palaukite, dar turiu klausimą"
-            )
-            is None
-        )
+        assert scripted_words(agent.state, agent.runtime, "Palaukite, dar turiu klausimą") is None
         assert agent.state.closing.case_closed is False
 
 
@@ -1921,36 +1911,32 @@ class TestTicketDialogue:
         return agent
 
     def test_consent_starts_dialogue_not_immediate_ticket(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.walker_flow import walk_resolution
 
         agent = self._agent_at_consent(monkeypatch)
         walk_resolution(agent.state, agent.runtime, "gerai, tinka")
         assert agent.state.ticket.ticket_id is None  # not yet — contacts first
         assert agent.state.ticket.stage == "phone"
-        assert "Ar tiks numeris" in identification_scripted_reply(
-            agent.state, agent.runtime, "gerai, tinka"
-        )
+        assert "Ar tiks numeris" in scripted_words(agent.state, agent.runtime, "gerai, tinka")
 
     def test_full_dialogue_lands_contacts_on_ticket(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)  # asks the phone question
+        scripted_words(agent.state, agent.runtime, None)  # asks the phone question
         # Q1 answer: "tiks šis" -> the number they call from.
         turn_head(agent.state, agent.runtime, "Taip, tiks šis numeris")
         assert agent.state.ticket.contact_phone == "+37060012353"
         assert agent.state.ticket.stage == "hours"
-        identification_scripted_reply(
-            agent.state, agent.runtime, "Taip, tiks šis numeris"
-        )  # asks hours
+        scripted_words(agent.state, agent.runtime, "Taip, tiks šis numeris")  # asks hours
         # Q2 answer -> hours; the scripted turn then registers + closes.
         turn_head(agent.state, agent.runtime, "Po penkių vakare")
         assert agent.state.ticket.stage == "done"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Po penkių vakare")
+        reply = scripted_words(agent.state, agent.runtime, "Po penkių vakare")
         assert "Užregistravau" in reply
         assert agent.state.ticket.ticket_id and agent.state.closing.case_closed
         with db_connection.cursor() as cur:
@@ -1963,39 +1949,39 @@ class TestTicketDialogue:
 
     def test_dictated_number_captured(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)
+        scripted_words(agent.state, agent.runtime, None)
         turn_head(agent.state, agent.runtime, "Geriau skambinkit 8 612 34 567")
         assert agent.state.ticket.contact_phone == "861234567"
 
     def test_farewell_mid_dialogue_registers_with_defaults(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
         turn_head(agent.state, agent.runtime, "viso gero")  # done talking — defaults kick in
         assert agent.state.ticket.stage == "done"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "viso gero")
+        reply = scripted_words(agent.state, agent.runtime, "viso gero")
         assert "Užregistravau" in reply
         assert agent.state.ticket.contact_phone == "+37060012353"
         assert agent.state.ticket.contact_hours == "bet kada"
         assert agent.state.ticket.ticket_id
 
     def test_intro_announces_cause_once(self, db_connection, monkeypatch):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
         # The FIRST stage reply carries "Registruoju gedimą — {priežastis}"; a
         # re-ask does not repeat the intro.
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        first = identification_scripted_reply(agent.state, agent.runtime, None)
+        first = scripted_words(agent.state, agent.runtime, None)
         assert "Registruoju meistrą" in first and "maršrutizatorius" in first
         assert "Ar tiks numeris" in first
         again = ticket_stage_reply(agent.state, agent.runtime)
@@ -2003,7 +1989,7 @@ class TestTicketDialogue:
 
     def test_question_mid_dialogue_goes_to_llm_and_stage_holds(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.narrator_flow import state_facts_block
         from agent.ticket_flow import begin_ticket_dialogue
 
@@ -2012,19 +1998,16 @@ class TestTicketDialogue:
         # the LLM (scripted None) and the stage must not advance.
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)
+        scripted_words(agent.state, agent.runtime, None)
         turn_head(agent.state, agent.runtime, "taip, tiks šis")
         assert agent.state.ticket.stage == "hours"
-        identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")
+        scripted_words(agent.state, agent.runtime, "taip, tiks šis")
         turn_head(
             agent.state, agent.runtime, "Tu sakė, užregistravai jau. Bet kada galima skambinti?"
         )
         assert agent.state.ticket.stage == "hours"  # held, not captured
         assert agent.state.ticket.contact_hours is None
-        assert (
-            identification_scripted_reply(agent.state, agent.runtime, "Bet kada galima skambinti?")
-            is None
-        )
+        assert scripted_words(agent.state, agent.runtime, "Bet kada galima skambinti?") is None
         facts = state_facts_block(agent.state, agent.runtime)
         assert facts and "TIKETO DIALOGAS" in facts and "kada patogiausia" in facts
         # A plain answer next turn still lands.
@@ -2045,25 +2028,25 @@ class TestTicketDialogue:
 
     def test_garbled_yes_and_stt_punctuation_stay_off_the_ticket(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         # Live: STT "T." (of "Taip") became tel. "T." and "Bet kada?" kept the "?"
         # on the ticket and in the announce.
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)
+        scripted_words(agent.state, agent.runtime, None)
         turn_head(agent.state, agent.runtime, "T.")
         assert agent.state.ticket.contact_phone == "+37060012353"  # backchannel yes -> caller-ID
-        identification_scripted_reply(agent.state, agent.runtime, "T.")
+        scripted_words(agent.state, agent.runtime, "T.")
         turn_head(agent.state, agent.runtime, "Bet kada?")
         assert agent.state.ticket.contact_hours == "Bet kada"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Bet kada?")
+        reply = scripted_words(agent.state, agent.runtime, "Bet kada?")
         assert "bet kada" in reply
 
     def test_trigger_utterance_not_swallowed_as_phone(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         # Live 2026-08-05: escalate fired mid-turn and the SAME utterance
@@ -2074,7 +2057,7 @@ class TestTicketDialogue:
         turn_head(agent.state, agent.runtime, "Neturi kompiutera")  # same-turn trigger phrase
         assert agent.state.ticket.contact_phone is None
         assert agent.state.ticket.stage == "phone"  # still waiting for its question
-        first = identification_scripted_reply(agent.state, agent.runtime, "Neturi kompiutera")
+        first = scripted_words(agent.state, agent.runtime, "Neturi kompiutera")
         assert "Ar tiks numeris" in first  # the question goes out now
 
     def test_garbage_phone_answer_reasks_then_defaults(self, db_connection, monkeypatch):
@@ -2082,15 +2065,15 @@ class TestTicketDialogue:
         # scripted retry; a second unclear answer defaults to caller-ID.
         from agent.contract.locale import phrase
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)  # phone asked
+        scripted_words(agent.state, agent.runtime, None)  # phone asked
         turn_head(agent.state, agent.runtime, "Kurs komentai")  # STT garbage
         assert agent.state.ticket.contact_phone is None
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Kurs komentai")
+        reply = scripted_words(agent.state, agent.runtime, "Kurs komentai")
         assert reply == phrase("identification.ticket_phone_retry")
         turn_head(agent.state, agent.runtime, "Visai nesuprantu ko klausiat")  # second garbage
         assert agent.state.ticket.contact_phone == "+37060012353"  # caller-ID default
@@ -2100,17 +2083,17 @@ class TestTicketDialogue:
         # Live: "Kurs komentai" became "skambinti galima kurs komentai".
         from agent.contract.locale import phrase
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue
 
         agent = self._agent_at_consent(monkeypatch)
         begin_ticket_dialogue(agent.state, agent.runtime, None)
-        identification_scripted_reply(agent.state, agent.runtime, None)
+        scripted_words(agent.state, agent.runtime, None)
         turn_head(agent.state, agent.runtime, "taip, tiks šis")
-        identification_scripted_reply(agent.state, agent.runtime, "taip, tiks šis")  # hours asked
+        scripted_words(agent.state, agent.runtime, "taip, tiks šis")  # hours asked
         turn_head(agent.state, agent.runtime, "Kurs komentai")
         assert agent.state.ticket.contact_hours is None
-        reply = identification_scripted_reply(agent.state, agent.runtime, "Kurs komentai")
+        reply = scripted_words(agent.state, agent.runtime, "Kurs komentai")
         assert reply == phrase("identification.ticket_hours_retry")
         turn_head(agent.state, agent.runtime, "Nu nezinau visai")  # second garbage -> default
         assert agent.state.ticket.contact_hours == "bet kada"
@@ -2276,7 +2259,7 @@ class TestTicketDialogue:
 
     def test_explicit_refusal_cancels_without_ticket(self, db_connection, monkeypatch):
         from agent.decide.rules.head import turn_head
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
         from agent.ticket_flow import begin_ticket_dialogue, ticket_stage_reply
 
         agent = self._agent_at_consent(monkeypatch)
@@ -2288,7 +2271,7 @@ class TestTicketDialogue:
         assert "tikrai nereikia" in ticket_stage_reply(agent.state, agent.runtime)
         turn_head(agent.state, agent.runtime, "nereikia")
         assert agent.state.ticket.stage == "cancelled"
-        reply = identification_scripted_reply(agent.state, agent.runtime, "nereikia")
+        reply = scripted_words(agent.state, agent.runtime, "nereikia")
         assert "neregistruoju" in reply
         assert agent.state.ticket.ticket_id is None
         assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "declined"

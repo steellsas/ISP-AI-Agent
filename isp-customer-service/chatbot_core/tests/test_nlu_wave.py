@@ -110,27 +110,23 @@ class TestSpellingRung:
 
     def test_two_unrecognized_offers_code(self, db_connection):
         """rev.2: automatinių raidžių NEBĖRA — po 2 neatpažintų kodas."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
-        identification_scripted_reply(agent.state, agent.runtime, "Kosmonautų alėja 7")
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "Sakau — Kosmonautų alėja septyni"
-        )
+        scripted_words(agent.state, agent.runtime, "Kosmonautų alėja 7")
+        r = scripted_words(agent.state, agent.runtime, "Sakau — Kosmonautų alėja septyni")
         assert r and "abonento kodą" in r
 
     def test_spell_answer_matches_street_and_asks_house(self, db_connection):
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
         agent.state.identity.spell_mode = True
-        r = identification_scripted_reply(
-            agent.state, agent.runtime, "V kaip Vilnius, I kaip Ieva, L kaip Lina"
-        )
+        r = scripted_words(agent.state, agent.runtime, "V kaip Vilnius, I kaip Ieva, L kaip Lina")
         assert r and ("Vil" in r) and "namo" in r  # VIL pogrupio kandidatas
         assert (
             agent.state.identity.profile.street.value
@@ -139,13 +135,13 @@ class TestSpellingRung:
 
     def test_resolve_loop_offers_code(self, db_connection):
         """rev.2: resolve loopas (3 nesėkmės) → kodas, be raidžių."""
-        from agent.identification_flow import identification_scripted_reply
+        from agent.decide.rules.reply import scripted_words
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
         agent.state.identity.address_resolve_failures = 3
-        r = identification_scripted_reply(agent.state, agent.runtime, "Tilžiatkas gatvė 6")
+        r = scripted_words(agent.state, agent.runtime, "Tilžiatkas gatvė 6")
         assert r and "abonento kodą" in r
 
     def test_denied_street_dropped_and_not_reread(self, db_connection):
@@ -231,16 +227,14 @@ class TestSpellingRung:
 
     def test_client_initiated_kaip_pairs_read_as_letters(self, db_connection):
         """R3: klientas pats raidžiuoja be režimo — „kaip X" poros girdimos."""
-        from agent.identification_flow import (
-            _register_street_attempt,
-            identification_scripted_reply,
-        )
+        from agent.decide.rules.reply import scripted_words
+        from agent.identification_flow import _register_street_attempt
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.anamnesis_asked = True
         _register_street_attempt(agent.state, agent.runtime, "Tilžiuko")
-        r = identification_scripted_reply(
+        r = scripted_words(
             agent.state, agent.runtime, "Taip kaip Tomas ir kaip Ieva, taip kaip Lina"
         )
         assert r and ("Tilž" in r or "namo" in r)  # raidės TIL → Tilžės

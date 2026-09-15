@@ -42,4 +42,4 @@ def test_every_turn_emits_one_plan(db_connection, tmp_path):
     TurnPlan.model_validate(
         {k: v for k, v in plans[1].items() if k not in ("type", "shadow", "source")}
     )
-    assert plans[1]["rule"] and plans[1]["shadow"]["path"] in {"llm", "scripted"}
+    assert plans[1]["rule"] and plans[1]["source"] in {"policy", "shadow"}

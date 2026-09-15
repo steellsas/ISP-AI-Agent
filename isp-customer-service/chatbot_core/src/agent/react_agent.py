@@ -323,8 +323,9 @@ class ReactAgent:
         loop streaming the final reply token by token. A `planned` turn was already
         decided by the policy chain — the head's guards, the stuck backstop and the
         scripted replies do not run again; the LLM words the plan."""
+        from .decide.rules.reply import plan_reply
+        from .execute.actions import run_action
         from .executor_flow import execute_tool_calls
-        from .identification_flow import identification_scripted_reply
         from .narrator_flow import build_messages, scoped_tools_schema
         from .speculation import apply_bg_diagnosis, consume_injected_reply
         from .ticket_flow import registration_claim_guard
@@ -365,28 +366,31 @@ class ReactAgent:
         # genuine repeat loop has escalated.
         backstop = None if planned else self._stuck_backstop()
         if backstop is not None:
+            self._record_plan("dialog.stuck_backstop")
             self.state.turn.reply_path = "stuck_backstop"
             yield self._apply_backstop(backstop)
             return
 
-        # Scripted identification-ladder reply (engine-composed, LLM skipped) — the
-        # mechanical turns only; off-script turns fall through to the LLM.
-        scripted = (
-            None
-            if planned
-            else identification_scripted_reply(
-                self.state, self.runtime, self.state.dialog.last_heard
-            )
-        )
-        if scripted is not None:
-            self.state.turn.reply_path = "scripted"
-            yield self._emit_scripted_reply(scripted)
-            return
+        # The scripted reply layer (engine-composed words, LLM skipped): the node
+        # calls the rules after the procedure moved; a directive plan leaves the
+        # words to the LLM below.
+        if not planned:
+            plan = plan_reply(self.state, self.runtime, self.state.dialog.last_heard)
+            if plan is not None:
+                self.state.turn.plan = plan.model_dump(mode="json")
+                if plan.say.kind == "phrase":
+                    action_text = run_action(self.state, self.runtime, plan)
+                    words = plan.say.text or action_text
+                    if words:
+                        self.state.turn.reply_path = "scripted"
+                        yield self._emit_scripted_reply(words)
+                        return
 
         # D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
         # wait signal at a standing client action is acknowledged scripted.
         wait = None if planned else scripted_wait_ack(self.state, self.runtime)
         if wait is not None:
+            self._record_plan("dialog.wait_ack")
             self.state.turn.reply_path = "wait_ack"
             yield self._emit_scripted_reply(wait)
             return
@@ -490,6 +494,14 @@ class ReactAgent:
 
         self.state.turn.reply_path = "timeout"
         yield self.config.timeout_message
+
+    def _record_plan(self, rule: str) -> None:
+        """The narrator's own scripted exits are plans too (§5 rows 18-19)."""
+        from .decide.plan import Say, TurnPlan
+
+        owner = "diagnosis" if self.state.identity.customer_id else "identification"
+        plan = TurnPlan(owner=owner, rule=rule, say=Say(kind="phrase"))
+        self.state.turn.plan = plan.model_dump(mode="json")
 
     def _stuck_backstop(self) -> tuple[str, bool] | None:
         """Deterministic escalation (text, should_close) once the prompt-level nudge

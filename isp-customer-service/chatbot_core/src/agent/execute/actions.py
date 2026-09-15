@@ -22,6 +22,11 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
         from ..solver_flow import drive_escalate
 
         return drive_escalate(state, rt, None)
+    if action.type == "register_ticket" and action.name == "auto":
+        from ..executor_flow import register_ticket_from_state
+
+        register_ticket_from_state(state, rt, None)  # the inform news promises it
+        return None
     if action.type == "register_ticket":
         from ..ticket_flow import finish_ticket_dialogue
 
