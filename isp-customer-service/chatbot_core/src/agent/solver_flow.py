@@ -260,7 +260,9 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
         return None
     if state.ticket.stage:
         return None  # the ticket dialogue owns the turn
-    if state.diagnosis.evidence_conflict:
+    from .decide.hypothesis import due
+
+    if due(state, "conflict") is not None:
         return None  # the scripted conflict clarification owns the turn
     if state.turn.side_topic_active:
         return None  # the side_topic node owns the turn (answer + anchor)

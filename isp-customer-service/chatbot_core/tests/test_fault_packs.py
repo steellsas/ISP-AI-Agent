@@ -490,7 +490,7 @@ class TestTicketFirst:
                 state=GraphState(
                     identity=IdentityState(customer_id="C1"),
                     closing=ClosingState(case_closed=False),
-                    diagnosis=DiagnosisState(evidence_conflict=None),
+                    diagnosis=DiagnosisState(),
                     turn=TurnScratch(
                         side_topic_active=False, understanding={"type": "deviation", "facts": {}}
                     ),
@@ -1273,7 +1273,7 @@ class TestLiveCall0821Fixes:
                             "asked": True,
                         }
                     ),
-                    diagnosis=DiagnosisState(evidence_conflict=None, pending_evidence_key=None),
+                    diagnosis=DiagnosisState(pending_evidence_key=None),
                     turn=TurnScratch(
                         side_topic_active=False, understanding={"type": "question", "facts": {}}
                     ),

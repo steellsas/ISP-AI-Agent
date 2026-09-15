@@ -237,10 +237,11 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     # ("Tik pasitikslinsiu — sakėte, kad rozetė neveikia?"): a yes commits the
     # parked value; anything else drops it (a correction lands as a normal
     # fact from THIS utterance below).
-    fca = state.diagnosis.fact_confirm_asked
-    if fca and user_input:
-        state.diagnosis.fact_confirm_asked = None
-        g_key, g_value = fca.key, fca.value
+    from ..decide import hypothesis
+
+    fca = hypothesis.answered(state, rt, "flip") if user_input else None
+    if fca:
+        g_key, g_value = fca.fact_key, fca.now_value
         from ..evidence import _fold, _mark_hit
 
         low_c = _fold(user_input)
@@ -251,7 +252,8 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         else:
             rt.tracer.emit("evidence", action="fact_withdrawn", key=g_key, value=g_value)
     # A clarify is out — settle that key first.
-    pending_key = state.diagnosis.evidence_conflict_asked_key
+    conflict = hypothesis.answered(state, rt, "conflict")
+    pending_key = conflict.fact_key if conflict else None
     if pending_key:
         value = facts.get(pending_key)
         if value is None and pending_key == "has_computer":
@@ -262,7 +264,6 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         elif entry is not None and entry.get("conflict"):
             # Unreadable answer — keep the LATEST stated value, stop asking.
             set_fact(s.diagnosis.evidence, pending_key, entry.get("pending"), CLIENT, turn)
-        state.diagnosis.evidence_conflict_asked_key = None
         rt.tracer.emit(
             "evidence",
             action="conflict_resolved",
@@ -367,12 +368,9 @@ def _conflict_to_clarify(state, rt, key: str, entry: dict) -> bool:
 
     spec = spec_for((state.resolution.procedure or {}).get("verdict")) or {}
     if key in (spec.get("client") or {}):
-        if state.diagnosis.evidence_conflict is None:
-            from ..evidence import EvidenceConflict
+        from ..decide import hypothesis
 
-            state.diagnosis.evidence_conflict = EvidenceConflict(
-                key=key, old=entry["value"], new=entry["pending"]
-            )
+        if hypothesis.doubt(state, rt, "conflict", key, entry["value"], entry["pending"]):
             rt.tracer.emit(
                 "evidence", action="conflict", key=key, old=entry["value"], new=entry["pending"]
             )
@@ -396,7 +394,7 @@ def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bo
     the live attribute before the commit loop), and the ledger has no entry
     yet (existing entries belong to the conflict machinery)."""
     s = state
-    if state.diagnosis.fact_confirm_pending or state.diagnosis.fact_confirm_asked:
+    if state.diagnosis.contradiction is not None:
         return False
     if key == pending:
         return False
@@ -409,9 +407,9 @@ def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bo
     gated_values = [str(v) for v in (item.get("confirm_values") or [])]
     if value not in gated_values:
         return False
-    from ..evidence import FactConfirm
+    from ..decide import hypothesis
 
-    state.diagnosis.fact_confirm_pending = FactConfirm(key=key, value=value)
+    hypothesis.doubt(state, rt, "flip", key, None, value)
     rt.tracer.emit("evidence", action="fact_gate", key=key, value=value)
     return True
 
@@ -442,12 +440,11 @@ def ingest_overlay(state, rt, text: str) -> None:
         if _story_flip_gate(state, rt, key, str(value), pending):
             continue
         entry = set_fact(s.diagnosis.evidence, key, value, CLIENT, s.dialog.turn_count)
-        if entry.get("conflict") and state.diagnosis.evidence_conflict is None:
-            from ..evidence import EvidenceConflict
+        from ..decide import hypothesis
 
-            state.diagnosis.evidence_conflict = EvidenceConflict(
-                key=key, old=entry["value"], new=entry["pending"]
-            )
+        if entry.get("conflict") and hypothesis.doubt(
+            state, rt, "conflict", key, entry["value"], entry["pending"]
+        ):
             rt.tracer.emit(
                 "evidence", action="conflict", key=key, old=entry["value"], new=entry["pending"]
             )

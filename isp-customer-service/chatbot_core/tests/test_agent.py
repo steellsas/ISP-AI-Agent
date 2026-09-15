@@ -1451,7 +1451,7 @@ class TestReviewGaps:
         assert agent.state.ticket.stage is None and agent.state.ticket.context is None
         assert (
             agent.state.diagnosis.evidence_ask_counts == {}
-            and agent.state.diagnosis.evidence_conflict is None
+            and agent.state.diagnosis.contradiction is None
         )
         assert agent.state.dialog.side_topic_streak == 0
         assert agent.state.identity.customer_id is None  # identity dropped as before

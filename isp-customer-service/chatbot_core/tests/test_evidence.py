@@ -167,7 +167,7 @@ class TestAgentWiring:
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Neturiu kompiuterio, tik telefonas")
         ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti")
-        assert agent.state.diagnosis.evidence_conflict is not None
+        assert agent.state.diagnosis.contradiction is not None
         # The solver yields, the walker holds, the scripted clarify goes out.
         assert (
             solver_drive_turn(agent.state, agent.runtime, "Turiu kompiuterį, galim bandyti") is None
@@ -186,8 +186,8 @@ class TestAgentWiring:
         e = agent.state.diagnosis.evidence["has_computer"]
         assert e["value"] == "yes" and e["conflict"] is False
         assert (
-            agent.state.diagnosis.evidence_conflict is None
-            and agent.state.diagnosis.evidence_conflict_asked_key is None
+            agent.state.diagnosis.contradiction is None
+            and agent.state.diagnosis.contradiction is None
         )
 
     def test_bare_polarity_settles_yes_no_conflict(self):
@@ -212,7 +212,7 @@ class TestAgentWiring:
         ingest_client_evidence(agent.state, agent.runtime, "Kurs komentai")  # garble
         e = agent.state.diagnosis.evidence["has_computer"]
         assert e["conflict"] is False and e["value"] == "yes"  # latest stated wins
-        assert agent.state.diagnosis.evidence_conflict_asked_key is None
+        assert agent.state.diagnosis.contradiction is None
 
     def test_facts_block_and_solver_context_carry_ledger(self):
         from agent.narrator_flow import state_facts_block

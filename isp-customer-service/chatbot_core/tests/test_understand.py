@@ -410,7 +410,7 @@ class TestKeywordSupplement:
             )
         e = agent.state.diagnosis.evidence["outlet_works"]
         assert e["conflict"] is True  # neither reader won silently
-        assert agent.state.diagnosis.evidence_conflict is not None  # the clarify goes out
+        assert agent.state.diagnosis.contradiction is not None  # the clarify goes out
         with patch("agent.perceive.understand.understand", return_value=None):
             reply = scripted_words(agent.state, agent.runtime, "na")
         assert reply is not None and "rozetė" in reply  # "kaip yra iš tiesų?"
@@ -692,9 +692,7 @@ class TestUnderstandWiring:
             return_value=_canned(facts={"has_computer": "yes"}, turn_type="contradiction"),
         ):
             ingest_client_evidence(agent.state, agent.runtime, "Turiu kompiuterį")
-        assert (
-            agent.state.diagnosis.evidence_conflict is not None
-        )  # same clarify discipline as before
+        assert agent.state.diagnosis.contradiction is not None  # same clarify discipline as before
 
     def test_keyword_suite_untouched_without_flag(self, db_connection, monkeypatch):
         # CLASSIFIER=off (the whole deterministic suite) — the pass never runs.

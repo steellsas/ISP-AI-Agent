@@ -66,6 +66,12 @@ def plan(state: Any, rt: Any) -> TurnPlan:
     )
 
 
+def _conflict_due(state: Any) -> bool:
+    from ..hypothesis import due
+
+    return due(state, "conflict") is not None
+
+
 def _side_topic(state: Any) -> bool:
     """A corroborated deviation FREEZES the engine for the turn — unless a mechanic the
     turn head opened this turn (the end-confirm, a resume hold, a conflict clarify, the
@@ -75,7 +81,7 @@ def _side_topic(state: Any) -> bool:
     return not (
         state.ticket.stage
         or state.closing.case_closed
-        or state.diagnosis.evidence_conflict
+        or _conflict_due(state)
         or state.dialog.end_confirm_pending
         or state.dialog.resume_hold_due
     )

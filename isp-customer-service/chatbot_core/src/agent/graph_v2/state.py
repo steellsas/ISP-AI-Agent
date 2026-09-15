@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 
 from ..config import AgentConfig
 from ..dialog_registry import ActiveQuestion
-from ..evidence import EvidenceConflict, FactConfirm
+from ..evidence import Contradiction
 from ..slots import ClientProfileState
 
 
@@ -146,19 +146,17 @@ class DiagnosisState(BaseModel):
     evidence_ask_counts: dict[str, int] = Field(default_factory=dict)
     # The evidence key whose question is out (a bare "taip/ne" maps to it).
     pending_evidence_key: str | None = None
-    # A client fact contradicted an earlier value: the clarify is due / out.
-    evidence_conflict: EvidenceConflict | None = None
-    evidence_conflict_asked_key: str | None = None
-    # A story-flipping volunteered fact parked for one confirm question / asked.
-    fact_confirm_pending: FactConfirm | None = None
-    fact_confirm_asked: FactConfirm | None = None
+    # The open contradiction of the working belief (D-05): its confirm question is due
+    # (doubt) or out (confirming); None = the belief is active.
+    contradiction: Contradiction | None = None
     # The just-landed answer's declared meaning [label, value, meaning], one-shot.
     fact_meaning: list[str] | None = None
     # Keys whose give-up marker got its one revival ask.
     revived_evidence_keys: list[str] = Field(default_factory=list)
-    # Facts recap / refute-confirm sub-dialogue progress ("" = not started).
+    # Facts recap sub-dialogue progress ("" = not started).
     facts_recap_state: str = ""
-    refute_confirm_state: str = ""
+    # The refuting client fact got its one confirm question (once per call).
+    refute_confirmed: bool = False
     findings_announced: bool = False
     # A finding to prepend to the next reply.
     pending_announcement: str = ""

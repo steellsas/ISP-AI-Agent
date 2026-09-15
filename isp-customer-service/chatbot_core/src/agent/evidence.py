@@ -19,7 +19,7 @@ STT-garble tolerant); the LLM extractor upgrade rides on the same keys later.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -28,21 +28,25 @@ from .contract.locale import vocab, vocab_map, vocab_re
 TELEMETRY = "telemetry"
 
 
-class EvidenceConflict(BaseModel):
-    """A client fact contradicted an earlier client value: one scripted clarify
-    ("sakėte X, dabar Y — kaip yra iš tiesų?") is due for `key`."""
+class Contradiction(BaseModel):
+    """Something contradicts what the call believes (D-05) — it only puts the belief in
+    doubt; one confirm question settles it.
 
-    key: str
-    old: str
-    new: str
+    kind: conflict — a client fact against the client's earlier value ("sakėte X, dabar
+          Y — kaip yra iš tiesų?"); flip — a volunteered story-flipping fact parked
+          before it may enter the ledger; refute — a client fact that refutes the
+          hypothesis, confirmed before the pivot; verdict — a telemetry recheck names
+          another cause.
+    asked: False = the confirm question is due (doubt), True = it is out (confirming).
+    """
 
-
-class FactConfirm(BaseModel):
-    """A story-flipping volunteered fact parked for one confirm question before
-    it may enter the ledger."""
-
-    key: str
-    value: str
+    kind: Literal["conflict", "flip", "refute", "verdict"]
+    source: Literal["client", "telemetry", "analyst"] = "client"
+    fact_key: str
+    before_value: str | None = None
+    now_value: str | None = None
+    before_quote: str | None = None  # what the client said earlier, for the question
+    asked: bool = False
 
 
 CLIENT = "client"

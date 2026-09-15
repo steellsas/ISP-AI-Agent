@@ -6,7 +6,7 @@ garbled-call analysis, hear-the-caller mechanics, and the quiet analyst.
 from types import SimpleNamespace
 
 from agent.delivery import apply_delivery
-from agent.evidence import FactConfirm
+from agent.evidence import Contradiction
 from agent.graph_v2.state import TicketContext
 
 
@@ -152,27 +152,27 @@ class TestW1LivingDialogue:
         ingest_client_evidence(agent.state, agent.runtime, "nedega nė viena, ir rozetė neveikia")
         assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "off"
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked, not committed
-        assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
-            key="outlet_works", value="not_working"
+        assert agent.state.diagnosis.contradiction == Contradiction(
+            kind="flip", fact_key="outlet_works", now_value="not_working"
         )
         reply = evidence_drive(agent.state, agent.runtime, "nedega nė viena, ir rozetė neveikia")
         assert reply and "sitikinti" in reply  # the one confirm question
-        assert agent.state.diagnosis.fact_confirm_asked == FactConfirm(
-            key="outlet_works", value="not_working"
+        assert agent.state.diagnosis.contradiction == Contradiction(
+            kind="flip", fact_key="outlet_works", now_value="not_working", asked=True
         )
 
     def test_confirmed_gate_commits_denied_gate_drops(self, db_connection):
         from agent.perceive.evidence import ingest_client_evidence
 
         agent = self._resolving_agent()
-        agent.state.diagnosis.fact_confirm_asked = FactConfirm(
-            key="outlet_works", value="not_working"
+        agent.state.diagnosis.contradiction = Contradiction(
+            kind="flip", fact_key="outlet_works", now_value="not_working", asked=True
         )
         ingest_client_evidence(agent.state, agent.runtime, "Taip, tikrai neveikia")
         assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "not_working"
         agent2 = self._resolving_agent()
-        agent2.state.diagnosis.fact_confirm_asked = FactConfirm(
-            key="outlet_works", value="not_working"
+        agent2.state.diagnosis.contradiction = Contradiction(
+            kind="flip", fact_key="outlet_works", now_value="not_working", asked=True
         )
         ingest_client_evidence(agent2.state, agent2.runtime, "Ne ne, rozetė veikia, viskas gerai")
         assert (agent2.state.diagnosis.evidence.get("outlet_works") or {}).get(
@@ -190,7 +190,7 @@ class TestW1LivingDialogue:
         agent.state.diagnosis.pending_evidence_key = "outlet_works"  # we ASKED about the outlet
         ingest_client_evidence(agent.state, agent.runtime, "neveikia rozetė")
         assert agent.state.diagnosis.evidence.get("outlet_works", {}).get("value") == "not_working"
-        assert agent.state.diagnosis.fact_confirm_pending is None
+        assert agent.state.diagnosis.contradiction is None
 
 
 class TestUnheardQuestion:

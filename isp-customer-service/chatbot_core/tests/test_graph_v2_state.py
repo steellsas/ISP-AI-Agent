@@ -120,15 +120,14 @@ class TestCheckpointSerde:
 
     def test_state_models_round_trip_through_the_checkpoint_serializer(self, tmp_path):
         from agent.dialog_registry import ActiveQuestion
-        from agent.evidence import EvidenceConflict, FactConfirm
+        from agent.evidence import Contradiction
         from agent.graph_v2.checkpoint import make_checkpointer
 
         serde = make_checkpointer(tmp_path / "cp.sqlite").serde
         state = _populated()
         values = [
             ActiveQuestion(owner="ticket", key="ticket_phone", asks=2, data={"retry": True}),
-            EvidenceConflict(key="lights", old="on", new="off"),
-            FactConfirm(key="outlet_works", value="not_working"),
+            Contradiction(kind="conflict", fact_key="lights", before_value="on", now_value="off"),
             state,
             *(getattr(state, group) for group in type(state).model_fields),
         ]

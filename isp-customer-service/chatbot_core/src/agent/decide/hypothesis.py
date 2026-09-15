@@ -1,5 +1,12 @@
 """The working hypothesis — the telemetry cause the call is testing, the evidence notes
-behind it, and how it settles (confirmed / rejected)."""
+behind it, how it settles (confirmed / rejected), and its stability (D-05):
+
+    active --contradiction--> doubt --confirm question--> confirming
+    confirming --confirmed--> changed -> the new belief is active
+    confirming --denied / unclear--> active (the contradiction is dropped)
+
+A contradiction (a client fact, a telemetry recheck, an analyst signal) never changes
+the belief by itself; only the answer to the confirm question does."""
 
 from __future__ import annotations
 
@@ -56,3 +63,54 @@ def settle_hypothesis(state, rt, status: str, settled_by: str) -> None:
     h["settled_by"] = settled_by
     if status == "rejected":
         state.diagnosis.rejected_hypotheses.append({"cause": h["cause"], "settled_by": settled_by})
+
+
+def status(state) -> str:
+    """active | doubt | confirming — the belief's stability right now."""
+    c = state.diagnosis.contradiction
+    if c is None:
+        return "active"
+    return "confirming" if c.asked else "doubt"
+
+
+def doubt(state, rt, kind: str, key: str, before, now, source: str = "client") -> bool:
+    """Put the belief in doubt; False when another contradiction is already open."""
+    from ..evidence import Contradiction
+
+    if state.diagnosis.contradiction is not None:
+        return False
+    state.diagnosis.contradiction = Contradiction(
+        kind=kind,
+        source=source,
+        fact_key=key,
+        before_value=None if before is None else str(before),
+        now_value=None if now is None else str(now),
+    )
+    rt.tracer.emit("hypothesis", status="doubt", kind=kind, key=key, before=before, now=now)
+    return True
+
+
+def due(state, kind: str):
+    """The contradiction of `kind` whose confirm question is due, or None."""
+    c = state.diagnosis.contradiction
+    return c if c is not None and c.kind == kind and not c.asked else None
+
+
+def ask(state, rt, kind: str):
+    """Mark the due confirm question of `kind` as out (confirming); the contradiction."""
+    c = due(state, kind)
+    if c is not None:
+        c.asked = True
+        rt.tracer.emit("hypothesis", status="confirming", kind=kind, key=c.fact_key)
+    return c
+
+
+def answered(state, rt, kind: str):
+    """The contradiction of `kind` whose question was out — taken (the belief is active
+    again once the answer is read), or None."""
+    c = state.diagnosis.contradiction
+    if c is None or c.kind != kind or not c.asked:
+        return None
+    state.diagnosis.contradiction = None
+    rt.tracer.emit("hypothesis", status="active", kind=kind, key=c.fact_key)
+    return c

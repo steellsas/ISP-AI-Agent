@@ -7,7 +7,7 @@ one-shot narrator note. Overlay may FILL facts, never steer routing.
 from types import SimpleNamespace
 
 from agent.delivery import apply_overlay
-from agent.evidence import FactConfirm
+from agent.evidence import Contradiction
 
 
 def _agent():
@@ -52,8 +52,8 @@ class TestApplyOverlay:
         agent.state.diagnosis.pending_evidence_key = "lights"  # volunteered, not the asked key
         apply_overlay(agent.state, agent.runtime, ["rozetė neveikia"])
         assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked
-        assert agent.state.diagnosis.fact_confirm_pending == FactConfirm(
-            key="outlet_works", value="not_working"
+        assert agent.state.diagnosis.contradiction == Contradiction(
+            kind="flip", fact_key="outlet_works", now_value="not_working"
         )
 
     def test_empty_and_capped(self, db_connection):

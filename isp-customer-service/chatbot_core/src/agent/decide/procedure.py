@@ -39,12 +39,12 @@ def advance(state, rt, user_input: str | None) -> StepOutcome:
     # Ledger: a fresh evidence conflict holds the procedure THIS turn — the
     # contradicting utterance must not double as a step answer; the scripted
     # clarification goes out instead and the settling answer resumes.
-    if state.diagnosis.evidence_conflict:
+    if _hypothesis.due(state, "conflict") is not None:
         rt.tracer.emit(
             "decision",
             intent="evidence_conflict",
             action="hold",
-            key=state.diagnosis.evidence_conflict.key,
+            key=state.diagnosis.contradiction.fact_key,
         )
     else:
         walk_resolution(state, rt, user_input)

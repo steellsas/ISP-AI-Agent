@@ -44,8 +44,7 @@ _STATE_TYPES: list[tuple[str, str]] = [
     ("graph_v2.state", "TurnDirectives"),
     ("graph_v2.state", "TurnScratch"),
     ("dialog_registry", "ActiveQuestion"),
-    ("evidence", "EvidenceConflict"),
-    ("evidence", "FactConfirm"),
+    ("evidence", "Contradiction"),
 ]
 _ALLOWED: list[tuple[str, str]] = [
     (f"{root}.{module}", name) for root in ("agent", "src.agent") for module, name in _STATE_TYPES

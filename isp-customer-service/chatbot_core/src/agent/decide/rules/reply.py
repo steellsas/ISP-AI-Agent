@@ -254,13 +254,13 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         )
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
-    if state.diagnosis.evidence_conflict:
+    from .. import hypothesis
+
+    conflict = hypothesis.ask(state, rt, "conflict")
+    if conflict is not None:
         from ...evidence import gloss_label, gloss_value
 
-        conflict = state.diagnosis.evidence_conflict
-        key, old, new = conflict.key, conflict.old, conflict.new
-        state.diagnosis.evidence_conflict = None
-        state.diagnosis.evidence_conflict_asked_key = key
+        key, old, new = conflict.fact_key, conflict.before_value, conflict.now_value
         return _words(
             "diagnosis.evidence_conflict_clarify",
             phrase(

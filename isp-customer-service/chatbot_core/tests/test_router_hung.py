@@ -285,7 +285,7 @@ class TestConflictScope:
         assert (
             _conflict_to_clarify(agent.state, agent.runtime, "lights", entry) is True
         )  # consumed silently
-        assert agent.state.diagnosis.evidence_conflict is None  # no clarify loop
+        assert agent.state.diagnosis.contradiction is None  # no clarify loop
         assert entry["value"] == "on" and not entry["conflict"]  # newest stands
 
     def test_declared_key_conflict_still_clarifies(self, db_connection):
@@ -297,8 +297,8 @@ class TestConflictScope:
         entry = set_fact(agent.state.diagnosis.evidence, "fail_scope", "one", CLIENT, 2)
         assert entry["conflict"]
         assert _conflict_to_clarify(agent.state, agent.runtime, "fail_scope", entry) is True
-        c = agent.state.diagnosis.evidence_conflict
-        assert (c.key, c.old, c.new) == ("fail_scope", "all", "one")
+        c = agent.state.diagnosis.contradiction
+        assert (c.fact_key, c.before_value, c.now_value) == ("fail_scope", "all", "one")
 
 
 class TestSimRebootSeed:

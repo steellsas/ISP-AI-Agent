@@ -107,21 +107,24 @@ def maybe_refute_confirm(state: Any, rt: Any, spec: dict) -> str | None:
     CLIENT-stated fact (Andrius 2026-08-11: guard against premature
     rejection — STT garbles flip facts). 'Taip' -> pivot proceeds; a
     correction lands via ingest and un-refutes on its own."""
-    refute_state = state.diagnosis.refute_confirm_state
-    if refute_state == "done":
+    from .decide import hypothesis
+
+    if state.diagnosis.refute_confirmed:
         return None
-    if refute_state == "pending":
-        state.diagnosis.refute_confirm_state = "done"
+    if hypothesis.answered(state, rt, "refute") is not None:
+        state.diagnosis.refute_confirmed = True
         rt.tracer.emit("decision", intent="refute_confirm", action="answered")
         return None
     kv = refuting_client_fact(state, rt, spec)
     if kv is None:
-        state.diagnosis.refute_confirm_state = "done"  # telemetry-backed — trust it
+        state.diagnosis.refute_confirmed = True  # telemetry-backed — trust it
         return None
     key, value = kv
     from .contract.locale import phrase
 
-    state.diagnosis.refute_confirm_state = "pending"
+    if not hypothesis.doubt(state, rt, "refute", key, None, value):
+        return None
+    hypothesis.ask(state, rt, "refute")
     rt.tracer.emit("decision", intent="refute_confirm", action="ask", key=key)
     return phrase(
         "identification.refute_confirm",
@@ -213,17 +216,17 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # (see _sync_walker_solution below for the shared solution-sync mechanics)
     # question before anything else — the ledger stays clean until the caller
     # says "taip" (STT garbles poison exactly these facts).
-    fc = state.diagnosis.fact_confirm_pending
+    from .decide import hypothesis
+
+    fc = hypothesis.ask(state, rt, "flip")
     if fc is not None:
         from .contract.locale import phrase as _phrase
 
-        state.diagnosis.fact_confirm_pending = None
-        state.diagnosis.fact_confirm_asked = fc
-        rt.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.key)
+        rt.tracer.emit("decision", intent="fact_confirm", action="ask", key=fc.fact_key)
         return _phrase(
             "identification.refute_confirm",
-            topic=gloss_label(fc.key),
-            value=gloss_value(fc.value),
+            topic=gloss_label(fc.fact_key),
+            value=gloss_value(fc.now_value),
         )
     # Captured BEFORE any new ask below overwrites it: was a question already
     # out when the caller spoke? Needed for the bare-"ne" clarify.

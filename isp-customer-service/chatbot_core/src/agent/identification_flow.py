@@ -136,8 +136,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     state.identity.suggested_city = None
     state.diagnosis.evidence_ask_counts.clear()
     state.diagnosis.pending_evidence_key = None
-    state.diagnosis.evidence_conflict = None
-    state.diagnosis.evidence_conflict_asked_key = None
+    state.diagnosis.contradiction = None
     state.turn.side_topic_active = False
     state.dialog.side_topic_streak = 0
     state.ticket.stage = None
@@ -151,7 +150,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     state.resolution.escalate_clarify_due = False
     state.ticket.resume_fix_note = False
     state.diagnosis.facts_recap_state = ""
-    state.diagnosis.refute_confirm_state = ""
+    state.diagnosis.refute_confirmed = False
     state.turn.done_report_key = None
     state.resolution.bridge_plug_reported = False
     state.resolution.bridge_fail_stage = 0
