@@ -51,10 +51,10 @@ def _directive_line(kind: str, payload: dict[str, Any]) -> str:
     if kind == "recap":
         return f"- PASITIKSLINK: ar teisingai supratai — {payload['faktai']}."
     # findings
-    if payload.get("pasiulymas"):
-        spr = f" {payload['pasiulymas']}"
-    elif payload.get("sprendimai"):
-        spr = f" Pasiūlyk pasirinkimą ({payload['sprendimai']}) ir paklausk, kaip darome."
+    if payload.get("offer"):
+        spr = f" {payload['offer']}"
+    elif payload.get("solutions"):
+        spr = f" Pasiūlyk pasirinkimą ({payload['solutions']}) ir paklausk, kaip darome."
     else:
         spr = ""
     return (
@@ -123,8 +123,8 @@ def plan_branches(state: Any, rt: Any) -> dict[str, Any] | None:
                         {
                             "faktai": client_facts_lt(ev2),
                             "isvada": fault_conclusion(verdict) or "",
-                            "sprendimai": " ARBA ".join(solution_descriptions(verdict)),
-                            "pasiulymas": fault_offer_goal(verdict) or "",
+                            "solutions": " ARBA ".join(solution_descriptions(verdict)),
+                            "offer": fault_offer_goal(verdict) or "",
                         },
                     ),
                 }

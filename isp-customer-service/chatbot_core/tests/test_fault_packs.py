@@ -404,7 +404,7 @@ class TestNarratorFindings:
         )  # narrator takes the turn
         d = engine.state.turn.directives.findings
         assert d and d["isvada"] == "routeris sugedęs"
-        assert "ARBA" in d["sprendimai"]
+        assert "ARBA" in d["solutions"]
         assert engine.state.diagnosis.findings_announced is True  # said once, never re-dumped
 
     def test_off_switch_keeps_scripted_announce(self, monkeypatch):
@@ -428,7 +428,7 @@ class TestNarratorFindings:
         agent.state.turn.directives.findings = {
             "faktai": "routerio lemputės: nedega",
             "isvada": "routeris sugedęs",
-            "sprendimai": "paleisti per kompiuterį ARBA meistras",
+            "solutions": "paleisti per kompiuterį ARBA meistras",
         }
         block = state_facts_block(agent.state, agent.runtime)
         assert block and "IŠVADOS MOMENTAS" in block and "routeris sugedęs" in block
@@ -587,8 +587,8 @@ class TestTicketFirst:
         agent.state.turn.directives.findings = {
             "faktai": "routerio lemputės: nedega",
             "isvada": "routeris sugedęs",
-            "sprendimai": "a ARBA b",
-            "pasiulymas": "Pasakyk, kad užregistruosi meistrą; pasiūlyk tiltą.",
+            "solutions": "a ARBA b",
+            "offer": "Pasakyk, kad užregistruosi meistrą; pasiūlyk tiltą.",
         }
         block = state_facts_block(agent.state, agent.runtime)
         assert "užregistruosi meistrą" in block
@@ -1215,8 +1215,8 @@ class TestLiveCall0821Fixes:
         agent.state.turn.directives.findings = {
             "faktai": "x",
             "isvada": "y",
-            "sprendimai": "",
-            "pasiulymas": "",
+            "solutions": "",
+            "offer": "",
         }
         isolated = state_facts_block(agent.state, agent.runtime) or ""
         assert "IŠVADOS MOMENTAS" in isolated

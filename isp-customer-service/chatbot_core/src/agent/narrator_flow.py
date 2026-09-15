@@ -1105,10 +1105,10 @@ def state_facts_block(state, rt) -> str | None:
     if fd:
         # Ticket-first faults script their own offer (`offer_goal` in the
         # pack): the primary outcome first, the convenience as the question.
-        if fd.get("pasiulymas"):
-            spr = f" {fd['pasiulymas']}"
-        elif fd.get("sprendimai"):
-            spr = f" Pasiūlyk pasirinkimą ({fd['sprendimai']}) ir paklausk, kaip darome."
+        if fd.get("offer"):
+            spr = f" {fd['offer']}"
+        elif fd.get("solutions"):
+            spr = f" Pasiūlyk pasirinkimą ({fd['solutions']}) ir paklausk, kaip darome."
         else:
             spr = ""
         # W0-E (live 2026-08-25): the findings turn said "Užregistravau" while

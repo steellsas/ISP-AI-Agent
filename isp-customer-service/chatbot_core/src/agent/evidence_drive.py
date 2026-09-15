@@ -280,7 +280,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
 
         faktai_lt = client_facts_lt(s.diagnosis.evidence)
         isvada = fault_conclusion(r.get("verdict")) or ticket_need(state, rt)
-        sprendimai = solution_descriptions(r.get("verdict"))
+        solutions = solution_descriptions(r.get("verdict"))
         if faktai_lt and isvada:
             # Persona (Andrius 2026-08-13: the template dump "Ką patikrinome:
             # routeris surastas: rado; …" is words FOR the agent, not speech) —
@@ -292,8 +292,8 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
                 state.turn.directives.findings = {
                     "faktai": faktai_lt,
                     "isvada": isvada,
-                    "sprendimai": " ARBA ".join(sprendimai) if sprendimai else "",
-                    "pasiulymas": fault_offer_goal(r.get("verdict")) or "",
+                    "solutions": " ARBA ".join(solutions) if solutions else "",
+                    "offer": fault_offer_goal(r.get("verdict")) or "",
                 }
                 rt.tracer.emit("decision", intent="findings", action="announce_narrator")
                 return None  # the narrator speaks the findings + the choice
@@ -302,7 +302,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
                     "identification.findings_announce",
                     facts=faktai_lt,
                     reason=isvada,
-                    solutions=" ARBA ".join(sprendimai) if sprendimai else "—",
+                    solutions=" ARBA ".join(solutions) if solutions else "—",
                 )
                 + " "
             )
