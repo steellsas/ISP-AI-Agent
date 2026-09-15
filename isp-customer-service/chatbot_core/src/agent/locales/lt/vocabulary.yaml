@@ -1178,3 +1178,9 @@ answers_foreign_mac_cable_port_wan: ["wan", "internet", "interneto", "mėlyn", "
 answers_foreign_mac_cable_port_lan: ["lan", "geltona", "geltoname", "kitas", "kitą", "prie kitų"]
 answers_router_hung_fail_scope_all: ["visuose", "visur", "nė viename", "ne viename neveikia", "abiejuose", "niekur"]
 answers_router_hung_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryje", "planšetėje", "plansete"]
+
+# --- agent/playbook.py ----------------------------------------------------------
+
+# A playbook step heading: "### Žingsnis 1: Lemputės" (the number makes it a step, so
+# a plain "### Kada eskaluoti" section is not mistaken for one). Matched per line.
+playbook_step_heading: '^###\s+Žingsnis\s+\d+.*$'
