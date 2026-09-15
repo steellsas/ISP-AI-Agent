@@ -31,7 +31,13 @@ SIDE_TOPIC_PROMPT = load_node_prompt("stages/side_topic")
 
 
 def narrate(
-    state: Any, rt: Any, user_input: str | None, allowed_tools, node_prompt: str, node: str
+    state: Any,
+    rt: Any,
+    user_input: str | None,
+    allowed_tools,
+    node_prompt: str,
+    node: str,
+    planned: bool = False,
 ) -> str:
     """Run the engine's scoped LLM turn, streaming tokens out via the LangGraph
     stream writer (a no-op under .invoke(), live under .stream(stream_mode='custom'))
@@ -40,7 +46,9 @@ def narrate(
     rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
     writer = get_stream_writer()
     parts: list[str] = []
-    for token in narrator(state, rt).run_turn_scoped_stream(user_input, allowed_tools, node_prompt):
+    for token in narrator(state, rt).run_turn_scoped_stream(
+        user_input, allowed_tools, node_prompt, planned
+    ):
         writer(token)
         parts.append(token)
     return "".join(parts)

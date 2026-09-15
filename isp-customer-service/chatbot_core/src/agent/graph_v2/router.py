@@ -26,7 +26,7 @@ SIDE_TOPIC = "side_topic"
 TICKET_REGISTRATION = "ticket_registration"
 CLOSING = "closing"
 
-ENTRY_TARGETS = (ADDRESS_VALIDATION, DIAGNOSIS, TICKET_REGISTRATION)
+ENTRY_TARGETS = (ADDRESS_VALIDATION, DIAGNOSIS)
 
 
 def route_after_decide(state: GraphState) -> str:
@@ -35,14 +35,9 @@ def route_after_decide(state: GraphState) -> str:
 
 
 def route_entry(state: GraphState) -> str:
-    """Deterministic entry routing for the turns no policy rule owned.
-
-    A mid-ticket-dialogue turn goes to the dedicated node so diagnosis narration
-    cannot compete with the contact questions; then identified -> diagnosis, else
-    keep identifying. (A closed case is always planned by the closing rules.)
-    """
-    if state.ticket.stage:
-        return TICKET_REGISTRATION
+    """Deterministic entry routing for the turns no policy rule owned: identified ->
+    diagnosis, else keep identifying. (A closed case and the contact dialogue are
+    always planned by their rules.)"""
     return DIAGNOSIS if state.identity.customer_id else ADDRESS_VALIDATION
 
 

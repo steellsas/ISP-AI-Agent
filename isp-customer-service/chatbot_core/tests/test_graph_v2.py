@@ -54,12 +54,6 @@ class TestRouteEntryPure:
     def test_identified_routes_to_diagnosis(self):
         assert route_entry(GraphState(identity=IdentityState(customer_id="CUST-1"))) == "diagnosis"
 
-    def test_ticket_stage_wins_over_identity(self):
-        state = GraphState(
-            identity=IdentityState(customer_id="CUST-1"), ticket=TicketState(stage="phone")
-        )
-        assert route_entry(state) == "ticket_registration"
-
     def test_a_planned_turn_ends_after_decide(self):
         from agent.graph_v2.router import route_after_decide
 
@@ -68,7 +62,7 @@ class TestRouteEntryPure:
             ticket=TicketState(stage="phone"),
             closing=ClosingState(case_closed=True),
         )
-        assert route_after_decide(state) == "ticket_registration"  # no plan: a stage node
+        assert route_after_decide(state) == "diagnosis"  # no plan: a stage node
         state.turn.plan = {"rule": "closing.goodbye"}
         assert route_after_decide(state) == "end"
 
@@ -107,7 +101,7 @@ class FakeEngine:
 
         return record
 
-    def run_turn_scoped_stream(self, user_input, allowed_tools, node_prompt):
+    def run_turn_scoped_stream(self, user_input, allowed_tools, node_prompt, planned=False):
         self.calls.append("narrate")
         yield "ok-"
         yield "reply"

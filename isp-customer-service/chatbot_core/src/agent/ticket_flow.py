@@ -168,6 +168,29 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
     return " ".join(parts)
 
 
+def ticket_question_turn(state: Any, rt: Any) -> tuple[str, str | None]:
+    """The contact question of this turn (stage phone/hours): (rule id, words). No
+    words = the narrator speaks: an off-script question, or — Zone 1 (scripts ->
+    directives, Andrius 2026-08-20) — a QUESTION moment worded into the flow of the
+    conversation (the directive carries the scripted fallback); retries and the
+    cancel-confirm stay scripted (precision beats style on a repeat)."""
+    import os
+
+    if state.turn.ticket_offscript_question:
+        return "ticket.offscript_question", None
+    scripted = ticket_stage_reply(state, rt)
+    ctx = state.ticket.context
+    kind = ctx.last_kind if ctx else None
+    if os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on" and kind in (
+        "phone_intro",
+        "phone",
+        "hours",
+    ):
+        state.turn.directives.ticket = {"kind": kind, "fallback": scripted}
+        return f"ticket.ask_{kind}", None
+    return f"ticket.{kind}", scripted
+
+
 def fmt_phone(nr: str | None) -> str:
     """Group a dialable number for TTS ("+370 600 12353"); free text passes through."""
     raw = (nr or "").strip()

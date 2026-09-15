@@ -304,21 +304,25 @@ class ReactAgent:
         user_input: str | None,
         allowed_tools: frozenset[str] | None,
         node_prompt: str | None,
+        planned: bool = False,
     ):
         """Run ONE scoped turn (Pillar C3): a generator that YIELDS
         the FINAL reply's text tokens as the LLM produces them. Tool rounds run
         silently (no yields). Called from inside the LangGraph nodes, which forward
         the tokens via the stream writer — so LangGraph stays the orchestrator."""
-        yield from self._run_turn_stream(user_input, allowed_tools, node_prompt)
+        yield from self._run_turn_stream(user_input, allowed_tools, node_prompt, planned)
 
     def _run_turn_stream(
         self,
         user_input: str | None = None,
         allowed_tools: frozenset[str] | None = None,
         node_prompt: str | None = None,
+        planned: bool = False,
     ):
         """The scoped turn: deterministic head, scripted replies, then the LLM tool
-        loop streaming the final reply token by token."""
+        loop streaming the final reply token by token. A `planned` turn was already
+        decided by the policy chain — the head's guards, the stuck backstop and the
+        scripted replies do not run again; the LLM words the plan."""
         from .executor_flow import execute_tool_calls
         from .identification_flow import identification_scripted_reply
         from .narrator_flow import build_messages, scoped_tools_schema
@@ -353,7 +357,7 @@ class ReactAgent:
             # the words (slots, evidence).
             if self.state.turn.pre_turn_head_done:
                 self.state.turn.pre_turn_head_done = False
-            else:
+            elif not planned:
                 pre_turn_guards(self.state, self.runtime, user_input)
 
         # The caller's utterance goes on the history for EVERY reply path
@@ -366,7 +370,7 @@ class ReactAgent:
 
         # Deterministic backstop (before the LLM, so it works with streaming) once a
         # genuine repeat loop has escalated.
-        backstop = self._stuck_backstop()
+        backstop = None if planned else self._stuck_backstop()
         if backstop is not None:
             self.state.turn.reply_path = "stuck_backstop"
             yield self._apply_backstop(backstop)
@@ -374,8 +378,12 @@ class ReactAgent:
 
         # Scripted identification-ladder reply (engine-composed, LLM skipped) — the
         # mechanical turns only; off-script turns fall through to the LLM.
-        scripted = identification_scripted_reply(
-            self.state, self.runtime, self.state.dialog.last_heard
+        scripted = (
+            None
+            if planned
+            else identification_scripted_reply(
+                self.state, self.runtime, self.state.dialog.last_heard
+            )
         )
         if scripted is not None:
             self.state.turn.reply_path = "scripted"
@@ -384,7 +392,7 @@ class ReactAgent:
 
         # D5 (live 2026-08-25: 'Gerai, palauksiu' cost 2.8–12 s of LLM): a bare
         # wait signal at a standing client action is acknowledged scripted.
-        wait = scripted_wait_ack(self.state, self.runtime)
+        wait = None if planned else scripted_wait_ack(self.state, self.runtime)
         if wait is not None:
             self.state.turn.reply_path = "wait_ack"
             yield self._emit_scripted_reply(wait)

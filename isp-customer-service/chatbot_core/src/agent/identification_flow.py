@@ -724,7 +724,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     from .dialog_utils import anchor_text
     from .evidence_drive import evidence_question_open, negation_clarify_reply
     from .executor_flow import register_ticket_from_state
-    from .ticket_flow import begin_ticket_dialogue, finish_ticket_dialogue, ticket_stage_reply
+    from .ticket_flow import begin_ticket_dialogue, finish_ticket_dialogue, ticket_question_turn
 
     s = state
     # P-C (2026-09-08): the walker's 'callback' terminal just closed the case
@@ -895,25 +895,7 @@ def identification_scripted_reply(state: Any, rt: Any, user_input: str | None) -
     # off-script question falls to the ticket node's LLM (facts carry the
     # pending stage question to re-ask); the mechanical turns stay scripted.
     if state.ticket.stage in ("phone", "hours"):
-        if state.turn.ticket_offscript_question:
-            return None
-        scripted = ticket_stage_reply(state, rt)
-        # Zone 1 (scripts -> directives, Andrius 2026-08-20): the QUESTION
-        # moments go to the narrator as a goal directive — it words them into
-        # the conversation's flow; retries and the cancel-confirm stay
-        # scripted (precision beats style on a repeat). Off-switch reverts.
-        import os as _os
-
-        ctx = state.ticket.context
-        kind = ctx.last_kind if ctx else None
-        if _os.getenv("NARRATOR_QUESTIONS", "on").lower() == "on" and kind in (
-            "phone_intro",
-            "phone",
-            "hours",
-        ):
-            state.turn.directives.ticket = {"kind": kind, "fallback": scripted}
-            return None  # the ticket node's narrator speaks (facts directive)
-        return scripted
+        return ticket_question_turn(state, rt)[1]
     if state.ticket.stage == "done":
         return finish_ticket_dialogue(state, rt)
     if state.ticket.stage == "cancelled":

@@ -165,7 +165,22 @@ def test_every_phrase_key_in_code_exists():
     locale = load_locale("lt")
     keys = list(_code_literal_args(lambda f: "phrase" in f or f == "template"))
     assert len(keys) > 50  # the scan finds the calls
+    keys += _say_keys()
     assert [(where, key) for where, _f, key in keys if not locale.has(key)] == []
+
+
+def _say_keys():
+    """(file:line, "Say", key) for every literal `Say(key=...)` of a TurnPlan."""
+    import ast
+    from pathlib import Path
+
+    src = Path(__file__).parents[1] / "src"
+    for path in sorted(src.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "Say":
+                for kw in node.keywords:
+                    if kw.arg == "key" and isinstance(kw.value, ast.Constant) and kw.value.value:
+                        yield f"{path.relative_to(src)}:{node.lineno}", "Say", kw.value.value
 
 
 def test_every_vocabulary_name_in_code_exists_with_its_type():

@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .plan import TurnPlan
-from .rules import closing, dialog
+from .rules import closing, dialog, ticket
 
 Rule = Callable[[Any, Any], TurnPlan | None]
 
@@ -23,6 +23,7 @@ Rule = Callable[[Any, Any], TurnPlan | None]
 RULES: list[tuple[int, str, Rule]] = [
     (1, "dialog.greeting", dialog.greeting),
     (2, "closing", closing.plan),
+    (3, "ticket", ticket.plan),
 ]
 
 

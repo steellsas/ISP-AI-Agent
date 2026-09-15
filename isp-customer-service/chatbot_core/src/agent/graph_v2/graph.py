@@ -7,7 +7,7 @@ The checkpointer is injected here and the AgentRuntime arrives per invoke as
 the graph context — nodes never reach for globals.
 
 Current shape: perceive -> decide -> END when a policy rule owned the turn, else
-router -> identification | ticket | DIAGNOSIS SUBGRAPH (diagnose -> side_topic |
+router -> identification | DIAGNOSIS SUBGRAPH (diagnose -> side_topic |
 solver_gate -> walker -> executor -> narrator) -> END, checkpointed per session.
 """
 
@@ -21,14 +21,12 @@ from ..runtime import AgentRuntime
 from .checkpoint import make_checkpointer
 from .nodes.diagnosis import make_diagnosis_graph
 from .nodes.identification import identification_node
-from .nodes.ticket import ticket_node
 from .router import (
     ADDRESS_VALIDATION,
     DECIDE,
     DIAGNOSIS,
     ENTRY_TARGETS,
     PERCEIVE,
-    TICKET_REGISTRATION,
     route_after_decide,
 )
 from .state import GraphState
@@ -45,7 +43,6 @@ def build_graph(checkpointer: Any | None = None):
     builder.add_node(DECIDE, decide_node)
     builder.add_node(ADDRESS_VALIDATION, identification_node)
     builder.add_node(DIAGNOSIS, make_diagnosis_graph())
-    builder.add_node(TICKET_REGISTRATION, ticket_node)
     builder.set_entry_point(PERCEIVE)
     builder.add_edge(PERCEIVE, DECIDE)
     targets = {name: name for name in ENTRY_TARGETS}

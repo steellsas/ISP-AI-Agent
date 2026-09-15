@@ -26,7 +26,8 @@ Owner = Literal[
 
 class Say(BaseModel):
     kind: Literal["phrase", "directive", "none"]
-    key: str | None = None  # locale phrase key (kind=phrase); None = the action's own words
+    key: str | None = None  # locale phrase key (kind=phrase); None = `text` or the action's words
+    text: str | None = None  # engine-composed words (until M5 renders every phrase by key)
     goal: str | None = None  # English goal for the LLM (kind=directive)
     vars: dict[str, Any] = Field(default_factory=dict)
     # The stage whose narrator speaks a directive — and a phrase whose action had no

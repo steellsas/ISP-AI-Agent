@@ -22,6 +22,10 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
         from ..solver_flow import drive_escalate
 
         return drive_escalate(state, rt, None)
+    if action.type == "register_ticket":
+        from ..ticket_flow import finish_ticket_dialogue
+
+        return finish_ticket_dialogue(state, rt)
     if action.type == "append_ticket":
         from ..ticket_flow import amend_ticket_note
 
