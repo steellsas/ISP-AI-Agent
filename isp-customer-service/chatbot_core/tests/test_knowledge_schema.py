@@ -203,7 +203,7 @@ def test_every_vocabulary_name_in_code_exists_with_its_type():
     ]
     assert wrong == []
     k = validate_knowledge()
-    from_knowledge = {p.triggers_vocab for p in k.manifest.problems.values() if p.triggers_vocab}
+    from_knowledge = {i.triggers_vocab for i in k.intents.intents.values() if i.triggers_vocab}
     from_knowledge |= {entry.keywords_vocab for entry in k.faq.faq}
     from_knowledge |= {
         name

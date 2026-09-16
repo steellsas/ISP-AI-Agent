@@ -233,7 +233,7 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
             reason="no device after bridge offer — deterministic",
         )
         return _commit(state, rt, user_input, drive_escalate(state, rt, None))
-    # Ledger v2: the fault declares its EVIDENCE (faults.yaml) — the engine
+    # Ledger v2: the fault declares its EVIDENCE (its fault pack) — the engine
     # asks the first missing fact, confirms/refutes from the ledger and picks
     # the declared solution. Deterministic; runs even after a solver bench,
     # so there is never a "step to rewind to". None -> the solver's turn.

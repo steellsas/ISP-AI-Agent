@@ -468,7 +468,7 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
             )
             rt.tracer.emit("evidence", action="negation_clarify", key=key)
         # DONE-report without a result ("Mhm, patikrinau") — acknowledge the
-        # work and ask WHAT was found (ka_radote from faults.yaml).
+        # work and ask WHAT was found (ka_radote from the fault pack).
         if state.turn.done_report_key == key:
             from ...contract.locale import phrase
 

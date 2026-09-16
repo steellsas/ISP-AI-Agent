@@ -1,4 +1,4 @@
-# Call purpose catalog — what the CALLER reports (moved to intents.yaml in M6).
+# Call intents — what the CALLER wants (D-11).
 #
 # Cascade: L1 — `triggers_vocab` (the locale's trigger word list, a fast
 # deterministic lane for the most common phrasings; not grown without end);
@@ -6,7 +6,8 @@
 # trigger fired. A new type is one block here plus its locale entries.
 #
 #   policy:  solve     - the full fault path (identification, telemetry, …)
-#            register  - identification + ticket WITHOUT diagnostics (not used yet)
+#            register  - identification + a ticket of `ticket_type` WITHOUT diagnostics
+#            answer    - identification + an answer from data (ticket status, outage, debt)
 #            not_ours  - not the agent's competence: the boundary reply, NO
 #                        identification, problem_type is not set
 #            chat      - a social call: a warm reply naming the area, no identification
@@ -18,7 +19,7 @@
 # fault diagnosis: the debt VERDICT in telemetry stays — "internet down" because of
 # a debt is still informed). An unclear but in-scope trouble is NOT rejected: it is
 # classified to the nearest type and clarified with questions.
-problems:
+intents:
   internet_slow:
     description: "the internet works but slowly / stalls / drops out (pages take long to load, video buffers, games lag)"
     examples_key: problems/internet_slow

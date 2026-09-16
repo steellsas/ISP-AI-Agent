@@ -16,7 +16,7 @@ def _agent():
 
 class TestCatalog:
     def test_policy_declared_and_default(self):
-        from agent.faults import problem_policy
+        from agent.intents import problem_policy
 
         assert problem_policy("internet_down") == "solve"
         assert problem_policy("tv") == "solve"
@@ -26,14 +26,14 @@ class TestCatalog:
         assert problem_policy(None) == "solve"
 
     def test_catalog_options_built_from_descriptions(self):
-        from agent.faults import problem_catalog_options
+        from agent.intents import problem_catalog_options
 
         opts = problem_catalog_options()
         assert "internet_down" in opts and "nekrauna" in opts["internet_down"]
         assert "billing" in opts and "chat" in opts
 
     def test_boundary_phrases_exist(self):
-        from agent.faults import problem_boundary_reply, problem_confirm_question
+        from agent.intents import problem_boundary_reply, problem_confirm_question
 
         assert "techninės pagalbos" in problem_boundary_reply("billing")
         assert "internet" in problem_boundary_reply("chat")

@@ -236,11 +236,11 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     return facts
 
 
-# --- evidence spec (faults.yaml `evidence:` block, Ledger v2) -----------------
+# --- evidence spec (the fault pack's `evidence:` block, Ledger v2) -----------------
 
 
 def spec_for(verdict: str | None) -> dict[str, Any] | None:
-    """The fault's evidence spec from faults.yaml ({client, confirmed_when,
+    """The fault's evidence spec from its fault pack ({client, confirmed_when,
     refuted_when, on_refuted}), or None when the fault declares none
     (fail-soft: the walker/solver flow runs as before)."""
     if not verdict:
@@ -339,7 +339,7 @@ def client_facts_lt(evidence: dict[str, Any]) -> str:
 
 def fault_bridge_fail(verdict: str | None) -> dict[str, str]:
     """The fault's declared bridge-failure texts (`bridge_failed:` in
-    faults.yaml): `pastaba` spoken to the caller before the technician
+    the fault pack): `pastaba` spoken to the caller before the technician
     registration, `prierasas` appended to the ticket details."""
     if not verdict:
         return {}
@@ -432,7 +432,7 @@ def solution_for(evidence: dict[str, Any], verdict: str | None) -> str | None:
 
 def solution_step(evidence: dict[str, Any], verdict: str | None) -> str | None:
     """The walker STEP declared on the matching solutions rule (`step_role` in
-    faults.yaml) — where the flow RESUMES if the solver is benched
+    the fault pack) — where the flow RESUMES if the solver is benched
     mid-solution (live 2026-08-11: a bailout landed on a long-stale dr_intro
     and improvised into a ticket one step from a working bridge)."""
     if not verdict:
@@ -456,7 +456,7 @@ def read_pending_answer(key: str, text: str | None, spec_item: dict | None = Non
     """Interpret a short utterance as the answer to the PENDING evidence key —
     the question context resolves what a bare "Radau." / "Ne" means. UNIVERSAL:
     a fault may declare its own `answers: {value: [markers]}` on the
-    evidence item in faults.yaml (checked FIRST), so newly added faults get
+    evidence item in the fault pack (checked FIRST), so newly added faults get
     this mechanic by file edit; the built-in map covers the piloted keys.
     Matching is diacritics-folded with the negation-prefix guard (_mark_hit)."""
     if not text:

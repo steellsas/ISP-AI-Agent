@@ -191,13 +191,13 @@ def extract_address(
 
 # --- Problem classification (R1) ---------------------------------------------
 # The stated problem from the utterance: the knowledge catalog's triggers
-# (`knowledge/faults.yaml`); a first hypothesis, revisable on a later turn.
+# (`knowledge/intents.yaml`); a first hypothesis, revisable on a later turn.
 
 
 def classify_problem(text: str) -> str | None:
     """Best-effort problem type (the call's PURPOSE) from the utterance, or None.
 
-    Reads the DECLARATIVE triggers in `knowledge/faults.yaml` — adding a problem is a
+    Reads the DECLARATIVE triggers in `knowledge/intents.yaml` — adding an intent is a
     file edit."""
     low = f" {(text or '').lower()} "
     # Negation guard FIRST — before EITHER trigger layer (2026-09-02, live G2:
@@ -206,7 +206,7 @@ def classify_problem(text: str) -> str | None:
     # not a problem statement.
     if any(m in low for m in vocab("no_problem_marks")):
         return None
-    from ..faults import classify_purpose
+    from ..intents import classify_purpose
 
     return classify_purpose(text)
 
@@ -222,7 +222,7 @@ def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[st
     if not text or not text.strip():
         return None, 0.0
     try:
-        from ..faults import problem_catalog_options
+        from ..intents import problem_catalog_options
         from .classifier import classify_step
 
         options = problem_catalog_options()

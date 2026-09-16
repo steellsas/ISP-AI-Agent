@@ -1,9 +1,8 @@
 """
 Fault knowledge loader — the declarative layer (Phase 3.8 step 5b/5c).
 
-Reads `agent/knowledge/faults.yaml` — the call's PURPOSE catalog (what the CALLER
-reports) — and the fault packs in `agent/knowledge/faults/`: each CAUSE the telemetry
-can reach, its playbook and its procedure (steps: kind, role, detector, routing,
+Reads the fault packs in `agent/knowledge/faults/`: each CAUSE the telemetry can
+reach, its playbook and its procedure (steps: kind, role, detector, routing,
 rag section, hint, and what each routing key MEANS).
 
 Why: the procedure and the answer meanings used to live in Python. Moving them here makes a new fault — or a
@@ -24,18 +23,8 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _KNOWLEDGE = Path(__file__).resolve().parent / "knowledge"
-_FAULTS_PATH = _KNOWLEDGE / "faults.yaml"
 _FAULTS_DIR = _KNOWLEDGE / "faults"
 _MODULES_DIR = _KNOWLEDGE / "modules"
-
-
-@lru_cache(maxsize=1)
-def _doc() -> dict[str, Any]:
-    """The problem catalog (faults.yaml)."""
-    from .contract.loader import read_yaml
-
-    data = read_yaml(_FAULTS_PATH) or {}
-    return data if isinstance(data, dict) else {}
 
 
 @lru_cache(maxsize=1)
@@ -129,7 +118,6 @@ def role_of(verdict: str | None, step_id: str | None) -> str | None:
 
 def reload() -> None:
     """Drop the derived caches (contract.loader.reload calls this)."""
-    _doc.cache_clear()
     _verdict_flags.cache_clear()
     _dir_faults.cache_clear()
     _modules.cache_clear()
@@ -213,29 +201,6 @@ def evidence_led(verdict: str | None) -> bool:
     return spec_for(verdict) is not None
 
 
-# --- Purpose: what the CALLER reports -------------------------------------------
-
-
-def classify_purpose(text: str | None) -> str | None:
-    """The reported problem type from the utterance, using the manifest's triggers.
-    Order matters (a specific problem before a broader one), which YAML preserves.
-    Returns None when nothing matches, so the caller can fall back to its own table."""
-    if not text:
-        return None
-    from .contract.locale import vocab
-
-    low = f" {text.lower()} "
-    problems = _doc().get("problems")
-    if not isinstance(problems, dict):
-        return None
-    for problem, spec in problems.items():
-        name = (spec or {}).get("triggers_vocab")
-        for trig in vocab(name) if name else ():
-            if str(trig).lower() in low:
-                return str(problem)
-    return None
-
-
 # --- Detection: what each routing key MEANS -------------------------------------
 
 
@@ -266,58 +231,6 @@ def problem_has_path(problem: str | None) -> bool:
     return any(
         isinstance(spec, dict) and spec.get("problem") == problem for spec in _faults().values()
     )
-
-
-def problem_entry(problem: str | None) -> dict[str, Any]:
-    """The classification-catalog entry for a PROBLEM type (problems: section)."""
-    if not problem:
-        return {}
-    entry = (_doc().get("problems") or {}).get(problem)
-    return entry if isinstance(entry, dict) else {}
-
-
-BOUNDARY_POLICIES = frozenset({"not_ours", "chat"})
-
-
-def problem_policy(problem: str | None) -> str:
-    """The competence policy for a problem type: solve (default) | register |
-    not_ours | chat. Files declare WHAT the agent solves; code only enforces the
-    behaviour per policy."""
-    v = problem_entry(problem).get("policy")
-    return str(v) if v in ("solve", "register", "not_ours", "chat") else "solve"
-
-
-def problem_boundary_reply(problem: str | None) -> str | None:
-    """The scripted boundary reply for a not_ours / chat type."""
-    from .contract.locale import maybe_phrase
-
-    return maybe_phrase(problem_entry(problem).get("boundary_reply_key"))
-
-
-def problem_confirm_question(problem: str | None) -> str | None:
-    """The explicit-confirmation question for a medium-confidence LLM guess."""
-    from .contract.locale import maybe_phrase
-
-    return maybe_phrase(problem_entry(problem).get("confirm_question_key"))
-
-
-def problem_catalog_options() -> dict[str, str]:
-    """{type: meaning} for the L2 LLM classifier — each entry's `description`
-    plus a couple of the locale's example phrasings. Only entries WITH a
-    description participate (a triggers-only entry stays L1-only)."""
-    from .contract.locale import examples
-
-    out: dict[str, str] = {}
-    for name, entry in (_doc().get("problems") or {}).items():
-        if not isinstance(entry, dict):
-            continue
-        desc = entry.get("description")
-        if not desc:
-            continue
-        key = entry.get("examples_key")
-        samples = [ln for ln in examples(key).splitlines() if ln.strip()][:2] if key else []
-        out[str(name)] = str(desc) + (f" (e.g.: {'; '.join(samples)})" if samples else "")
-    return out
 
 
 def pack_verdicts() -> frozenset[str]:
@@ -371,5 +284,5 @@ def build_strategy(verdict: str):
             steps=tuple(steps),
         )
     except Exception as e:  # a malformed entry must not break the call
-        logger.warning(f"faults.yaml: cannot build strategy for {verdict} ({e})")
+        logger.warning(f"fault pack: cannot build strategy for {verdict} ({e})")
         return None

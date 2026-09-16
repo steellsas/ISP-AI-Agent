@@ -1073,7 +1073,7 @@ barge_stop_prefixes: ["nesta", "nebe"]
 # Glue words dropped from BM25 tokens (Lithuanian knowledge base + English terms).
 rag_stop_words: ["ir", "ar", "su", "be", "per", "nuo", "iki", "apie", "pas", "tai", "kas", "kaip", "kur", "kada", "kodėl", "kodel", "yra", "buvo", "bus", "būti", "buti", "turi", "gali", "labai", "dabar", "jau", "dar", "tik", "net", "vis", "man", "mano", "jums", "jūsų", "jusu", "the", "a", "an", "is", "are", "was", "were", "been", "have", "has", "had", "do", "does", "did", "will", "would", "can", "could", "may", "might", "must", "shall", "should", "and", "or", "but", "if", "then", "else", "when", "where", "what", "which", "who", "how", "why", "this", "that", "these", "those", "my", "your", "his", "her", "its", "our", "their", "not", "no", "yes", "very", "just", "only", "also"]
 
-# --- knowledge/faults.yaml: call purpose triggers ---------------------------------
+# --- knowledge/intents.yaml: call intent triggers ---------------------------------
 
 # L1 trigger words per call purpose, matched as substrings of " <utterance> ";
 # ORDER of the catalog matters (a specific purpose before a broader one).

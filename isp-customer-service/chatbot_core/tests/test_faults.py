@@ -1,11 +1,12 @@
 """
 Tests for the declarative fault knowledge (Phase 3.8 step 5b/5c).
 
-`knowledge/faults.yaml` is now the source for the call's PURPOSE (triggers), the
+`knowledge/intents.yaml` is the source for the call's INTENT (triggers), the
 PROCEDURE (steps) and the DETECTION meanings (answers).
 """
 
-from agent.faults import build_strategy, classify_purpose, step_options
+from agent.faults import build_strategy, step_options
+from agent.intents import classify_purpose
 from agent.resolution import get_strategy
 
 

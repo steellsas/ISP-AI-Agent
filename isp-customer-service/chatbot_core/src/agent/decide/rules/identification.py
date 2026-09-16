@@ -120,7 +120,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     import os as _os
 
     from ...contract.locale import phrase
-    from ...faults import problem_boundary_reply, problem_confirm_question, problem_policy
+    from ...intents import problem_boundary_reply, problem_confirm_question, problem_policy
     from ...perceive.detectors import DETECTORS, is_real_question
 
     # 1) the caller answers last turn's "Ar gerai suprantu — …?"

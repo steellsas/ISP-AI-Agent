@@ -174,17 +174,19 @@ class Module(_Model):
 # --- Catalog and other knowledge files ------------------------------------------
 
 
-class Problem(_Model):
+class Intent(_Model):
     description: str | None = None  # for the LLM classifier
     examples_key: str | None = None  # locale examples file/section, one phrasing per line
-    policy: Literal["solve", "register", "not_ours", "chat"] = "solve"
+    policy: Literal["solve", "register", "answer", "not_ours", "chat"] = "solve"
+    # register: the ticket type the request becomes (knowledge/ticket_types.yaml, M6 step 4)
+    ticket_type: str | None = None
     confirm_question_key: str | None = None
     boundary_reply_key: str | None = None
     triggers_vocab: str | None = None  # a vocabulary list name
 
 
-class FaultsManifest(_Model):
-    problems: dict[str, Problem]
+class IntentsCatalog(_Model):
+    intents: dict[str, Intent]
 
 
 class Detectors(_Model):
@@ -269,7 +271,7 @@ class KnowledgeError(Exception):
 
 @dataclass
 class Knowledge:
-    manifest: FaultsManifest | None = None
+    intents: IntentsCatalog | None = None
     packs: dict[str, FaultPack] = field(default_factory=dict)
     modules: dict[str, Module] = field(default_factory=dict)
     detectors: Detectors | None = None
@@ -375,7 +377,7 @@ def _check_pack(
     if pack.playbook and sections is None:
         errors.append(f"{rel}: playbook '{pack.playbook}' not found")
     if problems is not None and pack.problem and pack.problem not in problems:
-        errors.append(f"{rel}: problem '{pack.problem}' is not in faults.yaml problems")
+        errors.append(f"{rel}: problem '{pack.problem}' is not in intents.yaml intents")
 
     from ..faults import ENGINE_ROLES
 
@@ -499,10 +501,10 @@ def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
         for step in module.steps:
             for answer, phrase_key in step.answers.items():
                 add(f"module {name}: steps.{step.name}.answers.{answer}", phrase_key)
-    if k.manifest:
-        for name, problem in k.manifest.problems.items():
-            add(f"faults.yaml: problems.{name}.confirm_question_key", problem.confirm_question_key)
-            add(f"faults.yaml: problems.{name}.boundary_reply_key", problem.boundary_reply_key)
+    if k.intents:
+        for name, intent in k.intents.intents.items():
+            add(f"intents.yaml: intents.{name}.confirm_question_key", intent.confirm_question_key)
+            add(f"intents.yaml: intents.{name}.boundary_reply_key", intent.boundary_reply_key)
     if k.faq:
         for i, entry in enumerate(k.faq.faq):
             add(f"faq.yaml: faq.{i}.answer_key", entry.answer_key)
@@ -535,7 +537,7 @@ def validate_knowledge(
     k = Knowledge()
 
     single_files: dict[str, tuple[str, type[BaseModel]]] = {
-        "manifest": ("faults.yaml", FaultsManifest),
+        "intents": ("intents.yaml", IntentsCatalog),
         "detectors": ("detectors.yaml", Detectors),
         "faq": ("faq.yaml", Faq),
         "inform": ("inform.yaml", Inform),
@@ -573,7 +575,7 @@ def validate_knowledge(
     for name in sorted(CODE_DETECTORS - declared):
         errors.append(f"detectors.yaml: detector '{name}' has no answer meanings")
     detectors = set(CODE_DETECTORS) | declared
-    problems = set(k.manifest.problems) if k.manifest else None
+    problems = set(k.intents.intents) if k.intents else None
     for name, module in k.modules.items():
         errors += _check_module(module_files[name], module, detectors)
     for verdict, pack in k.packs.items():
@@ -603,18 +605,18 @@ def validate_knowledge(
                 errors.append(
                     f"faq.yaml: faq.{i}.keywords_vocab '{entry.keywords_vocab}' is not a vocabulary list"
                 )
-        for name, problem in (k.manifest.problems if k.manifest else {}).items():
-            if problem.triggers_vocab and not isinstance(
-                locale.vocabulary.get(problem.triggers_vocab), tuple
+        for name, intent in (k.intents.intents if k.intents else {}).items():
+            if intent.triggers_vocab and not isinstance(
+                locale.vocabulary.get(intent.triggers_vocab), tuple
             ):
                 errors.append(
-                    f"faults.yaml: problems.{name}.triggers_vocab '{problem.triggers_vocab}' is not a vocabulary list"
+                    f"intents.yaml: intents.{name}.triggers_vocab '{intent.triggers_vocab}' is not a vocabulary list"
                 )
-            if problem.examples_key:
+            if intent.examples_key:
                 try:
-                    _examples(language, problem.examples_key)
+                    _examples(language, intent.examples_key)
                 except LocaleError as e:
-                    errors.append(f"faults.yaml: problems.{name}.examples_key: {e}")
+                    errors.append(f"intents.yaml: intents.{name}.examples_key: {e}")
         for where, text in llm_texts(k):
             for ref in example_refs(text):
                 try:

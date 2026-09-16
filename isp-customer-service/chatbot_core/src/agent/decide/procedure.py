@@ -258,7 +258,7 @@ def classify_confirm_and_route(state, rt, step, strat, user_input: str | None) -
     obs = _cached_perception(state, rt, step, user_input)
     if obs is None:
         detector_name = step.detector or "yes_no"
-        # WHAT TO DETECT comes from the fault definition first (knowledge/faults.yaml —
+        # WHAT TO DETECT comes from the fault definition first (the fault pack —
         # per-step, so it can be worded precisely for THIS check), falling back to the
         # universal per-detector glosses (knowledge/detectors.yaml, code as last
         # resort). A reworded check is a file edit, not code.

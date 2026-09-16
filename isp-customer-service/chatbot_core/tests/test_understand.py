@@ -173,7 +173,7 @@ class TestRound2Fixes:
         assert agent.state.diagnosis.evidence["device_present"]["value"] == "found"
 
     def test_spec_declared_atsakymai_win(self, db_connection, monkeypatch):
-        # faults.yaml may declare per-key answer marks — universal for new faults.
+        # a fault pack may declare per-key answer marks — universal for new faults.
         from agent.evidence import read_pending_answer
 
         item = {"answers": {"nerado": ["nerasiu niekaip"]}}
@@ -204,7 +204,7 @@ class TestRound2Fixes:
 class TestFindingsAnnounce:
     """2026-08-10: the confirmed moment jumped straight to 'Ar turite
     kompiuterį?' — the caller must first HEAR what was checked, the conclusion
-    and the options. Composed from the ledger + faults.yaml (universal)."""
+    and the options. Composed from the ledger + the fault pack (universal)."""
 
     def _confirmed_agent(self, monkeypatch):
         from agent.perceive.evidence import ingest_client_evidence

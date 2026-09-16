@@ -6,7 +6,7 @@ step-classifier as option definitions. Refining understanding is a FILE edit;
 the code keeps only the arbitration mechanism.
 
 Priority for a step's options (assembled by the engine):
-    faults.yaml step `answers:`  (most specific, per step)
+    a fault pack step `answers:`  (most specific, per step)
   → detectors.yaml               (this file — universal per detector type)
 
 The schema checks the file covers every detector the code implements.

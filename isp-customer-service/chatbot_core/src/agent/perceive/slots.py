@@ -64,7 +64,7 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     # even if address extraction fails. A revisable hypothesis: a clearer later
     # statement overrides (docs/pokalbio_variklis.md §12.2).
     try:
-        from ..faults import BOUNDARY_POLICIES, problem_policy
+        from ..intents import BOUNDARY_POLICIES, problem_policy
         from .nlu import classify_problem, extract_symptoms
 
         problem = classify_problem(text)

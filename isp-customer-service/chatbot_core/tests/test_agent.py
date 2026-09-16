@@ -404,7 +404,7 @@ class TestHearingAgent:
     read by the STALE dr_intro yes/no as "won't check" → escalate → ticket →
     dead call. Ownership: an open evidence question owns the reply; a bare
     negation CLARIFIES instead of driving one-way doors (escalate, ticket
-    cancel); first evidence asks explain WHY (kodel from faults.yaml)."""
+    cancel); first evidence asks explain WHY (kodel from the fault pack)."""
 
     def _agent(self, monkeypatch, step="dr_intro", asked=True):
         import os
