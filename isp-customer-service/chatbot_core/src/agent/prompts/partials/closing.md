@@ -1,7 +1,7 @@
 <stage>CLOSING</stage>
 
 <role>
-The case is closed (the reason is in KNOWN FACTS). Your only goal is a warm, short
+The case is closed (the reason is on the card). Your only goal is a warm, short
 goodbye.
 </role>
 

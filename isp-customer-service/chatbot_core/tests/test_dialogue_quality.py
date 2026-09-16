@@ -96,7 +96,7 @@ class TestW1LivingDialogue:
 
     def test_opening_anamnesis_skips_the_question(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -111,8 +111,8 @@ class TestW1LivingDialogue:
         assert reply is None
         assert agent.state.intake.anamnesis_raw and agent.state.intake.anamnesis_when
         assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "KLIENTAS JAU PASAKĖ" in block and "NEKLAUSK" in block
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "THE CALLER ALREADY SAID" in block and "do NOT ask when it broke" in block
 
     def test_opening_without_when_goes_to_address(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
@@ -212,7 +212,7 @@ class TestUnheardQuestion:
         return agent
 
     def test_unheard_question_rolls_the_ask_back(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._agent()
         agent.state.dialog.last_question = "Ar dega bent viena lemputė?"
@@ -230,9 +230,9 @@ class TestUnheardQuestion:
         assert agent.state.resolution.procedure["presented"]["dr_lights"] == 0
         assert agent.state.voice.unheard_question == "Ar dega bent viena lemputė?"
         assert agent.state.voice.undelivered_tail is None  # superseded by the strong note
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "KLAUSIMAS NEIŠĖJO" in block and "lemputė" in block
-        assert "KLAUSIMAS NEIŠĖJO" not in (state_facts_block(agent.state, agent.runtime) or "")
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "YOUR QUESTION NEVER WENT OUT" in block and "lemputė" in block
+        assert "KLAUSIMAS NEIŠĖJO" not in (context_card(agent.state, agent.runtime) or "")
 
     def test_heard_question_keeps_the_ask(self, db_connection):
         agent = self._agent()
@@ -265,7 +265,7 @@ class TestW2QuietAnalyst:
 
     def test_notes_parsed_filtered_and_consumed_once(self, db_connection, monkeypatch):
         import src.services.llm.client as llm
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         monkeypatch.setenv("ANALYST", "on")
         monkeypatch.setattr(
@@ -287,9 +287,9 @@ class TestW2QuietAnalyst:
             "faktas priestarauja tam, ka klientas kartoja",
         ]
         agent.state.voice.analyst_notes = notes  # the session hands them to the next turn
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "TYLIOJO ANALITIKO" in block and "paprasykite" not in block
-        assert "TYLIOJO ANALITIKO" not in (state_facts_block(agent.state, agent.runtime) or "")
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "ANALYST NOTES" in block and "paprasykite" not in block
+        assert "TYLIOJO ANALITIKO" not in (context_card(agent.state, agent.runtime) or "")
 
     def test_off_switch_and_ok_reply(self, db_connection, monkeypatch):
         import src.services.llm.client as llm
@@ -320,16 +320,14 @@ class TestTurnGrammar:
         return agent
 
     def test_fact_meaning_note_is_one_shot(self, db_connection):
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.evidence import _note_fact_meaning
+        from agent.speak.context_card import context_card
 
         agent = self._agent()
         _note_fact_meaning(agent.state, agent.runtime, "fail_scope", "all")
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "TAI REIŠKIA" in block and "router itself has most likely hung" in block
-        assert "TAI REIŠKIA" not in (
-            state_facts_block(agent.state, agent.runtime) or ""
-        )  # one-shot
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "THIS MEANS" in block and "router itself has most likely hung" in block
+        assert "TAI REIŠKIA" not in (context_card(agent.state, agent.runtime) or "")  # one-shot
 
     def test_fact_meaning_silent_without_declaration(self, db_connection):
         from agent.perceive.evidence import _note_fact_meaning
@@ -341,25 +339,25 @@ class TestTurnGrammar:
         assert agent.state.diagnosis.fact_meaning is None
 
     def test_mires_lights_meaning_declared(self, db_connection):
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.evidence import _note_fact_meaning
+        from agent.speak.context_card import context_card
 
         agent = self._agent(verdict="no_mac_observed")
         _note_fact_meaning(agent.state, agent.runtime, "lights", "on")
-        assert "the line does not see it" in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "the line does not see it" in (context_card(agent.state, agent.runtime) or "")
 
     def test_name_acceptance_is_one_shot(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._agent()
         agent.state.identity.caller_name = "Tomas"
         agent.state.identity.caller_name_heard = True
-        block = state_facts_block(agent.state, agent.runtime) or ""
+        block = context_card(agent.state, agent.runtime) or ""
         assert "Malonu, Tomas" in block
-        assert "Malonu" not in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "Malonu" not in (context_card(agent.state, agent.runtime) or "")
 
     def test_address_offer_directive_reacts_first(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -370,7 +368,7 @@ class TestTurnGrammar:
             "adresas": "Tilžės g. 60, butas 7",
             "fallback": "Ar skambinate dėl Tilžės g. 60, butas 7?",
         }
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "išgirdai" in block  # reakcija pirmiau
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "heard what the caller said" in block  # reakcija pirmiau
         assert "Suprantu — dingo internetas" in block  # problemos aidas
         assert "„Ar skambinate dėl Tilžės g. 60, butas 7?“" in block  # šerdis

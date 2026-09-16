@@ -28,7 +28,7 @@ def _turn(agent, text=None):
     from agent.perceive import perceive
 
     perceive(agent.state, agent.runtime, text)
-    return narrate(agent.state, agent.runtime, text, None, None, "diagnosis", exits=True)
+    return narrate(agent.state, agent.runtime, text, "diagnosis", "diagnosis", exits=True)
 
 
 def _stream_of(message):
@@ -187,17 +187,17 @@ class TestProgressReset:
 
 class TestStuckFacts:
     def test_nudge_at_one(self):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         a = _agent()
         a.state.dialog.stuck_count = 1
-        block = state_facts_block(a.state, a.runtime)
+        block = context_card(a.state, a.runtime)
         assert block is not None and "neišgirdau" in block.lower()
 
     def test_escalation_at_two(self):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         a = _agent()
         a.state.dialog.stuck_count = 2
-        block = state_facts_block(a.state, a.runtime)
+        block = context_card(a.state, a.runtime)
         assert block is not None and "abonento kodą" in block

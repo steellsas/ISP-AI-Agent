@@ -18,24 +18,16 @@ from typing import Any
 
 from langgraph.config import get_stream_writer
 
-from ..prompts import load_node_prompt
 from .state import GraphState
-from .tool_scopes import CLOSING_TOOLS, TICKET_TOOLS  # noqa: F401  (re-exported)
 
 # Per-stage prompts.
-ADDRESS_NODE_PROMPT = load_node_prompt("stages/identification")
-DIAGNOSIS_NODE_PROMPT = load_node_prompt("stages/diagnosis")
-CLOSING_NODE_PROMPT = load_node_prompt("stages/closing")
-TICKET_NODE_PROMPT = load_node_prompt("stages/ticket")
-SIDE_TOPIC_PROMPT = load_node_prompt("stages/side_topic")
 
 
 def narrate(
-    state: Any,
-    rt: Any,
+    state,
+    rt,
     user_input: str | None,
-    allowed_tools,
-    node_prompt: str | None,
+    owner: str,
     node: str,
     exits: bool = False,
 ) -> str:
@@ -56,7 +48,7 @@ def narrate(
             writer(words)
             return words
     parts: list[str] = []
-    for token in agent.llm_reply(allowed_tools, node_prompt):
+    for token in agent.llm_reply(owner):
         writer(token)
         parts.append(token)
     return "".join(parts)

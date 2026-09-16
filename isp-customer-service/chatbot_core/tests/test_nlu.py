@@ -198,7 +198,7 @@ class TestPrefillWiring:
         ):
             text = "neveikia internetas Tilžės 60 butas 7"
             perceive(agent.state, agent.runtime, text)
-            list(agent.run_turn_scoped_stream(text, None, None))
+            list(agent.run_turn_scoped_stream(text, "intake"))
 
         p = agent.state.identity.profile
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
@@ -211,8 +211,8 @@ class TestPrefillWiring:
         """A symptom turn populates state.symptoms and the facts block (A3)."""
         from unittest.mock import patch
 
-        from agent.narrator_flow import state_facts_block
         from agent.perceive import perceive
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -226,9 +226,9 @@ class TestPrefillWiring:
         ):
             text = "internetas neveikia, lemputės nedega, jungiuosi per wifi"
             perceive(agent.state, agent.runtime, text)
-            list(agent.run_turn_scoped_stream(text, None, None))
+            list(agent.run_turn_scoped_stream(text, "intake"))
 
         assert agent.state.intake.symptoms["lights"] == "off"
         assert agent.state.intake.symptoms["connection"] == "wifi"
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert "SYMPTOMAI" in facts and "lights=off" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert "SYMPTOMS" in facts and "lights=off" in facts

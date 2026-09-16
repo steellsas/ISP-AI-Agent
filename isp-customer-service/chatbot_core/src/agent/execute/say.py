@@ -76,16 +76,8 @@ def _narrate_stage(state: Any, rt: Any, plan: Any, user_input: str | None) -> st
 def _narrate(state: Any, rt: Any, stage: str | None, user_input: str | None, planned: bool) -> str:
     from ..graph_v2 import runtime as gr
 
-    tools, prompt = {
-        "closing": (gr.CLOSING_TOOLS, gr.CLOSING_NODE_PROMPT),
-        "ticket": (gr.TICKET_TOOLS, gr.TICKET_NODE_PROMPT),
-        "intake": (frozenset(), gr.ADDRESS_NODE_PROMPT),
-        "diagnosis": (None, gr.DIAGNOSIS_NODE_PROMPT),
-        "side_topic": (frozenset(), gr.SIDE_TOPIC_PROMPT),
-    }[stage or "intake"]
-    return gr.narrate(
-        state, rt, user_input, tools, prompt, NODES[stage or "intake"], exits=not planned
-    )
+    owner = stage or "intake"
+    return gr.narrate(state, rt, user_input, owner, NODES[owner], exits=not planned)
 
 
 def _stream(text: str) -> None:

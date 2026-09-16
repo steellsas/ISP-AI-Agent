@@ -1,20 +1,21 @@
 """
 Prompt templates for the ISP Support Agent — composed from small Markdown pieces.
 
-Structure (dynamic per-stage prompting):
-    system.md            CORE, sent every turn (cached prefix)
-    partials/*.md        reusable pieces (identity, style, region, phases...)
-    stages/*.md          one per LangGraph node — pure composition via <<include>>
+Structure (the speaker's prompt, composed per owner):
+    speak/system.md      CORE, sent every turn (cached prefix)
+    speak/owners/*.md    one per plan owner — pure composition via <<include>>
+    partials/*.md        reusable pieces (identity, style, region, solving...)
+    sensors/*.md         the reading prompts (perception, classifier, solver...)
 
-A stage prompt is assembled from partials with `<<include: partials/style>>`
-markers, so a shared rule (e.g. "one question") lives in ONE place and every stage
+An owner prompt is assembled from partials with `<<include: partials/style>>`
+markers, so a shared rule (e.g. "one question") lives in ONE place and every owner
 that includes it stays in sync. Files are plain Markdown (raw text the model sees);
-only the small set of `{...}` placeholders in system.md is .format()-substituted.
+only the small set of `{...}` placeholders in speak/system.md is .format()-substituted.
 
 Usage:
-    from agent.prompts import load_system_prompt, load_node_prompt
-    sys = load_system_prompt(tools_description="...", caller_phone="+370...", language="lt")
-    addr = load_node_prompt("stages/identification")
+    from agent.prompts import load_node_prompt, load_speak_prompt
+    sys = load_speak_prompt(caller_phone="+370...", language="lt")
+    intake = load_node_prompt("speak/owners/intake")
 """
 
 import re
@@ -84,7 +85,7 @@ def _localize(text: str) -> str:
 
 
 def load_node_prompt(name: str) -> str:
-    """Load and compose a prompt (e.g. "stages/identification") for the active locale.
+    """Load and compose a prompt (e.g. "speak/owners/intake") for the active locale.
     Raises PromptError on a missing file, include or examples entry."""
     return _localize(_expand(_read(name))).strip()
 
@@ -96,15 +97,10 @@ def check_prompts() -> None:
         load_node_prompt(path.relative_to(PROMPTS_DIR).with_suffix("").as_posix())
 
 
-def load_system_prompt(
-    tools_description: str,
-    caller_phone: str,
-    language: str = "lt",
-) -> str:
-    """Load the CORE system prompt (composes its partials, then fills placeholders)."""
-    template = _localize(_expand(_read("system")))
+def load_speak_prompt(caller_phone: str, language: str = "lt") -> str:
+    """Load the speaker's CORE prompt (composes its partials, then fills placeholders)."""
+    template = _localize(_expand(_read("speak/system")))
     return template.format(
-        tools_description=tools_description,
         caller_phone=caller_phone,
         language_instruction=get_language_instruction(language),
         output_language=get_language_name(language),

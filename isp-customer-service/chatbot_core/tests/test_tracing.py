@@ -196,7 +196,7 @@ class TestReactAgentEmits:
 
     def test_preflight_phone_sets_unconfirmed_candidate(self, db_connection):
         from agent.execute.identification import preflight_phone
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         cap = _CaptureTracer()
         agent = self._agent(cap)  # caller +37060020105 -> CUST105
@@ -212,7 +212,7 @@ class TestReactAgentEmits:
         # only (cross-check / outage fast-path) and is NOT surfaced to the model.
         # The agent asks for the address rather than offering this one, so the
         # facts block must not leak a "PHONE CANDIDATE" to confirm.
-        facts = state_facts_block(agent.state, agent.runtime)
+        facts = context_card(agent.state, agent.runtime)
         assert facts is None or "PHONE CANDIDATE" not in facts
         assert any(e["type"] == "preflight" and e["found"] for e in cap.events)
 

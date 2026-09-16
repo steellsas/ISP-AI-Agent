@@ -216,13 +216,13 @@ class TestAgentWiring:
 
     def test_facts_block_and_solver_context_carry_ledger(self):
         from agent.decide.rules.diagnosis import build_solver_context
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.evidence import ingest_client_evidence
+        from agent.speak.context_card import context_card
 
         agent = _diagnosing_agent()
         ingest_client_evidence(agent.state, agent.runtime, "Nedega nė viena lemputė")
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert facts and "ĮRODYMŲ ŽURNALAS" in facts and "nedega" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert facts and "ESTABLISHED THIS CALL" in facts and "nedega" in facts
         ctx = build_solver_context(agent.state, agent.runtime, "tęsiam")
         assert "EVIDENCE LEDGER" in ctx
 

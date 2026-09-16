@@ -31,30 +31,17 @@ def _fake_tool_call(call_id, name, arguments):
     )
 
 
-class TestAgentSystemPrompt:
-    """Tests for agent system prompt."""
+class TestSpeakPrompt:
+    """The speaker's prompt: persona and the caller's number, and NO tools (M5)."""
 
-    def test_system_prompt_contains_tools(self):
-        """System prompt should include tool descriptions."""
-        from tests.calls import make_agent
+    def test_prompt_has_no_tools_and_carries_the_phone(self):
+        from agent.speak.node import speak_prompt
 
-        agent = make_agent("+37060012345")
+        prompt = speak_prompt("intake", "+37060012345", "lt")
 
-        assert "find_customer" in agent.system_prompt
-        assert "search_knowledge" in agent.system_prompt
-        assert "check_network_status" in agent.system_prompt
-
-
-class TestAgentSystemPromptPhone:
-    """Tests for agent state management."""
-
-    def test_agent_phone_in_system_prompt(self):
-        """Caller phone should be in system prompt."""
-        from tests.calls import make_agent
-
-        agent = make_agent("+37060012345")
-
-        assert "+37060012345" in agent.system_prompt
+        assert "+37060012345" in prompt
+        assert "You have NO tools" in prompt
+        assert "find_customer" not in prompt
 
 
 class TestAgentConfig:
@@ -72,36 +59,31 @@ class TestAgentConfig:
 
 
 class TestAgentBuildMessages:
-    """Tests for message building."""
+    """What the speaker is sent: the owner prefix, the history, the card."""
 
-    def test_build_messages_includes_system(self):
-        """Built messages should include system prompt."""
-        from agent.narrator_flow import build_messages
+    def test_build_messages_leads_with_the_owner_prefix(self):
+        from agent.speak.node import build_messages, speak_prompt
 
         from tests.calls import make_agent
 
         agent = make_agent("+37060012345")
 
-        messages = build_messages(agent.state, agent.runtime)
+        messages = build_messages(agent.state, agent.runtime, "intake")
 
-        assert len(messages) >= 1
         assert messages[0]["role"] == "system"
-        assert "find_customer" in messages[0]["content"]
+        assert messages[0]["content"] == speak_prompt("intake", "+37060012345", "lt")
 
-    def test_build_messages_with_user_input(self):
-        """Should add user input to messages."""
-        from agent.narrator_flow import build_messages
+    def test_build_messages_carries_the_history(self):
+        from agent.speak.node import build_messages
 
         from tests.calls import make_agent
 
         agent = make_agent("+37060012345")
+        agent.state.messages.append({"role": "user", "content": "Labas"})
 
-        messages = build_messages(agent.state, agent.runtime, user_input="Labas")
+        messages = build_messages(agent.state, agent.runtime, "intake")
 
-        # Should have system + user message
-        assert len(messages) >= 2
-        assert messages[-1]["role"] == "user"
-        assert "Labas" in messages[-1]["content"]
+        assert any(m["role"] == "user" and "Labas" in m["content"] for m in messages)
 
 
 class TestHistoryWindow:
@@ -109,7 +91,7 @@ class TestHistoryWindow:
 
     def test_short_history_not_pruned(self):
         """History at or below the window is returned unchanged."""
-        from agent.narrator_flow import prune_history
+        from agent.speak.history import prune_history
 
         from tests.calls import make_agent
 
@@ -123,7 +105,7 @@ class TestHistoryWindow:
 
     def test_window_zero_disables_pruning(self):
         """A window of 0 sends the full history."""
-        from agent.narrator_flow import prune_history
+        from agent.speak.history import prune_history
 
         from tests.calls import make_agent
 
@@ -137,7 +119,7 @@ class TestHistoryWindow:
 
     def test_long_history_pruned_to_window(self):
         """A long, tool-free history is trimmed to exactly the window size."""
-        from agent.narrator_flow import prune_history
+        from agent.speak.history import prune_history
 
         from tests.calls import make_agent
 
@@ -159,7 +141,7 @@ class TestHistoryWindow:
         include the assistant(tool_calls) that owns it — otherwise the chat API
         rejects the orphaned tool message.
         """
-        from agent.narrator_flow import prune_history
+        from agent.speak.history import prune_history
 
         from tests.calls import make_agent
 
@@ -187,7 +169,7 @@ class TestHistoryWindow:
     def test_build_messages_injects_known_facts(self):
         """Resolved GraphState facts ride in a SEPARATE trailing system message,
         not concatenated into the (cacheable) system prompt."""
-        from agent.narrator_flow import build_messages
+        from agent.speak.node import build_messages
 
         from tests.calls import make_agent
 
@@ -198,11 +180,11 @@ class TestHistoryWindow:
             address="Vilniaus g. 1, Vilnius",
         )
 
-        messages = build_messages(agent.state, agent.runtime, user_input="Labas")
+        messages = build_messages(agent.state, agent.runtime, "intake")
 
         # The system prefix stays byte-stable (cache-friendly) — no facts in it.
         assert messages[0]["role"] == "system"
-        assert messages[0]["content"] == agent.system_prompt
+        assert messages[0]["role"] == "system"
         assert "C123" not in messages[0]["content"]
 
         # The facts live in a later system message, before the trailing user turn.
@@ -211,28 +193,29 @@ class TestHistoryWindow:
         facts = fact_msgs[0]["content"]
         assert "Jonas Jonaitis" in facts
         assert "Vilniaus g. 1, Vilnius" in facts
-        assert messages[-1]["role"] == "user"  # user input stays last
+        assert messages[-1] is fact_msgs[0]  # the card trails the history
 
     def test_state_facts_block_only_guard_when_empty(self):
         """Nothing resolved yet -> the only addendum is the pre-problem guard
         (2026-08-06: it stops the LLM offering the address before a problem is
         stated); the system prompt itself stays unchanged."""
-        from agent.narrator_flow import build_messages, state_facts_block
+        from agent.speak.context_card import context_card
+        from agent.speak.node import build_messages
 
         from tests.calls import make_agent
 
         agent = make_agent("+37060012345")
 
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert facts is not None and "PROBLEMA DAR NEPASAKYTA" in facts
-        messages = build_messages(agent.state, agent.runtime)
-        assert messages[0]["content"] == agent.system_prompt
+        facts = context_card(agent.state, agent.runtime)
+        assert facts is not None and "THE PROBLEM IS NOT STATED YET" in facts
+        messages = build_messages(agent.state, agent.runtime, "intake")
+        assert messages[0]["role"] == "system"
 
     def test_facts_block_surfaces_heard_address(self):
         """NLU-prefilled slots are surfaced so the model passes them to
         resolve_address instead of re-extracting garbled text (R5)."""
-        from agent.narrator_flow import state_facts_block
         from agent.slots import SlotStatus
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -240,15 +223,15 @@ class TestHistoryWindow:
         agent.state.identity.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
         agent.state.identity.profile.house.propose("8", 0.8, SlotStatus.HEARD)
 
-        facts = state_facts_block(agent.state, agent.runtime)
+        facts = context_card(agent.state, agent.runtime)
         assert "HEARD ADDRESS" in facts
         assert "street=Aušros g." in facts
         assert "house=8" in facts
 
     def test_heard_address_hidden_once_identified(self):
         """Once identified the heard-address hint is dropped (already known)."""
-        from agent.narrator_flow import state_facts_block
         from agent.slots import SlotStatus
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -256,14 +239,15 @@ class TestHistoryWindow:
         agent.state.identity.profile.street.propose("Aušros g.", 0.8, SlotStatus.HEARD)
         agent.state.identity.customer_id = "CUST110"
 
-        facts = state_facts_block(agent.state, agent.runtime)
+        facts = context_card(agent.state, agent.runtime)
         assert "HEARD ADDRESS" not in (facts or "")
 
     def test_diagnosis_captured_and_surfaced(self, db_connection):
         """diagnose_connection findings become durable case state (Pillar A1)."""
         import json
 
-        from agent.narrator_flow import state_facts_block, update_state_from_observation
+        from agent.narrator_flow import update_state_from_observation
+        from agent.speak.context_card import context_card
         from agent.tools import diagnose_connection
 
         from tests.calls import make_agent
@@ -275,28 +259,24 @@ class TestHistoryWindow:
         assert agent.state.diagnosis.verdicts["network"]["group"] == "B6"
         assert agent.state.diagnosis.verdicts["network"]["reason"] == "foreign_mac"
 
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert "DIAGNOSTIKA [network] (B6" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert "TELEMETRY [network] (B6" in facts
         assert "kitas įrenginys (MAC)" in facts  # the LT gloss
 
 
 class TestPromptLoader:
     """Tests for prompt loading."""
 
-    def test_load_system_prompt(self):
-        """Should load and format system prompt."""
-        from agent.prompts import load_system_prompt
+    def test_load_speak_prompt(self):
+        """The speaker's core prompt composes and localises."""
+        from agent.prompts import load_speak_prompt
 
-        prompt = load_system_prompt(
-            tools_description="- test_tool: Test description",
-            caller_phone="+37060012345",
-            language="lt",  # Specify Lithuanian
-        )
+        prompt = load_speak_prompt(caller_phone="+37060012345", language="lt")
 
         assert isinstance(prompt, str)
         assert "+37060012345" in prompt
-        assert "test_tool" in prompt
         assert "Lithuanian" in prompt
+        assert "You have NO tools" in prompt
 
 
 class TestDeterministicInformClose:
@@ -918,7 +898,7 @@ class TestAddressGuards:
 
     def test_pre_turn_guard_vetoes_commit(self, db_connection):
         from agent.decide.rules.head import turn_head
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -928,7 +908,7 @@ class TestAddressGuards:
         )
         turn_head(agent.state, agent.runtime, "Taip, nebija")
         assert agent.state.turn.address_confirm_note is not None  # veto: do not resolve the offer
-        facts = state_facts_block(agent.state, agent.runtime)
+        facts = context_card(agent.state, agent.runtime)
         assert facts and "NEPATVIRTINTAS" in facts
 
     def test_correction_asks_confirmation_then_reopens(self, db_connection):
@@ -1013,7 +993,7 @@ class TestIdentificationLadder:
 
     def test_caller_intro_captured_and_result_released(self, db_connection):
         from agent.decide.rules.head import turn_head
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -1027,8 +1007,8 @@ class TestIdentificationLadder:
         assert agent.state.identity.caller_name == "Ona"  # the NAME, not the sentence
         assert agent.state.identity.caller_relation == "family"
         # The RESULT directive now renders (deferred news released this turn).
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert facts and "REZULTATO PRISTATYMAS" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert facts and "DELIVER THE RESULT" in facts
 
     def test_relation_keywords(self):
         from agent.perceive.caller import detect_caller_relation
@@ -1287,26 +1267,26 @@ class TestSideTopicNode:
         assert agent.state.resolution.procedure["step"] == "dr_lights"  # frozen, not advanced
 
     def test_side_facts_carry_faq_and_anchor(self, db_connection, monkeypatch):
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.side_topic import classify_side_topic
+        from agent.speak.context_card import context_card
 
         agent = self._diagnosing(monkeypatch)
         agent.state.dialog.last_heard = "O kiek man tai kainuos?"
         classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?")
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert "NUKRYPIMAS" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert "SIDE TOPIC" in facts
         assert "nieko nekainuoja" in facts  # faq.yaml hit rides in
         assert "dega bent viena lemputė" in facts  # the return anchor
 
     def test_unknown_topic_gets_not_my_area_directive(self, db_connection, monkeypatch):
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.side_topic import classify_side_topic
+        from agent.speak.context_card import context_card
 
         agent = self._diagnosing(monkeypatch)
         agent.state.dialog.last_heard = "O koks rytoj oras Šiauliuose?"
         classify_side_topic(agent.state, agent.runtime, "O koks rytoj oras Šiauliuose?")
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert "ATSAKYMO NĖRA" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert "NO KNOWN ANSWER" in facts
 
     def test_third_deviation_is_scripted_frame(self, db_connection, monkeypatch):
         from agent.contract.locale import phrase
@@ -1608,14 +1588,14 @@ class TestSmallTalkBeforeProblem:
         assert reply is not None and "adres" in reply.lower()
 
     def test_facts_forbid_address_offer_before_problem(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._fresh()
-        facts = state_facts_block(agent.state, agent.runtime) or ""
-        assert "PROBLEMA DAR NEPASAKYTA" in facts
+        facts = context_card(agent.state, agent.runtime) or ""
+        assert "THE PROBLEM IS NOT STATED YET" in facts
         agent.state.intake.problem_type = "internet_down"
-        facts2 = state_facts_block(agent.state, agent.runtime) or ""
-        assert "PROBLEMA DAR NEPASAKYTA" not in facts2
+        facts2 = context_card(agent.state, agent.runtime) or ""
+        assert "THE PROBLEM IS NOT STATED YET" not in facts2
 
 
 class TestScriptedWrapUp:
@@ -1975,7 +1955,7 @@ class TestTicketDialogue:
         from agent.decide.rules.head import turn_head
         from agent.decide.rules.reply import scripted_words
         from agent.execute.ticket import begin_ticket_dialogue
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         # "Bet kada galima skambinti?" is the caller ASKING — live it was captured
         # verbatim as the HOURS answer and landed on the ticket. It must divert to
@@ -1992,8 +1972,8 @@ class TestTicketDialogue:
         assert agent.state.ticket.stage == "hours"  # held, not captured
         assert agent.state.ticket.contact_hours is None
         assert scripted_words(agent.state, agent.runtime, "Bet kada galima skambinti?") is None
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert facts and "TIKETO DIALOGAS" in facts and "kada patogiausia" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert facts and "TICKET DIALOGUE" in facts and "kada patogiausia" in facts
         # A plain answer next turn still lands.
         agent.state.turn.ticket_offscript_question = False
         turn_head(agent.state, agent.runtime, "bet kada")
@@ -2272,38 +2252,29 @@ class TestTicketDialogue:
 
 
 class TestPromptPrefixHygiene:
-    """Prompt hygiene step 1 (2026-08-26): the node prompt joins the LEADING
-    system message (one byte-stable, cacheable prefix per node); the dynamic
-    facts block stays a trailing system message; directive turns keep the
-    lean persona prompt with NO node prompt."""
+    """The speaker's prefix (core prompt + owner snippet) is byte-stable per owner, so
+    the provider keeps it cached; the card, which changes every turn, trails it."""
 
-    def test_node_prompt_folds_into_the_leading_system(self, db_connection):
-        from agent.narrator_flow import build_messages
+    def test_owner_prompt_folds_into_the_leading_system(self, db_connection):
+        from agent.speak.node import build_messages
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
-        messages = build_messages(
-            agent.state, agent.runtime, user_input="Labas", node_prompt="NODE-RULES-MARKER"
-        )
+        agent.state.messages.append({"role": "user", "content": "Labas"})
+        messages = build_messages(agent.state, agent.runtime, "ticket")
         assert messages[0]["role"] == "system"
-        assert "NODE-RULES-MARKER" in messages[0]["content"]
-        # no trailing system message carries the node prompt any more
-        assert all("NODE-RULES-MARKER" not in m.get("content", "") for m in messages[1:])
-        # and the prefix is byte-stable across turns
-        again = build_messages(
-            agent.state, agent.runtime, user_input="Kitas", node_prompt="NODE-RULES-MARKER"
-        )
+        assert "FAULT REGISTRATION" in messages[0]["content"]
+
+        agent.state.messages.append({"role": "user", "content": "Kitas"})
+        again = build_messages(agent.state, agent.runtime, "ticket")
         assert again[0]["content"] == messages[0]["content"]
 
-    def test_directive_turn_keeps_lean_prompt_without_node_rules(self, db_connection):
-        from agent.narrator_flow import build_messages
+    def test_an_owner_without_a_snippet_speaks_with_the_core_prompt(self, db_connection):
+        from agent.speak.node import build_messages, speak_prompt
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
-        agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
-        messages = build_messages(
-            agent.state, agent.runtime, user_input="Labas", node_prompt="NODE-RULES-MARKER"
-        )
-        assert all("NODE-RULES-MARKER" not in m.get("content", "") for m in messages)
+        messages = build_messages(agent.state, agent.runtime, "identification")
+        assert messages[0]["content"] == speak_prompt("identification", "unknown", "lt")

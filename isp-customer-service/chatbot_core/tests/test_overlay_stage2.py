@@ -22,15 +22,15 @@ def _agent():
 
 class TestApplyOverlay:
     def test_pending_answer_lands_from_overlay(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = _agent()
         agent.state.diagnosis.pending_evidence_key = "lights"
         apply_overlay(agent.state, agent.runtime, ["ne, nedega nė viena"])
         assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "off"
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "ĮSITERPĖ" in block and "nedega" in block
-        assert "ĮSITERPĖ" not in (state_facts_block(agent.state, agent.runtime) or "")  # one-shot
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "SPOKEN OVER YOU" in block and "nedega" in block
+        assert "SPOKEN OVER YOU" not in (context_card(agent.state, agent.runtime) or "")  # one-shot
 
     def test_address_slots_prefill_from_overlay(self, db_connection):
         from tests.calls import make_agent

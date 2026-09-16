@@ -190,15 +190,15 @@ class TestRound2Fixes:
         assert anchor_text(agent.state, agent.runtime) == "Ar patogu dabar patikrinti kartu?"
 
     def test_side_facts_carry_deterministic_topic(self, db_connection, monkeypatch):
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.side_topic import classify_side_topic
+        from agent.speak.context_card import context_card
 
         agent = _diagnosing_agent(monkeypatch)
         agent.state.dialog.last_heard = "O kiek man tai kainuos?"
         agent.state.turn.understanding = _canned(turn_type="question", understood="klausia kainos")
         classify_side_topic(agent.state, agent.runtime, "O kiek man tai kainuos?")
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert "Kliento tema: kaina" in facts  # from the FAQ hit, not a template
+        facts = context_card(agent.state, agent.runtime)
+        assert "The caller's topic: kaina" in facts  # from the FAQ hit, not a template
 
 
 class TestFindingsAnnounce:
@@ -586,8 +586,8 @@ class TestTicketUnderstanding:
 
     def test_stale_supratau_cleared_on_ticket_turns(self, db_connection, monkeypatch):
         from agent.graph_v2.state import GraphState
-        from agent.narrator_flow import state_facts_block
         from agent.perceive import perceive
+        from agent.speak.context_card import context_card
         from langgraph.runtime import Runtime
 
         from tests.calls import run_turn_nodes
@@ -605,7 +605,7 @@ class TestTicketUnderstanding:
         state = GraphState(**upd)
         assert state.turn.understanding is None
         assert "Užregistravau" in state.turn.reply  # dialogue completed
-        facts = state_facts_block(state, agent.runtime) or ""
+        facts = context_card(state, agent.runtime) or ""
         assert "Routeris sugedęs" not in facts
 
 
@@ -641,9 +641,9 @@ class TestUnderstandWiring:
     def test_tipas_nesupratimas_is_not_a_deviation_and_directs_reexplain(
         self, db_connection, monkeypatch
     ):
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.evidence import ingest_client_evidence
         from agent.perceive.side_topic import classify_side_topic
+        from agent.speak.context_card import context_card
 
         agent = _diagnosing_agent(monkeypatch)
         canned = _canned(
@@ -661,20 +661,20 @@ class TestUnderstandWiring:
             )
             is False
         )
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert "KLIENTAS NESUPRATO" in facts and "kuri dėžutė" in facts
-        assert "PATVIRTINK" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert "NOT UNDERSTOOD BY THE CALLER" in facts and "kuri dėžutė" in facts
+        assert "ACKNOWLEDGE" in facts
 
     def test_acknowledgement_directive_carries_supratau(self, db_connection, monkeypatch):
-        from agent.narrator_flow import state_facts_block
         from agent.perceive.evidence import ingest_client_evidence
+        from agent.speak.context_card import context_card
 
         agent = _diagnosing_agent(monkeypatch)
         canned = _canned(facts={"lights": "off"}, understood="lemputės nedega")
         with patch("agent.perceive.understand.understand", return_value=canned):
             ingest_client_evidence(agent.state, agent.runtime, "ne daganiai viena")
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert "PATVIRTINK" in facts and "lemputės nedega" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert "ACKNOWLEDGE" in facts and "lemputės nedega" in facts
 
     def test_contradiction_from_pass_flows_into_conflict_machinery(
         self, db_connection, monkeypatch

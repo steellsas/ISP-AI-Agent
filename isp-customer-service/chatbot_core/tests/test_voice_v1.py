@@ -577,7 +577,7 @@ class TestDeliveryLedger:
         assert pipeline.last_turn_aligned is False
 
     def test_apply_delivery_truncates_history_and_surfaces_tail(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -587,11 +587,11 @@ class TestDeliveryLedger:
         apply_delivery(agent.state, agent.runtime, ["Pirmas.", "Antras.", "Trečias."], 1)
         assert agent.state.messages[-1]["content"] == "Pirmas. —"
         assert agent.state.voice.undelivered_tail == "Antras. Trečias."
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "KLIENTAS NEGIRD" in block and "Antras." in block
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "NOT HEARD" in block and "Antras." in block
         # consumed once — the note must not nag every later turn
         assert agent.state.voice.undelivered_tail is None
-        assert "KLIENTAS NEGIRD" not in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "NOT HEARD" not in (context_card(agent.state, agent.runtime) or "")
 
     def test_apply_delivery_nothing_heard(self, db_connection):
         from tests.calls import make_agent

@@ -331,7 +331,7 @@ def llm_completion(
 
 def stream_tool_completion(
     messages: list[dict],
-    tools: list[dict],
+    tools: list[dict] | None,
     tool_choice: str = "auto",
     model: str = None,
     temperature: float = None,
@@ -361,7 +361,8 @@ def stream_tool_completion(
         "temperature": temperature,
         "max_tokens": max_tokens,
         "tools": tools,
-        "tool_choice": tool_choice,
+        # A speaking call has no tools; providers reject tool_choice without them.
+        "tool_choice": tool_choice if tools else None,
         "stream": True,
         "stream_options": {"include_usage": True},
     }

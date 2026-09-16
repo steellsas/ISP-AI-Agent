@@ -1,21 +1,16 @@
 """
-Agent - ISP Customer Support
+The narrator — one speaking turn of the call.
 
-Drives the support conversation with native LLM function/tool calling.
-
-Loop (run_turn_scoped_stream, called by the LangGraph v2 nodes):
-1. The model receives the conversation + tool schemas (tool_choice="auto").
-2. It either calls one or more tools (structured tool_calls) or replies in text.
-3. Tool results are fed back as role:"tool" messages and the model continues.
-4. When the model replies with text (no tool call), that is the customer answer,
-   streamed token by token (see services.llm.stream_tool_completion).
+`begin_turn` does the turn bookkeeping (barge-in flag, heard text, history) and
+`llm_reply` streams the words: the speaker sees the context card and the owner's prompt,
+has NO tools, and says what the plan chose (D-02). M5 moves what is left of this class
+into agent/speak/.
 
 Callers use agent.session.AgentSession; the engine is internal.
 """
 
 import logging
 from contextlib import suppress
-from functools import lru_cache
 
 # LLM client
 from src.services.llm.client import (
@@ -27,38 +22,10 @@ from .contract.locale import phrase
 from .dialog_utils import is_question, progress_key, similar
 from .faults import role_of, verdict_flag
 from .graph_v2.state import GraphState
-from .prompts import load_system_prompt
 from .runtime import AgentRuntime
 from .trace import emit_case, tools_called_this_session, trace_note
 
-# Tools
-try:
-    from .tools import REAL_TOOLS as TOOLS
-    from .tools import get_tools_description, get_tools_schema
-
-    USING_REAL_TOOLS = True
-except ImportError:
-    USING_REAL_TOOLS = False
-    TOOLS = []
-
-    def get_tools_description():
-        return "No tools available"
-
-    def get_tools_schema():
-        return []
-
-
 logger = logging.getLogger(__name__)
-
-
-@lru_cache(maxsize=16)
-def system_prompt_for(caller_phone: str, language: str) -> str:
-    """The byte-stable system prompt for a call (cacheable prefix)."""
-    return load_system_prompt(
-        tools_description=get_tools_description(),
-        caller_phone=caller_phone,
-        language=language,
-    )
 
 
 class ReactAgent:
@@ -81,9 +48,6 @@ class ReactAgent:
         self.session_id = runtime.session_id
         self.llm_stats = runtime.llm_stats
         self.tools = runtime.tools
-        # OpenAI function-calling schemas passed to the LLM on every step.
-        self.tools_schema = get_tools_schema()
-        self.system_prompt = system_prompt_for(state.identity.caller_phone, runtime.config.language)
 
     def get_stats(self) -> dict:
         """Get accumulated LLM statistics."""
@@ -287,17 +251,11 @@ class ReactAgent:
             cached=s.get("cached", False),
         )
 
-    def run_turn_scoped_stream(
-        self,
-        user_input: str | None,
-        allowed_tools: frozenset[str] | None,
-        node_prompt: str | None,
-    ):
-        """Run ONE scoped LLM turn (Pillar C3): a generator that YIELDS the FINAL
-        reply's text tokens as the LLM produces them. Tool rounds run silently (no
-        yields). The decisions — including the scripted exits — happened before."""
+    def run_turn_scoped_stream(self, user_input: str | None, owner: str = "intake"):
+        """One speaking turn: a generator that YIELDS the reply's text tokens as the LLM
+        produces them. The decisions — including the scripted exits — happened before."""
         self.begin_turn(user_input)
-        yield from self.llm_reply(allowed_tools, node_prompt)
+        yield from self.llm_reply(owner)
 
     def begin_turn(self, user_input: str | None) -> None:
         """The narrator's turn bookkeeping before any words: the barge-in flag, the
@@ -327,25 +285,22 @@ class ReactAgent:
             self.tracer.emit("user_turn", text=user_input)
             self.state.messages.append({"role": "user", "content": user_input})
 
-    def llm_reply(self, allowed_tools: frozenset[str] | None, node_prompt: str | None):
-        """The LLM tool loop streaming the final reply token by token."""
+    def llm_reply(self, owner: str):
+        """Stream the speaker's reply token by token. No tools: the engine already ran
+        every check and action, and the plan says what this reply must achieve."""
         from .execute.ticket import registration_claim_guard
-        from .executor_flow import execute_tool_calls
-        from .narrator_flow import build_messages, scoped_tools_schema
+        from .speak.node import build_messages
         from .speculation import consume_injected_reply
 
-        max_calls = self.config.max_tool_calls_per_response
-        tool_rounds = 0
-        while tool_rounds < max_calls:
+        for _attempt in range(self.config.max_tool_calls_per_response):
             self.state.dialog.turn_count += 1
             if self.state.dialog.turn_count > self.state.dialog.max_turns:
                 yield self.config.max_turns_message
                 return
 
-            # S1 speculation: a precomputed branch reply for the ACTIVE
-            # directive skips the LLM entirely — the wording was generated
-            # ahead, while the caller was still answering. Consumed only when
-            # the drive actually produced the predicted directive.
+            # S1 speculation: a precomputed branch reply for the ACTIVE directive skips
+            # the LLM entirely — the wording was generated ahead, while the caller was
+            # still answering. Consumed only when the plan produced the predicted goal.
             injected = consume_injected_reply(self.state, self.runtime)
             if injected is not None:
                 yield injected
@@ -353,18 +308,17 @@ class ReactAgent:
                 self._finalize_reply(injected)
                 return
 
-            # The user message is already on the history (appended up front, so
-            # scripted turns record it too); the prompt builds from history.
-            messages = build_messages(self.state, self.runtime, None, node_prompt, allowed_tools)
+            # The user message is already on the history (appended up front, so scripted
+            # turns record it too); the prompt builds from history.
+            messages = build_messages(self.state, self.runtime, owner)
 
             try:
-                # Manual consumption instead of `yield from`: the cancel flag is
-                # checked BETWEEN TOKENS — closing the inner generator closes the
-                # LLM HTTP stream, so the generation itself stops (PR3).
+                # Manual consumption instead of `yield from`: the cancel flag is checked
+                # BETWEEN TOKENS — closing the inner generator closes the LLM HTTP
+                # stream, so the generation itself stops (PR3).
                 inner = stream_tool_completion(
                     messages=messages,
-                    tools=scoped_tools_schema(self.state, self.runtime, allowed_tools),
-                    tool_choice="auto",
+                    tools=None,
                     model=self.config.model,
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
@@ -392,11 +346,6 @@ class ReactAgent:
 
             self._record_llm_stats()
 
-            if message.tool_calls:
-                execute_tool_calls(self.state, self.runtime, message)
-                tool_rounds += 1
-                continue
-
             content = (message.content or "").strip()
             if not content:
                 # Empty reply (already yielded nothing) -> nudge and retry.
@@ -404,21 +353,17 @@ class ReactAgent:
                 self.state.messages.append(
                     {
                         "role": "user",
-                        "content": (
-                            "Your last reply was empty. Either call a tool or write a "
-                            "non-empty message to the customer."
-                        ),
+                        "content": "Your last reply was empty. Write a message to the customer.",
                     }
                 )
-                tool_rounds += 1
                 continue
 
-            # The final reply text was already streamed via `yield from`; persist it
-            # to history and run end-of-turn bookkeeping (no extra yield).
+            # The reply text was already streamed; persist it to history and run the
+            # end-of-turn bookkeeping (no extra yield).
             self.state.messages.append({"role": "assistant", "content": content})
-            # Registration-claim guard: the narrator said "užregistravau" with no
-            # ticket behind it — the contact dialogue starts NOW and its first
-            # question rides on the same reply, so the claim becomes true.
+            # Registration-claim guard: the speaker said „užregistravau“ with no ticket
+            # behind it — the contact dialogue starts NOW and its first question rides on
+            # the same reply, so the claim becomes true.
             extra = registration_claim_guard(self.state, self.runtime, content)
             if extra:
                 content += extra

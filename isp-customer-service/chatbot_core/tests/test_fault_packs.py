@@ -216,7 +216,7 @@ class TestNarratorWordedQuestions:
         assert engine.state.turn.directives.evidence is None
 
     def test_directive_lands_in_facts_block(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -227,8 +227,8 @@ class TestNarratorWordedQuestions:
             "kodel": "matysime ar gauna srovę",
             "klausimas": "Ar dega lemputė?",
         }
-        block = state_facts_block(agent.state, agent.runtime)
-        assert block and "KLAUSK DABAR" in block and "ar dega bent viena lemputė" in block
+        block = context_card(agent.state, agent.runtime)
+        assert block and "ASK NOW" in block and "ar dega bent viena lemputė" in block
 
 
 class TestNarratorFindings:
@@ -392,14 +392,14 @@ class TestNarratorFindings:
         assert reply and "Pasitikslinu" in reply and engine.state.turn.directives.recap is None
 
     def test_recap_directive_lands_in_facts_block(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
         agent.state.turn.directives.recap = {"faktai": "routerio lemputės: nedega"}
-        block = state_facts_block(agent.state, agent.runtime)
-        assert "PASITIKSLINK" in block and "nedega" in block
+        block = context_card(agent.state, agent.runtime)
+        assert "CHECK BACK" in block and "nedega" in block
 
     def test_findings_delegate_to_narrator(self, monkeypatch):
         from agent.decide.rules.evidence import evidence_drive
@@ -428,7 +428,7 @@ class TestNarratorFindings:
         assert "Ką patikrinome" in engine.state.diagnosis.pending_announcement
 
     def test_findings_directive_lands_in_facts_block(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -438,19 +438,19 @@ class TestNarratorFindings:
             "isvada": "routeris sugedęs",
             "solutions": "paleisti per kompiuterį ARBA meistras",
         }
-        block = state_facts_block(agent.state, agent.runtime)
-        assert block and "IŠVADOS MOMENTAS" in block and "routeris sugedęs" in block
-        assert "Pasiūlyk pasirinkimą" in block
+        block = context_card(agent.state, agent.runtime)
+        assert block and "FINDINGS MOMENT" in block and "routeris sugedęs" in block
+        assert "Offer the choice" in block
 
     def test_bridge_anchor_lands_in_narrator_facts(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
         agent.state.resolution.bridge_plug_reported = True
-        block = state_facts_block(agent.state, agent.runtime)
-        assert block and "TILTO FAZĖ" in block and "NEBEKLAUSK" in block
+        block = context_card(agent.state, agent.runtime)
+        assert block and "BRIDGE PHASE" in block and "do NOT ask about the router" in block
 
 
 class TestTicketFirst:
@@ -576,18 +576,18 @@ class TestTicketFirst:
         assert "computer" not in goals and "LAN" not in goals
 
     def test_situational_block_lands_in_narrator_facts(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST001"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
-        block = state_facts_block(agent.state, agent.runtime)
-        assert block and "DAR AIŠKINAMĖS" in block and "grąžink" in block
+        block = context_card(agent.state, agent.runtime)
+        assert block and "STILL TO FIND OUT" in block and "bring the conversation back" in block
 
     def test_findings_prefer_the_pack_offer(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -598,7 +598,7 @@ class TestTicketFirst:
             "solutions": "a ARBA b",
             "offer": "Pasakyk, kad užregistruosi meistrą; pasiūlyk tiltą.",
         }
-        block = state_facts_block(agent.state, agent.runtime)
+        block = context_card(agent.state, agent.runtime)
         assert "užregistruosi meistrą" in block
         assert "Pasiūlyk pasirinkimą" not in block
 
@@ -638,7 +638,7 @@ class TestStepAwareness:
         assert r["journal"] == ["dr_intro→dr_lights", "dr_lights→dr_power"]
 
     def test_facts_block_states_goal_and_repeat(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -649,12 +649,12 @@ class TestStepAwareness:
             "step": "dr_lights",
             "presented": {"dr_lights": 2},
         }
-        block = state_facts_block(agent.state, agent.runtime)
-        assert "ŠIO ŽINGSNIO TIKSLAS" in block and "lemput" in block
-        assert "ŽINGSNIS KARTOJAMAS" in block
+        block = context_card(agent.state, agent.runtime)
+        assert "STEP GOAL" in block and "lemput" in block
+        assert "STEP REPEATED" in block
 
     def test_first_presentation_has_no_repeat_directive(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -665,8 +665,8 @@ class TestStepAwareness:
             "step": "dr_lights",
             "presented": {"dr_lights": 1},
         }
-        block = state_facts_block(agent.state, agent.runtime)
-        assert "ŽINGSNIS KARTOJAMAS" not in block
+        block = context_card(agent.state, agent.runtime)
+        assert "STEP REPEATED" not in block
 
     def test_solver_context_includes_the_journey(self, db_connection):
         from agent.decide.rules.diagnosis import build_solver_context
@@ -776,27 +776,27 @@ class TestIdentificationF:
         assert address_diag_note({"success": False, "resolution": {}}) is None
 
     def test_diag_note_lands_in_facts_block(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
         agent.state.turn.address_lookup_note = "- ADRESO PAIEŠKOS DIAGNOZĖ: gatvę RANDU, namo NĖRA."
-        block = state_facts_block(agent.state, agent.runtime)
+        block = context_card(agent.state, agent.runtime)
         assert block and "ADRESO PAIEŠKOS DIAGNOZĖ" in block
 
     def test_encouragement_appears_once(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         agent.state.dialog.turn_count = 5
-        first = state_facts_block(agent.state, agent.runtime) or ""
-        second = state_facts_block(agent.state, agent.runtime) or ""
-        assert "PARAGINIMAS DĖL ADRESO" in first
-        assert "PARAGINIMAS DĖL ADRESO" not in second
+        first = context_card(agent.state, agent.runtime) or ""
+        second = context_card(agent.state, agent.runtime) or ""
+        assert "ADDRESS ENCOURAGEMENT" in first
+        assert "ADDRESS ENCOURAGEMENT" not in second
 
     def test_failed_identification_lands_on_the_record(self, db_connection):
         from tests.calls import make_agent
@@ -834,7 +834,7 @@ class TestTicketDirectives:
 
     def test_phone_intro_goes_to_narrator(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
@@ -842,8 +842,8 @@ class TestTicketDirectives:
         assert reply is None  # the narrator takes the turn
         td = agent.state.turn.directives.ticket
         assert td and td["kind"] == "phone_intro" and "numeris" in td["fallback"]
-        block = state_facts_block(agent.state, agent.runtime)
-        assert "TIKETO ŽINGSNIS" in block and "registruoji meistrą" in block
+        block = context_card(agent.state, agent.runtime)
+        assert "TICKET STEP" in block and "registering a technician" in block
 
     def test_off_switch_keeps_scripted(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
@@ -866,7 +866,7 @@ class TestTicketDirectives:
 
     def test_hours_directive(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
@@ -874,7 +874,7 @@ class TestTicketDirectives:
         agent.state.ticket.context = TicketContext(step_id=None, intro_done=True)
         assert scripted_words(agent.state, agent.runtime, "tiks tas") is None
         assert agent.state.turn.directives.ticket["kind"] == "hours"
-        assert "patogiausia" in state_facts_block(agent.state, agent.runtime)
+        assert "patogiausia" in context_card(agent.state, agent.runtime)
 
 
 class TestIdentDirectives:
@@ -900,7 +900,7 @@ class TestIdentDirectives:
 
     def test_offer_goes_to_narrator_with_verbatim_core(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent()
@@ -908,18 +908,18 @@ class TestIdentDirectives:
         assert reply is None
         idd = agent.state.turn.directives.ident
         assert idd and idd["kind"] == "address_offer" and "Vilniaus g. 29" in idd["adresas"]
-        block = state_facts_block(agent.state, agent.runtime)
+        block = context_card(agent.state, agent.runtime)
         assert "Ar skambinate dėl Vilniaus g. 29?" in block  # verbatim core kept
 
     def test_ask_goes_to_narrator_without_candidate(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         monkeypatch.setenv("NARRATOR_QUESTIONS", "on")
         agent = self._agent(candidate=False)
         assert scripted_words(agent.state, agent.runtime, "Vakar po audros dingo") is None
         assert agent.state.turn.directives.ident["kind"] == "address_ask"
-        assert "IDENTIFIKACIJOS ŽINGSNIS" in state_facts_block(agent.state, agent.runtime)
+        assert "IDENTIFICATION STEP" in context_card(agent.state, agent.runtime)
 
     def test_off_switch_keeps_scripted_offer(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
@@ -938,7 +938,7 @@ class TestAnamnesisDirectives:
 
     def test_no_opening_question_straight_to_address(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -948,9 +948,9 @@ class TestAnamnesisDirectives:
         assert scripted_words(agent.state, agent.runtime, "Neveikia internetas") is None
         assert agent.state.intake.anamnesis_asked is True  # ladder-live marker stays
         assert agent.state.turn.directives.ident["kind"] in ("address_offer", "address_ask")
-        block = state_facts_block(agent.state, agent.runtime)
+        block = context_card(agent.state, agent.runtime)
         assert "ANAMNEZĖS ŽINGSNIS" not in block
-        assert "IDENTIFIKACIJOS ŽINGSNIS" in block
+        assert "IDENTIFICATION STEP" in block
 
     def test_opening_capture_still_lands(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
@@ -980,18 +980,30 @@ class TestDirectiveTurnsAreSpeechOnly:
     the anamnesis directive turn and skipped the ladder — directive turns get
     NO tools; the engine owns the mechanics."""
 
-    def test_no_tools_when_directive_set(self, db_connection):
-        from agent.narrator_flow import scoped_tools_schema
+    def test_the_speaker_never_gets_tools(self, db_connection):
+        """M5: the speaker has no tools at all — the engine ran every lookup and action."""
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from agent.graph_v2.runtime import narrate
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
-        assert scoped_tools_schema(agent.state, agent.runtime)  # baseline: tools exist
         agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
-        assert scoped_tools_schema(agent.state, agent.runtime) == []
-        agent.state.turn.directives.ident = None
-        agent.state.turn.directives.ticket = {"kind": "hours", "fallback": "x"}
-        assert scoped_tools_schema(agent.state, agent.runtime) == []
+        captured = {}
+
+        def _stream(**kwargs):
+            captured.update(kwargs)
+            yield "ok"
+            return SimpleNamespace(content="ok", tool_calls=None)
+
+        with (
+            patch("agent.react_agent.stream_tool_completion", side_effect=_stream),
+            patch("agent.react_agent.get_last_call_stats", return_value={}),
+        ):
+            narrate(agent.state, agent.runtime, "taip", "intake", "address_validation")
+        assert captured["tools"] is None
 
 
 class TestDetourResilience:
@@ -1013,7 +1025,7 @@ class TestDetourResilience:
         assert extract_symptoms("lemputės nedega").get("lights") == "off"
 
     def test_resync_note_renders_once(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -1024,9 +1036,9 @@ class TestDetourResilience:
 
         set_fact(agent.state.diagnosis.evidence, "lights", "off", CLIENT, 1)
         agent.state.dialog.resync_note = True
-        block = state_facts_block(agent.state, agent.runtime)
-        assert "GRĮŽTAME PRIE SPRENDIMO" in block and "nustatyta" in block
-        assert "GRĮŽTAME" not in (state_facts_block(agent.state, agent.runtime) or "")  # consumed
+        block = context_card(agent.state, agent.runtime)
+        assert "BACK TO SOLVING" in block and "established" in block
+        assert "GRĮŽTAME" not in (context_card(agent.state, agent.runtime) or "")  # consumed
 
 
 class TestPrimaryGoalFrozen:
@@ -1056,7 +1068,7 @@ class TestPrimaryGoalFrozen:
         assert all(x["type"] != "billing" for x in s.intake.secondary_problems)
 
     def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -1066,8 +1078,8 @@ class TestPrimaryGoalFrozen:
         s.intake.problem_type = "internet_down"
         s.intake.secondary_problems.append({"type": "tv", "text": "TV blogai rodo", "turn": 5})
         s.closing.case_closed = True
-        block = state_facts_block(agent.state, agent.runtime)
-        assert "PAPILDOMOS PROBLEMOS" in block and "TV blogai rodo" in block
+        block = context_card(agent.state, agent.runtime)
+        assert "SECONDARY PROBLEMS" in block and "TV blogai rodo" in block
 
     def test_bridge_bound_phrase_states_visibility(self):
         from agent.contract.locale import phrase
@@ -1158,7 +1170,7 @@ class TestOpenerAndClosingHygiene:
         assert bye and "skambinkite" in bye
 
     def test_phone_account_block_waits_for_the_problem(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -1172,9 +1184,9 @@ class TestOpenerAndClosingHygiene:
             "apartment": None,
             "city": "Šiauliai",
         }
-        assert "PHONE ACCOUNT" not in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "PHONE ACCOUNT" not in (context_card(agent.state, agent.runtime) or "")
         agent.state.intake.problem_type = "internet_down"
-        assert "PHONE ACCOUNT" in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "PHONE ACCOUNT" in (context_card(agent.state, agent.runtime) or "")
 
     def test_no_secondary_problems_from_ticket_stage_garbles(self, db_connection):
         from agent.perceive.slots import prefill_slots_from_text
@@ -1202,14 +1214,14 @@ class TestLiveCall0821Fixes:
     sritis' (2), no problem stated -> an address hunt (3)."""
 
     def test_directive_turn_drops_step_hint_and_playbook(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
         agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_power"}
-        plain = state_facts_block(agent.state, agent.runtime) or ""
+        plain = context_card(agent.state, agent.runtime) or ""
         assert "THIS STEP" in plain
         agent.state.turn.directives.findings = {
             "faktai": "x",
@@ -1217,8 +1229,8 @@ class TestLiveCall0821Fixes:
             "solutions": "",
             "offer": "",
         }
-        isolated = state_facts_block(agent.state, agent.runtime) or ""
-        assert "IŠVADOS MOMENTAS" in isolated
+        isolated = context_card(agent.state, agent.runtime) or ""
+        assert "FINDINGS MOMENT" in isolated
         assert "THIS STEP" not in isolated and "PLAYBOOK" not in isolated
 
     def test_bridge_solution_syncs_the_walker_to_the_cable_step(self, monkeypatch):
@@ -1289,7 +1301,7 @@ class TestLiveCall0821Fixes:
 
     def test_problem_gate_scripted_then_directive_then_close(self, db_connection, monkeypatch):
         from agent.decide.rules.reply import scripted_words
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         from tests.calls import make_agent
 
@@ -1299,7 +1311,7 @@ class TestLiveCall0821Fixes:
         assert "problema" in scripted_words(agent.state, agent.runtime, "Vaikai neklauso")
         assert scripted_words(agent.state, agent.runtime, "Viki kur neklauso") is None
         assert agent.state.turn.directives.ident["kind"] == "problem_gate"
-        assert "PROBLEMOS VARTAI" in state_facts_block(agent.state, agent.runtime)
+        assert "PROBLEM GATE" in context_card(agent.state, agent.runtime)
         assert scripted_words(agent.state, agent.runtime, "Kokiu problemu?") is None
         assert agent.state.turn.directives.ident["kind"] == "problem_gate"
         bye = scripted_words(agent.state, agent.runtime, "Mendulija")
@@ -1325,23 +1337,23 @@ class TestLiveCall0824Fixes:
         return agent
 
     def test_ticket_directive_suppresses_step_hint(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._ticket_agent()
         agent.state.resolution.bridge_bound = True
         agent.state.turn.directives.ticket = {"kind": "phone_intro", "fallback": "Ar tiks numeris?"}
-        block = state_facts_block(agent.state, agent.runtime) or ""
-        assert "TIKETO ŽINGSNIS" in block
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "TICKET STEP" in block
         assert "THIS STEP" not in block and "PLAYBOOK" not in block
         # The tense rule rides along: registration has NOT happened yet.
-        assert "užregistruosiu" in block and "niekada „užregistravau“" in block
+        assert "užregistruosiu" in block and "never „užregistravau“" in block
 
     def test_ident_directive_suppresses_step_hint(self, db_connection):
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._ticket_agent()
         agent.state.turn.directives.ident = {"kind": "anamnesis", "adresas": None, "fallback": "x"}
-        block = state_facts_block(agent.state, agent.runtime) or ""
+        block = context_card(agent.state, agent.runtime) or ""
         assert "THIS STEP" not in block and "PLAYBOOK" not in block
 
     def test_plug_report_skips_the_dead_instruct_step(self, db_connection, monkeypatch):

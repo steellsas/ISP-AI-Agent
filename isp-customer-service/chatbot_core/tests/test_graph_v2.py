@@ -83,7 +83,7 @@ class FakeEngine:
     def begin_turn(self, user_input):
         pass
 
-    def llm_reply(self, allowed_tools, node_prompt):
+    def llm_reply(self, owner):
         self.calls.append("narrate")
         yield "ok-"
         yield "reply"
@@ -231,35 +231,15 @@ class TestRouting:
             session.handle_turn(text)
         return _tool_names(captured["tools"])
 
-    def test_identified_turn_has_full_toolset(self, db_connection, tmp_path):
-        session = _v2_session(tmp_path)
-        session.greeting()
-        # NT (2026-09-11): link_down_local gavo pack'ą, tad CUST104 nebetinka
-        # kaip „be strategijos" — billing inform (CUST007) strategijos neturi.
-        session.state.identity.customer_id = "CUST007"
-
-        names = self._run_turn_capture_tools(session, "taip")
-
-        # A verdict with no strategy -> the diagnosis node keeps the full toolset
-        # (diagnose available; lookup kept for a re-resolve).
-        assert "diagnose_connection" in names
-        assert "resolve_address" in names
-
-    def test_diagnose_withheld_while_strategy_active(self, db_connection, tmp_path):
+    def test_no_tools_while_a_procedure_is_active(self, db_connection, tmp_path):
         session = _v2_session(tmp_path)
         session.greeting()
         session.state.identity.customer_id = "CUST105"  # foreign_mac -> strategy activates
 
-        # ensure_diagnosed runs on entry -> strategy active at the CONFIRM step.
-        # A CONFIRM step exposes NO tools at all: the engine owns diagnosis, the
-        # action and closing, so the model just talks. This is the fix for the
-        # observed catastrophe where an empty step still left lookup tools on the
-        # table and the model spammed check_outages to the call limit.
-        names = self._run_turn_capture_tools(session, "taip")
-        assert names == set()
-        assert "diagnose_connection" not in names
-        assert "update_mac" not in names  # bind only exposed after confirm (bind_mac)
-        assert "check_outages" not in names  # the looped tool in the failing trace
+        # The engine owns diagnosis, the action and the closing, so the speaker just
+        # talks. This is the fix for the observed catastrophe where a step left lookup
+        # tools on the table and the model spammed check_outages to the call limit.
+        assert self._run_turn_capture_tools(session, "taip") == set()
 
     def test_ticket_dialogue_routes_to_ticket_node_with_no_tools(self, db_connection, tmp_path):
         from agent.execute.ticket import begin_ticket_dialogue
@@ -308,7 +288,7 @@ class TestRouting:
             reply = session.handle_turn("O kiek tai kainuos?")  # a real question -> LLM
 
         assert reply == "Geros dienos!"
-        assert captured["tools"] == []  # closing stage is structurally tools-less
+        assert captured["tools"] is None  # the speaker never gets tools
 
 
 class TestCheckpointedState:
@@ -382,16 +362,16 @@ class TestBetweenTurnWrites:
         assert values["voice"].unheard_question == "Kuo galiu padėti?"  # the ask never landed
 
         seen = {}
-        from agent import narrator_flow
+        from agent.speak import node as speak_node
 
-        original = narrator_flow.build_messages
+        original = speak_node.build_messages
 
         def spy(state, rt, *args, **kwargs):
             seen["history"] = [m.get("content") for m in state.messages]
             return original(state, rt, *args, **kwargs)
 
         with (
-            patch.object(narrator_flow, "build_messages", side_effect=spy),
+            patch.object(speak_node, "build_messages", side_effect=spy),
             patch(
                 "agent.react_agent.stream_tool_completion",
                 side_effect=_fake_stream(content="Suprantu."),

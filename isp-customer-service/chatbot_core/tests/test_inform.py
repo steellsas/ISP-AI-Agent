@@ -225,7 +225,7 @@ class TestDebtSignalsReachState:
 
     def test_facts_block_carries_debt_for_questions(self, db_connection):
         """„Kokia skola?" — naratorius gauna skaičius faktuose, ne „nematau"."""
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = _agent()
         agent.state.diagnosis.verdicts["network"] = {
@@ -238,8 +238,8 @@ class TestDebtSignalsReachState:
                 }
             },
         }
-        facts = state_facts_block(agent.state, agent.runtime)
-        assert facts and "SKOLOS FAKTAI" in facts
+        facts = context_card(agent.state, agent.runtime)
+        assert facts and "DEBT FACTS" in facts
         assert "49 eurai 98 centai" in facts and "liepą ir rugpjūtį" in facts
 
 

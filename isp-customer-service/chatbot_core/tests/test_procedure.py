@@ -87,21 +87,17 @@ class TestEngineDrivenAction:
             ensure_action_done(agent.state, agent.runtime) is False
         )  # action_done guard — no re-bind
 
-    def test_bind_tool_withheld_after_engine_ran(self, monkeypatch):
+    def test_bind_runs_once_and_the_step_stays_to_announce(self, monkeypatch):
         from agent.execute.diagnosis import ensure_action_done
-        from agent.narrator_flow import scoped_tools_schema
 
-        # Once the engine has bound (action_done), update_mac must NOT be exposed to
-        # the model, or the single-tool step gets re-called to the limit (observed:
-        # update_mac x6 -> 'negaliu apdoroti'). The model only announces on this turn.
+        # The engine binds; the step stays on bind_mac so the speaker only announces it
+        # (before M5 the model could re-call the exposed tool to the limit).
         agent = self._agent()
         self._at_bind(agent)
         self._stub_tools(monkeypatch, telemetry="healthy_to_router")
-        ensure_action_done(
-            agent.state, agent.runtime
-        )  # engine binds; stays on bind_mac to announce
-        names = {t["function"]["name"] for t in scoped_tools_schema(agent.state, agent.runtime)}
-        assert "update_mac" not in names
+        assert ensure_action_done(agent.state, agent.runtime) is True
+        assert agent.state.resolution.procedure["action_done"] is True
+        assert ensure_action_done(agent.state, agent.runtime) is False
 
     def test_restored_yes_resolves(self, monkeypatch):
         from agent.decide.procedure import advance
@@ -299,7 +295,7 @@ class TestHypothesisObject:
 
     def test_a_working_fix_confirms_it(self):
         from agent.decide.procedure import route_to
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._agent()
         agent.state.identity.customer_id = "CUST009"
@@ -307,12 +303,12 @@ class TestHypothesisObject:
         route_to(agent.state, agent.runtime, agent.state.resolution.procedure, "resolve")
 
         assert agent.state.diagnosis.hypothesis["status"] == "confirmed"
-        assert "PASITVIRTINO" in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "HYPOTHESIS CONFIRMED" in (context_card(agent.state, agent.runtime) or "")
 
     def test_rejected_causes_are_remembered_and_not_re_offered(self, monkeypatch):
         import agent.react_agent as ra
         from agent.decide.procedure import advance
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._agent()
         agent.state.identity.customer_id = "CUST105"
@@ -346,7 +342,7 @@ class TestHypothesisObject:
 
         assert [x["cause"] for x in agent.state.diagnosis.rejected_hypotheses] == ["foreign_mac"]
         assert agent.state.diagnosis.hypothesis["cause"] == "healthy_to_router"  # a new belief
-        assert "JAU ATMESTA" in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "ALREADY RULED OUT" in (context_card(agent.state, agent.runtime) or "")
 
 
 @pytest.mark.usefixtures("walker_driven")
@@ -397,30 +393,28 @@ class TestTurnHolding:
 
     def test_repeated_confusion_breaks_the_step_down(self, monkeypatch):
         from agent.decide.procedure import advance
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._at_step(monkeypatch, "dr_lights")
         advance(agent.state, agent.runtime, "nesuprantu ko norit")
         assert agent.state.dialog.step_confusions == 1
-        assert "NESUPRATO" in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "DID NOT FOLLOW" in (context_card(agent.state, agent.runtime) or "")
         advance(agent.state, agent.runtime, "vis tiek nesuprantu")
         assert agent.state.dialog.step_confusions == 2
-        assert "MAŽIAUSIĄ" in (
-            state_facts_block(agent.state, agent.runtime) or ""
-        )  # finest breakdown
+        assert "SMALLEST" in (context_card(agent.state, agent.runtime) or "")  # finest breakdown
         # a real answer clears it and moves on
         advance(agent.state, agent.runtime, "nedega")
         assert agent.state.dialog.step_confusions == 0
 
     def test_waiting_turns_accumulate_for_a_check_in(self, monkeypatch):
         from agent.decide.procedure import advance
-        from agent.narrator_flow import state_facts_block
+        from agent.speak.context_card import context_card
 
         agent = self._at_step(monkeypatch, "dr_plug_pc")
         for _ in range(3):
             advance(agent.state, agent.runtime, "tuoj, ieškau")
         assert agent.state.dialog.awaiting_turns == 3
-        assert "ILGAI LAUKIAM" in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "LONG WAIT" in (context_card(agent.state, agent.runtime) or "")
 
 
 @pytest.mark.usefixtures("walker_driven")
@@ -527,17 +521,18 @@ class TestHypothesisRejection:
 
     def test_rethink_is_voiced_once_then_cleared(self, monkeypatch):
         from agent.decide.procedure import advance
-        from agent.narrator_flow import mark_step_presented, state_facts_block
+        from agent.narrator_flow import mark_step_presented
+        from agent.speak.context_card import context_card
 
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")
         advance(agent.state, agent.runtime, "vis dar neveikia")
         _confirm_change(agent, "Taip")
 
-        facts = state_facts_block(agent.state, agent.runtime) or ""
-        assert "PERSIGALVOJIMAS" in facts
+        facts = context_card(agent.state, agent.runtime) or ""
+        assert "RETHINK" in facts
         mark_step_presented(agent.state, agent.runtime)  # the reply carried it
         assert agent.state.diagnosis.pivoted_from is None
-        assert "PERSIGALVOJIMAS" not in (state_facts_block(agent.state, agent.runtime) or "")
+        assert "RETHINK" not in (context_card(agent.state, agent.runtime) or "")
 
 
 class TestStepOutcome:
