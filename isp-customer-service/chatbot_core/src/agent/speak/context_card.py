@@ -955,11 +955,28 @@ def _recall_and_notes(state, rt) -> list[str]:
     recall = recall_lines(state, rt)
     if recall:
         out.append(recall)
-    notes = state.voice.analyst_notes
-    if notes:
-        state.voice.analyst_notes = None
-        out.append(
-            "ANALYST NOTES (advisory — they change no fact and no step; ignore them where they "
-            "clash with anything above): " + " | ".join(str(n) for n in notes[:2])
-        )
+    out += _analyst_tone(state)
+    return out
+
+
+def _analyst_tone(state) -> list[str]:
+    """The analyst's tone signals: how the caller is doing, never what to do. One-shot —
+    the deciding signals were applied by the engine when they arrived."""
+    signals = state.voice.analyst_signals
+    if not signals:
+        return []
+    state.voice.analyst_signals = None
+    out = []
+    for signal in signals:
+        quote = f" („{signal['quote']}“)" if signal.get("quote") else ""
+        if signal.get("type") == "frustration":
+            out.append(
+                f"TONE: the caller is losing patience{quote} — acknowledge it plainly, keep "
+                "the reply short, and make the next step the smallest possible one."
+            )
+        elif signal.get("type") == "off_topic":
+            out.append(
+                f"OFF THE QUESTION: the caller's last words do not answer what you asked{quote} "
+                "— answer them briefly, then bring the conversation back to your question."
+            )
     return out

@@ -86,9 +86,9 @@ class AgentSession:
         if not values:
             initial = self._state
             update = {name: getattr(initial, name) for name in type(initial).model_fields}
-        if inbox.get("analyst_notes"):
+        if inbox.get("analyst_signals"):
             voice = values["voice"] if values else self._state.voice
-            update["voice"] = voice.model_copy(update={"analyst_notes": inbox["analyst_notes"]})
+            update["voice"] = voice.model_copy(update={"analyst_signals": inbox["analyst_signals"]})
         update["turn"] = turn
         return update
 
@@ -212,14 +212,20 @@ class AgentSession:
             return ("normal", None)
 
     def analyst_next(self) -> None:
-        """W2: the quiet analyst's background read — advisory notes for the
-        narrator's next turn (never facts, never routing)."""
-        from .analyst import run_analyst
+        """The analyst's background read (ANALYST_MODE=async, the voice default): its
+        signals are applied on this state and the tone ones ride to the next turn."""
+        from .analyst.node import apply, mode, read
 
-        notes = run_analyst(self._state, self._runtime)
-        if notes:
+        if mode() != "async":
+            return
+        signals = read(self._state, self._runtime)
+        if not signals:
+            return
+        apply(self._state, self._runtime, signals)
+        carried = self._state.voice.analyst_signals
+        if carried:
             with self._inbox_lock:
-                self._inbox["analyst_notes"] = notes
+                self._inbox["analyst_signals"] = carried
 
     def speculate_next(self, synthesize=None) -> None:
         """S1: prepare the branch cache for the OPEN question (background

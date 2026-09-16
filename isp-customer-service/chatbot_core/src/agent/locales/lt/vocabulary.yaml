@@ -900,68 +900,6 @@ howto_marks:
   - "paaiškink"
   - "paaiskink"
 
-# --- agent/analyst.py ------------------------------------------------------------
-
-# The three agreed note types, by their tell-tale words (diacritics-folded
-# matching below). Anything else — including action suggestions — is dropped.
-analyst_allowed_marks:
-  # (1) the caller ALREADY said it — do not re-ask
-  - "jau pasake"
-  - "jau sake"
-  - "jau minejo"
-  - "jau atsake"
-  - "jau patvirtino"
-  - "nebeklausk"
-  - "neklausk"
-  - "jau teige"
-  - "jau nurodė"
-  - "jau nurode"
-  # (2) a fact looks wrong / contradicts what the caller keeps saying
-  - "priestarau"
-  - "itartin"
-  - "nesutampa"
-  - "pasitikslin"
-  - "patikslin"
-  - "galejo buti blogai isgirsta"
-  - "zurnal"
-  # (3) the caller is mixing up concepts/devices — name things clearer
-  - "painioj"
-  - "ivardink"
-  - "ivardyk"
-  - "aiskiau"
-  - "supainio"
-  - "paaiskink"
-  - "turejo omenyje"
-  # (4) an important earlier detail no longer visible in the recent window
-  - "pradzioje"
-  - "anksciau"
-  - "primink"
-  - "priminti"
-  - "nepamirsk"
-  # (5) C wave (2026-09-08): the conversation drifted off the ACTIVE question
-  - "nukryp"
-  - "neatsako"
-  - "nesiejami su klausimu"
-  - "aktyvu klausim"
-  - "aktyvaus klausimo"
-
-# Action suggestions aimed at the caller are FORBIDDEN outright — the
-# blacklist beats the whitelist (live 2026-08-28: "butu naudinga PAPRASYTI
-# kliento pateikti MAC adresa" slipped through on the word "zurnalo" and the
-# narrator obeyed — asked the caller for a MAC the engine reads itself).
-analyst_forbidden_marks:
-  - "paprasy"
-  - "papras"
-  - "pateikti"
-  - "paklausk"
-  - "pasiulyk"
-  - "patikrinkite"
-  - "perkrauti"
-  - "perjunkite"
-  - "atjunkite"
-  - "ijunkite"
-  - "mac adres"
-
 # --- agent/dialog_utils.py -------------------------------------------------------
 
 # Repeat-guard: politeness/acknowledgement words stripped before comparing two
@@ -1184,8 +1122,3 @@ answers_router_hung_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryj
 # A playbook step heading: "### Žingsnis 1: Lemputės" (the number makes it a step, so
 # a plain "### Kada eskaluoti" section is not mistaken for one). Matched per line.
 playbook_step_heading: '^###\s+Žingsnis\s+\d+.*$'
-
-# --- agent/analyst.py -----------------------------------------------------------
-
-# A (folded) analyst note with one of these flags a drift from the active question.
-analyst_deviation_marks: ["nukryp", "neatsako"]

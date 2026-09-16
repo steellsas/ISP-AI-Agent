@@ -32,9 +32,9 @@ os.environ.setdefault("NARRATOR_QUESTIONS", "off")
 # VOICE_PLAN V1: unit tests feed tiny fake audio bytes (b"x") — the too-short
 # guard would drop them all. Off here; the guard's own tests set it explicitly.
 os.environ.setdefault("ASR_MIN_AUDIO_S", "0")
-# W2: the quiet analyst calls an LLM from a background thread — deterministic
-# tests never want that (opt in with ANALYST=on when testing it specifically).
-os.environ.setdefault("ANALYST", "off")
+# The analyst calls an LLM — deterministic tests never want that (opt in with
+# ANALYST_MODE=sync when testing it specifically).
+os.environ.setdefault("ANALYST_MODE", "off")
 # Final flush on ws close would fire a REAL ASR call per closed socket —
 # tests exercise it directly (test_classification), never through transport.
 os.environ.setdefault("FINAL_FLUSH", "off")

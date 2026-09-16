@@ -52,7 +52,16 @@ def narrate(
     for token in stream_reply(state, rt, owner):
         writer(token)
         parts.append(token)
+    _analyst(state, rt)
     return "".join(parts)
+
+
+def _analyst(state, rt) -> None:
+    """The analyst closes the turn in sync mode; in async mode the voice layer's
+    background thread reads while the caller answers."""
+    from ..analyst.node import run_sync
+
+    run_sync(state, rt)
 
 
 def _writer():

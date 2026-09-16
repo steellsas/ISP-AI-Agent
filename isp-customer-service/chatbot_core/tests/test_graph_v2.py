@@ -383,10 +383,10 @@ class TestBetweenTurnWrites:
         session = _v2_session(tmp_path)
         session.greeting()
         with session._inbox_lock:
-            session._inbox["analyst_notes"] = ["klientas jau pasakė, kada dingo"]
+            session._inbox["analyst_signals"] = [{"type": "frustration", "quote": "kiek"}]
             session._inbox["bg_diagnosis"] = '{"success": true}'
 
         turn_input = session._graph_input("labas")
-        assert turn_input["voice"].analyst_notes == ["klientas jau pasakė, kada dingo"]
+        assert turn_input["voice"].analyst_signals == [{"type": "frustration", "quote": "kiek"}]
         assert turn_input["turn"].bg_diagnosis == '{"success": true}'
         assert session._inbox == {}  # consumed once

@@ -251,61 +251,6 @@ class TestUnheardQuestion:
         assert agent.state.voice.undelivered_tail  # the plain advisory note stands
 
 
-class TestW2QuietAnalyst:
-    """W2: background advisory notes — wording only, one-shot, off-switch."""
-
-    def _agent(self):
-        from tests.calls import make_agent
-
-        agent = make_agent("+37060012353")
-        agent.state.intake.problem_type = "internet_down"
-        agent.state.identity.customer_id = "CUST009"
-        agent.state.messages.append({"role": "user", "content": "neveikia internetas"})
-        return agent
-
-    def test_notes_parsed_filtered_and_consumed_once(self, db_connection, monkeypatch):
-        import src.services.llm.client as llm
-        from agent.speak.context_card import context_card
-
-        monkeypatch.setenv("ANALYST", "on")
-        monkeypatch.setattr(
-            llm,
-            "llm_completion",
-            lambda **k: (
-                "- klientas jau pasake, kada dingo\n"
-                "- OK\n"
-                "- paprasykite kliento patikrinti maitinima\n"  # ACTION -> dropped
-                "- faktas priestarauja tam, ka klientas kartoja"
-            ),
-        )
-        from agent.analyst import run_analyst
-
-        agent = self._agent()
-        notes = run_analyst(agent.state, agent.runtime)
-        assert notes == [
-            "klientas jau pasake, kada dingo",
-            "faktas priestarauja tam, ka klientas kartoja",
-        ]
-        agent.state.voice.analyst_notes = notes  # the session hands them to the next turn
-        block = context_card(agent.state, agent.runtime) or ""
-        assert "ANALYST NOTES" in block and "paprasykite" not in block
-        assert "TYLIOJO ANALITIKO" not in (context_card(agent.state, agent.runtime) or "")
-
-    def test_off_switch_and_ok_reply(self, db_connection, monkeypatch):
-        import src.services.llm.client as llm
-        from agent.analyst import run_analyst
-
-        calls = []
-        monkeypatch.setattr(llm, "llm_completion", lambda **k: calls.append(1) or "OK")
-        monkeypatch.setenv("ANALYST", "off")
-        agent = self._agent()
-        assert run_analyst(agent.state, agent.runtime) is None
-        assert calls == []
-        monkeypatch.setenv("ANALYST", "on")
-        assert run_analyst(agent.state, agent.runtime) is None  # OK -> no notes
-        assert calls == [1]
-
-
 class TestTurnGrammar:
     """Etalono 2 zingsnis (2026-09-03): reakcija nesa REIKSME (reiskia:),
     vardo priemimas, adreso perejimas be suolio."""

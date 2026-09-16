@@ -258,11 +258,11 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        # W2 (2026-08-25): tylusis analitikas — fone skaito visą pokalbį ir
-        # duoda naratoriui patariamųjų pastabų (faktų ir eigos nekeičia).
-        "key": "ANALYST",
-        "label": "Tylusis analitikas (fone, patariamasis)",
-        "options": ["on", "off"],
+        # Analitikas (M5): skaito visą pokalbį ir grąžina tipizuotus signalus.
+        # sync — ėjimo pabaigoje, async — fone (balsui), off — išjungtas.
+        "key": "ANALYST_MODE",
+        "label": "Analitikas (signalai): sync / async / off",
+        "options": ["sync", "async", "off"],
         "scope": "immediate",
         "kind": "env",
     },

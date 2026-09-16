@@ -55,7 +55,8 @@ closing_llm_replies_max: 1          # closing replies written by the LLM; later 
 # --- Analyst -----------------------------------------------------------------------
 analyst_history_messages: 60
 analyst_active_question_min_asks: 2 # the active question is shown only after it was re-asked
-analyst_notes_max: 2
+analyst_signals_max: 3               # typed signals per read
+analyst_confidence_floor: 0.6        # a less certain signal is dropped
 analyst_max_tokens: 700
 
 # --- Telemetry verdict ------------------------------------------------------------

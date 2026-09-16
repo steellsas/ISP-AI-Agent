@@ -297,8 +297,9 @@ class ClosingState(BaseModel):
 class VoiceState(BaseModel):
     """What the voice layer learned between turns (duplex hearing, barge-in, analyst)."""
 
-    # The quiet analyst's advisory notes for the next narration (never facts).
-    analyst_notes: list[str] | None = None
+    # The analyst's TONE signals for the next reply (off_topic, frustration) — the
+    # deciding ones are applied when they arrive, never carried here.
+    analyst_signals: list[dict[str, Any]] | None = None
     # Words the caller said OVER the agent's voice, for a one-shot narrator note.
     overlay_heard: list[str] | None = None
     # After a barge-in: the reply tail the caller did not hear / an unheard question.
