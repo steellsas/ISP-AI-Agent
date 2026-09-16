@@ -19,19 +19,22 @@ signal already does this for a ledger fact; what is missing is the caller-vs-cal
 (they contradict THEMSELVES across turns, with no telemetry involved) and the route back
 into a fresh analysis when the confirm lands.
 
-## 2. The engine must understand WHAT the caller actually did, not that they "did it"
+## 2. Clarify when the RESULT is missing — not on every step
 
-A caller who runs ahead reports a finished action that was not the action we asked for.
+The agent works like an engineer with a standard algorithm: it gives the step, and moves
+on when the step produced what it should. It does NOT audit how the caller did each
+thing, and it does not shadow their every action — a doubting agent is a bad agent.
 
-> "Go to the router, we will reboot it — pull the cable." The caller: "I already did,
-> rebooted, still no internet." The agent checks HOW: did you pull the power out of the
-> wall socket? did you hold it for 5 seconds? The caller: "I just pressed the button."
-> The agent goes back to the start of the reboot and leads it step by step.
+The clarifying question belongs exactly where the expected result did NOT arrive:
 
-So a done-report must be VERIFIED against the step's actual requirement before it counts
-as the step's answer. Today `procedure.advance` accepts a done-report by intent; the
-missing part is the step declaring what makes it done (power out of the socket, held N
-seconds) and a clarify question when the report does not match.
+> "Go to the router, we will reboot it." The caller: "I rebooted, still no internet." The
+> agent now asks HOW: did you pull the power out of the socket? did you hold it a few
+> seconds? — "I just pressed the button." Then the agent leads the reboot properly.
+
+So: reboot worked → carry on, say what it means. Reboot did not work → find out why:
+either it was not really done, or the fault is somewhere else. The telemetry read is what
+says which of the two it is — it shows whether the device actually went down and came
+back, so the agent asks about the how only when the reading and the report disagree.
 
 ## 3. Lead the physical work in small steps, and read telemetry between them
 
@@ -58,7 +61,20 @@ telemetry read → the next instruction, with the agent saying what it sees at e
 
 How to behave, what to say and how to read the caller belongs in the packs and the
 locale, not in code: the step's requirement, its explanation, what each answer means, and
-which check follows it.
+which check follows it. Traffic is back but the caller still has no internet — the pack
+says what to try next, and when those are exhausted it is a ticket.
+
+## 6. One conversation engine, many kinds of knowledge
+
+The engine is the part that listens, understands the problem and leads the call; the
+knowledge is what it knows about a subject. Today that subject is IT support, but the
+same engine should serve other ones — advising on a service or a plan, for instance —
+once its knowledge is written.
+
+That splits the work by role, and the architecture has to keep that split honest:
+- the INSTRUCTOR fills the knowledge (packs, phrases, what each answer means);
+- the DEVELOPER adds tools, and prompts when a new kind of reading is needed;
+- the ENGINE stays the same — it does not learn a domain by growing new code paths.
 
 ---
 
