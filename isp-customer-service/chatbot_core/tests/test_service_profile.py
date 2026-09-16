@@ -45,6 +45,19 @@ class TestProfile:
         assert subscribed(state.identity.service_profile, "tv") is None
 
 
+class TestSuspendedIsStillSubscribed:
+    def test_a_debt_suspended_plan_stays_in_the_profile(self, db_connection):
+        """A debt SUSPENDS the internet, it does not cancel it — the caller must hear
+        about the debt, not that they have no internet (eval S8 regression)."""
+        from tests.calls import make_call
+
+        state, rt = make_call("+37060020101")
+        rt.tools.run(state, rt, "find_customer", {"phone": "+37060020101"}, reason="test")
+
+        plan = subscribed(state.identity.service_profile, "internet")
+        assert plan and plan["status"] == "suspended"
+
+
 class TestServiceRules:
     def _identified(self, make_state, profile):
         state = make_state("+37060012353")

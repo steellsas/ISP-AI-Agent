@@ -287,8 +287,11 @@ def _format_customer_profile(details: dict) -> dict:
             }
             for a in addresses
         ],
-        # get_customer_details already filters to active service plans.
-        "active_services": [s.get("plan_name") for s in services if s.get("plan_name")],
+        "active_services": [
+            s.get("plan_name")
+            for s in services
+            if s.get("plan_name") and s.get("status") == "active"
+        ],
         # The service profile (D-10): what the customer has and how it is delivered.
         "services": [
             {

@@ -447,12 +447,13 @@ def get_customer_details(db: DatabaseConnection, customer_id: str) -> dict[str, 
             )
             addresses = [dict(row) for row in cursor.fetchall()]
 
-        # Get service plans
+        # Get service plans — a SUSPENDED plan is still the customer's service (a debt
+        # suspends it, it does not cancel it); only cancelled plans are gone.
         with db.cursor() as cursor:
             cursor.execute(
                 """
                 SELECT * FROM service_plans
-                WHERE customer_id = ? AND status = 'active'
+                WHERE customer_id = ? AND status != 'cancelled'
             """,
                 (customer_id,),
             )
