@@ -57,6 +57,10 @@ CREATE TABLE IF NOT EXISTS service_plans (
     plan_id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,
     service_type TEXT NOT NULL CHECK(service_type IN ('internet', 'tv', 'phone', 'bundle')),
+    -- How the service is delivered (ethernet, iptv, dvbc, voip…): which telemetry applies
+    -- and what depends on what (knowledge/services.yaml). A mandatory CRM field in
+    -- integration; in the demo a plan without one gets its type's usual technology.
+    technology TEXT,
     plan_name TEXT NOT NULL,
     speed_mbps INTEGER,
     price DECIMAL(10,2) NOT NULL,
@@ -77,6 +81,20 @@ CREATE INDEX idx_service_plans_status ON service_plans(status);
 -- template in knowledge/informavimas.yaml reads the aggregates via
 -- get_billing_status)
 -- ============================================
+-- Demo default: a plan inserted without a technology gets its service type's usual one.
+CREATE TRIGGER IF NOT EXISTS service_plans_default_technology
+AFTER INSERT ON service_plans
+WHEN NEW.technology IS NULL
+BEGIN
+    UPDATE service_plans
+    SET technology = CASE NEW.service_type
+        WHEN 'internet' THEN 'ethernet'
+        WHEN 'tv' THEN 'iptv'
+        WHEN 'phone' THEN 'voip'
+    END
+    WHERE plan_id = NEW.plan_id;
+END;
+
 CREATE TABLE IF NOT EXISTS invoices (
     invoice_id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,

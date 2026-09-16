@@ -175,6 +175,9 @@ class Module(_Model):
 
 
 class Intent(_Model):
+    # The service the complaint is about (knowledge/services.yaml); None for non-service
+    # intents (billing, chat…).
+    service: str | None = None
     description: str | None = None  # for the LLM classifier
     examples_key: str | None = None  # locale examples file/section, one phrasing per line
     policy: Literal["solve", "register", "answer", "not_ours", "chat"] = "solve"
@@ -187,6 +190,21 @@ class Intent(_Model):
 
 class IntentsCatalog(_Model):
     intents: dict[str, Intent]
+
+
+class ServiceSpec(_Model):
+    technologies: list[str]
+
+
+class Dependency(_Model):
+    service: str
+    technology: str
+    depends_on: str
+
+
+class Services(_Model):
+    services: dict[str, ServiceSpec]
+    dependencies: list[Dependency] = []
 
 
 class Detectors(_Model):
@@ -272,6 +290,7 @@ class KnowledgeError(Exception):
 @dataclass
 class Knowledge:
     intents: IntentsCatalog | None = None
+    services: Services | None = None
     packs: dict[str, FaultPack] = field(default_factory=dict)
     modules: dict[str, Module] = field(default_factory=dict)
     detectors: Detectors | None = None
@@ -538,6 +557,7 @@ def validate_knowledge(
 
     single_files: dict[str, tuple[str, type[BaseModel]]] = {
         "intents": ("intents.yaml", IntentsCatalog),
+        "services": ("services.yaml", Services),
         "detectors": ("detectors.yaml", Detectors),
         "faq": ("faq.yaml", Faq),
         "inform": ("inform.yaml", Inform),
@@ -576,6 +596,26 @@ def validate_knowledge(
         errors.append(f"detectors.yaml: detector '{name}' has no answer meanings")
     detectors = set(CODE_DETECTORS) | declared
     problems = set(k.intents.intents) if k.intents else None
+    if k.services:
+        known = set(k.services.services)
+        for i, dep in enumerate(k.services.dependencies):
+            for field in ("service", "depends_on"):
+                if getattr(dep, field) not in known:
+                    errors.append(
+                        f"services.yaml: dependencies.{i}.{field} '{getattr(dep, field)}' is not a service"
+                    )
+            if (
+                dep.service in known
+                and dep.technology not in k.services.services[dep.service].technologies
+            ):
+                errors.append(
+                    f"services.yaml: dependencies.{i}.technology '{dep.technology}' is not a technology of {dep.service}"
+                )
+        for name, intent in (k.intents.intents if k.intents else {}).items():
+            if intent.service and intent.service not in known:
+                errors.append(
+                    f"intents.yaml: intents.{name}.service '{intent.service}' is not a service"
+                )
     for name, module in k.modules.items():
         errors += _check_module(module_files[name], module, detectors)
     for verdict, pack in k.packs.items():

@@ -176,3 +176,10 @@ INSERT INTO ip_assignments (assignment_id, customer_id, ip_address, mac_address,
 ('IP110', 'CUST110', '192.168.2.110', '00:1A:2B:3C:4E:10', 'dhcp', 'active',  'DEMO ID'),
 ('IP111', 'CUST111', '192.168.2.111', '00:1A:2B:3C:4E:11', 'dhcp', 'active',  'DEMO ID'),
 ('IP112', 'CUST112', '192.168.2.112', '00:1A:2B:3C:4E:12', 'dhcp', 'active',  'DEMO S6: lease dar galioja, bet srauto nera (pakibes)');
+
+-- M6 (D-10): IPTV for two demo customers. CUST110's internet is healthy up to the router,
+-- so a TV complaint is a TV fault of its own; CUST112's router has hung, so its TV is
+-- down BECAUSE the internet is (IPTV depends on it).
+INSERT INTO service_plans (plan_id, customer_id, service_type, technology, plan_name, speed_mbps, price, status, activation_date) VALUES
+('PLAN_TV110', 'CUST110', 'tv', 'iptv', 'IP TV Standard', NULL, 8.99, 'active', '2024-02-01'),
+('PLAN_TV112', 'CUST112', 'tv', 'iptv', 'IP TV Standard', NULL, 8.99, 'active', '2024-02-01');

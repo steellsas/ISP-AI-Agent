@@ -289,6 +289,16 @@ def _format_customer_profile(details: dict) -> dict:
         ],
         # get_customer_details already filters to active service plans.
         "active_services": [s.get("plan_name") for s in services if s.get("plan_name")],
+        # The service profile (D-10): what the customer has and how it is delivered.
+        "services": [
+            {
+                "type": s.get("service_type"),
+                "technology": s.get("technology"),
+                "plan": s.get("plan_name"),
+                "status": s.get("status"),
+            }
+            for s in services
+        ],
     }
 
 

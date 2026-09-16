@@ -60,6 +60,8 @@ class IdentityState(BaseModel):
     held_outage: dict[str, Any] | None = None
     # The caller explicitly confirmed the service address (a yes to "Ar skambinate dėl…").
     address_confirmed: bool = False
+    # The identified customer's active services: [{type, technology, plan, status}] (D-10).
+    service_profile: list[dict[str, Any]] | None = None
 
     # --- identification ladder -------------------------------------------------
     # Account-code rung: the caller is asked for the abonento kodas; grace turns
@@ -97,11 +99,18 @@ class IdentityState(BaseModel):
     # The caller just introduced themselves — accept warmly, once.
     caller_name_heard: bool = False
 
-    def set_customer(self, customer_id: str, name: str | None = None, address: str | None = None):
+    def set_customer(
+        self,
+        customer_id: str,
+        name: str | None = None,
+        address: str | None = None,
+        services: list[dict[str, Any]] | None = None,
+    ):
         """Commit the identified account (CRM lookup result)."""
         self.customer_id = customer_id
         self.customer_name = name
         self.customer_address = address
+        self.service_profile = services
 
 
 class IntakeState(BaseModel):

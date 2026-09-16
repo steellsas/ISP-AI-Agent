@@ -21,18 +21,21 @@
 # classified to the nearest type and clarified with questions.
 intents:
   internet_slow:
+    service: internet
     description: "the internet works but slowly / stalls / drops out (pages take long to load, video buffers, games lag)"
     examples_key: problems/internet_slow
     policy: solve
     confirm_question_key: "problem.internet_slow.confirm"
     triggers_vocab: problem_triggers_internet_slow
   tv:
+    service: tv
     description: "a TV fault — the TV or some channels do not show, the picture freezes, no signal"
     examples_key: problems/tv
     policy: solve
     confirm_question_key: "problem.tv.confirm"
     triggers_vocab: problem_triggers_tv
   internet_down:
+    service: internet
     description: "the internet connection is gone / does not work — nothing loads, cannot connect, no connection (on any device or on all)"
     examples_key: problems/internet_down
     policy: solve

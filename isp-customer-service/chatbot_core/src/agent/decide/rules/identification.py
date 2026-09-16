@@ -30,6 +30,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     s.identity.customer_id = None
     s.identity.customer_name = None
     s.identity.customer_address = None
+    s.identity.service_profile = None
     s.identity.address_confirmed = False
     s.resolution.procedure = None
     s.diagnosis.verdicts.clear()

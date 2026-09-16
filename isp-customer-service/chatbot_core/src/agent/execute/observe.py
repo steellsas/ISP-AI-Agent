@@ -192,6 +192,7 @@ def update_state_from_observation(state, rt, action: str, observation: str):
                     customer_id=profile.get("customer_id"),
                     name=profile.get("name"),
                     address=primary.get("full_address"),
+                    services=profile.get("services"),
                 )
 
         elif action == "create_ticket" and obs_data.get("success"):
