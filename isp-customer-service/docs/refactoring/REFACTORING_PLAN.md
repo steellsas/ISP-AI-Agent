@@ -149,6 +149,11 @@ Those come after the refactor (see DECISIONS.md D-22).
 | Q-2 | Keep the voice speculation feature (`agent/speculation.py`, pre-computed replies) and adapt it to `TurnPlan`, or delete it? | M5 | **Remove in M5, re-evaluate after M7** (2026-09-14). It exists only to cut latency and depends on the old directive mechanism. After the refactor, measure latency (see §9); rebuild on `TurnPlan` only if it is still needed. |
 | Q-3 | M0 DoD needs every `decide()` verdict in an eval scenario, but no seeded customer lacks a port, so `no_port_data` is unreachable (F-14). Add a seed customer without a port row (e.g. `CUST113`, additive, visible in the demo DB), or accept the unit test as coverage? | M0 | **Unit test is enough** (2026-09-14). Not every verdict needs an eval scenario; `no_port_data` stays covered by `tests/test_verdict.py::test_no_port_data`. |
 
+Dialogue behaviour the owner wants the engine to carry (2026-09-16, notes):
+[OWNER_NOTES_dialogue.md](OWNER_NOTES_dialogue.md) — the analyst's clarify loop, verifying
+WHAT the caller actually did, leading physical work in small telemetry-checked steps, and
+saying why a step matters and what happens when it fails.
+
 ## 9. Post-refactor checks (owner decides after M7)
 
 | # | Check | How | Decision it feeds |
