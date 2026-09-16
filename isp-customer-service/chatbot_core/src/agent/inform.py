@@ -49,6 +49,16 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
         lp = lang().date(debt.get("last_payment"))
         if lp:
             vals["last_payment"] = lp
+    elif kind == "service":
+        from .intents import intent_service
+
+        service = intent_service(state.intake.problem_type)
+        if service:
+            from .contract.locale import phrase_or
+
+            label = phrase_or(f"service_label.{service}", "")
+            if label:
+                vals["service"] = label
     elif kind == "outage":
         incident = signals.get("incident") or {}
         if incident.get("description"):

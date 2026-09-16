@@ -452,7 +452,15 @@ faq_topic:
   technician: "meistras"
   working_hours: "darbo laikas"
 
+# The service a complaint is about, in the genitive („{service} paslauga").
+service_label:
+  internet: "interneto"
+  tv: "televizijos"
+  phone: "telefono"
+
 inform:
+  service_not_subscribed:
+    template: "Patikrinau jūsų sutartį — {service} paslaugos joje nėra, todėl jos gedimo patikrinti negaliu."
   billing_suspended:
     template: "Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų. Skola {amount} už {months}. Paskutinis mokėjimas gautas {last_payment}. Apmokėjus, paslauga įsijungs automatiškai — nieko papildomai daryti nereikia."
     fallback: "Patikrinau — paslauga sustabdyta dėl neapmokėtos sąskaitos. Apmokėjus sąskaitą, paslauga bus įjungta automatiškai."

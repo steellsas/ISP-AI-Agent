@@ -43,3 +43,7 @@ router_hung:
 healthy_to_router:
   healthy_up_to_router: true
 unclear_fault: {}
+# Not a telemetry verdict: the caller complains about a service their contract does not
+# have (D-10) — they are told so, nothing is checked and no ticket is made.
+service_not_subscribed:
+  inform: service

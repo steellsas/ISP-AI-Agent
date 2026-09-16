@@ -32,3 +32,9 @@ node_fault_unregistered:
 switch_unreachable:
   template_key: "inform.switch_unreachable.template"
   clarity_requirements: [what_is_wrong, what_is_being_done, how_notified]
+
+# The caller's complaint is about a service their contract does not have (D-10).
+#   service: {service} ("televizijos")
+service_not_subscribed:
+  template_key: "inform.service_not_subscribed.template"
+  clarity_requirements: [what_is_wrong]

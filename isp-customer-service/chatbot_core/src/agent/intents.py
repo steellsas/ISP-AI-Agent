@@ -48,6 +48,11 @@ def classify_purpose(text: str | None) -> str | None:
     return None
 
 
+def intent_service(problem: str | None) -> str | None:
+    """The service a complaint is about (knowledge/intents.yaml `service`), or None."""
+    return problem_entry(problem).get("service") or None
+
+
 def problem_entry(problem: str | None) -> dict[str, Any]:
     """The classification-catalog entry for a PROBLEM type (problems: section)."""
     if not problem:

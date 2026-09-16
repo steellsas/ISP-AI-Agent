@@ -19,8 +19,7 @@ STAGE = "closing"
 
 
 def plan(state: Any, rt: Any) -> TurnPlan | None:
-    from ...perceive.detectors import detect_refuse_or_ticket, detect_restored
-    from ...resolution import Outcome
+    from ...perceive.detectors import detect_refuse_or_ticket
 
     s = state
     if not s.closing.case_closed:
@@ -45,7 +44,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         and s.closing.closed_reason == "resolved"
         and not s.ticket.ticket_id
         and s.resolution.procedure is not None
-        and detect_restored(user_input) is Outcome.NO
+        and _still_down(user_input)
     ):
         s.closing.case_closed = False
         s.closing.is_complete = False
@@ -174,3 +173,18 @@ def maybe_close_inform(state: Any, rt: Any, user_input: str | None) -> None:
         rt.tracer.emit(
             "decision", intent="inform_close", action="close", to=s.closing.closed_reason
         )
+
+
+def _still_down(user_input: str | None) -> bool:
+    """The caller says it still does not work. An explicit report ("neveikia") always
+    counts; a bare "ne" counts only when it is not a goodbye — "Ne, ačiū, viso gero" is a
+    no to "anything else?", not a broken line (F-20: it reopened a resolved case and
+    registered a technician after the goodbye)."""
+    from ...contract.locale import vocab
+    from ...perceive.detectors import detect_farewell, detect_restored
+    from ...resolution import Outcome
+
+    low = (user_input or "").lower()
+    if any(m in low for m in vocab("restored_no")):
+        return True
+    return detect_restored(user_input) is Outcome.NO and not detect_farewell(user_input)

@@ -43,3 +43,77 @@ class TestProfile:
 
         assert state.identity.customer_id == "CUST009"
         assert subscribed(state.identity.service_profile, "tv") is None
+
+
+class TestServiceRules:
+    def _identified(self, make_state, profile):
+        state = make_state("+37060012353")
+        state.identity.customer_id = "CUST009"
+        state.identity.service_profile = profile
+        state.intake.problem_type = "tv"
+        return state
+
+    def test_a_service_the_contract_lacks_is_not_diagnosed(self, make_state, make_runtime):
+        from agent.decide.rules import services
+
+        state = self._identified(make_state, [{"type": "internet", "technology": "ethernet"}])
+
+        assert services.route(state) == "not_subscribed"
+        services.not_subscribed(state, make_runtime())
+        assert state.diagnosis.verdicts["network"]["reason"] == "service_not_subscribed"
+        assert state.resolution.procedure is None  # nothing to walk, no ticket
+
+    def test_iptv_rides_on_the_internet(self, make_state):
+        from agent.decide.rules import services
+
+        state = self._identified(
+            make_state,
+            [{"type": "internet", "technology": "ethernet"}, {"type": "tv", "technology": "iptv"}],
+        )
+
+        assert services.route(state) == "depends"
+
+    def test_a_broken_internet_puts_the_tv_recheck_on_the_closing_list(
+        self, make_state, make_runtime
+    ):
+        from agent.decide.rules import services
+
+        state = self._identified(make_state, [{"type": "tv", "technology": "iptv"}])
+        state.diagnosis.verdicts["network"] = {"reason": "router_hung"}
+
+        assert services.depends_on_broken(state)
+        services.recheck_after_fix(state, make_runtime())
+        services.recheck_after_fix(state, make_runtime())  # once only
+        assert [x["source"] for x in state.intake.secondary_problems] == ["dependency"]
+
+    def test_a_healthy_internet_leaves_the_tv_fault_its_own(self, make_state):
+        from agent.decide.rules import services
+
+        state = self._identified(make_state, [{"type": "tv", "technology": "iptv"}])
+        state.diagnosis.verdicts["network"] = {"reason": "healthy_to_router"}
+
+        assert not services.depends_on_broken(state)
+
+    def test_the_not_subscribed_news_names_the_service(self, make_state, make_runtime):
+        from agent.inform import inform_text
+
+        state = self._identified(make_state, [{"type": "internet", "technology": "ethernet"}])
+
+        text = inform_text(state, make_runtime(), "service_not_subscribed")
+
+        assert text and "televizijos paslaugos" in text
+
+
+class TestStillDownAtClosing:
+    """F-20: a no to "anything else?" is a goodbye, not a broken line."""
+
+    def test_a_polite_no_is_not_a_still_down_report(self):
+        from agent.decide.rules.closing import _still_down
+
+        assert _still_down("Ne, ačiū, viso gero") is False
+        assert _still_down("Ne, ačiū, viskas") is False
+
+    def test_an_explicit_report_still_reopens(self):
+        from agent.decide.rules.closing import _still_down
+
+        assert _still_down("Internetas vis dar neveikia") is True

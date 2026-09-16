@@ -736,7 +736,19 @@ def _goal_secondary_problems(state, rt) -> list[str]:
     s = state
     if not (s.closing.case_closed and getattr(s.intake, "secondary_problems", None)):
         return []
-    topics = "; ".join(f"„{x['text']}“" for x in s.intake.secondary_problems)
+    rechecks = [x for x in s.intake.secondary_problems if x.get("source") == "dependency"]
+    if rechecks and not rechecks[0].get("asked"):
+        rechecks[0]["asked"] = True  # one-shot: the caller answers it once
+        label = phrase_or(f"service_label.{rechecks[0].get('service')}", "")
+        return [
+            "PLAN GOAL — RE-CHECK THE SERVICE THEY CALLED ABOUT: the fix was on the "
+            f"connection their {rechecks[0].get('service')} depends on. Ask whether "
+            f"it works now (e.g. „Ar {label} dabar veikia?“) before saying goodbye."
+        ]
+    others = [x for x in s.intake.secondary_problems if x.get("source") != "dependency"]
+    if not others:
+        return []
+    topics = "; ".join(f"„{x['text']}“" for x in others)
     return [
         "PLAN GOAL — SECONDARY PROBLEMS (ask before saying goodbye): the caller mentioned "
         f"{topics}. Ask whether it is still relevant; say it was passed to the technician "

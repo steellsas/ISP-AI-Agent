@@ -26,8 +26,8 @@
     },
     {
       "id": "T1_tv_unclear_fault_ticket",
-      "phone": "+37060012353",
-      "desc": "Kelio-nėra taisyklė: TV gedimas (pack'o nėra) + identifikuotas klientas -> sąžiningas neaiškaus gedimo tiketas, JOKIŲ interneto žingsnių",
+      "phone": "+37060020110",
+      "desc": "Kelio-nėra taisyklė: IPTV klientas (CUST110), internetas iki routerio sveikas -> TV gedimas savas -> sąžiningas neaiškaus gedimo tiketas, JOKIŲ interneto žingsnių (M6: klientas su TV paslauga)",
       "turns": [
         "Laba diena, televizorius nerodo nė vieno kanalo",
         "Taip",
@@ -623,6 +623,52 @@
         ]
       },
       "known_bug": false
+    },
+    {
+      "id": "S10_tv_not_subscribed",
+      "phone": "+37060012353",
+      "desc": "M6 (D-10): klientas be TV paslaugos skundžiasi TV -> pasakoma, kad paslaugos sutartyje nėra; jokio tikrinimo, jokio tiketo",
+      "turns": [
+        "Laba diena, televizorius nerodo nė vieno kanalo",
+        "Taip",
+        "Andrius",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "service_not_subscribed",
+        "reply_any": [
+          "televizijos paslaugos"
+        ],
+        "reply_none": [
+          "registruoj"
+        ]
+      }
+    },
+    {
+      "id": "R3_iptv_depends_on_internet",
+      "phone": "+37060020112",
+      "desc": "M6 (D-10/D-12): IPTV neveikia, nes pakibo routeris -> taisomas internetas (perkrovimas), pabaigoje paklausiama, ar televizija veikia",
+      "turns": [
+        "Laba diena, neveikia televizija",
+        "Taip",
+        "Paulius",
+        "Visuose",
+        "Taip, galiu prieiti",
+        "Perkroviau",
+        "Taip, lemputė mirksi, puslapiai atsidaro",
+        "Taip, televizija rodo",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_any": [
+          "televizij"
+        ],
+        "reply_none": [
+          "užregistravau"
+        ]
+      }
     }
   ]
 }

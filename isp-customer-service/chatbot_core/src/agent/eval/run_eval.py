@@ -165,6 +165,11 @@ def _run_scenario(scn: dict) -> dict:
             verdicts_seen.add(st.diagnosis.hypothesis["cause"])
         if st.resolution.procedure and st.resolution.procedure.get("verdict"):
             verdicts_seen.add(st.resolution.procedure["verdict"])
+        # A verdict that needs no belief or procedure (e.g. a service the contract does
+        # not have) is still the verdict the call was decided on.
+        network = st.diagnosis.verdicts.get("network") or {}
+        if network.get("reason"):
+            verdicts_seen.add(network["reason"])
 
     replies.append(session.greeting())
     _snapshot()

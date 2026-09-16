@@ -51,7 +51,13 @@ def ensure_diagnosed(state, rt) -> bool:
     # the INTERNET telemetry and walking a wrong-domain pack (live: a TV call
     # was led through Wi-Fi questions). The single-escalate strategy begins
     # the ticket dialogue deterministically on arrival.
-    if s.intake.problem_type and s.resolution.procedure is None:
+    from ..decide.rules import services
+
+    service_route = services.route(state) if s.resolution.procedure is None else None
+    if service_route == "not_subscribed":
+        services.not_subscribed(state, rt)
+        return True
+    if s.intake.problem_type and s.resolution.procedure is None and service_route != "depends":
         from ..faults import problem_has_path, step_by_role
 
         if not problem_has_path(s.intake.problem_type):
@@ -72,6 +78,26 @@ def ensure_diagnosed(state, rt) -> bool:
         telemetry(state, rt, mode="snapshot", reason="first_diagnosis")
     except Exception:  # pragma: no cover - best-effort
         return False
+    if service_route == "depends":
+        # IPTV over a broken internet: fix the internet, re-check the TV at the end.
+        # Over a healthy internet the TV fault is its own — the no-path ticket.
+        if services.depends_on_broken(state):
+            services.recheck_after_fix(state, rt)
+        else:
+            from ..faults import problem_has_path, step_by_role
+
+            if not problem_has_path(s.intake.problem_type):
+                escalate = step_by_role("unclear_fault", "escalate")
+                s.resolution.procedure = {"verdict": "unclear_fault", "step": escalate.id}
+                s.diagnosis.verdicts["network"] = {"reason": "unclear_fault", "skipped": True}
+                rt.tracer.emit(
+                    "decision",
+                    intent="no_path",
+                    action="unclear_fault_ticket",
+                    value=s.intake.problem_type,
+                )
+                begin_ticket_dialogue(state, rt, escalate)
+                return True
     _unclear_fault_when_unknown(state, rt)
     _seed_evidence_from_call(state, rt)
     return True

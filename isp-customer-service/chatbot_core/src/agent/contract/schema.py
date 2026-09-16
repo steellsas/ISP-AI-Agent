@@ -252,7 +252,7 @@ class VerdictFlags(_Model):
     line_fault: bool = False
     device_visible: bool = True
     healthy_up_to_router: bool = False
-    inform: Literal["debt", "outage", "network"] | None = None
+    inform: Literal["debt", "outage", "network", "service"] | None = None
     auto_ticket: bool = False
 
 
