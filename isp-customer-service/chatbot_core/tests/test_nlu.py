@@ -185,6 +185,7 @@ class TestPrefillWiring:
 
         from agent.perceive import perceive
         from agent.slots import SlotStatus
+        from agent.speak.node import turn as speak_turn
 
         from tests.calls import make_agent
 
@@ -193,12 +194,12 @@ class TestPrefillWiring:
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
-            patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.stream_tool_completion", side_effect=_stream_of(msg)),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             text = "neveikia internetas Tilžės 60 butas 7"
             perceive(agent.state, agent.runtime, text)
-            list(agent.run_turn_scoped_stream(text, "intake"))
+            list(speak_turn(agent.state, agent.runtime, text, "intake"))
 
         p = agent.state.identity.profile
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
@@ -213,6 +214,7 @@ class TestPrefillWiring:
 
         from agent.perceive import perceive
         from agent.speak.context_card import context_card
+        from agent.speak.node import turn as speak_turn
 
         from tests.calls import make_agent
 
@@ -221,12 +223,12 @@ class TestPrefillWiring:
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
-            patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.stream_tool_completion", side_effect=_stream_of(msg)),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             text = "internetas neveikia, lemputės nedega, jungiuosi per wifi"
             perceive(agent.state, agent.runtime, text)
-            list(agent.run_turn_scoped_stream(text, "intake"))
+            list(speak_turn(agent.state, agent.runtime, text, "intake"))
 
         assert agent.state.intake.symptoms["lights"] == "off"
         assert agent.state.intake.symptoms["connection"] == "wifi"

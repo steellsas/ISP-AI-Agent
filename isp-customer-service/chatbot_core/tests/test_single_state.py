@@ -27,8 +27,8 @@ def _fake_llm(**_kwargs):
 def _turns(session, texts):
     replies = []
     with (
-        patch("agent.react_agent.stream_tool_completion", side_effect=_fake_llm),
-        patch("agent.react_agent.get_last_call_stats", return_value={}),
+        patch("agent.speak.node.stream_tool_completion", side_effect=_fake_llm),
+        patch("agent.speak.node.get_last_call_stats", return_value={}),
     ):
         for text in texts:
             replies.append(session.handle_turn(text))

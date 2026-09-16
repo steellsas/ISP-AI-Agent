@@ -999,8 +999,8 @@ class TestDirectiveTurnsAreSpeechOnly:
             return SimpleNamespace(content="ok", tool_calls=None)
 
         with (
-            patch("agent.react_agent.stream_tool_completion", side_effect=_stream),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.stream_tool_completion", side_effect=_stream),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             narrate(agent.state, agent.runtime, "taip", "intake", "address_validation")
         assert captured["tools"] is None

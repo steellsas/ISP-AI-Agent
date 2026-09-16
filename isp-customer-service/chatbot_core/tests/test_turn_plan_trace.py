@@ -35,7 +35,7 @@ def test_every_turn_emits_one_plan(db_connection, tmp_path):
     assert plans[0]["rule"] == "dialog.greeting"
     assert plans[0]["say"]["kind"] == "phrase"
 
-    with patch("agent.react_agent.stream_tool_completion", _fake_stream("Kuo galiu padėti?")):
+    with patch("agent.speak.node.stream_tool_completion", _fake_stream("Kuo galiu padėti?")):
         session.handle_turn("O kas jūs tokie?")
     plans = _plans(tracer)
     assert len(plans) == 2

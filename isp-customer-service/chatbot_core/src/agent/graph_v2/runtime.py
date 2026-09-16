@@ -37,9 +37,10 @@ def narrate(
     reply for the checkpoint."""
     state.turn.active_node = node
     rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
+    from ..speak.node import begin_turn, stream_reply
+
     writer = _writer()
-    agent = narrator(state, rt)
-    agent.begin_turn(user_input)
+    begin_turn(state, rt, user_input)
     if exits:
         from ..execute.say import scripted_exit
 
@@ -48,7 +49,7 @@ def narrate(
             writer(words)
             return words
     parts: list[str] = []
-    for token in agent.llm_reply(owner):
+    for token in stream_reply(state, rt, owner):
         writer(token)
         parts.append(token)
     return "".join(parts)

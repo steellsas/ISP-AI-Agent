@@ -153,7 +153,7 @@ class TestBackstop:
         a = _agent()
         a.state.dialog.turn_count = 1  # past the greeting turn (a policy plan)
         a.state.dialog.stuck_count = 3
-        with patch("agent.react_agent.stream_tool_completion") as stream_mock:
+        with patch("agent.speak.node.stream_tool_completion") as stream_mock:
             reply = _turn(a, "nesąmonė")
         stream_mock.assert_not_called()
         assert "abonento kodą" in reply
@@ -162,7 +162,7 @@ class TestBackstop:
         a = _agent()
         a.state.dialog.turn_count = 1  # past the greeting turn (a policy plan)
         a.state.dialog.stuck_count = 4
-        with patch("agent.react_agent.stream_tool_completion"):
+        with patch("agent.speak.node.stream_tool_completion"):
             _turn(a, "vis dar nesąmonė")
         assert a.state.closing.case_closed is True
         assert a.state.closing.closed_reason == "declined"
@@ -178,8 +178,8 @@ class TestProgressReset:
         a.state.intake.problem_type = "internet_down"
         msg = SimpleNamespace(content="Radau gatvę. Koks namo numeris?", tool_calls=None)
         with (
-            patch("agent.react_agent.stream_tool_completion", side_effect=_stream_of(msg)),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.stream_tool_completion", side_effect=_stream_of(msg)),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             _turn(a, "Dainų gatvė")
         assert a.state.identity.profile.street.value  # NLU heard the street this turn

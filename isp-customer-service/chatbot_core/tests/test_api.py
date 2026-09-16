@@ -91,11 +91,11 @@ class TestTurns:
         sid = _create(client)["session_id"]
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="Supratau, tikrinu."),
             ),
             patch(
-                "agent.react_agent.get_last_call_stats",
+                "agent.speak.node.get_last_call_stats",
                 return_value={"model": "gpt-4o-mini", "input_tokens": 100, "output_tokens": 20},
             ),
         ):

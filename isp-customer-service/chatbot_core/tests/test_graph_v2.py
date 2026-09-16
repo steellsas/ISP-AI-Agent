@@ -70,7 +70,8 @@ class FakeEngine:
         }
         for target, (label, result) in recorders.items():
             monkeypatch.setattr(target, self._recorder(label, result))
-        monkeypatch.setattr("agent.graph_v2.runtime.narrator", lambda state, rt: self)
+        monkeypatch.setattr("agent.speak.node.begin_turn", lambda state, rt, user_input: None)
+        monkeypatch.setattr("agent.speak.node.stream_reply", self._speak)
         monkeypatch.setattr("agent.execute.say.scripted_exit", lambda state, rt: None)
 
     def _recorder(self, label, result):
@@ -80,10 +81,7 @@ class FakeEngine:
 
         return record
 
-    def begin_turn(self, user_input):
-        pass
-
-    def llm_reply(self, owner):
+    def _speak(self, state, rt, owner):
         self.calls.append("narrate")
         yield "ok-"
         yield "reply"
@@ -187,10 +185,10 @@ class TestSessionThroughGraph:
 
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="Pasakykite adresą."),
             ),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             reply = session.handle_turn("neveikia internetas Vilniaus gatvėje 29")
 
@@ -205,10 +203,10 @@ class TestSessionThroughGraph:
         captured = {}
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="ok", captured=captured),
             ),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             session.handle_turn("neveikia internetas Vilniaus gatvėje 29")
 
@@ -223,10 +221,10 @@ class TestRouting:
         captured = {}
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="ok", captured=captured),
             ),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             session.handle_turn(text)
         return _tool_names(captured["tools"])
@@ -280,10 +278,10 @@ class TestRouting:
         captured = {}
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="Geros dienos!", captured=captured),
             ),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             reply = session.handle_turn("O kiek tai kainuos?")  # a real question -> LLM
 
@@ -298,10 +296,10 @@ class TestCheckpointedState:
 
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="Koks adresas?"),
             ),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             reply = session.handle_turn("neveikia internetas")
 
@@ -319,10 +317,10 @@ class TestCheckpointedState:
 
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="Koks adresas?"),
             ),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             reply = session.handle_turn("neveikia internetas")
 
@@ -373,10 +371,10 @@ class TestBetweenTurnWrites:
         with (
             patch.object(speak_node, "build_messages", side_effect=spy),
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="Suprantu."),
             ),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             session.handle_turn("O kas jūs tokie?")
         assert "Labas! —" in seen["history"]

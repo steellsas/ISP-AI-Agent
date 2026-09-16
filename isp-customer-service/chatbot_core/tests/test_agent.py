@@ -1462,8 +1462,8 @@ class TestReviewGaps:
         s = AgentSession(caller_phone="+37060012353")
         s.greeting()
         with (
-            _patch("agent.react_agent.stream_tool_completion", side_effect=_stream),
-            _patch("agent.react_agent.get_last_call_stats", return_value={}),
+            _patch("agent.speak.node.stream_tool_completion", side_effect=_stream),
+            _patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             s.handle_turn("O kas jūs tokie, kokia įmonė?")  # off-script -> LLM
         count = sum(
@@ -1502,8 +1502,8 @@ class TestBargeInCancel:
         from agent.session import AgentSession
 
         with (
-            patch("agent.react_agent.stream_tool_completion", side_effect=slow_stream),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.stream_tool_completion", side_effect=slow_stream),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
             s = AgentSession(caller_phone="unknown")
             s.greeting()
@@ -1535,7 +1535,9 @@ class TestBargeInCancel:
         agent.state.diagnosis.evidence_ask_counts["lights"] = 1
         agent.state.diagnosis.pending_evidence_key = "lights"
 
-        agent.on_turn_cancelled("Pažiūrėkite, ar dega bent")
+        from agent.speak.node import on_turn_cancelled
+
+        on_turn_cancelled(agent.state, agent.runtime, "Pažiūrėkite, ar dega bent")
 
         assert agent.state.resolution.procedure["asked"] is True  # early answer will route
         assert (
