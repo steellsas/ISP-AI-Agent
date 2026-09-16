@@ -3,7 +3,7 @@ Procedure step guards — the ordered pre-checks that decide whether a caller's
 turn may touch the active strategy step at all.
 
 R3 extraction (docs/ROADMAP_REFACTORING.md §5): moved verbatim out of
-ReactAgent._walk_resolution. Every guard is a hard-earned fix for an observed
+the procedure walk. Every guard is a hard-earned fix for an observed
 live-call failure and the ORDER IS LOAD-BEARING — e.g. an explicit ticket
 demand must outrank the evidence-question hold, which must outrank the
 asked-step classifiers. Reorder only with a golden parity run.

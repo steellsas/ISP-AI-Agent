@@ -1,7 +1,7 @@
 """
 LLM Service Package
 
-Simplified LLM support for ReactAgent.
+Simplified LLM support for the agent.
 
 Usage:
     from services.llm import llm_completion

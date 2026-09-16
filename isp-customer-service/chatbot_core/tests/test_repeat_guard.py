@@ -1,5 +1,5 @@
 """
-Tests for the repeat-guard (ReactAgent stuck counter + deterministic backstop).
+Tests for the repeat-guard (the stuck counter + the deterministic backstop).
 
 Stops the agent re-asking the same question 2–4× (observed in voice traces):
 a no-progress question increments stuck_count, real progress resets it, and at

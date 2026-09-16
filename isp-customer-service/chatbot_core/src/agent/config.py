@@ -2,7 +2,7 @@
 Agent Configuration
 
 Single configuration source for the entire ISP Support Agent.
-Used by: ReactAgent, LLM services, Streamlit UI
+Used by: the engine's nodes, the LLM services and the Streamlit UI
 
 Usage:
     from src.agent.config import get_config, create_config, update_config

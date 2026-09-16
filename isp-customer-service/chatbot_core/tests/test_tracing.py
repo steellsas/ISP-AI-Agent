@@ -7,7 +7,7 @@ its own event type, PII redaction, and the NullTracer / factory behaviour.
 
 The end-to-end "the agent actually emits" path is validated by the manual CLI
 run (it needs live LLM calls); here we test the sink + factory directly and the
-ReactAgent helper that turns observations into events.
+the helper that turns observations into events.
 
 Run: pytest tests/test_tracing.py -v
 """
@@ -140,7 +140,7 @@ class TestFactory:
 
 
 class _CaptureTracer:
-    """In-memory tracer to assert what ReactAgent emits."""
+    """In-memory tracer to assert what the engine emits."""
 
     def __init__(self):
         self.events = []

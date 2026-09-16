@@ -1,7 +1,7 @@
 """
 Executor flow — the ONLY place tools run and tickets are registered.
 
-R3 extraction (docs/ROADMAP_REFACTORING.md §4): moved verbatim out of ReactAgent —
+Tool execution for the LLM loop's tool rounds (the engine runs its own actions) —
 the deterministic tool-access gate, the gated tool-call loop, the STATE-driven
 idempotent ticket registration and the demo bridge simulation. Functions take
 (state, rt) — the call state and the AgentRuntime. tools run through rt.tools (the

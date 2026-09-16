@@ -345,7 +345,7 @@ class AgentSession:
 
     # --- Read-only views for transports / debug UIs ------------------------
     # Exposed as properties (not the agent itself) so callers depend on this
-    # surface, not on ReactAgent internals.
+    # surface, not on engine internals.
 
     @property
     def is_complete(self) -> bool:

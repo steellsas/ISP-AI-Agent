@@ -774,7 +774,7 @@ class TestOtherStreetSignal:
         from agent.decide.rules.head import turn_head
         from agent.perceive.slots import prefill_slots_from_text
 
-        # Gyva seka (react_agent ~1416): prefill, tada pre_turn_guards —
+        # Gyva seka: prefill, tada pre_turn_guards —
         # reopen trigeris gyvena guards'uose, ne prefill'e.
         prefill_slots_from_text(agent.state, agent.runtime, text)
         turn_head(agent.state, agent.runtime, text)

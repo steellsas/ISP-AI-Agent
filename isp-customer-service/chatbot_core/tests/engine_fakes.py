@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-# The flow function behind each former ReactAgent delegate name a fake may carry.
+# The engine function behind each legacy delegate name a fake may carry.
 _FLOW_OF = {
     "_abort_ticket_to_solving": "agent.decide.rules.ticket.abort_ticket_to_solving",
     "_advance_escalate": "agent.decide.procedure.advance_escalate",
@@ -17,7 +17,6 @@ _FLOW_OF = {
     "_begin_ticket_dialogue": "agent.execute.ticket.begin_ticket_dialogue",
     "_block_uncorroborated_escalate": "agent.decide.procedure.block_uncorroborated_escalate",
     "_bridge_fail_step": "agent.decide.rules.diagnosis.bridge_fail_step",
-    "_build_messages": "agent.narrator_flow.build_messages",
     "_build_solver_context": "agent.decide.rules.diagnosis.build_solver_context",
     "_classify_confirm_and_route": "agent.decide.procedure.classify_confirm_and_route",
     "_classify_instruct_and_advance": "agent.decide.procedure.classify_instruct_and_advance",
@@ -59,7 +58,7 @@ _FLOW_OF = {
     "_settle_hypothesis": "agent.decide.hypothesis.settle_hypothesis",
     "_simulate_bridge_connection": "agent.executor_flow.simulate_bridge_connection",
     "_simulate_router_reboot": "agent.executor_flow.simulate_router_reboot_action",
-    "_state_facts_block": "agent.narrator_flow.context_card",
+    "_context_card": "agent.speak.context_card.context_card",
     "_ticket_need": "agent.decide.rules.ticket.ticket_need",
     "_ticket_stage_reply": "agent.decide.rules.ticket.ticket_stage_reply",
     "_turn_may_advance": "agent.decide.procedure.turn_may_advance",

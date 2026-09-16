@@ -196,7 +196,7 @@ class TestHistoryWindow:
         assert "Vilniaus g. 1, Vilnius" in facts
         assert messages[-1] is fact_msgs[0]  # the card trails the history
 
-    def test_state_facts_block_only_guard_when_empty(self):
+    def test_card_only_has_the_guard_when_nothing_is_known(self):
         """Nothing resolved yet -> the only addendum is the pre-problem guard
         (2026-08-06: it stops the LLM offering the address before a problem is
         stated); the system prompt itself stays unchanged."""

@@ -13,7 +13,7 @@ Step kinds:
 - ESCALATE — register the fault (ticket) and close.
 
 This module is PURE (no LLM, no DB, no I/O) so the sequencing is unit-testable;
-the engine (react_agent) wires the tool calls, telemetry and prompts around it.
+the engine wires the tool calls, telemetry and prompts around it.
 Adding a fault = one Strategy here + one RAG doc — the skeleton does not change.
 """
 

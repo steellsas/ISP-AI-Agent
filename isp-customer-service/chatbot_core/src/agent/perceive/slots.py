@@ -56,7 +56,7 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     # Raw utterance buffer: keep every caller turn verbatim so nothing is lost
     # when VAD/STT splits an utterance into fragments. Feeds the LLM
     # reconciliation fact when the deterministic slots stall (see
-    # _state_facts_block), and the future async silent re-processing.
+    # the speaker's context card), and the future async silent re-processing.
     if text and text.strip():
         s.intake.heard_utterances.append(text.strip())
 
