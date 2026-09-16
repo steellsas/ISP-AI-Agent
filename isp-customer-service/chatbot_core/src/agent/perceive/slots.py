@@ -254,17 +254,13 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
         state.identity.address_empty_turns = 0
         state.identity.address_unrecognized_turns = 0
 
-    # If the caller names a DIFFERENT street than the pre-flight outage was
-    # for, that outage is not theirs — drop it so its proactive instruction
-    # stops polluting the rest of the call (observed: the agent kept
-    # apologising and re-mentioning the outage after the caller switched
-    # streets).
+    # The caller names a DIFFERENT street than the held outage's — it is not theirs.
     if (
         reading.street
-        and s.identity.preflight_outage
-        and reading.street != s.identity.preflight_outage.get("street")
+        and s.identity.held_outage
+        and reading.street != s.identity.held_outage.get("street")
     ):
-        s.identity.preflight_outage = None
+        s.identity.held_outage = None
 
     rt.tracer.emit(
         "nlu",

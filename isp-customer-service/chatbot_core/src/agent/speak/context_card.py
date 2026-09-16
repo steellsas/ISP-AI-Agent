@@ -227,20 +227,6 @@ def _identification_notes(state, rt) -> list[str]:
             "calling about (if they already said it — see HEARD ADDRESS and use it). Do not "
             "mention the previous address or its diagnosis again."
         )
-    # The one time the phone is used up front: the caller's street has an active outage.
-    # Reveals only the street, and as a question — not an identity claim.
-    if s.identity.preflight_outage and not s.identity.customer_id and not s.closing.case_closed:
-        o = s.identity.preflight_outage
-        eta = f", restoration by {o['eta']}" if o.get("eta") else ""
-        out.append(
-            f"PROACTIVE OUTAGE: the caller's number is registered on {o['street']}, which "
-            f"has an ACTIVE mass outage{eta}. The caller has NOT named this street — do NOT "
-            f"say „Girdžiu {o['street']}“ or claim they mentioned it. Ask NEUTRALLY and WAIT "
-            f"for their answer: „Ar skambinate dėl {o['street']}?“. ONLY after they confirm, "
-            "tell them about the outage and the estimated time; the engine closes the call. "
-            "Do NOT run identification (no „Radau sutartį“, no house or apartment). If they "
-            "name a DIFFERENT street, drop this and ask for the address."
-        )
     out += _phone_account(state, rt)
     if state.turn.db_address_note and not s.identity.customer_id:
         out.append(state.turn.db_address_note)
@@ -268,7 +254,6 @@ def _phone_account(state, rt) -> list[str]:
     if not (
         offer_phone_address()
         and not s.identity.customer_id
-        and not s.identity.preflight_outage
         and c
         and c.get("street")
         # A directive turn owns the moment — the ladder decides WHEN the offer happens.
@@ -605,7 +590,7 @@ def _evidence(state, rt) -> list[str]:
     """The ledger: settled facts are never re-asked, open goals keep the turn on course."""
     s = state
     out: list[str] = []
-    if not s.identity.customer_id and not s.intake.problem_type and not s.identity.preflight_outage:
+    if not s.identity.customer_id and not s.intake.problem_type:
         out.append(
             "THE PROBLEM IS NOT STATED YET: do NOT offer an address and check nothing — first "
             "ask what the problem is / how you can help."

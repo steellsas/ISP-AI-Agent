@@ -57,6 +57,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     # address), and the identification counters and the account-code mode
     # return to a clean slate.
     s.identity.phone_candidate = None
+    s.identity.held_outage = None  # it belonged to the dropped candidate
     state.identity.account_code_mode = False
     state.identity.account_code_grace_turns = 0
     state.identity.address_empty_turns = 0
@@ -653,7 +654,7 @@ def _address_move(state, rt, s):
     from ...identification import offer_phone_address
 
     c = s.identity.phone_candidate
-    if offer_phone_address() and c and c.get("street") and not s.identity.preflight_outage:
+    if offer_phone_address() and c and c.get("street"):
         flat = f", butas {c['apartment']}" if c.get("apartment") else ""
         adresas = f"{c['street']} {c.get('house')}{flat}"
         kind, fallback = "address_offer", phrase("identification.address_offer", address=adresas)
@@ -693,6 +694,7 @@ def engine_resolve_from_slots(state, rt) -> bool:
         return False
     if not state.identity.customer_id:
         return False
+    release_held_outage(state, rt)
     # B-wave registry: the identification question (address/code) got its
     # answer — a contract committed; the next question (the name) is
     # registered by its own owner.
@@ -701,3 +703,17 @@ def engine_resolve_from_slots(state, rt) -> bool:
     _q_clear_owner(state, rt, "ident")
     ensure_diagnosed(state, rt)
     return True
+
+
+def release_held_outage(state: Any, rt: Any) -> None:
+    """The identity just committed: the outage held for the phone candidate is released
+    when this IS that customer, and discarded when the caller turned out to be calling
+    about another address (D-09)."""
+    held = state.identity.held_outage
+    if not held:
+        return
+    if held.get("customer_id") == state.identity.customer_id:
+        rt.tracer.emit("held_outage", action="released", street=held.get("street"))
+        return
+    state.identity.held_outage = None
+    rt.tracer.emit("held_outage", action="discarded", street=held.get("street"))

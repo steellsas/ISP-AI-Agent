@@ -42,7 +42,11 @@ faktų, ne išgalvojamos. Baigtis: be tiketo, aiškus „ką daryti".
 
 **Sakyti:** „Neveikia internetas."
 
-**Agentas (iškart po adreso, dar prieš vardą gali įspėti):** „Jūsų rajone
+**Agentas pirmiausia pasiūlo adresą** („Ar skambinate dėl …?") — apie avariją
+**nieko nesako, kol adresas nepatvirtintas** (D-09, M6: kitaip nepatvirtintam
+skambinančiajam atskleistų sąskaitos duomenis). Patvirtinus ir paklausus vardo:
+
+**Agentas:** „Jūsų rajone
 įvykusi tinklo avarija (kasimo darbų metu pažeistas magistralinis kabelis).
 Meistrai jau dirba, numatomas atstatymas iki HH:MM. Jums nieko daryti
 nereikia — kai gedimas bus pašalintas, gausite pranešimą."

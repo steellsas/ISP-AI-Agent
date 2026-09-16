@@ -344,12 +344,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
             handled, reply = _account_code_rung(state, rt, s, user_input)
             if handled:
                 return _words("identification.account_code", reply)
-        if (
-            s.intake.problem_type
-            and not s.intake.anamnesis_asked
-            and not s.identity.preflight_outage
-            and not has_addr
-        ):
+        if s.intake.problem_type and not s.intake.anamnesis_asked and not has_addr:
             # DIALOGO_ETALONAS #2 (Andrius 2026-09-01/03): the OPENING
             # anamnesis QUESTION is gone — capture-first keeps whatever the
             # caller already said ("vakar dingo, po audros"), and the targeted
@@ -492,11 +487,9 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     ]
     if verdict_flag(reason, "inform") == "debt":
         bits.append(phrase("identification.billing_extra"))
-    # Outage news carries the ETA when the preflight knows it.
-    if verdict_flag(reason, "inform") == "outage" and (s.identity.preflight_outage or {}).get(
-        "eta"
-    ):
-        bits.append(phrase("identification.outage_eta", eta=s.identity.preflight_outage["eta"]))
+    # Outage news carries the ETA the held check found (released for this customer only).
+    if verdict_flag(reason, "inform") == "outage" and (s.identity.held_outage or {}).get("eta"):
+        bits.append(phrase("identification.outage_eta", eta=s.identity.held_outage["eta"]))
     bits.append(phrase("identification.anything_else"))
     state.identity.result_pending = False
     state.diagnosis.news_delivered = True

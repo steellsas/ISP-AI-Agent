@@ -54,8 +54,11 @@ class IdentityState(BaseModel):
     # Pre-flight phone lookup: an UNCONFIRMED candidate {customer_id, name, address}.
     phone_candidate: dict[str, Any] | None = None
     preflight_done: bool = False
-    # Active outage on the caller's number's street: {street, eta, description}.
-    preflight_outage: dict[str, Any] | None = None
+    # Active outage for the phone CANDIDATE's street, found silently before the caller
+    # is identified: {customer_id, street, eta, description}. Nothing is said about it
+    # until that same customer is confirmed (D-09); any other outcome discards it.
+    held_outage: dict[str, Any] | None = None
+    # The caller explicitly confirmed the service address (a yes to "Ar skambinate dėl…").
     address_confirmed: bool = False
 
     # --- identification ladder -------------------------------------------------

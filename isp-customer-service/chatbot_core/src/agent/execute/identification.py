@@ -46,16 +46,16 @@ def preflight_phone(state: Any, rt: Any) -> None:
     }
     rt.tracer.emit("preflight", found=True, customer_id=result.get("customer_id"))
 
-    # Proactive mass-outage awareness (roadmap 6b): if this caller's street
-    # has an active outage, remember it so the FIRST reply can inform right
-    # away — no full identification needed (everyone at that street is down).
+    # D-09: the candidate's street may have an active outage. It is checked SILENTLY and
+    # held — telling an unverified caller about an account's street is a data leak — and
+    # announced the moment that same customer is confirmed.
     try:
         outage = rt.tools.run(
             state,
             rt,
             "check_outages",
             {"customer_id": result.get("customer_id")},
-            reason="preflight_outage",
+            reason="candidate_outage",
             apply=False,
         ).data
     except Exception:
@@ -63,12 +63,13 @@ def preflight_phone(state: Any, rt: Any) -> None:
     if outage.get("affected") and outage.get("active_outages"):
         first = outage["active_outages"][0]
         eta = first.get("estimated_resolution") or ""
-        state.identity.preflight_outage = {
+        state.identity.held_outage = {
+            "customer_id": result.get("customer_id"),
             "street": first.get("street"),
             "eta": eta[11:16] if len(eta) >= 16 else eta,  # HH:MM, voice-friendly
             "description": first.get("description"),
         }
-        rt.tracer.emit("preflight_outage", street=first.get("street"))
+        rt.tracer.emit("held_outage", action="held", street=first.get("street"))
 
 
 def address_diag_note(obs: dict) -> str | None:

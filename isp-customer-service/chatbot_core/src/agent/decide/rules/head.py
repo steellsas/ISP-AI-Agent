@@ -276,12 +276,9 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                 if c.get("city"):
                     p.city.propose(str(c["city"]), 1.0, SlotStatus.HEARD)
                 if engine_resolve_from_slots(state, rt):
-                    trace_note(
-                        rt.tracer,
-                        state,
-                        "address_confirm",
-                        "offer confirmed; engine resolve",
-                    )
+                    # An explicit yes to "Ar skambinate dėl…" — the address is confirmed.
+                    state.identity.address_confirmed = True
+                    rt.tracer.emit("decision", intent="address_confirm", action="offer_confirmed")
                     state.identity.just_identified = True
                     from ...identification import ask_caller
 
