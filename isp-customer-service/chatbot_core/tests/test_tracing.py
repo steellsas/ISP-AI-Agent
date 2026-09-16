@@ -152,8 +152,8 @@ class _CaptureTracer:
 from agent.speak.postprocess import finalize
 
 
-class TestReactAgentEmits:
-    """ReactAgent translates tool observations into trace events (no LLM)."""
+class TestEngineEmits:
+    """The engine translates tool observations into trace events (no LLM)."""
 
     def _agent(self, tracer):
         from tests.calls import make_agent
