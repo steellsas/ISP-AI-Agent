@@ -148,6 +148,9 @@ class _CaptureTracer:
         self.events.append({"type": event_type, **fields})
 
 
+from agent.speak.postprocess import finalize
+
+
 class TestReactAgentEmits:
     """ReactAgent translates tool observations into trace events (no LLM)."""
 
@@ -333,7 +336,7 @@ class TestReactAgentEmits:
             assert dict(cur.fetchone())["customer_id"] is None
 
     def test_reply_emits_case_snapshot(self, db_connection):
-        """_finalize_reply emits a compact case snapshot for review (Pillar A2)."""
+        """The reply pass emits a compact case snapshot for review (Pillar A2)."""
         cap = _CaptureTracer()
         agent = self._agent(cap)
         agent.state.intake.problem_type = "internet_down"
@@ -341,7 +344,7 @@ class TestReactAgentEmits:
         agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "foreign_mac"}
         cap.events.clear()
 
-        agent._finalize_reply("Ar pakeitėte routerį?")
+        finalize(agent.state, agent.runtime, "Ar pakeitėte routerį?")
 
         case = next(e for e in cap.events if e["type"] == "case")
         assert case["problem"] == "internet_down"
@@ -354,6 +357,6 @@ class TestReactAgentEmits:
         agent = self._agent(cap)
         cap.events.clear()
 
-        agent._finalize_reply("Labas!")
+        finalize(agent.state, agent.runtime, "Labas!")
 
         assert not [e for e in cap.events if e["type"] == "case"]

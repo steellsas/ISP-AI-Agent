@@ -196,14 +196,14 @@ def maybe_end_on_goodbye(state: Any, rt: Any, text: str) -> None:
 
 
 def commit_driven(state: Any, rt: Any, user_input: str | None, reply: str) -> str:
-    """End-of-turn bookkeeping for a solver-led reply (the narrator's path does the same
+    """End-of-turn bookkeeping for a solver-led reply (the speaker's path does the same
     in begin_turn): the user_turn trace, the dialogue history, the shared finalisation."""
-    from ..graph_v2.runtime import narrator
+    from ..speak.postprocess import finalize
 
     if user_input:
         state.dialog.last_heard = user_input.strip()
         rt.tracer.emit("user_turn", text=user_input)
         state.messages.append({"role": "user", "content": user_input})
     state.messages.append({"role": "assistant", "content": reply})
-    narrator(state, rt)._finalize_reply(reply)
+    finalize(state, rt, reply)
     return reply

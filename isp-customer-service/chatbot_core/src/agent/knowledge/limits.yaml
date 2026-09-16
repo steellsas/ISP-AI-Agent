@@ -28,6 +28,7 @@ address_unrecognized_turns_max: 2   # unrecognised address turns before the acco
 address_resolve_failures_max: 3     # failed street/house lookups before the account-code rung
 account_code_grace_turns: 2         # non-code turns before code mode quietly switches off
 reopen_confirm_max_asks: 2          # unclear answers to the address-change confirm before dropping it
+reply_max_chars: 280                # a longer reply is trimmed at its last full sentence
 side_topic_streak_max: 3            # side-topic turns in a row before the fixed "back to the issue" reply
 wrap_content_turns_max: 2           # content turns in the inform wrap-up that still get an LLM reaction
 nlu_street_match_threshold: 0.75    # registry match score that accepts a street

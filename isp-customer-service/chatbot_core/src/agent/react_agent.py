@@ -19,11 +19,10 @@ from src.services.llm.client import (
 )
 
 from .contract.locale import phrase
-from .dialog_utils import is_question, progress_key, similar
 from .faults import role_of, verdict_flag
 from .graph_v2.state import GraphState
 from .runtime import AgentRuntime
-from .trace import emit_case, tools_called_this_session, trace_note
+from .trace import tools_called_this_session, trace_note
 
 logger = logging.getLogger(__name__)
 
@@ -288,8 +287,8 @@ class ReactAgent:
     def llm_reply(self, owner: str):
         """Stream the speaker's reply token by token. No tools: the engine already ran
         every check and action, and the plan says what this reply must achieve."""
-        from .execute.ticket import registration_claim_guard
         from .speak.node import build_messages
+        from .speak.postprocess import finish
         from .speculation import consume_injected_reply
 
         for _attempt in range(self.config.max_tool_calls_per_response):
@@ -304,8 +303,7 @@ class ReactAgent:
             injected = consume_injected_reply(self.state, self.runtime)
             if injected is not None:
                 yield injected
-                self.state.messages.append({"role": "assistant", "content": injected})
-                self._finalize_reply(injected)
+                finish(self.state, self.runtime, injected)
                 return
 
             # The user message is already on the history (appended up front, so scripted
@@ -358,52 +356,12 @@ class ReactAgent:
                 )
                 continue
 
-            # The reply text was already streamed; persist it to history and run the
-            # end-of-turn bookkeeping (no extra yield).
-            self.state.messages.append({"role": "assistant", "content": content})
-            # Registration-claim guard: the speaker said „užregistravau“ with no ticket
-            # behind it — the contact dialogue starts NOW and its first question rides on
-            # the same reply, so the claim becomes true.
-            extra = registration_claim_guard(self.state, self.runtime, content)
+            # The reply text was already streamed; the guards may still append to it
+            # (a registration claim with no ticket behind it), and only that extra
+            # still needs streaming.
+            _reply, extra = finish(self.state, self.runtime, content)
             if extra:
-                content += extra
-                self.state.messages[-1]["content"] = content
                 yield extra
-            self._finalize_reply(content)
             return
 
         yield self.config.timeout_message
-
-    def _track_stuck(self, reply: str) -> None:
-        """Update the stuck counter from this turn's outcome. Increment ONLY when the
-        agent actually RE-ASKS the same question (a genuine loop) — a new/different
-        question or normal back-and-forth must not escalate. Real progress (a slot/
-        customer_id/problem change since the turn started) clears it. Records
-        last_question for the next turn's repeat check."""
-        progressed = progress_key(self.state) != self.state.turn.progress_key_at_start
-        is_q = is_question(reply)
-        repeat = bool(
-            is_q
-            and self.state.dialog.last_question
-            and similar(reply, self.state.dialog.last_question)
-        )
-        self.state.dialog.last_reply_repeated = repeat
-        if progressed:
-            self.state.dialog.stuck_count = 0
-        elif repeat:
-            self.state.dialog.stuck_count += 1
-        # else: a different question or a statement leaves the counter unchanged —
-        # only a real re-ask escalates, and only real progress clears it.
-        if is_q:
-            self.state.dialog.last_question = reply
-        self.tracer.emit("stuck", count=self.state.dialog.stuck_count, repeated=repeat)
-
-    def _finalize_reply(self, text: str) -> None:
-        """Shared end-of-turn bookkeeping for a customer-facing reply: update the
-        repeat-guard, emit the case snapshot + the reply trace."""
-        from .execute.say import maybe_end_on_goodbye
-
-        self._track_stuck(text)
-        maybe_end_on_goodbye(self.state, self.runtime, text)
-        emit_case(self.tracer, self.state)
-        self.tracer.emit("agent_reply", text=text)

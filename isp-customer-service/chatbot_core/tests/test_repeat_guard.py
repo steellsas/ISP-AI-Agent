@@ -14,6 +14,7 @@ from unittest.mock import patch
 from agent.decide.rules.dialog import stuck_backstop
 from agent.dialog_utils import is_question, progress_key, similar
 from agent.execute.say import apply_backstop
+from agent.speak.postprocess import track_stuck
 
 
 def _agent():
@@ -65,14 +66,14 @@ class TestStuckCounter:
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
         a.state.turn.progress_key_at_start = progress_key(a.state)
-        a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
+        track_stuck(a.state, a.runtime, "Atsiprašau, kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.stuck_count == 1
 
     def test_first_question_does_not_increment(self):
         # No prior question -> not a repeat -> normal opening, no strike.
         a = _agent()
         a.state.turn.progress_key_at_start = progress_key(a.state)
-        a._track_stuck("Kurioje gatvėje neveikia internetas?")
+        track_stuck(a.state, a.runtime, "Kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.stuck_count == 0
 
     def test_different_question_does_not_increment(self):
@@ -80,7 +81,7 @@ class TestStuckCounter:
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
         a.state.turn.progress_key_at_start = progress_key(a.state)
-        a._track_stuck("Koks namo numeris?")
+        track_stuck(a.state, a.runtime, "Koks namo numeris?")
         assert a.state.dialog.stuck_count == 0
 
     def test_progress_resets_even_on_repeat(self):
@@ -89,14 +90,14 @@ class TestStuckCounter:
         a.state.dialog.last_question = "Kurioje gatvėje?"
         a.state.turn.progress_key_at_start = progress_key(a.state)
         a.state.identity.customer_id = "CUST105"  # the turn advanced
-        a._track_stuck("Kurioje gatvėje?")
+        track_stuck(a.state, a.runtime, "Kurioje gatvėje?")
         assert a.state.dialog.stuck_count == 0
 
     def test_repeated_verbatim_flag_set(self):
         a = _agent()
         a.state.dialog.last_question = "Kurioje gatvėje neveikia internetas?"
         a.state.turn.progress_key_at_start = progress_key(a.state)
-        a._track_stuck("Atsiprašau, kurioje gatvėje neveikia internetas?")
+        track_stuck(a.state, a.runtime, "Atsiprašau, kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.last_reply_repeated is True
 
     def test_apply_backstop_offer_climbs_ladder(self):
