@@ -69,7 +69,6 @@ class TestTransportHandOver:
         from app import voice
 
         monkeypatch.setenv("API_RECORD_AUDIO", "0")
-        monkeypatch.setenv("SPECULATION", "off")
         got: list = []
 
         class _P:

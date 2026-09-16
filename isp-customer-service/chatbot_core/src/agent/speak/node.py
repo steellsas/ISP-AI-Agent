@@ -87,8 +87,8 @@ def turn(state: Any, rt: Any, user_input: str | None, owner: str):
 def begin_turn(state: Any, rt: Any, user_input: str | None) -> None:
     """The turn's bookkeeping before any words: the barge-in flag, the heard text and
     intent, the background telemetry fold, the history."""
+    from ..background import apply_bg_diagnosis
     from ..perceive.detectors import detect_turn_intent
-    from ..speculation import apply_bg_diagnosis
 
     rt.cancel.clear()  # a stale barge-in never cancels a NEW turn
     # Ticket-dialogue turns skip the diagnosis ingest — without this, the PREVIOUS
@@ -114,22 +114,12 @@ def begin_turn(state: Any, rt: Any, user_input: str | None) -> None:
 def stream_reply(state: Any, rt: Any, owner: str):
     """Stream the speaker's reply token by token. No tools: the engine already ran every
     check and action, and the plan says what this reply must achieve."""
-    from ..speculation import consume_injected_reply
     from .postprocess import finish
 
     for _attempt in range(rt.config.max_tool_calls_per_response):
         state.dialog.turn_count += 1
         if state.dialog.turn_count > state.dialog.max_turns:
             yield rt.config.max_turns_message
-            return
-
-        # S1 speculation: a precomputed branch reply for the ACTIVE goal skips the LLM
-        # entirely — the wording was generated ahead, while the caller was still
-        # answering. Consumed only when the plan produced the predicted goal.
-        injected = consume_injected_reply(state, rt)
-        if injected is not None:
-            yield injected
-            finish(state, rt, injected)
             return
 
         # The user message is already on the history (appended up front, so scripted

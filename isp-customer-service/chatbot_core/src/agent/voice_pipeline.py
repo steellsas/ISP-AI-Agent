@@ -391,30 +391,6 @@ class VoicePipeline:
                 )
             emitted = True
 
-        # S1 speculation (2026-08-24): if this utterance maps to a PREPARED
-        # branch, the engine turn still runs (all bookkeeping intact) but its
-        # reply is the injected precomputed text — and the audio comes from
-        # the cache. Mismatch anywhere -> the injection is ignored and the
-        # normal LLM+TTS path below runs untouched.
-        matcher = getattr(self._session, "speculation_match", None)
-        spec_audio = matcher(transcript) if callable(matcher) else None
-        if spec_audio:
-            gen = getattr(self._session, "handle_turn_stream", None)
-            reply = (
-                "".join(gen(transcript)) if callable(gen) else self._session.handle_turn(transcript)
-            )
-            if reply and reply == getattr(self._session, "_last_injected_text", None):
-                _emit_latency(time.perf_counter())
-                self.last_turn_sentences.append(reply)
-                yield spec_audio
-                return
-            if reply:  # the engine chose its own reply — synthesize it normally
-                self.last_turn_aligned = False  # tts.stream splits opaquely
-                for sentence_audio in self._tts_stream(reply):
-                    _emit_latency(time.perf_counter())
-                    yield sentence_audio
-                return
-
         # Pillar C3: if the session streams the reply token by token, buffer to
         # sentence boundaries and synthesize each sentence as soon as it completes.
         agent_stream = getattr(self._session, "handle_turn_stream", None)
@@ -422,7 +398,7 @@ class VoicePipeline:
             from src.adapters.tts.sentences import pop_sentence
 
             # On cancel the ENGINE does its own bookkeeping (the same flag stops
-            # its token loop — see ReactAgent.request_cancel); here we only stop
+            # its token loop — see speak.node); here we only stop
             # SYNTHESIZING, so no half-sentence audio goes out after the barge-in.
             buf = ""
             gen = agent_stream(transcript)

@@ -89,8 +89,6 @@ class AgentRuntime:
     # Set once the call's session_end ran (end_session is idempotent).
     ended: threading.Event = field(default_factory=threading.Event)
     llm_stats: LLMStats = field(default_factory=LLMStats)
-    # Speculation's branch cache for the open question ({"cache": ...}).
-    speculation: dict[str, Any] = field(default_factory=dict)
     # Testable time (ETA, flap windows).
     clock: Callable[[], datetime] = field(default=_utc_now)
 

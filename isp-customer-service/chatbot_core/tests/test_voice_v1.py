@@ -9,9 +9,9 @@ so the replay bench can reproduce the live decoding exactly.
 
 from types import SimpleNamespace
 
+from agent.background import apply_bg_diagnosis
 from agent.delivery import apply_delivery
 from agent.graph_v2.state import DiagnosisState, GraphState, IntakeState, ResolutionState
-from agent.speculation import apply_bg_diagnosis, consume_injected_reply
 from agent.voice_pipeline import VoicePipeline, audio_duration_s
 
 from tests.engine_fakes import as_call
@@ -252,93 +252,7 @@ class TestSessionAsrContext:
         assert session.asr_context() is None
 
 
-class TestSpeculation:
-    """S1 (2026-08-24): branches prepared while the caller answers; served only
-    on an exact, fact-clean match — any doubt falls to the normal path."""
-
-    def _agent(self, db_connection=None):
-        from tests.calls import make_agent
-
-        agent = make_agent("unknown")
-        agent.state.identity.customer_id = "CUST009"
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        from agent.evidence import CLIENT, set_fact
-
-        set_fact(agent.state.diagnosis.evidence, "recent_events", "no", CLIENT, 0)
-        set_fact(agent.state.diagnosis.evidence, "device_present", "found", CLIENT, 1)
-        agent.state.diagnosis.pending_evidence_key = "lights"
-        return agent
-
-    def test_plan_branches_from_the_ledger(self, db_connection):
-        from agent.speculation import plan_branches
-
-        agent = self._agent()
-        plan = plan_branches(agent.state, agent.runtime)
-        assert plan and plan["pending_key"] == "lights"
-        assert plan["branches"]["off"]["kind"] == "evidence"
-        assert plan["branches"]["off"]["key"] == "power_cable"
-        assert "on" not in plan["branches"]  # refuted -> pivot path, not speculated
-
-    def test_match_gates_are_conservative(self, db_connection):
-        from agent.speculation import match
-
-        agent = self._agent()
-        base = {
-            "pending_key": "lights",
-            "verdict": "no_mac_observed",
-            "branches": {"off": {"kind": "evidence", "key": "power_cable", "text": "x?"}},
-        }
-        agent.runtime.speculation["cache"] = dict(base)
-        assert match(agent.state, agent.runtime, "O kiek tai kainuos?") is None  # question
-        agent.runtime.speculation["cache"] = dict(base)
-        assert (
-            match(agent.state, agent.runtime, "Nedega, bet keičiau routerį vakar") is None
-        )  # extra fact
-        agent.runtime.speculation["cache"] = dict(base)
-        hit = match(agent.state, agent.runtime, "Nedega nė viena")
-        assert hit and hit["key"] == "power_cable"
-        assert agent.runtime.speculation["cache"] is None  # one shot
-
-    def test_injection_consumed_only_on_directive_match(self, db_connection):
-        agent = self._agent()
-        agent.state.turn.injected_reply = {
-            "kind": "evidence",
-            "key": "power_cable",
-            "text": "Ar laidas įkištas?",
-        }
-        agent.state.turn.directives.evidence = {
-            "key": "power_cable",
-            "reikia": "x",
-            "kodel": "",
-            "klausimas": "",
-        }
-        assert consume_injected_reply(agent.state, agent.runtime) == "Ar laidas įkištas?"
-        agent.state.turn.injected_reply = {
-            "kind": "evidence",
-            "key": "outlet_works",
-            "text": "Ne tas?",
-        }
-        assert consume_injected_reply(agent.state, agent.runtime) is None  # directive key mismatch
-
-    def test_pipeline_serves_cached_audio_on_hit(self):
-        from types import SimpleNamespace
-
-        from agent.voice_pipeline import VoicePipeline
-
-        session = SimpleNamespace(
-            config=SimpleNamespace(language="lt"),
-            is_complete=False,
-            tracer=SimpleNamespace(emit=lambda *a, **k: None),
-            speculation_match=lambda t: b"CACHED",
-            _last_injected_text="Ar laidas įkištas?",
-            handle_turn=lambda t: "Ar laidas įkištas?",
-        )
-        pipeline = VoicePipeline(
-            session, SimpleNamespace(transcribe=lambda a, **k: "nedega"), _StubTTS()
-        )
-        chunks = list(pipeline.stream_turn(b"\x00" * 32_000))
-        assert chunks == [b"CACHED"]
-
+class TestTtsCache:
     def test_tts_cache_short_circuits(self, monkeypatch):
         from src.adapters.tts.edge_tts import EdgeTTSProvider
 
@@ -374,7 +288,7 @@ class TestBgDiagnosisGate:
             {"success": True, "verdict": {"reason": "foreign_mac"}}
         )
         apply_bg_diagnosis(agent.state, agent.runtime)
-        assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
+        assert any(f.get("action") == "discarded" for _k, f in events)
         assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
 
     def test_same_verdict_applies(self, db_connection):
@@ -386,7 +300,7 @@ class TestBgDiagnosisGate:
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
         apply_bg_diagnosis(agent.state, agent.runtime)
-        assert any(f.get("action") == "bg_diagnosis_applied" for _k, f in events)
+        assert any(f.get("action") == "applied" for _k, f in events)
 
     def test_bridge_phase_always_discards(self, db_connection):
         import json as _json
@@ -398,7 +312,7 @@ class TestBgDiagnosisGate:
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
         apply_bg_diagnosis(agent.state, agent.runtime)
-        assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
+        assert any(f.get("action") == "discarded" for _k, f in events)
 
 
 class TestDuplexPartials:

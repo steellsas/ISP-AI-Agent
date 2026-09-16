@@ -1049,7 +1049,7 @@ fact_device_found: ["radau", "priėjau", "matau", "esu prie", "suradau"]
 polarity_no: ["netur", "ne,", "ne ", "nera"]
 polarity_yes: ["turiu", "turim", "taip", "yra"]
 
-# --- agent/ticket_flow.py, walker_guards.py, solver_flow.py, barge_in.py, speculation.py ---
+# --- agent/execute/ticket.py, decide/procedure_guards.py, decide/rules/diagnosis.py, barge_in.py ---
 
 # The narrator CLAIMED a registration ("Užregistravau gedimą…") ...
 registration_claim: ["užregistrav", "uzregistrav", "registruoju gedim"]
@@ -1068,9 +1068,6 @@ bind_request: ["pririsk"]
 plugged_passive: ["įkištas", "prijungtas", "pajungtas", "jungtas", "kištas"]
 # Barge-in: a word starting with these halts the agent ("nestabdykit" is still a stop).
 barge_stop_prefixes: ["nesta", "nebe"]
-# Speculation: a compound utterance may carry content the extractors do not model.
-compound_marks: [" bet ", " o ", " taip pat ", " dar "]
-
 # --- rag/hybrid_retriever.py ----------------------------------------------------
 
 # Glue words dropped from BM25 tokens (Lithuanian knowledge base + English terms).

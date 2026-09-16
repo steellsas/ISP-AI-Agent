@@ -65,7 +65,7 @@ class AgentSession:
         self._graph_config = {"configurable": {"thread_id": thread_id or self._runtime.session_id}}
         if thread_id:
             self._refresh_state()
-        # Results of background work (analyst, speculation, telemetry refresh),
+        # Results of background work (the analyst, the telemetry refresh),
         # handed to the NEXT turn through its graph input — no thread writes state.
         self._inbox: dict[str, Any] = {}
         self._inbox_lock = threading.Lock()
@@ -78,7 +78,6 @@ class AgentSession:
             inbox, self._inbox = self._inbox, {}
         turn = TurnScratch(
             user_input=text,
-            injected_reply=inbox.get("injected_reply"),
             bg_diagnosis=inbox.get("bg_diagnosis"),
         )
         values = self._graph.get_state(self._graph_config).values
@@ -227,34 +226,9 @@ class AgentSession:
             with self._inbox_lock:
                 self._inbox["analyst_signals"] = carried
 
-    def speculate_next(self, synthesize=None) -> None:
-        """S1: prepare the branch cache for the OPEN question (background
-        thread entry — pure planning + standalone LLM/TTS, no state writes)."""
-        from .speculation import precompute
-
-        precompute(self._state, self._runtime, synthesize)
-
-    def speculation_match(self, transcript: str) -> bytes | None:
-        """S1 serve gate: when the utterance maps to a prepared branch, arm the
-        injection (the engine's turn then skips the LLM) and return the cached
-        audio; None on any doubt — the normal path runs untouched."""
-        from .speculation import match
-
-        branch = match(self._state, self._runtime, transcript)
-        if not branch:
-            return None
-        with self._inbox_lock:
-            self._inbox["injected_reply"] = {
-                "kind": branch["kind"],
-                "key": branch.get("key"),
-                "text": branch["text"],
-            }
-        self._last_injected_text = branch["text"]
-        return branch.get("audio") or None
-
-    def speculate_background_diagnosis(self) -> None:
-        """S2: a READ-ONLY telemetry refresh while the caller is busy — the
-        result is folded in at the next turn's start (never mid-turn)."""
+    def refresh_telemetry_next(self) -> None:
+        """A READ-ONLY telemetry refresh while the caller is busy — the result is folded
+        in at the next turn's start (never mid-turn)."""
         try:
             state = self._state
             cid = state.identity.customer_id
