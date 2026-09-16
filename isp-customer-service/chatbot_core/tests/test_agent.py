@@ -1019,7 +1019,8 @@ class TestIdentificationLadder:
         assert detect_caller_relation("kaimynas, padedu senolei") == "helper"
         assert detect_caller_relation("mmm") == "unknown"
 
-    def test_engine_resolves_dictated_correction(self, db_connection):
+    def test_a_dictated_correction_is_checked_back_before_it_identifies(self, db_connection):
+        """F-6 (owner 2026-09-16): the corrected address is said back and confirmed first."""
         from agent.decide.rules.head import turn_head
         from agent.perceive.slots import prefill_slots_from_text
 
@@ -1034,14 +1035,18 @@ class TestIdentificationLadder:
         )
         turn_head(agent.state, agent.runtime, "Ne, skambinu dėl Tilžės gatvės 60 buto 3")
 
-        # The ENGINE committed the corrected identity and diagnosed silently.
-        assert agent.state.identity.customer_id == "CUST101"
-        assert agent.state.diagnosis.verdicts["network"]["reason"] == "billing_suspended"
-        # The reply is steered by the identified-note (ladder: caller question next).
-        assert (
-            agent.state.turn.address_confirm_note
-            and "IDENTIFIKUOTA" in agent.state.turn.address_confirm_note
+        # Nothing is committed on hearing alone — the caller is asked back.
+        assert agent.state.identity.customer_id is None
+        assert agent.state.dialog.active_question.key == "address_heard_confirm"
+        assert "Ar teisingai išgirdau — Tilžės g. 60, butas 3" in (
+            agent.state.turn.address_confirm_note or ""
         )
+
+        turn_head(agent.state, agent.runtime, "Taip")
+
+        assert agent.state.identity.customer_id == "CUST101"
+        assert agent.state.identity.address_confirmed is True
+        assert agent.state.diagnosis.verdicts["network"]["reason"] == "billing_suspended"
         assert agent.state.identity.result_pending is True
 
     def test_farewell_garble_visai_gero(self):

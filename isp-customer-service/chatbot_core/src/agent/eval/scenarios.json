@@ -316,13 +316,14 @@
     {
       "id": "I2_ident_wrong_house_corrected",
       "phone": "+37000000000",
-      "desc": "F6: nežinomas tel., padiktuotas namas kurio nėra -> diagnozė (gatvę randu, namo ne) -> pataisymas -> identifikuota",
+      "desc": "F6: nežinomas tel., padiktuotas namas kurio nėra -> diagnozė (gatvę randu, namo ne) -> pataisymas -> identifikuota — F-6 (M6): padiktuotas adresas pakartojamas ir patvirtinamas „Taip“",
       "turns": [
         "Laba diena, neveikia internetas",
         "Nežinau kada",
         "Vakar dar veikė",
         "Šiauliai, Vilniaus gatvė 39",
         "Ai, atsiprašau — 29 namas",
+        "Taip",
         "Ačiū, viso gero",
         "Taip, baigiam"
       ],

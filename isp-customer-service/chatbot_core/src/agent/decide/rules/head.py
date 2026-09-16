@@ -95,18 +95,11 @@ def reopen_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
             # (e.g. "which apartment?"), and the next question belongs to
             # identification, not the old analysis.
             if p.street.value and p.house.value:
-                trace_note(
-                    rt.tracer,
-                    state,
-                    "reopen_identity",
-                    "new address already heard; engine resolve",
-                )
-                if engine_resolve_from_slots(state, rt):
-                    state.identity.just_identified = True
-                    from ...identification import ask_caller
+                # The new address was already heard: it is checked back before it
+                # identifies anyone (F-6).
+                from .identification import ask_heard_address
 
-                    if ask_caller() and not s.identity.caller_name:
-                        state.identity.result_pending = True
+                ask_heard_address(state, rt)
             return True
         state.dialog.resume_hold_due = True  # the answer belongs to THIS question, not the walker
         if verdict == "no":
@@ -250,11 +243,20 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
     """The reply to the address offer / a dictated address commits the identity (§5 row 9). True when it owns the rest of the turn head."""
     s = state
     if not s.identity.customer_id:
+        from .identification import (
+            ask_heard_address,
+            forget_heard_numbers,
+            heard_confirm_open,
+        )
+
         q = (last_agent_question(state) or "").lower()
-        if any(m in q for m in vocab("address_offer_question")):
+        heard_open = heard_confirm_open(state)
+        if heard_open or any(m in q for m in vocab("address_offer_question")):
             from ...perceive.detectors import detect_address_confirm
 
             verdict = detect_address_confirm(user_input)
+            if heard_open and verdict != "yes":
+                forget_heard_numbers(state, rt)
             if (
                 verdict == "yes"
                 and s.identity.phone_candidate
@@ -292,13 +294,9 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                 # flats leaves the apartment note.
                 p_y = s.identity.profile
                 if p_y.street.value and p_y.house.value:
-                    trace_note(
-                        rt.tracer,
-                        state,
-                        "address_confirm",
-                        "slots confirmed; engine resolve",
-                    )
+                    rt.tracer.emit("decision", intent="address_confirm", action="heard_confirmed")
                     if engine_resolve_from_slots(state, rt):
+                        state.identity.address_confirmed = True
                         state.identity.just_identified = True
                         from ...identification import ask_caller
 
@@ -328,25 +326,7 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                             str(s.identity.phone_candidate["city"]), 0.9, SlotStatus.HEARD
                         )
                 if p.street.value and p.house.value:
-                    trace_note(
-                        rt.tracer,
-                        state,
-                        "address_confirm",
-                        "offer corrected with a full dictated address; engine resolve",
-                    )
-                    if engine_resolve_from_slots(state, rt):
-                        state.identity.just_identified = True
-                        from ...identification import ask_caller
-
-                        if ask_caller() and not s.identity.caller_name:
-                            state.identity.result_pending = True
-                        state.turn.address_confirm_note = (
-                            "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
-                            f"adresas {s.identity.customer_address}. Atsakymo pradžioje "
-                            "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
-                            "pagal žemiau esančią kryptį."
-                        )
-                    else:
+                    if not ask_heard_address(state, rt):
                         state.turn.address_confirm_note = (
                             "- KLIENTAS PASAKĖ KITĄ ADRESĄ, bet jo patikrinti "
                             "nepavyko (žr. HEARD ADDRESS) — patikslink trūkstamą "
@@ -386,19 +366,8 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                 and p.house.value
                 and _re.search(r"\d", user_input or "")
             ):
-                trace_note(rt.tracer, state, "address_ask", "dictated address; engine resolve")
-                if engine_resolve_from_slots(state, rt):
-                    state.identity.just_identified = True
-                    from ...identification import ask_caller
-
-                    if ask_caller() and not s.identity.caller_name:
-                        state.identity.result_pending = True
-                    state.turn.address_confirm_note = (
-                        "- IDENTIFIKUOTA (variklis jau atliko patikrą): "
-                        f"adresas {s.identity.customer_address}. Atsakymo pradžioje "
-                        "pakartok adresą („Supratau — <adresas>.“) ir tęsk "
-                        "pagal žemiau esančią kryptį."
-                    )
+                if ask_heard_address(state, rt):
+                    return True
         return True
     return False
 

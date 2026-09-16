@@ -301,13 +301,16 @@ class TestReopenConfirmation:
         assert agent.state.identity.address_empty_turns == 0
 
     def test_confirmed_reopen_commits_single_contract_address(self, db_connection):
-        """Naujas adresas be butų (Vilniaus g. 29) — po „taip" identifikacija
-        įvyksta TĄ PATĮ turn'ą, be papildomų klausimų."""
+        """Naujas adresas (Vilniaus g. 29) — po „taip" į pakeitimą adresas dar
+        pakartojamas (F-6), ir tik antras „taip" jį identifikuoja."""
         from agent.decide.rules.head import turn_head
 
         agent = self._identified()
         agent.state.identity.reopen_confirm_utterance = "skambinu dėl Vilniaus gatvės 29"
         agent.state.identity.reopen_confirm_asked = True
+        turn_head(agent.state, agent.runtime, "Taip")
+        assert agent.state.identity.customer_id is None
+        assert agent.state.dialog.active_question.key == "address_heard_confirm"
         turn_head(agent.state, agent.runtime, "Taip")
         assert agent.state.identity.customer_id == "CUST009"  # nauja sutartis prisirišo
 
@@ -405,6 +408,8 @@ class TestQuestionRegistry:
         agent.state.identity.reopen_confirm_utterance = "dėl Vilniaus gatvės 29"
         agent.state.identity.reopen_confirm_asked = False
         scripted_words(agent.state, agent.runtime, "dėl Vilniaus gatvės 29")
+        turn_head(agent.state, agent.runtime, "Taip")
+        assert active(agent.state, agent.runtime).key == "address_heard_confirm"
         turn_head(agent.state, agent.runtime, "Taip")
         assert active(agent.state, agent.runtime) is None
         assert agent.state.identity.customer_id == "CUST009"

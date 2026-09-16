@@ -717,3 +717,74 @@ def release_held_outage(state: Any, rt: Any) -> None:
         return
     state.identity.held_outage = None
     rt.tracer.emit("held_outage", action="discarded", street=held.get("street"))
+
+
+HEARD_CONFIRM = "address_heard_confirm"
+
+
+def ask_heard_address(state: Any, rt: Any) -> bool:
+    """A dictated address is checked, never committed on hearing alone (F-6, owner
+    2026-09-16): STT garbles numbers, and a misheard flat would tell the caller about a
+    neighbour's line. The address is looked up WITHOUT committing; when it exists the
+    caller is asked whether we heard it right, and only their yes identifies them (the
+    offer-answer path commits from the slots). False when the address does not resolve —
+    the caller then hears what was and was not found."""
+    from ...decide.question import register as _q_register
+
+    p = state.identity.profile
+    args: dict[str, str] = {"street": str(p.street.value), "house_number": str(p.house.value)}
+    if p.apartment.value:
+        args["apartment_number"] = str(p.apartment.value)
+    if p.city.value:
+        args["city"] = str(p.city.value)
+    try:
+        result = rt.tools.run(
+            state, rt, "resolve_address", args, reason="heard_address", apply=False
+        )
+    except Exception as e:  # pragma: no cover - best-effort
+        trace_note(rt.tracer, state, "heard_address", str(e), level="error")
+        return False
+    found = result.data
+    if not (found.get("success") and found.get("customer_id")):
+        # Not found: the lookup's per-level diagnosis still reaches the caller ("I can
+        # find the street, but not number 39") — it commits nothing on a failure.
+        from ...execute.observe import update_state_from_observation
+
+        update_state_from_observation(state, rt, "resolve_address", result.observation)
+        return False
+    heard = f"{p.street.value} {p.house.value}" + (
+        f", butas {p.apartment.value}" if p.apartment.value else ""
+    )
+    # The caller named their own address: the phone candidate's was not theirs.
+    if state.identity.phone_candidate and (
+        state.identity.phone_candidate.get("customer_id") != found.get("customer_id")
+    ):
+        state.identity.phone_candidate = None
+    held = state.identity.held_outage
+    if held and held.get("customer_id") != found.get("customer_id"):
+        state.identity.held_outage = None
+        rt.tracer.emit("held_outage", action="discarded", street=held.get("street"))
+    _q_register(state, rt, "ident", HEARD_CONFIRM, address=heard)
+    state.turn.address_confirm_note = (
+        "- PLAN GOAL — ADDRESS HEARD: ask WORD FOR WORD, nothing before it: "
+        f"„Ar teisingai išgirdau — {heard}?“ Do NOT say „Radau“ or that the address exists, "
+        "and nothing about the line or the account — the caller has not confirmed it yet."
+    )
+    rt.tracer.emit("decision", intent="address_heard", action="ask", address=heard)
+    return True
+
+
+def heard_confirm_open(state: Any) -> bool:
+    q = state.dialog.active_question
+    return q is not None and q.key == HEARD_CONFIRM
+
+
+def forget_heard_numbers(state: Any, rt: Any) -> None:
+    """The caller said we heard their address wrong: drop the house and flat so the next
+    dictation is read fresh (the street usually stays right)."""
+    from ...slots import Slot
+
+    p = state.identity.profile
+    p.house = Slot()
+    p.apartment = Slot()
+    rt.tracer.emit("decision", intent="address_heard", action="corrected")
