@@ -88,10 +88,12 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
     s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
     val = s.ticket.contact_hours
     val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
-    return (
-        phrase("identification.ticket_done", phone=fmt_phone(s.ticket.contact_phone), hours=val)
-        + note
+    done = (
+        "identification.ticket_done_request"
+        if s.ticket.request_type
+        else "identification.ticket_done"
     )
+    return phrase(done, phone=fmt_phone(s.ticket.contact_phone), hours=val) + note
 
 
 def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:

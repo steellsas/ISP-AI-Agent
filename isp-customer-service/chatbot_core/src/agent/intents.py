@@ -65,11 +65,11 @@ BOUNDARY_POLICIES = frozenset({"not_ours", "chat"})
 
 
 def problem_policy(problem: str | None) -> str:
-    """The competence policy for a problem type: solve (default) | register |
+    """The competence policy for a problem type: solve (default) | register | answer |
     not_ours | chat. Files declare WHAT the agent solves; code only enforces the
     behaviour per policy."""
     v = problem_entry(problem).get("policy")
-    return str(v) if v in ("solve", "register", "not_ours", "chat") else "solve"
+    return str(v) if v in ("solve", "register", "answer", "not_ours", "chat") else "solve"
 
 
 def problem_boundary_reply(problem: str | None) -> str | None:

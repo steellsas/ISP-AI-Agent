@@ -20,7 +20,7 @@ from ...perceive.detectors import detect_farewell, detect_ticket_consent
 from ...perceive.slots import mentions_other_street, prefill_slots_from_text
 from ...trace import trace_note
 from .identification import engine_resolve_from_slots, reopen_identification
-from .ticket import ticket_capture
+from .ticket import caller_owed, ticket_capture
 
 
 def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
@@ -408,7 +408,9 @@ def head_rule(group):
 
     def rule(state: Any, rt: Any) -> None:
         user_input = state.turn.user_input
-        if not user_input or state.turn.head_owner or state.ticket.stage in ("phone", "hours"):
+        if not user_input or state.turn.head_owner:
+            return None
+        if state.ticket.stage in ("phone", "hours") and not caller_owed(state):
             return None
         if group(state, rt, user_input):
             state.turn.head_owner = group.__name__
@@ -423,7 +425,7 @@ def turn_head(state: Any, rt: Any, user_input: str) -> None:
     in order until one owns the turn."""
     if not user_input:
         return
-    if state.ticket.stage in ("phone", "hours"):
+    if state.ticket.stage in ("phone", "hours") and not caller_owed(state):
         ticket_capture(state, rt, user_input)
         return
     for group in GROUPS:

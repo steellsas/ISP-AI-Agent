@@ -1,8 +1,7 @@
 # prompts/partials/identity.md — Lithuanian wording the prompt quotes
 
 ## q1
-"sąskaitų klausimais
-nepadėsiu — esu techninės pagalbos asistentas"
+"šiuo klausimu geriausiai atsakys atsakingas žmogus — užregistruosiu jūsų klausimą"
 
 ## q2
 "panašu, kad"

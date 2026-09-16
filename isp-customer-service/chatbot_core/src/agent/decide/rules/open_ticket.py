@@ -11,6 +11,15 @@ from __future__ import annotations
 from typing import Any
 
 
+def told_ticket(state: Any) -> dict[str, Any] | None:
+    """The ticket the caller is being told about: the one the call's note went on."""
+    tid = state.closing.appended_ticket_id
+    for ticket in state.identity.open_tickets or []:
+        if ticket.get("ticket_id") == tid:
+            return ticket
+    return same_problem_ticket(state)
+
+
 def same_problem_ticket(state: Any) -> dict[str, Any] | None:
     """The open ticket for the problem this caller reports, or None."""
     problem = state.intake.problem_type
@@ -32,9 +41,9 @@ def note_kind(state: Any) -> str:
     return "just_checking"
 
 
-def repeat_call(state: Any, rt: Any) -> None:
+def repeat_call(state: Any, rt: Any, ticket: dict[str, Any] | None = None) -> None:
     """Note the repeat call on the open ticket and answer with its status."""
-    ticket = same_problem_ticket(state) or {}
+    ticket = ticket or same_problem_ticket(state) or {}
     tid = ticket.get("ticket_id")
     kind = note_kind(state)
     said = " / ".join(state.intake.heard_utterances[-3:]) or state.intake.problem_type or ""

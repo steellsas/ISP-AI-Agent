@@ -20,6 +20,22 @@ kodėl tokia didelė sąskaita?
 noriu pakeisti planą
 kiek moku per mėnesį?
 
+## disconnection
+noriu nutraukti sutartį
+atjunkite televiziją, nebenaudoju
+
+## relocation
+kraustausi į kitą butą, ką daryti su internetu?
+noriu perrašyti sutartį ant sūnaus
+
+## wish
+norėčiau greitesnio interneto
+gal galite pridėti daugiau kanalų?
+
+## ticket_status
+kada atvažiuos meistras?
+ar jau sutvarkėt mano registraciją?
+
 ## chat
 nuobodu, norėjau pašnekėti
 kaimynai triukšmauja, kas man daryti?

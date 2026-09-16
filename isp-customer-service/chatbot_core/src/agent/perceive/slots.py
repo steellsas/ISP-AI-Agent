@@ -102,6 +102,9 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
                 and not s.closing.case_closed
                 and not state.ticket.stage
                 and len((text or "").split()) >= 3  # garbles ("Žemės gatvės") are not complaints
+                # Only a fault is a secondary TECH problem; a request (billing, …) is not
+                # something to list on the fault ticket (F-28: its own ticket, later).
+                and problem_policy(problem) == "solve"
             ):
                 if not any(x.get("type") == problem for x in s.intake.secondary_problems):
                     s.intake.secondary_problems.append(

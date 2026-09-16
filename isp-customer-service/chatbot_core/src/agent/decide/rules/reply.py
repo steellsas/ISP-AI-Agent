@@ -221,7 +221,11 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # Ticket-confirmation dialogue: contacts before every registration. An
     # off-script question falls to the ticket node's LLM (facts carry the
     # pending stage question to re-ask); the mechanical turns stay scripted.
-    if state.ticket.stage in ("phone", "hours"):
+    from .ticket import caller_owed
+
+    if state.ticket.stage in ("phone", "hours") and not caller_owed(state):
+        # The ticket intro is this call's result: nothing is left pending.
+        state.identity.result_pending = False
         return _words(*ticket_question_turn(state, rt))
     if state.ticket.stage == "done":
         return _plan("ticket.register", None, action=Action(type="register_ticket"))
@@ -436,7 +440,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         parts = []
         if state.identity.just_identified and s.identity.customer_address:
             parts.append(phrase("identification.echo_address", address=s.identity.customer_address))
-            parts.append(phrase("identification.checking_note"))
+            if not s.ticket.request_type:  # a request is registered, not checked
+                parts.append(phrase("identification.checking_note"))
         state.identity.just_identified = False
         from ..question import register as _q_register
 

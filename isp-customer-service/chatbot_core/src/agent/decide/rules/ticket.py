@@ -17,12 +17,21 @@ from ..plan import Action, Say, TurnPlan
 STAGE = "ticket"
 
 
+def caller_owed(state: Any) -> bool:
+    """A ticket started right at identification (a request, a no-path fault) still owes
+    the caller-name question: it comes before the contact dialogue."""
+    s = state
+    return bool(s.identity.customer_id and s.identity.result_pending and not s.identity.caller_name)
+
+
 def plan(state: Any, rt: Any) -> TurnPlan | None:
 
     s = state
     user_input = s.turn.user_input
     if s.ticket.stage not in ("phone", "hours") or not user_input or s.closing.case_closed:
         return None
+    if caller_owed(state):
+        return None  # the answer is the caller's name — the identification ladder reads it
     ticket_capture(state, rt, user_input)
     # A first-person "I will call back" closed the dialogue — the warm goodbye.
     if s.closing.callback_goodbye_due:
@@ -315,6 +324,8 @@ def ticket_need(state: Any, rt: Any) -> str:
     from ...evidence import fault_need
 
     s = state
+    if s.ticket.request_type:
+        return phrase("ticket.need_request")
     cause = (
         (s.diagnosis.hypothesis or {}).get("cause")
         or (s.resolution.procedure or {}).get("verdict")
@@ -428,7 +439,9 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         # After a WORKING bridge "telefonu išspręsti nepavyks" is jarring —
         # the internet just came back (live 2026-08-12). The intro then
         # states the success and registers the ROUTER replacement.
-        if state.resolution.bridge_bound:
+        if state.ticket.request_type:
+            parts.append(phrase("identification.ticket_intro_request"))
+        elif state.resolution.bridge_bound:
             parts.append(phrase("identification.ticket_intro_bridge"))
         else:
             parts.append(phrase("identification.ticket_intro", reason=ticket_need(state, rt)))

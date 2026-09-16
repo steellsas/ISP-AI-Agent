@@ -1598,6 +1598,10 @@ REAL_TOOLS = [
             },
             "priority": {"type": "string", "description": "Priority: low, medium, high, critical"},
             "notes": {"type": "string", "description": "Additional notes for technician"},
+            "problem_type": {
+                "type": "string",
+                "description": "The caller's problem (intent), e.g. internet_down",
+            },
         },
         function=create_ticket,
     ),

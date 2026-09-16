@@ -31,7 +31,7 @@
       "turns": [
         "Laba diena, televizorius nerodo nė vieno kanalo",
         "Taip",
-        "Andrius, taip, mano sutartis",
+        "Kęstutis, taip, mano sutartis",
         "Taip, tinka šis numeris",
         "Po pietų, nuo keturioliktos valandos",
         "Ačiū, viso gero"
@@ -95,24 +95,27 @@
       }
     },
     {
-      "id": "G2_boundary_saskaitos",
-      "phone": "+37000000000",
-      "desc": "Kompetencijų riba: sąskaitų klausimas -> agentas įvardija ribą, NEidentifikuoja, neklausia adreso, mandagiai baigia",
+      "id": "R1_billing_request",
+      "phone": "+37060020109",
+      "desc": "M6 (D-11): sąskaitos klausimas — agentas nesigilina, identifikuoja ir registruoja klausimą atsakingam žmogui (billing_request), JOKIOS diagnostikos",
       "turns": [
         "Laba diena, norėjau paklausti, kodėl man tokia didelė sąskaita šį mėnesį",
-        "Ne, interneto bėdų neturiu, tik dėl sąskaitos",
-        "Gerai, ačiū, viso gero"
+        "Taip",
+        "Aldona, taip, mano sutartis",
+        "Taip, tinka šis numeris",
+        "Po pietų",
+        "Ačiū, viso gero"
       ],
       "expect": {
-        "identified": false,
-        "disposition": "any",
+        "identified": true,
+        "disposition": "ticket",
         "reply_any": [
-          "techninės pagalbos",
-          "sąskait"
+          "užregistr"
         ],
         "reply_none": [
-          "skambinate dėl",
-          "adres"
+          "lemput",
+          "routerio",
+          "techninės pagalbos"
         ]
       }
     },

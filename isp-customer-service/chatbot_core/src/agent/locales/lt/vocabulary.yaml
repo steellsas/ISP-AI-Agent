@@ -1081,6 +1081,9 @@ problem_triggers_internet_slow: ["lėtas", "lėtai", "lėta", "stringa", "lūži
 problem_triggers_tv: ["televizij", "televizor", " tv", "kanalai", "kanalų"]
 problem_triggers_internet_down: ["internet", "ryši", "ryšys", "neveikia", "nėra interneto", "wifi", "wi-fi"]
 problem_triggers_billing: ["sąskait", "saskait", "mokė", "skola", "kaina", "tarif"]
+problem_triggers_disconnection: ["nutraukti sutart", "atjungti paslaug", "atsisakyti paslaug", "atsijungti nuo"]
+problem_triggers_relocation: ["persikraust", "kraustaus", "perkelti sutart", "perrašyti sutart"]
+problem_triggers_ticket_status: ["kada atvažiuos meistras", "kada atvyks meistras", "mano registracij"]
 
 # --- knowledge/faq.yaml: side-topic keywords -----------------------------------
 

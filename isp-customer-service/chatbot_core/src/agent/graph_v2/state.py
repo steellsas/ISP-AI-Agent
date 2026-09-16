@@ -249,6 +249,9 @@ class TicketState(BaseModel):
     bridge_fail_note: str | None = None
     # The ticket dialogue was dropped back to solving: say so next reply.
     resume_fix_note: bool = False
+    # A request outside the agent's knowledge, registered for the responsible person as
+    # this ticket type (billing_request, …) instead of a fault ticket (D-11).
+    request_type: str | None = None
 
 
 class DialogState(BaseModel):

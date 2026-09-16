@@ -537,11 +537,14 @@ def _hypothesis(state, rt) -> list[str]:
     past_action = bool(s.resolution.procedure) and "telemetry_fixed" in (
         s.resolution.procedure or {}
     )
-    if not past_action and not _caller_pending(state):
+    # While the contact dialogue runs the ticket intro is the result: raw findings only
+    # tempt the narrator into a cause it cannot back („problema jūsų pusėje").
+    collecting = state.ticket.stage in ("phone", "hours")
+    if not past_action and not _caller_pending(state) and not collecting:
         for domain, d in s.diagnosis.verdicts.items():
             gloss = phrase_or(f"verdict.{d.get('reason')}.gloss", d.get("reason") or "—")
             out.append(f"TELEMETRY [{domain}] ({d.get('group')}, side={d.get('side')}): {gloss}.")
-    h = None if _caller_pending(state) else s.diagnosis.hypothesis
+    h = None if _caller_pending(state) or collecting else s.diagnosis.hypothesis
     if h:
         cause = phrase_or(f"verdict.{h['cause']}.gloss", h["cause"])
         if h["status"] == "confirmed":

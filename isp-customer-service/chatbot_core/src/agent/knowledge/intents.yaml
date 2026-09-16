@@ -41,12 +41,37 @@ intents:
     policy: solve
     confirm_question_key: "problem.internet_down.confirm"
     triggers_vocab: problem_triggers_internet_down
+  # Outside the agent's knowledge but the provider's business (owner 2026-09-16): the
+  # agent does NOT answer it — after identification the caller's own words go onto a
+  # ticket of the type below for the responsible person, who calls back.
   billing:
-    description: "questions about bills, payments, prices, tariffs or the contract/plan — not a technical fault"
+    description: "questions about bills, payments, a debt, prices, tariffs or the contract/plan — not a technical fault"
     examples_key: problems/billing
-    policy: not_ours
-    boundary_reply_key: "problem.billing.boundary_reply"
+    policy: register
+    ticket_type: billing_request
     triggers_vocab: problem_triggers_billing
+  disconnection:
+    description: "wants to end the contract, cancel a service or have it disconnected"
+    examples_key: problems/disconnection
+    policy: register
+    ticket_type: disconnection_request
+    triggers_vocab: problem_triggers_disconnection
+  relocation:
+    description: "is moving, or wants the service or the contract moved to another address or person"
+    examples_key: problems/relocation
+    policy: register
+    ticket_type: service_transfer
+    triggers_vocab: problem_triggers_relocation
+  wish:
+    description: "a wish, suggestion or complaint about the service itself that is not a fault — a new service, a faster plan, better service"
+    examples_key: problems/wish
+    policy: register
+    ticket_type: customer_wish
+  ticket_status:
+    description: "asks about something already registered — when the technician comes, what is happening with their request"
+    examples_key: problems/ticket_status
+    policy: answer
+    triggers_vocab: problem_triggers_ticket_status
   chat:
     description: "calling just to talk / chat / complain about things unrelated to the services — no technical problem"
     examples_key: problems/chat

@@ -50,9 +50,9 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
         if lp:
             vals["last_payment"] = lp
     elif kind == "ticket":
-        from .decide.rules.open_ticket import same_problem_ticket
+        from .decide.rules.open_ticket import told_ticket
 
-        ticket = same_problem_ticket(state) or {}
+        ticket = told_ticket(state) or {}
         created = lang().date(str(ticket.get("created_at") or "")[:10] or None)
         if created:
             vals["created"] = created

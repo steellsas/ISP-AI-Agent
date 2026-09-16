@@ -20,7 +20,9 @@ class TestCatalog:
 
         assert problem_policy("internet_down") == "solve"
         assert problem_policy("tv") == "solve"
-        assert problem_policy("billing") == "not_ours"
+        assert problem_policy("billing") == "register"
+        assert problem_policy("ticket_status") == "answer"
+        assert problem_policy("not_ours") == "not_ours"
         assert problem_policy("chat") == "chat"
         assert problem_policy("nezinomas_tipas") == "solve"  # default
         assert problem_policy(None) == "solve"
@@ -35,7 +37,7 @@ class TestCatalog:
     def test_boundary_phrases_exist(self):
         from agent.intents import problem_boundary_reply, problem_confirm_question
 
-        assert "techninės pagalbos" in problem_boundary_reply("billing")
+        assert "nepadėsiu" in problem_boundary_reply("not_ours")
         assert "internet" in problem_boundary_reply("chat")
         assert "?" in problem_confirm_question("internet_down")
 
@@ -57,24 +59,24 @@ class TestCatalog:
 
 class TestPolitikaIngest:
     """not_ours/chat tipai NIEKADA netampa problem_type — vartai atsako
-    riba, identifikacija neprasideda."""
+    riba, identifikacija neprasideda. Sąskaitos klausimas (D-11) — užklausa:
+    identifikacija ir tiketas atsakingam žmogui, be diagnostikos."""
 
-    def test_billing_never_sets_problem_type(self, db_connection):
+    def test_billing_is_a_request(self, db_connection):
         from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
         prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
-        assert agent.state.intake.problem_type is None
-        assert agent.state.intake.boundary_problem == "billing"
+        assert agent.state.intake.problem_type == "billing"
+        assert agent.state.intake.boundary_problem is None
 
     def test_boundary_reply_states_competence(self, db_connection):
         from agent.decide.rules.reply import scripted_words
-        from agent.perceive.slots import prefill_slots_from_text
 
         agent = _agent()
-        prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
-        reply = scripted_words(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
-        assert reply and "techninės pagalbos" in reply
+        agent.state.intake.boundary_problem = "not_ours"
+        reply = scripted_words(agent.state, agent.runtime, "Kiek kainuoja picos pristatymas?")
+        assert reply and "nepadėsiu" in reply
         assert agent.state.intake.problem_type is None and not agent.state.closing.case_closed
 
     def test_solvable_problem_still_flows(self, db_connection):

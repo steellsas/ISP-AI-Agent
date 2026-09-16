@@ -157,6 +157,25 @@ def db_connection():
         pytest.skip(f"Database not available: {e}")
 
 
+@pytest.fixture(autouse=True)
+def forget_test_tickets(request):
+    """Tickets a DB test registers are removed after it: an open ticket left behind turns
+    the next test's call about the same problem into a repeat call (D-12)."""
+    if "db_connection" not in request.fixturenames:
+        yield
+        return
+    db = request.getfixturevalue("db_connection")
+    with db.cursor() as cursor:
+        cursor.execute("SELECT ticket_id FROM tickets")
+        before = {row[0] for row in cursor.fetchall()}
+    yield
+    with db.cursor() as cursor:
+        cursor.execute("SELECT ticket_id FROM tickets")
+        created = [row[0] for row in cursor.fetchall() if row[0] not in before]
+        for ticket_id in created:
+            cursor.execute("DELETE FROM tickets WHERE ticket_id = ?", (ticket_id,))
+
+
 @pytest.fixture(scope="session")
 def retriever():
     """Get RAG retriever with production KB loaded."""

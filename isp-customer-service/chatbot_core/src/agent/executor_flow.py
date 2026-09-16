@@ -67,6 +67,9 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     s = state
     if s.ticket.ticket_id or not s.identity.customer_id:
         return
+    if s.ticket.request_type:
+        _register_request(state, rt)
+        return
     cause = (
         (s.diagnosis.hypothesis or {}).get("cause")
         or (s.resolution.procedure or {}).get("verdict")
@@ -180,6 +183,44 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         rt.tools.run(state, rt, "create_ticket", args, reason="register_ticket")
     except Exception as e:  # pragma: no cover - defensive
         trace_note(rt.tracer, state, "register_ticket", str(e), level="error")
+
+
+def _register_request(state: Any, rt: Any) -> None:
+    """A question for the responsible person: the caller's own words, typed by intent, with
+    who to call and when — nothing interpreted (the agent does not know this area)."""
+    from .contract.locale import phrase
+    from .perceive.nlu import classify_problem
+
+    s = state
+    # What the caller said about it — not the "Taip" / name answers of identification.
+    heard = s.intake.heard_utterances
+    about = [u for u in heard if classify_problem(u) == s.intake.problem_type] or heard[:1]
+    said = " / ".join(about[:3]) or s.intake.problem_type or ""
+    details = phrase(
+        "ticket.details.request",
+        type=phrase_or(f"request_label.{s.ticket.request_type}", s.ticket.request_type),
+        text=said,
+    )
+    if s.ticket.contact_phone or s.identity.caller_name:
+        details += phrase(
+            "ticket.details.contact",
+            who=s.identity.caller_name or phrase("ticket.details.default_contact"),
+            relation=f" ({s.identity.caller_relation})" if s.identity.caller_relation else "",
+            phone=s.ticket.contact_phone or s.identity.caller_phone,
+        )
+        if s.ticket.contact_hours:
+            details += phrase("ticket.details.contact_hours", hours=s.ticket.contact_hours)
+        details += "."
+    args = {
+        "customer_id": s.identity.customer_id,
+        "ticket_type": s.ticket.request_type,
+        "problem_type": s.intake.problem_type,
+        "problem_description": details,
+    }
+    try:
+        rt.tools.run(state, rt, "create_ticket", args, reason="register_request")
+    except Exception as e:  # pragma: no cover - defensive
+        trace_note(rt.tracer, state, "register_request", str(e), level="error")
 
 
 def simulate_router_reboot_action(state: Any, rt: Any) -> None:

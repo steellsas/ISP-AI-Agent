@@ -51,8 +51,19 @@ def ensure_diagnosed(state, rt) -> bool:
     # the INTERNET telemetry and walking a wrong-domain pack (live: a TV call
     # was led through Wi-Fi questions). The single-escalate strategy begins
     # the ticket dialogue deterministically on arrival.
-    from ..decide.rules import open_ticket, services
+    from ..decide.rules import open_ticket, requests, services
 
+    # A request outside the agent's knowledge is registered, a status question answered —
+    # neither is diagnosed (D-11).
+    from ..intents import problem_policy
+
+    policy = problem_policy(s.intake.problem_type) if s.intake.problem_type else None
+    if s.resolution.procedure is None and not state.ticket.stage and policy == "register":
+        requests.start_request(state, rt)
+        return True
+    if s.resolution.procedure is None and policy == "answer":
+        requests.answer_ticket_status(state, rt)
+        return True
     # A repeat call about a problem that already has an open ticket: a note on it and its
     # status — no re-diagnosis, no duplicate ticket (D-12).
     if s.resolution.procedure is None and open_ticket.same_problem_ticket(state):

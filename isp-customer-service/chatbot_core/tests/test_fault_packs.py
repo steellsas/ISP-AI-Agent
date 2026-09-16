@@ -1089,8 +1089,8 @@ class TestPrimaryGoalFrozen:
         # dedupe: the same type mentioned again does not duplicate
         prefill_slots_from_text(agent.state, agent.runtime, "Tas televizorius vis dar blogai")
         assert len(s.intake.secondary_problems) == 1
-        # Competence policy (2026-09-02): a not_ours type (billing) never
-        # becomes a secondary TECH problem — it is not ours to put on a ticket.
+        # A request type (billing, D-11) never becomes a secondary TECH problem —
+        # it is not a fault to list on the fault ticket.
         prefill_slots_from_text(agent.state, agent.runtime, "O dar sąskaitos klausimas turiu")
         assert all(x["type"] != "billing" for x in s.intake.secondary_problems)
 

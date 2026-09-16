@@ -33,6 +33,9 @@ identification:
   goodbye: "Ačiū, kad paskambinote. Geros dienos!"
   turn_error: "Atsiprašau, įvyko trikdis mano pusėje. Pakartokite, prašau, ką sakėte."
   ticket_intro: "Telefonu neišspręsim — {reason}. Registruoju meistrą."
+  # A question outside the agent's knowledge, registered for the responsible person.
+  ticket_intro_request: "Šiuo klausimu jums geriausiai atsakys atsakingas žmogus — užregistruosiu jūsų klausimą, ir jis su jumis susisieks."
+  ticket_done_request: "Užregistravau jūsų klausimą. Atsakingas žmogus paskambins {phone}, {hours}. Ar dar kuo padėti?"
   ticket_phone: "Ar tiks numeris, iš kurio skambinate?"
   ticket_phone_retry: "Nesupratau numerio. Pasakykite skaitmenimis arba „tiks šis“."
   ticket_hours: "Gerai. O kada patogiausia jums skambinti?"
@@ -430,8 +433,6 @@ problem:
     confirm: "Ar gerai suprantu — bėda su televizija?"
   internet_down:
     confirm: "Ar gerai suprantu — dingo internetas?"
-  billing:
-    boundary_reply: "Esu techninės pagalbos asistentas — sąskaitų ir sutarčių klausimais nepadėsiu, kreipkitės į klientų aptarnavimą. O ar su internetu ar televizija bėdų neturite?"
   chat:
     boundary_reply: "Ačiū, kad paskambinote! Aš padedu dėl interneto ir televizijos gedimų — ar tokių bėdų turite?"
   not_ours:
@@ -462,7 +463,16 @@ ticket_status:
   open: "laukia meistro"
   in_progress: "meistras jau tvarko"
 
+# The request types, as the ticket names them.
+request_label:
+  billing_request: "dėl sąskaitos"
+  disconnection_request: "dėl sutarties nutraukimo"
+  service_transfer: "dėl paslaugos perkėlimo"
+  customer_wish: "pageidavimas"
+
 inform:
+  no_open_ticket:
+    template: "Patikrinau — atvirų registracijų jūsų vardu nematau."
   open_ticket_exists:
     template: "Patikrinau — jūsų gedimas jau užregistruotas {created}, dabar jis {status}. Pažymėjau, kad skambinote dar kartą — kolegos su jumis susisieks."
     fallback: "Patikrinau — jūsų gedimas jau užregistruotas ir tvarkomas. Pažymėjau, kad skambinote dar kartą — kolegos su jumis susisieks."
@@ -577,6 +587,7 @@ ticket:
   need_suspected: "įtariama, kad {gloss}; "
   need_not_checked: "patikrinti kartu telefonu nepavyko"
   need_unclear: "gedimo tipas neaiškus — priežastis telefonu nenustatyta, perduota analizei"
+  need_request: "kliento klausimas perduodamas atsakingam žmogui"
   # Why it was not solved (procedure escalate_reason code).
   reason:
     cannot_now: "Klientas negali dabar atlikti veiksmų prie įrenginio."
@@ -591,6 +602,7 @@ ticket:
     still_down_at_closing: "Klientas atsisveikinant pasakė, kad internetas vis tiek neveikia."
     stuck: "Pokalbis užstrigo — agentas kelis kartus nesuprato kliento."
   details:
+    request: "Kliento klausimas ({type}): {text}."
     fault: "Gedimas: {problem} — {gloss}."
     default_problem: "internetas"
     unknown_cause: "nenustatyta"

@@ -51,3 +51,6 @@ service_not_subscribed:
 # repeat call is noted on it and the caller hears its status; nothing is re-diagnosed.
 open_ticket_exists:
   inform: ticket
+# Not a telemetry verdict: the caller asked about a registration they have none of.
+no_open_ticket:
+  inform: ticket
