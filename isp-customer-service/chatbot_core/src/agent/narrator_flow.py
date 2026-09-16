@@ -124,6 +124,19 @@ def augment_resolve_result(state, rt, observation: str) -> str:
     return json.dumps(obs, ensure_ascii=False)
 
 
+def _result_question(state) -> str:
+    """The one question the result turn ends with: the first thing still MISSING from
+    the ledger, or this step's own question when the ledger is silent."""
+    from .evidence import open_goals_lt
+
+    verdict = (state.resolution.procedure or {}).get("verdict")
+    goals = open_goals_lt(state.diagnosis.evidence, verdict) if verdict else ""
+    first = next((g.strip() for g in goals.split(";") if g.strip()), "")
+    if first:
+        return f"užduok klausimą apie: {first} (jis atlieka „ar darome?“ vaidmenį)."
+    return "užduok ŠIO ŽINGSNIO klausimą (jis atlieka „ar darome?“ vaidmenį)."
+
+
 def result_narration_tail(state, rt) -> str:
     """The narration directive once the identity has committed and the silent
     diagnose ran. Identification LADDER (2026-07-31): if the caller-intro question
@@ -142,12 +155,16 @@ def result_narration_tail(state, rt) -> str:
     d = state.diagnosis.verdicts.get("network") or {}
     gloss = phrase_or(f"verdict.{d.get('reason')}.gloss", d.get("reason") or "—")
     if state.resolution.procedure:
+        # F-11: what the caller already told us is on the ledger by now (the pack's
+        # activation seeds it from the whole call), so the question is the first OPEN
+        # goal — asking the pack's first question regardless re-asked "visuose ar tik
+        # viename?" right after the caller opened with "neveikia visuose įrenginiuose".
         return (
             f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
             "tvarka: (1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) trumpai "
-            "pasakyk rezultatą ir kas tai greičiausiai yra, (3) užduok ŠIO ŽINGSNIO "
-            "klausimą (jis atlieka „ar darome?“ vaidmenį). NEkartok adreso klausimo, "
-            "NEkartok anamnezės klausimo, jokių instrukcijų sąrašo — vienas klausimas."
+            f"pasakyk rezultatą ir kas tai greičiausiai yra, (3) {_result_question(state)} "
+            "NEkartok adreso klausimo, NEkartok anamnezės klausimo, jokių instrukcijų "
+            "sąrašo — vienas klausimas."
         )
     state.diagnosis.news_delivered = True  # the news goes out in THIS reply — never repeat it
     return (

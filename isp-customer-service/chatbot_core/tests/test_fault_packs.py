@@ -136,10 +136,10 @@ class TestVoiceTestFixes:
         assert detect_farewell("Nebereikia.") is True
         assert detect_farewell("Ačiū") is False
 
-    def test_anamnesis_seeds_ledger_on_activation(self, monkeypatch):
+    def test_the_call_so_far_seeds_the_ledger_on_activation(self, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.execute.diagnosis import _seed_evidence_from_anamnesis
+        from agent.execute.diagnosis import _seed_evidence_from_call
 
         engine = as_call(
             monkeypatch,
@@ -155,8 +155,34 @@ class TestVoiceTestFixes:
                 tracer=SimpleNamespace(emit=lambda *a, **k: None),
             ),
         )
-        _seed_evidence_from_anamnesis(engine.state, engine.runtime)
+        _seed_evidence_from_call(engine.state, engine.runtime)
         assert engine.state.diagnosis.evidence.get("changed_device", {}).get("value") == "yes"
+
+    def test_the_opening_sentence_seeds_too(self, monkeypatch):
+        """F-11: a fact stated in the very first sentence must not be re-asked once the
+        pack activates ("neveikia visuose įrenginiuose" -> "visuose ar tik viename?")."""
+        from types import SimpleNamespace
+
+        from agent.execute.diagnosis import _seed_evidence_from_call
+
+        engine = as_call(
+            monkeypatch,
+            SimpleNamespace(
+                state=GraphState(
+                    intake=IntakeState(
+                        heard_utterances=["Neveikia internetas visuose įrenginiuose"]
+                    ),
+                    resolution=ResolutionState(
+                        procedure={"verdict": "router_hung", "step": "rh_ability"}
+                    ),
+                    diagnosis=DiagnosisState(evidence={}),
+                    dialog=DialogState(turn_count=1),
+                ),
+                tracer=SimpleNamespace(emit=lambda *a, **k: None),
+            ),
+        )
+        _seed_evidence_from_call(engine.state, engine.runtime)
+        assert engine.state.diagnosis.evidence.get("fail_scope", {}).get("value") == "all"
 
     def test_pack_glosses_replace_raw_keys(self):
         from agent.evidence import gloss_label, gloss_value

@@ -73,7 +73,7 @@ def ensure_diagnosed(state, rt) -> bool:
     except Exception:  # pragma: no cover - best-effort
         return False
     _unclear_fault_when_unknown(state, rt)
-    _seed_evidence_from_anamnesis(state, rt)
+    _seed_evidence_from_call(state, rt)
     return True
 
 
@@ -114,15 +114,18 @@ def _unclear_fault_when_unknown(state, rt) -> None:
     begin_ticket_dialogue(state, rt, escalate)
 
 
-def _seed_evidence_from_anamnesis(state, rt) -> None:
-    """Facts the caller stated EARLY must not die in anamnesis_raw (Andrius
-    2026-08-13: 'pakeičiau routerį' answered at the ANAMNESIS question was
-    re-asked later in the fault flow). Once the verdict activates a pack, the
-    anamnesis answer is scanned against the pack's declared answer markers and
-    matching facts land on the ledger — the drive then never asks them again.
-    Only specific markers (>=5 chars) seed; generic affirmations never do."""
+def _seed_evidence_from_call(state, rt) -> None:
+    """Facts the caller stated BEFORE the pack existed must not die there (Andrius
+    2026-08-13: 'pakeičiau routerį' answered at the ANAMNESIS question was re-asked
+    later in the fault flow; F-11: 'neveikia visuose įrenginiuose' said in the very
+    first sentence was re-asked as 'visuose ar tik viename?'). Once the verdict
+    activates a pack, everything the caller has said so far is scanned against the
+    pack's declared answer markers and matching facts land on the ledger — the drive
+    then never asks them again. Only specific markers (>=5 chars) seed; generic
+    affirmations never do."""
     s = state
-    raw = s.intake.anamnesis_raw
+    said = [x for x in [s.intake.anamnesis_raw, *s.intake.heard_utterances] if x]
+    raw = " | ".join(said)
     verdict = (s.resolution.procedure or {}).get("verdict")
     if not raw or not verdict:
         return
@@ -140,7 +143,7 @@ def _seed_evidence_from_anamnesis(state, rt) -> None:
             hits = [m for m in marks if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
             if hits:
                 set_fact(s.diagnosis.evidence, key, str(value), CLIENT, s.dialog.turn_count)
-                rt.tracer.emit("evidence", action="anamnesis_seed", key=key, value=str(value))
+                rt.tracer.emit("evidence", action="call_seed", key=key, value=str(value))
                 break
 
 
