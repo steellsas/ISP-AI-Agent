@@ -62,6 +62,8 @@ class IdentityState(BaseModel):
     address_confirmed: bool = False
     # The identified customer's active services: [{type, technology, plan, status}] (D-10).
     service_profile: list[dict[str, Any]] | None = None
+    # Their open tickets: [{ticket_id, ticket_type, problem_type, status, created_at}] (D-12).
+    open_tickets: list[dict[str, Any]] = Field(default_factory=list)
 
     # --- identification ladder -------------------------------------------------
     # Account-code rung: the caller is asked for the abonento kodas; grace turns
@@ -105,12 +107,14 @@ class IdentityState(BaseModel):
         name: str | None = None,
         address: str | None = None,
         services: list[dict[str, Any]] | None = None,
+        open_tickets: list[dict[str, Any]] | None = None,
     ):
         """Commit the identified account (CRM lookup result)."""
         self.customer_id = customer_id
         self.customer_name = name
         self.customer_address = address
         self.service_profile = services
+        self.open_tickets = open_tickets or []
 
 
 class IntakeState(BaseModel):
@@ -301,6 +305,8 @@ class ClosingState(BaseModel):
     callback_goodbye_due: bool = False
     # The caller's secondary problems were asked about at the end.
     secondary_problems_asked: bool = False
+    # A repeat call's note went onto this open ticket instead of a new one (D-12).
+    appended_ticket_id: str | None = None
     # Why a call ended before the caller was identified ("stuck"); M6 turns it into a
     # contact record that needs review.
     unidentified_reason: str | None = None

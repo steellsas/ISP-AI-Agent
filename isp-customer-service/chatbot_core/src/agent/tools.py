@@ -292,6 +292,18 @@ def _format_customer_profile(details: dict) -> dict:
             for s in services
             if s.get("plan_name") and s.get("status") == "active"
         ],
+        # Open tickets (D-12): a repeat call about the same problem appends to one of these.
+        "open_tickets": [
+            {
+                "ticket_id": t.get("ticket_id"),
+                "ticket_type": t.get("ticket_type"),
+                "problem_type": t.get("problem_type"),
+                "status": t.get("status"),
+                "created_at": t.get("created_at"),
+            }
+            for t in details.get("recent_tickets", [])
+            if t.get("status") in ("open", "in_progress")
+        ],
         # The service profile (D-10): what the customer has and how it is delivered.
         "services": [
             {
@@ -1158,6 +1170,7 @@ def create_ticket(
     problem_description: str,
     priority: str | None = None,
     notes: str = None,
+    problem_type: str | None = None,
 ) -> dict:
     """
     Create a support ticket of a knowledge-declared type (knowledge/ticket_types.yaml).
@@ -1196,6 +1209,7 @@ def create_ticket(
             "summary": (details[:100] if details else "Support request"),
             "details": details,
             "troubleshooting_steps": notes or "",
+            "problem_type": problem_type,
         }
 
         result = crm_create_ticket(db, args)

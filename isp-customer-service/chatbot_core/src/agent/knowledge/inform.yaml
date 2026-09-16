@@ -38,3 +38,10 @@ switch_unreachable:
 service_not_subscribed:
   template_key: "inform.service_not_subscribed.template"
   clarity_requirements: [what_is_wrong]
+
+# A repeat call about a problem with an open ticket (D-12).
+#   ticket: {created} ("rugsėjo 15 d."), {status} ("laukia meistro")
+open_ticket_exists:
+  template_key: "inform.open_ticket_exists.template"
+  fallback_key: "inform.open_ticket_exists.fallback"
+  clarity_requirements: [what_is_wrong, what_is_being_done, how_notified]

@@ -669,6 +669,26 @@
           "užregistravau"
         ]
       }
+    },
+    {
+      "id": "R2_repeat_call_open_ticket",
+      "phone": "+37060030307",
+      "desc": "M6 (D-12): pakartotinis skambutis — CUST307 jau turi atvirą tiketą dėl interneto -> pastaba prie jo + būsena, JOKIO naujo tiketo ir diagnostikos",
+      "turns": [
+        "Laba diena, vis dar neveikia internetas, niekas neatvažiavo",
+        "Taip",
+        "Tomas",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "open_ticket_exists",
+        "reply_any": [
+          "jau užregistruotas"
+        ],
+        "reply_none": [
+          "Registruoju meistrą"
+        ]
+      }
     }
   ]
 }

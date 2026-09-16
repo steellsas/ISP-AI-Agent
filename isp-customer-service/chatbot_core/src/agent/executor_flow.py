@@ -171,6 +171,7 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     args = {
         "customer_id": s.identity.customer_id,
         "ticket_type": fault_type((s.resolution.procedure or {}).get("verdict")),
+        "problem_type": s.intake.problem_type,
         "problem_description": details,
         "notes": phrase("ticket.details.actions", tools=", ".join(actions)) if actions else "",
     }

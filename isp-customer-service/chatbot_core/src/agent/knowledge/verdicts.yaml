@@ -47,3 +47,7 @@ unclear_fault: {}
 # have (D-10) — they are told so, nothing is checked and no ticket is made.
 service_not_subscribed:
   inform: service
+# Not a telemetry verdict: the caller's problem already has an open ticket (D-12) — the
+# repeat call is noted on it and the caller hears its status; nothing is re-diagnosed.
+open_ticket_exists:
+  inform: ticket

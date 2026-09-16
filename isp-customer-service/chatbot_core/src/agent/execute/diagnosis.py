@@ -51,8 +51,13 @@ def ensure_diagnosed(state, rt) -> bool:
     # the INTERNET telemetry and walking a wrong-domain pack (live: a TV call
     # was led through Wi-Fi questions). The single-escalate strategy begins
     # the ticket dialogue deterministically on arrival.
-    from ..decide.rules import services
+    from ..decide.rules import open_ticket, services
 
+    # A repeat call about a problem that already has an open ticket: a note on it and its
+    # status — no re-diagnosis, no duplicate ticket (D-12).
+    if s.resolution.procedure is None and open_ticket.same_problem_ticket(state):
+        open_ticket.repeat_call(state, rt)
+        return True
     service_route = services.route(state) if s.resolution.procedure is None else None
     if service_route == "not_subscribed":
         services.not_subscribed(state, rt)

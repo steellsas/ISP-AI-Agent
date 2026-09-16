@@ -458,7 +458,14 @@ service_label:
   tv: "televizijos"
   phone: "telefono"
 
+ticket_status:
+  open: "laukia meistro"
+  in_progress: "meistras jau tvarko"
+
 inform:
+  open_ticket_exists:
+    template: "Patikrinau — jūsų gedimas jau užregistruotas {created}, dabar jis {status}. Pažymėjau, kad skambinote dar kartą — kolegos su jumis susisieks."
+    fallback: "Patikrinau — jūsų gedimas jau užregistruotas ir tvarkomas. Pažymėjau, kad skambinote dar kartą — kolegos su jumis susisieks."
   service_not_subscribed:
     template: "Patikrinau jūsų sutartį — {service} paslaugos joje nėra, todėl jos gedimo patikrinti negaliu."
   billing_suspended:

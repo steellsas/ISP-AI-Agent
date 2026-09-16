@@ -1119,3 +1119,8 @@ answers_router_hung_fail_scope_one: ["viename", "tik ", "telefone", "kompiuteryj
 # A playbook step heading: "### Žingsnis 1: Lemputės" (the number makes it a step, so
 # a plain "### Kada eskaluoti" section is not mistaken for one). Matched per line.
 playbook_step_heading: '^###\s+Žingsnis\s+\d+.*$'
+
+# --- agent/decide/rules/open_ticket.py -----------------------------------------------------
+
+# A repeat caller saying the promised visit or call never happened (D-12 note kind).
+repeat_nobody_came: ["niekas neatvyko", "niekas neatvažiavo", "neatvažiavo", "nesusisiekė", "niekas nepaskambino", "niekas neskambino"]

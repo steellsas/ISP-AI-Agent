@@ -49,6 +49,19 @@ def _values(state: Any, rt: Any, reason: str) -> dict[str, str]:
         lp = lang().date(debt.get("last_payment"))
         if lp:
             vals["last_payment"] = lp
+    elif kind == "ticket":
+        from .decide.rules.open_ticket import same_problem_ticket
+
+        ticket = same_problem_ticket(state) or {}
+        created = lang().date(str(ticket.get("created_at") or "")[:10] or None)
+        if created:
+            vals["created"] = created
+        if ticket.get("status"):
+            from .contract.locale import phrase_or
+
+            status = phrase_or(f"ticket_status.{ticket['status']}", "")
+            if status:
+                vals["status"] = status
     elif kind == "service":
         from .intents import intent_service
 

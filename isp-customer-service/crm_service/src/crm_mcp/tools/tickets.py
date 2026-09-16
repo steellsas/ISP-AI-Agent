@@ -43,6 +43,8 @@ def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any
     summary = args.get("summary")
     details = args.get("details", "")
     troubleshooting_steps = args.get("troubleshooting_steps", "")
+    # The caller's problem (the intent, e.g. internet_down): a repeat call is matched on it.
+    problem_type = args.get("problem_type")
 
     logger.info(f"Creating ticket for customer {customer_id}: {ticket_type} - {summary}")
 
@@ -80,6 +82,7 @@ def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any
                     ticket_id,
                     customer_id,
                     ticket_type,
+                    problem_type,
                     priority,
                     status,
                     summary,
@@ -87,12 +90,13 @@ def create_ticket(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any
                     troubleshooting_steps,
                     created_at,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     ticket_id,
                     customer_id,
                     ticket_type,
+                    problem_type,
                     priority,
                     "open",
                     summary,
