@@ -64,7 +64,7 @@ def startup() -> Knowledge:
 
 def reload() -> None:
     """Drop every knowledge cache (files, locale, derived readers)."""
-    from .. import detectors, faq, faults, identification, inform, intents, services
+    from .. import detectors, faq, faults, identification, inform, intents, services, ticket_types
     from . import limits, locale, policies
 
     read_yaml.cache_clear()
@@ -75,6 +75,7 @@ def reload() -> None:
         faults,
         intents,
         services,
+        ticket_types,
         detectors,
         faq,
         identification,

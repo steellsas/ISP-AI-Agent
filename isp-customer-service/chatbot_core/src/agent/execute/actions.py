@@ -37,9 +37,9 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
 
         return finish_ticket_dialogue(state, rt)
     if action.type == "append_ticket":
-        from .ticket import amend_ticket_note
+        from .ticket import append_ticket_note
 
-        noted = amend_ticket_note(state, rt, action.args.get("note", ""))
+        noted = append_ticket_note(state, rt, action.args.get("note", ""))
         rt.tracer.emit(
             "decision", intent="ticket_amend", action="phone_noted" if noted else "note_failed"
         )

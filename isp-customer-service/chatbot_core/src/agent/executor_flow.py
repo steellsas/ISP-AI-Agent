@@ -165,12 +165,13 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
             for x in s.intake.secondary_problems
         )
         details += phrase("ticket.details.extra", items=extra)
+    from .ticket_types import fault_type
+
     actions = tools_called_this_session(rt.tracer)
     args = {
         "customer_id": s.identity.customer_id,
-        "problem_type": "technician_visit",
+        "ticket_type": fault_type((s.resolution.procedure or {}).get("verdict")),
         "problem_description": details,
-        "priority": "high",
         "notes": phrase("ticket.details.actions", tools=", ".join(actions)) if actions else "",
     }
     try:

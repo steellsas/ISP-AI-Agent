@@ -192,6 +192,16 @@ class IntentsCatalog(_Model):
     intents: dict[str, Intent]
 
 
+class TicketType(_Model):
+    department: str
+    priority: Literal["low", "medium", "high", "critical"] = "medium"
+    append_only: bool = False
+
+
+class TicketTypes(_Model):
+    ticket_types: dict[str, TicketType]
+
+
 class ServiceSpec(_Model):
     technologies: list[str]
 
@@ -291,6 +301,7 @@ class KnowledgeError(Exception):
 class Knowledge:
     intents: IntentsCatalog | None = None
     services: Services | None = None
+    ticket_types: TicketTypes | None = None
     packs: dict[str, FaultPack] = field(default_factory=dict)
     modules: dict[str, Module] = field(default_factory=dict)
     detectors: Detectors | None = None
@@ -558,6 +569,7 @@ def validate_knowledge(
     single_files: dict[str, tuple[str, type[BaseModel]]] = {
         "intents": ("intents.yaml", IntentsCatalog),
         "services": ("services.yaml", Services),
+        "ticket_types": ("ticket_types.yaml", TicketTypes),
         "detectors": ("detectors.yaml", Detectors),
         "faq": ("faq.yaml", Faq),
         "inform": ("inform.yaml", Inform),
@@ -612,6 +624,14 @@ def validate_knowledge(
                     f"services.yaml: dependencies.{i}.technology '{dep.technology}' is not a technology of {dep.service}"
                 )
         for name, intent in (k.intents.intents if k.intents else {}).items():
+            if (
+                intent.ticket_type
+                and k.ticket_types
+                and intent.ticket_type not in k.ticket_types.ticket_types
+            ):
+                errors.append(
+                    f"intents.yaml: intents.{name}.ticket_type '{intent.ticket_type}' is not a ticket type"
+                )
             if intent.service and intent.service not in known:
                 errors.append(
                     f"intents.yaml: intents.{name}.service '{intent.service}' is not a service"

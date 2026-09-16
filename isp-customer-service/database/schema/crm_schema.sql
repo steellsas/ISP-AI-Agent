@@ -136,7 +136,9 @@ CREATE INDEX idx_equipment_serial ON customer_equipment(serial_number);
 CREATE TABLE IF NOT EXISTS tickets (
     ticket_id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,
-    ticket_type TEXT NOT NULL CHECK(ticket_type IN ('network_issue', 'resolved', 'technician_visit', 'customer_not_found', 'no_service_area')),
+    -- The agent's types come from knowledge/ticket_types.yaml (D-11); the older technical
+    -- types stay for existing rows.
+    ticket_type TEXT NOT NULL CHECK(ticket_type IN ('network_issue', 'resolved', 'technician_visit', 'customer_not_found', 'no_service_area', 'fault_technician', 'fault_unclear', 'billing_request', 'disconnection_request', 'service_transfer', 'customer_wish', 'repeat_contact')),
     problem_type TEXT,
     priority TEXT DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high', 'critical')),
     status TEXT DEFAULT 'open' CHECK(status IN ('open', 'in_progress', 'closed')),

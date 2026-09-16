@@ -81,7 +81,7 @@ class TestW0OrderGuards:
         from tests.calls import run_turn_nodes
 
         agent = self._agent()
-        res = create_ticket("CUST009", "network_issue", "test")
+        res = create_ticket("CUST009", "fault_technician", "test")
         agent.state.ticket.ticket_id = res["ticket_id"]
         agent.state.closing.case_closed = True
         runtime = Runtime(context=agent.runtime)

@@ -37,7 +37,7 @@ def fmt_phone(nr: str | None) -> str:
     return digits
 
 
-def amend_ticket_note(state: Any, rt: Any, note: str) -> bool:
+def append_ticket_note(state: Any, rt: Any, note: str, kind: str = "correction") -> bool:
     """Post-registration correction (live 2026-08-25: the caller gave a NEW
     call-back number after 'Užregistravau' and it vanished into the goodbye).
     Appends the note to the registered ticket's details so the worker sees it.
@@ -51,7 +51,7 @@ def amend_ticket_note(state: Any, rt: Any, note: str) -> bool:
             state,
             rt,
             "append_ticket_note",
-            {"ticket_id": tid, "note": note},
+            {"ticket_id": tid, "note": note, "kind": kind},
             reason="ticket_amend",
             apply=False,
         )

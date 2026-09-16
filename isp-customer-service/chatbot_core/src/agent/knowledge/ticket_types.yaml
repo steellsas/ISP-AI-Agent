@@ -1,0 +1,27 @@
+# Ticket types the agent registers (D-11). Each routes to a department; integration maps
+# the type and the department onto the real CRM. `append_only` types are never a new
+# ticket — they are notes on an open one (a repeat call, D-12).
+
+ticket_types:
+  fault_technician:
+    department: technical
+    priority: high
+  fault_unclear:
+    department: technical
+    priority: medium
+  billing_request:
+    department: billing
+    priority: medium
+  disconnection_request:
+    department: customer_service
+    priority: medium
+  service_transfer:
+    department: customer_service
+    priority: medium
+  customer_wish:
+    department: customer_service
+    priority: low
+  repeat_contact:
+    department: technical
+    priority: medium
+    append_only: true

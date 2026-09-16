@@ -178,48 +178,85 @@ class TestSearchKnowledge:
 
 
 class TestCreateTicket:
-    """Tests for create_ticket tool."""
+    """Tests for create_ticket tool (M6: knowledge-declared ticket types)."""
 
     def test_create_ticket_success(self, db_connection, sample_customer_id):
-        """Should create ticket successfully."""
         from agent.tools import create_ticket
 
         result = create_ticket(
             customer_id=sample_customer_id,
-            problem_type="network_issue",
+            ticket_type="fault_technician",
             problem_description="Test ticket - internetas neveikia",
-            priority="low",
             notes="Automated test",
         )
 
-        assert result["success"] == True
+        assert result["success"] is True
         assert "ticket_id" in result
 
-    def test_create_ticket_coerces_freetext_type(self, db_connection, sample_customer_id):
-        """A free-text problem_type (e.g. 'equipment_replacement') must NOT crash the INSERT
-        on the ticket_type CHECK constraint — it is coerced to a valid type (observed live
-        database_error on the dead-router replacement ticket)."""
+    def test_an_unknown_type_becomes_an_unclear_fault_with_its_wording(
+        self, db_connection, sample_customer_id
+    ):
+        """A type outside knowledge/ticket_types.yaml must not crash the INSERT on the
+        CHECK constraint (observed live database_error) — it is registered as an unclear
+        fault and the original wording stays in the details."""
         from agent.tools import create_ticket
 
         result = create_ticket(
             customer_id=sample_customer_id,
-            problem_type="equipment_replacement",
+            ticket_type="equipment_replacement",
             problem_description="Sugedęs routeris, reikia keisti",
-            priority="high",
         )
         assert result["success"] is True
-        assert "ticket_id" in result
+        with db_connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT ticket_type, priority, details FROM tickets WHERE ticket_id = ?",
+                (result["ticket_id"],),
+            )
+            row = dict(cursor.fetchone())
+        assert row["ticket_type"] == "fault_unclear"
+        assert row["priority"] == "medium"  # the type's own priority
+        assert row["details"].startswith("[equipment_replacement]")
+
+    def test_the_types_priority_is_used_when_none_is_given(self, db_connection, sample_customer_id):
+        from agent import ticket_types
+
+        assert ticket_types.priority("fault_technician") == "high"
+        assert ticket_types.priority("customer_wish") == "low"
 
     def test_create_ticket_missing_customer(self, db_connection):
-        """Should handle invalid customer."""
         from agent.tools import create_ticket
 
         result = create_ticket(
-            customer_id="INVALID_ID", problem_type="test", problem_description="Test"
+            customer_id="INVALID_ID", ticket_type="fault_unclear", problem_description="Test"
         )
 
-        # Depending on implementation - might succeed with mock or fail
         assert "success" in result
+
+
+class TestAppendTicketNote:
+    def test_a_repeat_call_note_is_marked_with_its_kind(self, db_connection, sample_customer_id):
+        from agent.tools import append_ticket_note, create_ticket
+
+        tid = create_ticket(sample_customer_id, "fault_technician", "Neveikia internetas")[
+            "ticket_id"
+        ]
+
+        result = append_ticket_note(
+            tid, "Klientas klausia, kada atvyks meistras", kind="just_checking"
+        )
+
+        assert result["success"] is True
+        with db_connection.cursor() as cursor:
+            cursor.execute("SELECT details FROM tickets WHERE ticket_id = ?", (tid,))
+            details = dict(cursor.fetchone())["details"]
+        assert "[PAKARTOTINIS SKAMBUTIS — teiraujasi eigos] Klientas klausia" in details
+
+    def test_an_unknown_kind_is_refused(self, db_connection, sample_customer_id):
+        from agent.tools import append_ticket_note, create_ticket
+
+        tid = create_ticket(sample_customer_id, "fault_technician", "x")["ticket_id"]
+
+        assert append_ticket_note(tid, "x", kind="whatever")["success"] is False
 
 
 class TestToolsRegistry:

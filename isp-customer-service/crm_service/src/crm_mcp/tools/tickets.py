@@ -310,3 +310,40 @@ def update_ticket_status(
     except Exception as e:
         logger.error(f"Error in update_ticket_status: {e}", exc_info=True)
         return {"success": False, "error": "database_error", "message": f"Klaida: {str(e)}"}
+
+
+# What a note on an existing ticket is: a correction after the registration, or a repeat
+# call about the same problem (D-12) — the caller is just checking, nobody came, or there
+# is new information.
+NOTE_KINDS = {
+    "correction": "PATIKSLINTA",
+    "just_checking": "PAKARTOTINIS SKAMBUTIS — teiraujasi eigos",
+    "nobody_came": "PAKARTOTINIS SKAMBUTIS — niekas neatvyko / nesusisiekė",
+    "new_info": "PAKARTOTINIS SKAMBUTIS — nauja informacija",
+}
+
+
+def append_ticket_note(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any]:
+    """Append a note to a ticket's details, marked with its kind. Never a new ticket."""
+    ticket_id = args.get("ticket_id")
+    note = (args.get("note") or "").strip()
+    kind = args.get("kind") or "correction"
+    if not ticket_id or not note:
+        return {"success": False, "error": "missing_arguments"}
+    if kind not in NOTE_KINDS:
+        return {"success": False, "error": "unknown_kind", "message": f"kind {kind!r}"}
+    with db.cursor() as cursor:
+        cursor.execute("SELECT details FROM tickets WHERE ticket_id = ?", (ticket_id,))
+        row = cursor.fetchone()
+        if not row:
+            return {"success": False, "error": "ticket_not_found"}
+        details = (dict(row).get("details") or "").rstrip()
+        cursor.execute(
+            "UPDATE tickets SET details = ?, updated_at = ? WHERE ticket_id = ?",
+            (
+                f"{details}\n[{NOTE_KINDS[kind]}] {note}".strip(),
+                datetime.now().isoformat(),
+                ticket_id,
+            ),
+        )
+    return {"success": True, "ticket_id": ticket_id, "kind": kind}

@@ -1145,67 +1145,49 @@ def _search_knowledge_fallback(query: str) -> dict:
     }
 
 
-def append_ticket_note(ticket_id: str, note: str) -> dict:
-    """Append a post-registration correction to a ticket's details ([PATIKSLINTA])."""
-    if not ticket_id or not note:
-        return {"success": False, "error": "missing_arguments"}
-    db = get_db()
-    with db.cursor() as cursor:
-        cursor.execute("SELECT details FROM tickets WHERE ticket_id = ?", (ticket_id,))
-        row = cursor.fetchone()
-        if not row:
-            return {"success": False, "error": "ticket_not_found"}
-        details = (dict(row).get("details") or "").rstrip()
-        cursor.execute(
-            "UPDATE tickets SET details = ? WHERE ticket_id = ?",
-            (f"{details}\n[PATIKSLINTA] {note}".strip(), ticket_id),
-        )
-    return {"success": True, "ticket_id": ticket_id}
+def append_ticket_note(ticket_id: str, note: str, kind: str = "correction") -> dict:
+    """Append a note to an existing ticket (a correction, or a repeat call about it)."""
+    from crm_mcp.tools.tickets import append_ticket_note as crm_append_ticket_note
+
+    return crm_append_ticket_note(get_db(), {"ticket_id": ticket_id, "note": note, "kind": kind})
 
 
 def create_ticket(
     customer_id: str,
-    problem_type: str,
+    ticket_type: str,
     problem_description: str,
-    priority: str = "medium",
+    priority: str | None = None,
     notes: str = None,
 ) -> dict:
     """
-    Create support ticket.
+    Create a support ticket of a knowledge-declared type (knowledge/ticket_types.yaml).
 
     Args:
         customer_id: Customer ID
-        problem_type: Type of problem
+        ticket_type: fault_technician, fault_unclear, billing_request, …
         problem_description: Description
-        priority: Priority level
+        priority: Priority level (the type's own priority when omitted)
         notes: Additional notes
 
     Returns:
         Ticket creation result
     """
-    logger.info(f"[TOOL] create_ticket(customer_id={customer_id}, type={problem_type})")
+    logger.info(f"[TOOL] create_ticket(customer_id={customer_id}, type={ticket_type})")
 
     try:
         db = get_db()
 
+        from agent import ticket_types
         from crm_mcp.tools.tickets import create_ticket as crm_create_ticket
 
-        # The DB column `ticket_type` has a strict CHECK constraint; the model's free-text
-        # `problem_type` (e.g. "equipment_replacement") would violate it and fail the INSERT
-        # (database_error). Coerce to a valid type — anything not already valid becomes
-        # `technician_visit` (every ticket here results in a worker contacting the customer)
-        # — and keep the model's original wording in the details so nothing is lost.
-        valid_ticket_types = {
-            "network_issue",
-            "resolved",
-            "technician_visit",
-            "customer_not_found",
-            "no_service_area",
-        }
-        ticket_type = problem_type if problem_type in valid_ticket_types else "technician_visit"
+        # Only knowledge-declared types reach the CRM; an unknown one is registered as an
+        # unclear fault with its wording kept, so nothing the caller asked for is lost.
         details = problem_description or ""
-        if problem_type not in valid_ticket_types and problem_type:
-            details = f"[{problem_type}] {details}".strip()
+        if not ticket_types.known(ticket_type):
+            if ticket_type:
+                details = f"[{ticket_type}] {details}".strip()
+            ticket_type = "fault_unclear"
+        priority = priority or ticket_types.priority(ticket_type)
 
         args = {
             "customer_id": customer_id,
@@ -1592,9 +1574,9 @@ REAL_TOOLS = [
         description="Create support ticket for technician visit or escalation. Only use when problem cannot be resolved remotely.",
         parameters={
             "customer_id": {"type": "string", "description": "Customer ID", "required": True},
-            "problem_type": {
+            "ticket_type": {
                 "type": "string",
-                "description": "Type: network_issue, technician_visit, equipment_replacement",
+                "description": "Type from knowledge/ticket_types.yaml, e.g. fault_technician",
             },
             "problem_description": {
                 "type": "string",
