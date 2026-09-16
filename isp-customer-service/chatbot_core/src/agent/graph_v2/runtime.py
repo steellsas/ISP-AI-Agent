@@ -20,7 +20,7 @@ from langgraph.config import get_stream_writer
 
 from ..prompts import load_node_prompt
 from .state import GraphState
-from .tool_scopes import CLOSING_TOOLS, LOOKUP_TOOLS, TICKET_TOOLS  # noqa: F401  (re-exported)
+from .tool_scopes import CLOSING_TOOLS, TICKET_TOOLS  # noqa: F401  (re-exported)
 
 # Per-stage prompts.
 ADDRESS_NODE_PROMPT = load_node_prompt("stages/identification")

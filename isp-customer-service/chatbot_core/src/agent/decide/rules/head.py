@@ -359,7 +359,7 @@ def unidentified_address(state: Any, rt: Any, user_input: str) -> bool:
                     state.turn.address_confirm_note = (
                         "- ADRESAS NEPATVIRTINTAS: kliento atsakymas AIŠKIAI "
                         "nepatvirtino pasiūlyto adreso (girdisi neigimas ar "
-                        "neaiškumas). NEkviesk resolve_address su pasiūlytu adresu. "
+                        "neaiškumas). NEpatvirtink pasiūlyto adreso. "
                         "Jei klientas įvardijo KITĄ adresą (žr. HEARD ADDRESS) — "
                         "naudok TĄ. Kitu atveju mandagiai perklausk: „Atsiprašau, "
                         "nesupratau — dėl kokio adreso skambinate?“"

@@ -197,9 +197,8 @@ class TestSessionThroughGraph:
         assert reply == "Pasakykite adresą."
         assert session.state.messages[-1]["content"] == "Pasakykite adresą."
 
-    def test_unidentified_turn_is_lookup_only(self, db_connection, tmp_path):
-        from agent.graph_v2.tool_scopes import LOOKUP_TOOLS
-
+    def test_unidentified_turn_has_no_tools(self, db_connection, tmp_path):
+        """M5: the engine runs every identification lookup — the narrator only talks."""
         session = _v2_session(tmp_path)
         session.greeting()
 
@@ -213,10 +212,7 @@ class TestSessionThroughGraph:
         ):
             session.handle_turn("neveikia internetas Vilniaus gatvėje 29")
 
-        names = _tool_names(captured["tools"])
-        assert names <= set(LOOKUP_TOOLS)
-        assert "diagnose_connection" not in names
-        assert "create_ticket" not in names
+        assert _tool_names(captured["tools"]) == set()
 
 
 class TestRouting:

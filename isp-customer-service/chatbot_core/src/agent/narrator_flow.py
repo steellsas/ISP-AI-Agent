@@ -539,7 +539,7 @@ def state_facts_block(state, rt) -> str | None:
             f"street — do NOT say 'Girdžiu {o['street']}' or claim they mentioned it. "
             f"Ask NEUTRALLY and WAIT for their answer: 'Ar skambinate dėl "
             f"{o['street']}?'. ONLY after they confirm, inform about the outage + "
-            f"estimated time and then call close_case(reason='outage'). Do NOT run "
+            f"estimated time; the engine closes the call. Do NOT run "
             f"identification (no 'Radau sutartį', no house/apartment). If they name a "
             f"DIFFERENT street, drop this and ask for the address."
         )
@@ -582,10 +582,9 @@ def state_facts_block(state, rt) -> str | None:
         facts.append(
             f"- PHONE ACCOUNT: the caller's number is registered at {c['address']}. "
             f"Offer THIS address FIRST, before asking them to dictate anything: "
-            f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?". On yes, call '
-            f"resolve_address(city='{c['city']}', street='{c['street']}', "
-            f"house_number='{c['house']}'{flat_arg}) to identify, then diagnose. If they "
-            f"say a DIFFERENT address (someone else's — that is allowed), ask them to "
+            f'"Ar skambinate dėl {c["street"]} {c["house"]}{flat}?". A clean yes '
+            f"identifies them (the engine looks the address up). If they say a "
+            f"DIFFERENT address (someone else's — that is allowed), ask them to "
             f"state the address where the fault is and take THAT."
         )
     # DB-grounded verdict on the accumulated address (set in the prefill).
@@ -699,8 +698,8 @@ def state_facts_block(state, rt) -> str | None:
             f'"{recent}". STT may have split or garbled a spoken number '
             '("šešiasdešimt" 60 can arrive as "šešias dešimt" and mis-parse to 10). '
             "Infer the MOST LIKELY full address from everything above (prefer the "
-            "latest correction), then call resolve_address with it — do not make the "
-            "caller repeat again if you can reasonably infer it."
+            "latest correction) and say it back for a yes/no confirmation — do not "
+            "make the caller repeat again if you can reasonably infer it."
         )
     # Outage reported (restricted mode): an active outage IS the answer, so stop
     # identifying/diagnosing — but stay available for the caller's follow-ups
@@ -709,9 +708,8 @@ def state_facts_block(state, rt) -> str | None:
         facts.append(
             "- GEDIMAS PASKELBTAS šiai gatvei — tai galutinis atsakymas. NEklausk "
             "namo/buto, NEdiagnozuok, NEsiūlyk maitinimo/laidų. Atsakyk į kliento "
-            "klausimus apie gedimą (laikas, eiga, kompensacija; gali naudoti "
-            "search_knowledge). Kai klientas supranta / lauks — kviesk "
-            "close_case(reason='outage')."
+            "klausimus apie gedimą (laikas, eiga, kompensacija). Kai klientas "
+            "supranta / lauks — atsisveikink; skambutį uždaro variklis."
         )
     # Diagnostic findings (case state), per domain: durable current truth, so
     # the agent reconciles them with the caller and never re-runs / loses them.
@@ -925,8 +923,8 @@ def state_facts_block(state, rt) -> str | None:
         if heard:
             facts.append(
                 "- HEARD ADDRESS (deterministic — PREFER these over re-extracting "
-                "from the raw text): " + ", ".join(heard) + ". Pass them to "
-                "resolve_address unless the caller explicitly corrects them."
+                "from the raw text): " + ", ".join(heard) + ". Use THESE when you "
+                "say the address back, unless the caller explicitly corrects them."
             )
     # Phone candidate is NOT surfaced to the model. Identification is
     # address-first: the agent always asks for the service address and

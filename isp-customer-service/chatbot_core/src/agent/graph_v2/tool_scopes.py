@@ -7,12 +7,10 @@ Each stage node exposes only its own toolset to the LLM, so e.g.
 
 from __future__ import annotations
 
-# Identification stage: lookup tools only — NO diagnostics / mutations / tickets.
-# close_case is allowed here too, so an outage (found pre-identification) can be
-# acknowledged and the call closed without forcing a full ID first.
-LOOKUP_TOOLS = frozenset(
-    {"resolve_address", "find_customer", "check_outages", "search_knowledge", "close_case"}
-)
+# Identification stage: NO tools — the engine runs every lookup (the phone
+# preflight, the street outage check, resolve_address from the heard slots, the
+# account code) and closes the case itself; the narrator only talks.
+IDENTIFICATION_TOOLS: frozenset[str] = frozenset()
 
 # Closing stage: NO tools at all — structurally cannot diagnose or ask for an
 # address; the agent can only say a short goodbye.

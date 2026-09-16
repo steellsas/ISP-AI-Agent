@@ -79,7 +79,7 @@ def _narrate(state: Any, rt: Any, stage: str | None, user_input: str | None, pla
     tools, prompt = {
         "closing": (gr.CLOSING_TOOLS, gr.CLOSING_NODE_PROMPT),
         "ticket": (gr.TICKET_TOOLS, gr.TICKET_NODE_PROMPT),
-        "intake": (gr.LOOKUP_TOOLS, gr.ADDRESS_NODE_PROMPT),
+        "intake": (frozenset(), gr.ADDRESS_NODE_PROMPT),
         "diagnosis": (None, gr.DIAGNOSIS_NODE_PROMPT),
         "side_topic": (frozenset(), gr.SIDE_TOPIC_PROMPT),
     }[stage or "intake"]
