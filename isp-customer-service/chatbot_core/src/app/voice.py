@@ -84,6 +84,9 @@ def get_pipeline(ms: ManagedSession):
             transcript_filter=normalize_lt_numbers,
             noise_filter=is_asr_noise,
         )
+        # This call has a background thread, so the analyst reads there and the reply
+        # never waits for it (F-24).
+        ms.session.use_background_analyst()
     return ms.voice
 
 

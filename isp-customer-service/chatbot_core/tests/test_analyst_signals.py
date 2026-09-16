@@ -174,3 +174,41 @@ class TestWiring:
             narrate(state, rt, "taip", "diagnosis", "diagnosis")
 
         assert state.voice.analyst_signals[0]["type"] == "frustration"
+
+
+class TestBackgroundWindow:
+    """A voice call reads the analyst in its background thread — no reply waits for it."""
+
+    def test_a_call_with_a_background_window_is_async(self, make_state, make_runtime, monkeypatch):
+        from agent.analyst.node import mode
+
+        monkeypatch.delenv("ANALYST_MODE", raising=False)
+        state = make_state("+37060020112")
+
+        assert mode(state) == "sync"
+        state.voice.background_reads = True
+        assert mode(state) == "async"
+
+    def test_an_explicit_mode_wins(self, make_state, monkeypatch):
+        from agent.analyst.node import mode
+
+        monkeypatch.setenv("ANALYST_MODE", "off")
+        state = make_state("+37060020112")
+        state.voice.background_reads = True
+
+        assert mode(state) == "off"
+
+    def test_the_turn_does_not_read_in_a_background_call(
+        self, make_state, make_runtime, monkeypatch
+    ):
+        from agent.analyst.node import run_sync
+
+        monkeypatch.delenv("ANALYST_MODE", raising=False)
+        state, rt = make_state("+37060020112"), make_runtime()
+        state.intake.problem_type = "internet_down"
+        state.voice.background_reads = True
+
+        with patch("src.services.llm.client.llm_completion", side_effect=AssertionError("called")):
+            run_sync(state, rt)
+
+        assert state.voice.analyst_signals is None

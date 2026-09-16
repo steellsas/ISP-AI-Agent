@@ -59,6 +59,8 @@ class EdgeTTSProvider:
     # a small capped cache, ~20 KB per entry.
     _CACHE: dict[tuple, bytes] = {}
     _CACHE_MAX = 64
+    # How long one sentence's synthesis may take before the socket is abandoned.
+    last_synthesis_ms: int = 0
 
     def _synthesize_one(self, sentence: str, voice: str) -> bytes:
         """Render one sentence to MP3 via edge-tts (async collected to bytes).
@@ -84,9 +86,23 @@ class EdgeTTSProvider:
 
         import edge_tts  # deferred (optional dependency) — a cache hit needs none
 
-        async def _collect() -> bytes:
+        async def _collect(deadline: float) -> bytes:
+            """Collect one sentence's audio. The DEADLINE guards the FIRST chunk only:
+            a stalled socket answers nothing at all, while a long sentence keeps
+            streaming once it has started."""
             out = bytearray()
-            async for chunk in edge_tts.Communicate(sentence, voice, **kwargs).stream():
+            stream = edge_tts.Communicate(sentence, voice, **kwargs).stream()
+            first = True
+            while True:
+                try:
+                    chunk = (
+                        await asyncio.wait_for(anext(stream), timeout=deadline)
+                        if first
+                        else await anext(stream)
+                    )
+                except StopAsyncIteration:
+                    break
+                first = False
                 if chunk["type"] == "audio":
                     out.extend(chunk["data"])
             return bytes(out)
@@ -96,11 +112,32 @@ class EdgeTTSProvider:
         # throttling shows up as multi-second stalls mid-reply. Log every
         # synthesis; a slow one is a WARNING so the stall is visible in the
         # server log without debug level.
+        # A stalled socket is abandoned rather than waited out: the free endpoint
+        # regularly answers nothing for 6-30 s (measured 2026-09-16) while the caller
+        # hears silence. A fresh connection usually answers at once, so we keep
+        # reconnecting inside a budget instead of waiting on one dead socket.
+        deadline, budget = _stall_deadline(), _total_budget()
         t0 = time.perf_counter()
-        audio = asyncio.run(_collect())
+        audio = b""
+        attempt = 0
+        while time.perf_counter() - t0 < budget:
+            attempt += 1
+            try:
+                audio = asyncio.run(_collect(deadline))
+                break
+            except TimeoutError:
+                logger.warning(
+                    "edge-tts sent no audio within %.1fs (attempt %d, %d chars)",
+                    deadline,
+                    attempt,
+                    len(sentence),
+                )
+            except Exception:  # pragma: no cover - transport hiccup, try again
+                logger.warning("edge-tts attempt %d failed (%d chars)", attempt, len(sentence))
         ms = int((time.perf_counter() - t0) * 1000)
         log = logger.warning if ms > 3000 else logger.info
         log("edge-tts: %d chars -> %d bytes in %d ms", len(sentence), len(audio), ms)
+        self.last_synthesis_ms = ms
         if audio:
             if len(self._CACHE) >= self._CACHE_MAX:
                 self._CACHE.pop(next(iter(self._CACHE)))
@@ -124,3 +161,25 @@ class EdgeTTSProvider:
     def synthesize(self, text: str, *, language: str | None = None) -> bytes:
         """Full reply as one MP3 (concatenated per-sentence frames)."""
         return b"".join(self.stream(text, language=language))
+
+
+def _total_budget() -> float:
+    """Seconds the whole sentence may spend across reconnects before we give up and the
+    caller loses that sentence (knowledge/limits.yaml `tts_budget_seconds`)."""
+    from agent.contract import limits
+
+    try:
+        return float(limits.get("tts_budget_seconds"))
+    except Exception:  # pragma: no cover - the adapter must work without the engine
+        return 10.0
+
+
+def _stall_deadline() -> float:
+    """Seconds to wait for the FIRST audio chunk (knowledge/limits.yaml
+    `tts_stall_seconds`); after that the socket is abandoned and retried once."""
+    from agent.contract import limits
+
+    try:
+        return float(limits.get("tts_stall_seconds"))
+    except Exception:  # pragma: no cover - the adapter must work without the engine
+        return 4.0

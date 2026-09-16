@@ -300,6 +300,9 @@ class VoiceState(BaseModel):
     # The analyst's TONE signals for the next reply (off_topic, frustration) — the
     # deciding ones are applied when they arrive, never carried here.
     analyst_signals: list[dict[str, Any]] | None = None
+    # This call has a background window (a voice transport): the analyst reads there and
+    # no reply waits for it (F-24).
+    background_reads: bool = False
     # Words the caller said OVER the agent's voice, for a one-shot narrator note.
     overlay_heard: list[str] | None = None
     # After a barge-in: the reply tail the caller did not hear / an unheard question.

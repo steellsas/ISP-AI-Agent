@@ -28,6 +28,8 @@ address_unrecognized_turns_max: 2   # unrecognised address turns before the acco
 address_resolve_failures_max: 3     # failed street/house lookups before the account-code rung
 account_code_grace_turns: 2         # non-code turns before code mode quietly switches off
 reopen_confirm_max_asks: 2          # unclear answers to the address-change confirm before dropping it
+tts_stall_seconds: 3                # no first audio chunk within this -> abandon the socket, reconnect
+tts_budget_seconds: 10              # total per sentence across reconnects before the sentence is lost
 reply_max_chars: 280                # a longer reply is trimmed at its last full sentence
 side_topic_streak_max: 3            # side-topic turns in a row before the fixed "back to the issue" reply
 wrap_content_turns_max: 2           # content turns in the inform wrap-up that still get an LLM reaction

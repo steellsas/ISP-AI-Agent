@@ -208,12 +208,17 @@ class AgentSession:
         except Exception:  # pragma: no cover - a hint must never break a turn
             return ("normal", None)
 
+    def use_background_analyst(self) -> None:
+        """The transport has a background window (voice): the analyst reads there, so no
+        turn waits for it."""
+        self._write_between_turns(lambda state, rt: setattr(state.voice, "background_reads", True))
+
     def analyst_next(self) -> None:
         """The analyst's background read (ANALYST_MODE=async, the voice default): its
         signals are applied on this state and the tone ones ride to the next turn."""
         from .analyst.node import apply, mode, read
 
-        if mode() != "async":
+        if mode(self._state) != "async":
             return
         signals = read(self._state, self._runtime)
         if not signals:

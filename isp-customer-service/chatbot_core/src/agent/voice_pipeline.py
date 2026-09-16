@@ -133,13 +133,27 @@ class VoicePipeline:
         except TypeError:
             return self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
 
+    def _speak(self, text: str) -> bytes:
+        """Synthesize one piece of the reply and TRACE how long it took — a stalled
+        provider is otherwise invisible: the caller hears silence while the text is long
+        since ready (F-24, live 2026-09-16)."""
+        import time
+
+        t0 = time.perf_counter()
+        audio = self._tts.synthesize(speech_text(text), language=self._language)
+        ms = int((time.perf_counter() - t0) * 1000)
+        tracer = getattr(self._session, "tracer", None)
+        if tracer is not None:
+            tracer.emit("tts", ms=ms, chars=len(text), bytes=len(audio or b""))
+        return audio
+
     def _tts_stream(self, text: str):
         """Per-sentence TTS for a ready reply text (stream() when available)."""
         stream = getattr(self._tts, "stream", None)
         chunks = (
             stream(speech_text(text), language=self._language)
             if callable(stream)
-            else iter([self._tts.synthesize(speech_text(text), language=self._language)])
+            else iter([self._speak(text)])
         )
         for chunk in chunks:
             if chunk:
@@ -256,7 +270,7 @@ class VoicePipeline:
 
         reply_text = self._session.handle_turn(transcript)
         t2 = time.perf_counter()
-        reply_audio = self._tts.synthesize(speech_text(reply_text), language=self._language)
+        reply_audio = self._speak(reply_text)
         t3 = time.perf_counter()
 
         asr_ms = (t1 - t0) * 1000.0
@@ -367,7 +381,7 @@ class VoicePipeline:
             anchor = getattr(self._session, "anchor_text", None)
             text = anchor() if callable(anchor) else ""
             if text:
-                chunk = self._tts.synthesize(speech_text(text), language=self._language)
+                chunk = self._speak(text)
                 if chunk:
                     self.last_turn_sentences.append(text)
                     yield chunk
@@ -410,7 +424,7 @@ class VoicePipeline:
                 while sentence:
                     if should_stop is not None and should_stop():
                         return
-                    chunk = self._tts.synthesize(speech_text(sentence), language=self._language)
+                    chunk = self._speak(sentence)
                     if chunk:
                         _emit_latency(time.perf_counter())
                         self.last_turn_sentences.append(sentence)
@@ -418,7 +432,7 @@ class VoicePipeline:
                     sentence, buf = pop_sentence(buf)
             tail = buf.strip()
             if tail:
-                chunk = self._tts.synthesize(speech_text(tail), language=self._language)
+                chunk = self._speak(tail)
                 if chunk:
                     _emit_latency(time.perf_counter())
                     self.last_turn_sentences.append(tail)
@@ -440,7 +454,7 @@ class VoicePipeline:
         if callable(stream):
             chunks = stream(speech_text(reply_text), language=self._language)
         else:
-            chunks = iter([self._tts.synthesize(speech_text(reply_text), language=self._language)])
+            chunks = iter([self._speak(reply_text)])
         for chunk in chunks:
             if not chunk:
                 continue

@@ -23,13 +23,20 @@ from .signals import Signal, parse
 logger = logging.getLogger(__name__)
 
 
-def mode() -> str:
-    return os.getenv("ANALYST_MODE", "sync").lower()
+def mode(state: Any = None) -> str:
+    """`off` disables the analyst; `async` reads it in the voice background thread (the
+    reply never waits); `sync` reads it as the last step of the turn (text, eval). An
+    explicit ANALYST_MODE wins; otherwise a call with a background window is async and
+    everything else sync."""
+    env = os.getenv("ANALYST_MODE")
+    if env:
+        return env.lower()
+    return "async" if getattr(getattr(state, "voice", None), "background_reads", False) else "sync"
 
 
 def read(state: Any, rt: Any) -> list[Signal]:
     """One read of the call. Best-effort: any hiccup returns no signals."""
-    if mode() == "off":
+    if mode(state) == "off":
         return []
     s = state
     if not s.intake.problem_type or s.closing.case_closed or s.closing.is_complete:
@@ -100,7 +107,7 @@ def _context(state: Any, rt: Any) -> str:
 def run_sync(state: Any, rt: Any) -> None:
     """Read and apply in the same turn (text and eval): the signals shape the NEXT
     turn's decisions, exactly as the async ones do."""
-    if mode() != "sync":
+    if mode(state) != "sync":
         return
     apply(state, rt, read(state, rt))
 
