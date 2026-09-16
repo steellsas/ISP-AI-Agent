@@ -7,7 +7,6 @@ Two seams:
 - `node_update()` — the node contract: a node works on a copy of the graph
   state and returns the full state as its update, so the checkpoint is the only
   state between nodes and between turns.
-- `narrator()` — the LLM narrator loop (ReactAgent) for a node run.
 
 Tool scopes live in tool_scopes.py (re-exported here for the nodes).
 """
@@ -104,10 +103,3 @@ def node_update(state: GraphState, reply: str | None = None) -> dict[str, Any]:
     if reply is not None:
         state.turn.reply = reply
     return {name: getattr(state, name) for name in GraphState.model_fields}
-
-
-def narrator(state: GraphState, rt: Any):
-    """The LLM narrator loop (ReactAgent) for one node run on `state`."""
-    from ..react_agent import ReactAgent
-
-    return ReactAgent(state, rt)

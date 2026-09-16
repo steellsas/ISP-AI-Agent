@@ -58,7 +58,7 @@ def _narrate_stage(state: Any, rt: Any, plan: Any, user_input: str | None) -> st
     """A stage directive: the narrator's scripted exits may still take the turn (and
     record their own plan); otherwise the LLM words the stage."""
     from ..decide.plan import record, record_stage_reply
-    from ..narrator_flow import mark_step_presented
+    from .step import mark_step_presented
 
     stage = plan.say.stage
     state.turn.plan = None

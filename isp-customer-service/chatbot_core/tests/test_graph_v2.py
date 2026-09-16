@@ -66,7 +66,7 @@ class FakeEngine:
             "agent.decide.rules.diagnosis.solver_drive_turn": ("solver", driven),
             "agent.decide.procedure.advance": ("walker", StepOutcome("hold")),
             "agent.execute.diagnosis.ensure_action_done": ("action", None),
-            "agent.narrator_flow.mark_step_presented": ("mark", None),
+            "agent.execute.step.mark_step_presented": ("mark", None),
         }
         for target, (label, result) in recorders.items():
             monkeypatch.setattr(target, self._recorder(label, result))

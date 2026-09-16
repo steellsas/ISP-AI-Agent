@@ -47,7 +47,6 @@ class TestEngineDrivenAction:
         }
 
     def _stub_tools(self, monkeypatch, telemetry):
-        import agent.react_agent as ra
 
         install_fake_tools(
             monkeypatch, lambda name, args: json.dumps({"success": True, "new_mac": "X"})
@@ -59,7 +58,7 @@ class TestEngineDrivenAction:
     def test_bind_announces_then_walks_to_confirm(self, monkeypatch):
         from agent.decide.procedure import advance
         from agent.execute.diagnosis import ensure_action_done
-        from agent.narrator_flow import mark_step_presented
+        from agent.execute.step import mark_step_presented
 
         agent = self._agent()
         self._at_bind(agent)
@@ -143,7 +142,7 @@ class TestEngineDrivenAction:
 
     def test_instruct_steps_walk_one_per_turn(self):
         from agent.decide.procedure import advance
-        from agent.narrator_flow import mark_step_presented
+        from agent.execute.step import mark_step_presented
 
         # "nieko nekeičiau" -> the cable INSTRUCT steps are walked ONE per reply:
         # each advances only after its instruction was presented last turn.
@@ -191,7 +190,8 @@ class TestIdentifyThenDiagnoseSameTurn:
         return make_agent("unknown")
 
     def test_resolve_triggers_diagnosis_and_carries_the_finding(self, db_connection):
-        from agent.narrator_flow import augment_tool_result, result_narration_tail
+        from agent.execute.observe import augment_tool_result
+        from agent.speak.context_card import result_narration_tail
         from agent.tools import execute_tool
 
         agent = self._agent()
@@ -253,7 +253,7 @@ class TestIdentifyThenDiagnoseSameTurn:
         assert agent.state.diagnosis.hypothesis["cause"] == "no_mac_observed"
 
     def test_failed_resolve_does_not_diagnose(self, db_connection):
-        from agent.narrator_flow import augment_tool_result
+        from agent.execute.observe import augment_tool_result
         from agent.tools import execute_tool
 
         agent = self._agent()
@@ -274,7 +274,7 @@ class TestHypothesisObject:
         return make_agent("unknown")
 
     def _diagnose(self, agent, reason):
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
 
         update_state_from_observation(
             agent.state,
@@ -306,7 +306,6 @@ class TestHypothesisObject:
         assert "HYPOTHESIS CONFIRMED" in (context_card(agent.state, agent.runtime) or "")
 
     def test_rejected_causes_are_remembered_and_not_re_offered(self, monkeypatch):
-        import agent.react_agent as ra
         from agent.decide.procedure import advance
         from agent.speak.context_card import context_card
 
@@ -351,7 +350,6 @@ class TestTurnHolding:
     holds it — this is what stopped the agent running ahead of the caller."""
 
     def _at_step(self, monkeypatch, step_id, reason="no_mac_observed"):
-        import agent.react_agent as ra
 
         agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
@@ -423,7 +421,6 @@ class TestBridgeSeesDevice:
     binding blindly when the cable is in the wrong socket fails confusingly."""
 
     def _at_plug(self, monkeypatch, reason):
-        import agent.react_agent as ra
 
         agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST009"
@@ -467,7 +464,6 @@ class TestHypothesisRejection:
     next one — the agent has a Plan B instead of registering at the first failure."""
 
     def _at_restored(self, monkeypatch, telemetry_after):
-        import agent.react_agent as ra
 
         agent = make_agent("unknown")
         agent.state.identity.customer_id = "CUST105"
@@ -521,7 +517,7 @@ class TestHypothesisRejection:
 
     def test_rethink_is_voiced_once_then_cleared(self, monkeypatch):
         from agent.decide.procedure import advance
-        from agent.narrator_flow import mark_step_presented
+        from agent.execute.step import mark_step_presented
         from agent.speak.context_card import context_card
 
         agent = self._at_restored(monkeypatch, telemetry_after="healthy_to_router")

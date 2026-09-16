@@ -26,7 +26,7 @@ def execute_tool_calls(state: Any, rt: Any, message: Any) -> list[dict]:
     """Echo the assistant tool-call message, run each tool through the gate,
     append results to history, trace, and update state. Returns the executed
     list."""
-    from .narrator_flow import augment_tool_result
+    from .execute.observe import augment_tool_result
 
     state.messages.append(assistant_tool_message(message))
     executed = []

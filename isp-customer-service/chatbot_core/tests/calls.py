@@ -6,9 +6,9 @@ narrator loop use `make_agent()` (it carries `.state` and `.runtime`).
 """
 
 import json
+from types import SimpleNamespace
 
 from agent.graph_v2.state import GraphState, IdentityState
-from agent.react_agent import ReactAgent
 from agent.runtime import AgentRuntime, new_call
 from agent.tooling import LocalToolProvider, ToolGateway
 
@@ -54,9 +54,15 @@ def make_call(caller_phone="unknown", language="lt", tracer=None, tools=None):
 
 
 def make_agent(caller_phone="unknown", language="lt", tracer=None, tools=None):
-    """The narrator loop over a new call; tests read `.state` / `.runtime` from it."""
+    """A new call as `.state` / `.runtime` — the shape the older tests read."""
     state, runtime = make_call(caller_phone, language, tracer=tracer, tools=tools)
-    return ReactAgent(state, runtime)
+    return SimpleNamespace(
+        state=state,
+        runtime=runtime,
+        config=runtime.config,
+        tracer=runtime.tracer,
+        session_id=runtime.session_id,
+    )
 
 
 def run_turn_nodes(state, runtime):

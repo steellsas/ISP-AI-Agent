@@ -19,6 +19,11 @@ Sections, in the order they carry weight on a phone call:
 
 from __future__ import annotations
 
+import json  # noqa: F401  (used by moved bodies)
+import os  # noqa: F401
+import re  # noqa: F401
+from typing import Any  # noqa: F401
+
 from ..contract.locale import phrase, phrase_or
 
 HEADER = "CONTEXT CARD (the engine's truth for this reply — never re-ask what it holds):"
@@ -525,7 +530,7 @@ def _hypothesis(state, rt) -> list[str]:
             "instructions."
         )
     elif s.identity.customer_id and s.identity.result_pending and s.identity.caller_name:
-        from ..narrator_flow import result_narration_tail
+        from .context_card import result_narration_tail
 
         out.append("DELIVER THE RESULT:" + result_narration_tail(state, rt))
     # The tool results carry the CONTRACT HOLDER's name; it is account data, not a
@@ -672,7 +677,7 @@ def _step(state, rt) -> list[str]:
     out: list[str] = []
     if not (s.resolution.procedure and not s.closing.case_closed):
         return out
-    from ..narrator_flow import emit_rag_injection
+    from ..execute.step import emit_rag_injection
     from ..playbook import get_step
     from ..resolution import get_strategy
 
@@ -983,3 +988,60 @@ def _analyst_tone(state) -> list[str]:
                 "— answer them briefly, then bring the conversation back to your question."
             )
     return out
+
+
+def _result_question(state, rt) -> str:
+    """The one question the result turn ends with: a check-back when the caller already
+    told us what this step asks (F-11), otherwise the first thing still MISSING from the
+    ledger, or this step's own question when the ledger is silent."""
+    from ..decide.rules.evidence import seeded_step_confirm
+    from ..evidence import open_goals_lt
+
+    heard = seeded_step_confirm(state, rt, None)
+    if heard:
+        return f"pasitikslink ŽODIS Į ŽODĮ: „{heard}“ (klientas tai jau sakė — neklausk iš naujo)."
+    verdict = (state.resolution.procedure or {}).get("verdict")
+    goals = open_goals_lt(state.diagnosis.evidence, verdict) if verdict else ""
+    first = next((g.strip() for g in goals.split(";") if g.strip()), "")
+    if first:
+        return f"užduok klausimą apie: {first} (jis atlieka „ar darome?“ vaidmenį)."
+    return "užduok ŠIO ŽINGSNIO klausimą (jis atlieka „ar darome?“ vaidmenį)."
+
+
+def result_narration_tail(state, rt) -> str:
+    """The narration directive once the identity has committed and the silent
+    diagnose ran. Identification LADDER (2026-07-31): if the caller-intro question
+    is still owed (WHO is calling — name + relation, for the record), ask THAT
+    first and hold the result one turn (identity.result_pending); otherwise narrate the
+    check announce + the REAL result in this one reply (arc v3)."""
+    from ..identification import ask_caller, caller_question
+
+    if ask_caller() and not state.identity.caller_name:
+        state.identity.result_pending = True
+        return (
+            " Identifikacijos pabaiga: patikra atlikta TYLIAI, bet rezultato dar "
+            f"NESAKYK. Šiame atsakyme TIK: „{caller_question()}“ (galima trumpai "
+            "patvirtinti adresą prieš klausimą). Jokio rezultato, jokių instrukcijų."
+        )
+    d = state.diagnosis.verdicts.get("network") or {}
+    gloss = phrase_or(f"verdict.{d.get('reason')}.gloss", d.get("reason") or "—")
+    if state.resolution.procedure:
+        # F-11: what the caller already told us is on the ledger by now (the pack's
+        # activation seeds it from the whole call), so the question is the first OPEN
+        # goal — asking the pack's first question regardless re-asked "visuose ar tik
+        # viename?" right after the caller opened with "neveikia visuose įrenginiuose".
+        return (
+            f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
+            "tvarka: (1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) trumpai "
+            f"pasakyk rezultatą ir kas tai greičiausiai yra, (3) {_result_question(state, rt)} "
+            "NEkartok adreso klausimo, NEkartok anamnezės klausimo, jokių instrukcijų "
+            "sąrašo — vienas klausimas."
+        )
+    state.diagnosis.news_delivered = True  # the news goes out in THIS reply — never repeat it
+    return (
+        f" Patikra atlikta. ŽINIA: {gloss}. Šiame VIENAME atsakyme, šia tvarka: "
+        "(1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) pasakyk žinią "
+        "VIENĄ kartą trumpai (jei skola — BŪTINAI pridėk: „apmokėjus sąskaitą, "
+        "paslauga bus įjungta“), (3) paklausk „Ar dar kuo galiu padėti?“. "
+        "NEkartok adreso klausimo ir daugiau šios žinios NEBEKARTOK."
+    )

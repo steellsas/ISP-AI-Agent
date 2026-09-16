@@ -162,7 +162,7 @@ def ensure_action_done(state, rt) -> bool:
     _augment_tool_result, which also sets case_closed on success or advances to
     escalate on failure), so by the time the LLM narrates it only PHRASES the
     verified outcome. Returns True if it ran an action this call."""
-    from ..narrator_flow import augment_tool_result
+    from .observe import augment_tool_result
     from .ticket import begin_ticket_dialogue
 
     s = state

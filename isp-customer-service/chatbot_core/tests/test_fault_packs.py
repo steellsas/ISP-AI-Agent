@@ -23,6 +23,7 @@ from agent.graph_v2.state import (
     TicketState,
     TurnScratch,
 )
+from agent.session_record import build_call_summary, end_session
 
 from tests.engine_fakes import as_call
 
@@ -830,7 +831,7 @@ class TestIdentificationF:
         agent = make_agent("unknown")
         agent.state.intake.problem_type = "internet_down"
         agent.state.intake.heard_utterances.extend(["neveikia internetas", "Vilnaus gatve kazkur"])
-        summary = agent._build_call_summary()
+        summary = build_call_summary(agent.state, agent.runtime)
         fail = summary["identifikacija_nepavyko"]
         assert fail and "Vilnaus gatve kazkur" in fail["girdeta"]
 

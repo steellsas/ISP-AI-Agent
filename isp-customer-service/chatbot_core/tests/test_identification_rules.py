@@ -452,7 +452,7 @@ class TestQuestionRegistry:
 
     def test_step_presentation_registers(self, db_connection):
         from agent.decide.question import active
-        from agent.narrator_flow import mark_step_presented
+        from agent.execute.step import mark_step_presented
 
         agent = self._identified()
         agent.state.resolution.procedure = {

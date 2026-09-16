@@ -139,7 +139,7 @@ def _diagnosing_agent():
 
 class TestAgentWiring:
     def test_telemetry_verdict_lands_on_ledger(self):
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
 
         agent = _diagnosing_agent()
         obs = json.dumps({"verdict": {"reason": "no_mac_observed", "side": "unclear"}})

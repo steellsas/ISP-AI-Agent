@@ -194,7 +194,7 @@ class TestDebtSignalsReachState:
     def test_diagnose_observation_stores_toplevel_signals(self, db_connection):
         import json
 
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
 
         agent = _agent()
         payload = {
@@ -293,7 +293,7 @@ class TestCannotNowHearing:
     def test_safety_question_survives_step_presentation(self, db_connection):
         """N1: clarify klausimo registro įrašo mark_step_presented neperrašo."""
         from agent.decide.question import active, register
-        from agent.narrator_flow import mark_step_presented
+        from agent.execute.step import mark_step_presented
 
         agent = self._solving()
         register(agent.state, agent.runtime, "safety", "cannot_now_clarify")
@@ -373,7 +373,9 @@ class TestHomeworkFinale:
     def test_hangup_at_homework_closes_callback_no_ticket(self, db_connection):
         """F3: ragelis homework žingsnyje — callback, ne TKT."""
         agent = self._at_homework()
-        agent.end_session(outcome="client_closed")
+        from agent.session_record import end_session
+
+        end_session(agent.state, agent.runtime, outcome="client_closed")
         assert agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
 

@@ -75,7 +75,7 @@ class TestCaseStateTransitions:
     def test_close_case_observation_sets_closed(self):
         import json
 
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
 
         agent = self._agent()
         update_state_from_observation(
@@ -90,7 +90,7 @@ class TestCaseStateTransitions:
     def test_active_outage_sets_reported_not_closed(self):
         import json
 
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
 
         agent = self._agent()
         update_state_from_observation(
@@ -107,7 +107,7 @@ class TestCaseStateTransitions:
     def test_no_outage_leaves_reported_false(self):
         import json
 
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
 
         agent = self._agent()
         update_state_from_observation(

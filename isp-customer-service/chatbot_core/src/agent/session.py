@@ -27,8 +27,8 @@ from typing import Any
 from .config import AgentConfig
 from .delivery import apply_delivery, apply_overlay
 from .graph_v2 import GraphState, TurnScratch, build_graph
-from .graph_v2.runtime import narrator
 from .runtime import new_call
+from .session_record import end_session
 
 logger = logging.getLogger(__name__)
 
@@ -140,9 +140,7 @@ class AgentSession:
         delete, eval) so every conversation's trace is properly closed. The
         hang-up net and the call record run on the checkpointed state.
         """
-        self._write_between_turns(
-            lambda state, rt: narrator(state, rt).end_session(outcome=outcome)
-        )
+        self._write_between_turns(lambda state, rt: end_session(state, rt, outcome=outcome))
 
     @property
     def session_id(self) -> str:

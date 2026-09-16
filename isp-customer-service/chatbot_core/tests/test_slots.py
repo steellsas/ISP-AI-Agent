@@ -108,7 +108,7 @@ class TestIntegrationViaAgentTool:
     def test_resolve_address_fills_slots(self, db_connection):
         import json
 
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
         from agent.tools import resolve_address
 
         from tests.calls import make_agent

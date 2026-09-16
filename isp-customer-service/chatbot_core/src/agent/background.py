@@ -19,7 +19,7 @@ def apply_bg_diagnosis(state: Any, rt: Any) -> None:
     read at the right moments themselves; live: the bg read saw the just-plugged PC, the
     narrative turned foreign_mac mid-bridge and the agent asked "ar keitėte routerį?"
     over a working bind)."""
-    from .narrator_flow import update_state_from_observation
+    from .execute.observe import update_state_from_observation
 
     bg = state.turn.bg_diagnosis
     if not bg:

@@ -490,8 +490,8 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
       3. after the (demo) simulation, bind only if a device is actually observed —
          never bind blind."""
     from ...decide.procedure import goto_step
+    from ...execute.observe import augment_tool_result
     from ...executor_flow import simulate_bridge_connection
-    from ...narrator_flow import augment_tool_result
 
     cid = state.identity.customer_id
     if state.resolution.bridge_bound:

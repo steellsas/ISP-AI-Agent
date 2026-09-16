@@ -35,21 +35,6 @@ def _turns(session, texts):
     return replies
 
 
-# What a narrator (ReactAgent) may hold: the node's state, the call runtime and
-# values derived from it — never call data of its own.
-NARRATOR_ATTRIBUTES = {
-    "state",  # the working copy handed in by the running node
-    "runtime",
-    "config",
-    "session_id",
-    "tracer",
-    "tools",
-    "llm_stats",
-    "system_prompt",
-    "tools_schema",
-}
-
-
 class TestCallContinuesOnAFreshSession:
     def test_state_survives_a_new_session_object(self, db_connection, tmp_path):
         saver = make_checkpointer(tmp_path / "calls.sqlite")
@@ -85,11 +70,11 @@ class TestCallContinuesOnAFreshSession:
         assert first._current_state().ticket.stage == "phone"
 
     def test_no_engine_holds_call_data(self, db_connection):
-        from agent.graph_v2.runtime import narrator
-
+        """M5: there is no engine object at all — the graph, the state and the runtime
+        are the whole call."""
         session = AgentSession(caller_phone="+37060012353")
         session.greeting()
         _turns(session, ["Neveikia internetas", "Taip"])
-        assert not hasattr(session, "_agent")  # the session owns graph + runtime only
-        agent = narrator(session.state, session._runtime)
-        assert sorted(set(vars(agent)) - NARRATOR_ATTRIBUTES) == []
+
+        assert not hasattr(session, "_agent")
+        assert session._current_state().identity.customer_id

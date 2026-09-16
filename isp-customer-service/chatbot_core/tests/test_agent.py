@@ -1,4 +1,5 @@
 import pytest
+from agent.session_record import build_call_summary, end_session
 
 from tests.tool_fakes import install_fake_tools
 
@@ -246,7 +247,7 @@ class TestHistoryWindow:
         """diagnose_connection findings become durable case state (Pillar A1)."""
         import json
 
-        from agent.narrator_flow import update_state_from_observation
+        from agent.execute.observe import update_state_from_observation
         from agent.speak.context_card import context_card
         from agent.tools import diagnose_connection
 
@@ -758,7 +759,7 @@ class TestHearingAgent:
             "agent.executor_flow.simulate_bridge_connection",
             lambda state, rt: calls.append("simulated"),
         )
-        monkeypatch.setattr("agent.narrator_flow.augment_tool_result", lambda state, rt, n, o: o)
+        monkeypatch.setattr("agent.execute.observe.augment_tool_result", lambda state, rt, n, o: o)
         reply = drive_propose_fix(agent.state, agent.runtime, "", "įkišau į kompiuterį")
         assert "ririšau" in reply.lower() or "Pririšau" in reply  # the bind ran
         assert agent.state.resolution.procedure["step"] == "dr_verify"  # verify owns the next reply
@@ -1397,8 +1398,8 @@ class TestReviewGaps:
         import os
 
         from agent.decide.rules.identification import reopen_identification
+        from agent.execute.observe import update_state_from_observation
         from agent.execute.ticket import begin_ticket_dialogue
-        from agent.narrator_flow import update_state_from_observation
         from agent.perceive.evidence import ingest_client_evidence
 
         monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
@@ -1817,7 +1818,7 @@ class TestBindDiscipline:
             "agent.executor_flow.simulate_bridge_connection",
             lambda state, rt: calls.append("simulated"),
         )
-        monkeypatch.setattr("agent.narrator_flow.augment_tool_result", lambda state, rt, n, o: o)
+        monkeypatch.setattr("agent.execute.observe.augment_tool_result", lambda state, rt, n, o: o)
 
         reply = drive_propose_fix(agent.state, agent.runtime, "", "Įkišau į kompiuterį")
         assert agent.state.resolution.bridge_bound is True
@@ -2174,7 +2175,7 @@ class TestTicketDialogue:
         # ticket, despite a promised registration. end_session now registers
         # from state with the interruption on the record.
         agent = self._agent_at_consent(monkeypatch)
-        agent.end_session(outcome="client_closed")
+        end_session(agent.state, agent.runtime, outcome="client_closed")
         assert agent.state.ticket.ticket_id
         assert agent.state.closing.closed_reason == "registered"
         with db_connection.cursor() as cur:
@@ -2189,7 +2190,7 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         agent.state.closing.case_closed = True
         agent.state.closing.closed_reason = "resolved"
-        agent.end_session(outcome="client_closed")
+        end_session(agent.state, agent.runtime, outcome="client_closed")
         assert agent.state.ticket.ticket_id is None
 
     def test_hangup_net_skips_when_line_is_healthy(self, db_connection, monkeypatch):
@@ -2201,14 +2202,14 @@ class TestTicketDialogue:
         install_fake_tools(
             monkeypatch, lambda name, args: json.dumps({"verdict": {"reason": "healthy_to_router"}})
         )
-        agent.end_session(outcome="client_closed")
+        end_session(agent.state, agent.runtime, outcome="client_closed")
         assert agent.state.ticket.ticket_id is None
         assert agent.state.closing.closed_reason == "resolved"
 
     def test_hangup_net_skips_on_recorded_fix(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent.state.resolution.procedure["telemetry_fixed"] = True
-        agent.end_session(outcome="client_closed")
+        end_session(agent.state, agent.runtime, outcome="client_closed")
         assert agent.state.ticket.ticket_id is None
         assert agent.state.closing.closed_reason == "resolved"
 
@@ -2216,7 +2217,7 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         # _agent_at_consent uses CUST009 whose seeded line still shows no_mac —
         # the real diagnose read confirms the fault persists -> ticket.
-        agent.end_session(outcome="client_closed")
+        end_session(agent.state, agent.runtime, outcome="client_closed")
         assert agent.state.ticket.ticket_id
         assert agent.state.closing.closed_reason == "registered"
 

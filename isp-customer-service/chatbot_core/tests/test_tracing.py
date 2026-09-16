@@ -15,6 +15,7 @@ Run: pytest tests/test_tracing.py -v
 import json
 
 import pytest
+from agent.session_record import build_call_summary, end_session
 from agent.trace import tools_called_this_session, trace_tool_result
 
 
@@ -235,8 +236,8 @@ class TestReactAgentEmits:
         agent = self._agent(cap)
         cap.events.clear()
 
-        agent.end_session(outcome="complete")
-        agent.end_session(outcome="complete")  # second call is a no-op
+        end_session(agent.state, agent.runtime, outcome="complete")
+        end_session(agent.state, agent.runtime, outcome="complete")  # second call is a no-op
 
         ends = [e for e in cap.events if e["type"] == "session_end"]
         assert len(ends) == 1
@@ -254,7 +255,7 @@ class TestReactAgentEmits:
         agent.state.closing.closed_reason = "resolved"
         cap.events.clear()
 
-        agent.end_session(outcome="complete")
+        end_session(agent.state, agent.runtime, outcome="complete")
 
         summary = next(e for e in cap.events if e["type"] == "call_summary")
         assert summary["purpose"] == "internet_down"
@@ -300,7 +301,7 @@ class TestReactAgentEmits:
         agent.state.messages = [{"role": "user", "content": "labas"}]
         agent.state.closing.closed_reason = "resolved"
 
-        agent.end_session(outcome="resolved")
+        end_session(agent.state, agent.runtime, outcome="resolved")
 
         with db_connection.cursor() as cur:
             cur.execute(

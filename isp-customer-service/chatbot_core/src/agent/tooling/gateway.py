@@ -67,7 +67,7 @@ class ToolGateway:
             observation = self.provider.execute(name, args)
             ms, gated = round((time.perf_counter() - started) * 1000.0), False
         if apply:
-            from ..narrator_flow import update_state_from_observation
+            from ..execute.observe import update_state_from_observation
 
             update_state_from_observation(state, rt, name, observation)
         trace_tool_result(rt.tracer, name, observation, ms)
