@@ -211,6 +211,10 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
     # says "taip" (STT garbles poison exactly these facts).
     from ...decide import hypothesis
 
+    # F-11: a step whose answer the caller already gave is checked back, not re-asked.
+    heard = seeded_step_confirm(state, rt, user_input)
+    if heard is not None:
+        return heard
     fc = hypothesis.ask(state, rt, "flip")
     if fc is not None:
         from ...contract.locale import phrase as _phrase
@@ -485,3 +489,63 @@ def evidence_drive(state: Any, rt: Any, user_input: str | None) -> str | None:
         level=asks + 1,
     )
     return announce + str(text)
+
+
+def seeded_step_confirm(state: Any, rt: Any, user_input: str | None) -> str | None:
+    """The current step asks something the caller ALREADY said (F-11, owner 2026-09-16).
+
+    Re-asking it makes them repeat themselves („Jau sakiau — visuose įrenginiuose"), so
+    the engine checks it back in one short line instead. A yes routes the step by that
+    value, exactly as the answer would have; a no drops the fact and the normal question
+    is asked. The check is offered once per step."""
+    from ...contract.locale import phrase
+    from ...decide.procedure import goto_step
+    from ...evidence import gloss_value, spec_for
+    from ...perceive.detectors import detect_yes_no
+    from ...resolution import Outcome, StepKind, get_strategy
+
+    s = state
+    r = s.resolution.procedure or {}
+    strat = get_strategy(r.get("verdict"))
+    spec = spec_for(r.get("verdict"))
+    step = strat.step(r.get("step", "")) if strat else None
+    if step is None or spec is None:
+        return None
+
+    asked = r.get("heard_confirm")
+    if asked:
+        key, value = asked["key"], asked["value"]
+        answer = detect_yes_no(user_input) if user_input else None
+        if answer is Outcome.YES:
+            r.pop("heard_confirm", None)
+            (s.diagnosis.evidence.get(key) or {}).pop("seeded", None)  # confirmed aloud
+            rt.tracer.emit("decision", intent="heard_confirm", action="yes", key=key)
+            target = step.on.get(value)
+            if target and strat.step(target) is not None:
+                goto_step(state, rt, r, target)
+            return None
+        if answer is Outcome.NO:
+            # We misheard them the first time — forget the fact and ask properly.
+            r.pop("heard_confirm", None)
+            s.diagnosis.evidence.pop(key, None)
+            rt.tracer.emit("decision", intent="heard_confirm", action="no", key=key)
+            return None
+        r.pop("heard_confirm", None)  # an unclear answer: fall through to the question
+        return None
+
+    if step.kind != StepKind.CONFIRM or not step.on or r.get("asked"):
+        return None
+    for key, item in (spec.get("client") or {}).items():
+        answers = set((item or {}).get("answers") or {})
+        if not answers or not answers & set(step.on):
+            continue
+        entry = s.diagnosis.evidence.get(key) or {}
+        value = entry.get("value")
+        # ONLY what the caller volunteered before anyone asked (the activation seed) —
+        # a fact this step itself collected is already its answer.
+        if value not in step.on or not entry.get("seeded"):
+            continue
+        r["heard_confirm"] = {"key": key, "value": value}
+        rt.tracer.emit("decision", intent="heard_confirm", action="ask", key=key, value=value)
+        return phrase("identification.heard_confirm", value=gloss_value(value, key))
+    return None

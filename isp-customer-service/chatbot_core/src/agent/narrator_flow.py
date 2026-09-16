@@ -124,11 +124,16 @@ def augment_resolve_result(state, rt, observation: str) -> str:
     return json.dumps(obs, ensure_ascii=False)
 
 
-def _result_question(state) -> str:
-    """The one question the result turn ends with: the first thing still MISSING from
-    the ledger, or this step's own question when the ledger is silent."""
+def _result_question(state, rt) -> str:
+    """The one question the result turn ends with: a check-back when the caller already
+    told us what this step asks (F-11), otherwise the first thing still MISSING from the
+    ledger, or this step's own question when the ledger is silent."""
+    from .decide.rules.evidence import seeded_step_confirm
     from .evidence import open_goals_lt
 
+    heard = seeded_step_confirm(state, rt, None)
+    if heard:
+        return f"pasitikslink ŽODIS Į ŽODĮ: „{heard}“ (klientas tai jau sakė — neklausk iš naujo)."
     verdict = (state.resolution.procedure or {}).get("verdict")
     goals = open_goals_lt(state.diagnosis.evidence, verdict) if verdict else ""
     first = next((g.strip() for g in goals.split(";") if g.strip()), "")
@@ -162,7 +167,7 @@ def result_narration_tail(state, rt) -> str:
         return (
             f" Patikra atlikta. REZULTATAS: {gloss}. Šiame VIENAME atsakyme, šia "
             "tvarka: (1) 'Patikrinsiu būseną šiuo adresu… Patikrinau:' (2) trumpai "
-            f"pasakyk rezultatą ir kas tai greičiausiai yra, (3) {_result_question(state)} "
+            f"pasakyk rezultatą ir kas tai greičiausiai yra, (3) {_result_question(state, rt)} "
             "NEkartok adreso klausimo, NEkartok anamnezės klausimo, jokių instrukcijų "
             "sąrašo — vienas klausimas."
         )

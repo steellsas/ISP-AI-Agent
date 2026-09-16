@@ -47,6 +47,8 @@ identification:
   done_report_clarify: "Supratau — patikrinote. {question}"
   facts_recap: "Pasitikslinu, ar teisingai supratau: {facts}. Ar taip?"
   refute_confirm: "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {topic} — {value}. Ar tikrai?"
+  # The caller already told us this — we check it back instead of asking again.
+  heard_confirm: "Supratau — {value}. Ar teisingai?"
   # A telemetry recheck points at another cause — the caller confirms its symptom first.
   hypothesis_change_confirm: "Patikrinau liniją dar kartą — dabar matau kitą vaizdą: {news}. {question}"
   hypothesis_change_confirm_generic: "Patikrinau liniją dar kartą — dabar matau kitą vaizdą: {news}. Ar pas jus taip ir yra?"

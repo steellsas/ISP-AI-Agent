@@ -681,13 +681,16 @@ def _step(state, rt) -> list[str]:
     if step is None:
         return out
     # Directive isolation: a directive turn carries ONE instruction — no step hint, no
-    # playbook section (the hint used to win over the directive).
+    # playbook section (the hint used to win over the directive). A check-back on a fact
+    # the caller already gave counts too: the step's own question is exactly what must
+    # NOT be asked this turn (F-11).
     directive_active = bool(
         state.turn.directives.evidence
         or state.turn.directives.recap
         or state.turn.directives.findings
         or state.turn.directives.ticket
         or state.turn.directives.ident
+        or s.resolution.procedure.get("heard_confirm")
     )
     if not _caller_pending(state) and not directive_active:
         if step.rag_section is not None:
@@ -705,7 +708,7 @@ def _step(state, rt) -> list[str]:
                 )
         if step.hint:
             out.append(f"THIS STEP: {step.hint}")
-    if getattr(step, "goal", ""):
+    if getattr(step, "goal", "") and not directive_active:
         out.append(
             f"STEP GOAL: {step.goal}. Reacting to the caller's answer, JUDGE whether the "
             "goal is reached — a short evaluating reaction („Gerai — radote“ / „Ne, ne šis "

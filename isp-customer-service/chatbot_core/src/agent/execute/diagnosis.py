@@ -143,6 +143,9 @@ def _seed_evidence_from_call(state, rt) -> None:
             hits = [m for m in marks if len(str(m)) >= 5 and _mark_hit(low, _fold(str(m)))]
             if hits:
                 set_fact(s.diagnosis.evidence, key, str(value), CLIENT, s.dialog.turn_count)
+                # Volunteered, not asked: the step that would ask it checks it back
+                # instead of making the caller repeat themselves (F-11).
+                s.diagnosis.evidence[key]["seeded"] = True
                 rt.tracer.emit("evidence", action="call_seed", key=key, value=str(value))
                 break
 

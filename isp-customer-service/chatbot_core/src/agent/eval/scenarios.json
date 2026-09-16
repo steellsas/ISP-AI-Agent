@@ -605,7 +605,7 @@
     {
       "id": "A1_repeat_and_frustration",
       "phone": "+37060020112",
-      "desc": "Analitikas (M5): klientas pakartoja jau pasakytą faktą ir praranda kantrybę. known_bug — F-11 liko pusiau: pack'o aktyvacija faktą pasėja į žurnalą, bet žingsnis su jau atsakytu klausimu vis tiek užduodamas („ar tik viename?“)",
+      "desc": "Analitikas + F-11 (Andrius 2026-09-16): klientas pirmu sakiniu pasako faktą ir vėliau praranda kantrybę — agentas to fakto nebeklausia, o pasitikslina",
       "turns": [
         "Neveikia internetas visuose įrenginiuose, lemputės dega",
         "Taip",
@@ -621,7 +621,7 @@
           "ar tik viename"
         ]
       },
-      "known_bug": true
+      "known_bug": false
     }
   ]
 }

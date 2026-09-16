@@ -135,3 +135,67 @@ class TestContextCard:
         assert "NOT HEARD" in context_card(state, rt)
         assert state.voice.undelivered_tail is None
         assert "NOT HEARD" not in (context_card(state, rt) or "")
+
+
+class TestHeardCheckBack:
+    """F-11 (owner 2026-09-16): what the caller volunteered is checked back, not re-asked."""
+
+    def _at_scope_step(self, make_state, make_runtime):
+        state, rt = make_state("+37060020112"), make_runtime()
+        state.identity.customer_id = "CUST112"
+        state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
+        state.diagnosis.evidence["fail_scope"] = {
+            "value": "all",
+            "source": "client",
+            "turn": 1,
+            "seeded": True,
+        }
+        return state, rt
+
+    def test_a_volunteered_fact_is_checked_back(self, make_state, make_runtime):
+        from agent.decide.rules.evidence import seeded_step_confirm
+
+        state, rt = self._at_scope_step(make_state, make_runtime)
+
+        reply = seeded_step_confirm(state, rt, None)
+
+        assert reply and "Supratau" in reply
+        assert state.resolution.procedure["heard_confirm"]["key"] == "fail_scope"
+
+    def test_a_yes_takes_the_step_branch(self, make_state, make_runtime):
+        from agent.decide.rules.evidence import seeded_step_confirm
+
+        state, rt = self._at_scope_step(make_state, make_runtime)
+        seeded_step_confirm(state, rt, None)
+
+        assert seeded_step_confirm(state, rt, "taip") is None
+        assert state.resolution.procedure["step"] == "rh_ability"  # the 'all' branch
+        assert "heard_confirm" not in state.resolution.procedure
+
+    def test_a_no_drops_the_fact_so_the_question_is_asked(self, make_state, make_runtime):
+        from agent.decide.rules.evidence import seeded_step_confirm
+
+        state, rt = self._at_scope_step(make_state, make_runtime)
+        seeded_step_confirm(state, rt, None)
+
+        assert seeded_step_confirm(state, rt, "ne, tik telefone") is None
+        assert "fail_scope" not in state.diagnosis.evidence
+        assert state.resolution.procedure["step"] == "rh_scope"  # the step asks now
+
+    def test_a_fact_the_step_itself_collected_is_not_checked_back(self, make_state, make_runtime):
+        from agent.decide.rules.evidence import seeded_step_confirm
+
+        state, rt = self._at_scope_step(make_state, make_runtime)
+        state.diagnosis.evidence["fail_scope"].pop("seeded")
+
+        assert seeded_step_confirm(state, rt, None) is None
+
+    def test_the_card_hides_the_step_question_during_a_check_back(self, make_state, make_runtime):
+        from agent.speak.context_card import context_card
+
+        state, rt = self._at_scope_step(make_state, make_runtime)
+        state.resolution.procedure["heard_confirm"] = {"key": "fail_scope", "value": "all"}
+
+        card = context_card(state, rt) or ""
+
+        assert "THIS STEP:" not in card and "STEP GOAL:" not in card
