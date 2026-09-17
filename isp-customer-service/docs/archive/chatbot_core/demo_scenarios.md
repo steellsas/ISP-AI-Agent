@@ -20,20 +20,20 @@ Each scenario is provided in English (EN) and Lithuanian (LT).
 ```
 Agent: Hello! This is TeleCom customer service. How can I help you?
 User:  My internet is not working
-Agent: [find_customer] 
-       I see this number is registered at Vilnius, Gedimino st. 15-3. 
+Agent: [find_customer]
+       I see this number is registered at Vilnius, Gedimino st. 15-3.
        Are you calling about this address?
 User:  Yes
 Agent: And what's your name?
 User:  Peter
 Agent: [search_knowledge: "internet not working"]
        [check_network_status]
-       Peter, let's try restarting your router. Unplug it, wait 30 seconds, 
+       Peter, let's try restarting your router. Unplug it, wait 30 seconds,
        and plug it back in. Let me know when it's back on.
 User:  OK, I'll try... It's working now!
 Agent: Great! Is there anything else I can help you with?
 User:  No, thank you
-Agent: [finish] 
+Agent: [finish]
        Thank you for calling TeleCom. Have a great day!
 ```
 
@@ -50,7 +50,7 @@ Agent: O kaip tave vadina?
 User:  Petras
 Agent: [search_knowledge: "internet neveikia"]
        [check_network_status]
-       Petrai, pabandyk perkrauti routerį. Išjunk jį iš tinklo, palauk 30 
+       Petrai, pabandyk perkrauti routerį. Išjunk jį iš tinklo, palauk 30
        sekundžių ir vėl įjunk. Pasakyk kai įsijungs.
 User:  Gerai, pabandysiu... Veikia!
 Agent: Puiku! Ar dar galiu kuo nors padėti?
@@ -160,8 +160,8 @@ Agent: Kaip tave vadina?
 User:  Jonas
 Agent: [search_knowledge: "lėtas internetas vakaras piko"]
        [check_network_status] → Viskas OK
-       Jonai, vakarai (18-22h) yra piko laikas, kai daug žmonių naudojasi 
-       internetu, todėl greitis gali būti mažesnis. Ar lėtas visuose 
+       Jonai, vakarai (18-22h) yra piko laikas, kai daug žmonių naudojasi
+       internetu, todėl greitis gali būti mažesnis. Ar lėtas visuose
        įrenginiuose, ar tik viename?
 User:  Visuose
 Agent: Kiek įrenginių prijungta prie WiFi?

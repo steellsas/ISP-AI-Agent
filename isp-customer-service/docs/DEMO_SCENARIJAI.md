@@ -1,11 +1,16 @@
 # Demo scenarijai — gedimų rinkinys balso demonstracijai
 
-Devyni paruošti skambučiai (Šiaulių regiono demo). Kiekvienam: iš kokio
-numerio skambinti, ką sakyti ir ko laukti iš agento.
+Paruošti skambučiai (Šiaulių regiono demo): 9 gedimų scenarijai ir 6 skambučių
+tipai iš M6. Kiekvienam: iš kokio numerio skambinti, ką sakyti ir ko laukti iš agento.
+
+**Dashboard'e tas pats sąrašas yra skirtuke „Scenarijai“** (duomenys —
+`chatbot_core/src/app/scenarios.yaml`): ▶ užpildo numerį, atidaro „Testavimas“ su
+kortele „ką sakyti“, o po skambučio pažymi, ar verdiktas ir baigtis sutapo (✓/✗).
+Naują scenarijų pridėti ar pakeisti — to failo redagavimas, kodo keisti nereikia.
 
 ## Prieš demo
 
-1. ♻️ **DB reset** config puslapyje **tą pačią dieną** (avarijos ETA — +4 h nuo
+1. ♻ **DB** mygtukas dashboard'o viršuje — **tą pačią dieną** (avarijos ETA — +4 h nuo
    reset momento; senas reset = praėjęs laikas).
 2. **Ctrl+F5** naršyklėje.
 3. Serveris: `uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080`.
@@ -24,6 +29,16 @@ adresą („Taip") → pasakai vardą. Toliau — pagal scenarijų.
 | 7 | Miręs routeris | +37060012353 | Giedrius, Vilniaus g. 29 | no_mac_observed | tiketas (+ tiltas per PC) |
 | 8 | Pakibęs routeris | +37060020112 | Paulius, Vilniaus g. 33-2 | router_hung | resolved, be tiketo |
 | 9 | Neveikia tik telefone | +37060020109 | Aldona, Ginkūnai, Žeimių g. 12-6 | healthy_to_router | resolved, be tiketo |
+| 10 | Pakartotinis skambutis — atviras tiketas | +37060030307 | Tomas, Vilties g. 17-5 | open_ticket_exists | pastaba prie seno tiketo (ticket_appended) |
+| 11 | Sąskaitos klausimas | +37060020109 | Aldona, Ginkūnai, Žeimių g. 12-6 | — | tiketas atsakingam žmogui (billing_request) |
+| 12 | Ginčijama skola | +37060020101 | Petras (nuomininkas), Tilžės g. 60-3 | billing_suspended | pasiūlytas ir užregistruotas billing_request |
+| 13 | TV gedimas, bet paslaugos nėra | +37060012353 | Giedrius, Vilniaus g. 29 | service_not_subscribed | informuota, be tiketo |
+| 14 | IPTV per sugedusį internetą | +37060020112 | Paulius, Vilniaus g. 33-2 | router_hung | resolved; pabaigoje paklausia, ar TV rodo |
+| 15 | Neidentifikuotas — padeda ragelį | +37000000000 | — | — | tik kontaktinis įrašas peržiūrai (abandoned / hung_up) |
+
+Po kiekvieno skambučio **Archyvas** skirtuke matyti kontaktinis įrašas: baigtis
+(`resolved`, `ticket`, `ticket_appended`, `informed_debt`, `informed_outage`,
+`abandoned`, …) ir, jei reikia, žymė „peržiūrai“.
 
 ---
 
@@ -63,7 +78,7 @@ pašalintas, jus informuosime."
 
 **Būtinai paklausk:** „O kada sutvarkysit?" → agentas tikslaus laiko NEŽADA:
 „darysime, kad kuo greičiau, informuosime kai bus išspręsta." Tiketas jau
-sukurtas automatiškai — pokalbio gale patikrink admin puslapyje.
+sukurtas automatiškai — pokalbio gale patikrink skirtuke „Archyvas“.
 
 ## 4. Switch nepasiekiamas
 
@@ -120,8 +135,8 @@ routerio keitimą. Ant tiketo — kas patikrinta su klientu.
 **Agentas:** telemetrija — įrenginys matomas, bet srauto nėra → prašo
 perkrauti routerį (ištraukti iš rozetės 10 s).
 
-**Demo pusėje:** kai agentas paprašo perkrauti, admin puslapyje spausk
-„Perkrauti routerį" (portas mirkteli — telemetrijos liudininkas), tada sakyk
+**Demo pusėje:** kai agentas paprašo perkrauti, dashboard'o viršuje spausk
+„🔄 Routeris" (portas mirkteli — telemetrijos liudininkas), tada sakyk
 „Perkroviau, internetas atsirado."
 
 **Agentas:** patvirtina iš dviejų pusių (žodis + telemetrija) → resolved,
@@ -139,8 +154,57 @@ tinklas? pamiršti tinklą ir prisijungti iš naujo) → „Jau veikia!" → res
 
 ---
 
+## 10. Pakartotinis skambutis — atviras tiketas
+
+**Sakyti:** „Laba diena, vis dar neveikia internetas, niekas neatvažiavo." → adresas → vardas.
+
+**Agentas:** nediagnozuoja iš naujo ir naujo tiketo nekuria — prie atviro tiketo
+prideda pastabą („pakartotinis skambutis — niekas neatvyko“) ir pasako jo būseną
+(„jau užregistruotas …, dabar laukia meistro“). Įrašas: `ticket_appended`.
+
+## 11. Sąskaitos klausimas
+
+**Sakyti:** „Laba diena, kodėl tokia didelė sąskaita?" → adresas → vardas → numeris → laikas.
+
+**Agentas:** į sąskaitų detales nesigilina — „Šiuo klausimu geriausiai atsakys
+atsakingas žmogus — užregistruosiu jūsų klausimą“ ir surenka kontaktus. Tiketas
+`billing_request` su kliento žodžiais. Atsisveikinant kontaktų viduryje agentas
+pasitikslina dėl **klausimo** registravimo (ne dėl meistro).
+
+## 12. Ginčijama skola
+
+**Sakyti:** „Neveikia internetas" → adresas → „Petras, nuomininkas" → išgirdus skolą:
+„Kaip tai skola, aš sumokėjau" → „Taip, užregistruokite" → numeris → laikas.
+
+**Agentas:** pasiūlo užregistruoti klausimą atsakingam žmogui („Sąskaitų detalių aš
+nematau, bet galiu užregistruoti…“); sutikus — `billing_request` tiketas.
+Priminti sumą ir paaiškinti prieš registruojant — gerai (owner 2026-09-17).
+
+## 13. TV gedimas, bet paslaugos nėra
+
+**Sakyti:** „Laba diena, televizorius nerodo nė vieno kanalo" → adresas → vardas.
+
+**Agentas:** „Patikrinau jūsų sutartį — televizijos paslaugos joje nėra“ — be
+patikros ir be tiketo.
+
+## 14. IPTV per sugedusį internetą
+
+**Sakyti:** „Laba diena, neveikia televizija" → adresas → vardas → „Visuose" → …
+kaip №8 (perkrovimas, 🔄 Routeris).
+
+**Agentas:** televizija eina per internetą, todėl pirma taisomas internetas;
+sutvarkius paklausia, ar televizija rodo.
+
+## 15. Neidentifikuotas — padeda ragelį
+
+**Sakyti:** „Laba diena, neveikia internetas", o po agento adreso klausimo spausk
+„Baigti".
+
+**Laukiama:** jokio tiketo; Archyve — įrašas `abandoned` (`hung_up`) su žyme
+„peržiūrai“ ir audio saugojimo data (neidentifikuotiems — 30 d.).
+
 ## Po skambučio
 
 - Trace: `logs/sessions/<data>.txt` — žingsniai, verdiktai, TTS laikai
   (`~ tts=…ms`; per-sakinį — serverio konsolėje `edge-tts: … ms`).
-- Tiketai: admin puslapyje; №3/№4 tiketas atsiranda be klausimų klientui.
+- Tiketai ir kontaktiniai įrašai: skirtukas „Archyvas“; №3/№4 tiketas atsiranda be klausimų klientui.

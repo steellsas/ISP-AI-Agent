@@ -18,8 +18,9 @@ agento failą/komponentą atsakymai nugula.
 3. Darbo laikas (ir kaip elgtis po jo — ar agentas dirba 24/7?).
 4. Tonas: kreipinys (Jūs/tu), formalumo lygis, ar naudoti kliento vardą.
 
-**KUR SUSIVEDA:** greeting tekstas (config), `prompts/partials/identity.md`
-persona, `region.md`.
+**KUR SUSIVEDA:** greeting tekstas — `locales/lt/phrases.yaml` `system.greeting`
+(`{company_name}` iš `agent/config.py` `company_name`), `prompts/partials/identity.md`
+persona, `prompts/partials/region.md`.
 
 ## B. Kliento identifikacija ir autorizacija
 
@@ -31,8 +32,13 @@ persona, `region.md`.
    (pvz., mūsų taisyklė: savininko vardas iš DB niekada negarsinamas)
 4. Kiek bandymų / kaip elgtis, kai identifikuoti nepavyksta?
 
-**KUR SUSIVEDA:** `knowledge/identification.yaml` (kopėčios, frazės, extra
-klausimai), tool gate taisyklės, KREIPINYS politika.
+**KUR SUSIVEDA:** `knowledge/identification.yaml` (nustatymai: siūlyti
+registruotą adresą, buto reikalavimas, klausti kas skambina, `extra_questions`);
+jų formuluotės — `locales/lt/phrases.yaml` blokas `identification:`; procedūros
+tekstas LLM'ui — `prompts/partials/identification.md`; įrankiai, draudžiami iki
+identifikacijos — `knowledge/policies.yaml` `identified_customer_required`
+(taiko `agent/tooling/gateway.py`); uždrausti veiksmai — `policies.yaml`
+`forbidden_actions` (atmeta `decide/gate.py`); kreipinio politika.
 
 ## C. Paslaugų ir gedimų katalogas (PIRMINIS KLAUSIMAS)
 
@@ -45,8 +51,18 @@ klausimai), tool gate taisyklės, KREIPINYS politika.
    ką sako klientui, ar žada ETA?
 6. Mokėjimų/skolų klausimai: ką agentas gali pasakyti, ko ne?
 
-**KUR SUSIVEDA:** gedimų sąrašas = pack'ų sąrašas `knowledge/faults/`;
-avarijos/billing — inform režimo konfigūracija.
+**KUR SUSIVEDA:** paslaugos ir jų priklausomybės (IPTV per internetą) —
+`knowledge/services.yaml`; ką klientas praneša/nori ir kaip elgtis —
+`knowledge/intents.yaml` (`policy: solve` = 2, `register` + `ticket_type` = 3,
+`not_ours`/`chat` = ne mūsų sritis); sprendžiami gedimai = pack'ų sąrašas
+`knowledge/faults/` (solve ketinimas be pack'o → „neaiškus gedimas“ tiketas);
+4 („iškart žmogui“) — `register` ketinimas su tiketu (gyvo perjungimo operatoriui
+nėra, D-13); tiketų tipai, skyriai ir prioritetai — `knowledge/ticket_types.yaml`.
+Avarijos ir skolos — inform verdiktai `active_outage` / `billing_suspended`:
+ką sako — `knowledge/inform.yaml` (raktai, `clarity_requirements`) + tekstai
+`locales/lt/phrases.yaml` `inform:`, vėliavos — `knowledge/verdicts.yaml`;
+mokėjimų/sutarties KLAUSIMAI — `register` ketinimas `billing` → tiketas
+`billing_request`.
 
 ## D. Gedimo kortelės klausimynas (pildomas KIEKVIENAM C.2 gedimui)
 
@@ -81,11 +97,19 @@ kuris šiuos gedimus sprendžia telefonu šiandien).
 10. **Pavyzdžiai.** 2–3 realūs šio gedimo pokalbiai (įrašai ar atpasakojimai)
     — iš jų darome auksinius testų scenarijus.
 
-**KUR SUSIVEDA:** vienas gedimas = `faults/<vardas>.yaml` (2→patvirtinta/
-paneigta; 3→evidence client/telemetrija; 4→zingsniai+rag_section; 5→tools su
-prielaidomis; 6→sprendimai/baigtys; 7→escalate+ticket details; 8-9→hint'ai,
-pasiulymas, glossary) + `troubleshooting/<vardas>.md` playbook + golden
-scenarijus `scenarios.json`. Smulkumo principas: instrukcijos rašomos
+**KUR SUSIVEDA:** vienas gedimas = `knowledge/faults/<vardas>.yaml` (schema —
+`docs/FAULT_PACKS.md`): 1→`problem` + `intents.yaml` (`triggers_vocab`,
+`examples_key`); 2→`evidence.confirmed_when`/`refuted_when`/`on_refuted`;
+3→`evidence.client` (ko klausti kliento), telemetrijos verdiktas —
+`agent/verdict.py` + `knowledge/verdicts.yaml`; 4→`steps` (`role`, `kind`,
+`rag_section`, `hint`, `goal`); 5→`action` žingsniai su `tools` ir
+`consent: required|not_required`; 6→`solutions` (`procedure`/`bridge`/`ticket`)
+ir terminalai `resolve`/`callback`; 7→`escalate` žingsnis + `ticket_need_key`;
+8→`hint`'ai ir `offer_goal`; 9→`conclusion_key` ir kiti frazių raktai, kurių
+tekstai `locales/lt/phrases.yaml`, terminai ir atsakymų žodžiai
+`locales/lt/vocabulary.yaml`, formuluočių pavyzdžiai `locales/lt/examples/`) +
+`troubleshooting/<vardas>.md` playbook + golden scenarijus
+`chatbot_core/src/agent/eval/scenarios.json`. Smulkumo principas: instrukcijos rašomos
 TIKSLAIS („išsiaiškink X, nes Y"), ne pažodiniais skriptais — žodžius parenka
 naratorius; pažodinės tik jautrios šerdys.
 
@@ -98,8 +122,11 @@ naratorius; pažodinės tik jautrios šerdys.
 5. Telefonija: SIP tiekėjas, numeriai, skambučių įrašymo politika ir
    privalomos teisinės frazės („pokalbis įrašomas…").
 
-**KUR SUSIVEDA:** tool adapteriai (`agent/tools.py` atitikmenys užsakovo
-API), timeout/fallback politika, config.
+**KUR SUSIVEDA:** tool adapteriai — `ToolProvider` sąsajos (`src/ports/tools.py`)
+realizacija užsakovo API (demo: `agent/tooling/local_provider.py` →
+`agent/tools.py`); visi kvietimai eina per `agent/tooling/gateway.py`; tiketų tipai
+ir skyriai — `knowledge/ticket_types.yaml`; ribos (laikai, bandymai) —
+`knowledge/limits.yaml`; config.
 
 ## F. Kalba ir privalomos frazės
 
@@ -107,14 +134,20 @@ API), timeout/fallback politika, config.
 2. Terminų žodynėlis (vidiniai pavadinimai → klientui suprantami žodžiai).
 3. Draudžiami pažadai/formuluotės visos įmonės mastu.
 
-**KUR SUSIVEDA:** `identification.yaml` phrases, `glossary.py` atitikmuo
-faile, persona partial.
+**KUR SUSIVEDA:** `locales/lt/phrases.yaml` (pasisveikinimas `system.greeting`,
+identifikacijos frazės `identification:`, verdiktų žodžiai žmogui
+`verdict.<verdikto_raktas>.gloss`, visi kiti kliento girdimi sakiniai);
+`locales/lt/vocabulary.yaml` (žodžių sąrašai, kuriais skaitomi kliento
+atsakymai); `locales/lt/examples/` (formuluočių pavyzdžiai LLM'ui); persona
+partial `prompts/partials/identity.md`.
 
 ## G. Kokybė, atsakomybės, keitimo tvarka
 
 1. Kas užsakovo pusėje PILDO gedimo korteles (technikas)? Kas TVIRTINA
    formuluotes (aptarnavimo vadovas)?
-2. Keitimo procesas: kortelės pakeitimas → YAML → validatorius → eval
+2. Keitimo procesas: kortelės pakeitimas → YAML → validatorius (programos
+   paleidimas arba `POST /admin/knowledge/reload`; sugadintas failas sustabdo
+   paleidimą su failo/rakto klaida) → eval
    auksiniai scenarijai žali → gyvas klausos testas → produkcija. (git
    istorija = kas, kada, ką keitė.)
 3. Sėkmės metrikos: % išspręsta be meistro, vidutinė trukmė, kliento
@@ -129,12 +162,19 @@ faile, persona partial.
 | Miręs routeris (+tiltas per PC, tiketas) | internet_mires_routeris | YRA, gyvai patikrintas |
 | Pakeistas routeris (foreign_mac, pririšimas) | internet_pakeistas_routeris | YRA, gyvai patikrintas |
 | Pakibęs routeris (perkrovimas išsprendžia, BE tiketo) | internet_pakibes_routeris | YRA (S6) — pirmoji kortelė per D klausimyną |
-| Skola / sustabdyta paslauga | billing inform | YRA |
-| Masinė avarija | outage inform | YRA |
-| Kliento pusės WiFi/įrenginys | client_side | YRA (S9) |
+| Skola / sustabdyta paslauga | inform verdiktas `billing_suspended` (`knowledge/inform.yaml`) | YRA |
+| Masinė avarija | inform verdiktas `active_outage` (`knowledge/inform.yaml`) | YRA |
+| Kliento pusės WiFi/įrenginys | internet_kliento_puse | YRA (S9) |
 
-Artimiausias darbas: šiuo klausimynu atgaline data „apklausti" esamus 5
-pack'us — spragos parodys, ar klausimynas pilnas.
+Po demo pridėta: `internet_linija_nutrukusi` (`link_down_local`),
+`internet_crc_kabelis` (`crc_errors`), `neaiskus_gedimas` (`unclear_fault` —
+registracija, kai sprendimo kelio nėra); `register` ketinimai (billing,
+disconnection, relocation, wish) ir registracijos būsenos atsakymas
+(`knowledge/intents.yaml`).
+
+Artimiausias darbas: šiuo klausimynu atgaline data „apklausti" esamus 7
+pack'us `knowledge/faults/` (6 gedimų + `neaiskus_gedimas`) — spragos parodys,
+ar klausimynas pilnas.
 
 ---
 
@@ -179,6 +219,10 @@ atsakė Andrius („užsakovo technikas"); numeracija = D bloko klausimai.
 
 **KUR SUGULĖ:** `knowledge/faults/internet_pakibes_routeris.yaml`,
 `troubleshooting/internet_pakibes_routeris.md`, verdiktas `router_hung`
-(`agent/verdict.py`: srauto signalas + porto mirktelėjimo liudininkas),
-patikra `walker_flow.advance_reboot_check`, glossary įrašai, seed CUST112,
-sim mygtukas (`/simulate-reboot`).
+(`agent/verdict.py`: srauto signalas + porto mirktelėjimo liudininkas;
+vėliava `unresolved_after_fix` — `knowledge/verdicts.yaml`), patikra — žingsnis
+su `role: verify_reboot`, kurį vykdo `decide/procedure.py::advance_reboot_check`,
+kliento girdimi tekstai `locales/lt/phrases.yaml` (`pack.router_hung.*`,
+`verdict.router_hung.*`), atsakymų žodžiai `locales/lt/vocabulary.yaml`,
+formuluočių pavyzdžiai `locales/lt/examples/router_hung.md`, seed CUST112,
+sim mygtukas (`POST /sessions/{session_id}/simulate-reboot`).

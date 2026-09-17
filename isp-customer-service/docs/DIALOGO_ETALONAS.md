@@ -47,7 +47,7 @@ iš Internet/WAN lizdo ir įkiškite iki spragtelėjimo."*
 **Aklaviečių draudimas:** nė viena replika nesibaigia konstatavimu be kito
 žingsnio (S6 skambučio yda: „Panašu, kad nepersikrovė iki galo." — taškas,
 tyla). Gramatika nepriklauso nuo gedimo — tai variklio garantija, pack'ai
-tiekia turinį (`reiskia:` interpretacijos, klausimai, instrukcijos).
+tiekia turinį (`meaning:` interpretacijos, klausimai, instrukcijos).
 
 ## 3. Sutartos taisyklės
 
@@ -71,8 +71,9 @@ tiekia turinį (`reiskia:` interpretacijos, klausimai, instrukcijos).
    Pasitikėjimą kuria abiejų pusių įvardijimas.
 6. **Atviri diagnostiniai klausimai.** „KOKIOS lemputės dega?" vietoj „ar
    dega bent viena?" — turtingesnis atsakymas; skaitymui — pack'ų
-   `atsakymai:` žodynai + klasifikatorius + patikslinimas kai neaišku.
-7. **`reiskia:` interpretacijos laukas.** Pack'o atsakymų reikšmės
+   `answers:` žodynai (žymenys `locales/lt/vocabulary.yaml`) + klasifikatorius
+   + patikslinimas kai neaišku.
+7. **`meaning:` interpretacijos laukas** (iki M3 — `reiskia:`). Pack'o atsakymų reikšmės
    deklaruoja, KĄ atsakymas reiškia („dega tik maitinimo" → „gauna srovę,
    bet nemato tinklo") — įvardijimas iš failo, ne improvizacija.
 8. **Verifikacijos taisyklė (visiems gedimams).** „Išspręsta" turi teisę
@@ -105,9 +106,12 @@ Užpildas privalo būti TURININGAS (statusas apie realų veiksmą), ne
    Yda — tik tyla be rėmo > ~2.5–3 s.
 2. Turn'o gramatika kaip maskuotė: pirmas sakinys (reakcija/interpretacija)
    trumpas → TTS jį groja anksti, kol likusi mintis generuojama.
-3. Spekuliacija (veikia; plėsti paruošiamų šakų aprėptį).
-4. Šaknys, ne maskuotė: naratoriaus modelio eksperimentas + tools
-   siaurinimas — vieninteliai keliai 8–12 s segmentams sutraukti.
+3. ~~Spekuliacija~~ — pašalinta refaktoringo M5 (Q-2: priklausė nuo senų
+   direktyvų). Po M7 matuojama latencija; ant `TurnPlan` perstatoma tik jei
+   vis dar reikės.
+4. Šaknys, ne maskuotė: kalbančio LLM (`agent/speak/`) modelio eksperimentas.
+   Įrankių siaurinimas baigtas M5 — kalbantis LLM įrankių nebeturi, visas
+   paieškas ir veiksmus vykdo variklis (`execute`).
 
 ## 5. Testavimo aplinka (sutarta 2026-08-31)
 
