@@ -16,6 +16,7 @@ Checks per scenario (only those present in `expect` are scored, except reply_len
   - verdict_in    : the expected verdict reason appears at some point
                     (state.hypothesis.cause / resolution.verdict across turns)
   - disposition   : resolved | ticket | outage | inform | open | any
+  - record_outcome: the contact record's outcome (+ record_reason: unidentified_reason)
                     (ticket = create_ticket ran; inform also accepts open/outage)
   - identified    : true/false — whether the call ended with a committed customer_id
   - reply_any     : at least ONE agent reply contains at least ONE listed substring
@@ -183,6 +184,7 @@ def _run_scenario(scn: dict) -> dict:
     trace_path = session.tracer.path if hasattr(session.tracer, "path") else None
     session.end_session(transport_end="eval")
     st = session.state  # after end_session: the hang-up net may close the case
+    records = _contact_records(session.session_id)
     _close_db()  # free the file handle before the next scenario's DB rebuild
 
     tools = _tools_in_trace(trace_path)
@@ -196,7 +198,24 @@ def _run_scenario(scn: dict) -> dict:
         "ticket_created": "create_ticket" in tools,
         "tools_used": tools,
         "trace": str(trace_path) if trace_path else None,
+        "records": records,
     }
+
+
+def _contact_records(session_id: str) -> list[dict]:
+    """The call's contact records in the conversations table (D-14: exactly one)."""
+    try:
+        from agent.tools import get_db
+
+        with get_db().cursor() as cur:
+            cur.execute(
+                "SELECT outcome, unidentified_reason, needs_review FROM conversations "
+                "WHERE session_id = ?",
+                (session_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except Exception as e:  # a missing record is scored, not a crash
+        return [{"error": str(e)}]
 
 
 def _tools_in_trace(trace_path: Path | None) -> set[str]:
@@ -278,6 +297,14 @@ def _score(scn: dict, ev: dict) -> list[tuple[str, bool, str]]:
     for tool in exp.get("tool_used", []):
         ok = tool in ev["tools_used"]
         checks.append((f"tool_used:{tool}", ok, "ran" if ok else "NOT CALLED"))
+
+    # Contact record (D-14) — EVERY scenario: exactly one row, and the expected outcome.
+    records = ev.get("records") or []
+    checks.append(("contact_record", len(records) == 1, f"rows={len(records)}"))
+    if records and "record_outcome" in exp:
+        got = (records[0].get("outcome"), records[0].get("unidentified_reason"))
+        want = (exp["record_outcome"], exp.get("record_reason"))
+        checks.append(("record_outcome", got == want, f"want={want} got={got}"))
 
     # Voice-length guard (Phase 3.11 A) — runs on EVERY scenario automatically. Voice is
     # not chat: a paragraph is unlistenable and is also the main TTS latency cost. Caps

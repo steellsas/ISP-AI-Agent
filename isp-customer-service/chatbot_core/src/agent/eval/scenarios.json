@@ -75,6 +75,19 @@
       }
     },
     {
+      "id": "U1_unidentified_hangup",
+      "phone": "+37000000000",
+      "desc": "M6 (D-14): nežinomas skambintojas padeda ragelį neidentifikuotas -> jokio tiketo, tik kontaktinis įrašas peržiūrai (abandoned / hung_up)",
+      "turns": [
+        "Laba diena, neveikia internetas"
+      ],
+      "expect": {
+        "identified": false,
+        "record_outcome": "abandoned",
+        "record_reason": "hung_up"
+      }
+    },
+    {
       "id": "G1_context_classify_no_triggers",
       "phone": "+37060020101",
       "desc": "L2 klasifikacija iš KONTEKSTO: 'niekas nekrauna' be trigger žodžių -> internet_down (commit arba patvirtinimas), toliau normalus billing-inform kelias",
@@ -116,7 +129,8 @@
           "lemput",
           "routerio",
           "techninės pagalbos"
-        ]
+        ],
+        "record_outcome": "ticket"
       }
     },
     {
@@ -290,7 +304,8 @@
           "sąskait",
           "skol"
         ],
-        "reply_none": []
+        "reply_none": [],
+        "record_outcome": "informed_debt"
       }
     },
     {
@@ -314,7 +329,8 @@
         "reply_any": [
           "atsaking"
         ],
-        "reply_none": []
+        "reply_none": [],
+        "record_outcome": "ticket"
       }
     },
     {
@@ -714,7 +730,8 @@
         ],
         "reply_none": [
           "Registruoju meistrą"
-        ]
+        ],
+        "record_outcome": "ticket_appended"
       }
     }
   ]
