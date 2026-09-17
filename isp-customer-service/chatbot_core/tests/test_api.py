@@ -552,6 +552,15 @@ class TestVoiceChannel:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "Agento vidus" in resp.text
+        assert "{{v}}" not in resp.text  # the cache buster is filled in
+        assert client.get("/static/js/brain.js").status_code == 200
+
+    def test_demo_scenarios_are_complete(self, client):
+        scenarios = client.get("/demo/scenarios").json()["scenarios"]
+        assert len(scenarios) >= 9
+        for s in scenarios:
+            assert s["phone"].startswith("+370") and s["say"] and "outcome" in s["expect"]
+        assert len({s["id"] for s in scenarios}) == len(scenarios)
 
 
 class TestArchive:

@@ -110,6 +110,16 @@ async def dashboard():
     return HTMLResponse(html.replace("{{v}}", _ASSET_VERSION))
 
 
+@app.get("/demo/scenarios")
+async def demo_scenarios():
+    """The dashboard's demo scenarios (app/scenarios.yaml): who calls, what to say, what to
+    expect. Read on every request, so an edited file shows on a page reload."""
+    import yaml
+
+    data = yaml.safe_load((Path(__file__).parent / "scenarios.yaml").read_text(encoding="utf-8"))
+    return {"scenarios": (data or {}).get("scenarios", [])}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "active_sessions": manager.active_count}

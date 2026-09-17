@@ -73,12 +73,16 @@ function onEvent(e){
 function resetUI(){
   $("chat").innerHTML="";
   Brain.reset();
+  Scenarios.callStarted();
 }
 async function teardown(){
   stopMic(); stopAudio();
-  if(ws){ ws.onclose=null; ws.onmessage=null; try{ws.close();}catch(e){} ws=null; }
+  // End the session while the socket still listens: the call's record (session_end,
+  // call_summary) arrives on it, and the scenario card checks the outcome.
   if(sid){ const old=sid; sid=null;
-    await fetch(`/sessions/${old}`, {method:"DELETE"}).catch(()=>{}); }
+    await fetch(`/sessions/${old}`, {method:"DELETE"}).catch(()=>{});
+    if(ws) await new Promise(r=>setTimeout(r,500)); }
+  if(ws){ ws.onclose=null; ws.onmessage=null; try{ws.close();}catch(e){} ws=null; }
   $("sid").textContent="";
   setLive(false);
 }
