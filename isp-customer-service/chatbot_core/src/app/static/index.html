@@ -51,21 +51,21 @@
   <div class="vsplit" data-split="left"></div>
   <section id="right" class="col">
     <div class="block" id="blk-graph" data-block="graph">
-      <div class="block-h"><span>Agento vidus — ėjimo kelias</span><span class="muted" id="totals"></span><button class="fold" title="Suskleisti">▾</button></div>
-      <div class="block-b"><div id="graph"></div></div>
+      <div class="block-h"><span>Agento vidus — ėjimo kelias</span><span class="muted b-totals" id="totals"></span><button class="fold" title="Suskleisti">▾</button></div>
+      <div class="block-b"><div class="b-graph" id="graph"></div></div>
     </div>
     <div class="block" id="blk-cards" data-block="cards">
       <div class="block-h"><span>Ėjimo planas ir būsena</span><button class="fold" title="Suskleisti">▾</button></div>
       <div class="block-b cards">
-        <div class="card" id="planCard"><div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div></div>
-        <div class="card" id="stateCard"><div class="muted">Būsena — kas žinoma apie skambutį.</div></div>
+        <div class="card b-plan" id="planCard"><div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div></div>
+        <div class="card b-state" id="stateCard"><div class="muted">Būsena — kas žinoma apie skambutį.</div></div>
       </div>
     </div>
     <div class="hsplit" data-split="cards"></div>
     <div class="block grow" id="blk-timeline" data-block="timeline">
       <div class="block-h">
         <span>Įvykiai</span>
-        <span class="filters" id="filters">
+        <span class="filters b-filters" id="filters">
           <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
           <label><input type="checkbox" data-f="llm" checked> LLM</label>
           <label><input type="checkbox" data-f="tool" checked> įrankiai</label>
@@ -74,7 +74,7 @@
         </span>
         <button class="fold" title="Suskleisti">▾</button>
       </div>
-      <div class="block-b"><div id="timeline"></div></div>
+      <div class="block-b"><div class="b-timeline" id="timeline"></div></div>
     </div>
   </section>
 </main>
@@ -93,27 +93,52 @@
       <button id="archRefresh" class="ghost">atnaujinti</button>
       <label class="check"><input type="checkbox" id="archReview"> tik peržiūrai</label>
     </div>
-    <table class="grid">
-      <thead><tr><th>Laikas</th><th>Klientas</th><th>Problema</th><th>Priežastis</th>
-        <th>Baigtis</th><th>Peržiūra</th><th>Tiketas</th><th>Trukmė</th></tr></thead>
-      <tbody id="archRows"></tbody>
-    </table>
+    <div id="archList">
+      <table class="grid">
+        <thead><tr><th>Laikas</th><th>Klientas</th><th>Problema</th><th>Priežastis</th>
+          <th>Baigtis</th><th>Peržiūra</th><th>Tiketas</th><th>Trukmė</th></tr></thead>
+        <tbody id="archRows"></tbody>
+      </table>
+    </div>
     <div id="callDetail">
       <div class="page-h">
+        <button id="detClose" class="ghost">← sąrašas</button>
         <b id="detTitle"></b>
         <span class="muted" id="detStats"></span>
+        <span class="grow"></span>
+        <button id="turnPrev" class="ghost" title="Ankstesnis ėjimas (←)">◀</button>
+        <span id="turnLabel" class="muted">Ėjimas —</span>
+        <button id="turnNext" class="ghost" title="Kitas ėjimas (→)">▶</button>
         <a id="detExport" class="linkish" download>⬇ JSON</a>
-        <button id="detClose" class="ghost">užverti</button>
       </div>
-      <div class="detcols">
-        <div>
-          <div class="sub">Transkriptas ir garso įrašai</div>
-          <div id="detTranscript"></div>
-          <div id="detAudio"></div>
+      <div class="arch-grid">
+        <div class="block">
+          <div class="block-h"><span>Transkriptas ir garso įrašai</span></div>
+          <div class="block-b"><div id="detTranscript"></div><div id="detAudio"></div></div>
         </div>
-        <div>
-          <div class="sub">Įvykiai (trace)</div>
-          <div id="detFeed"></div>
+        <div class="arch-right">
+          <div class="block">
+            <div class="block-h"><span>Ėjimo kelias</span><span class="muted b-totals"></span></div>
+            <div class="block-b"><div class="b-graph"></div></div>
+          </div>
+          <div class="block">
+            <div class="block-b cards">
+              <div class="card b-plan"></div>
+              <div class="card b-state"></div>
+            </div>
+          </div>
+          <div class="block grow">
+            <div class="block-h"><span>Įvykiai</span>
+              <span class="filters b-filters">
+                <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
+                <label><input type="checkbox" data-f="llm" checked> LLM</label>
+                <label><input type="checkbox" data-f="tool" checked> įrankiai</label>
+                <label><input type="checkbox" data-f="voice" checked> ASR/TTS</label>
+                <label><input type="checkbox" data-f="graph"> grafas</label>
+              </span>
+            </div>
+            <div class="block-b"><div class="b-timeline"></div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -144,10 +169,11 @@
     </div>
   </div>
 </div>
-<!-- Agento vidus: layout.js (skirtukai, skydeliai), brain.js (ėjimai), app.js (skambutis, balsas) -->
+<!-- layout.js skirtukai ir skydeliai · brain.js agento vidus · scenarios.js · archive.js · app.js skambutis ir balsas -->
 <script src="/static/js/layout.js?v={{v}}"></script>
 <script src="/static/js/brain.js?v={{v}}"></script>
 <script src="/static/js/scenarios.js?v={{v}}"></script>
+<script src="/static/js/archive.js?v={{v}}"></script>
 <script src="/static/js/app.js?v={{v}}"></script>
 </body>
 </html>

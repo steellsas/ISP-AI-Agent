@@ -100,7 +100,8 @@ header h1{font-size:15px; font-weight:600; margin-right:6px}
 .scen-note{margin-top:4px; font-size:12px; color:var(--dim)}
 
 /* --- graph strip --- */
-#graph{display:flex; align-items:stretch; gap:4px; flex-wrap:wrap}
+
+.b-graph{display:flex; align-items:stretch; gap:4px; flex-wrap:wrap}
 .gnode{flex:1 1 90px; min-width:84px; border:1px solid var(--line); border-radius:7px;
   padding:5px 8px; background:var(--panel)}
 .gnode .n{font-weight:600; font-size:12px}
@@ -127,7 +128,7 @@ header h1{font-size:15px; font-weight:600; margin-right:6px}
 .pill.err{background:var(--err-bg); color:var(--err)}
 
 /* --- timeline --- */
-#timeline{display:flex; flex-direction:column; font-family:Consolas,monospace; font-size:12px}
+.b-timeline{display:flex; flex-direction:column; font-family:Consolas,monospace; font-size:12px}
 .tl-turn{margin:6px 0 2px; padding:2px 0; font-family:"Segoe UI",system-ui,sans-serif;
   font-weight:600; font-size:12px; color:var(--dim); border-bottom:1px solid var(--line)}
 .tl{display:grid; grid-template-columns:52px 74px minmax(0,1fr) 120px; gap:6px; align-items:center; padding:1px 0}
@@ -141,8 +142,8 @@ header h1{font-size:15px; font-weight:600; margin-right:6px}
 .tl.f-voice .kind{color:var(--warn)} .tl.f-voice .bar{background:var(--warn)}
 .tl.f-graph .kind{color:var(--dim)} .tl.f-graph .bar{background:var(--dim)}
 .tl.f-err .kind,.tl.f-err .txt{color:var(--err)}
-#timeline.hide-decide .f-decide,#timeline.hide-llm .f-llm,#timeline.hide-tool .f-tool,
-#timeline.hide-voice .f-voice,#timeline.hide-graph .f-graph{display:none}
+.b-timeline.hide-decide .f-decide,.b-timeline.hide-llm .f-llm,.b-timeline.hide-tool .f-tool,
+.b-timeline.hide-voice .f-voice,.b-timeline.hide-graph .f-graph{display:none}
 .filters{display:flex; gap:8px; font-weight:400; text-transform:none; letter-spacing:0}
 .filters label{display:flex; align-items:center; gap:3px}
 
@@ -158,16 +159,19 @@ table.grid tbody tr{cursor:pointer}
 table.grid tbody tr:hover{background:var(--panel2)}
 .scen-row .say{color:var(--dim); font-size:12px}
 .scen-row .res{white-space:nowrap}
-#callDetail{display:none; margin-top:14px; background:var(--panel); border:1px solid var(--line);
-  border-radius:8px; padding:10px 12px}
+#callDetail{display:none}
 #callDetail.open{display:block}
-.detcols{display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px}
-.sub{font-size:11px; color:var(--dim); text-transform:uppercase; margin-bottom:6px}
-#detTranscript,#detFeed{max-height:50vh; overflow-y:auto; display:flex; flex-direction:column; gap:4px}
-#detTranscript .msg{max-width:100%}
-#detFeed{font-family:Consolas,monospace; font-size:12px}
-#detFeed div{color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+#pane-arch.detail #archList{display:none}
+.arch-grid{display:grid; grid-template-columns:minmax(0,30%) minmax(0,1fr); gap:10px; height:calc(100vh - 150px)}
+.arch-grid>.block{margin:0}
+.arch-right{display:flex; flex-direction:column; min-height:0}
+.arch-right .block:first-child{margin-top:0}
+#detTranscript{display:flex; flex-direction:column; gap:5px}
+#detTranscript .msg{max-width:100%; cursor:pointer}
+#detTranscript .msg.current{outline:2px solid var(--accent)}
 #detAudio audio{width:100%; height:30px; margin:2px 0}
+.tl-turn.current{color:var(--accent); border-bottom-color:var(--accent)}
+@media (max-width: 900px){ .arch-grid{grid-template-columns:1fr; height:auto} }
 
 /* --- config modal --- */
 #cfgOverlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:20}
