@@ -255,11 +255,12 @@ async def delete_session(session_id: str):
 
 
 @app.get("/calls")
-async def calls_list(limit: int = 50):
-    """Archive zone: newest-first past-call records (conversations table)."""
+async def calls_list(limit: int = 50, needs_review: bool = False):
+    """Archive zone: newest-first past-call records (conversations table);
+    `?needs_review=1` lists only the contact records for review (D-14)."""
     from . import archive
 
-    return {"calls": await asyncio.to_thread(archive.list_calls, limit)}
+    return {"calls": await asyncio.to_thread(archive.list_calls, limit, needs_review)}
 
 
 @app.get("/calls/{session_id}")

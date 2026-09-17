@@ -566,6 +566,16 @@ class TestArchive:
         row = next(c for c in calls if c["session_id"] == archived_call)
         assert row["purpose"] == "internet_down"
 
+    def test_review_filter_lists_only_calls_for_review(self, archived_call, client):
+        # The archived call hung up before identification: a record for review (D-14).
+        row = next(
+            c for c in client.get("/calls").json()["calls"] if c["session_id"] == archived_call
+        )
+        assert row["needs_review"] is True and row["transport_end"] == "client_closed"
+        review = client.get("/calls?needs_review=1").json()["calls"]
+        assert any(c["session_id"] == archived_call for c in review)
+        assert all(c["needs_review"] for c in review)
+
     def test_detail_has_transcript_events_audio_stats(self, archived_call, client):
         resp = client.get(f"/calls/{archived_call}")
         assert resp.status_code == 200

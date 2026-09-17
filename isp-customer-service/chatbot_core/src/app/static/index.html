@@ -163,10 +163,12 @@
 <section id="archive">
   <div class="zone-title">📜 Praėję skambučiai
     <button id="archRefresh" class="linkish" style="margin-left:10px">atnaujinti</button>
+    <label style="margin-left:14px; font-size:12px; color:var(--dim)">
+      <input type="checkbox" id="archReview"> tik peržiūrai</label>
   </div>
   <table>
     <thead><tr><th>Laikas</th><th>Klientas</th><th>Problema</th><th>Priežastis</th>
-      <th>Baigtis</th><th>Tiketas</th><th>Trukmė</th></tr></thead>
+      <th>Baigtis</th><th>Peržiūra</th><th>Tiketas</th><th>Trukmė</th></tr></thead>
     <tbody id="archRows"></tbody>
   </table>
   <div id="callDetail">
@@ -724,16 +726,19 @@ function fmtEvent(e){
   }
 }
 async function loadArchive(){
-  const r = await fetch("/calls").catch(()=>null);
+  const review = $("archReview").checked ? "?needs_review=1" : "";
+  const r = await fetch("/calls"+review).catch(()=>null);
   if(!r || !r.ok) return;
   const rows = (await r.json()).calls.map(c => {
     const t = (c.timestamp||"").replace("T"," ").slice(0,16);
     const dur = c.duration_seconds ? `${Math.round(c.duration_seconds)} s` : "—";
     return `<tr data-sid="${c.session_id}"><td>${t}</td><td>${c.customer_id||"—"}</td>`+
-      `<td>${c.purpose||"—"}</td><td>${c.cause||"—"}</td><td>${c.outcome||"—"}</td>`+
+      `<td>${c.purpose||"—"}</td><td>${c.cause||"—"}</td>`+
+      `<td>${c.outcome||"—"}${c.unidentified_reason?" ("+c.unidentified_reason+")":""}</td>`+
+      `<td>${c.needs_review?"⚠ "+(c.review_reason||""):"—"}</td>`+
       `<td>${c.ticket_id||"—"}</td><td>${dur}</td></tr>`;
   }).join("");
-  $("archRows").innerHTML = rows || `<tr><td colspan="7" style="color:var(--dim)">įrašų nėra</td></tr>`;
+  $("archRows").innerHTML = rows || `<tr><td colspan="8" style="color:var(--dim)">įrašų nėra</td></tr>`;
   for(const tr of $("archRows").querySelectorAll("tr[data-sid]"))
     tr.onclick = () => openCall(tr.dataset.sid);
 }
@@ -769,6 +774,7 @@ $("archToggle").onclick = () => {
   if(open) loadArchive();
 };
 $("archRefresh").onclick = loadArchive;
+$("archReview").onchange = loadArchive;
 $("detClose").onclick = () => $("callDetail").classList.remove("open");
 
 function wavEncode(pcm, rate){
