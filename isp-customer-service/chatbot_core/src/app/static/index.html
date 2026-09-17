@@ -50,6 +50,16 @@
   </section>
   <div class="vsplit" data-split="left"></div>
   <section id="right" class="col">
+    <div class="block" id="blk-voice" data-block="voice">
+      <div class="block-h">
+        <span>Pokalbio linija</span>
+        <span class="vv-legend"><i class="vv-dot caller"></i>klientas <i class="vv-dot agent"></i>agentas</span>
+        <span id="vvStatus" class="vv-status idle">skambutis neprasidėjęs</span>
+        <span id="vvTimer" class="muted"></span>
+        <button class="fold" title="Suskleisti">▾</button>
+      </div>
+      <div class="block-b vv-body"><canvas id="vvCanvas"></canvas></div>
+    </div>
     <div class="block" id="blk-graph" data-block="graph">
       <div class="block-h"><span>Agento vidus — ėjimo kelias</span><span class="muted b-totals" id="totals"></span><button class="fold" title="Suskleisti">▾</button></div>
       <div class="block-b"><div class="b-graph" id="graph"></div></div>
@@ -171,6 +181,7 @@
 </div>
 <!-- layout.js skirtukai ir skydeliai · brain.js agento vidus · scenarios.js · archive.js · app.js skambutis ir balsas -->
 <script src="/static/js/layout.js?v={{v}}"></script>
+<script src="/static/js/voiceviz.js?v={{v}}"></script>
 <script src="/static/js/brain.js?v={{v}}"></script>
 <script src="/static/js/scenarios.js?v={{v}}"></script>
 <script src="/static/js/archive.js?v={{v}}"></script>

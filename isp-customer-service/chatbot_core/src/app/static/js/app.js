@@ -66,6 +66,7 @@ function onEvent(e){
       break;
     case "session_end": addMsg("note","— skambutis baigtas —"); break;
   }
+  VoiceViz.event(e);
   Brain.onEvent(e);
 }
 
@@ -76,7 +77,7 @@ function resetUI(){
   Scenarios.callStarted();
 }
 async function teardown(){
-  stopMic(); stopAudio();
+  stopMic(); stopAudio(); VoiceViz.stop();
   // End the session while the socket still listens: the call's record (session_end,
   // call_summary) arrives on it, and the scenario card checks the outcome.
   if(sid){ const old=sid; sid=null;
@@ -89,6 +90,7 @@ async function teardown(){
 let starting=false;                          // survives teardown()'s setLive juggling
 $("start").onclick = async () => {
   if(starting) return;                       // no double-start — one call per page
+  VoiceViz.unlock();                         // the audio meter needs the click gesture
   starting=true;
   $("start").disabled=true;
   try{
@@ -112,7 +114,7 @@ $("start").onclick = async () => {
       if(m.data instanceof ArrayBuffer){ enqueueAudio(m.data); return; }
       const e = JSON.parse(m.data);
       if(e.type==="voice_turn_done"){ Brain.voiceDone(e); return; }
-      if(e.type==="turn_start"){ turnPlayed=0; Brain.turnStart(); return; } // D1: skaitiklis per turn'ą
+      if(e.type==="turn_start"){ turnPlayed=0; Brain.turnStart(); VoiceViz.thinking(); return; } // D1: skaitiklis per turn'ą
       if(e.type==="call_ended"){ // pokalbis baigtas — mikrofonas nebeklauso
         stopMic();
         addMsg("note","📞 pokalbis baigtas");
@@ -155,6 +157,7 @@ $("start").onclick = async () => {
     };
     ws.onopen = () => {
       setLive(true);
+      VoiceViz.start();
       loadDuplexCfg();
       addMsg("agent", data.greeting);
       if($("voiceOn").checked){
@@ -163,7 +166,7 @@ $("start").onclick = async () => {
         startMic();
       }
     };
-    ws.onclose = () => setLive(false);
+    ws.onclose = () => { setLive(false); VoiceViz.stop(); };
   }finally{ starting=false; }
 };
 $("stop").onclick = () => teardown();
@@ -212,6 +215,8 @@ function sendText(){
   $("text").value="";
 }
 
+VoiceViz.setPlayingProbe(() => playing);
+
 /* ---------- audio out: CHUNK QUEUE (streaming voice, Phase 5 PR1) ----------
    Sentence chunks arrive while the turn is still running — they queue and play
    back-to-back; `playing` stays true (half-duplex mic hold) until the queue
@@ -226,7 +231,8 @@ let turnPlayed=0;
 let ducked=false, duckTimer=null;
 function setDuck(v){
   ducked=v;
-  if(currentAudio){ try{ currentAudio.volume = v?0.25:1.0; }catch(e){} }
+  VoiceViz.duck(v);  // audio routed through the meter is ducked by its gain
+  if(currentAudio && !currentAudio._metered){ try{ currentAudio.volume = v?0.25:1.0; }catch(e){} }
 }
 function playAudio(buf){ enqueueAudio(buf); }
 function enqueueAudio(buf){
@@ -238,7 +244,8 @@ function playNext(){
   const buf=audioQueue.shift();
   if(buf===undefined){ playing=false; currentAudio=null; return; }
   const a=new Audio(URL.createObjectURL(new Blob([buf],{type:"audio/mpeg"})));
-  a.volume = ducked?0.25:1.0; // D3: duck būsena galioja ir naujiems chunk'ams
+  a._metered = VoiceViz.attach(a);   // the conversation line reads the agent's real level
+  if(!a._metered) a.volume = ducked?0.25:1.0; // D3: duck būsena galioja ir naujiems chunk'ams
   currentAudio=a;
   a.onended=()=>{ turnPlayed++; currentAudio=null; playNext(); };
   a.onerror=()=>{ currentAudio=null; playNext(); };
@@ -276,6 +283,7 @@ async function startMic(){
       while(preMs>PREROLL_MS && preBuf.length){ preBuf.shift(); preMs-=frameMs; }
     };
     $("vu").firstElementChild.style.height=Math.min(100,rms*800)+"%";
+    VoiceViz.mic(rms);
     if(playing){
       // Barge-in v1 (asimetrinis): mikrofonas KLAUSO agentui kalbant. Trumpas
       // pliūpsnis ("aha", "taip") — backchannel, grojame toliau; kalba ilgiau

@@ -99,6 +99,20 @@ header h1{font-size:15px; font-weight:600; margin-right:6px}
 .scen-expect{margin-top:6px; font-size:12px; color:var(--dim)}
 .scen-note{margin-top:4px; font-size:12px; color:var(--dim)}
 
+/* --- pokalbio linija --- */
+.vv-body{padding:4px 10px; height:92px; overflow:hidden}
+#vvCanvas{width:100%; height:100%; display:block}
+.vv-legend{display:flex; align-items:center; gap:5px; font-weight:400; text-transform:none; letter-spacing:0}
+.vv-dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-left:6px}
+.vv-dot.caller{background:var(--accent)} .vv-dot.agent{background:var(--llm)}
+.vv-status{padding:1px 10px; border-radius:99px; font-size:12px; font-weight:600; text-transform:none; letter-spacing:0}
+.vv-status.idle{background:var(--panel2); color:var(--dim)}
+.vv-status.listen{background:var(--ok-bg); color:var(--ok)}
+.vv-status.caller{background:var(--accent-bg); color:var(--accent)}
+.vv-status.agent{background:var(--llm-bg); color:var(--llm)}
+.vv-status.think{background:var(--warn-bg); color:var(--warn); animation:pulse 1.2s infinite}
+.vv-status.listen::before,.vv-status.caller::before,.vv-status.agent::before{content:"● "}
+
 /* --- graph strip --- */
 
 .b-graph{display:flex; align-items:stretch; gap:4px; flex-wrap:wrap}
