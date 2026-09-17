@@ -96,6 +96,15 @@ class TestJsonlFileTracer:
         )
         tracer.emit("verdict", side="customer", group="B6", action="instruct", reason="foreign_mac")
         tracer.emit("agent_reply", text="Ar pakeitėte routerį?")
+        tracer.emit(
+            "turn_plan",
+            turn_index=1,
+            owner="procedure",
+            rule="procedure.verify_reboot",
+            hypothesis={"cause": "router_hung", "status": "doubt"},
+            action={"type": "tool", "name": "telemetry.recheck"},
+            say={"kind": "directive"},
+        )
         tracer.emit("session_end", outcome="done", customer_id="CUST105", ticket_id=None)
 
         txt = tracer.export_txt()
@@ -105,6 +114,10 @@ class TestJsonlFileTracer:
         assert "AGENT: Ar pakeitėte routerį?" in content
         assert "VERDICT B6 instruct foreign_mac" in content
         assert "12ms" in content
+        assert (
+            "[plan] owner=procedure rule=procedure.verify_reboot hyp=router_hung(doubt) "
+            "action=tool:telemetry.recheck say=directive"
+        ) in content
 
     def test_emit_never_raises_on_bad_dir(self, tmp_path):
         from adapters.tracing import JsonlFileTracer
