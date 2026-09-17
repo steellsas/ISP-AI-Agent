@@ -129,6 +129,7 @@ identification:
   repeat_ack: "Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "
   escalate_clarify: "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
   ticket_cancel_confirm: "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau registruoti meistrą. Registruoti, ar tikrai nereikia?"
+  ticket_cancel_confirm_request: "Tik patikslinsiu — ar užregistruoti jūsų klausimą atsakingam žmogui, ar tikrai nereikia?"
   ticket_intro_bridge: "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, registruoju meistrą dėl naujo routerio."
   # C (2026-08-21): tilto būsenos paskelbimas — klientas girdi, kad patikrinom,
   # kad įrenginį MATOME ir kad pririšom.

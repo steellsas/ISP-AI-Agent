@@ -34,6 +34,14 @@ def depends_on(service: str | None, technology: str | None) -> str | None:
     return None
 
 
+def depended_on(service: str | None) -> str | None:
+    """The service this one rides on over any technology (tv -> internet), or None."""
+    for dep in _catalog().get("dependencies") or []:
+        if dep.get("service") == service:
+            return dep.get("depends_on")
+    return None
+
+
 def subscribed(profile: list[dict[str, Any]] | None, service: str | None) -> dict[str, Any] | None:
     """The customer's active plan for `service`, or None when they do not have it."""
     for plan in profile or []:

@@ -58,6 +58,10 @@ def ensure_diagnosed(state, rt) -> bool:
     from ..intents import problem_policy
 
     policy = problem_policy(s.intake.problem_type) if s.intake.problem_type else None
+    if s.ticket.request_type:
+        # Live 2026-09-17: a second pass took the billing question for an unclear fault
+        # and the cancel-confirm spoke of a technician.
+        return True
     if s.resolution.procedure is None and not state.ticket.stage and policy == "register":
         requests.start_request(state, rt)
         return True

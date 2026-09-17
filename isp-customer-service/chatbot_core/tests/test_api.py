@@ -185,11 +185,21 @@ class TestDisconnect:
             pass
 
         assert self._wait_gone(sid)
-        with db_connection.cursor() as cur:
-            cur.execute(
-                "SELECT outcome, transport_end FROM conversations WHERE session_id = ?", (sid,)
-            )
-            row = dict(cur.fetchone())
+        import time
+
+        row = None
+        deadline = time.monotonic() + 5.0
+        while row is None and time.monotonic() < deadline:  # the record lands after the pop
+            with db_connection.cursor() as cur:
+                cur.execute(
+                    "SELECT outcome, transport_end FROM conversations WHERE session_id = ?",
+                    (sid,),
+                )
+                found = cur.fetchone()
+            row = dict(found) if found else None
+            if row is None:
+                time.sleep(0.05)
+        assert row is not None
         assert row["transport_end"] == "ws_disconnect"
         assert row["outcome"] != "ws_disconnect"  # F-4
 

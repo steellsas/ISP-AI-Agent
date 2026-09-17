@@ -215,6 +215,17 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
         from ...perceive.caller import detect_caller_relation
         from ...perceive.detectors import detect_farewell, is_real_question
 
+        # Live 2026-09-17: „Nesvarbu, koks mano vardas" — the caller will not say it.
+        # Taken as that, not re-asked; the call goes on.
+        low_intro = user_input.lower()
+        if any(m in low_intro for m in vocab("caller_name_refused")):
+            s.identity.caller_name = "nenurodyta"
+            s.identity.caller_relation = "unknown"
+            rt.tracer.emit("caller_intro", name="nenurodyta", relation="unknown", refused=True)
+            from ..question import clear as _q_clear_refused
+
+            _q_clear_refused(state, rt, "caller_name")
+            return True
         # Question by WORDS only — STT sticks "?" onto rising intonation
         # ("Tomas? Ne, mano vardas Tomas…" is the ANSWER, not a question).
         if is_real_question(user_input):
@@ -231,12 +242,15 @@ def caller_intro(state: Any, rt: Any, user_input: str) -> bool:
                 # Taip, aš sutartį sudaręs asmuo." went on the ticket verbatim.
                 from ...perceive.caller import extract_caller_name
 
-                s.identity.caller_name = extract_caller_name(user_input) or user_input.strip()[:120]
+                # Live 2026-09-17: „Po anas mano vardas." went on the record and into
+                # „Malonu, Po anas mano vardas!" — no readable name is "nenurodyta".
+                name = extract_caller_name(user_input)
+                s.identity.caller_name = name or "nenurodyta"
                 s.identity.caller_relation = detect_caller_relation(user_input)
                 # Phrasebook (reference dialogue, 2026-09-03): the caller JUST introduced
                 # themselves — the next reply opens with a warm acceptance
                 # („Malonu, Tomai") instead of a dry „Supratau — X". One-shot.
-                state.identity.caller_name_heard = True
+                state.identity.caller_name_heard = bool(name)
             rt.tracer.emit(
                 "caller_intro", name=s.identity.caller_name, relation=s.identity.caller_relation
             )

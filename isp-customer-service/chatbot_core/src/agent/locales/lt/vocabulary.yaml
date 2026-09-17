@@ -1078,7 +1078,7 @@ rag_stop_words: ["ir", "ar", "su", "be", "per", "nuo", "iki", "apie", "pas", "ta
 # L1 trigger words per call purpose, matched as substrings of " <utterance> ";
 # ORDER of the catalog matters (a specific purpose before a broader one).
 problem_triggers_internet_slow: ["lėtas", "lėtai", "lėta", "stringa", "lūžinėja", "buferiuoja"]
-problem_triggers_tv: ["televizij", "televizor", " tv", "kanalai", "kanalų"]
+problem_triggers_tv: ["televizij", "televizor", " tv ", " tv,", " tv.", " tv?", " tv!", "kanalai", "kanalų"]
 problem_triggers_internet_down: ["internet", "ryši", "ryšys", "neveikia", "nėra interneto", "wifi", "wi-fi"]
 problem_triggers_billing: ["sąskait", "saskait", "mokė", "skola", "kaina", "tarif"]
 problem_triggers_disconnection: ["nutraukti sutart", "atjungti paslaug", "atsisakyti paslaug", "atsijungti nuo"]
@@ -1132,3 +1132,14 @@ repeat_nobody_came: ["niekas neatvyko", "niekas neatvažiavo", "neatvažiavo", "
 
 # The caller disputes the debt they were told about, or does not understand it (D-11).
 debt_dispute: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "mokėjau", "mokejau", "nesuprantu", "neaišku", "neaisku", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola"]
+
+# --- agent/intents.py ------------------------------------------------------------------------
+
+# The internet named in the caller's words (for "internetas, televizija, niekas neveikia" —
+# the service the others depend on is the problem to solve first).
+service_mentions_internet: ["internet", "wifi", "wi-fi"]
+
+# --- agent/decide/rules/head.py ------------------------------------------------------------
+
+# The caller will not say their name (it is recorded as "nenurodyta", never re-asked).
+caller_name_refused: ["nesvarbu", "nesakysiu", "nenoriu sakyt", "nenoriu pasakyt", "nebūtina", "nebutina", "koks skirtumas", "kam jums vardas"]

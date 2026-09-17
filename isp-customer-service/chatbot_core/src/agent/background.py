@@ -39,7 +39,11 @@ def apply_bg_diagnosis(state: Any, rt: Any) -> None:
         )
         fresh = ((json.loads(bg) or {}).get("verdict") or {}).get("reason")
         current = r0.get("verdict")
-        if not in_solution and (not current or fresh == current):
+        # Live 2026-09-17 (repeat call): the engine decided without telemetry (an open
+        # ticket, a service not subscribed, a request) — a refresh turned it into a node
+        # fault and registered a duplicate ticket.
+        decided = bool((state.diagnosis.verdicts.get("network") or {}).get("skipped"))
+        if not in_solution and not decided and (not current or fresh == current):
             update_state_from_observation(state, rt, "diagnose_connection", bg)
             rt.tracer.emit("telemetry_refresh", action="applied")
         else:

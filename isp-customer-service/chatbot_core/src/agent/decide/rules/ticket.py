@@ -417,6 +417,8 @@ def ticket_stage_reply(state: Any, rt: Any) -> str:
         ctx.cancel_confirm_out = True
         ctx.last_kind = "cancel_confirm"
         _q_register(state, rt, "ticket", "ticket_cancel")
+        if state.ticket.request_type:
+            return phrase("identification.ticket_cancel_confirm_request")
         return phrase("identification.ticket_cancel_confirm")
     retry, ctx.ask_retry = ctx.ask_retry, None
     if retry == "phone":

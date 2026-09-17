@@ -35,6 +35,10 @@ def mark_step_presented(state, rt) -> None:
     if s.identity.customer_id and state.identity.result_pending:
         if not s.identity.caller_name:
             return  # the reply asked WHO is calling — nothing else was presented
+        if s.identity.holder_clarify_open:
+            # Live 2026-09-17: the reply asked whose name the contract is in — the
+            # result (outage ETA, debt) still goes out next, through its template.
+            return
         state.identity.result_pending = False
         if s.resolution.procedure is None:
             state.diagnosis.news_delivered = True

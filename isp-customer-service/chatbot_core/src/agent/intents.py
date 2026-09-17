@@ -40,12 +40,39 @@ def classify_purpose(text: str | None) -> str | None:
     problems = _catalog()
     if not isinstance(problems, dict):
         return None
-    for problem, spec in problems.items():
-        name = (spec or {}).get("triggers_vocab")
-        for trig in vocab(name) if name else ():
-            if str(trig).lower() in low:
-                return str(problem)
-    return None
+    matched = [
+        str(problem)
+        for problem, spec in problems.items()
+        if any(
+            str(trig).lower() in low
+            for trig in (
+                vocab((spec or {}).get("triggers_vocab"))
+                if (spec or {}).get("triggers_vocab")
+                else ()
+            )
+        )
+    ]
+    if not matched:
+        return None
+    return _depended_on_first(matched, low) or matched[0]
+
+
+def _depended_on_first(matched: list[str], low: str) -> str | None:
+    """Two services named together, one riding on the other ("internetas, televizija,
+    niekas neveikia"): the problem is the service the other depends on (D-10) — the TV
+    comes back once the internet does. Only when that service is NAMED, not when a
+    generic trigger ("neveikia") happens to match it."""
+    from .contract.locale import vocab
+    from .services import depended_on
+
+    first = intent_service(matched[0])
+    base = depended_on(first)
+    if not base:
+        return None
+    named = base == "internet" and any(m in low for m in vocab("service_mentions_internet"))
+    if not named:
+        return None
+    return next((m for m in matched if intent_service(m) == base), None)
 
 
 def intent_service(problem: str | None) -> str | None:

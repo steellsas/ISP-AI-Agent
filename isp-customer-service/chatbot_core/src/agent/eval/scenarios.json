@@ -134,6 +134,31 @@
       }
     },
     {
+      "id": "R1b_billing_request_farewell_midway",
+      "phone": "+37060020109",
+      "desc": "Gyvas skambutis 2026-09-17: sąskaitos klausimas, klientas atsisveikina kontaktų viduryje -> pasitikslinama dėl KLAUSIMO registravimo, ne meistro",
+      "turns": [
+        "Laba diena, kodėl tokia didelė sąskaita?",
+        "Taip",
+        "Velma",
+        "Žinoma, tiks",
+        "Ačiū, viso gero",
+        "Taip, registruokite",
+        "Bet kada",
+        "Ne, viskas, viso gero"
+      ],
+      "expect": {
+        "identified": true,
+        "reply_any": [
+          "atsakingam"
+        ],
+        "reply_none": [
+          "meistr"
+        ],
+        "record_outcome": "ticket"
+      }
+    },
+    {
       "id": "S6_router_hung_reboot",
       "phone": "+37060020112",
       "desc": "Pakibęs routeris (srauto nėra, MAC/DHCP ok) — vedamas perkrovimas iš maitinimo, išsprendžiama telefonu BE tiketo",
@@ -570,6 +595,25 @@
         "reply_none": [
           "registruoj"
         ]
+      }
+    },
+    {
+      "id": "D2b_outage_holder_mismatch",
+      "phone": "+37060020102",
+      "desc": "Gyvas skambutis 2026-09-17: vardas nesutampa su sutartimi -> patikslinimas; avarija vis tiek pranešama ŠABLONU su atstatymo laiku",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Mano vardas yra Vilma",
+        "Taip, vyro vardu sudaryta sutartis",
+        "Aišku, ačiū, lauksiu"
+      ],
+      "expect": {
+        "verdict_in": "active_outage",
+        "reply_any": [
+          "numatomas atstatymas"
+        ],
+        "record_outcome": "informed_outage"
       }
     },
     {
