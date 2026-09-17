@@ -379,6 +379,7 @@ async def ws_call(ws: WebSocket, session_id: str):
         return
     await ws.accept()
     q = hub.subscribe(session_id)
+    manager.socket_opened(session_id)
 
     async def _pump_events() -> None:
         while True:
@@ -836,6 +837,7 @@ async def ws_call(ws: WebSocket, session_id: str):
             with suppress(Exception):
                 await turn_task
         hub.unsubscribe(session_id, q)
+        manager.socket_closed(session_id)
 
 
 def run() -> None:  # pragma: no cover - manual entry

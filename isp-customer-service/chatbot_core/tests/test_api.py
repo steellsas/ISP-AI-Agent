@@ -161,6 +161,52 @@ class TestEventStream:
                 ws.receive_json()
 
 
+class TestDisconnect:
+    """F-3: a closed call socket ends the call after the grace — unless it reconnects."""
+
+    def _wait_gone(self, sid, seconds=3.0):
+        import time
+
+        from app import main
+
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if main.manager.active_count == 0 or sid not in main.manager._sessions:
+                return True
+            time.sleep(0.05)
+        return False
+
+    def test_disconnect_ends_the_call_with_a_record(self, client, db_connection, monkeypatch):
+        from app import main
+
+        monkeypatch.setattr(main.settings, "ws_disconnect_grace_seconds", 0.1)
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}"):
+            pass
+
+        assert self._wait_gone(sid)
+        with db_connection.cursor() as cur:
+            cur.execute(
+                "SELECT outcome, transport_end FROM conversations WHERE session_id = ?", (sid,)
+            )
+            row = dict(cur.fetchone())
+        assert row["transport_end"] == "ws_disconnect"
+        assert row["outcome"] != "ws_disconnect"  # F-4
+
+    def test_a_reconnect_within_the_grace_keeps_the_call(self, client, monkeypatch):
+        import time
+
+        from app import main
+
+        monkeypatch.setattr(main.settings, "ws_disconnect_grace_seconds", 0.5)
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}"):
+            pass
+        with client.websocket_connect(f"/ws/call/{sid}"):
+            time.sleep(0.8)
+            assert client.delete(f"/sessions/{sid}").json() == {"ended": True}
+
+
 class _FakeASR:
     def transcribe(self, audio, *, language=None, sample_rate=16_000):
         return "neveikia internetas"

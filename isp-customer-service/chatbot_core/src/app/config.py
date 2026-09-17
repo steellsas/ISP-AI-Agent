@@ -21,6 +21,9 @@ class ApiSettings(BaseSettings):
     # seconds without a turn — a forgotten browser tab must not hold a call open.
     session_ttl_seconds: int = 1800
     cleanup_interval_seconds: int = 60
+    # F-3: a closed call socket ends the call after this grace, unless the client
+    # reconnects to the same session in time (a page reload, a network blip).
+    ws_disconnect_grace_seconds: float = 30.0
     cors_origins: list[str] = ["*"]  # demo default; tighten in Phase 7
     # The call-state checkpoint database (one saver per process). None = in memory.
     checkpoint_path: Path | None = DEFAULT_DB_PATH
