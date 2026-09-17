@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -42,7 +43,8 @@ except Exception:
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import ApiSettings
@@ -96,10 +98,16 @@ class TurnRequest(BaseModel):
 _STATIC = Path(__file__).resolve().parent / "static"
 
 
+# The page's own CSS/JS (no build step); `?v=` busts the browser cache per server start.
+app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+_ASSET_VERSION = str(int(time.time()))
+
+
 @app.get("/", include_in_schema=False)
 async def dashboard():
-    """The demo dashboard (single self-contained page, no build step)."""
-    return FileResponse(_STATIC / "index.html")
+    """The demo dashboard (index.html + static/app.css + static/js)."""
+    html = (_STATIC / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("{{v}}", _ASSET_VERSION))
 
 
 @app.get("/health")
