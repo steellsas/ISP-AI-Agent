@@ -287,8 +287,33 @@ def _format_customer_profile(details: dict) -> dict:
             }
             for a in addresses
         ],
-        # get_customer_details already filters to active service plans.
-        "active_services": [s.get("plan_name") for s in services if s.get("plan_name")],
+        "active_services": [
+            s.get("plan_name")
+            for s in services
+            if s.get("plan_name") and s.get("status") == "active"
+        ],
+        # Open tickets (D-12): a repeat call about the same problem appends to one of these.
+        "open_tickets": [
+            {
+                "ticket_id": t.get("ticket_id"),
+                "ticket_type": t.get("ticket_type"),
+                "problem_type": t.get("problem_type"),
+                "status": t.get("status"),
+                "created_at": t.get("created_at"),
+            }
+            for t in details.get("recent_tickets", [])
+            if t.get("status") in ("open", "in_progress")
+        ],
+        # The service profile (D-10): what the customer has and how it is delivered.
+        "services": [
+            {
+                "type": s.get("service_type"),
+                "technology": s.get("technology"),
+                "plan": s.get("plan_name"),
+                "status": s.get("status"),
+            }
+            for s in services
+        ],
     }
 
 
@@ -472,6 +497,35 @@ def find_customer(
         }
 
 
+class _TelemetrySources:
+    """verdict.TelemetrySources over the CRM and network-diagnostic adapters."""
+
+    def __init__(self, db):
+        self._db = db
+
+    def billing_status(self, customer_id: str) -> dict:
+        from crm_mcp.tools.customer_lookup import get_billing_status
+
+        return get_billing_status(self._db, customer_id)
+
+    def outage_for_customer(self, customer_id: str) -> dict:
+        from network_diagnostic_mcp.tools.outage_checks import check_customer_affected_by_outage
+
+        return check_customer_affected_by_outage(self._db, customer_id)
+
+    def port_status(self, customer_id: str) -> dict:
+        from network_diagnostic_mcp.tools.port_diagnostics import check_port_status
+
+        return check_port_status(self._db, customer_id)
+
+    def switch_neighbors(self, switch_id: str, exclude_customer_id: str) -> dict:
+        from network_diagnostic_mcp.tools.port_diagnostics import get_switch_neighbor_summary
+
+        return get_switch_neighbor_summary(
+            self._db, switch_id, exclude_customer_id=exclude_customer_id
+        )
+
+
 def diagnose_connection(customer_id: str) -> dict:
     """
     Run the full no-internet diagnostic and return a deterministic verdict.
@@ -500,7 +554,7 @@ def diagnose_connection(customer_id: str) -> dict:
     try:
         from .verdict import diagnose
 
-        return diagnose(get_db(), customer_id)
+        return diagnose(_TelemetrySources(get_db()), customer_id)
 
     except ImportError as e:
         # Same policy as check_network_status: no raw-SQL fallback in the
@@ -902,7 +956,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                         "affected": True,
                         "active_outages": outages,
                         "outage_count": len(outages),
-                        "message": f"Klientas paveiktas {len(outages)} gedimo(-ų)",
+                        "message": f"The caller is affected by {len(outages)} outage(s)",
                     }
                 else:
                     return {
@@ -911,7 +965,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                         "affected": False,
                         "active_outages": [],
                         "outage_count": 0,
-                        "message": "Klientas nėra paveiktas žinomų gedimų",
+                        "message": "The caller is not affected by known outages",
                     }
 
         # Check by area
@@ -927,16 +981,16 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
                 outages = result.get("outages", [])
                 summary = result.get("summary", {})
 
-                message = result.get("message", "Patikrinta")
+                message = result.get("message", "Checked")
                 # A city-only check returns outages from OTHER streets too —
                 # observed in testing: the model attributed another street's
                 # outage to the caller. Make the tool itself raise the flag.
                 if outages and not street:
                     message = (
-                        "DĖMESIO: tikrinta visame mieste BE gatvės — rasti gedimai "
-                        "gali būti KITOSE gatvėse. Prieš informuojant klientą "
-                        "PRIVALOMA sutikrinti, ar gedimo gatvė (laukas 'street') "
-                        "sutampa su kliento gatve. " + message
+                        "ATTENTION: checked across the whole city WITHOUT a street — the outages found "
+                        "may be on OTHER streets. Before informing the caller you "
+                        "MUST check that the outage street (the 'street' field) "
+                        "matches the caller's street. " + message
                     )
 
                 return {
@@ -956,7 +1010,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
             "affected": False,
             "active_outages": [],
             "outage_count": 0,
-            "message": "Nurodykite rajoną arba kliento ID gedimų patikrinimui",
+            "message": "Give an area or a customer ID to check outages",
         }
 
     except ImportError as e:
@@ -967,7 +1021,7 @@ def check_outages(area: str = None, customer_id: str = None) -> dict:
         return {
             "success": False,
             "error": "outage_check_error",
-            "message": f"Klaida tikrinant gedimus: {e}",
+            "message": f"Error checking outages: {e}",
         }
 
 
@@ -979,7 +1033,7 @@ def _check_outages_fallback(area: str) -> dict:
         "affected": False,
         "active_outages": [],
         "outage_count": 0,
-        "message": "Nėra žinomų gedimų (fallback mode)",
+        "message": "No known outages (fallback mode)",
     }
 
 
@@ -1081,7 +1135,7 @@ def _search_knowledge_fallback(query: str) -> dict:
             "results": [
                 {
                     "title": "Router Troubleshooting",
-                    "content": "Perkraukite routerį: išjunkite 30 sek, įjunkite atgal.",
+                    "content": "Reboot the router: switch it off for 30 s, switch it back on.",
                 }
             ],
         }
@@ -1089,7 +1143,10 @@ def _search_knowledge_fallback(query: str) -> dict:
         return {
             "success": True,
             "results": [
-                {"title": "WiFi", "content": "WiFi slaptažodis yra ant routerio lipduko apačioje."}
+                {
+                    "title": "WiFi",
+                    "content": "The WiFi password is on the sticker under the router.",
+                }
             ],
         }
 
@@ -1100,49 +1157,50 @@ def _search_knowledge_fallback(query: str) -> dict:
     }
 
 
+def append_ticket_note(ticket_id: str, note: str, kind: str = "correction") -> dict:
+    """Append a note to an existing ticket (a correction, or a repeat call about it)."""
+    from crm_mcp.tools.tickets import append_ticket_note as crm_append_ticket_note
+
+    return crm_append_ticket_note(get_db(), {"ticket_id": ticket_id, "note": note, "kind": kind})
+
+
 def create_ticket(
     customer_id: str,
-    problem_type: str,
+    ticket_type: str,
     problem_description: str,
-    priority: str = "medium",
+    priority: str | None = None,
     notes: str = None,
+    problem_type: str | None = None,
 ) -> dict:
     """
-    Create support ticket.
+    Create a support ticket of a knowledge-declared type (knowledge/ticket_types.yaml).
 
     Args:
         customer_id: Customer ID
-        problem_type: Type of problem
+        ticket_type: fault_technician, fault_unclear, billing_request, …
         problem_description: Description
-        priority: Priority level
+        priority: Priority level (the type's own priority when omitted)
         notes: Additional notes
 
     Returns:
         Ticket creation result
     """
-    logger.info(f"[TOOL] create_ticket(customer_id={customer_id}, type={problem_type})")
+    logger.info(f"[TOOL] create_ticket(customer_id={customer_id}, type={ticket_type})")
 
     try:
         db = get_db()
 
+        from agent import ticket_types
         from crm_mcp.tools.tickets import create_ticket as crm_create_ticket
 
-        # The DB column `ticket_type` has a strict CHECK constraint; the model's free-text
-        # `problem_type` (e.g. "equipment_replacement") would violate it and fail the INSERT
-        # (database_error). Coerce to a valid type — anything not already valid becomes
-        # `technician_visit` (every ticket here results in a worker contacting the customer)
-        # — and keep the model's original wording in the details so nothing is lost.
-        valid_ticket_types = {
-            "network_issue",
-            "resolved",
-            "technician_visit",
-            "customer_not_found",
-            "no_service_area",
-        }
-        ticket_type = problem_type if problem_type in valid_ticket_types else "technician_visit"
+        # Only knowledge-declared types reach the CRM; an unknown one is registered as an
+        # unclear fault with its wording kept, so nothing the caller asked for is lost.
         details = problem_description or ""
-        if problem_type not in valid_ticket_types and problem_type:
-            details = f"[{problem_type}] {details}".strip()
+        if not ticket_types.known(ticket_type):
+            if ticket_type:
+                details = f"[{ticket_type}] {details}".strip()
+            ticket_type = "fault_unclear"
+        priority = priority or ticket_types.priority(ticket_type)
 
         args = {
             "customer_id": customer_id,
@@ -1151,6 +1209,7 @@ def create_ticket(
             "summary": (details[:100] if details else "Support request"),
             "details": details,
             "troubleshooting_steps": notes or "",
+            "problem_type": problem_type,
         }
 
         result = crm_create_ticket(db, args)
@@ -1206,8 +1265,10 @@ def save_call_record(
     summary: dict | None = None,
     ticket_id: str | None = None,
     duration_seconds: int | None = None,
+    **record: object,
 ) -> dict:
-    """Persist one call record to the conversations table (Phase 3.10 slice 1b).
+    """Persist one call record to the conversations table (Phase 3.10 slice 1b); `record`
+    carries the contact-record columns (D-14).
 
     Called by the engine at session end, not by the model. Best-effort: a DB or
     import failure is swallowed to an error envelope so it can never break call
@@ -1228,6 +1289,7 @@ def save_call_record(
                 "summary": summary,
                 "ticket_id": ticket_id,
                 "duration_seconds": duration_seconds,
+                **record,
             },
         )
     except Exception as e:  # pragma: no cover - defensive; never break teardown
@@ -1277,15 +1339,11 @@ def run_ping_test(customer_id: str) -> dict:
 
             # Generate human-readable summary
             if status == "healthy":
-                summary = f"Ryšys geras. Vidutinis ping: {stats.get('avg_latency_ms', 'N/A')}ms"
+                summary = f"Connection good. Average ping: {stats.get('avg_latency_ms', 'N/A')}ms"
             elif status == "warning":
-                summary = (
-                    f"Aptiktos problemos. Paketų praradimas: {stats.get('packet_loss_percent', 0)}%"
-                )
+                summary = f"Problems detected. Packet loss: {stats.get('packet_loss_percent', 0)}%"
             else:
-                summary = (
-                    f"Kritinė problema. Paketų praradimas: {stats.get('packet_loss_percent', 0)}%"
-                )
+                summary = f"Critical problem. Packet loss: {stats.get('packet_loss_percent', 0)}%"
 
             return {
                 "success": True,
@@ -1311,14 +1369,14 @@ def run_ping_test(customer_id: str) -> dict:
             "customer_id": customer_id,
             "status": "healthy",
             "statistics": {"avg_latency_ms": 25, "packet_loss_percent": 0},
-            "summary": "Ryšys normalus (fallback mode)",
+            "summary": "Connection normal (fallback mode)",
         }
     except Exception as e:
         logger.error(f"Error in run_ping_test: {e}", exc_info=True)
         return {
             "success": False,
             "error": "ping_test_error",
-            "message": f"Klaida atliekant ping testą: {e}",
+            "message": f"Error running the ping test: {e}",
         }
 
 
@@ -1344,7 +1402,7 @@ def close_case(reason: str = "resolved") -> dict:
         "success": True,
         "case_closed": True,
         "reason": reason,
-        "message": "Byla uždaroma — pereinama prie atsisveikinimo.",
+        "message": "Case closing — moving to the goodbye.",
     }
 
 
@@ -1533,9 +1591,9 @@ REAL_TOOLS = [
         description="Create support ticket for technician visit or escalation. Only use when problem cannot be resolved remotely.",
         parameters={
             "customer_id": {"type": "string", "description": "Customer ID", "required": True},
-            "problem_type": {
+            "ticket_type": {
                 "type": "string",
-                "description": "Type: network_issue, technician_visit, equipment_replacement",
+                "description": "Type from knowledge/ticket_types.yaml, e.g. fault_technician",
             },
             "problem_description": {
                 "type": "string",
@@ -1543,6 +1601,10 @@ REAL_TOOLS = [
             },
             "priority": {"type": "string", "description": "Priority: low, medium, high, critical"},
             "notes": {"type": "string", "description": "Additional notes for technician"},
+            "problem_type": {
+                "type": "string",
+                "description": "The caller's problem (intent), e.g. internet_down",
+            },
         },
         function=create_ticket,
     ),

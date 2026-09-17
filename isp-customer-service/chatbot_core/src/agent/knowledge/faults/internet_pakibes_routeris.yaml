@@ -19,57 +19,58 @@
 # TAIP uždaro tik telemetrijai sutinkant (srautas grįžo ARBA flap).
 verdict: router_hung
 meta:
-  pavadinimas: "Nėra interneto — routeris matomas, bet srautas nevaikšto (pakibęs routeris)"
-  domenas: internet
-  priklauso_nuo: []
-  tags: [internet, nera_interneto, pakibes_routeris, perkrovimas, reboot]
-  vairuotojas: solveris
+  title: "No internet — the router is visible but no traffic flows (hung router)"
+  domain: internet
 problem: internet_down
 playbook: troubleshooting/internet_pakibes_routeris
+# The symptom the caller can see — asked when a recheck points here (D-05).
+confirm_key: "pack.router_hung.confirm"
 evidence:
   client:
     fail_scope:
-      label: "kur neveikia"
-      reiksmes:
-        visuose: "visuose įrenginiuose"
-        viename: "tik viename įrenginyje"
-      reikia: "ar internetas neveikia visuose įrenginiuose, ar tik viename"
-      reiskia:
-        visuose: "greičiausiai pakibo pats routeris — perkrausime jį"
-        viename: "routeris veikia — problema tame įrenginyje ar kelyje iki jo"
-      klausimas: "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"
-      kodel: "Linijoje routerį matome, bet srautas nevaikšto — jei neveikia visur, greičiausiai pakibo pats routeris; jei tik viename, problema tame įrenginyje."
-      paprasciau: "Pažiūrėkite telefonu ir, jei turite, kompiuteriu: ar internetas neveikia abiejuose, ar tik viename?"
-      patikslinimas: "Norėjau patikslinti — ar tikrinote daugiau nei viename įrenginyje?"
-      atsakymai:
-        visuose: [visuose, visur, "nė viename", "ne viename neveikia", abiejuose, niekur]
-        viename: [viename, "tik ", telefone, kompiuteryje, planšetėje, plansete]
-  patvirtinta_kai: []
-  paneigta_kai: []
-# reikalinga — tiketo priežastis, kai perkrovimas NEatstato (ticket_flow /
-# TICKET_NEED_LT atitikmuo šiam gedimui).
-reikalinga: "routeris perkrautas, bet ryšys neatsistatė — tikėtinas routerio gedimas"
-# Sprendimai pagal surinktus faktus — vykdo ŽINGSNIŲ MEDIS (tada:walker).
-sprendimai:
-- jei: [fail_scope=visuose]
-  tada: walker
-  zingsnis: rh_ability
-  aprasymas: "perkrauti routerį iš maitinimo — pakibęs routeris po to dažniausiai atsistato; pirma klausiama, ar klientas GALI dabar prieiti"
-- jei: [fail_scope=viename]
-  tada: walker
-  zingsnis: rh_device
-  aprasymas: "patikrinti tą įrenginį — routeris veikia, problema kelyje iki įrenginio"
+      label_key: "pack.router_hung.fail_scope.label"
+      value_label_keys:
+        all: "pack.router_hung.fail_scope.values.all"
+        one: "pack.router_hung.fail_scope.values.one"
+      goal: "whether the internet fails on all devices or only on one"
+      meaning:
+        all: "the router itself has most likely hung — we will reboot it"
+        one: "the router works — the problem is in that device or on the way to it"
+      question_key: "pack.router_hung.fail_scope.question"
+      why_key: "pack.router_hung.fail_scope.why"
+      simpler_key: "pack.router_hung.fail_scope.simpler"
+      clarify_key: "pack.router_hung.fail_scope.clarify"
+      answers:
+        all: answers_router_hung_fail_scope_all
+        one: answers_router_hung_fail_scope_one
+  confirmed_when: []
+  refuted_when: []
+# ticket_need_key — tiketo priežastis, kai perkrovimas NEatstato (skaito
+# decide/rules/ticket.py `ticket_need` per evidence.fault_need šiam gedimui).
+ticket_need_key: "pack.router_hung.ticket_need"
+# Sprendimai pagal surinktus faktus — vykdo procedūra (action: procedure,
+# decide/procedure.py).
+solutions:
+- when: [fail_scope=all]
+  action: procedure
+  step_role: ability_check
+  description_key: "pack.router_hung.solution.s1"
+- when: [fail_scope=one]
+  action: procedure
+  step_role: device_path
+  description_key: "pack.router_hung.solution.s2"
 steps:
 # Pirmas žingsnis = masto klausimas (2026-08-31 skambučio pamoka: pradinis
-# žingsnio hint'as turi SUTAPTI su solverio evidence klausimu — kitaip
-# naratorius perskaito instrukciją anksčiau už klausimą). Atsakymus skaito
-# LEDGER'is (fail_scope evidence, walker'is dar nevairuoja); on: čia tik
+# žingsnio hint'as turi SUTAPTI su evidence klausimu (decide/rules/evidence.py) —
+# kitaip naratorius perskaito instrukciją anksčiau už klausimą). Atsakymus skaito
+# LEDGER'is (fail_scope evidence, procedūra dar nevairuoja); on: čia tik
 # rodyklė, sprendimai sync'ina tą patį kelią.
 - id: rh_scope
+  role: ask_scope
   kind: confirm
   detector: scope
   rag_section: 0
-  tikslas: "aišku, ar internetas neveikia visuose įrenginiuose, ar tik viename"
+  goal: "clear whether the internet fails on all devices or only on one"
   'on':
     all: rh_ability
     one: rh_device
@@ -79,103 +80,92 @@ steps:
     traffic flows — then ask ONE question and WAIT: does the internet fail on ALL home devices
     or just one? Do NOT instruct anything yet, do NOT mention rebooting.'
   answers:
-    all: sako, kad internetas neveikia VISUOSE įrenginiuose
-    one: sako, kad neveikia tik VIENAME įrenginyje
-    phone: AIŠKIAI įvardija telefoną ar planšetę
-    computer: AIŠKIAI įvardija kompiuterį ar nešiojamą
+    all: "pack.router_hung.steps.rh_scope.answers.all"
+    one: "pack.router_hung.steps.rh_scope.answers.one"
+    phone: "pack.router_hung.steps.rh_scope.answers.phone"
+    computer: "pack.router_hung.steps.rh_scope.answers.computer"
 # P-C GEBĖJIMO KLAUSIMAS (Andrius 2026-09-08): hipotezė jau ištransliuota
 # (rh_scope hint), toliau NE komanda, o klausimas ar klientas GALI dabar —
 # „taip" → instrukcija; „nežinau kur" → pagalba surasti; „negaliu/ne namie"
 # → namų darbas + callback (be spaudimo į tiketą).
 - id: rh_ability
+  role: ability_check
   kind: confirm
   detector: yes_no
   rag_section: 1
-  tikslas: "aišku, ar klientas gali DABAR prieiti prie routerio ir jį perkrauti"
+  goal: "clear whether the customer can get to the router RIGHT NOW and reboot it"
   'on':
     'yes': rh_reboot
     'no': rh_homework
     lost: rh_locate
-  hint: 'The hypothesis is already told (router visible, no traffic — most likely hung). Now ONE
-    short question and WAIT: a reboot would help — can they get to the router right now? Do NOT
-    give the reboot instruction yet. Length model: "Padėtų routerio perkrovimas. Ar galite dabar
-    prieiti prie routerio?"'
+  hint: "The hypothesis is already told (router visible, no traffic — most likely hung). Now ONE short question and WAIT: a reboot would help — can they get to the router right now? Do NOT give the reboot instruction yet. Length model: <<examples:common/ability_reboot>>"
   answers:
-    'yes': gali dabar prieiti prie routerio ir jį perkrauti
-    'no': negali dabar / nėra namie / nepatogu šiuo metu
-    lost: nežino, kur routeris yra arba kaip jis atrodo
+    'yes': "pack.router_hung.steps.rh_ability.answers.yes"
+    'no': "pack.router_hung.steps.rh_ability.answers.no"
+    lost: "pack.router_hung.steps.rh_ability.answers.lost"
 # P-C pagalba: klientas nežino, kur routeris — padedam surasti (agento
 # pagalba, Andrius 2026-09-08).
 - id: rh_locate
+  role: locate_device
   kind: confirm
   detector: yes_no
   rag_section: 1
-  tikslas: "klientas surado routerį (dėžutė su lemputėmis, prie jos ateina interneto laidas)"
+  goal: "the customer found the router (a box with lights, the internet cable runs into it)"
   'on':
     'yes': rh_reboot
     'no': rh_homework
-  hint: 'They do not know where the router is. Describe it simply in ONE-TWO sentences and ask if
-    they can see it: a small box with little lights, usually in the hallway or by a window; the
-    internet cable from the stairwell runs into it. Length model: "Tai nedidelė dėžutė su
-    lemputėmis — dažniausiai prieškambaryje ar prie lango, prie jos ateina laidas iš laiptinės.
-    Matote tokią?"'
+  hint: "They do not know where the router is. Describe it simply in ONE-TWO sentences and ask if they can see it: a small box with little lights, usually in the hallway or by a window; the internet cable from the stairwell runs into it. Length model: <<examples:router_hung/rh_locate>>"
   answers:
-    'yes': surado routerį / mato tokią dėžutę
-    'no': neranda / negali dabar ieškoti
+    'yes': "pack.router_hung.steps.rh_locate.answers.yes"
+    'no': "pack.router_hung.steps.rh_locate.answers.no"
 # P-C namų darbas: negali dabar — instrukcija ATEIČIAI + callback uždarymas;
 # meistras tik jei pats paprašo ('no' į „Gerai?" = nori meistro dabar).
 - id: rh_homework
+  role: homework
   kind: confirm
   detector: yes_no
   rag_section: 1
-  tikslas: "sutarta: grįžęs perkraus routerį, o jei neatsistatys — paskambins"
+  goal: "agreed: when back, they reboot the router, and call if it does not recover"
   'on':
     'yes': callback
     'no': escalate
-  hint: 'They cannot do it now — give the homework warmly in TWO-THREE short sentences and ask
-    consent: when they are back, pull the power lead out of the router itself, wait 5 seconds,
-    plug it back; if the internet does not return within a couple of minutes, call again and we
-    will help or register a technician. Length model: "Suprantu. Tada kai grįšite — ištraukite
-    routerio maitinimo laidą, palaukite 5 sekundes ir įkiškite atgal. Jei internetas neatsiras —
-    paskambinkite, padėsime toliau arba užregistruosiu meistrą. Gerai?"'
+  hint: "They cannot do it now — give the homework warmly in TWO-THREE short sentences and ask consent: when they are back, pull the power lead out of the router itself, wait 5 seconds, plug it back; if the internet does not return within a couple of minutes, call again and we will help or register a technician. Length model: <<examples:router_hung/rh_homework>>"
   answers:
-    'yes': sutinka — perkraus grįžęs ir paskambins, jei neveiks
-    'no': nesutinka / nori, kad meistras būtų registruojamas dabar
+    'yes': "pack.router_hung.steps.rh_homework.answers.yes"
+    'no': "pack.router_hung.steps.rh_homework.answers.no"
 # Perkrovimo instrukcija — kortelės šerdis. Dažniausios klaidos įaustos į hint:
 # prailgintuvas / mygtukas = nepilnas perkrovimas; du įrenginiai = perkrauna ne tą.
 - id: rh_reboot
+  role: reboot
   kind: instruct
   rag_section: 1
   goto: rh_check
-  tikslas: "routeris perkrautas iš maitinimo (ištrauktas maitinimo laidas, palaukta ~5 s, įkištas atgal)"
-  hint: 'They CAN reach the router (rh_ability said yes) — the hypothesis was already told, do
-    NOT repeat it. ONE instruction and WAIT. VOICE: THREE short sentences MAXIMUM. Do NOT echo
-    their answer back ("Supratau — galite...") — no recap, no extra warnings (the retry step
-    carries the clarifications). Length model — do not read verbatim, but do not exceed it:
-    "Puiku. Ištraukite maitinimo laidą iš paties routerio, palaukite 5 sekundes ir įkiškite
-    atgal — pasikraus per minutę. Pasakykite, kai padarysite."'
+  goal: "the router power-cycled (power lead pulled out, ~5 s wait, plugged back in)"
+  hint: "They CAN reach the router (rh_ability said yes) — the hypothesis was already told, do NOT repeat it. ONE instruction and WAIT. VOICE: THREE short sentences MAXIMUM. Do NOT echo their answer back <<examples:router_hung/rh_reboot.echo>> — no recap, no extra warnings (the retry step carries the clarifications). Length model — do not read verbatim, but do not exceed it: <<examples:router_hung/rh_reboot>>"
 # Patikra po perkrovimo — kliento žodis + telemetrija KARTU. Variklis šį žingsnį
 # sprendžia pats (advance_reboot_check): srautas grįžo / perkrovimo nesimatė
 # (port flap = liudininkas) / perkrauta bet neatsistatė — trys skirtingi keliai.
 - id: rh_check
+  role: verify_reboot
   kind: confirm
   detector: reboot_check
   rag_section: 2
-  tikslas: "aišku, ar po perkrovimo internetas atsistatė (lemputė mirksi, puslapis atsidaro)"
+  goal: "clear whether the internet recovered after the reboot (the light blinks, a page opens)"
   hint: 'They rebooted. Give it about a minute, then ask TWO simple checks in one short question:
     is the internet light BLINKING now, and does a web page open? The engine ALSO silently
     re-reads telemetry (did traffic return; did the device actually drop off the line during the
     reboot). Do NOT declare success yourself — wait for their answer.'
   answers:
-    'yes': internetas atsistatė — lemputė mirksi, puslapis atsidaro, veikia
-    'no': internetas vis dar neveikia po perkrovimo
+    'yes': "pack.router_hung.steps.rh_check.answers.yes"
+    'no': "pack.router_hung.steps.rh_check.answers.no"
 # Kartojimas su patikslinimu (patvirtinta kortelėje: 1 bandymas) — telemetrija
 # NEMATĖ, kad įrenginys būtų dingęs, t. y. pilno perkrovimo nebuvo.
 - id: rh_reboot_retry
+  role: reboot_retry
   kind: instruct
   rag_section: 3
   goto: rh_check
-  tikslas: "routeris TIKRAI perkrautas iš paties maitinimo lizdo (ne prailgintuvas, ne mygtukas, ne kitas įrenginys)"
+  goal: "the router REALLY power-cycled at its own power socket (not the extension cord, not the button, not another device)"
   hint: 'Telemetry shows the device NEVER dropped off the line — so the router was not actually
     power-cycled. Say it kindly, without blaming: sometimes the extension cord gets unplugged, or
     the button is pressed, or a SECOND similar box gets rebooted. ONE clarifying instruction:
@@ -184,31 +174,31 @@ steps:
 # Kliento pusės kelias: neveikia tik viename įrenginyje ARBA srautas grįžo, bet
 # klientui vis dar neveikia — routeris gyvas, problema kelyje iki įrenginio.
 - id: rh_device
+  role: device_path
   kind: instruct
   rag_section: 4
   goto: rh_verify_dev
-  tikslas: "patikrintas įrenginys, kuriame neveikia (WiFi įjungtas / prisijungta iš naujo / kabelis įkištas)"
+  goal: "the failing device checked (Wi-Fi on / reconnected / cable plugged in)"
   hint: 'The router side works — the problem is on the path to ONE device. Guide ONE simple check
     for that device and wait: Wi-Fi on and connected to their own network (reconnect if needed),
     or the cable firmly plugged if wired. Do not mention cables for a phone/tablet.'
 - id: rh_verify_dev
+  role: ask_restored
   kind: confirm
   detector: restored
   rag_section: 5
-  tikslas: "aišku, ar tame įrenginyje internetas jau veikia"
+  goal: "clear whether the internet already works on that device"
   'on':
     'yes': resolve
     'no': escalate
   hint: 'Ask whether it works on that device now. Yes -> resolved. No -> it is beyond simple help
     — register the fault.'
   answers:
-    'yes': tame įrenginyje internetas dabar veikia
-    'no': tame įrenginyje interneto vis tiek nėra
+    'yes': "pack.router_hung.steps.rh_verify_dev.answers.yes"
+    'no': "pack.router_hung.steps.rh_verify_dev.answers.no"
 - id: escalate
+  role: escalate
   kind: escalate
   tools: []
   rag_section: 6
-  hint: 'The reboot did not bring the connection back (or the caller cannot check now) — likely a
-    failing router. Say you WILL register the fault — "užregistruosiu" (future tense), NEVER
-    "užregistravau": the registration happens only after the contact questions, and the closing
-    line announces it. The ticket note must say the router WAS power-cycled and did not recover.'
+  hint: "The reboot did not bring the connection back (or the caller cannot check now) — likely a failing router. Say you WILL register the fault — <<examples:common/register_future>>: the registration happens only after the contact questions, and the closing line announces it. The ticket note must say the router WAS power-cycled and did not recover."

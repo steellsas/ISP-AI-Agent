@@ -123,7 +123,8 @@ this plan beyond keeping imports working.
 
 ## 6. Definition of Done
 
-- Every verdict in `A/verdict.py decide()` appears in at least one scenario `verdict_in`.
+- Every verdict in `A/verdict.py decide()` appears in at least one scenario `verdict_in`,
+  except `no_port_data` (no seeded customer without a port; unit test accepted — plan Q-3).
 - `docs/refactoring/baseline/` committed with two runs and README.
 - All paths in §3 "Delete" are gone (the "Keep" list stays); importer grep for each
   deleted module name returns nothing.

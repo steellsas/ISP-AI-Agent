@@ -14,68 +14,44 @@ partial transcript (E1) and hints how much trailing silence to require:
 
 Deterministic by design: partials are jittery, so the reading relies only on
 the same word-level readers the engine already trusts (read_pending_answer,
-detect_farewell) plus a file-editable trailing-word list
-(knowledge/endpoint.yaml). Behaviour lives in the file; this module is the
-mechanics. Fail-soft: any hiccup means "normal".
+detect_farewell) plus the locale's trailing-word list
+(vocabulary `continuation_words`). This module is the mechanics. Fail-soft: any
+hiccup means "normal".
 """
 
 from __future__ import annotations
 
 import functools
 import logging
-import os
-from pathlib import Path
 from typing import Any
+
+from .contract import limits
+from .contract.locale import active_language
 
 logger = logging.getLogger(__name__)
 
-_PATH = Path(__file__).resolve().parent / "knowledge" / "endpoint.yaml"
 
-# Fallback when the knowledge file is missing/broken — the same piloted list.
-_DEFAULT_TRAILING = [
-    "bet", "ir", "o", "tai", "nes", "kad", "kai", "arba", "tada", "dar",
-    "gal", "nu", "na", "taigi", "vadinasi", "pavyzdžiui",
-    "į", "iš", "su", "prie", "ant", "per", "apie",
-]  # fmt: skip
-
-
-@functools.lru_cache(maxsize=1)
-def _trailing_words() -> frozenset[str]:
+@functools.lru_cache(maxsize=4)
+def _trailing_words(language: str) -> frozenset[str]:
+    from .contract.locale import vocab
     from .evidence import _fold
 
-    words = _DEFAULT_TRAILING
-    try:
-        import yaml
-
-        raw = yaml.safe_load(_PATH.read_text(encoding="utf-8")) or {}
-        loaded = [str(w) for w in (raw.get("tesiniai") or []) if str(w).strip()]
-        if loaded:
-            words = loaded
-    except Exception as e:  # fail-soft: knowledge must never break the call
-        logger.warning(f"endpoint vocab load failed ({e}); using built-ins")
-    return frozenset(_fold(w) for w in words)
-
-
-def _ms(env_key: str, default: int) -> int:
-    try:
-        return int(float(os.environ.get(env_key, str(default))))
-    except ValueError:
-        return default
+    return frozenset(_fold(w) for w in vocab("continuation_words"))
 
 
 def fast_ms() -> int:
-    return _ms("ENDPOINT_FAST_MS", 350)
+    return limits.get("endpoint_fast_ms")
 
 
 def slow_ms() -> int:
-    return _ms("ENDPOINT_SLOW_MS", 1400)
+    return limits.get("endpoint_slow_ms")
 
 
 def story_ms() -> int:
-    return _ms("ENDPOINT_STORY_MS", 1800)
+    return limits.get("endpoint_story_ms")
 
 
-def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
+def classify_endpoint(state: Any, rt: Any, text: str | None) -> tuple[str, int | None]:
     """(mode, silence_ms) for the utterance-so-far; ("normal", None) on any
     doubt. Order matters: an unfinished thought outranks a mapped answer —
     "nedega, bet" must WAIT even though "nedega" maps."""
@@ -89,14 +65,14 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     if bare.endswith((",", "-", "—", "…")):
         return ("slow", slow_ms())
     last = _fold(bare).split()[-1] if _fold(bare).split() else ""
-    if last in _trailing_words():
+    if last in _trailing_words(active_language()):
         return ("slow", slow_ms())
 
     # Complete expected answer: the pending evidence question's deterministic
     # reader maps the whole utterance to a canonical value.
     try:
-        pending = getattr(engine, "_evidence_last_ask_key", None)
-        r = getattr(engine.state, "resolution", None) or {}
+        pending = state.diagnosis.pending_evidence_key
+        r = getattr(state.resolution, "procedure", None) or {}
         if pending and r.get("verdict"):
             from .evidence import read_pending_answer, spec_for
 
@@ -109,7 +85,7 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
 
     # A farewell is complete by definition — close the turn promptly.
     try:
-        from .resolution import detect_farewell
+        from .perceive.detectors import detect_farewell
 
         if detect_farewell(stripped):
             return ("fast", fast_ms())
@@ -122,7 +98,7 @@ def classify_endpoint(engine: Any, text: str | None) -> tuple[str, int | None]:
     # cut waits longer. Once the problem is set, answers return to the normal
     # window.
     try:
-        if getattr(engine.state, "problem_type", None) is None:
+        if getattr(state.intake, "problem_type", None) is None:
             return ("slow", story_ms())
     except Exception:  # pragma: no cover
         pass

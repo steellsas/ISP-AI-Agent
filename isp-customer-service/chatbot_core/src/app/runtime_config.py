@@ -67,17 +67,6 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        # AgentSession reads AGENT_ENGINE at construction, so the switch takes
-        # effect on the NEXT call — running calls keep their engine. "graph" =
-        # legacy LangGraph, "v2" = graph_v2 (docs/ROADMAP_REFACTORING.md),
-        # "legacy" = direct ReactAgent loop (rollback).
-        "key": "AGENT_ENGINE",
-        "label": "Orkestravimo variklis (v2 = numatytasis)",
-        "options": ["v2", "graph", "legacy"],
-        "scope": "new_calls",
-        "kind": "env",
-    },
-    {
         # Persona (R5c): evidence questions worded by the NARRATOR from the
         # pack's goal (reikia) vs read verbatim from the script. off = rollback.
         "key": "NARRATOR_QUESTIONS",
@@ -89,13 +78,6 @@ SCHEMA: list[dict[str, Any]] = [
     {
         "key": "CLASSIFIER",
         "label": "LLM klasifikatorius (atsakymų skaitymas)",
-        "options": ["on", "off"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        "key": "SOLVER_DRIVE",
-        "label": "Mąstytojas vairuoja (solver drive)",
         "options": ["on", "off"],
         "scope": "immediate",
         "kind": "env",
@@ -161,15 +143,6 @@ SCHEMA: list[dict[str, Any]] = [
         "key": "TTS_PITCH",
         "label": "Balso tonas (žemesnis = techniškesnis)",
         "options": ["+0Hz", "-10Hz", "-20Hz", "+10Hz"],
-        "scope": "immediate",
-        "kind": "env",
-    },
-    {
-        # S1 (2026-08-24): šakų paruošimas kol klientas atsakinėja — atsakymas
-        # iš kešo ~0 s, kai atsakymas telpa į numatytą šaką.
-        "key": "SPECULATION",
-        "label": "Spekuliatyvus paruošimas (šakos iš anksto)",
-        "options": ["on", "off"],
         "scope": "immediate",
         "kind": "env",
     },
@@ -276,11 +249,11 @@ SCHEMA: list[dict[str, Any]] = [
         "kind": "env",
     },
     {
-        # W2 (2026-08-25): tylusis analitikas — fone skaito visą pokalbį ir
-        # duoda naratoriui patariamųjų pastabų (faktų ir eigos nekeičia).
-        "key": "ANALYST",
-        "label": "Tylusis analitikas (fone, patariamasis)",
-        "options": ["on", "off"],
+        # Analitikas (M5): skaito visą pokalbį ir grąžina tipizuotus signalus.
+        # sync — ėjimo pabaigoje, async — fone (balsui), off — išjungtas.
+        "key": "ANALYST_MODE",
+        "label": "Analitikas (signalai): sync / async / off",
+        "options": ["sync", "async", "off"],
         "scope": "immediate",
         "kind": "env",
     },

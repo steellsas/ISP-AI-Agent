@@ -8,15 +8,16 @@ import pytest
 
 
 def _agent(verdict, step, monkeypatch, reason_now):
-    from agent import walker_flow
-    from agent.react_agent import ReactAgent
 
-    agent = ReactAgent(caller_phone="+37060030305")
-    agent.state.customer_id = "CUST305"
-    agent.state.problem_type = "internet_down"
-    agent.state.resolution = {"verdict": verdict, "step": step, "asked": True}
-    monkeypatch.setattr(ReactAgent, "_fresh_diagnose_reason", lambda self: reason_now)
-    assert walker_flow  # imported for parity with other suites
+    from tests.calls import make_agent
+
+    agent = make_agent("+37060030305")
+    agent.state.identity.customer_id = "CUST305"
+    agent.state.intake.problem_type = "internet_down"
+    agent.state.resolution.procedure = {"verdict": verdict, "step": step, "asked": True}
+    monkeypatch.setattr(
+        "agent.execute.diagnosis.fresh_diagnose_reason", lambda state, rt: reason_now
+    )
     return agent
 
 
@@ -67,27 +68,46 @@ class TestAdvanceLineCheck:
     """Variklis perskaito liniją ir sulieja su kliento žodžiu."""
 
     def test_line_still_down_escalates_honestly(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance_line_check
+
         agent = _agent("link_down_local", "ll_recheck", monkeypatch, "link_down_local")
-        agent._advance_line_check(agent.state.resolution, "Taip, viskas gerai dabar")
-        r = agent.state.resolution
+        advance_line_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Taip, viskas gerai dabar"
+        )
+        r = agent.state.resolution.procedure
         assert r["step"] == "escalate"  # žodis „gerai" NEnusveria linijos fakto
-        assert "kabelio pažeidimas" in r["escalate_reason"]
+        assert r["escalate_reason"] == "line_not_restored"
 
     def test_line_ok_caller_yes_resolves(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance_line_check
+
         agent = _agent("link_down_local", "ll_recheck", monkeypatch, "healthy_to_router")
-        agent._advance_line_check(agent.state.resolution, "Taip, atsirado internetas!")
-        assert agent.state.case_closed and agent.state.closed_reason == "resolved"
-        assert agent.state.ticket_id is None
+        advance_line_check(
+            agent.state,
+            agent.runtime,
+            agent.state.resolution.procedure,
+            "Taip, atsirado internetas!",
+        )
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "resolved"
+        assert agent.state.ticket.ticket_id is None
 
     def test_line_ok_caller_no_escalates(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance_line_check
+
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
-        agent._advance_line_check(agent.state.resolution, "Ne, vis tiek neveikia")
-        assert agent.state.resolution["step"] == "escalate"
+        advance_line_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Ne, vis tiek neveikia"
+        )
+        assert agent.state.resolution.procedure["step"] == "escalate"
 
     def test_unclear_with_recovered_line_holds(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance_line_check
+
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
-        agent._advance_line_check(agent.state.resolution, "Nu palaukit, žiūriu")
-        assert agent.state.resolution["step"] == "crc_recheck"  # laikoma, perklausiama
+        advance_line_check(
+            agent.state, agent.runtime, agent.state.resolution.procedure, "Nu palaukit, žiūriu"
+        )
+        assert agent.state.resolution.procedure["step"] == "crc_recheck"  # laikoma, perklausiama
 
 
 class TestSeeds:
@@ -114,22 +134,26 @@ class TestBlendGuard:
     resolved. Blend žingsniai (ll/crc_recheck) — variklio, žodis jų nevaro."""
 
     def test_nepadejo_at_cable_never_resolves(self, db_connection, monkeypatch):
+        from agent.decide.procedure import advance_instruct
         from agent.resolution import get_strategy
 
         agent = _agent("crc_errors", "crc_cable", monkeypatch, "crc_errors")
         st = get_strategy("crc_errors")
-        agent._advance_instruct(
-            agent.state.resolution,
+        advance_instruct(
+            agent.state,
+            agent.runtime,
+            agent.state.resolution.procedure,
             st.step("crc_cable"),
             st,
             "Gal ir užlenkės, bet perkišau, nepadėjo",
         )
-        r = agent.state.resolution
+        r = agent.state.resolution.procedure
         assert r["step"] == "crc_recheck"  # patikros klausimas eina, byla NEuždaryta
-        assert not agent.state.case_closed
+        assert not agent.state.closing.case_closed
 
     def test_restored_vocabulary_negations(self, db_connection):
-        from agent.resolution import Outcome, detect_restored
+        from agent.perceive.detectors import detect_restored
+        from agent.resolution import Outcome
 
         assert detect_restored("Perkišau, bet nepadėjo") is Outcome.NO
         assert detect_restored("Nieko nepasikeitė") is Outcome.NO
@@ -141,18 +165,24 @@ class TestBlendGuard:
     def test_still_down_at_closing_reopens(self, db_connection, monkeypatch):
         from types import SimpleNamespace
 
-        from agent.graph_v2.nodes.closing import make_closing_node
+        from agent.graph_v2.state import GraphState, TurnScratch
+        from langgraph.runtime import Runtime
+
+        from tests.calls import run_turn_nodes
 
         agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
-        s = agent.state
-        s.case_closed = True
-        s.closed_reason = "resolved"
-        node = make_closing_node(agent)
-        upd = node(SimpleNamespace(turn=SimpleNamespace(user_input="Internetas neveikia.")))
+        agent.state.closing.case_closed = True
+        agent.state.closing.closed_reason = "resolved"
+        runtime = Runtime(context=agent.runtime)
+        upd = run_turn_nodes(
+            agent.state.model_copy(update={"turn": TurnScratch(user_input="Internetas neveikia.")}),
+            runtime,
+        )
+        s = GraphState(**upd)  # the state after the turn
         assert upd["turn"].reply  # registracijos dialogas, ne „geros dienos"
         assert "geros dienos" not in upd["turn"].reply.lower()
-        assert not s.is_complete
-        assert "vis tiek neveikia" in (s.resolution.get("escalate_reason") or "")
+        assert not s.closing.is_complete
+        assert s.resolution.procedure.get("escalate_reason") == "still_down_at_closing"
 
 
 @pytest.mark.usefixtures("db_connection")

@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import logging
 import math
-import os
 import struct
 from array import array
+
+from agent.contract import limits
 
 logger = logging.getLogger(__name__)
 
@@ -36,29 +37,23 @@ _MAX_SEGMENT_S = 30.0  # force a cut — never grow a segment unbounded
 _LONG_SPEECH_MS = 4000  # D5: a story this long earns one "Mhm" backchannel
 
 
-def _env_f(key: str, default: float) -> float:
-    try:
-        return float(os.environ.get(key, str(default)))
-    except ValueError:
-        return default
-
-
 def vad_threshold() -> float:
-    return _env_f("SERVER_VAD_THR", 0.010)
+    return limits.get("server_vad_threshold")
 
 
 def default_silence_ms() -> int:
-    return int(_env_f("SERVER_SIL_MS", 900))
+    return limits.get("server_silence_ms")
 
 
 def partial_interval_ms() -> int:
-    return int(_env_f("PARTIAL_INTERVAL_S", 1.0) * 1000)
+    return int(limits.get("partial_interval_s") * 1000)
 
 
 def interrupt_fast_ms() -> int:
-    """P1 (live 2026-08-26: TTFA po pertraukimo 6–10 s): kirtęs agentą žmogus
-    mintį jau turi — po cut'o segmentui užtenka greito tylos lango."""
-    return int(_env_f("ENDPOINT_FAST_MS", 350))
+    """P1 (live 2026-08-26: TTFA after an interruption 6–10 s): a caller who cut
+    the agent off already has the thought — after the cut the segment only needs
+    the fast silence window."""
+    return limits.get("endpoint_fast_ms")
 
 
 def pcm_from_wav(frame: bytes) -> tuple[bytes, int]:

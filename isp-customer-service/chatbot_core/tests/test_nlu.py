@@ -9,7 +9,7 @@ Run: pytest tests/test_nlu.py -v
 """
 
 import pytest
-from agent.nlu import AddressReading, extract_address
+from agent.perceive.nlu import AddressReading, extract_address
 
 STREETS = [
     "Tilžės g.",
@@ -91,16 +91,16 @@ class TestConservative:
         assert r.city is None  # Vilnius is not served -> no locality match
 
 
-class TestLoadRegistryIntegration:
-    def test_extract_over_seed_registry(self, db_connection):
-        from agent.nlu import load_registry
-        from agent.tools import get_db
+class TestAddressRegistryIntegration:
+    def test_seed_registry_is_served_by_the_provider(self, db_connection):
+        from agent.tooling import LocalToolProvider
 
-        streets, localities = load_registry(get_db())
-        assert "Tilžės g." in streets
-        assert "Šiauliai" in localities
+        registry = LocalToolProvider().address_registry()
+        assert "Tilžės g." in registry.streets
+        assert "Tilžės" in registry.street_names
+        assert "Šiauliai" in registry.localities
 
-        r = extract_address("Tilžės 60 butas 7", streets, localities)
+        r = extract_address("Tilžės 60 butas 7", registry.streets, registry.localities)
         assert r.street == "Tilžės g."
         assert r.house == "60"
         assert r.apartment == "7"
@@ -115,19 +115,19 @@ class TestClassifyProblem:
             ("internetas labai lėtas", "internet_slow"),
             ("viskas stringa ir buferiuoja", "internet_slow"),
             ("neveikia televizija", "tv"),
-            ("klausimas dėl sąskaitos", "saskaitos"),
-            ("noriu sumokėti", "saskaitos"),
+            ("klausimas dėl sąskaitos", "billing"),
+            ("noriu sumokėti", "billing"),
             ("labas, kaip sekasi", None),
         ],
     )
     def test_keyword_classification(self, text, expected):
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem(text) == expected
 
     def test_slow_beats_down(self):
         """'lėtas internetas' is slow, not down (specific keyword first)."""
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem("internetas lėtas") == "internet_slow"
 
@@ -136,35 +136,46 @@ class TestExtractSymptoms:
     @pytest.mark.parametrize(
         "text,expected",
         [
-            ("lemputės nedega", {"lights": "nedega"}),
-            ("routerio lemputės dega žaliai", {"lights": "dega"}),
-            ("lemputė mirksi", {"lights": "mirksi"}),
+            ("lemputės nedega", {"lights": "off"}),
+            ("routerio lemputės dega žaliai", {"lights": "on"}),
+            ("lemputė mirksi", {"lights": "blinking"}),
             ("jungiuosi per wifi", {"connection": "wifi"}),
-            ("prijungta laidu", {"connection": "laidinis"}),
-            ("neveikia visuose įrenginiuose", {"devices": "visi"}),
-            ("internetas dingsta kartais", {"frequency": "protarpiais"}),
+            ("prijungta laidu", {"connection": "wired"}),
+            ("neveikia visuose įrenginiuose", {"devices": "all"}),
+            ("internetas dingsta kartais", {"frequency": "intermittent"}),
             ("dar ir televizija neveikia", {"services": "tv"}),
-            ("lamputės nedaga", {"lights": "nedega"}),  # STT misspelling (live)
-            ("lemputės dagą", {"lights": "dega"}),  # STT misspelling (live)
+            ("lamputės nedaga", {"lights": "off"}),  # STT misspelling (live)
+            ("lemputės dagą", {"lights": "on"}),  # STT misspelling (live)
             ("labas", {}),
         ],
     )
     def test_categorical_symptoms(self, text, expected):
-        from agent.nlu import extract_symptoms
+        from agent.perceive.nlu import extract_symptoms
 
         assert extract_symptoms(text) == expected
 
     def test_negation_beats_positive(self):
         """'nedega' must win over the substring 'dega'."""
-        from agent.nlu import extract_symptoms
+        from agent.perceive.nlu import extract_symptoms
 
-        assert extract_symptoms("lemputės nedega")["lights"] == "nedega"
+        assert extract_symptoms("lemputės nedega")["lights"] == "off"
 
     def test_multiple_categories(self):
-        from agent.nlu import extract_symptoms
+        from agent.perceive.nlu import extract_symptoms
 
         got = extract_symptoms("per wifi, lemputės nedega")
-        assert got == {"connection": "wifi", "lights": "nedega"}
+        assert got == {"connection": "wifi", "lights": "off"}
+
+
+def _stream_of(message):
+    """A fake stream_tool_completion: streams the message content, returns the message."""
+
+    def _gen(**kwargs):
+        if message.content:
+            yield message.content
+        return message
+
+    return _gen
 
 
 class TestPrefillWiring:
@@ -172,43 +183,54 @@ class TestPrefillWiring:
         """A caller turn populates the slots before the LLM, via the agent."""
         from unittest.mock import patch
 
-        from agent.react_agent import ReactAgent
+        from agent.perceive import perceive
         from agent.slots import SlotStatus
+        from agent.speak.node import turn as speak_turn
 
-        agent = ReactAgent(caller_phone="+37060012345")
-        agent.state.turn_count = 1  # skip the greeting branch
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
+        agent.state.dialog.turn_count = 1  # skip the greeting branch
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.stream_tool_completion", side_effect=_stream_of(msg)),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
-            agent.run_until_response("neveikia internetas Tilžės 60 butas 7")
+            text = "neveikia internetas Tilžės 60 butas 7"
+            perceive(agent.state, agent.runtime, text)
+            list(speak_turn(agent.state, agent.runtime, text, "intake"))
 
-        p = agent.state.profile
+        p = agent.state.identity.profile
         assert p.street.value == "Tilžės g." and p.street.status == SlotStatus.HEARD
         assert p.house.value == "60"
         assert p.apartment.value == "7"
         # R1: the stated problem is captured as a durable fact.
-        assert agent.state.problem_type == "internet_down"
+        assert agent.state.intake.problem_type == "internet_down"
 
     def test_symptoms_prefilled_and_surfaced(self, db_connection):
         """A symptom turn populates state.symptoms and the facts block (A3)."""
         from unittest.mock import patch
 
-        from agent.react_agent import ReactAgent
+        from agent.perceive import perceive
+        from agent.speak.context_card import context_card
+        from agent.speak.node import turn as speak_turn
 
-        agent = ReactAgent(caller_phone="+37060012345")
-        agent.state.turn_count = 1
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060012345")
+        agent.state.dialog.turn_count = 1
 
         msg = type("M", (), {"content": "Gerai.", "tool_calls": None})()
         with (
-            patch("agent.react_agent.llm_tool_completion", return_value=msg),
-            patch("agent.react_agent.get_last_call_stats", return_value={}),
+            patch("agent.speak.node.stream_tool_completion", side_effect=_stream_of(msg)),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
         ):
-            agent.run_until_response("internetas neveikia, lemputės nedega, jungiuosi per wifi")
+            text = "internetas neveikia, lemputės nedega, jungiuosi per wifi"
+            perceive(agent.state, agent.runtime, text)
+            list(speak_turn(agent.state, agent.runtime, text, "intake"))
 
-        assert agent.state.symptoms["lights"] == "nedega"
-        assert agent.state.symptoms["connection"] == "wifi"
-        facts = agent._state_facts_block()
-        assert "SYMPTOMAI" in facts and "lights=nedega" in facts
+        assert agent.state.intake.symptoms["lights"] == "off"
+        assert agent.state.intake.symptoms["connection"] == "wifi"
+        facts = context_card(agent.state, agent.runtime)
+        assert "SYMPTOMS" in facts and "lights=off" in facts

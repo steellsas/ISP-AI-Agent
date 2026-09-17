@@ -1,0 +1,52 @@
+# Inform verdicts (closing wave, Andrius 2026-09-08) — WHAT the caller hears about
+# a debt, an outage or a provider-side fault lives in the locale, not in code.
+#
+# Each entry:
+#   template_key          the phrase with {placeholders}; when data is missing the
+#                         engine DROPS the sentences with empty fields, or falls back
+#                         to `fallback_key` (or the verdict gloss) — never a lie.
+#   fallback_key          what is said when the data is not enough for the template.
+#   clarity_requirements  what the caller must know before the goodbye:
+#                         what_is_wrong / what_to_do (or what_is_being_done) /
+#                         when_restored / how_notified.
+#
+# Placeholders are filled from the diagnose signals:
+#   debt:    {amount} (EUR), {months} ("liepą ir rugpjūtį"), {last_payment}
+#            ("birželio 5 d."; the sentence is dropped when there was no payment)
+#   outage:  {location} (street/description), {eta} (HH:MM)
+
+billing_suspended:
+  template_key: "inform.billing_suspended.template"
+  fallback_key: "inform.billing_suspended.fallback"
+  clarity_requirements: [what_is_wrong, what_to_do, when_restored]
+
+active_outage:
+  template_key: "inform.active_outage.template"
+  fallback_key: "inform.active_outage.fallback"
+  clarity_requirements: [what_is_wrong, what_is_being_done, when_restored, how_notified]
+
+node_fault_unregistered:
+  template_key: "inform.node_fault_unregistered.template"
+  clarity_requirements: [what_is_wrong, what_is_being_done, how_notified]
+
+switch_unreachable:
+  template_key: "inform.switch_unreachable.template"
+  clarity_requirements: [what_is_wrong, what_is_being_done, how_notified]
+
+# The caller's complaint is about a service their contract does not have (D-10).
+#   service: {service} ("televizijos")
+service_not_subscribed:
+  template_key: "inform.service_not_subscribed.template"
+  clarity_requirements: [what_is_wrong]
+
+# A repeat call about a problem with an open ticket (D-12).
+#   ticket: {created} ("rugsėjo 15 d."), {status} ("laukia meistro")
+open_ticket_exists:
+  template_key: "inform.open_ticket_exists.template"
+  fallback_key: "inform.open_ticket_exists.fallback"
+  clarity_requirements: [what_is_wrong, what_is_being_done, how_notified]
+
+# The caller asked about a registration, and there is no open one.
+no_open_ticket:
+  template_key: "inform.no_open_ticket.template"
+  clarity_requirements: [what_is_wrong]

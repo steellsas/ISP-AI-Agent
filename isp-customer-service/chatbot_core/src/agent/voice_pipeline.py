@@ -18,27 +18,18 @@ later, with no change here.
 from __future__ import annotations
 
 import io
-import os
-import re
 import time
 import wave
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from .contract import limits
 from .session import AgentSession
 
 if TYPE_CHECKING:
     from src.ports.asr import ASRProvider
     from src.ports.tts import TTSProvider
-
-
-# "Tilžės g. 60-7" is written form — TTS reads it "g. šešiasdešimt minus septyni".
-# Speak addresses like a human: "Tilžės gatvė, namas 60, butas 7". Applied ONLY to
-# the text sent to TTS; the reply text (traces, UI) keeps the canonical form.
-_ADDR_HOUSE_FLAT = re.compile(r"\bg\.\s*(\d+)\s*-\s*(\d+)\b")
-_ADDR_HOUSE = re.compile(r"\bg\.(?=\s*\d)")
-_ADDR_ABBR = re.compile(r"\bg\.(?=\s|$)")
 
 
 def audio_duration_s(audio: bytes, sample_rate: int = 16_000) -> float | None:
@@ -59,20 +50,15 @@ def audio_duration_s(audio: bytes, sample_rate: int = 16_000) -> float | None:
 def _min_audio_s() -> float:
     """Too-short-audio floor (VOICE_PLAN V1): fragments under this are DROPPED
     before ASR — Whisper hallucinates words from sub-word blips ("Įvėtojai")."""
-    try:
-        return float(os.getenv("ASR_MIN_AUDIO_S", "0.3"))
-    except ValueError:
-        return 0.3
+    return limits.get("asr_min_audio_s")
 
 
-def normalize_lt_address_speech(text: str) -> str:
-    """Spoken form for LT street addresses: 'X g. 60-7' -> 'X gatvė, namas 60, butas 7',
-    'X g. 60' -> 'X gatvė 60', a dangling 'g.' -> 'gatvė'."""
-    if not text or "g." not in text:
-        return text
-    out = _ADDR_HOUSE_FLAT.sub(r"gatvė, namas \1, butas \2", text)
-    out = _ADDR_HOUSE.sub("gatvė", out)
-    return _ADDR_ABBR.sub("gatvė", out)
+def speech_text(text: str) -> str:
+    """The text sent to TTS in the spoken form of the active language (e.g.
+    street abbreviations read out). Traces and the UI keep the canonical form."""
+    from .contract.locale import lang
+
+    return lang().speech_text(text)
 
 
 @dataclass
@@ -147,15 +133,27 @@ class VoicePipeline:
         except TypeError:
             return self._asr.transcribe(audio, language=self._language, sample_rate=sample_rate)
 
+    def _speak(self, text: str) -> bytes:
+        """Synthesize one piece of the reply and TRACE how long it took — a stalled
+        provider is otherwise invisible: the caller hears silence while the text is long
+        since ready (F-24, live 2026-09-16)."""
+        import time
+
+        t0 = time.perf_counter()
+        audio = self._tts.synthesize(speech_text(text), language=self._language)
+        ms = int((time.perf_counter() - t0) * 1000)
+        tracer = getattr(self._session, "tracer", None)
+        if tracer is not None:
+            tracer.emit("tts", ms=ms, chars=len(text), bytes=len(audio or b""))
+        return audio
+
     def _tts_stream(self, text: str):
         """Per-sentence TTS for a ready reply text (stream() when available)."""
         stream = getattr(self._tts, "stream", None)
         chunks = (
-            stream(normalize_lt_address_speech(text), language=self._language)
+            stream(speech_text(text), language=self._language)
             if callable(stream)
-            else iter(
-                [self._tts.synthesize(normalize_lt_address_speech(text), language=self._language)]
-            )
+            else iter([self._speak(text)])
         )
         for chunk in chunks:
             if chunk:
@@ -211,12 +209,12 @@ class VoicePipeline:
     # (ASR + agent + TTS) is still computing — masks per-turn latency (step 2.2).
     # Synthesized once and cached (it never changes); the general static-phrase
     # audio cache is step 2.3.
-    _FILLER_TEXT = {"lt": "Sekundėlę, tikrinu.", "en": "One moment, let me check."}
-
     def filler_audio(self) -> bytes:
         """Cached audio for the short 'let me check' cue (lazily synthesized)."""
         if self._filler_audio is None:
-            text = self._FILLER_TEXT.get(self._language, self._FILLER_TEXT["lt"])
+            from .contract.locale import phrase
+
+            text = phrase("system.filler")
             self._filler_audio = self._tts.synthesize(text, language=self._language)
         return self._filler_audio
 
@@ -272,9 +270,7 @@ class VoicePipeline:
 
         reply_text = self._session.handle_turn(transcript)
         t2 = time.perf_counter()
-        reply_audio = self._tts.synthesize(
-            normalize_lt_address_speech(reply_text), language=self._language
-        )
+        reply_audio = self._speak(reply_text)
         t3 = time.perf_counter()
 
         asr_ms = (t1 - t0) * 1000.0
@@ -385,9 +381,7 @@ class VoicePipeline:
             anchor = getattr(self._session, "anchor_text", None)
             text = anchor() if callable(anchor) else ""
             if text:
-                chunk = self._tts.synthesize(
-                    normalize_lt_address_speech(text), language=self._language
-                )
+                chunk = self._speak(text)
                 if chunk:
                     self.last_turn_sentences.append(text)
                     yield chunk
@@ -411,30 +405,6 @@ class VoicePipeline:
                 )
             emitted = True
 
-        # S1 speculation (2026-08-24): if this utterance maps to a PREPARED
-        # branch, the engine turn still runs (all bookkeeping intact) but its
-        # reply is the injected precomputed text — and the audio comes from
-        # the cache. Mismatch anywhere -> the injection is ignored and the
-        # normal LLM+TTS path below runs untouched.
-        matcher = getattr(self._session, "speculation_match", None)
-        spec_audio = matcher(transcript) if callable(matcher) else None
-        if spec_audio:
-            gen = getattr(self._session, "handle_turn_stream", None)
-            reply = (
-                "".join(gen(transcript)) if callable(gen) else self._session.handle_turn(transcript)
-            )
-            if reply and reply == getattr(self._session, "_last_injected_text", None):
-                _emit_latency(time.perf_counter())
-                self.last_turn_sentences.append(reply)
-                yield spec_audio
-                return
-            if reply:  # the engine chose its own reply — synthesize it normally
-                self.last_turn_aligned = False  # tts.stream splits opaquely
-                for sentence_audio in self._tts_stream(reply):
-                    _emit_latency(time.perf_counter())
-                    yield sentence_audio
-                return
-
         # Pillar C3: if the session streams the reply token by token, buffer to
         # sentence boundaries and synthesize each sentence as soon as it completes.
         agent_stream = getattr(self._session, "handle_turn_stream", None)
@@ -442,7 +412,7 @@ class VoicePipeline:
             from src.adapters.tts.sentences import pop_sentence
 
             # On cancel the ENGINE does its own bookkeeping (the same flag stops
-            # its token loop — see ReactAgent.request_cancel); here we only stop
+            # its token loop — see speak.node); here we only stop
             # SYNTHESIZING, so no half-sentence audio goes out after the barge-in.
             buf = ""
             gen = agent_stream(transcript)
@@ -454,9 +424,7 @@ class VoicePipeline:
                 while sentence:
                     if should_stop is not None and should_stop():
                         return
-                    chunk = self._tts.synthesize(
-                        normalize_lt_address_speech(sentence), language=self._language
-                    )
+                    chunk = self._speak(sentence)
                     if chunk:
                         _emit_latency(time.perf_counter())
                         self.last_turn_sentences.append(sentence)
@@ -464,9 +432,7 @@ class VoicePipeline:
                     sentence, buf = pop_sentence(buf)
             tail = buf.strip()
             if tail:
-                chunk = self._tts.synthesize(
-                    normalize_lt_address_speech(tail), language=self._language
-                )
+                chunk = self._speak(tail)
                 if chunk:
                     _emit_latency(time.perf_counter())
                     self.last_turn_sentences.append(tail)
@@ -486,15 +452,9 @@ class VoicePipeline:
         reply_text = self._session.handle_turn(transcript)
         stream = getattr(self._tts, "stream", None)
         if callable(stream):
-            chunks = stream(normalize_lt_address_speech(reply_text), language=self._language)
+            chunks = stream(speech_text(reply_text), language=self._language)
         else:
-            chunks = iter(
-                [
-                    self._tts.synthesize(
-                        normalize_lt_address_speech(reply_text), language=self._language
-                    )
-                ]
-            )
+            chunks = iter([self._speak(reply_text)])
         for chunk in chunks:
             if not chunk:
                 continue

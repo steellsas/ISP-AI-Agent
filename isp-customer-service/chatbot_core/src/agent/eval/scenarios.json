@@ -1,429 +1,782 @@
 {
- "_doc": "Golden Dataset for the conversation eval harness (Phase 3.8 step 0). Each scenario drives AgentSession text-to-text with scripted CLIENT turns and hard-scores the resulting STATE + replies. The LLM only phrases; verdict/walker are deterministic given these turns, so state outcomes are stable. Checks: verdict_in (expected verdict seen), disposition (resolved|ticket|outage|open), reply_any (>=1 reply contains), reply_none (no reply contains — regression guard for known bugs). Scenarios flagged 'known_bug' are EXPECTED to fail now and turn green after the Phase 3.8 fix.",
- "scenarios": [
-  {
-   "id": "S1_foreign_mac_changed_router",
-   "phone": "+37060020105",
-   "desc": "MAC pririšimas — klientas keitė routerį (foreign_mac -> bind -> resolved)",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Prieš valandą dingo, po nieko ypatingo",
-    "Taip",
-    "Jonas, taip, aš sutartį sudaręs",
-    "Taip, keičiau routerį, senasis sugedo",
-    "Gerai, laukiu",
-    "Taip, atsirado internetas",
-    "Ne, ačiu, viskas"
-   ],
-   "expect": {
-    "verdict_in": "foreign_mac",
-    "disposition": "resolved",
-    "reply_any": [
-     "pririš"
-    ],
-    "reply_none": []
-   }
-  },
-  {
-   "id": "T1_tv_unclear_fault_ticket",
-   "phone": "+37060012353",
-   "desc": "Kelio-nėra taisyklė: TV gedimas (pack'o nėra) + identifikuotas klientas -> sąžiningas neaiškaus gedimo tiketas, JOKIŲ interneto žingsnių",
-   "turns": [
-    "Laba diena, televizorius nerodo nė vieno kanalo",
-    "Taip",
-    "Andrius, taip, mano sutartis",
-    "Taip, tinka šis numeris",
-    "Po pietų, nuo keturioliktos valandos",
-    "Ačiū, viso gero"
-   ],
-   "expect": {
-    "verdict_in": "unclear_fault",
-    "disposition": "ticket",
-    "reply_any": [
-     "registr"
-    ],
-    "reply_none": [
-     "lemput",
-     "WiFi",
-     "wifi",
-     "routerio"
-    ]
-   }
-  },
-  {
-   "id": "T2_nonclient_unclear_polite_close",
-   "phone": "+37000000000",
-   "desc": "Ne klientas + situacija neaiškėja: po N vartų turn'ų mandagus uždarymas BE tiketo ir BE adreso medžioklės",
-   "turns": [
-    "Sveiki",
-    "Man liūdna, norėjau šiaip pašnekėti",
-    "Na apie orus galim pakalbėti",
-    "Tai tiek žinių pas mane",
-    "Nu nieko konkretaus neturiu",
-    "Gerai jau gerai"
-   ],
-   "expect": {
-    "identified": false,
-    "disposition": "any",
-    "reply_any": [
-     "skambinkite"
-    ],
-    "reply_none": [
-     "registruoj",
-     "skambinate dėl"
-    ]
-   }
-  },
-  {
-   "id": "G1_context_classify_no_triggers",
-   "phone": "+37060020101",
-   "desc": "L2 klasifikacija iš KONTEKSTO: 'niekas nekrauna' be trigger žodžių -> internet_down (commit arba patvirtinimas), toliau normalus billing-inform kelias",
-   "turns": [
-    "Laba diena, niekas man nekrauna nuo pat ryto, nei telefone, nei kompiuteryje",
-    "Nuo ryto neveikia, niekas nenutiko",
-    "Vakar vakare dar veikė",
-    "Taip",
-    "Petras, nuomininkas",
-    "Aišku, ačiū"
-   ],
-   "expect": {
-    "verdict_in": "billing_suspended",
-    "disposition": "inform",
-    "reply_none": [
-     "no_problem_goodbye"
-    ]
-   }
-  },
-  {
-   "id": "G2_boundary_saskaitos",
-   "phone": "+37000000000",
-   "desc": "Kompetencijų riba: sąskaitų klausimas -> agentas įvardija ribą, NEidentifikuoja, neklausia adreso, mandagiai baigia",
-   "turns": [
-    "Laba diena, norėjau paklausti, kodėl man tokia didelė sąskaita šį mėnesį",
-    "Ne, interneto bėdų neturiu, tik dėl sąskaitos",
-    "Gerai, ačiū, viso gero"
-   ],
-   "expect": {
-    "identified": false,
-    "disposition": "any",
-    "reply_any": [
-     "techninės pagalbos",
-     "sąskait"
-    ],
-    "reply_none": [
-     "skambinate dėl",
-     "adres"
-    ]
-   }
-  },
-  {
-   "id": "S6_router_hung_reboot",
-   "phone": "+37060020112",
-   "desc": "Pakibęs routeris (srauto nėra, MAC/DHCP ok) — vedamas perkrovimas iš maitinimo, išsprendžiama telefonu BE tiketo",
-   "turns": [
-    "Labas, dingo internetas nuo ryto",
-    "Taip",
-    "Paulius, taip, mano sutartis",
-    "Visuose įrenginiuose",
-    "Gerai, ištraukiau iš routerio ir įkišau atgal",
-    "Mirksi, puslapis atsidaro — veikia",
-    "Ne, ačiū"
-   ],
-   "expect": {
-    "verdict_in": "router_hung",
-    "disposition": "resolved",
-    "reply_any": [
-     "perkrau",
-     "maitinimo"
-    ],
-    "reply_none": [
-     "užregistravau"
-    ]
-   }
-  },
-  {
-   "id": "S9_client_side_phone_wifi",
-   "phone": "+37060020109",
-   "desc": "Kliento pusė, telefonas — turi klausti KURIO įrenginio, telefonui NESIŪLYTI kabelio",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Vakar vakare pastebėjau",
-    "Taip",
-    "Ona, aš žmona sutartį sudariusio",
-    "Tik viename",
-    "Telefone",
-    "Patikrinau, WiFi įjungtas",
-    "Prisijungiau iš naujo",
-    "Taip, dabar veikia",
-    "Ne, ačiū"
-   ],
-   "expect": {
-    "verdict_in": "healthy_to_router",
-    "disposition": "resolved",
-    "reply_any": [
-     "įrenginy",
-     "telefon"
-    ],
-    "reply_none": [
-     "kabel",
-     "laid"
-    ]
-   }
-  },
-  {
-   "id": "S4_dead_router_bridge",
-   "phone": "+37060012353",
-   "desc": "Miręs routeris -> tiltas. Prijungus PC ir telemetrijai nepasikeitus, NEGALIMA kaltinti routerio maitinimo — turi sakyti kad įrenginys nematomas / nepririštas. (Buvęs known_bug — dr_intro desync fix jį uždarė; dabar must-pass regresijos sargas.)",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Šįryt dingo, po audros",
-    "Taip",
-    "Giedrius, taip, mano sutartis",
-    "Galėtume kartu patikrinti",
-    "Ne, nešviečia jokia lemputė",
-    "Vis tiek nedega",
-    "Neturiu kito routerio, tik kompiuterį",
-    "Gerai",
-    "Turiu kabelį rankoje",
-    "Įkišau į kompiuterį",
-    "Ryšys yra, bet interneto nėra"
-   ],
-   "expect": {
-    "verdict_in": "no_mac_observed",
-    "disposition": "any",
-    "reply_any": [
-     "kompiuter"
-    ],
-    "tool_used": [
-     "update_mac"
-    ]
-   }
-  },
-  {
-   "id": "S3_switch_unreachable_inform",
-   "phone": "+37060020103",
-   "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Vakar vakare dingo, po nieko ypatingo",
-    "Taip",
-    "Egidijus, mano sutartis",
-    "Aišku, ačiū, viso gero"
-   ],
-   "expect": {
-    "verdict_in": "switch_unreachable",
-    "disposition": "ticket",
-    "reply_any": [
-     "nepasiekiam",
-     "tinkle",
-     "gedim"
-    ],
-    "reply_none": []
-   }
-  },
-  {
-   "id": "S1v_side_topic_deviation",
-   "phone": "+37060020105",
-   "desc": "Foreign_mac flow su nukrypimu (ar skambutis kainuoja?) — FAQ atsakymas + grįžimas prie inkaro, baigtis nesikeičia",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Prieš valandą dingo, po nieko ypatingo",
-    "Taip",
-    "Jonas, taip, aš sutartį sudaręs",
-    "O sakykite, ar šitas skambutis man kainuos?",
-    "Taip, keičiau routerį, senasis sugedo",
-    "Gerai, laukiu",
-    "Taip, atsirado internetas",
-    "Ne, ačiu, viskas"
-   ],
-   "expect": {
-    "verdict_in": "foreign_mac",
-    "disposition": "resolved",
-    "reply_any": [
-     "nekainuoja",
-     "nemokam",
-     "kainuoj"
-    ],
-    "reply_none": []
-   }
-  },
-  {
-   "id": "S8_outage_inform",
-   "phone": "+37060020102",
-   "desc": "Masinė avarija -> informuoti + ETA, be tiketo",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Taip",
-    "Aišku, ačiū, lauksiu"
-   ],
-   "expect": {
-    "disposition": "inform",
-    "reply_any": [
-     "gedim",
-     "avarij"
-    ],
-    "reply_none": [
-     "registr",
-     "diagnostik"
-    ]
-   }
-  },
-  {
-   "id": "S8_billing_inform",
-   "phone": "+37060020101",
-   "desc": "Skola -> informuoti kaip apmokėti, be diagnostikos, be tiketo",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Vakar pastebėjau",
-    "Taip",
-    "Petras, nuomininkas",
-    "Aišku, ačiū"
-   ],
-   "expect": {
-    "verdict_in": "billing_suspended",
-    "disposition": "inform",
-    "reply_any": [
-     "apmok",
-     "sąskait",
-     "skol"
-    ],
-    "reply_none": []
-   }
-  },
-  {
-   "id": "I1_ident_offer_clean_yes",
-   "phone": "+37060020105",
-   "desc": "F6: telefono adreso pasiūlymas -> švarus taip -> identifikuota (zone 2: naratoriaus perėjimas, šerdis „skambinate dėl“ privaloma)",
-   "turns": [
-    "Labas, neveikia internetas",
-    "Vakar vakare, po audros",
-    "Taip, dėl šito adreso",
-    "Andrius",
-    "Ačiū, viso gero",
-    "Taip, baigiam"
-   ],
-   "expect": {
-    "identified": true,
-    "disposition": "any",
-    "reply_any": [
-     "skambinate dėl"
-    ],
-    "reply_none": [
-     "Kad galėčiau patikrinti situaciją"
-    ]
-   }
-  },
-  {
-   "id": "I2_ident_wrong_house_corrected",
-   "phone": "+37000000000",
-   "desc": "F6: nežinomas tel., padiktuotas namas kurio nėra -> diagnozė (gatvę randu, namo ne) -> pataisymas -> identifikuota",
-   "turns": [
-    "Laba diena, neveikia internetas",
-    "Nežinau kada",
-    "Vakar dar veikė",
-    "Šiauliai, Vilniaus gatvė 39",
-    "Ai, atsiprašau — 29 namas",
-    "Ačiū, viso gero",
-    "Taip, baigiam"
-   ],
-   "expect": {
-    "identified": true,
-    "disposition": "any",
-    "reply_any": [
-     "nerand",
-     "nėra",
-     "nera",
-     "nematau"
-    ]
-   }
-  },
-  {
-   "id": "I4_account_code_rescue",
-   "phone": "+37000000000",
-   "desc": "Adresas neaiškėja ~4 turn'us -> abonento kodo pakopa -> randa, adresas PASIŪLOMAS balsu, identifikuota",
-   "turns": [
-    "Neveikia internetas",
-    "Nežinau adreso, aš ne namie",
-    "Negaliu dabar pasakyti",
-    "Na tikrai neprisimenu",
-    "Mano abonento kodas AB-10104",
-    "Taip",
-    "Vilma",
-    "Ačiū, viso gero"
-   ],
-   "expect": {
-    "identified": true,
-    "disposition": "any",
-    "reply_any": [
-     "abonento kodą"
-    ]
-   }
-  },
-  {
-   "id": "I5_nonclient_only_subscribers",
-   "phone": "+37000000000",
-   "desc": "Ne klientas: Vilnius -> IŠKART 'abonentų nėra' (ne bandymas); toliau neaiškėja -> perspėjimas -> uždarymas 'nenustatyta vieta' BE tiketo",
-   "turns": [
-    "Neveikia internetas",
-    "Vilnius, Gedimino prospektas 1",
-    "Tikrai Vilnius, ten gyvenu",
-    "Kito adreso neturiu",
-    "Neturiu jokio kodo",
-    "Ne, tikrai neturiu"
-   ],
-   "expect": {
-    "identified": false,
-    "disposition": "any",
-    "reply_any": [
-     "Šiaulių mieste"
-    ],
-    "reply_none": [
-     "registruoj"
-    ]
-   }
-  },
-  {
-   "id": "I6_holder_name_mismatch",
-   "phone": "+37060012353",
-   "desc": "Sakosi savininkas kitu vardu -> mandagus patikslinimas BE DB vardo garsinimo (privatumo taisyklė)",
-   "turns": [
-    "Neveikia internetas",
-    "Taip",
-    "Petras, aš sutarties savininkas",
-    "Žmonos vardu sudaryta sutartis",
-    "Ne, ačiū, tiek žinot"
-   ],
-   "expect": {
-    "identified": true,
-    "disposition": "any",
-    "reply_any": [
-     "kitu vardu"
-    ],
-    "reply_none": [
-     "Giedri"
-    ]
-   }
-  },
-  {
-   "id": "I3_ident_no_address_recorded",
-   "phone": "+37000000000",
-   "desc": "F6: klientas nežino adreso -> paraginimas su kodėl -> nesėkmė fiksuojama, pokalbis baigiasi mandagiai",
-   "turns": [
-    "Neveikia internetas",
-    "Nežinau",
-    "Nežinau, seniai",
-    "Nežinau aš adreso, čia ne mano butas",
-    "Ne, tikrai nežinau",
-    "Viso gero",
-    "Taip, baigiam"
-   ],
-   "expect": {
-    "identified": false,
-    "disposition": "any",
-    "reply_any": [
-     "adres"
-    ]
-   }
-  }
- ]
+  "_doc": "Golden Dataset for the conversation eval harness. Each scenario drives AgentSession text-to-text with scripted CLIENT turns and hard-scores the resulting STATE + replies. The LLM only phrases; the verdict tree and the procedure runner (decide/procedure.py) are deterministic given these turns, so state outcomes are stable. Checks (see README.md): verdict_in, disposition, identified, reply_any, reply_none, tool_used, reply_len (always on). Scenarios flagged 'known_bug' are EXPECTED to fail now and turn green once the fix lands.",
+  "scenarios": [
+    {
+      "id": "S1_foreign_mac_changed_router",
+      "phone": "+37060020105",
+      "desc": "MAC pririšimas — klientas keitė routerį (foreign_mac -> bind -> resolved)",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Prieš valandą dingo, po nieko ypatingo",
+        "Taip",
+        "Jonas, taip, aš sutartį sudaręs",
+        "Taip, keičiau routerį, senasis sugedo",
+        "Gerai, laukiu",
+        "Taip, atsirado internetas",
+        "Ne, ačiu, viskas"
+      ],
+      "expect": {
+        "verdict_in": "foreign_mac",
+        "disposition": "resolved",
+        "reply_any": [
+          "pririš"
+        ],
+        "reply_none": []
+      }
+    },
+    {
+      "id": "T1_tv_unclear_fault_ticket",
+      "phone": "+37060020110",
+      "desc": "Kelio-nėra taisyklė: IPTV klientas (CUST110), internetas iki routerio sveikas -> TV gedimas savas -> sąžiningas neaiškaus gedimo tiketas, JOKIŲ interneto žingsnių (M6: klientas su TV paslauga)",
+      "turns": [
+        "Laba diena, televizorius nerodo nė vieno kanalo",
+        "Taip",
+        "Kęstutis, taip, mano sutartis",
+        "Taip, tinka šis numeris",
+        "Po pietų, nuo keturioliktos valandos",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "unclear_fault",
+        "disposition": "ticket",
+        "reply_any": [
+          "registr"
+        ],
+        "reply_none": [
+          "lemput",
+          "WiFi",
+          "wifi",
+          "routerio"
+        ]
+      }
+    },
+    {
+      "id": "T2_nonclient_unclear_polite_close",
+      "phone": "+37000000000",
+      "desc": "Ne klientas + situacija neaiškėja: po N vartų turn'ų mandagus uždarymas BE tiketo ir BE adreso medžioklės",
+      "turns": [
+        "Sveiki",
+        "Man liūdna, norėjau šiaip pašnekėti",
+        "Na apie orus galim pakalbėti",
+        "Tai tiek žinių pas mane",
+        "Nu nieko konkretaus neturiu",
+        "Gerai jau gerai"
+      ],
+      "expect": {
+        "identified": false,
+        "disposition": "any",
+        "reply_any": [
+          "skambinkite"
+        ],
+        "reply_none": [
+          "registruoj",
+          "skambinate dėl"
+        ]
+      }
+    },
+    {
+      "id": "U1_unidentified_hangup",
+      "phone": "+37000000000",
+      "desc": "M6 (D-14): nežinomas skambintojas padeda ragelį neidentifikuotas -> jokio tiketo, tik kontaktinis įrašas peržiūrai (abandoned / hung_up)",
+      "turns": [
+        "Laba diena, neveikia internetas"
+      ],
+      "expect": {
+        "identified": false,
+        "record_outcome": "abandoned",
+        "record_reason": "hung_up"
+      }
+    },
+    {
+      "id": "G1_context_classify_no_triggers",
+      "phone": "+37060020101",
+      "desc": "L2 klasifikacija iš KONTEKSTO: 'niekas nekrauna' be trigger žodžių -> internet_down (commit arba patvirtinimas), toliau normalus billing-inform kelias",
+      "turns": [
+        "Laba diena, niekas man nekrauna nuo pat ryto, nei telefone, nei kompiuteryje",
+        "Nuo ryto neveikia, niekas nenutiko",
+        "Vakar vakare dar veikė",
+        "Taip",
+        "Petras, nuomininkas",
+        "Aišku, ačiū"
+      ],
+      "expect": {
+        "verdict_in": "billing_suspended",
+        "disposition": "inform",
+        "reply_none": [
+          "no_problem_goodbye"
+        ]
+      }
+    },
+    {
+      "id": "R1_billing_request",
+      "phone": "+37060020109",
+      "desc": "M6 (D-11): sąskaitos klausimas — agentas nesigilina, identifikuoja ir registruoja klausimą atsakingam žmogui (billing_request), JOKIOS diagnostikos",
+      "turns": [
+        "Laba diena, norėjau paklausti, kodėl man tokia didelė sąskaita šį mėnesį",
+        "Taip",
+        "Aldona, taip, mano sutartis",
+        "Taip, tinka šis numeris",
+        "Po pietų",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "identified": true,
+        "disposition": "ticket",
+        "reply_any": [
+          "užregistr"
+        ],
+        "reply_none": [
+          "lemput",
+          "routerio",
+          "techninės pagalbos"
+        ],
+        "record_outcome": "ticket"
+      }
+    },
+    {
+      "id": "R1b_billing_request_farewell_midway",
+      "phone": "+37060020109",
+      "desc": "Gyvas skambutis 2026-09-17: sąskaitos klausimas, klientas atsisveikina kontaktų viduryje -> pasitikslinama dėl KLAUSIMO registravimo, ne meistro",
+      "turns": [
+        "Laba diena, kodėl tokia didelė sąskaita?",
+        "Taip",
+        "Velma",
+        "Žinoma, tiks",
+        "Ačiū, viso gero",
+        "Taip, registruokite",
+        "Bet kada",
+        "Ne, viskas, viso gero"
+      ],
+      "expect": {
+        "identified": true,
+        "reply_any": [
+          "atsakingam"
+        ],
+        "reply_none": [
+          "meistr"
+        ],
+        "record_outcome": "ticket"
+      }
+    },
+    {
+      "id": "S6_router_hung_reboot",
+      "phone": "+37060020112",
+      "desc": "Pakibęs routeris (srauto nėra, MAC/DHCP ok) — vedamas perkrovimas iš maitinimo, išsprendžiama telefonu BE tiketo",
+      "turns": [
+        "Labas, dingo internetas nuo ryto",
+        "Taip",
+        "Paulius, taip, mano sutartis",
+        "Visuose įrenginiuose",
+        "Gerai, ištraukiau iš routerio ir įkišau atgal",
+        "Mirksi, puslapis atsidaro — veikia",
+        "Ne, ačiū"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_any": [
+          "perkrau",
+          "maitinimo"
+        ],
+        "reply_none": [
+          "užregistravau"
+        ]
+      }
+    },
+    {
+      "id": "S9_client_side_phone_wifi",
+      "phone": "+37060020109",
+      "desc": "Kliento pusė, telefonas — turi klausti KURIO įrenginio, telefonui NESIŪLYTI kabelio",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar vakare pastebėjau",
+        "Taip",
+        "Ona, aš žmona sutartį sudariusio",
+        "Tik viename",
+        "Telefone",
+        "Patikrinau, WiFi įjungtas",
+        "Prisijungiau iš naujo",
+        "Taip, dabar veikia",
+        "Ne, ačiū"
+      ],
+      "expect": {
+        "verdict_in": "healthy_to_router",
+        "disposition": "resolved",
+        "reply_any": [
+          "įrenginy",
+          "telefon"
+        ],
+        "reply_none": [
+          "kabel",
+          "laid"
+        ]
+      }
+    },
+    {
+      "id": "S4_dead_router_bridge",
+      "phone": "+37060012353",
+      "desc": "Miręs routeris -> tiltas. Prijungus PC ir telemetrijai nepasikeitus, NEGALIMA kaltinti routerio maitinimo — turi sakyti kad įrenginys nematomas / nepririštas. (Buvęs known_bug — dr_intro desync fix jį uždarė; dabar must-pass regresijos sargas.)",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Šįryt dingo, po audros",
+        "Taip",
+        "Giedrius, taip, mano sutartis",
+        "Galėtume kartu patikrinti",
+        "Ne, nešviečia jokia lemputė",
+        "Vis tiek nedega",
+        "Neturiu kito routerio, tik kompiuterį",
+        "Gerai",
+        "Turiu kabelį rankoje",
+        "Įkišau į kompiuterį",
+        "Ryšys yra, bet interneto nėra"
+      ],
+      "expect": {
+        "verdict_in": "no_mac_observed",
+        "disposition": "any",
+        "reply_any": [
+          "kompiuter"
+        ],
+        "tool_used": [
+          "update_mac"
+        ]
+      }
+    },
+    {
+      "id": "S3_switch_unreachable_inform",
+      "phone": "+37060020103",
+      "desc": "Switch nepasiekiamas (avarija neregistruota) — informuoti (nieko daryti nereikia, informuosime), variklis PATS sukuria tiketą (Andrius 2026-09-11)",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar vakare dingo, po nieko ypatingo",
+        "Taip",
+        "Egidijus, mano sutartis",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "switch_unreachable",
+        "disposition": "ticket",
+        "reply_any": [
+          "nepasiekiam",
+          "tinkle",
+          "gedim"
+        ],
+        "reply_none": []
+      }
+    },
+    {
+      "id": "S1v_side_topic_deviation",
+      "phone": "+37060020105",
+      "desc": "Foreign_mac flow su nukrypimu (ar skambutis kainuoja?) — FAQ atsakymas + grįžimas prie inkaro, baigtis nesikeičia",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Prieš valandą dingo, po nieko ypatingo",
+        "Taip",
+        "Jonas, taip, aš sutartį sudaręs",
+        "O sakykite, ar šitas skambutis man kainuos?",
+        "Taip, keičiau routerį, senasis sugedo",
+        "Gerai, laukiu",
+        "Taip, atsirado internetas",
+        "Ne, ačiu, viskas"
+      ],
+      "expect": {
+        "verdict_in": "foreign_mac",
+        "disposition": "resolved",
+        "reply_any": [
+          "nekainuoja",
+          "nemokam",
+          "kainuoj"
+        ],
+        "reply_none": []
+      }
+    },
+    {
+      "id": "S8_outage_inform",
+      "phone": "+37060020102",
+      "desc": "Masinė avarija -> informuoti + ETA, be tiketo",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Aišku, ačiū, lauksiu"
+      ],
+      "expect": {
+        "disposition": "inform",
+        "reply_any": [
+          "gedim",
+          "avarij"
+        ],
+        "reply_none": [
+          "registr",
+          "diagnostik"
+        ]
+      }
+    },
+    {
+      "id": "S8_billing_inform",
+      "phone": "+37060020101",
+      "desc": "Skola -> informuoti kaip apmokėti, be diagnostikos, be tiketo",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar pastebėjau",
+        "Taip",
+        "Petras, nuomininkas",
+        "Aišku, ačiū"
+      ],
+      "expect": {
+        "verdict_in": "billing_suspended",
+        "disposition": "inform",
+        "reply_any": [
+          "apmok",
+          "sąskait",
+          "skol"
+        ],
+        "reply_none": [],
+        "record_outcome": "informed_debt"
+      }
+    },
+    {
+      "id": "R4_debt_dispute_request",
+      "phone": "+37060020101",
+      "desc": "M6 (D-11): klientas nesutinka su skola -> agentas neaiškina, siūlo užregistruoti klausimą atsakingam žmogui -> sutinka -> billing_request tiketas",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar pastebėjau",
+        "Taip",
+        "Petras, nuomininkas",
+        "Kaip tai skola, aš sumokėjau praeitą mėnesį",
+        "Taip, užregistruokite",
+        "Taip, tinka šis numeris",
+        "Bet kada",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "billing_suspended",
+        "disposition": "ticket",
+        "reply_any": [
+          "atsaking"
+        ],
+        "reply_none": [],
+        "record_outcome": "ticket"
+      }
+    },
+    {
+      "id": "I1_ident_offer_clean_yes",
+      "phone": "+37060020105",
+      "desc": "F6: telefono adreso pasiūlymas -> švarus taip -> identifikuota (zone 2: naratoriaus perėjimas, šerdis „skambinate dėl“ privaloma)",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar vakare, po audros",
+        "Taip, dėl šito adreso",
+        "Andrius",
+        "Ačiū, viso gero",
+        "Taip, baigiam"
+      ],
+      "expect": {
+        "identified": true,
+        "disposition": "any",
+        "reply_any": [
+          "skambinate dėl"
+        ],
+        "reply_none": [
+          "Kad galėčiau patikrinti situaciją"
+        ]
+      }
+    },
+    {
+      "id": "I2_ident_wrong_house_corrected",
+      "phone": "+37000000000",
+      "desc": "F6: nežinomas tel., padiktuotas namas kurio nėra -> diagnozė (gatvę randu, namo ne) -> pataisymas -> identifikuota — F-6 (M6): padiktuotas adresas pakartojamas ir patvirtinamas „Taip“",
+      "turns": [
+        "Laba diena, neveikia internetas",
+        "Nežinau kada",
+        "Vakar dar veikė",
+        "Šiauliai, Vilniaus gatvė 39",
+        "Ai, atsiprašau — 29 namas",
+        "Taip",
+        "Ačiū, viso gero",
+        "Taip, baigiam"
+      ],
+      "expect": {
+        "identified": true,
+        "disposition": "any",
+        "reply_any": [
+          "nerand",
+          "nėra",
+          "nera",
+          "nematau"
+        ]
+      }
+    },
+    {
+      "id": "I4_account_code_rescue",
+      "phone": "+37000000000",
+      "desc": "Adresas neaiškėja ~4 turn'us -> abonento kodo pakopa -> randa, adresas PASIŪLOMAS balsu, identifikuota",
+      "turns": [
+        "Neveikia internetas",
+        "Nežinau adreso, aš ne namie",
+        "Negaliu dabar pasakyti",
+        "Na tikrai neprisimenu",
+        "Mano abonento kodas AB-10104",
+        "Taip",
+        "Vilma",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "identified": true,
+        "disposition": "any",
+        "reply_any": [
+          "abonento kodą"
+        ]
+      }
+    },
+    {
+      "id": "I5_nonclient_only_subscribers",
+      "phone": "+37000000000",
+      "desc": "Ne klientas: Vilnius -> IŠKART 'abonentų nėra' (ne bandymas); toliau neaiškėja -> perspėjimas -> uždarymas 'nenustatyta vieta' BE tiketo",
+      "turns": [
+        "Neveikia internetas",
+        "Vilnius, Gedimino prospektas 1",
+        "Tikrai Vilnius, ten gyvenu",
+        "Kito adreso neturiu",
+        "Neturiu jokio kodo",
+        "Ne, tikrai neturiu"
+      ],
+      "expect": {
+        "identified": false,
+        "disposition": "any",
+        "reply_any": [
+          "Šiaulių mieste"
+        ],
+        "reply_none": [
+          "registruoj"
+        ]
+      }
+    },
+    {
+      "id": "I6_holder_name_mismatch",
+      "phone": "+37060012353",
+      "desc": "Sakosi savininkas kitu vardu -> mandagus patikslinimas BE DB vardo garsinimo (privatumo taisyklė)",
+      "turns": [
+        "Neveikia internetas",
+        "Taip",
+        "Petras, aš sutarties savininkas",
+        "Žmonos vardu sudaryta sutartis",
+        "Ne, ačiū, tiek žinot"
+      ],
+      "expect": {
+        "identified": true,
+        "disposition": "any",
+        "reply_any": [
+          "kitu vardu"
+        ],
+        "reply_none": [
+          "Giedri"
+        ]
+      }
+    },
+    {
+      "id": "I3_ident_no_address_recorded",
+      "phone": "+37000000000",
+      "desc": "F6: klientas nežino adreso -> paraginimas su kodėl -> nesėkmė fiksuojama, pokalbis baigiasi mandagiai",
+      "turns": [
+        "Neveikia internetas",
+        "Nežinau",
+        "Nežinau, seniai",
+        "Nežinau aš adreso, čia ne mano butas",
+        "Ne, tikrai nežinau",
+        "Viso gero",
+        "Taip, baigiam"
+      ],
+      "expect": {
+        "identified": false,
+        "disposition": "any",
+        "reply_any": [
+          "adres"
+        ]
+      }
+    },
+    {
+      "id": "D5_link_down",
+      "phone": "+37060020104",
+      "desc": "Demo #5: linija nutrūkusi iki buto (portas DOWN, kaimynai UP) — kopetėlė (lemputės, perkišti laidą iš sienos), telemetrija toliau DOWN -> tiketas",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Vilma, taip, mano sutartis",
+        "Taip, galiu prieiti",
+        "Dega",
+        "Nedega",
+        "Perkišau",
+        "Ne, neveikia",
+        "Taip, tinka",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "link_down_local",
+        "disposition": "ticket",
+        "reply_any": [
+          "laid",
+          "kabel",
+          "signal"
+        ],
+        "tool_used": [
+          "create_ticket"
+        ]
+      }
+    },
+    {
+      "id": "D6_crc",
+      "phone": "+37060030305",
+      "desc": "Demo #6: pažeistas laidas (CRC klaidos) — perkišti laidą routeryje, klaidos liko -> tiketas vis tiek",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Marius, taip, mano sutartis",
+        "Taip, galiu prieiti",
+        "Perkišau, nepadėjo, laidas buvo kiek užlenktas",
+        "Ne, neveikia",
+        "Taip, tinka",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "crc_errors",
+        "disposition": "ticket",
+        "reply_any": [
+          "klaid",
+          "laid"
+        ],
+        "reply_none": [
+          "abiejuose galuose"
+        ],
+        "tool_used": [
+          "create_ticket"
+        ]
+      }
+    },
+    {
+      "id": "D3_node_fault",
+      "phone": "+37060030306",
+      "desc": "Demo #3: mazgo gedimas be registruotos avarijos (kaimynai irgi DOWN) — informuoti, nieko daryti nereikia, tiketas AUTOMATIŠKAI, tikslaus laiko nežadėti",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Lina, taip, mano sutartis",
+        "O kada sutvarkysit?",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "node_fault_unregistered",
+        "disposition": "ticket",
+        "reply_any": [
+          "tinkle",
+          "gedim"
+        ],
+        "tool_used": [
+          "create_ticket"
+        ]
+      }
+    },
+    {
+      "id": "D2_outage",
+      "phone": "+37060020102",
+      "desc": "Demo #2: registruota masinė avarija — informuoti + ETA, be tiketo (explicit verdict)",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Rasa",
+        "Aišku, ačiū, lauksiu"
+      ],
+      "expect": {
+        "verdict_in": "active_outage",
+        "disposition": "inform",
+        "reply_any": [
+          "avarij",
+          "gedim"
+        ],
+        "reply_none": [
+          "registruoj"
+        ]
+      }
+    },
+    {
+      "id": "D2b_outage_holder_mismatch",
+      "phone": "+37060020102",
+      "desc": "Gyvas skambutis 2026-09-17: vardas nesutampa su sutartimi -> patikslinimas; avarija vis tiek pranešama ŠABLONU su atstatymo laiku",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Mano vardas yra Vilma",
+        "Taip, vyro vardu sudaryta sutartis",
+        "Aišku, ačiū, lauksiu"
+      ],
+      "expect": {
+        "verdict_in": "active_outage",
+        "reply_any": [
+          "numatomas atstatymas"
+        ],
+        "record_outcome": "informed_outage"
+      }
+    },
+    {
+      "id": "D4_switch",
+      "phone": "+37060020103",
+      "desc": "Demo #4: switch nepasiekiamas (demo eiga be 'kada dingo') — informuoti, tiketas AUTOMATIŠKAI, tikslaus laiko nežadėti",
+      "turns": [
+        "Neveikia internetas",
+        "Taip",
+        "Egidijus",
+        "O kada sutvarkysit?",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "switch_unreachable",
+        "disposition": "ticket",
+        "reply_any": [
+          "tinkle",
+          "gedim"
+        ],
+        "tool_used": [
+          "create_ticket"
+        ]
+      }
+    },
+    {
+      "id": "D8_router_hung",
+      "phone": "+37060020112",
+      "desc": "Demo #8: pakibęs routeris (demo eiga) — perkrovimas iš maitinimo, patvirtinta žodžiu + telemetrija -> resolved be tiketo",
+      "turns": [
+        "Neveikia internetas visuose įrenginiuose",
+        "Taip",
+        "Paulius",
+        "Visuose",
+        "Taip, galiu prieiti",
+        "Perkroviau, internetas atsirado",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_any": [
+          "perkrau",
+          "maitinimo"
+        ],
+        "reply_none": [
+          "užregistravau"
+        ]
+      }
+    },
+    {
+      "id": "X_dhcp_silent",
+      "phone": "+37060020106",
+      "desc": "dhcp_silent (CUST106, factory reset — MAC teisingas, DHCP užklausų nėra): pack'o nėra -> neaiškaus gedimo tiketas be telemetrijos žargono (F-8 ištaisyta M4 step 8)",
+      "known_bug": false,
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Greta, taip, mano sutartis",
+        "Taip, esu prie routerio",
+        "Lemputės dega",
+        "Ne, nieko nekeičiau",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "dhcp_silent",
+        "disposition": "ticket",
+        "reply_none": [
+          "DHCP",
+          "gamyklin"
+        ],
+        "tool_used": [
+          "create_ticket"
+        ]
+      }
+    },
+    {
+      "id": "A1_repeat_and_frustration",
+      "phone": "+37060020112",
+      "desc": "Analitikas + F-11 (Andrius 2026-09-16): klientas pirmu sakiniu pasako faktą ir vėliau praranda kantrybę — agentas to fakto nebeklausia, o pasitikslina",
+      "turns": [
+        "Neveikia internetas visuose įrenginiuose, lemputės dega",
+        "Taip",
+        "Paulius",
+        "Jau sakiau — visuose įrenginiuose",
+        "Kiek galima klausinėti to paties? Aš jau atsakiau",
+        "Gerai, perkroviau — atsirado",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "reply_none": [
+          "ar tik viename"
+        ]
+      },
+      "known_bug": false
+    },
+    {
+      "id": "S10_tv_not_subscribed",
+      "phone": "+37060012353",
+      "desc": "M6 (D-10): klientas be TV paslaugos skundžiasi TV -> pasakoma, kad paslaugos sutartyje nėra; jokio tikrinimo, jokio tiketo",
+      "turns": [
+        "Laba diena, televizorius nerodo nė vieno kanalo",
+        "Taip",
+        "Andrius",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "service_not_subscribed",
+        "reply_any": [
+          "televizijos paslaugos"
+        ],
+        "reply_none": [
+          "registruoj"
+        ]
+      }
+    },
+    {
+      "id": "R3_iptv_depends_on_internet",
+      "phone": "+37060020112",
+      "desc": "M6 (D-10/D-12): IPTV neveikia, nes pakibo routeris -> taisomas internetas (perkrovimas), pabaigoje paklausiama, ar televizija veikia",
+      "turns": [
+        "Laba diena, neveikia televizija",
+        "Taip",
+        "Paulius",
+        "Visuose",
+        "Taip, galiu prieiti",
+        "Perkroviau",
+        "Taip, lemputė mirksi, puslapiai atsidaro",
+        "Taip, televizija rodo",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_any": [
+          "televizij"
+        ],
+        "reply_none": [
+          "užregistravau"
+        ]
+      }
+    },
+    {
+      "id": "R2_repeat_call_open_ticket",
+      "phone": "+37060030307",
+      "desc": "M6 (D-12): pakartotinis skambutis — CUST307 jau turi atvirą tiketą dėl interneto -> pastaba prie jo + būsena, JOKIO naujo tiketo ir diagnostikos",
+      "turns": [
+        "Laba diena, vis dar neveikia internetas, niekas neatvažiavo",
+        "Taip",
+        "Tomas",
+        "Aišku, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "open_ticket_exists",
+        "reply_any": [
+          "jau užregistruotas"
+        ],
+        "reply_none": [
+          "Registruoju meistrą"
+        ],
+        "record_outcome": "ticket_appended"
+      }
+    }
+  ]
 }

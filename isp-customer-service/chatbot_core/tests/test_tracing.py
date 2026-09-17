@@ -7,7 +7,7 @@ its own event type, PII redaction, and the NullTracer / factory behaviour.
 
 The end-to-end "the agent actually emits" path is validated by the manual CLI
 run (it needs live LLM calls); here we test the sink + factory directly and the
-ReactAgent helper that turns observations into events.
+the helper that turns observations into events.
 
 Run: pytest tests/test_tracing.py -v
 """
@@ -15,6 +15,9 @@ Run: pytest tests/test_tracing.py -v
 import json
 
 import pytest
+from agent.call_record.finalizer import build_call_summary
+from agent.call_record.finalizer import finalize as finalize_call
+from agent.trace import tools_called_this_session, trace_tool_result
 
 
 def _read_events(path):
@@ -93,6 +96,15 @@ class TestJsonlFileTracer:
         )
         tracer.emit("verdict", side="customer", group="B6", action="instruct", reason="foreign_mac")
         tracer.emit("agent_reply", text="Ar pakeitėte routerį?")
+        tracer.emit(
+            "turn_plan",
+            turn_index=1,
+            owner="procedure",
+            rule="procedure.verify_reboot",
+            hypothesis={"cause": "router_hung", "status": "doubt"},
+            action={"type": "tool", "name": "telemetry.recheck"},
+            say={"kind": "directive"},
+        )
         tracer.emit("session_end", outcome="done", customer_id="CUST105", ticket_id=None)
 
         txt = tracer.export_txt()
@@ -102,6 +114,10 @@ class TestJsonlFileTracer:
         assert "AGENT: Ar pakeitėte routerį?" in content
         assert "VERDICT B6 instruct foreign_mac" in content
         assert "12ms" in content
+        assert (
+            "[plan] owner=procedure rule=procedure.verify_reboot hyp=router_hung(doubt) "
+            "action=tool:telemetry.recheck say=directive"
+        ) in content
 
     def test_emit_never_raises_on_bad_dir(self, tmp_path):
         from adapters.tracing import JsonlFileTracer
@@ -138,7 +154,7 @@ class TestFactory:
 
 
 class _CaptureTracer:
-    """In-memory tracer to assert what ReactAgent emits."""
+    """In-memory tracer to assert what the engine emits."""
 
     def __init__(self):
         self.events = []
@@ -147,13 +163,16 @@ class _CaptureTracer:
         self.events.append({"type": event_type, **fields})
 
 
-class TestReactAgentEmits:
-    """ReactAgent translates tool observations into trace events (no LLM)."""
+from agent.speak.postprocess import finalize
+
+
+class TestEngineEmits:
+    """The engine translates tool observations into trace events (no LLM)."""
 
     def _agent(self, tracer):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        return ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
+        return make_agent("+37060020105", language="lt", tracer=tracer)
 
     def test_session_start_on_init(self, db_connection):
         cap = _CaptureTracer()
@@ -170,7 +189,7 @@ class TestReactAgentEmits:
         from agent.tools import diagnose_connection
 
         obs = json.dumps(diagnose_connection("CUST105"))
-        agent._trace_tool_result("diagnose_connection", obs)
+        trace_tool_result(agent.tracer, "diagnose_connection", obs)
 
         types = [e["type"] for e in cap.events]
         assert types == ["tool_result", "verdict"]
@@ -187,65 +206,72 @@ class TestReactAgentEmits:
         from agent.tools import resolve_address
 
         obs = json.dumps(resolve_address(city="Šiauliai", street="Žeimių"))
-        agent._trace_tool_result("resolve_address", obs)
+        trace_tool_result(agent.tracer, "resolve_address", obs)
 
         result = cap.events[0]
         assert result["type"] == "tool_result"
         assert "Ginkūnai" in result["summary"]["hint"]
 
     def test_preflight_phone_sets_unconfirmed_candidate(self, db_connection):
+        from agent.execute.identification import preflight_phone
+        from agent.speak.context_card import context_card
+
         cap = _CaptureTracer()
         agent = self._agent(cap)  # caller +37060020105 -> CUST105
 
-        agent._preflight_phone()
+        preflight_phone(agent.state, agent.runtime)
 
-        cand = agent.state.phone_candidate
+        cand = agent.state.identity.phone_candidate
         assert cand is not None
         assert cand["customer_id"] == "CUST105"
         assert "Tilžės" in (cand["address"] or "")
-        assert agent.state.customer_id is None  # candidate, NOT confirmed
+        assert agent.state.identity.customer_id is None  # candidate, NOT confirmed
         # Address-first design: the candidate is kept in state for SILENT use
         # only (cross-check / outage fast-path) and is NOT surfaced to the model.
         # The agent asks for the address rather than offering this one, so the
         # facts block must not leak a "PHONE CANDIDATE" to confirm.
-        facts = agent._state_facts_block()
+        facts = context_card(agent.state, agent.runtime)
         assert facts is None or "PHONE CANDIDATE" not in facts
         assert any(e["type"] == "preflight" and e["found"] for e in cap.events)
 
     def test_preflight_unknown_phone_no_candidate(self, db_connection):
+        from agent.execute.identification import preflight_phone
+
         cap = _CaptureTracer()
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="+37069999999", language="lt", tracer=cap)
-        agent._preflight_phone()
+        agent = make_agent("+37069999999", language="lt", tracer=cap)
+        preflight_phone(agent.state, agent.runtime)
 
-        assert agent.state.phone_candidate is None
+        assert agent.state.identity.phone_candidate is None
 
     def test_end_session_idempotent(self, db_connection):
         cap = _CaptureTracer()
         agent = self._agent(cap)
         cap.events.clear()
 
-        agent.end_session(outcome="complete")
-        agent.end_session(outcome="complete")  # second call is a no-op
+        finalize_call(agent.state, agent.runtime, transport_end="complete")
+        finalize_call(
+            agent.state, agent.runtime, transport_end="complete"
+        )  # second call is a no-op
 
         ends = [e for e in cap.events if e["type"] == "session_end"]
         assert len(ends) == 1
-        assert ends[0]["outcome"] == "complete"
+        assert ends[0]["transport_end"] == "complete"  # F-4: the transport is not the outcome
 
     def test_end_session_emits_call_summary_from_state(self, db_connection):
         """Phase 3.10: every call ends with a structured summary derived from state."""
         cap = _CaptureTracer()
         agent = self._agent(cap)
-        agent.state.problem_type = "internet_down"
-        agent.state.customer_id = "CUST105"
-        agent.state.customer_address = "Tilžės g. 60-7, Šiauliai"
-        agent.state.caller_name = "duktė Rasa"
-        agent.state.diagnosis["network"] = {"reason": "foreign_mac", "side": "customer"}
-        agent.state.closed_reason = "resolved"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.identity.customer_address = "Tilžės g. 60-7, Šiauliai"
+        agent.state.identity.caller_name = "duktė Rasa"
+        agent.state.diagnosis.verdicts["network"] = {"reason": "foreign_mac", "side": "customer"}
+        agent.state.closing.closed_reason = "resolved"
         cap.events.clear()
 
-        agent.end_session(outcome="complete")
+        finalize_call(agent.state, agent.runtime, transport_end="complete")
 
         summary = next(e for e in cap.events if e["type"] == "call_summary")
         assert summary["purpose"] == "internet_down"
@@ -254,6 +280,7 @@ class TestReactAgentEmits:
         assert summary["cause"] == "foreign_mac"
         assert summary["side"] == "customer"
         assert summary["outcome"] == "resolved"
+        assert summary["closed_reason"] == "resolved"
         assert summary["resolved"] is True
         # No real trace file behind the capture tracer -> no actions harvested.
         assert summary["actions"] == []
@@ -264,32 +291,34 @@ class TestReactAgentEmits:
     def test_call_summary_actions_read_from_trace(self, db_connection, tmp_path):
         """`actions` are the tool names actually executed, harvested from the JSONL."""
         from adapters.tracing.jsonl_tracer import JsonlFileTracer
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         tracer = JsonlFileTracer("callsummary-test", trace_dir=tmp_path)
-        agent = ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
+        agent = make_agent("+37060020105", language="lt", tracer=tracer)
         tracer.emit("tool_call", name="diagnose_connection", args={})
         tracer.emit("tool_call", name="update_mac", args={})
         tracer.emit("tool_call", name="diagnose_connection", args={})  # dedup
 
-        assert agent._tools_called_this_session() == ["diagnose_connection", "update_mac"]
+        assert tools_called_this_session(agent.tracer) == ["diagnose_connection", "update_mac"]
 
     def test_end_session_persists_conversation_row(self, db_connection, tmp_path):
         """Phase 3.10 slice 1b: session end writes one row to the conversations table."""
         import json as _json
 
         from adapters.tracing.jsonl_tracer import JsonlFileTracer
-        from agent.react_agent import ReactAgent
+
+        from tests.calls import make_agent
 
         tracer = JsonlFileTracer("convrow-test", trace_dir=tmp_path)
-        agent = ReactAgent(caller_phone="+37060020105", language="lt", tracer=tracer)
-        agent.state.problem_type = "internet_down"
-        agent.state.customer_id = "CUST105"
-        agent.state.caller_name = "kaimynas Jonas"
+        agent = make_agent("+37060020105", language="lt", tracer=tracer)
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.identity.caller_name = "kaimynas Jonas"
         agent.state.messages = [{"role": "user", "content": "labas"}]
-        agent.state.closed_reason = "resolved"
+        agent.state.closing.closed_reason = "resolved"
 
-        agent.end_session(outcome="resolved")
+        finalize_call(agent.state, agent.runtime, transport_end="resolved")
 
         with db_connection.cursor() as cur:
             cur.execute(
@@ -325,15 +354,15 @@ class TestReactAgentEmits:
             assert dict(cur.fetchone())["customer_id"] is None
 
     def test_reply_emits_case_snapshot(self, db_connection):
-        """_reply emits a compact case snapshot for review (Pillar A2)."""
+        """The reply pass emits a compact case snapshot for review (Pillar A2)."""
         cap = _CaptureTracer()
         agent = self._agent(cap)
-        agent.state.problem_type = "internet_down"
-        agent.state.customer_id = "CUST105"
-        agent.state.diagnosis["network"] = {"group": "B6", "reason": "foreign_mac"}
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.identity.customer_id = "CUST105"
+        agent.state.diagnosis.verdicts["network"] = {"group": "B6", "reason": "foreign_mac"}
         cap.events.clear()
 
-        agent._reply("Ar pakeitėte routerį?")
+        finalize(agent.state, agent.runtime, "Ar pakeitėte routerį?")
 
         case = next(e for e in cap.events if e["type"] == "case")
         assert case["problem"] == "internet_down"
@@ -346,6 +375,6 @@ class TestReactAgentEmits:
         agent = self._agent(cap)
         cap.events.clear()
 
-        agent._reply("Labas!")
+        finalize(agent.state, agent.runtime, "Labas!")
 
         assert not [e for e in cap.events if e["type"] == "case"]

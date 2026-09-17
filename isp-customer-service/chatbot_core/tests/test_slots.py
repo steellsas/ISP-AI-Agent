@@ -108,18 +108,20 @@ class TestIntegrationViaAgentTool:
     def test_resolve_address_fills_slots(self, db_connection):
         import json
 
-        from agent.react_agent import ReactAgent
+        from agent.execute.observe import update_state_from_observation
         from agent.tools import resolve_address
 
-        agent = ReactAgent(caller_phone="+37060020105")
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020105")
         obs = json.dumps(
             resolve_address(
                 city="Šiauliai", street="Tilžės", house_number="60", apartment_number="7"
             )
         )
-        agent._update_state_from_observation("resolve_address", obs)
+        update_state_from_observation(agent.state, agent.runtime, "resolve_address", obs)
 
-        p = agent.state.profile
+        p = agent.state.identity.profile
         assert p.street.status == SlotStatus.RESOLVED
         assert p.house.value == "60"
-        assert agent.state.customer_id == "CUST105"  # existing behaviour unchanged
+        assert agent.state.identity.customer_id == "CUST105"  # existing behaviour unchanged

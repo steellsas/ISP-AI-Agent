@@ -8,8 +8,7 @@ The engine reflects these in the identification guidance so changing them — in
 an extra question like the caller's name — is a file edit, not a code change.
 
 The GUARDS are NOT here (tool gate, apartment-never-from-DB, street-must-match); security
-boundaries stay in code. Fail-soft: a missing/broken file yields the built-in defaults, so
-a bad edit cannot take identification down.
+boundaries stay in code. An unset knob takes its default.
 """
 
 from __future__ import annotations
@@ -23,29 +22,22 @@ logger = logging.getLogger(__name__)
 
 _PATH = Path(__file__).resolve().parent / "knowledge" / "identification.yaml"
 
-# Built-in defaults = today's behaviour, used when the file is absent/malformed.
+# The knob defaults, used for any knob the file does not set.
 _DEFAULTS: dict[str, Any] = {
     "offer_phone_address": True,
     "require_apartment": True,
     "ask_caller": True,
     "extra_questions": [],
-    "questions": {},
 }
-
-_CALLER_QUESTION_DEFAULT = "O su kuo kalbu — koks jūsų vardas? Ar jūs sutartį sudaręs asmuo?"
 
 
 @lru_cache(maxsize=1)
 def _cfg() -> dict[str, Any]:
-    try:
-        import yaml
+    from .contract.loader import read_yaml
 
-        data = yaml.safe_load(_PATH.read_text(encoding="utf-8")) or {}
-        cfg = (data.get("identification") or {}) if isinstance(data, dict) else {}
-        return {**_DEFAULTS, **cfg} if isinstance(cfg, dict) else dict(_DEFAULTS)
-    except Exception as e:  # pragma: no cover - defensive; never break a call
-        logger.warning(f"identification.yaml not loaded ({e}); using defaults")
-        return dict(_DEFAULTS)
+    data = read_yaml(_PATH) or {}
+    cfg = (data.get("identification") or {}) if isinstance(data, dict) else {}
+    return {**_DEFAULTS, **cfg} if isinstance(cfg, dict) else dict(_DEFAULTS)
 
 
 def reload() -> None:
@@ -67,223 +59,19 @@ def ask_caller() -> bool:
 
 
 def caller_question() -> str:
-    q = (_cfg().get("questions") or {}).get("caller")
-    return str(q) if q else _CALLER_QUESTION_DEFAULT
+    from .contract.locale import phrase
 
-
-# Scripted identification phrases — engine-composed replies (see the yaml note).
-_PHRASES_DEFAULTS: dict[str, str] = {
-    "ask_problem": "Klausau! Kuo galiu padėti — kokia problema?",
-    "anamnesis_question": (
-        "Supratau. O kada pastebėjote, kad dingo internetas — gal po ko nors, "
-        "pavyzdžiui, audros ar remonto?"
-    ),
-    "address_offer": "Gerai — patikrinsiu ryšį. Ar skambinate dėl {adresas}?",
-    "address_ask": "Gerai — patikrinsiu ryšį iki jūsų buto. Koks adresas?",
-    "echo_address": "Supratau — {adresas}.",
-    "check_result": "Patikrinau ryšį iki jūsų buto. {zinia}",
-    "billing_extra": "Apmokėjus sąskaitą, paslauga bus įjungta.",
-    "anything_else": "Ar dar kuo galiu padėti?",
-    "thanks": "Ačiū!",
-    "confirm_end": (
-        "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, "
-        "kad kolegos su jumis susisiektų."
-    ),
-    "goodbye": "Ačiū, kad paskambinote. Geros dienos!",
-    "ticket_intro": (
-        "Telefonu šio gedimo išspręsti nepavyks — {priezastis}. Registruoju gedimą meistrui."
-    ),
-    "ticket_phone": (
-        "Kokiu telefono numeriu su jumis susisiekti — ar tiks tas, iš kurio skambinate?"
-    ),
-    "ticket_phone_retry": (
-        "Atsiprašau, nesupratau numerio. Pasakykite jį skaitmenimis arba sakykite "
-        "„tiks šis“, jei tinka numeris, iš kurio skambinate."
-    ),
-    "ticket_hours": "Gerai. O kada patogiausia jums skambinti?",
-    "ticket_hours_retry": (
-        "Atsiprašau, nesupratau. Kada jums patogiausia sulaukti skambučio — "
-        "pavyzdžiui, „bet kada“ arba „po 17 valandos“?"
-    ),
-    "ticket_done": (
-        "Užregistravau gedimą. Susisieksime numeriu {nr}, skambinti galima {val}. "
-        "Ar dar kuo galiu padėti?"
-    ),
-    "evidence_conflict": (
-        "Norėčiau patikslinti dėl „{tema}“: pirmiau supratau „{a}“, o dabar — "
-        "„{b}“. Kaip yra iš tiesų?"
-    ),
-    "back_to_issue": "Grįžkime prie jūsų gedimo. {inkaras}",
-    "solve_or_ticket": (
-        "Grįžkime prie gedimo — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
-    ),
-    "checking_note": "Tuoj patikrinsiu ryšį iki jūsų buto.",
-    "findings_announce": ("Ką patikrinome: {faktai}. Panašu — {priezastis}. Galime: {sprendimai}."),
-    "negation_clarify": ("Norėjau patikslinti — išgirdau „ne“. {klausimas}"),
-    "done_report_clarify": ("Supratau — patikrinote. {klausimas}"),
-    "facts_recap": ("Pasitikslinu, ar teisingai supratau: {faktai}. Ar taip?"),
-    "refute_confirm": (
-        "Norėjau įsitikinti, nes tai keičia išvadą: supratau, kad {tema} — {reiksme}. Ar tikrai?"
-    ),
-    "reask_reason": ("Dar kartą pasitikslinsiu, kad būčiau tikras. {klausimas}"),
-    "wait_ack": ("Gerai, lauksiu — pasakykite, kai būsite pasiruošę."),
-    "wait_ack_2": "Gerai, neskubėkite.",
-    "ticket_phone_fixed": "Užsirašiau — skambinsime numeriu {nr}.",
-    "backchannel_1": "Mhm.",
-    "backchannel_2": "Aha, klausau.",
-    "interrupt_ack_1": "Aha, girdžiu.",
-    "interrupt_ack_2": "Taip, klausau.",
-    "anamnesis_last_used": ("O kada paskutinį kartą internetas tikrai veikė?"),
-    "checkin": ("Kaip sekasi — ar pavyksta?"),
-    "no_problem_goodbye": (
-        "Supratau. Čia interneto tiekėjo pagalba — jei kils ryšio ar paslaugos "
-        "problema, drąsiai skambinkite. Geros dienos!"
-    ),
-    "bridge_bound": (
-        "Patikrinau — matau jūsų kompiuterį linijoje. Pririšau, patikrinkite — "
-        "internetas turėtų atsirasti."
-    ),
-    "repeat_ack": ("Atsiprašau, kad kartojuosi — noriu būti visiškai tikras. "),
-    "escalate_clarify": (
-        "Norėjau patikslinti — ar bandome išspręsti kartu dabar, ar registruoju meistrą?"
-    ),
-    "ticket_cancel_confirm": (
-        "Tik patikslinsiu — telefonu šio gedimo išspręsti nepavyks, todėl siūliau "
-        "registruoti meistrą. Registruoti, ar tikrai nereikia?"
-    ),
-    "ticket_intro_bridge": (
-        "Internetas kol kas veikia per kompiuterį — o kad veiktų visi namai, "
-        "registruoju meistrą dėl naujo routerio."
-    ),
-}
-
-
-def phrase(key: str, **fmt: str) -> str:
-    """A scripted identification phrase (file first, code default), with the
-    {placeholders} filled. Unknown key returns '' (fail-soft)."""
-    raw = (_cfg().get("phrases") or {}).get(key) or _PHRASES_DEFAULTS.get(key, "")
-    try:
-        return str(raw).format(**fmt)
-    except Exception:  # a bad placeholder edit must not break the call
-        return str(raw)
-
-
-_RELATION_MARKS: dict[str, tuple[str, ...]] = {
-    "holder": ("sutart", "savinink", "mano vardu", "aš sudariau", "as sudariau"),
-    "family": (
-        "vyras",
-        "vyro",
-        "žmona",
-        "zmona",
-        "žmonos",
-        "zmonos",
-        "vaikas",
-        "sūnus",
-        "sunus",
-        "dukt",
-        "dukra",
-        "mama",
-        "tėv",
-        "tev",
-        "brolis",
-        "sesuo",
-        "šeim",
-        "seim",
-    ),
-    "tenant": ("nuominink", "nuomoju", "nuomuoju"),
-    "helper": ("kaimyn", "padedu", "padėti", "padeti", "draug"),
-}
-
-
-def detect_caller_relation(text: str | None) -> str:
-    """Keyword-read the caller's relation to the contract from their intro. Record
-    + confidence signal only — never a gate."""
-    if not text:
-        return "unknown"
-    low = text.lower()
-    # Relation words WIN over a contract mention: "žmona sutartį sudariusio" names the
-    # HOLDER'S wife — the caller is family, even though "sutart..." appears.
-    for rel in ("family", "tenant", "helper"):
-        if any(m in low for m in _RELATION_MARKS[rel]):
-            return rel
-    if any(m in low for m in ("ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar")):
-        return "other"  # explicitly not the holder, relation unstated
-    if any(m in low for m in _RELATION_MARKS["holder"]):
-        return "holder"
-    if any(m in low for m in ("taip", "aš", "as ")):
-        return "holder"  # a plain yes to "ar jūs sutartį sudaręs asmuo?"
-    return "unknown"
-
-
-# Words that are never a NAME in an intro sentence ("Taip. Mano vardas Andrius.
-# Taip, aš sutartį sudaręs asmuo." landed VERBATIM in the ticket's Kontaktas field
-# — observed live 2026-08-04). Lowercase; sentence-leading fillers included.
-_NAME_STOP = {
-    "taip",
-    "ne",
-    "gerai",
-    "čia",
-    "cia",
-    "aš",
-    "as",
-    "mano",
-    "vardas",
-    "vardu",
-    "esu",
-    "yra",
-    "labas",
-    "laba",
-    "diena",
-    "sveiki",
-    "sutartį",
-    "sutarti",
-    "sutartis",
-    "sutarties",
-    "sudaręs",
-    "sudares",
-    "sudariusi",
-    "asmuo",
-    "žmona",
-    "zmona",
-    "vyras",
-    "sūnus",
-    "sunus",
-    "dukra",
-    "nuomininkas",
-    "nuomininkė",
-    "kaimynas",
-    "kaimynė",
-}
-
-_NAME_WORD = r"[A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+"
-
-
-def extract_caller_name(text: str | None) -> str | None:
-    """Pull the bare NAME out of an intro sentence — "Mano vardas Andrius" -> "Andrius".
-    The pattern after "vardas/vardu" wins; otherwise the first capitalized token that
-    is not a filler. None when nothing name-like is found (caller stays verbatim-less;
-    the capture records "nenurodyta" via its own filter)."""
-    if not text:
-        return None
-    import re as _re
-
-    m = _re.search(rf"vard(?:as|u)(?:\s+yra)?\s+({_NAME_WORD})", text, _re.IGNORECASE)
-    if m:
-        return m.group(1).capitalize()
-    for tok in _re.findall(_NAME_WORD, text):
-        if tok.lower() not in _NAME_STOP and len(tok) >= 3:
-            return tok
-    return None
+    return phrase("identification.questions.caller")
 
 
 def extra_questions_guidance() -> str | None:
     """A guidance line for any configured extra verification questions, injected into the
     identification facts so the agent asks + confirms them before proceeding. None when
     none are configured (today's default = address only)."""
-    cfg = _cfg()
-    wanted = cfg.get("extra_questions") or []
-    phrasings = cfg.get("questions") or {}
-    asks = [str(phrasings.get(q, q)) for q in wanted if q]
+    from .contract.locale import phrase
+
+    wanted = _cfg().get("extra_questions") or []
+    asks = [phrase(f"identification.questions.{q}") for q in wanted if q]
     if not asks:
         return None
     joined = " ".join(f'"{a}"' for a in asks)

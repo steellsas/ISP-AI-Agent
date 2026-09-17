@@ -6,34 +6,39 @@ one-shot narrator note. Overlay may FILL facts, never steer routing.
 
 from types import SimpleNamespace
 
+from agent.delivery import apply_overlay
+from agent.evidence import Contradiction
+
 
 def _agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    agent = ReactAgent(caller_phone="+37060012353")
-    agent.state.customer_id = "CUST009"
-    agent.state.problem_type = "internet_down"
-    agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
+    agent = make_agent("+37060012353")
+    agent.state.identity.customer_id = "CUST009"
+    agent.state.intake.problem_type = "internet_down"
+    agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
     return agent
 
 
 class TestApplyOverlay:
     def test_pending_answer_lands_from_overlay(self, db_connection):
+        from agent.speak.context_card import context_card
+
         agent = _agent()
-        agent._evidence_last_ask_key = "lights"
-        agent.apply_overlay(["ne, nedega nė viena"])
-        assert agent.state.evidence.get("lights", {}).get("value") == "nedega"
-        block = agent._state_facts_block() or ""
-        assert "ĮSITERPĖ" in block and "nedega" in block
-        assert "ĮSITERPĖ" not in (agent._state_facts_block() or "")  # one-shot
+        agent.state.diagnosis.pending_evidence_key = "lights"
+        apply_overlay(agent.state, agent.runtime, ["ne, nedega nė viena"])
+        assert agent.state.diagnosis.evidence.get("lights", {}).get("value") == "off"
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "SPOKEN OVER YOU" in block and "nedega" in block
+        assert "SPOKEN OVER YOU" not in (context_card(agent.state, agent.runtime) or "")  # one-shot
 
     def test_address_slots_prefill_from_overlay(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
-        agent.state.problem_type = "internet_down"
-        agent.apply_overlay(["dėl Vilniaus gatvės 29 Šiauliai"])
-        p = agent.state.profile
+        agent = make_agent("unknown")
+        agent.state.intake.problem_type = "internet_down"
+        apply_overlay(agent.state, agent.runtime, ["dėl Vilniaus gatvės 29 Šiauliai"])
+        p = agent.state.identity.profile
         assert p.street.value and "Vilniaus" in p.street.value
         assert p.house.value == "29"
 
@@ -41,18 +46,20 @@ class TestApplyOverlay:
         import agent.evidence as ev
 
         monkeypatch.setattr(
-            ev, "extract_client_facts", lambda t: {"outlet_works": "neveikia"} if t else {}
+            ev, "extract_client_facts", lambda t: {"outlet_works": "not_working"} if t else {}
         )
         agent = _agent()
-        agent._evidence_last_ask_key = "lights"  # volunteered, not the asked key
-        agent.apply_overlay(["rozetė neveikia"])
-        assert agent.state.evidence.get("outlet_works") is None  # parked
-        assert agent._fact_confirm == ("outlet_works", "neveikia")
+        agent.state.diagnosis.pending_evidence_key = "lights"  # volunteered, not the asked key
+        apply_overlay(agent.state, agent.runtime, ["rozetė neveikia"])
+        assert agent.state.diagnosis.evidence.get("outlet_works") is None  # parked
+        assert agent.state.diagnosis.contradiction == Contradiction(
+            kind="flip", fact_key="outlet_works", now_value="not_working"
+        )
 
     def test_empty_and_capped(self, db_connection):
         agent = _agent()
-        agent.apply_overlay(["", "   "])
-        assert agent._overlay_heard is None
+        apply_overlay(agent.state, agent.runtime, ["", "   "])
+        assert agent.state.voice.overlay_heard is None
 
 
 class TestTransportHandOver:
@@ -62,7 +69,6 @@ class TestTransportHandOver:
         from app import voice
 
         monkeypatch.setenv("API_RECORD_AUDIO", "0")
-        monkeypatch.setenv("SPECULATION", "off")
         got: list = []
 
         class _P:

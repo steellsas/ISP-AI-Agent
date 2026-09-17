@@ -1,38 +1,38 @@
 """
-Conversation eval harness — Golden Dataset (Phase 3.8 step 0).
+Conversation eval harness — scripted calls, hard-scored.
 
 Drives AgentSession TEXT-TO-TEXT through scripted CLIENT turns and HARD-SCORES the
-resulting conversation STATE + replies. The LLM only phrases; the verdict tree and
-step walker are deterministic given the scripted turns, so the state trajectory
-(verdict reached, disposition, steps) is stable enough to assert on — unlike the
-free-form reply text, which we only check for required/forbidden substrings.
+resulting conversation STATE + replies. The engine plans every turn deterministically
+(decide/: the policy rules, the procedure runner, the plan gate), so the state trajectory
+(verdict reached, disposition, the contact record) is stable enough to assert on — unlike
+the free-form reply text, which we only check for required/forbidden substrings.
 
-This is the safety net REQUIRED before any Phase 3.8 reasoning change lands (see
-docs/MASTANTIS_AGENTAS_SPEC.md). Scenarios flagged `known_bug` encode a bug we found
-in voice testing and are EXPECTED to fail now — they turn green once the fix lands,
-so a regression can never silently return.
+Run it before and after any behaviour change. A scenario flagged `known_bug` encodes a bug
+found in voice testing and is EXPECTED to fail until the fix lands (none today — the last
+one, X_dhcp_silent, was fixed in M4). The scenarios and every check are described in
+eval/README.md.
 
-Checks per scenario (all optional, only those present are scored):
+Checks per scenario (only those present in `expect` are scored, except the always-on ones):
   - verdict_in    : the expected verdict reason appears at some point
-                    (state.hypothesis.cause / resolution.verdict across turns)
-  - disposition   : resolved | ticket | outage | inform | open | any
-  - reply_any     : at least one agent reply contains EACH listed substring
+                    (hypothesis cause / procedure verdict / network verdict across turns)
+  - disposition   : resolved | ticket | outage | inform | declined | open | any
+                    (ticket = create_ticket ran; inform also accepts open/outage)
+  - identified    : true/false — whether the call ended with a committed customer_id
+  - reply_any     : at least ONE agent reply contains at least ONE listed substring
   - reply_none    : NO agent reply contains ANY listed substring (regression guard)
+  - tool_used     : each listed tool_call actually ran (read from the session trace)
+  - record_outcome: the contact record's outcome (+ record_reason: unidentified_reason)
+  - contact_record: always on — exactly one conversations row for the call (D-14)
+  - reply_len     : always on — longest reply <= MAX_REPLY_CHARS, average <= AVG_REPLY_CHARS
 
-Usage (needs LLM API keys in .env — like the voice demo):
+Usage (needs LLM API keys in .env):
     cd chatbot_core
     uv run python src/agent/eval/run_eval.py                 # all scenarios
     uv run python src/agent/eval/run_eval.py --only S1_foreign_mac_changed_router
     uv run python src/agent/eval/run_eval.py --no-db          # skip DB rebuild (faster reruns)
     uv run python src/agent/eval/run_eval.py --json report.json
-    uv run python src/agent/eval/run_eval.py --engine v2      # run on the graph_v2 engine
-    uv run python src/agent/eval/run_eval.py --compare graph,v2   # engine parity diff
 
-Engine parity (--compare, docs/ROADMAP_REFACTORING.md R0/R2): each scenario runs
-once per engine (fresh DB each run) and the STATE outcomes are diffed — verdicts,
-disposition, closed_reason, customer_id, tools used. Reply TEXT is not diffed
-(the live LLM rephrases between runs); the deterministic state trajectory is the
-parity contract.
+The pre-refactor results to compare against: docs/refactoring/baseline/.
 """
 
 from __future__ import annotations
@@ -61,7 +61,7 @@ MAX_REPLY_CHARS = 280
 AVG_REPLY_CHARS = 160
 
 
-# --- .env (LLM keys) — the harness drives the REAL model, like voice_demo ---------
+# --- .env (LLM keys) — the harness drives the REAL model, like a live call --------
 def _load_env() -> None:
     # The eval drives simulated calls end-to-end: enable the dead-router bridge device
     # simulation so the bridge can VERIFY + bind (like the update_mac/reset_port stubs).
@@ -84,7 +84,7 @@ def _load_env() -> None:
 # --- DB rebuild — deterministic seed world, fresh per scenario --------------------
 # The bind/reset stubs MUTATE the DB, so scenarios must not leak state into each
 # other. Rebuilding per scenario is sub-second (pure sqlite3) and mirrors the manual
-# "perkrauk DB prieš MAC/tiltą" rule in docs/TESTAVIMO_SCENARIJUS.md.
+# "perkrauk DB prieš MAC/tiltą" rule in docs/archive/TESTAVIMO_SCENARIJUS.md.
 def _rebuild_db(attempts: int = 3) -> None:
     for script in ("scripts/setup_db.py", "scripts/seed_data.py"):
         last = None
@@ -151,22 +151,27 @@ def _bump_rate_limits() -> None:
 
 
 # --- Run one scenario -------------------------------------------------------------
-def _run_scenario(scn: dict, engine: str | None = None) -> dict:
+def _run_scenario(scn: dict) -> dict:
     """Drive the scripted turns; snapshot state each turn; return the raw evidence."""
     from agent.session import AgentSession
 
     _bump_rate_limits()
 
-    session = AgentSession(caller_phone=scn["phone"], language="lt", engine=engine)
+    session = AgentSession(caller_phone=scn["phone"], language="lt")
     replies: list[str] = []
     verdicts_seen: set[str] = set()
 
     def _snapshot() -> None:
         st = session.state
-        if st.hypothesis and st.hypothesis.get("cause"):
-            verdicts_seen.add(st.hypothesis["cause"])
-        if st.resolution and st.resolution.get("verdict"):
-            verdicts_seen.add(st.resolution["verdict"])
+        if st.diagnosis.hypothesis and st.diagnosis.hypothesis.get("cause"):
+            verdicts_seen.add(st.diagnosis.hypothesis["cause"])
+        if st.resolution.procedure and st.resolution.procedure.get("verdict"):
+            verdicts_seen.add(st.resolution.procedure["verdict"])
+        # A verdict that needs no belief or procedure (e.g. a service the contract does
+        # not have) is still the verdict the call was decided on.
+        network = st.diagnosis.verdicts.get("network") or {}
+        if network.get("reason"):
+            verdicts_seen.add(network["reason"])
 
     replies.append(session.greeting())
     _snapshot()
@@ -177,23 +182,41 @@ def _run_scenario(scn: dict, engine: str | None = None) -> dict:
             replies.append(f"<<EXCEPTION: {e}>>")
         _snapshot()
 
-    st = session.state
     trace_path = session.tracer.path if hasattr(session.tracer, "path") else None
-    session.end_session(outcome="eval")
+    session.end_session(transport_end="eval")
+    st = session.state  # after end_session: the hang-up net may close the case
+    records = _contact_records(session.session_id)
     _close_db()  # free the file handle before the next scenario's DB rebuild
 
     tools = _tools_in_trace(trace_path)
     return {
         "replies": replies,
         "verdicts_seen": verdicts_seen,
-        "case_closed": st.case_closed,
-        "closed_reason": st.closed_reason,
-        "customer_id": st.customer_id,
-        "outage_reported": getattr(st, "outage_reported", False),
+        "case_closed": st.closing.case_closed,
+        "closed_reason": st.closing.closed_reason,
+        "customer_id": st.identity.customer_id,
+        "outage_reported": getattr(st.diagnosis, "outage_reported", False),
         "ticket_created": "create_ticket" in tools,
         "tools_used": tools,
         "trace": str(trace_path) if trace_path else None,
+        "records": records,
     }
+
+
+def _contact_records(session_id: str) -> list[dict]:
+    """The call's contact records in the conversations table (D-14: exactly one)."""
+    try:
+        from agent.tools import get_db
+
+        with get_db().cursor() as cur:
+            cur.execute(
+                "SELECT outcome, unidentified_reason, needs_review FROM conversations "
+                "WHERE session_id = ?",
+                (session_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+    except Exception as e:  # a missing record is scored, not a crash
+        return [{"error": str(e)}]
 
 
 def _tools_in_trace(trace_path: Path | None) -> set[str]:
@@ -276,6 +299,14 @@ def _score(scn: dict, ev: dict) -> list[tuple[str, bool, str]]:
         ok = tool in ev["tools_used"]
         checks.append((f"tool_used:{tool}", ok, "ran" if ok else "NOT CALLED"))
 
+    # Contact record (D-14) — EVERY scenario: exactly one row, and the expected outcome.
+    records = ev.get("records") or []
+    checks.append(("contact_record", len(records) == 1, f"rows={len(records)}"))
+    if records and "record_outcome" in exp:
+        got = (records[0].get("outcome"), records[0].get("unidentified_reason"))
+        want = (exp["record_outcome"], exp.get("record_reason"))
+        checks.append(("record_outcome", got == want, f"want={want} got={got}"))
+
     # Voice-length guard (Phase 3.11 A) — runs on EVERY scenario automatically. Voice is
     # not chat: a paragraph is unlistenable and is also the main TTS latency cost. Caps
     # the single longest reply and the scenario average (chars ≈ the style rule's ~25
@@ -326,75 +357,17 @@ def _print_report(results: list[dict]) -> int:
     return 1 if hard_fails else 0
 
 
-# --- Engine parity (--compare) -----------------------------------------------------
-# The deterministic outcome fields two engines must agree on. Replies are excluded
-# on purpose — the live LLM rephrases between runs.
-_PARITY_FIELDS = ("verdicts_seen", "case_closed", "closed_reason", "customer_id", "tools_used")
-
-
-def _parity_diff(a: dict, b: dict) -> list[str]:
-    diffs = []
-    for field in _PARITY_FIELDS:
-        va, vb = a[field], b[field]
-        if isinstance(va, set):
-            va, vb = sorted(va), sorted(vb)
-        if va != vb:
-            diffs.append(f"{field}: {va!r} != {vb!r}")
-    da, db = _disposition(a), _disposition(b)
-    if da != db:
-        diffs.append(f"disposition: {da!r} != {db!r}")
-    return diffs
-
-
-def _run_compare(scenarios: list[dict], engines: list[str], rebuild: bool) -> int:
-    print(f"\n{'=' * 78}\nENGINE PARITY — {engines[0]} vs {engines[1]}\n{'=' * 78}")
-    hard_fails = 0
-    for scn in scenarios:
-        evs = {}
-        for engine in engines:
-            if rebuild:
-                _rebuild_db()
-            print(f"... {scn['id']} on engine={engine}", flush=True)
-            evs[engine] = _run_scenario(scn, engine=engine)
-        diffs = _parity_diff(evs[engines[0]], evs[engines[1]])
-        per_engine = {
-            eng: [(n, ok) for n, ok, _ in _score(scn, ev) if n != "reply_len"]
-            for eng, ev in evs.items()
-        }
-        scn_ok = not diffs and all(ok for checks in per_engine.values() for _, ok in checks)
-        known = scn.get("known_bug", False)
-        if not scn_ok and not known:
-            hard_fails += 1
-        head = "PASS" if scn_ok else ("xfail" if known else "FAIL")
-        print(f"[{head}] {scn['id']}")
-        for d in diffs:
-            print(f"         DIFF {d}")
-        for eng, checks in per_engine.items():
-            bad = [n for n, ok in checks if not ok]
-            if bad:
-                print(f"         {eng}: failed checks {bad}")
-    print(f"\n  parity failures: {hard_fails}\n")
-    return 1 if hard_fails else 0
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description="Conversation eval — Golden Dataset")
     ap.add_argument("--only", help="run a single scenario by id")
     ap.add_argument("--no-db", action="store_true", help="skip DB rebuild between scenarios")
     ap.add_argument("--json", help="write the raw report to this path")
-    ap.add_argument(
-        "--engine",
-        choices=["graph", "v2", "legacy"],
-        help="orchestration engine for the run (default: AGENT_ENGINE env / graph)",
-    )
-    ap.add_argument(
-        "--compare",
-        metavar="A,B",
-        help="run every scenario under two engines (e.g. graph,v2) and diff state outcomes",
-    )
     args = ap.parse_args()
 
     _load_env()
+    from agent.contract import loader
+
+    loader.startup()
     scenarios = _load_scenarios()
     if args.only:
         scenarios = [s for s in scenarios if s["id"] == args.only]
@@ -402,19 +375,12 @@ def main() -> int:
             print(f"No scenario with id '{args.only}'")
             return 2
 
-    if args.compare:
-        engines = [e.strip() for e in args.compare.split(",")]
-        if len(engines) != 2 or not all(e in ("graph", "v2", "legacy") for e in engines):
-            print("--compare expects two of: graph, v2, legacy (e.g. --compare graph,v2)")
-            return 2
-        return _run_compare(scenarios, engines, rebuild=not args.no_db)
-
     results = []
     for scn in scenarios:
         if not args.no_db:
             _rebuild_db()
         print(f"... running {scn['id']} (phone={scn['phone']})", flush=True)
-        ev = _run_scenario(scn, engine=args.engine)
+        ev = _run_scenario(scn)
         checks = _score(scn, ev)
         results.append({"scn": scn, "ev": ev, "checks": checks})
 

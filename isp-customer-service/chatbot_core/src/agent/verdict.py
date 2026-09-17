@@ -3,7 +3,7 @@ diagnose_connection verdict — the "thick" deterministic diagnostic composite.
 
 One call gathers all provider-side signals (billing, incident, switch, port
 telemetry, neighbour correlation) and runs the decision tree from
-docs/scenarijus_neveikia_internetas.md §3.2 (Steps 1-4, BŪSENA A/B/C). The
+docs/scenarijus_neveikia_internetas.md §3.2 (Steps 1-4, STATE A/B/C). The
 tree lives HERE in code — not in the prompt — so the provider/customer split
 is fast and deterministic (voice-friendly: one tool call, no LLM reasoning
 over raw telemetry).
@@ -14,29 +14,27 @@ cause: on side=customer/unclear the agent continues the conversation
 docs/demo_plan_neveikia_internetas.md §2.
 
 Split in two so the tree is unit-testable without a database:
-    gather_signals(db, customer_id) -> signals dict   (adapters, I/O)
-    decide(signals)                 -> verdict dict   (pure function)
+    gather_signals(sources, customer_id) -> signals dict   (I/O through the sources)
+    decide(signals)                      -> verdict dict   (pure function)
+
+The sources (CRM billing, network outage/port/neighbours) are supplied by the
+tool provider — this module imports no adapter.
 """
 
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
+
+from .contract import limits
 
 logger = logging.getLogger(__name__)
 
-# Sustained CRC errors above this rate (errors/min) indicate a damaged or
-# poorly seated cable (B5) even while the link stays up.
-CRC_ERROR_THRESHOLD = 1.0
 
-# A port status flap (down->up) within this window counts as "the router WAS
-# power-cycled" (S6 hung router): a real reboot drops the device off the line,
-# so last_status_change refreshes. "Perkroviau" with a stale timestamp means
-# the wrong device (a second router) or just the extension cord was cycled.
-REBOOT_FLAP_WINDOW_S = 600
-
-
-def _flap_recent(last_status_change: str | None, window_s: int = REBOOT_FLAP_WINDOW_S) -> bool:
-    """True when the port's last status change is within the reboot window.
+def _flap_recent(last_status_change: str | None, window_s: int | None = None) -> bool:
+    """True when the port's last status change is within the reboot window
+    (`reboot_flap_window_s`): a real reboot drops the device off the line, so
+    last_status_change refreshes; a stale stamp means the wrong device (a second
+    router) or just the extension cord was power-cycled.
     SQLite CURRENT_TIMESTAMP / datetime('now') stamps are UTC 'YYYY-MM-DD HH:MM:SS'."""
     if not last_status_change:
         return False
@@ -44,6 +42,8 @@ def _flap_recent(last_status_change: str | None, window_s: int = REBOOT_FLAP_WIN
         ts = datetime.fromisoformat(str(last_status_change)).replace(tzinfo=UTC)
     except ValueError:
         return False
+    if window_s is None:
+        window_s = limits.get("reboot_flap_window_s")
     return (datetime.now(UTC) - ts).total_seconds() <= window_s
 
 
@@ -52,34 +52,39 @@ def _flap_recent(last_status_change: str | None, window_s: int = REBOOT_FLAP_WIN
 # =============================================================================
 
 
-def gather_signals(db, customer_id: str) -> dict[str, Any]:
+class TelemetrySources(Protocol):
+    """The CRM and network reads the verdict needs (one call's worth)."""
+
+    def billing_status(self, customer_id: str) -> dict[str, Any]: ...
+
+    def outage_for_customer(self, customer_id: str) -> dict[str, Any]: ...
+
+    def port_status(self, customer_id: str) -> dict[str, Any]: ...
+
+    def switch_neighbors(self, switch_id: str, exclude_customer_id: str) -> dict[str, Any]: ...
+
+
+def gather_signals(sources: TelemetrySources, customer_id: str) -> dict[str, Any]:
     """
     Collect the verdict's input signals from both services.
 
     Orchestrates CRM (billing) and network (outage / switch / port / telemetry
     / neighbours) — the two domains stay separate (no cross-schema JOINs), so
-    swapping either backing for a real system later touches only the adapter.
+    swapping either backing for a real system later touches only the sources.
 
     Returns a flat signals dict; on a hard failure returns
     {"error": ..., "message": ...} instead.
     """
-    from crm_mcp.tools.customer_lookup import get_billing_status
-    from network_diagnostic_mcp.tools.outage_checks import check_customer_affected_by_outage
-    from network_diagnostic_mcp.tools.port_diagnostics import (
-        check_port_status,
-        get_switch_neighbor_summary,
-    )
-
     # --- Step 1 signal: billing (CRM domain) -------------------------------
-    billing = get_billing_status(db, customer_id)
+    billing = sources.billing_status(customer_id)
     if not billing.get("success"):
         return {
             "error": billing.get("error", "billing_check_failed"),
-            "message": billing.get("message", "Nepavyko patikrinti apmokėjimo būsenos."),
+            "message": billing.get("message", "Could not check the billing status."),
         }
 
     # --- Step 2 signal: registered incident (network domain) ---------------
-    outage = check_customer_affected_by_outage(db, customer_id)
+    outage = sources.outage_for_customer(customer_id)
     outage_info = None
     if outage.get("success") and outage.get("affected"):
         first = (outage.get("outages") or [{}])[0]
@@ -91,7 +96,7 @@ def gather_signals(db, customer_id: str) -> dict[str, Any]:
         }
 
     # --- Steps 3-4 signals: switch + port + telemetry ----------------------
-    port_result = check_port_status(db, customer_id)
+    port_result = sources.port_status(customer_id)
     port = None
     if port_result.get("success") and port_result.get("ports"):
         ports = port_result["ports"]
@@ -131,11 +136,9 @@ def gather_signals(db, customer_id: str) -> dict[str, Any]:
     }
 
     # Neighbour correlation only matters when the customer's link is down
-    # (BŪSENA A: local fault vs unregistered node fault).
+    # (STATE A: local fault vs unregistered node fault).
     if port and port.get("status") != "up":
-        neighbors = get_switch_neighbor_summary(
-            db, port["switch_id"], exclude_customer_id=customer_id
-        )
+        neighbors = sources.switch_neighbors(port["switch_id"], exclude_customer_id=customer_id)
         if neighbors.get("success"):
             signals["neighbors_up"] = neighbors["neighbors_up"]
             signals["neighbors_down"] = neighbors["neighbors_down"]
@@ -168,16 +171,16 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
     """
     # ---- Step 1: billing block (B1) ----------------------------------------
     if signals.get("billing_suspended"):
-        reason_txt = signals.get("suspension_reason") or "neapmokėta sąskaita"
+        reason_txt = signals.get("suspension_reason") or "unpaid invoice"
         return _verdict(
             side="provider",
             group="B1",
             action="inform",
             reason="billing_suspended",
             agent_message=(
-                f"Paslauga sustabdyta dėl apmokėjimo ({reason_txt}). "
-                "Informuok klientą, kaip apmokėti ir atstatyti paslaugą. "
-                "Diagnostikos nereikia, tiketo nekurti."
+                f"Service suspended for billing ({reason_txt}). "
+                "Tell the caller how to pay and restore the service. "
+                "No diagnostics needed, do not create a ticket."
             ),
         )
 
@@ -185,15 +188,15 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
     incident = signals.get("incident")
     if incident:
         eta = incident.get("estimated_resolution")
-        eta_txt = f" Numatomas atstatymas: {eta}." if eta else ""
+        eta_txt = f" Estimated restoration: {eta}." if eta else ""
         return _verdict(
             side="provider",
             group="B2",
             action="inform",
             reason="active_outage",
             agent_message=(
-                f"Kliento rajone registruota avarija: {incident.get('description', '')}."
-                f"{eta_txt} Informuok ir užbaik — avarija jau registruota, tiketo nekurti."
+                f"A registered outage in the caller's area: {incident.get('description', '')}."
+                f"{eta_txt} Inform and finish — the outage is already registered, do not create a ticket."
             ),
         )
 
@@ -205,8 +208,8 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="no_port_data",
             agent_message=(
-                "Nerasti kliento porto duomenys — diagnostika iš tiekėjo pusės negalima. "
-                "Tęsk pokalbiu: ar dega routerio lemputės, ar įjungtas maitinimas."
+                "No port data for the caller — provider-side diagnostics are not possible. "
+                "Continue in conversation: are the router lights on, is the power on."
             ),
         )
 
@@ -218,16 +221,16 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="create_ticket",
             reason="switch_unreachable",
             agent_message=(
-                "Kliento tinklo mazgas nepasiekiamas, registruotos avarijos nėra — "
-                "tiekėjo gedimas. INFORMUOK klientą: manomas gedimas TINKLE, jam "
-                "nieko daryti nereikia; kai bus išspręsta, su juo susisieks ir "
-                "informuos apie sutvarkymą. Jei klausia KADA — tikslaus laiko "
-                "nežadėk: darysime, kad kuo greičiau, ir informuosime, kai bus "
-                "išspręsta. Tiketas jau sukurtas automatiškai."
+                "The caller's network node is unreachable, no outage is registered — "
+                "a provider fault. INFORM the caller: a suspected fault in the NETWORK, they "
+                "need to do nothing; once it is fixed, someone will contact them and "
+                "report the repair. If they ask WHEN — promise no exact time: we will "
+                "do it as fast as possible and let them know once it is "
+                "fixed. The ticket was already created automatically."
             ),
         )
 
-    # ---- Step 4, BŪSENA A: link DOWN ----------------------------------------
+    # ---- Step 4, STATE A: link DOWN -----------------------------------------
     if signals.get("port_link") != "up":
         neighbors_up = signals.get("neighbors_up")
         if neighbors_up == 0 and (signals.get("neighbors_down") or 0) > 0:
@@ -237,13 +240,13 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
                 action="create_ticket",
                 reason="node_fault_unregistered",
                 agent_message=(
-                    "Kliento ir kaimynų portai neaktyvūs, bet avarija neregistruota — "
-                    "tikėtinas mazgo gedimas. INFORMUOK klientą: manomas gedimas "
-                    "TINKLE (ne tik pas jį), jam nieko daryti nereikia; kai gedimas "
-                    "bus išspręstas, su juo susisieks ir informuos apie sutvarkymą. "
-                    "Jei klausia KADA — tikslaus laiko nežadėk: darysime, kad kuo "
-                    "greičiau, ir informuosime, kai bus išspręsta. Tiketas jau "
-                    "sukurtas automatiškai."
+                    "The caller's and the neighbours' ports are inactive, but no outage is registered — "
+                    "a likely node fault. INFORM the caller: a suspected fault in the "
+                    "NETWORK (not only at their place), they need to do nothing; once the fault "
+                    "is fixed, someone will contact them and report the repair. "
+                    "If they ask WHEN — promise no exact time: we will do it as "
+                    "fast as possible and let them know once it is fixed. The ticket was "
+                    "already created automatically."
                 ),
             )
         return _verdict(
@@ -252,13 +255,13 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="link_down_local",
             agent_message=(
-                "Porto ryšys nutrūkęs, kaimynai veikia — gedimas kliento pusėje "
-                "(maitinimas / laidai). Instruktuok pažingsniui: ar dega lemputės, "
-                "ar gerai įkištas WAN laidas. Nepadėjus — tiketas."
+                "The port link is down, the neighbours work — a fault on the caller's side "
+                "(power / cables). Instruct step by step: are the lights on, "
+                "is the WAN cable seated well. If that does not help — a ticket."
             ),
         )
 
-    # ---- Step 4, BŪSENA B: link UP, MAC missing or foreign ------------------
+    # ---- Step 4, STATE B: link UP, MAC missing or foreign -------------------
     observed = (signals.get("observed_mac") or "").lower() or None
     registered = (signals.get("registered_mac") or "").lower() or None
     if observed is None:
@@ -268,8 +271,8 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="no_mac_observed",
             agent_message=(
-                "Linija veikia, bet įrenginio nesimato — routeris greičiausiai "
-                "išjungtas arba neprijungtas. Tikslink pokalbiu: maitinimas, laidai."
+                "The line works, but no device is seen — the router is most likely "
+                "off or not connected. Clarify in conversation: power, cables."
             ),
         )
     if registered and observed != registered:
@@ -279,24 +282,26 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="foreign_mac",
             agent_message=(
-                "Linijoje matomas kitas įrenginys nei registruota — klientas "
-                "tikriausiai pakeitė routerį. Patvirtinus, atnaujink MAC "
-                "(update_mac) ir perkrauk portą."
+                "A different device than registered is seen on the line — the caller "
+                "probably changed the router. Once confirmed, update the MAC "
+                "(update_mac) and reset the port."
             ),
         )
 
-    # ---- Step 4, BŪSENA C: link UP, correct MAC -----------------------------
+    # ---- Step 4, STATE C: link UP, correct MAC ------------------------------
     crc = signals.get("crc_error_rate")
-    if crc is not None and crc > CRC_ERROR_THRESHOLD:
+    # Sustained CRC errors above this rate (errors/min) mean a damaged or poorly
+    # seated cable (B5) even while the link stays up.
+    if crc is not None and crc > limits.get("crc_error_rate_threshold"):
         return _verdict(
             side="customer",
             group="B5",
             action="instruct",
             reason="crc_errors",
             agent_message=(
-                "Linijoje daug CRC klaidų — pažeistas arba blogai įkištas laidas. "
-                "Instruktuok patikrinti/perjungti laidą; nepadėjus — tiketas dėl "
-                "laido keitimo."
+                "Many CRC errors on the line — a damaged or badly seated cable. "
+                "Instruct to check/reconnect the cable; if that does not help — a ticket for "
+                "a cable replacement."
             ),
         )
     if signals.get("dhcp_status") in ("no_requests", "expired"):
@@ -306,13 +311,13 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="dhcp_silent",
             agent_message=(
-                "Routeris matomas, bet nesiunčia DHCP užklausų — tikėtinas Factory "
-                "Reset ar išsitrynusi konfigūracija. Instruktuok nustatyti DHCP "
-                "routerio valdymo skydelyje."
+                "The router is seen, but sends no DHCP requests — a likely factory "
+                "reset or a wiped configuration. Instruct to set DHCP "
+                "in the router's control panel."
             ),
         )
 
-    # ---- Step 4, BŪSENA C tęsinys: device visible, DHCP fine, NO traffic ----
+    # ---- Step 4, STATE C continued: device visible, DHCP fine, NO traffic ---
     # S6 "pakibęs routeris": everything up to the router looks alive, but no
     # frames flow — the router hung. A power-cycle usually clears it, so the
     # fix is an INSTRUCT (guided reboot), not a ticket. port_flap_recent is
@@ -324,10 +329,10 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
             action="instruct",
             reason="router_hung",
             agent_message=(
-                "Routeris matomas linijoje, bet srautas nevaikšto — routeris "
-                "greičiausiai pakibęs. Paaiškink žmogiškai (taip nutinka, po "
-                "perkrovimo dažniausiai susitvarko) ir vesk per perkrovimą iš "
-                "maitinimo. Tiketo kol kas nekurti."
+                "The router is seen on the line, but no traffic flows — the router "
+                "has most likely hung. Explain it humanly (it happens, a "
+                "reboot usually clears it) and guide a power-cycle "
+                "reboot. Do not create a ticket yet."
             ),
         )
 
@@ -338,9 +343,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
         action="instruct",
         reason="healthy_to_router",
         agent_message=(
-            "Tinklas iki routerio veikia — problema toliau kliento pusėje "
-            "(Wi-Fi, įrenginys). Tikslink: ar neveikia visuose įrenginiuose, "
-            "ar tik viename; laidu ar per Wi-Fi."
+            "The network works up to the router — the problem is further on the caller's side "
+            "(Wi-Fi, a device). Clarify: does it fail on all devices "
+            "or only one; wired or over Wi-Fi."
         ),
     )
 
@@ -350,9 +355,9 @@ def decide(signals: dict[str, Any]) -> dict[str, Any]:
 # =============================================================================
 
 
-def diagnose(db, customer_id: str) -> dict[str, Any]:
+def diagnose(sources: TelemetrySources, customer_id: str) -> dict[str, Any]:
     """gather_signals + decide -> the diagnose_connection tool payload."""
-    signals = gather_signals(db, customer_id)
+    signals = gather_signals(sources, customer_id)
     if "error" in signals:
         return {
             "success": False,

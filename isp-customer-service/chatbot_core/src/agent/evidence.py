@@ -19,38 +19,40 @@ STT-garble tolerant); the LLM extractor upgrade rides on the same keys later.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel
+
+from .contract.locale import vocab, vocab_map, vocab_re
 
 TELEMETRY = "telemetry"
+
+
+class Contradiction(BaseModel):
+    """Something contradicts what the call believes (D-05) — it only puts the belief in
+    doubt; one confirm question settles it.
+
+    kind: conflict — a client fact against the client's earlier value ("sakėte X, dabar
+          Y — kaip yra iš tiesų?"); flip — a volunteered story-flipping fact parked
+          before it may enter the ledger; refute — a client fact that refutes the
+          hypothesis, confirmed before the pivot; verdict — a telemetry recheck names
+          another cause.
+    asked: False = the confirm question is due (doubt), True = it is out (confirming).
+    """
+
+    kind: Literal["conflict", "flip", "refute", "verdict"]
+    source: Literal["client", "telemetry", "analyst"] = "client"
+    fact_key: str
+    before_value: str | None = None
+    now_value: str | None = None
+    before_quote: str | None = None  # what the client said earlier, for the question
+    asked: bool = False
+    asks: int = 0
+
+
 CLIENT = "client"
-
-# Canonical client-side evidence keys for the piloted fault (no_mac_observed).
-# Values are canonical strings so conflicts are detectable; labels feed the
-# clarify phrase and the ticket summary.
-LABELS = {
-    "has_computer": "ar turite kompiuterį",
-    "lights": "routerio lemputės",
-    "power_cable": "maitinimo laidas",
-    "outlet_works": "rozetė",
-    "device_present": "routeris surastas",
-    "lan_active": "kompiuterio LAN ryšys",
-    "verdict": "telemetrijos diagnozė",
-    "side": "gedimo pusė",
-}
-
-VALUE_LT = {
-    "yes": "turite",
-    "no": "neturite",
-    "nedega": "nedega",
-    "dega": "dega",
-    "mirksi": "mirksi",
-    "įkištas": "įkištas",
-    "atjungtas": "atjungtas",
-    "bandyta": "bandyta",
-    "rado": "rado",
-    "aktyvus": "aktyvus",
-    "neaktyvus": "neaktyvus",
-}
+# The give-up marker: the caller's answer could not be read (replaceable by any real value).
+UNKNOWN = "unknown"
 
 
 def set_fact(
@@ -73,7 +75,7 @@ def set_fact(
     # client value onto a telemetry-backed fact: words never overwrite.
     if entry["source"] == TELEMETRY:
         return entry
-    if entry["value"] == "neaišku":
+    if entry["value"] == UNKNOWN:
         # Our own give-up marker — any real value replaces it, no conflict.
         entry.update(stamp)
         entry["conflict"] = False
@@ -98,8 +100,9 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
     human ('routerio keitimas: keitė įrangą'), never as raw English keys
     (live 2026-08-13: the recap spoke 'changed_device: keite')."""
     labels: dict[str, str] = {}
-    values: dict[str, str] = {}
+    values: dict[tuple[str, str], str] = {}
     try:
+        from .contract.locale import phrase
         from .faults import _faults
 
         for spec in _faults().values():
@@ -110,10 +113,10 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
             )
             for key, item in (client or {}).items():
                 if isinstance(item, dict):
-                    if item.get("label"):
-                        labels[str(key)] = str(item["label"])
-                    for v, gloss in (item.get("reiksmes") or {}).items():
-                        values[str(v)] = str(gloss)
+                    if item.get("label_key"):
+                        labels[str(key)] = phrase(item["label_key"])
+                    for v, gloss in (item.get("value_label_keys") or {}).items():
+                        values[(str(key), str(v))] = phrase(gloss)
     except Exception:  # pragma: no cover - glosses are cosmetic, never break
         pass
     return labels, values
@@ -121,12 +124,18 @@ def _pack_glosses() -> tuple[dict[str, str], dict[str, str]]:
 
 def gloss_label(key: str) -> str:
     labels, _ = _pack_glosses()
-    return labels.get(key) or LABELS.get(key, key)
+    from .contract.locale import phrase_or
+
+    return labels.get(key) or phrase_or(f"evidence.label.{key}", key)
 
 
-def gloss_value(value: Any) -> str:
+def gloss_value(value: Any, key: str | None = None) -> str:
+    """How an evidence value reads: the pack's label for this key, else the
+    built-in value wording, else the value itself."""
     _, values = _pack_glosses()
-    return values.get(value) or VALUE_LT.get(value, value)
+    from .contract.locale import phrase_or
+
+    return values.get((str(key), str(value))) or phrase_or(f"evidence.value.{value}", value)
 
 
 def summary_lt(evidence: dict[str, Any]) -> str:
@@ -136,24 +145,25 @@ def summary_lt(evidence: dict[str, Any]) -> str:
     for key, e in evidence.items():
         label = gloss_label(key)
         if e.get("conflict"):
-            a = gloss_value(e["value"])
-            b = gloss_value(e.get("pending"))
-            bits.append(f"{label}: KONFLIKTAS ({a} ↔ {b})")
+            a = gloss_value(e["value"], key)
+            b = gloss_value(e.get("pending"), key)
+            from .contract.locale import phrase
+
+            bits.append(phrase("evidence.conflict", label=label, a=a, b=b))
         else:
-            bits.append(f"{label}: {gloss_value(e['value'])}")
+            bits.append(f"{label}: {gloss_value(e['value'], key)}")
     return "; ".join(bits)
 
 
 # --- deterministic client-fact extraction (v1) --------------------------------
 
-# STT routinely drops Lithuanian diacritics ("Tai ikištas", "razetė") — every
-# keyword match here folds BOTH sides so a dropped nosinė never hides a fact
-# (live 2026-08-11: "įkištas" heard without į failed the flip corroboration).
-_FOLD = str.maketrans("ąčęėįšųūž", "aceeisuuz")
-
 
 def _fold(text: str) -> str:
-    return text.lower().translate(_FOLD)
+    """Every keyword match here folds BOTH sides (the language's fold), so a
+    diacritic STT dropped never hides a fact (live 2026-08-11)."""
+    from .contract.locale import lang
+
+    return lang().fold(text)
 
 
 def _mark_hit(low_folded: str, mark: str) -> bool:
@@ -165,19 +175,12 @@ def _mark_hit(low_folded: str, mark: str) -> bool:
     m = _fold(mark)
     if m not in low_folded:
         return False
-    if m.startswith("ne") or " " in m:
+    negation = vocab("negation_prefixes")
+    if m.startswith(negation) or " " in m:
         return True
     return any(
-        m in tok and not tok.startswith("ne") for tok in low_folded.replace(",", " ").split()
+        m in tok and not tok.startswith(negation) for tok in low_folded.replace(",", " ").split()
     )
-
-
-_NEG_LIGHTS = ("nedega", "ne dega", "nei viena", "nė viena", "ne viena", "jokia lemp", "nešvie")
-_POS_LIGHTS = ("dega", "šviečia", "sviecia", "žiba", "ziba")
-_HAS_PC = ("turiu kompiuter", "yra kompiuter", "turim kompiuter", "kompiuteris yra", "turiu pc")
-_CABLE_WORDS = ("laid", "kabel", "maitinim")
-_CABLE_IN = ("įkišt", "ikist", "įkišau", "ikisau", "pajungt", "prijungt", "gerai įkiš", "abiejuose")
-_CABLE_OUT = ("nepajungt", "neprijungt", "atjungt", "ištraukt", "istraukt", "iškrit", "iskrit")
 
 
 def extract_client_facts(text: str | None) -> dict[str, str]:
@@ -191,51 +194,54 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
     # Negation must attach to the COMPUTER itself: "Neturiu KITO ROUTERIO, tik
     # kompiuterį" is a YES (eval S4 regression: the loose "netur…kompiuter"
     # match read it as no and the solution flipped to ticket instead of bridge).
-    import re as _re
 
-    from .resolution import detect_no_device
+    from .perceive.detectors import detect_no_device
 
-    if "kompiuter" in low:
-        if _re.search(r"(netur\w*|nera)\s+(?:\w+\s+){0,2}kompiuter", low):
+    if any(w in low for w in vocab("fact_computer_words")):
+        if vocab_re("fact_no_computer").search(low):
             facts["has_computer"] = "no"
-        elif any(_mark_hit(low, m) for m in _HAS_PC) or _re.search(r"tik\s+(su\s+)?kompiuter", low):
+        elif any(_mark_hit(low, m) for m in vocab("fact_has_computer")) or vocab_re(
+            "fact_only_computer"
+        ).search(low):
             facts["has_computer"] = "yes"
-        elif detect_no_device(low) and "tik" not in low:
+        elif detect_no_device(low) and not any(w in low for w in vocab("only_words")):
             facts["has_computer"] = "no"
-    if "lemp" in low or "sviesel" in low:
-        if any(_fold(m) in low for m in _NEG_LIGHTS):
-            facts["lights"] = "nedega"
-        elif "mirksi" in low or "mirkcioja" in low:
-            facts["lights"] = "mirksi"
-        elif any(_mark_hit(low, m) for m in _POS_LIGHTS):
-            facts["lights"] = "dega"
-    if any(_fold(w) in low for w in _CABLE_WORDS):
-        if any(_fold(m) in low for m in _CABLE_OUT):
-            facts["power_cable"] = "atjungtas"
-        elif any(_mark_hit(low, m) for m in _CABLE_IN):
-            facts["power_cable"] = "įkištas"
+    if any(w in low for w in vocab("fact_lights_words")):
+        if any(_fold(m) in low for m in vocab("fact_lights_no")):
+            facts["lights"] = "off"
+        elif any(w in low for w in vocab("fact_lights_blinking")):
+            facts["lights"] = "blinking"
+        elif any(_mark_hit(low, m) for m in vocab("fact_lights_yes")):
+            facts["lights"] = "on"
+    if any(_fold(w) in low for w in vocab("fact_cable_words")):
+        if any(_fold(m) in low for m in vocab("fact_cable_out")):
+            facts["power_cable"] = "unplugged"
+        elif any(_mark_hit(low, m) for m in vocab("fact_cable_in")):
+            facts["power_cable"] = "plugged"
     # "razet" — the STT routinely hears "rozetė" as "razetė" (both live calls).
-    if ("rozet" in low or "razet" in low) and any(m in low for m in ("kit", "band", "perjung")):
-        facts["outlet_works"] = "bandyta"
-    if ("router" in low or "dezut" in low) and any(
-        _fold(m) in low for m in ("radau", "priėjau", "matau", "esu prie", "suradau")
+    if any(w in low for w in vocab("fact_outlet_words")) and any(
+        m in low for m in vocab("fact_outlet_tried")
     ):
-        facts["device_present"] = "rado"
+        facts["outlet_works"] = "tried"
+    if any(w in low for w in vocab("fact_router_words")) and any(
+        _fold(m) in low for m in vocab("fact_device_found")
+    ):
+        facts["device_present"] = "found"
     # Domain inference: answering about the LIGHTS or the POWER CABLE means the
     # caller is standing AT the device — device_present is implied (eval S4:
     # "nešviečia jokia lemputė" while device_present was still being asked led
     # to a pointless re-ask and a give-up).
     if ("lights" in facts or "power_cable" in facts) and "device_present" not in facts:
-        facts["device_present"] = "rado"
+        facts["device_present"] = "found"
     return facts
 
 
-# --- evidence spec (faults.yaml `evidence:` block, Ledger v2) -----------------
+# --- evidence spec (the fault pack's `evidence:` block, Ledger v2) -----------------
 
 
 def spec_for(verdict: str | None) -> dict[str, Any] | None:
-    """The fault's evidence spec from faults.yaml ({client, patvirtinta_kai,
-    paneigta_kai, paneigta_veda}), or None when the fault declares none
+    """The fault's evidence spec from its fault pack ({client, confirmed_when,
+    refuted_when, on_refuted}), or None when the fault declares none
     (fail-soft: the walker/solver flow runs as before)."""
     if not verdict:
         return None
@@ -248,9 +254,9 @@ def spec_for(verdict: str | None) -> dict[str, Any] | None:
     return spec if isinstance(spec, dict) and isinstance(spec.get("client"), dict) else None
 
 
-def fault_isvada(verdict: str | None) -> str | None:
+def fault_conclusion(verdict: str | None) -> str | None:
     """How to ANNOUNCE the confirmed hypothesis ("Panašu — {isvada}") —
-    `isvada:` in faults.yaml; falls back to `reikalinga`."""
+    `conclusion_key:` in the pack; falls back to `ticket_need_key`."""
     if not verdict:
         return None
     from .faults import _faults
@@ -258,11 +264,13 @@ def fault_isvada(verdict: str | None) -> str | None:
     fault = _faults().get(verdict)
     if not isinstance(fault, dict):
         return None
-    return str(fault.get("isvada") or fault.get("reikalinga") or "") or None
+    from .contract.locale import maybe_phrase
+
+    return maybe_phrase(fault.get("conclusion_key") or fault.get("ticket_need_key"))
 
 
-def fault_pasiulymas(verdict: str | None) -> str | None:
-    """The fault's OWN findings-moment offer script (`pasiulymas:` in the pack) —
+def fault_offer_goal(verdict: str | None) -> str | None:
+    """The fault's OWN findings-moment offer script (`offer_goal:` in the pack) —
     ticket-first faults use it to frame the primary outcome (the technician)
     before the optional convenience (the bridge). None -> the generic
     'Pasiūlyk pasirinkimą (A ARBA B)' framing."""
@@ -273,7 +281,9 @@ def fault_pasiulymas(verdict: str | None) -> str | None:
     fault = _faults().get(verdict)
     if not isinstance(fault, dict):
         return None
-    return str(fault.get("pasiulymas") or "") or None
+    from .contract.locale import expand_examples
+
+    return expand_examples(str(fault.get("offer_goal") or "")) or None
 
 
 def open_goals_lt(evidence: dict[str, Any], verdict: str | None) -> str:
@@ -290,26 +300,30 @@ def open_goals_lt(evidence: dict[str, Any], verdict: str | None) -> str:
         entry = evidence.get(key)
         if entry is not None and not entry.get("conflict"):
             continue
-        if not all(_cond_holds(evidence, c, confirmed) for c in item.get("kada") or []):
+        if not all(_cond_holds(evidence, c, confirmed) for c in item.get("when") or []):
             continue
-        if item.get("reikia"):
-            goals.append(str(item["reikia"]))
+        if item.get("goal"):
+            goals.append(str(item["goal"]))
     return "; ".join(goals)
 
 
 def solution_descriptions(verdict: str | None) -> list[str]:
-    """Human wording of the declared solutions (`aprasymas` on each sprendimai
-    entry; the bare `tada` key as fallback) — feeds the findings announce."""
+    """Human wording of the declared solutions (`description_key` on each solutions
+    entry; the bare `action` as fallback) — feeds the findings announce."""
     if not verdict:
         return []
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    rules = fault.get("solutions") if isinstance(fault, dict) else None
+    from .contract.locale import maybe_phrase
+
     out = []
     for rule in rules or []:
         if isinstance(rule, dict):
-            out.append(str(rule.get("aprasymas") or rule.get("tada") or "").strip())
+            out.append(
+                str(maybe_phrase(rule.get("description_key")) or rule.get("action") or "").strip()
+            )
     return [x for x in out if x]
 
 
@@ -318,38 +332,47 @@ def client_facts_lt(evidence: dict[str, Any]) -> str:
     "ką patikrinome kartu" part of the findings announce."""
     bits = []
     for key, e in evidence.items():
-        if e.get("source") == CLIENT and not e.get("conflict") and e.get("value") != "neaišku":
-            bits.append(f"{gloss_label(key)}: {gloss_value(e['value'])}")
+        if e.get("source") == CLIENT and not e.get("conflict") and e.get("value") != UNKNOWN:
+            bits.append(f"{gloss_label(key)}: {gloss_value(e['value'], key)}")
     return "; ".join(bits)
 
 
 def fault_bridge_fail(verdict: str | None) -> dict[str, str]:
-    """The fault's declared bridge-failure texts (`tiltas_nepavyko:` in
-    faults.yaml): `pastaba` spoken to the caller before the technician
+    """The fault's declared bridge-failure texts (`bridge_failed:` in
+    the fault pack): `pastaba` spoken to the caller before the technician
     registration, `prierasas` appended to the ticket details."""
     if not verdict:
         return {}
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    d = fault.get("tiltas_nepavyko") if isinstance(fault, dict) else None
-    return d if isinstance(d, dict) else {}
+    d = fault.get("bridge_failed") if isinstance(fault, dict) else None
+    if not isinstance(d, dict):
+        return {}
+    from .contract.locale import template
+
+    # Templates: the ticket note carries a {lan} placeholder the caller fills.
+    return {
+        "notice": template(d["notice_key"]),
+        "ticket_note": template(d["ticket_note_key"]),
+    }
 
 
 def fault_need(verdict: str | None) -> str | None:
-    """The human wording of WHY a ticket is needed (`reikalinga:` in the file)."""
+    """The human wording of WHY a ticket is needed (`ticket_need_key:` in the pack)."""
     if not verdict:
         return None
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    need = fault.get("reikalinga") if isinstance(fault, dict) else None
-    return str(need) if need else None
+    from .contract.locale import maybe_phrase
+
+    return maybe_phrase(fault.get("ticket_need_key")) if isinstance(fault, dict) else None
 
 
 def _cond_holds(evidence: dict[str, Any], cond: str, confirmed: bool) -> bool:
     cond = cond.strip()
-    if cond == "patvirtinta":
+    if cond == "confirmed":
         return confirmed
     if "=" not in cond:
         return False
@@ -359,12 +382,12 @@ def _cond_holds(evidence: dict[str, Any], cond: str, confirmed: bool) -> bool:
 
 
 def hypothesis_status(evidence: dict[str, Any], spec: dict[str, Any]) -> str | None:
-    """'confirmed' when ALL patvirtinta_kai hold, 'refuted' when ANY paneigta_kai
+    """'confirmed' when ALL confirmed_when hold, 'refuted' when ANY refuted_when
     holds, else None (still collecting). Refute wins — a lit lamp disproves the
     dead-router path no matter what else was gathered."""
-    if any(_cond_holds(evidence, c, False) for c in (spec.get("paneigta_kai") or [])):
+    if any(_cond_holds(evidence, c, False) for c in (spec.get("refuted_when") or [])):
         return "refuted"
-    confirm = spec.get("patvirtinta_kai")
+    confirm = spec.get("confirmed_when")
     # An EXPLICIT empty list means "confirmed by telemetry from the start" —
     # the client facts pick the SOLUTION, not the hypothesis (R4b packs:
     # foreign_mac, healthy_to_router). An ABSENT key keeps the old meaning
@@ -385,7 +408,7 @@ def next_missing(
         entry = evidence.get(key)
         if entry is not None and not entry.get("conflict"):
             continue  # established (a conflict is settled by the clarify, not here)
-        conds = item.get("kada") or []
+        conds = item.get("when") or []
         if all(_cond_holds(evidence, c, confirmed) for c in conds):
             return key, item
     return None
@@ -398,18 +421,18 @@ def solution_for(evidence: dict[str, Any], verdict: str | None) -> str | None:
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    rules = fault.get("solutions") if isinstance(fault, dict) else None
     for rule in rules or []:
         if isinstance(rule, dict) and all(
-            _cond_holds(evidence, c, True) for c in (rule.get("jei") or [])
+            _cond_holds(evidence, c, True) for c in (rule.get("when") or [])
         ):
-            return rule.get("tada")
+            return rule.get("action")
     return None
 
 
 def solution_step(evidence: dict[str, Any], verdict: str | None) -> str | None:
-    """The walker STEP declared on the matching sprendimai rule (`zingsnis` in
-    faults.yaml) — where the flow RESUMES if the solver is benched
+    """The walker STEP declared on the matching solutions rule (`step_role` in
+    the fault pack) — where the flow RESUMES if the solver is benched
     mid-solution (live 2026-08-11: a bailout landed on a long-stale dr_intro
     and improvised into a ticket one step from a working bridge)."""
     if not verdict:
@@ -417,88 +440,34 @@ def solution_step(evidence: dict[str, Any], verdict: str | None) -> str | None:
     from .faults import _faults
 
     fault = _faults().get(verdict)
-    rules = fault.get("sprendimai") if isinstance(fault, dict) else None
+    rules = fault.get("solutions") if isinstance(fault, dict) else None
     for rule in rules or []:
         if isinstance(rule, dict) and all(
-            _cond_holds(evidence, c, True) for c in (rule.get("jei") or [])
+            _cond_holds(evidence, c, True) for c in (rule.get("when") or [])
         ):
-            return rule.get("zingsnis")
+            from .faults import step_by_role
+
+            step = step_by_role(verdict, rule.get("step_role") or "")
+            return step.id if step else None
     return None
-
-
-# Context reads for the JUST-ASKED evidence key (2026-08-10): a bare "Radau."
-# to "Radote?" carries no noun, so the general extractor (which demands one)
-# finds nothing — and a clear answer became a give-up. When the engine knows
-# WHICH question is pending, short answers read against THAT key only.
-_PENDING_ANSWERS: dict[str, list[tuple[str, tuple[str, ...]]]] = {
-    "device_present": [
-        (
-            "rado",
-            (
-                "radau",
-                "radome",
-                "suradau",
-                "taip",
-                "yra",
-                "matau",
-                "priėjau",
-                "priejau",
-                "stoviu prie",
-            ),
-        ),
-    ],
-    "lights": [
-        # Negation first — "nedega" contains "dega".
-        (
-            "nedega",
-            (
-                "nedega",
-                "ne dega",
-                "nešvie",
-                "nesvie",
-                "jokia",
-                "nė viena",
-                "ne viena",
-                "ne,",
-                "ne ",
-            ),
-        ),
-        ("mirksi", ("mirksi", "mirkčioja", "mirkcioja")),
-        ("dega", ("dega", "šviečia", "sviecia", "taip")),
-    ],
-    "power_cable": [
-        ("atjungtas", ("atjungt", "ištraukt", "istraukt", "nepajungt", "ne,", "ne ")),
-        ("įkištas", ("įkišt", "ikist", "pajungt", "prijungt", "gerai", "taip", "tvirtai")),
-    ],
-    "outlet_works": [
-        ("bandyta", ("bandž", "bandz", "band", "taip", "kita", "veikia", "perjung")),
-    ],
-    "has_computer": [
-        ("no", ("netur", "nėra", "nera", "ne,", "ne ")),
-        ("yes", ("turiu", "turim", "taip", "yra")),
-    ],
-    "lan_active": [
-        ("neaktyvus", ("neaktyv", "nedega", "nerodo", "nėra", "nera", "ne,", "ne ")),
-        ("aktyvus", ("aktyv", "veikia", "dega", "rodo", "taip", "yra")),
-    ],
-}
 
 
 def read_pending_answer(key: str, text: str | None, spec_item: dict | None = None) -> str | None:
     """Interpret a short utterance as the answer to the PENDING evidence key —
     the question context resolves what a bare "Radau." / "Ne" means. UNIVERSAL:
-    a fault may declare its own `atsakymai: {reikšmė: [požymiai]}` on the
-    evidence item in faults.yaml (checked FIRST), so newly added faults get
+    a fault may declare its own `answers: {value: [markers]}` on the
+    evidence item in the fault pack (checked FIRST), so newly added faults get
     this mechanic by file edit; the built-in map covers the piloted keys.
     Matching is diacritics-folded with the negation-prefix guard (_mark_hit)."""
     if not text:
         return None
     low = _fold(text.strip())
     if spec_item:
-        for value, marks in (spec_item.get("atsakymai") or {}).items():
+        for value, name in (spec_item.get("answers") or {}).items():
+            marks = vocab(name) if isinstance(name, str) else name
             if isinstance(marks, list | tuple) and any(_mark_hit(low, str(m)) for m in marks):
                 return str(value)
-    for value, marks in _PENDING_ANSWERS.get(key, []):
+    for value, marks in vocab_map("pending_answers").get(key, []):
         if any(_mark_hit(low, m) for m in marks):
             return value
     return None
@@ -511,8 +480,8 @@ def polarity(text: str | None) -> str | None:
     if not text:
         return None
     low = _fold(text)
-    if any(m in low for m in ("netur", "ne,", "ne ", "nera")):
+    if any(m in low for m in vocab("polarity_no")):
         return "no"
-    if any(_mark_hit(low, m) for m in ("turiu", "turim", "taip", "yra")):
+    if any(_mark_hit(low, m) for m in vocab("polarity_yes")):
         return "yes"
     return None

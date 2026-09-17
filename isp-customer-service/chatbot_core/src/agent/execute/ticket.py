@@ -1,0 +1,137 @@
+"""Ticket execution — the contact ladder before every registration: the dialogue begins
+on an escalate step, the ticket is registered from STATE when it finishes, a registered
+ticket's note can be amended, and the narrator never claims a registration that did not
+happen."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from ..contract.locale import vocab
+
+
+def begin_ticket_dialogue(state: Any, rt: Any, step) -> None:
+    """Start the ticket-confirmation dialogue: before ANY registration the agent
+    collects the contact number (ALWAYS asked — the caller may be on a
+    company/other phone, or the DB number stale) and when it is convenient to
+    call. The scripted ladder asks; once complete, finish_ticket_dialogue
+    registers with the contacts on the ticket."""
+    if state.ticket.ticket_id or state.ticket.stage:
+        return  # already registered / already collecting
+    from ..graph_v2.state import TicketContext
+
+    state.ticket.context = TicketContext(step_id=step.id if step is not None else None)
+    state.ticket.stage = "phone"
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="start")
+
+
+def fmt_phone(nr: str | None) -> str:
+    """Group a dialable number for TTS ("+370 600 12353"); free text passes through."""
+    raw = (nr or "").strip()
+    digits = re.sub(r"[^\d+]", "", raw)
+    if len(re.sub(r"\D", "", digits)) < 6 or digits != raw:
+        return raw
+    if digits.startswith("+370") and len(digits) == 12:
+        return f"{digits[:4]} {digits[4:7]} {digits[7:]}"
+    return digits
+
+
+def append_ticket_note(state: Any, rt: Any, note: str, kind: str = "correction") -> bool:
+    """Post-registration correction (live 2026-08-25: the caller gave a NEW
+    call-back number after 'Užregistravau' and it vanished into the goodbye).
+    Appends the note to the registered ticket's details so the worker sees it.
+    Best-effort: False on any hiccup — the spoken acknowledgement then still
+    happens, but the trace records note_failed."""
+    tid = state.ticket.ticket_id
+    if not tid or not note:
+        return False
+    try:
+        result = rt.tools.run(
+            state,
+            rt,
+            "append_ticket_note",
+            {"ticket_id": tid, "note": note, "kind": kind},
+            reason="ticket_amend",
+            apply=False,
+        )
+        return bool(result.data.get("success"))
+    except Exception:  # a failed note must never break the goodbye
+        import logging
+
+        logging.getLogger(__name__).warning("ticket note amend failed", exc_info=True)
+        return False
+
+
+def finish_ticket_dialogue(state: Any, rt: Any) -> str:
+    """All contacts collected (or defaulted) — register, close, announce. The
+    announce repeats the number and hours back, so "kokiu numeriu?" never needs
+    asking (observed live: the caller asked twice and got a goodbye)."""
+    from ..contract.locale import phrase
+    from ..executor_flow import register_ticket_from_state
+
+    s = state
+    if not s.ticket.contact_phone:
+        s.ticket.contact_phone = s.identity.caller_phone  # default: the number they call from
+    if not s.ticket.contact_hours:
+        s.ticket.contact_hours = phrase("ticket.default_hours")
+    ctx = state.ticket.context
+    step_id = ctx.step_id if ctx else None
+    note = (ctx.note if ctx else None) or ""
+    state.ticket.stage = None
+    state.ticket.context = None
+    from ..decide.question import clear_owner as _q_clear_owner
+
+    _q_clear_owner(state, rt, "ticket")  # contacts collected — the dialogue is over
+    register_ticket_from_state(state, rt, step_id)
+    s.closing.case_closed = True
+    s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
+    val = s.ticket.contact_hours
+    val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
+    done = (
+        "identification.ticket_done_request"
+        if s.ticket.request_type
+        else "identification.ticket_done"
+    )
+    return phrase(done, phone=fmt_phone(s.ticket.contact_phone), hours=val) + note
+
+
+def registration_claim_guard(state: Any, rt: Any, content: str) -> str | None:
+    """The LLM narrator CLAIMED a registration that never happened (observed
+    live 2026-08-05: "Užregistravau gedimą…" at dr_recheck, ticket_id None,
+    the caller hung up trusting it). Words may not outrun the engine: when a
+    claim is detected with no ticket and no dialogue running, the contact
+    dialogue begins NOW and its phone question is APPENDED to the reply —
+    the promise becomes the process. Returns the appended text or None."""
+    s = state
+    low = (content or "").lower()
+    if not any(m in low for m in vocab("registration_claim")):
+        return None
+    # A DEVICE registration ("užregistravau jūsų naują routerį prie linijos" —
+    # the MAC bind, live eval 2026-08-21) is not a fault-ticket claim: the
+    # guard fires only when the sentence is about the ticket/technician.
+    if not any(m in low for m in vocab("registration_claim_subject")):
+        return None
+    if (
+        s.ticket.ticket_id
+        or state.ticket.stage
+        or s.closing.case_closed
+        or not s.identity.customer_id
+    ):
+        return None
+    if s.resolution.procedure is None:
+        return None
+    from ..contract.locale import phrase
+    from ..resolution import get_strategy
+
+    strat = get_strategy(s.resolution.procedure.get("verdict"))
+    esc = strat.by_role("escalate") if strat else None
+    s.resolution.procedure.setdefault("escalate_reason", "phone_fix_failed")
+    begin_ticket_dialogue(state, rt, esc)
+    if state.ticket.stage != "phone":
+        return None  # could not start (defensive) — nothing to append
+    rt.tracer.emit("decision", intent="ticket_dialogue", action="claim_guard")
+    if state.ticket.context is not None:
+        state.ticket.context.intro_done = True  # the claim already announced it
+        state.ticket.context.phone_asked = True  # appended below — answers count
+    return " " + phrase("identification.ticket_phone")

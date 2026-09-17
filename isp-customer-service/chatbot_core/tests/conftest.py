@@ -32,9 +32,9 @@ os.environ.setdefault("NARRATOR_QUESTIONS", "off")
 # VOICE_PLAN V1: unit tests feed tiny fake audio bytes (b"x") — the too-short
 # guard would drop them all. Off here; the guard's own tests set it explicitly.
 os.environ.setdefault("ASR_MIN_AUDIO_S", "0")
-# W2: the quiet analyst calls an LLM from a background thread — deterministic
-# tests never want that (opt in with ANALYST=on when testing it specifically).
-os.environ.setdefault("ANALYST", "off")
+# The analyst calls an LLM — deterministic tests never want that (opt in with
+# ANALYST_MODE=sync when testing it specifically).
+os.environ.setdefault("ANALYST_MODE", "off")
 # Final flush on ws close would fire a REAL ASR call per closed socket —
 # tests exercise it directly (test_classification), never through transport.
 os.environ.setdefault("FINAL_FLUSH", "off")
@@ -157,6 +157,25 @@ def db_connection():
         pytest.skip(f"Database not available: {e}")
 
 
+@pytest.fixture(autouse=True)
+def forget_test_tickets(request):
+    """Tickets a DB test registers are removed after it: an open ticket left behind turns
+    the next test's call about the same problem into a repeat call (D-12)."""
+    if "db_connection" not in request.fixturenames:
+        yield
+        return
+    db = request.getfixturevalue("db_connection")
+    with db.cursor() as cursor:
+        cursor.execute("SELECT ticket_id FROM tickets")
+        before = {row[0] for row in cursor.fetchall()}
+    yield
+    with db.cursor() as cursor:
+        cursor.execute("SELECT ticket_id FROM tickets")
+        created = [row[0] for row in cursor.fetchall() if row[0] not in before]
+        for ticket_id in created:
+            cursor.execute("DELETE FROM tickets WHERE ticket_id = ?", (ticket_id,))
+
+
 @pytest.fixture(scope="session")
 def retriever():
     """Get RAG retriever with production KB loaded."""
@@ -195,10 +214,26 @@ def sample_customer_id():
 
 @pytest.fixture
 def walker_driven(monkeypatch):
-    """B2 (2026-08-21): walker MECHANICS tests run the pack as walker-driven —
-    in solver-driven packs the walker reads no answers until the ledger hands
+    """B2 (2026-08-21): walker MECHANICS tests run the pack as not evidence-led —
+    in evidence-led packs the walker reads no answers until the ledger hands
     over, which these legacy step-walking tests predate."""
     from agent import faults
 
-    monkeypatch.setattr(faults, "driver", lambda verdict: "walker")
+    monkeypatch.setattr(faults, "evidence_led", lambda verdict: False)
     yield
+
+
+@pytest.fixture(name="make_state")
+def make_state_fixture():
+    """Factory for a call's GraphState (tests.calls.make_state)."""
+    from tests.calls import make_state
+
+    return make_state
+
+
+@pytest.fixture(name="make_runtime")
+def make_runtime_fixture():
+    """Factory for a call's AgentRuntime with optional fake tools (tests.calls.make_runtime)."""
+    from tests.calls import make_runtime
+
+    return make_runtime

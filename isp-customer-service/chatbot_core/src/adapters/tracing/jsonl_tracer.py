@@ -72,6 +72,28 @@ class NullTracer:
         return None
 
 
+def _plan_line(e: dict) -> str:
+    """One turn plan as a transcript line:
+    `[plan] owner=procedure rule=procedure.verify_reboot hyp=router_hung(doubt) action=tool:telemetry.recheck say=directive`."""
+    hyp = e.get("hypothesis")
+    if isinstance(hyp, dict):
+        hyp = f"{hyp.get('cause')}({hyp.get('status')})"
+    action = e.get("action") or {}
+    act = action.get("type") or "none"
+    if action.get("name"):
+        act += f":{action['name']}"
+    bits = [
+        f"owner={e.get('owner')}",
+        f"rule={e.get('rule')}",
+        f"hyp={hyp or '-'}",
+        f"action={act}",
+        f"say={(e.get('say') or {}).get('kind')}",
+    ]
+    if e.get("awaiting"):
+        bits.append(f"awaiting={e['awaiting']}")
+    return "[plan] " + " ".join(bits)
+
+
 class JsonlFileTracer:
     """Append-only JSONL sink, one file per conversation."""
 
@@ -223,32 +245,8 @@ class JsonlFileTracer:
                             f"   !! {lvl} [{e.get('where')}] node={e.get('node')} "
                             f"step={e.get('step')} awaiting={e.get('awaiting')}: {e.get('detail')}"
                         )
-                    elif t == "shadow_decision":
-                        sv = e.get("solver") or {}
-                        g = e.get("gate") or {}
-                        gate_txt = ""
-                        if g:
-                            flag = (
-                                "bailout"
-                                if g.get("bailout")
-                                else ("ok" if g.get("accepted") else "override")
-                            )
-                            gate_txt = f"  =>GATE {g.get('action')} [{flag}]"
-                            if g.get("reason"):
-                                gate_txt += f" ({g['reason']})"
-                        if sv:
-                            lines.append(
-                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: "
-                                f"{sv.get('next_action')} | hyp={sv.get('current_hypothesis')} "
-                                f"conf={sv.get('confidence')} conflict={sv.get('conflict_detected')}"
-                                f"{gate_txt}"
-                            )
-                            if sv.get("narrator_instruction"):
-                                lines.append(f"       solver.say| {sv['narrator_instruction']}")
-                        else:
-                            lines.append(
-                                f"   ~ SHADOW walker[{e.get('walker_step')}] vs solver: (no decision){gate_txt}"
-                            )
+                    elif t == "turn_plan":
+                        lines.append(f"   {_plan_line(e)}")
                     elif t == "decision":
                         bits = f"intent={e.get('intent')} {e.get('action')} " + (
                             f"{e.get('from_step')}->{e.get('to')}"
@@ -291,7 +289,8 @@ class JsonlFileTracer:
                         )
                     elif t == "session_end":
                         lines.append(
-                            f"--- end: {e.get('outcome')} customer={e.get('customer_id')} "
+                            f"--- end: {e.get('outcome')} ({e.get('transport_end')}) "
+                            f"review={e.get('needs_review')} customer={e.get('customer_id')} "
                             f"ticket={e.get('ticket_id')} "
                             f"llm_calls={e.get('llm_calls')} tokens={e.get('total_tokens')}"
                         )

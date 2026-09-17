@@ -1,0 +1,88 @@
+"""
+LLM classifier — the PERCEIVE sensor (Phase 3.8 step 1).
+
+The keyword detectors (agent/resolution.py) are the weak spot: they read a caller's
+reply by substring match, so a clear human answer phrased outside the wordlist
+("galėtume kartu patikrinti"; "gerai tada bandau… nė viena lemputė neužsidegė") returns
+None or is mis-read, the walker freezes, and the narration drifts. Voice testing showed
+this stalls the dead-router flow at the power step and mis-resolves the client-side flow.
+
+This module replaces that reading with an LLM that understands MEANING, for ANY confirm
+step (yes/no, lights, scope, restored, …), in ONE call that also decides whether the
+caller actually ANSWERED (vs. still doing it / asking back / confused). It is a SENSOR:
+it returns a CandidateObservation and never touches state or the walker — the engine
+still decides and routes (single decision-maker; docs/MASTANTIS_AGENTAS_SPEC.md §①).
+
+Returns None on ANY failure so the caller falls back to the keyword detector — the
+conversation must never stall on a classifier hiccup.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from pydantic import BaseModel, Field
+
+from ..contract import limits
+
+logger = logging.getLogger(__name__)
+
+
+class CandidateObservation(BaseModel):
+    """What the classifier PERCEIVED — a candidate only; the engine decides whether to
+    trust it. `label` is one of the step's routing keys (or "unclear"); `is_answer` says
+    whether the caller actually answered THIS step (so a brittle keyword turn-intent can
+    no longer veto a turn that did answer)."""
+
+    label: str = Field(description="one of the provided labels, or 'unclear'")
+    is_answer: bool = Field(
+        default=True, description="did the caller actually answer this step's question?"
+    )
+    internally_inconsistent: bool = Field(
+        default=False, description="caller contradicted themselves in one sentence"
+    )
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+def _system(options: dict[str, str]) -> str:
+    from ..prompts import load_node_prompt
+
+    opts = "\n".join(f'  - "{k}": {v}' for k, v in options.items())
+    return load_node_prompt("sensors/classifier").replace("<<options>>", opts)
+
+
+def classify_step(
+    question: str, answer: str, options: dict[str, str], model: str | None = None
+) -> CandidateObservation | None:
+    """Classify a reply to a confirm step. `options` maps each routing key to its plain-
+    language MEANING (the abstract keys yes/no/all/phone are meaningless to the model on
+    their own). Returns None on ANY failure → caller falls back to the keyword detector."""
+    if not answer or not answer.strip() or not options:
+        return None
+    allowed = set(options) | {"unclear"}
+    try:
+        from src.services.llm.client import llm_json_completion
+
+        from ..perceive.understand import perception_model as _perception_model
+
+        data = llm_json_completion(
+            messages=[
+                {"role": "system", "content": _system(options)},
+                {
+                    "role": "user",
+                    "content": f"Agent's question: {question or '(confirmation)'}\n"
+                    f"Caller's reply: {answer}",
+                },
+            ],
+            model=_perception_model(model),
+            temperature=0.0,
+            max_tokens=limits.get("classifier_max_tokens"),
+            validate_schema=CandidateObservation,
+        )
+        obs = CandidateObservation(**data)
+        if obs.label not in allowed:
+            return None
+        return obs
+    except Exception as e:  # never let a classifier failure break the turn
+        logger.warning(f"classify_step fell back to keyword detector: {e}")
+        return None

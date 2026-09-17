@@ -38,3 +38,8 @@ INSERT INTO ports (port_id, switch_id, port_number, customer_id, equipment_mac, 
 
 INSERT INTO ip_assignments (assignment_id, customer_id, ip_address, mac_address, assignment_type, status, notes) VALUES
 ('IP305', 'CUST305', '192.168.3.105', '00:1A:2B:3C:4F:05', 'dhcp', 'active', 'DEMO NT1: lease galioja, bet linija klaidinga');
+
+-- M6 (D-12): CUST307 already has an open technician ticket for their internet — a repeat
+-- call is noted on it, not registered again.
+INSERT INTO tickets (ticket_id, customer_id, ticket_type, problem_type, priority, status, summary, details, created_at, updated_at) VALUES
+('TKTDEMO307', 'CUST307', 'fault_technician', 'internet_down', 'high', 'open', 'Neveikia internetas', 'Gedimas mazge, meistras informuotas.', datetime('now', '-1 day'), datetime('now', '-1 day'));

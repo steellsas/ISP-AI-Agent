@@ -18,12 +18,13 @@ import asyncio
 import json
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Entry-point path setup (same pattern as streamlit_ui / voice demo): make
+# Entry-point path setup: make
 # `agent.*` importable whether launched via `src.app.main` or `app.main`.
 _SRC = Path(__file__).resolve().parents[1]
 if str(_SRC) not in sys.path:  # pragma: no cover - import-order plumbing
@@ -42,7 +43,8 @@ except Exception:
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import ApiSettings
@@ -61,6 +63,11 @@ async def lifespan(app: FastAPI):
     from . import runtime_config
 
     runtime_config.load_persisted()
+    # Every knowledge file, the locale and the prompts are validated here: a broken
+    # pack stops the app with a readable error instead of failing inside a call.
+    from agent.contract import loader
+
+    loader.startup()
     cleanup = asyncio.create_task(manager.cleanup_loop())
     try:
         yield
@@ -91,10 +98,26 @@ class TurnRequest(BaseModel):
 _STATIC = Path(__file__).resolve().parent / "static"
 
 
+# The page's own CSS/JS (no build step); `?v=` busts the browser cache per server start.
+app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+_ASSET_VERSION = str(int(time.time()))
+
+
 @app.get("/", include_in_schema=False)
 async def dashboard():
-    """The demo dashboard (single self-contained page, no build step)."""
-    return FileResponse(_STATIC / "index.html")
+    """The demo dashboard (index.html + static/app.css + static/js)."""
+    html = (_STATIC / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("{{v}}", _ASSET_VERSION))
+
+
+@app.get("/demo/scenarios")
+async def demo_scenarios():
+    """The dashboard's demo scenarios (app/scenarios.yaml): who calls, what to say, what to
+    expect. Read on every request, so an edited file shows on a page reload."""
+    import yaml
+
+    data = yaml.safe_load((Path(__file__).parent / "scenarios.yaml").read_text(encoding="utf-8"))
+    return {"scenarios": (data or {}).get("scenarios", [])}
 
 
 @app.get("/health")
@@ -163,7 +186,7 @@ async def simulate_plug(session_id: str, unplug: bool = False):
         ms = manager.get(session_id)
     except SessionNotFound:
         raise HTTPException(status_code=404, detail="unknown session") from None
-    cid = ms.session.state.customer_id
+    cid = ms.session.state.identity.customer_id
     if not cid:
         raise HTTPException(status_code=409, detail="caller not identified yet")
     from agent.tools import simulate_bridge_connect, simulate_bridge_disconnect
@@ -186,7 +209,7 @@ async def simulate_plug(session_id: str, unplug: bool = False):
 
 @app.post("/sessions/{session_id}/simulate-reboot")
 async def simulate_reboot(session_id: str):
-    """DEMO (S6 pakibęs routeris): the tester presses the button the moment the
+    """DEMO (S6 frozen router): the tester presses the button the moment the
     CALLER would power-cycle the router — the demo line reflects the physical
     act (traffic returns + the port flap a real reboot produces, the witness
     the verify step reads). Manual by design, same as simulate-plug: the human
@@ -196,7 +219,7 @@ async def simulate_reboot(session_id: str):
         ms = manager.get(session_id)
     except SessionNotFound:
         raise HTTPException(status_code=404, detail="unknown session") from None
-    cid = ms.session.state.customer_id
+    cid = ms.session.state.identity.customer_id
     if not cid:
         raise HTTPException(status_code=409, detail="caller not identified yet")
     from agent.tools import simulate_router_reboot
@@ -250,11 +273,12 @@ async def delete_session(session_id: str):
 
 
 @app.get("/calls")
-async def calls_list(limit: int = 50):
-    """Archive zone: newest-first past-call records (conversations table)."""
+async def calls_list(limit: int = 50, needs_review: bool = False):
+    """Archive zone: newest-first past-call records (conversations table);
+    `?needs_review=1` lists only the contact records for review (D-14)."""
     from . import archive
 
-    return {"calls": await asyncio.to_thread(archive.list_calls, limit)}
+    return {"calls": await asyncio.to_thread(archive.list_calls, limit, needs_review)}
 
 
 @app.get("/calls/{session_id}")
@@ -291,6 +315,21 @@ async def config_get():
     return {"settings": runtime_config.current()}
 
 
+@app.post("/admin/knowledge/reload")
+async def knowledge_reload():
+    """Re-read the knowledge files after an edit. The files are validated first; a
+    broken edit is refused with its errors and the running knowledge stays."""
+    from agent.contract import loader
+    from agent.contract.schema import KnowledgeError
+
+    try:
+        knowledge = await asyncio.to_thread(loader.validate)
+    except KnowledgeError as e:
+        raise HTTPException(status_code=422, detail=e.errors) from None
+    loader.reload()
+    return {"status": "reloaded", "packs": len(knowledge.packs), "modules": len(knowledge.modules)}
+
+
 @app.put("/admin/config")
 async def config_put(changes: dict[str, str]):
     from . import runtime_config
@@ -321,7 +360,7 @@ async def db_reset():
 
 
 def _final_flush(ms) -> None:
-    """FINAL FLUSH (2026-09-02, Andrius: „svarbu, kad nedingtų informacija"):
+    """FINAL FLUSH (2026-09-02, Andrius: "it matters that no information is lost"):
     a hangup mid-sentence leaves an OPEN segment the silence window never
     closed — the caller's last words existed only as a partial. Transcribe the
     leftover segment(s) and hand them to the engine as overlay facts, so the
@@ -359,6 +398,7 @@ async def ws_call(ws: WebSocket, session_id: str):
         return
     await ws.accept()
     q = hub.subscribe(session_id)
+    manager.socket_opened(session_id)
 
     async def _pump_events() -> None:
         while True:
@@ -391,10 +431,9 @@ async def ws_call(ws: WebSocket, session_id: str):
 
         if _os.getenv("VOICE_CHECKIN", "on").lower() != "on":
             return
-        try:
-            delay = float(_os.getenv("VOICE_CHECKIN_AFTER_S", "35"))
-        except ValueError:
-            delay = 35.0
+        from agent.contract import limits
+
+        delay = float(limits.get("voice_checkin_after_s"))
         await asyncio.sleep(delay)
         try:
             ms = manager.get(session_id)
@@ -404,11 +443,11 @@ async def ws_call(ws: WebSocket, session_id: str):
         if not callable(awaiting) or not awaiting():
             return
         try:
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
             from . import voice as voice_mod
 
-            text = phrase("checkin")
+            text = phrase("identification.checkin")
             audio = await asyncio.to_thread(voice_mod.synthesize_text, text)
             if audio:
                 ms.session.tracer.emit("checkin", text=text)
@@ -442,14 +481,11 @@ async def ws_call(ws: WebSocket, session_id: str):
         # agent's voice — its segments become observations, never turns.
         ms = manager.get(session_id)
         if ms.overlay_front is None:
-            import os as _os
+            from agent.contract import limits
 
             from . import audio_front
 
-            try:
-                sil = int(float(_os.environ.get("OVERLAY_SIL_MS", "4000")))
-            except ValueError:
-                sil = 4000
+            sil = limits.get("overlay_silence_ms")
             ms.overlay_front = audio_front.AudioFront(silence_ms_override=sil)
         return ms.overlay_front
 
@@ -539,12 +575,16 @@ async def ws_call(ws: WebSocket, session_id: str):
         try:
             import base64
 
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
             from . import voice as voice_mod
 
             ms.bc_count = getattr(ms, "bc_count", 0) + 1
-            text = phrase("backchannel_1" if ms.bc_count % 2 else "backchannel_2")
+            text = phrase(
+                "identification.backchannel_1"
+                if ms.bc_count % 2
+                else "identification.backchannel_2"
+            )
             if not text:
                 return
             audio = await asyncio.to_thread(voice_mod.synthesize_text, text)
@@ -816,6 +856,7 @@ async def ws_call(ws: WebSocket, session_id: str):
             with suppress(Exception):
                 await turn_task
         hub.unsubscribe(session_id, q)
+        manager.socket_closed(session_id)
 
 
 def run() -> None:  # pragma: no cover - manual entry

@@ -181,8 +181,7 @@ def _execute_completion(kwargs: dict, model: str):
     """
     Run litellm.completion with rate limiting, retry, and stats tracking.
 
-    This is the shared core behind both llm_completion (returns text) and
-    llm_tool_completion (returns the message with tool_calls). Callers build
+    This is the shared core behind llm_completion (returns text). Callers build
     the request kwargs; this function owns the cross-cutting concerns —
     rate-limit guard, retry loop, cost/latency stats — and returns the raw
     litellm response so each caller can extract what it needs.
@@ -330,67 +329,9 @@ def llm_completion(
     return response.choices[0].message.content
 
 
-def llm_tool_completion(
-    messages: list[dict],
-    tools: list[dict],
-    tool_choice: str = "auto",
-    model: str = None,
-    temperature: float = None,
-    max_tokens: int = None,
-    top_p: float = None,
-):
-    """
-    Call LLM with native function/tool calling and return the response message.
-
-    Unlike llm_completion (which returns only the text content), this returns
-    the full assistant message object so the caller can inspect both:
-      - message.content    -> the natural-language reply (may be None when the
-                              model decides to call a tool instead of talking)
-      - message.tool_calls -> a list of structured tool calls, each with
-                              .id, .function.name, .function.arguments (JSON str)
-
-    This is the native-function-calling replacement for the ReAct regex parser:
-    the model receives structured tool schemas (tools=...) and returns
-    structured calls, eliminating the brittle "Action:/Action Input:" text
-    parsing. The same shared infra (rate limit, retry, stats) is reused.
-
-    Args:
-        messages: Conversation so far (system/user/assistant/tool messages)
-        tools: OpenAI function schemas, e.g. from agent.tools.get_tools_schema()
-        tool_choice: "auto" (model decides), "none", "required", or a forced
-            tool spec. Defaults to "auto" so the agent keeps full freedom over
-            which tools to call and when.
-        model: Model ID (uses settings default if None)
-        temperature: Creativity (uses settings default if None)
-        max_tokens: Max response length (uses settings default if None)
-        top_p: Nucleus sampling (uses settings default if None)
-
-    Returns:
-        The assistant message object (litellm Message) with .content and
-        .tool_calls.
-    """
-    model, temperature, max_tokens, top_p = _resolve_params(model, temperature, max_tokens, top_p)
-    _configure_provider(model)
-
-    kwargs = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "tools": tools,
-        "tool_choice": tool_choice,
-    }
-
-    if top_p != 1.0:
-        kwargs["top_p"] = top_p
-
-    response = _execute_completion(kwargs, model)
-    return response.choices[0].message
-
-
 def stream_tool_completion(
     messages: list[dict],
-    tools: list[dict],
+    tools: list[dict] | None,
     tool_choice: str = "auto",
     model: str = None,
     temperature: float = None,
@@ -398,11 +339,11 @@ def stream_tool_completion(
     top_p: float = None,
 ):
     """
-    Streaming variant of llm_tool_completion (Pillar C3).
+    LLM call with native tool calling, streamed (Pillar C3).
 
     A GENERATOR that yields content tokens (str) as they arrive and RETURNS the
-    final assistant message (with .content and .tool_calls, same shape as
-    llm_tool_completion) via the generator's return value — so callers do
+    final assistant message (with .content and .tool_calls) via the generator's
+    return value — so callers do
     ``message = yield from stream_tool_completion(...)`` to both stream the text
     and get the structured result. Tool-call rounds emit no content (no yields);
     the final text reply streams token by token. Updates get_last_call_stats().
@@ -420,7 +361,8 @@ def stream_tool_completion(
         "temperature": temperature,
         "max_tokens": max_tokens,
         "tools": tools,
-        "tool_choice": tool_choice,
+        # A speaking call has no tools; providers reject tool_choice without them.
+        "tool_choice": tool_choice if tools else None,
         "stream": True,
         "stream_options": {"include_usage": True},
     }

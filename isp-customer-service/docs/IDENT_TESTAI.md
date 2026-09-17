@@ -1,8 +1,21 @@
 # Identifikacijos etapo gyvi testai T-1…T-12 (2026-09-03)
 
-Pagal identifikacijos etaloną (kliento_identifikacijos_dizainas.md + Andriaus
-taisyklės 2026-09-03). Testuojama PO identifikacijos bangos įdiegimo —
-T-7…T-12 tikrina NAUJAS taisykles.
+Pagal identifikacijos etaloną
+([kliento_identifikacijos_dizainas.md](archive/chatbot_core/kliento_identifikacijos_dizainas.md),
+archyvuotas + Andriaus taisyklės 2026-09-03). Testuojama PO identifikacijos
+bangos įdiegimo — T-7…T-12 tikrina NAUJAS taisykles.
+
+**Po refaktoringo M6 (identifikacijos vartai, D-09; 2026-09-17):**
+- Padiktuotas adresas NIEKADA neidentifikuoja vien išgirdus: radęs adresą
+  agentas pirmiausia klausia „Ar teisingai išgirdau — …?" — į tai atsakyk
+  „Taip" (visur, kur adresą diktuoji: T-3, T-4, T-9b, PR serija…), tik tada
+  identifikuojama. Žemiau esančiose eigose šis žingsnis atskirai nerašomas.
+- Kol adresas nepatvirtintas — jokių žinių apie liniją, skolą ar sutartį;
+  masinė avarija (pvz. Dainų g., T-6) pranešama tik PO patvirtinimo.
+- Vardo klausimas lieka ir prieš tiketą, prasidedantį iškart po
+  identifikacijos.
+- Kodo tikrinimas: `decide/rules/identification.py`; testai —
+  `test_identification_rules.py`, `test_identification_gate.py`.
 
 **Prieš seriją:** ♻️ DB atstatymas, Ctrl+F5. Numeris įvedamas demo puslapio
 skambintojo lauke („unknown" = palikti nežinomą).

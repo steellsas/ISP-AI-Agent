@@ -44,7 +44,6 @@ def _run(ms, monkeypatch):
     from app import voice
 
     monkeypatch.setenv("API_RECORD_AUDIO", "0")
-    monkeypatch.setenv("SPECULATION", "off")
     monkeypatch.setenv("INTERRUPT_ACK_AFTER_S", "0.1")
     monkeypatch.setattr(voice, "synthesize_text", lambda text: b"ACK")
     chunks: list[bytes] = []

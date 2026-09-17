@@ -1,0 +1,16 @@
+# MODULIS — daugkartinė instrukcija (docs/FAULT_PACKS.md).
+# Veiksmo žingsnis be išėjimų: pririšus srautas teka į KITĄ paketo žingsnį
+# pagal eilės tvarką (paprastai — atsiradimo patikra).
+module: bind_mac
+meta:
+  description: "Bind a new device seen on the line (MAC) — the engine does it silently"
+steps:
+- id: bind
+  role: bind_device
+  kind: action
+  tools:
+  - update_mac
+  tool_actions:
+  - update_mac
+  hint: 'The engine binds the device silently — you do NOT call the tool. Announce
+    it naturally and do NOT ask yet whether it works — that is the next step.'

@@ -9,7 +9,12 @@ so the replay bench can reproduce the live decoding exactly.
 
 from types import SimpleNamespace
 
+from agent.background import apply_bg_diagnosis
+from agent.delivery import apply_delivery
+from agent.graph_v2.state import DiagnosisState, GraphState, IntakeState, ResolutionState
 from agent.voice_pipeline import VoicePipeline, audio_duration_s
+
+from tests.engine_fakes import as_call
 
 
 class _Recorder:
@@ -166,7 +171,7 @@ class TestPerceptionModelKnob:
     PERCEPTION_MODEL overrides; 'default'/empty falls back to the agent model."""
 
     def test_override_and_fallback(self, monkeypatch):
-        from agent.understand import perception_model
+        from agent.perceive.understand import perception_model
 
         monkeypatch.delenv("PERCEPTION_MODEL", raising=False)
         assert perception_model("gpt-4o-mini") == "gpt-4o-mini"
@@ -176,14 +181,14 @@ class TestPerceptionModelKnob:
         assert perception_model("gpt-4o-mini") == "groq/openai/gpt-oss-120b"
 
     def test_understand_call_uses_the_override(self, monkeypatch):
-        from agent import understand
+        from agent.perceive import understand
         from src.services.llm import client as llm_client
 
         seen = {}
 
         def fake(messages=None, model=None, **k):
             seen["model"] = model
-            return {"tipas": "atsakymas", "faktai": {}, "pasitikejimas": 0.9}
+            return {"type": "answer", "facts": {}, "confidence": 0.9}
 
         monkeypatch.setattr(llm_client, "llm_json_completion", fake)
         monkeypatch.setenv("PERCEPTION_MODEL", "groq/openai/gpt-oss-120b")
@@ -206,19 +211,19 @@ class TestCheckin:
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
-        a = session._agent
-        a.state.last_question = ""
+        a = session
+        a.state.dialog.last_question = ""
         assert session.awaiting_caller() is False
-        a.state.last_question = "Ar dega lemputė?"
+        a.state.dialog.last_question = "Ar dega lemputė?"
         assert session.awaiting_caller() is True
-        a.state.case_closed = True
+        a.state.closing.case_closed = True
         assert session.awaiting_caller() is False
 
     def test_checkin_phrase_and_confusion_markers(self):
-        from agent.identification import phrase
-        from agent.resolution import INTENT_CONFUSED, detect_turn_intent
+        from agent.contract.locale import phrase
+        from agent.perceive.detectors import INTENT_CONFUSED, detect_turn_intent
 
-        assert "sekasi" in phrase("checkin")
+        assert "sekasi" in phrase("identification.checkin")
         # G1: a struggling caller gets the explain-simpler path…
         assert detect_turn_intent("Man neišeina to padaryti") == INTENT_CONFUSED
         assert detect_turn_intent("Nežinau kaip ten žiūrėti") == INTENT_CONFUSED
@@ -231,10 +236,10 @@ class TestSessionAsrContext:
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
-        a = session._agent
-        a.state.last_question = "Ar dega bent viena lemputė?"
-        a.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        a._evidence_last_ask_key = "lights"
+        a = session
+        a.state.dialog.last_question = "Ar dega bent viena lemputė?"
+        a.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
+        a.state.diagnosis.pending_evidence_key = "lights"
         ctx = session.asr_context()
         assert ctx and "lemputė" in ctx
         assert "nedega" in ctx and "dega" in ctx  # the pack's atsakymai markers
@@ -243,90 +248,11 @@ class TestSessionAsrContext:
         from agent.session import AgentSession
 
         session = AgentSession(caller_phone="unknown")
-        session._agent.state.last_question = ""
+        session.state.dialog.last_question = ""
         assert session.asr_context() is None
 
 
-class TestSpeculation:
-    """S1 (2026-08-24): branches prepared while the caller answers; served only
-    on an exact, fact-clean match — any doubt falls to the normal path."""
-
-    def _agent(self, db_connection=None):
-        from agent.react_agent import ReactAgent
-
-        agent = ReactAgent(caller_phone="unknown")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        from agent.evidence import CLIENT, set_fact
-
-        set_fact(agent.state.evidence, "ivykiai", "nebuvo", CLIENT, 0)
-        set_fact(agent.state.evidence, "device_present", "rado", CLIENT, 1)
-        agent._evidence_last_ask_key = "lights"
-        return agent
-
-    def test_plan_branches_from_the_ledger(self, db_connection):
-        from agent.speculation import plan_branches
-
-        plan = plan_branches(self._agent())
-        assert plan and plan["pending_key"] == "lights"
-        assert plan["branches"]["nedega"]["kind"] == "evidence"
-        assert plan["branches"]["nedega"]["key"] == "power_cable"
-        assert "dega" not in plan["branches"]  # refuted -> pivot path, not speculated
-
-    def test_match_gates_are_conservative(self, db_connection):
-        from agent.speculation import match
-
-        agent = self._agent()
-        base = {
-            "pending_key": "lights",
-            "verdict": "no_mac_observed",
-            "branches": {"nedega": {"kind": "evidence", "key": "power_cable", "text": "x?"}},
-        }
-        agent._spec_cache = dict(base)
-        assert match(agent, "O kiek tai kainuos?") is None  # question
-        agent._spec_cache = dict(base)
-        assert match(agent, "Nedega, bet keičiau routerį vakar") is None  # extra fact
-        agent._spec_cache = dict(base)
-        hit = match(agent, "Nedega nė viena")
-        assert hit and hit["key"] == "power_cable"
-        assert agent._spec_cache is None  # one shot
-
-    def test_injection_consumed_only_on_directive_match(self, db_connection):
-        agent = self._agent()
-        agent._injected_reply = {
-            "kind": "evidence",
-            "key": "power_cable",
-            "text": "Ar laidas įkištas?",
-        }
-        agent._evidence_directive = {
-            "key": "power_cable",
-            "reikia": "x",
-            "kodel": "",
-            "klausimas": "",
-        }
-        assert agent._consume_injected_reply() == "Ar laidas įkištas?"
-        agent._injected_reply = {"kind": "evidence", "key": "outlet_works", "text": "Ne tas?"}
-        assert agent._consume_injected_reply() is None  # directive key mismatch
-
-    def test_pipeline_serves_cached_audio_on_hit(self):
-        from types import SimpleNamespace
-
-        from agent.voice_pipeline import VoicePipeline
-
-        session = SimpleNamespace(
-            config=SimpleNamespace(language="lt"),
-            is_complete=False,
-            tracer=SimpleNamespace(emit=lambda *a, **k: None),
-            speculation_match=lambda t: b"CACHED",
-            _last_injected_text="Ar laidas įkištas?",
-            handle_turn=lambda t: "Ar laidas įkištas?",
-        )
-        pipeline = VoicePipeline(
-            session, SimpleNamespace(transcribe=lambda a, **k: "nedega"), _StubTTS()
-        )
-        chunks = list(pipeline.stream_turn(b"\x00" * 32_000))
-        assert chunks == [b"CACHED"]
-
+class TestTtsCache:
     def test_tts_cache_short_circuits(self, monkeypatch):
         from src.adapters.tts.edge_tts import EdgeTTSProvider
 
@@ -344,12 +270,13 @@ class TestBgDiagnosisGate:
     def _agent(self, events):
         from types import SimpleNamespace
 
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
-        agent.state.customer_id = "CUST009"
-        agent.state.resolution = {"verdict": "no_mac_observed", "step": "dr_lights"}
-        agent.tracer = SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
+        agent = make_agent(
+            "unknown", tracer=SimpleNamespace(emit=lambda k, **f: events.append((k, f)))
+        )
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_lights"}
         return agent
 
     def test_flip_is_discarded(self, db_connection):
@@ -357,33 +284,35 @@ class TestBgDiagnosisGate:
 
         events = []
         agent = self._agent(events)
-        agent._bg_diagnosis = _json.dumps({"success": True, "verdict": {"reason": "foreign_mac"}})
-        agent._apply_bg_diagnosis()
-        assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
-        assert agent.state.resolution["verdict"] == "no_mac_observed"
+        agent.state.turn.bg_diagnosis = _json.dumps(
+            {"success": True, "verdict": {"reason": "foreign_mac"}}
+        )
+        apply_bg_diagnosis(agent.state, agent.runtime)
+        assert any(f.get("action") == "discarded" for _k, f in events)
+        assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
 
     def test_same_verdict_applies(self, db_connection):
         import json as _json
 
         events = []
         agent = self._agent(events)
-        agent._bg_diagnosis = _json.dumps(
+        agent.state.turn.bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
-        agent._apply_bg_diagnosis()
-        assert any(f.get("action") == "bg_diagnosis_applied" for _k, f in events)
+        apply_bg_diagnosis(agent.state, agent.runtime)
+        assert any(f.get("action") == "applied" for _k, f in events)
 
     def test_bridge_phase_always_discards(self, db_connection):
         import json as _json
 
         events = []
         agent = self._agent(events)
-        agent._bridge_bound = True
-        agent._bg_diagnosis = _json.dumps(
+        agent.state.resolution.bridge_bound = True
+        agent.state.turn.bg_diagnosis = _json.dumps(
             {"success": True, "verdict": {"reason": "no_mac_observed"}}
         )
-        agent._apply_bg_diagnosis()
-        assert any(f.get("action") == "bg_diagnosis_discarded" for _k, f in events)
+        apply_bg_diagnosis(agent.state, agent.runtime)
+        assert any(f.get("action") == "discarded" for _k, f in events)
 
 
 class TestDuplexPartials:
@@ -462,55 +391,62 @@ class TestSemanticEndpoint:
     """E2 duplex — the endpoint hint: slow on an unfinished thought, fast on a
     complete expected answer / farewell, normal otherwise. Deterministic only."""
 
+    def _call(self, pending=None, verdict=None):
+        engine = self._engine(pending, verdict)
+        return engine.state, engine.runtime
+
     def _engine(self, pending=None, verdict=None):
         # problem_type set: these tests probe the MID-CALL windows; the
         # pre-problem STORY window has its own tests (test_classification).
-        return SimpleNamespace(
-            _evidence_last_ask_key=pending,
-            state=SimpleNamespace(
-                resolution={"verdict": verdict} if verdict else None,
-                problem_type="internet_down",
+        return as_call(
+            None,
+            SimpleNamespace(
+                state=GraphState(
+                    resolution=ResolutionState(procedure={"verdict": verdict} if verdict else None),
+                    intake=IntakeState(problem_type="internet_down"),
+                    diagnosis=DiagnosisState(pending_evidence_key=pending),
+                )
             ),
         )
 
     def test_trailing_conjunction_waits(self):
         from agent.endpoint import classify_endpoint, slow_ms
 
-        mode, ms = classify_endpoint(self._engine(), "Patikrinau ir")
+        mode, ms = classify_endpoint(*self._call(), "Patikrinau ir")
         assert mode == "slow" and ms == slow_ms()
-        assert classify_endpoint(self._engine(), "Nedega, bet")[0] == "slow"
+        assert classify_endpoint(*self._call(), "Nedega, bet")[0] == "slow"
 
     def test_trailing_comma_waits(self):
         from agent.endpoint import classify_endpoint
 
-        assert classify_endpoint(self._engine(), "Neveikia internetas,")[0] == "slow"
+        assert classify_endpoint(*self._call(), "Neveikia internetas,")[0] == "slow"
 
     def test_unfinished_outranks_mapped_answer(self):
         from agent.endpoint import classify_endpoint
 
         eng = self._engine(pending="lights", verdict="no_mac_observed")
-        assert classify_endpoint(eng, "Nedega, bet")[0] == "slow"
+        assert classify_endpoint(eng.state, eng.runtime, "Nedega, bet")[0] == "slow"
 
     def test_complete_pending_answer_cuts_fast(self, monkeypatch):
         from agent.endpoint import classify_endpoint
 
         monkeypatch.setenv("ENDPOINT_FAST_MS", "250")
         eng = self._engine(pending="lights", verdict="no_mac_observed")
-        mode, ms = classify_endpoint(eng, "Nedega nė viena.")
+        mode, ms = classify_endpoint(eng.state, eng.runtime, "Nedega nė viena.")
         assert mode == "fast" and ms == 250
 
     def test_farewell_cuts_fast(self):
         from agent.endpoint import classify_endpoint, fast_ms
 
-        mode, ms = classify_endpoint(self._engine(), "Ačiū, viso gero.")
+        mode, ms = classify_endpoint(*self._call(), "Ačiū, viso gero.")
         assert mode == "fast" and ms == fast_ms()
 
     def test_plain_sentence_and_empty_are_normal(self):
         from agent.endpoint import classify_endpoint
 
-        assert classify_endpoint(self._engine(), "Kažkas čia negerai") == ("normal", None)
-        assert classify_endpoint(self._engine(), "") == ("normal", None)
-        assert classify_endpoint(self._engine(), None) == ("normal", None)
+        assert classify_endpoint(*self._call(), "Kažkas čia negerai") == ("normal", None)
+        assert classify_endpoint(*self._call(), "") == ("normal", None)
+        assert classify_endpoint(*self._call(), None) == ("normal", None)
 
     def test_partial_payload_carries_the_hint(self, monkeypatch):
         from app import voice
@@ -555,37 +491,39 @@ class TestDeliveryLedger:
         assert pipeline.last_turn_aligned is False
 
     def test_apply_delivery_truncates_history_and_surfaces_tail(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from agent.speak.context_card import context_card
 
-        agent = ReactAgent(caller_phone="unknown")
+        from tests.calls import make_agent
+
+        agent = make_agent("unknown")
         agent.state.messages.append({"role": "user", "content": "neveikia"})
         agent.state.messages.append({"role": "assistant", "content": "Pirmas. Antras. Trečias."})
-        agent.apply_delivery(["Pirmas.", "Antras.", "Trečias."], 1)
+        apply_delivery(agent.state, agent.runtime, ["Pirmas.", "Antras.", "Trečias."], 1)
         assert agent.state.messages[-1]["content"] == "Pirmas. —"
-        assert agent._undelivered_tail == "Antras. Trečias."
-        block = agent._state_facts_block() or ""
-        assert "KLIENTAS NEGIRD" in block and "Antras." in block
+        assert agent.state.voice.undelivered_tail == "Antras. Trečias."
+        block = context_card(agent.state, agent.runtime) or ""
+        assert "NOT HEARD" in block and "Antras." in block
         # consumed once — the note must not nag every later turn
-        assert agent._undelivered_tail is None
-        assert "KLIENTAS NEGIRD" not in (agent._state_facts_block() or "")
+        assert agent.state.voice.undelivered_tail is None
+        assert "NOT HEARD" not in (context_card(agent.state, agent.runtime) or "")
 
     def test_apply_delivery_nothing_heard(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.messages.append({"role": "assistant", "content": "Visas tekstas."})
-        agent.apply_delivery(["Visas tekstas."], 0)
+        apply_delivery(agent.state, agent.runtime, ["Visas tekstas."], 0)
         assert agent.state.messages[-1]["content"] == "—"
-        assert agent._undelivered_tail == "Visas tekstas."
+        assert agent.state.voice.undelivered_tail == "Visas tekstas."
 
     def test_apply_delivery_all_heard_is_noop(self, db_connection):
-        from agent.react_agent import ReactAgent
+        from tests.calls import make_agent
 
-        agent = ReactAgent(caller_phone="unknown")
+        agent = make_agent("unknown")
         agent.state.messages.append({"role": "assistant", "content": "Viskas. Gerai."})
-        agent.apply_delivery(["Viskas.", "Gerai."], 2)
+        apply_delivery(agent.state, agent.runtime, ["Viskas.", "Gerai."], 2)
         assert agent.state.messages[-1]["content"] == "Viskas. Gerai."
-        assert agent._undelivered_tail is None
+        assert agent.state.voice.undelivered_tail is None
 
 
 class TestAsrHeadStart:

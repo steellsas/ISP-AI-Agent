@@ -1,21 +1,20 @@
 """
 Tests for the declarative fault knowledge (Phase 3.8 step 5b/5c).
 
-`knowledge/faults.yaml` is now the source for the call's PURPOSE (triggers), the
-PROCEDURE (steps) and the DETECTION meanings (answers). These guard that it stays
-loadable, fail-soft, and EQUIVALENT to the in-code registry it replaces — a silent drift
-would change how the agent routes without anyone noticing.
+`knowledge/intents.yaml` is the source for the call's INTENT (triggers), the
+PROCEDURE (steps) and the DETECTION meanings (answers).
 """
 
-from agent.faults import build_strategy, classify_purpose, playbook, step_options
-from agent.resolution import STRATEGIES, get_strategy
+from agent.faults import build_strategy, step_options
+from agent.intents import classify_purpose
+from agent.resolution import get_strategy
 
 
 class TestPurpose:
     def test_triggers_classify_the_reported_problem(self):
         assert classify_purpose("internetas veikia labai lėtai") == "internet_slow"
         assert classify_purpose("neveikia internetas") == "internet_down"
-        assert classify_purpose("dėl sąskaitos skambinu") == "saskaitos"
+        assert classify_purpose("dėl sąskaitos skambinu") == "billing"
 
     def test_specific_problem_wins_over_broader_one(self):
         # "lėtai" must beat the broader internet_down triggers — YAML order carries this
@@ -38,43 +37,14 @@ class TestDetectionMeanings:
         assert step_options(None, None) is None
 
 
-# unclear_fault is ENGINE MECHANICS (the honest no-path endgame, 2026-09-03),
-# not declarable fault knowledge — packs describe faults a company solves; the
-# fallback for a fault NOBODY declared cannot itself be a pack.
-_ENGINE_ONLY = {"unclear_fault"}
+class TestProcedure:
+    def test_unclear_fault_is_a_single_escalate_pack(self):
+        strat = get_strategy("unclear_fault")
+        assert [s.role for s in strat.steps] == ["escalate"]
+        assert strat.rag_doc is None
 
-
-class TestProcedureEquivalence:
-    """The manifest must rebuild EXACTLY the strategies the walker used to get from code."""
-
-    def test_every_code_strategy_is_declared(self):
-        for verdict in STRATEGIES:
-            if verdict in _ENGINE_ONLY:
-                continue
-            assert build_strategy(verdict) is not None, verdict
-            assert playbook(verdict) == STRATEGIES[verdict].rag_doc, verdict
-
-    def test_declared_steps_match_code_steps(self):
-        for verdict, coded in STRATEGIES.items():
-            if verdict in _ENGINE_ONLY:
-                continue
-            declared = build_strategy(verdict)
-            assert [s.id for s in declared.steps] == [s.id for s in coded.steps], verdict
-            for d, c in zip(declared.steps, coded.steps):
-                assert d.kind == c.kind, f"{verdict}.{d.id} kind"
-                assert d.detector == c.detector, f"{verdict}.{d.id} detector"
-                assert d.rag_section == c.rag_section, f"{verdict}.{d.id} rag_section"
-                assert d.goto == c.goto, f"{verdict}.{d.id} goto"
-                assert d.tools == c.tools, f"{verdict}.{d.id} tools"
-                assert d.tool_actions == c.tool_actions, f"{verdict}.{d.id} tool_actions"
-                # `on` keys may be Outcome members in code — compare routing VALUES
-                coded_on = {str(getattr(k, "value", k)): v for k, v in c.on.items()}
-                assert d.on == coded_on, f"{verdict}.{d.id} on"
-
-    def test_get_strategy_serves_the_declared_one(self):
-        for verdict in STRATEGIES:
-            if verdict in _ENGINE_ONLY:
-                continue
+    def test_get_strategy_serves_the_pack(self):
+        for verdict in ("foreign_mac", "healthy_to_router", "no_mac_observed", "router_hung"):
             assert get_strategy(verdict) is build_strategy(verdict), verdict
 
     def test_unknown_verdict_has_no_strategy(self):

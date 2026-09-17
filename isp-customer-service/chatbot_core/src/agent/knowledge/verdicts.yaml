@@ -1,0 +1,56 @@
+# Verdict flags — what the engine may conclude from a telemetry verdict, as data.
+#
+# The engine reads a flag by name (faults.verdict_flag); no verdict name is
+# matched in Python. An absent flag takes its default (false / none / visible).
+#
+#   unresolved_after_fix  a remote or instructed fix should clear it: a fresh read
+#                         still showing it means "not fixed", never close as resolved
+#   line_fault            the line itself is still down after a cable reseat
+#   device_visible        false = the line sees no device at all
+#   healthy_up_to_router  the network up to the router works (the rest is client-side)
+#   inform                an inform verdict: debt | outage | network (what the news is about)
+#   auto_ticket           the inform promise ("meistrai užregistruoti") needs a ticket first
+
+billing_suspended:
+  inform: debt
+active_outage:
+  inform: outage
+node_fault_unregistered:
+  inform: network
+  auto_ticket: true
+  line_fault: true
+switch_unreachable:
+  inform: network
+  auto_ticket: true
+  line_fault: true
+no_port_data:
+  line_fault: true
+link_down_local:
+  line_fault: true
+  unresolved_after_fix: true
+crc_errors:
+  line_fault: true
+  unresolved_after_fix: true
+foreign_mac:
+  unresolved_after_fix: true
+dhcp_silent:
+  unresolved_after_fix: true
+no_mac_observed:
+  unresolved_after_fix: true
+  device_visible: false
+router_hung:
+  unresolved_after_fix: true
+healthy_to_router:
+  healthy_up_to_router: true
+unclear_fault: {}
+# Not a telemetry verdict: the caller complains about a service their contract does not
+# have (D-10) — they are told so, nothing is checked and no ticket is made.
+service_not_subscribed:
+  inform: service
+# Not a telemetry verdict: the caller's problem already has an open ticket (D-12) — the
+# repeat call is noted on it and the caller hears its status; nothing is re-diagnosed.
+open_ticket_exists:
+  inform: ticket
+# Not a telemetry verdict: the caller asked about a registration they have none of.
+no_open_ticket:
+  inform: ticket

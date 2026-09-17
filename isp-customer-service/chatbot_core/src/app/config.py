@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from agent.graph_v2.checkpoint import DEFAULT_DB_PATH
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ApiSettings(BaseSettings):
     """Host/runtime knobs for the FastAPI service. Engine behaviour flags
-    (SOLVER_DRIVE, CLASSIFIER, TRACE_*) stay plain env vars the engine already
+    (CLASSIFIER, TRACE_*) stay plain env vars the engine already
     reads — this class only configures the SERVICE around it."""
 
     model_config = SettingsConfigDict(env_prefix="API_", extra="ignore")
@@ -18,7 +21,12 @@ class ApiSettings(BaseSettings):
     # seconds without a turn — a forgotten browser tab must not hold a call open.
     session_ttl_seconds: int = 1800
     cleanup_interval_seconds: int = 60
+    # F-3: a closed call socket ends the call after this grace, unless the client
+    # reconnects to the same session in time (a page reload, a network blip).
+    ws_disconnect_grace_seconds: float = 30.0
     cors_origins: list[str] = ["*"]  # demo default; tighten in Phase 7
+    # The call-state checkpoint database (one saver per process). None = in memory.
+    checkpoint_path: Path | None = DEFAULT_DB_PATH
 
 
 # USD per 1M tokens (input, output) — the dashboard's live call-cost counter.

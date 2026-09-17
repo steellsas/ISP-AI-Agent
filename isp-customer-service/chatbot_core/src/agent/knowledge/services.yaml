@@ -1,0 +1,24 @@
+# Services the provider sells, the technologies each is delivered over, and which
+# service depends on which (D-10). Knowledge, not code: a new service or a new
+# dependency is an edit here.
+#
+#   services.<type>.technologies   the technologies this service may use
+#   dependencies                   <service> over <technology> works only when
+#                                  <depends_on> works — its fault is re-checked after
+#                                  the service it depends on is fixed (D-12)
+
+services:
+  internet:
+    technologies: [ethernet, ftth]
+  tv:
+    technologies: [iptv, dvbc]
+  phone:
+    technologies: [voip]
+
+dependencies:
+  - service: tv
+    technology: iptv
+    depends_on: internet
+  - service: phone
+    technology: voip
+    depends_on: internet

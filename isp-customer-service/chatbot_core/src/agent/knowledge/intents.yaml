@@ -1,0 +1,84 @@
+# Call intents — what the CALLER wants (D-11).
+#
+# Cascade: L1 — `triggers_vocab` (the locale's trigger word list, a fast
+# deterministic lane for the most common phrasings; not grown without end);
+# L2 — the LLM picks a type from each entry's `description` + examples when no
+# trigger fired. A new type is one block here plus its locale entries.
+#
+#   policy:  solve     - the full fault path (identification, telemetry, …)
+#            register  - identification + a ticket of `ticket_type` WITHOUT diagnostics
+#            answer    - identification + an answer from data (ticket status, outage, debt)
+#            not_ours  - not the agent's competence: the boundary reply, NO
+#                        identification, problem_type is not set
+#            chat      - a social call: a warm reply naming the area, no identification
+#   confirm_question_key: the explicit confirmation when the LLM guesses from
+#            context with medium confidence ("Ar gerai suprantu — …?").
+#
+# COMPETENCE (Andrius 2026-09-02): the agent is an IT support assistant and solves
+# ONLY internet and TV technical faults. It does not handle bills/services (not a
+# fault diagnosis: the debt VERDICT in telemetry stays — "internet down" because of
+# a debt is still informed). An unclear but in-scope trouble is NOT rejected: it is
+# classified to the nearest type and clarified with questions.
+intents:
+  internet_slow:
+    service: internet
+    description: "the internet works but slowly / stalls / drops out (pages take long to load, video buffers, games lag)"
+    examples_key: problems/internet_slow
+    policy: solve
+    confirm_question_key: "problem.internet_slow.confirm"
+    triggers_vocab: problem_triggers_internet_slow
+  tv:
+    service: tv
+    description: "a TV fault — the TV or some channels do not show, the picture freezes, no signal"
+    examples_key: problems/tv
+    policy: solve
+    confirm_question_key: "problem.tv.confirm"
+    triggers_vocab: problem_triggers_tv
+  internet_down:
+    service: internet
+    description: "the internet connection is gone / does not work — nothing loads, cannot connect, no connection (on any device or on all)"
+    examples_key: problems/internet_down
+    policy: solve
+    confirm_question_key: "problem.internet_down.confirm"
+    triggers_vocab: problem_triggers_internet_down
+  # Outside the agent's knowledge but the provider's business (owner 2026-09-16): the
+  # agent does NOT answer it — after identification the caller's own words go onto a
+  # ticket of the type below for the responsible person, who calls back.
+  billing:
+    description: "questions about bills, payments, a debt, prices, tariffs or the contract/plan — not a technical fault"
+    examples_key: problems/billing
+    policy: register
+    ticket_type: billing_request
+    triggers_vocab: problem_triggers_billing
+  disconnection:
+    description: "wants to end the contract, cancel a service or have it disconnected"
+    examples_key: problems/disconnection
+    policy: register
+    ticket_type: disconnection_request
+    triggers_vocab: problem_triggers_disconnection
+  relocation:
+    description: "is moving, or wants the service or the contract moved to another address or person"
+    examples_key: problems/relocation
+    policy: register
+    ticket_type: service_transfer
+    triggers_vocab: problem_triggers_relocation
+  wish:
+    description: "a wish, suggestion or complaint about the service itself that is not a fault — a new service, a faster plan, better service"
+    examples_key: problems/wish
+    policy: register
+    ticket_type: customer_wish
+  ticket_status:
+    description: "asks about something already registered — when the technician comes, what is happening with their request"
+    examples_key: problems/ticket_status
+    policy: answer
+    triggers_vocab: problem_triggers_ticket_status
+  chat:
+    description: "calling just to talk / chat / complain about things unrelated to the services — no technical problem"
+    examples_key: problems/chat
+    policy: chat
+    boundary_reply_key: "problem.chat.boundary_reply"
+  not_ours:
+    description: "a question unrelated to the internet/TV services, or another company's business"
+    examples_key: problems/not_ours
+    policy: not_ours
+    boundary_reply_key: "problem.not_ours.boundary_reply"

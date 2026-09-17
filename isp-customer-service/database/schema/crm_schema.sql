@@ -57,6 +57,10 @@ CREATE TABLE IF NOT EXISTS service_plans (
     plan_id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,
     service_type TEXT NOT NULL CHECK(service_type IN ('internet', 'tv', 'phone', 'bundle')),
+    -- How the service is delivered (ethernet, iptv, dvbc, voip…): which telemetry applies
+    -- and what depends on what (knowledge/services.yaml). A mandatory CRM field in
+    -- integration; in the demo a plan without one gets its type's usual technology.
+    technology TEXT,
     plan_name TEXT NOT NULL,
     speed_mbps INTEGER,
     price DECIMAL(10,2) NOT NULL,
@@ -77,6 +81,20 @@ CREATE INDEX idx_service_plans_status ON service_plans(status);
 -- template in knowledge/informavimas.yaml reads the aggregates via
 -- get_billing_status)
 -- ============================================
+-- Demo default: a plan inserted without a technology gets its service type's usual one.
+CREATE TRIGGER IF NOT EXISTS service_plans_default_technology
+AFTER INSERT ON service_plans
+WHEN NEW.technology IS NULL
+BEGIN
+    UPDATE service_plans
+    SET technology = CASE NEW.service_type
+        WHEN 'internet' THEN 'ethernet'
+        WHEN 'tv' THEN 'iptv'
+        WHEN 'phone' THEN 'voip'
+    END
+    WHERE plan_id = NEW.plan_id;
+END;
+
 CREATE TABLE IF NOT EXISTS invoices (
     invoice_id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,
@@ -118,7 +136,9 @@ CREATE INDEX idx_equipment_serial ON customer_equipment(serial_number);
 CREATE TABLE IF NOT EXISTS tickets (
     ticket_id TEXT PRIMARY KEY,
     customer_id TEXT NOT NULL,
-    ticket_type TEXT NOT NULL CHECK(ticket_type IN ('network_issue', 'resolved', 'technician_visit', 'customer_not_found', 'no_service_area')),
+    -- The agent's types come from knowledge/ticket_types.yaml (D-11); the older technical
+    -- types stay for existing rows.
+    ticket_type TEXT NOT NULL CHECK(ticket_type IN ('network_issue', 'resolved', 'technician_visit', 'customer_not_found', 'no_service_area', 'fault_technician', 'fault_unclear', 'billing_request', 'disconnection_request', 'service_transfer', 'customer_wish', 'repeat_contact')),
     problem_type TEXT,
     priority TEXT DEFAULT 'medium' CHECK(priority IN ('low', 'medium', 'high', 'critical')),
     status TEXT DEFAULT 'open' CHECK(status IN ('open', 'in_progress', 'closed')),
@@ -186,6 +206,18 @@ CREATE TABLE IF NOT EXISTS conversations (
     summary TEXT,
     ticket_id TEXT,
     duration_seconds INTEGER,
+    -- The contact record (D-14): derived from the final state, never by an LLM.
+    -- outcome: resolved | informed_outage | informed_debt | informed | ticket |
+    --          ticket_appended | callback | declined | unidentified | abandoned | error
+    transport_end TEXT,          -- how the call ended: client_closed, ws_disconnect, expired, …
+    unidentified_reason TEXT,    -- address_not_found | not_a_customer | caller_refused | hung_up | stuck | technical_error
+    needs_review INTEGER NOT NULL DEFAULT 0,
+    review_reason TEXT,
+    intent TEXT,
+    verdict TEXT,
+    address_confirmed INTEGER NOT NULL DEFAULT 0,
+    outage_id TEXT,
+    audio_retention_until TEXT,  -- unidentified calls: the audio is deleted after this date
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE SET NULL,
     FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id) ON DELETE SET NULL
 );
@@ -194,6 +226,7 @@ CREATE INDEX idx_conversations_customer ON conversations(customer_id);
 CREATE INDEX idx_conversations_session ON conversations(session_id);
 CREATE INDEX idx_conversations_timestamp ON conversations(timestamp);
 CREATE INDEX idx_conversations_ticket ON conversations(ticket_id);
+CREATE INDEX idx_conversations_review ON conversations(needs_review);
 
 -- ============================================
 -- STREETS REFERENCE TABLE (for fuzzy matching)

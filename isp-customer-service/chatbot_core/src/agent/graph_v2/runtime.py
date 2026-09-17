@@ -2,82 +2,123 @@
 Shared node runtime — the only code nodes share besides GraphState.
 
 Two seams:
-- `narrate()` — the scoped LLM turn with token streaming (ports _run_node from
-  agent/graph.py verbatim: same trace event, same stream writer contract).
-- `sync_updates()` — mirrors engine.state back into GraphState after a node
-  ran. This is the strangler seam: while the legacy engine still owns the
-  conversation state, every turn ends by snapshotting it into the graph state,
-  so checkpoints capture the full call and the entry router can stay pure.
-  It disappears in R3 when state ownership moves to the graph.
+- `narrate()` — the scoped LLM turn with token streaming (node trace event +
+  stream writer contract).
+- `node_update()` — the node contract: a node works on a copy of the graph
+  state and returns the full state as its update, so the checkpoint is the only
+  state between nodes and between turns.
 
-Tool scopes are IMPORTED from agent/graph.py (single source) so v1 and v2 can
-never drift apart while both engines are alive.
+No tool scopes here: the speaker's LLM turn runs without tools — the engine decides
+tool actions in decide/ (validated by decide/gate.py) and runs them in execute/.
 """
 
 from __future__ import annotations
 
-import copy
+import functools
+import time
 from typing import Any
 
 from langgraph.config import get_stream_writer
 
-from ..graph import CLOSING_TOOLS, LOOKUP_TOOLS, TICKET_TOOLS  # noqa: F401  (re-exported)
-from ..prompts import load_node_prompt
-from .state import _LEGACY_FIELDS, TurnScratch
+from .state import GraphState
 
-# Per-stage prompts — same loader, same files as the legacy graph.
-ADDRESS_NODE_PROMPT = load_node_prompt("stages/identification")
-DIAGNOSIS_NODE_PROMPT = load_node_prompt("stages/diagnosis")
-CLOSING_NODE_PROMPT = load_node_prompt("stages/closing")
-TICKET_NODE_PROMPT = load_node_prompt("stages/ticket")
-SIDE_TOPIC_PROMPT = load_node_prompt("stages/side_topic")
+# Per-stage prompts.
 
 
-def narrate(engine: Any, user_input: str | None, allowed_tools, node_prompt: str, node: str) -> str:
-    """Run the engine's scoped LLM turn, streaming tokens out via the LangGraph
-    stream writer (a no-op under .invoke(), live under .stream(stream_mode='custom'))
-    while collecting the full reply for the checkpoint."""
-    engine._active_node = node
-    engine.tracer.emit("node", node=node, customer_id=engine.state.customer_id)
-    writer = get_stream_writer()
+def narrate(
+    state,
+    rt,
+    user_input: str | None,
+    owner: str,
+    node: str,
+    exits: bool = False,
+) -> str:
+    """Speak a stage turn: the narrator's bookkeeping, the engine's scripted exits when
+    `exits` (a stage directive), else / then the LLM turn — streaming out via the
+    LangGraph stream writer (a no-op outside a live stream) while collecting the full
+    reply for the checkpoint."""
+    state.turn.active_node = node
+    rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
+    from ..speak.node import begin_turn, stream_reply
+
+    writer = _writer()
+    begin_turn(state, rt, user_input)
+    if exits:
+        from ..execute.say import scripted_exit
+
+        words = scripted_exit(state, rt)
+        if words is not None:
+            writer(words)
+            return words
     parts: list[str] = []
-    for token in engine.run_turn_scoped_stream(user_input, allowed_tools, node_prompt):
+    for token in stream_reply(state, rt, owner):
         writer(token)
         parts.append(token)
+    _analyst(state, rt)
     return "".join(parts)
 
 
-def speak_scripted(engine: Any, node: str, user_input: str | None, reply: str) -> None:
+def _analyst(state, rt) -> None:
+    """The analyst closes the turn in sync mode; in async mode the voice layer's
+    background thread reads while the caller answers."""
+    from ..analyst.node import run_sync
+
+    run_sync(state, rt)
+
+
+def _writer():
+    try:
+        return get_stream_writer()
+    except Exception:  # outside a graph run (tests) — the text is in state
+        return lambda _chunk: None
+
+
+def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply: str) -> None:
     """A SCRIPTED node reply must reach the transport too (live 2026-08-25: the
-    post-registration goodbye returned via sync_updates only — zero tokens
+    post-registration goodbye returned in the state update only — zero tokens
     streamed — and the call ended in dead silence, three caller turns in a
     row). Mirrors narrate()'s surface for an engine-composed line: node event,
     history, trace, and the stream writer."""
-    engine._active_node = node
-    engine.tracer.emit("node", node=node, customer_id=engine.state.customer_id)
+    state.turn.active_node = node
+    rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
     if user_input:
-        engine.state.last_heard = user_input.strip()
-        engine.tracer.emit("user_turn", text=user_input)
-        engine.state.messages.append({"role": "user", "content": user_input})
-    engine._emit_scripted_reply(reply)
+        state.dialog.last_heard = user_input.strip()
+        rt.tracer.emit("user_turn", text=user_input)
+        state.messages.append({"role": "user", "content": user_input})
+    from ..execute.say import emit_scripted
+
+    emit_scripted(state, rt, reply)
     # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
     # END the call like an LLM one — the hang-up detector ran only on the LLM
     # path, so every trailing garbled turn earned a fresh goodbye.
-    from ..closing_flow import maybe_end_on_goodbye
+    from ..execute.say import maybe_end_on_goodbye
 
-    maybe_end_on_goodbye(engine, reply)
+    maybe_end_on_goodbye(state, rt, reply)
     try:
         get_stream_writer()(reply)
     except Exception:  # outside a live stream (tests / .invoke) — text is in state
         pass
 
 
-def sync_updates(engine: Any, *, user_input: str | None, reply: str | None) -> dict[str, Any]:
-    """Snapshot engine.state (+ promoted flags) into graph-state updates."""
-    # ticket_stage rides along automatically: it is an AgentState field since its
-    # R3 promotion, so the legacy-field loop covers it.
-    updates: dict[str, Any] = {
-        name: copy.deepcopy(getattr(engine.state, name)) for name in _LEGACY_FIELDS
-    }
-    updates["turn"] = TurnScratch(user_input=user_input, reply=reply)
-    return updates
+def timed(name: str, node):
+    """A graph node that reports how long it ran (`graph_node` trace event) — the
+    dashboard's graph strip shows where a turn's time went."""
+
+    @functools.wraps(node)
+    def run(state, runtime):
+        started = time.perf_counter()
+        try:
+            return node(state, runtime)
+        finally:
+            ms = int((time.perf_counter() - started) * 1000)
+            runtime.context.tracer.emit("graph_node", node=name, ms=ms)
+
+    return run
+
+
+def node_update(state: GraphState, reply: str | None = None) -> dict[str, Any]:
+    """The node contract: a node works on its own copy of the state and returns
+    the whole state as its update; a non-None `reply` is the turn's reply."""
+    if reply is not None:
+        state.turn.reply = reply
+    return {name: getattr(state, name) for name in GraphState.model_fields}

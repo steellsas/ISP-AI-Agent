@@ -1,99 +1,63 @@
 """
-GraphState (graph_v2) — R1 state-migration tests (docs/ROADMAP_REFACTORING.md §3).
+GraphState (graph_v2) — the single call state.
 
-What must hold before anything else is built on the new state:
-1. Legacy <-> v2 round-trip is lossless for every AgentState field.
-2. The whole state JSON-serializes and validates back (SqliteSaver readiness).
-3. Snapshots are deep — mutating one side never leaks into the other.
-4. Slot semantics (propose downgrade guard) survive the round-trip.
-5. begin_turn resets scratch without touching conversation state.
+What must hold for everything built on it:
+1. The whole state JSON-serializes and validates back (checkpointer readiness).
+2. Slot semantics (propose downgrade guard) survive serialization.
+3. Every message shape the engine produces survives graph-entry coercion.
+4. Every state model round-trips through the checkpoint serializer.
 """
 
-import dataclasses
-
-from agent.graph_v2.state import _LEGACY_FIELDS, GraphState, TurnScratch
+from agent.graph_v2.state import GraphState
 from agent.slots import SlotStatus
-from agent.state import AgentState
 
 
-def _populated_legacy() -> AgentState:
-    """A legacy state with every mutable container non-empty."""
-    s = AgentState(caller_phone="+37060012345")
+def _populated() -> GraphState:
+    """A state with every group and mutable container non-empty."""
+    s = GraphState()
+    s.identity.caller_phone = "+37060012345"
     s.messages.append({"role": "user", "content": "neveikia internetas"})
-    s.profile.street.propose("Tilžės g.", 0.9, SlotStatus.RESOLVED)
-    s.profile.house.propose("60", 0.5, SlotStatus.HEARD)
-    s.set_customer_info("CUST-7", name="Jonas", address="Tilžės g. 60, Šiauliai")
-    s.address_confirmed = True
-    s.problem_type = "internet"
-    s.heard_utterances.extend(["šešias dešimt", "Tilžės"])
-    s.symptoms["lights"] = "no_internet_led"
-    s.observations.append("port down")
-    s.diagnosis["network"] = {"group": "L2", "side": "isp", "action": "bind_mac"}
-    s.hypothesis = {"cause": "foreign_mac", "because": ["mac mismatch"], "status": "testing"}
-    s.evidence["router_lights"] = {"value": "dega", "source": "client", "turn": 3}
-    s.failed_hypotheses.append("healthy_to_router")
-    s.rejected_hypotheses.append({"cause": "healthy_to_router", "by": "telemetry"})
-    s.resolution = {"verdict": "foreign_mac", "step": "bind_mac", "asked": True}
-    s.last_question = "Ar mirksi lemputė?"
-    s.stuck_count = 1
-    s.last_heard = "mirksi"
-    s.awaiting = "client_answer"
-    s.awaiting_turns = 2
-    s.turn_count = 5
-    s.contact_phone = "+37061111111"
+    s.identity.profile.street.propose("Tilžės g.", 0.9, SlotStatus.RESOLVED)
+    s.identity.profile.house.propose("60", 0.5, SlotStatus.HEARD)
+    s.identity.set_customer("CUST-7", name="Jonas", address="Tilžės g. 60, Šiauliai")
+    s.identity.address_confirmed = True
+    s.intake.problem_type = "internet"
+    s.intake.heard_utterances.extend(["šešias dešimt", "Tilžės"])
+    s.intake.symptoms["lights"] = "no_internet_led"
+    s.intake.observations.append("port down")
+    s.diagnosis.verdicts["network"] = {"group": "L2", "side": "isp", "action": "bind_mac"}
+    s.diagnosis.hypothesis = {
+        "cause": "foreign_mac",
+        "because": ["mac mismatch"],
+        "status": "testing",
+    }
+    s.diagnosis.evidence["router_lights"] = {"value": "dega", "source": "client", "turn": 3}
+    s.diagnosis.failed_hypotheses.append("healthy_to_router")
+    s.diagnosis.rejected_hypotheses.append({"cause": "healthy_to_router", "by": "telemetry"})
+    s.resolution.procedure = {"verdict": "foreign_mac", "step": "bind_mac", "asked": True}
+    s.ticket.stage = "phone"
+    s.ticket.contact_phone = "+37061111111"
+    s.dialog.last_question = "Ar mirksi lemputė?"
+    s.dialog.stuck_count = 1
+    s.dialog.last_heard = "mirksi"
+    s.dialog.awaiting = "client_answer"
+    s.dialog.awaiting_turns = 2
+    s.dialog.turn_count = 5
+    s.closing.closing_turns = 1
     return s
-
-
-class TestFieldParity:
-    def test_v2_covers_every_legacy_field(self):
-        missing = [name for name in _LEGACY_FIELDS if name not in GraphState.model_fields]
-        assert missing == [], f"GraphState is missing legacy fields: {missing}"
-
-    def test_defaults_match_legacy_defaults(self):
-        legacy = AgentState(caller_phone="+37060000000")
-        v2 = GraphState(caller_phone="+37060000000")
-        for name in _LEGACY_FIELDS:
-            assert getattr(v2, name) == getattr(legacy, name), name
-
-
-class TestRoundTrip:
-    def test_legacy_to_v2_to_legacy_is_lossless(self):
-        legacy = _populated_legacy()
-        back = GraphState.from_legacy(legacy).to_legacy()
-        for f in dataclasses.fields(AgentState):
-            assert getattr(back, f.name) == getattr(legacy, f.name), f.name
-
-    def test_snapshots_are_deep(self):
-        legacy = _populated_legacy()
-        v2 = GraphState.from_legacy(legacy)
-        legacy.evidence["router_lights"]["value"] = "nedega"
-        legacy.messages.append({"role": "user", "content": "papildoma"})
-        assert v2.evidence["router_lights"]["value"] == "dega"
-        assert len(v2.messages) == 1
-        restored = v2.to_legacy()
-        v2.diagnosis["network"]["action"] = "reset_port"
-        assert restored.diagnosis["network"]["action"] == "bind_mac"
-
-    def test_slot_guard_survives_round_trip(self):
-        v2 = GraphState.from_legacy(_populated_legacy())
-        street = v2.profile.street
-        assert street.status is SlotStatus.RESOLVED
-        # a weaker HEARD mishearing must still not clobber the RESOLVED value
-        assert street.propose("TILŽĖ 610", 0.4, SlotStatus.HEARD) is False
-        assert street.value == "Tilžės g."
 
 
 class TestCheckpointerReadiness:
     def test_json_serialization_round_trip(self):
-        v2 = GraphState.from_legacy(_populated_legacy())
-        v2.turn.user_input = "mirksi raudonai"
-        restored = GraphState.model_validate_json(v2.model_dump_json())
-        assert restored.model_dump() == v2.model_dump()
-        assert restored.profile.street.status is SlotStatus.RESOLVED
+        state = _populated()
+        state.turn.user_input = "mirksi raudonai"
+        restored = GraphState.model_validate_json(state.model_dump_json())
+        assert restored.model_dump() == state.model_dump()
+        assert restored.identity.profile.street.status is SlotStatus.RESOLVED
         assert restored.turn.user_input == "mirksi raudonai"
 
     def test_plain_dict_dump_has_no_live_objects(self):
-        dumped = GraphState.from_legacy(_populated_legacy()).model_dump()
+        dumped = _populated().model_dump()
 
         def only_plain(value):
             if isinstance(value, dict):
@@ -104,6 +68,14 @@ class TestCheckpointerReadiness:
 
         assert only_plain(dumped)
 
+    def test_slot_guard_survives_serialization(self):
+        restored = GraphState.model_validate_json(_populated().model_dump_json())
+        street = restored.identity.profile.street
+        assert street.status is SlotStatus.RESOLVED
+        # a weaker HEARD mishearing must still not clobber the RESOLVED value
+        assert street.propose("TILŽĖ 610", 0.4, SlotStatus.HEARD) is False
+        assert street.value == "Tilžės g."
+
 
 class TestRealMessageShapes:
     """The state must accept every message shape the engine ACTUALLY produces —
@@ -112,8 +84,8 @@ class TestRealMessageShapes:
     turn died at graph entry when pydantic coerced the stored state."""
 
     def test_tool_round_messages_survive_graph_entry_coercion(self):
-        legacy = AgentState(caller_phone="unknown")
-        legacy.messages.extend(
+        state = GraphState()
+        state.messages.extend(
             [
                 {"role": "user", "content": "Dėl Vilniaus gatvės 29."},
                 {
@@ -134,21 +106,33 @@ class TestRealMessageShapes:
                 {"role": "assistant", "content": "Radau adresą."},
             ]
         )
-        v2 = GraphState.from_legacy(legacy)
         # LangGraph re-coerces raw channel values via schema(**values) at EVERY
         # turn entry — the exact spot the live call kept failing at.
-        coerced = GraphState(**v2.model_dump())
+        coerced = GraphState(**state.model_dump())
         assert coerced.messages[1]["tool_calls"][0]["function"]["name"] == "resolve_address"
-        restored = GraphState.model_validate_json(v2.model_dump_json())
-        assert restored.messages == v2.messages
+        restored = GraphState.model_validate_json(state.model_dump_json())
+        assert restored.messages == state.messages
 
 
-class TestTurnLifecycle:
-    def test_begin_turn_resets_scratch_only(self):
-        v2 = GraphState.from_legacy(_populated_legacy())
-        v2.turn.reply = "Sekundėlę, tikrinu."
-        v2.turn.cancel_requested = True
-        v2.begin_turn("dabar veikia")
-        assert v2.turn == TurnScratch(user_input="dabar veikia")
-        assert v2.stuck_count == 1
-        assert v2.evidence["router_lights"]["value"] == "dega"
+class TestCheckpointSerde:
+    """Every model the engine keeps as call state comes back from the checkpoint
+    serializer as the same model — not a plain dict, not a blocked type."""
+
+    def test_state_models_round_trip_through_the_checkpoint_serializer(self, tmp_path):
+        from agent.evidence import Contradiction
+        from agent.graph_v2.checkpoint import make_checkpointer
+        from agent.graph_v2.state import ActiveQuestion
+
+        serde = make_checkpointer(tmp_path / "cp.sqlite").serde
+        state = _populated()
+        values = [
+            ActiveQuestion(owner="ticket", key="ticket_phone", asks=2, data={"retry": True}),
+            Contradiction(kind="conflict", fact_key="lights", before_value="on", now_value="off"),
+            state,
+            *(getattr(state, group) for group in type(state).model_fields),
+        ]
+        for value in values:
+            # An unregistered type comes back as a plain dict (and logs "Blocked").
+            restored = serde.loads_typed(serde.dumps_typed(value))
+            assert type(restored) is type(value)
+            assert restored == value

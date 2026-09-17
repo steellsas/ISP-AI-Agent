@@ -1,7 +1,7 @@
 """
 Klasifikacijos kaskada ir kompetencijų politika (DIALOGO_ETALONAS diskusija,
 2026-09-02): L1 trigger'iai + L2 LLM iš failo katalogo, politikos
-(sprendzia / nelieciam / pokalbis), patvirtinimo laiptai, vartų kopėčios ir
+(solve / not_ours / chat), patvirtinimo laiptai, vartų kopėčios ir
 „neaiškaus gedimo" tiketo tipas.
 """
 
@@ -9,73 +9,82 @@ from types import SimpleNamespace
 
 
 def _agent():
-    from agent.react_agent import ReactAgent
+    from tests.calls import make_agent
 
-    return ReactAgent(caller_phone="unknown")
+    return make_agent("unknown")
 
 
 class TestCatalog:
-    def test_politika_declared_and_default(self):
-        from agent.faults import problem_politika
+    def test_policy_declared_and_default(self):
+        from agent.intents import problem_policy
 
-        assert problem_politika("internet_down") == "sprendzia"
-        assert problem_politika("tv") == "sprendzia"
-        assert problem_politika("saskaitos") == "nelieciam"
-        assert problem_politika("pokalbis") == "pokalbis"
-        assert problem_politika("nezinomas_tipas") == "sprendzia"  # default
-        assert problem_politika(None) == "sprendzia"
+        assert problem_policy("internet_down") == "solve"
+        assert problem_policy("tv") == "solve"
+        assert problem_policy("billing") == "register"
+        assert problem_policy("ticket_status") == "answer"
+        assert problem_policy("not_ours") == "not_ours"
+        assert problem_policy("chat") == "chat"
+        assert problem_policy("nezinomas_tipas") == "solve"  # default
+        assert problem_policy(None) == "solve"
 
     def test_catalog_options_built_from_descriptions(self):
-        from agent.faults import problem_catalog_options
+        from agent.intents import problem_catalog_options
 
         opts = problem_catalog_options()
         assert "internet_down" in opts and "nekrauna" in opts["internet_down"]
-        assert "saskaitos" in opts and "pokalbis" in opts
+        assert "billing" in opts and "chat" in opts
 
     def test_boundary_phrases_exist(self):
-        from agent.faults import problem_atsakymas, problem_patvirtinimas
+        from agent.intents import problem_boundary_reply, problem_confirm_question
 
-        assert "techninės pagalbos" in problem_atsakymas("saskaitos")
-        assert "internet" in problem_atsakymas("pokalbis")
-        assert "?" in problem_patvirtinimas("internet_down")
+        assert "nepadėsiu" in problem_boundary_reply("not_ours")
+        assert "internet" in problem_boundary_reply("chat")
+        assert "?" in problem_confirm_question("internet_down")
 
     def test_l1_still_classifies_solvable_types(self):
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem("neveikia internetas") == "internet_down"
         assert classify_problem("baisiai lėtas internetas") == "internet_slow"
-        assert classify_problem("skambinu dėl sąskaitos") == "saskaitos"
+        assert classify_problem("skambinu dėl sąskaitos") == "billing"
 
     def test_negated_problem_is_not_a_problem(self):
         """Live G2 (2026-09-02): 'interneto bėdų NETURIU, tik dėl sąskaitos'
         committed internet_down via the bare trigger."""
-        from agent.nlu import classify_problem
+        from agent.perceive.nlu import classify_problem
 
         assert classify_problem("Ne, interneto bėdų neturiu, tik dėl sąskaitos") is None
         assert classify_problem("internetas veikia, bėdų nėra") is None
 
 
 class TestPolitikaIngest:
-    """nelieciam/pokalbis tipai NIEKADA netampa problem_type — vartai atsako
-    riba, identifikacija neprasideda."""
+    """not_ours/chat tipai NIEKADA netampa problem_type — vartai atsako
+    riba, identifikacija neprasideda. Sąskaitos klausimas (D-11) — užklausa:
+    identifikacija ir tiketas atsakingam žmogui, be diagnostikos."""
 
-    def test_saskaitos_never_sets_problem_type(self, db_connection):
+    def test_billing_is_a_request(self, db_connection):
+        from agent.perceive.slots import prefill_slots_from_text
+
         agent = _agent()
-        agent._prefill_slots_from_text("Kodėl man tokia didelė sąskaita?")
-        assert agent.state.problem_type is None
-        assert agent._boundary_problem == "saskaitos"
+        prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
+        assert agent.state.intake.problem_type == "billing"
+        assert agent.state.intake.boundary_problem is None
 
     def test_boundary_reply_states_competence(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
+
         agent = _agent()
-        agent._prefill_slots_from_text("Kodėl man tokia didelė sąskaita?")
-        reply = agent._identification_scripted_reply("Kodėl man tokia didelė sąskaita?")
-        assert reply and "techninės pagalbos" in reply
-        assert agent.state.problem_type is None and not agent.state.case_closed
+        agent.state.intake.boundary_problem = "not_ours"
+        reply = scripted_words(agent.state, agent.runtime, "Kiek kainuoja picos pristatymas?")
+        assert reply and "nepadėsiu" in reply
+        assert agent.state.intake.problem_type is None and not agent.state.closing.case_closed
 
     def test_solvable_problem_still_flows(self, db_connection):
+        from agent.perceive.slots import prefill_slots_from_text
+
         agent = _agent()
-        agent._prefill_slots_from_text("Labas, neveikia internetas")
-        assert agent.state.problem_type == "internet_down"
+        prefill_slots_from_text(agent.state, agent.runtime, "Labas, neveikia internetas")
+        assert agent.state.intake.problem_type == "internet_down"
 
 
 class TestGateGuessConfirm:
@@ -83,31 +92,37 @@ class TestGateGuessConfirm:
     pokalbis TĘSIASI tą patį turn'ą (vartai nebaigia pokalbio, kuris juda)."""
 
     def test_yes_commits_and_falls_through(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
+
         agent = _agent()
-        agent._problem_guess = "internet_down"
-        reply = agent._identification_scripted_reply("Taip, būtent")
-        assert agent.state.problem_type == "internet_down"
-        assert not agent.state.case_closed
+        agent.state.intake.problem_guess = "internet_down"
+        reply = scripted_words(agent.state, agent.runtime, "Taip, būtent")
+        assert agent.state.intake.problem_type == "internet_down"
+        assert not agent.state.closing.case_closed
         # fall-through reached the intake ladder (anamnesis asked this turn)
-        assert agent.state.anamnesis_asked or reply is not None
+        assert agent.state.intake.anamnesis_asked or reply is not None
 
     def test_no_keeps_gate_open(self, db_connection):
+        from agent.decide.rules.reply import scripted_words
+
         agent = _agent()
-        agent._problem_guess = "internet_down"
-        agent._identification_scripted_reply("Ne, ne dėl to skambinu")
-        assert agent.state.problem_type is None
-        assert not agent.state.case_closed
-        assert agent._problem_guess is None  # spėjimas nunaudotas, kopėčios tęsiasi
+        agent.state.intake.problem_guess = "internet_down"
+        scripted_words(agent.state, agent.runtime, "Ne, ne dėl to skambinu")
+        assert agent.state.intake.problem_type is None
+        assert not agent.state.closing.case_closed
+        assert agent.state.intake.problem_guess is None  # spėjimas nunaudotas, kopėčios tęsiasi
 
 
 class TestGateL2:
     """L2 LLM spėjimas iš konteksto (klasifikatorius mock'intas)."""
 
     def _gate(self, agent, text):
-        return agent._identification_scripted_reply(text)
+        from agent.decide.rules.reply import scripted_words
+
+        return scripted_words(agent.state, agent.runtime, text)
 
     def test_high_confidence_commits_implicitly(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(
@@ -115,11 +130,11 @@ class TestGateL2:
         )
         agent = _agent()
         self._gate(agent, "Niekas man nekrauna nuo pat ryto")
-        assert agent.state.problem_type == "internet_down"
-        assert not agent.state.case_closed
+        assert agent.state.intake.problem_type == "internet_down"
+        assert not agent.state.closing.case_closed
 
     def test_medium_confidence_asks_confirmation(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(
@@ -127,32 +142,30 @@ class TestGateL2:
         )
         agent = _agent()
         reply = self._gate(agent, "Kažkas namuose nebeveikia gerai")
-        assert agent.state.problem_type is None
-        assert agent._problem_guess == "internet_down"
+        assert agent.state.intake.problem_type is None
+        assert agent.state.intake.problem_guess == "internet_down"
         assert reply and "Ar gerai suprantu" in reply
 
     def test_boundary_type_from_context(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
-        monkeypatch.setattr(
-            nlu, "classify_problem_llm", lambda t, model=None: ("kita_ne_musu", 0.8)
-        )
+        monkeypatch.setattr(nlu, "classify_problem_llm", lambda t, model=None: ("not_ours", 0.8))
         agent = _agent()
         reply = self._gate(agent, "Man šiukšlių neišveža jau savaitę")
-        assert agent.state.problem_type is None
+        assert agent.state.intake.problem_type is None
         assert reply and "nepadėsiu" in reply
-        assert not agent.state.case_closed
+        assert not agent.state.closing.case_closed
 
     def test_unclear_falls_to_ladder(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.perceive import nlu
 
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(nlu, "classify_problem_llm", lambda t, model=None: (None, 0.0))
         agent = _agent()
         reply = self._gate(agent, "Mendulija kadulija")
-        assert agent.state.problem_type is None
-        assert reply is not None or agent._ident_directive is not None
+        assert agent.state.intake.problem_type is None
+        assert reply is not None or agent.state.turn.directives.ident is not None
 
 
 class TestAccumulatedContext:
@@ -161,7 +174,8 @@ class TestAccumulatedContext:
     replikų uodegos, ne vienos frazės."""
 
     def test_l2_reads_the_joined_tail(self, db_connection, monkeypatch):
-        from agent import nlu
+        from agent.decide.rules.reply import scripted_words
+        from agent.perceive import nlu
 
         got: list = []
 
@@ -172,26 +186,29 @@ class TestAccumulatedContext:
         monkeypatch.setenv("CLASSIFIER", "on")
         monkeypatch.setattr(nlu, "classify_problem_llm", _fake)
         agent = _agent()
-        agent.state.heard_utterances.extend(["Labai diena.", "Ora šiandien kažkoks netoks."])
-        agent.state.heard_utterances.append("gal dėl to neturiu interneto?")
-        agent._identification_scripted_reply("gal dėl to neturiu interneto?")
+        agent.state.intake.heard_utterances.extend(["Labai diena.", "Ora šiandien kažkoks netoks."])
+        agent.state.intake.heard_utterances.append("gal dėl to neturiu interneto?")
+        scripted_words(agent.state, agent.runtime, "gal dėl to neturiu interneto?")
         assert got and "netoks" in got[0] and "neturiu interneto" in got[0]
-        assert agent.state.problem_type == "internet_down"
+        assert agent.state.intake.problem_type == "internet_down"
 
     def test_story_window_while_problem_unknown(self, db_connection):
         from agent.endpoint import classify_endpoint, story_ms
 
         agent = _agent()
         # užbaigtas sakinys, bet problema dar nežinoma -> laukiam ilgiau
-        assert classify_endpoint(agent, "Oras šiandien kažkoks netoks.") == (
+        assert classify_endpoint(agent.state, agent.runtime, "Oras šiandien kažkoks netoks.") == (
             "slow",
             story_ms(),
         )
         # atsisveikinimas kerpamas greitai net ir vartuose
-        assert classify_endpoint(agent, "Ačiū, viso gero")[0] == "fast"
+        assert classify_endpoint(agent.state, agent.runtime, "Ačiū, viso gero")[0] == "fast"
         # problema jau žinoma -> normalus langas
-        agent.state.problem_type = "internet_down"
-        assert classify_endpoint(agent, "Oras šiandien kažkoks netoks.") == ("normal", None)
+        agent.state.intake.problem_type = "internet_down"
+        assert classify_endpoint(agent.state, agent.runtime, "Oras šiandien kažkoks netoks.") == (
+            "normal",
+            None,
+        )
 
     def test_final_flush_hands_open_segment_to_engine(self, db_connection, monkeypatch):
         from app.main import _final_flush
@@ -240,52 +257,56 @@ class TestPendingFallback:
         from types import SimpleNamespace as NS
         from unittest.mock import patch
 
-        from agent.react_agent import ReactAgent
+        from agent.perceive.evidence import ingest_client_evidence
 
-        agent = ReactAgent(caller_phone="+37060020112")
-        agent.state.customer_id = "CUST112"
-        agent.state.problem_type = "internet_down"
-        agent.state.resolution = {"verdict": "router_hung", "step": "rh_scope"}
-        assert getattr(agent, "_evidence_last_ask_key", None) is None  # no ask yet
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020112")
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
+        assert agent.state.diagnosis.pending_evidence_key is None  # no ask yet
         canned = NS(
-            tipas="atsakymas",
-            faktai={},
+            type="answer",
+            facts={},
             supratau="x",
             pasitikejimas=1.0,
             atsakymo_kokybe="pilnas",
         )
-        with patch("agent.understand.understand", return_value=canned):
-            agent._ingest_client_evidence("Visuose įrenginiuose")
-        assert agent.state.evidence["fail_scope"]["value"] == "visuose"
+        with patch("agent.perceive.understand.understand", return_value=canned):
+            ingest_client_evidence(agent.state, agent.runtime, "Visuose įrenginiuose")
+        assert agent.state.diagnosis.evidence["fail_scope"]["value"] == "all"
 
     def test_unrelated_utterance_commits_nothing(self, db_connection):
         from unittest.mock import patch
 
-        from agent.react_agent import ReactAgent
+        from agent.perceive.evidence import ingest_client_evidence
 
-        agent = ReactAgent(caller_phone="+37060020112")
-        agent.state.customer_id = "CUST112"
-        agent.state.problem_type = "internet_down"
-        agent.state.resolution = {"verdict": "router_hung", "step": "rh_scope"}
-        with patch("agent.understand.understand", return_value=None):
-            agent._ingest_client_evidence("O kiek visa tai kainuos?")
-        assert agent.state.evidence.get("fail_scope") is None
+        from tests.calls import make_agent
+
+        agent = make_agent("+37060020112")
+        agent.state.identity.customer_id = "CUST112"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
+        with patch("agent.perceive.understand.understand", return_value=None):
+            ingest_client_evidence(agent.state, agent.runtime, "O kiek visa tai kainuos?")
+        assert agent.state.diagnosis.evidence.get("fail_scope") is None
 
 
 class TestUnclearFaultTicket:
     def test_ticket_need_without_verdict_is_honest(self, db_connection):
-        from agent.ticket_flow import ticket_need
+        from agent.decide.rules.ticket import ticket_need
 
         agent = _agent()
-        agent.state.problem_type = "tv"
-        assert "neaiškus" in ticket_need(agent)
+        agent.state.intake.problem_type = "tv"
+        assert "neaiškus" in ticket_need(agent.state, agent.runtime)
 
     def test_ticket_need_with_verdict_unchanged(self, db_connection):
-        from agent.ticket_flow import ticket_need
+        from agent.decide.rules.ticket import ticket_need
 
         agent = _agent()
-        agent.state.resolution = {"verdict": "no_mac_observed"}
-        assert "maršrutizatorius" in ticket_need(agent)
+        agent.state.resolution.procedure = {"verdict": "no_mac_observed"}
+        assert "maršrutizatorius" in ticket_need(agent.state, agent.runtime)
 
 
 class TestCompetenceSurface:
@@ -312,35 +333,41 @@ class TestNoPathTicket:
         assert problem_has_path(None) is False
 
     def test_tv_goes_to_unclear_ticket_not_internet_pack(self, db_connection):
-        agent = _agent()
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "tv"
-        assert agent.ensure_diagnosed() is True
-        r = agent.state.resolution
-        assert r["verdict"] == "unclear_fault" and r["step"] == "escalate"
-        assert agent._ticket_stage == "phone"  # dialogue began deterministically
-        from agent.ticket_flow import ticket_need
+        from agent.execute.diagnosis import ensure_diagnosed
 
-        assert "neaiškus" in ticket_need(agent)
+        agent = _agent()
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "tv"
+        assert ensure_diagnosed(agent.state, agent.runtime) is True
+        r = agent.state.resolution.procedure
+        assert r["verdict"] == "unclear_fault" and r["step"] == "escalate"
+        assert agent.state.ticket.stage == "phone"  # dialogue began deterministically
+        from agent.decide.rules.ticket import ticket_need
+
+        assert "neaiškus" in ticket_need(agent.state, agent.runtime)
 
     def test_internet_down_still_diagnoses(self, db_connection):
+        from agent.execute.diagnosis import ensure_diagnosed
+
         agent = _agent()
-        agent.state.customer_id = "CUST009"
-        agent.state.problem_type = "internet_down"
-        agent.ensure_diagnosed()
-        assert (agent.state.resolution or {}).get("verdict") != "unclear_fault"
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        ensure_diagnosed(agent.state, agent.runtime)
+        assert (agent.state.resolution.procedure or {}).get("verdict") != "unclear_fault"
 
 
 class TestGateMaxTurns:
     def test_knob_controls_the_close(self, db_connection, monkeypatch):
+        from agent.decide.rules.reply import scripted_words
+
         monkeypatch.setenv("GATE_MAX_TURNS", "2")
         monkeypatch.setenv("NARRATOR_QUESTIONS", "off")
         agent = _agent()
-        r1 = agent._identification_scripted_reply("Mendulija kadulija")
-        assert not agent.state.case_closed and r1
-        r2 = agent._identification_scripted_reply("Kadulija mendulija")
-        assert agent.state.case_closed and "skambinkite" in r2
-        assert agent.state.ticket_id is None  # no customer -> no ticket, ever
+        r1 = scripted_words(agent.state, agent.runtime, "Mendulija kadulija")
+        assert not agent.state.closing.case_closed and r1
+        r2 = scripted_words(agent.state, agent.runtime, "Kadulija mendulija")
+        assert agent.state.closing.case_closed and "skambinkite" in r2
+        assert agent.state.ticket.ticket_id is None  # no customer -> no ticket, ever
 
 
 class TestRepeatedTokenNoise:

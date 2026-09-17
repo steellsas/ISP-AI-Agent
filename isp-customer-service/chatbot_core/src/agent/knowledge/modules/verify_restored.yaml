@@ -1,0 +1,23 @@
+# MODULIS — daugkartinė instrukcija (docs/FAULT_PACKS.md).
+# Naudojimas pakete:  - use: verify_restored
+#                       as: <žingsnio id šiame gedime>
+#                       'on': { success: <kur toliau>, failure: <kur toliau> }
+#                       answers: { ... }   # kontekstinė formuluotė (nebūtina)
+module: verify_restored
+meta:
+  description: "Check with the customer whether the internet is back"
+exits: [success, failure]
+steps:
+- id: check
+  role: ask_restored
+  kind: confirm
+  detector: restored
+  'on':
+    'yes': success
+    'no': failure
+  hint: Ask whether the internet works now and WAIT for the answer. Do NOT declare
+    it fixed yourself; if not yet, reassure it may take a minute and ask them to
+    check again.
+  answers:
+    'yes': "module.verify_restored.answers.yes"
+    'no': "module.verify_restored.answers.no"

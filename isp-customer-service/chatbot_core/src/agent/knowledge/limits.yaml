@@ -1,0 +1,86 @@
+# Numeric behaviour limits — how many times, how long, how sure.
+#
+# Read with `limits.get("name")`. A plain number is the value; `{value, env}` names an
+# environment variable that wins over the file when set (the dashboard sets some of
+# them at runtime, so they are read on every use).
+
+# --- Solver gate ------------------------------------------------------------------
+solver_confidence_floor: 0.4        # a decision below this counts toward the low-confidence streak
+solver_low_conf_max: 3              # this many low-confidence decisions in a row -> bail out
+solver_cycles_max: 3                # more turns than this on the same step -> bail out
+solver_internal_hops_max: 2         # silent actions in a row before a caller-facing action is forced
+solver_drive_max_turns: 14          # solver-driven turns before the gate is forced to bail out
+solver_drive_repeat_bailout: 2      # repeat/disambiguate streak that hands the turn back to the procedure runner
+solver_drive_repeat_nudge_at: 1     # repeat count that adds the "do not ask the same again" note
+solver_context_messages: 8          # recent messages in the solver context
+solver_context_journal_entries: 8   # walked-step journal entries in the solver context
+solver_max_tokens: 400
+
+# --- Problem gate and identification ----------------------------------------------
+problem_gate_max_turns: {value: 5, env: GATE_MAX_TURNS}  # fruitless exchanges before a polite close
+problem_gate_scripted_asks: 2       # scripted "what is the problem?" asks before the narrator takes over
+problem_classifier_heard_tail: 3    # recent utterances given to the LLM problem classifier
+problem_llm_commit_confidence: 0.8  # an LLM problem guess at or above this is taken without asking
+problem_llm_confirm_confidence: 0.5 # at or above this the guess gets a confirm question
+ident_max_empty_turns: {value: 4, env: IDENT_MAX_TURNS}  # empty address turns before closing
+ident_warn_min_empty_turns: 2       # the "I need the address" warning comes at max(this, max - 2)
+address_unrecognized_turns_max: 2   # unrecognised address turns before the account code is offered
+address_resolve_failures_max: 3     # failed street/house lookups before the account-code rung
+account_code_grace_turns: 2         # non-code turns before code mode quietly switches off
+reopen_confirm_max_asks: 2          # unclear answers to the address-change confirm before dropping it
+tts_stall_seconds: 3                # no first audio chunk within this -> abandon the socket, reconnect
+tts_budget_seconds: 10              # total per sentence across reconnects before the sentence is lost
+reply_max_chars: 280                # a longer reply is trimmed at its last full sentence
+side_topic_streak_max: 3            # side-topic turns in a row before the fixed "back to the issue" reply
+wrap_content_turns_max: 2           # content turns in the inform wrap-up that still get an LLM reaction
+nlu_street_match_threshold: 0.75    # registry match score that accepts a street
+nlu_city_match_threshold: 0.85      # registry match score that accepts a city
+
+# --- Understanding, evidence and procedures ---------------------------------------
+understand_history_messages: 4      # history messages sent to the understanding pass
+understand_facts_min_confidence: 0.6  # understanding facts below this are dropped
+classifier_accept_confidence: 0.5   # a step classification at or above this is accepted
+classifier_max_tokens: 150
+evidence_max_asks: 2                # asks per evidence key before it is recorded as unknown
+hypothesis_confirm_max_asks: 2      # confirm questions per contradiction before it is dropped
+bridge_plug_retries_max: 2          # tries with no device seen on the line before escalating
+restored_denials_max: 2             # "still not working" answers before rediagnose/escalate
+reboot_retries_max: 2               # reboots with no port flap seen before escalating
+process_journal_max: 12             # walked-step journal entries kept
+short_utterance_max_words: 3        # a farewell / bare negation / bare "done" is at most this long
+greeting_max_words: 4               # a longer opener is not small talk
+
+# --- Closing -----------------------------------------------------------------------
+closing_max_turns: 2                # closing turns before the call is complete
+closing_llm_replies_max: 1          # closing replies written by the LLM; later ones use the fixed goodbye
+
+# --- Analyst -----------------------------------------------------------------------
+analyst_history_messages: 60
+analyst_active_question_min_asks: 2 # the active question is shown only after it was re-asked
+analyst_signals_max: 3               # typed signals per read
+analyst_confidence_floor: 0.6        # a less certain signal is dropped
+analyst_max_tokens: 700
+
+# --- Telemetry verdict ------------------------------------------------------------
+crc_error_rate_threshold: 1.0       # CRC errors/min above this mean a damaged cable
+reboot_flap_window_s: 600           # a port flap within this window counts as a real reboot
+
+# --- Voice ----------------------------------------------------------------------------
+endpoint_fast_ms: {value: 350, env: ENDPOINT_FAST_MS}    # silence before cutting a complete answer
+endpoint_slow_ms: {value: 1400, env: ENDPOINT_SLOW_MS}   # silence wait for an unfinished thought
+endpoint_story_ms: {value: 1800, env: ENDPOINT_STORY_MS} # silence wait while the problem is unknown
+asr_min_audio_s: {value: 0.3, env: ASR_MIN_AUDIO_S}      # shorter audio is dropped before ASR
+server_vad_threshold: {value: 0.010, env: SERVER_VAD_THR}
+server_silence_ms: {value: 900, env: SERVER_SIL_MS}
+partial_interval_s: {value: 1.0, env: PARTIAL_INTERVAL_S}
+voice_filler_after_s: {value: 1.2, env: VOICE_FILLER_AFTER_S}
+interrupt_ack_after_s: {value: 0.8, env: INTERRUPT_ACK_AFTER_S}
+voice_checkin_after_s: {value: 35, env: VOICE_CHECKIN_AFTER_S}  # caller silence before the agent speaks
+overlay_silence_ms: {value: 4000, env: OVERLAY_SIL_MS}   # silence window for speech over the agent
+echo_overlap_threshold: 0.8         # token overlap with our own last words that reads as echo
+barge_consent_max_words: 3          # a longer interruption is content, not a backchannel
+overlay_notes_max: 6                # overlay utterances queued for the next turn
+overlay_apply_max: 3                # overlay utterances handed to the engine per turn
+
+# --- Contact record (D-14) ---------------------------------------------------------------
+audio_retention_days_unidentified: {value: 30, env: AUDIO_RETENTION_DAYS_UNIDENTIFIED}  # privacy: days an unidentified caller's audio is kept

@@ -145,6 +145,9 @@ Every section is generated from typed state; no section may carry an instruction
 - Every analyst output in traces is a typed `analyst_signals` event; no free-text notes reach the
   speaker.
 - `P/` contains no Lithuanian (examples live in `locales/lt/examples/`).
+- Findings moved from M4 (`REFACTORING_PLAN.md` §6): F-11 (facts from the first turn), F-12 / F-15 /
+  F-19 ("it works now" while the procedure awaits another answer), F-17 (stale perception anchor) —
+  each fixed with a test, or re-deferred by the owner.
 - `uv run pytest` green; eval ≥ baseline; owner live voice test (barge-in, overlay, unheard
   question, contradiction call).
 

@@ -33,7 +33,10 @@ def client(db_connection, monkeypatch, tmp_path):
     # to os.environ GLOBALLY, so a real .api_config.json (written by a live
     # config-page session) leaked CLASSIFIER=on into the deterministic suite.
     monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "api_config.json"))
+    from app import main
     from app.main import app
+
+    monkeypatch.setattr(main.settings, "checkpoint_path", tmp_path / "checkpoints.sqlite")
 
     with TestClient(app) as c:
         yield c
@@ -56,6 +59,22 @@ class TestLifecycle:
         assert data["session_id"]
         assert "Labas" in data["greeting"]
 
+    def test_sessions_share_one_checkpointer_closed_on_shutdown(
+        self, db_connection, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("API_CONFIG_FILE", str(tmp_path / "api_config.json"))
+        from app import main
+
+        monkeypatch.setattr(main.settings, "checkpoint_path", tmp_path / "checkpoints.sqlite")
+        with TestClient(main.app) as c:
+            first, second = _create(c)["session_id"], _create(c)["session_id"]
+            saver = main.manager._checkpointer
+            assert saver is not None
+            for sid in (first, second):
+                assert main.manager.get(sid).session._graph.checkpointer is saver
+        assert main.manager._checkpointer is None  # closed and released on shutdown
+        assert (tmp_path / "checkpoints.sqlite").exists()
+
     def test_unknown_session_404(self, client):
         assert client.post("/sessions/nope/turns", json={"text": "labas"}).status_code == 404
         assert client.delete("/sessions/nope").status_code == 404
@@ -72,11 +91,11 @@ class TestTurns:
         sid = _create(client)["session_id"]
         with (
             patch(
-                "agent.react_agent.stream_tool_completion",
+                "agent.speak.node.stream_tool_completion",
                 side_effect=_fake_stream(content="Supratau, tikrinu."),
             ),
             patch(
-                "agent.react_agent.get_last_call_stats",
+                "agent.speak.node.get_last_call_stats",
                 return_value={"model": "gpt-4o-mini", "input_tokens": 100, "output_tokens": 20},
             ),
         ):
@@ -109,8 +128,8 @@ class TestTurns:
         client.post(f"/sessions/{a}/turns", json={"text": "neveikia internetas"})
         from app.main import manager
 
-        assert manager.get(a).session.state.problem_type == "internet_down"
-        assert manager.get(b).session.state.problem_type is None
+        assert manager.get(a).session.state.intake.problem_type == "internet_down"
+        assert manager.get(b).session.state.intake.problem_type is None
 
 
 class TestEventStream:
@@ -140,6 +159,62 @@ class TestEventStream:
         with pytest.raises(ClientDisconnect):
             with client.websocket_connect("/ws/call/nope") as ws:
                 ws.receive_json()
+
+
+class TestDisconnect:
+    """F-3: a closed call socket ends the call after the grace — unless it reconnects."""
+
+    def _wait_gone(self, sid, seconds=3.0):
+        import time
+
+        from app import main
+
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            if main.manager.active_count == 0 or sid not in main.manager._sessions:
+                return True
+            time.sleep(0.05)
+        return False
+
+    def test_disconnect_ends_the_call_with_a_record(self, client, db_connection, monkeypatch):
+        from app import main
+
+        monkeypatch.setattr(main.settings, "ws_disconnect_grace_seconds", 0.1)
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}"):
+            pass
+
+        assert self._wait_gone(sid)
+        import time
+
+        row = None
+        deadline = time.monotonic() + 5.0
+        while row is None and time.monotonic() < deadline:  # the record lands after the pop
+            with db_connection.cursor() as cur:
+                cur.execute(
+                    "SELECT outcome, transport_end FROM conversations WHERE session_id = ?",
+                    (sid,),
+                )
+                found = cur.fetchone()
+            row = dict(found) if found else None
+            if row is None:
+                time.sleep(0.05)
+        assert row is not None
+        assert row["transport_end"] == "ws_disconnect"
+        assert row["outcome"] != "ws_disconnect"  # F-4
+
+    def test_a_reconnect_within_the_grace_keeps_the_call(self, client, monkeypatch):
+        import time
+
+        from app import main
+
+        monkeypatch.setattr(main.settings, "ws_disconnect_grace_seconds", 0.5)
+        sid = _create(client)["session_id"]
+        with client.websocket_connect(f"/ws/call/{sid}"):
+            pass
+        with client.websocket_connect(f"/ws/call/{sid}"):
+            time.sleep(0.8)
+            assert client.delete(f"/sessions/{sid}").json() == {"ended": True}
 
 
 class _FakeASR:
@@ -350,9 +425,9 @@ class TestVoiceChannel:
             assert done is not None and done["interrupted"] is True
         from app.main import manager
 
-        engine = manager.get(sid).session._agent
+        engine = manager.get(sid).session
         # an unheard "?" upgrades the tail into the strong re-ask directive
-        tail = engine._undelivered_tail or engine._unheard_question
+        tail = engine.state.voice.undelivered_tail or engine.state.voice.unheard_question
         last_assistant = next(
             m for m in reversed(engine.state.messages) if m["role"] == "assistant"
         )
@@ -410,7 +485,7 @@ class TestVoiceChannel:
         sid = _create(client)["session_id"]
         from app.main import manager
 
-        manager.get(sid).session._agent.state.is_complete = True
+        manager.get(sid).session.state.closing.is_complete = True
         with client.websocket_connect(f"/ws/call/{sid}") as ws:
             ws.send_bytes(b"RIFF-fake-wav-utterance")
             ended = False
@@ -477,6 +552,15 @@ class TestVoiceChannel:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "Agento vidus" in resp.text
+        assert "{{v}}" not in resp.text  # the cache buster is filled in
+        assert client.get("/static/js/brain.js").status_code == 200
+
+    def test_demo_scenarios_are_complete(self, client):
+        scenarios = client.get("/demo/scenarios").json()["scenarios"]
+        assert len(scenarios) >= 9
+        for s in scenarios:
+            assert s["phone"].startswith("+370") and s["say"] and "outcome" in s["expect"]
+        assert len({s["id"] for s in scenarios}) == len(scenarios)
 
 
 class TestArchive:
@@ -500,6 +584,16 @@ class TestArchive:
         assert any(c["session_id"] == archived_call for c in calls)
         row = next(c for c in calls if c["session_id"] == archived_call)
         assert row["purpose"] == "internet_down"
+
+    def test_review_filter_lists_only_calls_for_review(self, archived_call, client):
+        # The archived call hung up before identification: a record for review (D-14).
+        row = next(
+            c for c in client.get("/calls").json()["calls"] if c["session_id"] == archived_call
+        )
+        assert row["needs_review"] is True and row["transport_end"] == "client_closed"
+        review = client.get("/calls?needs_review=1").json()["calls"]
+        assert any(c["session_id"] == archived_call for c in review)
+        assert all(c["needs_review"] for c in review)
 
     def test_detail_has_transcript_events_audio_stats(self, archived_call, client):
         resp = client.get(f"/calls/{archived_call}")
@@ -542,7 +636,7 @@ class TestConfigPage:
     def test_get_lists_settings_with_values_and_scopes(self, client):
         items = client.get("/admin/config").json()["settings"]
         keys = {i["key"] for i in items}
-        assert {"agent_model", "SOLVER_DRIVE", "ASR_BACKEND", "TTS_VOICE"} <= keys
+        assert {"agent_model", "CLASSIFIER", "ASR_BACKEND", "TTS_VOICE"} <= keys
         for i in items:
             assert i["value"] in i["options"] or i["key"] == "agent_model"
             assert i["scope"] in ("immediate", "new_calls")
@@ -551,12 +645,12 @@ class TestConfigPage:
         import json as _json
         import os
 
-        monkeypatch.setenv("SOLVER_DRIVE", "on")
-        resp = client.put("/admin/config", json={"SOLVER_DRIVE": "off"})
+        monkeypatch.setenv("CLASSIFIER", "on")
+        resp = client.put("/admin/config", json={"CLASSIFIER": "off"})
         assert resp.status_code == 200
-        assert os.environ["SOLVER_DRIVE"] == "off"
-        assert _json.loads(self.persist.read_text(encoding="utf-8"))["SOLVER_DRIVE"] == "off"
-        client.put("/admin/config", json={"SOLVER_DRIVE": "on"})  # restore
+        assert os.environ["CLASSIFIER"] == "off"
+        assert _json.loads(self.persist.read_text(encoding="utf-8"))["CLASSIFIER"] == "off"
+        client.put("/admin/config", json={"CLASSIFIER": "on"})  # restore
 
     def test_put_model_reaches_agent_config(self, client):
         from agent.config import get_config
@@ -610,7 +704,7 @@ class TestSimulatePlug:
         sid = _create(client)["session_id"]
         from app.main import manager
 
-        manager.get(sid).session.state.customer_id = "CUST009"
+        manager.get(sid).session.state.identity.customer_id = "CUST009"
         resp = client.post(f"/sessions/{sid}/simulate-plug")
         assert resp.status_code == 200 and resp.json()["ok"] is True
         from agent.tools import execute_tool
@@ -644,7 +738,7 @@ class TestSimulateReboot:
         sid = _create(client)["session_id"]
         from app.main import manager
 
-        manager.get(sid).session.state.customer_id = "CUST112"
+        manager.get(sid).session.state.identity.customer_id = "CUST112"
         from agent.tools import execute_tool, get_db
 
         try:

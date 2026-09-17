@@ -42,15 +42,18 @@ def _safe_session_id(session_id: str) -> bool:
     return bool(session_id) and all(c.isalnum() or c in "-_" for c in session_id)
 
 
-def list_calls(limit: int = 50) -> list[dict[str, Any]]:
-    """Newest-first call records for the archive table."""
+def list_calls(limit: int = 50, needs_review: bool = False) -> list[dict[str, Any]]:
+    """Newest-first call records for the archive table; `needs_review` keeps only the
+    contact records a person should look at (D-14)."""
     conn = sqlite3.connect(_DB)
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
             "SELECT session_id, customer_id, timestamp, outcome, ticket_id, "
-            "duration_seconds, summary FROM conversations "
-            "ORDER BY timestamp DESC LIMIT ?",
+            "duration_seconds, summary, transport_end, unidentified_reason, needs_review, "
+            "review_reason, intent FROM conversations "
+            + ("WHERE needs_review = 1 " if needs_review else "")
+            + "ORDER BY timestamp DESC LIMIT ?",
             (max(1, min(int(limit), 200)),),
         ).fetchall()
     finally:
@@ -67,9 +70,13 @@ def list_calls(limit: int = 50) -> list[dict[str, Any]]:
                 "customer_id": r["customer_id"],
                 "timestamp": r["timestamp"],
                 "outcome": r["outcome"],
+                "transport_end": r["transport_end"],
+                "unidentified_reason": r["unidentified_reason"],
+                "needs_review": bool(r["needs_review"]),
+                "review_reason": r["review_reason"],
                 "ticket_id": r["ticket_id"],
                 "duration_seconds": r["duration_seconds"],
-                "purpose": summary.get("purpose"),
+                "purpose": r["intent"] or summary.get("purpose"),
                 "cause": summary.get("cause"),
                 "resolved": summary.get("resolved"),
                 "caller_name": summary.get("caller_name"),

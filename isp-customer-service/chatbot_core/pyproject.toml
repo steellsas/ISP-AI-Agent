@@ -10,7 +10,6 @@ dependencies = [
     "langgraph>=0.0.20",
     "langsmith>=0.0.87",
     "openai>=1.0.0",
-    "streamlit>=1.30.0",
     # RAG dependencies
     "sentence-transformers>=2.2.0",
     "faiss-cpu>=1.7.4",
@@ -36,7 +35,6 @@ voice = [
     "faster-whisper>=1.0.0",
     "gTTS>=2.5.0",
     "edge-tts>=6.1.0",  # free neural streaming TTS (LT voices), no key/model
-    "fastrtc>=0.0.34",  # WebRTC transport: Stream + ReplyOnPause + built-in UI
 ]
 
 [tool.uv.sources]

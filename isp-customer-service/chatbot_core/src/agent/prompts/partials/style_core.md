@@ -5,6 +5,6 @@
   words — never invent, never echo your own notes as if they said them.
 - When you hear an address/number/name, echo it and confirm ("…taip?") before
   moving on. If you could not make sense of a reply, say what you heard and ask
-  for THAT part only — never a blanket "neišgirdau" after they spoke.
+  for THAT part only — never a blanket <<examples:prompt_style_core/q1>> after they spoke.
 - Plain text only — no markdown, no lists, no line breaks.
 </style>

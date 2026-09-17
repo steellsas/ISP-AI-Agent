@@ -7,7 +7,7 @@ address (observed: "Tilžės 60-7" -> "TILŽĖ 610"). These slots make the addre
 DURABLE memory with a confidence + status per level, so a low-confidence
 mishearing never silently overwrites a DB-confirmed value.
 
-Additive by design: it sits ALONGSIDE the existing AgentState fields and does not
+Additive by design: it sits ALONGSIDE the other GraphState identity fields and does not
 change behaviour yet. The policy (1.3) and NLU (1.4) build on it; the eventual
 LangGraph migration uses it as the typed graph state.
 """

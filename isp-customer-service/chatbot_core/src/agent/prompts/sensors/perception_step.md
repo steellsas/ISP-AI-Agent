@@ -1,4 +1,4 @@
-- zingsnis (PRIVALOMAS, nes agentas laukia atsakymo į aktyvų žingsnį): įvertink TĄ PATĮ kliento sakinį kaip atsakymą į žingsnio klausimą.
+- step (PRIVALOMAS, nes agentas laukia atsakymo į aktyvų žingsnį): įvertink TĄ PATĮ kliento sakinį kaip atsakymą į žingsnio klausimą.
   Variantai (label: reikšmė):
 <<options>>
   {"label": vienas iš variantų arba "unclear", "is_answer": bool, "internally_inconsistent": bool, "confidence": 0.0-1.0}

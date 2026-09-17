@@ -1,541 +1,108 @@
-# 🤖 ISP After-Hours Technical Support Bot
+# ISP AI Agent — after-hours voice support
 
-![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
-![LangChain](https://img.shields.io/badge/LangChain-ReAct_Agent-green)
-![LiteLLM](https://img.shields.io/badge/LiteLLM-Multi_Provider-orange)
-![RAG](https://img.shields.io/badge/RAG-FAISS-purple)
-![Streamlit](https://img.shields.io/badge/Streamlit-UI-red?logo=streamlit)
+![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python)
+![LangGraph](https://img.shields.io/badge/LangGraph-single_engine-green)
+![FastAPI](https://img.shields.io/badge/FastAPI-voice_dashboard-teal)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 
-An intelligent AI agent designed to provide automated technical support for Internet Service Provider customers outside of business hours. The bot handles common technical issues through guided troubleshooting, and seamlessly escalates to technician visits when remote resolution isn't possible.
+A voice agent for an Internet Service Provider's customers outside business hours. It
+answers the call in Lithuanian, identifies the caller, checks the line and the account,
+guides the customer through the fix step by step, and — when the problem cannot be solved
+by phone or is outside its knowledge — registers the right ticket for the right people.
+Every call leaves a contact record.
 
-## 🚀 Live Demo
+**Live demo:** [isp-ai-agent-production.up.railway.app](https://isp-ai-agent-production.up.railway.app)
 
-[![Demo](https://img.shields.io/badge/🌐_Live_Demo-Railway-blueviolet?style=for-the-badge)](https://isp-ai-agent-production.up.railway.app)
+## What it does
 
-**Try it now:** [https://isp-ai-agent-production.up.railway.app](https://isp-ai-agent-production.up.railway.app)
+- **Identifies the caller** from the phone number or a dictated address, always checking
+  the address back before anything about the account is said.
+- **Checks level-1 facts** after identification: debt, a mass outage (held until the address
+  is confirmed), a node or switch fault, open tickets, the service profile (e.g. IPTV
+  runs over the internet).
+- **Solves** faults with fault packs — hung router, dead router (with a temporary cable
+  bridge to the PC), line down to the flat, CRC errors, a changed router (foreign MAC), a
+  customer-side problem (one device, Wi-Fi), an unclear fault — reading telemetry between
+  the steps.
+- **Registers** what it does not solve: a technician or unclear-fault ticket, or a request
+  for the responsible person (billing, disconnection, relocation, a wish); a repeat call
+  is a note on the open ticket, not a duplicate.
+- **Records** every call: outcome (`resolved`, `ticket`, `ticket_appended`,
+  `informed_outage`, `informed_debt`, `abandoned`, …) and whether a person should review it.
 
-> 💡 **Demo tip:** Try calling with phone number `+37060012345` and describe an internet problem in Lithuanian or English!
+## How it works
 
----
-
-## 📋 Table of Contents
-
-- [Purpose](#purpose)
-- [Key Benefits](#key-benefits)
-- [What The Bot Can Do](#what-the-bot-can-do)
-- [How It Works - ReAct Agent](#how-it-works---react-agent)
-- [Agent Tools](#agent-tools)
-- [Knowledge Base (RAG)](#knowledge-base-rag)
-- [Conversation Flow](#conversation-flow)
-- [Architecture Overview](#architecture-overview)
-- [Technology Stack](#technology-stack)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-
----
-
-## Purpose
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│   📞 Customer calls with technical issue                                    │
-│                        │                                                    │
-│                        ▼                                                    │
-│   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │                                                                     │  │
-│   │   🕐 Business Hours (9:00 - 17:00)    🌙 After Hours (17:00 - 9:00) │  │
-│   │                                                                     │  │
-│   │        Human Operators                    AI Support Bot            │  │
-│   │                                                                     │  │
-│   └─────────────────────────────────────────────────────────────────────┘  │
-│                                                                             │
-│   The bot provides 24/7 technical support coverage:                         │
-│   • Evenings, nights, weekends, holidays                                   │
-│   • Resolves common issues automatically                                    │
-│   • Registers technician visits when needed                                │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-**Primary Goals:**
-- Resolve technical issues through guided troubleshooting
-- Register technician visits when remote resolution fails
-- Provide immediate assistance without wait times
-- Collect complete diagnostic information for technicians
-
----
-
-## Key Benefits
-
-| Benefit | Description |
-|---------|-------------|
-| **24/7 Availability** | Continuous support outside business hours - evenings, weekends, holidays |
-| **Zero Wait Time** | Instant response without queue, immediate problem assessment |
-| **Consistent Quality** | Standardized troubleshooting procedures for every customer |
-| **Smart Escalation** | Automatic technician scheduling with full diagnostic history |
-| **Bilingual Support** | Lithuanian and English conversation modes |
-| **Cost Efficient** | Reduces need for night shift operators while maintaining service quality |
-
----
-
-## What The Bot Can Do
+One conversation engine — a LangGraph of four nodes over one typed, checkpointed state.
+LLMs understand the caller, propose next steps and word the replies; the engine plans
+every turn, validates every action and runs the tools; the knowledge lives in files.
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Bot Capabilities                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   🔍 IDENTIFY                    🔧 DIAGNOSE                               │
-│   ─────────────────              ─────────────────                          │
-│   • Find customer by phone       • Check network port status               │
-│   • Verify service address       • Verify IP assignment                    │
-│   • Check account status         • Detect area outages                     │
-│   • View active services         • Test connection quality                 │
-│                                                                             │
-│   📚 TROUBLESHOOT                📋 ESCALATE                               │
-│   ─────────────────              ─────────────────                          │
-│   • Router restart guidance      • Create support ticket                   │
-│   • WiFi configuration help      • Schedule technician visit               │
-│   • Connection diagnostics       • Preserve troubleshooting history        │
-│   • Step-by-step instructions    • Set appropriate priority                │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+caller ─► ASR ─► perceive ─► decide ─► execute ─► narrate ─► TTS ─► caller
+                 understand   policy     tools via   context card → LLM,
+                 facts, intent rules →   one gateway  or a locale phrase
+                              TurnPlan
+knowledge/*.yaml  (intents · fault packs · verdicts · inform · services · ticket types · limits)
+locales/lt/       (phrases · vocabulary · examples)   — validated at startup
 ```
 
-### Supported Problem Types
+The architecture, decisions and the refactor that produced it:
+[`isp-customer-service/docs/refactoring/RESULT.md`](isp-customer-service/docs/refactoring/RESULT.md).
 
-| Problem Type | What Bot Does |
-|--------------|---------------|
-| **No Internet Connection** | Checks outages, port status, IP assignment → guides router restart → escalates if needed |
-| **Slow Internet** | Verifies connection quality → WiFi optimization tips → bandwidth troubleshooting |
-| **Intermittent Connection** | Detects packet loss patterns → identifies line issues → schedules technician |
-| **TV No Signal** | Checks signal quality → guides receiver restart → verifies connections |
-| **Account Issues** | Detects suspended accounts → informs about billing status |
+## Repository
 
----
+| Path | What |
+|---|---|
+| `isp-customer-service/chatbot_core/src/agent/` | The engine: `perceive/`, `decide/`, `execute/`, `speak/`, `analyst/`, `contract/`, `knowledge/`, `locales/`, `tooling/`, `call_record/`, `graph_v2/` |
+| `isp-customer-service/chatbot_core/src/app/` | FastAPI service: sessions, voice WebSocket, archive, the dashboard (`static/`) and demo scenarios (`scenarios.yaml`) |
+| `isp-customer-service/crm_service/`, `network_diagnostic_service/` | Demo CRM and network telemetry (tools and MCP servers) |
+| `isp-customer-service/database/` | SQLite schema and seeds of the Šiauliai demo world |
+| `isp-customer-service/docs/` | Documentation index: [`docs/README.md`](isp-customer-service/docs/README.md) |
 
-## How It Works - ReAct Agent
+## Quick start
 
-The bot uses a **ReAct (Reasoning + Acting)** pattern - an autonomous AI agent that thinks through problems and decides which tools to use.
-
-### ReAct Loop
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           ReAct Agent Loop                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│    Customer: "My internet is not working"                                   │
-│                          │                                                  │
-│                          ▼                                                  │
-│    ┌─────────────────────────────────────────────────────────────────┐     │
-│    │                                                                 │     │
-│    │  ┌───────────┐    ┌───────────┐    ┌─────────────┐             │     │
-│    │  │  THOUGHT  │───▶│  ACTION   │───▶│ OBSERVATION │────┐        │     │
-│    │  │           │    │           │    │             │    │        │     │
-│    │  │ "I need   │    │ Use tool: │    │ Tool result │    │        │     │
-│    │  │ to find   │    │ find_     │    │ returned    │    │        │     │
-│    │  │ customer" │    │ customer  │    │ customer    │    │        │     │
-│    │  └───────────┘    └───────────┘    └─────────────┘    │        │     │
-│    │        ▲                                              │        │     │
-│    │        └──────────────────────────────────────────────┘        │     │
-│    │                         (loop until resolved)                   │     │
-│    │                                                                 │     │
-│    └─────────────────────────────────────────────────────────────────┘     │
-│                          │                                                  │
-│                          ▼                                                  │
-│    Response: "I found your account. Let me check your connection..."       │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Why ReAct Pattern?
-
-| Aspect | Benefit |
-|--------|---------|
-| **Autonomous Decision Making** | Agent decides which tools to use based on conversation context |
-| **Flexible Flow** | No rigid script - adapts to each unique situation |
-| **Transparent Reasoning** | Each step includes explanation of agent's thinking |
-| **Self-Correcting** | Can retry or try alternative approaches if something fails |
-
----
-
-## Agent Tools
-
-The agent has access to 6 specialized tools for customer service operations:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            Agent Tools                                       │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐          │
-│   │  find_customer  │   │ check_network   │   │  check_outages  │          │
-│   │  ───────────────│   │  ─────────────  │   │  ─────────────  │          │
-│   │  Lookup by phone│   │  Port status    │   │  Area outages   │          │
-│   │  Verify address │   │  IP assignment  │   │  Planned works  │          │
-│   │  Account status │   │  Packet loss    │   │  Service impact │          │
-│   │       📞        │   │       🔌        │   │       ⚠️        │          │
-│   └────────┬────────┘   └────────┬────────┘   └────────┬────────┘          │
-│            │                     │                     │                    │
-│            └─────────────────────┼─────────────────────┘                    │
-│                                  │                                          │
-│                           ┌──────┴──────┐                                   │
-│                           │   ReAct     │                                   │
-│                           │   Agent     │                                   │
-│                           └──────┬──────┘                                   │
-│                                  │                                          │
-│            ┌─────────────────────┼─────────────────────┐                    │
-│            │                     │                     │                    │
-│   ┌────────┴────────┐   ┌────────┴────────┐   ┌────────┴────────┐          │
-│   │search_knowledge │   │  create_ticket  │   │  run_ping_test  │          │
-│   │  ─────────────  │   │  ─────────────  │   │  ─────────────  │          │
-│   │  Troubleshooting│   │  Support ticket │   │  Latency test   │          │
-│   │  guides (RAG)   │   │  Technician     │   │  Connection     │          │
-│   │  Step-by-step   │   │  scheduling     │   │  stability      │          │
-│   │       📚        │   │       🎫        │   │       📶        │          │
-│   └─────────────────┘   └─────────────────┘   └─────────────────┘          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Tool Reference
-
-| Tool | Purpose | Data Source |
-|------|---------|-------------|
-| `find_customer` | Identify customer by phone, verify address, check account status | CRM Database |
-| `check_network_status` | Check port status, IP assignment, packet loss, signal quality | Network Diagnostics |
-| `check_outages` | Detect area outages and planned maintenance affecting customer | Network Diagnostics |
-| `search_knowledge` | Find relevant troubleshooting steps from knowledge base | RAG System |
-| `create_ticket` | Create support ticket and schedule technician visit | CRM Database |
-| `run_ping_test` | Test connection latency and packet loss | Network Diagnostics |
-
----
-
-## Knowledge Base (RAG)
-
-The bot uses **Retrieval-Augmented Generation (RAG)** to find relevant troubleshooting procedures.
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         RAG Knowledge System                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   Customer Problem                                                          │
-│   "Internet keeps disconnecting"                                            │
-│              │                                                              │
-│              ▼                                                              │
-│   ┌─────────────────────────────────────────────────────────────────┐      │
-│   │                    Semantic Search                               │      │
-│   │                                                                  │      │
-│   │   Query ──────▶ Embeddings ──────▶ FAISS Vector Store           │      │
-│   │                 (multilingual)      (similarity search)          │      │
-│   │                                                                  │      │
-│   └─────────────────────────────────────────────────────────────────┘      │
-│              │                                                              │
-│              ▼                                                              │
-│   ┌─────────────────────────────────────────────────────────────────┐      │
-│   │                 Knowledge Base Documents                         │      │
-│   │                                                                  │      │
-│   │   📄 internet_intermittent.md    📄 internet_no_connection.md   │      │
-│   │   📄 internet_slow.md            📄 tv_no_signal.md             │      │
-│   │   📄 router_restart.md           📄 wifi_troubleshooting.md     │      │
-│   │                                                                  │      │
-│   └─────────────────────────────────────────────────────────────────┘      │
-│              │                                                              │
-│              ▼                                                              │
-│   Retrieved: "Intermittent Connection Troubleshooting"                      │
-│   Step 1: Check router lights...                                           │
-│   Step 2: Restart router...                                                │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Knowledge Base Features
-
-| Feature | Description |
-|---------|-------------|
-| **Semantic Search** | Understands meaning, not just keywords - "net keeps dropping" matches "intermittent connection" |
-| **Multilingual** | Works with Lithuanian and English queries equally well |
-| **Step-by-Step Guides** | Structured troubleshooting procedures with clear instructions |
-| **Context-Aware** | Selects appropriate guide based on problem symptoms |
-
----
-
-## Conversation Flow
-
-Complete customer journey from initial contact to resolution or escalation:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Customer Journey                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌───────────┐                                                             │
-│   │   START   │                                                             │
-│   └─────┬─────┘                                                             │
-│         │                                                                   │
-│         ▼                                                                   │
-│   ┌───────────────────────────────────────┐                                │
-│   │  1. GREETING                          │                                │
-│   │     "Hello! How can I help you?"      │                                │
-│   └───────────────────┬───────────────────┘                                │
-│                       │                                                     │
-│                       ▼                                                     │
-│   ┌───────────────────────────────────────┐                                │
-│   │  2. PROBLEM IDENTIFICATION            │                                │
-│   │     Customer describes issue          │                                │
-│   │     Agent understands problem type    │                                │
-│   └───────────────────┬───────────────────┘                                │
-│                       │                                                     │
-│                       ▼                                                     │
-│   ┌───────────────────────────────────────┐                                │
-│   │  3. CUSTOMER IDENTIFICATION           │                                │
-│   │     Find customer by phone            │                                │
-│   │     Verify service address            │                                │
-│   └───────────────────┬───────────────────┘                                │
-│                       │                                                     │
-│                       ▼                                                     │
-│   ┌───────────────────────────────────────┐     ┌───────────────────────┐  │
-│   │  4. NETWORK DIAGNOSTICS               │────▶│  OUTAGE DETECTED      │  │
-│   │     Check outages                     │     │  Inform customer      │  │
-│   │     Check port/IP status              │     │  Provide ETA          │  │
-│   │     Check packet loss                 │     └───────────┬───────────┘  │
-│   └───────────────────┬───────────────────┘                 │              │
-│                       │                                     │              │
-│          ┌────────────┴────────────┐                        │              │
-│          ▼                         ▼                        │              │
-│   ┌─────────────┐          ┌─────────────┐                  │              │
-│   │ISSUE FOUND  │          │  NO ISSUE   │                  │              │
-│   │Port down,   │          │  Network OK │                  │              │
-│   │packet loss  │          │             │                  │              │
-│   └──────┬──────┘          └──────┬──────┘                  │              │
-│          │                        │                         │              │
-│          │                        ▼                         │              │
-│          │         ┌───────────────────────────────────┐    │              │
-│          │         │  5. TROUBLESHOOTING               │    │              │
-│          │         │     RAG-powered step-by-step      │    │              │
-│          │         │     Router restart, WiFi check    │    │              │
-│          │         └───────────────────┬───────────────┘    │              │
-│          │                             │                    │              │
-│          │                ┌────────────┴────────────┐       │              │
-│          │                ▼                         ▼       │              │
-│          │         ┌─────────────┐          ┌─────────────┐ │              │
-│          │         │  RESOLVED   │          │ NOT RESOLVED│ │              │
-│          │         │  ✓ Done     │          │             │ │              │
-│          │         └──────┬──────┘          └──────┬──────┘ │              │
-│          │                │                        │        │              │
-│          ▼                │                        ▼        │              │
-│   ┌───────────────────────┼────────────────────────────┐    │              │
-│   │  6. CREATE TICKET     │                            │    │              │
-│   │     Register technician visit                      │    │              │
-│   │     Include all diagnostic info                    │    │              │
-│   │     Set priority based on issue                    │    │              │
-│   └───────────────────────┼────────────────────────────┘    │              │
-│                           │                                 │              │
-│                           ▼                                 ▼              │
-│                    ┌─────────────────────────────────────────────┐         │
-│                    │  7. CLOSING                                 │         │
-│                    │     Summary of actions taken                │         │
-│                    │     Next steps / Technician ETA             │         │
-│                    │     "Thank you for contacting us"           │         │
-│                    └─────────────────────────────────────────────┘         │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                    ISP After-Hours Support Bot                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   ┌─────────────────────────────────────────────────────────────────────┐  │
-│   │                        Interface Layer                               │  │
-│   │                                                                      │  │
-│   │     ┌──────────────┐        ┌──────────────┐                        │  │
-│   │     │  Streamlit   │        │   CLI Chat   │                        │  │
-│   │     │   Web UI     │        │  Interface   │                        │  │
-│   │     └──────────────┘        └──────────────┘                        │  │
-│   │                                                                      │  │
-│   └──────────────────────────────────┬──────────────────────────────────┘  │
-│                                      │                                      │
-│   ┌──────────────────────────────────┼──────────────────────────────────┐  │
-│   │                        Core Engine│                                  │  │
-│   │                                  ▼                                   │  │
-│   │   ┌─────────────────────────────────────────────────────────────┐   │  │
-│   │   │                      ReAct Agent                             │   │  │
-│   │   │                                                              │   │  │
-│   │   │    Thought ──▶ Action ──▶ Observation ──▶ Response          │   │  │
-│   │   │                                                              │   │  │
-│   │   └─────────────────────────────────────────────────────────────┘   │  │
-│   │                                  │                                   │  │
-│   │            ┌─────────────────────┼─────────────────────┐            │  │
-│   │            ▼                     ▼                     ▼            │  │
-│   │   ┌──────────────┐      ┌──────────────┐      ┌──────────────┐     │  │
-│   │   │     LLM      │      │    Tools     │      │     RAG      │     │  │
-│   │   │   Service    │      │   Registry   │      │   System     │     │  │
-│   │   │              │      │              │      │              │     │  │
-│   │   │ Claude/GPT/  │      │ 6 integrated │      │ FAISS +      │     │  │
-│   │   │ Gemini       │      │ tools        │      │ Embeddings   │     │  │
-│   │   └──────────────┘      └───────┬──────┘      └──────────────┘     │  │
-│   │                                 │                                   │  │
-│   └─────────────────────────────────│───────────────────────────────────┘  │
-│                                     │                                       │
-│   ┌─────────────────────────────────│───────────────────────────────────┐  │
-│   │                        External Services                             │  │
-│   │                                 │                                    │  │
-│   │            ┌────────────────────┼────────────────────┐              │  │
-│   │            ▼                                         ▼              │  │
-│   │   ┌──────────────────┐                    ┌──────────────────┐      │  │
-│   │   │   CRM Service    │                    │    Network       │      │  │
-│   │   │                  │                    │   Diagnostics    │      │  │
-│   │   │  • Customers     │                    │                  │      │  │
-│   │   │  • Addresses     │                    │  • Port status   │      │  │
-│   │   │  • Services      │                    │  • IP assignment │      │  │
-│   │   │  • Tickets       │                    │  • Outages       │      │  │
-│   │   └────────┬─────────┘                    └────────┬─────────┘      │  │
-│   │            │                                       │                │  │
-│   │            └───────────────────┬───────────────────┘                │  │
-│   │                                ▼                                    │  │
-│   │                       ┌──────────────┐                              │  │
-│   │                       │   Database   │                              │  │
-│   │                       │   (SQLite)   │                              │  │
-│   │                       └──────────────┘                              │  │
-│   │                                                                      │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Technology Stack
-
-| Category | Technology | Purpose |
-|----------|------------|---------|
-| **Agent Pattern** | ReAct (Reasoning + Acting) | Autonomous decision making and tool selection |
-| **LLM Gateway** | LiteLLM | Multi-provider support (Claude, OpenAI, Gemini) |
-| **Embeddings** | sentence-transformers | Multilingual text embeddings for RAG |
-| **Vector Store** | FAISS | Fast similarity search for knowledge retrieval |
-| **Database** | SQLite | Customer, network, and ticket data |
-| **State Management** | Pydantic | Type-safe conversation state |
-| **Configuration** | YAML | Prompts, translations, settings |
-| **Web UI** | Streamlit | Interactive demo interface with monitoring |
-| **Deployment** | Railway | Cloud hosting for live demo |
-| **Language** | Python 3.11+ | Primary development language |
-
----
-
-## 🖥️ UI Features
-
-| Feature | Description |
-|---------|-------------|
-| **Provider Selection** | Switch between Claude, OpenAI, and Gemini |
-| **Model Selection** | Choose specific model per provider |
-| **Language Selection** | Lithuanian / English conversation mode |
-| **Real-time Monitoring** | LLM calls, token usage, cost tracking |
-| **RAG Visibility** | See which knowledge documents are retrieved |
-| **State Inspector** | View current conversation state and agent decisions |
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/) package manager
-- API key for at least one LLM provider (OpenAI, Anthropic, or Google)
-
-### Installation
+Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/), an OpenAI API key (the
+default model is `gpt-4o-mini`); for voice, a Groq key (`ASR_BACKEND=groq`) or local
+faster-whisper; TTS is edge-tts by default.
 
 ```bash
-# Clone the repository
 git clone https://github.com/steellsas/ISP-AI-Agent.git
-cd ISP-AI-Agent/chatbot_core
-
-# Install dependencies with uv
+cd ISP-AI-Agent/isp-customer-service
 uv sync
+cp .env.exemple .env        # fill OPENAI_API_KEY (and GROQ_API_KEY for voice)
+uv run python scripts/setup_db.py && uv run python scripts/seed_data.py
+uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080
 ```
 
-### Running
+Open http://localhost:8080 — the dashboard:
+
+- **Testavimas** — make a call (voice or text) and watch the agent: the conversation line,
+  the path of each turn through the graph with durations, the turn plan, the call state
+  and the event timeline.
+- **Scenarijai** — the demo calls (who calls, what to say, what to expect); ▶ starts one and
+  checks the verdict and the outcome afterwards.
+- **Archyvas** — past calls and their contact records, replayed turn by turn; filter the
+  ones that need review.
+
+Before a demo, press **♻ DB** (the outage ETA is relative to the reset time).
+
+## Tests
 
 ```bash
-# Web UI (recommended for demo)
-uv run streamlit run src/streamlit_ui/app.py
-
-# CLI interface
-uv run python -m src.agent.react_agent --lang lt --phone +37060012345
+uv run pytest                                              # unit and integration tests
+uv run python chatbot_core/src/agent/eval/run_eval.py      # scripted calls, scored
+uv run python scripts/refactor_acceptance.py               # architecture acceptance checks
 ```
 
-### Or try the live demo
+## Documentation
 
-🌐 **[https://isp-ai-agent-production.up.railway.app](https://isp-ai-agent-production.up.railway.app)**
+| Document | For |
+|---|---|
+| [docs/README.md](isp-customer-service/docs/README.md) | Index of all documents |
+| [docs/DEMO_SCENARIJAI.md](isp-customer-service/docs/DEMO_SCENARIJAI.md) | Demo calls (Lithuanian) |
+| [docs/FAULT_PACKS.md](isp-customer-service/docs/FAULT_PACKS.md) | Writing fault packs and knowledge files (Lithuanian) |
+| [docs/refactoring/RESULT.md](isp-customer-service/docs/refactoring/RESULT.md) | Architecture after the refactor, verification, latency |
+| [docs/refactoring/ROADMAP.md](isp-customer-service/docs/refactoring/ROADMAP.md) | What is left to fix and build |
 
----
+## License
 
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file in the project root:
-
-```bash
-# At least one of these is required
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GEMINI_API_KEY=AI...
-```
-
-### Agent Settings
-
-Settings can be adjusted in the UI or via configuration:
-
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Model | gpt-4o-mini | LLM model to use |
-| Temperature | 0.3 | Response creativity (0-1) |
-| Language | lt | Conversation language (lt/en) |
-| Max Turns | 20 | Maximum conversation turns |
-
----
-
-## 📚 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [REACT_AGENT.md](docs/REACT_AGENT.md) | Agent pattern and decision logic |
-| [TOOLS.md](docs/TOOLS.md) | Tool specifications and usage |
-| [RAG_SYSTEM.md](docs/RAG_SYSTEM.md) | Knowledge retrieval system |
-| [INSTALLATION.md](docs/INSTALLATION.md) | Detailed setup guide |
-
----
-
-## 🔮 Future Improvements
-
-- [ ] Voice integration (Speech-to-Text, Text-to-Speech)
-- [ ] Multi-turn memory with conversation history persistence
-- [ ] Integration with real CRM/Network monitoring systems
-- [ ] LangGraph migration for more complex workflows
-- [ ] Docker containerization
-- [ ] Webhook notifications for ticket creation
-
----
-
-## 📝 License
-
-This project is open source and available under the [MIT License](LICENSE).
-
-## 🤝 Contact
-
-**Andrius** - [GitHub](https://github.com/steellsas)
-
----
-
-⭐ If you found this project interesting, please give it a star!
+MIT. **Andrius** — [GitHub](https://github.com/steellsas)

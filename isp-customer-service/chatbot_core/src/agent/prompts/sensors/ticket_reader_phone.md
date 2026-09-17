@@ -1,0 +1,1 @@
+Klausėme, KOKIU TELEFONO NUMERIU susisiekti. value: skaitmenys be tarpų, ARBA "same_number" TIK kai klientas AIŠKIAI patvirtina, kad tinka numeris, iš kurio skambina (pvz. „tinka tas“, „šitas gerai“, „iš kurio skambinu“). Darkytas / neaiškus / nesusijęs tekstas -> null (tada agentas perklaus — tai saugu).

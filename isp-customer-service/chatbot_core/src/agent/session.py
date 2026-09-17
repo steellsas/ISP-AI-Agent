@@ -1,16 +1,16 @@
 """
 AgentSession — stable, framework-free entry point for one conversation.
 
-`handle_turn(text) -> reply` is the single seam that every transport (CLI,
-Streamlit, voice/FastRTC, telephony) calls. Callers never touch the agent
+`handle_turn(text) -> reply` is the single seam that every transport (API,
+voice, eval) calls. Callers never touch the agent
 loop, tool plumbing or message history directly, so those internals — history
 management, model swap, prompt changes — can evolve *behind* this boundary
 without breaking any caller. This is the "lock the interface first" step:
 later work (e.g. memory management) plugs in inside, not on top.
 
-Design: composition over rewrite. AgentSession owns a ReactAgent (the engine)
-and exposes a small, intentional surface. The engine keeps working exactly as
-before; this only adds a clean boundary in front of it.
+Design: AgentSession owns the call's LangGraph graph and its AgentRuntime and
+exposes a small, intentional surface. The call state lives in the checkpoint;
+the session keeps the last committed snapshot for read-only views.
 
 Usage:
     session = AgentSession(caller_phone="+37060012345", language="lt")
@@ -20,13 +20,17 @@ Usage:
 
 from __future__ import annotations
 
-import os
+import logging
+import threading
 from typing import Any
 
+from .call_record.finalizer import finalize
 from .config import AgentConfig
-from .graph import build_turn_graph
-from .react_agent import ReactAgent
-from .state import AgentState
+from .delivery import apply_delivery, apply_overlay
+from .graph_v2 import GraphState, TurnScratch, build_graph
+from .runtime import new_call
+
+logger = logging.getLogger(__name__)
 
 
 class AgentSession:
@@ -38,7 +42,8 @@ class AgentSession:
         language: str = "lt",
         config: AgentConfig | None = None,
         tracer=None,
-        engine: str | None = None,
+        checkpointer=None,
+        thread_id: str | None = None,
     ):
         """
         Start a session.
@@ -48,72 +53,109 @@ class AgentSession:
             language: Language code ("lt" or "en").
             config: Optional agent configuration (defaults applied if None).
             tracer: Optional ConversationTracer (defaults to the JSONL sink).
-            engine: orchestration engine — "graph" (LangGraph, default) or
-                "legacy" (direct ReactAgent loop, rollback). Overridable by the
-                AGENT_ENGINE env var. Behaviour is identical in step 3.1.
+            checkpointer: The process-wide checkpoint saver (the API service's
+                SqliteSaver); None keeps the call state in memory.
+            thread_id: Continue an existing call from the checkpointer (defaults
+                to this session's own id — a new call).
         """
-        self._agent = ReactAgent(
-            caller_phone=caller_phone,
-            language=language,
-            config=config,
-            tracer=tracer,
-        )
-
-        # Orchestration engine (docs/ROADMAP_REFACTORING.md): "v2" is the
-        # DEFAULT since 2026-08-13 — the refactored graph_v2 engine (typed
-        # GraphState, SqliteSaver checkpoints, diagnosis subgraph, one node per
-        # file). "graph" = the pre-refactor LangGraph wrapper, "legacy" = the
-        # direct ReactAgent loop; both kept as rollback via AGENT_ENGINE.
-        mode = engine or os.getenv("AGENT_ENGINE", "v2")
-        self._engine_mode = mode
-        self._use_graph = mode != "legacy"
-        if mode == "v2":
-            from .graph_v2 import build_graph as build_v2_graph
-
-            self._graph = build_v2_graph(self._agent)
-        elif self._use_graph:
-            self._graph = build_turn_graph(self._agent)
-        else:
-            self._graph = None
-        self._graph_config = {"configurable": {"thread_id": self._agent.session_id}}
+        # The initial state seeds the first invoke; afterwards the checkpoint
+        # holds the call and _state is the last committed snapshot.
+        self._state, self._runtime = new_call(caller_phone, language, config, tracer)
+        self._graph = build_graph(checkpointer)
+        self._graph_config = {"configurable": {"thread_id": thread_id or self._runtime.session_id}}
+        if thread_id:
+            self._refresh_state()
+        # Results of background work (the analyst, the telemetry refresh),
+        # handed to the NEXT turn through its graph input — no thread writes state.
+        self._inbox: dict[str, Any] = {}
+        self._inbox_lock = threading.Lock()
+        self._plans_emitted = 0
 
     def _graph_input(self, text: str | None) -> dict:
-        """Shape one turn's input for the active graph engine."""
-        if self._engine_mode == "v2":
-            from .graph_v2 import TurnScratch
+        """Shape one turn's graph input: a fresh turn scratch. The rest of the state
+        comes from the checkpoint — on the very first invoke it is seeded from the
+        engine's initial state (caller phone, config-derived limits)."""
+        with self._inbox_lock:
+            inbox, self._inbox = self._inbox, {}
+        turn = TurnScratch(
+            user_input=text,
+            bg_diagnosis=inbox.get("bg_diagnosis"),
+        )
+        values = self._graph.get_state(self._graph_config).values
+        update: dict[str, Any] = {}
+        if not values:
+            initial = self._state
+            update = {name: getattr(initial, name) for name in type(initial).model_fields}
+        if inbox.get("analyst_signals"):
+            voice = values["voice"] if values else self._state.voice
+            update["voice"] = voice.model_copy(update={"analyst_signals": inbox["analyst_signals"]})
+        update["turn"] = turn
+        return update
 
-            # Seeding caller_phone keeps the checkpointed GraphState complete
-            # from the very first turn; TurnScratch reset == begin_turn().
-            return {
-                "caller_phone": self._agent.state.caller_phone,
-                "turn": TurnScratch(user_input=text),
-            }
-        return {"user_input": text}
+    def _current_state(self) -> GraphState:
+        """The call state as checkpointed after the last turn (the initial state
+        before the first one)."""
+        values = self._graph.get_state(self._graph_config).values
+        return GraphState(**values) if values else self._state
 
-    def _graph_reply(self, out: dict) -> str | None:
+    def _refresh_state(self) -> None:
+        self._state = self._current_state()
+
+    def _emit_turn_plan(self) -> None:
+        """One `turn_plan` trace event per turn — the plan the turn ran."""
+        from .decide.plan import Say, TurnPlan
+
+        plan = self._state.turn.plan
+        if plan is None:  # a cancelled or failed turn
+            owner = "diagnosis" if self._state.identity.customer_id else "identification"
+            plan = TurnPlan(owner=owner, rule="dialog.no_reply", say=Say(kind="none")).model_dump(
+                mode="json"
+            )
+        # The greeting is turn 0; every caller turn after it is numbered in order.
+        self._runtime.tracer.emit("turn_plan", turn_index=self._plans_emitted, **plan)
+        self._plans_emitted += 1
+
+    def _write_between_turns(self, write) -> None:
+        """Run a write outside a turn — `write(state, rt)` on a copy of the
+        checkpointed state, stored back with graph.update_state (before the first
+        turn the initial state is edited and seeds the first invoke)."""
+        if not self._graph.get_state(self._graph_config).values:
+            write(self._state, self._runtime)
+            return
+        state = self._current_state().model_copy(deep=True)
+        write(state, self._runtime)
+        self._graph.update_state(
+            self._graph_config,
+            {name: getattr(state, name) for name in type(state).model_fields if name != "turn"},
+        )
+        self._state = state
+
+    @staticmethod
+    def _graph_reply(out: dict) -> str | None:
         """Read the reply from the graph's output state."""
-        if self._engine_mode == "v2":
-            turn = out.get("turn")
-            return turn.reply if turn is not None else None
-        return out.get("reply")
+        turn = out.get("turn")
+        return turn.reply if turn is not None else None
 
-    def end_session(self, outcome: str | None = None) -> None:
+    def end_session(self, transport_end: str | None = None) -> None:
         """Mark the conversation finished (emits session_end to the trace).
 
-        Idempotent. Transports call this when the call ends (CLI quit, voice
-        hang-up) so every conversation's trace is properly closed.
+        Idempotent. Transports call this when the call ends (voice hang-up, API
+        delete, eval) so every conversation's trace is properly closed. The
+        hang-up net and the call record run on the checkpointed state.
         """
-        self._agent.end_session(outcome=outcome)
+        self._write_between_turns(
+            lambda state, rt: finalize(state, rt, transport_end=transport_end)
+        )
 
     @property
     def session_id(self) -> str:
         """The conversation's trace id (also the JSONL filename stem)."""
-        return self._agent.session_id
+        return self._runtime.session_id
 
     @property
     def tracer(self):
         """The ConversationTracer for this call (lets the voice pipeline log)."""
-        return self._agent.tracer
+        return self._runtime.tracer
 
     def asr_context(self) -> str | None:
         """Per-turn STT biasing context (VOICE_PLAN V1): the agent's LAST
@@ -123,23 +165,26 @@ class AgentSession:
         ("nedega"). Best-effort — None on any hiccup, the ASR then uses only
         its static domain prompt."""
         try:
-            a = self._agent
+            a = self
             parts: list[str] = []
-            q = (a.state.last_question or "").strip()
+            q = (a.state.dialog.last_question or "").strip()
             if q:
                 parts.append(f"Klausimas: {q}")
             words: list[str] = []
-            pending = getattr(a, "_evidence_last_ask_key", None)
-            r = a.state.resolution or {}
+            pending = a.state.diagnosis.pending_evidence_key
+            r = a.state.resolution.procedure or {}
             if pending and r.get("verdict"):
-                from .evidence import _PENDING_ANSWERS, spec_for
+                from .contract.locale import vocab_map
+                from .evidence import spec_for
 
                 spec = spec_for(r.get("verdict"))
                 item = (spec.get("client") or {}).get(pending) if spec else None
-                for marks in ((item or {}).get("atsakymai") or {}).values():
-                    words += [str(m) for m in marks]
+                from .contract.locale import vocab
+
+                for name in ((item or {}).get("answers") or {}).values():
+                    words += [str(m) for m in vocab(name)]
                 if not words:  # built-in vocabulary for the piloted keys
-                    for _value, marks in _PENDING_ANSWERS.get(pending, []):
+                    for _value, marks in vocab_map("pending_answers").get(pending, []):
                         words += [str(m) for m in marks]
             if words:
                 parts.append("Galimi atsakymai: " + ", ".join(dict.fromkeys(words)) + ".")
@@ -150,12 +195,12 @@ class AgentSession:
     def apply_overlay(self, texts: list[str]) -> None:
         """Duplex-hearing 2: hand the caller's over-the-voice words to the
         engine (deterministic ingest + one-shot narrator note)."""
-        self._agent.apply_overlay(texts)
+        self._write_between_turns(lambda state, rt: apply_overlay(state, rt, texts))
 
     def apply_delivery(self, sentences: list[str], delivered: int) -> None:
         """D1: after a barge-in, keep in history only the sentences the caller
         actually heard; the unheard tail resurfaces via the narrator next turn."""
-        self._agent.apply_delivery(sentences, delivered)
+        self._write_between_turns(lambda state, rt: apply_delivery(state, rt, sentences, delivered))
 
     def endpoint_hint(self, partial_text: str) -> tuple[str, int | None]:
         """E2 duplex: how much trailing silence the utterance-so-far deserves —
@@ -164,61 +209,67 @@ class AgentSession:
         try:
             from .endpoint import classify_endpoint
 
-            return classify_endpoint(self._agent, partial_text)
+            return classify_endpoint(self._state, self._runtime, partial_text)
         except Exception:  # pragma: no cover - a hint must never break a turn
             return ("normal", None)
 
+    def use_background_analyst(self) -> None:
+        """The transport has a background window (voice): the analyst reads there, so no
+        turn waits for it."""
+        self._write_between_turns(lambda state, rt: setattr(state.voice, "background_reads", True))
+
     def analyst_next(self) -> None:
-        """W2: the quiet analyst's background read — advisory notes for the
-        narrator's next turn (never facts, never routing)."""
-        from .analyst import run_analyst
+        """The analyst's background read (ANALYST_MODE=async, the voice default): its
+        signals are applied on this state and the tone ones ride to the next turn."""
+        from .analyst.node import apply, mode, read
 
-        run_analyst(self._agent)
+        if mode(self._state) != "async":
+            return
+        signals = read(self._state, self._runtime)
+        if not signals:
+            return
+        apply(self._state, self._runtime, signals)
+        carried = self._state.voice.analyst_signals
+        if carried:
+            with self._inbox_lock:
+                self._inbox["analyst_signals"] = carried
 
-    def speculate_next(self, synthesize=None) -> None:
-        """S1: prepare the branch cache for the OPEN question (background
-        thread entry — pure planning + standalone LLM/TTS, no state writes)."""
-        from .speculation import precompute
-
-        precompute(self._agent, synthesize)
-
-    def speculation_match(self, transcript: str) -> bytes | None:
-        """S1 serve gate: when the utterance maps to a prepared branch, arm the
-        injection (the engine's turn then skips the LLM) and return the cached
-        audio; None on any doubt — the normal path runs untouched."""
-        from .speculation import match
-
-        branch = match(self._agent, transcript)
-        if not branch:
-            return None
-        self._agent._injected_reply = {
-            "kind": branch["kind"],
-            "key": branch.get("key"),
-            "text": branch["text"],
-        }
-        self._last_injected_text = branch["text"]
-        return branch.get("audio") or None
-
-    def speculate_background_diagnosis(self) -> None:
-        """S2: a READ-ONLY telemetry refresh while the caller is busy — the
-        result is folded in at the next turn's start (never mid-turn)."""
+    def refresh_telemetry_next(self) -> None:
+        """A READ-ONLY telemetry refresh while the caller is busy — the result is folded
+        in at the next turn's start (never mid-turn)."""
         try:
-            from .react_agent import execute_tool
-
-            cid = self._agent.state.customer_id
-            if not cid or self._agent.state.case_closed:
+            state = self._state
+            cid = state.identity.customer_id
+            if not cid or state.closing.case_closed:
                 return
-            self._agent._bg_diagnosis = execute_tool("diagnose_connection", {"customer_id": cid})
+            from .tooling import telemetry
+
+            result = telemetry(state, self._runtime, mode="recheck", reason="background_refresh")
         except Exception:  # pragma: no cover - background best-effort
-            self._agent._bg_diagnosis = None
+            return
+        with self._inbox_lock:
+            self._inbox["bg_diagnosis"] = result.observation
+
+    def is_pending_answer(self, text: str) -> bool:
+        """Does `text` answer the evidence question that is currently out? (The
+        deterministic reader — used to tell a caller's answer from an echo.)"""
+        s = self._state
+        key = s.diagnosis.pending_evidence_key
+        if not key:
+            return False
+        from .evidence import read_pending_answer, spec_for
+
+        spec = spec_for((s.resolution.procedure or {}).get("verdict")) or {}
+        item = (spec.get("client") or {}).get(key)
+        return read_pending_answer(str(key), text, item) is not None
 
     def awaiting_caller(self) -> bool:
         """True while the call is open and a question/instruction is standing —
         the gate for the silence check-in (G3): 'Kaip sekasi?' only makes sense
         when the caller was asked to DO or ANSWER something."""
         try:
-            a = self._agent
-            return not a.state.case_closed and bool((a.state.last_question or "").strip())
+            s = self._state
+            return not s.closing.case_closed and bool((s.dialog.last_question or "").strip())
         except Exception:  # pragma: no cover
             return False
 
@@ -226,17 +277,19 @@ class AgentSession:
         """The agent's most recent spoken reply (echo reference for L3a) —
         falls back to the standing question when no reply is recorded yet."""
         try:
-            for m in reversed(self._agent.state.messages):
+            for m in reversed(self._state.messages):
                 if m.get("role") == "assistant" and (m.get("content") or "").strip():
                     return str(m["content"])
-            return self._agent.state.last_question or ""
+            return self._state.dialog.last_question or ""
         except Exception:  # pragma: no cover
             return ""
 
     def anchor_text(self) -> str:
         """The exact question to re-say after a swallowed backchannel turn."""
+        from .dialog_utils import anchor_text
+
         try:
-            return self._agent.anchor_text()
+            return anchor_text(self._state, self._runtime)
         except Exception:  # pragma: no cover
             return ""
 
@@ -247,11 +300,10 @@ class AgentSession:
         The first turn has no user input — the agent greets, then waits for the
         customer's problem. Voice/telephony speak this before listening.
         """
-        if self._use_graph:
-            return self._graph_reply(
-                self._graph.invoke(self._graph_input(None), self._graph_config)
-            )
-        return self._agent.run_until_response()
+        out = self._graph.invoke(self._graph_input(None), self._graph_config, context=self._runtime)
+        self._refresh_state()
+        self._emit_turn_plan()
+        return self._graph_reply(out)
 
     def handle_turn(self, text: str) -> str:
         """
@@ -266,11 +318,10 @@ class AgentSession:
         Returns:
             The agent's reply string.
         """
-        if self._use_graph:
-            return self._graph_reply(
-                self._graph.invoke(self._graph_input(text), self._graph_config)
-            )
-        return self._agent.run_until_response(text)
+        out = self._graph.invoke(self._graph_input(text), self._graph_config, context=self._runtime)
+        self._refresh_state()
+        self._emit_turn_plan()
+        return self._graph_reply(out)
 
     def handle_turn_stream(self, text: str):
         """Streaming variant of handle_turn (Pillar C3): a generator yielding the
@@ -279,51 +330,49 @@ class AgentSession:
 
         LangGraph stays the orchestrator — the graph nodes stream their tokens via
         the stream writer and `graph.stream(stream_mode="custom")` surfaces them.
-        Falls back to a single chunk (the full reply) when the graph is disabled.
         """
-        if not self._use_graph:
-            yield self._agent.run_until_response(text)
-            return
-        if self._engine_mode == "v2":
-            # The diagnosis stage is a SUBGRAPH in v2 — custom writer events only
-            # surface with subgraphs=True, which wraps every chunk in a
-            # (namespace, chunk) pair; unwrap so transports keep receiving raw
-            # tokens exactly like the legacy graph emitted them.
+        # The diagnosis stage is a SUBGRAPH — custom writer events only surface
+        # with subgraphs=True, which wraps every chunk in a (namespace, chunk)
+        # pair; unwrap so transports receive raw tokens.
+        try:
             for _ns, chunk in self._graph.stream(
-                self._graph_input(text), self._graph_config, stream_mode="custom", subgraphs=True
+                self._graph_input(text),
+                self._graph_config,
+                context=self._runtime,
+                stream_mode="custom",
+                subgraphs=True,
             ):
                 yield chunk
-            return
-        yield from self._graph.stream(
-            self._graph_input(text), self._graph_config, stream_mode="custom"
-        )
+        finally:
+            self._refresh_state()
+            self._emit_turn_plan()
 
     def request_cancel(self) -> None:
         """Barge-in (Phase 5 PR3): stop the running streaming turn — the engine's
         token loop closes the LLM stream and re-asks the interrupted question.
         Thread-safe; no-op when no turn is running."""
-        self._agent.request_cancel()
+        self._runtime.cancel.set()
 
     # --- Read-only views for transports / debug UIs ------------------------
     # Exposed as properties (not the agent itself) so callers depend on this
-    # surface, not on ReactAgent internals.
+    # surface, not on engine internals.
 
     @property
     def is_complete(self) -> bool:
         """Whether the conversation has ended."""
-        return self._agent.state.is_complete
+        return self._state.closing.is_complete
 
     @property
-    def state(self) -> AgentState:
-        """Current conversation state (customer info, history, flags)."""
-        return self._agent.state
+    def state(self) -> GraphState:
+        """The call state after the last turn (customer info, history, flags)."""
+        return self._state
 
     @property
     def config(self) -> AgentConfig:
         """The agent configuration in use (model, language, messages...)."""
-        return self._agent.config
+        return self._runtime.config
 
     @property
     def stats(self) -> dict[str, Any]:
         """Accumulated LLM statistics for this conversation."""
-        return self._agent.get_stats()
+        return self._runtime.llm_stats.to_dict()

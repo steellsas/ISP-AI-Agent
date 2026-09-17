@@ -18,6 +18,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from agent.contract import limits
+
 if TYPE_CHECKING:
     from .sessions import ManagedSession
 
@@ -82,15 +84,18 @@ def get_pipeline(ms: ManagedSession):
             transcript_filter=normalize_lt_numbers,
             noise_filter=is_asr_noise,
         )
+        # This call has a background thread, so the analyst reads there and the reply
+        # never waits for it (F-24).
+        ms.session.use_background_analyst()
     return ms.voice
 
 
 def synthesize_text(text: str) -> bytes:
     """Speak an arbitrary agent line (greeting) with the same TTS + LT address
     normalization the turn path uses."""
-    from agent.voice_pipeline import normalize_lt_address_speech
+    from agent.voice_pipeline import speech_text
 
-    return _build_tts().synthesize(normalize_lt_address_speech(text), language=_LANGUAGE)
+    return _build_tts().synthesize(speech_text(text), language=_LANGUAGE)
 
 
 def duplex_enabled() -> bool:
@@ -126,7 +131,7 @@ def run_voice_partial(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None
 
 
 def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
-    """Duplex-hearing 1 ŽINGSNIS (Andrius 2026-08-28) — OBSERVE ONLY: speech
+    """Duplex-hearing STEP 1 (Andrius 2026-08-28) — OBSERVE ONLY: speech
     spoken OVER the agent's voice is transcribed and echo-filtered against the
     agent's own words, then traced + shown in the transcript. The ENGINE never
     sees it — stage 2 will hand the non-echo residue to the fact ingest once
@@ -156,30 +161,24 @@ def run_overlay(ms: ManagedSession, audio: bytes) -> dict[str, Any] | None:
     # vocabulary): (a) an utterance that maps to the OPEN evidence key via
     # the deterministic reader is the CALLER'S ANSWER, whatever the overlap;
     # (b) 1-word utterances are never auto-echo (barge_in's own guard).
-    kind = "klientas"
+    kind = "caller"
     is_answer = False
     try:
-        engine = getattr(ms.session, "_agent", None)
-        key = getattr(engine, "_evidence_last_ask_key", None) if engine else None
-        if key:
-            from agent.evidence import read_pending_answer, spec_for
-
-            spec = spec_for((engine.state.resolution or {}).get("verdict")) or {}
-            item = (spec.get("client") or {}).get(key)
-            is_answer = read_pending_answer(str(key), text, item) is not None
+        pending = getattr(ms.session, "is_pending_answer", None)
+        is_answer = bool(pending(text)) if callable(pending) else False
     except Exception:  # pragma: no cover - the filter must never break
         pass
     if is_answer:
-        echo, kind = False, "atsakymas"
-    elif len(text.split()) >= 2 and sim >= 0.8:
-        echo, kind = True, "aidas"
+        echo, kind = False, "answer"
+    elif len(text.split()) >= 2 and sim >= limits.get("echo_overlap_threshold"):
+        echo, kind = True, "echo"
     else:
         echo = False
     took = round((time.perf_counter() - t0) * 1000)
     if not echo:
         # Stage 2: queue for the NEXT turn's engine hand-over (capped).
         notes = getattr(ms, "overlay_notes", None)
-        if notes is not None and len(notes) < 6:
+        if notes is not None and len(notes) < limits.get("overlay_notes_max"):
             notes.append(text)
     ms.session.tracer.emit("overlay", text=text, echo=echo, sim=sim, who=kind, ms=took)
     return {"type": "overlay", "text": text, "echo": echo, "sim": sim, "who": kind}
@@ -225,7 +224,7 @@ def run_voice_turn_stream(
 
             return classify_interruption(transcript, ms.session.last_spoken_text())
 
-    # Filler (live 2026-08-14: "spragos tarp klausimų" — tts_first 5–10 s is
+    # Filler (live 2026-08-14: "gaps between questions" — tts_first 5–10 s is
     # the LLM thinking): if no real audio is ready within VOICE_FILLER_AFTER_S,
     # speak the cached "Sekundėlę, tikrinu." cue. The delay keeps it away from
     # dropped noise/backchannel turns (they finish silently well under it).
@@ -248,15 +247,12 @@ def run_voice_turn_stream(
     # Default OFF (Andrius 2026-08-20: the canned cue reads as junk — natural
     # LLM speech only; the knob stays for experiments).
     if os.environ.get("VOICE_FILLER", "off").lower() == "on":
-        try:
-            delay = float(os.environ.get("VOICE_FILLER_AFTER_S", "1.2"))
-        except ValueError:
-            delay = 1.2
+        delay = limits.get("voice_filler_after_s")
         filler_timer = threading.Timer(delay, _maybe_filler)
         filler_timer.daemon = True
         filler_timer.start()
 
-    # P1b interrupt-ack (architektūros peržiūra 2026-08-26): the caller who CUT
+    # P1b interrupt-ack (architecture review 2026-08-26): the caller who CUT
     # the agent off expects an instant sign of being heard — when the real
     # reply is not ready within ~0.8 s, a short cached "Aha, girdžiu." goes out
     # first. Scoped to INTERRUPTED turns only (prev_cancelled), so normal turns
@@ -265,10 +261,14 @@ def run_voice_turn_stream(
         if got_audio.is_set() or ms.cancel.is_set():
             return
         try:
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
             ms.ack_count = getattr(ms, "ack_count", 0) + 1
-            text = phrase("interrupt_ack_1" if ms.ack_count % 2 else "interrupt_ack_2")
+            text = phrase(
+                "identification.interrupt_ack_1"
+                if ms.ack_count % 2
+                else "identification.interrupt_ack_2"
+            )
             fa = synthesize_text(text) if text else b""
             if fa and not got_audio.is_set():
                 pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
@@ -279,10 +279,7 @@ def run_voice_turn_stream(
 
     ack_timer = None
     if interruption is not None and os.environ.get("INTERRUPT_ACK", "on").lower() == "on":
-        try:
-            ack_delay = float(os.environ.get("INTERRUPT_ACK_AFTER_S", "0.8"))
-        except ValueError:
-            ack_delay = 0.8
+        ack_delay = limits.get("interrupt_ack_after_s")
         ack_timer = threading.Timer(ack_delay, _maybe_ack)
         ack_timer.daemon = True
         ack_timer.start()
@@ -319,9 +316,9 @@ def run_voice_turn_stream(
         logger.exception("voice turn failed — speaking fallback")
         try:
             ms.session.tracer.emit("error", where="voice_turn", detail=str(e)[:300])
-            from agent.identification import phrase
+            from agent.contract.locale import phrase
 
-            fallback = phrase("turn_error")
+            fallback = phrase("identification.turn_error")
             fb_audio = synthesize_text(fallback) if fallback else b""
             if fb_audio:
                 pipeline.last_turn_aligned = False  # a chunk with no sentence (D1)
@@ -346,30 +343,20 @@ def run_voice_turn_stream(
         "dropped": chunks == 0 and not ms.session.is_complete and not ms.cancel.is_set(),
         "error": turn_error,
     }
-    # S1+S2 speculation (2026-08-24): while the caller does the thing we just
-    # asked, a background thread prepares the likely next replies (branch
-    # cache: standalone LLM+TTS per candidate answer) and refreshes telemetry
-    # READ-ONLY; both fold in at the next turn.
-    if (
-        os.environ.get("SPECULATION", "on").lower() == "on"
-        and not payload.get("is_complete")
-        and not ms.cancel.is_set()
-        and not turn_error
-    ):
+    # While the caller does the thing we just asked, a background thread refreshes
+    # telemetry READ-ONLY and the analyst reads the call; both fold in at the next turn.
+    if not payload.get("is_complete") and not ms.cancel.is_set() and not turn_error:
 
-        def _speculate() -> None:
+        def _background() -> None:
             try:
-                ms.session.speculate_next(synthesize_text)
-                ms.session.speculate_background_diagnosis()
-                # W2: the quiet analyst reads the conversation in the same
-                # background window (advisory notes for the next turn).
+                ms.session.refresh_telemetry_next()
                 analyst = getattr(ms.session, "analyst_next", None)
                 if callable(analyst):
                     analyst()
             except Exception:  # pragma: no cover - background best-effort
-                logger.debug("speculation thread failed", exc_info=True)
+                logger.debug("background thread failed", exc_info=True)
 
-        threading.Thread(target=_speculate, daemon=True).start()
+        threading.Thread(target=_background, daemon=True).start()
     if os.environ.get("API_RECORD_AUDIO", "1") != "0":
         try:
             d = _record_dir(ms.session.session_id)
@@ -386,8 +373,8 @@ def run_voice_turn_stream(
 
 
 def _manifest(d: Path, side: str, filename: str, **extra: Any) -> None:
-    """Timeline entry for the replay bench (VOICE_PLAN: dviejų takelių įrašymas
-    su laiko manifestu) — best-effort append to manifest.jsonl."""
+    """Timeline entry for the replay bench (VOICE_PLAN: two-track recording
+    with a timing manifest) — best-effort append to manifest.jsonl."""
     import json
     import time
 

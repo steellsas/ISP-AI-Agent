@@ -1,50 +1,29 @@
 """
-ISP Customer Support Agent
-
-ReAct (Reasoning + Acting) pattern implementation for customer support.
+ISP Customer Support Agent.
 
 Usage:
-    from agent import ReactAgent
+    from agent import AgentSession
 
-    agent = ReactAgent(caller_phone="+37060012345")
-
-    # Get initial greeting
-    response = agent.run_until_response()
-    print(response)  # "Labas! Kuo galiu padėti?"
-
-    # Process customer message
-    response = agent.run_until_response("Neveikia internetas")
-    print(response)
-
-CLI Usage:
-    python -m src.agent.react_agent
+    session = AgentSession(caller_phone="+37060012345")
+    print(session.greeting())
+    print(session.handle_turn("Neveikia internetas"))
 """
 
 from .config import AgentConfig, get_config, update_config
-from .react_agent import ReactAgent, run_cli
+from .graph_v2 import GraphState
 from .session import AgentSession
-from .state import AgentState
-from .tools import REAL_TOOLS, execute_tool, get_tools_description
-
-# Backwards compatibility
-run_agent = run_cli
+from .tools import REAL_TOOLS, get_tools_description
 
 __all__ = [
     # Stable conversation entry point
     "AgentSession",
-    # Engine (used internally / for advanced callers)
-    "ReactAgent",
     # State
-    "AgentState",
+    "GraphState",
     # Config
     "AgentConfig",
     "get_config",
     "update_config",
     # Tools
     "REAL_TOOLS",
-    "execute_tool",
     "get_tools_description",
-    # CLI
-    "run_cli",
-    "run_agent",  # backwards compat
 ]

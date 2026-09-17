@@ -1,0 +1,145 @@
+# Demo scenarios for the dashboard's "Scenarijai" tab — who calls, what to say, what to expect.
+#
+# A scenario is data, not code: add or edit one here and reload the page.
+#   say:     the caller's lines in order (the card ticks them off as they are said)
+#   actions: what the tester does besides talking (a dashboard button, a branch to try)
+#   expect:  verdict — the diagnosis the call should reach (may be empty);
+#            outcome — the contact record's outcome (resolved, ticket, ticket_appended,
+#            informed_debt, informed_outage, abandoned, …)
+# Before a demo: DB reset (♻ DB) the same day — the outage ETA is +4 h from the reset.
+
+scenarios:
+  - id: debt
+    title: Skola — paslauga sustabdyta
+    phone: "+37060020101"
+    client: Tomas
+    address: Šiauliai, Tilžės g. 60-3
+    say: ["Neveikia internetas", "Taip", "Tomas", "O kiek tiksliai skolingas?", "Aišku, ačiū, viso gero"]
+    actions: ["Agentas pasako skolos sumą ir mėnesius; detalės — iš faktų, ne išgalvotos."]
+    expect: {verdict: billing_suspended, outcome: informed_debt}
+
+  - id: outage
+    title: Masinis gedimas — registruota avarija
+    phone: "+37060020102"
+    client: Rasa
+    address: Šiauliai, Dainų g. 5-5
+    say: ["Neveikia internetas", "Taip", "Rasa", "Aišku, ačiū, lauksiu"]
+    actions: ["Apie avariją — tik PO adreso patvirtinimo, su atstatymo laiku. Be tiketo."]
+    expect: {verdict: active_outage, outcome: informed_outage}
+
+  - id: node_fault
+    title: Mazgo gedimas (keli butai)
+    phone: "+37060030306"
+    client: Lina
+    address: Šiauliai, Vilties g. 17-2
+    say: ["Neveikia internetas", "Taip", "Lina", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
+    actions: ["Tikslaus laiko agentas nežada. Tiketas sukuriamas automatiškai."]
+    expect: {verdict: node_fault_unregistered, outcome: ticket}
+
+  - id: switch
+    title: Switch nepasiekiamas
+    phone: "+37060020103"
+    client: Egidijus
+    address: Šiauliai, Žemaitės g. 14-2
+    say: ["Neveikia internetas", "Taip", "Egidijus", "O kada sutvarkysit?", "Aišku, ačiū, viso gero"]
+    actions: ["Kaip mazgo gedimas: gedimas mūsų tinkle, tiketas automatiškai."]
+    expect: {verdict: switch_unreachable, outcome: ticket}
+
+  - id: link_down
+    title: Linija nutrūkusi iki buto
+    phone: "+37060020104"
+    client: Vilma
+    address: Šiauliai, S. Dariaus ir S. Girėno g. 25-45
+    say: ["Neveikia internetas", "Taip", "Vilma", "Taip, galiu prieiti", "Dega", "Nedega", "Perkišau", "Ne, neveikia", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    actions: ["Šaka: į „ar galite prieiti?“ atsakyk „Negaliu, ne namie“ → namų darbas be tiketo."]
+    expect: {verdict: link_down_local, outcome: ticket}
+
+  - id: crc
+    title: Pažeistas laidas (CRC klaidos)
+    phone: "+37060030305"
+    client: Marius
+    address: Šiauliai, Tilžės g. 62
+    say: ["Neveikia internetas", "Taip", "Marius", "Taip, galiu prieiti", "Perkišau, nepadėjo, laidas buvo kiek užlenktas", "Ne, neveikia", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    actions: ["Laidą perkišti tik routeryje; klaidos lieka → meistras vis tiek."]
+    expect: {verdict: crc_errors, outcome: ticket}
+
+  - id: dead_router
+    title: Miręs routeris
+    phone: "+37060012353"
+    client: Giedrius
+    address: Šiauliai, Vilniaus g. 29
+    say: ["Neveikia internetas", "Taip", "Giedrius", "Taip, galiu prieiti", "Jokia lemputė nedega", "Kitoje rozetėje irgi nedega", "Įkišau laidą į kompiuterį", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    actions: ["Kai agentas prašo įkišti laidą į kompiuterį — spausk 🔌 Kabelis.", "Šaka: „Negaliu dabar prieiti“ → namų darbas + perskambinimas."]
+    expect: {verdict: no_mac_observed, outcome: ticket}
+
+  - id: router_hung
+    title: Pakibęs routeris
+    phone: "+37060020112"
+    client: Paulius
+    address: Šiauliai, Vilniaus g. 33-2
+    say: ["Neveikia internetas visuose įrenginiuose", "Taip", "Paulius", "Taip, galiu prieiti", "Perkroviau, internetas atsirado", "Ne, ačiū, viso gero"]
+    actions: ["Kai agentas prašo perkrauti — spausk 🔄 Routeris, tada sakyk „Perkroviau“."]
+    expect: {verdict: router_hung, outcome: resolved}
+
+  - id: phone_only
+    title: Neveikia tik telefone
+    phone: "+37060020109"
+    client: Aldona
+    address: Ginkūnai, Žeimių g. 12-6
+    say: ["Neveikia internetas telefone", "Taip", "Aldona", "Kompiuteryje veikia", "Taip, įjungtas", "Taip, savo tinkle", "Jau veikia!", "Ne, ačiū, viso gero"]
+    actions: ["Šaka: „Niekur neveikia“ → perkrovimo kelias kaip pakibęs routeris."]
+    expect: {verdict: healthy_to_router, outcome: resolved}
+
+  - id: repeat_call
+    title: Pakartotinis skambutis — atviras tiketas
+    phone: "+37060030307"
+    client: Tomas
+    address: Šiauliai, Vilties g. 17-5
+    say: ["Laba diena, vis dar neveikia internetas, niekas neatvažiavo", "Taip", "Tomas", "Aišku, ačiū, viso gero"]
+    actions: ["Jokio naujo tiketo: pastaba prie seno ir jo būsena."]
+    expect: {verdict: open_ticket_exists, outcome: ticket_appended}
+
+  - id: billing_request
+    title: Sąskaitos klausimas
+    phone: "+37060020109"
+    client: Aldona
+    address: Ginkūnai, Žeimių g. 12-6
+    say: ["Laba diena, kodėl tokia didelė sąskaita?", "Taip", "Aldona", "Taip, tinka", "Po pietų", "Ačiū, viso gero"]
+    actions: ["Agentas nesigilina — registruoja klausimą atsakingam žmogui."]
+    expect: {verdict: "", outcome: ticket}
+
+  - id: debt_dispute
+    title: Ginčijama skola
+    phone: "+37060020101"
+    client: Petras (nuomininkas)
+    address: Šiauliai, Tilžės g. 60-3
+    say: ["Neveikia internetas", "Taip", "Petras, nuomininkas", "Kaip tai skola, aš sumokėjau", "Taip, užregistruokite", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
+    actions: ["Po skolos žinios nesutik — agentas pasiūlo registruoti klausimą."]
+    expect: {verdict: billing_suspended, outcome: ticket}
+
+  - id: tv_not_subscribed
+    title: TV gedimas, bet paslaugos nėra
+    phone: "+37060012353"
+    client: Giedrius
+    address: Šiauliai, Vilniaus g. 29
+    say: ["Laba diena, televizorius nerodo nė vieno kanalo", "Taip", "Giedrius", "Aišku, ačiū, viso gero"]
+    actions: ["Sutartyje TV nėra — agentas taip ir pasako, be patikros ir tiketo."]
+    expect: {verdict: service_not_subscribed, outcome: informed}
+
+  - id: iptv_over_internet
+    title: IPTV per sugedusį internetą
+    phone: "+37060020112"
+    client: Paulius
+    address: Šiauliai, Vilniaus g. 33-2
+    say: ["Laba diena, neveikia televizija", "Taip", "Paulius", "Visuose", "Taip, galiu prieiti", "Perkroviau", "Taip, lemputė mirksi, puslapiai atsidaro", "Taip, televizija rodo", "Ne, ačiū, viso gero"]
+    actions: ["Pirma taisomas internetas; pabaigoje agentas paklausia, ar TV rodo. Perkraunant — 🔄 Routeris."]
+    expect: {verdict: router_hung, outcome: resolved}
+
+  - id: unidentified_hangup
+    title: Neidentifikuotas — padeda ragelį
+    phone: "+37000000000"
+    client: nežinomas
+    address: —
+    say: ["Laba diena, neveikia internetas"]
+    actions: ["Po agento adreso klausimo spausk „Baigti“. Archyve: įrašas peržiūrai (hung_up)."]
+    expect: {verdict: "", outcome: abandoned}
