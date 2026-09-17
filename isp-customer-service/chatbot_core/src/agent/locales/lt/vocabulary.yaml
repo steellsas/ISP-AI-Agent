@@ -723,7 +723,7 @@ pending_answers:
       - "active"
       - ["aktyv", "veikia", "dega", "rodo", "taip", "yra"]
 
-# --- agent/closing_flow.py -------------------------------------------------------
+# --- agent/execute/say.py --------------------------------------------------------
 
 # When the agent's reply contains one of these, the call is over — end it (hang up)
 # no matter which path produced the goodbye. Kept to clear terminal farewells so a
@@ -770,7 +770,7 @@ barge_stop_tokens:
   - "netaip"
   - "nesupratau"
 
-# --- agent/ticket_flow.py --------------------------------------------------------
+# --- agent/decide/rules/ticket.py ------------------------------------------------
 
 # A ticket refusal that CARRIES solving content — the caller is refusing the
 # REGISTRATION, not the help.
@@ -857,7 +857,7 @@ name_stop_words:
 
 name_word: "[A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+"
 
-# --- agent/identification_flow.py ------------------------------------------------
+# --- agent/decide/rules/identification.py ----------------------------------------
 
 big_city_stems:
   - "vilni"
@@ -869,7 +869,7 @@ big_city_stems:
   - "alyt"
   - "marijampol"
 
-# --- agent/perception_flow.py ----------------------------------------------------
+# --- agent/perceive/side_topic.py ------------------------------------------------
 
 howto_marks:
   - "kaip "
@@ -957,7 +957,7 @@ closing_words: ["ne", "viskas", "ačiū", "aciu", "gerai", "jau", "tiek", "nieko
 # A question by its opening words (STT sticks '?' onto rising intonation).
 question_openers: ["kas ", "kaip ", "kam ", "kodėl", "kodel", "negi"]
 
-# --- agent/identification_flow.py ----------------------------------------------
+# --- agent/perceive/slots.py, decide/rules/identification.py, decide/rules/reply.py ---
 
 # An explicit street WORD wakes the address reader during account-code mode.
 street_words: ["gatv", " g.", "prospekt", "alėj", "alej", "aikšt"]
@@ -1001,7 +1001,7 @@ ticket_words: ["registr", "meistr"]
 # block 2: payment claims and follow-up asks were swallowed by the goodbye).
 inform_wants_more: ["klausim", "palauk", "dar ", "noriu", "minut", "sekund", "skol", "sumokėj", "sumokej", "apmokėj", "apmokej", "kiek", "kada", "anks", "neveik", "kain"]
 
-# --- agent/perception_flow.py --------------------------------------------------
+# --- agent/perceive/evidence.py, decide/rules/ticket.py, decide/rules/head.py ---
 
 # Confirming a volunteered, conclusion-changing fact ("taip, tikrai").
 fact_confirm_yes: ["taip", "tikrai", "jo", "aha", "sakiau"]

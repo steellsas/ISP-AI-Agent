@@ -81,7 +81,7 @@ def intent_service(problem: str | None) -> str | None:
 
 
 def problem_entry(problem: str | None) -> dict[str, Any]:
-    """The classification-catalog entry for a PROBLEM type (problems: section)."""
+    """The intent-catalog entry (knowledge/intents.yaml) for a PROBLEM type."""
     if not problem:
         return {}
     entry = (_catalog() or {}).get(problem)

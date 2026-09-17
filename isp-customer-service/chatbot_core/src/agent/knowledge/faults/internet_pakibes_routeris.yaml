@@ -45,10 +45,11 @@ evidence:
         one: answers_router_hung_fail_scope_one
   confirmed_when: []
   refuted_when: []
-# reikalinga — tiketo priežastis, kai perkrovimas NEatstato (ticket_flow /
-# TICKET_NEED_LT atitikmuo šiam gedimui).
+# ticket_need_key — tiketo priežastis, kai perkrovimas NEatstato (skaito
+# decide/rules/ticket.py `ticket_need` per evidence.fault_need šiam gedimui).
 ticket_need_key: "pack.router_hung.ticket_need"
-# Sprendimai pagal surinktus faktus — vykdo ŽINGSNIŲ MEDIS (tada:walker).
+# Sprendimai pagal surinktus faktus — vykdo procedūra (action: procedure,
+# decide/procedure.py).
 solutions:
 - when: [fail_scope=all]
   action: procedure
@@ -60,9 +61,9 @@ solutions:
   description_key: "pack.router_hung.solution.s2"
 steps:
 # Pirmas žingsnis = masto klausimas (2026-08-31 skambučio pamoka: pradinis
-# žingsnio hint'as turi SUTAPTI su solverio evidence klausimu — kitaip
-# naratorius perskaito instrukciją anksčiau už klausimą). Atsakymus skaito
-# LEDGER'is (fail_scope evidence, walker'is dar nevairuoja); on: čia tik
+# žingsnio hint'as turi SUTAPTI su evidence klausimu (decide/rules/evidence.py) —
+# kitaip naratorius perskaito instrukciją anksčiau už klausimą). Atsakymus skaito
+# LEDGER'is (fail_scope evidence, procedūra dar nevairuoja); on: čia tik
 # rodyklė, sprendimai sync'ina tą patį kelią.
 - id: rh_scope
   role: ask_scope

@@ -3,9 +3,9 @@ verdict: healthy_to_router
 meta:
   title: "No internet — the network works up to the router; the problem is on the customer side"
   domain: internet
-  # R4b (2026-08-13): pirmasis walker->solveris perjungimas. Analizės variklis
-  # klausinėja iš evidence žinių; sprendimo žingsnius vykdo žingsnių medis
-  # (sprendimai: tada:walker). Grąžinti į seną elgesį = ištrinti šią eilutę.
+  # R4b (2026-08-13): analizės variklis klausinėja iš evidence žinių
+  # (decide/rules/evidence.py); sprendimo žingsnius vykdo procedūra
+  # (solutions: action: procedure, decide/procedure.py).
 problem: internet_down
 playbook: troubleshooting/kliento_puse_internetas
 # The symptom the caller can see — asked when a recheck points here (D-05).
@@ -69,8 +69,9 @@ evidence:
       when: [fail_scope=all]
   confirmed_when: []
   refuted_when: []
-# Sprendimai pagal surinktus faktus — visi vykdomi ŽINGSNIŲ MEDŽIO (tada:walker):
-# solveris nustato KUR eiti, medis žino KAIP vesti (instrukcija + patikra).
+# Sprendimai pagal surinktus faktus — visi vykdomi procedūros (action: procedure,
+# decide/procedure.py): solveris nustato KUR eiti, procedūra žino KAIP vesti
+# (instrukcija + patikra).
 solutions:
 - when: [fail_scope=all]
   action: procedure

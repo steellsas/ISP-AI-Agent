@@ -10,7 +10,7 @@ solver_low_conf_max: 3              # this many low-confidence decisions in a ro
 solver_cycles_max: 3                # more turns than this on the same step -> bail out
 solver_internal_hops_max: 2         # silent actions in a row before a caller-facing action is forced
 solver_drive_max_turns: 14          # solver-driven turns before the gate is forced to bail out
-solver_drive_repeat_bailout: 2      # repeat/disambiguate streak that hands the turn back to the walker
+solver_drive_repeat_bailout: 2      # repeat/disambiguate streak that hands the turn back to the procedure runner
 solver_drive_repeat_nudge_at: 1     # repeat count that adds the "do not ask the same again" note
 solver_context_messages: 8          # recent messages in the solver context
 solver_context_journal_entries: 8   # walked-step journal entries in the solver context

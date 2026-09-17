@@ -8,7 +8,8 @@ Two seams:
   state and returns the full state as its update, so the checkpoint is the only
   state between nodes and between turns.
 
-Tool scopes live in tool_scopes.py (re-exported here for the nodes).
+No tool scopes here: the speaker's LLM turn runs without tools — the engine decides
+tool actions in decide/ (validated by decide/gate.py) and runs them in execute/.
 """
 
 from __future__ import annotations

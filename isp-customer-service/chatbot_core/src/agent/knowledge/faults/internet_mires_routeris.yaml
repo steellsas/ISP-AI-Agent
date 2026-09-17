@@ -13,14 +13,14 @@ confirm_key: "pack.no_mac_observed.confirm"
 # `klausimas` is the normal wording, `paprasciau` the simpler retry when the
 # answer yields no fact. Hypothesis status is computed from the ledger:
 # patvirtinta_kai (all hold) / paneigta_kai (any holds) -> paneigta_veda
-# syncs the walker so a pivot never rewinds the call.
+# syncs the procedure runner (decide/procedure.py) so a pivot never rewinds the call.
 evidence:
   client:
     # Kontekstinė anamnezė (DIALOGO_ETALONAS #2, 2026-09-03): atidarymo „kada
     # dingo? gal po audros?" NEBĖRA — klausimas gyvena ČIA, su telemetrijos
     # kontekstu (verdiktas: įrenginio linijoje nesimato → elektros dingimas /
     # laidų tvarkymas tampa diagnostiškai svarbus). Jei klientas jau minėjo
-    # (capture-first / anamnesis seed) — solveris nebeklausia.
+    # (capture-first / anamnesis seed) — decide/rules/evidence.py nebeklausia.
     recent_events:
       label_key: "pack.no_mac_observed.recent_events.label"
       value_label_keys:
@@ -39,7 +39,7 @@ evidence:
       step_role: check_lights
     device_present:
       goal: "the customer found the router (the box the internet cable goes into)"
-      step_role: check_lights   # B2: walker rodyklė (RAG/hint/tikslas), ne skaitytuvas
+      step_role: check_lights   # B2: procedūros rodyklė (RAG/hint/tikslas), ne skaitytuvas
       question_key: "pack.no_mac_observed.device_present.question"
       simpler_key: "pack.no_mac_observed.device_present.simpler"
       # patikslinimas — kai atsakymas buvo plikas „ne“ be objekto: įvardijami
@@ -99,7 +99,7 @@ evidence:
       # Tilto NESĖKMĖS kelias (2026-08-12): kabelis įkištas, o telemetrija
       # įrenginio nemato — tikrinama kompiuterio tinklo plokštė. `kada` gate
       # variklio automatiškai NIEKADA netenkinamas (klausimą užduoda tik
-      # tilto nesėkmės laiptai _drive_propose_fix viduje).
+      # tilto nesėkmės laiptai decide/rules/diagnosis.py bridge_fail_step).
       goal: "whether the computer's network (LAN) connection is active with the cable plugged in"
       question_key: "pack.no_mac_observed.lan_active.question"
       answers:
@@ -125,8 +125,9 @@ conclusion_key: "pack.no_mac_observed.conclusion"
 # šalutinis dalykas — paleisti internetą laikinai"). Meistras — ne pasirinkimas,
 # o pažadas; klientas renkasi tik laikiną internetą.
 offer_goal: "Say that because the router is broken you will register a technician — they will bring and connect a new one (this happens either way). Then offer: while they wait, we can temporarily run the internet through a computer — and ask whether they have a computer."
-# zingsnis — walker'io žingsnis, į kurį grįžtama, jei solveris nušalinamas
-# vidury sprendimo (bailout sync, 2026-08-11) — niekada ne į seną dr_intro.
+# step_role — procedūros žingsnis, į kurį grįžtama, jei solveris nušalinamas
+# vidury sprendimo (bailout sync decide/rules/diagnosis.py, 2026-08-11) — niekada
+# ne į seną dr_intro.
 solutions:
 - when: [has_computer=yes]
   action: bridge

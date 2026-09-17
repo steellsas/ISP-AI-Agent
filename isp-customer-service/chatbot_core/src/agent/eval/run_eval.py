@@ -1,27 +1,28 @@
 """
-Conversation eval harness — Golden Dataset (Phase 3.8 step 0).
+Conversation eval harness — scripted calls, hard-scored.
 
 Drives AgentSession TEXT-TO-TEXT through scripted CLIENT turns and HARD-SCORES the
-resulting conversation STATE + replies. The LLM only phrases; the verdict tree and
-step walker are deterministic given the scripted turns, so the state trajectory
-(verdict reached, disposition, steps) is stable enough to assert on — unlike the
-free-form reply text, which we only check for required/forbidden substrings.
+resulting conversation STATE + replies. The engine plans every turn deterministically
+(decide/: the policy rules, the procedure runner, the plan gate), so the state trajectory
+(verdict reached, disposition, the contact record) is stable enough to assert on — unlike
+the free-form reply text, which we only check for required/forbidden substrings.
 
-This is the safety net REQUIRED before any Phase 3.8 reasoning change lands (see
-docs/MASTANTIS_AGENTAS_SPEC.md). Scenarios flagged `known_bug` encode a bug we found
-in voice testing and are EXPECTED to fail now — they turn green once the fix lands,
-so a regression can never silently return.
+Run it before and after any behaviour change. A scenario flagged `known_bug` encodes a bug
+found in voice testing and is EXPECTED to fail until the fix lands (none today — the last
+one, X_dhcp_silent, was fixed in M4). The scenarios and every check are described in
+eval/README.md.
 
-Checks per scenario (only those present in `expect` are scored, except reply_len):
+Checks per scenario (only those present in `expect` are scored, except the always-on ones):
   - verdict_in    : the expected verdict reason appears at some point
-                    (state.hypothesis.cause / resolution.verdict across turns)
-  - disposition   : resolved | ticket | outage | inform | open | any
-  - record_outcome: the contact record's outcome (+ record_reason: unidentified_reason)
+                    (hypothesis cause / procedure verdict / network verdict across turns)
+  - disposition   : resolved | ticket | outage | inform | declined | open | any
                     (ticket = create_ticket ran; inform also accepts open/outage)
   - identified    : true/false — whether the call ended with a committed customer_id
   - reply_any     : at least ONE agent reply contains at least ONE listed substring
   - reply_none    : NO agent reply contains ANY listed substring (regression guard)
   - tool_used     : each listed tool_call actually ran (read from the session trace)
+  - record_outcome: the contact record's outcome (+ record_reason: unidentified_reason)
+  - contact_record: always on — exactly one conversations row for the call (D-14)
   - reply_len     : always on — longest reply <= MAX_REPLY_CHARS, average <= AVG_REPLY_CHARS
 
 Usage (needs LLM API keys in .env):
@@ -83,7 +84,7 @@ def _load_env() -> None:
 # --- DB rebuild — deterministic seed world, fresh per scenario --------------------
 # The bind/reset stubs MUTATE the DB, so scenarios must not leak state into each
 # other. Rebuilding per scenario is sub-second (pure sqlite3) and mirrors the manual
-# "perkrauk DB prieš MAC/tiltą" rule in docs/TESTAVIMO_SCENARIJUS.md.
+# "perkrauk DB prieš MAC/tiltą" rule in docs/archive/TESTAVIMO_SCENARIJUS.md.
 def _rebuild_db(attempts: int = 3) -> None:
     for script in ("scripts/setup_db.py", "scripts/seed_data.py"):
         last = None
