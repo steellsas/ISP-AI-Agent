@@ -69,6 +69,7 @@ class AgentSession:
         # handed to the NEXT turn through its graph input — no thread writes state.
         self._inbox: dict[str, Any] = {}
         self._inbox_lock = threading.Lock()
+        self._plans_emitted = 0
 
     def _graph_input(self, text: str | None) -> dict:
         """Shape one turn's graph input: a fresh turn scratch. The rest of the state
@@ -110,7 +111,9 @@ class AgentSession:
             plan = TurnPlan(owner=owner, rule="dialog.no_reply", say=Say(kind="none")).model_dump(
                 mode="json"
             )
-        self._runtime.tracer.emit("turn_plan", **plan)
+        # The greeting is turn 0; every caller turn after it is numbered in order.
+        self._runtime.tracer.emit("turn_plan", turn_index=self._plans_emitted, **plan)
+        self._plans_emitted += 1
 
     def _write_between_turns(self, write) -> None:
         """Run a write outside a turn — `write(state, rt)` on a copy of the

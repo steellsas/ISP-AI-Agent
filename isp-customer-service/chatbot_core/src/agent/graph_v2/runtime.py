@@ -13,6 +13,8 @@ Tool scopes live in tool_scopes.py (re-exported here for the nodes).
 
 from __future__ import annotations
 
+import functools
+import time
 from typing import Any
 
 from langgraph.config import get_stream_writer
@@ -95,6 +97,22 @@ def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply
         get_stream_writer()(reply)
     except Exception:  # outside a live stream (tests / .invoke) — text is in state
         pass
+
+
+def timed(name: str, node):
+    """A graph node that reports how long it ran (`graph_node` trace event) — the
+    dashboard's graph strip shows where a turn's time went."""
+
+    @functools.wraps(node)
+    def run(state, runtime):
+        started = time.perf_counter()
+        try:
+            return node(state, runtime)
+        finally:
+            ms = int((time.perf_counter() - started) * 1000)
+            runtime.context.tracer.emit("graph_node", node=name, ms=ms)
+
+    return run
 
 
 def node_update(state: GraphState, reply: str | None = None) -> dict[str, Any]:
