@@ -142,6 +142,8 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     if bp is not None:
         state.intake.boundary_problem = None
         state.intake.ask_problem_count = state.intake.ask_problem_count + 1
+        if not s.identity.customer_id:
+            s.closing.unidentified_reason = "not_a_customer"  # the contact record (D-14)
         rt.tracer.emit("decision", intent="problem_gate", action="boundary", value=bp)
         return problem_boundary_reply(bp) or phrase("identification.ask_problem")
     p_asks = state.intake.ask_problem_count
@@ -154,6 +156,8 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     if p_asks + 1 >= gate_max:
         s.closing.case_closed = True
         s.closing.closed_reason = "declined"
+        if not s.identity.customer_id:
+            s.closing.unidentified_reason = "not_a_customer"  # no problem of ours was named
         rt.tracer.emit("decision", intent="problem_gate", action="close")
         return phrase("identification.no_problem_goodbye")
     # 3) L2 — context classification against the file catalog. The LLM reads

@@ -65,6 +65,7 @@ def preflight_phone(state: Any, rt: Any) -> None:
         eta = first.get("estimated_resolution") or ""
         state.identity.held_outage = {
             "customer_id": result.get("customer_id"),
+            "outage_id": first.get("outage_id"),
             "street": first.get("street"),
             "eta": eta[11:16] if len(eta) >= 16 else eta,  # HH:MM, voice-friendly
             "description": first.get("description"),

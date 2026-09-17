@@ -206,6 +206,18 @@ CREATE TABLE IF NOT EXISTS conversations (
     summary TEXT,
     ticket_id TEXT,
     duration_seconds INTEGER,
+    -- The contact record (D-14): derived from the final state, never by an LLM.
+    -- outcome: resolved | informed_outage | informed_debt | informed | ticket |
+    --          ticket_appended | callback | declined | unidentified | abandoned | error
+    transport_end TEXT,          -- how the call ended: client_closed, ws_disconnect, expired, …
+    unidentified_reason TEXT,    -- address_not_found | not_a_customer | caller_refused | hung_up | stuck | technical_error
+    needs_review INTEGER NOT NULL DEFAULT 0,
+    review_reason TEXT,
+    intent TEXT,
+    verdict TEXT,
+    address_confirmed INTEGER NOT NULL DEFAULT 0,
+    outage_id TEXT,
+    audio_retention_until TEXT,  -- unidentified calls: the audio is deleted after this date
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE SET NULL,
     FOREIGN KEY (ticket_id) REFERENCES tickets(ticket_id) ON DELETE SET NULL
 );
@@ -214,6 +226,7 @@ CREATE INDEX idx_conversations_customer ON conversations(customer_id);
 CREATE INDEX idx_conversations_session ON conversations(session_id);
 CREATE INDEX idx_conversations_timestamp ON conversations(timestamp);
 CREATE INDEX idx_conversations_ticket ON conversations(ticket_id);
+CREATE INDEX idx_conversations_review ON conversations(needs_review);
 
 -- ============================================
 -- STREETS REFERENCE TABLE (for fuzzy matching)

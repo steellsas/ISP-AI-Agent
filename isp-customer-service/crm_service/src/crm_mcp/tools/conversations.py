@@ -31,6 +31,20 @@ def generate_conversation_id() -> str:
     return f"CONV{uuid.uuid4().hex[:8].upper()}"
 
 
+# The contact-record columns (D-14), written as given (trusted literal column names).
+RECORD_FIELDS = (
+    "transport_end",
+    "unidentified_reason",
+    "needs_review",
+    "review_reason",
+    "intent",
+    "verdict",
+    "address_confirmed",
+    "outage_id",
+    "audio_retention_until",
+)
+
+
 def save_conversation(db: DatabaseConnection, args: dict[str, Any]) -> dict[str, Any]:
     """
     Persist one call record.
@@ -43,6 +57,7 @@ def save_conversation(db: DatabaseConnection, args: dict[str, Any]) -> dict[str,
         summary:           the structured call summary dict (stored as JSON).
         ticket_id:         ticket filed this call, or None.
         duration_seconds:  call length if known, else None.
+        transport_end … audio_retention_until: the contact record (RECORD_FIELDS, D-14).
 
     Returns an envelope {success, conversation_id?} — never raises; a DB failure is
     logged and reported so it cannot interrupt call teardown.
@@ -68,36 +83,43 @@ def save_conversation(db: DatabaseConnection, args: dict[str, Any]) -> dict[str,
         logger.warning(f"conversation {session_id}: ticket {ticket_id} not found; storing NULL")
         ticket_id = None
 
-    conversation_id = generate_conversation_id()
+    record = {k: args.get(k) for k in RECORD_FIELDS}
+    record["needs_review"] = 1 if record.get("needs_review") else 0
+    record["address_confirmed"] = 1 if record.get("address_confirmed") else 0
     now = datetime.now().isoformat()
+    values = {
+        "customer_id": customer_id,
+        "timestamp": now,
+        "messages": json.dumps(messages, ensure_ascii=False),
+        "outcome": outcome,
+        "summary": json.dumps(summary, ensure_ascii=False) if summary is not None else None,
+        "ticket_id": ticket_id,
+        "duration_seconds": duration_seconds,
+        **record,
+    }
     try:
         with db.cursor() as cursor:
+            # One record per call: a second finalize of the same session updates it.
             cursor.execute(
-                """
-                INSERT INTO conversations (
-                    conversation_id,
-                    customer_id,
-                    session_id,
-                    timestamp,
-                    messages,
-                    outcome,
-                    summary,
-                    ticket_id,
-                    duration_seconds
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    conversation_id,
-                    customer_id,
-                    session_id,
-                    now,
-                    json.dumps(messages, ensure_ascii=False),
-                    outcome,
-                    json.dumps(summary, ensure_ascii=False) if summary is not None else None,
-                    ticket_id,
-                    duration_seconds,
-                ),
+                "SELECT conversation_id FROM conversations WHERE session_id = ?", (session_id,)
             )
+            row = cursor.fetchone()
+            if row:
+                conversation_id = dict(row)["conversation_id"]
+                values.pop("timestamp")
+                sets = ", ".join(f"{k} = ?" for k in values)
+                cursor.execute(
+                    f"UPDATE conversations SET {sets} WHERE conversation_id = ?",
+                    (*values.values(), conversation_id),
+                )
+            else:
+                conversation_id = generate_conversation_id()
+                cols = ["conversation_id", "session_id", *values]
+                cursor.execute(
+                    f"INSERT INTO conversations ({', '.join(cols)}) "
+                    f"VALUES ({', '.join('?' for _ in cols)})",
+                    (conversation_id, session_id, *values.values()),
+                )
         logger.info(f"Saved conversation {conversation_id} (session {session_id})")
         return {"success": True, "conversation_id": conversation_id}
     except Exception as e:

@@ -5,6 +5,7 @@ Packs build their procedure through module calls; the knowledge schema tests
 (test_knowledge_schema.py) guard the structure.
 """
 
+from agent.call_record.finalizer import build_call_summary, finalize
 from agent.faults import (
     _modules,
     build_strategy,
@@ -23,7 +24,6 @@ from agent.graph_v2.state import (
     TicketState,
     TurnScratch,
 )
-from agent.session_record import build_call_summary, end_session
 
 from tests.engine_fakes import as_call
 

@@ -1,5 +1,5 @@
 import pytest
-from agent.session_record import build_call_summary, end_session
+from agent.call_record.finalizer import build_call_summary, finalize
 
 from tests.tool_fakes import install_fake_tools
 
@@ -2207,7 +2207,7 @@ class TestTicketDialogue:
         # ticket, despite a promised registration. end_session now registers
         # from state with the interruption on the record.
         agent = self._agent_at_consent(monkeypatch)
-        end_session(agent.state, agent.runtime, outcome="client_closed")
+        finalize(agent.state, agent.runtime, transport_end="client_closed")
         assert agent.state.ticket.ticket_id
         assert agent.state.closing.closed_reason == "registered"
         with db_connection.cursor() as cur:
@@ -2222,7 +2222,7 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         agent.state.closing.case_closed = True
         agent.state.closing.closed_reason = "resolved"
-        end_session(agent.state, agent.runtime, outcome="client_closed")
+        finalize(agent.state, agent.runtime, transport_end="client_closed")
         assert agent.state.ticket.ticket_id is None
 
     def test_hangup_net_skips_when_line_is_healthy(self, db_connection, monkeypatch):
@@ -2234,14 +2234,14 @@ class TestTicketDialogue:
         install_fake_tools(
             monkeypatch, lambda name, args: json.dumps({"verdict": {"reason": "healthy_to_router"}})
         )
-        end_session(agent.state, agent.runtime, outcome="client_closed")
+        finalize(agent.state, agent.runtime, transport_end="client_closed")
         assert agent.state.ticket.ticket_id is None
         assert agent.state.closing.closed_reason == "resolved"
 
     def test_hangup_net_skips_on_recorded_fix(self, db_connection, monkeypatch):
         agent = self._agent_at_consent(monkeypatch)
         agent.state.resolution.procedure["telemetry_fixed"] = True
-        end_session(agent.state, agent.runtime, outcome="client_closed")
+        finalize(agent.state, agent.runtime, transport_end="client_closed")
         assert agent.state.ticket.ticket_id is None
         assert agent.state.closing.closed_reason == "resolved"
 
@@ -2249,7 +2249,7 @@ class TestTicketDialogue:
         agent = self._agent_at_consent(monkeypatch)
         # _agent_at_consent uses CUST009 whose seeded line still shows no_mac —
         # the real diagnose read confirms the fault persists -> ticket.
-        end_session(agent.state, agent.runtime, outcome="client_closed")
+        finalize(agent.state, agent.runtime, transport_end="client_closed")
         assert agent.state.ticket.ticket_id
         assert agent.state.closing.closed_reason == "registered"
 

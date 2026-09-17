@@ -1,27 +1,31 @@
-"""The end of a call: the hang-up safety net and the record it leaves behind.
+"""The end of a call (D-14): the hang-up safety net and the contact record it leaves.
 
-A call that ends mid-procedure with a promised-but-missing ticket registers it from
-state (nobody would follow up otherwise), then the summary — problem, verdict, ticket,
-outcome, LLM cost — is written to the conversations table. M6 replaces this with the
-finalizer that also writes contact records.
+Every end path — hang-up, disconnect, TTL, shutdown, eval — runs `finalize` once. A call
+that ends mid-procedure with a promised-but-missing ticket registers it from state
+(nobody would follow up otherwise); then the outcome is derived from the final state
+(`outcome.py`), and the record — outcome, review flag, intent, verdict, outage, ticket,
+summary, transcript — is written to the conversations table. How the transport ended is
+kept apart from the outcome (F-4).
 """
 
 from __future__ import annotations
 
 import logging
 
-from .contract.locale import phrase
-from .faults import role_of, verdict_flag
-from .graph_v2.state import GraphState
-from .runtime import AgentRuntime
-from .trace import tools_called_this_session, trace_note
+from ..contract.locale import phrase
+from ..faults import role_of, verdict_flag
+from ..graph_v2.state import GraphState
+from ..runtime import AgentRuntime
+from ..trace import tools_called_this_session, trace_note
 
 logger = logging.getLogger(__name__)
 
 
-def end_session(state: GraphState, rt: AgentRuntime, outcome: str | None = None) -> None:
-    """Emit session_end once (idempotent). Call when the conversation ends."""
-    from .executor_flow import register_ticket_from_state
+def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = None) -> None:
+    """Close the call once (idempotent): the hang-up net, the record, session_end.
+    `transport_end` says how the call ended (client_closed, ws_disconnect, expired,
+    server_shutdown, eval) — it never becomes the outcome."""
+    from ..executor_flow import register_ticket_from_state
 
     if rt.ended.is_set():
         return
@@ -55,7 +59,7 @@ def end_session(state: GraphState, rt: AgentRuntime, outcome: str | None = None)
         and not s.closing.case_closed
         and s.resolution.procedure is not None
     ):
-        from .resolution import get_strategy
+        from ..resolution import get_strategy
 
         # The line's CURRENT truth decides (2026-08-06): a caller who hung up
         # right after "veikia!" must NOT get a technician ticket (observed
@@ -65,7 +69,7 @@ def end_session(state: GraphState, rt: AgentRuntime, outcome: str | None = None)
         solved = bool(s.resolution.procedure.get("telemetry_fixed"))
         if not solved:
             try:
-                from .tooling import telemetry
+                from ..tooling import telemetry
 
                 d = telemetry(state, rt, mode="recheck", reason="hangup_net").data
                 reason = (d.get("verdict") or {}).get("reason")
@@ -88,14 +92,19 @@ def end_session(state: GraphState, rt: AgentRuntime, outcome: str | None = None)
             if s.ticket.ticket_id:
                 s.closing.closed_reason = "registered"
                 rt.tracer.emit("decision", intent="hangup_net", action="register")
-    # Structured OUTCOME of the call, built DETERMINISTICALLY from state (Phase 3.10):
-    # why they called, the cause + side, what ran, resolved?/ticket, who called. Emitted
-    # for the record/reports; DB persistence to the conversations table is a follow-up.
+    from .outcome import derive, outage_id
+
+    record = derive(state, technical_error=_technical_error(rt.tracer))
+    # Structured summary of the call, built DETERMINISTICALLY from state (Phase 3.10):
+    # why they called, the cause + side, what ran, resolved?/ticket, who called.
     summary = build_call_summary(state, rt)
+    summary.update(record.as_dict())
     rt.tracer.emit("call_summary", **summary)
     rt.tracer.emit(
         "session_end",
-        outcome=outcome or summary.get("outcome"),
+        outcome=record.outcome,
+        transport_end=transport_end,
+        needs_review=record.needs_review,
         customer_id=state.identity.customer_id,
         ticket_id=state.ticket.ticket_id,
         turn_count=state.dialog.turn_count,
@@ -103,33 +112,76 @@ def end_session(state: GraphState, rt: AgentRuntime, outcome: str | None = None)
         total_tokens=rt.llm_stats.total_tokens,
         total_cost=round(rt.llm_stats.total_cost, 5),
     )
-    # Persist the call record to the conversations table (Phase 3.10 slice 1b).
     # Best-effort at the seam: a DB failure must never break call teardown.
-    _persist_call_record(state, rt, summary, outcome)
+    _persist_call_record(state, rt, summary, record, transport_end, outage_id(state))
     # Write a human-readable transcript next to the JSONL, if supported.
     export = getattr(rt.tracer, "export_txt", None)
     if callable(export):
         export()
 
 
+def _technical_error(tracer) -> bool:
+    """A turn failed on a technical error (the voice turn fell over, an error-level note)."""
+    import json
+    from pathlib import Path
+
+    path = getattr(tracer, "path", None)
+    if not path:
+        return False
+    try:
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if '"error"' not in line:
+                continue
+            e = json.loads(line)
+            if e.get("type") == "error" and e.get("level", "error") == "error":
+                return True
+    except Exception:  # pragma: no cover - best-effort
+        return False
+    return False
+
+
 def _persist_call_record(
-    state: GraphState, rt: AgentRuntime, summary: dict, outcome: str | None
+    state: GraphState,
+    rt: AgentRuntime,
+    summary: dict,
+    record,
+    transport_end: str | None,
+    outage: str | None,
 ) -> None:
-    """Write one row to the conversations table: the structured summary + the
-    transcript, keyed by session. Sourced entirely from state; never raises."""
+    """Write the call's one row to the conversations table, keyed by session. Sourced
+    entirely from state; never raises."""
     session_id = getattr(rt.tracer, "session_id", None)
     if not session_id:
         return  # NullTracer / no session id -> nothing to key the record on
     try:
-        from .tools import save_call_record
+        from datetime import timedelta
 
+        from ..contract import limits
+        from ..tools import save_call_record
+
+        s = state
+        retention = None
+        if not s.identity.customer_id:
+            # Privacy (D-14): the audio of an unidentified caller is kept only so long.
+            days = limits.get("audio_retention_days_unidentified")
+            retention = (rt.clock() + timedelta(days=days)).date().isoformat()
         save_call_record(
             session_id,
-            customer_id=state.identity.customer_id,
-            messages=state.messages,
-            outcome=outcome or summary.get("outcome"),
+            customer_id=s.identity.customer_id,
+            messages=s.messages,
+            outcome=record.outcome,
             summary=summary,
-            ticket_id=state.ticket.ticket_id,
+            ticket_id=s.ticket.ticket_id or s.closing.appended_ticket_id,
+            duration_seconds=int((rt.clock() - rt.started_at).total_seconds()),
+            transport_end=transport_end,
+            unidentified_reason=record.unidentified_reason,
+            needs_review=record.needs_review,
+            review_reason=record.review_reason,
+            intent=s.intake.problem_type,
+            verdict=(s.diagnosis.verdicts.get("network") or {}).get("reason"),
+            address_confirmed=bool(s.identity.address_confirmed),
+            outage_id=outage,
+            audio_retention_until=retention,
         )
     except Exception as e:  # pragma: no cover - defensive
         trace_note(rt.tracer, state, "persist_call_record", f"failed: {e}", level="warn")
@@ -160,7 +212,7 @@ def build_call_summary(state: GraphState, rt: AgentRuntime) -> dict:
         ),
         "cause": cause,
         "side": net.get("side"),  # provider | customer | unclear
-        "outcome": s.closing.closed_reason,  # resolved | outage | declined | escalated | None
+        "closed_reason": s.closing.closed_reason,  # resolved | outage | declined | registered | None
         "resolved": s.closing.closed_reason == "resolved",
         "ticket_id": s.ticket.ticket_id,
         "actions": tools_called_this_session(rt.tracer),

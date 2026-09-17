@@ -15,7 +15,8 @@ Run: pytest tests/test_tracing.py -v
 import json
 
 import pytest
-from agent.session_record import build_call_summary, end_session
+from agent.call_record.finalizer import build_call_summary
+from agent.call_record.finalizer import finalize as finalize_call
 from agent.trace import tools_called_this_session, trace_tool_result
 
 
@@ -236,12 +237,14 @@ class TestEngineEmits:
         agent = self._agent(cap)
         cap.events.clear()
 
-        end_session(agent.state, agent.runtime, outcome="complete")
-        end_session(agent.state, agent.runtime, outcome="complete")  # second call is a no-op
+        finalize_call(agent.state, agent.runtime, transport_end="complete")
+        finalize_call(
+            agent.state, agent.runtime, transport_end="complete"
+        )  # second call is a no-op
 
         ends = [e for e in cap.events if e["type"] == "session_end"]
         assert len(ends) == 1
-        assert ends[0]["outcome"] == "complete"
+        assert ends[0]["transport_end"] == "complete"  # F-4: the transport is not the outcome
 
     def test_end_session_emits_call_summary_from_state(self, db_connection):
         """Phase 3.10: every call ends with a structured summary derived from state."""
@@ -255,7 +258,7 @@ class TestEngineEmits:
         agent.state.closing.closed_reason = "resolved"
         cap.events.clear()
 
-        end_session(agent.state, agent.runtime, outcome="complete")
+        finalize_call(agent.state, agent.runtime, transport_end="complete")
 
         summary = next(e for e in cap.events if e["type"] == "call_summary")
         assert summary["purpose"] == "internet_down"
@@ -264,6 +267,7 @@ class TestEngineEmits:
         assert summary["cause"] == "foreign_mac"
         assert summary["side"] == "customer"
         assert summary["outcome"] == "resolved"
+        assert summary["closed_reason"] == "resolved"
         assert summary["resolved"] is True
         # No real trace file behind the capture tracer -> no actions harvested.
         assert summary["actions"] == []
@@ -301,7 +305,7 @@ class TestEngineEmits:
         agent.state.messages = [{"role": "user", "content": "labas"}]
         agent.state.closing.closed_reason = "resolved"
 
-        end_session(agent.state, agent.runtime, outcome="resolved")
+        finalize_call(agent.state, agent.runtime, transport_end="resolved")
 
         with db_connection.cursor() as cur:
             cur.execute(

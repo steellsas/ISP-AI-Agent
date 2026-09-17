@@ -123,7 +123,7 @@ def _run(persona: dict) -> dict:
         turns += 1
 
     trace = session.tracer.path if hasattr(session.tracer, "path") else None
-    session.end_session(outcome="fuzz")
+    session.end_session(transport_end="fuzz")
     st = session.state  # after end_session: the hang-up net may close the case
     _close_db()
     tools = _tools_in_trace(trace)

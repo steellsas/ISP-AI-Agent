@@ -91,6 +91,8 @@ class AgentRuntime:
     llm_stats: LLMStats = field(default_factory=LLMStats)
     # Testable time (ETA, flap windows).
     clock: Callable[[], datetime] = field(default=_utc_now)
+    # When the call started (the contact record's duration).
+    started_at: datetime = field(default_factory=_utc_now)
 
 
 def new_call(

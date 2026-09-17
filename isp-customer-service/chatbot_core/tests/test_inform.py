@@ -373,9 +373,9 @@ class TestHomeworkFinale:
     def test_hangup_at_homework_closes_callback_no_ticket(self, db_connection):
         """F3: ragelis homework žingsnyje — callback, ne TKT."""
         agent = self._at_homework()
-        from agent.session_record import end_session
+        from agent.call_record.finalizer import finalize
 
-        end_session(agent.state, agent.runtime, outcome="client_closed")
+        finalize(agent.state, agent.runtime, transport_end="client_closed")
         assert agent.state.closing.closed_reason == "callback"
         assert agent.state.ticket.ticket_id is None
 

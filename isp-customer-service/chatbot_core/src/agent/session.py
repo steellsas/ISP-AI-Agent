@@ -24,11 +24,11 @@ import logging
 import threading
 from typing import Any
 
+from .call_record.finalizer import finalize
 from .config import AgentConfig
 from .delivery import apply_delivery, apply_overlay
 from .graph_v2 import GraphState, TurnScratch, build_graph
 from .runtime import new_call
-from .session_record import end_session
 
 logger = logging.getLogger(__name__)
 
@@ -133,14 +133,16 @@ class AgentSession:
         turn = out.get("turn")
         return turn.reply if turn is not None else None
 
-    def end_session(self, outcome: str | None = None) -> None:
+    def end_session(self, transport_end: str | None = None) -> None:
         """Mark the conversation finished (emits session_end to the trace).
 
         Idempotent. Transports call this when the call ends (voice hang-up, API
         delete, eval) so every conversation's trace is properly closed. The
         hang-up net and the call record run on the checkpointed state.
         """
-        self._write_between_turns(lambda state, rt: end_session(state, rt, outcome=outcome))
+        self._write_between_turns(
+            lambda state, rt: finalize(state, rt, transport_end=transport_end)
+        )
 
     @property
     def session_id(self) -> str:

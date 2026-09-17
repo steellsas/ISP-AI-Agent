@@ -317,8 +317,8 @@ class ClosingState(BaseModel):
     appended_ticket_id: str | None = None
     # A disputed debt (D-11): None | "asked" (the offer to register it is out) | "answered".
     debt_offer: str | None = None
-    # Why a call ended before the caller was identified ("stuck"); M6 turns it into a
-    # contact record that needs review.
+    # Why a call ended before the caller was identified ("stuck", "not_a_customer") —
+    # the contact record's unidentified_reason (D-14).
     unidentified_reason: str | None = None
 
 

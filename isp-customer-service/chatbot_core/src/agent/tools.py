@@ -1265,8 +1265,10 @@ def save_call_record(
     summary: dict | None = None,
     ticket_id: str | None = None,
     duration_seconds: int | None = None,
+    **record: object,
 ) -> dict:
-    """Persist one call record to the conversations table (Phase 3.10 slice 1b).
+    """Persist one call record to the conversations table (Phase 3.10 slice 1b); `record`
+    carries the contact-record columns (D-14).
 
     Called by the engine at session end, not by the model. Best-effort: a DB or
     import failure is swallowed to an error envelope so it can never break call
@@ -1287,6 +1289,7 @@ def save_call_record(
                 "summary": summary,
                 "ticket_id": ticket_id,
                 "duration_seconds": duration_seconds,
+                **record,
             },
         )
     except Exception as e:  # pragma: no cover - defensive; never break teardown

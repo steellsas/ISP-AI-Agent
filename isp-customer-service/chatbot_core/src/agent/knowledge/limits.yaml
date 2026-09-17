@@ -81,3 +81,6 @@ echo_overlap_threshold: 0.8         # token overlap with our own last words that
 barge_consent_max_words: 3          # a longer interruption is content, not a backchannel
 overlay_notes_max: 6                # overlay utterances queued for the next turn
 overlay_apply_max: 3                # overlay utterances handed to the engine per turn
+
+# --- Contact record (D-14) ---------------------------------------------------------------
+audio_retention_days_unidentified: {value: 30, env: AUDIO_RETENTION_DAYS_UNIDENTIFIED}  # privacy: days an unidentified caller's audio is kept
