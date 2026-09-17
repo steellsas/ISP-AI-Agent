@@ -1142,14 +1142,41 @@ class TestVoiceGuardsRound5:
         reply = scripted_words(agent.state, agent.runtime, "viso gero")
         assert reply and "tikrai norite baigti" in reply
 
-        turn_head(
-            agent.state, agent.runtime, "taip, baikim"
-        )  # confirmed -> contacts, then registration
+        turn_head(agent.state, agent.runtime, "taip, baikim")  # the end is confirmed
+        # F-27: registering is its own question, never read from "taip, baikim".
+        assert agent.state.ticket.stage is None
+        assert "užregistruoti gedimą" in scripted_words(agent.state, agent.runtime, "taip")
+        turn_head(agent.state, agent.runtime, "taip, užregistruokite")
         assert agent.state.ticket.stage == "phone"
         _complete_ticket_dialogue(agent)
         assert agent.state.closing.case_closed is True
         assert agent.state.closing.closed_reason == "registered"
         assert agent.state.ticket.ticket_id
+
+    def test_farewell_confirmed_without_a_ticket_closes(self, db_connection, monkeypatch):
+        """F-27: „Taip, baigiam" then „ne, nereikia" ends the call with no registration."""
+        import os
+
+        from agent.decide.rules.head import turn_head
+
+        from tests.calls import make_agent
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "off")
+        agent = make_agent("+37060012353")
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.intake.problem_type = "internet_down"
+        agent.state.resolution.procedure = {
+            "verdict": "no_mac_observed",
+            "step": "dr_lights",
+            "asked": True,
+        }
+
+        turn_head(agent.state, agent.runtime, "viso gero")
+        turn_head(agent.state, agent.runtime, "Taip, baigiam")
+        turn_head(agent.state, agent.runtime, "ne, nereikia")
+
+        assert agent.state.ticket.stage is None and not agent.state.ticket.ticket_id
+        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "declined"
 
     def test_farewell_mid_strategy_declined_resumes(self, db_connection, monkeypatch):
         import os

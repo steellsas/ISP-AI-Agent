@@ -1127,3 +1127,8 @@ playbook_step_heading: '^###\s+Žingsnis\s+\d+.*$'
 
 # A repeat caller saying the promised visit or call never happened (D-12 note kind).
 repeat_nobody_came: ["niekas neatvyko", "niekas neatvažiavo", "neatvažiavo", "nesusisiekė", "niekas nepaskambino", "niekas neskambino"]
+
+# --- agent/decide/rules/requests.py --------------------------------------------------------
+
+# The caller disputes the debt they were told about, or does not understand it (D-11).
+debt_dispute: ["nesutink", "neteising", "klaid", "sumokėjau", "sumokejau", "apmokėjau", "apmokejau", "mokėjau", "mokejau", "nesuprantu", "neaišku", "neaisku", "kodėl tiek", "kodel tiek", "kodėl tokia", "kodel tokia", "per didel", "ne mano skola", "neturiu skol", "iš kur skola", "is kur skola", "kaip tai skola"]

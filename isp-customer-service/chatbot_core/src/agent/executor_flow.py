@@ -189,13 +189,14 @@ def _register_request(state: Any, rt: Any) -> None:
     """A question for the responsible person: the caller's own words, typed by intent, with
     who to call and when — nothing interpreted (the agent does not know this area)."""
     from .contract.locale import phrase
+    from .intents import intent_for_ticket_type
     from .perceive.nlu import classify_problem
 
     s = state
     # What the caller said about it — not the "Taip" / name answers of identification.
     heard = s.intake.heard_utterances
     about = [u for u in heard if classify_problem(u) == s.intake.problem_type] or heard[:1]
-    said = " / ".join(about[:3]) or s.intake.problem_type or ""
+    said = s.ticket.request_note or " / ".join(about[:3]) or s.intake.problem_type or ""
     details = phrase(
         "ticket.details.request",
         type=phrase_or(f"request_label.{s.ticket.request_type}", s.ticket.request_type),
@@ -214,7 +215,9 @@ def _register_request(state: Any, rt: Any) -> None:
     args = {
         "customer_id": s.identity.customer_id,
         "ticket_type": s.ticket.request_type,
-        "problem_type": s.intake.problem_type,
+        # What the request is about (a disputed debt on an internet call is `billing`):
+        # a later call about the internet is not a repeat of it (D-12).
+        "problem_type": intent_for_ticket_type(s.ticket.request_type) or s.intake.problem_type,
         "problem_description": details,
     }
     try:

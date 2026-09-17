@@ -294,6 +294,30 @@
       }
     },
     {
+      "id": "R4_debt_dispute_request",
+      "phone": "+37060020101",
+      "desc": "M6 (D-11): klientas nesutinka su skola -> agentas neaiškina, siūlo užregistruoti klausimą atsakingam žmogui -> sutinka -> billing_request tiketas",
+      "turns": [
+        "Labas, neveikia internetas",
+        "Vakar pastebėjau",
+        "Taip",
+        "Petras, nuomininkas",
+        "Kaip tai skola, aš sumokėjau praeitą mėnesį",
+        "Taip, užregistruokite",
+        "Taip, tinka šis numeris",
+        "Bet kada",
+        "Ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "billing_suspended",
+        "disposition": "ticket",
+        "reply_any": [
+          "atsaking"
+        ],
+        "reply_none": []
+      }
+    },
+    {
       "id": "I1_ident_offer_clean_yes",
       "phone": "+37060020105",
       "desc": "F6: telefono adreso pasiūlymas -> švarus taip -> identifikuota (zone 2: naratoriaus perėjimas, šerdis „skambinate dėl“ privaloma)",

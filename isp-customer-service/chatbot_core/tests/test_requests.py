@@ -57,3 +57,42 @@ class TestTicketStatus:
 
         assert calls and calls[0][0] == "append_ticket_note" and calls[0][1]["ticket_id"] == "TKT9"
         assert state.closing.appended_ticket_id == "TKT9"
+
+
+class TestDebtDispute:
+    def _told_debt(self, make_state):
+        state = _caller(make_state, "internet_down", "neveikia internetas")
+        state.diagnosis.verdicts["network"] = {"reason": "billing_suspended"}
+        state.diagnosis.news_delivered = True
+        return state
+
+    def test_a_dispute_gets_the_offer_and_a_yes_starts_a_billing_request(
+        self, make_state, make_runtime
+    ):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+
+        assert requests.debt_offer_turn(state, rt, "Kaip tai skola, aš sumokėjau") == "ask"
+        assert requests.debt_offer_turn(state, rt, "Taip, užregistruokite") == "start"
+        assert state.ticket.request_type == "billing_request"
+        assert state.ticket.request_note == "Kaip tai skola, aš sumokėjau"
+
+    def test_agreeing_with_the_debt_is_no_dispute(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+
+        assert requests.debt_offer_turn(state, make_runtime(), "Aišku, ačiū, sumokėsiu") is None
+
+    def test_a_declined_offer_registers_nothing(self, make_state, make_runtime):
+        state = self._told_debt(make_state)
+        rt = make_runtime()
+        requests.debt_offer_turn(state, rt, "Nesutinku su ta skola")
+
+        assert requests.debt_offer_turn(state, rt, "Ne, nereikia") is None
+        assert state.ticket.request_type is None and state.ticket.stage is None
+
+
+def test_a_request_ticket_is_about_its_own_intent():
+    from agent.intents import intent_for_ticket_type
+
+    assert intent_for_ticket_type("billing_request") == "billing"
+    assert intent_for_ticket_type("fault_technician") is None

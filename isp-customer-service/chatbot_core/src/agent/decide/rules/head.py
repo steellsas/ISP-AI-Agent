@@ -23,6 +23,16 @@ from .identification import engine_resolve_from_slots, reopen_identification
 from .ticket import caller_owed, ticket_capture
 
 
+def _escalate_step(s: Any) -> Any:
+    """The active strategy's escalate step (the fault ticket), or None."""
+    if s.resolution.procedure is None:
+        return None
+    from ...resolution import get_strategy
+
+    strat = get_strategy(s.resolution.procedure.get("verdict"))
+    return strat.by_role("escalate") if strat else None
+
+
 def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
     """The answer to the end-confirm question (§5 row 4). True when it owns the rest of the turn head."""
     s = state
@@ -33,18 +43,29 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
 
     if state.dialog.end_confirm_pending and not s.closing.case_closed:
         state.dialog.end_confirm_pending = False
+        if state.dialog.end_ticket_offer:
+            # F-27: the answer to "register the fault?" — only a yes registers.
+            state.dialog.end_ticket_offer = False
+            esc = _escalate_step(s)
+            if detect_ticket_consent(user_input) == "yes" and esc is not None:
+                s.resolution.procedure["escalate_reason"] = "caller_ended_call"
+                begin_ticket_dialogue(state, rt, esc)  # contacts, then register+close
+                rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
+            else:
+                s.closing.case_closed = True
+                s.closing.closed_reason = "declined"
+                rt.tracer.emit("decision", intent="end_ticket_offer", action="close")
+            return True
         if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
             if s.resolution.procedure is not None:
-                from ...resolution import get_strategy
-
-                strat = get_strategy(s.resolution.procedure.get("verdict"))
-                esc = strat.by_role("escalate") if strat else None
-                s.resolution.procedure["escalate_reason"] = "caller_ended_call"
-                if esc is not None:
-                    begin_ticket_dialogue(state, rt, esc)  # contacts, then register+close
-                else:
-                    s.closing.case_closed = True
-                    s.closing.closed_reason = "declined"
+                if _escalate_step(s) is not None:
+                    # The end is confirmed; registering is its own question (F-27).
+                    state.dialog.end_confirm_pending = True
+                    state.dialog.end_ticket_offer = True
+                    rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
+                    return True
+                s.closing.case_closed = True
+                s.closing.closed_reason = "declined"
             else:
                 s.closing.case_closed = True
                 s.closing.closed_reason = "declined"

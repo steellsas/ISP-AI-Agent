@@ -280,6 +280,8 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         )
     # Farewell-mid-process clarify (any stage): ONE deterministic confirm question.
     if state.dialog.end_confirm_pending:
+        if state.dialog.end_ticket_offer:
+            return _words("dialog.end_offer_ticket", phrase("identification.end_offer_ticket"))
         return _words("dialog.confirm_end", phrase("identification.confirm_end"))
     # Uncorroborated bare "ne" tried to route the walker into ESCALATE — ask
     # the solve-or-register choice instead of crossing the one-way door
@@ -297,6 +299,16 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         clarify = negation_clarify_reply(state, rt, open_key)
         if clarify:
             return _words("diagnosis.negation_clarify", clarify)
+    # A disputed debt is offered to the responsible person, never explained (D-11) —
+    # „Kaip tai skola?" is an answer to our news, not an off-script question.
+    if s.identity.customer_id and not state.ticket.request_type and not s.closing.case_closed:
+        from .requests import debt_offer_turn
+
+        offer = debt_offer_turn(state, rt, user_input)
+        if offer == "ask":
+            return _words("inform.debt_offer", phrase("identification.debt_dispute_offer"))
+        if offer == "start":
+            return _words(*ticket_question_turn(state, rt))
     if (
         user_input
         and is_real_question(user_input)

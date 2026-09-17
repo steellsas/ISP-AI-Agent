@@ -61,6 +61,14 @@ def problem_entry(problem: str | None) -> dict[str, Any]:
     return entry if isinstance(entry, dict) else {}
 
 
+def intent_for_ticket_type(ticket_type: str | None) -> str | None:
+    """The intent a ticket type registers (billing_request → billing), or None."""
+    for name, entry in (_catalog() or {}).items():
+        if isinstance(entry, dict) and ticket_type and entry.get("ticket_type") == ticket_type:
+            return name
+    return None
+
+
 BOUNDARY_POLICIES = frozenset({"not_ours", "chat"})
 
 

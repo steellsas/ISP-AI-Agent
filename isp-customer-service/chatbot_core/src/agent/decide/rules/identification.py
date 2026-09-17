@@ -95,6 +95,7 @@ def reopen_identification(state: Any, rt: Any, user_input: str) -> None:
     state.diagnosis.news_delivered = False  # a new address may carry different news
     state.identity.result_pending = False
     state.dialog.end_confirm_pending = False
+    state.dialog.end_ticket_offer = False
     state.dialog.resume_hold_due = False
     state.resolution.bridge_bound = False  # a different account starts clean
     # Re-extract address parts from THIS utterance (the correction often carries

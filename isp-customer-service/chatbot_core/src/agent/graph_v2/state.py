@@ -252,6 +252,9 @@ class TicketState(BaseModel):
     # A request outside the agent's knowledge, registered for the responsible person as
     # this ticket type (billing_request, …) instead of a fault ticket (D-11).
     request_type: str | None = None
+    # What the caller said the request is about, when it is not the call's opening (a
+    # disputed debt) — the ticket carries these words.
+    request_note: str | None = None
 
 
 class DialogState(BaseModel):
@@ -282,6 +285,8 @@ class DialogState(BaseModel):
     active_question: ActiveQuestion | None = None
     # A farewell mid-process: the confirm question is out.
     end_confirm_pending: bool = False
+    # F-27: the end is confirmed and the second question — register the fault? — is out.
+    end_ticket_offer: bool = False
     # Hold the process one turn after a detour / re-anchor from the ledger next reply.
     resume_hold_due: bool = False
     resync_note: bool = False
@@ -310,6 +315,8 @@ class ClosingState(BaseModel):
     secondary_problems_asked: bool = False
     # A repeat call's note went onto this open ticket instead of a new one (D-12).
     appended_ticket_id: str | None = None
+    # A disputed debt (D-11): None | "asked" (the offer to register it is out) | "answered".
+    debt_offer: str | None = None
     # Why a call ended before the caller was identified ("stuck"); M6 turns it into a
     # contact record that needs review.
     unidentified_reason: str | None = None

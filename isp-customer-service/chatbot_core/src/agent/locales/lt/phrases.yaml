@@ -26,10 +26,15 @@ identification:
   echo_address: "Supratau — {address}."
   check_result: "Patikrinau ryšį iki jūsų buto. {news}"
   billing_extra: "Apmokėjus sąskaitą, paslauga bus įjungta."
+  # The caller disputes the debt or does not understand it (D-11): not explained — offered
+  # to the responsible person.
+  debt_dispute_offer: "Suprantu. Sąskaitų detalių aš nematau, bet galiu užregistruoti jūsų klausimą — atsakingas žmogus su jumis susisieks ir aptars skolą. Ar registruoti?"
   outage_eta: "Numatomas atstatymas iki {eta}."
   anything_else: "Ar dar kuo galiu padėti?"
   thanks: "Ačiū!"
-  confirm_end: "Ar tikrai norite baigti pokalbį? Jei norite, galiu užregistruoti gedimą, kad kolegos su jumis susisiektų."
+  confirm_end: "Ar tikrai norite baigti pokalbį?"
+  # F-27: asked only after the end is confirmed — one question per reply.
+  end_offer_ticket: "Gerai. Ar užregistruoti gedimą, kad kolegos su jumis susisiektų?"
   goodbye: "Ačiū, kad paskambinote. Geros dienos!"
   turn_error: "Atsiprašau, įvyko trikdis mano pusėje. Pakartokite, prašau, ką sakėte."
   ticket_intro: "Telefonu neišspręsim — {reason}. Registruoju meistrą."

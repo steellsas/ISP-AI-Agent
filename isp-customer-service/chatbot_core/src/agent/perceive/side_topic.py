@@ -26,7 +26,13 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
         due(state, "conflict") is not None
         or state.dialog.end_confirm_pending
         or state.dialog.resume_hold_due
+        or state.closing.debt_offer == "asked"
     ):
+        return False
+    # A disputed debt answers our own news — the debt offer owns it (D-11).
+    from ..decide.rules.requests import debt_dispute_due
+
+    if debt_dispute_due(state, user_input):
         return False
     # Ticket demand is NEVER a side topic (live 2026-08-13: "Išregistruoti
     # meistrą ir paleisti internetą…" got type=deviation and the side_topic
