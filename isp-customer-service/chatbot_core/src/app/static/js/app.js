@@ -1,7 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
 let sid=null, ws=null, playing=false;
-let totals={in:0,out:0,cost:0,turns:0};
 let audioCtx=null, micStream=null, micNode=null, micSrc=null, recording=false;
 let utter=[], speaking=false, silenceMs=0, speechMs=0, sampleRate=16000;
 // Pre-roll žiedas (2026-08-14): VAD garsą kaupė tik NUO slenksčio peržengimo,
@@ -39,20 +38,13 @@ function addMsg(cls, text){
   const d=document.createElement("div"); d.className="msg "+cls; d.textContent=text;
   $("chat").appendChild(d); $("chat").scrollTop=$("chat").scrollHeight;
 }
-function feed(cls, text){
-  const d=document.createElement("div"); d.className=cls; d.textContent=text;
-  const f=$("feed"); f.appendChild(d);
-  while(f.children.length>200) f.removeChild(f.firstChild);
-  f.scrollTop=f.scrollHeight;
-}
 function setLive(on){
   $("statusDot").className="dot"+(on?" live":"");
   for(const id of ["stop","send","text","mic","simPlug","simReboot"]) $(id).disabled=!on;
   $("start").disabled=on; $("phone").disabled=on;
 }
-function fmtUsd(v){ return "$"+v.toFixed(4); }
 
-/* ---------- event rendering (the brain panel) ---------- */
+/* ---------- events: the conversation here, everything else in Agento vidus (brain.js) ---------- */
 function onEvent(e){
   switch(e.type){
     case "user_turn": addMsg("user", e.text); break;
@@ -62,7 +54,7 @@ function onEvent(e){
       const last=msgs[msgs.length-1];
       if(last && e.unheard){
         const cut=document.createElement("div");
-        cut.style.cssText="opacity:.5;font-size:12px;font-style:italic";
+        cut.style.cssText="opacity:.6;font-size:11px;font-style:italic";
         cut.textContent=`⏹ nutraukta — klientas negirdėjo: "${e.unheard}"`;
         last.appendChild(cut);
       }
@@ -72,50 +64,15 @@ function onEvent(e){
       if(e.dropped) addMsg("note", `🎧 atmesta kaip triukšmas: "${e.raw}" (${e.ms} ms)`);
       else if(e.raw!==e.transcript) addMsg("note", `🎧 girdėta: "${e.raw}" → "${e.transcript}"`);
       break;
-    case "node": $("node").textContent=e.node; feed("t-node", `▶ NODE ${e.node}`); break;
-    case "scripted": feed("t-scripted","⚡ ENGINE scripted atsakymas"); break;
-    case "tool_call": feed("t-tool",`⚙️ ${e.name}(${JSON.stringify(e.args||{})})`); break;
-    case "tool_result": feed("t-tool",`   ↳ ok=${e.ok} ${e.ms??"?"} ms`); break;
-    case "rag": feed("t-rag",`📄 RAG ${e.doc} §${e.section} [${e.step}]`); break;
-    case "llm": feed("t-llm",`🧠 ${e.model} in=${e.input_tokens} out=${e.output_tokens} ${e.latency_ms} ms`); break;
-    case "decision": feed("t-dec",`❓ ${e.intent||""} ${e.action||""} ${e.from_step??""}${e.to?"→"+e.to:""}`); break;
-    case "classify": feed("t-dec",`~ ${e.detector}→${e.label} (${e.routed_by||"?"})`); break;
-    case "verdict": feed("t-dec",`◈ VERDICT ${e.group||""} ${e.reason||""}`); break;
-    case "voice_latency":
-      $("turnKv").insertAdjacentHTML("beforeend",
-        `<span>🎤 ASR <b>${e.asr_ms}</b> ms</span><span>🧠 agent <b>${e.agent_ms}</b> ms</span>`+
-        `<span>🔊 TTS <b>${e.tts_ms}</b> ms</span><span>Σ <b>${e.total_ms}</b> ms</span>`);
-      break;
-    case "turn_summary": renderTurn(e); break;
-    case "barge_in": feed("t-dec","⏹ BARGE-IN — klientas pertraukė"); break;
     case "session_end": addMsg("note","— skambutis baigtas —"); break;
   }
-}
-function renderTurn(s){
-  totals.in+=s.input_tokens||0; totals.out+=s.output_tokens||0;
-  totals.cost+=s.cost_usd||0; totals.turns+=1;
-  const chip=$("engineChip");
-  chip.style.display="inline-block";
-  chip.className="chip "+(s.engine==="scripted"?"engine":"llm");
-  chip.textContent=s.engine==="scripted"?"DETERMINISTINIS VARIKLIS":"LLM";
-  $("turnKv").innerHTML=
-    `<span>node: <b>${(s.nodes||[]).join("→")||"—"}</b></span>`+
-    `<span>⏱️ <b>${s.latency_ms}</b> ms</span>`+
-    `<span>tools: <b>${(s.tools||[]).map(t=>t.name).join(", ")||"—"}</b></span>`+
-    `<span>tokenai: <b>${s.input_tokens}/${s.output_tokens}</b></span>`+
-    `<span>kaina: <b>${fmtUsd(s.cost_usd||0)}</b></span>`;
-  $("totals").innerHTML=
-    `<span>turn'ai: <b>${totals.turns}</b></span>`+
-    `<span>tokenai: <b>${totals.in}/${totals.out}</b></span>`+
-    `<span>kaina: <b>${fmtUsd(totals.cost)}</b></span>`;
+  Brain.onEvent(e);
 }
 
 /* ---------- call lifecycle ---------- */
 function resetUI(){
-  $("chat").innerHTML=""; $("feed").innerHTML="";
-  $("node").textContent="—"; $("engineChip").style.display="none";
-  $("turnKv").textContent="—"; $("totals").textContent="—";
-  totals={in:0,out:0,cost:0,turns:0};
+  $("chat").innerHTML="";
+  Brain.reset();
 }
 async function teardown(){
   stopMic(); stopAudio();
@@ -150,13 +107,8 @@ $("start").onclick = async () => {
     ws.onmessage = m => {
       if(m.data instanceof ArrayBuffer){ enqueueAudio(m.data); return; }
       const e = JSON.parse(m.data);
-      if(e.type==="voice_turn_done"){
-        if(e.ttfa_ms!=null)
-          $("turnKv").insertAdjacentHTML("beforeend",
-            `<span>⚡ TTFA <b>${e.ttfa_ms}</b> ms</span><span>🔊 ${e.chunks} sak.</span>`);
-        return;
-      }
-      if(e.type==="turn_start"){ turnPlayed=0; return; } // D1: skaitiklis per turn'ą
+      if(e.type==="voice_turn_done"){ Brain.voiceDone(e); return; }
+      if(e.type==="turn_start"){ turnPlayed=0; Brain.turnStart(); return; } // D1: skaitiklis per turn'ą
       if(e.type==="call_ended"){ // pokalbis baigtas — mikrofonas nebeklauso
         stopMic();
         addMsg("note","📞 pokalbis baigtas");
@@ -514,7 +466,7 @@ async function loadArchive(){
       `<td>${c.needs_review?"⚠ "+(c.review_reason||""):"—"}</td>`+
       `<td>${c.ticket_id||"—"}</td><td>${dur}</td></tr>`;
   }).join("");
-  $("archRows").innerHTML = rows || `<tr><td colspan="8" style="color:var(--dim)">įrašų nėra</td></tr>`;
+  $("archRows").innerHTML = rows || `<tr><td colspan="8" class="muted">įrašų nėra</td></tr>`;
   for(const tr of $("archRows").querySelectorAll("tr[data-sid]"))
     tr.onclick = () => openCall(tr.dataset.sid);
 }
@@ -545,10 +497,7 @@ async function openCall(sid2){
   }
   $("callDetail").classList.add("open");
 }
-$("archToggle").onclick = () => {
-  const open = $("archive").classList.toggle("open");
-  if(open) loadArchive();
-};
+document.addEventListener("tab", ev => { if(ev.detail==="arch") loadArchive(); });
 $("archRefresh").onclick = loadArchive;
 $("archReview").onchange = loadArchive;
 $("detClose").onclick = () => $("callDetail").classList.remove("open");

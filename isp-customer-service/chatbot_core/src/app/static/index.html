@@ -8,120 +8,145 @@
 </head>
 <body>
 <header>
-  <h1>📞 ISP AI Agent</h1>
-  <div class="dot" id="statusDot"></div>
-  <input type="text" id="phone" value="+37060020105" size="14" title="Skambinančiojo numeris">
-  <button id="start">Skambinti</button>
+  <h1>ISP agentas</h1>
+  <nav id="tabs">
+    <button class="tab active" data-tab="test">Testavimas</button>
+    <button class="tab" data-tab="scen">Scenarijai</button>
+    <button class="tab" data-tab="arch">Archyvas</button>
+  </nav>
+  <span class="grow"></span>
+  <select id="scenPick" title="Scenarijus"><option value="">— scenarijus —</option></select>
+  <div class="dot" id="statusDot" title="Skambučio būsena"></div>
+  <input type="text" id="phone" value="+37060020105" size="13" title="Skambinančiojo numeris">
+  <button id="start" class="primary">Skambinti</button>
   <button id="stop" class="danger" disabled>Baigti</button>
-  <label style="color:var(--dim);font-size:12px;display:flex;align-items:center;gap:4px">
-    <input type="checkbox" id="voiceOn" checked> balsas
-  </label>
-  <button id="dbReset" class="ghost" title="Atstatyti demo DB į pradinę būseną (tiketai, MAC, statusai)">♻️ DB</button>
-  <button id="simPlug" class="ghost" disabled title="Imituoti, kad klientas įkišo kabelį į kompiuterį — linijoje atsiranda nepririštas įrenginys">🔌 Įkišti kabelį</button>
-  <button id="simReboot" class="ghost" disabled title="Imituoti, kad klientas perkrovė routerį iš maitinimo — portas mirkteli ir srautas atsistato. Nepaspaudus, o pasakius „perkroviau“, agentas matys, kad įrenginys nebuvo dingęs (perkrautas ne tas)">🔄 Perkrauti routerį</button>
-  <button id="cfgToggle" class="ghost" title="Nustatymai">⚙️</button>
-  <span id="sid"></span>
+  <label class="check"><input type="checkbox" id="voiceOn" checked> balsas</label>
+  <button id="dbReset" class="ghost" title="Atstatyti demo DB į pradinę būseną (tiketai, MAC, statusai)">♻ DB</button>
+  <button id="simPlug" class="ghost" disabled title="Imituoti, kad klientas įkišo kabelį į kompiuterį — linijoje atsiranda nepririštas įrenginys">🔌 Kabelis</button>
+  <button id="simReboot" class="ghost" disabled title="Imituoti, kad klientas perkrovė routerį iš maitinimo — portas mirkteli ir srautas atsistato. Nepaspaudus, o pasakius „perkroviau“, agentas matys, kad įrenginys nebuvo dingęs">🔄 Routeris</button>
+  <button id="cfgToggle" class="ghost" title="Nustatymai">⚙</button>
 </header>
-<main>
-  <section id="left">
-    <div class="zone-title">🗣️ Pokalbis realiu laiku</div>
-    <div id="chat"></div>
-    <div id="controls">
-      <button id="mic" class="ghost" disabled title="Mikrofonas">🎤</button>
-      <div id="vu"><div></div></div>
-      <input type="text" id="text" placeholder="…arba rašykite tekstu" disabled>
-      <button id="send" disabled>Siųsti</button>
+
+<main id="pane-test" class="pane active">
+  <section id="left" class="col">
+    <div class="block" id="blk-scenario" data-block="scenario">
+      <div class="block-h"><span>Scenarijus: ką sakyti</span><button class="fold" title="Suskleisti">▾</button></div>
+      <div class="block-b" id="scenCard"><div class="muted">Pasirinkite scenarijų viršuje arba skirtuke „Scenarijai“.</div></div>
     </div>
-    <div id="partialLine" style="font-size:12px;opacity:.55;min-height:16px;padding:2px 8px;font-style:italic"></div>
+    <div class="hsplit" data-split="scenario"></div>
+    <div class="block grow" id="blk-chat" data-block="chat">
+      <div class="block-h"><span>Pokalbis</span><span class="muted" id="sid"></span><button class="fold" title="Suskleisti">▾</button></div>
+      <div class="block-b chatwrap">
+        <div id="chat"></div>
+        <div id="partialLine"></div>
+        <div id="controls">
+          <button id="mic" class="ghost" disabled title="Mikrofonas">🎤</button>
+          <div id="vu"><div></div></div>
+          <input type="text" id="text" placeholder="…arba rašykite tekstu" disabled>
+          <button id="send" disabled>Siųsti</button>
+        </div>
+      </div>
+    </div>
   </section>
-  <section id="right">
-    <div class="zone-title">🧠 Agento vidus (gyvai)</div>
-    <div id="brain">
-      <div class="card">
-        <h3>Aktyvus node</h3>
-        <span class="badge" id="node">—</span>
-        <span class="chip" id="engineChip" style="display:none"></span>
+  <div class="vsplit" data-split="left"></div>
+  <section id="right" class="col">
+    <div class="block" id="blk-graph" data-block="graph">
+      <div class="block-h"><span>Agento vidus — ėjimo kelias</span><span class="muted" id="totals"></span><button class="fold" title="Suskleisti">▾</button></div>
+      <div class="block-b"><div id="graph"></div></div>
+    </div>
+    <div class="block" id="blk-cards" data-block="cards">
+      <div class="block-h"><span>Ėjimo planas ir būsena</span><button class="fold" title="Suskleisti">▾</button></div>
+      <div class="block-b cards">
+        <div class="card" id="planCard"><div class="muted">Ėjimo planas atsiras po pirmo kliento sakinio.</div></div>
+        <div class="card" id="stateCard"><div class="muted">Būsena — kas žinoma apie skambutį.</div></div>
       </div>
-      <div class="card">
-        <h3>Paskutinis turn</h3>
-        <div class="kv" id="turnKv">—</div>
+    </div>
+    <div class="hsplit" data-split="cards"></div>
+    <div class="block grow" id="blk-timeline" data-block="timeline">
+      <div class="block-h">
+        <span>Įvykiai</span>
+        <span class="filters" id="filters">
+          <label><input type="checkbox" data-f="decide" checked> sprendimai</label>
+          <label><input type="checkbox" data-f="llm" checked> LLM</label>
+          <label><input type="checkbox" data-f="tool" checked> įrankiai</label>
+          <label><input type="checkbox" data-f="voice" checked> ASR/TTS</label>
+          <label><input type="checkbox" data-f="graph"> grafas</label>
+        </span>
+        <button class="fold" title="Suskleisti">▾</button>
       </div>
-      <div class="card">
-        <h3>Skambučio suma</h3>
-        <div class="kv" id="totals">—</div>
-      </div>
-      <div class="card">
-        <h3>Įvykiai</h3>
-        <div id="feed"></div>
-      </div>
+      <div class="block-b"><div id="timeline"></div></div>
     </div>
   </section>
 </main>
-<footer>
-  <button id="archToggle" class="ghost">📜 Archyvas</button>
-  <span>Half-duplex (barge-in Phase 5): kalbėkite, kai agentas tyli.</span>
-</footer>
-<section id="archive">
-  <div class="zone-title">📜 Praėję skambučiai
-    <button id="archRefresh" class="linkish" style="margin-left:10px">atnaujinti</button>
-    <label style="margin-left:14px; font-size:12px; color:var(--dim)">
-      <input type="checkbox" id="archReview"> tik peržiūrai</label>
+
+<main id="pane-scen" class="pane">
+  <div class="page">
+    <div class="page-h"><h2>Demo scenarijai</h2><span class="muted">▶ užpildo numerį ir atidaro „Testavimas“ su scenarijumi.</span></div>
+    <div id="scenList"><div class="muted">Kraunama…</div></div>
   </div>
-  <table>
-    <thead><tr><th>Laikas</th><th>Klientas</th><th>Problema</th><th>Priežastis</th>
-      <th>Baigtis</th><th>Peržiūra</th><th>Tiketas</th><th>Trukmė</th></tr></thead>
-    <tbody id="archRows"></tbody>
-  </table>
-  <div id="callDetail">
-    <div style="display:flex; align-items:center; gap:12px">
-      <b id="detTitle"></b>
-      <span class="kv" id="detStats"></span>
-      <a id="detExport" class="linkish" download>⬇ JSON</a>
-      <button id="detClose" class="linkish">užverti</button>
+</main>
+
+<main id="pane-arch" class="pane">
+  <div class="page">
+    <div class="page-h">
+      <h2>Praėję skambučiai</h2>
+      <button id="archRefresh" class="ghost">atnaujinti</button>
+      <label class="check"><input type="checkbox" id="archReview"> tik peržiūrai</label>
     </div>
-    <div class="cols">
-      <div>
-        <h3 style="font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px">Transkriptas + garso įrašai</h3>
-        <div id="detTranscript"></div>
-        <div id="detAudio"></div>
+    <table class="grid">
+      <thead><tr><th>Laikas</th><th>Klientas</th><th>Problema</th><th>Priežastis</th>
+        <th>Baigtis</th><th>Peržiūra</th><th>Tiketas</th><th>Trukmė</th></tr></thead>
+      <tbody id="archRows"></tbody>
+    </table>
+    <div id="callDetail">
+      <div class="page-h">
+        <b id="detTitle"></b>
+        <span class="muted" id="detStats"></span>
+        <a id="detExport" class="linkish" download>⬇ JSON</a>
+        <button id="detClose" class="ghost">užverti</button>
       </div>
-      <div>
-        <h3 style="font-size:11px;color:var(--dim);text-transform:uppercase;margin-bottom:6px">Įvykiai (trace)</h3>
-        <div id="detFeed"></div>
+      <div class="detcols">
+        <div>
+          <div class="sub">Transkriptas ir garso įrašai</div>
+          <div id="detTranscript"></div>
+          <div id="detAudio"></div>
+        </div>
+        <div>
+          <div class="sub">Įvykiai (trace)</div>
+          <div id="detFeed"></div>
+        </div>
       </div>
     </div>
   </div>
-</section>
+</main>
+
 <div id="cfgOverlay">
   <div id="cfgBox">
-    <h2>⚙️ Nustatymai</h2>
+    <h2>Nustatymai</h2>
     <div class="note">Serverio nustatymai galioja pažymėta apimtimi; išsaugomi ir po
       serverio perkrovimo. Prieš viešą talpinimą šis puslapis bus po admin prisijungimu.</div>
     <div id="cfgServer"></div>
-    <h2 style="margin-top:14px">🎤 Mikrofonas (šios naršyklės)</h2>
-    <div class="cfgRow">
-      <label>Jautrumas (RMS slenkstis)</label>
-      <input type="number" id="cfgMicThr" step="0.002" min="0.004" max="0.05">
-    </div>
-    <div class="cfgRow">
-      <label>Tylos pauzė iki išsiuntimo (ms)</label>
-      <input type="number" id="cfgMicSil" step="100" min="400" max="2500">
-    </div>
-    <div class="cfgRow">
-      <label>Barge-in (galima pertraukti agentą)</label>
-      <input type="checkbox" id="cfgBargeOn">
-    </div>
-    <div class="cfgRow">
-      <label>Pertraukimo slenkstis (ms kalbos)</label>
-      <input type="number" id="cfgBargeMs" step="100" min="300" max="2000">
-    </div>
+    <h2 style="margin-top:14px">Mikrofonas (šios naršyklės)</h2>
+    <div class="cfgRow"><label>Jautrumas (RMS slenkstis)</label>
+      <input type="number" id="cfgMicThr" step="0.002" min="0.004" max="0.05"></div>
+    <div class="cfgRow"><label>Tylos pauzė iki išsiuntimo (ms)</label>
+      <input type="number" id="cfgMicSil" step="100" min="400" max="2500"></div>
+    <div class="cfgRow"><label>Barge-in (galima pertraukti agentą)</label>
+      <input type="checkbox" id="cfgBargeOn"></div>
+    <div class="cfgRow"><label>Pertraukimo slenkstis (ms kalbos)</label>
+      <input type="number" id="cfgBargeMs" step="100" min="300" max="2000"></div>
+    <div class="cfgRow"><label>Išdėstymas</label>
+      <button id="layoutReset" class="ghost">atstatyti skydelių dydžius</button></div>
     <div id="cfgActions">
-      <button id="cfgSave">Išsaugoti</button>
+      <button id="cfgSave" class="primary">Išsaugoti</button>
       <button id="cfgClose" class="ghost">Užverti</button>
       <span id="cfgStatus"></span>
     </div>
   </div>
 </div>
+<!-- Agento vidus: layout.js (skirtukai, skydeliai), brain.js (ėjimai), app.js (skambutis, balsas) -->
+<script src="/static/js/layout.js?v={{v}}"></script>
+<script src="/static/js/brain.js?v={{v}}"></script>
 <script src="/static/js/app.js?v={{v}}"></script>
 </body>
 </html>
