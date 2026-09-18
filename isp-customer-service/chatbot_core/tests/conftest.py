@@ -46,6 +46,10 @@ os.environ.setdefault("ENDPOINT_STORY_MS", "900")
 # traces buried the real calls there). A dev can still point TRACE_DIR elsewhere.
 TEST_TRACE_DIR = Path(tempfile.gettempdir()) / "isp_agent_test_traces"
 os.environ.setdefault("TRACE_DIR", str(TEST_TRACE_DIR))
+# No TTS network in tests: the startup prewarm is off and the TTS disk cache too (a
+# cached sentence from an earlier run must not satisfy an adapter test).
+os.environ.setdefault("TTS_PREWARM", "off")
+os.environ.setdefault("TTS_CACHE_DIR", "off")
 
 
 # =============================================================================

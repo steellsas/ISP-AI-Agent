@@ -18,6 +18,7 @@ later, with no change here.
 from __future__ import annotations
 
 import io
+import logging
 import time
 import wave
 from collections.abc import Callable, Iterator
@@ -26,6 +27,8 @@ from typing import TYPE_CHECKING
 
 from .contract import limits
 from .session import AgentSession
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.ports.asr import ASRProvider
@@ -51,6 +54,41 @@ def _min_audio_s() -> float:
     """Too-short-audio floor (VOICE_PLAN V1): fragments under this are DROPPED
     before ASR — Whisper hallucinates words from sub-word blips ("Įvėtojai")."""
     return limits.get("asr_min_audio_s")
+
+
+def spoken_sentences(text: str) -> list[str]:
+    """The pieces a reply text is synthesized in on the streaming path: sentences
+    popped as they complete, then the tail — in their spoken (TTS) form."""
+    from src.adapters.tts.sentences import pop_sentence
+
+    pieces: list[str] = []
+    sentence, buf = pop_sentence(text)
+    while sentence:
+        pieces.append(sentence)
+        sentence, buf = pop_sentence(buf)
+    if buf.strip():
+        pieces.append(buf.strip())
+    return [speech_text(p) for p in pieces]
+
+
+def prewarm(tts, texts: list[str], *, language: str, pause_s: float = 0.0) -> int:
+    """Render the given lines ahead of any call (review finding AL): a scripted turn
+    then plays from the TTS cache instead of waiting on the network. Returns how many
+    pieces were newly synthesized. Best-effort — a failure skips that piece."""
+    is_cached = getattr(tts, "is_cached", None)
+    rendered = 0
+    for text in texts:
+        for piece in spoken_sentences(text):
+            if callable(is_cached) and is_cached(piece, language=language):
+                continue
+            try:
+                tts.synthesize(piece, language=language)
+                rendered += 1
+            except Exception:  # pragma: no cover - network best-effort
+                logger.debug("prewarm synthesis failed", exc_info=True)
+            if pause_s:
+                time.sleep(pause_s)  # gentle on the free endpoint
+    return rendered
 
 
 def speech_text(text: str) -> str:
