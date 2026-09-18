@@ -80,15 +80,13 @@ class AgentSession:
         turn = TurnScratch(
             user_input=text,
             bg_diagnosis=inbox.get("bg_diagnosis"),
+            analyst_signals=inbox.get("analyst_signals"),
         )
         values = self._graph.get_state(self._graph_config).values
         update: dict[str, Any] = {}
         if not values:
             initial = self._state
             update = {name: getattr(initial, name) for name in type(initial).model_fields}
-        if inbox.get("analyst_signals"):
-            voice = values["voice"] if values else self._state.voice
-            update["voice"] = voice.model_copy(update={"analyst_signals": inbox["analyst_signals"]})
         update["turn"] = turn
         return update
 
@@ -219,20 +217,21 @@ class AgentSession:
         self._write_between_turns(lambda state, rt: setattr(state.voice, "background_reads", True))
 
     def analyst_next(self) -> None:
-        """The analyst's background read (ANALYST_MODE=async, the voice default): its
-        signals are applied on this state and the tone ones ride to the next turn."""
-        from .analyst.node import apply, mode, read
+        """The analyst's background read (ANALYST_MODE=async, the voice default). The
+        read runs on the last committed snapshot, but its signals are NOT applied
+        there — a snapshot write never reaches the checkpoint (live bug C, review
+        2026-09-18: secondary problems and contradictions vanished). They ride the
+        inbox into the next turn's input and the perceive node applies them to the
+        checkpointed state."""
+        from .analyst.node import mode, read
 
         if mode(self._state) != "async":
             return
         signals = read(self._state, self._runtime)
         if not signals:
             return
-        apply(self._state, self._runtime, signals)
-        carried = self._state.voice.analyst_signals
-        if carried:
-            with self._inbox_lock:
-                self._inbox["analyst_signals"] = carried
+        with self._inbox_lock:
+            self._inbox["analyst_signals"] = [s.model_dump() for s in signals]
 
     def refresh_telemetry_next(self) -> None:
         """A READ-ONLY telemetry refresh while the caller is busy — the result is folded

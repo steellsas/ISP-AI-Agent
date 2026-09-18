@@ -357,6 +357,9 @@ class TurnScratch(BaseModel):
     active_node: str | None = None  # which graph node is running (trace/debug)
     # A background telemetry read that finished between turns (folded in at turn start).
     bg_diagnosis: str | None = None
+    # The analyst's background read that finished between turns (voice), applied by
+    # the perceive node to the checkpointed state (review finding C).
+    analyst_signals: list[dict[str, Any]] | None = None
     # Identification notes for this turn's facts block.
     address_lookup_note: str | None = None
     address_confirm_note: str | None = None
