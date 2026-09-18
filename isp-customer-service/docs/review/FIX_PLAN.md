@@ -78,3 +78,9 @@ trace'e matomi visi LLM kvietimai ir `turn_timing`.
 | Data | Banga | Kas padaryta | Testai / eval | Liko |
 |---|---|---|---|---|
 | 2026-09-18 | — | Peržiūra 0–10 baigta, planas sudarytas; šaka `fix/wave-0` | vienetų testai: 1242 passed | Banga 0 |
+| 2026-09-18 | 0 | W0-1…W0-10 padaryti (W0-9 kartu su W0-2). Papildomai **W0-11**: eval'as du kartus užstrigo — faulthandler dump'as parodė deadlock'ą httpcore pool'e: W0-6 sargas nutraukdavo tik išorinį generatorių, provider srautą uždarydavo GC kito kvietimo viduje. Pataisyta: `stream_tool_completion` uždaro srautą `finally` bloke + visi LLM kvietimai su timeout (30 s, `LLM_TIMEOUT_S`). | vienetų: **1259 passed**; eval tekstas **178/178**; eval `--voice` **178/178**; T1 `--runs 3` **STABLE 3/3** (vienas ankstesnis T1 kritimas — LLM paminėjo „routerio" TV skambutyje, nepasikartojo) | Banga 1 |
+
+**Bangos 0 pastebėjimai kitoms bangoms (iš eval trace'ų, 69 skambučiai):**
+- Atsakymo sargas nukirpo 235 iš 266 LLM atsakymų dėl antro klausimo (+4 dėl ilgio) — modelis beveik visada klausia daugiau nei vieno dalyko. Tai 2b bangos (promptai pagal įgūdį) tikslas: sargas lieka saugikliu, bet promptas turi to išvengti pats.
+- LLM kvietimai pagal rolę: analyst 320, speak 266, perception 182, ticket_reader 38, problem_classifier 10, solver 5 — analyst brangiausias ir dažniausias (AE, 2a banga).
+- Nestabilus testas: `test_api::test_interrupt_stops_remaining_chunks` (laiko priklausomybė, `sleep 0.15`) — kartą krito, 8/8 pakartojimų praėjo; su pakeitimais nesusijęs.
