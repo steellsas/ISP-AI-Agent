@@ -414,38 +414,66 @@ class VoicePipeline:
             # On cancel the ENGINE does its own bookkeeping (the same flag stops
             # its token loop — see speak.node); here we only stop
             # SYNTHESIZING, so no half-sentence audio goes out after the barge-in.
+            # One turn_timing event (review finding AM): where THIS turn's time went,
+            # every mark in ms from the turn start (audio in) — ASR, the agent's first
+            # token, the first complete sentence, the first audio, the end.
+            marks: dict[str, float] = {"asr_ms": t1 - t0}
+
+            def _mark(name: str) -> None:
+                marks.setdefault(name, time.perf_counter() - t0)
+
             buf = ""
             gen = agent_stream(transcript)
-            for token in gen:
-                if should_stop is not None and should_stop():
-                    return
-                buf += token
-                sentence, buf = pop_sentence(buf)
-                while sentence:
+            try:
+                for token in gen:
                     if should_stop is not None and should_stop():
+                        marks["cancelled"] = 1
                         return
-                    chunk = self._speak(sentence)
-                    if chunk:
-                        _emit_latency(time.perf_counter())
-                        self.last_turn_sentences.append(sentence)
-                        yield chunk
+                    _mark("first_token_ms")
+                    buf += token
                     sentence, buf = pop_sentence(buf)
-            tail = buf.strip()
-            if tail:
-                chunk = self._speak(tail)
-                if chunk:
-                    _emit_latency(time.perf_counter())
-                    self.last_turn_sentences.append(tail)
-                    yield chunk
-            if not emitted and tracer is not None:
-                tracer.emit(
-                    "voice_latency",
-                    asr_ms=round(asr_ms),
-                    agent_ms=0,
-                    tts_ms=0,
-                    total_ms=round(asr_ms),
-                )
-            return
+                    while sentence:
+                        if should_stop is not None and should_stop():
+                            marks["cancelled"] = 1
+                            return
+                        _mark("first_sentence_ms")
+                        chunk = self._speak(sentence)
+                        if chunk:
+                            _mark("first_audio_ms")
+                            _emit_latency(time.perf_counter())
+                            self.last_turn_sentences.append(sentence)
+                            yield chunk
+                        sentence, buf = pop_sentence(buf)
+                tail = buf.strip()
+                if tail:
+                    _mark("first_sentence_ms")
+                    chunk = self._speak(tail)
+                    if chunk:
+                        _mark("first_audio_ms")
+                        _emit_latency(time.perf_counter())
+                        self.last_turn_sentences.append(tail)
+                        yield chunk
+                if not emitted and tracer is not None:
+                    tracer.emit(
+                        "voice_latency",
+                        asr_ms=round(asr_ms),
+                        agent_ms=0,
+                        tts_ms=0,
+                        total_ms=round(asr_ms),
+                    )
+                return
+            finally:
+                if tracer is not None:
+                    marks["total_ms"] = time.perf_counter() - t0
+                    tracer.emit(
+                        "turn_timing",
+                        reused_partial=bool(transcript_override),
+                        sentences=len(self.last_turn_sentences),
+                        **{
+                            k: (round(v * 1000) if k.endswith("_ms") else v)
+                            for k, v in marks.items()
+                        },
+                    )
 
         # Fallback (C2b): non-streaming agent -> full reply -> per-sentence TTS.
         self.last_turn_aligned = False  # chunk<->sentence mapping unknown here
