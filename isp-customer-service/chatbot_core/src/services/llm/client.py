@@ -10,7 +10,7 @@ import os
 import re
 import time
 from collections.abc import Callable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 
 import litellm
@@ -191,6 +191,30 @@ def _resolve_params(
     return model, temperature, max_tokens, top_p
 
 
+def _timeout() -> float:
+    """Seconds a request may take before it fails: a hung provider call must surface
+    as an error the callers already handle (the sensors fall back to keywords, the
+    speaker says its error line), never as a silent, endless turn."""
+    raw = os.getenv("LLM_TIMEOUT_S", "").strip()
+    try:
+        return float(raw) if raw else float(getattr(get_settings(), "request_timeout", 30.0))
+    except ValueError:
+        return 30.0
+
+
+def _close_stream(stream) -> None:
+    """Close a provider stream NOW, in this thread. Left to the garbage collector, an
+    abandoned stream (the reply guard or a barge-in stops reading it) is finalized at an
+    arbitrary moment — observed inside the NEXT request while httpx held its
+    connection-pool lock: the finalizer then waited on that same lock forever (wave-0
+    eval hang, 2026-09-18)."""
+    for target in (getattr(stream, "completion_stream", None), stream):
+        close = getattr(target, "close", None)
+        if callable(close):
+            with suppress(Exception):
+                close()
+
+
 def _configure_provider(model: str) -> str:
     """Resolve the provider for a model and export its API key for litellm."""
     provider = _get_provider(model)
@@ -356,6 +380,7 @@ def llm_completion(
 
     if top_p != 1.0:
         kwargs["top_p"] = top_p
+    kwargs["timeout"] = _timeout()
 
     if response_format:
         kwargs["response_format"] = response_format
@@ -400,6 +425,7 @@ def stream_tool_completion(
         "tool_choice": tool_choice if tools else None,
         "stream": True,
         "stream_options": {"include_usage": True},
+        "timeout": _timeout(),
     }
     if top_p != 1.0:
         kwargs["top_p"] = top_p
@@ -429,25 +455,30 @@ def stream_tool_completion(
     if stream is None:
         raise last_error  # type: ignore[misc]
 
-    for chunk in stream:
-        if getattr(chunk, "usage", None):
-            usage = chunk.usage
-        choices = getattr(chunk, "choices", None)
-        if not choices:
-            continue
-        delta = choices[0].delta
-        if getattr(delta, "content", None):
-            content_parts.append(delta.content)
-            yield delta.content
-        for tc in getattr(delta, "tool_calls", None) or []:
-            acc = tc_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-            if getattr(tc, "id", None):
-                acc["id"] = tc.id
-            fn = getattr(tc, "function", None)
-            if fn and getattr(fn, "name", None):
-                acc["name"] = fn.name
-            if fn and getattr(fn, "arguments", None):
-                acc["arguments"] += fn.arguments
+    try:
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            delta = choices[0].delta
+            if getattr(delta, "content", None):
+                content_parts.append(delta.content)
+                yield delta.content
+            for tc in getattr(delta, "tool_calls", None) or []:
+                acc = tc_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                if getattr(tc, "id", None):
+                    acc["id"] = tc.id
+                fn = getattr(tc, "function", None)
+                if fn and getattr(fn, "name", None):
+                    acc["name"] = fn.name
+                if fn and getattr(fn, "arguments", None):
+                    acc["arguments"] += fn.arguments
+    finally:
+        # A reader that stops early (reply guard, barge-in) closes this generator; the
+        # provider stream must be closed with it, here and now.
+        _close_stream(stream)
 
     latency_ms = (time.time() - start_time) * 1000
     input_tokens = usage.prompt_tokens if usage else 0

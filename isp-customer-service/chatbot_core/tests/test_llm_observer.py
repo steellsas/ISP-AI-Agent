@@ -111,3 +111,74 @@ class TestSessionSeesSensorCalls:
 def _no_speak(**kwargs):
     yield "Gerai."
     return SimpleNamespace(content="Gerai.", tool_calls=None)
+
+
+class _ProviderStream:
+    """What litellm returns for stream=True: iterable chunks over a closable provider
+    stream (the openai Stream holding the HTTP response)."""
+
+    def __init__(self, texts):
+        self.completion_stream = SimpleNamespace(closed=False)
+        self.completion_stream.close = lambda: setattr(self.completion_stream, "closed", True)
+        self._chunks = [
+            SimpleNamespace(
+                usage=None,
+                choices=[SimpleNamespace(delta=SimpleNamespace(content=t, tool_calls=None))],
+            )
+            for t in texts
+        ]
+
+    def __iter__(self):
+        return iter(self._chunks)
+
+
+class TestStreamLifetime:
+    """Wave-0 eval hang (2026-09-18): a stream the reply guard stopped reading was left
+    to the garbage collector, which finalized it inside the next request while httpx
+    held its pool lock — a deadlock. The stream must close the moment reading stops."""
+
+    def test_a_stream_stopped_early_is_closed_at_once(self):
+        from src.services.llm.client import stream_tool_completion
+
+        provider = _ProviderStream(["Ar dega? ", "O ar ", "mirksi?"])
+        with patch("litellm.completion", return_value=provider):
+            gen = stream_tool_completion(
+                [{"role": "user", "content": "x"}], tools=None, model="gpt-4o-mini"
+            )
+            assert next(gen) == "Ar dega? "
+            gen.close()  # the reply guard / a barge-in stops reading here
+
+        assert provider.completion_stream.closed is True
+
+    def test_a_fully_read_stream_is_closed_too(self):
+        from src.services.llm.client import stream_tool_completion
+
+        provider = _ProviderStream(["Gerai."])
+        with patch("litellm.completion", return_value=provider):
+            assert list(
+                stream_tool_completion(
+                    [{"role": "user", "content": "x"}], tools=None, model="gpt-4o-mini"
+                )
+            ) == ["Gerai."]
+
+        assert provider.completion_stream.closed is True
+
+    def test_every_request_carries_a_timeout(self, monkeypatch):
+        from src.services.llm.client import llm_completion, stream_tool_completion
+
+        monkeypatch.setenv("LLM_TIMEOUT_S", "12")
+        seen = []
+
+        def _completion(**kwargs):
+            seen.append(kwargs.get("timeout"))
+            return _ProviderStream(["x"]) if kwargs.get("stream") else _fake_response()
+
+        with patch("litellm.completion", side_effect=_completion):
+            llm_completion([{"role": "user", "content": "x"}], model="gpt-4o-mini")
+            list(
+                stream_tool_completion(
+                    [{"role": "user", "content": "x"}], tools=None, model="gpt-4o-mini"
+                )
+            )
+
+        assert seen == [12.0, 12.0]
