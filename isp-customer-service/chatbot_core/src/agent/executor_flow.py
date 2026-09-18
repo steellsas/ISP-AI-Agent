@@ -1,60 +1,22 @@
 """
 Executor flow — the ONLY place tools run and tickets are registered.
 
-Tool execution for the LLM loop's tool rounds (the engine runs its own actions) —
-the deterministic tool-access gate, the gated tool-call loop, the STATE-driven
-idempotent ticket registration and the demo bridge simulation. Functions take
+The STATE-driven idempotent ticket registration and the demo bridge simulation
+(the engine runs every tool through the gateway; the LLM calls none). Functions take
 (state, rt) — the call state and the AgentRuntime. tools run through rt.tools (the
 gateway).
 """
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any
 
 from .contract.locale import phrase_or
-from .dialog_utils import assistant_tool_message
 from .trace import tools_called_this_session, trace_note
 
 logger = logging.getLogger(__name__)
-
-
-def execute_tool_calls(state: Any, rt: Any, message: Any) -> list[dict]:
-    """Echo the assistant tool-call message, run each tool through the gate,
-    append results to history, trace, and update state. Returns the executed
-    list."""
-    from .execute.observe import augment_tool_result
-
-    state.messages.append(assistant_tool_message(message))
-    executed = []
-    for tc in message.tool_calls:
-        name = tc.function.name
-        raw_args = tc.function.arguments or "{}"
-        try:
-            args = json.loads(raw_args)
-        except json.JSONDecodeError:
-            logger.warning(f"[AGENT] Bad tool arguments for {name}: {raw_args!r}")
-            trace_note(rt.tracer, state, "tool_args", f"{name}: bad JSON args {raw_args!r}")
-            args = {}
-
-        logger.info(f"[AGENT] Tool call: {name}")
-        # The gateway commits state BEFORE augmenting: resolve_address sets
-        # customer_id there, and the augment then diagnoses in the same turn (it
-        # read a not-yet-committed id and skipped, so the strategy never
-        # activated). The state update reads only raw tool fields, never the ones
-        # augment adds, so the order is safe.
-        result = rt.tools.run(state, rt, name, args, reason="llm")
-        observation = result.observation
-        if not result.gated:
-            observation = augment_tool_result(state, rt, name, observation)
-
-        state.messages.append({"role": "tool", "tool_call_id": tc.id, "content": observation})
-        state.intake.observations.append(observation)
-        executed.append({"name": name, "arguments": args, "observation": observation})
-    return executed
 
 
 def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None:

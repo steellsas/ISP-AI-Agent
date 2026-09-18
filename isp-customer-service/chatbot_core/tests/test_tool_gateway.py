@@ -77,24 +77,18 @@ class TestToolGateway:
         assert [e["type"] for e in tracer.events].count("tool_call") == 1
 
     def test_observation_updates_state_unless_read_only(self):
-        observation = {"success": True, "case_closed": True, "reason": "resolved"}
+        observation = {"success": True, "affected": True}
         agent, _ = _agent(_Provider(observation))
         agent.state.identity.customer_id = "CUST009"
+        args = {"customer_id": "CUST009"}
 
         agent.tools.run(
-            agent.state,
-            agent.runtime,
-            "close_case",
-            {"reason": "declined"},
-            reason="test",
-            apply=False,
+            agent.state, agent.runtime, "check_outages", args, reason="test", apply=False
         )
-        assert agent.state.closing.case_closed is False
+        assert agent.state.diagnosis.outage_reported is False
 
-        agent.tools.run(
-            agent.state, agent.runtime, "close_case", {"reason": "declined"}, reason="test"
-        )
-        assert agent.state.closing.case_closed is True
+        agent.tools.run(agent.state, agent.runtime, "check_outages", args, reason="test")
+        assert agent.state.diagnosis.outage_reported is True
 
 
 class TestTelemetry:

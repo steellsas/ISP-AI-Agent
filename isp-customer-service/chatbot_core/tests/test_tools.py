@@ -306,8 +306,8 @@ class TestToolsRegistry:
         from agent.tools import REAL_TOOLS
 
         assert (
-            len(REAL_TOOLS) == 11
-        )  # resolve_address, find_customer, diagnose_connection, check_network_status, update_mac, reset_port, check_outages, run_ping_test, search_knowledge, create_ticket, close_case
+            len(REAL_TOOLS) == 10
+        )  # resolve_address, find_customer, diagnose_connection, check_network_status, update_mac, reset_port, check_outages, run_ping_test, search_knowledge, create_ticket
 
 
 class TestSeedNetworkStatus:
@@ -367,31 +367,6 @@ class TestSeedNetworkStatus:
 
 # Moved from test_agent.py (2026-08-05 cleanup): tool schema/validation
 # belongs with the tools component, not the conversation engine.
-class TestToolDescriptions:
-    """Tests for tool descriptions generation."""
-
-    def test_get_tools_description(self):
-        """Should generate valid tools description."""
-        from agent.tools import get_tools_description
-
-        description = get_tools_description()
-
-        assert isinstance(description, str)
-        assert "find_customer" in description
-        assert "search_knowledge" in description
-        assert len(description) > 100
-
-    def test_tools_description_has_parameters(self):
-        """Tools description should include parameters."""
-        from agent.tools import get_tools_description
-
-        description = get_tools_description()
-
-        assert "phone" in description.lower()
-        assert "query" in description.lower()
-        assert "customer_id" in description.lower()
-
-
 class TestToolValidation:
     """Tests for Tool.validate_arguments() and execute_tool() guarding."""
 

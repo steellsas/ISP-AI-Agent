@@ -74,33 +74,6 @@ def progress_key(state: Any) -> list:
     ]
 
 
-def assistant_tool_message(message: Any) -> dict:
-    """
-    Serialize an assistant message that requested tool calls into the dict
-    shape the chat API needs echoed back on the next turn.
-
-    The protocol requires that, before any role:"tool" result messages, the
-    exact assistant message that issued the tool_calls is present in history
-    (matched by tool_call_id). We store a plain dict (not the litellm object)
-    so the history stays JSON-serializable.
-    """
-    return {
-        "role": "assistant",
-        "content": message.content or "",
-        "tool_calls": [
-            {
-                "id": tc.id,
-                "type": "function",
-                "function": {
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments,
-                },
-            }
-            for tc in message.tool_calls
-        ],
-    }
-
-
 def anchor_text(state, rt) -> str:
     """The exact place to return to after a deviation — the engine's LAST
     asked question (deterministic), never the LLM's memory of it. Trimmed

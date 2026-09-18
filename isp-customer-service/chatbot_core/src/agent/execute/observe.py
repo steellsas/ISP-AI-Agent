@@ -264,12 +264,5 @@ def update_state_from_observation(state, rt, action: str, observation: str):
         if action == "check_outages" and obs_data.get("affected"):
             state.diagnosis.outage_reported = True
 
-        # close_case signal -> flip the router to the closing stage. The model
-        # owns WHEN (it read the caller's confirmation); the gate already
-        # backstopped premature/unfounded closes.
-        if action == "close_case" and obs_data.get("case_closed"):
-            state.closing.case_closed = True
-            state.closing.closed_reason = obs_data.get("reason")
-
     except json.JSONDecodeError:
         pass
