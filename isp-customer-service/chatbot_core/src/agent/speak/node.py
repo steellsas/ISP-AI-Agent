@@ -17,6 +17,7 @@ from typing import Any
 
 from src.services.llm.client import get_last_call_stats, stream_tool_completion
 
+from ..contract import limits
 from ..trace import trace_note
 
 logger = logging.getLogger(__name__)
@@ -171,9 +172,14 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
         tools=None,
         model=rt.config.model,
         temperature=rt.config.temperature,
-        max_tokens=rt.config.max_tokens,
+        # A spoken reply is ~2 short sentences: the cap stops a runaway generation
+        # early (review finding AC); a lower configured max_tokens still wins.
+        max_tokens=min(rt.config.max_tokens, limits.get("speak_max_tokens")),
     )
+    from .guard import ReplyGuard
+
     streamed: list[str] = []
+    guard = ReplyGuard(stop_chars=limits.get("reply_stop_chars"))
     while True:
         try:
             token = next(inner)
@@ -185,8 +191,17 @@ def _stream_tokens(state: Any, rt: Any, messages: list[dict]):
             on_turn_cancelled(state, rt, "".join(streamed))
             raise _Cancelled
         if isinstance(token, str):
+            token = guard.feed(token)
             streamed.append(token)
-        yield token
+        if token:
+            yield token
+        if guard.stopped:
+            # The phone rules end the reply here: stop the generation itself, so the
+            # rest is never generated, spoken or recorded (review finding AB).
+            with suppress(Exception):
+                inner.close()
+            rt.tracer.emit("reply_guard", reason=guard.stopped, chars=len(guard.text))
+            return guard.text.strip()
 
 
 def on_turn_cancelled(state: Any, rt: Any, spoken_text: str) -> None:
