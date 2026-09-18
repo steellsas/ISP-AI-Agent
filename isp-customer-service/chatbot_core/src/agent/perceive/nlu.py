@@ -235,6 +235,7 @@ def classify_problem_llm(text: str | None, model: str | None = None) -> tuple[st
             text,
             options,
             model=model,
+            role="problem_classifier",
         )
         if obs is None or not obs.is_answer or obs.label not in options:
             return None, 0.0

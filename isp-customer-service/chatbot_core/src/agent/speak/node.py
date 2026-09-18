@@ -218,6 +218,7 @@ def record_llm_stats(state: Any, rt: Any) -> None:
     )
     rt.tracer.emit(
         "llm",
+        role="speak",
         model=s.get("model", rt.config.model),
         input_tokens=s.get("input_tokens", 0),
         output_tokens=s.get("output_tokens", 0),

@@ -9,6 +9,9 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 import litellm
 from pydantic import BaseModel, ValidationError
@@ -57,6 +60,33 @@ _last_call_stats = {}
 def get_last_call_stats() -> dict:
     """Get stats from the last LLM call."""
     return _last_call_stats.copy()
+
+
+# The caller's observer for completed (non-streaming) calls: (role, stats) -> None.
+# A context variable, so each conversation (and its background thread) reports its
+# own calls — the module-level last-call stats are shared by every thread.
+_observer: ContextVar[Callable[[str, dict], None] | None] = ContextVar("llm_observer", default=None)
+
+
+@contextmanager
+def observe_llm_calls(callback: Callable[[str, dict], None]):
+    """Report every completed llm_completion / llm_json_completion call made inside
+    this block to `callback(role, stats)` — including failed ones."""
+    token = _observer.set(callback)
+    try:
+        yield
+    finally:
+        _observer.reset(token)
+
+
+def _notify(role: str | None, call_stats: dict) -> None:
+    callback = _observer.get()
+    if callback is None:
+        return
+    try:
+        callback(role or "other", dict(call_stats))
+    except Exception:  # pragma: no cover - observability must never break a call
+        logger.debug("llm observer failed", exc_info=True)
 
 
 def _get_api_key(provider: str) -> str | None:
@@ -177,7 +207,7 @@ def _configure_provider(model: str) -> str:
     return provider
 
 
-def _execute_completion(kwargs: dict, model: str):
+def _execute_completion(kwargs: dict, model: str, role: str | None = None):
     """
     Run litellm.completion with rate limiting, retry, and stats tracking.
 
@@ -239,6 +269,7 @@ def _execute_completion(kwargs: dict, model: str):
                 f"LLM call: {model}, {input_tokens}+{output_tokens} tokens, ${cost:.4f}, {latency_ms:.0f}ms"
             )
 
+            _notify(role, _last_call_stats)
             return response
 
         except Exception as e:
@@ -281,6 +312,7 @@ def _execute_completion(kwargs: dict, model: str):
         error=str(last_error),
     )
 
+    _notify(role, _last_call_stats)
     raise Exception(f"LLM call failed after {settings.max_retries} retries: {last_error}")
 
 
@@ -291,6 +323,7 @@ def llm_completion(
     max_tokens: int = None,
     top_p: float = None,
     response_format: dict = None,
+    role: str | None = None,
 ) -> str:
     """
     Call LLM and return response text.
@@ -304,6 +337,8 @@ def llm_completion(
         max_tokens: Max response length (uses settings default if None)
         top_p: Nucleus sampling (uses settings default if None)
         response_format: Optional {"type": "json_object"} for JSON mode
+        role: What the call is for (perception, solver, analyst…) — reported to the
+            observer (observe_llm_calls) with the call's stats
 
     Returns:
         Response text content
@@ -325,7 +360,7 @@ def llm_completion(
     if response_format:
         kwargs["response_format"] = response_format
 
-    response = _execute_completion(kwargs, model)
+    response = _execute_completion(kwargs, model, role)
     return response.choices[0].message.content
 
 
@@ -465,6 +500,7 @@ def llm_json_completion(
     max_tokens: int = None,
     validate_schema: type[BaseModel] = None,
     retry_on_invalid: bool = True,
+    role: str | None = None,
 ) -> dict:
     """
     Call LLM with JSON mode and return parsed dict.
@@ -498,6 +534,7 @@ def llm_json_completion(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
+                role=role,
             )
 
             # Parse JSON
