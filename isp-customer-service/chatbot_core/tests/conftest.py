@@ -11,6 +11,7 @@ Run tests:
 import os
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,10 @@ os.environ.setdefault("FINAL_FLUSH", "off")
 # Story window (pre-problem pauses) = the old default in tests, so transport
 # tests' silent-frame counts keep cutting; the live default stays longer.
 os.environ.setdefault("ENDPOINT_STORY_MS", "900")
+# Test sessions write their traces OUTSIDE logs/sessions (review finding L: ~121k test
+# traces buried the real calls there). A dev can still point TRACE_DIR elsewhere.
+TEST_TRACE_DIR = Path(tempfile.gettempdir()) / "isp_agent_test_traces"
+os.environ.setdefault("TRACE_DIR", str(TEST_TRACE_DIR))
 
 
 # =============================================================================

@@ -13,6 +13,8 @@ Run: pytest tests/test_tracing.py -v
 """
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 from agent.call_record.finalizer import build_call_summary
@@ -378,3 +380,16 @@ class TestEngineEmits:
         finalize(agent.state, agent.runtime, "Labas!")
 
         assert not [e for e in cap.events if e["type"] == "case"]
+
+
+class TestTestTracesStayOutOfTheLogs:
+    def test_a_test_session_does_not_write_into_logs_sessions(self):
+        """Review finding L: test runs wrote ~121k traces into logs/sessions, burying
+        the real calls. The suite points TRACE_DIR outside the project logs."""
+        from agent.session import AgentSession
+
+        session = AgentSession(caller_phone="+37060000000")
+        path = Path(session.tracer.path).resolve()
+
+        assert path.parent == Path(os.environ["TRACE_DIR"]).resolve()
+        assert (path.parent.parent.name, path.parent.name) != ("logs", "sessions")
