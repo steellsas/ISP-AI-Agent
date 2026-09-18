@@ -20,7 +20,15 @@ uv run python src/agent/eval/run_eval.py                          # all scenario
 uv run python src/agent/eval/run_eval.py --only S8_billing_inform  # one scenario by id
 uv run python src/agent/eval/run_eval.py --no-db                   # skip DB rebuild (faster reruns)
 uv run python src/agent/eval/run_eval.py --json report.json        # also write the raw report
+uv run python src/agent/eval/run_eval.py --voice                   # run calls like the voice transport
+uv run python src/agent/eval/run_eval.py --runs 3                  # stability: every scenario 3 times
 ```
+`--voice` drives each call the way the voice transport does: the analyst reads in async
+mode and, with the telemetry refresh, runs in the "background" between turns — their
+results reach the NEXT turn only (review 2026-09-18, finding C: signals from this path
+were being lost and no text-mode run could see it). `--runs N` repeats every scenario
+and prints a stability report: `STABLE` (N/N), `FLAKY` (some runs fail — a gate
+failure) or `FAIL`; the JSON report then carries `run` and `voice` per entry.
 Needs LLM API keys in `.env` (drives the REAL model, like a live call). The harness
 validates the knowledge files at startup (`contract.loader.startup()`), sets
 `SIMULATE_BRIDGE=on` and `SIMULATE_REBOOT=on`, and turns LangSmith tracing off. The DB is

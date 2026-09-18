@@ -387,6 +387,67 @@ class TestBetweenTurnWrites:
             session._inbox["bg_diagnosis"] = '{"success": true}'
 
         turn_input = session._graph_input("labas")
-        assert turn_input["voice"].analyst_signals == [{"type": "frustration", "quote": "kiek"}]
+        assert turn_input["turn"].analyst_signals == [{"type": "frustration", "quote": "kiek"}]
         assert turn_input["turn"].bg_diagnosis == '{"success": true}'
         assert session._inbox == {}  # consumed once
+
+    def test_background_analyst_signals_reach_the_checkpoint(
+        self, db_connection, tmp_path, monkeypatch
+    ):
+        """Review finding C: a voice call's background analyst read must land on the
+        checkpointed state — a secondary problem it heard survives the next turn and
+        the tone signal reaches that turn's reply."""
+        from agent.analyst import node as analyst_node
+        from agent.analyst.signals import Signal
+
+        monkeypatch.delenv("ANALYST_MODE", raising=False)
+        session = _v2_session(tmp_path)
+        session.greeting()
+        session.use_background_analyst()
+        monkeypatch.setattr(
+            analyst_node,
+            "read",
+            lambda s, r: [
+                Signal(
+                    type="secondary_problem",
+                    quote="ir TV nerodo",
+                    confidence=0.9,
+                    turn_index=s.dialog.turn_count,
+                ),
+                Signal(
+                    type="frustration",
+                    quote="kiek galima",
+                    confidence=0.9,
+                    turn_index=s.dialog.turn_count,
+                ),
+            ],
+        )
+        session.analyst_next()
+        assert session._current_state().intake.secondary_problems == []  # not yet applied
+
+        seen = {}
+        from agent.speak import node as speak_node
+
+        original = speak_node.build_messages
+
+        def spy(state, rt, *args, **kwargs):
+            seen["tone"] = state.voice.analyst_signals
+            return original(state, rt, *args, **kwargs)
+
+        with (
+            patch.object(speak_node, "build_messages", side_effect=spy),
+            patch(
+                "agent.speak.node.stream_tool_completion",
+                side_effect=_fake_stream(content="Suprantu."),
+            ),
+            patch("agent.speak.node.get_last_call_stats", return_value={}),
+        ):
+            session.handle_turn("Neveikia internetas")
+
+        texts = [p["text"] for p in session._current_state().intake.secondary_problems]
+        assert texts == ["ir TV nerodo"]
+        # The tone signal is either consumed by this turn's LLM reply (the card reads it
+        # once) or, on a scripted turn, still waits on the checkpointed state for one.
+        tone = seen.get("tone") or session._current_state().voice.analyst_signals
+        assert tone and tone[0]["type"] == "frustration"
+        assert session._current_state().turn.analyst_signals is None

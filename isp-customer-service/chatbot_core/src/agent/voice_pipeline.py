@@ -18,6 +18,7 @@ later, with no change here.
 from __future__ import annotations
 
 import io
+import logging
 import time
 import wave
 from collections.abc import Callable, Iterator
@@ -26,6 +27,8 @@ from typing import TYPE_CHECKING
 
 from .contract import limits
 from .session import AgentSession
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.ports.asr import ASRProvider
@@ -51,6 +54,41 @@ def _min_audio_s() -> float:
     """Too-short-audio floor (VOICE_PLAN V1): fragments under this are DROPPED
     before ASR — Whisper hallucinates words from sub-word blips ("Įvėtojai")."""
     return limits.get("asr_min_audio_s")
+
+
+def spoken_sentences(text: str) -> list[str]:
+    """The pieces a reply text is synthesized in on the streaming path: sentences
+    popped as they complete, then the tail — in their spoken (TTS) form."""
+    from src.adapters.tts.sentences import pop_sentence
+
+    pieces: list[str] = []
+    sentence, buf = pop_sentence(text)
+    while sentence:
+        pieces.append(sentence)
+        sentence, buf = pop_sentence(buf)
+    if buf.strip():
+        pieces.append(buf.strip())
+    return [speech_text(p) for p in pieces]
+
+
+def prewarm(tts, texts: list[str], *, language: str, pause_s: float = 0.0) -> int:
+    """Render the given lines ahead of any call (review finding AL): a scripted turn
+    then plays from the TTS cache instead of waiting on the network. Returns how many
+    pieces were newly synthesized. Best-effort — a failure skips that piece."""
+    is_cached = getattr(tts, "is_cached", None)
+    rendered = 0
+    for text in texts:
+        for piece in spoken_sentences(text):
+            if callable(is_cached) and is_cached(piece, language=language):
+                continue
+            try:
+                tts.synthesize(piece, language=language)
+                rendered += 1
+            except Exception:  # pragma: no cover - network best-effort
+                logger.debug("prewarm synthesis failed", exc_info=True)
+            if pause_s:
+                time.sleep(pause_s)  # gentle on the free endpoint
+    return rendered
 
 
 def speech_text(text: str) -> str:
@@ -414,38 +452,66 @@ class VoicePipeline:
             # On cancel the ENGINE does its own bookkeeping (the same flag stops
             # its token loop — see speak.node); here we only stop
             # SYNTHESIZING, so no half-sentence audio goes out after the barge-in.
+            # One turn_timing event (review finding AM): where THIS turn's time went,
+            # every mark in ms from the turn start (audio in) — ASR, the agent's first
+            # token, the first complete sentence, the first audio, the end.
+            marks: dict[str, float] = {"asr_ms": t1 - t0}
+
+            def _mark(name: str) -> None:
+                marks.setdefault(name, time.perf_counter() - t0)
+
             buf = ""
             gen = agent_stream(transcript)
-            for token in gen:
-                if should_stop is not None and should_stop():
-                    return
-                buf += token
-                sentence, buf = pop_sentence(buf)
-                while sentence:
+            try:
+                for token in gen:
                     if should_stop is not None and should_stop():
+                        marks["cancelled"] = 1
                         return
-                    chunk = self._speak(sentence)
-                    if chunk:
-                        _emit_latency(time.perf_counter())
-                        self.last_turn_sentences.append(sentence)
-                        yield chunk
+                    _mark("first_token_ms")
+                    buf += token
                     sentence, buf = pop_sentence(buf)
-            tail = buf.strip()
-            if tail:
-                chunk = self._speak(tail)
-                if chunk:
-                    _emit_latency(time.perf_counter())
-                    self.last_turn_sentences.append(tail)
-                    yield chunk
-            if not emitted and tracer is not None:
-                tracer.emit(
-                    "voice_latency",
-                    asr_ms=round(asr_ms),
-                    agent_ms=0,
-                    tts_ms=0,
-                    total_ms=round(asr_ms),
-                )
-            return
+                    while sentence:
+                        if should_stop is not None and should_stop():
+                            marks["cancelled"] = 1
+                            return
+                        _mark("first_sentence_ms")
+                        chunk = self._speak(sentence)
+                        if chunk:
+                            _mark("first_audio_ms")
+                            _emit_latency(time.perf_counter())
+                            self.last_turn_sentences.append(sentence)
+                            yield chunk
+                        sentence, buf = pop_sentence(buf)
+                tail = buf.strip()
+                if tail:
+                    _mark("first_sentence_ms")
+                    chunk = self._speak(tail)
+                    if chunk:
+                        _mark("first_audio_ms")
+                        _emit_latency(time.perf_counter())
+                        self.last_turn_sentences.append(tail)
+                        yield chunk
+                if not emitted and tracer is not None:
+                    tracer.emit(
+                        "voice_latency",
+                        asr_ms=round(asr_ms),
+                        agent_ms=0,
+                        tts_ms=0,
+                        total_ms=round(asr_ms),
+                    )
+                return
+            finally:
+                if tracer is not None:
+                    marks["total_ms"] = time.perf_counter() - t0
+                    tracer.emit(
+                        "turn_timing",
+                        reused_partial=bool(transcript_override),
+                        sentences=len(self.last_turn_sentences),
+                        **{
+                            k: (round(v * 1000) if k.endswith("_ms") else v)
+                            for k, v in marks.items()
+                        },
+                    )
 
         # Fallback (C2b): non-streaming agent -> full reply -> per-sentence TTS.
         self.last_turn_aligned = False  # chunk<->sentence mapping unknown here

@@ -38,6 +38,7 @@ The pre-refactor results to compare against: docs/refactoring/baseline/.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -151,8 +152,12 @@ def _bump_rate_limits() -> None:
 
 
 # --- Run one scenario -------------------------------------------------------------
-def _run_scenario(scn: dict) -> dict:
-    """Drive the scripted turns; snapshot state each turn; return the raw evidence."""
+def _run_scenario(scn: dict, voice: bool = False) -> dict:
+    """Drive the scripted turns; snapshot state each turn; return the raw evidence.
+
+    `voice`: run the call the way the voice transport does (review findings AQ/C) —
+    the analyst reads in the "background" between turns (async mode) and the
+    telemetry refresh runs there too, so their results reach the NEXT turn only."""
     from agent.session import AgentSession
 
     _bump_rate_limits()
@@ -174,6 +179,8 @@ def _run_scenario(scn: dict) -> dict:
             verdicts_seen.add(network["reason"])
 
     replies.append(session.greeting())
+    if voice:
+        session.use_background_analyst()
     _snapshot()
     for turn in scn["turns"]:
         try:
@@ -181,6 +188,10 @@ def _run_scenario(scn: dict) -> dict:
         except Exception as e:  # a crash IS a finding — record, don't abort the suite
             replies.append(f"<<EXCEPTION: {e}>>")
         _snapshot()
+        if voice and not session.is_complete:
+            # The voice transport's background window, while the caller answers.
+            session.refresh_telemetry_next()
+            session.analyst_next()
 
     trace_path = session.tracer.path if hasattr(session.tracer, "path") else None
     session.end_session(transport_end="eval")
@@ -357,13 +368,57 @@ def _print_report(results: list[dict]) -> int:
     return 1 if hard_fails else 0
 
 
+def _print_stability(results: list[dict], runs: int) -> int:
+    """Every scenario ran `runs` times (review finding AS): a scenario is stable only
+    when every run passes; one that passes sometimes is FLAKY and fails the gate."""
+    by_id: dict[str, list[dict]] = {}
+    for r in results:
+        by_id.setdefault(r["scn"]["id"], []).append(r)
+    print(f"\n{'=' * 78}\nCONVERSATION EVAL — stability over {runs} runs\n{'=' * 78}")
+    hard_fails = 0
+    for scn_id, rs in by_id.items():
+        passed = sum(1 for r in rs if all(ok for _, ok, _ in r["checks"]))
+        known = rs[0]["scn"].get("known_bug", False)
+        if passed == runs:
+            head = "STABLE"
+        elif passed == 0:
+            head = "xfail" if known else "FAIL"
+        else:
+            head = "FLAKY"
+        if head in ("FAIL", "FLAKY") and not known:
+            hard_fails += 1
+        print(f"[{head:<6}] {scn_id:<40} {passed}/{runs}{' [KNOWN BUG]' if known else ''}")
+        failed: dict[str, int] = {}
+        for r in rs:
+            for name, ok, _ in r["checks"]:
+                if not ok:
+                    failed[name] = failed.get(name, 0) + 1
+        for name, n in sorted(failed.items()):
+            print(f"           XXX {name:<28} failed {n}/{runs}")
+    print(f"\n{'-' * 78}\n  unstable or failing scenarios: {hard_fails}\n{'-' * 78}\n")
+    return 1 if hard_fails else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Conversation eval — Golden Dataset")
     ap.add_argument("--only", help="run a single scenario by id")
     ap.add_argument("--no-db", action="store_true", help="skip DB rebuild between scenarios")
     ap.add_argument("--json", help="write the raw report to this path")
+    ap.add_argument(
+        "--voice",
+        action="store_true",
+        help="run calls like the voice transport (background analyst between turns)",
+    )
+    ap.add_argument(
+        "--runs", type=int, default=1, help="run every scenario N times (stability report)"
+    )
     args = ap.parse_args()
+    # Lithuanian scenario text must print on a Windows console / pipe (cp1252).
+    with contextlib.suppress(AttributeError, ValueError):
+        sys.stdout.reconfigure(encoding="utf-8")
 
+    if args.voice:
+        os.environ["ANALYST_MODE"] = "async"
     _load_env()
     from agent.contract import loader
 
@@ -375,16 +430,19 @@ def main() -> int:
             print(f"No scenario with id '{args.only}'")
             return 2
 
+    runs = max(1, args.runs)
     results = []
-    for scn in scenarios:
-        if not args.no_db:
-            _rebuild_db()
-        print(f"... running {scn['id']} (phone={scn['phone']})", flush=True)
-        ev = _run_scenario(scn)
-        checks = _score(scn, ev)
-        results.append({"scn": scn, "ev": ev, "checks": checks})
+    for run in range(1, runs + 1):
+        for scn in scenarios:
+            if not args.no_db:
+                _rebuild_db()
+            label = f" run {run}/{runs}" if runs > 1 else ""
+            print(f"... running {scn['id']} (phone={scn['phone']}){label}", flush=True)
+            ev = _run_scenario(scn, voice=args.voice)
+            checks = _score(scn, ev)
+            results.append({"scn": scn, "ev": ev, "checks": checks, "run": run})
 
-    code = _print_report(results)
+    code = _print_report(results) if runs == 1 else _print_stability(results, runs)
 
     if args.json:
         Path(args.json).write_text(
@@ -392,6 +450,8 @@ def main() -> int:
                 [
                     {
                         "id": r["scn"]["id"],
+                        "run": r["run"],
+                        "voice": args.voice,
                         "known_bug": r["scn"].get("known_bug", False),
                         "checks": [
                             {"name": n, "pass": ok, "detail": d} for n, ok, d in r["checks"]

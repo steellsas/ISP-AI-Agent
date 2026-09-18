@@ -21,8 +21,23 @@ from ..runtime import AgentRuntime
 def perceive_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, Any]:
     rt = runtime.context
     state = state.model_copy(deep=True)
+    apply_background_signals(state, rt)
     perceive(state, rt, state.turn.user_input)
     return node_update(state)
+
+
+def apply_background_signals(state: Any, rt: Any) -> None:
+    """The analyst's background read (voice) lands on the call state here, at the
+    start of the turn — the deciding signals reach the decisions of THIS turn and the
+    tone ones the reply."""
+    raw = state.turn.analyst_signals
+    if not raw:
+        return
+    from ..analyst.node import apply
+    from ..analyst.signals import Signal
+
+    apply(state, rt, [Signal(**item) for item in raw])
+    state.turn.analyst_signals = None
 
 
 def perceive(state: Any, rt: Any, user_input: str | None) -> None:

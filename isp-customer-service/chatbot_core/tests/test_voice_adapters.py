@@ -10,6 +10,7 @@ engines/network are guarded with importorskip.
 
 import io
 import wave
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -240,6 +241,37 @@ class TestVoicePipeline:
 
         # "Svei|ki. |Ar |veikia?" -> sentences "Sveiki." then "Ar veikia?"
         assert chunks == [b"AUDIO:Sveiki.", b"AUDIO:Ar veikia?"]
+
+    def test_stream_turn_reports_where_the_time_went(self):
+        """Review finding AM: one turn_timing event per streamed turn — ASR, the
+        agent's first token, the first sentence, the first audio and the total, in
+        ms from the turn start and in that order."""
+        events = []
+        session, asr, tts = _FakeStreamingSession(), _FakeASR(), _FakeTTS()
+        session.tracer = SimpleNamespace(emit=lambda event, **f: events.append((event, f)))
+        pipeline = VoicePipeline(session, asr, tts)
+
+        list(pipeline.stream_turn(b"pcm"))
+
+        timing = [f for e, f in events if e == "turn_timing"]
+        assert len(timing) == 1
+        t = timing[0]
+        assert t["sentences"] == 2 and t["reused_partial"] is False
+        order = ["asr_ms", "first_token_ms", "first_sentence_ms", "first_audio_ms", "total_ms"]
+        values = [t[k] for k in order]
+        assert values == sorted(values)
+
+    def test_stream_turn_timing_is_emitted_when_the_caller_barges_in(self):
+        events = []
+        session, asr, tts = _FakeStreamingSession(), _FakeASR(), _FakeTTS()
+        session.tracer = SimpleNamespace(emit=lambda event, **f: events.append((event, f)))
+        pipeline = VoicePipeline(session, asr, tts)
+
+        chunks = list(pipeline.stream_turn(b"pcm", should_stop=lambda: True))
+
+        assert chunks == []
+        timing = [f for e, f in events if e == "turn_timing"]
+        assert len(timing) == 1 and timing[0]["cancelled"] == 1
 
     def test_handle_audio_runs_full_turn(self):
         session, asr, tts = _FakeSession(), _FakeASR(), _FakeTTS()

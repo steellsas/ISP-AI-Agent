@@ -141,7 +141,9 @@ def understand(
             if content:
                 messages.append({"role": role, "content": content})
         messages.append({"role": "user", "content": utterance[:400]})
-        data = llm_json_completion(messages=messages, model=perception_model(model))
+        data = llm_json_completion(
+            messages=messages, model=perception_model(model), role="perception"
+        )
         if not isinstance(data, dict):
             return None
         turn_type = str(data.get("type") or "answer").lower()
@@ -216,6 +218,7 @@ def understand_ticket(
                 {"role": "user", "content": utterance[:300]},
             ],
             model=perception_model(model),
+            role="ticket_reader",
         )
         if not isinstance(data, dict):
             return None

@@ -16,7 +16,6 @@ from typing import Any
 from src.ports.tools import ToolProvider
 
 from ..contract import policies
-from ..contract.locale import phrase_or
 from ..trace import trace_tool_result
 
 # Technical tools that must NOT run before the customer is identified
@@ -89,8 +88,6 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
     out of the prompt and into code, so a hallucinated `diagnose_connection`
     cannot fire (observed: customer_id='1' on an unidentified caller).
     """
-    from ..execute.diagnosis import fresh_diagnose_reason
-
     # check_outages must be street-specific. A city-only query returns OTHER
     # streets' outages, which the model then misattributes to the caller
     # (observed). Require a street (area="Miestas, Gatvė") OR a customer_id —
@@ -106,56 +103,6 @@ def gate(state: Any, rt: Any, name: str, args: dict) -> str | None:
                         "check_outages needs a street: pass area='City, "
                         "Street' (not the city alone) or customer_id. A city-only "
                         "check returns other streets' outages."
-                    ),
-                },
-                ensure_ascii=False,
-            )
-        return None
-
-    # close_case: reason-specific backstop so an over-eager model can't end the
-    # call prematurely. "resolved" needs an identified customer; "outage" needs
-    # an outage to have actually been reported.
-    if name == "close_case":
-        reason = args.get("reason", "resolved")
-        if reason == "resolved":
-            if not state.identity.customer_id:
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": "not_identified",
-                        "message": "Cannot close as 'resolved' before the caller is identified.",
-                    },
-                    ensure_ascii=False,
-                )
-            # Verify-gate: telemetry is the source of truth. If a fresh
-            # diagnose still shows the line fault, the fix has NOT taken —
-            # block "resolved" so the agent can't close on the caller's word
-            # (observed: B6 closed as resolved without ever binding the MAC).
-            reason_now = fresh_diagnose_reason(state, rt)
-            from ..faults import verdict_flag
-
-            if verdict_flag(reason_now, "unresolved_after_fix"):
-                gloss = phrase_or(f"verdict.{reason_now}.gloss", reason_now)
-                return json.dumps(
-                    {
-                        "success": False,
-                        "error": "not_fixed",
-                        "message": (
-                            f"Telemetry still shows the fault ({gloss}) — NOT fixed yet, "
-                            "do not close as 'resolved'. Take the needed action (e.g. "
-                            "update_mac + reset_port) and re-run the diagnostics."
-                        ),
-                    },
-                    ensure_ascii=False,
-                )
-        if reason == "outage" and not state.diagnosis.outage_reported:
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": "no_outage",
-                    "message": (
-                        "close_case(reason='outage') is allowed only after "
-                        "check_outages confirmed an active outage."
                     ),
                 },
                 ensure_ascii=False,

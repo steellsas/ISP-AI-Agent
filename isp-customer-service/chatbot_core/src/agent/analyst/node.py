@@ -58,6 +58,7 @@ def read(state: Any, rt: Any) -> list[Signal]:
             # Reasoning models (gpt-oss) burn tokens on hidden thinking BEFORE the
             # answer — a small budget returned an empty string (observed 2026-08-25).
             max_tokens=limits.get("analyst_max_tokens"),
+            role="analyst",
         )
         signals = parse(raw, turn_index=s.dialog.turn_count)
     except Exception as e:  # pragma: no cover - the analyst must never break a call

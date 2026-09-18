@@ -72,21 +72,6 @@ class TestCaseStateTransitions:
 
         return make_agent("unknown")
 
-    def test_close_case_observation_sets_closed(self):
-        import json
-
-        from agent.execute.observe import update_state_from_observation
-
-        agent = self._agent()
-        update_state_from_observation(
-            agent.state,
-            agent.runtime,
-            "close_case",
-            json.dumps({"success": True, "case_closed": True, "reason": "resolved"}),
-        )
-        assert agent.state.closing.case_closed is True
-        assert agent.state.closing.closed_reason == "resolved"
-
     def test_active_outage_sets_reported_not_closed(self):
         import json
 

@@ -52,7 +52,11 @@ def _system(options: dict[str, str]) -> str:
 
 
 def classify_step(
-    question: str, answer: str, options: dict[str, str], model: str | None = None
+    question: str,
+    answer: str,
+    options: dict[str, str],
+    model: str | None = None,
+    role: str = "step_classifier",
 ) -> CandidateObservation | None:
     """Classify a reply to a confirm step. `options` maps each routing key to its plain-
     language MEANING (the abstract keys yes/no/all/phone are meaningless to the model on
@@ -78,6 +82,7 @@ def classify_step(
             temperature=0.0,
             max_tokens=limits.get("classifier_max_tokens"),
             validate_schema=CandidateObservation,
+            role=role,
         )
         obs = CandidateObservation(**data)
         if obs.label not in allowed:

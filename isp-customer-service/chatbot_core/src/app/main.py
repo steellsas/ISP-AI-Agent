@@ -68,6 +68,13 @@ async def lifespan(app: FastAPI):
     from agent.contract import loader
 
     loader.startup()
+    # Scripted lines are rendered into the TTS cache in the background (review
+    # finding AL) — the first calls may still synthesize some of them live.
+    import threading
+
+    from .voice import prewarm_tts
+
+    threading.Thread(target=prewarm_tts, name="tts-prewarm", daemon=True).start()
     cleanup = asyncio.create_task(manager.cleanup_loop())
     try:
         yield

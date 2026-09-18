@@ -80,15 +80,13 @@ class AgentSession:
         turn = TurnScratch(
             user_input=text,
             bg_diagnosis=inbox.get("bg_diagnosis"),
+            analyst_signals=inbox.get("analyst_signals"),
         )
         values = self._graph.get_state(self._graph_config).values
         update: dict[str, Any] = {}
         if not values:
             initial = self._state
             update = {name: getattr(initial, name) for name in type(initial).model_fields}
-        if inbox.get("analyst_signals"):
-            voice = values["voice"] if values else self._state.voice
-            update["voice"] = voice.model_copy(update={"analyst_signals": inbox["analyst_signals"]})
         update["turn"] = turn
         return update
 
@@ -129,6 +127,36 @@ class AgentSession:
             {name: getattr(state, name) for name in type(state).model_fields if name != "turn"},
         )
         self._state = state
+
+    def _observe_llm(self, role: str, stats: dict) -> None:
+        """Every sensor LLM call of this conversation (perception, classifiers, solver,
+        analyst) lands in the trace and the call's totals — the speaker reports its
+        own streamed call (review finding B: only the speaker's calls were visible)."""
+        rt = self._runtime
+        rt.llm_stats.add_call(
+            input_tokens=stats.get("input_tokens", 0),
+            output_tokens=stats.get("output_tokens", 0),
+            cost=stats.get("cost", 0),
+            latency_ms=stats.get("latency_ms", 0),
+            cached=stats.get("cached", False),
+            model=stats.get("model", rt.config.model),
+        )
+        rt.tracer.emit(
+            "llm",
+            role=role,
+            model=stats.get("model", rt.config.model),
+            input_tokens=stats.get("input_tokens", 0),
+            output_tokens=stats.get("output_tokens", 0),
+            latency_ms=round(stats.get("latency_ms", 0)),
+            cached=stats.get("cached", False),
+            success=stats.get("success", True),
+        )
+
+    def _observing(self):
+        """The block whose LLM calls are reported to this conversation."""
+        from src.services.llm.client import observe_llm_calls
+
+        return observe_llm_calls(self._observe_llm)
 
     @staticmethod
     def _graph_reply(out: dict) -> str | None:
@@ -219,20 +247,22 @@ class AgentSession:
         self._write_between_turns(lambda state, rt: setattr(state.voice, "background_reads", True))
 
     def analyst_next(self) -> None:
-        """The analyst's background read (ANALYST_MODE=async, the voice default): its
-        signals are applied on this state and the tone ones ride to the next turn."""
-        from .analyst.node import apply, mode, read
+        """The analyst's background read (ANALYST_MODE=async, the voice default). The
+        read runs on the last committed snapshot, but its signals are NOT applied
+        there — a snapshot write never reaches the checkpoint (live bug C, review
+        2026-09-18: secondary problems and contradictions vanished). They ride the
+        inbox into the next turn's input and the perceive node applies them to the
+        checkpointed state."""
+        from .analyst.node import mode, read
 
         if mode(self._state) != "async":
             return
-        signals = read(self._state, self._runtime)
+        with self._observing():
+            signals = read(self._state, self._runtime)
         if not signals:
             return
-        apply(self._state, self._runtime, signals)
-        carried = self._state.voice.analyst_signals
-        if carried:
-            with self._inbox_lock:
-                self._inbox["analyst_signals"] = carried
+        with self._inbox_lock:
+            self._inbox["analyst_signals"] = [s.model_dump() for s in signals]
 
     def refresh_telemetry_next(self) -> None:
         """A READ-ONLY telemetry refresh while the caller is busy — the result is folded
@@ -300,7 +330,10 @@ class AgentSession:
         The first turn has no user input — the agent greets, then waits for the
         customer's problem. Voice/telephony speak this before listening.
         """
-        out = self._graph.invoke(self._graph_input(None), self._graph_config, context=self._runtime)
+        with self._observing():
+            out = self._graph.invoke(
+                self._graph_input(None), self._graph_config, context=self._runtime
+            )
         self._refresh_state()
         self._emit_turn_plan()
         return self._graph_reply(out)
@@ -318,7 +351,10 @@ class AgentSession:
         Returns:
             The agent's reply string.
         """
-        out = self._graph.invoke(self._graph_input(text), self._graph_config, context=self._runtime)
+        with self._observing():
+            out = self._graph.invoke(
+                self._graph_input(text), self._graph_config, context=self._runtime
+            )
         self._refresh_state()
         self._emit_turn_plan()
         return self._graph_reply(out)
@@ -331,18 +367,19 @@ class AgentSession:
         LangGraph stays the orchestrator — the graph nodes stream their tokens via
         the stream writer and `graph.stream(stream_mode="custom")` surfaces them.
         """
-        # The diagnosis stage is a SUBGRAPH — custom writer events only surface
+        # Nodes stream their tokens through the custom stream writer; they only surface
         # with subgraphs=True, which wraps every chunk in a (namespace, chunk)
         # pair; unwrap so transports receive raw tokens.
         try:
-            for _ns, chunk in self._graph.stream(
-                self._graph_input(text),
-                self._graph_config,
-                context=self._runtime,
-                stream_mode="custom",
-                subgraphs=True,
-            ):
-                yield chunk
+            with self._observing():
+                for _ns, chunk in self._graph.stream(
+                    self._graph_input(text),
+                    self._graph_config,
+                    context=self._runtime,
+                    stream_mode="custom",
+                    subgraphs=True,
+                ):
+                    yield chunk
         finally:
             self._refresh_state()
             self._emit_turn_plan()

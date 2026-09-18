@@ -223,29 +223,21 @@ class TestIdentifyThenDiagnoseSameTurn:
         )  # inform news marked told — never repeated
 
     def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):
-        """Regression: the tool loop augmented BEFORE committing customer_id, so
-        _augment_resolve_result saw no id, skipped diagnosis, and the strategy never
+        """Regression: augmenting BEFORE committing customer_id made
+        _augment_resolve_result see no id, skip diagnosis, and the strategy never
         activated — the whole dead-router walk fell back to free-form LLM (step=None
-        for the entire call). Drive the actual loop (no pre-set id) and require the
-        strategy to be live afterwards."""
-        from types import SimpleNamespace
-
-        from agent.executor_flow import execute_tool_calls
+        for the entire call). Run the gateway + augment (no pre-set id) and require
+        the strategy to be live afterwards."""
+        from agent.execute.observe import augment_tool_result
 
         agent = self._agent()
-        call = SimpleNamespace(
-            id="c1",
-            type="function",
-            function=SimpleNamespace(
-                name="resolve_address",
-                arguments=json.dumps(
-                    {"city": "Šiauliai", "street": "Vilniaus g.", "house_number": "29"}
-                ),
-            ),
+        args = {"city": "Šiauliai", "street": "Vilniaus g.", "house_number": "29"}
+        # The engine's path: the gateway commits the lookup to state, THEN the
+        # augment diagnoses from the committed id.
+        result = agent.runtime.tools.run(
+            agent.state, agent.runtime, "resolve_address", args, reason="test"
         )
-        execute_tool_calls(
-            agent.state, agent.runtime, SimpleNamespace(content=None, tool_calls=[call])
-        )
+        augment_tool_result(agent.state, agent.runtime, "resolve_address", result.observation)
 
         assert agent.state.identity.customer_id == "CUST009"
         assert agent.state.resolution.procedure is not None  # strategy live, not None

@@ -30,6 +30,9 @@ class LLMSettings:
     # Retry settings
     max_retries: int = 3
     retry_delay: float = 1.0
+    # A request that sends nothing for this long fails instead of hanging the turn
+    # (LLM_TIMEOUT_S overrides).
+    request_timeout: float = 30.0
 
     # Caching
     enable_cache: bool = True

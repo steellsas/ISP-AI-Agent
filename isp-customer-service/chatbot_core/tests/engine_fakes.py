@@ -28,7 +28,6 @@ _FLOW_OF = {
     "_engine_resolve_from_slots": "agent.decide.rules.identification.engine_resolve_from_slots",
     "_evidence_drive": "agent.decide.rules.evidence.evidence_drive",
     "_evidence_question_open": "agent.decide.rules.evidence.evidence_question_open",
-    "_execute_tool_calls": "agent.executor_flow.execute_tool_calls",
     "_finish_ticket_dialogue": "agent.execute.ticket.finish_ticket_dialogue",
     "_fresh_diagnose_reason": "agent.execute.diagnosis.fresh_diagnose_reason",
     "_goto_step": "agent.decide.procedure.goto_step",

@@ -16,10 +16,12 @@ Swap to Piper (offline) / Azure / ElevenLabs later behind the same port.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
 from collections.abc import Iterator
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +58,10 @@ class EdgeTTSProvider:
 
     # S3 (2026-08-24): repeated sentences (greeting, wait_ack, ticket
     # questions, goodbyes) synthesize once per (text, voice, rate, pitch) —
-    # a small capped cache, ~20 KB per entry.
+    # a capped memory cache (~20 KB per entry) over a disk cache that survives
+    # restarts (review finding AL: the scripted lines are pre-rendered at startup).
     _CACHE: dict[tuple, bytes] = {}
-    _CACHE_MAX = 64
+    _CACHE_MAX = 256
     # How long one sentence's synthesis may take before the socket is abandoned.
     last_synthesis_ms: int = 0
 
@@ -76,8 +79,8 @@ class EdgeTTSProvider:
         if pitch and pitch not in ("+0Hz", "0Hz", "0") and re.fullmatch(r"[+-]\d{1,3}Hz", pitch):
             kwargs["pitch"] = pitch
 
-        cache_key = (sentence, voice, kwargs.get("rate"), kwargs.get("pitch"))
-        cached = self._CACHE.get(cache_key)
+        cache_key = self._key(sentence, voice)  # == (sentence, voice, rate, pitch)
+        cached = self._cache_get(cache_key)
         if cached is not None:
             logger.debug("edge-tts cache hit (%d chars)", len(sentence))
             return cached
@@ -139,10 +142,51 @@ class EdgeTTSProvider:
         log("edge-tts: %d chars -> %d bytes in %d ms", len(sentence), len(audio), ms)
         self.last_synthesis_ms = ms
         if audio:
-            if len(self._CACHE) >= self._CACHE_MAX:
-                self._CACHE.pop(next(iter(self._CACHE)))
-            self._CACHE[cache_key] = audio
+            self._cache_put(cache_key, audio)
         return audio
+
+    def is_cached(self, sentence: str, *, language: str | None = None) -> bool:
+        """Whether this sentence (with today's voice knobs) is already rendered."""
+        return self._cache_get(self._key(sentence, self._voice_for(language))) is not None
+
+    def _key(self, sentence: str, voice: str) -> tuple:
+        pitch = (os.getenv("TTS_PITCH") or "").strip()
+        valid_pitch = (
+            pitch
+            if pitch and pitch not in ("+0Hz", "0Hz", "0") and re.fullmatch(r"[+-]\d{1,3}Hz", pitch)
+            else None
+        )
+        return (sentence, voice, self._pct("TTS_RATE"), valid_pitch)
+
+    def _cache_get(self, key: tuple) -> bytes | None:
+        audio = self._CACHE.get(key)
+        if audio is not None:
+            return audio
+        path = _disk_path(key)
+        if path is not None and path.is_file():
+            try:
+                audio = path.read_bytes()
+            except OSError:
+                return None
+            self._remember(key, audio)
+            return audio
+        return None
+
+    def _cache_put(self, key: tuple, audio: bytes) -> None:
+        self._remember(key, audio)
+        path = _disk_path(key)
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(audio)
+        except OSError:  # pragma: no cover - the disk cache is best-effort
+            logger.debug("edge-tts disk cache write failed", exc_info=True)
+
+    def _remember(self, key: tuple, audio: bytes) -> None:
+        if len(self._CACHE) >= self._CACHE_MAX:
+            self._CACHE.pop(next(iter(self._CACHE)))
+        self._CACHE[key] = audio
 
     def stream(self, text: str, *, language: str | None = None) -> Iterator[bytes]:
         """Yield one MP3 blob per sentence as it is rendered."""
@@ -183,3 +227,17 @@ def _stall_deadline() -> float:
         return float(limits.get("tts_stall_seconds"))
     except Exception:  # pragma: no cover - the adapter must work without the engine
         return 4.0
+
+
+# <isp-customer-service>/logs/tts_cache — gitignored like every other log.
+_DEFAULT_CACHE_DIR = Path(__file__).resolve().parents[4] / "logs" / "tts_cache"
+
+
+def _disk_path(key: tuple) -> Path | None:
+    """The disk cache file for a (sentence, voice, rate, pitch) key; TTS_CACHE_DIR=off
+    turns the disk cache off."""
+    root = os.getenv("TTS_CACHE_DIR", "").strip()
+    if root.lower() == "off":
+        return None
+    digest = hashlib.sha1(repr(key).encode("utf-8")).hexdigest()
+    return (Path(root) if root else _DEFAULT_CACHE_DIR) / f"{digest}.mp3"

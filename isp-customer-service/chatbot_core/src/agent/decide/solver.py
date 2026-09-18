@@ -89,6 +89,7 @@ def solve(context: str, model: str | None = None) -> SolverDecision | None:
             temperature=0.0,
             max_tokens=limits.get("solver_max_tokens"),
             validate_schema=SolverDecision,
+            role="solver",
         )
         decision = SolverDecision(**data)
         if decision.next_action not in ALLOWED_ACTIONS:

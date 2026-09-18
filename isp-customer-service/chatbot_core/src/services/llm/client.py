@@ -9,6 +9,9 @@ import logging
 import os
 import re
 import time
+from collections.abc import Callable
+from contextlib import contextmanager, suppress
+from contextvars import ContextVar
 
 import litellm
 from pydantic import BaseModel, ValidationError
@@ -57,6 +60,33 @@ _last_call_stats = {}
 def get_last_call_stats() -> dict:
     """Get stats from the last LLM call."""
     return _last_call_stats.copy()
+
+
+# The caller's observer for completed (non-streaming) calls: (role, stats) -> None.
+# A context variable, so each conversation (and its background thread) reports its
+# own calls — the module-level last-call stats are shared by every thread.
+_observer: ContextVar[Callable[[str, dict], None] | None] = ContextVar("llm_observer", default=None)
+
+
+@contextmanager
+def observe_llm_calls(callback: Callable[[str, dict], None]):
+    """Report every completed llm_completion / llm_json_completion call made inside
+    this block to `callback(role, stats)` — including failed ones."""
+    token = _observer.set(callback)
+    try:
+        yield
+    finally:
+        _observer.reset(token)
+
+
+def _notify(role: str | None, call_stats: dict) -> None:
+    callback = _observer.get()
+    if callback is None:
+        return
+    try:
+        callback(role or "other", dict(call_stats))
+    except Exception:  # pragma: no cover - observability must never break a call
+        logger.debug("llm observer failed", exc_info=True)
 
 
 def _get_api_key(provider: str) -> str | None:
@@ -161,6 +191,30 @@ def _resolve_params(
     return model, temperature, max_tokens, top_p
 
 
+def _timeout() -> float:
+    """Seconds a request may take before it fails: a hung provider call must surface
+    as an error the callers already handle (the sensors fall back to keywords, the
+    speaker says its error line), never as a silent, endless turn."""
+    raw = os.getenv("LLM_TIMEOUT_S", "").strip()
+    try:
+        return float(raw) if raw else float(getattr(get_settings(), "request_timeout", 30.0))
+    except ValueError:
+        return 30.0
+
+
+def _close_stream(stream) -> None:
+    """Close a provider stream NOW, in this thread. Left to the garbage collector, an
+    abandoned stream (the reply guard or a barge-in stops reading it) is finalized at an
+    arbitrary moment — observed inside the NEXT request while httpx held its
+    connection-pool lock: the finalizer then waited on that same lock forever (wave-0
+    eval hang, 2026-09-18)."""
+    for target in (getattr(stream, "completion_stream", None), stream):
+        close = getattr(target, "close", None)
+        if callable(close):
+            with suppress(Exception):
+                close()
+
+
 def _configure_provider(model: str) -> str:
     """Resolve the provider for a model and export its API key for litellm."""
     provider = _get_provider(model)
@@ -177,7 +231,7 @@ def _configure_provider(model: str) -> str:
     return provider
 
 
-def _execute_completion(kwargs: dict, model: str):
+def _execute_completion(kwargs: dict, model: str, role: str | None = None):
     """
     Run litellm.completion with rate limiting, retry, and stats tracking.
 
@@ -239,6 +293,7 @@ def _execute_completion(kwargs: dict, model: str):
                 f"LLM call: {model}, {input_tokens}+{output_tokens} tokens, ${cost:.4f}, {latency_ms:.0f}ms"
             )
 
+            _notify(role, _last_call_stats)
             return response
 
         except Exception as e:
@@ -281,6 +336,7 @@ def _execute_completion(kwargs: dict, model: str):
         error=str(last_error),
     )
 
+    _notify(role, _last_call_stats)
     raise Exception(f"LLM call failed after {settings.max_retries} retries: {last_error}")
 
 
@@ -291,6 +347,7 @@ def llm_completion(
     max_tokens: int = None,
     top_p: float = None,
     response_format: dict = None,
+    role: str | None = None,
 ) -> str:
     """
     Call LLM and return response text.
@@ -304,6 +361,8 @@ def llm_completion(
         max_tokens: Max response length (uses settings default if None)
         top_p: Nucleus sampling (uses settings default if None)
         response_format: Optional {"type": "json_object"} for JSON mode
+        role: What the call is for (perception, solver, analyst…) — reported to the
+            observer (observe_llm_calls) with the call's stats
 
     Returns:
         Response text content
@@ -321,11 +380,12 @@ def llm_completion(
 
     if top_p != 1.0:
         kwargs["top_p"] = top_p
+    kwargs["timeout"] = _timeout()
 
     if response_format:
         kwargs["response_format"] = response_format
 
-    response = _execute_completion(kwargs, model)
+    response = _execute_completion(kwargs, model, role)
     return response.choices[0].message.content
 
 
@@ -365,6 +425,7 @@ def stream_tool_completion(
         "tool_choice": tool_choice if tools else None,
         "stream": True,
         "stream_options": {"include_usage": True},
+        "timeout": _timeout(),
     }
     if top_p != 1.0:
         kwargs["top_p"] = top_p
@@ -394,25 +455,30 @@ def stream_tool_completion(
     if stream is None:
         raise last_error  # type: ignore[misc]
 
-    for chunk in stream:
-        if getattr(chunk, "usage", None):
-            usage = chunk.usage
-        choices = getattr(chunk, "choices", None)
-        if not choices:
-            continue
-        delta = choices[0].delta
-        if getattr(delta, "content", None):
-            content_parts.append(delta.content)
-            yield delta.content
-        for tc in getattr(delta, "tool_calls", None) or []:
-            acc = tc_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
-            if getattr(tc, "id", None):
-                acc["id"] = tc.id
-            fn = getattr(tc, "function", None)
-            if fn and getattr(fn, "name", None):
-                acc["name"] = fn.name
-            if fn and getattr(fn, "arguments", None):
-                acc["arguments"] += fn.arguments
+    try:
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            delta = choices[0].delta
+            if getattr(delta, "content", None):
+                content_parts.append(delta.content)
+                yield delta.content
+            for tc in getattr(delta, "tool_calls", None) or []:
+                acc = tc_acc.setdefault(tc.index, {"id": "", "name": "", "arguments": ""})
+                if getattr(tc, "id", None):
+                    acc["id"] = tc.id
+                fn = getattr(tc, "function", None)
+                if fn and getattr(fn, "name", None):
+                    acc["name"] = fn.name
+                if fn and getattr(fn, "arguments", None):
+                    acc["arguments"] += fn.arguments
+    finally:
+        # A reader that stops early (reply guard, barge-in) closes this generator; the
+        # provider stream must be closed with it, here and now.
+        _close_stream(stream)
 
     latency_ms = (time.time() - start_time) * 1000
     input_tokens = usage.prompt_tokens if usage else 0
@@ -465,6 +531,7 @@ def llm_json_completion(
     max_tokens: int = None,
     validate_schema: type[BaseModel] = None,
     retry_on_invalid: bool = True,
+    role: str | None = None,
 ) -> dict:
     """
     Call LLM with JSON mode and return parsed dict.
@@ -498,6 +565,7 @@ def llm_json_completion(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 response_format=response_format,
+                role=role,
             )
 
             # Parse JSON

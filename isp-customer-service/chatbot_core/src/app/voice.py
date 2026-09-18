@@ -64,6 +64,37 @@ def _build_tts():
     return EdgeTTSProvider(default_language=_LANGUAGE, voice=voice)
 
 
+# The locale groups whose lines the engine SPEAKS as scripted replies (the rest —
+# detector glosses, verdict glosses, pack meanings — only feed the LLM).
+PREWARM_GROUPS = ("system", "identification", "ticket", "inform", "faq", "solver", "problem")
+
+
+def scripted_lines() -> list[str]:
+    """Every fixed line the engine may speak word for word: the opening line and the
+    scripted phrases without placeholders."""
+    from agent.config import create_config
+    from agent.contract.locale import current, phrase
+
+    lines = [phrase("system.greeting", company_name=create_config().company_name)]
+    for key, text in current().phrases.items():
+        if key.split(".", 1)[0] in PREWARM_GROUPS and "{" not in text:
+            lines.append(text)
+    return lines
+
+
+def prewarm_tts() -> int:
+    """Render the scripted lines into the TTS cache (review finding AL) — run once in
+    a background thread at startup, so a mechanical turn never waits on the network.
+    TTS_PREWARM=off skips it."""
+    if os.environ.get("TTS_PREWARM", "on").lower() == "off":
+        return 0
+    from agent.voice_pipeline import prewarm
+
+    rendered = prewarm(_build_tts(), scripted_lines(), language=_LANGUAGE, pause_s=0.2)
+    logger.info(f"tts prewarm: {rendered} new pieces rendered")
+    return rendered
+
+
 def _record_dir(session_id: str) -> Path:
     base = os.environ.get("API_RECORD_DIR")
     root = Path(base) if base else Path(__file__).resolve().parents[3] / "logs" / "sessions"
