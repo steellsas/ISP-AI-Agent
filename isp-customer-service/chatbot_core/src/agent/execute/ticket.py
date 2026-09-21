@@ -84,8 +84,9 @@ def finish_ticket_dialogue(state: Any, rt: Any) -> str:
 
     _q_clear_owner(state, rt, "ticket")  # contacts collected — the dialogue is over
     register_ticket_from_state(state, rt, step_id)
-    s.closing.case_closed = True
-    s.closing.closed_reason = "registered" if s.ticket.ticket_id else "declined"
+    from ..closing import close_call
+
+    close_call(state, rt, "registered" if s.ticket.ticket_id else "declined")
     val = s.ticket.contact_hours
     val = val[:1].lower() + val[1:]  # mid-sentence: "skambinti galima bet kada"
     done = (

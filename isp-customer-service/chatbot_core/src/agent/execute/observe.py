@@ -16,56 +16,17 @@ from typing import Any  # noqa: F401
 from ..contract.locale import phrase_or, vocab
 
 
-def augment_resolve_result(state, rt, observation: str) -> str:
-    """Identification just landed — diagnose in the SAME turn.
+def chain_after_bind(state, rt, name: str, observation: str) -> str:
+    """The bind's own chain: update_mac ALONE does not restore service — the port must be
+    reset and the line re-checked, and the narrator is handed a VERIFIED outcome (what
+    the provider side shows, not what the caller claims; it used to bind nothing and
+    close on the caller's word).
 
-    Otherwise the identification turn has nothing real left to say (the address is
-    already confirmed) and the model fills the gap: it invents "nėra žinomų
-    gedimų", asks "kokie įrenginiai prijungti?", and a debtor only hears about the
-    debt a turn later — or the caller goes quiet and the call stalls before any
-    diagnosis. Running it here lets ONE reply confirm the address and deliver the
-    finding."""
-    from ..execute.diagnosis import ensure_diagnosed
-
-    try:
-        obs = json.loads(observation)
-    except (TypeError, ValueError):
-        return observation
-    if not obs.get("success") or not state.identity.customer_id:
-        return observation
-    if not ensure_diagnosed(state, rt):
-        return observation
-    # The address was JUST confirmed (that is what triggered this diagnose) — the
-    # lookup hint still says "patvirtink adresą klientui", and the narrator obeying
-    # it re-asked the ADDRESS instead of moving on. Neutralize the stale hint.
-    obs["hint"] = "Adresas JAU patvirtintas — nebeklausk adreso."
-    # Arc v3 (2026-07-31, Andrius' variant 1): identification is SEPARATE from
-    # diagnosis — the engine has already diagnosed silently (state-only), and this
-    # ONE reply narrates the check announce AND its real result in sequence:
-    # "Patikrinsiu būseną šiuo adresu… Patikrinau: [rezultatas]." No caller-ack
-    # turn (a told-to-wait caller stays silent -> dead air), and no deferred-finding
-    # vacuum for the model to hallucinate into (observed: it invented a router
-    # story for a debtor). When async telemetry lands (Phase 5), the announce and
-    # the result naturally split into two real turns.
-    from ..speak.context_card import result_narration_tail
-
-    obs["message"] = (obs.get("message", "") or "").strip() + result_narration_tail(state, rt)
-    return json.dumps(obs, ensure_ascii=False)
-
-
-def augment_tool_result(state, rt, name: str, observation: str) -> str:
-    """Deterministic post-action chaining + telemetry verification (B6 strategy).
-
-    update_mac ALONE does not restore service — the port must be reset and the
-    line re-checked. Rather than trust the model to remember the whole sequence
-    (observed: it bound nothing and closed on the caller's word), the engine
-    chains it: after a successful update_mac it runs reset_port and re-reads the
-    telemetry, and hands the model a VERIFIED outcome to narrate (what the
-    provider side actually shows, not what the caller claims)."""
+    Wave 1b: this is the only chaining left in the observation path, and the two places
+    that bind call it explicitly. A hidden resolve -> diagnose chain lived here too; the
+    identification rule decides that itself now."""
     from ..execute.diagnosis import fresh_diagnose_reason
 
-    if name == "resolve_address":
-        return augment_resolve_result(state, rt, observation)
     if name != "update_mac":
         return observation
     try:
@@ -202,8 +163,9 @@ def update_state_from_observation(state, rt, action: str, observation: str):
             # registered — close the case so create_ticket is withdrawn and the
             # model narrates the close instead of re-registering in a loop.
             if state.resolution.procedure and not state.closing.case_closed:
-                state.closing.case_closed = True
-                state.closing.closed_reason = "registered"
+                from ..closing import close_call
+
+                close_call(state, rt, "registered")
 
         # Diagnostic findings -> case state under their DOMAIN, so the agent
         # reconciles them with the customer and never loses / re-runs them, and

@@ -9,7 +9,8 @@ Two seams:
   state between nodes and between turns.
 
 No tool scopes here: the speaker's LLM turn runs without tools — the engine decides
-tool actions in decide/ (validated by decide/gate.py) and runs them in execute/.
+tool actions in decide/ (validated by the effect gate, decide/gate.py) and runs them in
+execute/.
 """
 
 from __future__ import annotations

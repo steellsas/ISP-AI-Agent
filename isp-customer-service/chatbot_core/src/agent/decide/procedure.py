@@ -514,22 +514,21 @@ def route_to(state, rt, r: dict, target: str) -> None:
     the case; any other id is a real step to advance to. Centralises terminal
     handling so every branch (including client-side check -> resolve) actually
     closes."""
+    from ..closing import close_call
+
     if target == "resolve":
-        state.closing.case_closed = True
-        state.closing.closed_reason = "resolved"
+        close_call(state, rt, "resolved")
         # The fix worked, so the cause we were testing was the right one — the
         # agent can now say so ("taigi dėl X ir nebuvo interneto").
         _hypothesis.settle_hypothesis(state, rt, "confirmed", "sutvarkius problema dingo")
     elif target == "callback":
         # P-C (Andrius 2026-09-08): the caller agreed to do the homework and
         # call back — a warm callback close, never pressure into a ticket.
-        state.closing.case_closed = True
-        state.closing.closed_reason = "callback"
+        close_call(state, rt, "callback")
         state.closing.callback_goodbye_due = True  # scripted speaks callback_goodbye
         rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
     elif target == "end":
-        state.closing.case_closed = True
-        state.closing.closed_reason = state.closing.closed_reason or "declined"
+        close_call(state, rt, state.closing.closed_reason or "declined")
     else:
         # P-E: escalating out of the homework step means nothing was done at
         # the device — the ticket intro must speak the honest state.
@@ -559,8 +558,9 @@ def advance_restored(state, rt, r: dict, user_input: str | None) -> None:
         return  # question not asked yet (the bind turn) — just record telemetry
     outcome = detect_restored(user_input)
     if outcome == Outcome.YES:
-        state.closing.case_closed = True
-        state.closing.closed_reason = "resolved"
+        from ..closing import close_call
+
+        close_call(state, rt, "resolved")
         _hypothesis.settle_hypothesis(state, rt, "confirmed", "klientas patvirtino, kad veikia")
         return
     if outcome == Outcome.NO:
@@ -698,8 +698,9 @@ def advance_reboot_check(state, rt, r: dict, user_input: str | None) -> None:
         # (then the word is all we have). Still hung with no flap = neither
         # source saw anything change -> the wrong-device retry path.
         if r.get("telemetry_fixed") or flap or not telem_ok:
-            state.closing.case_closed = True
-            state.closing.closed_reason = "resolved"
+            from ..closing import close_call
+
+            close_call(state, rt, "resolved")
             _hypothesis.settle_hypothesis(
                 state, rt, "confirmed", "the connection recovered after the reboot"
             )
@@ -791,8 +792,9 @@ def advance_escalate(state, rt, r: dict, step, user_input: str | None) -> None:
         state.dialog.consents[step.role] = True
         begin_ticket_dialogue(state, rt, step)  # contacts first, then register+close
     elif label == "no":
-        state.closing.case_closed = True
-        state.closing.closed_reason = "declined"
+        from ..closing import close_call
+
+        close_call(state, rt, "declined")
 
 
 def goto_role(state, rt, r: dict, role: str) -> bool:

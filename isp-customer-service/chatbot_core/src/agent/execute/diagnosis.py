@@ -205,10 +205,10 @@ def ensure_action_done(state, rt) -> bool:
     contradictory narration (the model ignored the verified result and re-told
     the problem — "nepririštas, dabar pririšiu" — right after binding). Binding
     is a pure engine action: the engine runs it + reset_port + re-diagnose (via
-    _augment_tool_result, which also sets case_closed on success or advances to
+    chain_after_bind, which also sets case_closed on success or advances to
     escalate on failure), so by the time the LLM narrates it only PHRASES the
     verified outcome. Returns True if it ran an action this call."""
-    from .observe import augment_tool_result
+    from .observe import chain_after_bind
     from .ticket import begin_ticket_dialogue
 
     s = state
@@ -254,9 +254,7 @@ def ensure_action_done(state, rt) -> bool:
             )
         except Exception:  # pragma: no cover - best-effort
             continue
-        augment_tool_result(
-            state, rt, action, result.observation
-        )  # chains reset_port + re-diagnose
+        chain_after_bind(state, rt, action, result.observation)  # reset_port + re-diagnose
         ran = True
     if ran:
         r["action_done"] = True  # the announce is narrated this turn; advance next

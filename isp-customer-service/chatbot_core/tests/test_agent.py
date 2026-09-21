@@ -759,7 +759,7 @@ class TestHearingAgent:
             "agent.executor_flow.simulate_bridge_connection",
             lambda state, rt: calls.append("simulated"),
         )
-        monkeypatch.setattr("agent.execute.observe.augment_tool_result", lambda state, rt, n, o: o)
+        monkeypatch.setattr("agent.execute.observe.chain_after_bind", lambda state, rt, n, o: o)
         reply = drive_propose_fix(agent.state, agent.runtime, "", "įkišau į kompiuterį")
         assert "ririšau" in reply.lower() or "Pririšau" in reply  # the bind ran
         assert agent.state.resolution.procedure["step"] == "dr_verify"  # verify owns the next reply
@@ -1850,7 +1850,7 @@ class TestBindDiscipline:
             "agent.executor_flow.simulate_bridge_connection",
             lambda state, rt: calls.append("simulated"),
         )
-        monkeypatch.setattr("agent.execute.observe.augment_tool_result", lambda state, rt, n, o: o)
+        monkeypatch.setattr("agent.execute.observe.chain_after_bind", lambda state, rt, n, o: o)
 
         reply = drive_propose_fix(agent.state, agent.runtime, "", "Įkišau į kompiuterį")
         assert agent.state.resolution.bridge_bound is True

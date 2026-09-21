@@ -1,6 +1,6 @@
 """Diagnosis rules (§5 row 17) — the solver-led turn for an evidence-led pack: the plug
 report, the next missing evidence, the proposed fix (bridge), the failure ladder and the
-escalate hand-off. The solver (decide/solver.py) reasons; the gate (decide/gate.py)
+escalate hand-off. The solver (decide/solver.py) reasons; its guard (decide/solver_guard.py)
 validates; tools run through rt.tools."""
 
 from __future__ import annotations
@@ -335,8 +335,8 @@ def solver_drive_turn(state: Any, rt: Any, user_input: str | None) -> str | None
 
 
 def drive(state: Any, rt: Any, user_input: str | None) -> str:
-    from ...decide.gate import gate
     from ...decide.solver import solve
+    from ...decide.solver_guard import gate
     from ...faults import pack_verdicts
     from ...perceive.detectors import detect_turn_intent
 
@@ -462,8 +462,9 @@ def close_or_register(state: Any, rt: Any, say: str) -> str:
             reason="close overridden: bridge is temporary — register the router ticket",
         )
         return drive_escalate(state, rt, None)
-    state.closing.case_closed = True
-    state.closing.closed_reason = "resolved"
+    from ...closing import close_call
+
+    close_call(state, rt, "resolved")
     settle_hypothesis(state, rt, "confirmed", "the fix worked (solver)")
     return say or phrase("solver.resolved")
 
@@ -490,7 +491,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
       3. after the (demo) simulation, bind only if a device is actually observed —
          never bind blind."""
     from ...decide.procedure import goto_step
-    from ...execute.observe import augment_tool_result
+    from ...execute.observe import chain_after_bind
     from ...executor_flow import simulate_bridge_connection
 
     cid = state.identity.customer_id
@@ -568,7 +569,7 @@ def drive_propose_fix(state: Any, rt: Any, say: str, user_input: str | None) -> 
         bind = rt.tools.run(
             state, rt, "update_mac", {"customer_id": cid}, reason="bridge_bind", apply=False
         )
-        augment_tool_result(state, rt, "update_mac", bind.observation)  # chains reset + re-diagnose
+        chain_after_bind(state, rt, "update_mac", bind.observation)  # reset + re-diagnose
         state.resolution.bridge_bound = True
     except Exception as e:
         trace_note(rt.tracer, state, "drive_propose_fix", str(e), level="error")

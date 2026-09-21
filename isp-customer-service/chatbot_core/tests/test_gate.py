@@ -5,8 +5,8 @@ The gate is pure 🔒 mechanism (no LLM / IO / state), so it is fully determinis
 unit-testable — the first new must-hold safety logic of the thinking-agent phase.
 """
 
-from agent.decide.gate import default_policy, gate
 from agent.decide.solver import SolverDecision
+from agent.decide.solver_guard import default_policy, gate
 
 KNOWN = {"foreign_mac", "no_mac_observed", "healthy_to_router"}
 

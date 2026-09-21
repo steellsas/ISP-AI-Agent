@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ...closing import close_call
 from ...contract import limits
 from ...contract.locale import vocab
 from ...dialog_utils import last_agent_question
@@ -154,8 +155,7 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
     # (a ticket without customer_id is mechanically impossible). Configurable knob.
     gate_max = limits.get("problem_gate_max_turns")
     if p_asks + 1 >= gate_max:
-        s.closing.case_closed = True
-        s.closing.closed_reason = "declined"
+        close_call(state, rt, "declined")
         if not s.identity.customer_id:
             s.closing.unidentified_reason = "not_a_customer"  # no problem of ours was named
         rt.tracer.emit("decision", intent="problem_gate", action="close")
@@ -481,8 +481,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         low = user_input.lower()
         explicit_no = any(m in low for m in vocab("no_account_code"))
         if explicit_no:
-            s.closing.case_closed = True
-            s.closing.closed_reason = "declined"
+            close_call(state, rt, "declined")
             rt.tracer.emit("decision", intent="account_code", action="not_client_close")
             return True, phrase("identification.not_client_goodbye")
         # A-wave P3c (live #3: „A. B." → the LLM hallucinated „nerastas"): the caller
@@ -641,8 +640,7 @@ def _account_code_rung(state: Any, rt: Any, s: Any, user_input: str | None):
         rt.tracer.emit("decision", intent="account_code", action="warn")
         return True, phrase("identification.address_need_warning")
     if n >= limit:
-        s.closing.case_closed = True
-        s.closing.closed_reason = "declined"
+        close_call(state, rt, "declined")
         rt.tracer.emit("decision", intent="account_code", action="no_location_close")
         return True, phrase("identification.no_location_goodbye")
     return False, None
