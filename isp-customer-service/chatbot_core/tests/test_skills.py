@@ -67,3 +67,40 @@ def test_a_skill_prompt_is_far_smaller_than_the_old_owner_prompt():
     for skill in SKILLS:
         text = speak_prompt(skill, "+37060000000", "lt")
         assert len(text) < 7000, f"{skill}: {len(text)} chars"
+
+
+# Every family a decide rule can name (grep 'rule="' in agent/decide) plus the plan owners.
+OWNERS = (
+    "intake",
+    "identification",
+    "inform",
+    "side_topic",
+    "diagnosis",
+    "procedure",
+    "ticket",
+    "closing",
+)
+FAMILIES = (
+    "identification",
+    "intake",
+    "diagnosis",
+    "procedure",
+    "dialog",
+    "side_topic",
+    "ticket",
+    "inform",
+    "closing",
+)
+
+
+@pytest.mark.parametrize("family", FAMILIES)
+def test_no_family_falls_off_the_map(family, make_state):
+    """A new rule family must never leave the reply without a skill — the fallback is a
+    skill too, not an empty prompt. (A rule family is not an owner: `dialog.*` rules are
+    recorded under the stage's owner, so the lookup must survive an unknown family.)"""
+    state = make_state("+37060020112")
+    owner = family if family in OWNERS else "diagnosis"
+    state.turn.plan = TurnPlan(
+        owner=owner, rule=f"{family}.some_new_rule", say=Say(kind="directive")
+    ).model_dump(mode="json")
+    assert skill_for(state, owner) in SKILLS

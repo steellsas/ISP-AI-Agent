@@ -150,7 +150,7 @@
       "expect": {
         "identified": true,
         "reply_any": [
-          "atsakingam"
+          "atsaking"
         ],
         "reply_none": [
           "meistr"
