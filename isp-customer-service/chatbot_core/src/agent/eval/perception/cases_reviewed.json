@@ -1,0 +1,65 @@
+{
+ "_comment": "Curated perception cases: expectations a human confirmed. These must pass.",
+ "cases": [
+  {
+   "utterance": "Visuose įrenginiuose",
+   "context": {"verdict": "router_hung", "pending": "fail_scope",
+               "question": "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"},
+   "expect": {"turn_type": "answer", "facts": {"fail_scope": "all"}}
+  },
+  {
+   "utterance": "Tik telefone",
+   "context": {"verdict": "router_hung", "pending": "fail_scope",
+               "question": "Ar internetas neveikia visuose namų įrenginiuose, ar tik viename?"},
+   "expect": {"turn_type": "answer", "facts": {"fail_scope": "one"}}
+  },
+  {
+   "utterance": "Nedega nė viena lemputė",
+   "context": {"verdict": "no_mac_observed", "pending": "lights",
+               "question": "Ar dega lemputės ant routerio?"},
+   "expect": {"turn_type": "answer", "facts": {"lights": "off"}}
+  },
+  {
+   "utterance": "ne daganiai viena",
+   "context": {"verdict": "no_mac_observed", "pending": "lights",
+               "question": "Ar dega lemputės ant routerio?"},
+   "expect": {"turn_type": "answer", "facts": {"lights": "off"}}
+  },
+  {
+   "utterance": "Radau, stovi prie palangės",
+   "context": {"verdict": "no_mac_observed", "pending": "device_present",
+               "question": "Susiraskite routerį — dėžutę. Radote?"},
+   "expect": {"turn_type": "answer", "facts": {"device_present": "found"}}
+  },
+  {
+   "utterance": "O kiek tai kainuos?",
+   "context": {"verdict": "no_mac_observed", "pending": "lights",
+               "question": "Ar dega lemputės ant routerio?"},
+   "expect": {"turn_type": "question", "facts": {}}
+  },
+  {
+   "utterance": "Nesuprantu, kas tas WAN",
+   "context": {"verdict": "no_mac_observed", "pending": "lights",
+               "question": "Ar WAN lemputė dega?"},
+   "expect": {"turn_type": "confusion", "facts": {}}
+  },
+  {
+   "utterance": "Galim patikrinti, ką man reikia daryti?",
+   "context": {"verdict": "no_mac_observed", "pending": "device_present",
+               "question": "Susiraskite routerį. Radote?"},
+   "expect": {"turn_type": "question", "facts": {}}
+  },
+  {
+   "utterance": "Turiu kompiuterį, bet kito routerio neturiu",
+   "context": {"verdict": "no_mac_observed", "pending": "has_computer",
+               "question": "Ar turite kompiuterį, kurį galėtume prijungti kabeliu?"},
+   "expect": {"turn_type": "answer", "facts": {"has_computer": "yes"}}
+  },
+  {
+   "utterance": "Mhm",
+   "context": {"verdict": "no_mac_observed", "pending": "device_present",
+               "question": "Susiraskite routerį. Radote?"},
+   "expect": {"turn_type": "answer", "facts": {}}
+  }
+ ]
+}

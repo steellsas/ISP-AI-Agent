@@ -67,6 +67,19 @@ Radiniai: G, H, I (dalinai), K, AD, AE, AO.
 | 2a-7 | Perception eval rinkinys + paleidėjas (pradžiai ~60 atvejų iš eval trace'ų, auga toliau) | `agent/eval/perception/` |
 
 Commit'ai: (A) 2a-1…2a-3, (B) 2a-4, (C) 2a-5…2a-7.
+
+**2a eiga (2026-09-21):**
+- (A) `Perception` + greitkelis + citatos: eval tekstas/voice **178/178**, testai 1308.
+  Pakeliui rasta ir ištaisyta sena trace klaida: laukas `type` perrašydavo įvykio tipą
+  (todėl `perception`/`understand` įvykiai žurnale atrodė kaip `answer`).
+- (B) Vienas kvietimas visam ėjimui (tiketo skaitytojas ir problemos klasifikatorius
+  suliesti): `ticket_reader` 16 → **0**, `problem_classifier` 5 → 3. Eval 178/178 abiem
+  režimais. Regresija pakeliui: skaitymas pradėjo veikti KIEKVIENĄ ėjimą (212 iš 214) —
+  susiaurinta iki ėjimų, kuriems reikia (identifikacijos ėjimus skaito slotų sluoksnis).
+- (C) Analitikas pagal trigerius (`analyst_every_turns: 3` + stuck / tiketas / skolos
+  pasiūlymas); perception eval rinkinys (`agent/eval/perception/`): kuruoti **10/10**,
+  4 iš jų be LLM. 2a-6 (semantinis endpoint) jau buvo įgyvendintas anksčiau
+  (`agent/endpoint.py`) — nieko keisti nereikėjo.
 Baigimo kriterijai: vienetų testai žali; eval tekstas ir `--voice` ne blogesni;
 trace'e vienam ėjimui vienas `perception` LLM kvietimas arba nė vieno (greitkelis).
 
