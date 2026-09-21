@@ -379,6 +379,8 @@ class TurnScratch(BaseModel):
     head_owner: str | None = None
     # The TurnPlan decide produced; execute and narrate carry it out.
     plan: dict[str, Any] | None = None
+    # How many times this turn went back to decide after an action (redecide loop).
+    plan_hops: int = 0
     # The words the plan's action composed (e.g. the ticket dialogue's first question).
     action_text: str | None = None
 

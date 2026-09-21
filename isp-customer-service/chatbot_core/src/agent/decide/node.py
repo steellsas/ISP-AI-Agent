@@ -20,5 +20,7 @@ def decide_node(state: GraphState, runtime: Runtime[AgentRuntime]) -> dict[str, 
 
     rt = runtime.context
     state = state.model_copy(deep=True)
+    if state.turn.plan is not None:  # a second pass: the previous plan's action ran
+        state.turn.plan_hops += 1
     record(state, check_plan(state, rt, plan_turn(state, rt)))
     return node_update(state)

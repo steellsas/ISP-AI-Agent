@@ -64,6 +64,7 @@ class FakeEngine:
             "agent.perceive.evidence.ingest_client_evidence": ("ingest", None),
             "agent.perceive.side_topic.classify_side_topic": ("classify", side_topic),
             "agent.decide.rules.diagnosis.solver_drive_turn": ("solver", driven),
+            "agent.decide.rules.reply.scripted_layer": ("scripted", None),
             "agent.decide.procedure.advance": ("walker", StepOutcome("hold")),
             "agent.execute.diagnosis.ensure_action_done": ("action", None),
             "agent.execute.step.mark_step_presented": ("mark", None),
@@ -72,10 +73,10 @@ class FakeEngine:
             monkeypatch.setattr(target, self._recorder(label, result))
         monkeypatch.setattr("agent.speak.node.begin_turn", lambda state, rt, user_input: None)
         monkeypatch.setattr("agent.speak.node.stream_reply", self._speak)
-        monkeypatch.setattr("agent.execute.say.scripted_exit", lambda state, rt: None)
+        monkeypatch.setattr("agent.perceive.node.read_turn_start", lambda state, rt, text: None)
 
     def _recorder(self, label, result):
-        def record(state, rt, *args):
+        def record(state, rt=None, *args):
             self.calls.append(label)
             return result
 
@@ -129,7 +130,8 @@ class TestGraphCallOrder:
         out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         # The perceive node reads the turn first (slots, evidence, side-topic
         # signal); A-2 (2026-09-07): the guards run before the solver/walker can
-        # consume a safety-question answer.
+        # consume a safety-question answer. Wave 1: the scripted reply layer is the
+        # LAST decide step (after the procedure moved), then execute and the narrator.
         assert engine.calls == [
             "prefill",
             "ingest",
@@ -137,6 +139,7 @@ class TestGraphCallOrder:
             "diagnose",
             "solver",
             "walker",
+            "scripted",
             "action",
             "narrate",
             "mark",
@@ -147,7 +150,14 @@ class TestGraphCallOrder:
         engine = FakeEngine(monkeypatch, side_topic=True)
         out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
         # No close-inform/solver/walker/action on side chatter — only the frozen narration.
-        assert engine.calls == ["prefill", "ingest", "classify", "diagnose", "narrate"]
+        assert engine.calls == [
+            "prefill",
+            "ingest",
+            "classify",
+            "diagnose",
+            "scripted",
+            "narrate",
+        ]
         assert out["turn"].reply == "ok-reply"
 
     def test_solver_drive_skips_walker_and_narrator(self, monkeypatch):

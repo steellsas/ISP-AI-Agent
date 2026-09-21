@@ -46,12 +46,15 @@ def trim_to_cap(state: Any, rt: Any, text: str) -> str:
 
 def finalize(state: Any, rt: Any, text: str) -> None:
     """Shared end-of-turn bookkeeping for a customer-facing reply: the repeat guard, the
-    goodbye check, the case snapshot and the reply trace."""
-    from ..execute.say import maybe_end_on_goodbye
+    case snapshot and the reply trace.
+
+    Wave 1: a reply that SOUNDS like a goodbye no longer ends the call — the LLM's
+    wording is not a decision (the engine closes through a plan). A goodbye said while
+    the call is open is traced, so the gap shows up instead of hiding."""
     from ..trace import emit_case
 
     track_stuck(state, rt, text)
-    maybe_end_on_goodbye(state, rt, text)
+    _note_unclosed_goodbye(state, rt, text)
     emit_case(rt.tracer, state)
     rt.tracer.emit("agent_reply", text=text)
 
@@ -79,3 +82,15 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
     if is_q:
         state.dialog.last_question = reply
     rt.tracer.emit("stuck", count=state.dialog.stuck_count, repeated=repeat)
+
+
+def _note_unclosed_goodbye(state: Any, rt: Any, text: str) -> None:
+    """The narrator said a farewell while the call is still open — the closing rules
+    should have planned the close."""
+    from ..contract.locale import vocab
+
+    if state.closing.is_complete or not text:
+        return
+    low = text.lower()
+    if any(m in low for m in vocab("goodbye_markers")):
+        rt.tracer.emit("goodbye_unclosed", closed=state.closing.case_closed)

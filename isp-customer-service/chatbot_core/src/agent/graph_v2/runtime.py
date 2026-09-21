@@ -25,31 +25,17 @@ from .state import GraphState
 # Per-stage prompts.
 
 
-def narrate(
-    state,
-    rt,
-    user_input: str | None,
-    owner: str,
-    node: str,
-    exits: bool = False,
-) -> str:
-    """Speak a stage turn: the narrator's bookkeeping, the engine's scripted exits when
-    `exits` (a stage directive), else / then the LLM turn — streaming out via the
-    LangGraph stream writer (a no-op outside a live stream) while collecting the full
-    reply for the checkpoint."""
+def narrate(state, rt, user_input: str | None, owner: str, node: str) -> str:
+    """Speak the plan's directive: the LLM turn, streaming out via the LangGraph stream
+    writer (a no-op outside a live stream) while collecting the full reply for the
+    checkpoint. Every decision — including the engine's own scripted words — was made
+    in decide (wave 1)."""
     state.turn.active_node = node
     rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
     from ..speak.node import begin_turn, stream_reply
 
     writer = _writer()
     begin_turn(state, rt, user_input)
-    if exits:
-        from ..execute.say import scripted_exit
-
-        words = scripted_exit(state, rt)
-        if words is not None:
-            writer(words)
-            return words
     parts: list[str] = []
     for token in stream_reply(state, rt, owner):
         writer(token)
@@ -78,22 +64,13 @@ def speak_scripted(state: Any, rt: Any, node: str, user_input: str | None, reply
     post-registration goodbye returned in the state update only — zero tokens
     streamed — and the call ended in dead silence, three caller turns in a
     row). Mirrors narrate()'s surface for an engine-composed line: node event,
-    history, trace, and the stream writer."""
+    history, trace, and the stream writer. The caller's words are already on the
+    history (the perceive node put them there)."""
     state.turn.active_node = node
     rt.tracer.emit("node", node=node, customer_id=state.identity.customer_id)
-    if user_input:
-        state.dialog.last_heard = user_input.strip()
-        rt.tracer.emit("user_turn", text=user_input)
-        state.messages.append({"role": "user", "content": user_input})
     from ..execute.say import emit_scripted
 
     emit_scripted(state, rt, reply)
-    # W0-D (live 2026-08-25: "Geros dienos!" said 3×): a scripted goodbye must
-    # END the call like an LLM one — the hang-up detector ran only on the LLM
-    # path, so every trailing garbled turn earned a fresh goodbye.
-    from ..execute.say import maybe_end_on_goodbye
-
-    maybe_end_on_goodbye(state, rt, reply)
     try:
         get_stream_writer()(reply)
     except Exception:  # outside a live stream (tests / .invoke) — text is in state

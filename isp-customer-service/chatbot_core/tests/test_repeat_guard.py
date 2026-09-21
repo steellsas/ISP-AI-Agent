@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from agent.decide.rules.dialog import stuck_backstop
 from agent.dialog_utils import is_question, progress_key, similar
-from agent.execute.say import apply_backstop
+from agent.execute.actions import run_action
 from agent.speak.postprocess import track_stuck
 
 
@@ -24,12 +24,21 @@ def _agent():
 
 
 def _turn(agent, text=None):
-    """One stage turn (perceive, then the narrator with its scripted exits); the reply."""
+    """One stage turn: perceive reads it, decide plans it (the scripted layer may own
+    it), execute runs the action and the narrator speaks what is left."""
+    from agent.decide.rules.reply import scripted_layer
+    from agent.execute.actions import run_action
     from agent.graph_v2.runtime import narrate
     from agent.perceive import perceive
+    from agent.perceive.node import read_turn_start
 
+    read_turn_start(agent.state, agent.runtime, text)
     perceive(agent.state, agent.runtime, text)
-    return narrate(agent.state, agent.runtime, text, "diagnosis", "diagnosis", exits=True)
+    plan = scripted_layer(agent.state, agent.runtime)
+    if plan is not None:
+        run_action(agent.state, agent.runtime, plan)
+        return plan.say.text or ""
+    return narrate(agent.state, agent.runtime, text, "diagnosis", "diagnosis")
 
 
 def _stream_of(message):
@@ -100,33 +109,51 @@ class TestStuckCounter:
         track_stuck(a.state, a.runtime, "Atsiprašau, kurioje gatvėje neveikia internetas?")
         assert a.state.dialog.last_reply_repeated is True
 
-    def test_apply_backstop_offer_climbs_ladder(self):
+    def test_backstop_offer_climbs_ladder(self):
         a = _agent()
         a.state.dialog.stuck_count = 3
-        apply_backstop(a.state, a.runtime, ("Gal turite abonento kodą?", False))
+
+        plan = _backstop_plan(a)
+
+        assert plan.rule == "dialog.stuck_backstop"
+        assert plan.action.type == "none"  # the offer only climbs the ladder
+        assert "abonento kodą" in plan.say.text
         assert a.state.dialog.stuck_count == 4
 
-    def test_apply_backstop_unidentified_closes_as_unidentified(self):
+    def test_backstop_unidentified_closes_as_unidentified(self):
         a = _agent()
         a.state.dialog.stuck_count = 4
-        text, should_close = stuck_backstop(a.state)
-        assert "Užregistruosiu" not in text  # no registration promised without an account
-        apply_backstop(a.state, a.runtime, (text, should_close))
+
+        plan = _backstop_plan(a)
+        assert "Užregistruosiu" not in plan.say.text  # nothing promised without an account
+        assert plan.action.type == "close" and plan.action.name == "stuck"
+        run_action(a.state, a.runtime, plan)
+
         assert a.state.closing.case_closed is True
         assert a.state.closing.closed_reason == "declined"
         assert a.state.closing.unidentified_reason == "stuck"
+        assert a.state.closing.is_complete is True  # the words ARE the goodbye
 
-    def test_apply_backstop_identified_registers_the_promised_ticket(self, db_connection):
+    def test_backstop_identified_registers_the_promised_ticket(self, db_connection):
         a = _agent()
         a.state.identity.customer_id = "CUST009"
         a.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
         a.state.dialog.stuck_count = 4
-        text, should_close = stuck_backstop(a.state)
-        assert "Užregistruosiu" in text
-        apply_backstop(a.state, a.runtime, (text, should_close))
+
+        plan = _backstop_plan(a)
+        assert "Užregistruosiu" in plan.say.text
+        run_action(a.state, a.runtime, plan)
+
         assert a.state.ticket.ticket_id  # F-5: the promise is kept
         assert a.state.closing.closed_reason == "registered"
         assert a.state.resolution.procedure["escalate_reason"] == "stuck"
+
+
+def _backstop_plan(a):
+    """The stuck ladder as decide plans it (wave 1: the narrator no longer acts)."""
+    from agent.decide.rules.reply import scripted_layer
+
+    return scripted_layer(a.state, a.runtime)
 
 
 class TestBackstop:

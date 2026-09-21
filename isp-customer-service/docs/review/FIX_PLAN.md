@@ -46,7 +46,68 @@ BANGA 5  valymas
 | 4 | Lėtas internetas + TV tik failais; RAG atviriems klausimams; pavyzdžių bankas | AJ, AK | 3, 2b |
 | 5 | Valymas: vėliavos, seni keliai, pavadinimai, LT/EN raktai, testų žemėlapis | E, F5 | 4 |
 
-Detalus 1–5 bangų planas rašomas kiekvienos bangos pradžioje.
+Detalus 2–5 bangų planas rašomas kiekvienos bangos pradžioje.
+
+---
+
+## Banga 1 — grynas decide (šaka `fix/wave-1`)
+
+Tikslas: **vienas sprendėjas, vienas efektų kelias, naratorius tik kalba.**
+Banga dalijama į 1a, 1b, 1c — kiekviena dalis atskiras peržiūrimas žingsnis
+(kodas + testai + eval). Radiniai: A, R, AF, T, J, Q.
+
+```
+DABAR                                   PO BANGOS 1
+perceive  rašo faktus IR sprendimus     perceive  tik skaito (J)
+decide    dalis sprendimų               decide    VISI sprendimai; reikia duomenų →
+          + įrankiai + LLM solver                 Action + redecide ciklas
+execute   beveik nieko                  execute   VISI efektai per VIENĄ gate (R)
+narrate   planuoja, uždaro, registruoja  narrate  tik kalba
+```
+
+### 1a · Sprendimai iš narrate į decide
+| # | Kas | Kur |
+|---|---|---|
+| 1a-1 | Grafe `execute → decide` sąlyginė briauna, kai planas turi `redecide_after_action` (laukas jau yra, nenaudojamas); ciklo riba (`plan_hops`, limitas `limits.yaml`) | `graph_v2/graph.py`, `decide/plan.py` |
+| 1a-2 | Scripted atsakymų sluoksnis (`decide/rules/reply.py`, 15 šeimų) iškeliamas iš `narrate` į policy chain — vykdomas po to, kai procedūra pajudėjo (ta pati decide eiga) | `decide/policy.py`, `decide/rules/stage.py`, `execute/say.py` |
+| 1a-3 | `stuck_backstop` ir `scripted_wait_ack` tampa decide taisyklėmis | `decide/rules/dialog.py`, `decide/policy.py` |
+| 1a-4 | `narrate` tik taria: nebelieka `scripted_exit`, `state.turn.plan = None`, plano perrašymo | `execute/say.py`, `graph_v2/runtime.py` |
+| 1a-5 | `maybe_end_on_goodbye` (skambučio pabaiga pagal LLM tekstą) pašalinamas — uždarymą planuoja decide | `execute/say.py`, `speak/postprocess.py` |
+| **Testai** | decide lentelės: būsena → plano `rule`/`action`/`say` (be LLM); redecide ciklo riba; `turn_plan` trace rodo galutinį planą | |
+
+### 1b · Visi efektai per vieną gate
+| # | Kas | Kur |
+|---|---|---|
+| 1b-1 | `Action(type="close", name=<reason>)` įgyvendinamas execute; 15 vietų, kur dabar rašoma `case_closed = True`, planuoja šį veiksmą | `execute/actions.py`, `decide/rules/*` |
+| 1b-2 | Tiketo registracija, prierašas ir MAC pririšimas — tik per `Action` (įskaitant solver drive `propose_fix` ir stuck backstop) | `execute/actions.py`, `decide/rules/diagnosis.py` |
+| 1b-3 | Paslėptos grandinės iš `observe.augment_*` (resolve → diagnose, update_mac → reset_port → recheck) tampa aiškia veiksmų seka execute'e (T) | `execute/observe.py`, `execute/actions.py` |
+| 1b-4 | Hang-up saugiklis (`call_record/finalizer.py`) registruoja tiketą tuo pačiu keliu per gate (AF) | `call_record/finalizer.py` |
+| 1b-5 | Vienas efektų gate: `check_plan` tikrina VISUS veiksmus; solver sprendimų validatorius atskiriamas ir pervadinamas (R) | `decide/gate.py` → `decide/solver_guard.py` |
+| **Testai** | gate lentelės: veiksmas × sąlyga → leista/atmesta; kiekvienas efektas be plano nebeįmanomas (testas, kad rules nebekeičia `case_closed`/tiketo tiesiogiai) | |
+
+### 1c · Perceive tik skaito · vienas klausimų registras
+| # | Kas | Kur |
+|---|---|---|
+| 1c-1 | `problem_type`, antrinės problemos, `holder_relation`, `hypothesis.doubt` iš perceive → į decide (perceive rašo tik į `turn` scratch) (J) | `perceive/*`, `decide/rules/*` |
+| 1c-2 | Kiekvienas užduotas klausimas registruojamas per `decide/question.py` (savininkas + raktas); pirmumas — tik `OWNER_PRIORITY` (Q). Vėliavų valymas — 5 banga | `decide/question.py`, `decide/rules/*` |
+| 1c-3 | Trace: `turn_plan` + `plan_hops`; `decision` įvykiai iš vienos vietos | `decide/plan.py`, `agent/trace.py` |
+| **Testai** | perceive testas: po `perceive` būsenoje pakito tik faktai ir `turn`; klausimų registro lentelės | |
+
+**1a eiga (2026-09-21):** padaryta. Vienetų testai **1269 passed**; eval tekstas
+**178/178**, `--voice` **178/178**; užstrigimų nėra. Pakeliui rasta ir ištaisyta sava
+regresija: atsisveikinimo planas uždarydavo skambutį kaip „registered" ir perrašydavo
+„resolved" (S9, R3 → open); dabar atsisveikinimas tik padeda ragelį
+(`Action(type="close", name="keep")`). Trace'e per 66 skambučius: 16 uždarymų per planą,
+**2 `goodbye_unclosed`** — naratorius atsisveikino, kai byla dar atvira (stebime; taisoma
+1b/2b, kur uždarymą visada planuoja decide).
+
+**Bangos 1 baigimo kriterijai:** visi vienetų testai žali; eval tekstas ir
+`--voice` ne blogesni nei 178/178; `--runs 3` be FLAKY; trace'e `turn_plan`
+atitinka realų sprendimą; nė vienas efektas nevyksta be plano.
+
+**Rizika:** tai didžiausias struktūrinis pakeitimas (A radinys). Dalis esamų
+vienetų testų tikrina dabartinę vidinę struktūrą (AU) — jie perrašomi tose
+pačiose dalyse. Apsauga — eval (tekstas + voice).
 
 ---
 
@@ -83,4 +144,6 @@ trace'e matomi visi LLM kvietimai ir `turn_timing`.
 **Bangos 0 pastebėjimai kitoms bangoms (iš eval trace'ų, 69 skambučiai):**
 - Atsakymo sargas nukirpo 235 iš 266 LLM atsakymų dėl antro klausimo (+4 dėl ilgio) — modelis beveik visada klausia daugiau nei vieno dalyko. Tai 2b bangos (promptai pagal įgūdį) tikslas: sargas lieka saugikliu, bet promptas turi to išvengti pats.
 - LLM kvietimai pagal rolę: analyst 320, speak 266, perception 182, ticket_reader 38, problem_classifier 10, solver 5 — analyst brangiausias ir dažniausias (AE, 2a banga).
+- Testai ir eval dalijasi ta pačia demo DB (`database/isp_database.db`) ir vienu metu
+  neveikia (WinError 32) — kiekvienam paleidimui reikia savo DB failo (kandidatas 5 bangai).
 - Nestabilus testas: `test_api::test_interrupt_stops_remaining_chunks` (laiko priklausomybė, `sleep 0.15`) — kartą krito, 8/8 pakartojimų praėjo; su pakeitimais nesusijęs.

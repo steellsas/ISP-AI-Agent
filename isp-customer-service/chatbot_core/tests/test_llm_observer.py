@@ -7,6 +7,13 @@ from unittest.mock import patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def provider_key(monkeypatch):
+    """The client exports the provider's key before every call; CI has none (locally it
+    comes from .env), and these tests patch the transport, not the credentials."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+
 def _fake_response(text="{}", prompt_tokens=120, completion_tokens=8):
     return SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=text))],
