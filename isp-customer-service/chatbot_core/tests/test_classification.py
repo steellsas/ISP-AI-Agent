@@ -63,10 +63,10 @@ class TestPolitikaIngest:
     identifikacija ir tiketas atsakingam žmogui, be diagnostikos."""
 
     def test_billing_is_a_request(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
+        from tests.calls import hear
 
         agent = _agent()
-        prefill_slots_from_text(agent.state, agent.runtime, "Kodėl man tokia didelė sąskaita?")
+        hear(agent, "Kodėl man tokia didelė sąskaita?")
         assert agent.state.intake.problem_type == "billing"
         assert agent.state.intake.boundary_problem is None
 
@@ -80,10 +80,10 @@ class TestPolitikaIngest:
         assert agent.state.intake.problem_type is None and not agent.state.closing.case_closed
 
     def test_solvable_problem_still_flows(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
+        from tests.calls import hear
 
         agent = _agent()
-        prefill_slots_from_text(agent.state, agent.runtime, "Labas, neveikia internetas")
+        hear(agent, "Labas, neveikia internetas")
         assert agent.state.intake.problem_type == "internet_down"
 
 

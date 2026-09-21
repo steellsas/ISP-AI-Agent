@@ -146,10 +146,12 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         # is the whole decision — close warm right here, no offer round.
         if any(m in low_cl for m in vocab("will_call_back")):
             state.dialog.cannot_now_done = True
-            s.closing.case_closed = True
-            s.closing.closed_reason = "callback"
             rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
-            return _words("dialog.cannot_now_callback", phrase("identification.callback_goodbye"))
+            return _plan(
+                "dialog.cannot_now_callback",
+                phrase("identification.callback_goodbye"),
+                action=Action(type="close", name="callback"),
+            )
         # N2 (live 2026-09-09: "Negaliu, nes esu nenuose" got RESUME and the
         # walker pushed another check): the caller was just asked "ar negalite
         # dabar patikrinti?" — a rambling answer about being away IS a yes.
@@ -175,10 +177,12 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         _q_clear(state, rt, "cannot_now_offer")
         low_cn = user_input.lower()
         if any(m in low_cn for m in (*vocab("will_call_back"), *vocab("later_words"))):
-            s.closing.case_closed = True
-            s.closing.closed_reason = "callback"
             rt.tracer.emit("decision", intent="cannot_now", action="callback_close")
-            return _words("dialog.cannot_now_callback", phrase("identification.callback_goodbye"))
+            return _plan(
+                "dialog.cannot_now_callback",
+                phrase("identification.callback_goodbye"),
+                action=Action(type="close", name="callback"),
+            )
         from ...perceive.detectors import DETECTORS as _DET_CN2
         from ...perceive.detectors import detect_refuse_or_ticket
 

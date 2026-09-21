@@ -155,30 +155,30 @@ class TestCitySuggestionWiring:
     persijungia, paieška vyksta ten (tikslinimas nėra bandymai)."""
 
     def test_confirmation_moves_the_city_slot(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
+        from tests.calls import hear
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.suggested_city = "Ginkūnai"
-        prefill_slots_from_text(agent.state, agent.runtime, "Taip, Ginkūnuose")
+        hear(agent, "Taip, Ginkūnuose")
         assert agent.state.identity.profile.city.value == "Ginkūnai"
         assert agent.state.identity.suggested_city is None
 
     def test_bare_yes_also_moves(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
+        from tests.calls import hear
 
         agent = _agent()
         agent.state.intake.problem_type = "internet_down"
         agent.state.identity.suggested_city = "Ginkūnai"
-        prefill_slots_from_text(agent.state, agent.runtime, "Taip taip")
+        hear(agent, "Taip taip")
         assert agent.state.identity.profile.city.value == "Ginkūnai"
 
     def test_other_answer_keeps_suggestion_open(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
+        from tests.calls import hear
 
         agent = _agent()
         agent.state.identity.suggested_city = "Ginkūnai"
-        prefill_slots_from_text(agent.state, agent.runtime, "Palaukite, pasižiūrėsiu dokumentuose")
+        hear(agent, "Palaukite, pasižiūrėsiu dokumentuose")
         assert agent.state.identity.profile.city.value is None
         assert agent.state.identity.suggested_city == "Ginkūnai"
 
@@ -688,7 +688,7 @@ class TestHolderNameCheck:
         assert "Giedri" not in reply  # DB vardas NIEKADA negarsinamas
 
     def test_clarify_answer_updates_relation(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
+        from tests.calls import hear
 
         agent = _agent()
         agent.state.identity.customer_id = "CUST009"
@@ -696,7 +696,7 @@ class TestHolderNameCheck:
         agent.state.identity.caller_relation = "holder"
         agent.state.identity.holder_clarify_open = True
         agent.state.identity.holder_clarify_asked = True  # klausimas jau nuskambėjo
-        prefill_slots_from_text(agent.state, agent.runtime, "Žmonos vardu sudaryta sutartis")
+        hear(agent, "Žmonos vardu sudaryta sutartis")
         assert agent.state.identity.caller_relation != "holder"
 
 
@@ -777,11 +777,12 @@ class TestOtherStreetSignal:
 
     def _turn(self, agent, text):
         from agent.decide.rules.head import turn_head
-        from agent.perceive.slots import prefill_slots_from_text
+
+        from tests.calls import hear
 
         # Gyva seka: prefill, tada pre_turn_guards —
         # reopen trigeris gyvena guards'uose, ne prefill'e.
-        prefill_slots_from_text(agent.state, agent.runtime, text)
+        hear(agent, text)
         turn_head(agent.state, agent.runtime, text)
 
     def test_garbled_correction_triggers_confirm(self, db_connection):

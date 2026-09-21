@@ -60,62 +60,20 @@ def prefill_slots_from_text(state: Any, rt: Any, text: str) -> None:
     if text and text.strip():
         s.intake.heard_utterances.append(text.strip())
 
-    # Problem classification (R1) — independent of the registry/DB, so it runs
-    # even if address extraction fails. A revisable hypothesis: a clearer later
-    # statement overrides (docs/pokalbio_variklis.md §12.2).
+    # Problem classification (R1) — a READING: what this utterance sounds like. What
+    # the call's problem IS (the primary never flips; later mentions become secondary)
+    # is a policy, decided in decide/rules/intake.py (wave 1c).
     try:
-        from ..intents import BOUNDARY_POLICIES, problem_policy
         from .nlu import classify_problem, extract_symptoms
 
-        problem = classify_problem(text)
-        # №4 continued (reference dialogue 2026-09-03): the answer to the holder
-        # clarification updates the relation („žmonos vardu sudaryta" → family) — one read.
+        state.turn.problem_reading = classify_problem(text)
+        # №4 (reference dialogue 2026-09-03): the answer to the holder clarification
+        # tells WHO is calling („žmonos vardu sudaryta" → family) — read here, committed
+        # by decide (which also closes the clarification).
         if state.identity.holder_clarify_open and state.identity.holder_clarify_asked and text:
-            state.identity.holder_clarify_open = False
-            state.identity.holder_clarify_asked = False
-            from .caller import detect_caller_relation as _dcr
+            from .caller import detect_caller_relation
 
-            _rel = _dcr(text)
-            if _rel and _rel != "unknown":
-                s.identity.caller_relation = _rel
-                rt.tracer.emit(
-                    "caller_intro", name=s.identity.caller_name, relation=_rel, clarified=True
-                )
-        # Competence policy (2026-09-02): not_ours/chat types NEVER become
-        # the call's problem_type — the gate answers with the declared boundary
-        # phrase instead of opening identification ("kodėl tokia sąskaita?" is
-        # not a fault). Stashed one-shot for the reply layer.
-        if problem and problem_policy(problem) in BOUNDARY_POLICIES:
-            if s.intake.problem_type is None:
-                state.intake.boundary_problem = problem
-            problem = None
-        if problem:
-            # A (Andrius 2026-08-21): the PRIMARY goal is the caller's stated
-            # call reason and NEVER flips mid-call (an STT garble switched it
-            # to billing live). Later mentions of other problems become
-            # SECONDARY — noted, asked about at the end, listed on the ticket.
-            if s.intake.problem_type is None:
-                s.intake.problem_type = problem
-            elif (
-                problem != s.intake.problem_type
-                and s.resolution.procedure is not None
-                and not s.closing.case_closed
-                and not state.ticket.stage
-                and len((text or "").split()) >= 3  # garbles ("Žemės gatvės") are not complaints
-                # Only a fault is a secondary TECH problem; a request (billing, …) is not
-                # something to list on the fault ticket (F-28: its own ticket, later).
-                and problem_policy(problem) == "solve"
-            ):
-                if not any(x.get("type") == problem for x in s.intake.secondary_problems):
-                    s.intake.secondary_problems.append(
-                        {
-                            "type": problem,
-                            "text": (text or "").strip()[:120],
-                            "turn": s.dialog.turn_count,
-                        }
-                    )
-            elif not s.identity.customer_id and s.resolution.procedure is None:
-                s.intake.problem_type = problem  # early self-correction is fine
+            state.turn.caller_relation_reading = detect_caller_relation(text)
         # Revisable: a clearer later mention overrides an earlier reading.
         s.intake.symptoms.update(extract_symptoms(text))
     except Exception:  # pragma: no cover - best-effort

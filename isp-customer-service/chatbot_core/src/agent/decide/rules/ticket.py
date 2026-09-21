@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...closing import close_call
 from ...contract import limits
 from ...contract.locale import phrase_or, vocab
 from ..plan import Action, Say, TurnPlan
@@ -130,8 +131,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
         from ...decide.question import clear_owner as _q_clear_owner
 
         _q_clear_owner(state, rt, "ticket")
-        s.closing.case_closed = True
-        s.closing.closed_reason = "callback"
+        close_call(state, rt, "callback")
         state.closing.callback_goodbye_due = True
         rt.tracer.emit("decision", intent="ticket_dialogue", action="callback_close")
         return

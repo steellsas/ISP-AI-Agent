@@ -183,6 +183,7 @@ class TestPrefillWiring:
         """A caller turn populates the slots before the LLM, via the agent."""
         from unittest.mock import patch
 
+        from agent.decide.rules.intake import apply_readings
         from agent.perceive import perceive
         from agent.slots import SlotStatus
         from agent.speak.node import turn as speak_turn
@@ -199,6 +200,7 @@ class TestPrefillWiring:
         ):
             text = "neveikia internetas Tilžės 60 butas 7"
             perceive(agent.state, agent.runtime, text)
+            apply_readings(agent.state, agent.runtime)  # decide commits the problem (1c)
             list(speak_turn(agent.state, agent.runtime, text, "intake"))
 
         p = agent.state.identity.profile

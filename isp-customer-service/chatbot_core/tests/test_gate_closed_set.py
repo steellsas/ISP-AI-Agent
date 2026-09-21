@@ -69,8 +69,8 @@ def test_forbidden_action_is_dropped(make_state, make_runtime, monkeypatch):
 
 
 def test_propose_fix_is_accepted_for_every_pack_verdict():
-    from agent.decide.gate import gate
     from agent.decide.solver import SolverDecision
+    from agent.decide.solver_guard import gate
     from agent.faults import pack_verdicts
 
     for verdict in pack_verdicts():

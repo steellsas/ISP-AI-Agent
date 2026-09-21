@@ -101,6 +101,14 @@ regresija: atsisveikinimo planas uždarydavo skambutį kaip „registered" ir pe
 **2 `goodbye_unclosed`** — naratorius atsisveikino, kai byla dar atvira (stebime; taisoma
 1b/2b, kur uždarymą visada planuoja decide).
 
+**1b + 1c eiga (2026-09-21):** padaryta vienoje šakoje (`fix/wave-1bc`), du
+commit'ai. Vienetų testai **1294 passed**; eval tekstas **178/178**, `--voice`
+**178/178**; užstrigimų nėra. 1b: uždarymas vienoje vietoje (`agent/closing.py`),
+architektūrinis testas neleidžia naujų rašytojų; paslėpta „adresas → diagnostika"
+grandinė išimta, liko tik `chain_after_bind`; gate'ai atskirti (`decide/gate.py`
+efektams, `decide/solver_guard.py` solveriui). 1c: problemos ir skambinančiojo
+ryšio skaitymas → `turn`, politika → `decide/rules/intake.py`; `turn_plan` turi `hops`.
+
 **Bangos 1 baigimo kriterijai:** visi vienetų testai žali; eval tekstas ir
 `--voice` ne blogesni nei 178/178; `--runs 3` be FLAKY; trace'e `turn_plan`
 atitinka realų sprendimą; nė vienas efektas nevyksta be plano.

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...closing import close_call
 from ...contract import limits
 from ...contract.locale import vocab, vocab_set
 from ...dialog_utils import last_agent_question
@@ -52,8 +53,7 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
                 begin_ticket_dialogue(state, rt, esc)  # contacts, then register+close
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="register")
             else:
-                s.closing.case_closed = True
-                s.closing.closed_reason = "declined"
+                close_call(state, rt, "declined")
                 rt.tracer.emit("decision", intent="end_ticket_offer", action="close")
             return True
         if detect_farewell(user_input) or detect_ticket_consent(user_input) == "yes":
@@ -64,11 +64,9 @@ def end_confirm_answer(state: Any, rt: Any, user_input: str) -> bool:
                     state.dialog.end_ticket_offer = True
                     rt.tracer.emit("decision", intent="end_confirmed", action="offer_ticket")
                     return True
-                s.closing.case_closed = True
-                s.closing.closed_reason = "declined"
+                close_call(state, rt, "declined")
             else:
-                s.closing.case_closed = True
-                s.closing.closed_reason = "declined"
+                close_call(state, rt, "declined")
             rt.tracer.emit("decision", intent="end_confirmed", action="close")
         else:
             # Changed their mind — hold the walker THIS turn so a "ne, tęskime"

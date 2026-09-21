@@ -189,70 +189,60 @@ class TestIdentifyThenDiagnoseSameTurn:
 
         return make_agent("unknown")
 
-    def test_resolve_triggers_diagnosis_and_carries_the_finding(self, db_connection):
-        from agent.execute.observe import augment_tool_result
+    def _slots(self, agent, street, house, apartment=None, city=None):
+        from agent.slots import SlotStatus
+
+        p = agent.state.identity.profile
+        p.street.propose(street, 1.0, SlotStatus.RESOLVED)
+        p.house.propose(house, 1.0, SlotStatus.RESOLVED)
+        if apartment:
+            p.apartment.propose(apartment, 1.0, SlotStatus.RESOLVED)
+        if city:
+            p.city.propose(city, 1.0, SlotStatus.RESOLVED)
+
+    def test_the_commit_diagnoses_silently_and_defers_the_result(self, db_connection):
+        """Wave 1b: the identification rule commits the address AND decides to diagnose
+        (the chain used to hide inside the tool-observation handler)."""
+        from agent.decide.rules.identification import engine_resolve_from_slots
         from agent.speak.context_card import result_narration_tail
-        from agent.tools import execute_tool
 
         agent = self._agent()
-        obs = execute_tool(
-            "resolve_address",
-            {
-                "city": "Šiauliai",
-                "street": "Tilžės g.",
-                "house_number": "60",
-                "apartment_number": "3",
-            },
-        )
-        agent.state.identity.customer_id = "CUST101"  # committed by resolve_address
-        out = json.loads(augment_tool_result(agent.state, agent.runtime, "resolve_address", obs))
+        self._slots(agent, "Tilžės g.", "60", apartment="3", city="Šiauliai")
 
-        # Arc v3 + identification ladder: the engine diagnosed SILENTLY (verdict in
-        # state); the reply first finishes identification with the caller-intro
-        # question ("su kuo kalbu?") — the result is deferred one turn behind it.
+        assert engine_resolve_from_slots(agent.state, agent.runtime) is True
+
+        assert agent.state.identity.customer_id == "CUST101"
         assert agent.state.diagnosis.verdicts["network"]["reason"] == "billing_suspended"
-        assert "su kuo kalbu" in out["message"].lower()
-        assert agent.state.identity.result_pending is True
-        # Once the caller introduces themselves, the tail delivers the real result.
+        # The reply finishes identification first ("su kuo kalbu?" — the caller-intro
+        # head rule), so the news waits for its own turn and is then delivered whole.
         agent.state.identity.caller_name = "Jonas"
         tail = result_narration_tail(agent.state, agent.runtime)
-        assert "Patikrinsiu būseną" in tail
-        assert "ŽINIA" in tail
-        assert (
-            agent.state.diagnosis.news_delivered is True
-        )  # inform news marked told — never repeated
+        assert "Patikrinsiu būseną" in tail and "ŽINIA" in tail
+        assert agent.state.diagnosis.news_delivered is True  # never repeated
 
-    def test_resolve_activates_the_strategy_through_the_real_tool_loop(self, db_connection):
-        """Regression: augmenting BEFORE committing customer_id made
-        _augment_resolve_result see no id, skip diagnosis, and the strategy never
-        activated — the whole dead-router walk fell back to free-form LLM (step=None
-        for the entire call). Run the gateway + augment (no pre-set id) and require
-        the strategy to be live afterwards."""
-        from agent.execute.observe import augment_tool_result
+    def test_the_commit_activates_the_strategy(self, db_connection):
+        """Regression: the diagnosis ran before customer_id was committed, so the
+        strategy never activated and the whole dead-router walk fell back to the LLM."""
+        from agent.decide.rules.identification import engine_resolve_from_slots
 
         agent = self._agent()
-        args = {"city": "Šiauliai", "street": "Vilniaus g.", "house_number": "29"}
-        # The engine's path: the gateway commits the lookup to state, THEN the
-        # augment diagnoses from the committed id.
-        result = agent.runtime.tools.run(
-            agent.state, agent.runtime, "resolve_address", args, reason="test"
-        )
-        augment_tool_result(agent.state, agent.runtime, "resolve_address", result.observation)
+        self._slots(agent, "Vilniaus g.", "29", city="Šiauliai")
+
+        engine_resolve_from_slots(agent.state, agent.runtime)
 
         assert agent.state.identity.customer_id == "CUST009"
-        assert agent.state.resolution.procedure is not None  # strategy live, not None
         assert agent.state.resolution.procedure["verdict"] == "no_mac_observed"
         assert agent.state.diagnosis.hypothesis["cause"] == "no_mac_observed"
 
-    def test_failed_resolve_does_not_diagnose(self, db_connection):
-        from agent.execute.observe import augment_tool_result
-        from agent.tools import execute_tool
+    def test_a_failed_commit_does_not_diagnose(self, db_connection):
+        from agent.decide.rules.identification import engine_resolve_from_slots
 
         agent = self._agent()
-        obs = execute_tool("resolve_address", {"street": "Tilžės g."})  # no house -> no hit
-        out = augment_tool_result(agent.state, agent.runtime, "resolve_address", obs)
+        self._slots(agent, "Tilžės g.", "999999")  # no such house -> no customer
+
+        assert engine_resolve_from_slots(agent.state, agent.runtime) is False
+        assert agent.state.identity.customer_id is None
         assert agent.state.diagnosis.verdicts == {}
-        assert "DIAGNOZĖ" not in out
 
 
 class TestHypothesisObject:

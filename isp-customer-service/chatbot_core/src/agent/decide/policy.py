@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .plan import TurnPlan
-from .rules import closing, dialog, head, hypothesis_confirm, stage, ticket
+from .rules import closing, dialog, head, hypothesis_confirm, intake, stage, ticket
 
 Rule = Callable[[Any, Any], TurnPlan | None]
 
@@ -40,7 +40,12 @@ RULES: list[tuple[int, str, Rule]] = [
 
 
 def plan_turn(state: Any, rt: Any) -> TurnPlan | None:
-    """The first rule family that owns this turn (the stage families always do)."""
+    """The first rule family that owns this turn (the stage families always do).
+
+    The turn's readings become the call's facts first (wave 1c): what perceive HEARD is a
+    label, what the call is ABOUT is a decision.
+    """
+    intake.apply_readings(state, rt)
     for _row, _family, rule in RULES:
         plan = rule(state, rt)
         if plan is not None:

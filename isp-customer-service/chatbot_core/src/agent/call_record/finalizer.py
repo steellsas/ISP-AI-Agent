@@ -25,6 +25,7 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
     """Close the call once (idempotent): the hang-up net, the record, session_end.
     `transport_end` says how the call ended (client_closed, ws_disconnect, expired,
     server_shutdown, eval) — it never becomes the outcome."""
+    from ..closing import close_call
     from ..executor_flow import register_ticket_from_state
 
     if rt.ended.is_set():
@@ -50,8 +51,7 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         )
         == "homework"
     ):
-        s.closing.case_closed = True
-        s.closing.closed_reason = "callback"
+        close_call(state, rt, "callback")
         rt.tracer.emit("decision", intent="hangup_net", action="callback_close")
     if (
         s.identity.customer_id
@@ -77,8 +77,7 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
             except Exception:  # pragma: no cover - defensive
                 solved = False
         if solved:
-            s.closing.case_closed = True
-            s.closing.closed_reason = "resolved"
+            close_call(state, rt, "resolved")
             rt.tracer.emit("decision", intent="hangup_net", action="skip_solved")
         else:
             s.resolution.procedure.setdefault("escalate_reason", "caller_hung_up")
@@ -90,7 +89,7 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
             esc = strat.by_role("escalate") if strat else None
             register_ticket_from_state(state, rt, esc.id if esc is not None else None)
             if s.ticket.ticket_id:
-                s.closing.closed_reason = "registered"
+                close_call(state, rt, "registered")
                 rt.tracer.emit("decision", intent="hangup_net", action="register")
     from .outcome import derive, outage_id
 
