@@ -91,6 +91,72 @@ class TestToolGateway:
         assert agent.state.diagnosis.outage_reported is True
 
 
+class TestManifestGuards:
+    """Wave 2c: how often a tool may run is its manifest's `guards`, counted on the call's
+    own state — so a checkpoint resume cannot hand the caller a second port reset."""
+
+    def test_an_action_runs_once_per_call(self):
+        provider = _Provider({"success": True})
+        agent, _ = _agent(provider)
+        agent.state.identity.customer_id = "CUST009"
+        args = {"customer_id": "CUST009"}
+
+        first = agent.tools.run(agent.state, agent.runtime, "reset_port", args, reason="fix")
+        second = agent.tools.run(agent.state, agent.runtime, "reset_port", args, reason="fix")
+
+        assert first.gated is False
+        assert second.gated is True and second.data["error"] == "guard_max_per_call"
+        assert provider.calls == [("reset_port", args)]  # the second never reached it
+        assert agent.state.tools.calls["reset_port"] == 1
+
+    def test_a_refused_call_is_not_counted(self):
+        """A guard must not be fed by calls the gate itself refused."""
+        agent, _ = _agent(_Provider({"success": True}))  # nobody identified
+        agent.tools.run(agent.state, agent.runtime, "reset_port", {}, reason="fix")
+        assert agent.state.tools.calls == {}
+
+    def test_the_trace_says_what_kind_of_tool_ran(self):
+        agent, tracer = _agent(_Provider({"success": True, "active_outages": []}))
+        agent.tools.run(
+            agent.state, agent.runtime, "check_outages", {"customer_id": "C"}, reason="t"
+        )
+        call = next(e for e in tracer.events if e["type"] == "tool_call")
+        assert call["capability"] == "outages" and call["adapter"] == "demo_db"
+
+    def test_a_cooldown_and_the_hours_are_read_from_the_manifest(self):
+        """No manifest uses these yet (they arrive with real equipment actions), so the
+        guard itself is tested against a manifest built here."""
+        import time
+
+        from agent.contract.schema import ToolManifest
+        from agent.tooling.gateway import _guards
+
+        agent, _ = _agent(_Provider({"success": True}))
+        spec = ToolManifest(
+            tool="reboot_cpe",
+            capability="action",
+            adapter="demo_db",
+            timeout_s=8,
+            guards={"cooldown_s": 600, "allowed_hours": "08-22"},
+            on_failure={"say_key": "tools.unavailable_action", "fallback": "ticket"},
+            audit=True,
+        )
+
+        assert _guards(agent.state, "reboot_cpe", spec) is None  # never run in this call
+        agent.state.tools.last_at["reboot_cpe"] = time.time() - 10
+        refusal = _guards(agent.state, "reboot_cpe", spec)
+        assert refusal and json.loads(refusal)["error"] == "guard_cooldown"
+
+        agent.state.tools.last_at.clear()
+        night = ToolManifest(**{**spec.model_dump(), "guards": {"allowed_hours": "03-04"}})
+        hour = time.localtime().tm_hour
+        refusal = _guards(agent.state, "reboot_cpe", night)
+        if hour in (3,):
+            assert refusal is None
+        else:
+            assert refusal and json.loads(refusal)["error"] == "guard_hours"
+
+
 class TestTelemetry:
     _VERDICT = {
         "success": True,

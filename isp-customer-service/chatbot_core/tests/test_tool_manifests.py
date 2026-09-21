@@ -7,7 +7,6 @@ actually enforces, fails here — not on a call.
 """
 
 import pytest
-from agent.contract import policies
 from agent.contract import tools as manifests
 from agent.contract.schema import ToolManifest
 from pydantic import ValidationError
@@ -32,10 +31,20 @@ def test_every_manifest_names_a_real_tool():
     assert not unknown, f"manifests for unknown tools: {unknown}"
 
 
-def test_the_manifests_mirror_the_identification_gate():
-    """Until the gateway reads `requires` (2c-2), the two must say the same thing."""
-    declared = {name for name, m in manifests.get().items() if "identified" in m.requires}
-    assert declared == set(policies.get().identified_customer_required)
+def test_the_gate_refuses_what_the_manifest_requires(make_state, make_runtime):
+    """The manifest IS the gate: a tool that requires an identified caller is refused
+    while nobody is identified, and runs once they are."""
+    from agent.tooling.gateway import gate
+
+    state, rt = make_state("+37060020112"), make_runtime()
+    for name, m in manifests.get().items():
+        if "identified" not in m.requires:
+            continue
+        state.identity.customer_id = None
+        assert "not_identified" in (gate(state, rt, name, {}) or ""), name
+        state.identity.customer_id = "CUST009"
+        assert gate(state, rt, name, {"customer_id": "CUST009"}) is None, name
+        assert "id_mismatch" in (gate(state, rt, name, {"customer_id": "CUST001"}) or ""), name
 
 
 def test_an_action_is_audited_and_capped():

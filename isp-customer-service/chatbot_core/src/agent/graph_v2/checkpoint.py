@@ -41,6 +41,7 @@ _STATE_TYPES: list[tuple[str, str]] = [
     ("graph_v2.state", "DialogState"),
     ("graph_v2.state", "ClosingState"),
     ("graph_v2.state", "VoiceState"),
+    ("graph_v2.state", "ToolsState"),
     ("graph_v2.state", "TurnDirectives"),
     ("graph_v2.state", "TurnScratch"),
     ("graph_v2.state", "ActiveQuestion"),

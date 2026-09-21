@@ -357,7 +357,7 @@ class ToolManifest(_Model):
 
 
 class Policies(_Model):
-    identified_customer_required: list[str] = []  # tools refused before identification
+    # Who may call a tool is declared per tool (knowledge/tools/*.yaml -> requires).
     forbidden_actions: list[str] = []
     forbidden_topics: list[str] = []
 

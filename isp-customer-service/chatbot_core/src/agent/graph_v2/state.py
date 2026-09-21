@@ -405,6 +405,15 @@ STATE_GROUPS: tuple[str, ...] = (
 )
 
 
+class ToolsState(BaseModel):
+    """What the guards in knowledge/tools/*.yaml count: how often each tool ran in THIS
+    call and when it last ran. Persisted with the call, so a checkpoint resume cannot
+    hand the caller a second port reset."""
+
+    calls: dict[str, int] = Field(default_factory=dict)
+    last_at: dict[str, float] = Field(default_factory=dict)  # epoch seconds
+
+
 class GraphState(BaseModel):
     """The single source of truth for a call, checkpointable end-to-end."""
 
@@ -419,4 +428,5 @@ class GraphState(BaseModel):
     dialog: DialogState = Field(default_factory=DialogState)
     closing: ClosingState = Field(default_factory=ClosingState)
     voice: VoiceState = Field(default_factory=VoiceState)
+    tools: ToolsState = Field(default_factory=ToolsState)
     turn: TurnScratch = Field(default_factory=TurnScratch)
