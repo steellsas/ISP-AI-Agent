@@ -32,6 +32,7 @@ tts_stall_seconds: 3                # no first audio chunk within this -> abando
 tts_budget_seconds: 10              # total per sentence across reconnects before the sentence is lost
 reply_max_chars: 280                # a longer reply is trimmed at its last full sentence
 speak_max_tokens: 150               # generation cap for a spoken reply (~2 short sentences + a question)
+plan_redecide_max: 2                # times one turn may go back to decide after an action
 reply_stop_chars: 200               # past this, a streamed reply ends at its next sentence end
 side_topic_streak_max: 3            # side-topic turns in a row before the fixed "back to the issue" reply
 wrap_content_turns_max: 2           # content turns in the inform wrap-up that still get an LLM reaction

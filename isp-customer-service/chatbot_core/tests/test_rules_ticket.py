@@ -55,9 +55,15 @@ def test_offscript_question_goes_to_the_narrator(make_state, make_runtime):
 
 
 def test_confirmed_refusal_cancels(make_state, make_runtime):
+    from agent.execute.actions import run_action
+
     state, plan = _plan(make_state, make_runtime, "phone", "Ne.", None, cancel_confirm_out=True)
     assert plan.rule == "ticket.cancelled"
+    assert plan.action.type == "close" and plan.action.name == "declined"
+
+    run_action(state, make_runtime(), plan)
     assert state.closing.case_closed and state.closing.closed_reason == "declined"
+    assert state.closing.is_complete is True
 
 
 def test_no_dialogue_is_not_the_ticket_rules(make_state, make_runtime):

@@ -102,9 +102,12 @@ def _escalate(rule: str) -> TurnPlan:
 
 
 def _goodbye(rule: str) -> TurnPlan:
+    """The farewell ENDS the call: the words and the hang-up are one plan (wave 1 —
+    before, a goodbye-sounding reply was detected afterwards by the narrator)."""
     return TurnPlan(
         owner="closing",
         rule=rule,
+        action=Action(type="close", name="registered", args={"complete": True}),
         say=Say(kind="phrase", key="identification.goodbye", stage=STAGE),
     )
 

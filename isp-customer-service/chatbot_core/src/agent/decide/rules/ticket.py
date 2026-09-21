@@ -54,11 +54,10 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
 
         s.ticket.stage = None
         s.ticket.context = None
-        s.closing.case_closed = True
-        s.closing.closed_reason = "declined"
-        s.closing.is_complete = True
         return _scripted(
-            "ticket.cancelled", text=phrase("ticket.declined") + phrase("identification.goodbye")
+            "ticket.cancelled",
+            text=phrase("ticket.declined") + phrase("identification.goodbye"),
+            action=Action(type="close", name="declined", args={"complete": True}),
         )
     # The caller refused the registration but wants to keep solving — the narrator
     # says so and re-anchors the last instruction.
@@ -67,9 +66,14 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     )
 
 
-def _scripted(rule: str, key: str | None = None, text: str | None = None) -> TurnPlan:
+def _scripted(
+    rule: str, key: str | None = None, text: str | None = None, action: Any = None
+) -> TurnPlan:
     return TurnPlan(
-        owner="ticket", rule=rule, say=Say(kind="phrase", key=key, text=text, stage=STAGE)
+        owner="ticket",
+        rule=rule,
+        action=action or Action(type="none"),
+        say=Say(kind="phrase", key=key, text=text, stage=STAGE),
     )
 
 

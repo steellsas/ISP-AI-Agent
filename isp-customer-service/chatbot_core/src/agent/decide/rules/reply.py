@@ -232,11 +232,10 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     if state.ticket.stage == "cancelled":
         state.ticket.stage = None
         state.ticket.context = None
-        s.closing.case_closed = True
-        s.closing.closed_reason = "declined"
-        s.closing.is_complete = True
-        return _words(
-            "ticket.cancelled", phrase("ticket.declined") + phrase("identification.goodbye")
+        return _plan(
+            "ticket.cancelled",
+            phrase("ticket.declined") + phrase("identification.goodbye"),
+            action=Action(type="close", name="declined", args={"complete": True}),
         )
     # Side-topic FRAME (3rd consecutive deviation): the LLM answered twice
     # and the caller keeps drifting — the return is scripted now. With a
@@ -424,9 +423,7 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
             return _plan(
                 "inform.wrap_react", None, directive=True
             )  # the narrator reacts to WHAT was said, then re-offers
-        s.closing.case_closed = True
-        s.closing.closed_reason = "outage" if s.diagnosis.outage_reported else "inform"
-        s.closing.is_complete = True
+        close_reason = "outage" if s.diagnosis.outage_reported else "inform"
         # clarity requirements (declared in inform.yaml): the inform template
         # spoke all its elements before this close — trace it for the audits.
         from ...inform import clarity_declaration
@@ -440,8 +437,12 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
                 required=_required,
                 told=state.diagnosis.news_delivered,
             )
-        rt.tracer.emit("decision", intent="wrap_up", action="close", to=s.closing.closed_reason)
-        return _words("inform.wrap_close", phrase("identification.goodbye"))
+        rt.tracer.emit("decision", intent="wrap_up", action="close", to=close_reason)
+        return _plan(
+            "inform.wrap_close",
+            phrase("identification.goodbye"),
+            action=Action(type="close", name=close_reason, args={"complete": True}),
+        )
     if not state.identity.result_pending:
         return None
     if not s.identity.caller_name:
@@ -528,11 +529,18 @@ _STATE: dict[str, Any] = {}
 def _plan(
     rule: str, words: str | None, action: Action | None = None, directive: bool = False
 ) -> TurnPlan:
-    owner = _owner(_STATE["state"], rule)
+    state = _STATE["state"]
+    owner = _owner(state, rule)
+    # The stage names the node the reply is traced under (and the narrator's snippet
+    # for a directive): the engine's own words are an identification- or a
+    # diagnosis-stage reply.
+    stage = {"ticket": "ticket", "closing": "closing", "side_topic": "side_topic"}.get(
+        owner, "diagnosis" if state.identity.customer_id else "intake"
+    )
     if directive:
-        say = Say(kind="directive")
+        say = Say(kind="directive", stage=stage)
     else:
-        say = Say(kind="phrase", text=words)
+        say = Say(kind="phrase", text=words, stage=stage)
     return TurnPlan(owner=owner, rule=rule, action=action or Action(type="none"), say=say)
 
 
@@ -556,3 +564,39 @@ def scripted_words(state: Any, rt: Any, user_input: str | None) -> str | None:
 def plan_reply(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     _STATE["state"] = state
     return reply_plan(state, rt, user_input)
+
+
+def scripted_layer(state: Any, rt: Any) -> TurnPlan | None:
+    """The engine-composed words of a stage turn, in their precedence order (§5 rows
+    18, 5-15, 19): the stuck backstop, the scripted reply families, the wait
+    acknowledgement. None = the narrator words the stage.
+
+    Wave 1: this ran inside the NARRATOR (execute/say.scripted_exit), which meant the
+    narrator planned, closed calls and registered tickets. It is a decide step now —
+    after the procedure moved, so the words match the new position."""
+    from .dialog import scripted_wait_ack, stuck_backstop
+
+    _STATE["state"] = state
+    backstop = stuck_backstop(state)
+    if backstop is not None:
+        return _backstop_plan(state, rt, backstop)
+    plan = plan_reply(state, rt, state.dialog.last_heard)
+    if plan is not None:
+        return plan
+    wait = scripted_wait_ack(state, rt)
+    if wait is not None:
+        return _plan("dialog.wait_ack", wait)
+    return None
+
+
+def _backstop_plan(state: Any, rt: Any, backstop: tuple[str, bool]) -> TurnPlan:
+    """The stuck ladder (3 -> offer the account code, 4 -> close). Its close keeps the
+    registration an identified caller was promised and hangs up on the goodbye (F-5)."""
+    text, should_close = backstop
+    action = Action(type="none")
+    if should_close:
+        action = Action(type="close", name="stuck", args={"complete": True})
+    else:
+        state.dialog.stuck_count += 1  # advance the ladder for the next turn
+    rt.tracer.emit("stuck", count=state.dialog.stuck_count, repeated=False)
+    return _plan("dialog.stuck_backstop", text, action=action)

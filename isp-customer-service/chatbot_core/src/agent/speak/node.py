@@ -86,30 +86,10 @@ def turn(state: Any, rt: Any, user_input: str | None, owner: str):
 
 
 def begin_turn(state: Any, rt: Any, user_input: str | None) -> None:
-    """The turn's bookkeeping before any words: the barge-in flag, the heard text and
-    intent, the background telemetry fold, the history."""
-    from ..background import apply_bg_diagnosis
-    from ..perceive.detectors import detect_turn_intent
-
+    """Prepare the speaking turn. Reading the caller's words — the heard text, the turn
+    intent, the background telemetry fold and the history — happens in the perceive
+    node (wave 1); only the barge-in flag belongs here."""
     rt.cancel.clear()  # a stale barge-in never cancels a NEW turn
-    # Ticket-dialogue turns skip the diagnosis ingest — without this, the PREVIOUS
-    # turn's "understood" directive leaks into their replies.
-    if state.ticket.stage:
-        state.turn.understanding = None
-    state.dialog.last_heard = (user_input or "").strip()
-    state.dialog.last_intent = detect_turn_intent(user_input)
-    # S2 (2026-08-24): a background telemetry read finished while the caller was busy —
-    # fold it in at the deterministic turn start, but ONLY as a refresh: in the
-    # solution/bridge phase, or when the fresh verdict FLIPS the story, it is discarded
-    # (live: the bg read saw the just-plugged PC, the narrative turned foreign_mac
-    # mid-bridge and the agent asked "ar keitėte routerį?" over a working bind).
-    apply_bg_diagnosis(state, rt)
-    # The caller's utterance goes on the history for EVERY reply path (review
-    # 2026-08-07): scripted turns used to skip it, so the LLM later saw a conversation
-    # with holes and re-asked answered questions.
-    if user_input:
-        rt.tracer.emit("user_turn", text=user_input)
-        state.messages.append({"role": "user", "content": user_input})
 
 
 def stream_reply(state: Any, rt: Any, owner: str):

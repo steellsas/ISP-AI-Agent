@@ -128,6 +128,11 @@ def gate(
 # Engine actions a plan may name besides the tool catalog and the active procedure's roles.
 ENGINE_TOOLS = frozenset({"preflight_phone"})
 PROCEDURE_ACTIONS = frozenset({"run_due_action", "escalate"})
+# Why a call may close (Action(type="close", name=...)): the contact record's reasons
+# plus the stuck ladder's own close.
+CLOSE_REASONS = frozenset(
+    {"resolved", "registered", "declined", "callback", "inform", "outage", "stuck"}
+)
 
 
 def check_plan(state, rt, plan):
@@ -151,6 +156,8 @@ def _rejection(state, action) -> str | None:
         return f"forbidden action {action.name!r}"
     if action.type == "tool" and action.name not in _tool_names() | ENGINE_TOOLS:
         return f"unknown tool {action.name!r}"
+    if action.type == "close" and action.name not in CLOSE_REASONS:
+        return f"unknown close reason {action.name!r}"
     if action.type == "procedure_step" and action.name not in PROCEDURE_ACTIONS:
         if action.name not in _active_roles(state):
             return f"no step role {action.name!r} in the active procedure"

@@ -41,27 +41,48 @@ class TestClosing:
         maybe_finish(agent.state, agent.runtime, "viso gero")  # case not closed -> ignore
         assert agent.state.closing.is_complete is False
 
-    def test_goodbye_reply_ends_call_any_path(self):
-        from agent.execute.say import maybe_end_on_goodbye
+    def test_the_goodbye_plan_ends_the_call(self):
+        """Wave 1: the farewell and the hang-up are ONE plan — a reply is never read
+        back for goodbye words (the narrator's wording is not a decision)."""
+        from agent.decide.rules import closing as closing_rules
+        from agent.execute.actions import run_action
 
-        # Catch-all: the agent's own farewell ends the call even without case_closed
-        # (e.g. the stuck backstop's "užregistruosiu… geros dienos" that used to loop).
         agent = self._agent()
-        maybe_end_on_goodbye(
-            agent.state,
-            agent.runtime,
-            "Užregistruosiu problemą, specialistas susisieks. Geros dienos!",
-        )
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.closing.case_closed = True
+        agent.state.ticket.ticket_id = "TKT1"
+        agent.state.turn.user_input = "ačiū"
+
+        plan = closing_rules.plan(agent.state, agent.runtime)
+        assert plan.rule == "closing.goodbye_after_ticket"
+        assert plan.action.type == "close" and plan.action.args == {"complete": True}
+        run_action(agent.state, agent.runtime, plan)
+
         assert agent.state.closing.is_complete is True
 
-    def test_midconversation_reply_does_not_end(self):
-        from agent.execute.say import maybe_end_on_goodbye
+    def test_a_farewell_said_with_the_call_open_is_traced(self):
+        """The net that used to hang up on goodbye words is gone; the gap is visible."""
+        from agent.speak.postprocess import finalize
 
         agent = self._agent()
-        maybe_end_on_goodbye(
-            agent.state, agent.runtime, "Pasakykite adresą, kuriuo neveikia internetas."
-        )
+        events = []
+        agent.runtime.tracer.emit = lambda event, **f: events.append((event, f))
+
+        finalize(agent.state, agent.runtime, "Ačiū, kad paskambinote. Geros dienos!")
+
         assert agent.state.closing.is_complete is False
+        assert any(e == "goodbye_unclosed" for e, _ in events)
+
+    def test_a_midconversation_reply_is_not_a_farewell(self):
+        from agent.speak.postprocess import finalize
+
+        agent = self._agent()
+        events = []
+        agent.runtime.tracer.emit = lambda event, **f: events.append((event, f))
+
+        finalize(agent.state, agent.runtime, "Pasakykite adresą, kuriuo neveikia internetas.")
+
+        assert not any(e == "goodbye_unclosed" for e, _ in events)
 
 
 class TestCaseStateTransitions:
