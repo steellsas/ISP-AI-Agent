@@ -80,6 +80,13 @@ Commit'ai: (A) 2a-1…2a-3, (B) 2a-4, (C) 2a-5…2a-7.
   pasiūlymas); perception eval rinkinys (`agent/eval/perception/`): kuruoti **10/10**,
   4 iš jų be LLM. 2a-6 (semantinis endpoint) jau buvo įgyvendintas anksčiau
   (`agent/endpoint.py`) — nieko keisti nereikėjo.
+- **2a baigta.** Vienetų testai **1323 passed**; eval tekstas **178/178**, `--voice`
+  **178/178**; perception eval: kuruoti **10/10**, baseline **117/120** (pagal faktus).
+  Matavimai per 66 skambučius (432 kliento ėjimai): `ticket_reader` 0 (buvo 16),
+  analitikas praleistas **165** kartus (130 kvietimų vietoj ~250), citatų patikra
+  atmetė **12** nepagrįstų faktų. Greitkelis eval'e beveik nesuveikia (2 kartai):
+  scenarijų klientas atsako pilnais sakiniais — tikra nauda bus balse, tai matuosime
+  8 etape / gyvai.
 Baigimo kriterijai: vienetų testai žali; eval tekstas ir `--voice` ne blogesni;
 trace'e vienam ėjimui vienas `perception` LLM kvietimas arba nė vieno (greitkelis).
 
