@@ -45,6 +45,12 @@ class Perception(BaseModel):
     understood: str = ""  # half-sentence the narrator may reflect back
     confusion: str = ""
     confidence: float = 0.5
+    # What was read — a reading belongs to ONE utterance.
+    utterance: str | None = None
+    # The contact dialogue's answer, when one was asked: {value, type}.
+    ticket: dict[str, Any] | None = None
+    # What the caller's problem sounds like, when the call has none yet: {label, confidence}.
+    problem: dict[str, Any] | None = None
 
     def values(self) -> dict[str, str]:
         """The facts as the ledger takes them (key -> canonical value)."""
@@ -151,3 +157,138 @@ def ground(perception: Perception, utterance: str) -> Perception:
         else:
             kept[key] = fact.model_copy(update={"grounded": False})
     return perception.model_copy(update={"facts": kept})
+
+
+def read_turn(state: Any, rt: Any, utterance: str | None) -> Perception | None:
+    """Read this turn ONCE and put the reading on the turn scratch.
+
+    One call covers everything the turn needs read: the evidence facts, the asked
+    step's answer, the contact dialogue's answer and — while the call's problem is
+    still unknown — what the caller's problem sounds like. Before wave 2a those were
+    three separate model calls in three different places.
+    """
+    from . import understand as _und
+    from .evidence import step_perception_options
+
+    state.turn.perception = None
+    state.turn.understanding = None
+    state.turn.perception_step = None
+    if not utterance or not utterance.strip():
+        return None
+    options, active_step = step_perception_options(state, rt)
+    quick = fast_read(state, utterance, options)
+    if quick is not None:
+        return _record(state, rt, quick, active_step, utterance)
+    if not _und.enabled():
+        return None
+    data = _und.understand(
+        utterance,
+        anchor=_anchor(state, rt),
+        needs=_needs(state),
+        ledger_summary=_ledger(state),
+        history_tail=[m for m in state.messages[-5:] if m.get("role") in ("user", "assistant")],
+        model=rt.config.model,
+        allowed_extra=_allowed_extra(state),
+        step_options=options,
+        ticket_stage=state.ticket.stage if state.ticket.stage in ("phone", "hours") else None,
+        problem_options=_problem_options(state),
+    )
+    if data is None:
+        return None
+    read = ground(
+        Perception(
+            source="llm",
+            turn_type=data["type"],
+            facts={
+                key: Fact(value=value, quote=(data.get("quotes") or {}).get(key))
+                for key, value in data["facts"].items()
+            },
+            step=data.get("step"),
+            understood=data["understood"],
+            confusion=data["confusion"],
+            confidence=data["confidence"],
+            ticket=data.get("ticket"),
+            problem=data.get("problem"),
+        ),
+        utterance,
+    )
+    # A fact whose quote is NOT in what the caller said is dropped: a hallucination has
+    # no words to show for itself.
+    for key, fact in read.facts.items():
+        if not fact.grounded:
+            rt.tracer.emit(
+                "evidence", action="fact_ungrounded", key=key, value=fact.value, quote=fact.quote
+            )
+    read = read.model_copy(update={"facts": {k: f for k, f in read.facts.items() if f.grounded}})
+    return _record(state, rt, read, active_step, utterance)
+
+
+def _record(state: Any, rt: Any, read: Perception, active_step: Any, utterance: str) -> Perception:
+    read = read.model_copy(update={"utterance": utterance})
+    state.turn.perception = read.model_dump(mode="json")
+    # The contact dialogue speaks its own scripted lines — a narrator acknowledgement
+    # of what was "understood" there once leaked a diagnosis half-sentence into it.
+    if not state.ticket.stage:
+        state.turn.understanding = read.as_understanding()
+    if read.step and active_step is not None:
+        state.turn.perception_step = {
+            "step_id": active_step.id,
+            "input": utterance,
+            "obs": read.step,
+        }
+    rt.tracer.emit(
+        "perception",
+        source=read.source,
+        turn_type=read.turn_type,
+        understood=read.understood,
+        confusion=read.confusion,
+        confidence=read.confidence,
+        facts=read.values(),
+        step=read.step,
+        ticket=read.ticket,
+        problem=read.problem,
+    )
+    return read
+
+
+def _anchor(state: Any, rt: Any) -> str:
+    from ..dialog_utils import anchor_text
+
+    return anchor_text(state, rt)
+
+
+def _spec(state: Any) -> dict:
+    from ..evidence import spec_for
+
+    return spec_for((state.resolution.procedure or {}).get("verdict")) or {}
+
+
+def _needs(state: Any) -> str:
+    """What the active fault still needs to know (empty outside a fault)."""
+    client = _spec(state).get("client") or {}
+    return "; ".join(f"{k}: {item.get('goal', '')}" for k, item in client.items())
+
+
+def _ledger(state: Any) -> str:
+    from ..evidence import summary_lt
+
+    return summary_lt(state.diagnosis.evidence) if state.diagnosis.evidence else ""
+
+
+def _allowed_extra(state: Any) -> dict[str, set[str]]:
+    """Fact values the ACTIVE pack declares beyond the built-in ones."""
+    client = _spec(state).get("client") or {}
+    return {
+        key: set((item.get("answers") or {}).keys())
+        for key, item in client.items()
+        if item.get("answers")
+    }
+
+
+def _problem_options(state: Any) -> dict[str, str] | None:
+    """The problem catalog, while the call has no problem yet."""
+    if state.intake.problem_type:
+        return None
+    from ..intents import problem_catalog_options
+
+    return problem_catalog_options() or None

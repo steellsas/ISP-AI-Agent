@@ -8,7 +8,7 @@ import os
 from typing import Any
 
 from ..contract.locale import vocab
-from ..dialog_utils import anchor_text, asked_recently
+from ..dialog_utils import asked_recently
 
 
 def step_perception_options(state: Any, rt: Any):
@@ -44,19 +44,6 @@ def step_perception_options(state: Any, rt: Any):
     return None, None
 
 
-def _record_perception(state, rt, read, active_step, user_input: str | None) -> None:
-    """Put one reading on the turn: the shape the engine reads (`understanding`), the
-    step answer the walker consumes, and the reading itself."""
-    state.turn.perception = read.model_dump(mode="json")
-    state.turn.understanding = read.as_understanding()
-    if read.step and active_step is not None:
-        state.turn.perception_step = {
-            "step_id": active_step.id,
-            "input": user_input,
-            "obs": read.step,
-        }
-
-
 def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     """Ledger v1: read the caller's utterance into the evidence ledger (called
     from the diagnosis node, so BOTH the driven and the walker path see it).
@@ -65,12 +52,9 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     bare yes/no polarity read; nothing readable -> the pending value wins so
     the call never loops on the clarify)."""
     s = state
-    # Stale-understanding hygiene (2026-08-10): the acknowledgement directive
-    # leaked a PREVIOUS turn's "understood" into the ticket dialogue's reply
-    # ("Routeris sugedęs, laukiame naujo. Gerai. O kada…"). Every turn starts
-    # with a clean read — the early-returns below must not keep the old one.
-    state.turn.understanding = None
-    state.turn.directives.evidence = None  # persona: fresh narrator directive per turn
+    # Persona: a fresh narrator directive per turn (a previous turn's "understood"
+    # once leaked into the ticket dialogue's reply).
+    state.turn.directives.evidence = None
     state.turn.directives.findings = None
     state.turn.directives.recap = None
     state.turn.directives.ticket = None
@@ -79,106 +63,17 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         return
     from ..evidence import CLIENT, extract_client_facts, polarity, set_fact
 
-    # Understanding pass (2026-08-10): the primary sensor — one small-model
-    # call reads the reply IN CONTEXT (pending question, fault needs,
-    # ledger, history). Any failure -> the deterministic keyword layer
-    # below, so the call never stalls on a model hiccup.
+    # The reading was taken ONCE, by perception.read_turn (wave 2a) — this consumes it.
+    # (A caller that ingests without perceiving first gets the reading made here; it is
+    # still one reading per turn, because read_turn records it on the turn.)
+    if (state.turn.perception or {}).get("utterance") != user_input:
+        from .perception import read_turn
+
+        read_turn(state, rt, user_input)
+    read = state.turn.perception
     facts: dict[str, str] | None = None
-    state.turn.understanding = None
-    from . import understand as _und
-
-    if _und.enabled():
-        from ..evidence import spec_for, summary_lt
-
-        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
-        needs = (
-            "; ".join(
-                f"{k}: {item.get('goal', '')}" for k, item in (spec.get("client") or {}).items()
-            )
-            if spec
-            else ""
-        )
-        allowed_extra = {
-            k: set((item.get("answers") or {}).keys())
-            for k, item in ((spec.get("client") or {}) if spec else {}).items()
-            if item.get("answers")
-        }
-        # R4 perception merge: when an asked step awaits its answer, the SAME
-        # call classifies the reply against the step's routing keys — the
-        # walker consumes the cached result instead of a second LLM round-trip.
-        step_options, active_step = step_perception_options(state, rt)
-        state.turn.perception_step = None
-        # Wave 2a: a closed answer to a standing question is read deterministically —
-        # no model call, no latency (most voice turns are exactly that).
-        from .perception import fast_read, ground
-
-        quick = fast_read(state, user_input, step_options)
-        if quick is not None:
-            rt.tracer.emit(
-                "perception",
-                source=quick.source,
-                turn_type=quick.turn_type,
-                facts=quick.values(),
-                step=quick.step,
-            )
-            _record_perception(state, rt, quick, active_step, user_input)
-            facts = quick.values()
-            u = None
-        else:
-            u = _und.understand(
-                user_input,
-                anchor=anchor_text(state, rt),
-                needs=needs,
-                ledger_summary=summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "",
-                history_tail=[m for m in s.messages[-5:] if m.get("role") in ("user", "assistant")],
-                model=rt.config.model,
-                allowed_extra=allowed_extra,
-                step_options=step_options,
-            )
-        if u is not None:
-            from .perception import Fact, Perception
-
-            read = ground(
-                Perception(
-                    source="llm",
-                    turn_type=u["type"],
-                    facts={
-                        k: Fact(value=v, quote=(u.get("quotes") or {}).get(k))
-                        for k, v in u["facts"].items()
-                    },
-                    step=u.get("step"),
-                    understood=u["understood"],
-                    confusion=u["confusion"],
-                    confidence=u["confidence"],
-                ),
-                user_input,
-            )
-            # A fact whose quote is NOT in what the caller said is dropped: a
-            # hallucination has no words to show for itself (wave 2a).
-            for key, fact in read.facts.items():
-                if not fact.grounded:
-                    rt.tracer.emit(
-                        "evidence",
-                        action="fact_ungrounded",
-                        key=key,
-                        value=fact.value,
-                        quote=fact.quote,
-                    )
-            read = read.model_copy(
-                update={"facts": {k: f for k, f in read.facts.items() if f.grounded}}
-            )
-            _record_perception(state, rt, read, active_step, user_input)
-            facts = read.values()
-            rt.tracer.emit(
-                "perception",
-                source=read.source,
-                turn_type=read.turn_type,
-                understood=read.understood,
-                confusion=read.confusion,
-                confidence=read.confidence,
-                facts=read.values(),
-                step=read.step,
-            )
+    if read:
+        facts = {key: item["value"] for key, item in (read.get("facts") or {}).items()}
     # The deterministic keyword layer ALWAYS runs (2026-08-12): it used to be
     # a fallback only, so when the pass answered with EMPTY facts (the
     # confidence guard wipes low-confidence reads) the extractor never got a

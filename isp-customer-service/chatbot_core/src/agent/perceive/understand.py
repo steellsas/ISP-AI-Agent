@@ -77,6 +77,8 @@ def _system(
     ledger: str,
     allowed_map: dict[str, set[str]],
     step_options: dict[str, str] | None = None,
+    ticket_stage: str | None = None,
+    problem_options: dict[str, str] | None = None,
 ) -> str:
     """Render the merged perception prompt from prompts/sensors/*.md (R4:
     understanding + step classification in ONE call; R5: instructions live in
@@ -93,14 +95,25 @@ def _system(
             '"internally_inconsistent": bool, "confidence": 0.0-1.0}'
         )
         step_rules = load_node_prompt("sensors/perception_step").replace("<<options>>", opts)
+    extra_json, extra_rules = "", ""
+    if ticket_stage:
+        # The contact dialogue's answer, read in the SAME call (wave 2a).
+        extra_json += ', "ticket": {"value": str|null, "type": "answer|question|refusal|other"}'
+        extra_rules += "\n" + load_node_prompt(f"sensors/ticket_reader_{ticket_stage}")
+    if problem_options:
+        problem_opts = "\n".join(f'    - "{k}": {v}' for k, v in problem_options.items())
+        extra_json += ', "problem": {"label": str|null, "confidence": 0.0-1.0}'
+        extra_rules += "\n" + load_node_prompt("sensors/problem_in_perception").replace(
+            "<<options>>", problem_opts
+        )
     return (
         load_node_prompt("sensors/perception")
         .replace("<<anchor>>", anchor)
         .replace("<<needs>>", needs)
         .replace("<<ledger>>", ledger or "(nieko)")
         .replace("<<allowed>>", allowed)
-        .replace("<<step_json>>", step_json)
-        .replace("<<step_rules>>", step_rules)
+        .replace("<<step_json>>", step_json + extra_json)
+        .replace("<<step_rules>>", step_rules + extra_rules)
         .strip()
     )
 
@@ -115,6 +128,8 @@ def understand(
     model: str | None = None,
     allowed_extra: dict[str, set[str]] | None = None,
     step_options: dict[str, str] | None = None,
+    ticket_stage: str | None = None,
+    problem_options: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
     """Read one caller turn. None on any failure -> keyword fallback.
 
@@ -132,7 +147,15 @@ def understand(
         messages: list[dict[str, str]] = [
             {
                 "role": "system",
-                "content": _system(anchor, needs, ledger_summary, allowed_map, step_options),
+                "content": _system(
+                    anchor,
+                    needs,
+                    ledger_summary,
+                    allowed_map,
+                    step_options,
+                    ticket_stage=ticket_stage,
+                    problem_options=problem_options,
+                ),
             }
         ]
         for m in (history_tail or [])[-limits.get("understand_history_messages") :]:
@@ -187,9 +210,28 @@ def understand(
                     "internally_inconsistent": bool(raw_step.get("internally_inconsistent", False)),
                     "confidence": max(0.0, min(1.0, float(raw_step.get("confidence") or 0.5))),
                 }
+        ticket = data.get("ticket") if isinstance(data.get("ticket"), dict) else None
+        if ticket is not None:
+            answer_type = str(ticket.get("type") or "other").lower()
+            value = ticket.get("value")
+            ticket = {
+                "type": answer_type
+                if answer_type in ("answer", "question", "refusal", "other")
+                else "other",
+                "value": str(value)[:80].strip() if value not in (None, "", "null") else None,
+            }
+        problem = data.get("problem") if isinstance(data.get("problem"), dict) else None
+        if problem is not None:
+            label = problem.get("label")
+            problem = {
+                "label": str(label) if label not in (None, "", "null") else None,
+                "confidence": max(0.0, min(1.0, float(problem.get("confidence") or 0.0))),
+            }
         return {
             "facts": facts,
             "quotes": quotes,
+            "ticket": ticket,
+            "problem": problem,
             "type": turn_type,
             "understood": str(data.get("understood") or "")[:200],
             "confusion": str(data.get("confusion") or "")[:200],

@@ -137,3 +137,60 @@ class TestGroundingInTheReadingPath:
             ingest_client_evidence(agent.state, agent.runtime, "Taip, ištraukiau laidą iš routerio")
 
         assert agent.state.diagnosis.evidence["power_cable"]["value"] == "unplugged"
+
+
+class TestOneReadingPerTurn:
+    """Wave 2a-B: the contact answer and the problem label ride on the SAME reading —
+    three model calls in three places became one."""
+
+    def test_the_ticket_answer_comes_from_the_turns_reading(self, db_connection, monkeypatch):
+        import os
+
+        from agent.decide.rules import ticket as ticket_rules
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "on")
+        monkeypatch.setitem(os.environ, "UNDERSTAND", "on")
+        from agent.graph_v2.state import TicketContext
+
+        agent = _agent()
+        agent.state.identity.customer_id = "CUST009"
+        agent.state.ticket.stage = "hours"
+        agent.state.ticket.context = TicketContext(
+            phone_asked=True, hours_asked=True, intro_done=True
+        )
+        agent.state.dialog.last_question = "Kada patogiausia skambinti?"
+        agent.state.turn.user_input = "bet kada po pietų"
+        agent.state.turn.perception = {
+            "utterance": "bet kada po pietų",
+            "facts": {},
+            "ticket": {"value": "po pietų", "type": "answer"},
+        }
+
+        with patch(
+            "agent.perceive.understand.understand_ticket",
+            side_effect=AssertionError("second call"),
+        ):
+            ticket_rules.ticket_capture(agent.state, agent.runtime, "bet kada po pietų")
+
+        assert agent.state.ticket.contact_hours == "po pietų"
+
+    def test_the_problem_label_comes_from_the_turns_reading(self, db_connection, monkeypatch):
+        import os
+
+        from agent.decide.rules.identification import _problem_gate_reply
+
+        monkeypatch.setitem(os.environ, "CLASSIFIER", "on")
+        agent = _agent()
+        agent.state.intake.ask_problem_count = 1
+        agent.state.turn.perception = {
+            "utterance": "nu niekas man nekrauna",
+            "facts": {},
+            "problem": {"label": "internet_down", "confidence": 0.9},
+        }
+
+        with patch(
+            "agent.perceive.nlu.classify_problem_llm", side_effect=AssertionError("second call")
+        ):
+            _problem_gate_reply(agent.state, agent.runtime, agent.state, "nu niekas man nekrauna")
+
+        assert agent.state.intake.problem_type == "internet_down"

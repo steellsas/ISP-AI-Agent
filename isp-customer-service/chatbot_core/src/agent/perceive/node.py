@@ -77,6 +77,7 @@ def perceive(state: Any, rt: Any, user_input: str | None) -> None:
     from ..dialog_utils import progress_key
     from .evidence import ingest_client_evidence
     from .node import raise_clarity
+    from .perception import read_turn
     from .side_topic import classify_side_topic
     from .slots import prefill_slots_from_text
 
@@ -89,6 +90,9 @@ def perceive(state: Any, rt: Any, user_input: str | None) -> None:
     raise_clarity(state, user_input)
     if user_input:
         prefill_slots_from_text(state, rt, user_input)
+    # THE reading of this turn (facts, the step answer, the ticket answer, the problem
+    # label) — everything below consumes it.
+    read_turn(state, rt, user_input)
     ingest_client_evidence(state, rt, user_input)
     state.turn.side_topic_active = bool(classify_side_topic(state, rt, user_input))
 
