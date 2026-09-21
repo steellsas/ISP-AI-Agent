@@ -17,7 +17,7 @@ uv run python src/agent/eval/perception/run.py --limit 20 --json report.json
 | File | What it is | How to read a failure |
 |---|---|---|
 | `cases_reviewed.json` | **Curated**: expectations a human confirmed. | A failure is a real defect — the run exits non-zero. |
-| `cases.json` | **Baseline**: what the system read on recorded calls (auto-collected from traces, unreviewed). | A drop is a regression signal; a difference may be an improvement. Review the case, then move it to the curated file with the right expectation. |
+| `cases.json` | **Baseline**: what the system read on recorded calls (auto-collected from traces, unreviewed). Scored on FACTS only — a baseline case was read with its whole call in view, while the harness reconstructs the position, not the conversation. | A drop is a regression signal; a difference may be an improvement. Review the case, then move it to the curated file (with `check_type` if the turn type matters). |
 
 ## A case
 

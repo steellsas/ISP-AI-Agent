@@ -75,8 +75,13 @@ def _score(case: dict, read) -> dict:
     got_facts = read.values() if read is not None else {}
     missing = {k: v for k, v in want_facts.items() if got_facts.get(k) != v}
     extra = {k: v for k, v in got_facts.items() if k not in want_facts}
-    type_ok = (not want.get("turn_type")) or (
-        read is not None and read.turn_type == want["turn_type"]
+    # The turn TYPE is scored only where a human declared it. A baseline case was read
+    # in a live call with its whole history in view; this harness reconstructs the
+    # position (verdict, pending question), not the conversation, so comparing types
+    # would measure the missing context, not the reading.
+    check_type = case["_set"] == "reviewed" or case.get("check_type")
+    type_ok = (not check_type) or (
+        bool(want.get("turn_type")) and read is not None and read.turn_type == want["turn_type"]
     )
     return {
         "utterance": case["utterance"],
