@@ -179,7 +179,7 @@ def read_turn(state: Any, rt: Any, utterance: str | None) -> Perception | None:
     quick = fast_read(state, utterance, options)
     if quick is not None:
         return _record(state, rt, quick, active_step, utterance)
-    if not _und.enabled():
+    if not _und.enabled() or not _needs_reading(state):
         return None
     data = _und.understand(
         utterance,
@@ -221,6 +221,21 @@ def read_turn(state: Any, rt: Any, utterance: str | None) -> Perception | None:
             )
     read = read.model_copy(update={"facts": {k: f for k, f in read.facts.items() if f.grounded}})
     return _record(state, rt, read, active_step, utterance)
+
+
+def _needs_reading(state: Any) -> bool:
+    """Does this turn need the model at all?
+
+    Only when something is waiting to be read: a fault is being diagnosed, the contact
+    dialogue asked something, or the call still has no problem. An address turn with the
+    problem already known is read by the deterministic slot layer (wave 2a: without this
+    the reading ran on EVERY turn — 212 calls for 214 turns in the eval).
+    """
+    if state.ticket.stage in ("phone", "hours"):
+        return True
+    if not state.intake.problem_type:
+        return True
+    return bool(state.identity.customer_id) and not state.closing.case_closed
 
 
 def _record(state: Any, rt: Any, read: Perception, active_step: Any, utterance: str) -> Perception:

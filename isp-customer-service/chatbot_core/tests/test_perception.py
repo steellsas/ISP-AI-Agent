@@ -194,3 +194,30 @@ class TestOneReadingPerTurn:
             _problem_gate_reply(agent.state, agent.runtime, agent.state, "nu niekas man nekrauna")
 
         assert agent.state.intake.problem_type == "internet_down"
+
+
+# (what the call is doing, does the turn need the model?)
+NEEDS = [
+    ({"problem": None}, True),  # the call has no problem yet
+    ({"problem": "internet_down", "identified": True}, True),  # a fault is being worked
+    ({"problem": "internet_down"}, False),  # an address turn: the slot layer reads it
+    ({"problem": "internet_down", "identified": True, "closed": True}, False),
+    ({"problem": "internet_down", "ticket": "hours"}, True),  # the contact dialogue asked
+]
+
+
+@pytest.mark.parametrize("call, needs", NEEDS)
+def test_the_model_reads_only_what_needs_reading(call, needs, make_state):
+    """Wave 2a: the reading ran on EVERY turn (212 calls for 214 eval turns)."""
+    from agent.perceive.perception import _needs_reading
+
+    state = make_state("+37060020112")
+    state.intake.problem_type = call.get("problem")
+    if call.get("identified"):
+        state.identity.customer_id = "CUST009"
+    if call.get("closed"):
+        state.closing.case_closed = True
+    if call.get("ticket"):
+        state.ticket.stage = call["ticket"]
+
+    assert _needs_reading(state) is needs
