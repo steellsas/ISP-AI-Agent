@@ -1,6 +1,6 @@
 # Identification policy — DECLARATIVE knobs, not code (Phase 3.8 step 5d).
 #
-# The identification PROCEDURE wording lives in prompts/partials/identification.md; the
+# The identification PROCEDURE wording lives in prompts/skills/ask_identity.md; the
 # DIRECTION knobs a dev changes live here, so tuning identification (or adding an extra
 # verification question) is a file edit. The engine reads these and reflects them in the
 # identification guidance; the GUARDS stay in code and are NOT configurable here:
