@@ -50,6 +50,43 @@ Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
 
+## Banga 2c — įrankių manifestai (šaka `fix/wave-2c`)
+
+Tikslai: **įrankis = aprašas + adapteris**, variklis mato gebėjimą (capability), ne
+realizaciją; kiekvienas įrankis turi savo saugiklius, timeout'ą ir aprašytą kelią, kai
+neveikia. Radiniai: V, W; principas P-7. Pjūvis sutartas su Andriumi 2026-09-21.
+
+```
+DABAR                                   PO 2c
+decide → Action                         decide → Action
+   └─ gateway (sargai kode)                 └─ gateway
+        └─ local_provider                        ├─ manifestas knowledge/tools/<name>.yaml
+             └─ tools.py → SQLite                 │    capability · args · returns · requires
+                                                  │    guards · timeout_s · retries · on_failure
+                                                  └─ adapteris pagal `adapter:`
+                                                       demo_db (dabar) · fake (testams)
+                                                       mcp:* / http:* (12 etapas)
+```
+
+| # | Kas | Kur |
+|---|---|---|
+| 2c-1 | Manifesto schema + validacija startupe (trūkstamas ar nežinomas laukas — programa nepasileidžia) | `agent/knowledge/tools/*.yaml`, `agent/contract/loader.py` |
+| 2c-2 | Gateway skaito manifestą: `requires` pakeičia `policies.identified_customer_required` sąrašą kode; `guards` (max_per_call, cooldown_s, allowed_hours) vienoje vietoje; `tool_call` trace su capability + adapter | `agent/tooling/gateway.py` |
+| 2c-3 | `timeout_s` + `retries` kiekvienam kvietimui; lėtas kvietimas → `filler_key` frazė („sekundėlę, patikrinu") iš TTS cache, o ne tyla | `agent/tooling/gateway.py`, `execute/*` |
+| 2c-4 | `on_failure`: aiškus sakinys + `fallback: ask_client \| ticket \| skip` kaip planuojamas veiksmas (decide gauna faktą „telemetrija nepasiekiama") + `alert: ops`. Numatyta pagal capability: probe → klausti kliento · action → tiketas · crm → mandagi pabaiga · ticketing → pažadas perduoti | `decide/rules/*`, `agent/tooling/gateway.py` |
+| 2c-5 | Adapteriai: `demo_db` (dabartinis local provider), `fake` (deterministiniai lūžiai, timeout'ai), registras pagal `adapter:` vardą; `simulate_*` lieka tik demo adapteryje | `agent/tooling/adapters/`, `src/ports/tools.py` |
+| 2c-6 | 10 esamų įrankių perkeliami po vieną (resolve_address, find_customer, check_outages, check_network_status, diagnose_connection, run_ping_test, update_mac, reset_port, create_ticket, search_knowledge) | `agent/tools.py` → manifestai |
+| **Testai** | Kiekvienam įrankiui kontrakto lentelė (P-9, be LLM): `args → rezultatas` · `timeout → ką sako agentas` · `limitas → ką sako` · `adapteris lūžo → fallback`. Šiandien nepadengta visai | |
+
+**Ko 2c NEDARO:** tikrų CRM / NMS / tiketų sistemų integracijų — tai 12 etapas. 2c paruošia
+vietą, kad integracija būtų `adapter:` eilutė, ne perrašymas.
+
+Baigimo kriterijai: vienetų testai žali; eval tekstas ir `--voice` ne blogesni nei 178/178;
+kiekvienas įrankis turi manifestą ir kontrakto lentelę; `fake` adapteriu patikrintas
+kiekvienas `on_failure` kelias.
+
+---
+
 ## Banga 2b — promptai pagal įgūdį (šaka `fix/wave-2b`)
 
 Tikslas: **vienas atsakymas — vienas įgūdis.** Naratorius nebegauna visos personos
@@ -106,11 +143,16 @@ Baigimo kriterijai: vienetų testai žali; eval tekstas ir `--voice` ne blogesni
   `reexplain_confused` 2, **`answer_side` 0** — eval'as neturi ėjimo, kur naratorius pats
   atsako į šalutinį klausimą (visi šalutiniai eina scripted keliu). Kandidatas eval
   papildymui (4 banga).
-- Pirmumo klausimas (3 ėjimai iš 252): kai kortelėje yra `SIDE TOPIC`, o plano taisyklė
-  `inform.template`, įgūdį pasirinko ėjimo direktyva (`evidence` → `ask_fact`), ne plano
-  šeima (`inform` → `inform_news`). Principas „įgūdis seka planą" sakytų, kad šeima turi
-  laimėti prieš direktyvas (direktyvos tik patikslina gedimo kelią) — svarstoma prieš
-  3 bangą.
+- **Trace poravimo įspėjimas** (2026-09-21): `turn_plan` įrašomas PO atsakymo, o `skill` —
+  prieš jį, todėl poruoti reikia `skill` → **kitas** `turn_plan`. Suporavus atbulai iš
+  pradžių pasirodė, kad ėjimo direktyva (`evidence`) nustelbia plano šeimą (`inform`);
+  suporavus teisingai per 57 skambučius tokių atvejų **0** — visos šeimos gauna savo įgūdį
+  (`identification` 115 → ask_identity, `ticket` 18 → ticket_offscript, `closing` 18 →
+  goodbye, `inform` 7 → inform_news, `procedure` 46 → ask_fact/instruct_step). Pirmumo
+  tvarka nekeista.
+- Nestabilus T1 pasikartojo (0 bangos pastaba): TV skambutyje LLM paminėjo „routerio"
+  viename paleidime, kitame tas pats ėjimas praėjo švariai. Kandidatas 4 bangai —
+  kortelė TV skambutyje neturi leisti interneto žodyno.
 
 ---
 
