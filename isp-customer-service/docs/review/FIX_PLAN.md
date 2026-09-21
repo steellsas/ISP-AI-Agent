@@ -93,6 +93,14 @@ narrate   planuoja, uždaro, registruoja  narrate  tik kalba
 | 1c-3 | Trace: `turn_plan` + `plan_hops`; `decision` įvykiai iš vienos vietos | `decide/plan.py`, `agent/trace.py` |
 | **Testai** | perceive testas: po `perceive` būsenoje pakito tik faktai ir `turn`; klausimų registro lentelės | |
 
+**1a eiga (2026-09-21):** padaryta. Vienetų testai **1269 passed**; eval tekstas
+**178/178**, `--voice` **178/178**; užstrigimų nėra. Pakeliui rasta ir ištaisyta sava
+regresija: atsisveikinimo planas uždarydavo skambutį kaip „registered" ir perrašydavo
+„resolved" (S9, R3 → open); dabar atsisveikinimas tik padeda ragelį
+(`Action(type="close", name="keep")`). Trace'e per 66 skambučius: 16 uždarymų per planą,
+**2 `goodbye_unclosed`** — naratorius atsisveikino, kai byla dar atvira (stebime; taisoma
+1b/2b, kur uždarymą visada planuoja decide).
+
 **Bangos 1 baigimo kriterijai:** visi vienetų testai žali; eval tekstas ir
 `--voice` ne blogesni nei 178/178; `--runs 3` be FLAKY; trace'e `turn_plan`
 atitinka realų sprendimą; nė vienas efektas nevyksta be plano.
