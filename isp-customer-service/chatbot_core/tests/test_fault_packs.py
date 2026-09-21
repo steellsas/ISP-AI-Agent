@@ -1073,25 +1073,23 @@ class TestPrimaryGoalFrozen:
     become secondary problems (asked at the end, listed on the ticket)."""
 
     def test_mid_call_mention_becomes_secondary(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
-
-        from tests.calls import make_agent
+        from tests.calls import hear, make_agent
 
         agent = make_agent("unknown")
         s = agent.state
-        prefill_slots_from_text(agent.state, agent.runtime, "Neveikia internetas")
+        hear(agent, "Neveikia internetas")
         assert s.intake.problem_type == "internet_down"
         s.identity.customer_id = "CUST009"
         s.resolution.procedure = {"verdict": "no_mac_observed", "step": "dr_intro"}
-        prefill_slots_from_text(agent.state, agent.runtime, "O dar televizorius man blogai rodo")
+        hear(agent, "O dar televizorius man blogai rodo")
         assert s.intake.problem_type == "internet_down"  # frozen
         assert s.intake.secondary_problems and s.intake.secondary_problems[0]["type"] == "tv"
         # dedupe: the same type mentioned again does not duplicate
-        prefill_slots_from_text(agent.state, agent.runtime, "Tas televizorius vis dar blogai")
+        hear(agent, "Tas televizorius vis dar blogai")
         assert len(s.intake.secondary_problems) == 1
         # A request type (billing, D-11) never becomes a secondary TECH problem —
         # it is not a fault to list on the fault ticket.
-        prefill_slots_from_text(agent.state, agent.runtime, "O dar sąskaitos klausimas turiu")
+        hear(agent, "O dar sąskaitos klausimas turiu")
         assert all(x["type"] != "billing" for x in s.intake.secondary_problems)
 
     def test_secondary_lands_on_ticket_and_closing_facts(self, db_connection):
@@ -1216,9 +1214,7 @@ class TestOpenerAndClosingHygiene:
         assert "PHONE ACCOUNT" in (context_card(agent.state, agent.runtime) or "")
 
     def test_no_secondary_problems_from_ticket_stage_garbles(self, db_connection):
-        from agent.perceive.slots import prefill_slots_from_text
-
-        from tests.calls import make_agent
+        from tests.calls import hear, make_agent
 
         agent = make_agent("unknown")
         s = agent.state
@@ -1226,12 +1222,12 @@ class TestOpenerAndClosingHygiene:
         s.identity.customer_id = "CUST009"
         s.resolution.procedure = {"verdict": "no_mac_observed", "step": "escalate"}
         agent.state.ticket.stage = "hours"
-        prefill_slots_from_text(agent.state, agent.runtime, "Sąskaitos žemės gatvės klausimas")
+        hear(agent, "Sąskaitos žemės gatvės klausimas")
         assert s.intake.secondary_problems == []
         agent.state.ticket.stage = None
-        prefill_slots_from_text(agent.state, agent.runtime, "Žemės gatvės")  # 2 words: a garble
+        hear(agent, "Žemės gatvės")  # 2 words: a garble
         assert s.intake.secondary_problems == []
-        prefill_slots_from_text(agent.state, agent.runtime, "O dar televizorius man blogai rodo")
+        hear(agent, "O dar televizorius man blogai rodo")
         assert s.intake.secondary_problems and s.intake.secondary_problems[0]["type"] == "tv"
 
 

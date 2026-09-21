@@ -365,6 +365,10 @@ class TurnScratch(BaseModel):
     address_confirm_note: str | None = None
     db_address_note: str | None = None
     reopen_note: bool = False
+    # What this utterance sounded like (a problem label) — decide commits or files it.
+    problem_reading: str | None = None
+    # Who the caller said they are, when the holder clarification is out ("family"…).
+    caller_relation_reading: str | None = None
     # Perception of this turn: the understand pass and the step classifier.
     understanding: dict[str, Any] | None = None
     perception_step: dict[str, Any] | None = None

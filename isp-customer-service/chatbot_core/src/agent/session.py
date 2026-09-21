@@ -110,7 +110,13 @@ class AgentSession:
                 mode="json"
             )
         # The greeting is turn 0; every caller turn after it is numbered in order.
-        self._runtime.tracer.emit("turn_plan", turn_index=self._plans_emitted, **plan)
+        # `hops` = how many times the turn went back to decide after an action (1a).
+        self._runtime.tracer.emit(
+            "turn_plan",
+            turn_index=self._plans_emitted,
+            hops=self._state.turn.plan_hops,
+            **plan,
+        )
         self._plans_emitted += 1
 
     def _write_between_turns(self, write) -> None:

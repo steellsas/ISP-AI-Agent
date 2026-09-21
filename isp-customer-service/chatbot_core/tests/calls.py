@@ -74,3 +74,14 @@ def run_turn_nodes(state, runtime):
     upd = decide_node(state, runtime)
     upd = execute_node(GraphState(**upd), runtime)
     return narrate_node(GraphState(**upd), runtime)
+
+
+def hear(agent, text):
+    """One caller utterance read the way the engine reads it: perceive takes the
+    readings, decide commits what they MEAN for the call (wave 1c)."""
+    from agent.decide.rules.intake import apply_readings
+    from agent.perceive.slots import prefill_slots_from_text
+
+    agent.state.dialog.last_heard = (text or "").strip()
+    prefill_slots_from_text(agent.state, agent.runtime, text)
+    apply_readings(agent.state, agent.runtime)

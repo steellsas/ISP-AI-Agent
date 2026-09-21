@@ -164,3 +164,83 @@ def _stream(text):
         return SimpleNamespace(content=text, tool_calls=None)
 
     return _gen
+
+
+class TestPerceiveOnlyReads:
+    """Wave 1c: perceive takes the readings; what they MEAN for the call is decided."""
+
+    def test_the_problem_is_read_in_perceive_and_committed_in_decide(
+        self, make_state, make_runtime
+    ):
+        from agent.decide.rules.intake import apply_readings
+        from agent.perceive.slots import prefill_slots_from_text
+
+        state, rt = make_state("+37060020112"), make_runtime()
+
+        prefill_slots_from_text(state, rt, "Labas, neveikia internetas")
+
+        assert state.turn.problem_reading == "internet_down"
+        assert state.intake.problem_type is None  # not decided yet
+
+        apply_readings(state, rt)
+        assert state.intake.problem_type == "internet_down"
+
+    def test_perceive_changes_no_dialogue_state(self, make_state, make_runtime):
+        """A read may fill facts and the turn scratch — never the call's decisions."""
+        from agent.perceive import perceive
+
+        state, rt = make_state("+37060020112"), make_runtime()
+        state.identity.customer_id = "CUST009"
+        before = {
+            "closing": state.closing.model_dump(),
+            "ticket": state.ticket.model_dump(),
+            "resolution": state.resolution.model_dump(),
+            "problem": state.intake.problem_type,
+        }
+
+        perceive(state, rt, "O dar televizorius neveikia")
+
+        assert state.closing.model_dump() == before["closing"]
+        assert state.ticket.model_dump() == before["ticket"]
+        assert state.resolution.model_dump() == before["resolution"]
+        assert state.intake.problem_type == before["problem"]
+
+
+# (the reading, what the call already knows) -> what the reading becomes
+PROBLEM_CASES = [
+    ("internet_down", {}, "primary"),
+    ("billing", {}, "primary"),  # a request IS a call reason
+    ("not_ours", {}, "boundary"),  # outside the agent's competence
+    ("tv", {"problem_type": "internet_down", "solving": True}, "secondary"),
+    # a request mentioned mid-fault is not a secondary TECH problem (F-28)
+    ("billing", {"problem_type": "internet_down", "solving": True}, "ignored"),
+    ("tv", {"problem_type": "internet_down"}, "corrected"),  # nothing checked yet
+]
+
+
+@pytest.mark.parametrize("reading, known, becomes", PROBLEM_CASES)
+def test_what_a_problem_reading_becomes(reading, known, becomes, make_state, make_runtime):
+    from agent.decide.rules.intake import apply_readings
+
+    state, rt = make_state("+37060020112"), make_runtime()
+    state.dialog.last_heard = "o dar vienas dalykas nerodo"
+    state.intake.problem_type = known.get("problem_type")
+    if known.get("solving"):
+        state.identity.customer_id = "CUST009"
+        state.resolution.procedure = {"verdict": "router_hung", "step": "rh_check"}
+    state.turn.problem_reading = reading
+
+    apply_readings(state, rt)
+
+    got = {
+        "primary": state.intake.problem_type == reading,
+        "boundary": state.intake.boundary_problem == reading,
+        "secondary": [p["type"] for p in state.intake.secondary_problems] == [reading],
+        "corrected": state.intake.problem_type == reading,
+        "ignored": (
+            state.intake.problem_type == known.get("problem_type")
+            and not state.intake.secondary_problems
+            and state.intake.boundary_problem is None
+        ),
+    }
+    assert got[becomes], f"expected {becomes}, got {got}"
