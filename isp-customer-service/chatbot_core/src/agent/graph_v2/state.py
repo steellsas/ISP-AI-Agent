@@ -371,6 +371,8 @@ class TurnScratch(BaseModel):
     caller_relation_reading: str | None = None
     # Perception of this turn: the understand pass and the step classifier.
     understanding: dict[str, Any] | None = None
+    # The same reading in its own shape (wave 2a): source, turn type, facts + quotes.
+    perception: dict[str, Any] | None = None
     perception_step: dict[str, Any] | None = None
     # The evidence key the caller reported as done this turn.
     done_report_key: str | None = None

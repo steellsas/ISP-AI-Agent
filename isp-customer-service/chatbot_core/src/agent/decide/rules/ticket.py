@@ -142,12 +142,17 @@ def ticket_capture(state, rt, user_input: str) -> None:
     from ...perceive import understand as _und
 
     if _und.enabled():
-        ut = _und.understand_ticket(
-            user_input,
-            stage=state.ticket.stage,
-            anchor=(s.dialog.last_question or ""),
-            model=rt.config.model,
-        )
+        # Wave 2a: the contact answer rides on THIS turn's one reading; only a turn
+        # that was never read (a direct caller in tests) asks for its own.
+        read = state.turn.perception or {}
+        ut = read.get("ticket") if read.get("utterance") == user_input else None
+        if ut is None:
+            ut = _und.understand_ticket(
+                user_input,
+                stage=state.ticket.stage,
+                anchor=(s.dialog.last_question or ""),
+                model=rt.config.model,
+            )
         if ut is not None:
             und_handled = True
             rt.tracer.emit(

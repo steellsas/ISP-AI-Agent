@@ -1,0 +1,1343 @@
+{
+ "cases": [
+  {
+   "utterance": "Paulius, taip, mano sutartis",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Visuose įrenginiuose",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Gerai, ištraukiau iš routerio ir įkišau atgal",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Mirksi, puslapis atsidaro — veikia",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, ačiū",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Labas, neveikia internetas",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Prieš valandą dingo, po nieko ypatingo",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Jonas, taip, aš sutartį sudaręs",
+   "context": {
+    "verdict": "foreign_mac"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, keičiau routerį, senasis sugedo",
+   "context": {
+    "verdict": "foreign_mac"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "changed_device": "yes"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Gerai, laukiu",
+   "context": {
+    "verdict": "foreign_mac"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, atsirado internetas",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "changed_device": "yes"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, ačiu, viskas",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Laba diena, televizorius nerodo nė vieno kanalo",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Kęstutis, taip, mano sutartis",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, tinka šis numeris",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Po pietų, nuo keturioliktos valandos",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ačiū, viso gero",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Sveiki",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Man liūdna, norėjau šiaip pašnekėti",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Na apie orus galim pakalbėti",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "deviation",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Tai tiek žinių pas mane",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "deviation",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nu nieko konkretaus neturiu",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Gerai jau gerai",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "deviation",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Laba diena, neveikia internetas",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Laba diena, niekas man nekrauna nuo pat ryto, nei telefone, nei kompiuteryje",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nuo ryto neveikia, niekas nenutiko",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "question",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vakar vakare dar veikė",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Petras, nuomininkas",
+   "context": {
+    "verdict": "billing_suspended"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Aišku, ačiū",
+   "context": {
+    "verdict": "billing_suspended"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Laba diena, norėjau paklausti, kodėl man tokia didelė sąskaita šį mėnesį",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "question",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "question",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Aldona, taip, mano sutartis",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Po pietų",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Laba diena, kodėl tokia didelė sąskaita?",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "question",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Velma",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Žinoma, tiks",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ačiū, viso gero",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "deviation",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, registruokite",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Bet kada",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, viskas, viso gero",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "deviation",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Labas, dingo internetas nuo ryto",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Visuose įrenginiuose",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "fail_scope": "all"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Mirksi, puslapis atsidaro — veikia",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "lights": "blinking",
+     "fail_scope": "all"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vakar vakare pastebėjau",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "deviation",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ona, aš žmona sutartį sudariusio",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Tik viename",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Telefone",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "fail_device": "phone"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Patikrinau, WiFi įjungtas",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "connection_type": "wifi"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Prisijungiau iš naujo",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, dabar veikia",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Šįryt dingo, po audros",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "question",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Giedrius, taip, mano sutartis",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Galėtume kartu patikrinti",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, nešviečia jokia lemputė",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vis tiek nedega",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Neturiu kito routerio, tik kompiuterį",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Gerai",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "power_cable": "plugged"
+    }
+   },
+   "source_seen": "fast_path"
+  },
+  {
+   "utterance": "Turiu kabelį rankoje",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Įkišau į kompiuterį",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ryšys yra, bet interneto nėra",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vakar vakare dingo, po nieko ypatingo",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Egidijus, mano sutartis",
+   "context": {
+    "verdict": "switch_unreachable"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Aišku, ačiū, viso gero",
+   "context": {
+    "verdict": "switch_unreachable"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "O sakykite, ar šitas skambutis man kainuos?",
+   "context": {
+    "verdict": "foreign_mac"
+   },
+   "expect": {
+    "turn_type": "question",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, atsirado internetas",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Aišku, ačiū, lauksiu",
+   "context": {
+    "verdict": "active_outage"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vakar pastebėjau",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Kaip tai skola, aš sumokėjau praeitą mėnesį",
+   "context": {
+    "verdict": "billing_suspended"
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, užregistruokite",
+   "context": {
+    "verdict": "billing_suspended"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vakar vakare, po audros",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, dėl šito adreso",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Andrius",
+   "context": {
+    "verdict": "foreign_mac"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, baigiam",
+   "context": {
+    "verdict": "foreign_mac"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nežinau kada",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vakar dar veikė",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Šiauliai, Vilniaus gatvė 39",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ai, atsiprašau — 29 namas",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Neveikia internetas",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nežinau adreso, aš ne namie",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Negaliu dabar pasakyti",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Na tikrai neprisimenu",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Mano abonento kodas AB-10104",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vilma",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vilnius, Gedimino prospektas 1",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Tikrai Vilnius, ten gyvenu",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "contradiction",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Kito adreso neturiu",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Neturiu jokio kodo",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, tikrai neturiu",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Petras, aš sutarties savininkas",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Žmonos vardu sudaryta sutartis",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, ačiū, tiek žinot",
+   "context": {
+    "verdict": "no_mac_observed"
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nežinau",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nežinau, seniai",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nežinau aš adreso, čia ne mano butas",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, tikrai nežinau",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "confusion",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Viso gero",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "deviation",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Vilma, taip, mano sutartis",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, galiu prieiti",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Dega",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "lights": "on"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Nedega",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Perkišau",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, neveikia",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, tinka",
+   "context": {
+    "verdict": "link_down_local"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Marius, taip, mano sutartis",
+   "context": {
+    "verdict": "crc_errors"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Perkišau, nepadėjo, laidas buvo kiek užlenktas",
+   "context": {
+    "verdict": "crc_errors"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {
+     "power_cable": "plugged"
+    }
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Lina, taip, mano sutartis",
+   "context": {
+    "verdict": "node_fault_unregistered"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "O kada sutvarkysit?",
+   "context": {
+    "verdict": "node_fault_unregistered"
+   },
+   "expect": {
+    "turn_type": "question",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Rasa",
+   "context": {
+    "verdict": "active_outage"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Mano vardas yra Vilma",
+   "context": {
+    "verdict": "active_outage"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, vyro vardu sudaryta sutartis",
+   "context": {
+    "verdict": "active_outage"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Egidijus",
+   "context": {
+    "verdict": "switch_unreachable"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Neveikia internetas visuose įrenginiuose",
+   "context": {
+    "verdict": null
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Paulius",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Visuose",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Perkroviau, internetas atsirado",
+   "context": {
+    "verdict": "router_hung"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Ne, ačiū, viso gero",
+   "context": {
+    "verdict": "healthy_to_router"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Greta, taip, mano sutartis",
+   "context": {
+    "verdict": "dhcp_silent"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  },
+  {
+   "utterance": "Taip, esu prie routerio",
+   "context": {
+    "verdict": "dhcp_silent"
+   },
+   "expect": {
+    "turn_type": "answer",
+    "facts": {}
+   },
+   "source_seen": "llm"
+  }
+ ]
+}

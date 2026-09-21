@@ -176,7 +176,14 @@ def _problem_gate_reply(state: Any, rt: Any, s: Any, user_input: str) -> str | N
             if u
         ]
         ctx = " ".join(tail)[-400:] or (user_input or "")
-        label, conf = classify_problem_llm(ctx, model=rt.config.model)
+        # Wave 2a: the problem label rides on THIS turn's one reading (it was taken
+        # with the whole catalog in view); a turn read without it asks separately.
+        read = state.turn.perception or {}
+        guess = read.get("problem") if read.get("utterance") == user_input else None
+        if guess and guess.get("label"):
+            label, conf = str(guess["label"]), float(guess.get("confidence") or 0.0)
+        else:
+            label, conf = classify_problem_llm(ctx, model=rt.config.model)
         if label:
             pol = problem_policy(label)
             rt.tracer.emit(

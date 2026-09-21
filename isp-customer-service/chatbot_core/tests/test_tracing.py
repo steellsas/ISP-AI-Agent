@@ -393,3 +393,15 @@ class TestTestTracesStayOutOfTheLogs:
 
         assert path.parent == Path(os.environ["TRACE_DIR"]).resolve()
         assert (path.parent.parent.name, path.parent.name) != ("logs", "sessions")
+
+
+def test_an_event_field_named_type_never_becomes_the_event_type(tmp_path):
+    """Wave 2a: `perception` events carried a `type` field (the turn type) and silently
+    became `answer`/`question` events in the trace — the structural keys win now."""
+    from adapters.tracing import JsonlFileTracer
+
+    tracer = JsonlFileTracer("s-type", tmp_path)
+    tracer.emit("perception", type="answer", source="fast_path")
+
+    event = json.loads(Path(tracer.path).read_text(encoding="utf-8").splitlines()[0])
+    assert event["type"] == "perception"

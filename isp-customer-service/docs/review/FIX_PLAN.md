@@ -46,7 +46,49 @@ BANGA 5  valymas
 | 4 | Lėtas internetas + TV tik failais; RAG atviriems klausimams; pavyzdžių bankas | AJ, AK | 3, 2b |
 | 5 | Valymas: vėliavos, seni keliai, pavadinimai, LT/EN raktai, testų žemėlapis | E, F5 | 4 |
 
-Detalus 2–5 bangų planas rašomas kiekvienos bangos pradžioje.
+Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
+
+---
+
+## Banga 2a — vienas Perception (šaka `fix/wave-2a`)
+
+Tikslas: **vienas skaitymas per ėjimą** — greitkelis be LLM, vienas LLM kvietimas
+visam kitam, kiekvienas faktas su citata, faktų priėmimo politika vienoje vietoje.
+Radiniai: G, H, I (dalinai), K, AD, AE, AO.
+
+| # | Kas | Kur |
+|---|---|---|
+| 2a-1 | `Perception` objektas (turn scratch): turn_type · facts {value, quote} · step atsakymas · problema · entities. Greitkelis: uždari atsakymai („taip", „ne", „palaukit", „ačiū") skaitomi deterministiškai — 0 LLM | `perceive/perception.py`, `graph_v2/state.py` |
+| 2a-2 | **Citata prie fakto**: kodas tikrina, kad citata tikrai yra sakinyje; nepagrįstas faktas atmetamas. Pakeičia dalį H sargų (uncorroborated flip, done-report, reader disagreement) | `perceive/perception.py`, `perceive/evidence.py` |
+| 2a-3 | Faktų priėmimo politika iš perceive į decide (telemetrija > patvirtintas > naujas; flip → patvirtinimas) | `decide/rules/facts.py` (nauja), `perceive/evidence.py` |
+| 2a-4 | Vienas LLM kvietimas: `understand` + `classify_step` (jau sulieti) + `ticket_reader` + `problem_classifier` viename kontrakte | `perceive/perception.py`, `decide/rules/ticket.py`, `perceive/nlu.py` |
+| 2a-5 | Analitikas pagal trigerius (kas N ėjimų, stuck, prieš išvadą/tiketą/uždarymą), ne kiekvieną ėjimą (AE) | `analyst/node.py`, `app/voice.py` |
+| 2a-6 | Semantinis endpoint: perception ant stabilaus partial → „atsakymas pilnas" → 350 ms tylos (AO) | `agent/endpoint.py`, `app/audio_front.py` |
+| 2a-7 | Perception eval rinkinys + paleidėjas (pradžiai ~60 atvejų iš eval trace'ų, auga toliau) | `agent/eval/perception/` |
+
+Commit'ai: (A) 2a-1…2a-3, (B) 2a-4, (C) 2a-5…2a-7.
+
+**2a eiga (2026-09-21):**
+- (A) `Perception` + greitkelis + citatos: eval tekstas/voice **178/178**, testai 1308.
+  Pakeliui rasta ir ištaisyta sena trace klaida: laukas `type` perrašydavo įvykio tipą
+  (todėl `perception`/`understand` įvykiai žurnale atrodė kaip `answer`).
+- (B) Vienas kvietimas visam ėjimui (tiketo skaitytojas ir problemos klasifikatorius
+  suliesti): `ticket_reader` 16 → **0**, `problem_classifier` 5 → 3. Eval 178/178 abiem
+  režimais. Regresija pakeliui: skaitymas pradėjo veikti KIEKVIENĄ ėjimą (212 iš 214) —
+  susiaurinta iki ėjimų, kuriems reikia (identifikacijos ėjimus skaito slotų sluoksnis).
+- (C) Analitikas pagal trigerius (`analyst_every_turns: 3` + stuck / tiketas / skolos
+  pasiūlymas); perception eval rinkinys (`agent/eval/perception/`): kuruoti **10/10**,
+  4 iš jų be LLM. 2a-6 (semantinis endpoint) jau buvo įgyvendintas anksčiau
+  (`agent/endpoint.py`) — nieko keisti nereikėjo.
+- **2a baigta.** Vienetų testai **1323 passed**; eval tekstas **178/178**, `--voice`
+  **178/178**; perception eval: kuruoti **10/10**, baseline **117/120** (pagal faktus).
+  Matavimai per 66 skambučius (432 kliento ėjimai): `ticket_reader` 0 (buvo 16),
+  analitikas praleistas **165** kartus (130 kvietimų vietoj ~250), citatų patikra
+  atmetė **12** nepagrįstų faktų. Greitkelis eval'e beveik nesuveikia (2 kartai):
+  scenarijų klientas atsako pilnais sakiniais — tikra nauda bus balse, tai matuosime
+  8 etape / gyvai.
+Baigimo kriterijai: vienetų testai žali; eval tekstas ir `--voice` ne blogesni;
+trace'e vienam ėjimui vienas `perception` LLM kvietimas arba nė vieno (greitkelis).
 
 ---
 

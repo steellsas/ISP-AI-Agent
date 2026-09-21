@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import pytest
 from agent.analyst.node import apply, read, run_sync
 from agent.analyst.signals import Signal, parse
 
@@ -212,3 +213,47 @@ class TestBackgroundWindow:
             run_sync(state, rt)
 
         assert state.voice.analyst_signals is None
+
+
+# (what the call is doing, does the analyst read this turn?)
+DUE = [
+    ({"turn": 3}, True),  # the routine read (every analyst_every_turns)
+    ({"turn": 4}, False),  # nothing for it: perception read this turn
+    ({"turn": 4, "stuck": 1}, True),  # stuck — the cross-turn view is the point
+    ({"turn": 4, "repeated": True}, True),
+    ({"turn": 4, "ticket": "phone"}, True),  # before the call ends
+    ({"turn": 4, "debt_offer": "asked"}, True),
+    # a chosen solution is not a trigger by itself: it stays true for the rest of the
+    # call, which would mean a read every turn again.
+    ({"turn": 4, "solution": True}, False),
+]
+
+
+@pytest.mark.parametrize("call, reads", DUE)
+def test_the_analyst_reads_when_its_view_matters(call, reads, make_state):
+    """Wave 2a: the analyst was the most expensive call of every turn (the full
+    transcript) — as many reads as replies."""
+    from agent.analyst.node import due
+
+    state = make_state("+37060020112")
+    state.dialog.turn_count = call["turn"]
+    state.dialog.stuck_count = call.get("stuck", 0)
+    state.dialog.last_reply_repeated = call.get("repeated", False)
+    state.ticket.stage = call.get("ticket")
+    state.closing.debt_offer = call.get("debt_offer")
+    if call.get("solution"):
+        state.resolution.procedure = {"verdict": "router_hung", "solution_synced": "rh_reboot"}
+
+    assert due(state) is reads
+
+
+def test_a_read_that_is_not_due_calls_no_model(make_state, make_runtime, monkeypatch):
+    from agent.analyst.node import read
+
+    monkeypatch.setenv("ANALYST_MODE", "sync")
+    state, rt = make_state("+37060020112"), make_runtime()
+    state.intake.problem_type = "internet_down"
+    state.dialog.turn_count = 4  # not a routine read turn
+
+    with patch("src.services.llm.client.llm_completion", side_effect=AssertionError("called")):
+        assert read(state, rt) == []

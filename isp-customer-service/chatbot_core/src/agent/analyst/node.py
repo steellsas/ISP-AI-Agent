@@ -34,12 +34,38 @@ def mode(state: Any = None) -> str:
     return "async" if getattr(getattr(state, "voice", None), "background_reads", False) else "sync"
 
 
+def due(state: Any) -> bool:
+    """Is the whole-call view worth a read THIS turn (wave 2a)?
+
+    The analyst is the most expensive call of a turn (the full transcript), and most
+    turns have nothing for it: perception already read what the caller just said. It
+    reads when its cross-turn view is what matters —
+
+    - the dialogue is stuck or repeating itself,
+    - the contact dialogue or the debt offer is out (a missed secondary problem or a
+      contradiction must surface BEFORE the call ends),
+    - otherwise every `analyst_every_turns` turn.
+    """
+    from ..contract import limits
+
+    s = state
+    if s.dialog.stuck_count or s.dialog.last_reply_repeated:
+        return True
+    if s.ticket.stage or s.closing.debt_offer:
+        return True
+    every = max(1, int(limits.get("analyst_every_turns")))
+    return s.dialog.turn_count % every == 0
+
+
 def read(state: Any, rt: Any) -> list[Signal]:
     """One read of the call. Best-effort: any hiccup returns no signals."""
     if mode(state) == "off":
         return []
     s = state
     if not s.intake.problem_type or s.closing.case_closed or s.closing.is_complete:
+        return []
+    if not due(state):
+        rt.tracer.emit("analyst_signals", signals=[], skipped="not_due")
         return []
     try:
         from src.services.llm.client import llm_completion
@@ -146,7 +172,7 @@ def _contradiction(state: Any, rt: Any, signal: Signal) -> None:
     if hypothesis.doubt(
         state, rt, "conflict", key, entry.get("value"), signal.value, source="analyst"
     ):
-        rt.tracer.emit("analyst_applied", type="contradiction", key=key)
+        rt.tracer.emit("analyst_applied", signal="contradiction", key=key)
 
 
 def _already_answered(state: Any, rt: Any, signal: Signal) -> None:
@@ -160,7 +186,7 @@ def _already_answered(state: Any, rt: Any, signal: Signal) -> None:
     if state.diagnosis.pending_evidence_key and state.diagnosis.pending_evidence_key != key:
         return
     if hypothesis.doubt(state, rt, "flip", key, None, value, source="analyst"):
-        rt.tracer.emit("analyst_applied", type="already_answered", key=key)
+        rt.tracer.emit("analyst_applied", signal="already_answered", key=key)
 
 
 def _secondary_problem(state: Any, rt: Any, signal: Signal) -> None:
@@ -169,4 +195,4 @@ def _secondary_problem(state: Any, rt: Any, signal: Signal) -> None:
     if not text or any(x.get("text") == text for x in state.intake.secondary_problems):
         return
     state.intake.secondary_problems.append({"type": None, "text": text, "source": "analyst"})
-    rt.tracer.emit("analyst_applied", type="secondary_problem")
+    rt.tracer.emit("analyst_applied", signal="secondary_problem")
