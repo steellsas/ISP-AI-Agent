@@ -1,0 +1,15 @@
+# A note on the ticket this caller already has open (a repeat call), or a correction to a
+# registration just made. The ENGINE is the only caller and it knows the customer, so no
+# identification gate: one live path appends the note while the closing turn runs, and
+# gating it would silently drop the caller's phone-number correction.
+tool: append_ticket_note
+capability: ticketing
+adapter: demo_db
+args: { customer_id: str, note: str }
+requires: []
+timeout_s: 8
+audit: true
+on_failure:
+  say_key: tools.unavailable_ticket
+  fallback: skip
+  alert: ops

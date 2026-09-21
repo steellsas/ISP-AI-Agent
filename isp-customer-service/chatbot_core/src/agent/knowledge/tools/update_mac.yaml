@@ -1,0 +1,15 @@
+# Bind the equipment the caller actually has to their port. Consent is declared on the
+# procedure step (`consent:`) that plans it, so the caller always agrees first.
+tool: update_mac
+capability: action
+adapter: demo_db
+args: { customer_id: str }
+requires: [identified]
+guards:
+  max_per_call: 1
+timeout_s: 10
+audit: true
+on_failure:
+  say_key: tools.unavailable_action
+  fallback: ticket      # cannot bind remotely -> a technician
+  alert: ops

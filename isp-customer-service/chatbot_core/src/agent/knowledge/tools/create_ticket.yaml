@@ -1,0 +1,13 @@
+# Register the fault (or the caller's question) for the people who handle it.
+tool: create_ticket
+capability: ticketing
+adapter: demo_db
+args: { customer_id: str, issue_type: str, description: str, priority: str, notes: str, problem_type: str }
+requires: [identified]
+timeout_s: 10
+retries: 1
+audit: true
+on_failure:
+  say_key: tools.unavailable_ticket
+  fallback: skip        # the contacts are already taken; colleagues get them by hand
+  alert: ops

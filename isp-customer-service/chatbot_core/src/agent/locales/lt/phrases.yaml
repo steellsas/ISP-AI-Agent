@@ -506,6 +506,14 @@ system:
   default_anchor: "Ar tęsiame gedimo sprendimą?"
   filler: "Sekundėlę, tikrinu."
 
+# What the caller hears when a system we depend on does not answer (knowledge/tools/*.yaml
+# on_failure.say_key). Never a technical excuse — what it means for them and what happens now.
+tools:
+  unavailable_probe: "Kol kas nematau linijos duomenų — pasitikslinsiu su jumis."
+  unavailable_action: "Nuotoliniu būdu dabar to padaryti nepavyksta — registruoju meistrą."
+  unavailable_crm: "Kol kas nepavyksta pasiekti sutarčių duomenų. Labai atsiprašau — paskambinkite kiek vėliau, mielai padėsime."
+  unavailable_ticket: "Registracijos sistema kol kas neatsako, bet jūsų kontaktus turiu — kolegos susisieks."
+
 verdict:
   # How a verdict is named to the caller (gloss) and why a ticket is needed.
   billing_suspended:

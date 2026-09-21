@@ -1,0 +1,14 @@
+# Flap the customer's switch port (the remote equivalent of a reboot).
+tool: reset_port
+capability: action
+adapter: demo_db
+args: { customer_id: str }
+requires: [identified]
+guards:
+  max_per_call: 1
+timeout_s: 10
+audit: true
+on_failure:
+  say_key: tools.unavailable_action
+  fallback: ticket
+  alert: ops

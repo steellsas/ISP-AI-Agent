@@ -1,0 +1,95 @@
+"""Wave 2c: a tool is a contract, not a function (P-7).
+
+Every tool the engine can call declares what it does, who may call it, how long it may
+take and what happens when it does not answer. These tests are the contract's guard: a
+new tool without a manifest, or a manifest that drifts from the rules the gateway
+actually enforces, fails here — not on a call.
+"""
+
+import pytest
+from agent.contract import policies
+from agent.contract import tools as manifests
+from agent.contract.schema import ToolManifest
+from pydantic import ValidationError
+
+
+def _tool_names() -> set[str]:
+    """Every name the provider can execute: the LLM-facing tools and the engine's own."""
+    from agent.tooling.local_provider import ENGINE_TOOLS
+    from agent.tools import REAL_TOOLS
+
+    return {t.name for t in REAL_TOOLS} | set(ENGINE_TOOLS)
+
+
+def test_every_tool_has_a_manifest():
+    missing = sorted(_tool_names() - set(manifests.names()))
+    assert not missing, f"tools without a manifest: {missing}"
+
+
+def test_every_manifest_names_a_real_tool():
+    """A manifest for a tool that no longer exists is a lie the engine would read."""
+    unknown = sorted(set(manifests.names()) - _tool_names())
+    assert not unknown, f"manifests for unknown tools: {unknown}"
+
+
+def test_the_manifests_mirror_the_identification_gate():
+    """Until the gateway reads `requires` (2c-2), the two must say the same thing."""
+    declared = {name for name, m in manifests.get().items() if "identified" in m.requires}
+    assert declared == set(policies.get().identified_customer_required)
+
+
+def test_an_action_is_audited_and_capped():
+    """A mutation on the customer's line is logged and cannot repeat itself in one call."""
+    for name, m in manifests.get().items():
+        if m.capability == "action":
+            assert m.audit, f"{name}: an action must be audited"
+            assert m.guards.max_per_call, f"{name}: an action needs max_per_call"
+            assert m.on_failure.fallback == "ticket", f"{name}: a failed action needs a technician"
+
+
+def test_a_slow_tool_tells_the_caller_to_wait():
+    """Whatever takes seconds in production gets a filler line, so voice is never silent."""
+    for name, m in manifests.get().items():
+        if m.capability in ("probe", "crm") and m.timeout_s >= 5:
+            assert m.filler_key, f"{name}: a slow lookup needs a filler_key"
+
+
+def test_every_failure_path_reaches_the_operators_or_goes_on_quietly():
+    for name, m in manifests.get().items():
+        if m.on_failure.fallback != "skip":
+            assert m.on_failure.say_key, f"{name}: the caller must hear something"
+
+
+BASE = {
+    "tool": "x",
+    "capability": "probe",
+    "adapter": "demo_db",
+    "timeout_s": 5,
+    "on_failure": {"say_key": "tools.unavailable_probe", "fallback": "ask_client"},
+}
+
+# (what is wrong with the manifest, the override)
+BROKEN = [
+    ("unknown capability", {"capability": "magic"}),
+    ("adapter that no registry can answer", {"adapter": "postgres"}),
+    ("a typo instead of a field", {"timeuot_s": 5}),
+    ("no failure path at all", {"on_failure": None}),
+    ("a fallback the caller never hears", {"on_failure": {"fallback": "ticket"}}),
+    ("hours that are not hours", {"guards": {"allowed_hours": "8am-10pm"}}),
+    ("a timeout that cannot pass", {"timeout_s": 0}),
+    ("a requirement the gate does not know", {"requires": ["paid_up"]}),
+]
+
+
+@pytest.mark.parametrize("what, override", BROKEN)
+def test_a_broken_manifest_is_refused(what, override):
+    spec = {**BASE, **override}
+    if override.get("on_failure") is None:
+        spec.pop("on_failure")
+    with pytest.raises(ValidationError):
+        ToolManifest(**spec)
+
+
+def test_a_good_manifest_parses():
+    m = ToolManifest(**BASE)
+    assert m.retries == 0 and m.audit is False and m.guards.max_per_call is None

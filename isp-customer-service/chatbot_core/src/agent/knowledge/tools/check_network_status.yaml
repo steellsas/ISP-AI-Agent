@@ -1,0 +1,12 @@
+# The line as the network sees it (pre-identification it answers per address).
+tool: check_network_status
+capability: probe
+adapter: demo_db
+args: { customer_id: str, address_id: str }
+requires: []
+timeout_s: 8
+filler_key: system.filler
+on_failure:
+  say_key: tools.unavailable_probe
+  fallback: ask_client  # what we cannot see, we ask the caller
+  alert: ops

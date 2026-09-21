@@ -1,0 +1,12 @@
+# A reachability check on the customer's equipment.
+tool: run_ping_test
+capability: probe
+adapter: demo_db
+args: { customer_id: str, target: str }
+requires: []
+timeout_s: 8
+filler_key: system.filler
+on_failure:
+  say_key: tools.unavailable_probe
+  fallback: ask_client
+  alert: ops
