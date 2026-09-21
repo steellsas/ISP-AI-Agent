@@ -131,7 +131,7 @@ PROCEDURE_ACTIONS = frozenset({"run_due_action", "escalate"})
 # Why a call may close (Action(type="close", name=...)): the contact record's reasons
 # plus the stuck ladder's own close.
 CLOSE_REASONS = frozenset(
-    {"resolved", "registered", "declined", "callback", "inform", "outage", "stuck"}
+    {"resolved", "registered", "declined", "callback", "inform", "outage", "stuck", "keep"}
 )
 
 

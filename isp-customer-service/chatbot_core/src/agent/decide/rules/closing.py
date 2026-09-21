@@ -107,7 +107,7 @@ def _goodbye(rule: str) -> TurnPlan:
     return TurnPlan(
         owner="closing",
         rule=rule,
-        action=Action(type="close", name="registered", args={"complete": True}),
+        action=Action(type="close", name="keep", args={"complete": True}),
         say=Say(kind="phrase", key="identification.goodbye", stage=STAGE),
     )
 

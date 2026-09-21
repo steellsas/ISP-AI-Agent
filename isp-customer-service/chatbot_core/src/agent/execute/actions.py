@@ -59,6 +59,10 @@ def close_call(state: Any, rt: Any, reason: str, complete: bool = False) -> None
     s = state
     if reason == "stuck":
         _close_stuck(state, rt)
+    elif reason == "keep":
+        # The farewell of an ALREADY closed case: it hangs up, it does not re-decide
+        # why the call ended (the resolved/registered/inform reason stands).
+        s.closing.case_closed = True
     else:
         s.closing.case_closed = True
         s.closing.closed_reason = reason

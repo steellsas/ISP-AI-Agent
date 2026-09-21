@@ -53,12 +53,16 @@ class TestClosing:
         agent.state.ticket.ticket_id = "TKT1"
         agent.state.turn.user_input = "ačiū"
 
+        agent.state.closing.closed_reason = "resolved"
+
         plan = closing_rules.plan(agent.state, agent.runtime)
         assert plan.rule == "closing.goodbye_after_ticket"
         assert plan.action.type == "close" and plan.action.args == {"complete": True}
         run_action(agent.state, agent.runtime, plan)
 
         assert agent.state.closing.is_complete is True
+        # The farewell hangs up; WHY the call ended was decided before it.
+        assert agent.state.closing.closed_reason == "resolved"
 
     def test_a_farewell_said_with_the_call_open_is_traced(self):
         """The net that used to hang up on goodbye words is gone; the gap is visible."""
