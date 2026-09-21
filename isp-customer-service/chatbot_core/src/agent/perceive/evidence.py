@@ -117,7 +117,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
             rt.tracer.emit(
                 "perception",
                 source=quick.source,
-                type=quick.turn_type,
+                turn_type=quick.turn_type,
                 facts=quick.values(),
                 step=quick.step,
             )
@@ -172,7 +172,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
             rt.tracer.emit(
                 "perception",
                 source=read.source,
-                type=read.turn_type,
+                turn_type=read.turn_type,
                 understood=read.understood,
                 confusion=read.confusion,
                 confidence=read.confidence,

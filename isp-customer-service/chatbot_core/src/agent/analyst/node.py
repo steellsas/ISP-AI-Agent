@@ -146,7 +146,7 @@ def _contradiction(state: Any, rt: Any, signal: Signal) -> None:
     if hypothesis.doubt(
         state, rt, "conflict", key, entry.get("value"), signal.value, source="analyst"
     ):
-        rt.tracer.emit("analyst_applied", type="contradiction", key=key)
+        rt.tracer.emit("analyst_applied", signal="contradiction", key=key)
 
 
 def _already_answered(state: Any, rt: Any, signal: Signal) -> None:
@@ -160,7 +160,7 @@ def _already_answered(state: Any, rt: Any, signal: Signal) -> None:
     if state.diagnosis.pending_evidence_key and state.diagnosis.pending_evidence_key != key:
         return
     if hypothesis.doubt(state, rt, "flip", key, None, value, source="analyst"):
-        rt.tracer.emit("analyst_applied", type="already_answered", key=key)
+        rt.tracer.emit("analyst_applied", signal="already_answered", key=key)
 
 
 def _secondary_problem(state: Any, rt: Any, signal: Signal) -> None:
@@ -169,4 +169,4 @@ def _secondary_problem(state: Any, rt: Any, signal: Signal) -> None:
     if not text or any(x.get("text") == text for x in state.intake.secondary_problems):
         return
     state.intake.secondary_problems.append({"type": None, "text": text, "source": "analyst"})
-    rt.tracer.emit("analyst_applied", type="secondary_problem")
+    rt.tracer.emit("analyst_applied", signal="secondary_problem")

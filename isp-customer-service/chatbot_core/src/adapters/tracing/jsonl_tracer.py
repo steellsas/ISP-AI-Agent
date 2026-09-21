@@ -133,12 +133,15 @@ class JsonlFileTracer:
     def emit(self, event_type: str, **fields: Any) -> None:
         if self._path is None:
             return
+        # The structural keys go LAST: a field called "type" (a turn type, a signal
+        # type) used to overwrite the EVENT type, and those events silently became
+        # something else in the trace (wave 2a: `perception` events vanished).
         event = {
+            **fields,
             "v": SCHEMA_VERSION,
             "ts": datetime.now().isoformat(timespec="milliseconds"),
             "session_id": self.session_id,
             "type": event_type,
-            **fields,
         }
         try:
             # Redact phone numbers in VALUES (text, nested args/summary), but
