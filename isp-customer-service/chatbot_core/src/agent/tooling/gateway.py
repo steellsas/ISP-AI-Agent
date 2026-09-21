@@ -14,14 +14,28 @@ the guard it came from.
 from __future__ import annotations
 
 import json
+import logging
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field
 from typing import Any
 
 from src.ports.tools import ToolProvider
 
+from ..contract import limits
 from ..contract import tools as manifests
 from ..trace import trace_tool_result
+
+logger = logging.getLogger(__name__)
+
+# Tool calls run on worker threads so a system that stops answering cannot hold the call:
+# the manifest's timeout_s wins, and the abandoned thread is the price (the demo's DB
+# connections are thread-local, and a real adapter is an HTTP client).
+_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tool")
+# What may be retried after a TIMEOUT: a read-only lookup is safe to repeat, a mutation is
+# not — it may have landed on the line already.
+READ_ONLY_CAPABILITIES = frozenset({"probe", "crm", "outages", "knowledge", "simulate"})
 
 # Technical tools that must NOT run before the customer is identified
 # (Phase 3.5 §5 tool-access gate). Read-only lookups stay open pre-id.
@@ -75,16 +89,73 @@ class ToolGateway:
         if refusal is not None:
             observation, ms, gated = refusal, 0, True
         else:
-            started = time.perf_counter()
-            observation = self.provider.execute(name, args)
-            ms, gated = round((time.perf_counter() - started) * 1000.0), False
-            _record_call(state, name)
+            _record_call(state, name)  # the adapter is about to run: an action may land
+            observation, ms = self._execute(state, rt, spec, name, args)
+            gated = False
         if apply:
             from ..execute.observe import update_state_from_observation
 
             update_state_from_observation(state, rt, name, observation)
         trace_tool_result(rt.tracer, name, observation, ms)
         return ToolResult(name, args, observation, ms, gated, _parse(observation))
+
+    def _execute(
+        self, state: Any, rt: Any, spec: Any, name: str, args: dict[str, Any]
+    ) -> tuple[str, int]:
+        """Run the adapter under the manifest's timeout, retrying only what is safe to
+        repeat. A tool that does not answer returns a FAILURE OBSERVATION carrying its
+        fallback — the engine reads it and keeps the call moving (review finding W: in the
+        demo every tool answers in ~1 ms, so this path was never exercised)."""
+        if spec is None:  # a tool with no manifest yet: as before, straight through
+            started = time.perf_counter()
+            return self.provider.execute(name, args), _ms_since(started)
+
+        attempts = 1 + spec.retries
+        for attempt in range(1, attempts + 1):
+            started = time.perf_counter()
+            future: Future[str] = _POOL.submit(self.provider.execute, name, args)
+            try:
+                observation = future.result(timeout=spec.timeout_s)
+            except FutureTimeout:
+                ms = _ms_since(started)
+                retry = attempt < attempts and spec.capability in READ_ONLY_CAPABILITIES
+                rt.tracer.emit(
+                    "tool_timeout",
+                    name=name,
+                    capability=spec.capability,
+                    adapter=spec.adapter,
+                    timeout_s=spec.timeout_s,
+                    attempt=attempt,
+                    retrying=retry,
+                    alert=spec.on_failure.alert,
+                )
+                if retry:
+                    continue
+                return _failed(
+                    spec, name, "tool_timeout", f"{name} did not answer in {spec.timeout_s}s"
+                ), ms
+            except Exception as e:  # the adapter itself broke
+                ms = _ms_since(started)
+                logger.error(f"[TOOL] {name} failed on {spec.adapter}: {e}")
+                rt.tracer.emit(
+                    "tool_error",
+                    name=name,
+                    capability=spec.capability,
+                    adapter=spec.adapter,
+                    error=str(e)[:200],
+                    attempt=attempt,
+                    retrying=attempt < attempts,
+                    alert=spec.on_failure.alert,
+                )
+                if attempt < attempts:
+                    continue
+                return _failed(spec, name, "tool_error", str(e)[:200]), ms
+            ms = _ms_since(started)
+            if spec.filler_key and ms >= limits.get("tool_slow_ms"):
+                # Measured first (P-5): how often a real caller would be left in silence.
+                rt.tracer.emit("tool_slow", name=name, ms=ms, filler_key=spec.filler_key)
+            return observation, ms
+        raise AssertionError("unreachable")  # pragma: no cover
 
     def address_registry(self):
         """The served streets/localities (reference data, not a traced call)."""
@@ -100,8 +171,31 @@ def _record_call(state: Any, name: str) -> None:
     tools_state.last_at[name] = time.time()
 
 
+def _ms_since(started: float) -> int:
+    return round((time.perf_counter() - started) * 1000.0)
+
+
 def _refusal(error: str, message: str) -> str:
     return json.dumps({"success": False, "error": error, "message": message}, ensure_ascii=False)
+
+
+def _failed(spec: Any, name: str, error: str, message: str) -> str:
+    """The observation for a tool that did not answer. It carries the manifest's PLAN —
+    what the caller hears and which way the call goes on — so the engine never has to
+    guess (2c-4 turns `fallback` into the planned action)."""
+    return json.dumps(
+        {
+            "success": False,
+            "error": error,
+            "tool": name,
+            "capability": spec.capability,
+            "fallback": spec.on_failure.fallback,
+            "say_key": spec.on_failure.say_key,
+            "alert": spec.on_failure.alert,
+            "message": message,
+        },
+        ensure_ascii=False,
+    )
 
 
 def _guards(state: Any, name: str, spec: Any) -> str | None:

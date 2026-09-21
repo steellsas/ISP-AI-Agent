@@ -76,6 +76,10 @@ endpoint_story_ms: {value: 1800, env: ENDPOINT_STORY_MS} # silence wait while th
 asr_min_audio_s: {value: 0.3, env: ASR_MIN_AUDIO_S}      # shorter audio is dropped before ASR
 server_vad_threshold: {value: 0.010, env: SERVER_VAD_THR}
 server_silence_ms: {value: 900, env: SERVER_SIL_MS}
+
+# A tool call slower than this deserves the caller hearing something (knowledge/tools
+# -> filler_key). Traced as `tool_slow`.
+tool_slow_ms: {value: 1200, env: TOOL_SLOW_MS}
 partial_interval_s: {value: 1.0, env: PARTIAL_INTERVAL_S}
 voice_filler_after_s: {value: 1.2, env: VOICE_FILLER_AFTER_S}
 interrupt_ack_after_s: {value: 0.8, env: INTERRUPT_ACK_AFTER_S}
