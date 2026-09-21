@@ -1,21 +1,21 @@
 """
 Prompt templates for the ISP Support Agent — composed from small Markdown pieces.
 
-Structure (the speaker's prompt, composed per owner):
+Structure (the speaker's prompt: the core plus ONE skill):
     speak/system.md      CORE, sent every turn (cached prefix)
-    speak/owners/*.md    one per plan owner — pure composition via <<include>>
-    partials/*.md        reusable pieces (identity, style, region, solving...)
+    skills/*.md          one per SKILL a reply can need (wave 2b) - what to do NOW
+    partials/*.md        reusable pieces (identity, facts integrity)
     sensors/*.md         the reading prompts (perception, classifier, solver...)
 
-An owner prompt is assembled from partials with `<<include: partials/style>>`
-markers, so a shared rule (e.g. "one question") lives in ONE place and every owner
-that includes it stays in sync. Files are plain Markdown (raw text the model sees);
-only the small set of `{...}` placeholders in speak/system.md is .format()-substituted.
+A prompt is assembled from partials with `<<include: partials/identity>>` markers, so a
+shared rule (e.g. "one question") lives in ONE place. Files are plain Markdown (raw text
+the model sees); only the small set of `{...}` placeholders in speak/system.md is
+.format()-substituted.
 
 Usage:
     from agent.prompts import load_node_prompt, load_speak_prompt
     sys = load_speak_prompt(caller_phone="+370...", language="lt")
-    intake = load_node_prompt("speak/owners/intake")
+    ask = load_node_prompt("skills/ask_fact")
 """
 
 import re
@@ -23,7 +23,7 @@ from pathlib import Path
 
 PROMPTS_DIR = Path(__file__).parent
 
-# A line that is just `<<include: partials/style>>` (optionally indented).
+# A line that is just `<<include: partials/identity>>` (optionally indented).
 _INCLUDE_RE = re.compile(r"^[ \t]*<<include:\s*([\w./_-]+)\s*>>[ \t]*$", re.MULTILINE)
 
 

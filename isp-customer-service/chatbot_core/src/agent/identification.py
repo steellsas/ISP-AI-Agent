@@ -1,7 +1,7 @@
 """
 Identification policy loader — the declarative direction knobs (Phase 3.8 step 5d).
 
-The identification PROCEDURE wording is the prompt partial `prompts/partials/identification.md`;
+The identification PROCEDURE wording is the prompt partial `prompts/skills/ask_identity.md`;
 this reads `agent/knowledge/identification.yaml` for the DIRECTION knobs a dev flips
 (offer the phone address first, require an apartment, ask an extra verification question).
 The engine reflects these in the identification guidance so changing them — including adding

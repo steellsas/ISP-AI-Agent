@@ -50,6 +50,70 @@ Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
 
+## Banga 2b — promptai pagal įgūdį (šaka `fix/wave-2b`)
+
+Tikslas: **vienas atsakymas — vienas įgūdis.** Naratorius nebegauna visos personos
+ir visų stadijos taisyklių iš karto; gauna branduolį ir TĄ VIENĄ įgūdį, kurio reikia
+šiam ėjimui. Radiniai: Y, Z, AA, AN.
+
+```
+BUVO                                        DABAR
+speak/system.md (branduolys ~1500 tok)      speak/system.md (branduolys, 1110 tok)
++ owners/<owner>.md                         + skills/<įgūdis>.md + LT pavyzdžiai
+  = partials: style + solving +               = 1272–1498 tok (bet kuriam ėjimui)
+    consultation + identification + …
+  = 2160–3500 tok kiekvienam ėjimui
+```
+
+| # | Kas | Kur |
+|---|---|---|
+| 2b-1 | Persona suspausta: kas jis + 10 numeruotų „kaip kalba" taisyklių (~1500 → ~350 tok); pasikartojančios taisyklės („vienas klausimas" 6 vietose) — vienoje | `prompts/partials/identity.md`, `prompts/speak/system.md` |
+| 2b-2 | 9 įgūdžiai: `ask_identity`, `ask_fact`, `instruct_step`, `explain_finding`, `reexplain_confused`, `answer_side`, `ticket_offscript`, `inform_news`, `goodbye`. Kiekvienas — pora: EN taisyklės + LT pavyzdžiai | `prompts/skills/*.md`, `locales/lt/examples/skill_*.md` |
+| 2b-3 | Įgūdžio parinkimas — ne naujas sprendimas, o paieška pagal jau priimtą planą: ėjimo direktyvos (confusion → `reexplain_confused`, findings/recap → `explain_finding`, evidence → `ask_fact`), tada taisyklės šeima, tada žingsnio tipas | `speak/skill.py`, `speak/node.py` (+ `skill` trace įvykis) |
+| 2b-4 | Seni owner promptai ir tik jų naudoti partials ištrinti; jų taisyklės perkeltos į įgūdžius arba branduolį | `prompts/speak/owners/` (ištrinta), `prompts/partials/` (liko identity + facts_integrity) |
+| 2b-5 | Istorijos langas 20 → 10 žinučių (senesnius dengia deterministinė santrauka + kortelė; RECALL trigeris vis tiek grąžina kliento senas frazes) | `agent/config.py` |
+| **Testai** | `test_skills.py`: planas → įgūdis (lentelė); kiekvienas įgūdis turi promptą IR pavyzdžius; įgūdžio prefiksas mažesnis už senąjį; nė viena taisyklės šeima neiškrenta be įgūdžio | |
+
+**Kortelė pagal įgūdį (AA) — nedaroma.** Pirmą kartą išmatavus (`DEBUG_LLM=1`, 33
+scenarijai): kortelė vidutiniškai **416 tok** (max 1115) iš visos ~1445 tok įvesties.
+Karpymas pagal įgūdį duotų ~100 tok, bet rizikuotų nuimti eilutę, kurios modeliui
+reikia. Vietoj to sutvarkyta didesnė dalis — istorija (2b-5).
+
+**2b eiga (2026-09-21):** trys commit'ai. Vienetų testai **1347 passed**;
+eval tekstas **178/178**, `--voice` **178/178**. Trace'e per 66 skambučius
+kiekvienas `speak` kvietimas turi savo `skill` įvykį (252 = 252).
+
+Išmatuota (tiktoken o200k; trace'ai per 33 scenarijus):
+
+| | buvo (5 etapas) | po 2b |
+|---|---|---|
+| sistemos promptas | 2160–3500 tok | branduolys **1110**, su įgūdžiu **1272–1498** |
+| kortelė | nematuota | **416** vid., 1115 max |
+| visa `speak` įvestis | ~4100 vid. | **1368** vid., **2734** max (buvo 4621 prieš 2b-5) |
+| `speak` latencija | — | 1212 ms vid. (perception 1260, analyst 763) |
+
+Pakeliui: R1b eval tikrinimas laukė žodžio „atsakingam" — agentas pasakė tą patį
+vardininku („atsakys atsakingas žmogus"), todėl tikrinimas sutrumpintas iki šaknies
+„atsaking" (taip jau buvo R6). Elgesys nepakito: klausimas registruojamas, meistras
+nesiūlomas.
+
+Baigimo kriterijai: vienetų testai žali; eval tekstas ir `--voice` ne blogesni nei
+178/178; trace'e kiekvienas `speak` kvietimas turi `skill` įvykį.
+
+**2b pastebėjimai kitoms bangoms:**
+- Įgūdžių pasiskirstymas eval'e: `ask_identity` 128, `ask_fact` 48, `ticket_offscript` 24,
+  `instruct_step` 20, `goodbye` 20, `inform_news` 8, `explain_finding` 2,
+  `reexplain_confused` 2, **`answer_side` 0** — eval'as neturi ėjimo, kur naratorius pats
+  atsako į šalutinį klausimą (visi šalutiniai eina scripted keliu). Kandidatas eval
+  papildymui (4 banga).
+- Pirmumo klausimas (3 ėjimai iš 252): kai kortelėje yra `SIDE TOPIC`, o plano taisyklė
+  `inform.template`, įgūdį pasirinko ėjimo direktyva (`evidence` → `ask_fact`), ne plano
+  šeima (`inform` → `inform_news`). Principas „įgūdis seka planą" sakytų, kad šeima turi
+  laimėti prieš direktyvas (direktyvos tik patikslina gedimo kelią) — svarstoma prieš
+  3 bangą.
+
+---
+
 ## Banga 2a — vienas Perception (šaka `fix/wave-2a`)
 
 Tikslas: **vienas skaitymas per ėjimą** — greitkelis be LLM, vienas LLM kvietimas

@@ -22,31 +22,34 @@ from ..trace import trace_note
 
 logger = logging.getLogger(__name__)
 
-# Plan owners that have their own snippet; every other owner speaks with the core
-# prompt alone.
-OWNERS = ("intake", "diagnosis", "ticket", "closing", "side_topic")
-
 
 @lru_cache(maxsize=32)
-def speak_prompt(owner: str, caller_phone: str, language: str) -> str:
-    """The byte-stable prefix for this owner (core prompt + the owner's snippet)."""
+def speak_prompt(skill: str, caller_phone: str, language: str) -> str:
+    """The byte-stable prefix for this SKILL: the core prompt plus the one skill the reply
+    needs (wave 2b — the narrator used to get every stage's rules at once, ~3500 tokens
+    for a reply of ~90)."""
     from ..prompts import load_node_prompt, load_speak_prompt
+    from .skill import SKILLS
 
     parts = [load_speak_prompt(caller_phone=caller_phone, language=language)]
-    if owner in OWNERS:
-        parts.append(load_node_prompt(f"speak/owners/{owner}"))
+    if skill in SKILLS:
+        parts.append(load_node_prompt(f"skills/{skill}"))
     return "\n\n".join(parts)
 
 
 def build_messages(state: Any, rt: Any, owner: str) -> list[dict]:
-    """The payload for one speaking call: prefix, history summary, window, card."""
+    """The payload for one speaking call: the prefix (core + this turn's skill), the
+    history summary, the window and the card."""
     from .context_card import context_card
     from .history import history_summary, prune_history
+    from .skill import skill_for
 
+    skill = skill_for(state, owner)
+    rt.tracer.emit("skill", skill=skill, owner=owner)
     messages = [
         {
             "role": "system",
-            "content": speak_prompt(owner, state.identity.caller_phone, rt.config.language),
+            "content": speak_prompt(skill, state.identity.caller_phone, rt.config.language),
         }
     ]
     # When the window cut older turns, a short DETERMINISTIC summary from STATE bridges

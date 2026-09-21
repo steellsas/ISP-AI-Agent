@@ -58,7 +58,10 @@ class AgentConfig:
     # GraphState.messages keeps the full transcript. Durable facts (customer,
     # problem, ticket) are re-injected from GraphState, so pruning never loses
     # resolved context. Set to 0 to disable pruning (send full history).
-    history_window_messages: int = 20  # istorija v2: santrauka dengia senesnius
+    # 10 = five spoken exchanges; older turns are covered by the deterministic
+    # summary and the card (wave 2b: the speak input reached 4.6k tokens, most of
+    # it history, once the prompt itself came down to ~1.3k).
+    history_window_messages: int = 10
 
     # =========================================================================
     # LLM Model Settings

@@ -62,8 +62,10 @@ class TestAgentConfig:
 class TestAgentBuildMessages:
     """What the speaker is sent: the owner prefix, the history, the card."""
 
-    def test_build_messages_leads_with_the_owner_prefix(self):
+    def test_build_messages_leads_with_the_skill_prefix(self):
+        """Wave 2b: the prefix is the core prompt + the ONE skill this reply needs."""
         from agent.speak.node import build_messages, speak_prompt
+        from agent.speak.skill import skill_for
 
         from tests.calls import make_agent
 
@@ -71,8 +73,10 @@ class TestAgentBuildMessages:
 
         messages = build_messages(agent.state, agent.runtime, "intake")
 
+        skill = skill_for(agent.state, "intake")
+        assert skill == "ask_identity"
         assert messages[0]["role"] == "system"
-        assert messages[0]["content"] == speak_prompt("intake", "+37060012345", "lt")
+        assert messages[0]["content"] == speak_prompt(skill, "+37060012345", "lt")
 
     def test_build_messages_carries_the_history(self):
         from agent.speak.node import build_messages
@@ -2287,29 +2291,29 @@ class TestTicketDialogue:
 
 
 class TestPromptPrefixHygiene:
-    """The speaker's prefix (core prompt + owner snippet) is byte-stable per owner, so
+    """The speaker's prefix (core prompt + the turn's skill) is byte-stable per skill, so
     the provider keeps it cached; the card, which changes every turn, trails it."""
 
-    def test_owner_prompt_folds_into_the_leading_system(self, db_connection):
+    def test_the_skill_folds_into_the_leading_system(self, db_connection):
         from agent.speak.node import build_messages
 
         from tests.calls import make_agent
 
         agent = make_agent("unknown")
+        agent.state.ticket.stage = "phone"
         agent.state.messages.append({"role": "user", "content": "Labas"})
         messages = build_messages(agent.state, agent.runtime, "ticket")
         assert messages[0]["role"] == "system"
-        assert "FAULT REGISTRATION" in messages[0]["content"]
+        assert "ANSWER DURING THE REGISTRATION" in messages[0]["content"]
 
         agent.state.messages.append({"role": "user", "content": "Kitas"})
         again = build_messages(agent.state, agent.runtime, "ticket")
         assert again[0]["content"] == messages[0]["content"]
 
-    def test_an_owner_without_a_snippet_speaks_with_the_core_prompt(self, db_connection):
-        from agent.speak.node import build_messages, speak_prompt
+    def test_an_unknown_skill_speaks_with_the_core_prompt(self, db_connection):
+        from agent.prompts import load_speak_prompt
+        from agent.speak.node import speak_prompt
 
-        from tests.calls import make_agent
-
-        agent = make_agent("unknown")
-        messages = build_messages(agent.state, agent.runtime, "identification")
-        assert messages[0]["content"] == speak_prompt("identification", "unknown", "lt")
+        assert speak_prompt("no_such_skill", "unknown", "lt") == load_speak_prompt(
+            caller_phone="unknown", language="lt"
+        )
