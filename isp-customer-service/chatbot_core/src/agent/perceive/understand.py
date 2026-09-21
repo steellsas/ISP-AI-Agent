@@ -151,10 +151,19 @@ def understand(
             turn_type = "answer"
         raw_facts = data.get("facts")
         facts: dict[str, str] = {}
+        quotes: dict[str, str] = {}
         if isinstance(raw_facts, dict):
             for k, v in raw_facts.items():
-                if k in allowed_map and str(v) in allowed_map[k]:
-                    facts[k] = str(v)
+                # Wave 2a: a fact may come as {"value": …, "quote": the caller's words} —
+                # the quote is what makes a hallucination checkable. A bare value still
+                # parses (older models, facts read from context).
+                value, quote = (
+                    (v.get("value"), v.get("quote")) if isinstance(v, dict) else (v, None)
+                )
+                if k in allowed_map and str(value) in allowed_map[k]:
+                    facts[k] = str(value)
+                    if quote:
+                        quotes[k] = str(quote)[:120]
         confidence = float(data.get("confidence") or 0.5)
         # Hallucination guards (live 2026-08-10: "Galim patikrinti, ką man
         # reikia daryti?" came back with FIVE facts the caller never said,
@@ -180,6 +189,7 @@ def understand(
                 }
         return {
             "facts": facts,
+            "quotes": quotes,
             "type": turn_type,
             "understood": str(data.get("understood") or "")[:200],
             "confusion": str(data.get("confusion") or "")[:200],

@@ -44,6 +44,19 @@ def step_perception_options(state: Any, rt: Any):
     return None, None
 
 
+def _record_perception(state, rt, read, active_step, user_input: str | None) -> None:
+    """Put one reading on the turn: the shape the engine reads (`understanding`), the
+    step answer the walker consumes, and the reading itself."""
+    state.turn.perception = read.model_dump(mode="json")
+    state.turn.understanding = read.as_understanding()
+    if read.step and active_step is not None:
+        state.turn.perception_step = {
+            "step_id": active_step.id,
+            "input": user_input,
+            "obs": read.step,
+        }
+
+
 def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     """Ledger v1: read the caller's utterance into the evidence ledger (called
     from the diagnosis node, so BOTH the driven and the walker path see it).
@@ -95,33 +108,76 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
         # walker consumes the cached result instead of a second LLM round-trip.
         step_options, active_step = step_perception_options(state, rt)
         state.turn.perception_step = None
-        u = _und.understand(
-            user_input,
-            anchor=anchor_text(state, rt),
-            needs=needs,
-            ledger_summary=summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "",
-            history_tail=[m for m in s.messages[-5:] if m.get("role") in ("user", "assistant")],
-            model=rt.config.model,
-            allowed_extra=allowed_extra,
-            step_options=step_options,
-        )
-        if u is not None:
-            state.turn.understanding = u
-            facts = dict(u["facts"])
-            if u.get("step") and active_step is not None:
-                state.turn.perception_step = {
-                    "step_id": active_step.id,
-                    "input": user_input,
-                    "obs": u["step"],
-                }
+        # Wave 2a: a closed answer to a standing question is read deterministically —
+        # no model call, no latency (most voice turns are exactly that).
+        from .perception import fast_read, ground
+
+        quick = fast_read(state, user_input, step_options)
+        if quick is not None:
             rt.tracer.emit(
-                "understand",
-                type=u["type"],
-                understood=u["understood"],
-                confusion=u["confusion"],
-                confidence=u["confidence"],
-                facts=u["facts"],
-                step=u.get("step"),
+                "perception",
+                source=quick.source,
+                type=quick.turn_type,
+                facts=quick.values(),
+                step=quick.step,
+            )
+            _record_perception(state, rt, quick, active_step, user_input)
+            facts = quick.values()
+            u = None
+        else:
+            u = _und.understand(
+                user_input,
+                anchor=anchor_text(state, rt),
+                needs=needs,
+                ledger_summary=summary_lt(s.diagnosis.evidence) if s.diagnosis.evidence else "",
+                history_tail=[m for m in s.messages[-5:] if m.get("role") in ("user", "assistant")],
+                model=rt.config.model,
+                allowed_extra=allowed_extra,
+                step_options=step_options,
+            )
+        if u is not None:
+            from .perception import Fact, Perception
+
+            read = ground(
+                Perception(
+                    source="llm",
+                    turn_type=u["type"],
+                    facts={
+                        k: Fact(value=v, quote=(u.get("quotes") or {}).get(k))
+                        for k, v in u["facts"].items()
+                    },
+                    step=u.get("step"),
+                    understood=u["understood"],
+                    confusion=u["confusion"],
+                    confidence=u["confidence"],
+                ),
+                user_input,
+            )
+            # A fact whose quote is NOT in what the caller said is dropped: a
+            # hallucination has no words to show for itself (wave 2a).
+            for key, fact in read.facts.items():
+                if not fact.grounded:
+                    rt.tracer.emit(
+                        "evidence",
+                        action="fact_ungrounded",
+                        key=key,
+                        value=fact.value,
+                        quote=fact.quote,
+                    )
+            read = read.model_copy(
+                update={"facts": {k: f for k, f in read.facts.items() if f.grounded}}
+            )
+            _record_perception(state, rt, read, active_step, user_input)
+            facts = read.values()
+            rt.tracer.emit(
+                "perception",
+                source=read.source,
+                type=read.turn_type,
+                understood=read.understood,
+                confusion=read.confusion,
+                confidence=read.confidence,
+                facts=read.values(),
+                step=read.step,
             )
     # The deterministic keyword layer ALWAYS runs (2026-08-12): it used to be
     # a fallback only, so when the pass answered with EMPTY facts (the
