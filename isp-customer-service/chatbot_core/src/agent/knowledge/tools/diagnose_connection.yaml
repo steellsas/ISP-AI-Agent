@@ -1,0 +1,16 @@
+# The full diagnosis of one customer's line.
+tool: diagnose_connection
+capability: probe
+adapter: demo_db
+args: { customer_id: str }
+# The ledger facts this observation may set (execute/observe.py). The gateway checks it:
+# a tool that writes a fact it never declared is a contract break, traced as
+# `returns_violation`.
+returns: [verdict, side]
+requires: [identified]
+timeout_s: 8
+filler_key: system.filler
+on_failure:
+  say_key: tools.unavailable_probe
+  fallback: ask_client
+  alert: ops

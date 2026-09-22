@@ -1,0 +1,10 @@
+# The equipment and procedure knowledge base (RAG): a question -> the passages that answer it.
+tool: search_knowledge
+capability: knowledge
+adapter: rag_local
+args: { query: str, top_k: str }
+requires: []
+timeout_s: 4
+on_failure:
+  fallback: skip        # no passage found -> the agent says it will find out, nothing breaks
+  alert: ops

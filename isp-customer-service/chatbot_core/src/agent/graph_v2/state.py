@@ -383,6 +383,11 @@ class TurnScratch(BaseModel):
     progress_key_at_start: list[Any] | None = None
     # The turn-head family that owned the head this turn (decide/rules/head.py).
     head_owner: str | None = None
+    # A tool that did not answer this turn, as its manifest describes the fallback
+    # (wave 2c-4). Set by the gateway, consumed ONCE by decide/rules/tools.py.
+    tool_failure: dict[str, Any] | None = None
+    # The same failure after decide handled it — what the card tells the narrator to say.
+    tool_trouble: dict[str, Any] | None = None
     # The TurnPlan decide produced; execute and narrate carry it out.
     plan: dict[str, Any] | None = None
     # How many times this turn went back to decide after an action (redecide loop).
@@ -405,6 +410,15 @@ STATE_GROUPS: tuple[str, ...] = (
 )
 
 
+class ToolsState(BaseModel):
+    """What the guards in knowledge/tools/*.yaml count: how often each tool ran in THIS
+    call and when it last ran. Persisted with the call, so a checkpoint resume cannot
+    hand the caller a second port reset."""
+
+    calls: dict[str, int] = Field(default_factory=dict)
+    last_at: dict[str, float] = Field(default_factory=dict)  # epoch seconds
+
+
 class GraphState(BaseModel):
     """The single source of truth for a call, checkpointable end-to-end."""
 
@@ -419,4 +433,5 @@ class GraphState(BaseModel):
     dialog: DialogState = Field(default_factory=DialogState)
     closing: ClosingState = Field(default_factory=ClosingState)
     voice: VoiceState = Field(default_factory=VoiceState)
+    tools: ToolsState = Field(default_factory=ToolsState)
     turn: TurnScratch = Field(default_factory=TurnScratch)

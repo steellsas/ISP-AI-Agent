@@ -5,8 +5,11 @@ Run: pytest tests/test_tool_gateway.py -v
 """
 
 import json
+from unittest.mock import patch
 
-from agent.tooling import ToolGateway
+import pytest
+from agent.contract import limits
+from agent.tooling import ToolGateway, adapters
 
 from tests.calls import make_agent
 
@@ -89,6 +92,221 @@ class TestToolGateway:
 
         agent.tools.run(agent.state, agent.runtime, "check_outages", args, reason="test")
         assert agent.state.diagnosis.outage_reported is True
+
+
+class TestManifestGuards:
+    """Wave 2c: how often a tool may run is its manifest's `guards`, counted on the call's
+    own state — so a checkpoint resume cannot hand the caller a second port reset."""
+
+    def test_an_action_runs_once_per_call(self):
+        provider = _Provider({"success": True})
+        agent, _ = _agent(provider)
+        agent.state.identity.customer_id = "CUST009"
+        args = {"customer_id": "CUST009"}
+
+        first = agent.tools.run(agent.state, agent.runtime, "reset_port", args, reason="fix")
+        second = agent.tools.run(agent.state, agent.runtime, "reset_port", args, reason="fix")
+
+        assert first.gated is False
+        assert second.gated is True and second.data["error"] == "guard_max_per_call"
+        assert provider.calls == [("reset_port", args)]  # the second never reached it
+        assert agent.state.tools.calls["reset_port"] == 1
+
+    def test_a_refused_call_is_not_counted(self):
+        """A guard must not be fed by calls the gate itself refused."""
+        agent, _ = _agent(_Provider({"success": True}))  # nobody identified
+        agent.tools.run(agent.state, agent.runtime, "reset_port", {}, reason="fix")
+        assert agent.state.tools.calls == {}
+
+    def test_the_trace_says_what_kind_of_tool_ran(self):
+        agent, tracer = _agent(_Provider({"success": True, "active_outages": []}))
+        agent.tools.run(
+            agent.state, agent.runtime, "check_outages", {"customer_id": "C"}, reason="t"
+        )
+        call = next(e for e in tracer.events if e["type"] == "tool_call")
+        assert call["capability"] == "outages" and call["adapter"] == "demo_db"
+
+    def test_a_cooldown_and_the_hours_are_read_from_the_manifest(self):
+        """No manifest uses these yet (they arrive with real equipment actions), so the
+        guard itself is tested against a manifest built here."""
+        import time
+
+        from agent.contract.schema import ToolManifest
+        from agent.tooling.gateway import _guards
+
+        agent, _ = _agent(_Provider({"success": True}))
+        spec = ToolManifest(
+            tool="reboot_cpe",
+            capability="action",
+            adapter="demo_db",
+            timeout_s=8,
+            guards={"cooldown_s": 600, "allowed_hours": "08-22"},
+            on_failure={"say_key": "tools.unavailable_action", "fallback": "ticket"},
+            audit=True,
+        )
+
+        assert _guards(agent.state, "reboot_cpe", spec) is None  # never run in this call
+        agent.state.tools.last_at["reboot_cpe"] = time.time() - 10
+        refusal = _guards(agent.state, "reboot_cpe", spec)
+        assert refusal and json.loads(refusal)["error"] == "guard_cooldown"
+
+        agent.state.tools.last_at.clear()
+        night = ToolManifest(**{**spec.model_dump(), "guards": {"allowed_hours": "03-04"}})
+        hour = time.localtime().tm_hour
+        refusal = _guards(agent.state, "reboot_cpe", night)
+        if hour in (3,):
+            assert refusal is None
+        else:
+            assert refusal and json.loads(refusal)["error"] == "guard_hours"
+
+
+class TestSlowAndBrokenTools:
+    """Wave 2c-3/2c-5: the demo answers in ~1 ms, production in seconds — and sometimes not
+    at all. The `fake` adapter is that system; the manifest's timeout decides, and the
+    failure observation carries the plan."""
+
+    @pytest.fixture(autouse=True)
+    def _clean_fake(self):
+        adapters.fake().reset()
+        yield
+        adapters.fake().reset()
+
+    def _through_fake(self, name, seconds, **over):
+        """Run `name` as if its manifest pointed at the fake adapter with this timeout (a
+        demo_db tool is called inline, because a local query cannot be cut loose anyway)."""
+        from agent.contract import tools as manifests
+
+        spec = manifests.manifest(name).model_copy(
+            update={"timeout_s": seconds, "adapter": "fake", **over}
+        )
+        return patch.object(manifests, "manifest", lambda n, _s=spec: _s if n == name else None)
+
+    def test_a_tool_that_does_not_answer_returns_its_fallback(self):
+        agent, tracer = _agent(_Provider({"success": True}))
+        agent.state.identity.customer_id = "CUST009"
+        adapters.fake().program("diagnose_connection", delay=0.3)
+
+        with self._through_fake("diagnose_connection", 0.05):
+            result = agent.tools.run(
+                agent.state,
+                agent.runtime,
+                "diagnose_connection",
+                {"customer_id": "CUST009"},
+                reason="snapshot",
+            )
+
+        assert result.data["error"] == "tool_timeout"
+        assert result.data["fallback"] == "ask_client"  # what the caller cannot see, we ask
+        assert result.data["say_key"] == "tools.unavailable_probe"
+        timeouts = [e for e in tracer.events if e["type"] == "tool_timeout"]
+        assert len(timeouts) == 1 and timeouts[0]["alert"] == "ops"
+
+    def test_a_read_only_lookup_is_retried_but_an_action_is_not(self):
+        """A repeated lookup is harmless; a repeated port reset is not — it may have
+        landed on the line already."""
+        agent, _ = _agent(_Provider({"success": True}))
+        adapters.fake().program("resolve_address", error="CRM refused", fail_times=1)
+        with self._through_fake("resolve_address", 5, retries=1):
+            result = agent.tools.run(
+                agent.state, agent.runtime, "resolve_address", {"city": "Šiauliai"}, reason="id"
+            )
+        assert result.data["success"] is True
+        assert len(adapters.fake().calls) == 2
+
+        adapters.fake().reset()
+        adapters.fake().program("reset_port", delay=0.3)
+        agent.state.identity.customer_id = "CUST009"
+        with self._through_fake("reset_port", 0.05, retries=1):
+            result = agent.tools.run(
+                agent.state,
+                agent.runtime,
+                "reset_port",
+                {"customer_id": "CUST009"},
+                reason="fix",
+            )
+        assert result.data["error"] == "tool_timeout"
+        assert result.data["fallback"] == "ticket"
+        assert len(adapters.fake().calls) == 1  # never retried
+
+    def test_an_action_that_timed_out_is_counted_so_it_cannot_run_again(self):
+        agent, _ = _agent(_Provider({"success": True}))
+        agent.state.identity.customer_id = "CUST009"
+        adapters.fake().program("reset_port", delay=0.3)
+        with self._through_fake("reset_port", 0.05):
+            agent.tools.run(
+                agent.state, agent.runtime, "reset_port", {"customer_id": "CUST009"}, reason="fix"
+            )
+        assert agent.state.tools.calls["reset_port"] == 1
+
+    def test_a_broken_adapter_says_what_the_caller_hears(self):
+        agent, tracer = _agent(_Provider({"success": True}))
+        agent.state.identity.customer_id = "CUST009"
+        adapters.fake().program("create_ticket", error="ticketing down")
+        with self._through_fake("create_ticket", 5, retries=0):
+            result = agent.tools.run(
+                agent.state,
+                agent.runtime,
+                "create_ticket",
+                {"customer_id": "CUST009"},
+                reason="register",
+            )
+        assert result.data["error"] == "tool_error"
+        assert result.data["say_key"] == "tools.unavailable_ticket"
+        assert any(e["type"] == "tool_error" for e in tracer.events)
+
+    def test_a_dead_tool_hands_the_turn_back_to_decide(self):
+        """The whole point of the failure observation: the engine plans the fallback
+        (wave 2c-4) instead of the narrator improvising around a check that never ran."""
+        agent, _ = _agent(_Provider({"success": True}))
+        agent.state.identity.customer_id = "CUST009"
+        adapters.fake().program("diagnose_connection", delay=0.3)
+        with self._through_fake("diagnose_connection", 0.05):
+            agent.tools.run(
+                agent.state,
+                agent.runtime,
+                "diagnose_connection",
+                {"customer_id": "CUST009"},
+                reason="snapshot",
+            )
+        assert agent.state.turn.tool_failure["fallback"] == "ask_client"
+
+    def test_an_in_process_adapter_runs_on_the_calling_thread(self):
+        """demo_db / rag_local are called inline: a worker thread would hold its own
+        thread-local SQLite connection open for the life of the process (it broke the
+        eval's between-scenario DB rebuild with WinError 32)."""
+        import threading
+
+        seen: list[str] = []
+
+        class _ThreadNamingProvider:
+            def available_tools(self):
+                return []
+
+            def execute(self, tool_name, arguments):
+                seen.append(threading.current_thread().name)
+                return json.dumps({"success": True, "active_outages": []})
+
+        agent, _ = _agent(_ThreadNamingProvider())
+        agent.tools.run(
+            agent.state, agent.runtime, "check_outages", {"customer_id": "C"}, reason="t"
+        )
+        assert seen == [threading.current_thread().name]
+
+    def test_a_slow_answer_is_traced_with_the_line_to_say(self):
+        agent, tracer = _agent(_Provider({"success": True}))
+        agent.state.identity.customer_id = "CUST009"
+        adapters.fake().program("diagnose_connection", delay=0.12)
+        with self._through_fake("diagnose_connection", 5):
+            with patch.object(limits, "get", lambda name: 50 if name == "tool_slow_ms" else 5):
+                agent.tools.run(
+                    agent.state,
+                    agent.runtime,
+                    "diagnose_connection",
+                    {"customer_id": "CUST009"},
+                    reason="snapshot",
+                )
+        slow = [e for e in tracer.events if e["type"] == "tool_slow"]
+        assert len(slow) == 1 and slow[0]["filler_key"] == "system.filler"
 
 
 class TestTelemetry:

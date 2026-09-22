@@ -7,6 +7,9 @@ from agent.decide.policy import RULES
 SECTION_5 = [
     (1, "dialog.greeting"),
     (2, "closing"),
+    # Not in §5: born in wave 2c-4. A system that did not answer plans its manifest's
+    # fallback before any family plans around a check that never ran.
+    (2.5, "tools.unavailable"),
     (3, "ticket"),
     (4, "dialog.end_confirm_answer"),
     (5, "identification.reopen_confirm_answer"),
@@ -36,4 +39,5 @@ def test_rules_follow_section_5_order():
     assert all(entry in SECTION_5 for entry in ported[:-1])
     rows = [row for row, _family in ported]
     assert rows == sorted(rows)
-    assert [row for row, _f in ported[:10]] == list(range(1, 11))
+    # Every row of the head (1-10) is ported, in order, with 2c's family in its place.
+    assert [row for row, _f in ported if row <= 10] == [1, 2, 2.5, 3, 4, 5, 6, 7, 8, 9, 10]

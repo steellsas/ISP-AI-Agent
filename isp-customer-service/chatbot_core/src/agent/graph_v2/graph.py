@@ -50,6 +50,13 @@ def redecide(state) -> str:
     from ..contract import limits
 
     plan = state.turn.plan or {}
-    if plan.get("redecide_after_action") and state.turn.plan_hops < limits.get("plan_redecide_max"):
+    budget = state.turn.plan_hops < limits.get("plan_redecide_max")
+    if not budget:
+        return "narrate"
+    if plan.get("redecide_after_action"):
+        return "decide"
+    # A tool did not answer (wave 2c-4): the plan that ran is void — decide plans the
+    # manifest's fallback before anything is said.
+    if state.turn.tool_failure:
         return "decide"
     return "narrate"

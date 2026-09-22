@@ -1,0 +1,13 @@
+# The identification lookup: a spoken address -> the served address and its customer.
+tool: resolve_address
+capability: crm
+adapter: demo_db
+args: { city: str, street: str, house: str, apartment: str }
+requires: []            # the whole point is to run BEFORE anyone is identified
+timeout_s: 5
+retries: 1
+filler_key: system.filler
+on_failure:
+  say_key: tools.unavailable_crm
+  fallback: end_call    # without the register we know nothing about the caller
+  alert: ops

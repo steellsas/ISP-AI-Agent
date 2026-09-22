@@ -53,17 +53,9 @@ def test_gate_policy_comes_from_limits():
     }
 
 
-def test_identification_gated_tools_come_from_policies():
-    assert set(policies.get().identified_customer_required) == {
-        "diagnose_connection",
-        "update_mac",
-        "reset_port",
-        "create_ticket",
-    }
+def test_identification_gated_tools_come_from_the_manifests():
+    """Wave 2c: who may call a tool is the tool's own contract, not a list in policies."""
+    from agent.contract import tools as manifests
 
-
-def test_identified_customer_tools_exist():
-    from agent.tools import REAL_TOOLS
-
-    names = {t.name for t in REAL_TOOLS}
-    assert set(policies.get().identified_customer_required) <= names
+    gated = {name for name, m in manifests.get().items() if "identified" in m.requires}
+    assert gated == {"diagnose_connection", "update_mac", "reset_port", "create_ticket"}

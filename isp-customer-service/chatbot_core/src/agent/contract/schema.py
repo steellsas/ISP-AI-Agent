@@ -10,6 +10,7 @@ behaviour: the runtime loaders still read the files themselves.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -280,8 +281,83 @@ class Limits(RootModel[dict[str, StrictInt | StrictFloat | Limit]]):
         return {k: v if isinstance(v, Limit) else Limit(value=v) for k, v in self.root.items()}
 
 
+# --- Tools (P-7 manifests) --------------------------------------------------------
+
+
+# What a tool DOES, which is what the engine reasons about — never the implementation.
+TOOL_CAPABILITIES = ("probe", "action", "crm", "outages", "ticketing", "knowledge", "simulate")
+# demo_db and fake run in-process; mcp:<server> / http:<service> arrive with the real
+# systems (stage 12), and switching one tool over is this one line.
+ADAPTER_RE = re.compile(r"^(demo_db|rag_local|fake|mcp:[a-z0-9_]+|http:[a-z0-9_]+)$")
+# "08-22" — the hours the tool may run at all (equipment reboots are not a night job).
+HOURS_RE = re.compile(r"^([01]\d|2[0-3])-([01]\d|2[0-3])$")
+
+
+class ToolGuards(_Model):
+    """Per-tool limits the gateway enforces before the adapter is ever reached."""
+
+    max_per_call: StrictInt | None = None
+    cooldown_s: StrictInt | None = None
+    allowed_hours: str | None = None
+
+    @model_validator(mode="after")
+    def _hours(self) -> ToolGuards:
+        if self.allowed_hours and not HOURS_RE.match(self.allowed_hours):
+            raise ValueError(f"allowed_hours '{self.allowed_hours}' is not HH-HH (e.g. 08-22)")
+        return self
+
+
+class ToolRateLimit(_Model):
+    per_minute: StrictInt
+
+
+class ToolFailure(_Model):
+    """What happens when the tool does not answer: what the caller hears, and which way
+    the call goes on. `fallback` is a PLAN, not an excuse — the engine keeps the call
+    moving instead of stalling on a system that is down."""
+
+    say_key: str | None = None  # required unless the call simply goes on (fallback: skip)
+    fallback: Literal["ask_client", "ticket", "skip", "end_call"]
+    alert: Literal["ops"] | None = None
+
+    @model_validator(mode="after")
+    def _say(self) -> ToolFailure:
+        if self.fallback != "skip" and not self.say_key:
+            raise ValueError(f"on_failure.fallback '{self.fallback}' needs a say_key")
+        return self
+
+
+class ToolManifest(_Model):
+    """One tool's contract (P-7): what it can do, who may call it, how long it may take,
+    and what happens when it fails. A new tool is this file plus an adapter."""
+
+    tool: str
+    capability: Literal[TOOL_CAPABILITIES]  # type: ignore[valid-type]
+    adapter: str
+    args: dict[str, str] = {}
+    returns: list[str] = []  # evidence keys / facts the observation may bring
+    requires: list[Literal["identified", "consent"]] = []
+    guards: ToolGuards = ToolGuards()
+    timeout_s: StrictInt | StrictFloat
+    retries: StrictInt = 0
+    rate_limit: ToolRateLimit | None = None
+    filler_key: str | None = None  # what to say while the caller waits
+    on_failure: ToolFailure
+    audit: bool = False
+
+    @model_validator(mode="after")
+    def _adapter(self) -> ToolManifest:
+        if not ADAPTER_RE.match(self.adapter):
+            raise ValueError(
+                f"adapter '{self.adapter}' is not demo_db, fake, mcp:<server> or http:<service>"
+            )
+        if self.timeout_s <= 0:
+            raise ValueError("timeout_s must be positive")
+        return self
+
+
 class Policies(_Model):
-    identified_customer_required: list[str] = []  # tools refused before identification
+    # Who may call a tool is declared per tool (knowledge/tools/*.yaml -> requires).
     forbidden_actions: list[str] = []
     forbidden_topics: list[str] = []
 
@@ -311,6 +387,7 @@ class Knowledge:
     verdicts: Verdicts | None = None
     limits: Limits | None = None
     policies: Policies | None = None
+    tools: dict[str, ToolManifest] = field(default_factory=dict)
 
 
 def _non_string_keys(data: Any, loc: str = "") -> list[str]:
@@ -549,6 +626,9 @@ def phrase_refs(k: Knowledge) -> list[tuple[str, str]]:
     if k.identification:
         for name in k.identification.identification.extra_questions:
             add("identification.yaml: extra_questions", f"identification.questions.{name}")
+    for name, tool in k.tools.items():
+        add(f"tools/{name}.yaml: on_failure.say_key", tool.on_failure.say_key)
+        add(f"tools/{name}.yaml: filler_key", tool.filler_key)
     return refs
 
 
@@ -591,6 +671,17 @@ def validate_knowledge(
             errors.append(f"{rel}: module '{module.module}' also in {module_files[module.module]}")
         k.modules[module.module] = module
         module_files[module.module] = rel
+
+    tool_files: dict[str, str] = {}
+    for path in sorted((root / "tools").glob("*.yaml")):
+        tool = _read(path, ToolManifest, errors, root)
+        if tool is None:
+            continue
+        rel = path.relative_to(root).as_posix()
+        if tool.tool in k.tools:
+            errors.append(f"{rel}: tool '{tool.tool}' also in {tool_files[tool.tool]}")
+        k.tools[tool.tool] = tool
+        tool_files[tool.tool] = rel
 
     pack_files: dict[str, str] = {}
     for path in sorted((root / "faults").glob("*.yaml")):

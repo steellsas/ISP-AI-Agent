@@ -1,0 +1,13 @@
+# The fallback lookup: by account code or name, when the address will not resolve.
+tool: find_customer
+capability: crm
+adapter: demo_db
+args: { customer_code: str, name: str, phone: str }
+requires: []
+timeout_s: 5
+retries: 1
+filler_key: system.filler
+on_failure:
+  say_key: tools.unavailable_crm
+  fallback: end_call
+  alert: ops

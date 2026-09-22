@@ -1,0 +1,11 @@
+# Known area outages. Street-specific by contract (a city-wide answer gets
+# misattributed to the caller) — the gateway enforces that.
+tool: check_outages
+capability: outages
+adapter: demo_db
+args: { area: str, customer_id: str }
+requires: []
+timeout_s: 4
+on_failure:
+  fallback: skip        # no outage list -> diagnose the line as usual
+  alert: ops

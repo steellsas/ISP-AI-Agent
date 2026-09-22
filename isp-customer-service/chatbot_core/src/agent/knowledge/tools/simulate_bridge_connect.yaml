@@ -1,0 +1,8 @@
+# Demo only: reflects what the caller physically did on the seeded line (bridge_connect).
+tool: simulate_bridge_connect
+capability: simulate
+adapter: demo_db
+args: { customer_id: str }
+timeout_s: 2
+on_failure:
+  fallback: skip
