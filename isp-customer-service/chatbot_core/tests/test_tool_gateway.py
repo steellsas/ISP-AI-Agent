@@ -193,12 +193,13 @@ class TestSlowAndBrokenTools:
             return json.dumps({"success": True})
 
     def _with_timeout(self, agent, name, seconds, **over):
-        """Run `name` as if its manifest allowed only `seconds` (patching the manifest is
-        how a contract test exercises a timeout without waiting for a real one)."""
+        """Run `name` as if its manifest allowed only `seconds` — and through the `fake`
+        adapter, the seam for a system that answers slowly or not at all (a demo_db tool is
+        called inline, because a local query cannot be cut loose anyway)."""
         from agent.contract import tools as manifests
 
         spec = manifests.manifest(name)
-        tight = spec.model_copy(update={"timeout_s": seconds, **over})
+        tight = spec.model_copy(update={"timeout_s": seconds, "adapter": "fake", **over})
         return patch.object(manifests, "manifest", lambda n, _t=tight: _t if n == name else None)
 
     def test_a_tool_that_does_not_answer_returns_its_fallback(self):
@@ -271,6 +272,28 @@ class TestSlowAndBrokenTools:
         assert result.data["error"] == "tool_error"
         assert result.data["say_key"] == "tools.unavailable_ticket"
         assert any(e["type"] == "tool_error" for e in tracer.events)
+
+    def test_an_in_process_adapter_runs_on_the_calling_thread(self):
+        """demo_db / rag_local are called inline: a worker thread would hold its own
+        thread-local SQLite connection open for the life of the process (it broke the
+        eval's between-scenario DB rebuild with WinError 32)."""
+        import threading
+
+        seen: list[str] = []
+
+        class _ThreadNamingProvider:
+            def available_tools(self):
+                return []
+
+            def execute(self, tool_name, arguments):
+                seen.append(threading.current_thread().name)
+                return json.dumps({"success": True, "active_outages": []})
+
+        agent, _ = _agent(_ThreadNamingProvider())
+        agent.tools.run(
+            agent.state, agent.runtime, "check_outages", {"customer_id": "C"}, reason="t"
+        )
+        assert seen == [threading.current_thread().name]
 
     def test_a_slow_answer_is_traced_with_the_line_to_say(self):
         provider = self._SlowProvider(0.12)

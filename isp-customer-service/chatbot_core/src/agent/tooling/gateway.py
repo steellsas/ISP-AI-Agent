@@ -29,10 +29,15 @@ from ..trace import trace_tool_result
 
 logger = logging.getLogger(__name__)
 
-# Tool calls run on worker threads so a system that stops answering cannot hold the call:
-# the manifest's timeout_s wins, and the abandoned thread is the price (the demo's DB
-# connections are thread-local, and a real adapter is an HTTP client).
+# A call that can hang on a NETWORK runs on a worker thread, so the manifest's timeout_s
+# can cut it loose; the abandoned thread is the price. In-process adapters are called
+# inline: a local query cannot be interrupted anyway, and every worker thread would hold
+# its own (thread-local) SQLite connection open for the life of the process — which is how
+# the eval's between-scenario DB rebuild started failing with WinError 32.
 _POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tool")
+# Adapters that answer in-process (no timeout, no thread). `fake` is deliberately NOT here:
+# it is the seam that exercises the slow and broken paths in tests.
+INLINE_ADAPTERS = frozenset({"demo_db", "rag_local"})
 # What may be retried after a TIMEOUT: a read-only lookup is safe to repeat, a mutation is
 # not — it may have landed on the line already.
 READ_ONLY_CAPABILITIES = frozenset({"probe", "crm", "outages", "knowledge", "simulate"})
@@ -102,22 +107,30 @@ class ToolGateway:
     def _execute(
         self, state: Any, rt: Any, spec: Any, name: str, args: dict[str, Any]
     ) -> tuple[str, int]:
-        """Run the adapter under the manifest's timeout, retrying only what is safe to
-        repeat. A tool that does not answer returns a FAILURE OBSERVATION carrying its
-        fallback — the engine reads it and keeps the call moving (review finding W: in the
-        demo every tool answers in ~1 ms, so this path was never exercised)."""
-        if spec is None:  # a tool with no manifest yet: as before, straight through
+        """Run the adapter under its manifest and return (observation, ms).
+
+        A tool that does not answer — a timeout on a remote adapter, or an adapter that
+        broke — returns a FAILURE OBSERVATION carrying the manifest's plan (the capability,
+        the say_key the caller hears, the `fallback` the engine acts on), so a dead system
+        never hangs a call (review finding W: in the demo every tool answers in ~1 ms, so
+        this path was never exercised). Retries are asymmetric: a read-only lookup may be
+        repeated after a timeout, a mutation may not — it may have landed already.
+        """
+        if spec is None:  # a tool with no manifest yet: exactly as before
             started = time.perf_counter()
             return self.provider.execute(name, args), _ms_since(started)
 
+        inline = spec.adapter in INLINE_ADAPTERS
         attempts = 1 + spec.retries
         for attempt in range(1, attempts + 1):
             started = time.perf_counter()
-            future: Future[str] = _POOL.submit(self.provider.execute, name, args)
             try:
-                observation = future.result(timeout=spec.timeout_s)
+                if inline:
+                    observation = self.provider.execute(name, args)
+                else:
+                    future: Future[str] = _POOL.submit(self.provider.execute, name, args)
+                    observation = future.result(timeout=spec.timeout_s)
             except FutureTimeout:
-                ms = _ms_since(started)
                 retry = attempt < attempts and spec.capability in READ_ONLY_CAPABILITIES
                 rt.tracer.emit(
                     "tool_timeout",
@@ -131,11 +144,9 @@ class ToolGateway:
                 )
                 if retry:
                     continue
-                return _failed(
-                    spec, name, "tool_timeout", f"{name} did not answer in {spec.timeout_s}s"
-                ), ms
+                message = f"{name} did not answer in {spec.timeout_s}s"
+                return _failed(spec, name, "tool_timeout", message), _ms_since(started)
             except Exception as e:  # the adapter itself broke
-                ms = _ms_since(started)
                 logger.error(f"[TOOL] {name} failed on {spec.adapter}: {e}")
                 rt.tracer.emit(
                     "tool_error",
@@ -149,11 +160,9 @@ class ToolGateway:
                 )
                 if attempt < attempts:
                     continue
-                return _failed(spec, name, "tool_error", str(e)[:200]), ms
+                return _failed(spec, name, "tool_error", str(e)[:200]), _ms_since(started)
             ms = _ms_since(started)
-            if spec.filler_key and ms >= limits.get("tool_slow_ms"):
-                # Measured first (P-5): how often a real caller would be left in silence.
-                rt.tracer.emit("tool_slow", name=name, ms=ms, filler_key=spec.filler_key)
+            _trace_slow(rt, spec, name, ms)
             return observation, ms
         raise AssertionError("unreachable")  # pragma: no cover
 
@@ -173,6 +182,13 @@ def _record_call(state: Any, name: str) -> None:
 
 def _ms_since(started: float) -> int:
     return round((time.perf_counter() - started) * 1000.0)
+
+
+def _trace_slow(rt: Any, spec: Any, name: str, ms: int) -> None:
+    """Measured first (P-5): how often a real caller would be left waiting in silence,
+    and which line the tool's manifest says to fill it with."""
+    if spec is not None and spec.filler_key and ms >= limits.get("tool_slow_ms"):
+        rt.tracer.emit("tool_slow", name=name, ms=ms, filler_key=spec.filler_key)
 
 
 def _refusal(error: str, message: str) -> str:
