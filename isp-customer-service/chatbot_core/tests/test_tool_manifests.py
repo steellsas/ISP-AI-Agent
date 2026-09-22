@@ -6,6 +6,8 @@ new tool without a manifest, or a manifest that drifts from the rules the gatewa
 actually enforces, fails here — not on a call.
 """
 
+import json
+
 import pytest
 from agent.contract import tools as manifests
 from agent.contract.schema import ToolManifest
@@ -123,3 +125,63 @@ def test_every_manifest_names_an_adapter_that_can_answer():
 def test_the_fake_adapter_is_only_reachable_through_a_manifest():
     """Nothing in the shipped manifests points at `fake` — it exists for tests only."""
     assert all(m.adapter != "fake" for m in manifests.get().values())
+
+
+class TestReturnsIsAPromise:
+    """`returns` says which ledger facts a tool may establish. The gateway holds it to
+    that: a fact from nowhere is how a diagnosis stops being traceable."""
+
+    _VERDICT = {
+        "success": True,
+        "verdict": {"reason": "router_hung", "side": "customer", "group": "B6"},
+        "signals": {"traffic": "none"},
+    }
+
+    def test_the_diagnosis_declares_the_facts_it_sets(self, make_state, make_runtime):
+        from agent.execute.observe import update_state_from_observation
+
+        state, rt = make_state("+37060020112"), make_runtime()
+        state.identity.customer_id = "CUST112"
+        update_state_from_observation(state, rt, "diagnose_connection", json.dumps(self._VERDICT))
+
+        wrote = set(state.diagnosis.evidence)
+        assert wrote, "the observation should have set the telemetry facts"
+        assert wrote <= set(manifests.manifest("diagnose_connection").returns)
+
+    def test_an_undeclared_fact_is_traced(self, make_state, make_runtime):
+        """Declaration drift is reported, not silently dropped — the reading the engine
+        just made is still the truth of the call."""
+        from agent.tooling.gateway import _check_returns
+
+        events: list[dict] = []
+        recorder = type(
+            "Rec", (), {"emit": lambda _s, kind, **f: events.append({"type": kind, **f})}
+        )()
+        state, rt = make_state("+37060020112"), make_runtime(tracer=recorder)
+        spec = manifests.manifest("diagnose_connection").model_copy(update={"returns": ["verdict"]})
+        state.diagnosis.evidence = {"verdict": {}, "side": {}}
+
+        _check_returns(state, rt, spec, "diagnose_connection", before=set())
+
+        event = next(e for e in events if e["type"] == "returns_violation")
+        assert event["keys"] == ["side"] and event["tool"] == "diagnose_connection"
+
+    def test_a_tool_that_declares_nothing_touches_no_facts(self, make_state, make_runtime):
+        from agent.execute.observe import update_state_from_observation
+
+        state, rt = make_state("+37060020112"), make_runtime()
+        state.identity.customer_id = "CUST112"
+        for name, payload in (
+            ("check_outages", {"success": True, "affected": True}),
+            ("create_ticket", {"success": True, "ticket_id": "T-1"}),
+        ):
+            assert manifests.manifest(name).returns == []
+            update_state_from_observation(state, rt, name, json.dumps(payload))
+        assert state.diagnosis.evidence == {}
+
+
+def test_a_plan_may_only_name_a_tool_that_has_a_manifest():
+    """The effect gate and the gateway read the same list now."""
+    from agent.decide.gate import _tool_names
+
+    assert _tool_names() == frozenset(manifests.names())

@@ -50,9 +50,11 @@ def _rejection(state, action) -> str | None:
 
 
 def _tool_names() -> frozenset[str]:
-    from ..tools import REAL_TOOLS
+    """Every tool a plan may name — the manifests (wave 2c), which are also what the
+    gateway enforces; REAL_TOOLS is the demo's implementation of them."""
+    from ..contract import tools as manifests
 
-    return frozenset(t.name for t in REAL_TOOLS)
+    return frozenset(manifests.names())
 
 
 def _active_roles(state) -> set[str]:

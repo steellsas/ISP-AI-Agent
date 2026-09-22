@@ -103,7 +103,9 @@ class ToolGateway:
         if apply:
             from ..execute.observe import update_state_from_observation
 
+            before = set(getattr(state.diagnosis, "evidence", {}) or {})
             update_state_from_observation(state, rt, name, observation)
+            _check_returns(state, rt, spec, name, before)
         trace_tool_result(rt.tracer, name, observation, ms)
         return ToolResult(name, args, observation, ms, gated, _parse(observation))
 
@@ -200,6 +202,18 @@ def _record_failure(state: Any, rt: Any, data: dict[str, Any]) -> None:
     }
     if data.get("alert"):
         rt.tracer.emit("ops_alert", tool=data.get("tool"), error=data.get("error"), level="error")
+
+
+def _check_returns(state: Any, rt: Any, spec: Any, name: str, before: set[str]) -> None:
+    """A manifest's `returns` is a promise about the LEDGER: these are the facts this tool
+    may establish. A fact appearing from nowhere is how a diagnosis becomes untraceable,
+    so an undeclared one is traced (the call goes on — a declaration drift must not drop a
+    reading the engine just made)."""
+    if spec is None:
+        return
+    undeclared = set(getattr(state.diagnosis, "evidence", {}) or {}) - before - set(spec.returns)
+    if undeclared:
+        rt.tracer.emit("returns_violation", tool=name, keys=sorted(undeclared), level="error")
 
 
 def _adapter_for(spec: Any, default: Any) -> Any:
