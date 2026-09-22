@@ -1,0 +1,73 @@
+# LINIJOJE NEMATOMA JOKIO ĮRENGINIO — miręs routeris (v2 kortelė, 3 banga)
+#
+# Signalas iki buto ateina, bet linija nemato kliento įrenginio. Pirma patikrinam su
+# klientu, ar routeris apskritai gyvas (lemputės, maitinimas, rozetė) — jei lemputės dega,
+# tai kita kortelė (laidas). Jei routeris miręs: meistras yra PAŽADAS (jis vyks bet kokiu
+# atveju), o klientui dar pasiūlom laikiną internetą per kompiuterį — tiltą.
+#
+# Technikas (Andrius, 2026-08-13): „esmė yra sugedęs routeris ir tiketas turi būti
+# registruotas; šalutinis dalykas — paleisti internetą laikinai".
+#
+# v1: internet_mires_routeris.yaml, 289 eil., 12 žingsnių.
+fault: no_mac_observed
+service: internet
+symptom: internet_down
+explain:
+  conclusion: "pack.no_mac_observed.conclusion"
+  confirm: "pack.no_mac_observed.confirm"
+
+when:
+  all: [node_reachable=yes, line_link=up, device_seen=no]
+
+rules_out:
+  - area_outage=yes
+  - service_suspended=yes
+
+needs:
+  # Routerio gyvybė: lemputės atmeta šią kortelę (dega = įrenginys gyvas, ieškom laido).
+  lights:
+    ask: "pack.no_mac_observed.lights.question"
+    values: {"off": confirms, "on": rules_out, blinking: rules_out}
+  power_cable:
+    ask: "pack.no_mac_observed.power_cable.question"
+    values: {plugged: confirms, unplugged: confirms}
+  outlet_works:
+    ask: "pack.no_mac_observed.outlet_works.question"
+    values: {tried: confirms, not_working: confirms}
+  # Tiltas: ar klientas turi kompiuterį, kurį galima jungti tiesiai į liniją.
+  has_computer:
+    ask: "pack.no_mac_observed.has_computer.question"
+    values: {"yes": confirms, "no": confirms}
+  lan_active:
+    ask: "pack.no_mac_observed.lan_active.question"
+    values: {active: confirms, inactive: confirms}
+
+solution:
+# Turi kompiuterį — laikinas internetas per tiltą, o meistras registruojamas bet kokiu atveju.
+- when: [has_computer=yes]
+  steps:
+  - module: reach
+    args: {device: router}
+  - module: check_lights
+    args: {device: router}
+  - module: connect_direct
+    args: {to: computer}
+  - module: bind
+    args: {device: computer}
+  - module: verify
+    args:
+      evidence: [device_seen=yes, traffic=flowing]
+      ask: restored
+  - module: escalate
+    args: {note: "routeris nebeatsiranda linijoje; laikinai paleista per kompiuterį"}
+# Kompiuterio nėra — tik meistras.
+- when: [has_computer=no]
+  steps:
+  - module: escalate
+    args: {note: "linijoje nematomas jokie kliento įrenginys, routeris tikėtinai sugedęs"}
+
+escalate:
+  need: "pack.no_mac_observed.ticket_need"
+  note: "linijoje nematomas kliento įrenginys"
+
+knowledge: troubleshooting/internet_mires_routeris_tiltas

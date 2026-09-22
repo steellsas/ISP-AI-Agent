@@ -1,0 +1,10 @@
+# Kabelio veiksmai prie paties įrenginio.
+module: cable
+kind: instruct
+params:
+  device: {required: true}
+  action: {values: [reseat, move_to_wan], default: reseat}
+  port: {}                          # WAN | LAN | tuščia = katalogo numatytasis
+goal: "the {action} cable on the {device} done"
+text: "equipment:{device}.cable.{action}"
+produces: [line_link, line_errors]

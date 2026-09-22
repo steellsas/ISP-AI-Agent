@@ -47,6 +47,7 @@ def validate() -> Knowledge:
 
     knowledge = validate_knowledge(language=active_language())
     _check_adapters(knowledge)
+    _check_cards()
     try:
         check_prompts()
     except PromptError as e:
@@ -71,6 +72,117 @@ def _check_adapters(knowledge: Knowledge) -> None:
         raise KnowledgeError(errors)
 
 
+def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None:
+    """Hold the v2 cards to their vocabulary (wave 3).
+
+    A card is edited by a technician, so a typo must stop the app, not a call: every
+    condition names a fact that exists and a value that fact can take, every module call
+    exists with its required arguments, every `hands_to` points at a real card, and every
+    phrase key is in the locale. This is what replaces the decision tree's compiler —
+    without it, `traffic=non` would simply never match anything.
+    """
+    from ..contract import cards as catalog
+    from ..contract import signals as signal_catalog
+    from ..contract import tools as manifests
+    from .locale import active_language, load_locale
+    from .schema import Condition
+
+    cards = catalog.cards() if cards is None else cards
+    modules = catalog.modules() if modules is None else modules
+    locale = load_locale(active_language())
+    errors: list[str] = []
+
+    # The fact vocabulary: what telemetry reads, what the modules establish, and what the
+    # cards themselves declare they will ask the caller.
+    values: dict[str, set[str]] = {k: set(v.value_set()) for k, v in signal_catalog.get().items()}
+    for card in cards.values():
+        for fact, need in card.needs.items():
+            values.setdefault(fact, set()).update(need.values)
+    for spec in modules.values():
+        for fact in spec.produces:
+            values.setdefault(fact, set())
+
+    def check_conditions(where: str, raw: list[str]) -> None:
+        for text in raw:
+            try:
+                condition = Condition.parse(text)
+            except ValueError as e:
+                errors.append(f"{where}: {e}")
+                continue
+            known = values.get(condition.fact)
+            if known is None:
+                errors.append(f"{where}: unknown fact '{condition.fact}' in '{text}'")
+            elif known and condition.value not in known:
+                errors.append(
+                    f"{where}: '{text}' — {condition.fact} is never "
+                    f"{condition.value!r} (it is one of {sorted(known)})"
+                )
+
+    fallbacks = [name for name, card in cards.items() if card.fallback]
+    if len(fallbacks) > 1:
+        errors.append(f"cards: more than one fallback card ({', '.join(sorted(fallbacks))})")
+    for name, card in cards.items():
+        where = f"cards/{name}.yaml"
+        if card.fallback and (card.when.all or card.when.any or card.rules_out):
+            errors.append(f"{where}: a fallback card must not declare conditions")
+        check_conditions(f"{where}: when", card.when.all + card.when.any)
+        check_conditions(f"{where}: rules_out", card.rules_out)
+        for key in card.explain.values():
+            if not locale.has(key):
+                errors.append(f"{where}: explain phrase '{key}' is missing")
+        for fact, need in card.needs.items():
+            if need.ask and not locale.has(need.ask):
+                errors.append(f"{where}: needs.{fact}.ask phrase '{need.ask}' is missing")
+            if need.probe and manifests.manifest(need.probe) is None:
+                errors.append(f"{where}: needs.{fact}.probe '{need.probe}' has no tool manifest")
+            for value, meaning in need.values.items():
+                if meaning.startswith("hands_to=") and meaning.split("=", 1)[1] not in cards:
+                    errors.append(f"{where}: needs.{fact}.values.{value} hands to an unknown card")
+        if card.escalate and card.escalate.need and not locale.has(card.escalate.need):
+            errors.append(f"{where}: escalate.need phrase '{card.escalate.need}' is missing")
+        for i, solution in enumerate(card.solution):
+            check_conditions(f"{where}: solution.{i}.when", solution.when)
+            if solution.hands_to and solution.hands_to not in cards:
+                errors.append(f"{where}: solution.{i} hands to unknown card '{solution.hands_to}'")
+            errors += _check_steps(where, f"solution.{i}", solution.steps, modules, values)
+    if errors:
+        raise KnowledgeError(errors)
+
+
+def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
+    """Every module call: the module exists, its required arguments are given, and a
+    closed-set argument stays inside its set."""
+    from .schema import Condition
+
+    errors: list[str] = []
+    for i, call in enumerate(steps):
+        at = f"{where}: {path}.steps.{i}"
+        spec = modules.get(call.module)
+        if spec is None:
+            errors.append(f"{at}: unknown module '{call.module}'")
+            continue
+        for param, rules in spec.params.items():
+            if rules.required and param not in call.args:
+                errors.append(f"{at}: {call.module} needs '{param}'")
+            given = call.args.get(param)
+            if given is not None and rules.values and str(given) not in rules.values:
+                errors.append(f"{at}: {call.module}.{param}={given!r} is not one of {rules.values}")
+        for extra in set(call.args) - set(spec.params):
+            errors.append(f"{at}: {call.module} has no parameter '{extra}'")
+        if spec.kind == "verify" and not (call.args.get("evidence") or call.args.get("ask")):
+            errors.append(f"{at}: a verification needs `evidence`, `ask`, or both")
+        for text in call.args.get("evidence") or []:
+            try:
+                Condition.parse(text)
+            except ValueError as e:
+                errors.append(f"{at}: evidence: {e}")
+        if call.on_fail is not None:
+            errors += _check_steps(
+                where, f"{path}.steps.{i}.on_fail", [call.on_fail], modules, values
+            )
+    return errors
+
+
 def startup() -> Knowledge:
     """Validate everything once at startup; raise KnowledgeError when anything is broken."""
     knowledge = validate()
@@ -83,7 +195,7 @@ def startup() -> Knowledge:
 def reload() -> None:
     """Drop every knowledge cache (files, locale, derived readers)."""
     from .. import detectors, faq, faults, identification, inform, intents, services, ticket_types
-    from . import limits, locale, policies, signals, tools
+    from . import cards, limits, locale, policies, signals, tools
 
     read_yaml.cache_clear()
     for module in (
@@ -99,6 +211,7 @@ def reload() -> None:
         identification,
         inform,
         signals,
+        cards,
         tools,
     ):
         module.reload()

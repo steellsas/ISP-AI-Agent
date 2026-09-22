@@ -1,0 +1,29 @@
+# NEAIŠKUS GEDIMAS (v2 kortelė, 3 banga)
+#
+# Technikas (Andrius, 2026-09-03): problema mūsų srities, klientas identifikuotas, bet
+# kortelės jai nėra (pvz. TV) arba žinios baigėsi. Vienas sąžiningas escalate: gedimas
+# registruojamas su „neaiškus gedimo tipas — perduota analizei". Tiketas maitina analizės
+# ratą vietoje improvizacijos ne toje srityje.
+#
+# `fallback: true` — ši kortelė NIEKADA nekonkuruoja su tikra diagnoze: variklis ją ima
+# tik tada, kai nė viena kita kortelė netinka.
+fault: unclear_fault
+service: any
+explain:
+  conclusion: "verdict.unclear_fault.gloss"
+
+fallback: true
+when: {}
+
+needs: {}
+
+solution:
+- when: []
+  steps:
+  - module: escalate
+    args: {note: "neaiškus gedimo tipas — perduota analizei"}
+
+escalate:
+  need: "verdict.unclear_fault.ticket_need"
+
+knowledge: troubleshooting/internet_no_connection

@@ -1,0 +1,9 @@
+# Patikra NE tinkle, o kliento įrenginyje (telefonas, kompiuteris, TV).
+module: device_check
+kind: instruct
+params:
+  device: {required: true}
+  what: {values: [wifi, reconnect, cable], default: wifi}
+goal: "the {what} checked on the caller's {device}"
+text: "device:{device}.{what}"
+produces: [lan_active]

@@ -1,0 +1,8 @@
+# Telefonu neišsprendžiama — meistras. Kontaktų dialogas ir registracija yra variklio
+# darbas (2c manifestai), modulis tik pasako, KODĖL ir ką įrašyti į tiketą.
+module: escalate
+kind: escalate
+params:
+  note: {}                          # ką turi matyti meistras
+goal: "the fault registered for a technician, and the caller told what happens next"
+produces: []

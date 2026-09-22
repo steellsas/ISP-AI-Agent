@@ -1,0 +1,12 @@
+# Perkrovimas. Kliento klaidos (prailgintuvas, mygtukas, ne tas įrenginys) aprašytos
+# įrangos kataloge, ne čia — kortelė tik pasako, KĄ perkrauti ir kaip.
+module: reboot
+kind: instruct
+params:
+  device: {required: true}
+  method: {values: [power, button], default: power}
+  attempts: {default: 1}
+  reason: {}                        # no_flap — kai telemetrija nematė perkrovimo
+goal: "the {device} power-cycled at its own socket, about five seconds, plugged back"
+text: "equipment:{device}.reboot.{method}"
+produces: [port_flapped, traffic]

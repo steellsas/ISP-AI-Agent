@@ -1,0 +1,90 @@
+# TINKLAS IKI ROUTERIO VEIKIA — problema kliento pusėje (v2 kortelė, 3 banga)
+#
+# Telemetrija sako, kad srautas iki routerio vaikšto, o klientui internetas neveikia.
+# Toliau klausimai atskiria, KUR problema: visuose įrenginiuose (routeris) ar viename
+# (tas įrenginys), ir kaip tas įrenginys prisijungęs (kabelis ar Wi-Fi).
+#
+# v1: internet_kliento_puse.yaml, 267 eil., 13 žingsnių.
+fault: healthy_to_router
+service: internet
+symptom: internet_down
+explain:
+  conclusion: "verdict.healthy_to_router.gloss"
+  confirm: "pack.healthy_to_router.confirm"
+
+when:
+  all: [node_reachable=yes, line_link=up, traffic=flowing]
+
+rules_out:
+  - area_outage=yes
+  - service_suspended=yes
+  - device_registered=foreign
+  - line_errors=high
+
+needs:
+  fail_scope:
+    ask: "pack.healthy_to_router.fail_scope.question"
+    values:
+      all: confirms
+      one: confirms
+  fail_device:
+    ask: "pack.healthy_to_router.fail_device.question"
+    values: {phone: confirms, computer: confirms}
+  connection_type:
+    ask: "pack.healthy_to_router.connection_type.question"
+    values: {wired: confirms, wifi: confirms}
+  rebooted:
+    ask: "pack.healthy_to_router.rebooted.question"
+    values: {"yes": confirms, "no": confirms}
+
+solution:
+# Neveikia visur, routeris dar neperkrautas — perkrovimas yra pigiausias žingsnis.
+- when: [fail_scope=all, rebooted=no]
+  steps:
+  - module: reach
+    args: {device: router}
+  - module: reboot
+    args: {device: router, method: power}
+  - module: verify
+    args:
+      evidence: [traffic=flowing]
+      ask: restored
+# Neveikia visur, jau perkrovė — telefonu nebeliko ko daryti.
+- when: [fail_scope=all, rebooted=yes]
+  steps:
+  - module: escalate
+    args: {note: "klientas jau perkrovė routerį, tinklas iki routerio veikia"}
+# Telefonas / planšetė: Wi-Fi tas įrenginys.
+- when: [fail_device=phone]
+  steps:
+  - module: device_check
+    args: {device: phone, what: wifi}
+  - module: verify
+    args: {ask: restored}
+  - module: device_check
+    args: {device: phone, what: reconnect}
+  - module: verify
+    args: {ask: restored}
+# Kompiuteris kabeliu: laidas iki įrenginio.
+- when: [connection_type=wired]
+  steps:
+  - module: device_check
+    args: {device: computer, what: cable}
+  - module: verify
+    args: {ask: restored}
+# Kompiuteris per Wi-Fi: tas pats kelias kaip telefonui.
+- when: [connection_type=wifi]
+  steps:
+  - module: device_check
+    args: {device: computer, what: wifi}
+  - module: verify
+    args: {ask: restored}
+  - module: device_check
+    args: {device: computer, what: reconnect}
+  - module: verify
+    args: {ask: restored}
+
+escalate:
+  note: "tinklas iki routerio veikia, kliento įrenginio patikra nepadėjo"
+
+knowledge: troubleshooting/kliento_puse_internetas

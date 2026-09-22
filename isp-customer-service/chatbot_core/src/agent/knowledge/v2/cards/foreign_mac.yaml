@@ -1,0 +1,64 @@
+# LINIJOJE KITAS ĮRENGINYS — klientas pasikeitė routerį (v2 kortelė, 3 banga)
+#
+# Telemetrija mato įrenginį, bet ne tą, kuris registruotas. Du keliai: klientas tikrai
+# pasikeitė routerį (pririšam naują — tai NE tiketas, tai veiksmas) arba nieko nekeitė ir
+# laidas įkištas ne į tą lizdą (WAN vietoj LAN).
+#
+# v1: internet_pakeistas_routeris.yaml, 136 eil., 7 žingsniai.
+fault: foreign_mac
+service: internet
+symptom: internet_down
+explain:
+  conclusion: "verdict.foreign_mac.gloss"
+  confirm: "pack.foreign_mac.confirm"
+
+when:
+  all: [device_seen=yes, device_registered=foreign]
+
+rules_out:
+  - area_outage=yes
+  - service_suspended=yes
+
+needs:
+  changed_device:
+    ask: "pack.foreign_mac.changed_device.question"
+    values: {"yes": confirms, "no": confirms}
+  cable_port:
+    ask: "pack.foreign_mac.cable_port.question"
+    values: {wan: confirms, lan: confirms}
+
+solution:
+# Pasikeitė routerį — pririšam naują įrenginį prie linijos ir patikrinam.
+- when: [changed_device=yes]
+  steps:
+  - module: bind
+    args: {device: router}
+  - module: verify
+    args:
+      evidence: [traffic=flowing]
+      ask: restored
+# Nieko nekeitė, o laidas LAN lizde — perkišam į WAN, tada pririšam.
+- when: [changed_device=no, cable_port=lan]
+  steps:
+  - module: cable
+    args: {device: router, action: move_to_wan, port: WAN}
+  - module: bind
+    args: {device: router}
+  - module: verify
+    args:
+      evidence: [traffic=flowing]
+      ask: restored
+# Nieko nekeitė, laidas ten, kur reikia — vis tiek kitas įrenginys: pririšam.
+- when: [changed_device=no, cable_port=wan]
+  steps:
+  - module: bind
+    args: {device: router}
+  - module: verify
+    args:
+      evidence: [traffic=flowing]
+      ask: restored
+
+escalate:
+  note: "linijoje kitas įrenginys, pririšimas nepadėjo"
+
+knowledge: troubleshooting/internet_pakeistas_routeris_mac

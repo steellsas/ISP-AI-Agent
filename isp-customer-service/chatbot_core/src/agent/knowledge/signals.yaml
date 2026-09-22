@@ -30,6 +30,7 @@ facts:
     map: {active: "yes", "*": "no", "null": unknown}
   neighbours:
     derive: neighbours_state # neighbors_up + neighbors_down kartu
+    values: [all_down, mixed, unknown]
 
   # --- linija iki kliento ---
   line_link:
@@ -45,6 +46,7 @@ facts:
     present: true
   device_registered:
     derive: mac_match # observed_mac lyginamas su registered_mac
+    values: [match, foreign, unknown]
   dhcp:
     signal: dhcp_status
     map: {ok: ok, no_requests: silent, expired: silent, "*": ok, "null": unknown}

@@ -1,0 +1,40 @@
+# LINIJOJE DAUG KLAIDŲ — pažeistas laidas (v2 kortelė, 3 banga)
+#
+# Technikas (Andrius, 2026-09-11): linija gyva, bet CRC klaidų daug — pažeistas arba
+# atsilaisvinęs laidas. Vienas pigus patikrinimas su klientu (perkišti laidą), variklis
+# perskaito klaidas iš naujo; nepadėjo — meistras keis laidą.
+#
+# v1: internet_crc_kabelis.yaml, 101 eil., 4 žingsniai.
+fault: crc_errors
+service: internet
+symptom: internet_down
+explain:
+  conclusion: "pack.crc_errors.conclusion"
+  confirm: "pack.crc_errors.confirm"
+
+when:
+  all: [line_link=up, line_errors=high]
+
+rules_out:
+  - area_outage=yes
+  - service_suspended=yes
+
+needs: {}
+
+solution:
+- when: []
+  steps:
+  - module: reach
+    args: {device: router}
+  - module: cable
+    args: {device: router, action: reseat}
+  - module: verify
+    args:
+      evidence: [line_errors=ok]
+      ask: restored
+
+escalate:
+  need: "pack.crc_errors.ticket_need"
+  note: "laidas perkištas, klaidos liko — reikia keisti laidą"
+
+knowledge: troubleshooting/internet_crc_kabelis
