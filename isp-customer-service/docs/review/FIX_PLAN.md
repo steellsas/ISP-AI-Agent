@@ -115,7 +115,7 @@ kiekvienas `on_failure` kelias.
   tušti; nedeklaruotas ledger faktas → `returns_violation` (error, skambutis tęsiasi);
   `decide/gate.py` įrankių vardai — irgi iš manifestų.
 
-Vienetų testai **1385 passed, 1 skipped**; eval tekstas **178/178**.
+Vienetų testai **1385 passed, 1 skipped**; eval tekstas **178/178**, `--voice` **178/178**.
 
 **Pastebėjimas:** eval'e per 66 skambučius — **nė vieno** `tool_timeout`, `tool_error`,
 `tool_slow` ar `returns_violation`. Tai tikėtina (demo atsako ~1 ms) ir tuo pačiu riba:
