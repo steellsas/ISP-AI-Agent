@@ -36,15 +36,6 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
             reason=plan.rule,
         )
         return None
-    if action.type == "procedure_step" and action.name == "run_due_action":
-        from .diagnosis import ensure_action_done
-
-        ensure_action_done(state, rt)
-        return None
-    if action.type == "procedure_step" and action.name == "escalate":
-        from ..decide.rules.diagnosis import drive_escalate
-
-        return drive_escalate(state, rt, None)
     if action.type == "register_ticket" and action.name == "auto":
         from ..executor_flow import register_ticket_from_state
 

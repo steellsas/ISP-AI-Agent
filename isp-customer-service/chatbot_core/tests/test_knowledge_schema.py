@@ -211,6 +211,15 @@ def test_every_vocabulary_name_in_code_exists_with_its_type():
         for item in (pack.evidence.client if pack.evidence else {}).values()
         for name in item.answers.values()
     }
+    # Wave 3: a v2 card names the vocabulary that recognises each answer.
+    from agent.contract import cards as v2
+
+    from_knowledge |= {
+        name
+        for card in v2.cards().values()
+        for need in card.needs.values()
+        for name in need.answers.values()
+    }
     unused = sorted(set(vocabulary) - {name for _w, _f, name in uses} - from_knowledge)
     assert unused == []
 
@@ -228,7 +237,9 @@ def test_every_escalate_reason_code_has_ticket_text():
     for path in src.rglob("*.py"):
         for m in pattern.finditer(path.read_text(encoding="utf-8")):
             codes.add(m.group(1) or m.group(2))
-    assert len(codes) >= 8
+    # Six after wave 3: the walker's own escalate reasons went with it, and the Case
+    # escalates through the ticket dialogue like every other path.
+    assert len(codes) >= 6
     assert sorted(c for c in codes if not locale.has(f"ticket.reason.{c}")) == []
 
 

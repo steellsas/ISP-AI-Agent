@@ -568,6 +568,8 @@ fact:
 modules:
   reach:
     can_now: "Ar galite dabar prieiti prie įrenginio?"
+  homework:
+    later: "Kai būsite namuose, pabandykite tai padaryti. Jei internetas neatsistatys per porą minučių — paskambinkite, padėsime arba užregistruosime meistrą. Gerai?"
   bind:
     announce: "Matau linijoje naują įrenginį — tai jūsų routeris. Pririšiu jį prie jūsų linijos, sekundėlę."
   port_reset:

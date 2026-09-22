@@ -64,52 +64,6 @@ class TestPacksBuild:
         assert "laid" in fault_need("crc_errors")
 
 
-class TestAdvanceLineCheck:
-    """Variklis perskaito liniją ir sulieja su kliento žodžiu."""
-
-    def test_line_still_down_escalates_honestly(self, db_connection, monkeypatch):
-        from agent.decide.procedure import advance_line_check
-
-        agent = _agent("link_down_local", "ll_recheck", monkeypatch, "link_down_local")
-        advance_line_check(
-            agent.state, agent.runtime, agent.state.resolution.procedure, "Taip, viskas gerai dabar"
-        )
-        r = agent.state.resolution.procedure
-        assert r["step"] == "escalate"  # žodis „gerai" NEnusveria linijos fakto
-        assert r["escalate_reason"] == "line_not_restored"
-
-    def test_line_ok_caller_yes_resolves(self, db_connection, monkeypatch):
-        from agent.decide.procedure import advance_line_check
-
-        agent = _agent("link_down_local", "ll_recheck", monkeypatch, "healthy_to_router")
-        advance_line_check(
-            agent.state,
-            agent.runtime,
-            agent.state.resolution.procedure,
-            "Taip, atsirado internetas!",
-        )
-        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "resolved"
-        assert agent.state.ticket.ticket_id is None
-
-    def test_line_ok_caller_no_escalates(self, db_connection, monkeypatch):
-        from agent.decide.procedure import advance_line_check
-
-        agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
-        advance_line_check(
-            agent.state, agent.runtime, agent.state.resolution.procedure, "Ne, vis tiek neveikia"
-        )
-        assert agent.state.resolution.procedure["step"] == "escalate"
-
-    def test_unclear_with_recovered_line_holds(self, db_connection, monkeypatch):
-        from agent.decide.procedure import advance_line_check
-
-        agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
-        advance_line_check(
-            agent.state, agent.runtime, agent.state.resolution.procedure, "Nu palaukit, žiūriu"
-        )
-        assert agent.state.resolution.procedure["step"] == "crc_recheck"  # laikoma, perklausiama
-
-
 class TestSeeds:
     def test_crc_customer_gets_crc_verdict(self, db_connection):
         import json
@@ -127,62 +81,6 @@ class TestSeeds:
         d = json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST306"}))
         assert d["success"] and d["verdict"]["reason"] == "node_fault_unregistered"
         assert d["verdict"]["side"] == "provider"
-
-
-class TestBlendGuard:
-    """Gyvas 2026-09-11: „perkišau, nepadėjo" per carry-through uždarė kaip
-    resolved. Blend žingsniai (ll/crc_recheck) — variklio, žodis jų nevaro."""
-
-    def test_nepadejo_at_cable_never_resolves(self, db_connection, monkeypatch):
-        from agent.decide.procedure import advance_instruct
-        from agent.resolution import get_strategy
-
-        agent = _agent("crc_errors", "crc_cable", monkeypatch, "crc_errors")
-        st = get_strategy("crc_errors")
-        advance_instruct(
-            agent.state,
-            agent.runtime,
-            agent.state.resolution.procedure,
-            st.step("crc_cable"),
-            st,
-            "Gal ir užlenkės, bet perkišau, nepadėjo",
-        )
-        r = agent.state.resolution.procedure
-        assert r["step"] == "crc_recheck"  # patikros klausimas eina, byla NEuždaryta
-        assert not agent.state.closing.case_closed
-
-    def test_restored_vocabulary_negations(self, db_connection):
-        from agent.perceive.detectors import detect_restored
-        from agent.resolution import Outcome
-
-        assert detect_restored("Perkišau, bet nepadėjo") is Outcome.NO
-        assert detect_restored("Nieko nepasikeitė") is Outcome.NO
-        assert detect_restored("Internetas nedirba") is Outcome.NO
-        # „jo" liko YES tik kaip atskiras žodis
-        assert detect_restored("Jo") is Outcome.YES
-        assert detect_restored("Jo, jau veikia") is Outcome.YES
-
-    def test_still_down_at_closing_reopens(self, db_connection, monkeypatch):
-        from types import SimpleNamespace
-
-        from agent.graph_v2.state import GraphState, TurnScratch
-        from langgraph.runtime import Runtime
-
-        from tests.calls import run_turn_nodes
-
-        agent = _agent("crc_errors", "crc_recheck", monkeypatch, "healthy_to_router")
-        agent.state.closing.case_closed = True
-        agent.state.closing.closed_reason = "resolved"
-        runtime = Runtime(context=agent.runtime)
-        upd = run_turn_nodes(
-            agent.state.model_copy(update={"turn": TurnScratch(user_input="Internetas neveikia.")}),
-            runtime,
-        )
-        s = GraphState(**upd)  # the state after the turn
-        assert upd["turn"].reply  # registracijos dialogas, ne „geros dienos"
-        assert "geros dienos" not in upd["turn"].reply.lower()
-        assert not s.closing.is_complete
-        assert s.resolution.procedure.get("escalate_reason") == "still_down_at_closing"
 
 
 @pytest.mark.usefixtures("db_connection")

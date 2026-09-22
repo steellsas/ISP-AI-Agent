@@ -264,7 +264,9 @@ class TestPendingFallback:
         agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
-        agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
+        # Wave 3: the fault in play is the Case's, and the reading layer takes its
+        # vocabulary from that card.
+        agent.state.case.fault = "router_hung"
         assert agent.state.diagnosis.pending_evidence_key is None  # no ask yet
         canned = NS(
             type="answer",

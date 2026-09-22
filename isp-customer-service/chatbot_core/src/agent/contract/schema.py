@@ -393,6 +393,19 @@ class Need(_Model):
     # value -> the locale vocabulary list that recognises it in the caller's words. This is
     # what reads "tik viename" as `fail_scope=one` with no model call at all.
     answers: dict[str, str] = {}
+    # What to say when the caller answers a bare "ne": it could mean either reading, so the
+    # engine clarifies instead of acting (it used to live in the evidence drive).
+    clarify: str | None = None
+    # Values that FLIP the story when the caller volunteers them out of turn ("rozetė
+    # neveikia" while we asked about the lights): parked for one confirm question rather than
+    # accepted silently.
+    confirm_values: list[str] = []
+    # Conditions on other facts that must hold before this one is worth asking. Asking about
+    # the cable type before we know it is a computer makes the agent sound like a form.
+    when: list[str] = []
+    # Half a sentence on why we are asking. A caller who knows why answers better — and
+    # follows the instruction that comes next.
+    why: str | None = None
 
     @model_validator(mode="after")
     def _reachable(self) -> Need:

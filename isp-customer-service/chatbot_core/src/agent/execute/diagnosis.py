@@ -172,8 +172,10 @@ def _seed_evidence_from_call(state, rt) -> None:
     s = state
     said = [x for x in [s.intake.anamnesis_raw, *s.intake.heard_utterances] if x]
     raw = " | ".join(said)
-    verdict = (s.resolution.procedure or {}).get("verdict")
-    if not raw or not verdict:
+    # Wave 3: the facts in play are the Case's — what the caller mentioned in passing is read
+    # against every open card, not against one walker verdict.
+    verdict = s.case.fault
+    if not raw:
         return
     from ..evidence import CLIENT, _fold, _mark_hit, set_fact, spec_for
 

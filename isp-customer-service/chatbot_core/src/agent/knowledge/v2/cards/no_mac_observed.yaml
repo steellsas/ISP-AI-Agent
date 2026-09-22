@@ -24,6 +24,16 @@ rules_out:
   - service_suspended=yes
 
 needs:
+  # Kontekstas, kurį žino tik klientas: ar prieš tai kas nutiko (elektros dingimas, audra,
+  # darbai). Tai paaiškina, kodėl įrenginys iškrito iš linijos, ir nukreipia į maitinimą.
+  recent_events:
+    ask: "pack.no_mac_observed.recent_events.question"
+    why: "pack.no_mac_observed.recent_events.why"
+    clarify: "pack.no_mac_observed.recent_events.clarify"
+    values: {"yes": confirms, "no": confirms}
+    answers:
+      "yes": answers_no_mac_observed_recent_events_yes
+      "no": answers_no_mac_observed_recent_events_no
   # Routerio gyvybė: lemputės atmeta šią kortelę (dega = įrenginys gyvas, ieškom laido).
   lights:
     ask: "pack.no_mac_observed.lights.question"
@@ -34,12 +44,17 @@ needs:
   outlet_works:
     ask: "pack.no_mac_observed.outlet_works.question"
     values: {tried: confirms, not_working: confirms}
+    # „Rozetė neveikia" apverčia istoriją (gedimas ne routeryje, o maitinime): pasakius tai
+    # ne į klausimą, pirma pasitikslinam ir tik tada priimam.
+    confirm_values: [not_working]
   # Tiltas: ar klientas turi kompiuterį, kurį galima jungti tiesiai į liniją.
   has_computer:
     ask: "pack.no_mac_observed.has_computer.question"
+    clarify: "pack.no_mac_observed.has_computer.clarify"
     values: {"yes": confirms, "no": confirms}
   lan_active:
     ask: "pack.no_mac_observed.lan_active.question"
+    when: [has_computer=yes]
     values: {active: confirms, inactive: confirms}
     answers:
       "inactive": answers_no_mac_observed_lan_active_inactive

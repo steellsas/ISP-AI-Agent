@@ -31,6 +31,8 @@ rules_out:
 needs:
   fail_scope:
     ask: "pack.router_hung.fail_scope.question"
+    why: "pack.router_hung.fail_scope.why"
+    clarify: "pack.router_hung.fail_scope.clarify"
     values:
       all: confirms                 # visuose įrenginiuose — routeris pakibęs
       one: hands_to=healthy_to_router # viename — routeris gyvas, problema iki įrenginio

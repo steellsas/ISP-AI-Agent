@@ -138,13 +138,15 @@ class TestReturnsIsAPromise:
     }
 
     def test_the_diagnosis_declares_the_facts_it_sets(self, make_state, make_runtime):
+        """Wave 3: the reading establishes FACTS the cards reason over, and the manifest
+        names every one of them."""
         from agent.execute.observe import update_state_from_observation
 
         state, rt = make_state("+37060020112"), make_runtime()
         state.identity.customer_id = "CUST112"
         update_state_from_observation(state, rt, "diagnose_connection", json.dumps(self._VERDICT))
 
-        wrote = set(state.diagnosis.evidence)
+        wrote = set(state.case.facts)
         assert wrote, "the observation should have set the telemetry facts"
         assert wrote <= set(manifests.manifest("diagnose_connection").returns)
 
@@ -158,13 +160,13 @@ class TestReturnsIsAPromise:
             "Rec", (), {"emit": lambda _s, kind, **f: events.append({"type": kind, **f})}
         )()
         state, rt = make_state("+37060020112"), make_runtime(tracer=recorder)
-        spec = manifests.manifest("diagnose_connection").model_copy(update={"returns": ["verdict"]})
-        state.diagnosis.evidence = {"verdict": {}, "side": {}}
+        spec = manifests.manifest("diagnose_connection").model_copy(update={"returns": ["traffic"]})
+        state.case.facts = {"traffic": "none", "line_link": "up"}
 
         _check_returns(state, rt, spec, "diagnose_connection", before=set())
 
         event = next(e for e in events if e["type"] == "returns_violation")
-        assert event["keys"] == ["side"] and event["tool"] == "diagnose_connection"
+        assert event["keys"] == ["line_link"] and event["tool"] == "diagnose_connection"
 
     def test_a_tool_that_declares_nothing_touches_no_facts(self, make_state, make_runtime):
         from agent.execute.observe import update_state_from_observation
@@ -177,7 +179,7 @@ class TestReturnsIsAPromise:
         ):
             assert manifests.manifest(name).returns == []
             update_state_from_observation(state, rt, name, json.dumps(payload))
-        assert state.diagnosis.evidence == {}
+        assert state.case.facts == {}
 
 
 def test_a_plan_may_only_name_a_tool_that_has_a_manifest():

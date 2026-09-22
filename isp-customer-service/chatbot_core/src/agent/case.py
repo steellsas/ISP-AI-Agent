@@ -119,6 +119,23 @@ class Source:
         return SOURCE_ORDER[self.kind]
 
 
+def worth_asking(fact: str, card: FaultCard | None, facts: dict[str, str]) -> bool:
+    """Is this fact worth asking YET? A need may name conditions that must hold first — the
+    cable type means nothing until we know it is a computer."""
+    need = card.needs.get(fact) if card else None
+    if need is None or not need.when:
+        return True
+    return all(Condition.parse(text).holds(facts) is True for text in need.when)
+
+
+def reason_for(fact: str, card: FaultCard | None) -> str | None:
+    """Half a sentence on why we are asking, as the card words it."""
+    from .contract.locale import maybe_phrase
+
+    need = card.needs.get(fact) if card else None
+    return maybe_phrase(need.why) if need else None
+
+
 def sources_for(fact: str, card: FaultCard | None = None) -> list[Source]:
     """Every way this fact can be learned, cheapest first.
 
@@ -204,7 +221,7 @@ def _solve(fault: str, facts: dict[str, str], unavailable: frozenset[str]) -> Mo
         pending = [c.fact for c in conditions if c.holds(facts) is None]
         if pending:
             for fact in pending:
-                if fact in unavailable:
+                if fact in unavailable or not worth_asking(fact, card, facts):
                     continue
                 found = sources_for(fact, card)
                 if found:
@@ -236,6 +253,8 @@ def _discriminator(
             fact = Condition.parse(text).fact
             if fact in facts or fact in unavailable:
                 continue
+            if not worth_asking(fact, card, facts):
+                continue  # its own conditions do not hold yet
             found = sources_for(fact, card)
             if not found:
                 continue
@@ -247,3 +266,17 @@ def _discriminator(
         return None
     fact = sorted(weight.items(), key=lambda kv: (-kv[1], where[kv[0]].rank, kv[0]))[0][0]
     return fact, where[fact]
+
+
+def clarify_for(fault: str | None, fact: str | None) -> str | None:
+    """What to say when a bare "ne" answers this fact's question.
+
+    "Ne" to "does it fail on ALL devices?" could mean either reading, so the engine names
+    both instead of acting on a coin flip (the behaviour came from the evidence drive; the
+    wording is the card's now).
+    """
+    from .contract.locale import maybe_phrase
+
+    card = catalog.card(fault) if fault else None
+    need = card.needs.get(fact) if card and fact else None
+    return maybe_phrase(need.clarify) if need else None

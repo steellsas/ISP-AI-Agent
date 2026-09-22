@@ -194,7 +194,6 @@ def simulate_router_reboot_action(state: Any, rt: Any) -> None:
     telemetry read sees what a real reboot produces. Off by default → live demo
     calls use the „Perkrauti routerį" button instead (the human plays the
     physical world); production sees the real flap on its own."""
-    from .decide.hypothesis import note_evidence
 
     if os.getenv("SIMULATE_REBOOT", "off").lower() != "on":
         return
@@ -210,8 +209,6 @@ def simulate_router_reboot_action(state: Any, rt: Any) -> None:
             reason="simulate_reboot",
             apply=False,
         ).data
-        if res.get("success"):
-            note_evidence(state, rt, "caller rebooted the router — the port flapped (simulated)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"router reboot sim failed: {e}")
         trace_note(rt.tracer, state, "reboot_sim", str(e))
@@ -222,7 +219,6 @@ def simulate_bridge_connection(state: Any, rt: Any) -> None:
     wall cable by making an unbound device appear on the line, so the bridge can
     VERIFY it. Off by default → production never fakes a device (the real one appears
     on its own). Best-effort: a failure just leaves the line unchanged."""
-    from .decide.hypothesis import note_evidence
 
     if os.getenv("SIMULATE_BRIDGE", "off").lower() != "on":
         return
@@ -238,8 +234,6 @@ def simulate_bridge_connection(state: Any, rt: Any) -> None:
             reason="simulate_bridge",
             apply=False,
         ).data
-        if res.get("success"):
-            note_evidence(state, rt, "caller connected a device — seen on the line (simulated)")
     except Exception as e:  # pragma: no cover - best-effort
         logger.warning(f"bridge connection sim failed: {e}")
         trace_note(rt.tracer, state, "bridge_sim", str(e))

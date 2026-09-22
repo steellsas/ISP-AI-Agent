@@ -58,9 +58,8 @@ def scripted_wait_ack(state, rt) -> str | None:
         return None
     if s.dialog.last_intent != INTENT_IN_PROGRESS or s.dialog.awaiting != "client_action":
         return None
-    from ..hypothesis import due
 
-    if state.diagnosis.pending_announcement or due(state, "conflict") is not None:
+    if state.diagnosis.pending_announcement:
         return None
     if state.dialog.resync_note or state.voice.undelivered_tail:
         return None

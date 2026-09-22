@@ -324,9 +324,11 @@ class TestTelemetry:
 
         telemetry(agent.state, agent.runtime, mode="snapshot", reason="test")
 
+        # Wave 3: the reading commits the provider-side verdict (what the inform path
+        # speaks) and the FACTS the cards reason over. It no longer activates a hypothesis
+        # or points a walker at a pack's first step — there is neither.
         assert agent.state.diagnosis.verdicts["network"]["reason"] == "router_hung"
-        assert agent.state.diagnosis.hypothesis["cause"] == "router_hung"
-        assert agent.state.resolution.procedure["verdict"] == "router_hung"
+        assert agent.state.case.facts["traffic"] == "none"
         call = next(e for e in tracer.events if e["type"] == "tool_call")
         assert call["name"] == "diagnose_connection" and call["reason"] == "snapshot:test"
 

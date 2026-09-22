@@ -6,7 +6,6 @@ per-stage tool scopes, and the checkpointed GraphState (SqliteSaver).
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agent.decide.procedure import StepOutcome
 from agent.graph_v2.state import ClosingState, GraphState, IdentityState, TicketState
 
 
@@ -47,47 +46,6 @@ def _sync_checkpoint(session):
     session._graph.update_state(session._graph_config, updates)
 
 
-class FakeEngine:
-    """Records the flow-call order so subgraph wiring is testable without LLM/DB:
-    the flows the nodes call are replaced by recorders."""
-
-    def __init__(self, monkeypatch, side_topic=False, driven=None):
-        self.state = GraphState()
-        self.state.identity.customer_id = "CUST-T"
-        self.calls = []
-        self.session_id = "fake-session"
-        self.tracer = SimpleNamespace(emit=lambda *a, **k: None)
-        self.runtime = _fake_runtime(self)
-        recorders = {
-            "agent.execute.diagnosis.ensure_diagnosed": ("diagnose", None),
-            "agent.perceive.slots.prefill_slots_from_text": ("prefill", None),
-            "agent.perceive.evidence.ingest_client_evidence": ("ingest", None),
-            "agent.perceive.side_topic.classify_side_topic": ("classify", side_topic),
-            "agent.decide.rules.diagnosis.solver_drive_turn": ("solver", driven),
-            "agent.decide.rules.reply.scripted_layer": ("scripted", None),
-            "agent.decide.procedure.advance": ("walker", StepOutcome("hold")),
-            "agent.execute.diagnosis.ensure_action_done": ("action", None),
-            "agent.execute.step.mark_step_presented": ("mark", None),
-        }
-        for target, (label, result) in recorders.items():
-            monkeypatch.setattr(target, self._recorder(label, result))
-        monkeypatch.setattr("agent.speak.node.begin_turn", lambda state, rt, user_input: None)
-        monkeypatch.setattr("agent.speak.node.stream_reply", self._speak)
-        monkeypatch.setattr("agent.perceive.node.read_turn_start", lambda state, rt, text: None)
-
-    def _recorder(self, label, result):
-        def record(state, rt=None, *args):
-            self.calls.append(label)
-            return result
-
-        return record
-
-    def _speak(self, state, rt, owner):
-        self.calls.append("narrate")
-        yield "ok-"
-        yield "reply"
-
-
 def _fake_graph(engine):
     from agent.graph_v2.graph import build_graph
     from langgraph.checkpoint.memory import MemorySaver
@@ -120,68 +78,6 @@ def _diag_input():
 
 
 _CFG = {"configurable": {"thread_id": "t-subgraph"}}
-
-
-class TestGraphCallOrder:
-    """The legacy pipeline order survives perceive -> decide -> execute -> narrate."""
-
-    def test_normal_path_keeps_legacy_call_order(self, monkeypatch):
-        engine = FakeEngine(monkeypatch)
-        out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
-        # The perceive node reads the turn first (slots, evidence, side-topic
-        # signal); A-2 (2026-09-07): the guards run before the solver/walker can
-        # consume a safety-question answer. Wave 1: the scripted reply layer is the
-        # LAST decide step (after the procedure moved), then execute and the narrator.
-        assert engine.calls == [
-            "prefill",
-            "ingest",
-            "classify",
-            "diagnose",
-            "solver",
-            "walker",
-            "scripted",
-            "action",
-            "narrate",
-            "mark",
-        ]
-        assert out["turn"].reply == "ok-reply"
-
-    def test_side_topic_freezes_the_engine(self, monkeypatch):
-        engine = FakeEngine(monkeypatch, side_topic=True)
-        out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
-        # No close-inform/solver/walker/action on side chatter — only the frozen narration.
-        assert engine.calls == [
-            "prefill",
-            "ingest",
-            "classify",
-            "diagnose",
-            "scripted",
-            "narrate",
-        ]
-        assert out["turn"].reply == "ok-reply"
-
-    def test_solver_drive_skips_walker_and_narrator(self, monkeypatch):
-        engine = FakeEngine(monkeypatch, driven="Atsakau pats.")
-        out = _fake_graph(engine).invoke(_diag_input(), _CFG, context=_fake_runtime(engine))
-        assert engine.calls == ["prefill", "ingest", "classify", "diagnose", "solver"]
-        assert out["turn"].reply == "Atsakau pats."
-
-    def test_tokens_stream_out_of_the_graph(self, monkeypatch):
-        """The voice pipeline consumes stream_mode='custom' — narrator tokens must
-        surface on the stream. Mirrors AgentSession.handle_turn_stream (subgraphs=True
-        + unwrap)."""
-        engine = FakeEngine(monkeypatch)
-        chunks = [
-            chunk
-            for _ns, chunk in _fake_graph(engine).stream(
-                _diag_input(),
-                _CFG,
-                context=_fake_runtime(engine),
-                stream_mode="custom",
-                subgraphs=True,
-            )
-        ]
-        assert chunks == ["ok-", "reply"]
 
 
 class TestSessionThroughGraph:

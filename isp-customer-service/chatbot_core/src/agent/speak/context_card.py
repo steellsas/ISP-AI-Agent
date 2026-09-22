@@ -42,9 +42,6 @@ def context_card(state, rt) -> str | None:
         _tool_trouble,
         _case_step,
         _dialogue_state,
-        _hypothesis,
-        _evidence,
-        _step,
         _plan_goal,
         _recall_and_notes,
     ):
@@ -546,223 +543,7 @@ def _caller_pending(state) -> bool:
         state.identity.customer_id
         and state.identity.result_pending
         and not state.identity.caller_name
-    )
-
-
-def _hypothesis(state, rt) -> list[str]:
-    """Telemetry findings, the working belief, what was ruled out, and a pivot."""
-    s = state
-    out: list[str] = []
-    if _caller_pending(state):
-        from ..identification import caller_question
-
-        out.append(
-            "IDENTIFICATION, LAST RUNG: the check is done but do NOT give the result yet. "
-            f"This reply carries ONLY the question: „{caller_question()}“. No result, no "
-            "instructions."
-        )
-    elif s.identity.customer_id and s.identity.result_pending and s.identity.caller_name:
-        from .context_card import result_narration_tail
-
-        out.append("DELIVER THE RESULT:" + result_narration_tail(state, rt))
-    # The tool results carry the CONTRACT HOLDER's name; it is account data, not a
-    # greeting, and the caller need not be the holder (live: addressed as „Giedriau“ while
-    # the caller had said „Andrius“).
-    if s.identity.customer_id:
-        if s.identity.caller_name:
-            out.append(
-                f"ADDRESS THEM AS: „{s.identity.caller_name}“ (or with no name). Never "
-                "mention the CONTRACT HOLDER's name seen in tool results."
-            )
-        else:
-            out.append(
-                "ADDRESS THEM AS: we do not know the name — do not use one; never mention the "
-                "holder's name seen in tool results."
-            )
-    # Once the strategy has run its action the raw finding is STALE — past the bind the
-    # step's own hint is the single source of truth.
-    past_action = bool(s.resolution.procedure) and "telemetry_fixed" in (
-        s.resolution.procedure or {}
-    )
-    # While the contact dialogue runs the ticket intro is the result: raw findings only
-    # tempt the narrator into a cause it cannot back („problema jūsų pusėje").
-    collecting = state.ticket.stage in ("phone", "hours")
-    if not past_action and not _caller_pending(state) and not collecting:
-        for domain, d in s.diagnosis.verdicts.items():
-            gloss = phrase_or(f"verdict.{d.get('reason')}.gloss", d.get("reason") or "—")
-            out.append(f"TELEMETRY [{domain}] ({d.get('group')}, side={d.get('side')}): {gloss}.")
-    h = None if _caller_pending(state) or collecting else s.diagnosis.hypothesis
-    if h:
-        cause = phrase_or(f"verdict.{h['cause']}.gloss", h["cause"])
-        if h["status"] == "confirmed":
-            out.append(
-                f"HYPOTHESIS CONFIRMED: „{cause}“ ({h['settled_by']}). Tell the caller briefly "
-                "that this is exactly why it did not work — they want to understand."
-            )
-        elif h["status"] == "testing":
-            out.append(
-                f"WHAT I AM TESTING: „{cause}“. On what: {'; '.join(h['because'])}. When it "
-                "fits, say it in your own words („matau X, todėl manau, kad Y“) — briefly, and "
-                "not every turn."
-            )
-    if s.diagnosis.rejected_hypotheses and not s.closing.case_closed:
-        ruled = ", ".join(
-            phrase_or(f"verdict.{x['cause']}.gloss", x["cause"])
-            for x in s.diagnosis.rejected_hypotheses
-        )
-        out.append(f"ALREADY RULED OUT (do not suggest or check again): {ruled}.")
-    # A failed first attempt must read as an engineer working the problem (we have a plan
-    # B), not as a script that silently restarts.
-    if s.diagnosis.pivoted_from and not s.closing.case_closed:
-        old = phrase_or(f"verdict.{s.diagnosis.pivoted_from}.gloss", s.diagnosis.pivoted_from)
-        out.append(
-            f"RETHINK: we tried the cause „{old}“ and it did NOT help (telemetry). Open your "
-            "reply with that, humanly and briefly: it did not help, so the cause is another "
-            "one, and what you are checking now. Then continue with THIS STEP. Do NOT pretend "
-            "the earlier attempt never happened, and do not repeat it."
-        )
-    # INFORM (no strategy — billing/outage): the news went out in the activation reply.
-    if (
-        s.resolution.procedure is None
-        and s.diagnosis.verdicts
-        and not s.closing.case_closed
-        and s.diagnosis.news_delivered
-    ):
-        out.append(
-            "THE NEWS IS ALREADY OUT: do not repeat the „patikrinau / sustabdyta / avarija“ "
-            "text. Answer the caller's question, or ask „Ar dar kuo galiu padėti?“ and end "
-            "the call."
-        )
-    return out
-
-
-def _evidence(state, rt) -> list[str]:
-    """The ledger: settled facts are never re-asked, open goals keep the turn on course."""
-    s = state
-    out: list[str] = []
-    if not s.identity.customer_id and not s.intake.problem_type:
-        out.append(
-            "THE PROBLEM IS NOT STATED YET: do NOT offer an address and check nothing — first "
-            "ask what the problem is / how you can help."
-        )
-    if not s.identity.customer_id:
-        p = s.identity.profile
-        heard = [
-            f"{label}={slot.value}"
-            for label, slot in (
-                ("city", p.city),
-                ("street", p.street),
-                ("house", p.house),
-                ("apartment", p.apartment),
-            )
-            if slot.value
-        ]
-        if heard:
-            out.append(
-                "HEARD ADDRESS (deterministic — PREFER these over re-extracting from the raw "
-                "text): " + ", ".join(heard) + ". Use THESE when you say the address back, "
-                "unless the caller explicitly corrects them."
-            )
-    if s.diagnosis.evidence and s.identity.customer_id and not s.closing.case_closed:
-        from ..evidence import summary_lt
-
-        out.append(
-            "ESTABLISHED THIS CALL (never ask again and never contradict): "
-            f"{summary_lt(s.diagnosis.evidence)}"
-        )
-    # The still-open goals, so the speaker pulls a wandering caller back to what is missing
-    # instead of drifting.
-    if (
-        s.identity.customer_id
-        and not s.closing.case_closed
-        and (s.resolution.procedure or {}).get("verdict")
-    ):
-        from ..evidence import open_goals_lt
-
-        goals = open_goals_lt(s.diagnosis.evidence, s.resolution.procedure.get("verdict"))
-        if goals:
-            out.append(
-                f"STILL TO FIND OUT (the conversation's goal): {goals}. If the caller drifts — "
-                "answer briefly, remind them where we are, and bring the conversation back to "
-                "what is still open. With 1–2 goals left, TELL the caller the progress in your "
-                "own words (e.g. „beliko patikrinti rozetę — ir bus aišku“)."
-            )
-    if state.resolution.bridge_plug_reported:
-        out.append(
-            "BRIDGE PHASE: the router is already declared faulty and the cable is REPLUGGED "
-            "into the computer — do NOT ask about the router, its lights or power again. We "
-            "are only talking about the computer's connection."
-        )
-    # The just-landed answer's declared MEANING — the reaction carries it instead of
-    # parroting the fact („Vadinasi, maitinimą gauna, bet tinklo nemato.“). One-shot.
-    meaning = state.diagnosis.fact_meaning
-    if meaning:
-        state.diagnosis.fact_meaning = None
-        topic, value, means = meaning
-        out.append(
-            f"JUST LEARNED: {topic} — „{value}“. THIS MEANS: {means}. In your reaction say "
-            "THIS MEANING in one sentence (not the raw fact), then the next step."
-        )
-    return out
-
-
-def _step(state, rt) -> list[str]:
-    """The procedure step the engine is on: its playbook section, hint and goal."""
-    s = state
-    out: list[str] = []
-    if not (s.resolution.procedure and not s.closing.case_closed):
-        return out
-    from ..execute.step import emit_rag_injection
-    from ..playbook import get_step
-    from ..resolution import get_strategy
-
-    strat = get_strategy(s.resolution.procedure.get("verdict"))
-    step = strat.step(s.resolution.procedure.get("step", "")) if strat else None
-    if step is None:
-        return out
-    # Directive isolation: a directive turn carries ONE instruction — no step hint, no
-    # playbook section (the hint used to win over the directive). A check-back on a fact
-    # the caller already gave counts too: the step's own question is exactly what must
-    # NOT be asked this turn (F-11).
-    directive_active = bool(
-        state.turn.directives.evidence
-        or state.turn.directives.recap
-        or state.turn.directives.findings
-        or state.turn.directives.ticket
-        or state.turn.directives.ident
-        or s.resolution.procedure.get("heard_confirm")
-    )
-    if not _caller_pending(state) and not directive_active:
-        if step.rag_section is not None:
-            section = get_step(strat.rag_doc, step.rag_section)
-            if section:
-                # Observability: WHICH knowledge chunk feeds THIS step.
-                emit_rag_injection(state, rt, strat.rag_doc, step.rag_section, step.id, section)
-                out.append(
-                    "PLAYBOOK — your INTERNAL guidance for THIS step (Lithuanian content). Act "
-                    "on it, do NOT read it to the caller verbatim, ask ONE thing at a time. Say "
-                    "ONLY what THIS step is about — do NOT invent instructions it does not "
-                    "mention (no rebooting, no lights, no cables unless this step says so). If "
-                    "the caller's answer was unclear, ask THIS SAME thing again in other "
-                    "words:\n" + section
-                )
-        if step.hint:
-            out.append(f"THIS STEP: {step.hint}")
-    if getattr(step, "goal", "") and not directive_active:
-        out.append(
-            f"STEP GOAL: {step.goal}. Reacting to the caller's answer, JUDGE whether the "
-            "goal is reached — a short evaluating reaction („Gerai — radote“ / „Ne, ne šis "
-            "kabelis“), then continue."
-        )
-    if (s.resolution.procedure.get("presented") or {}).get(step.id, 0) >= 2:
-        out.append(
-            "STEP REPEATED: you already asked this step's question — briefly explain WHY you "
-            "are asking again („dar kartą, nes noriu būti tikras…“), then ask."
-        )
-    return out
-
-
-# --- the one instruction for this reply --------------------------------------------------------
+    )  # --- the one instruction for this reply --------------------------------------------------------
 
 
 def _plan_goal(state, rt) -> list[str]:
@@ -776,7 +557,6 @@ def _plan_goal(state, rt) -> list[str]:
     out += _goal_identification(state, rt)
     out += _goal_ticket(state, rt)
     out += _goal_recap_and_findings(state, rt)
-    out += _goal_evidence(state, rt)
     return out
 
 
@@ -967,39 +747,6 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             f"Conclusion: {fd['isvada']}.{solution} Two or three sentences, no lists or colons."
         )
     return out
-
-
-def _goal_evidence(state, rt) -> list[str]:
-    """The evidence question as a goal: the speaker words it naturally in the conversation's
-    flow instead of reading the pack's scripted sentence."""
-    s = state
-    directive = state.turn.directives.evidence
-    if not directive:
-        return []
-    why = f" Why we check it: {directive['kodel']}." if directive.get("kodel") else ""
-    # The OTHER still-open goals are named as off-limits (eval: asked „which device“ and
-    # „laidu ar Wi-Fi“ in one breath — the connection type is a later fact with its own turn).
-    others = ""
-    if (s.resolution.procedure or {}).get("verdict"):
-        from ..evidence import open_goals_lt
-
-        rest = [
-            g.strip()
-            for g in open_goals_lt(
-                s.diagnosis.evidence, s.resolution.procedure.get("verdict")
-            ).split(";")
-            if g.strip() and g.strip() != str(directive["reikia"]).strip()
-        ]
-        if rest:
-            others = (
-                " Do NOT ask about or mention the OTHER things yet (each gets its own turn): "
-                + "; ".join(rest)
-                + "."
-            )
-    return [
-        f"PLAN GOAL — ASK NOW: find out — {directive['reikia']}. You do NOT know this fact yet "
-        f"— ask a question, do not state it.{why}{others} (Backup: „{directive['klausimas']}“)"
-    ]
 
 
 def _recall_and_notes(state, rt) -> list[str]:

@@ -3,10 +3,11 @@ tool: diagnose_connection
 capability: probe
 adapter: demo_db
 args: { customer_id: str }
-# The ledger facts this observation may set (execute/observe.py). The gateway checks it:
+# The facts this observation establishes (knowledge/signals.yaml). The gateway checks it:
 # a tool that writes a fact it never declared is a contract break, traced as
 # `returns_violation`.
-returns: [verdict, side]
+returns: [service_suspended, area_outage, node_reachable, neighbours, line_link, line_errors,
+          device_seen, device_registered, dhcp, traffic, port_flapped]
 requires: [identified]
 timeout_s: 8
 filler_key: system.filler

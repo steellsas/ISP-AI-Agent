@@ -103,7 +103,7 @@ class ToolGateway:
         if apply:
             from ..execute.observe import update_state_from_observation
 
-            before = set(getattr(state.diagnosis, "evidence", {}) or {})
+            before = set(getattr(state.case, "facts", {}) or {})
             update_state_from_observation(state, rt, name, observation)
             _check_returns(state, rt, spec, name, before)
         trace_tool_result(rt.tracer, name, observation, ms)
@@ -211,7 +211,7 @@ def _check_returns(state: Any, rt: Any, spec: Any, name: str, before: set[str]) 
     reading the engine just made)."""
     if spec is None:
         return
-    undeclared = set(getattr(state.diagnosis, "evidence", {}) or {}) - before - set(spec.returns)
+    undeclared = set(getattr(state.case, "facts", {}) or {}) - before - set(spec.returns)
     if undeclared:
         rt.tracer.emit("returns_violation", tool=name, keys=sorted(undeclared), level="error")
 

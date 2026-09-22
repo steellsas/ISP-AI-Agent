@@ -240,18 +240,31 @@ def extract_client_facts(text: str | None) -> dict[str, str]:
 
 
 def spec_for(verdict: str | None) -> dict[str, Any] | None:
-    """The fault's evidence spec from its fault pack ({client, confirmed_when,
-    refuted_when, on_refuted}), or None when the fault declares none
-    (fail-soft: the walker/solver flow runs as before)."""
-    if not verdict:
-        return None
-    from .faults import _faults
+    """What the reading layer needs to understand an answer: the client facts in play, the
+    values each can take, and the words that recognise them.
 
-    fault = _faults().get(verdict)
-    if not isinstance(fault, dict):
-        return None
-    spec = fault.get("evidence")
-    return spec if isinstance(spec, dict) and isinstance(spec.get("client"), dict) else None
+    Wave 3: this comes from the v2 CARDS. `verdict` narrows it to one fault when the case has
+    settled on it; otherwise every card's needs are in play, because a caller may answer a
+    question before we know which fault it belongs to ("tik viename" is an answer either way).
+    """
+    from .contract import cards as catalog
+
+    cards = catalog.cards()
+    chosen = [cards[verdict]] if verdict in cards else list(cards.values())
+    client: dict[str, Any] = {}
+    for card in chosen:
+        for fact, need in card.needs.items():
+            item = client.setdefault(fact, {"answers": {}})
+            item["answers"].update(need.answers)
+            if need.ask:
+                item.setdefault("question_key", need.ask)
+            if need.clarify:
+                item.setdefault("clarify_key", need.clarify)
+            if need.values:
+                item.setdefault("value_labels", dict(need.values))
+            if need.confirm_values:
+                item.setdefault("confirm_values", list(need.confirm_values))
+    return {"client": client} if client else None
 
 
 def fault_conclusion(verdict: str | None) -> str | None:

@@ -27,6 +27,8 @@ rules_out:
 needs:
   fail_scope:
     ask: "pack.healthy_to_router.fail_scope.question"
+    why: "pack.healthy_to_router.fail_scope.why"
+    clarify: "pack.healthy_to_router.fail_scope.clarify"
     values:
       all: confirms
       one: confirms
@@ -35,18 +37,24 @@ needs:
       "one": answers_healthy_to_router_fail_scope_one
   fail_device:
     ask: "pack.healthy_to_router.fail_device.question"
+    when: [fail_scope=one]
     values: {phone: confirms, computer: confirms}
     answers:
       "phone": answers_healthy_to_router_fail_device_phone
       "computer": answers_healthy_to_router_fail_device_computer
   connection_type:
     ask: "pack.healthy_to_router.connection_type.question"
+    when: [fail_device=computer]
+    why: "pack.healthy_to_router.connection_type.why"
     values: {wired: confirms, wifi: confirms}
     answers:
       "wired": answers_healthy_to_router_connection_type_wired
       "wifi": answers_healthy_to_router_connection_type_wifi
   rebooted:
     ask: "pack.healthy_to_router.rebooted.question"
+    when: [fail_scope=all]
+    why: "pack.healthy_to_router.rebooted.why"
+    clarify: "pack.healthy_to_router.rebooted.clarify"
     values: {"yes": confirms, "no": confirms}
     answers:
       "yes": answers_healthy_to_router_rebooted_yes

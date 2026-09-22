@@ -147,3 +147,45 @@ class TestWhenNothingFits:
         plan = case_rule._module_plan(state, rt, button, state.case.facts, rule="case.reboot")
 
         assert plan.rule != "case.reboot" or plan.say.text is None
+
+
+class TestWhenTheCallerCannotDoItNow:
+    """P-C: not being at home is a WHEN, not a fault. The caller gets the instruction for
+    later and is asked if that suits them — a technician only if they want one."""
+
+    def _at_the_reach_step(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        record_client(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)  # reach
+        return state, rt
+
+    def test_not_now_gives_the_instruction_for_later(self, call):
+        state, rt = self._at_the_reach_step(call)
+        record_client(state, rt, "reachable", "no")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.homework" and plan.awaiting == "later_agreed"
+        assert "Kai būsite namuose" in plan.say.text
+        assert "maitinimo laidą" in plan.say.text  # what they were about to be asked to do
+
+    def test_agreeing_closes_the_call_as_a_callback(self, call):
+        state, rt = self._at_the_reach_step(call)
+        record_client(state, rt, "reachable", "no")
+        case_rule.plan(state, rt)
+        record_client(state, rt, "later_agreed", "yes")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.action.type == "close" and plan.action.name == "callback"
+
+    def test_declining_it_offers_a_technician(self, call):
+        state, rt = self._at_the_reach_step(call)
+        record_client(state, rt, "reachable", "no")
+        case_rule.plan(state, rt)
+        record_client(state, rt, "later_agreed", "no")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.escalate" and state.ticket.stage == "phone"

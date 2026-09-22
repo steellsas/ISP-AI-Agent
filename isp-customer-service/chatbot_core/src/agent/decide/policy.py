@@ -15,7 +15,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .plan import TurnPlan
-from .rules import closing, dialog, head, hypothesis_confirm, intake, stage, ticket, tools
+from .rules import closing, dialog, head, intake, stage, ticket, tools
 
 Rule = Callable[[Any, Any], TurnPlan | None]
 
@@ -34,10 +34,10 @@ RULES: list[tuple[float, str, Rule]] = [
     (8, "identification.caller_intro", head.head_rule(head.caller_intro)),
     (9, "identification", head.head_rule(head.unidentified_address)),
     (10, "identification.address_correction", head.head_rule(head.address_correction)),
-    (13, "diagnosis.hypothesis_confirm", hypothesis_confirm.plan),
-    # Rows 11-20: the stage families (side topic, inform close, solver drive, procedure)
-    # plan the rest; their scripted words (rows 11-15, 18-19) come from the narrator's
-    # reply layer after the procedure moved (decide/rules/reply.py).
+    # Rows 11-20: the stage families (side topic, the inform close, the Case) plan the
+    # rest; the dialogue scripts (rows 11-15, 18-19) come from the reply layer.
+    # Row 13 (diagnosis.hypothesis_confirm) is gone with wave 3: the Case holds candidates,
+    # so a single belief with a doubt/confirm state machine has nothing to confirm.
     (20, "stage", stage.plan),
 ]
 

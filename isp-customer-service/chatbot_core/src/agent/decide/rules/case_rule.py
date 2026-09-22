@@ -30,6 +30,9 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     if reflect is not None:
         return reflect
     facts = ledger.facts_of(state)
+    later = _not_now_plan(state, rt, facts)
+    if later is not None:
+        return later
     if state.case.fault is not None:
         status = _absorb(state, rt, facts)
         # The caller's physical action must reach the line BEFORE anything reads it again,
@@ -68,28 +71,79 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
 NOT_OUR_FAULT = ("area_outage", "service_suspended")
 
 
-# Verdicts the engine reaches BEFORE any diagnosis: there is nothing to diagnose, only news
-# to deliver. (These are still v1 pre-checks; they become facts of their own in wave 4 —
-# `service_ordered`, `open_ticket` — once the CRM reading carries them.)
-INFORM_VERDICTS = frozenset(
-    {
-        "service_not_subscribed",
-        "open_ticket_exists",
-        "billing_suspended",
-        "active_outage",
-        "switch_unreachable",
-        "node_fault_unregistered",
-    }
-)
-
-
 def _not_a_fault(facts: dict[str, str], state: Any | None = None) -> bool:
     if any(facts.get(fact) == "yes" for fact in NOT_OUR_FAULT):
         return True
     if state is None:
         return False
-    reason = ((state.diagnosis.verdicts or {}).get("network") or {}).get("reason")
-    return reason in INFORM_VERDICTS
+    from ...inform import is_news
+
+    return is_news(((state.diagnosis.verdicts or {}).get("network") or {}).get("reason"))
+
+
+def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None:
+    """The caller cannot get to the device right now.
+
+    Nothing about the fault changes — what changes is WHEN. They get the instruction for
+    later and are asked whether that suits them; a yes closes the call as a callback, a no
+    means they would rather have a technician. Never the other way round: an agent that
+    pushes a technician at someone who is simply not at home is not helping (P-C).
+    """
+    if facts.get("reachable") != "no":
+        return None
+    agreed = facts.get("later_agreed")
+    if agreed == "yes":
+        rt.tracer.emit("case", move="callback", fault=state.case.fault)
+        return TurnPlan(
+            owner="closing",
+            rule="case.later_agreed",
+            action=Action(type="close", name="callback"),
+            say=Say(
+                kind="directive",
+                goal="thank them warmly, repeat that they call if it does not help, say goodbye",
+                stage="closing",
+            ),
+        )
+    if agreed == "no":
+        return _escalate(state, rt, state.case.fault)
+    from ...contract.schema import ModuleCall
+
+    call = ModuleCall(module="homework", args={"device": _device_type(state)})
+    step = modules.plan_step(call, model=_device_model(state))
+    state.case.awaiting = "later_agreed"
+    state.diagnosis.pending_evidence_key = "later_agreed"
+    rt.tracer.emit("case", move="homework", fault=state.case.fault)
+    return TurnPlan(
+        owner="procedure",
+        rule="case.homework",
+        say=Say(
+            kind="directive",
+            text=_homework_words(state, call),
+            goal=step.goal if step else "agree what they will do when they are back",
+            stage="diagnosis",
+        ),
+        awaiting="later_agreed",
+    )
+
+
+def _homework_words(state: Any, call: Any) -> str | None:
+    """The instruction they were about to be given, framed for later.
+
+    The words come from the two places that own them: the equipment catalogue (what to do)
+    and the homework module (when, and the promise to call back).
+    """
+    later = modules.question_of(call, model=_device_model(state))
+    doing = None
+    for pending in (_current(state), _following(state)):
+        # The caller is usually standing at the "can you reach it" question, so the thing
+        # they were about to be asked to DO is the step after it.
+        planned = modules.plan_step(pending, model=_device_model(state)) if pending else None
+        if planned is not None and planned.kind == "instruct" and planned.text:
+            doing = planned.text
+            break
+    if doing and later:
+        return f"{doing} {later}"
+    return later or doing
 
 
 # --- learning a fact ------------------------------------------------------------------
@@ -116,15 +170,17 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     # The reading layer gives a short answer its meaning from the question that is out
     # ("Tik viename." only means fail_scope=one because that is what we asked).
     state.diagnosis.pending_evidence_key = move.fact
+    from ...case import reason_for
+
+    why = reason_for(move.fact, catalog.card(state.case.fault or move.fault))
+    goal = f"learn {move.fact} — only the caller can tell us"
+    if why:
+        # A caller who knows WHY answers better, and follows the instruction that comes next.
+        goal = f"{goal}. Say why in half a sentence: {why}"
     return TurnPlan(
         owner="diagnosis",
         rule="case.ask",
-        say=Say(
-            kind="directive",
-            text=maybe_phrase(source.ask),
-            goal=f"learn {move.fact} — only the caller can tell us",
-            stage="diagnosis",
-        ),
+        say=Say(kind="directive", text=maybe_phrase(source.ask), goal=goal, stage="diagnosis"),
         awaiting=move.fact,
     )
 
@@ -190,6 +246,16 @@ def _reasons(card: Any) -> list:
     from ...contract.schema import Condition
 
     return [Condition.parse(text) for text in card.when.all + card.when.any]
+
+
+def _following(state: Any):
+    """The step after the one we are on (what the caller was about to be asked to do)."""
+    card = catalog.card(state.case.fault)
+    if card is None or state.case.solution is None:
+        return None
+    steps = card.solution[state.case.solution].steps
+    index = state.case.step + 1
+    return steps[index] if index < len(steps) else None
 
 
 def _current(state: Any):

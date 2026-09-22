@@ -120,7 +120,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
             from ..evidence import next_missing as _next_missing
             from ..evidence import spec_for as _spec_for0
 
-            _spec0 = _spec_for0((s.resolution.procedure or {}).get("verdict"))
+            _spec0 = _spec_for0(s.case.fault)
             if _spec0:
                 _nm = _next_missing(s.diagnosis.evidence, _spec0, True)
                 if _nm:
@@ -353,7 +353,7 @@ def _story_flip_gate(state, rt, key: str, value: str, pending: str | None) -> bo
         return False
     from ..evidence import spec_for
 
-    spec = spec_for((s.resolution.procedure or {}).get("verdict")) or {}
+    spec = spec_for(s.case.fault) or {}
     item = (spec.get("client") or {}).get(key) or {}
     gated_values = [str(v) for v in (item.get("confirm_values") or [])]
     if value not in gated_values:
