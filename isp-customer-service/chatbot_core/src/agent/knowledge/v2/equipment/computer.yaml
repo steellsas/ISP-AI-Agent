@@ -1,0 +1,15 @@
+# KLIENTO KOMPIUTERIS — bazinis lygis. Gali būti ir per laidą, ir per Wi-Fi, todėl abu
+# patikrinimai aprašyti; kurį rinktis, sako kortelė (`connection_type`).
+equipment: computer
+type: computer
+name_key: equipment.computer.name
+locate_key: equipment.computer.locate
+
+actions:
+  # Tiltas: laidas iš sienos jungiamas TIESIAI į kompiuterį — taip atskiriame routerį nuo
+  # linijos. Be šio teksto variklis žingsnį tyliai praleisdavo (S4 eval'e).
+  connect_direct: equipment.computer.connect_direct
+  device_check.wifi: equipment.computer.check.wifi
+  device_check.reconnect: equipment.computer.check.reconnect
+  device_check.cable: equipment.computer.check.cable
+  reach: equipment.computer.reach

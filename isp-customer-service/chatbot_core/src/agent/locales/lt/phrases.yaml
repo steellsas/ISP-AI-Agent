@@ -514,6 +514,56 @@ tools:
   unavailable_crm: "Kol kas nepavyksta pasiekti sutarčių duomenų. Labai atsiprašau — paskambinkite kiek vėliau, mielai padėsime."
   unavailable_ticket: "Registracijos sistema kol kas neatsako, bet jūsų kontaktus turiu — kolegos susisieks."
 
+# FAKTŲ GLOSAI — kaip faktas skamba žmogui. Variklis mąsto raktais (`traffic=none`), o
+# klientui pasakoma sakinio dalimi („srautas iki routerio nevaikšto"). Iš šių dalių
+# sudedama išvados eilutė: „Ką matau: … — panašu, kad …".
+fact:
+  line_link:
+    up: "linija iki jūsų buto veikia"
+    down: "linijos iki jūsų buto nėra"
+  traffic:
+    none: "srautas iki routerio nevaikšto"
+    flowing: "srautas iki routerio vaikšto"
+  device_seen:
+    "yes": "routeris linijoje matomas"
+    "no": "linijoje jokio jūsų įrenginio nematome"
+  device_registered:
+    match: "įrenginys tas pats, kuris registruotas"
+    foreign: "linijoje kitas įrenginys, ne tas, kuris registruotas"
+  line_errors:
+    high: "linijoje daug klaidų"
+    ok: "linija be klaidų"
+  dhcp:
+    ok: "adresą iš mūsų įrenginys gauna"
+    silent: "įrenginys adreso net neprašo"
+  node_reachable:
+    "yes": "mūsų mazgas jūsų gatvėje veikia"
+    "no": "mūsų mazgas nepasiekiamas"
+  neighbours:
+    all_down: "kaimynams tame pačiame mazge irgi neveikia"
+    mixed: "kaimynams veikia"
+  port_flapped:
+    "yes": "matėme, kad įrenginys buvo išsijungęs"
+    "no": "nematome, kad įrenginys būtų buvęs išjungtas"
+  fail_scope:
+    all: "neveikia visuose įrenginiuose"
+    one: "neveikia tik viename įrenginyje"
+  wan_link:
+    up: "interneto lemputė dega"
+    down: "interneto lemputė nedega"
+  power:
+    "yes": "maitinimas yra"
+    "no": "maitinimo nėra"
+  changed_device:
+    "yes": "routeris neseniai pakeistas"
+    "no": "routerio nekeitėte"
+  cable_port:
+    wan: "laidas iš sienos — WAN lizde"
+    lan: "laidas iš sienos — LAN lizde"
+  rebooted:
+    "yes": "routerį jau perkrovėte"
+    "no": "routeris dar neperkrautas"
+
 # MODULIŲ (knowledge/v2/modules) savi klausimai — bendros politikos, ne konkretaus gedimo.
 modules:
   reach:
@@ -543,6 +593,22 @@ equipment:
       button: "Ant routerio galo yra maitinimo mygtukas — išjunkite, palaukite penkias sekundes ir vėl įjunkite."
     lights:
       internet: "Pažiūrėkite į priekinę panelę — lemputė su užrašu INTERNET arba žemės ženkliuku: ar ji dega?"
+  phone:
+    name: "telefonas"
+    locate: "Telefonas, kuriuo dabar kalbate, arba kitas jūsų telefonas."
+    reach: "Ar galite dabar pasižiūrėti telefone?"
+    check:
+      wifi: "Telefone atidarykite nustatymus ir pažiūrėkite, ar Wi-Fi įjungtas ir prisijungęs prie jūsų namų tinklo."
+      reconnect: "Telefone paspauskite ant savo namų tinklo, pasirinkite „pamiršti šį tinklą“ ir prisijunkite iš naujo su slaptažodžiu."
+  computer:
+    name: "kompiuteris"
+    locate: "Kompiuteris, kuriuo naudojatės namuose."
+    connect_direct: "Ištraukite iš routerio tą laidą, kuris atėjo iš sienos, ir įkiškite jį tiesiai į kompiuterio tinklo lizdą."
+    reach: "Ar galite dabar pasižiūrėti kompiuteryje?"
+    check:
+      wifi: "Kompiuteryje pažiūrėkite, ar Wi-Fi įjungtas ir prisijungęs prie jūsų namų tinklo."
+      reconnect: "Kompiuteryje atsijunkite nuo savo Wi-Fi tinklo ir prisijunkite iš naujo."
+      cable: "Patikrinkite laidą tarp kompiuterio ir routerio — ištraukite ir tvirtai įkiškite atgal į abu galus."
   tv_box:
     name: "televizijos priedėlis"
     locate: "Tai plokščia dėžutė prie televizoriaus — į ją eina laidas nuo televizoriaus ir maitinimas."

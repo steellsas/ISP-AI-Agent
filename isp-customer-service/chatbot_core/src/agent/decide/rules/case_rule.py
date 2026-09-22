@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any
 
 from ... import ledger, modules
-from ...case import next_move
+from ...case import judge, next_move
 from ...contract import cards as catalog
 from ...contract.locale import maybe_phrase
 from ..plan import Action, Say, TurnPlan
@@ -44,7 +44,7 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         step = _current(state)
         if step is not None:
             return _step_plan(state, rt, step, facts)
-    if _not_a_fault(facts) and state.case.fault is None:
+    if _not_a_fault(facts, state) and state.case.fault is None:
         # An outage or a suspended service is NOT a fault we diagnose: the inform path owns
         # the turn, and escalating here hijacked it (full eval: four inform scenarios).
         return None
@@ -68,8 +68,28 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
 NOT_OUR_FAULT = ("area_outage", "service_suspended")
 
 
-def _not_a_fault(facts: dict[str, str]) -> bool:
-    return any(facts.get(fact) == "yes" for fact in NOT_OUR_FAULT)
+# Verdicts the engine reaches BEFORE any diagnosis: there is nothing to diagnose, only news
+# to deliver. (These are still v1 pre-checks; they become facts of their own in wave 4 —
+# `service_ordered`, `open_ticket` — once the CRM reading carries them.)
+INFORM_VERDICTS = frozenset(
+    {
+        "service_not_subscribed",
+        "open_ticket_exists",
+        "billing_suspended",
+        "active_outage",
+        "switch_unreachable",
+        "node_fault_unregistered",
+    }
+)
+
+
+def _not_a_fault(facts: dict[str, str], state: Any | None = None) -> bool:
+    if any(facts.get(fact) == "yes" for fact in NOT_OUR_FAULT):
+        return True
+    if state is None:
+        return False
+    reason = ((state.diagnosis.verdicts or {}).get("network") or {}).get("reason")
+    return reason in INFORM_VERDICTS
 
 
 # --- learning a fact ------------------------------------------------------------------
@@ -132,8 +152,44 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
         if all(c.holds(facts) is True for c in conditions) and solution.steps:
             state.case.fault, state.case.solution, state.case.step = fault, index, 0
             state.case.awaiting = None
+            _announce_finding(state, rt, card, facts)
             rt.tracer.emit("case", move="begin", fault=fault, solution=index)
             return
+
+
+def _announce_finding(state: Any, rt: Any, card: Any, facts: dict[str, str]) -> None:
+    """Say what we found before asking for anything.
+
+    A caller who does not know WHY does not follow the instruction (Andrius, 2026-09-22), so
+    the turn that starts a fix also carries the finding: what we see, and what it means. The
+    facts are the card's own reasons (`when`), glossed for a person; the conclusion is the
+    card's. The narrator says it through the `explain_finding` skill (wave 2b).
+    """
+    from ...contract.locale import maybe_phrase
+    from ...facts import summary
+
+    if card.fault in state.case.announced:
+        return  # a finding is news once
+    reasons = [str(c.fact) for c in (judge(card, facts).why and _reasons(card))]
+    seen = summary(facts, reasons)
+    conclusion = maybe_phrase(card.explain.get("conclusion"))
+    if not seen and not conclusion:
+        return
+    state.case.announced.append(card.fault)
+    state.turn.directives.findings = {
+        "faktai": seen,
+        "isvada": conclusion or "",
+        "solutions": "",
+        "offer": "",
+    }
+    rt.tracer.emit("case", move="finding", fault=card.fault, facts=seen)
+
+
+def _reasons(card: Any) -> list:
+    """The conditions the card itself names — what we would tell the caller we saw."""
+    from ...contract.schema import Condition
+
+    return [Condition.parse(text) for text in card.when.all + card.when.any]
 
 
 def _current(state: Any):
@@ -217,6 +273,21 @@ def _done_value(fact: str) -> str:
     """What a done-report settles: being able to reach something is proven by having done
     it; anything else is simply confirmed."""
     return "yes"
+
+
+def _just_acknowledged(state: Any) -> bool:
+    """Was the caller's turn a plain acknowledgement of an instruction we already gave?"""
+    if state.case.delivered != state.case.step:
+        return False
+    from ...perceive.detectors import detect_turn_intent
+
+    heard = (state.dialog.last_heard or "").strip()
+    if not heard or detect_turn_intent(heard) == "done":
+        return False
+    from ...contract.locale import vocab
+
+    low = heard.lower()
+    return len(low.split()) <= 4 and any(mark in low for mark in vocab("acknowledge"))
 
 
 def _action_ran(state: Any, call: Any) -> bool:
@@ -306,6 +377,7 @@ def _retry_or_give_up(state: Any, rt: Any) -> str:
         state.case.attempts[key] = 1
         state.case.step = previous  # the card's clarified retry, once
         state.case.awaiting = None
+        _explain_retry(state, rt)
         rt.tracer.emit("case", move="retry", fault=state.case.fault, step=previous)
         return "moved"
     if state.case.fault and state.case.fault not in state.case.spent:
@@ -313,6 +385,31 @@ def _retry_or_give_up(state: Any, rt: Any) -> str:
     state.case.awaiting = None
     rt.tracer.emit("case", move="fix_failed", fault=state.case.fault)
     return "failed"
+
+
+def _explain_retry(state: Any, rt: Any) -> None:
+    """Why we are asking again. "Nematome, kad įrenginys būtų buvęs išjungtas" is the whole
+    reason the caller is asked to repeat the reboot at the router's own socket — said kindly,
+    never as blame."""
+    from ...facts import gloss
+
+    facts = ledger.facts_of(state)
+    told = [
+        part
+        for part in (
+            gloss("port_flapped", facts.get("port_flapped")),
+            gloss("traffic", facts.get("traffic")),
+        )
+        if part
+    ]
+    if not told:
+        return
+    state.turn.directives.findings = {
+        "faktai": ", ".join(told),
+        "isvada": "",
+        "solutions": "",
+        "offer": "",
+    }
 
 
 def _resolved(state: Any, rt: Any) -> TurnPlan:
@@ -339,6 +436,14 @@ def _step_plan(
 
 
 def _module_plan(state: Any, rt: Any, call, facts: dict[str, str], *, rule: str) -> TurnPlan:
+    """What this module asks of the turn."""
+    # The Case decides this turn: an evidence question left by the old reading layer is not
+    # this turn's goal (it chose the narrator's skill and overrode the step).
+    state.turn.directives.evidence = None
+    return _module_plan_inner(state, rt, call, facts, rule=rule)
+
+
+def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule: str) -> TurnPlan:
     """What this module asks of the turn. `on_fail` retries are the card's business, and a
     step the equipment catalogue cannot word is skipped rather than improvised."""
     model = _device_model(state)
@@ -348,13 +453,28 @@ def _module_plan(state: Any, rt: Any, call, facts: dict[str, str], *, rule: str)
         _advance(state, rt)
         following = _current(state)
         if following is not None:
-            return _module_plan(state, rt, following, facts, rule=f"case.{following.module}")
+            return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
         return _escalate(state, rt, state.case.fault)
 
     state.case.awaiting = step.awaits
     if step.awaits:
         state.diagnosis.pending_evidence_key = step.awaits
     asked = modules.question_of(call, model=model)
+    if step.kind == "instruct" and _just_acknowledged(state):
+        # They said "gerai" — they are doing it. Repeating the instruction is what makes an
+        # agent sound like a machine; the 2b skill already knows how to wait.
+        rt.tracer.emit("case", move="wait", module=call.module)
+        return TurnPlan(
+            owner="procedure",
+            rule="case.wait",
+            say=Say(
+                kind="directive",
+                goal="they are doing it — say you will wait, nothing else",
+                stage="diagnosis",
+            ),
+            awaiting=step.awaits,
+        )
+    state.case.delivered = state.case.step
     if step.kind == "escalate":
         return _escalate(state, rt, state.case.fault, note=step.note)
     if step.kind == "action":

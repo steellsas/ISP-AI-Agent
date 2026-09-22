@@ -1143,3 +1143,22 @@ service_mentions_internet: ["internet", "wifi", "wi-fi"]
 
 # The caller will not say their name (it is recorded as "nenurodyta", never re-asked).
 caller_name_refused: ["nesvarbu", "nesakysiu", "nenoriu sakyt", "nenoriu pasakyt", "nebūtina", "nebutina", "koks skirtumas", "kam jums vardas"]
+
+# Patvirtinimas, kad klientas darys / daro tai, ko paprašėme („gerai", „ok", „bandau") —
+# NE atsakymas ir ne „padariau". Variklis tada pasako, kad palauks, ir instrukcijos
+# NEKARTOJA (S4 eval'e agentas tris ėjimus kartojo tą patį).
+acknowledge:
+  - gerai
+  - gerai gerai
+  - ok
+  - okey
+  - bandau
+  - darau
+  - tuoj
+  - sekundę
+  - minutėlę
+  - žiūriu
+  - einu
+  - eisiu
+  - pažiūrėsiu
+  - patikrinsiu

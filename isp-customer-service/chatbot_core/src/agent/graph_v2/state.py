@@ -445,6 +445,11 @@ class CaseState(BaseModel):
     # when its tool has actually RUN — not when it was planned: a plan can be overridden by
     # a scripted reply, and the engine then walked past a bind that never happened.
     act_count: int = 0
+    # Faults whose finding has been told: news is news once.
+    announced: list[str] = Field(default_factory=list)
+    # The step whose instruction has already gone out. Repeating it at a caller who just
+    # said "gerai" is how an agent stops sounding like a person.
+    delivered: int | None = None
 
 
 class ToolsState(BaseModel):

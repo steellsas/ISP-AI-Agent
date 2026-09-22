@@ -83,6 +83,8 @@ def _words(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
     if spec.module == "check_lights":
         return device.light_question(str(args.get("light") or "internet"))
     action = _action_key(spec, args)
+    if action is None and spec.module == "device_check":
+        action = f"device_check.{args.get('what', 'wifi')}"
     if action:
         return device.how_to(action)
     if spec.module == "reach":
@@ -96,6 +98,10 @@ def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
         return f"reboot.{args.get('method', 'power')}"
     if spec.module == "cable":
         return f"cable.{args.get('action', 'reseat')}"
+    if spec.module == "device_check":
+        return f"device_check.{args.get('what', 'wifi')}"
+    if spec.module == "connect_direct":
+        return "connect_direct"
     return None
 
 

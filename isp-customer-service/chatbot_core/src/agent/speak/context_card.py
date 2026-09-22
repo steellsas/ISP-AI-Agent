@@ -134,9 +134,13 @@ def _case_step(state, rt) -> list[str]:
     if goal:
         out.append(f"PLAN GOAL — {goal}. Nothing else in this reply.")
     if words:
+        # Precision beats style here: these words come from the equipment catalogue, so the
+        # concrete action and the device must survive the paraphrase (full eval: the reboot
+        # instruction lost the words "maitinimo laidą" when the model reworded it freely).
         out.append(
-            f"THE STEP, in words that fit this caller's equipment: „{words}“ — say THIS "
-            "(your own phrasing is fine); do not add steps of your own."
+            f"SAY THIS STEP: „{words}“ — you may shorten it or lead with a short reaction, "
+            "but KEEP the concrete action and the part of the device it names. Do not add "
+            "steps of your own and do not replace it with a question."
         )
     return out
 

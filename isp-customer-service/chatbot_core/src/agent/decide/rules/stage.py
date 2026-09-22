@@ -44,8 +44,13 @@ def plan(state: Any, rt: Any) -> TurnPlan:
 
 
 def _is_fault_script(rule: str) -> bool:
-    """Scripted words that used to come from the evidence drive and the walker."""
-    return str(rule).split(".", 1)[0] in ("diagnosis", "procedure", "identification")
+    """Scripted words that used to come from the evidence drive and the walker.
+
+    Identification is NOT one of them: its scripted ladder (the holder clarification, the
+    address confirmations) is deterministic for privacy reasons and outranks the fault path
+    (full eval: I6, where the Case swallowed „sutartis registruota kitu vardu").
+    """
+    return str(rule).split(".", 1)[0] in ("diagnosis", "procedure")
 
 
 def _stage_plan(state: Any, rt: Any) -> TurnPlan:

@@ -88,3 +88,24 @@ def _neighbours_state(signals: dict[str, Any]) -> str:
 
 
 DERIVATIONS = {"mac_match": _mac_match, "neighbours_state": _neighbours_state}
+
+
+def gloss(fact: str, value: str | None) -> str | None:
+    """How this fact sounds to a person ("traffic=none" -> "srautas iki routerio
+    nevaikšto"). None when the locale does not gloss it — an internal fact is not said out
+    loud rather than said badly.
+    """
+    from .contract.locale import maybe_phrase
+
+    if not value:
+        return None
+    return maybe_phrase(f"fact.{fact}.{value}")
+
+
+def summary(facts: dict[str, str], keys) -> str:
+    """The glossed facts, in the order given, as one spoken list. This is the "what I see"
+    half of a finding: without it the caller has no idea why they are being asked to do
+    something (Andrius, 2026-09-22).
+    """
+    said = [gloss(key, facts.get(key)) for key in keys]
+    return ", ".join(part for part in said if part)

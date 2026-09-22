@@ -1,0 +1,12 @@
+# KLIENTO TELEFONAS / PLANŠETĖ — bazinis lygis (P-8: kiekvienas tipas turi bazinį).
+# Jokių laidų: telefonas prie interneto prisijungia tik per Wi-Fi, ir būtent dėl to
+# instrukcijos turi būti kataloge, o ne naratoriaus improvizacija (S9: „laidas" telefone).
+equipment: phone
+type: phone
+name_key: equipment.phone.name
+locate_key: equipment.phone.locate
+
+actions:
+  device_check.wifi: equipment.phone.check.wifi
+  device_check.reconnect: equipment.phone.check.reconnect
+  reach: equipment.phone.reach
