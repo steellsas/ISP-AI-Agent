@@ -85,6 +85,44 @@ Baigimo kriterijai: vienetų testai žali; eval tekstas ir `--voice` ne blogesni
 kiekvienas įrankis turi manifestą ir kontrakto lentelę; `fake` adapteriu patikrintas
 kiekvienas `on_failure` kelias.
 
+**2c eiga (2026-09-21…22):** šeši commit'ai, po kiekvieno elgsenos pokyčio — pilnas eval.
+
+- **2c-1** 13 manifestų (`knowledge/tools/*.yaml`), schema + validacija startupe +
+  skaitytuvas `contract/tools.py`. Tik deklaracija, elgsena nepakito. Pakeliui: buvau
+  pažymėjęs `append_ticket_note` kaip `requires: [identified]` — testas parodė gyvą kelią,
+  kur variklis prirašo pastabą uždarymo ėjime (kliento telefono pataisymas), todėl sargas
+  grąžintas į `requires: []`. Testai 1361.
+- **2c-2** gate skaito manifestą: `requires` pakeitė `policies.identified_customer_required`,
+  `guards` (max_per_call / cooldown_s / allowed_hours) vienoje vietoje, skaitliukai — būsenoje
+  (`state.tools`), kad checkpoint resume nebeleistų antro porto reseto; atmestas kvietimas
+  neskaičiuojamas; `tool_call` trace su capability + adapter. Eval **178/178**.
+  Išmatuota per 33 skambučius: crm 75, probe 40, outages 27, ticketing 15, action 6, simulate 4.
+- **2c-3** timeout + retries + `tool_slow`. Retries asimetriški: skaitymą po timeout galima
+  kartoti, mutacijos — ne; skambutis įskaitomas PRIEŠ kvietimą, kad timeout'inęs veiksmas
+  nebūtų pakartotas. **Pakeliui nulaužiau eval'ą** (WinError 32): visi kvietimai per worker
+  thread'us, o demo DB jungtys yra thread-local, tad kiekvienas pool'o thread'as laikė savo
+  jungtį ir DB failo nebebuvo galima perkurti. Sprendimas (sutarta): `demo_db`/`rag_local` —
+  inline, thread'as + timeout tik tam, kas gali pakibti tinkle (`mcp:*`, `http:*`, `fake`).
+  Eval po pataisymo **178/178**.
+- **2c-4** `on_failure` kaip planas: gateway palieka klaidą ant ėjimo, grafas grįžta į decide
+  (tas pats redecide ciklas), nauja taisyklių šeima `tools.unavailable` (eilė 2.5) vykdo
+  manifesto kelią — ask_client / ticket / end_call („stuck" uždarymas) / skip; kortelėje
+  eilutė „A SYSTEM DID NOT ANSWER". Eval **178/178**.
+- **2c-5** adapterių registras + `FakeAdapter` (delay / error / fail_times / result).
+  Neregistruotas adapteris krenta startupe — perjungimas į `mcp:network` prieš klientui
+  egzistuojant nebenusileidžia tyliai į demo DB.
+- **2c-6** `returns` tapo tikrinamu pažadu: `diagnose_connection: [verdict, side]`, visi kiti
+  tušti; nedeklaruotas ledger faktas → `returns_violation` (error, skambutis tęsiasi);
+  `decide/gate.py` įrankių vardai — irgi iš manifestų.
+
+Vienetų testai **1385 passed, 1 skipped**; eval tekstas **178/178**.
+
+**Pastebėjimas:** eval'e per 66 skambučius — **nė vieno** `tool_timeout`, `tool_error`,
+`tool_slow` ar `returns_violation`. Tai tikėtina (demo atsako ~1 ms) ir tuo pačiu riba:
+klaidų keliai kol kas padengti tik vienetų testais per `fake` adapterį. Tikras patikrinimas
+bus 12 etape, kai atsiras nuotoliniai adapteriai; tada ir `tool_slow` skaičiai parodys, ar
+reikia frazės į balsą (2c-3 sąmoningai to nedarė — transportas jau turi savo užpildą).
+
 ---
 
 ## Banga 2b — promptai pagal įgūdį (šaka `fix/wave-2b`)
