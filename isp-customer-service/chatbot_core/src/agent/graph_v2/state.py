@@ -383,6 +383,11 @@ class TurnScratch(BaseModel):
     progress_key_at_start: list[Any] | None = None
     # The turn-head family that owned the head this turn (decide/rules/head.py).
     head_owner: str | None = None
+    # A tool that did not answer this turn, as its manifest describes the fallback
+    # (wave 2c-4). Set by the gateway, consumed ONCE by decide/rules/tools.py.
+    tool_failure: dict[str, Any] | None = None
+    # The same failure after decide handled it — what the card tells the narrator to say.
+    tool_trouble: dict[str, Any] | None = None
     # The TurnPlan decide produced; execute and narrate carry it out.
     plan: dict[str, Any] | None = None
     # How many times this turn went back to decide after an action (redecide loop).

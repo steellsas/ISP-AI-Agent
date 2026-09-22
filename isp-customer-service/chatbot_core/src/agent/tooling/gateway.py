@@ -97,6 +97,10 @@ class ToolGateway:
             _record_call(state, name)  # the adapter is about to run: an action may land
             observation, ms = self._execute(state, rt, spec, name, args)
             gated = False
+        data = _parse(observation)
+        if data.get("fallback"):
+            # The tool did not answer: decide plans the manifest's fallback (2c-4).
+            _record_failure(state, rt, data)
         if apply:
             from ..execute.observe import update_state_from_observation
 
@@ -178,6 +182,24 @@ def _record_call(state: Any, name: str) -> None:
         return
     tools_state.calls[name] = tools_state.calls.get(name, 0) + 1
     tools_state.last_at[name] = time.time()
+
+
+def _record_failure(state: Any, rt: Any, data: dict[str, Any]) -> None:
+    """Hand the failure to decide. The engine plans the fallback the manifest declared —
+    ask the caller what we can no longer see, register a technician, end politely or go on
+    — instead of the narrator improvising around a check that never happened."""
+    turn = getattr(state, "turn", None)
+    if turn is None:  # pragma: no cover - a bare state in a unit test
+        return
+    turn.tool_failure = {
+        "tool": data.get("tool"),
+        "capability": data.get("capability"),
+        "fallback": data.get("fallback"),
+        "say_key": data.get("say_key"),
+        "error": data.get("error"),
+    }
+    if data.get("alert"):
+        rt.tracer.emit("ops_alert", tool=data.get("tool"), error=data.get("error"), level="error")
 
 
 def _ms_since(started: float) -> int:

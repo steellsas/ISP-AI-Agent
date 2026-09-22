@@ -39,6 +39,7 @@ def context_card(state, rt) -> str | None:
         _just_heard,
         _identification_notes,
         _case_facts,
+        _tool_trouble,
         _dialogue_state,
         _hypothesis,
         _evidence,
@@ -112,6 +113,22 @@ def _ticket_dialogue(state, rt) -> list[str]:
             "instruction — repeat it or answer their question about it. Do NOT end the call."
         )
     return out
+
+
+def _tool_trouble(state, rt) -> list[str]:
+    """A system we depend on did not answer this turn (wave 2c-4). The narrator must not
+    report a check that never ran — it says what is unavailable, in its own words, and the
+    plan's goal says what happens instead."""
+    trouble = state.turn.tool_trouble
+    if not trouble:
+        return []
+    line = phrase_or(trouble.get("say_key") or "", "")
+    if not line:
+        return []
+    return [
+        "A SYSTEM DID NOT ANSWER (do NOT say you checked anything, do not name the system "
+        f"or the error): say this in your own words — „{line}“"
+    ]
 
 
 # --- what reached the caller's ear -------------------------------------------------------

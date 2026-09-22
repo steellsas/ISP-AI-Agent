@@ -15,14 +15,17 @@ from collections.abc import Callable
 from typing import Any
 
 from .plan import TurnPlan
-from .rules import closing, dialog, head, hypothesis_confirm, intake, stage, ticket
+from .rules import closing, dialog, head, hypothesis_confirm, intake, stage, ticket, tools
 
 Rule = Callable[[Any, Any], TurnPlan | None]
 
 # (§5 row, family, rule) — highest precedence first.
-RULES: list[tuple[int, str, Rule]] = [
+RULES: list[tuple[float, str, Rule]] = [
     (1, "dialog.greeting", dialog.greeting),
     (2, "closing", closing.plan),
+    # A system that did not answer is news of its own: it plans the manifest's fallback
+    # before the stage families plan around a check that never ran (wave 2c-4).
+    (2.5, "tools.unavailable", tools.plan),
     (3, "ticket", ticket.plan),
     (4, "dialog.end_confirm_answer", head.head_rule(head.end_confirm_answer)),
     (5, "identification.reopen_confirm_answer", head.head_rule(head.reopen_confirm_answer)),
