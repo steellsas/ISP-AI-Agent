@@ -46,11 +46,29 @@ def validate() -> Knowledge:
     from .locale import active_language
 
     knowledge = validate_knowledge(language=active_language())
+    _check_adapters(knowledge)
     try:
         check_prompts()
     except PromptError as e:
         raise KnowledgeError([f"prompts: {e}"]) from e
     return knowledge
+
+
+def _check_adapters(knowledge: Knowledge) -> None:
+    """Every tool manifest must name an adapter something can answer (wave 2c-5) — a typo,
+    or a switch to `mcp:network` before that client exists, stops the app instead of
+    quietly running against the demo database."""
+    from ..tooling import adapters
+
+    known = adapters.known()
+    errors = [
+        f"tools/{name}.yaml: adapter '{tool.adapter}' is not registered "
+        f"(known: {', '.join(sorted(known))})"
+        for name, tool in knowledge.tools.items()
+        if tool.adapter not in known
+    ]
+    if errors:
+        raise KnowledgeError(errors)
 
 
 def startup() -> Knowledge:

@@ -102,3 +102,24 @@ def test_a_broken_manifest_is_refused(what, override):
 def test_a_good_manifest_parses():
     m = ToolManifest(**BASE)
     assert m.retries == 0 and m.audit is False and m.guards.max_per_call is None
+
+
+def test_every_manifest_names_an_adapter_that_can_answer():
+    """A manifest that points at an adapter nobody registered stops the app at startup —
+    a switch to mcp:network before that client exists must not fall back to the demo DB."""
+    from agent.contract import loader
+    from agent.contract.schema import KnowledgeError
+    from agent.tooling import adapters
+
+    known = adapters.known()
+    assert {m.adapter for m in manifests.get().values()} <= known
+
+    knowledge = loader.validate()
+    broken = knowledge.tools["reset_port"].model_copy(update={"adapter": "mcp:network"})
+    with pytest.raises(KnowledgeError, match="not registered"):
+        loader._check_adapters(type(knowledge)(tools={**knowledge.tools, "reset_port": broken}))
+
+
+def test_the_fake_adapter_is_only_reachable_through_a_manifest():
+    """Nothing in the shipped manifests points at `fake` — it exists for tests only."""
+    assert all(m.adapter != "fake" for m in manifests.get().values())

@@ -35,9 +35,8 @@ logger = logging.getLogger(__name__)
 # its own (thread-local) SQLite connection open for the life of the process — which is how
 # the eval's between-scenario DB rebuild started failing with WinError 32.
 _POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="tool")
-# Adapters that answer in-process (no timeout, no thread). `fake` is deliberately NOT here:
-# it is the seam that exercises the slow and broken paths in tests.
-INLINE_ADAPTERS = frozenset({"demo_db", "rag_local"})
+from .adapters import INLINE_ADAPTERS  # noqa: E402  (adapters own the naming)
+
 # What may be retried after a TIMEOUT: a read-only lookup is safe to repeat, a mutation is
 # not — it may have landed on the line already.
 READ_ONLY_CAPABILITIES = frozenset({"probe", "crm", "outages", "knowledge", "simulate"})
@@ -132,7 +131,8 @@ class ToolGateway:
                 if inline:
                     observation = self.provider.execute(name, args)
                 else:
-                    future: Future[str] = _POOL.submit(self.provider.execute, name, args)
+                    execute = _adapter_for(spec, self.provider).execute
+                    future: Future[str] = _POOL.submit(execute, name, args)
                     observation = future.result(timeout=spec.timeout_s)
             except FutureTimeout:
                 retry = attempt < attempts and spec.capability in READ_ONLY_CAPABILITIES
@@ -200,6 +200,15 @@ def _record_failure(state: Any, rt: Any, data: dict[str, Any]) -> None:
     }
     if data.get("alert"):
         rt.tracer.emit("ops_alert", tool=data.get("tool"), error=data.get("error"), level="error")
+
+
+def _adapter_for(spec: Any, default: Any) -> Any:
+    """The thing that answers this tool. A named adapter must be registered — startup
+    validation refuses a manifest naming one that is not, so this never silently falls
+    back to the demo database."""
+    from . import adapters
+
+    return adapters.get(spec.adapter) or default
 
 
 def _ms_since(started: float) -> int:
