@@ -514,6 +514,35 @@ tools:
   unavailable_crm: "Kol kas nepavyksta pasiekti sutarčių duomenų. Labai atsiprašau — paskambinkite kiek vėliau, mielai padėsime."
   unavailable_ticket: "Registracijos sistema kol kas neatsako, bet jūsų kontaktus turiu — kolegos susisieks."
 
+# ĮRANGOS KATALOGAS (knowledge/v2/equipment/*.yaml): kaip įrenginys vadinamas, kur jo
+# ieškoti, kaip su juo elgtis. Modelis paveldi šeimą, šeima — bazinį, todėl čia yra tik
+# tai, kas skiriasi.
+equipment:
+  router:
+    name: "routeris"
+    locate: "Tai nedidelė dėžutė su lemputėmis — dažniausiai koridoriuje arba prie lango; į ją įeina laidas iš laiptinės."
+    reboot:
+      power: "Ištraukite maitinimo laidą iš paties routerio, palaukite penkias sekundes ir įkiškite atgal."
+    cable:
+      reseat: "Ištraukite iš sienos ateinantį laidą iš routerio ir tvirtai įkiškite atgal."
+    lights:
+      power: "Ar dega maitinimo lemputė?"
+      internet: "Kokios spalvos interneto lemputė — žalia, raudona, ar visai nedega?"
+  tplink:
+    reboot:
+      button: "Ant routerio galo yra maitinimo mygtukas — išjunkite, palaukite penkias sekundes ir vėl įjunkite."
+    lights:
+      internet: "Pažiūrėkite į priekinę panelę: lemputė su žemės ženkliuku arba užrašu INTERNET — ji žalia, oranžinė, raudona ar nedega?"
+  tv_box:
+    name: "televizijos priedėlis"
+    locate: "Tai plokščia dėžutė prie televizoriaus — į ją eina laidas nuo televizoriaus ir maitinimas."
+    reboot:
+      power: "Ištraukite priedėlio maitinimo laidą, palaukite penkias sekundes ir įkiškite atgal."
+    cable:
+      reseat: "Patikrinkite laidą tarp priedėlio ir televizoriaus — ištraukite ir tvirtai įkiškite atgal."
+    lights:
+      power: "Ar priedėlyje dega lemputė?"
+
 verdict:
   # How a verdict is named to the caller (gloss) and why a ticket is needed.
   billing_suspended:

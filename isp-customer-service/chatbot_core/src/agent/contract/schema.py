@@ -477,6 +477,35 @@ class FaultCard(_Model):
     knowledge: str | None = None
 
 
+# --- Equipment catalogue (wave 3, P-8) --------------------------------------------
+
+
+class LightSpec(_Model):
+    """One indicator: how to ask about it, and what each answer MEANS as a fact. This is
+    what keeps model knowledge out of the fault cards."""
+
+    ask_key: str | None = None
+    means: dict[str, str] = {}
+
+
+class EquipmentSpec(_Model):
+    """One level of the catalogue: a model, a manufacturer family, or the basic device.
+
+    `extends` names the level below; what is written here overrides it, and everything
+    else is inherited — so the basic file carries what is true of every router and a
+    family file only what is not.
+    """
+
+    equipment: str
+    type: str  # router | modem | ont | tv_box | computer …
+    extends: str | None = None
+    matches: list[str] = []  # what the CRM model string / the caller's words may contain
+    name_key: str | None = None
+    locate_key: str | None = None
+    actions: dict[str, str] = {}  # "reboot.power" -> phrase key
+    lights: dict[str, LightSpec] = {}
+
+
 # --- Tools (P-7 manifests) --------------------------------------------------------
 
 

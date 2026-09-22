@@ -1,0 +1,15 @@
+# BAZINIS TV PRIEDĖLIS — kol TV kortelių dar nėra (4 banga), bet hierarchija turi
+# galioti kiekvienam tipui: reach(device=tv_box) jau veikia be nė vienos TV kortelės.
+equipment: tv_box
+type: tv_box
+name_key: equipment.tv_box.name
+locate_key: equipment.tv_box.locate
+
+actions:
+  reboot.power: equipment.tv_box.reboot.power
+  cable.reseat: equipment.tv_box.cable.reseat
+
+lights:
+  power:
+    ask_key: equipment.tv_box.lights.power
+    means: {"on": power=yes, "off": power=no}

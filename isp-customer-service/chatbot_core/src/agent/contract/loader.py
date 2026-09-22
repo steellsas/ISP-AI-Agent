@@ -48,6 +48,7 @@ def validate() -> Knowledge:
     knowledge = validate_knowledge(language=active_language())
     _check_adapters(knowledge)
     _check_cards()
+    _check_equipment()
     try:
         check_prompts()
     except PromptError as e:
@@ -183,6 +184,61 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
     return errors
 
 
+def _check_equipment() -> None:
+    """The catalogue must always be able to answer (wave 3e, P-8).
+
+    Every device type needs a basic level — that is the promise that the agent never gives
+    up on a device it does not know — every `extends` must resolve, every phrase key must
+    be in the locale, and a light may only mean a fact the cards can actually read.
+    """
+    from ..contract import equipment as catalog
+    from ..contract import signals as signal_catalog
+    from .locale import active_language, load_locale
+
+    specs = catalog.get()
+    locale = load_locale(active_language())
+    known_facts = set(signal_catalog.get())
+    for card in _card_catalogue().values():
+        known_facts.update(card.needs)
+    for spec in _module_catalogue().values():
+        known_facts.update(spec.produces)
+
+    errors: list[str] = []
+    for name, spec in specs.items():
+        where = f"equipment/{name}.yaml"
+        if spec.extends and spec.extends not in specs:
+            errors.append(f"{where}: extends unknown level '{spec.extends}'")
+        for key in (spec.name_key, spec.locate_key, *spec.actions.values()):
+            if key and not locale.has(key):
+                errors.append(f"{where}: phrase '{key}' is missing")
+        for light, described in spec.lights.items():
+            if described.ask_key and not locale.has(described.ask_key):
+                errors.append(f"{where}: lights.{light}.ask_key '{described.ask_key}' is missing")
+            for seen, meaning in described.means.items():
+                fact = meaning.split("=", 1)[0]
+                if fact not in known_facts:
+                    errors.append(
+                        f"{where}: lights.{light}.means.{seen} sets unknown fact '{fact}'"
+                    )
+    for device_type in sorted({s.type for s in specs.values()}):
+        if catalog.basic(device_type) is None:
+            errors.append(f"equipment: type '{device_type}' has no basic level")
+    if errors:
+        raise KnowledgeError(errors)
+
+
+def _card_catalogue():
+    from ..contract import cards as catalog
+
+    return catalog.cards()
+
+
+def _module_catalogue():
+    from ..contract import cards as catalog
+
+    return catalog.modules()
+
+
 def startup() -> Knowledge:
     """Validate everything once at startup; raise KnowledgeError when anything is broken."""
     knowledge = validate()
@@ -195,7 +251,7 @@ def startup() -> Knowledge:
 def reload() -> None:
     """Drop every knowledge cache (files, locale, derived readers)."""
     from .. import detectors, faq, faults, identification, inform, intents, services, ticket_types
-    from . import cards, limits, locale, policies, signals, tools
+    from . import cards, equipment, limits, locale, policies, signals, tools
 
     read_yaml.cache_clear()
     for module in (
@@ -212,6 +268,7 @@ def reload() -> None:
         inform,
         signals,
         cards,
+        equipment,
         tools,
     ):
         module.reload()
