@@ -330,6 +330,9 @@ class SignalMap(_Model):
 
 
 class Signals(_Model):
+    # The tool whose observation carries these signals: how the engine knows it can LOOK
+    # instead of asking the caller.
+    probe: str | None = None
     facts: dict[str, SignalMap]
 
 

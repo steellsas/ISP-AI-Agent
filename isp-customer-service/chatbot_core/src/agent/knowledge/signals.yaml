@@ -15,6 +15,10 @@
 #   derive  pavadintas kodo skaitytuvas (agent/facts.py DERIVATIONS) — kai reikia
 #           palyginti DU signalus arba laiką; kiekvienas toks atvejis čia įvardintas
 
+# Zondas, kurio observacija atneša šiuos signalus. Variklis iš čia žino, KAIP gauti bet
+# kurį telemetrijos faktą, ir klausia kliento tik to, ko zondas negali pasakyti.
+probe: diagnose_connection
+
 facts:
   # --- skambutį baigiantys faktai (pigiausi, tikrinami pirmi) ---
   service_suspended:

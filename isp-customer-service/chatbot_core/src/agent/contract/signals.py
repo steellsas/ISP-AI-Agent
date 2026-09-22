@@ -14,14 +14,23 @@ SIGNALS_FILE = KNOWLEDGE_DIR / "signals.yaml"
 
 
 @lru_cache(maxsize=1)
-def get() -> dict[str, SignalMap]:
-    """Every fact the telemetry can establish, keyed by fact name."""
+def _catalogue() -> Signals:
     errors: list[str] = []
     signals = _read(SIGNALS_FILE, Signals, errors, KNOWLEDGE_DIR)
     if errors or signals is None:
         raise KnowledgeError(errors)
-    return signals.facts
+    return signals
+
+
+def get() -> dict[str, SignalMap]:
+    """Every fact the telemetry can establish, keyed by fact name."""
+    return _catalogue().facts
+
+
+def probe() -> str | None:
+    """The tool that reads these signals — what the engine runs instead of asking."""
+    return _catalogue().probe
 
 
 def reload() -> None:
-    get.cache_clear()
+    _catalogue.cache_clear()

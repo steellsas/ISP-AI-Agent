@@ -142,6 +142,29 @@ Kas išnyksta ir kur nukeliauja:
 | `rag_section: 0..6` (numeris) | `knowledge:` dokumentas, gabalai pagal žingsnio/modulio ID |
 | `evidence.client.<key>.{question,why,simpler,clarify}_key` | `needs.<key>.ask` (viena šaknis, variacijos — įgūdžio darbas) |
 
+## 3a. Moduliai = informacija IR veiksmas (Andrius, 2026-09-22)
+
+Pastebėjimas verčiant korteles: gedimo IŠSIAIŠKINIMAS ir SPRENDIMAS persidengia, ir juos
+abu aptarnauja tie patys moduliai. `check_lights` duoda `wan_link` (diagnozė) ir kartu yra
+veiksmas su klientu; `reboot` duoda `port_flapped` + `traffic`, t. y. savo paties patikrą.
+
+Todėl moduliai turi **atvirkštinį indeksą**: faktas → modulis, kuris jį gauna
+(`produces:`). Naujam gedimui pakanka aprašyti `when:` faktais — variklis pats parenka,
+kaip kiekvieną faktą gauti:
+
+```
+kortelė:   when: [wan_link=down, line_link=up]
+variklis:  wan_link   ← check_lights(device=router)   (modulio `produces`)
+           line_link  ← diagnose_connection            (zondas — telemetrija)
+           fail_scope ← klausimas klientui             (zondo nėra)
+```
+
+Pirmumas: **zondas (telemetrija) → modulis → klausimas klientui**. Kliento laikas
+brangiausias, todėl klausiame tik to, ko niekas kitas negali pasakyti.
+
+`needs:` kortelėje lieka tik tam, ko indeksas negali žinoti: frazės raktas klausimui ir ką
+konkreti reikšmė reiškia ŠIAI kortelei (`confirms` / `rules_out` / `hands_to=…`).
+
 ## 4. Case kontraktas
 
 ```
