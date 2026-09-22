@@ -281,6 +281,43 @@ class Limits(RootModel[dict[str, StrictInt | StrictFloat | Limit]]):
         return {k: v if isinstance(v, Limit) else Limit(value=v) for k, v in self.root.items()}
 
 
+# --- Signals -> facts (wave 3) ----------------------------------------------------
+
+
+class Threshold(_Model):
+    """A numeric signal read against a limit from limits.yaml."""
+
+    limit: str
+    then: str
+    otherwise: str = Field(alias="else")
+
+
+class SignalMap(_Model):
+    """How ONE telemetry signal becomes a fact. Exactly one reading is declared:
+    `map` (value -> value, with `*` and `null`), `present` (did we see anything at all),
+    `above` (a numeric limit) or `derive` (a named reader in agent/facts.py, for the two
+    readings that compare signals with each other)."""
+
+    signal: str | None = None
+    map: dict[str, str] | None = None
+    present: bool = False
+    above: Threshold | None = None
+    derive: str | None = None
+
+    @model_validator(mode="after")
+    def _one_reading(self) -> SignalMap:
+        readings = [bool(self.map), self.present, bool(self.above), bool(self.derive)]
+        if sum(readings) != 1:
+            raise ValueError("declare exactly one of: map, present, above, derive")
+        if not self.derive and not self.signal:
+            raise ValueError("a signal name is required unless the fact is derived")
+        return self
+
+
+class Signals(_Model):
+    facts: dict[str, SignalMap]
+
+
 # --- Tools (P-7 manifests) --------------------------------------------------------
 
 
@@ -387,6 +424,7 @@ class Knowledge:
     verdicts: Verdicts | None = None
     limits: Limits | None = None
     policies: Policies | None = None
+    signals: Signals | None = None
     tools: dict[str, ToolManifest] = field(default_factory=dict)
 
 
@@ -657,6 +695,7 @@ def validate_knowledge(
         "verdicts": ("verdicts.yaml", Verdicts),
         "limits": ("limits.yaml", Limits),
         "policies": ("policies.yaml", Policies),
+        "signals": ("signals.yaml", Signals),
     }
     for attr, (name, model) in single_files.items():
         setattr(k, attr, _read(root / name, model, errors, root))

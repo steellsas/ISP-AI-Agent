@@ -22,6 +22,15 @@ aprašo tik jo sprendimą. Todėl:
 - įrangos modelis (CRM `customer_equipment.model`) niekur neskaitomas; lemputės aprašytos
   MD failuose, kurių runtime nenaudoja (AI).
 
+## 1a. Sprendimai (Andrius, 2026-09-22)
+
+| Klausimas | Sprendimas |
+|---|---|
+| Faktų lygis | **Žali faktai**, sąlygos kortelėse (`traffic=none`, ne `router_side_ok`) — interpretacija neturi grįžti į kodą |
+| Per-žingsniniai `hint` | Į modulio vieną `goal` + įgūdžius (2b); tono taisyklės jau ten |
+| „Ar galite dabar prieiti?" | **Bendra politika**: vienas `reach(device=…)` modulis visoms kortelėms |
+| Įrangos katalogas | Pradedam nuo `_generic/router` + `_generic/tv_box` + `tplink/_family` (CRM demo turi tik TP-Link Archer) |
+
 ## 2. Faktų žodynas
 
 **Faktas** = `key = value`, su šaltiniu (`telemetry` | `client` | `analyst`), citata ir ėjimo
