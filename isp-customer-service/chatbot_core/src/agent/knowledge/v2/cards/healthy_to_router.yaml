@@ -27,15 +27,27 @@ needs:
     values:
       all: confirms
       one: confirms
+    answers:
+      "all": answers_healthy_to_router_fail_scope_all
+      "one": answers_healthy_to_router_fail_scope_one
   fail_device:
     ask: "pack.healthy_to_router.fail_device.question"
     values: {phone: confirms, computer: confirms}
+    answers:
+      "phone": answers_healthy_to_router_fail_device_phone
+      "computer": answers_healthy_to_router_fail_device_computer
   connection_type:
     ask: "pack.healthy_to_router.connection_type.question"
     values: {wired: confirms, wifi: confirms}
+    answers:
+      "wired": answers_healthy_to_router_connection_type_wired
+      "wifi": answers_healthy_to_router_connection_type_wifi
   rebooted:
     ask: "pack.healthy_to_router.rebooted.question"
     values: {"yes": confirms, "no": confirms}
+    answers:
+      "yes": answers_healthy_to_router_rebooted_yes
+      "no": answers_healthy_to_router_rebooted_no
 
 solution:
 # Neveikia visur, routeris dar neperkrautas — perkrovimas yra pigiausias žingsnis.

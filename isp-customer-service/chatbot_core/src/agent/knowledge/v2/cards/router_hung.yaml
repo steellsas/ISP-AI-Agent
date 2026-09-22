@@ -35,6 +35,9 @@ needs:
       all: confirms                 # visuose įrenginiuose — routeris pakibęs
       one: hands_to=healthy_to_router # viename — routeris gyvas, problema iki įrenginio
 
+    answers:
+      "all": answers_router_hung_fail_scope_all
+      "one": answers_router_hung_fail_scope_one
 solution:
 - when: [fail_scope=all]
   steps:

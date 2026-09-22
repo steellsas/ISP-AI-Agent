@@ -23,9 +23,15 @@ needs:
   changed_device:
     ask: "pack.foreign_mac.changed_device.question"
     values: {"yes": confirms, "no": confirms}
+    answers:
+      "yes": answers_foreign_mac_changed_device_yes
+      "no": answers_foreign_mac_changed_device_no
   cable_port:
     ask: "pack.foreign_mac.cable_port.question"
     values: {wan: confirms, lan: confirms}
+    answers:
+      "wan": answers_foreign_mac_cable_port_wan
+      "lan": answers_foreign_mac_cable_port_lan
 
 solution:
 # Pasikeitė routerį — pririšam naują įrenginį prie linijos ir patikrinam.

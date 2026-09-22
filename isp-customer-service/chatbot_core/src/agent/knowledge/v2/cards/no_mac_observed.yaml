@@ -41,6 +41,9 @@ needs:
   lan_active:
     ask: "pack.no_mac_observed.lan_active.question"
     values: {active: confirms, inactive: confirms}
+    answers:
+      "inactive": answers_no_mac_observed_lan_active_inactive
+      "active": answers_no_mac_observed_lan_active_active
 
 solution:
 # Turi kompiuterį — laikinas internetas per tiltą, o meistras registruojamas bet kokiu atveju.

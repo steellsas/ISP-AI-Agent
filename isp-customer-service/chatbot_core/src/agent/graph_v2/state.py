@@ -432,6 +432,9 @@ class CaseState(BaseModel):
     attempts: dict[str, int] = Field(default_factory=dict)
     # The step is waiting for this fact before the solution may move on.
     awaiting: str | None = None
+    # Faults whose solution ran and did not work: never started again, so a card that
+    # still matches cannot send the caller round the same fix twice.
+    spent: list[str] = Field(default_factory=list)
 
 
 class ToolsState(BaseModel):

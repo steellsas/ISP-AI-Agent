@@ -390,6 +390,9 @@ class Need(_Model):
     probe: str | None = None  # tool name
     ask: str | None = None  # phrase key for the question
     values: dict[str, str] = {}  # value -> "confirms" | "rules_out" | "hands_to=<fault>"
+    # value -> the locale vocabulary list that recognises it in the caller's words. This is
+    # what reads "tik viename" as `fail_scope=one` with no model call at all.
+    answers: dict[str, str] = {}
 
     @model_validator(mode="after")
     def _reachable(self) -> Need:

@@ -139,6 +139,15 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
             for value, meaning in need.values.items():
                 if meaning.startswith("hands_to=") and meaning.split("=", 1)[1] not in cards:
                     errors.append(f"{where}: needs.{fact}.values.{value} hands to an unknown card")
+            for value, vocab in need.answers.items():
+                # The vocabulary is what recognises the answer without a model call; a
+                # missing list would silently send every answer to the LLM.
+                if not isinstance(locale.vocabulary.get(vocab), tuple):
+                    errors.append(
+                        f"{where}: needs.{fact}.answers.{value} '{vocab}' is not a vocabulary list"
+                    )
+                if value not in need.values:
+                    errors.append(f"{where}: needs.{fact}.answers.{value} is not one of its values")
         if card.escalate and card.escalate.need and not locale.has(card.escalate.need):
             errors.append(f"{where}: escalate.need phrase '{card.escalate.need}' is missing")
         for i, solution in enumerate(card.solution):
