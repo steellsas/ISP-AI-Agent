@@ -450,6 +450,16 @@ class CaseState(BaseModel):
     # The step whose instruction has already gone out. Repeating it at a caller who just
     # said "gerai" is how an agent stops sounding like a person.
     delivered: int | None = None
+    # The turn in which the caller's words last moved the solution. One utterance moves it
+    # ONE step: the redecide loop re-reads the same words on every hop, and three hops once
+    # walked past an instruction that was never given.
+    moved_on_turn: int | None = None
+    # How many times the "when you are back" agreement has been asked. Asking a third time is
+    # pressure, not politeness: the caller has been told, and the call ends warmly.
+    homework_asks: int = 0
+    # The step is being retried, so the card's `on_fail` call is what runs — a retry that
+    # repeats the identical instruction teaches the caller nothing.
+    retrying: bool = False
 
 
 class ToolsState(BaseModel):

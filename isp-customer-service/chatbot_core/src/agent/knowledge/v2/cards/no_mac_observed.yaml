@@ -64,8 +64,8 @@ solution:
 # Turi kompiuterį — laikinas internetas per tiltą, o meistras registruojamas bet kokiu atveju.
 - when: [has_computer=yes]
   steps:
-  - module: reach
-    args: {device: router}
+  # Be `reach`: lempučių patikra pati nuveda klientą prie routerio, o „ar galite prieiti?"
+  # čia tik pridėdavo ėjimą ir buvo klaidingai perskaitoma iš „neturiu kito routerio".
   - module: check_lights
     args: {device: router}
   - module: connect_direct

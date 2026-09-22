@@ -335,18 +335,25 @@ def ticket_need(state: Any, rt: Any) -> str:
     s = state
     if s.ticket.request_type:
         return phrase("ticket.need_request")
-    cause = (
-        (s.diagnosis.hypothesis or {}).get("cause")
-        or (s.resolution.procedure or {}).get("verdict")
-        or ""
-    )
+    # Wave 3: the fault is the Case's, and its reason is the card's (`escalate.need`). A
+    # damaged cable used to announce itself as "gedimo tipas neaiškus" because this read the
+    # walker's verdict, which no longer exists.
+    cause = s.case.fault or (s.diagnosis.verdicts.get("network") or {}).get("reason") or ""
+    from ...contract import cards as _cards
+    from ...contract.locale import maybe_phrase as _maybe
+
+    card = _cards.card(cause)
+    if card is not None and card.escalate and card.escalate.need:
+        card_need = _maybe(card.escalate.need)
+        if card_need:
+            return card_need
     # P-E (live 2026-09-08): escalating WITHOUT the step's action done must
     # not claim it happened — "routeris perkrautas, bet ryšys neatsistatė"
     # went out when the caller never rebooted (not at home). A refusal /
     # cannot-now escalation speaks the honest state instead of the fault
     # file's post-action wording.
     # The unclear fault names no cause to the caller (no telemetry jargon).
-    if (s.resolution.procedure or {}).get("verdict") == "unclear_fault":
+    if cause == "unclear_fault":
         return phrase("ticket.need_unclear")
     reason = (s.resolution.procedure or {}).get("escalate_reason")
     if reason in NOTHING_DONE_REASONS:

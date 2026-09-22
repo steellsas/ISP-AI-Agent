@@ -19,6 +19,17 @@ def call(make_state, make_runtime):
     return state, rt
 
 
+def said(state, rt, fact, value):
+    """A new caller turn: their words land, and the turn counter moves.
+
+    The counter matters — one utterance may move the solution ONE step, because the redecide
+    loop re-reads the same words on every hop (live: three steps in one turn, walking past an
+    instruction that was never given).
+    """
+    state.dialog.turn_count += 1
+    record_client(state, rt, fact, value)
+
+
 class TestTheCaseWalksTheCall:
     def test_it_looks_before_it_asks(self, call):
         state, rt = call
@@ -40,7 +51,7 @@ class TestTheCaseWalksTheCall:
     def test_the_answer_starts_the_fix(self, call):
         state, rt = call
         record_telemetry(state, rt, BASE)
-        record_client(state, rt, "fail_scope", "all")
+        said(state, rt, "fail_scope", "all")
 
         plan = case_rule.plan(state, rt)
 
@@ -50,9 +61,9 @@ class TestTheCaseWalksTheCall:
     def test_then_one_instruction_per_turn(self, call):
         state, rt = call
         record_telemetry(state, rt, BASE)
-        record_client(state, rt, "fail_scope", "all")
+        said(state, rt, "fail_scope", "all")
         case_rule.plan(state, rt)  # reach
-        record_client(state, rt, "reachable", "yes")
+        said(state, rt, "reachable", "yes")
 
         plan = case_rule.plan(state, rt)
 
@@ -63,10 +74,11 @@ class TestTheCaseWalksTheCall:
     def test_after_the_reboot_the_engine_verifies_with_the_probe(self, call):
         state, rt = call
         record_telemetry(state, rt, BASE)
-        record_client(state, rt, "fail_scope", "all")
+        said(state, rt, "fail_scope", "all")
         case_rule.plan(state, rt)
-        record_client(state, rt, "reachable", "yes")
+        said(state, rt, "reachable", "yes")
         case_rule.plan(state, rt)  # reboot
+        state.dialog.turn_count += 1
         state.dialog.last_intent = "done"  # "padariau" — the one thing the line cannot say
 
         plan = case_rule.plan(state, rt)
@@ -156,13 +168,13 @@ class TestWhenTheCallerCannotDoItNow:
     def _at_the_reach_step(self, call):
         state, rt = call
         record_telemetry(state, rt, BASE)
-        record_client(state, rt, "fail_scope", "all")
+        said(state, rt, "fail_scope", "all")
         case_rule.plan(state, rt)  # reach
         return state, rt
 
     def test_not_now_gives_the_instruction_for_later(self, call):
         state, rt = self._at_the_reach_step(call)
-        record_client(state, rt, "reachable", "no")
+        said(state, rt, "reachable", "no")
 
         plan = case_rule.plan(state, rt)
 
@@ -172,9 +184,9 @@ class TestWhenTheCallerCannotDoItNow:
 
     def test_agreeing_closes_the_call_as_a_callback(self, call):
         state, rt = self._at_the_reach_step(call)
-        record_client(state, rt, "reachable", "no")
+        said(state, rt, "reachable", "no")
         case_rule.plan(state, rt)
-        record_client(state, rt, "later_agreed", "yes")
+        said(state, rt, "later_agreed", "yes")
 
         plan = case_rule.plan(state, rt)
 
@@ -182,9 +194,9 @@ class TestWhenTheCallerCannotDoItNow:
 
     def test_declining_it_offers_a_technician(self, call):
         state, rt = self._at_the_reach_step(call)
-        record_client(state, rt, "reachable", "no")
+        said(state, rt, "reachable", "no")
         case_rule.plan(state, rt)
-        record_client(state, rt, "later_agreed", "no")
+        said(state, rt, "later_agreed", "no")
 
         plan = case_rule.plan(state, rt)
 

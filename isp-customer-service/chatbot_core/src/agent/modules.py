@@ -115,6 +115,11 @@ def _awaits(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
         return first.split("=", 1)[0] if first else None
     if spec.kind == "ask":
         return spec.produces[0] if spec.produces else None
+    if spec.kind == "verify" and args.get("ask") and not args.get("evidence"):
+        # Nothing on the line can tell us whether a phone's Wi-Fi works: that verification is
+        # the caller's word, so the step waits for the fact their answer establishes.
+        stated = next(iter(spec.answers.values()), None)
+        return stated.split("=", 1)[0] if stated else None
     return None
 
 

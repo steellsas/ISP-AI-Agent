@@ -106,11 +106,26 @@ def _not_now_plan(state: Any, rt: Any, facts: dict[str, str]) -> TurnPlan | None
         )
     if agreed == "no":
         return _escalate(state, rt, state.case.fault)
+    if state.case.homework_asks >= 2:
+        # They have been told twice and the answer is not readable. Asking again is pressure;
+        # the honest end is a warm goodbye with the door open.
+        rt.tracer.emit("case", move="callback", fault=state.case.fault, why="homework_untold")
+        return TurnPlan(
+            owner="closing",
+            rule="case.later_assumed",
+            action=Action(type="close", name="callback"),
+            say=Say(
+                kind="directive",
+                goal="say warmly that they can call back any time if it does not help, then goodbye",
+                stage="closing",
+            ),
+        )
     from ...contract.schema import ModuleCall
 
     call = ModuleCall(module="homework", args={"device": _device_type(state)})
     step = modules.plan_step(call, model=_device_model(state))
     state.case.awaiting = "later_agreed"
+    state.case.homework_asks += 1
     state.diagnosis.pending_evidence_key = "later_agreed"
     rt.tracer.emit("case", move="homework", fault=state.case.fault)
     return TurnPlan(
@@ -266,7 +281,10 @@ def _current(state: Any):
     steps = card.solution[state.case.solution].steps
     if state.case.step >= len(steps):
         return None
-    return steps[state.case.step]
+    step = steps[state.case.step]
+    if state.case.retrying and step.on_fail is not None:
+        return step.on_fail  # the card's clarified second attempt
+    return step
 
 
 def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
@@ -293,6 +311,8 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         return _advance(state, rt)
     if settled is False:
         return _retry_or_give_up(state, rt)
+    if state.case.moved_on_turn == state.dialog.turn_count:
+        return "waiting"  # their words already moved us once this turn
     # A module that asks reads its OWN answer (the generic policies own their questions).
     read = modules.read_answer(call, state.dialog.last_heard, device=_device(state))
     if read is not None:
@@ -301,14 +321,17 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         facts = ledger.facts_of(state)
     awaited = state.case.awaiting
     if awaited and awaited in facts:
-        return _advance(state, rt)
+        if awaited == "restored" and facts[awaited] == "no":
+            # Their own answer says it did not work: the card decides what that means.
+            return _retry_or_give_up(state, rt)
+        return _advance(state, rt, by_words=True)
     if _reported_done(state) or _reported_outcome(state, call):
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
         # three turns for a yes it no longer needed) and finishes an instruction.
         if awaited:
             ledger.record_client(state, rt, awaited, _done_value(awaited))
-        return _advance(state, rt)
+        return _advance(state, rt, by_words=True)
     return "waiting"
 
 
@@ -409,7 +432,10 @@ def _reflect_plan(state: Any, rt: Any) -> TurnPlan | None:
     )
 
 
-def _advance(state: Any, rt: Any) -> str:
+def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
+    if by_words:
+        state.case.moved_on_turn = state.dialog.turn_count
+    state.case.retrying = False
     _queue_reflection(state)
     state.case.step += 1
     state.case.awaiting = None
@@ -442,6 +468,7 @@ def _retry_or_give_up(state: Any, rt: Any) -> str:
     if retry is not None and state.case.attempts.get(key, 0) == 0:
         state.case.attempts[key] = 1
         state.case.step = previous  # the card's clarified retry, once
+        state.case.retrying = True
         state.case.awaiting = None
         _explain_retry(state, rt)
         rt.tracer.emit("case", move="retry", fault=state.case.fault, step=previous)

@@ -303,12 +303,17 @@ class TestUnclearFaultTicket:
         agent.state.intake.problem_type = "tv"
         assert "neaiškus" in ticket_need(agent.state, agent.runtime)
 
-    def test_ticket_need_with_verdict_unchanged(self, db_connection):
+    def test_the_ticket_reason_is_the_cards(self, db_connection):
+        """Wave 3: the reason comes from the fault the Case settled on, worded by its card —
+        a damaged cable used to announce itself as "gedimo tipas neaiškus"."""
         from agent.decide.rules.ticket import ticket_need
 
         agent = _agent()
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed"}
+        agent.state.case.fault = "no_mac_observed"
         assert "maršrutizatorius" in ticket_need(agent.state, agent.runtime)
+
+        agent.state.case.fault = "crc_errors"
+        assert "laid" in ticket_need(agent.state, agent.runtime)
 
 
 class TestCompetenceSurface:

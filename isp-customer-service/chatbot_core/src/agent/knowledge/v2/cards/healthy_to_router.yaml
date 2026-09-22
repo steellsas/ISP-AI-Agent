@@ -82,10 +82,11 @@ solution:
   steps:
   - module: device_check
     args: {device: phone, what: wifi}
-  - module: verify
-    args: {ask: restored}
-  - module: device_check
-    args: {device: phone, what: reconnect}
+    # Nepadėjo — tada prijungiam iš naujo. Tai `on_fail`, ne eilinis žingsnis: kitaip agentas
+    # prašo prisijungti iš naujo net tada, kai internetas jau veikia (S9 eval'e).
+    on_fail:
+      module: device_check
+      args: {device: phone, what: reconnect}
   - module: verify
     args: {ask: restored}
 # Kompiuteris kabeliu: laidas iki įrenginio.
@@ -100,10 +101,9 @@ solution:
   steps:
   - module: device_check
     args: {device: computer, what: wifi}
-  - module: verify
-    args: {ask: restored}
-  - module: device_check
-    args: {device: computer, what: reconnect}
+    on_fail:
+      module: device_check
+      args: {device: computer, what: reconnect}
   - module: verify
     args: {ask: restored}
 
