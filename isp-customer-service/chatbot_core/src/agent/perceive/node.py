@@ -94,6 +94,10 @@ def perceive(state: Any, rt: Any, user_input: str | None) -> None:
     # label) — everything below consumes it.
     read_turn(state, rt, user_input)
     ingest_client_evidence(state, rt, user_input)
+    # Wave 3: the facts the reader settled are the Case's facts.
+    from ..ledger import mirror_evidence
+
+    mirror_evidence(state, rt)
     state.turn.side_topic_active = bool(classify_side_topic(state, rt, user_input))
 
 

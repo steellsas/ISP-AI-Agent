@@ -39,6 +39,7 @@ solution:
   steps:
   - module: bind
     args: {device: router}
+  - module: port_reset
   - module: verify
     args:
       evidence: [traffic=flowing]
@@ -50,6 +51,7 @@ solution:
     args: {device: router, action: move_to_wan, port: WAN}
   - module: bind
     args: {device: router}
+  - module: port_reset
   - module: verify
     args:
       evidence: [traffic=flowing]
@@ -59,6 +61,7 @@ solution:
   steps:
   - module: bind
     args: {device: router}
+  - module: port_reset
   - module: verify
     args:
       evidence: [traffic=flowing]

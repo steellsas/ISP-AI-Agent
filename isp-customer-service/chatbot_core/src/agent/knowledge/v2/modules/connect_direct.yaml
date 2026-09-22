@@ -6,3 +6,5 @@ params:
 goal: "the caller's computer connected straight to the line cable"
 text: "procedure:bridge.plug_{to}"
 produces: [device_seen, traffic]
+simulate: simulate_bridge_connect
+simulate_env: SIMULATE_BRIDGE

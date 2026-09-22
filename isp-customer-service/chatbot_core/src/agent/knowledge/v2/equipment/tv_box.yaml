@@ -8,8 +8,9 @@ locate_key: equipment.tv_box.locate
 actions:
   reboot.power: equipment.tv_box.reboot.power
   cable.reseat: equipment.tv_box.cable.reseat
+  reach: equipment.tv_box.reach
 
 lights:
   power:
     ask_key: equipment.tv_box.lights.power
-    means: {"on": power=yes, "off": power=no}
+    means: {"yes": power=yes, "no": power=no}

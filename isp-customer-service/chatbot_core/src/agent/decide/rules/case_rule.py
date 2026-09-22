@@ -26,9 +26,17 @@ from ..plan import Action, Say, TurnPlan
 
 def plan(state: Any, rt: Any) -> TurnPlan | None:
     """This turn on the fault path."""
+    reflect = _reflect_plan(state, rt)
+    if reflect is not None:
+        return reflect
     facts = ledger.facts_of(state)
     if state.case.fault is not None:
         status = _absorb(state, rt, facts)
+        # The caller's physical action must reach the line BEFORE anything reads it again,
+        # or the verification judges a reboot the database never saw (live probe, S6).
+        reflect = _reflect_plan(state, rt)
+        if reflect is not None:
+            return reflect
         if status == "failed":
             return _escalate(state, rt, state.case.fault)
         if status == "solved":
@@ -36,6 +44,10 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         step = _current(state)
         if step is not None:
             return _step_plan(state, rt, step, facts)
+    if _not_a_fault(facts) and state.case.fault is None:
+        # An outage or a suspended service is NOT a fault we diagnose: the inform path owns
+        # the turn, and escalating here hijacked it (full eval: four inform scenarios).
+        return None
     move = next_move(facts, unavailable=ledger.unavailable(state))
     rt.tracer.emit("case", move=move.kind, fact=move.fact, fault=move.fault, why=move.why)
     if move.kind == "learn":
@@ -49,6 +61,15 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         step = _current(state)
         return _step_plan(state, rt, step, facts) if step else _escalate(state, rt, move.fault)
     return _escalate(state, rt, move.fault)
+
+
+# Facts that mean someone else owns the turn: there is nothing to diagnose, only news to
+# deliver (a registered outage, a suspended service).
+NOT_OUR_FAULT = ("area_outage", "service_suspended")
+
+
+def _not_a_fault(facts: dict[str, str]) -> bool:
+    return any(facts.get(fact) == "yes" for fact in NOT_OUR_FAULT)
 
 
 # --- learning a fact ------------------------------------------------------------------
@@ -72,6 +93,9 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     if source.kind == "module":
         call = _call_for(source.module, state)
         return _module_plan(state, rt, call, facts, rule=f"case.learn.{source.module}")
+    # The reading layer gives a short answer its meaning from the question that is out
+    # ("Tik viename." only means fail_scope=one because that is what we asked).
+    state.diagnosis.pending_evidence_key = move.fact
     return TurnPlan(
         owner="diagnosis",
         rule="case.ask",
@@ -135,34 +159,132 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     call = _current(state)
     if call is None:
         return "solved" if state.case.fault and state.case.solution is not None else "waiting"
+    if _action_ran(state, call):
+        # An engine action needs nothing from the caller: once its tool has actually run the
+        # step is done. Measured on the tool COUNTER, because a planned action may never run
+        # (a scripted reply overrode the plan and the engine walked past the bind).
+        return _advance(state, rt)
+    if state.case.awaiting_probe:
+        return "waiting"  # its own reading has not come back yet
     settled = modules.step_done(call, facts)
     if settled is True:
         return _advance(state, rt)
     if settled is False:
         return _retry_or_give_up(state, rt)
+    # A module that asks reads its OWN answer (the generic policies own their questions).
+    read = modules.read_answer(call, state.dialog.last_heard, device=_device(state))
+    if read is not None:
+        fact, value = read
+        ledger.record_client(state, rt, fact, value)
+        facts = ledger.facts_of(state)
     awaited = state.case.awaiting
     if awaited and awaited in facts:
         return _advance(state, rt)
-    if awaited is None and _reported_done(state):
-        # An instruction with nothing to answer: their word that it is done moves us on.
+    if _reported_done(state) or _reported_outcome(state, call):
+        # They DID it. That answers any question about being able to (live S6: "ištraukiau
+        # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
+        # three turns for a yes it no longer needed) and finishes an instruction.
+        if awaited:
+            ledger.record_client(state, rt, awaited, _done_value(awaited))
         return _advance(state, rt)
     return "waiting"
 
 
+def _queue_reflection(state: Any) -> None:
+    """The step we are leaving was something the caller DID; in the demo the line has to
+    show it before anything reads the line again."""
+    call = _current(state)
+    if call is None:
+        return
+    spec = catalog.module(call.module)
+    if spec is not None and spec.simulate:
+        state.case.reflect = spec.simulate
+
+
+def _reported_outcome(state: Any, call: Any) -> bool:
+    """Did they report the RESULT instead of the step? "Mirksi, puslapis atsidaro — veikia"
+    is not an answer to "can you reach it", it is the outcome — so the step it was on is
+    finished and the verification takes over (live probe, S6)."""
+    from ...perceive.detectors import detect_restored
+
+    spec_kind = getattr(catalog.module(call.module), "kind", None)
+    if spec_kind not in ("instruct", "ask"):
+        return False
+    return detect_restored(state.dialog.last_heard) is not None
+
+
+def _done_value(fact: str) -> str:
+    """What a done-report settles: being able to reach something is proven by having done
+    it; anything else is simply confirmed."""
+    return "yes"
+
+
+def _action_ran(state: Any, call: Any) -> bool:
+    """Did this step's own tool actually run since the step was entered?"""
+    spec = catalog.module(call.module)
+    if spec is None or spec.kind != "action" or not spec.tool:
+        return False
+    return state.tools.calls.get(spec.tool, 0) > state.case.act_count
+
+
 def _reported_done(state: Any) -> bool:
-    """Did the caller just say they did it? The perception layer reads this as the turn's
-    intent; a plain "taip" to an instruction counts."""
-    if state.turn.done_report_key:
+    """Did the caller just say they did it?
+
+    Deliberately narrow: the turn INTENT ("ištraukiau ir įkišau atgal" -> done), the
+    perception layer's done-report, or a plain yes. A mere "answer" is not a done-report —
+    reading it as one would advance a step on any reply at all.
+    """
+    if state.turn.done_report_key or state.dialog.last_intent == "done":
         return True
-    if state.dialog.last_intent in ("done", "answer"):
+    from ...perceive.detectors import detect_turn_intent, detect_yes_no
+    from ...resolution import Outcome
+
+    heard = state.dialog.last_heard
+    if detect_turn_intent(heard) == "done":
         return True
-    understanding = state.turn.understanding or {}
-    return understanding.get("turn_type") == "answer"
+    return detect_yes_no(heard) is Outcome.YES
+
+
+def _reflect_plan(state: Any, rt: Any) -> TurnPlan | None:
+    """DEMO: make the seeded line show what the caller just did, then decide again in the
+    same turn so the verification reads the NEW state (the S6 probe registered a ticket
+    for a reboot the database never saw)."""
+    import os
+
+    tool = state.case.reflect
+    if not tool:
+        return None
+    state.case.reflect = None
+    spec = next(
+        (m for m in catalog.modules().values() if m.simulate == tool),
+        None,
+    )
+    flag = spec.simulate_env if spec else None
+    if flag and os.getenv(flag, "off").lower() != "on":
+        return None  # production: nothing simulates anything
+    rt.tracer.emit("case", move="reflect", tool=tool)
+    return TurnPlan(
+        owner="procedure",
+        rule="case.reflect",
+        action=Action(type="tool", name=tool, args={"customer_id": _cid(state)}),
+        say=Say(kind="none"),
+        redecide_after_action=True,
+    )
 
 
 def _advance(state: Any, rt: Any) -> str:
+    _queue_reflection(state)
     state.case.step += 1
     state.case.awaiting = None
+    # Entering a verification means we need a reading of our OWN, taken after the action:
+    # the previous one is what told a caller whose internet was back to reboot again. An
+    # action step records how often its tool has run so far, so "it happened" is a fact.
+    following = _current(state)
+    if following is not None:
+        spec = catalog.module(following.module)
+        state.case.awaiting_probe = bool(spec and spec.kind == "verify")
+        if spec is not None and spec.kind == "action" and spec.tool:
+            state.case.act_count = state.tools.calls.get(spec.tool, 0)
     if _current(state) is None:
         rt.tracer.emit("case", move="solution_done", fault=state.case.fault)
         return "solved"
@@ -230,17 +352,27 @@ def _module_plan(state: Any, rt: Any, call, facts: dict[str, str], *, rule: str)
         return _escalate(state, rt, state.case.fault)
 
     state.case.awaiting = step.awaits
+    if step.awaits:
+        state.diagnosis.pending_evidence_key = step.awaits
+    asked = modules.question_of(call, model=model)
     if step.kind == "escalate":
         return _escalate(state, rt, state.case.fault, note=step.note)
     if step.kind == "action":
+        # A module with words ANNOUNCES what the engine is doing and the turn ends there —
+        # the caller hears "pririšiu, sekundėlę" instead of a silent chain of tools (full
+        # eval, S1). A module without words is internal plumbing: silent, same turn.
+        speaks = bool(asked)
         return TurnPlan(
             owner="procedure",
             rule=rule,
             action=Action(type="tool", name=step.tool, args={"customer_id": _cid(state)}),
-            say=Say(kind="directive", goal=step.goal, stage="diagnosis"),
-            redecide_after_action=True,
+            say=Say(kind="directive", text=asked, goal=step.goal, stage="diagnosis")
+            if speaks
+            else Say(kind="none"),
+            redecide_after_action=not speaks,
         )
     if step.kind == "verify":
+        state.case.awaiting_probe = True
         return TurnPlan(
             owner="procedure",
             rule=rule,
@@ -252,7 +384,9 @@ def _module_plan(state: Any, rt: Any, call, facts: dict[str, str], *, rule: str)
     return TurnPlan(
         owner="procedure",
         rule=rule,
-        say=Say(kind="directive", text=step.text, goal=step.goal, stage="diagnosis"),
+        # A module that asks speaks its own question; an instruction speaks the catalogue's
+        # words for this device, and both are a FALLBACK — the narrator words them.
+        say=Say(kind="directive", text=asked or step.text, goal=step.goal, stage="diagnosis"),
         awaiting=step.awaits,
     )
 
@@ -282,6 +416,13 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
 
 def _signals(state: Any) -> dict[str, Any]:
     return ((state.diagnosis.verdicts or {}).get("network") or {}).get("signals") or {}
+
+
+def _device(state: Any):
+    """The caller's device as the catalogue describes it (for reading light answers)."""
+    from ...equipment import for_signals
+
+    return for_signals(_signals(state))
 
 
 def _device_type(state: Any) -> str:

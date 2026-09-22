@@ -7,4 +7,9 @@ params:
   device: {required: true}          # router | modem | ont | tv_box | computer
 goal: "clear whether the caller can get to the {device} right now"
 text: "equipment:{device}.locate"   # kaip jį atpažinti, jei nežino kur jis
+ask: modules.reach.can_now
+detector: yes_no
+answers:
+  "yes": reachable=yes
+  "no": reachable=no
 produces: [reachable]

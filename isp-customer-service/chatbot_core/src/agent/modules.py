@@ -122,6 +122,59 @@ def can_offer(call: ModuleCall, *, model: str | None = None) -> bool:
     return bool(plan and plan.text)
 
 
+def question_of(call: ModuleCall, *, model: str | None = None) -> str | None:
+    """The module's question for THIS device.
+
+    Lithuanian inflects the device ("prie routerio", "prie priedėlio"), so the catalogue's
+    own wording wins when it has one and the module's generic phrase is the fallback.
+    """
+    spec = catalog.module(call.module)
+    if spec is None:
+        return None
+    args = _with_defaults(spec, call)
+    device = for_device(str(args.get("device") or args.get("to") or "router"), model)
+    if spec.module == "check_lights":
+        return device.light_question(str(args.get("light") or "internet")) if device else None
+    specific = device.how_to(spec.module) if device else None
+    return specific or maybe_phrase(spec.ask) or maybe_phrase(spec.announce)
+
+
+def read_answer(call: ModuleCall, text: str | None, *, device=None) -> tuple[str, str] | None:
+    """What the caller's answer to THIS module means, as ("fact", "value").
+
+    A module declares its reader (`detector`) and what each label means, so the generic
+    policies read their own answers — the S6 probe hung for three turns because `reach`
+    had no reader and nothing could settle `reachable`.
+    """
+    spec = catalog.module(call.module)
+    if spec is None or not spec.detector or not text:
+        return None
+    label = _detect(spec.detector, text)
+    if label is None:
+        return None
+    if spec.module == "check_lights" and device is not None:
+        light = str(_with_defaults(spec, call).get("light") or "internet")
+        return device.fact_from_light(light, label)
+    stated = spec.answers.get(label)
+    if not stated or "=" not in stated:
+        return None
+    fact, value = stated.split("=", 1)
+    return fact, value
+
+
+def _detect(detector: str, text: str) -> str | None:
+    """Run one of the deterministic readers (perceive/detectors.py) and return its label."""
+    from .perceive import detectors
+
+    reader = getattr(detectors, f"detect_{detector}", None)
+    if reader is None:  # pragma: no cover - startup validation names the readers
+        return None
+    outcome = reader(text)
+    if outcome is None:
+        return None
+    return str(getattr(outcome, "value", outcome)).lower()
+
+
 def step_done(call: ModuleCall, facts: dict[str, str]) -> bool | None:
     """Is this step finished? True / False for a verification with evidence, None while we
     are still waiting (a verification with only the caller's word is settled by the engine

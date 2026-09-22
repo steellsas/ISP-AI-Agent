@@ -170,6 +170,13 @@ def update_state_from_observation(state, rt, action: str, observation: str):
         # Diagnostic findings -> case state under their DOMAIN, so the agent
         # reconciles them with the customer and never loses / re-runs them, and
         # new fault families attach additively (§12.1).
+        if action == "diagnose_connection":
+            # Wave 3: the reading becomes FACTS (knowledge/signals.yaml) and the fault
+            # cards reason over them. The verdict below is the v1 path, still running.
+            from ..ledger import record_telemetry
+
+            record_telemetry(state, rt, obs_data.get("signals"))
+
         if action == "diagnose_connection" and isinstance(obs_data.get("verdict"), dict):
             v = obs_data["verdict"]
             state.diagnosis.verdicts["network"] = {

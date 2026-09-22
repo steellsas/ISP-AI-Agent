@@ -7,5 +7,9 @@ params:
   evidence: {}                      # faktai, kurie turi pasitvirtinti (jei zondas yra)
   ask: {}                           # ko klausti kliento
 probe: diagnose_connection
+detector: restored
+answers:
+  "yes": restored=yes
+  "no": restored=no
 goal: "clear whether the service came back"
 produces: [traffic, line_link, port_flapped]

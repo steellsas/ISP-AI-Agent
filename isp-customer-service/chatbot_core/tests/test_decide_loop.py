@@ -19,14 +19,17 @@ HOPS = [
     (False, 0, "narrate"),
     (True, 0, "decide"),
     (True, 1, "decide"),
-    (True, 2, "narrate"),  # the budget (plan_redecide_max) is spent
+    (True, 2, "decide"),
+    (True, 3, "narrate"),  # the budget (plan_redecide_max) is spent
     (True, 9, "narrate"),
 ]
 
 
 @pytest.mark.parametrize("again, hops, goes_to", HOPS)
 def test_the_turn_goes_back_to_decide_while_the_budget_lasts(again, hops, goes_to):
-    assert limits.get("plan_redecide_max") == 2
+    # Wave 3 raised it to the longest honest chain: reflect the caller's action, read the
+    # line, then say what it showed.
+    assert limits.get("plan_redecide_max") == 3
     state = GraphState(
         turn=TurnScratch(
             plan=TurnPlan(
@@ -87,8 +90,9 @@ def test_a_redeciding_plan_re_plans_the_turn_then_speaks(monkeypatch):
         context=_runtime(),
     )
 
-    assert passes["n"] == limits.get("plan_redecide_max") + 1
-    assert out["turn"].plan["rule"] == "test.pass3"
+    budget = limits.get("plan_redecide_max")
+    assert passes["n"] == budget + 1
+    assert out["turn"].plan["rule"] == f"test.pass{budget + 1}"
     assert out["turn"].plan_hops == limits.get("plan_redecide_max")
 
 

@@ -23,6 +23,19 @@ def run_action(state: Any, rt: Any, plan: Any) -> str | None:
 
         preflight_phone(state, rt)
         return None
+    if action.type == "tool":
+        # Wave 3: the Case plans a tool by NAME — a probe to read the line, an engine
+        # action (a bind), or the demo's reflection of what the caller just did. It goes
+        # through the one gateway like every other call, so the manifest's guards,
+        # timeout and failure plan all apply.
+        rt.tools.run(
+            state,
+            rt,
+            action.name,
+            {"customer_id": state.identity.customer_id, **action.args},
+            reason=plan.rule,
+        )
+        return None
     if action.type == "procedure_step" and action.name == "run_due_action":
         from .diagnosis import ensure_action_done
 

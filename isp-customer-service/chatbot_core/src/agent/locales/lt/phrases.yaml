@@ -514,6 +514,15 @@ tools:
   unavailable_crm: "Kol kas nepavyksta pasiekti sutarčių duomenų. Labai atsiprašau — paskambinkite kiek vėliau, mielai padėsime."
   unavailable_ticket: "Registracijos sistema kol kas neatsako, bet jūsų kontaktus turiu — kolegos susisieks."
 
+# MODULIŲ (knowledge/v2/modules) savi klausimai — bendros politikos, ne konkretaus gedimo.
+modules:
+  reach:
+    can_now: "Ar galite dabar prieiti prie įrenginio?"
+  bind:
+    announce: "Matau linijoje naują įrenginį — tai jūsų routeris. Pririšiu jį prie jūsų linijos, sekundėlę."
+  port_reset:
+    announce: "Perkrauju jūsų prievadą, kad naujas įrenginys gautų adresą — užtruks kelias sekundes."
+
 # ĮRANGOS KATALOGAS (knowledge/v2/equipment/*.yaml): kaip įrenginys vadinamas, kur jo
 # ieškoti, kaip su juo elgtis. Modelis paveldi šeimą, šeima — bazinį, todėl čia yra tik
 # tai, kas skiriasi.
@@ -525,14 +534,15 @@ equipment:
       power: "Ištraukite maitinimo laidą iš paties routerio, palaukite penkias sekundes ir įkiškite atgal."
     cable:
       reseat: "Ištraukite iš sienos ateinantį laidą iš routerio ir tvirtai įkiškite atgal."
+    reach: "Ar galite dabar prieiti prie routerio?"
     lights:
       power: "Ar dega maitinimo lemputė?"
-      internet: "Kokios spalvos interneto lemputė — žalia, raudona, ar visai nedega?"
+      internet: "Ar interneto lemputė dega?"
   tplink:
     reboot:
       button: "Ant routerio galo yra maitinimo mygtukas — išjunkite, palaukite penkias sekundes ir vėl įjunkite."
     lights:
-      internet: "Pažiūrėkite į priekinę panelę: lemputė su žemės ženkliuku arba užrašu INTERNET — ji žalia, oranžinė, raudona ar nedega?"
+      internet: "Pažiūrėkite į priekinę panelę — lemputė su užrašu INTERNET arba žemės ženkliuku: ar ji dega?"
   tv_box:
     name: "televizijos priedėlis"
     locate: "Tai plokščia dėžutė prie televizoriaus — į ją eina laidas nuo televizoriaus ir maitinimas."
@@ -540,6 +550,7 @@ equipment:
       power: "Ištraukite priedėlio maitinimo laidą, palaukite penkias sekundes ir įkiškite atgal."
     cable:
       reseat: "Patikrinkite laidą tarp priedėlio ir televizoriaus — ištraukite ir tvirtai įkiškite atgal."
+    reach: "Ar galite dabar prieiti prie televizijos priedėlio?"
     lights:
       power: "Ar priedėlyje dega lemputė?"
 

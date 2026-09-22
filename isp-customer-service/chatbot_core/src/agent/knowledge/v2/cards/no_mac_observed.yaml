@@ -57,6 +57,7 @@ solution:
     args: {to: computer}
   - module: bind
     args: {device: computer}
+  - module: port_reset
   - module: verify
     args:
       evidence: [device_seen=yes, traffic=flowing]

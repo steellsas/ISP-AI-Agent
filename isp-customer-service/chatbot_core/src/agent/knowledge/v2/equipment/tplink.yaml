@@ -14,5 +14,5 @@ actions:
 
 lights:
   internet:
+    # TP-Link lemputė turi savo vietą ir užrašą — klausimas tikslesnis, skaitymas tas pats.
     ask_key: equipment.tplink.lights.internet
-    means: {green: wan_link=up, orange: wan_link=down, red: wan_link=down, "off": wan_link=down}

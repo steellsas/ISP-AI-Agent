@@ -14,13 +14,17 @@ locate_key: equipment.router.locate
 actions:
   reboot.power: equipment.router.reboot.power
   cable.reseat: equipment.router.cable.reseat
+  reach: equipment.router.reach
 
 # Lemputė → faktas. Kortelės nežino modelių: „INTERNET raudona" (TP-Link) ir „LOS mirksi"
 # (ONT) abi virsta wan_link=down, ir kortelė kalba tik apie wan_link.
+# Reikšmės sutampa su tuo, ką skaitytuvas (perceive/detectors.detect_lights) tikrai
+# perskaito: dega / nedega. Spalvų skaitymas — 4 banga (spalvų skaitytuvas arba percepcija
+# su katalogo reikšmėmis); tol klausiame to, ką galime suprasti.
 lights:
   power:
     ask_key: equipment.router.lights.power
-    means: {"on": power=yes, "off": power=no}
+    means: {"yes": power=yes, "no": power=no}
   internet:
     ask_key: equipment.router.lights.internet
-    means: {green: wan_link=up, red: wan_link=down, "off": wan_link=down}
+    means: {"yes": wan_link=up, "no": wan_link=down}

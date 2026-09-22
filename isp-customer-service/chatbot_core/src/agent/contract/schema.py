@@ -457,6 +457,17 @@ class ModuleSpec(_Model):
     tool: str | None = None  # an engine action's tool (kind: action)
     probe: str | None = None  # the tool that verifies (kind: verify)
     produces: list[str] = []  # facts this module can establish
+    # A module that asks carries its own question and its own reader, so the generic
+    # policies (can you reach it, is it back) work for any device and any fault.
+    ask: str | None = None  # phrase key for a question
+    announce: str | None = None  # phrase key for what the agent SAYS while the engine acts
+    detector: str | None = None  # a reader in perceive/detectors.py
+    answers: dict[str, str] = {}  # the detector's label -> "fact=value"
+    # DEMO ONLY: the tool that makes the seeded database reflect what the caller just did
+    # physically, and the environment flag that allows it. Off in production, where the
+    # line changes by itself.
+    simulate: str | None = None
+    simulate_env: str | None = None
 
 
 class FaultCard(_Model):

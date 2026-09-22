@@ -40,6 +40,7 @@ def context_card(state, rt) -> str | None:
         _identification_notes,
         _case_facts,
         _tool_trouble,
+        _case_step,
         _dialogue_state,
         _hypothesis,
         _evidence,
@@ -111,6 +112,31 @@ def _ticket_dialogue(state, rt) -> list[str]:
             "REGISTRATION DECLINED, THE CALLER WANTS TO KEEP SOLVING: say in one sentence "
             "that you are not registering a technician, and GO BACK to the last solving "
             "instruction — repeat it or answer their question about it. Do NOT end the call."
+        )
+    return out
+
+
+def _case_step(state, rt) -> list[str]:
+    """What the CASE decided this turn (wave 3): the one thing to achieve, and the words the
+    equipment catalogue guarantees for this caller's device.
+
+    The v1 packs reached the narrator through the pack's step hint; a v2 module reaches it
+    here, which is why this section exists at all — without it the engine decided to
+    instruct a reboot and the reply never said so (live probe, S6).
+    """
+    plan = state.turn.plan or {}
+    rule = str(plan.get("rule") or "")
+    if not rule.startswith("case."):
+        return []
+    say = plan.get("say") or {}
+    goal, words = say.get("goal"), say.get("text")
+    out: list[str] = []
+    if goal:
+        out.append(f"PLAN GOAL — {goal}. Nothing else in this reply.")
+    if words:
+        out.append(
+            f"THE STEP, in words that fit this caller's equipment: „{words}“ — say THIS "
+            "(your own phrasing is fine); do not add steps of your own."
         )
     return out
 

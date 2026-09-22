@@ -38,6 +38,8 @@ def record_telemetry(state: Any, rt: Any, signals: dict[str, Any] | None) -> dic
     state.case.facts.update(read)
     # A fact we can now see is no longer a fact we failed to get.
     state.case.unavailable = [f for f in state.case.unavailable if f not in read]
+    # A fresh reading is what a verification was waiting for.
+    state.case.awaiting_probe = False
     if changed and rt is not None:
         rt.tracer.emit("facts", source=TELEMETRY, changed=changed)
     return changed
@@ -77,3 +79,23 @@ def unavailable(state: Any) -> frozenset[str]:
 
 def _last_signals(state: Any) -> dict[str, Any]:
     return ((state.diagnosis.verdicts or {}).get("network") or {}).get("signals") or {}
+
+
+def mirror_evidence(state: Any, rt: Any) -> dict[str, str]:
+    """Copy what the evidence READER accepted into the case ledger (wave 3f).
+
+    The reading layer is unchanged — perception, the keyword extractor, the conflict
+    clarification and the "done without a result" guard all carry live fixes — so the facts
+    it settles are mirrored here rather than read a second time. Telemetry still wins:
+    `record_client` refuses to overwrite what the line says.
+    """
+    from .evidence import UNKNOWN
+
+    changed: dict[str, str] = {}
+    for fact, entry in (state.diagnosis.evidence or {}).items():
+        value = entry.get("value")
+        if not value or value == UNKNOWN or entry.get("conflict"):
+            continue  # a value in doubt is not a fact yet: the clarify question settles it
+        if record_client(state, rt, fact, str(value)):
+            changed[fact] = str(value)
+    return changed

@@ -115,13 +115,24 @@ class TestWhenTheFixDoesNotWork:
 
 class TestWhenNothingFits:
     def test_an_unreadable_case_ends_honestly(self, call):
+        """A fault nothing describes: the honest move is a technician, not the closest-
+        looking procedure."""
         state, rt = call
-        record_telemetry(state, rt, {**BASE, "billing_suspended": True})
+        record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests"})
 
         plan = case_rule.plan(state, rt)
 
         assert plan.rule == "case.escalate"
         assert state.ticket.stage == "phone"  # the contacts are collected first
+
+    def test_an_outage_or_a_debt_is_not_ours_to_diagnose(self, call):
+        """There is nothing to fix — only news to deliver. The Case yields the turn, and
+        escalating here hijacked the inform path (full eval: four scenarios)."""
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "billing_suspended": True})
+
+        assert case_rule.plan(state, rt) is None
+        assert state.ticket.stage is None
 
     def test_a_step_the_catalogue_cannot_word_is_skipped_not_improvised(self, call):
         """A device nobody described has no button instruction: the engine moves on instead

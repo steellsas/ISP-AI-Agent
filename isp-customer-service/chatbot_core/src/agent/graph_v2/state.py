@@ -435,6 +435,16 @@ class CaseState(BaseModel):
     # Faults whose solution ran and did not work: never started again, so a card that
     # still matches cannot send the caller round the same fix twice.
     spent: list[str] = Field(default_factory=list)
+    # DEMO: the tool that reflects the caller's physical action, due before the next read.
+    reflect: str | None = None
+    # A verification is out and its probe has not answered yet: until it does, the step is
+    # WAITING. Judging the previous reading told a caller whose internet was already back to
+    # power-cycle the router again (live probe, S6).
+    awaiting_probe: bool = False
+    # How many times this step's tool had run when the step was entered. A step is finished
+    # when its tool has actually RUN — not when it was planned: a plan can be overridden by
+    # a scripted reply, and the engine then walked past a bind that never happened.
+    act_count: int = 0
 
 
 class ToolsState(BaseModel):

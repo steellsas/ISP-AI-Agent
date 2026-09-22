@@ -53,19 +53,24 @@ class TestTheLadder:
 
 
 class TestLightsBecomeFacts:
-    """The cards speak of `wan_link`; only the catalogue knows about colours."""
+    """The cards speak of `wan_link`; only the catalogue knows about lights.
+
+    We ask what we can READ. The reader we have (`detect_lights`) understands lit / not lit,
+    so that is what the catalogue asks and maps — a question inviting a colour would produce
+    answers nothing could interpret. Colour reading arrives with a colour reader (wave 4).
+    """
 
     @pytest.mark.parametrize(
         "model, light, seen, fact",
         [
-            ("TP-Link Archer C6", "internet", "orange", ("wan_link", "down")),
-            ("TP-Link Archer C6", "internet", "green", ("wan_link", "up")),
-            ("TP-Link Archer C6", "internet", "off", ("wan_link", "down")),
-            (None, "internet", "red", ("wan_link", "down")),
-            (None, "power", "off", ("power", "no")),
+            ("TP-Link Archer C6", "internet", "yes", ("wan_link", "up")),
+            ("TP-Link Archer C6", "internet", "no", ("wan_link", "down")),
+            (None, "internet", "yes", ("wan_link", "up")),
+            (None, "internet", "no", ("wan_link", "down")),
+            (None, "power", "no", ("power", "no")),
         ],
     )
-    def test_a_colour_means_a_fact(self, model, light, seen, fact):
+    def test_what_the_caller_saw_means_a_fact(self, model, light, seen, fact):
         assert for_device("router", model).fact_from_light(light, seen) == fact
 
     def test_an_answer_we_cannot_read_is_not_a_fact(self):
@@ -74,7 +79,17 @@ class TestLightsBecomeFacts:
         assert for_device("router", None).fact_from_light("internet", "flickering") is None
 
     def test_a_light_the_device_does_not_have_says_nothing(self):
-        assert for_device("tv_box").fact_from_light("internet", "green") is None
+        assert for_device("tv_box").fact_from_light("internet", "yes") is None
+
+    def test_the_question_and_the_reader_agree(self):
+        """Every light the catalogue asks about must be answerable by the reader whose
+        labels it maps — otherwise we ask something we cannot understand."""
+        from agent.contract import equipment as catalog
+
+        for name, spec in catalog.get().items():
+            for light, described in spec.lights.items():
+                if described.means:
+                    assert set(described.means) <= {"yes", "no"}, f"{name}.{light}"
 
 
 class TestTheCatalogueIsComplete:

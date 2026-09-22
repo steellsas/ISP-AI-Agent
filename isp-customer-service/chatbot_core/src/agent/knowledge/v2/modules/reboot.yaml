@@ -10,3 +10,6 @@ params:
 goal: "the {device} power-cycled at its own socket, about five seconds, plugged back"
 text: "equipment:{device}.reboot.{method}"
 produces: [port_flapped, traffic]
+# Demo: kliento fizinis veiksmas atsispindi sėdintoje DB (eval/demo; produkcijoje išjungta).
+simulate: simulate_router_reboot
+simulate_env: SIMULATE_REBOOT
