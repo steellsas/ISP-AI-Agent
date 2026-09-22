@@ -20,11 +20,9 @@ def classify_side_topic(state, rt, user_input: str | None) -> bool:
     state.turn.side_topic_active = False
     if not user_input or not s.identity.customer_id or s.closing.case_closed or state.ticket.stage:
         return False
-    from ..decide.hypothesis import due
 
     if (
-        due(state, "conflict") is not None
-        or state.dialog.end_confirm_pending
+        state.dialog.end_confirm_pending
         or state.dialog.resume_hold_due
         or state.closing.debt_offer == "asked"
     ):

@@ -1,0 +1,66 @@
+# PAKIBĘS ROUTERIS (v2 kortelė, 3 banga)
+#
+# Ta pati žinia kaip faults/internet_pakibes_routeris.yaml, bet kortelė dabar dalyvauja
+# DIAGNOZĖJE: pati pasako, kada ji kandidatė (`when`), kas ją atmeta (`rules_out`) ir ko
+# dar reikia paklausti, kad atsiskirtų nuo giminingų kortelių (`needs`). Sprendimas —
+# moduliai su parametrais; 9 v1 žingsniai sutilpo į tris.
+#
+# Technikas (Andrius, 2026-08-31): telemetrija įrenginį MATO, DHCP ok, bet srauto NĖRA;
+# sprendimas — perkrovimas IŠ MAITINIMO (ne mygtuku, ne prailgintuvu); po ~1 min ryšys
+# grįžta. Patikra: srautas grįžo IR matyti, kad įrenginys buvo dingęs (port flap =
+# perkrovimo liudininkas) — kitaip perkrauta ne tai, ką reikia.
+fault: router_hung
+service: internet
+symptom: internet_down
+explain:
+  conclusion: "verdict.router_hung.gloss"
+  confirm: "pack.router_hung.confirm"
+
+# Kandidatė, kai tiekėjo pusė tvarkinga, įrenginys linijoje matomas ir tylus, o srauto nėra.
+when:
+  all: [node_reachable=yes, line_link=up, device_seen=yes, dhcp=ok, traffic=none]
+
+# Kas ją atmeta iš karto — kiekviena sąlyga yra KITOS kortelės teritorija.
+rules_out:
+  - area_outage=yes          # B2 — avarija, informuojam
+  - service_suspended=yes    # B1 — skola
+  - device_registered=foreign # klientas pasikeitė routerį
+  - line_errors=high         # kabelio klaidos
+
+# Ko dar reikia — ir kaip tą faktą gauti (P-2). Zondo nėra: tik klientas mato savo namus.
+needs:
+  fail_scope:
+    ask: "pack.router_hung.fail_scope.question"
+    why: "pack.router_hung.fail_scope.why"
+    clarify: "pack.router_hung.fail_scope.clarify"
+    values:
+      all: confirms                 # visuose įrenginiuose — routeris pakibęs
+      one: hands_to=healthy_to_router # viename — routeris gyvas, problema iki įrenginio
+
+    answers:
+      "all": answers_router_hung_fail_scope_all
+      "one": answers_router_hung_fail_scope_one
+solution:
+- when: [fail_scope=all]
+  steps:
+  - module: reach
+    args: {device: router}
+  - module: reboot
+    args: {device: router, method: power}
+    # Telemetrija NEMATĖ, kad įrenginys dingtų iš linijos: perkrauta ne tai (prailgintuvas,
+    # mygtukas, antras panašus dėžutė) — patikslinam ir kartojam VIENĄ kartą.
+    on_fail:
+      module: reboot
+      args: {device: router, method: power, reason: no_flap, attempts: 1}
+  - module: verify
+    args:
+      evidence: [traffic=flowing, port_flapped=yes]
+      ask: restored
+- when: [fail_scope=one]
+  hands_to: healthy_to_router
+
+escalate:
+  need: "pack.router_hung.ticket_need"
+  note: "perkrauta, neatsistatė"
+
+knowledge: troubleshooting/internet_pakibes_routeris

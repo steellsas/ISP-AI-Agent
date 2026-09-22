@@ -1,0 +1,11 @@
+# Lemputės klausiamos KLIENTO, o ką jos reiškia — sako įrangos katalogas: „INTERNET
+# raudona" (TP-Link) ir „LOS mirksi" (ONT) abi virsta wan_link=down.
+module: check_lights
+kind: ask
+params:
+  device: {required: true}
+  light: {}                         # INTERNET | POWER | LOS | … tuščia = visos
+detector: lights          # nedega / dega / mirksi — reikšmę duoda įrangos katalogas
+goal: "what the {device} lights show right now"
+text: "equipment:{device}.lights"
+produces: [wan_link, power]

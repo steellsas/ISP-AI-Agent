@@ -410,6 +410,58 @@ STATE_GROUPS: tuple[str, ...] = (
 )
 
 
+class CaseState(BaseModel):
+    """The diagnosis as the call carries it (wave 3): what the facts are, which fault the
+    cards settled on, and how far its solution has run.
+
+    It replaces `resolution.procedure` (a verdict plus a pointer into a pack's steps) —
+    and, unlike it, the facts themselves are the state, so a new fact can reopen the case
+    instead of "doubting" a single hypothesis.
+    """
+
+    # The fact ledger the cards reason over: telemetry readings and what the caller said.
+    facts: dict[str, str] = Field(default_factory=dict)
+    # Facts we tried to get and could not (an unanswered question, a probe that is down):
+    # never asked twice, so a call cannot loop on a dead end.
+    unavailable: list[str] = Field(default_factory=list)
+    # The fault whose solution is running, and where in it.
+    fault: str | None = None
+    solution: int | None = None
+    step: int = 0
+    # How many times each step has been attempted (a retry is declared by the card).
+    attempts: dict[str, int] = Field(default_factory=dict)
+    # The step is waiting for this fact before the solution may move on.
+    awaiting: str | None = None
+    # Faults whose solution ran and did not work: never started again, so a card that
+    # still matches cannot send the caller round the same fix twice.
+    spent: list[str] = Field(default_factory=list)
+    # DEMO: the tool that reflects the caller's physical action, due before the next read.
+    reflect: str | None = None
+    # A verification is out and its probe has not answered yet: until it does, the step is
+    # WAITING. Judging the previous reading told a caller whose internet was already back to
+    # power-cycle the router again (live probe, S6).
+    awaiting_probe: bool = False
+    # How many times this step's tool had run when the step was entered. A step is finished
+    # when its tool has actually RUN — not when it was planned: a plan can be overridden by
+    # a scripted reply, and the engine then walked past a bind that never happened.
+    act_count: int = 0
+    # Faults whose finding has been told: news is news once.
+    announced: list[str] = Field(default_factory=list)
+    # The step whose instruction has already gone out. Repeating it at a caller who just
+    # said "gerai" is how an agent stops sounding like a person.
+    delivered: int | None = None
+    # The turn in which the caller's words last moved the solution. One utterance moves it
+    # ONE step: the redecide loop re-reads the same words on every hop, and three hops once
+    # walked past an instruction that was never given.
+    moved_on_turn: int | None = None
+    # How many times the "when you are back" agreement has been asked. Asking a third time is
+    # pressure, not politeness: the caller has been told, and the call ends warmly.
+    homework_asks: int = 0
+    # The step is being retried, so the card's `on_fail` call is what runs — a retry that
+    # repeats the identical instruction teaches the caller nothing.
+    retrying: bool = False
+
+
 class ToolsState(BaseModel):
     """What the guards in knowledge/tools/*.yaml count: how often each tool ran in THIS
     call and when it last ran. Persisted with the call, so a checkpoint resume cannot
@@ -433,5 +485,6 @@ class GraphState(BaseModel):
     dialog: DialogState = Field(default_factory=DialogState)
     closing: ClosingState = Field(default_factory=ClosingState)
     voice: VoiceState = Field(default_factory=VoiceState)
+    case: CaseState = Field(default_factory=CaseState)
     tools: ToolsState = Field(default_factory=ToolsState)
     turn: TurnScratch = Field(default_factory=TurnScratch)

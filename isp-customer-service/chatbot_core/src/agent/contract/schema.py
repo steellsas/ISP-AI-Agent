@@ -281,6 +281,258 @@ class Limits(RootModel[dict[str, StrictInt | StrictFloat | Limit]]):
         return {k: v if isinstance(v, Limit) else Limit(value=v) for k, v in self.root.items()}
 
 
+# --- Signals -> facts (wave 3) ----------------------------------------------------
+
+
+class Threshold(_Model):
+    """A numeric signal read against a limit from limits.yaml."""
+
+    limit: str
+    then: str
+    otherwise: str = Field(alias="else")
+
+
+class SignalMap(_Model):
+    """How ONE telemetry signal becomes a fact. Exactly one reading is declared:
+    `map` (value -> value, with `*` and `null`), `present` (did we see anything at all),
+    `above` (a numeric limit) or `derive` (a named reader in agent/facts.py, for the two
+    readings that compare signals with each other)."""
+
+    signal: str | None = None
+    map: dict[str, str] | None = None
+    present: bool = False
+    above: Threshold | None = None
+    derive: str | None = None
+    values: list[str] = []  # required for `derive`: what the reader can return
+
+    def value_set(self) -> frozenset[str]:
+        """Every value this fact can take — what a card condition is checked against."""
+        if self.values:
+            return frozenset(self.values)
+        if self.map:
+            return frozenset(self.map.values())
+        if self.present:
+            return frozenset({"yes", "no"})
+        if self.above:
+            return frozenset({self.above.then, self.above.otherwise, "unknown"})
+        return frozenset()
+
+    @model_validator(mode="after")
+    def _one_reading(self) -> SignalMap:
+        if self.derive and not self.values:
+            raise ValueError("a derived fact must declare its `values`")
+        readings = [bool(self.map), self.present, bool(self.above), bool(self.derive)]
+        if sum(readings) != 1:
+            raise ValueError("declare exactly one of: map, present, above, derive")
+        if not self.derive and not self.signal:
+            raise ValueError("a signal name is required unless the fact is derived")
+        return self
+
+
+class Signals(_Model):
+    # The tool whose observation carries these signals: how the engine knows it can LOOK
+    # instead of asking the caller.
+    probe: str | None = None
+    facts: dict[str, SignalMap]
+
+
+# --- Fault cards v2 and modules (wave 3) ------------------------------------------
+
+
+# A condition on ONE fact: `traffic=none` / `device_registered!=foreign`.
+CONDITION_RE = re.compile(r"^(?P<fact>[a-z][a-z0-9_]*)(?P<op>!?=)(?P<value>[a-z0-9_]+)$")
+
+
+class Condition(_Model):
+    """A card's claim about one fact, parsed from `fact=value` / `fact!=value`."""
+
+    fact: str
+    value: str
+    negated: bool = False
+
+    @classmethod
+    def parse(cls, text: str) -> Condition:
+        match = CONDITION_RE.match(str(text).strip())
+        if not match:
+            raise ValueError(f"condition {text!r} is not fact=value or fact!=value")
+        return cls(fact=match["fact"], value=match["value"], negated=match["op"] == "!=")
+
+    def holds(self, facts: dict[str, str]) -> bool | None:
+        """True / False, or None when the fact is not known yet — "we have not asked"
+        must never read as "it is not so"."""
+        known = facts.get(self.fact)
+        if known is None:
+            return None
+        return (known != self.value) if self.negated else (known == self.value)
+
+    def __str__(self) -> str:
+        return f"{self.fact}{'!=' if self.negated else '='}{self.value}"
+
+
+def _conditions(values: Any) -> list[Condition]:
+    return [Condition.parse(v) for v in (values or [])]
+
+
+class Candidacy(_Model):
+    """When a card is a candidate: every `all` condition and at least one `any`."""
+
+    all: list[str] = []
+    any: list[str] = []
+
+    def parsed(self) -> tuple[list[Condition], list[Condition]]:
+        return _conditions(self.all), _conditions(self.any)
+
+
+class Need(_Model):
+    """A fact the card still needs, and HOW to get it (P-2): a probe if one exists, a
+    question otherwise — the engine chooses, the card only declares what is possible."""
+
+    probe: str | None = None  # tool name
+    ask: str | None = None  # phrase key for the question
+    values: dict[str, str] = {}  # value -> "confirms" | "rules_out" | "hands_to=<fault>"
+    # value -> the locale vocabulary list that recognises it in the caller's words. This is
+    # what reads "tik viename" as `fail_scope=one` with no model call at all.
+    answers: dict[str, str] = {}
+    # What to say when the caller answers a bare "ne": it could mean either reading, so the
+    # engine clarifies instead of acting (it used to live in the evidence drive).
+    clarify: str | None = None
+    # Values that FLIP the story when the caller volunteers them out of turn ("rozetė
+    # neveikia" while we asked about the lights): parked for one confirm question rather than
+    # accepted silently.
+    confirm_values: list[str] = []
+    # Conditions on other facts that must hold before this one is worth asking. Asking about
+    # the cable type before we know it is a computer makes the agent sound like a form.
+    when: list[str] = []
+    # Half a sentence on why we are asking. A caller who knows why answers better — and
+    # follows the instruction that comes next.
+    why: str | None = None
+
+    @model_validator(mode="after")
+    def _reachable(self) -> Need:
+        if not self.probe and not self.ask:
+            raise ValueError("a need must be reachable: declare `probe`, `ask`, or both")
+        for value, meaning in self.values.items():
+            if meaning not in ("confirms", "rules_out") and not meaning.startswith("hands_to="):
+                raise ValueError(
+                    f"values.{value}: expected confirms / rules_out / hands_to=<fault>"
+                )
+        return self
+
+
+class ModuleCall(_Model):
+    """One step of a solution: a module with its arguments, and what to do when the
+    verification it produces says it did not work."""
+
+    module: str
+    args: dict[str, Any] = {}
+    on_fail: ModuleCall | None = None
+
+
+class Solution(_Model):
+    """What to DO once the card is confirmed — or which card takes over instead."""
+
+    when: list[str] = []
+    steps: list[ModuleCall] = []
+    hands_to: str | None = None
+
+    @model_validator(mode="after")
+    def _does_something(self) -> Solution:
+        if bool(self.steps) == bool(self.hands_to):
+            raise ValueError("a solution either runs steps or hands over, not both/neither")
+        return self
+
+
+class Escalation(_Model):
+    # Why the technician is needed. Optional: some faults escalate with the generic
+    # reason, exactly as their v1 packs did.
+    need: str | None = None
+    note: str | None = None  # what the ticket must say
+
+
+class ParamSpec(_Model):
+    """One module parameter: required, a closed set of values, or a default."""
+
+    required: bool = False
+    values: list[str] = []
+    default: Any = None
+
+
+class ModuleSpec(_Model):
+    """A reusable instruction (P-8 §3): what it does, what it needs to know, and which
+    facts it can establish. The words come from the equipment catalogue, so the same
+    module speaks differently for a TP-Link router and a TV box."""
+
+    module: str
+    kind: Literal["ask", "instruct", "action", "verify", "escalate"]
+    params: dict[str, ParamSpec] = {}
+    goal: str
+    text: str | None = None  # equipment:… / device:… / procedure:… reference
+    tool: str | None = None  # an engine action's tool (kind: action)
+    probe: str | None = None  # the tool that verifies (kind: verify)
+    produces: list[str] = []  # facts this module can establish
+    # A module that asks carries its own question and its own reader, so the generic
+    # policies (can you reach it, is it back) work for any device and any fault.
+    ask: str | None = None  # phrase key for a question
+    announce: str | None = None  # phrase key for what the agent SAYS while the engine acts
+    detector: str | None = None  # a reader in perceive/detectors.py
+    answers: dict[str, str] = {}  # the detector's label -> "fact=value"
+    # DEMO ONLY: the tool that makes the seeded database reflect what the caller just did
+    # physically, and the environment flag that allows it. Off in production, where the
+    # line changes by itself.
+    simulate: str | None = None
+    simulate_env: str | None = None
+
+
+class FaultCard(_Model):
+    """One fault, as a technician can edit it (wave 3): when it is a candidate, what
+    would settle it, how it is fixed, and what happens when it is not."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    fault: str
+    service: str
+    symptom: str | None = None
+    explain: dict[str, str] = {}
+    # A fallback card is taken ONLY when no other card fits, so an honest "we cannot tell
+    # over the phone" can never compete with a real diagnosis.
+    fallback: bool = False
+    when: Candidacy = Candidacy()
+    rules_out: list[str] = []
+    needs: dict[str, Need] = {}
+    solution: list[Solution] = []
+    escalate: Escalation | None = None
+    knowledge: str | None = None
+
+
+# --- Equipment catalogue (wave 3, P-8) --------------------------------------------
+
+
+class LightSpec(_Model):
+    """One indicator: how to ask about it, and what each answer MEANS as a fact. This is
+    what keeps model knowledge out of the fault cards."""
+
+    ask_key: str | None = None
+    means: dict[str, str] = {}
+
+
+class EquipmentSpec(_Model):
+    """One level of the catalogue: a model, a manufacturer family, or the basic device.
+
+    `extends` names the level below; what is written here overrides it, and everything
+    else is inherited — so the basic file carries what is true of every router and a
+    family file only what is not.
+    """
+
+    equipment: str
+    type: str  # router | modem | ont | tv_box | computer …
+    extends: str | None = None
+    matches: list[str] = []  # what the CRM model string / the caller's words may contain
+    name_key: str | None = None
+    locate_key: str | None = None
+    actions: dict[str, str] = {}  # "reboot.power" -> phrase key
+    lights: dict[str, LightSpec] = {}
+
+
 # --- Tools (P-7 manifests) --------------------------------------------------------
 
 
@@ -387,6 +639,7 @@ class Knowledge:
     verdicts: Verdicts | None = None
     limits: Limits | None = None
     policies: Policies | None = None
+    signals: Signals | None = None
     tools: dict[str, ToolManifest] = field(default_factory=dict)
 
 
@@ -657,6 +910,7 @@ def validate_knowledge(
         "verdicts": ("verdicts.yaml", Verdicts),
         "limits": ("limits.yaml", Limits),
         "policies": ("policies.yaml", Policies),
+        "signals": ("signals.yaml", Signals),
     }
     for attr, (name, model) in single_files.items():
         setattr(k, attr, _read(root / name, model, errors, root))

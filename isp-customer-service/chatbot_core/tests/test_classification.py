@@ -264,7 +264,9 @@ class TestPendingFallback:
         agent = make_agent("+37060020112")
         agent.state.identity.customer_id = "CUST112"
         agent.state.intake.problem_type = "internet_down"
-        agent.state.resolution.procedure = {"verdict": "router_hung", "step": "rh_scope"}
+        # Wave 3: the fault in play is the Case's, and the reading layer takes its
+        # vocabulary from that card.
+        agent.state.case.fault = "router_hung"
         assert agent.state.diagnosis.pending_evidence_key is None  # no ask yet
         canned = NS(
             type="answer",
@@ -301,12 +303,17 @@ class TestUnclearFaultTicket:
         agent.state.intake.problem_type = "tv"
         assert "neaiškus" in ticket_need(agent.state, agent.runtime)
 
-    def test_ticket_need_with_verdict_unchanged(self, db_connection):
+    def test_the_ticket_reason_is_the_cards(self, db_connection):
+        """Wave 3: the reason comes from the fault the Case settled on, worded by its card —
+        a damaged cable used to announce itself as "gedimo tipas neaiškus"."""
         from agent.decide.rules.ticket import ticket_need
 
         agent = _agent()
-        agent.state.resolution.procedure = {"verdict": "no_mac_observed"}
+        agent.state.case.fault = "no_mac_observed"
         assert "maršrutizatorius" in ticket_need(agent.state, agent.runtime)
+
+        agent.state.case.fault = "crc_errors"
+        assert "laid" in ticket_need(agent.state, agent.runtime)
 
 
 class TestCompetenceSurface:

@@ -1,0 +1,10 @@
+# Tiltas: kompiuteris jungiamas TIESIAI į liniją — taip atskiriame routerį nuo linijos.
+module: connect_direct
+kind: instruct
+params:
+  to: {values: [computer], default: computer}
+goal: "the caller's computer connected straight to the line cable"
+text: "equipment:{to}.connect_direct"
+produces: [device_seen, traffic]
+simulate: simulate_bridge_connect
+simulate_env: SIMULATE_BRIDGE

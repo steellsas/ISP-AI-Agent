@@ -1,0 +1,46 @@
+# LINIJA IKI BUTO NUTRŪKUSI (v2 kortelė, 3 banga)
+#
+# Technikas (Andrius, 2026-09-11): porto ryšio nėra, o KAIMYNAI veikia — gedimas kliento
+# atkarpoje (kabelis laiptinė→butas arba routerio WAN pusė). Vienas pigus patikrinimas su
+# klientu: ar routeris gyvas (lemputės) ir ar iš sienos ateinantis laidas gerai įkištas;
+# nepadėjo — sąžininga išvada, kad greičiausiai pažeistas kabelis trasoje, ir meistras.
+#
+# v1: internet_linija_nutrukusi.yaml, 146 eil., 8 žingsniai.
+fault: link_down_local
+service: internet
+symptom: internet_down
+explain:
+  conclusion: "pack.link_down_local.conclusion"
+  confirm: "pack.link_down_local.confirm"
+
+# Ryšio nėra, o kaimynai tame pačiame komutatoriuje gyvi — ne mazgo gedimas.
+when:
+  all: [node_reachable=yes, line_link=down, neighbours=mixed]
+
+rules_out:
+  - area_outage=yes
+  - service_suspended=yes
+
+# Telemetrijos pakanka kortelei pasitvirtinti; lemputės tik parodo, ar routeris gyvas
+# (jas duoda modulis, ne klausimų sąrašas).
+needs: {}
+
+solution:
+- when: []
+  steps:
+  - module: reach
+    args: {device: router}
+  - module: check_lights
+    args: {device: router}
+  - module: cable
+    args: {device: router, action: reseat, port: WAN}
+  - module: verify
+    args:
+      evidence: [line_link=up]
+      ask: restored
+
+escalate:
+  need: "pack.link_down_local.ticket_need"
+  note: "laidas perkištas, linija neatsistatė — tikėtinas kabelio pažeidimas trasoje"
+
+knowledge: troubleshooting/internet_linija_nutrukusi

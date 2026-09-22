@@ -1,76 +1,13 @@
-"""The working hypothesis — the telemetry cause the call is testing, the evidence notes
-behind it, how it settles (confirmed / rejected), and its stability (D-05):
+"""Contradictions, and the ONE question that settles them (D-05).
 
-    active --contradiction--> doubt --confirm question--> confirming
-    confirming --confirmed--> changed -> the new belief is active
-    confirming --denied / unclear--> active (the contradiction is dropped)
-
-A contradiction (a client fact, a telemetry recheck, an analyst signal) never changes
-the belief by itself; only the answer to the confirm question does."""
+Wave 3 took the belief machine away — the Case holds candidates over facts, so nothing
+"activates", "doubts" or "settles" a single hypothesis any more. What remains was never
+about a hypothesis: when the caller's words contradict what the call already established,
+the engine ASKS ("sakėte X, dabar Y — kaip yra iš tiesų?") instead of choosing silently.
+The reading layer and the analyst both use it.
+"""
 
 from __future__ import annotations
-
-from ..contract.locale import phrase_or
-
-
-def activate_hypothesis(state, rt, reason: str | None) -> None:
-    """A fresh verdict = a new belief. Seeds it with what the telemetry showed."""
-    if not reason:
-        return
-    h = state.diagnosis.hypothesis
-    if h and h.get("cause") == reason and h.get("status") == "testing":
-        return  # same belief, still being tested — keep its evidence
-    # The ANALYSIS fuses BOTH sides (Step 2): telemetry is the first evidence,
-    # the caller's anamnesis (when it broke / after what) the second — so the
-    # agent reasons and narrates from the full picture ("telemetrija rodo X, o
-    # klientas sako dingo po audros").
-    because = [phrase_or(f"verdict.{reason}.gloss", reason)]
-    s = state
-    if s.intake.anamnesis_when or s.intake.anamnesis_trigger:
-        bits = []
-        if s.intake.anamnesis_when:
-            when = phrase_or(f"anamnesis.when.{s.intake.anamnesis_when}", s.intake.anamnesis_when)
-            bits.append(f"dingo {when}")
-        if s.intake.anamnesis_trigger:
-            trigger = phrase_or(
-                f"anamnesis.trigger.{s.intake.anamnesis_trigger}", s.intake.anamnesis_trigger
-            )
-            bits.append(f"po: {trigger}")
-        because.append("klientas sako " + ", ".join(bits))
-    state.diagnosis.hypothesis = {
-        "cause": reason,
-        "because": because,
-        "status": "testing",
-        "settled_by": None,
-    }
-
-
-def note_evidence(state, rt, text: str) -> None:
-    """Add something the ENGINE learned (a telemetry read, a check outcome)."""
-    h = state.diagnosis.hypothesis
-    if h and text and text not in h["because"]:
-        h["because"].append(text)
-
-
-def settle_hypothesis(state, rt, status: str, settled_by: str) -> None:
-    """Close the belief: confirmed (the fix worked / the cause was proven) or
-    rejected (it did not hold). Rejected ones are remembered so the engine never
-    re-tries them and the agent can say what it already ruled out."""
-    h = state.diagnosis.hypothesis
-    if not h or h.get("status") != "testing":
-        return
-    h["status"] = status
-    h["settled_by"] = settled_by
-    if status == "rejected":
-        state.diagnosis.rejected_hypotheses.append({"cause": h["cause"], "settled_by": settled_by})
-
-
-def status(state) -> str:
-    """active | doubt | confirming — the belief's stability right now."""
-    c = state.diagnosis.contradiction
-    if c is None:
-        return "active"
-    return "confirming" if c.asked else "doubt"
 
 
 def doubt(state, rt, kind: str, key: str, before, now, source: str = "client") -> bool:
@@ -114,31 +51,3 @@ def answered(state, rt, kind: str):
     state.diagnosis.contradiction = None
     rt.tracer.emit("hypothesis", status="active", kind=kind, key=c.fact_key)
     return c
-
-
-def change_question(c) -> str:
-    """The confirm question for a telemetry recheck that names another cause: what the
-    line shows now, and the symptom of that cause the caller can see."""
-    from ..contract.locale import maybe_phrase, phrase
-    from ..faults import _faults
-
-    news = phrase_or(f"verdict.{c.now_value}.gloss", c.now_value or "")
-    question = maybe_phrase((_faults().get(c.now_value or "") or {}).get("confirm_key"))
-    if question:
-        return phrase("identification.hypothesis_change_confirm", news=news, question=question)
-    return phrase("identification.hypothesis_change_confirm_generic", news=news)
-
-
-def change_confirmed(state, rt, c) -> None:
-    """The caller confirmed the new symptom: the belief changes and the new cause's
-    procedure starts (the rethink is voiced once)."""
-    from ..resolution import get_strategy
-
-    before = c.before_value
-    if before and before not in state.diagnosis.failed_hypotheses:
-        state.diagnosis.failed_hypotheses.append(before)
-    strat = get_strategy(c.now_value)
-    state.resolution.procedure = {"verdict": strat.verdict, "step": strat.steps[0].id}
-    state.diagnosis.pivoted_from = before
-    activate_hypothesis(state, rt, c.now_value)
-    rt.tracer.emit("hypothesis", status="changed", kind="verdict", before=before, now=c.now_value)

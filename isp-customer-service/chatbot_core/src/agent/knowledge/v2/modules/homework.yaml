@@ -1,0 +1,14 @@
+# NAMŲ DARBAS — klientas negali dabar prieiti prie įrenginio (bendra politika, ne gedimo
+# žinios). Duodam instrukciją ATEIČIAI, paklausiam, ar tinka, ir skambutis baigiamas
+# perskambinimu; meistras — tik jei klientas pats nori (P-C, Andrius 2026-09-08).
+module: homework
+kind: ask
+params:
+  device: {required: true}
+ask: modules.homework.later
+detector: yes_no
+answers:
+  "yes": later_agreed=yes
+  "no": later_agreed=no
+produces: [later_agreed]
+goal: "agreed: when they are back they do it, and they call if it does not help"

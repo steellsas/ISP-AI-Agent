@@ -126,6 +126,12 @@ def gather_signals(sources: TelemetrySources, customer_id: str) -> dict[str, Any
         "registered_mac": (
             port.get("connected_equipment", {}).get("mac_address") if port else None
         ),
+        # What the CRM says the caller HAS (wave 3e): the equipment catalogue picks the
+        # instruction from the model, its family, or the basic device — in that order.
+        "device_type": (
+            port.get("connected_equipment", {}).get("equipment_type") if port else None
+        ),
+        "device_model": port.get("connected_equipment", {}).get("model") if port else None,
         "observed_mac": port.get("observed_mac") if port else None,
         "crc_error_rate": port.get("crc_error_rate") if port else None,
         "dhcp_status": port.get("dhcp_status") if port else None,

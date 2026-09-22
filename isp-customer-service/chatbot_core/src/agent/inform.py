@@ -98,6 +98,26 @@ def clarity_declaration(reason: str | None) -> list[str] | None:
     return list(required) if isinstance(required, list) else None
 
 
+# Verdicts that are NEWS, not faults: the provider side decided them before any diagnosis,
+# and the inform path owns those turns. Everything else is the Case's (wave 3) — the engine
+# used to tell them apart by the walker's pointer, which no longer exists.
+INFORM_VERDICTS = frozenset(
+    {
+        "service_not_subscribed",
+        "open_ticket_exists",
+        "billing_suspended",
+        "active_outage",
+        "switch_unreachable",
+        "node_fault_unregistered",
+    }
+)
+
+
+def is_news(reason: str | None) -> bool:
+    """Is this verdict something to TELL rather than something to diagnose?"""
+    return reason in INFORM_VERDICTS
+
+
 def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
     """The rendered inform speech for this verdict, or None when no template
     applies (the caller then falls back to the glossary gloss). The

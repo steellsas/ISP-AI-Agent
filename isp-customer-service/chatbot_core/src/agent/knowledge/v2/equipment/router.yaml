@@ -1,0 +1,30 @@
+# BAZINIS ROUTERIS — visada yra (P-8 hierarchija: modelis → šeima → bazinis).
+#
+# Klientas gali turėti savo pirktą įrenginį, o CRM gali jo nežinoti. Todėl agentas niekada
+# nepasiduoda: nerastas modelis reiškia šeimą, nerasta šeima — šitą failą. Čia tik SAUGŪS,
+# universalūs veiksmai (jokio gamyklinio reset'o, jokių konkrečių mygtukų vietų).
+#
+# Struktūra čia, sakiniai — lokalėje (phrases.yaml `equipment:`), kaip ir visur kitur.
+equipment: router
+type: router
+name_key: equipment.router.name
+locate_key: equipment.router.locate
+
+# Ką klientas gali padaryti su šiuo įrenginiu ir kaip tai pasakoma.
+actions:
+  reboot.power: equipment.router.reboot.power
+  cable.reseat: equipment.router.cable.reseat
+  reach: equipment.router.reach
+
+# Lemputė → faktas. Kortelės nežino modelių: „INTERNET raudona" (TP-Link) ir „LOS mirksi"
+# (ONT) abi virsta wan_link=down, ir kortelė kalba tik apie wan_link.
+# Reikšmės sutampa su tuo, ką skaitytuvas (perceive/detectors.detect_lights) tikrai
+# perskaito: dega / nedega. Spalvų skaitymas — 4 banga (spalvų skaitytuvas arba percepcija
+# su katalogo reikšmėmis); tol klausiame to, ką galime suprasti.
+lights:
+  power:
+    ask_key: equipment.router.lights.power
+    means: {"yes": power=yes, "no": power=no}
+  internet:
+    ask_key: equipment.router.lights.internet
+    means: {"yes": wan_link=up, "no": wan_link=down}

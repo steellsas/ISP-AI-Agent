@@ -1060,12 +1060,8 @@ caller_not_holder: ["ne sutart", "nesu sudar", "ne aš sudar", "ne as sudar"]
 # A plain yes to "ar jūs sutartį sudaręs asmuo?".
 caller_plain_yes: ["taip", "aš", "as "]
 # Homework step: consent words; a ticket/technician wish blocks the consent.
-homework_agreed: ["gerai", "sutariam", "sutarėm", "sutarem", "sutinku", "taip"]
-homework_blocked: ["registruok", "meistr", "nereikia", "nesutink"]
 # "pririškite tada" — asks for the bind itself.
-bind_request: ["pririsk"]
 # Passive done-forms answering the plug instruction ("jungtas, LAN rodo").
-plugged_passive: ["įkištas", "prijungtas", "pajungtas", "jungtas", "kištas"]
 # Barge-in: a word starting with these halts the agent ("nestabdykit" is still a stop).
 barge_stop_prefixes: ["nesta", "nebe"]
 # --- rag/hybrid_retriever.py ----------------------------------------------------
@@ -1143,3 +1139,22 @@ service_mentions_internet: ["internet", "wifi", "wi-fi"]
 
 # The caller will not say their name (it is recorded as "nenurodyta", never re-asked).
 caller_name_refused: ["nesvarbu", "nesakysiu", "nenoriu sakyt", "nenoriu pasakyt", "nebūtina", "nebutina", "koks skirtumas", "kam jums vardas"]
+
+# Patvirtinimas, kad klientas darys / daro tai, ko paprašėme („gerai", „ok", „bandau") —
+# NE atsakymas ir ne „padariau". Variklis tada pasako, kad palauks, ir instrukcijos
+# NEKARTOJA (S4 eval'e agentas tris ėjimus kartojo tą patį).
+acknowledge:
+  - gerai
+  - gerai gerai
+  - ok
+  - okey
+  - bandau
+  - darau
+  - tuoj
+  - sekundę
+  - minutėlę
+  - žiūriu
+  - einu
+  - eisiu
+  - pažiūrėsiu
+  - patikrinsiu

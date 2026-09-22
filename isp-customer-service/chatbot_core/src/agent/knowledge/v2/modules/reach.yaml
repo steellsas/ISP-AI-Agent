@@ -1,0 +1,15 @@
+# Ar klientas gali dabar prieiti prie įrenginio — BENDRA politika visoms kortelėms
+# (Andrius, 2026-09-22). Iki 3 bangos ši seka (ability → locate → homework → callback)
+# buvo perrašyta kiekvienoje kortelėje atskirai, nors su pačiu gedimu neturi nieko bendra.
+module: reach
+kind: ask
+params:
+  device: {required: true}          # router | modem | ont | tv_box | computer
+goal: "clear whether the caller can get to the {device} right now"
+text: "equipment:{device}.locate"   # kaip jį atpažinti, jei nežino kur jis
+ask: modules.reach.can_now
+detector: yes_no
+answers:
+  "yes": reachable=yes
+  "no": reachable=no
+produces: [reachable]

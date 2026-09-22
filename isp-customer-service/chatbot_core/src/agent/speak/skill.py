@@ -49,6 +49,13 @@ def skill_for(state: Any, owner: str) -> str:
     # A finding / recap moment is announced, not asked.
     if directives.findings or directives.recap:
         return "explain_finding"
+    # Wave 3: on the fault path the CASE's module says what this turn is — a question, an
+    # instruction, or the engine announcing what it is doing. Before this the old evidence
+    # directive chose `ask_fact` and the narrator asked a question while the card held a
+    # bind announcement (full eval, S1).
+    module_skill = _case_skill(state, rule)
+    if module_skill:
+        return module_skill
     if directives.evidence:
         return "ask_fact"
     family = rule.split(".", 1)[0] if rule else owner
@@ -58,6 +65,35 @@ def skill_for(state: Any, owner: str) -> str:
     if (state.resolution.procedure or {}).get("step") and _step_instructs(state):
         return "instruct_step"
     return "ask_fact"
+
+
+# What the Case's module kinds sound like.
+_BY_KIND = {
+    "ask": "ask_fact",
+    "instruct": "instruct_step",
+    "action": "inform_news",  # the engine acts; the caller is told what is happening
+    "verify": "ask_fact",
+    "escalate": "ticket_offscript",
+}
+
+
+def _case_skill(state: Any, rule: str) -> str | None:
+    """The skill for a Case-planned turn, from the module it is running."""
+    if not rule.startswith("case."):
+        return None
+    module = rule.split(".", 1)[1].removeprefix("learn.")
+    if module in ("probe", "reflect"):
+        return None  # nothing is said for a check we run ourselves
+    if module == "ask":
+        return "ask_fact"
+    if module == "resolved":
+        return "explain_finding"
+    if module == "escalate":
+        return "ticket_offscript"
+    from ..contract import cards as catalog
+
+    spec = catalog.module(module)
+    return _BY_KIND.get(spec.kind) if spec else None
 
 
 def _step_instructs(state: Any) -> bool:

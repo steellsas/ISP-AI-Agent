@@ -1,0 +1,62 @@
+# TELEMETRIJOS SIGNALAS → FAKTAS (3 banga, radinys U)
+#
+# Iki šiol neapdorotas `signals` dict'as keliaudavo į sprendimų medį kode
+# (`verdict.py::decide`) ir iš jo išeidavo vienas verdiktas. Dabar kiekvienas signalas
+# virsta FAKTU — tokiu pačiu kaip kliento pasakytas faktas (raktas, reikšmė, šaltinis,
+# ėjimas) — o ką tie faktai reiškia, sako gedimo kortelės (`when:` / `rules_out:`).
+#
+# Reikšmės sąmoningai ŽALIOS (`traffic=none`, ne `router_side_ok`): interpretacija
+# priklauso kortelėms, kitaip ji vėl atsiduria kode (Andrius, 2026-09-22).
+#
+# Kiekvienas įrašas turi `signal:` (iš ko) ir vieną skaitymo būdą:
+#   map     reikšmė → reikšmė; `*` = bet kuri kita, `null` = signalo nėra
+#   present ar signalas apskritai turi reikšmę (yes/no)
+#   above   skaitinė riba iš limits.yaml
+#   derive  pavadintas kodo skaitytuvas (agent/facts.py DERIVATIONS) — kai reikia
+#           palyginti DU signalus arba laiką; kiekvienas toks atvejis čia įvardintas
+
+# Zondas, kurio observacija atneša šiuos signalus. Variklis iš čia žino, KAIP gauti bet
+# kurį telemetrijos faktą, ir klausia kliento tik to, ko zondas negali pasakyti.
+probe: diagnose_connection
+
+facts:
+  # --- skambutį baigiantys faktai (pigiausi, tikrinami pirmi) ---
+  service_suspended:
+    signal: billing_suspended
+    map: {"true": "yes", "*": "no", "null": "no"}
+  area_outage:
+    signal: incident
+    present: true
+
+  # --- tiekėjo pusė ---
+  node_reachable:
+    signal: switch_status
+    map: {active: "yes", "*": "no", "null": unknown}
+  neighbours:
+    derive: neighbours_state # neighbors_up + neighbors_down kartu
+    values: [all_down, mixed, unknown]
+
+  # --- linija iki kliento ---
+  line_link:
+    signal: port_link
+    map: {up: up, "*": down, "null": unknown}
+  line_errors:
+    signal: crc_error_rate
+    above: {limit: crc_error_rate_threshold, then: high, else: ok}
+
+  # --- kliento įranga linijoje ---
+  device_seen:
+    signal: observed_mac
+    present: true
+  device_registered:
+    derive: mac_match # observed_mac lyginamas su registered_mac
+    values: [match, foreign, unknown]
+  dhcp:
+    signal: dhcp_status
+    map: {ok: ok, no_requests: silent, expired: silent, "*": ok, "null": unknown}
+  traffic:
+    signal: traffic
+    map: {none: none, "*": flowing, "null": unknown}
+  port_flapped:
+    signal: port_flap_recent
+    map: {"true": "yes", "*": "no", "null": "no"}

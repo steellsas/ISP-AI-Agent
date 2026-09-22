@@ -272,10 +272,12 @@ def _anchor(state: Any, rt: Any) -> str:
     return anchor_text(state, rt)
 
 
-def _spec(state: Any) -> dict:
+def _spec(state: Any) -> dict[str, Any]:
+    """The client facts in play, from the CARDS (wave 3): the fault the Case settled on, or
+    every open one while it has not."""
     from ..evidence import spec_for
 
-    return spec_for((state.resolution.procedure or {}).get("verdict")) or {}
+    return spec_for(state.case.fault) or {}
 
 
 def _needs(state: Any) -> str:

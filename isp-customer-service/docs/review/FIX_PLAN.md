@@ -50,6 +50,69 @@ Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
 
+## Banga 3 — Case, kortelės v2, įranga (šaka `fix/wave-3`)
+
+Tikslas: **gedimą sprendžia kortelės, ne medis kode.** Vienas sprendėjas (Case) virš faktų;
+moduliai vienu metu ir diagnozuoja, ir sprendžia; įrangos katalogas duoda žodžius bet kokiam
+įrenginiui. Radiniai: N, O, P, U, AG, AH, AI; principai P-1, P-6, P-8.
+
+Formato projektas ir sprendimai: `docs/review/WAVE3_DESIGN.md`.
+
+| # | Kas | Rezultatas |
+|---|---|---|
+| 3a | Telemetrijos signalai → **faktai** (`knowledge/signals.yaml`, `agent/facts.py`) | 11 faktų; `unknown` ≠ „tvarkoje" |
+| 3b | **Kortelės v2** (7) + **moduliai** (11) + validatorius startupe | `router_hung` 204 eil./9 žingsniai → 52 eil./3 moduliai |
+| 3c | **Case**: kandidatai, `next_move`, faktų šaltinių indeksas | zondas → modulis → klausimas (kliento laikas brangiausias) |
+| 3d | Modulių vykdymas (`plan_step`, `read_answer`) + `ledger` | telemetrija perrašo žodžius, ne atvirkščiai |
+| 3e | **Įrangos katalogas**: modelis → šeima → bazinė; lemputės → faktai | nežinomas routeris vis tiek gauna saugią instrukciją |
+| 3f | Prijungimas + **seno kelio trynimas** | evidence drive, solver drive, walker, hipotezės mašina — nebėra |
+
+**3 bangos eiga (2026-09-22):** keturiolika commit'ų. Vienetų testai **1222 passed,
+1 skipped**; eval tekstas **178/178**, `--voice` **178/178**.
+
+Ištrinta: `decide/rules/evidence.py` (551), `decide/rules/diagnosis.py` (684),
+`decide/procedure.py` (824), `procedure_guards.py`, `rules/hypothesis_confirm.py`,
+kortelės `_hypothesis`/`_evidence`/`_step`/`_goal_evidence` sekcijos, v1 rezultato
+pasakojimas, 12 `limits`, 4 žodynai, ~100 testų. `decide/hypothesis.py` liko **apkarpytas**
+iki prieštaravimo patikslinimo (D-05) — jį naudoja percepcija ir analitikas; ištrynus visą,
+svita pakibo.
+
+**Ko trynimai išmokė (svarbiausia šios bangos pamoka):** seni vairuotojai nešė žinias,
+kurių niekas nebuvo deklaravęs. Po prijungimo eval nukrito iki 172/178, ir **visi** kritimai
+buvo tos pačios formos — ne variklio klaidos, o neužrašytos žinios:
+
+| Kas dingo su vairuotoju | Kur gyvena dabar |
+|---|---|
+| „ar gedimo kelias veikia?" (walker rodyklė) | `inform.is_news` — vienas sąrašas, skaitomas abiejų |
+| skaitymo vokabuliaras (v1 pack) | `spec_for` = adapteris virš **kortelių** |
+| kada klausti (`when`) | `needs.<faktas>.when` |
+| **kodėl klausiam** (`why`) | `needs.<faktas>.why` → įeina į plano tikslą |
+| istoriją apverčiantys atsakymai | `needs.<faktas>.confirm_values` |
+| anamnezė („ar buvo elektros dingimas?") | `needs.recent_events` |
+| tuščio „ne" patikslinimas | `needs.<faktas>.clarify` |
+| tiketo priežastis | kortelės `escalate.need` |
+| „negaliu dabar prieiti" → namų darbas + callback | `homework` modulis (bendra politika) |
+
+**Ką parodė tik gyvi pokalbiai** (vienetų testai to nebūtų radę):
+- `Action(type="tool")` neturėjo vykdytojo — Case planavo zondus, niekas jų nekvietė;
+- kortelė nerodė, ką Case nusprendė → perkrovimas suplanuotas, atsakyme apie jį nė žodžio;
+- modulis, kuris klausia, turi turėti savo klausimą IR skaitytuvą (`reach` kabėjo 3 ėjimus);
+- klientas, kuris PADARĖ, jau atsakė į „ar galite" — ir tai užbaigia žingsnį;
+- patikra gali vertinti tik skaitymą PO veiksmo (kitaip siūlo perkrauti tam, kam jau veikia);
+- vienas kliento ėjimas turi judinti sprendimą **vienu** žingsniu (redecide ciklas skaito tuos
+  pačius žodžius kelis kartus);
+- kartojimas turi vykdyti kortelės `on_fail`, ne tą pačią instrukciją.
+
+**Matavimai** (77 skambučiai): `case.learn` 77 · `solve` 34 · **`finding` 34** (kiekvienas
+sprendimas turėjo paskelbtą išvadą) · `solution_done` 19 · `resolved` 19 · `escalate` 9.
+
+**Sąmoningai liko 4/5 bangoms:** `verdict.py::decide` (tiekėjo pusės verdiktai → informavimo
+kortelės, 4 banga); `knowledge/faults/*.yaml` ir `agent/resolution/*` (skambučio įrašas ir
+uždarymo finalizatorius → Case įrašas, 5 banga); `state.resolution.procedure` laukas.
+Principas tas pats: **pirma žinia į failą, tada kodas lauk.**
+
+---
+
 ## Banga 2c — įrankių manifestai (šaka `fix/wave-2c`)
 
 Tikslai: **įrankis = aprašas + adapteris**, variklis mato gebėjimą (capability), ne

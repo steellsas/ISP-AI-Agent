@@ -1,0 +1,15 @@
+# Patikra po veiksmo: kliento žodis IR zondas kartu (D-07 — telemetrija arbitras).
+module: verify
+kind: verify
+# Bent vienas iš `evidence` / `ask` turi būti — kliento įrenginio (telefono) niekas
+# nezonduoja, tad ten telemetrijos faktų nėra ir patikra yra kliento žodis.
+params:
+  evidence: {}                      # faktai, kurie turi pasitvirtinti (jei zondas yra)
+  ask: {}                           # ko klausti kliento
+probe: diagnose_connection
+detector: restored
+answers:
+  "yes": restored=yes
+  "no": restored=no
+goal: "clear whether the service came back"
+produces: [traffic, line_link, port_flapped]

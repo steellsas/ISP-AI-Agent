@@ -30,7 +30,6 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     free dialogue never come here."""
     from ...dialog_utils import anchor_text
     from ...execute.ticket import begin_ticket_dialogue
-    from .evidence import evidence_question_open, negation_clarify_reply
     from .identification import _account_code_rung, _address_move, _problem_gate_reply
     from .ticket import ticket_question_turn
 
@@ -249,10 +248,9 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         "side_topic_streak_max"
     ):
         state.dialog.side_topic_streak = 0
-        from ...evidence import hypothesis_status, spec_for
-
-        spec = spec_for((s.resolution.procedure or {}).get("verdict"))
-        if spec is not None and hypothesis_status(s.diagnosis.evidence, spec) == "confirmed":
+        # A settled fault means the frame is the solve-together-or-technician choice; before
+        # that, bring them back to the question (wave 3: "settled" is the Case's fault).
+        if state.case.fault is not None:
             return _words(
                 "side_topic.frame_solve_or_ticket", phrase("identification.solve_or_ticket")
             )
@@ -262,11 +260,11 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
         )
     # Ledger conflict clarify (ONE question, engine-composed): "sakėte X,
     # dabar Y — kaip yra iš tiesų?" — the next answer settles the fact.
+    # A telemetry recheck that names another cause is no longer a "belief change": the
+    # facts changed, and the Case re-judges its candidates over them (wave 3). What stays is
+    # the CALLER contradicting what they said before — that is still one question.
     from .. import hypothesis
 
-    change = hypothesis.ask(state, rt, "verdict")
-    if change is not None:
-        return _words("diagnosis.hypothesis_confirm", hypothesis.change_question(change))
     conflict = hypothesis.ask(state, rt, "conflict")
     if conflict is not None:
         from ...evidence import gloss_label, gloss_value
@@ -292,14 +290,14 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     if state.resolution.escalate_clarify_due:
         state.resolution.escalate_clarify_due = False
         return _words("diagnosis.escalate_clarify", phrase("identification.escalate_clarify"))
-    # Bare "ne" while the evidence drive's question is open, on the WALKER
-    # path (farewell/refuse-shaped turns land here; the drive words its own
-    # clarify): say what the "ne" could mean instead of acting on it.
+    # A bare "ne" to the question the Case has out: say what the "ne" could mean instead of
+    # acting on it (wave 3 — the wording is the card's `needs.<fact>.clarify`).
+    from ...case import clarify_for
     from ...perceive.detectors import is_bare_negation
 
-    open_key = evidence_question_open(state, rt)
-    if open_key and is_bare_negation(user_input):
-        clarify = negation_clarify_reply(state, rt, open_key)
+    open_fact = state.case.awaiting
+    if open_fact and is_bare_negation(user_input):
+        clarify = clarify_for(state.case.fault, open_fact)
         if clarify:
             return _words("diagnosis.negation_clarify", clarify)
     # A disputed debt is offered to the responsible person, never explained (D-11) —
@@ -397,8 +395,14 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # goodbyes ("Nusigaro" = "viso gero") had the model loop "nesupratau,
     # pakartokite" after a delivered debt notice (observed live: the caller could
     # not end the call).
+    from ...inform import is_news as _is_news
+
     if (
-        s.resolution.procedure is None
+        # Only a NEWS call wraps up like this. A fault is worked on: the Case decides those
+        # turns, and this guard used to be the walker's pointer (`resolution.procedure`) —
+        # when it went away, every fault call wrapped up after the first reaction and closed
+        # with the caller's internet still down (full eval: nine scenarios).
+        _is_news((s.diagnosis.verdicts.get("network") or {}).get("reason"))
         and (state.diagnosis.news_delivered or s.diagnosis.outage_reported)
         and not state.identity.result_pending
     ):
@@ -468,11 +472,16 @@ def reply_plan(state: Any, rt: Any, user_input: str | None) -> TurnPlan | None:
     # The caller introduced themselves — deliver the deferred result. INFORM
     # verdicts are fully mechanical; a strategy result (finding + step question)
     # stays with the LLM (returns None; the REZULTATO facts directive drives it).
-    if s.resolution.procedure is not None:
-        return _plan("identification.result_to_procedure", None, directive=True)
-
     d = s.diagnosis.verdicts.get("network") or {}
     reason = d.get("reason")
+    # A fault is the CASE's to work on; only news is delivered here. This used to be decided
+    # by the walker's pointer (`resolution.procedure`), and when that went away every fault
+    # was announced as news and the call wrapped up (full eval: nine scenarios closed as
+    # "open" with the caller's internet still down).
+    from ...inform import is_news
+
+    if reason and not is_news(reason):
+        return _plan("identification.result_to_procedure", None, directive=True)
     # Closing wave (2026-09-08): the inform SPEECH lives in
     # knowledge/inform.yaml — the template carries the details (debt
     # amount, months, last payment; outage place and ETA) and its own

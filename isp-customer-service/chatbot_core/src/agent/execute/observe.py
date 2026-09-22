@@ -66,8 +66,6 @@ def chain_after_bind(state, rt, name: str, observation: str) -> str:
 
 def update_state_from_observation(state, rt, action: str, observation: str):
     """Update agent state based on tool observation."""
-    from ..decide.hypothesis import activate_hypothesis
-
     try:
         obs_data = json.loads(observation)
 
@@ -170,54 +168,26 @@ def update_state_from_observation(state, rt, action: str, observation: str):
         # Diagnostic findings -> case state under their DOMAIN, so the agent
         # reconciles them with the customer and never loses / re-runs them, and
         # new fault families attach additively (§12.1).
+        if action == "diagnose_connection":
+            # Wave 3: the reading becomes FACTS (knowledge/signals.yaml) and the fault
+            # cards reason over them. The verdict below is the v1 path, still running.
+            from ..ledger import record_telemetry
+
+            record_telemetry(state, rt, obs_data.get("signals"))
+
         if action == "diagnose_connection" and isinstance(obs_data.get("verdict"), dict):
+            # The verdict still carries the PROVIDER-side news (a suspended service, a
+            # registered outage, an unreachable node) that the inform path speaks. What it
+            # used to do besides that — activate one hypothesis, doubt it, point a walker at
+            # a pack's first step — belongs to the Case now, over facts (wave 3).
             v = obs_data["verdict"]
             state.diagnosis.verdicts["network"] = {
                 "group": v.get("group"),
                 "side": v.get("side"),
                 "action": v.get("action"),
                 "reason": v.get("reason"),
-                # Live 2026-09-09 (the debt template rendered its FALLBACK):
-                # signals ride at the payload's TOP level, not inside the
-                # verdict — v.get("signals") was always None, so billing_debt
-                # (and the solver's telemetry facts) never reached the state.
                 "signals": obs_data.get("signals") or v.get("signals"),
             }
-            # Ledger: telemetry facts are ground truth — every (re)diagnose
-            # lands on the evidence with full history (a re-check after a fix
-            # OVERWRITES the value; the caller's words never do).
-            from ..evidence import TELEMETRY, set_fact
-
-            turn = state.dialog.turn_count
-            if v.get("reason"):
-                set_fact(state.diagnosis.evidence, "verdict", v["reason"], TELEMETRY, turn)
-            if v.get("side"):
-                set_fact(state.diagnosis.evidence, "side", v["side"], TELEMETRY, turn)
-            # Activate the resolution strategy for this verdict. A procedure already
-            # running on another cause is NOT switched (D-05): the recheck only puts
-            # the belief in doubt, and the caller confirms the new symptom first
-            # (decide/rules/hypothesis_confirm). None = generic inform/instruct flow.
-            from ..resolution import get_strategy
-
-            strat = get_strategy(v.get("reason"))
-            prev = (state.resolution.procedure or {}).get("verdict")
-            # Never pivot back into a hypothesis the telemetry already disproved —
-            # that is how a re-diagnose after a failed fix would loop forever.
-            if strat is not None and strat.verdict not in state.diagnosis.failed_hypotheses:
-                if prev is None:
-                    # A verdict IS a hypothesis — record what we now believe and why,
-                    # so the agent can say it aloud and later report how it settled.
-                    activate_hypothesis(state, rt, v.get("reason"))
-                    state.resolution.procedure = {
-                        "verdict": strat.verdict,
-                        "step": strat.steps[0].id,
-                    }
-                elif prev != strat.verdict:
-                    from ..decide.hypothesis import doubt
-
-                    doubt(state, rt, "verdict", "verdict", prev, strat.verdict, source="telemetry")
-            elif prev is None:
-                activate_hypothesis(state, rt, v.get("reason"))
 
         # An active outage for the caller's street -> restricted mode (NOT a
         # close): the caller still asks "when fixed? / compensation?", so the

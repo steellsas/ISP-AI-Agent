@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..plan import Action, Say, TurnPlan
+from ..plan import Say, TurnPlan
 
 
 def plan(state: Any, rt: Any) -> TurnPlan:
@@ -30,7 +30,27 @@ def plan(state: Any, rt: Any) -> TurnPlan:
     stage_plan = _stage_plan(state, rt)
     if stage_plan.say.committed:
         return stage_plan
-    return scripted_layer(state, rt) or stage_plan
+    scripted = scripted_layer(state, rt)
+    if scripted is None:
+        return stage_plan
+    # Wave 3: the fault path belongs to the Case. The dialogue families (identification,
+    # the ticket ladder, closing, the stuck backstop) keep their scripted words, but a
+    # diagnosis-side script may no longer overwrite what the Case decided — it silently
+    # replaced a bind announcement and the engine walked on as if it had been said (full
+    # eval, S1).
+    if str(stage_plan.rule).startswith("case.") and _is_fault_script(scripted.rule):
+        return stage_plan
+    return scripted
+
+
+def _is_fault_script(rule: str) -> bool:
+    """Scripted words that used to come from the evidence drive and the walker.
+
+    Identification is NOT one of them: its scripted ladder (the holder clarification, the
+    address confirmations) is deterministic for privacy reasons and outranks the fault path
+    (full eval: I6, where the Case swallowed „sutartis registruota kitu vardu").
+    """
+    return str(rule).split(".", 1)[0] in ("diagnosis", "procedure")
 
 
 def _stage_plan(state: Any, rt: Any) -> TurnPlan:
@@ -51,38 +71,20 @@ def _stage_plan(state: Any, rt: Any) -> TurnPlan:
             rule="side_topic.answer",
             say=Say(kind="directive", stage="side_topic"),
         )
+    from . import case_rule
     from .closing import maybe_close_inform
-    from .diagnosis import solver_drive_turn
 
     maybe_close_inform(state, rt, user_input)
-    # The repeat guard counts the narrator's re-asks; a solver-driven turn has always
-    # counted as progress (no start snapshot on this path).
-    snapshot, s.turn.progress_key_at_start = s.turn.progress_key_at_start, None
-    driven = solver_drive_turn(state, rt, user_input)
-    if driven is not None:
-        return TurnPlan(
-            owner="diagnosis",
-            rule="diagnosis.solver_drive",
-            say=Say(kind="phrase", text=driven, committed=True, stage="diagnosis"),
-        )
-    s.turn.progress_key_at_start = snapshot
-    from ..procedure import advance
-
-    active = s.resolution.procedure is not None
-    outcome = advance(state, rt, user_input)
+    # Wave 3: ONE driver on the fault path. The evidence drive, the LLM solver and the
+    # walker used to share it with handover rules between them (review finding N).
+    planned = case_rule.plan(state, rt)
+    if planned is not None:
+        return planned
     return TurnPlan(
-        owner="procedure" if active else "diagnosis",
-        rule=f"procedure.{outcome.kind}" if active else "diagnosis.free_reply",
-        awaiting=outcome.role,
-        action=Action(type="procedure_step", name="run_due_action"),
+        owner="diagnosis",
+        rule="diagnosis.free_reply",
         say=Say(kind="directive", stage="diagnosis"),
     )
-
-
-def _conflict_due(state: Any) -> bool:
-    from ..hypothesis import due
-
-    return due(state, "conflict") is not None
 
 
 def _side_topic(state: Any) -> bool:
@@ -94,7 +96,6 @@ def _side_topic(state: Any) -> bool:
     return not (
         state.ticket.stage
         or state.closing.case_closed
-        or _conflict_due(state)
         or state.dialog.end_confirm_pending
         or state.dialog.resume_hold_due
     )

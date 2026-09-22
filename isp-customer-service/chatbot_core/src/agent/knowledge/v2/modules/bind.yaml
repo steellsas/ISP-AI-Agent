@@ -1,0 +1,12 @@
+# Variklio veiksmas: linijoje matomas įrenginys pririšamas prie kliento porto.
+# Klientas neveikia nieko — naratorius tik paskelbia (kortelė to nekartoja).
+module: bind
+kind: action
+params:
+  device: {required: true}
+tool: update_mac
+# Ką agentas pasako, kol variklis dirba. „Pririšiu", ne „užregistruosiu": registravimo
+# žodžiai reiškia TIKETĄ, o čia tik įrenginio pririšimas prie linijos (Andrius, 2026-08-21).
+announce: modules.bind.announce
+goal: "the device seen on the line bound to the caller's port"
+produces: [device_registered, traffic, port_flapped]

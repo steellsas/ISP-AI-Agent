@@ -1,0 +1,12 @@
+# Porto perkrovimas iš tiekėjo pusės. Po įrenginio pririšimo jis reikalingas, kad naujas
+# įrenginys gautų adresą — v1 tai buvo PASLĖPTA grandinė kode (chain_after_bind, radinys T);
+# dabar tai matomas kortelės žingsnis.
+module: port_reset
+kind: action
+params:
+  device: {}
+tool: reset_port
+# Be `announce`: tai vidinė santechnika, klientui nieko nesakom — variklis ją įvykdo
+# tyliai ir tame pačiame ėjime skaito rezultatą.
+goal: "the customer's port flapped so the new device gets a fresh lease"
+produces: [traffic, port_flapped, line_link]

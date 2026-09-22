@@ -7,7 +7,6 @@ second round-trip. Tests patch the LLM boundary only.
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agent.decide.procedure import _cached_perception
 from agent.graph_v2.state import GraphState, TurnScratch
 from agent.perceive import understand as und
 
@@ -72,53 +71,3 @@ class TestMergedUnderstand:
         assert "step" not in base
         assert '"step"' in merged
         assert "sutinka" in merged
-
-
-class TestWalkerConsumesCache:
-    def _step(self):
-        return SimpleNamespace(id="confirm_change", detector="yes_no", on=("yes", "no"), hint="")
-
-    def test_cache_hit_returns_observation(self, monkeypatch):
-        engine = as_call(
-            monkeypatch,
-            SimpleNamespace(
-                state=GraphState(
-                    turn=TurnScratch(
-                        perception_step={
-                            "step_id": "confirm_change",
-                            "input": "Taip, keičiau.",
-                            "obs": {"label": "yes", "is_answer": True, "confidence": 0.9},
-                        }
-                    )
-                )
-            ),
-        )
-        obs = _cached_perception(engine.state, engine.runtime, self._step(), "Taip, keičiau.")
-        assert obs is not None and obs.label == "yes" and obs.confidence == 0.9
-
-    def test_cache_misses_on_other_step_or_input(self, monkeypatch):
-        engine = as_call(
-            monkeypatch,
-            SimpleNamespace(
-                state=GraphState(
-                    turn=TurnScratch(
-                        perception_step={
-                            "step_id": "confirm_change",
-                            "input": "Taip, keičiau.",
-                            "obs": {"label": "yes", "is_answer": True},
-                        }
-                    )
-                )
-            ),
-        )
-        other_step = SimpleNamespace(id="dr_power", detector="yes_no", on=("yes", "no"), hint="")
-        assert (
-            _cached_perception(engine.state, engine.runtime, other_step, "Taip, keičiau.") is None
-        )
-        assert (
-            _cached_perception(engine.state, engine.runtime, self._step(), "Kitas tekstas") is None
-        )
-        engine.state.turn.perception_step = None
-        assert (
-            _cached_perception(engine.state, engine.runtime, self._step(), "Taip, keičiau.") is None
-        )

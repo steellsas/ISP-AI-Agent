@@ -1,0 +1,18 @@
+# TP-LINK ŠEIMA — CRM demo duomenyse visi klientų routeriai yra TP-Link Archer
+# (C6, C80, AX10, AX23, AX73). Paveldi bazinį routerį ir perrašo TIK tai, kas skiriasi:
+# lemputės vadinasi kitaip ir yra mygtukas.
+#
+# Gamintojo klausiama tik tada, kai instrukcija skiriasi nuo bazinės; maitinimo
+# perkrovimas universalus, tad jo čia nėra — paveldimas.
+equipment: tplink
+type: router
+extends: router
+matches: [tp-link, tplink, archer]
+
+actions:
+  reboot.button: equipment.tplink.reboot.button
+
+lights:
+  internet:
+    # TP-Link lemputė turi savo vietą ir užrašą — klausimas tikslesnis, skaitymas tas pats.
+    ask_key: equipment.tplink.lights.internet

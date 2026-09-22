@@ -103,6 +103,9 @@ class TestWrapUpHearing:
         agent.state.identity.caller_name = "Tomas"
         agent.state.diagnosis.news_delivered = True
         agent.state.identity.result_pending = False
+        # Wave 3: the wrap-up belongs to a NEWS call. A fault is the Case's to work on, so the
+        # verdict has to say which kind of call this is (it used to be the walker's pointer).
+        agent.state.diagnosis.verdicts["network"] = {"reason": "active_outage"}
         return agent
 
     def test_payment_claim_is_heard(self, db_connection):
@@ -319,65 +322,6 @@ class TestCannotNowHearing:
         }
         t = inform_text(agent.state, agent.runtime, "billing_suspended")
         assert t and "d.." not in t and "birželio 5 d." in t
-
-
-class TestHomeworkFinale:
-    """F1-F3 (gyva 2026-09-09): homework sutikimas su „viso gero" nebegauna
-    „ar tikrai norite baigti?", „perskambinsiu" uždaro callback, o ragelio
-    padėjimas homework žingsnyje NEregistruoja tiketo."""
-
-    def _at_homework(self):
-        agent = _agent()
-        agent.state.identity.customer_id = "CUST112"
-        agent.state.identity.caller_name = "Paulius"
-        agent.state.resolution.procedure = {
-            "verdict": "router_hung",
-            "step": "rh_homework",
-            "asked": True,
-            "solution_synced": True,
-        }
-        from agent.decide.question import register
-
-        register(agent.state, agent.runtime, "walker", "step:rh_homework")
-        return agent
-
-    def test_farewell_consent_routes_to_callback(self, db_connection):
-        """F1+F2: „Gerai, sutariam, viso gero" = sutikimas → callback, be
-        end-confirm rato."""
-        from agent.decide.procedure import advance
-        from agent.decide.rules.head import turn_head
-
-        agent = self._at_homework()
-        turn_head(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
-        assert agent.state.dialog.end_confirm_pending is False  # end-confirm nekilo
-        advance(agent.state, agent.runtime, "Gerai, sutariam, viso gero.")
-        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
-        assert agent.state.ticket.ticket_id is None
-
-    def test_callback_promise_routes_to_callback(self, db_connection):
-        from agent.decide.procedure import advance
-
-        agent = self._at_homework()
-        advance(agent.state, agent.runtime, "Nereikia susitikti, aš perskambinsiu, sakiau.")
-        assert agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
-
-    def test_ticket_demand_still_wins(self, db_connection):
-        from agent.decide.procedure import advance
-
-        agent = self._at_homework()
-        advance(agent.state, agent.runtime, "Gerai, bet registruokite meistrą dabar.")
-        assert not (
-            agent.state.closing.case_closed and agent.state.closing.closed_reason == "callback"
-        )
-
-    def test_hangup_at_homework_closes_callback_no_ticket(self, db_connection):
-        """F3: ragelis homework žingsnyje — callback, ne TKT."""
-        agent = self._at_homework()
-        from agent.call_record.finalizer import finalize
-
-        finalize(agent.state, agent.runtime, transport_end="client_closed")
-        assert agent.state.closing.closed_reason == "callback"
-        assert agent.state.ticket.ticket_id is None
 
 
 class TestRestoredGarble:
