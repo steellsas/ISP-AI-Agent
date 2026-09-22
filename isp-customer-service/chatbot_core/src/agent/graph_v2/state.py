@@ -410,6 +410,30 @@ STATE_GROUPS: tuple[str, ...] = (
 )
 
 
+class CaseState(BaseModel):
+    """The diagnosis as the call carries it (wave 3): what the facts are, which fault the
+    cards settled on, and how far its solution has run.
+
+    It replaces `resolution.procedure` (a verdict plus a pointer into a pack's steps) —
+    and, unlike it, the facts themselves are the state, so a new fact can reopen the case
+    instead of "doubting" a single hypothesis.
+    """
+
+    # The fact ledger the cards reason over: telemetry readings and what the caller said.
+    facts: dict[str, str] = Field(default_factory=dict)
+    # Facts we tried to get and could not (an unanswered question, a probe that is down):
+    # never asked twice, so a call cannot loop on a dead end.
+    unavailable: list[str] = Field(default_factory=list)
+    # The fault whose solution is running, and where in it.
+    fault: str | None = None
+    solution: int | None = None
+    step: int = 0
+    # How many times each step has been attempted (a retry is declared by the card).
+    attempts: dict[str, int] = Field(default_factory=dict)
+    # The step is waiting for this fact before the solution may move on.
+    awaiting: str | None = None
+
+
 class ToolsState(BaseModel):
     """What the guards in knowledge/tools/*.yaml count: how often each tool ran in THIS
     call and when it last ran. Persisted with the call, so a checkpoint resume cannot
@@ -433,5 +457,6 @@ class GraphState(BaseModel):
     dialog: DialogState = Field(default_factory=DialogState)
     closing: ClosingState = Field(default_factory=ClosingState)
     voice: VoiceState = Field(default_factory=VoiceState)
+    case: CaseState = Field(default_factory=CaseState)
     tools: ToolsState = Field(default_factory=ToolsState)
     turn: TurnScratch = Field(default_factory=TurnScratch)
