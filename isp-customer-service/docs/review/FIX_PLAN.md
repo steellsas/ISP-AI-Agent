@@ -67,8 +67,8 @@ Formato projektas ir sprendimai: `docs/review/WAVE3_DESIGN.md`.
 | 3e | **Įrangos katalogas**: modelis → šeima → bazinė; lemputės → faktai | nežinomas routeris vis tiek gauna saugią instrukciją |
 | 3f | Prijungimas + **seno kelio trynimas** | evidence drive, solver drive, walker, hipotezės mašina — nebėra |
 
-**3 bangos eiga (2026-09-22):** dvylika commit'ų. Vienetų testai **1222 passed, 1 skipped**;
-eval tekstas **178/178**.
+**3 bangos eiga (2026-09-22):** keturiolika commit'ų. Vienetų testai **1222 passed,
+1 skipped**; eval tekstas **178/178**, `--voice` **178/178**.
 
 Ištrinta: `decide/rules/evidence.py` (551), `decide/rules/diagnosis.py` (684),
 `decide/procedure.py` (824), `procedure_guards.py`, `rules/hypothesis_confirm.py`,
