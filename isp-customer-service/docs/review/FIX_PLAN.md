@@ -160,6 +160,15 @@ dalykų, kurių nė vienas testas nebūtų pagavęs:
 | Tikete „Gedimas: **tv**", „Gedimas: **internet_down**" | žmonių kalba: „bėda su televizija", „dingo internetas" |
 | „…sukonfigūruoti — telefonu to nepadarysime" (ta pati mintis dukart) | „routerį reikia sukonfigūruoti iš naujo" |
 
+**Ką parodė tik BALSO eval'as (ne tekstinis):** vienas atsakymas išėjo 291 simbolio, sargas jį
+apkirpo — ir nukirto **instrukciją**, palikdamas tik išvadą. Klientas būtų išgirdęs, kas
+patikrinta, bet ne tai, ką daryti. Todėl išvada, kuri dalijasi atsakymu su instrukcija,
+trumpinama iki **dviejų svarbiausių faktų** (imami PASKUTINIAI kortelės `when` — būtent jie
+sprendžia: „įrenginys matomas, bet srautas nevaikšto"), o kortelėje pasakyta, kad instrukcija
+privalo išlikti. Po to: C1 184 simb., C2 152 simb. (buvo 291). Ir „ar galite prieiti?" ėjimo
+tikslas dabar sako, kad klausiama TIK apie priėjimą.
+
+
 **Kalbėjimo forma (Andrius: „siektiek kliuna"):**
 
 | Buvo | Dabar |
