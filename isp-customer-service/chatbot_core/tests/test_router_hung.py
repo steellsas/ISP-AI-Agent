@@ -14,7 +14,7 @@ Layers:
 
 from datetime import UTC
 
-from agent.verdict import _flap_recent, decide
+from agent.verdict import _flap_recent
 
 
 def _signals(**overrides) -> dict:
@@ -36,45 +36,6 @@ def _signals(**overrides) -> dict:
     }
     base.update(overrides)
     return base
-
-
-class TestVerdictRouterHung:
-    """Pure decision-tree: the new BŪSENA C branch."""
-
-    def test_no_traffic_means_router_hung(self):
-        v = decide(_signals(traffic="none"))
-        assert v["reason"] == "router_hung"
-        assert v["side"] == "customer"
-        assert v["action"] == "instruct"
-        assert v["group"] == "B6"
-        assert "reboot" in v["agent_message"]
-
-    def test_dhcp_silent_wins_over_traffic(self):
-        """A DHCP-silent device also shows no traffic — the more specific
-        factory-reset verdict must keep winning."""
-        v = decide(_signals(dhcp_status="no_requests", traffic="none"))
-        assert v["reason"] == "dhcp_silent"
-
-    def test_crc_wins_over_traffic(self):
-        v = decide(_signals(crc_error_rate=25.0, traffic="none"))
-        assert v["reason"] == "crc_errors"
-
-    def test_traffic_normal_or_absent_stays_healthy(self):
-        assert decide(_signals())["reason"] == "healthy_to_router"
-        s = _signals()
-        s.pop("traffic")  # legacy signals dict without the key
-        assert decide(s)["reason"] == "healthy_to_router"
-
-    def test_flap_recent_window(self):
-        from datetime import datetime, timedelta, timezone
-
-        now = datetime.now(UTC)
-        fresh = (now - timedelta(seconds=60)).strftime("%Y-%m-%d %H:%M:%S")
-        stale = (now - timedelta(hours=6)).strftime("%Y-%m-%d %H:%M:%S")
-        assert _flap_recent(fresh) is True
-        assert _flap_recent(stale) is False
-        assert _flap_recent(None) is False
-        assert _flap_recent("not-a-date") is False
 
 
 class TestRouterHungPack:
@@ -196,13 +157,21 @@ class TestConflictScope:
 class TestSimRebootSeed:
     """Seeded CUST112 + the demo reboot button, end to end (and restored)."""
 
-    def _reason_and_signals(self):
+    def _card_and_signals(self):
+        """What the line says, and which card the facts leave standing (wave 4: the reading
+        returns signals; the cards decide)."""
         import json
 
+        from agent.case import candidates
+        from agent.facts import facts_from_signals
         from agent.tools import execute_tool
 
         d = json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST112"}))
-        return (d.get("verdict") or {}).get("reason"), d.get("signals") or {}
+        signals = d.get("signals") or {}
+        matched = {
+            c.fault for c in candidates(facts_from_signals(signals)) if c.status == "matched"
+        }
+        return matched, signals
 
     def _restore_hung(self, db):
         with db.transaction() as cur:
@@ -215,13 +184,13 @@ class TestSimRebootSeed:
         from agent.tools import simulate_router_reboot
 
         try:
-            reason, signals = self._reason_and_signals()
-            assert reason == "router_hung"
+            matched, signals = self._card_and_signals()
+            assert matched == {"router_hung"}
             assert signals.get("port_flap_recent") is False
             res = simulate_router_reboot("CUST112")
             assert res["success"] is True
-            reason, signals = self._reason_and_signals()
-            assert reason == "healthy_to_router"
+            matched, signals = self._card_and_signals()
+            assert matched == {"healthy_to_router"}  # traffic is back; the rest is client-side
             assert signals.get("traffic") == "normal"
             assert signals.get("port_flap_recent") is True  # the witness
         finally:

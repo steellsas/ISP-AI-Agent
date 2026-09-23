@@ -1,0 +1,8 @@
+# REGISTRUOTA AVARIJA (naujiena): vieta ir laikas — iš inform.yaml šablono.
+fault: active_outage
+service: any
+news: true
+when:
+  all: [area_outage=yes]
+explain:
+  conclusion: "verdict.active_outage.gloss"

@@ -1,12 +1,15 @@
 # Demo scenarijai — gedimų rinkinys balso demonstracijai
 
-Paruošti skambučiai (Šiaulių regiono demo): 9 gedimų scenarijai ir 6 skambučių
-tipai iš M6. Kiekvienam: iš kokio numerio skambinti, ką sakyti ir ko laukti iš agento.
+Paruošti skambučiai (Šiaulių regiono demo): 18 scenarijų — 9 gedimai, 6 skambučių tipai
+iš M6 ir 3 iš 4a bangos (kas pasikeitė, kai sprendimų medis išėjo iš kodo). Kiekvienam:
+iš kokio numerio skambinti, ką sakyti ir ką būtent tikrinam.
 
 **Dashboard'e tas pats sąrašas yra skirtuke „Scenarijai“** (duomenys —
 `chatbot_core/src/app/scenarios.yaml`): ▶ užpildo numerį, atidaro „Testavimas“ su
 kortele „ką sakyti“, o po skambučio pažymi, ar verdiktas ir baigtis sutapo (✓/✗).
 Naują scenarijų pridėti ar pakeisti — to failo redagavimas, kodo keisti nereikia.
+
+Dialogai eilutė po eilutės ir „ką tikrinu“ sąrašai — [BALSO_TESTAVIMAS.md](BALSO_TESTAVIMAS.md).
 
 ## Prieš demo
 
@@ -35,6 +38,9 @@ adresą („Taip") → pasakai vardą. Toliau — pagal scenarijų.
 | 13 | TV gedimas, bet paslaugos nėra | +37060012353 | Giedrius, Vilniaus g. 29 | service_not_subscribed | informuota, be tiketo |
 | 14 | IPTV per sugedusį internetą | +37060020112 | Paulius, Vilniaus g. 33-2 | router_hung | resolved; pabaigoje paklausia, ar TV rodo |
 | 15 | Neidentifikuotas — padeda ragelį | +37000000000 | — | — | tik kontaktinis įrašas peržiūrai (abandoned / hung_up) |
+| 16 | Routeris pametė nustatymus | +37060020106 | Greta, Vilniaus g. 31-2 | dhcp_silent | tiketas (telefonu nesutvarkoma) |
+| 17 | TV neveikia, o internetas tvarkoje | +37060020110 | Kęstutis, Bubių k., Aušros g. 8 | unclear_fault | tiketas be interneto žingsnių |
+| 18 | Klientas neatsako į klausimą | +37060020112 | Paulius, Vilniaus g. 33-2 | — | tiketas; klausimas nekartojamas trečią kartą |
 
 Po kiekvieno skambučio **Archyvas** skirtuke matyti kontaktinis įrašas: baigtis
 (`resolved`, `ticket`, `ticket_appended`, `informed_debt`, `informed_outage`,
@@ -202,6 +208,71 @@ sutvarkius paklausia, ar televizija rodo.
 
 **Laukiama:** jokio tiketo; Archyve — įrašas `abandoned` (`hung_up`) su žyme
 „peržiūrai“ ir audio saugojimo data (neidentifikuotiems — 30 d.).
+
+---
+
+## 16. Routeris pametė nustatymus (dhcp_silent)
+
+**Kodėl testuojam:** 4a bangoje ši situacija tapo **kortele** (`dhcp_silent`) — iki tol ją
+vardijo sprendimų medis kode, o po medžio trynimo ji buvo trumpam pamesta: agentas ją laikė
+„kliento puse" ir vedė klientą per jo paties įrenginius. Dabar tai gedimas su savo išvada.
+
+**Numeris:** +37060020106 · **Klientas:** Greta, Šiauliai, Vilniaus g. 31-2 (TP-Link Archer C80)
+
+**Sakyti:** „Neveikia internetas." → „Taip" (adresas) → „Greta" → toliau atsakyk į kontaktų
+klausimus („Taip, tinka", „Bet kada") → „Ačiū, viso gero".
+
+**Ką tikrinam:**
+1. **Išvada žmogaus kalba** — „routeris linijoje matomas, bet adreso iš mūsų neprašo — panašu,
+   kad pasimetę jo nustatymai". Žodžių **„DHCP"** ir **„gamyklinis"** nuskambėti negali (F-8).
+2. **Nėra klaidingo kelio** — agentas NEPRAŠO tikrinti kompiuterio, WiFi ar perkišti laidų:
+   linijoje viskas matoma, klausti nėra ko.
+3. **Meistras, pažadėtas vieną kartą** — „užregistruosiu meistrą" turi nuskambėti viename
+   atsakyme, o ne kiekviename tiketo dialogo ėjime (4a radinys).
+4. **Meistras nėra „išspręsta"** — pokalbio gale agentas negali pasakyti, kad paslauga grįžo.
+   Archyve: `ticket`.
+
+## 17. TV neveikia, o internetas tvarkoje
+
+**Kodėl testuojam:** tai antra №14 pusė. Ar taisom internetą, ar ne, dabar sprendžia **kortelė**
+(`line_ok`), ne ištrintas medis: jei linija iki kliento įrangos sveika, televizija yra savas
+gedimas; jei ne (№14) — pirma internetas. 4a bangoje būtent šis kelias buvo nulūžęs.
+
+**Numeris:** +37060020110 · **Klientas:** Kęstutis, Šiaulių r., Bubių k., Aušros g. 8
+(turi ir internetą, ir IPTV; linija sveika)
+
+**Sakyti:** „Laba diena, televizorius nerodo nė vieno kanalo." → „Taip" → „Kęstutis" →
+„Taip, tinka šis numeris" → „Po pietų, nuo keturioliktos" → „Ačiū, viso gero".
+
+**Ką tikrinam:**
+1. **Jokių interneto žingsnių** — nei „perkraukite routerį", nei „patikrinkite WiFi", nei
+   lempučių: televizijos kortelės dar nėra, tad ir instrukcijų nėra (gyvai buvo klaida —
+   TV skambutis vedamas per WiFi klausimus).
+2. **Sąžiningas tiketas** — „telefonu nenustatėme, perduosiu specialistams", surenkami kontaktai.
+3. **Palyginti su №14** — tas pats skundas („neveikia televizija"), bet Pauliaus linija pakibusi,
+   tad ten agentas PIRMA taiso internetą ir tik pabaigoje klausia apie TV. Jei abu skambučiai
+   elgiasi vienodai — kažkas ne taip.
+
+## 18. Klientas neatsako į užduotą klausimą
+
+**Kodėl testuojam:** 4a trace'uose agentas tą patį klausimą uždavė **keturis ėjimus iš eilės**,
+nors klientas vis atsakinėjo apie kitus dalykus. Dabar klausimų kiekis — riba žiniose
+(`case_fact_asks_max: 2`), o po jos faktas laikomas nepasiekiamu.
+
+**Numeris:** +37060020112 · **Klientas:** Paulius, Šiauliai, Vilniaus g. 33-2
+
+**Sakyti:** „Neveikia internetas." → „Taip" → „Paulius" → tada **specialiai neatsakyk** į
+„ar neveikia visuose įrenginiuose, ar tik viename?": „Esu prie routerio" → „Lemputės dega" →
+toliau kontaktai („Taip, tinka", „Bet kada") → „Ačiū, viso gero".
+
+**Ką tikrinam:**
+1. **Tas pats klausimas — daugiausiai du kartus.** Trečio pakartojimo būti negali.
+2. **Po to — judama toliau**, ne kilpa: agentas arba pasitikslina kitu kampu, arba sąžiningai
+   siūlo meistrą ir surenka kontaktus.
+3. **Skambutis pasibaigia rezultatu** — Archyve `ticket`, ne `abandoned` dėl to, kad klientas
+   pavargo. (Iki taisymo šis skambutis baigdavosi be nieko.)
+4. **Ką pasakė klientas — nepamesta:** „lemputės dega" turi atsirasti tikete tarp to, kas
+   patikrinta.
 
 ## Po skambučio
 

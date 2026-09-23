@@ -457,6 +457,11 @@ class CaseState(BaseModel):
     # How many times the "when you are back" agreement has been asked. Asking a third time is
     # pressure, not politeness: the caller has been told, and the call ends warmly.
     homework_asks: int = 0
+    # The TURNS on which each fact was asked of the caller. Past the limit the fact counts as
+    # unavailable: a caller who answers something else twice is not going to answer this, and
+    # the honest move is to carry on without it (eval X — the same question four times). Turns,
+    # not a counter: the redecide loop plans the same turn more than once.
+    asks: dict[str, list[int]] = Field(default_factory=dict)
     # The step is being retried, so the card's `on_fail` call is what runs — a retry that
     # repeats the identical instruction teaches the caller nothing.
     retrying: bool = False

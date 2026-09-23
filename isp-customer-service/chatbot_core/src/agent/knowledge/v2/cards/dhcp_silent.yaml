@@ -1,0 +1,47 @@
+# ROUTERIS ADRESO NEPRAŠO — pasimetę nustatymai (v2 kortelė, 4 banga)
+#
+# Telemetrija įrenginį linijoje MATO ir MAC tas pats, kuris registruotas, bet adreso iš mūsų
+# jis net neprašo (DHCP tyli arba nuoma pasibaigusi). Praktikoje tai reiškia, kad routeris
+# pamiršo savo nustatymus — dažniausiai po gamyklinio atstatymo. Telefonu to nesutvarkysime:
+# reikia perkonfigūruoti, tai meistro darbas.
+#
+# Iki 4 bangos tai buvo `verdict.py::decide` medžio šaka (`dhcp_silent`), kurios nė viena
+# kortelė neaprašė — todėl variklis ją vertė „neaiškiu gedimu". Dabar tai kortelė kaip visos
+# kitos: pati pasako, kada ji kandidatė, ir pati pasako, kad telefonu nėra ko daryti.
+#
+# Klientui NIEKADA nesakom „DHCP" ar „gamyklinis atstatymas" (F-8 — be telemetrijos žargono):
+# `explain.conclusion` ir faktų glosai pasakyti žmogaus kalba.
+fault: dhcp_silent
+service: internet
+symptom: internet_down
+explain:
+  conclusion: "verdict.dhcp_silent.gloss"
+
+# Kandidatė, kai tiekėjo pusė tvarkinga, įrenginys linijoje matomas — ir tyli.
+when:
+  all: [node_reachable=yes, line_link=up, device_seen=yes, dhcp=silent]
+
+rules_out:
+  - area_outage=yes           # avarija — informuojam
+  - service_suspended=yes     # skola — informuojam
+  # Kitas įrenginys linijoje: tada tylus DHCP yra tos kortelės dalis (naujas routeris dar
+  # nepririštas), ne atskiras gedimas — S1 eval'e abu faktai sutampa.
+  - device_registered=foreign
+  - line_errors=high          # kabelio klaidos
+
+# Nieko klausti nereikia: viskas, ko reikia sprendimui, jau matoma linijoje.
+#
+# Žinių bazėje (`knowledge:` apačioje) yra ir žingsnis po žingsnio, kaip klientas pats
+# susitvarkytų per routerio valdymo skydelį. Tokio modulio („vesk per naršyklės nustatymus")
+# variklis kol kas neturi, todėl sąžiningas kelias — meistras, o instrukcija lieka tiketo
+# pastaboje. Kai toks modulis bus (4b banga), pakis TIK ši kortelė, ne kodas.
+solution:
+- steps:
+  - module: escalate
+    args: {note: "įrenginys linijoje matomas, bet adreso neprašo — reikia perkonfigūruoti routerį"}
+
+escalate:
+  need: "verdict.dhcp_silent.ticket_need"
+  note: "routeris linijoje tyli — nustatymai pasimetę, telefonu nesutvarkoma"
+
+knowledge: troubleshooting/internet_factory_reset_dhcp

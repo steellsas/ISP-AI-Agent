@@ -48,6 +48,20 @@ def _create(client, phone="+37060012353"):
     return resp.json()
 
 
+def _card_from_reading(customer_id: str) -> set[str]:
+    """Which card the line's own reading leaves standing (wave 4: the tool returns signals and
+    the cards decide, so a demo button is checked by what the FACTS then allow)."""
+    import json as _json
+
+    from agent.case import candidates
+    from agent.facts import facts_from_signals
+    from agent.tools import execute_tool
+
+    payload = _json.loads(execute_tool("diagnose_connection", {"customer_id": customer_id}))
+    facts = facts_from_signals(payload.get("signals"))
+    return {c.fault for c in candidates(facts) if c.status == "matched"}
+
+
 class TestLifecycle:
     def test_health(self, client):
         resp = client.get("/health")
@@ -707,14 +721,10 @@ class TestSimulatePlug:
         manager.get(sid).session.state.identity.customer_id = "CUST009"
         resp = client.post(f"/sessions/{sid}/simulate-plug")
         assert resp.status_code == 200 and resp.json()["ok"] is True
-        from agent.tools import execute_tool
-
-        d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST009"}))
-        assert ((d.get("verdict") or {}).get("reason")) != "no_mac_observed"
+        assert "no_mac_observed" not in _card_from_reading("CUST009")
         resp = client.post(f"/sessions/{sid}/simulate-plug", params={"unplug": "true"})
         assert resp.status_code == 200
-        d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST009"}))
-        assert ((d.get("verdict") or {}).get("reason")) == "no_mac_observed"
+        assert _card_from_reading("CUST009") == {"no_mac_observed"}
         client.delete(f"/sessions/{sid}")
 
     def test_unknown_session_is_404(self, client):
@@ -739,16 +749,14 @@ class TestSimulateReboot:
         from app.main import manager
 
         manager.get(sid).session.state.identity.customer_id = "CUST112"
-        from agent.tools import execute_tool, get_db
+        from agent.tools import get_db
 
         try:
-            d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST112"}))
-            assert ((d.get("verdict") or {}).get("reason")) == "router_hung"
+            assert _card_from_reading("CUST112") == {"router_hung"}
             resp = client.post(f"/sessions/{sid}/simulate-reboot")
             assert resp.status_code == 200 and resp.json()["ok"] is True
-            d = _json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST112"}))
-            assert ((d.get("verdict") or {}).get("reason")) == "healthy_to_router"
-            assert (d.get("signals") or {}).get("port_flap_recent") is True
+            # traffic is back and the flap was seen: the hung router is ruled out
+            assert _card_from_reading("CUST112") == {"healthy_to_router"}
         finally:
             with get_db().transaction() as cur:
                 cur.execute(

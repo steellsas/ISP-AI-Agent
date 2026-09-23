@@ -42,17 +42,35 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             return reflect
         if status == "failed":
             return _escalate(state, rt, state.case.fault)
+        if status == "handed_over":
+            return None  # the ticket dialogue owns the rest of the call
         if status == "solved":
             return _resolved(state, rt)
         step = _current(state)
         if step is not None:
             return _step_plan(state, rt, step, facts)
-    if _not_a_fault(facts, state) and state.case.fault is None:
+    if _not_a_fault(facts, state) and state.case.fault is None and _told(state):
         # An outage or a suspended service is NOT a fault we diagnose: the inform path owns
         # the turn, and escalating here hijacked it (full eval: four inform scenarios).
         return None
     move = next_move(facts, unavailable=ledger.unavailable(state))
+    # A question the caller has been asked twice and has not answered is a dead end, not a
+    # question to ask a third time (eval X: "visuose ar tik viename?" four turns running
+    # while the caller kept telling us other things). It is marked unavailable and the Case
+    # decides again without it — which is how the call reaches an honest ending.
+    while move.kind == "learn" and _asked_enough(state, move):
+        ledger.record_unavailable(state, rt, move.fact)
+        rt.tracer.emit("case", move="give_up", fact=move.fact, why="asked and not answered")
+        move = next_move(facts, unavailable=ledger.unavailable(state))
     rt.tracer.emit("case", move=move.kind, fact=move.fact, fault=move.fault, why=move.why)
+    if move.kind == "inform":
+        # Nothing to diagnose: record what the news IS where the inform path reads it, and
+        # let that path speak (its templates and clarity rules live in inform.yaml).
+        network = state.diagnosis.verdicts.setdefault("network", {})
+        if network.get("reason") != move.fault:
+            network["reason"] = move.fault
+            rt.tracer.emit("verdict", reason=move.fault, source="card")
+        return None
     if move.kind == "learn":
         return _learn(state, rt, move, facts)
     if move.kind == "solve":
@@ -69,6 +87,11 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
 # Facts that mean someone else owns the turn: there is nothing to diagnose, only news to
 # deliver (a registered outage, a suspended service).
 NOT_OUR_FAULT = ("area_outage", "service_suspended")
+
+
+def _told(state: Any) -> bool:
+    """Has the news already been named? Until it is, the Case still has to name it (wave 4)."""
+    return bool(((state.diagnosis.verdicts or {}).get("network") or {}).get("reason"))
 
 
 def _not_a_fault(facts: dict[str, str], state: Any | None = None) -> bool:
@@ -192,12 +215,28 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     if why:
         # A caller who knows WHY answers better, and follows the instruction that comes next.
         goal = f"{goal}. Say why in half a sentence: {why}"
+    asked = state.case.asks.setdefault(move.fact, [])
+    if state.dialog.turn_count not in asked:
+        asked.append(state.dialog.turn_count)
     return TurnPlan(
         owner="diagnosis",
         rule="case.ask",
         say=Say(kind="directive", text=maybe_phrase(source.ask), goal=goal, stage="diagnosis"),
         awaiting=move.fact,
     )
+
+
+def _asked_enough(state: Any, move: Any) -> bool:
+    """Has this fact already been asked as often as we may ask?
+
+    Only a QUESTION counts: a probe costs the caller nothing and a module is something we do
+    together, so neither wears out. The limit is knowledge (`case_fact_asks_max`).
+    """
+    from ...contract import limits
+
+    if move.source is None or move.source.kind != "ask" or not move.fact:
+        return False
+    return len(state.case.asks.get(move.fact, [])) >= int(limits.get("case_fact_asks_max"))
 
 
 def _call_for(module: str, state: Any):
@@ -223,6 +262,12 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
         if all(c.holds(facts) is True for c in conditions) and solution.steps:
             state.case.fault, state.case.solution, state.case.step = fault, index, 0
             state.case.awaiting = None
+            # The fault the Case settled on IS the call's verdict — what the record, the
+            # ticket and the eval all read (wave 4: the tree that used to name it is gone).
+            network = state.diagnosis.verdicts.setdefault("network", {})
+            if network.get("reason") != fault:
+                network["reason"] = fault
+                rt.tracer.emit("verdict", reason=fault, source="card")
             _announce_finding(state, rt, card, facts)
             rt.tracer.emit("case", move="begin", fault=fault, solution=index)
             return
@@ -299,6 +344,11 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     call = _current(state)
     if call is None:
         return "solved" if state.case.fault and state.case.solution is not None else "waiting"
+    if _is_escalate(call) and state.ticket.stage:
+        # The technician has been asked for and the contact dialogue is collecting the
+        # details: the Case has nothing left to add, and re-planning the same step made the
+        # agent promise "užregistruosiu meistrą" on every turn of that dialogue.
+        return "handed_over"
     if _action_ran(state, call):
         # An engine action needs nothing from the caller: once its tool has actually run the
         # step is done. Measured on the tool COUNTER, because a planned action may never run
@@ -450,8 +500,24 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
             state.case.act_count = state.tools.calls.get(spec.tool, 0)
     if _current(state) is None:
         rt.tracer.emit("case", move="solution_done", fault=state.case.fault)
-        return "solved"
+        # A branch whose last step is ESCALATE ends with a technician, not with a working
+        # line: "solved" here would have the narrator say the service is back (the dhcp_silent
+        # card has no other step, and only the ticket dialogue holding the turn hid it).
+        return "handed_over" if _ended_in_escalate(state) else "solved"
     return "moved"
+
+
+def _ended_in_escalate(state: Any) -> bool:
+    card = catalog.card(state.case.fault)
+    if card is None or state.case.solution is None:
+        return False
+    steps = card.solution[state.case.solution].steps
+    return bool(steps) and _is_escalate(steps[-1])
+
+
+def _is_escalate(call: Any) -> bool:
+    spec = catalog.module(call.module) if call is not None else None
+    return bool(spec and spec.kind == "escalate")
 
 
 def _retry_or_give_up(state: Any, rt: Any) -> str:

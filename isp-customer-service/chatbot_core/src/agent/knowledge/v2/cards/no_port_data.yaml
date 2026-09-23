@@ -1,0 +1,9 @@
+# NEMATOME LINIJOS (naujiena su tęsiniu): iš mūsų pusės diagnostikos nėra, todėl toliau
+# kalbamės su klientu — ką rodo lemputės, ar yra maitinimas.
+fault: no_port_data
+service: any
+news: true
+when:
+  all: [line_link=unknown]
+explain:
+  conclusion: "verdict.no_port_data.gloss"

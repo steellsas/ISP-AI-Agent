@@ -640,7 +640,9 @@ verdict:
   crc_errors:
     gloss: "linijos klaidos (CRC) — kabelio/jungties problema"
   dhcp_silent:
-    gloss: "įranga negauna IP (DHCP tyli) — galbūt po gamyklinio atstatymo"
+    # Be žargono (F-8): klientui nesakom nei „DHCP", nei „gamyklinis atstatymas".
+    gloss: "routeris linijoje matomas, bet adreso iš mūsų neprašo — panašu, kad pasimetę jo nustatymai"
+    ticket_need: "routerį reikia iš naujo sukonfigūruoti — telefonu to nepadarysime"
   no_mac_observed:
     gloss: "linijoje nematoma jokio įrenginio"
     ticket_need: "reikalingas naujas maršrutizatorius"

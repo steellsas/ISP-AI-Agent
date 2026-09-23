@@ -152,7 +152,7 @@ class TestEveryV1PackHasACard:
     """Nothing may be lost in the conversion: the v1 packs and the v2 cards are the same
     set of faults, by id (the locale keys and the ticket reasons hang off those ids)."""
 
-    def test_the_same_faults(self):
+    def test_no_v1_fault_was_lost(self):
         import yaml
         from agent.contract.schema import KNOWLEDGE_DIR
 
@@ -160,7 +160,16 @@ class TestEveryV1PackHasACard:
             yaml.safe_load(p.read_text(encoding="utf-8"))["verdict"]
             for p in (KNOWLEDGE_DIR / "faults").glob("*.yaml")
         }
-        assert v1 == set(catalog.cards())
+        # The reverse is no longer true: wave 4 added the NEWS cards, which the packs never
+        # had (they were branches in the tree).
+        assert v1 <= set(catalog.cards())
+
+    def test_a_news_card_tells_and_a_fault_card_fixes(self):
+        for name, card in catalog.cards().items():
+            if card.news:
+                assert not card.solution and not card.needs, f"{name}: news does not ask or act"
+            elif not card.fallback:
+                assert card.solution, f"{name}: a fault card must say how it is fixed"
 
     def test_exactly_one_card_is_the_honest_fallback(self):
         fallbacks = [c.fault for c in catalog.cards().values() if c.fallback]

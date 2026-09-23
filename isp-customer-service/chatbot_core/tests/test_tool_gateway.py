@@ -128,11 +128,20 @@ class TestManifestGuards:
 
     def test_a_cooldown_and_the_hours_are_read_from_the_manifest(self):
         """No manifest uses these yet (they arrive with real equipment actions), so the
-        guard itself is tested against a manifest built here."""
+        guard itself is tested against a manifest built here.
+
+        Both windows are derived from the CURRENT hour: a hard-coded "08-22" made the test
+        depend on when it ran, and CI at 06:32 UTC read it as a real refusal (which it is —
+        an equipment reboot is not a night job).
+        """
         import time
 
         from agent.contract.schema import ToolManifest
         from agent.tooling.gateway import _guards
+
+        hour = time.localtime().tm_hour
+        open_now = f"{hour:02d}-{(hour + 1) % 24:02d}"  # this hour is inside it
+        shut_now = f"{(hour + 2) % 24:02d}-{(hour + 3) % 24:02d}"  # this hour is outside it
 
         agent, _ = _agent(_Provider({"success": True}))
         spec = ToolManifest(
@@ -140,7 +149,7 @@ class TestManifestGuards:
             capability="action",
             adapter="demo_db",
             timeout_s=8,
-            guards={"cooldown_s": 600, "allowed_hours": "08-22"},
+            guards={"cooldown_s": 600, "allowed_hours": open_now},
             on_failure={"say_key": "tools.unavailable_action", "fallback": "ticket"},
             audit=True,
         )
@@ -151,13 +160,9 @@ class TestManifestGuards:
         assert refusal and json.loads(refusal)["error"] == "guard_cooldown"
 
         agent.state.tools.last_at.clear()
-        night = ToolManifest(**{**spec.model_dump(), "guards": {"allowed_hours": "03-04"}})
-        hour = time.localtime().tm_hour
-        refusal = _guards(agent.state, "reboot_cpe", night)
-        if hour in (3,):
-            assert refusal is None
-        else:
-            assert refusal and json.loads(refusal)["error"] == "guard_hours"
+        shut = ToolManifest(**{**spec.model_dump(), "guards": {"allowed_hours": shut_now}})
+        refusal = _guards(agent.state, "reboot_cpe", shut)
+        assert refusal and json.loads(refusal)["error"] == "guard_hours"
 
 
 class TestSlowAndBrokenTools:
@@ -324,11 +329,10 @@ class TestTelemetry:
 
         telemetry(agent.state, agent.runtime, mode="snapshot", reason="test")
 
-        # Wave 3: the reading commits the provider-side verdict (what the inform path
-        # speaks) and the FACTS the cards reason over. It no longer activates a hypothesis
-        # or points a walker at a pack's first step — there is neither.
-        assert agent.state.diagnosis.verdicts["network"]["reason"] == "router_hung"
+        # Wave 4: the reading commits FACTS. Which fault (or which news) they mean is the
+        # Case's decision, not the tool's — there is no verdict in the payload any more.
         assert agent.state.case.facts["traffic"] == "none"
+        assert agent.state.case.facts["line_link"] == "up"
         call = next(e for e in tracer.events if e["type"] == "tool_call")
         assert call["name"] == "diagnose_connection" and call["reason"] == "snapshot:test"
 
@@ -337,14 +341,15 @@ class TestTelemetry:
 
         agent, _ = _agent(_Provider(self._VERDICT))
         agent.state.identity.customer_id = "CUST112"
-        agent.state.diagnosis.hypothesis = {"cause": "foreign_mac", "status": "testing"}
+        agent.state.case.facts["traffic"] = "none"
 
         result = telemetry(agent.state, agent.runtime, mode="recheck", reason="test")
 
-        assert result.data["verdict"]["reason"] == "router_hung"
+        # A recheck READS and changes nothing: the caller's case keeps the facts it had, and
+        # the observation is the caller's to inspect.
+        assert result.data["signals"]["traffic"] == "none"
+        assert agent.state.case.facts["traffic"] == "none"
         assert agent.state.diagnosis.verdicts == {}
-        assert agent.state.diagnosis.hypothesis == {"cause": "foreign_mac", "status": "testing"}
-        assert agent.state.resolution.procedure is None
 
 
 class TestNoToolCallsOutsideTooling:

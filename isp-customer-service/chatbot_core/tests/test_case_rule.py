@@ -201,3 +201,82 @@ class TestWhenTheCallerCannotDoItNow:
         plan = case_rule.plan(state, rt)
 
         assert plan.rule == "case.escalate" and state.ticket.stage == "phone"
+
+
+class TestWhenTheCallerDoesNotAnswerTheQuestion:
+    """Wave 4a (eval X): the agent asked "visuose ar tik viename?" on four turns running
+    while the caller kept telling it other things. A question that gets no answer twice is a
+    dead end, and the honest move is to carry on without it."""
+
+    def test_the_same_question_is_not_asked_a_third_time(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+
+        first = case_rule.plan(state, rt)
+        state.dialog.turn_count += 1
+        second = case_rule.plan(state, rt)
+        state.dialog.turn_count += 1
+        third = case_rule.plan(state, rt)
+
+        assert first.awaiting == "fail_scope" and second.awaiting == "fail_scope"
+        assert third.awaiting != "fail_scope"
+        assert "fail_scope" in state.case.unavailable
+
+    def test_giving_up_on_the_question_still_ends_the_call_honestly(self, call):
+        """Nothing else can be learned either: the caller is offered a technician, not a
+        fourth question."""
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        state.case.asks["fail_scope"] = [1, 2]
+        state.case.unavailable.extend(["reachable", "rebooted"])
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.escalate" and state.ticket.stage == "phone"
+
+    def test_an_answered_question_is_never_given_up_on(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        case_rule.plan(state, rt)  # asks fail_scope once
+        said(state, rt, "fail_scope", "all")
+
+        plan = case_rule.plan(state, rt)
+
+        assert "fail_scope" not in state.case.unavailable
+        assert state.case.fault == "router_hung" and plan.rule == "case.reach"
+
+
+class TestACardThatOnlyEscalates:
+    """dhcp_silent (wave 4a): the line says everything and there is nothing to do over the
+    phone. Its solution is one escalate step — and finishing it must not sound like a fix."""
+
+    @pytest.fixture
+    def silent_router(self, make_state, make_runtime):
+        state, rt = make_state("+37060020106"), make_runtime()
+        state.identity.customer_id = "CUST106"
+        record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+        return state, rt
+
+    def test_it_goes_straight_to_a_technician(self, silent_router):
+        state, rt = silent_router
+
+        plan = case_rule.plan(state, rt)
+
+        assert state.case.fault == "dhcp_silent"
+        assert plan.rule == "case.escalate" and state.ticket.stage == "phone"
+
+    def test_the_finding_is_told_before_the_ticket(self, silent_router):
+        state, rt = silent_router
+
+        case_rule.plan(state, rt)
+
+        told = state.turn.directives.findings
+        assert told and "adreso" in told["isvada"]
+        assert "DHCP" not in told["isvada"] and "gamyklin" not in told["isvada"]
+
+    def test_the_next_turn_does_not_claim_the_service_is_back(self, silent_router):
+        state, rt = silent_router
+        case_rule.plan(state, rt)
+        state.dialog.turn_count += 1
+
+        assert case_rule.plan(state, rt) is None  # the ticket dialogue owns the turn

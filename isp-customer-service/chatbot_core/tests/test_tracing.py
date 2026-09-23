@@ -182,23 +182,20 @@ class TestEngineEmits:
         assert cap.events[0]["type"] == "session_start"
         assert cap.events[0]["model"]
 
-    def test_tool_result_and_verdict_events(self, db_connection):
+    def test_a_tool_result_is_traced_without_concluding_anything(self, db_connection):
+        """Wave 4: the reading is traced as a result; WHICH fault it means is the Case's
+        decision and is traced there (`verdict` with source=card), not by the tool helper."""
         cap = _CaptureTracer()
         agent = self._agent(cap)
         cap.events.clear()
 
-        # Feed a real diagnose_connection observation through the helper.
         from agent.tools import diagnose_connection
 
         obs = json.dumps(diagnose_connection("CUST105"))
         trace_tool_result(agent.tracer, "diagnose_connection", obs)
 
-        types = [e["type"] for e in cap.events]
-        assert types == ["tool_result", "verdict"]
-        verdict = cap.events[1]
-        assert verdict["group"] == "B6"
-        assert verdict["reason"] == "foreign_mac"
-        assert verdict["side"] == "customer"
+        assert [e["type"] for e in cap.events] == ["tool_result"]
+        assert cap.events[0]["ok"] is True
 
     def test_resolve_address_hint_in_summary(self, db_connection):
         cap = _CaptureTracer()

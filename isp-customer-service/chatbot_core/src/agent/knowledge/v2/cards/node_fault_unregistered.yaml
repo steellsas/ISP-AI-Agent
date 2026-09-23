@@ -1,0 +1,9 @@
+# MAZGO GEDIMAS BE REGISTRUOTOS AVARIJOS (naujiena): kaimynams tame pačiame mazge irgi
+# neveikia, o avarijos sistemoje nėra — informuojam ir registruojam patys.
+fault: node_fault_unregistered
+service: any
+news: true
+when:
+  all: [line_link=down, neighbours=all_down]
+explain:
+  conclusion: "verdict.node_fault_unregistered.gloss"

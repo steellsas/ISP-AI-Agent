@@ -78,15 +78,3 @@ def test_propose_fix_is_accepted_for_every_pack_verdict():
             current_hypothesis=verdict, next_action="propose_fix", narrator_instruction="x"
         )
         assert gate(decision, known_hypotheses=pack_verdicts()).accepted, verdict
-
-
-def test_a_verdict_without_pack_or_news_starts_the_unclear_fault_ticket(make_state, make_runtime):
-    from agent.execute.diagnosis import _unclear_fault_when_unknown
-
-    state, rt, tracer = _call(make_state, make_runtime)
-    state.resolution.procedure = None
-    state.identity.customer_id = "CUST106"
-    state.diagnosis.verdicts["network"] = {"reason": "dhcp_silent"}
-    _unclear_fault_when_unknown(state, rt)
-    assert state.resolution.procedure["verdict"] == "unclear_fault"
-    assert state.ticket.stage == "phone"

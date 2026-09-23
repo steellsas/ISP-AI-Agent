@@ -1,4 +1,7 @@
-# Balso testavimo scenarijus (su dialogu)
+# Balso testavimo scenarijus (su dialogu) — PASENĘS
+
+> Aprašo senąjį variklį (`voice_demo.py`, ReactAgent, walker). Gyvas variantas, tuo pačiu
+> formatu ir su dabartiniais numeriais: **`docs/BALSO_TESTAVIMAS.md`**.
 
 ## Paruošimas
 ```powershell

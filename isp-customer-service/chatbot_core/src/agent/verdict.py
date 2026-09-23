@@ -1,24 +1,15 @@
-"""
-diagnose_connection verdict — the "thick" deterministic diagnostic composite.
+"""diagnose_connection — one provider-side READING of the line.
 
-One call gathers all provider-side signals (billing, incident, switch, port
-telemetry, neighbour correlation) and runs the decision tree from
-docs/scenarijus_neveikia_internetas.md §3.2 (Steps 1-4, STATE A/B/C). The
-tree lives HERE in code — not in the prompt — so the provider/customer split
-is fast and deterministic (voice-friendly: one tool call, no LLM reasoning
-over raw telemetry).
+It gathers every signal the engine can see (billing, a registered incident, the switch, the
+port, the neighbours) in ONE call, and returns them. What they MEAN is not decided here: the
+signals become facts (knowledge/signals.yaml) and the fault cards declare which fault those
+facts allow (wave 3), including the news cards for a debt, an outage or a node down (wave 4).
 
-The verdict draws the boundary but does NOT decide the final customer-side
-cause: on side=customer/unclear the agent continues the conversation
-(symptom questions + RAG instructions). See
-docs/demo_plan_neveikia_internetas.md §2.
+Until then this module held the decision tree from docs/scenarijus_neveikia_internetas.md
+§3.2 — twelve verdicts, and a new situation meant a new branch in Python.
 
-Split in two so the tree is unit-testable without a database:
-    gather_signals(sources, customer_id) -> signals dict   (I/O through the sources)
-    decide(signals)                      -> verdict dict   (pure function)
-
-The sources (CRM billing, network outage/port/neighbours) are supplied by the
-tool provider — this module imports no adapter.
+The sources (CRM billing, network outage/port/neighbours) are supplied by the tool provider;
+this module imports no adapter.
 """
 
 import logging
@@ -153,216 +144,17 @@ def gather_signals(sources: TelemetrySources, customer_id: str) -> dict[str, Any
 
 
 # =============================================================================
-# DECISION TREE (pure — no I/O, unit-testable)
-# =============================================================================
-
-
-def _verdict(side: str, group: str, action: str, reason: str, agent_message: str) -> dict:
-    return {
-        "side": side,  # provider | customer | unclear
-        "group": group,  # B1..B7 resolution group (domain doc §2)
-        "action": action,  # inform | create_ticket | instruct
-        "reason": reason,
-        "agent_message": agent_message,
-    }
-
-
-def decide(signals: dict[str, Any]) -> dict[str, Any]:
-    """
-    Run the decision tree over gathered signals (domain doc §3.2).
-
-    Cheapest call-terminating checks first (billing, incident) — that IS the
-    fast path of the two-speed flow: a B1/B2 verdict means inform-and-finish
-    with no further diagnostics narrated to the customer.
-    """
-    # ---- Step 1: billing block (B1) ----------------------------------------
-    if signals.get("billing_suspended"):
-        reason_txt = signals.get("suspension_reason") or "unpaid invoice"
-        return _verdict(
-            side="provider",
-            group="B1",
-            action="inform",
-            reason="billing_suspended",
-            agent_message=(
-                f"Service suspended for billing ({reason_txt}). "
-                "Tell the caller how to pay and restore the service. "
-                "No diagnostics needed, do not create a ticket."
-            ),
-        )
-
-    # ---- Step 2: registered incident (B2) ----------------------------------
-    incident = signals.get("incident")
-    if incident:
-        eta = incident.get("estimated_resolution")
-        eta_txt = f" Estimated restoration: {eta}." if eta else ""
-        return _verdict(
-            side="provider",
-            group="B2",
-            action="inform",
-            reason="active_outage",
-            agent_message=(
-                f"A registered outage in the caller's area: {incident.get('description', '')}."
-                f"{eta_txt} Inform and finish — the outage is already registered, do not create a ticket."
-            ),
-        )
-
-    # ---- No port data: cannot run steps 3-4 --------------------------------
-    if signals.get("port_link") is None:
-        return _verdict(
-            side="unclear",
-            group="B6",
-            action="instruct",
-            reason="no_port_data",
-            agent_message=(
-                "No port data for the caller — provider-side diagnostics are not possible. "
-                "Continue in conversation: are the router lights on, is the power on."
-            ),
-        )
-
-    # ---- Step 3: switch unreachable (B3) ------------------------------------
-    if signals.get("switch_status") != "active":
-        return _verdict(
-            side="provider",
-            group="B3",
-            action="create_ticket",
-            reason="switch_unreachable",
-            agent_message=(
-                "The caller's network node is unreachable, no outage is registered — "
-                "a provider fault. INFORM the caller: a suspected fault in the NETWORK, they "
-                "need to do nothing; once it is fixed, someone will contact them and "
-                "report the repair. If they ask WHEN — promise no exact time: we will "
-                "do it as fast as possible and let them know once it is "
-                "fixed. The ticket was already created automatically."
-            ),
-        )
-
-    # ---- Step 4, STATE A: link DOWN -----------------------------------------
-    if signals.get("port_link") != "up":
-        neighbors_up = signals.get("neighbors_up")
-        if neighbors_up == 0 and (signals.get("neighbors_down") or 0) > 0:
-            return _verdict(
-                side="provider",
-                group="B3",
-                action="create_ticket",
-                reason="node_fault_unregistered",
-                agent_message=(
-                    "The caller's and the neighbours' ports are inactive, but no outage is registered — "
-                    "a likely node fault. INFORM the caller: a suspected fault in the "
-                    "NETWORK (not only at their place), they need to do nothing; once the fault "
-                    "is fixed, someone will contact them and report the repair. "
-                    "If they ask WHEN — promise no exact time: we will do it as "
-                    "fast as possible and let them know once it is fixed. The ticket was "
-                    "already created automatically."
-                ),
-            )
-        return _verdict(
-            side="customer",
-            group="B4/B5",
-            action="instruct",
-            reason="link_down_local",
-            agent_message=(
-                "The port link is down, the neighbours work — a fault on the caller's side "
-                "(power / cables). Instruct step by step: are the lights on, "
-                "is the WAN cable seated well. If that does not help — a ticket."
-            ),
-        )
-
-    # ---- Step 4, STATE B: link UP, MAC missing or foreign -------------------
-    observed = (signals.get("observed_mac") or "").lower() or None
-    registered = (signals.get("registered_mac") or "").lower() or None
-    if observed is None:
-        return _verdict(
-            side="unclear",
-            group="B6",
-            action="instruct",
-            reason="no_mac_observed",
-            agent_message=(
-                "The line works, but no device is seen — the router is most likely "
-                "off or not connected. Clarify in conversation: power, cables."
-            ),
-        )
-    if registered and observed != registered:
-        return _verdict(
-            side="customer",
-            group="B6",
-            action="instruct",
-            reason="foreign_mac",
-            agent_message=(
-                "A different device than registered is seen on the line — the caller "
-                "probably changed the router. Once confirmed, update the MAC "
-                "(update_mac) and reset the port."
-            ),
-        )
-
-    # ---- Step 4, STATE C: link UP, correct MAC ------------------------------
-    crc = signals.get("crc_error_rate")
-    # Sustained CRC errors above this rate (errors/min) mean a damaged or poorly
-    # seated cable (B5) even while the link stays up.
-    if crc is not None and crc > limits.get("crc_error_rate_threshold"):
-        return _verdict(
-            side="customer",
-            group="B5",
-            action="instruct",
-            reason="crc_errors",
-            agent_message=(
-                "Many CRC errors on the line — a damaged or badly seated cable. "
-                "Instruct to check/reconnect the cable; if that does not help — a ticket for "
-                "a cable replacement."
-            ),
-        )
-    if signals.get("dhcp_status") in ("no_requests", "expired"):
-        return _verdict(
-            side="customer",
-            group="B6",
-            action="instruct",
-            reason="dhcp_silent",
-            agent_message=(
-                "The router is seen, but sends no DHCP requests — a likely factory "
-                "reset or a wiped configuration. Instruct to set DHCP "
-                "in the router's control panel."
-            ),
-        )
-
-    # ---- Step 4, STATE C continued: device visible, DHCP fine, NO traffic ---
-    # S6 "pakibęs routeris": everything up to the router looks alive, but no
-    # frames flow — the router hung. A power-cycle usually clears it, so the
-    # fix is an INSTRUCT (guided reboot), not a ticket. port_flap_recent is
-    # the reboot witness the verify step reads afterwards.
-    if signals.get("traffic") == "none":
-        return _verdict(
-            side="customer",
-            group="B6",
-            action="instruct",
-            reason="router_hung",
-            agent_message=(
-                "The router is seen on the line, but no traffic flows — the router "
-                "has most likely hung. Explain it humanly (it happens, a "
-                "reboot usually clears it) and guide a power-cycle "
-                "reboot. Do not create a ticket yet."
-            ),
-        )
-
-    # ---- Everything healthy up to the router --------------------------------
-    return _verdict(
-        side="unclear",
-        group="B7",
-        action="instruct",
-        reason="healthy_to_router",
-        agent_message=(
-            "The network works up to the router — the problem is further on the caller's side "
-            "(Wi-Fi, a device). Clarify: does it fail on all devices "
-            "or only one; wired or over Wi-Fi."
-        ),
-    )
-
-
-# =============================================================================
 # COMPOSITE (the tool body)
 # =============================================================================
 
 
 def diagnose(sources: TelemetrySources, customer_id: str) -> dict[str, Any]:
-    """gather_signals + decide -> the diagnose_connection tool payload."""
+    """The diagnose_connection payload: what the line shows right now.
+
+    `signals` is the whole reading; the engine turns it into facts and the cards decide. A
+    failed reading returns its error instead, and the manifest's `on_failure` plan takes over
+    (wave 2c).
+    """
     signals = gather_signals(sources, customer_id)
     if "error" in signals:
         return {
@@ -370,10 +162,5 @@ def diagnose(sources: TelemetrySources, customer_id: str) -> dict[str, Any]:
             "error": signals["error"],
             "message": signals.get("message", "Diagnostika nepavyko."),
         }
-
-    verdict = decide(signals)
-    logger.info(
-        f"[VERDICT] {customer_id}: side={verdict['side']} group={verdict['group']} "
-        f"action={verdict['action']} reason={verdict['reason']}"
-    )
-    return {"success": True, "verdict": verdict, "signals": signals}
+    logger.info(f"[DIAGNOSE] customer={customer_id} signals={len(signals)}")
+    return {"success": True, "signals": signals}

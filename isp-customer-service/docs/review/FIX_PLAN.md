@@ -43,10 +43,71 @@ BANGA 5  valymas
 | 2b | Promptai pagal įgūdį: branduolys + įgūdis + pavyzdžiai + ribota kortelė | Y, Z, AA, AN | 1 |
 | 2c | Įrankių manifestai: capability portai, saugikliai, timeout / limitai / on_failure, fake adapteris | P-7, V, W | 1 |
 | 3 | Case, keli kandidatai, vienas sprendėjas; kortelė v2 + konverteris; moduliai; įrangos katalogas modelis → šeima → bazinė; verdict medis → faktai | N, O, P, U, AG, AH, AI | 2a, 2c |
-| 4 | Lėtas internetas + TV tik failais; RAG atviriems klausimams; pavyzdžių bankas | AJ, AK | 3, 2b |
+| 4a | Informavimo kortelės (`news:`) + `verdict.py::decide` trynimas: kode nebėra medžio | AJ | 3 |
+| 4b | Lėtas internetas + TV tik failais; RAG atviriems klausimams; pavyzdžių bankas | AJ, AK | 4a, 2b |
 | 5 | Valymas: vėliavos, seni keliai, pavadinimai, LT/EN raktai, testų žemėlapis | E, F5 | 4 |
 
 Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
+
+---
+
+## Banga 4a — informavimo kortelės ir paskutinio medžio trynimas (šaka `fix/wave-4a`)
+
+Tikslas: **kode nebelieka nė vieno sprendimų medžio.** 3 banga gedimus perkėlė į korteles, bet
+tiekėjo pusės situacijas (skola, avarija, mazgas, nepasiekiamas komutatorius) vis dar vardijo
+`verdict.py::decide` — dvylika šakų Python'e, ir nauja situacija reiškė naują šaką. Dabar ir
+jos yra kortelės, tik kitos rūšies: **žinia, ne gedimas.**
+
+| # | Kas | Rezultatas |
+|---|---|---|
+| 4a-1 | Kortelės laukai `news:` ir `set_by:` + **7 informavimo kortelės** | `inform.is_news` klausia kortelės, ne sąrašo kode |
+| 4a-2 | `Move("inform")` — žinia aplenkia gedimą; Case įrašo skambučio verdiktą | „nėra ko diagnozuoti, yra ką pasakyti" |
+| 4a-3 | **`verdict.py::decide` + `_verdict` ištrinti** (379 → 166 eil.) | zondas grąžina `signals`, reikšmę duoda kortelės |
+| 4a-4 | Regresijų taisymas (žr. žemiau) — viskas per vieną variklį | eval **178/178** |
+
+**Ką parodė pilnas eval'as po trynimo (172/178):** du scenarijai nukrito, ir abu dėl tos pačios
+priežasties — **kodas dar skaitė ištrinto medžio verdiktą**:
+
+| Kas krito | Kodėl | Kaip sutvarkyta |
+|---|---|---|
+| `R3_iptv_depends_on_internet` | `services.depends_on_broken` skaitė `verdicts["network"]["reason"]`, kurį medis įrašydavo IŠ KARTO po rodmens; Case jį įrašo vėliau, tad kiekvienas IPTV skambutis nusileisdavo į „neaiškaus gedimo" tiketą | priklausomybė klausia **kortelių**: kortelės žymė `line_ok: true` (tinklas iki kliento įrangos tvarkingas) + faktai → jei tokia kortelė laikosi, TV yra savas gedimas |
+| `X_dhcp_silent` | `dhcp=silent` neturėjo kortelės: rodmenį nuskaitydavom, bet nė viena kortelė jo neprašė, todėl laimėdavo „kliento pusė" ir klientas buvo vedamas per savo įrenginius | **nauja kortelė `dhcp_silent`** (+ `healthy_to_router` gauna `rules_out: dhcp=silent`) |
+
+Ištrinta tuo pačiu: `execute/diagnosis.py::_unclear_fault_when_unknown` — ji irgi skaitė medžio
+verdiktą, todėl po trynimo nieko nebedarė; jos darbą dabar dirba kortelė.
+
+**Trys radiniai, rasti tuose pačiuose trace'uose (nesusiję su medžiu, bet iš to paties pjūvio):**
+
+1. **Tas pats klausimas keturis ėjimus** — „visuose ar tik viename?", nors klientas atsakinėjo
+   apie kitus dalykus. Mechanizmas buvo (`case.unavailable`), bet niekas jo nekvietė:
+   `record_unavailable` neturėjo nė vieno naudotojo. Dabar klausimai skaičiuojami
+   (`case.asks`), o riba yra žinios (`case_fact_asks_max: 2`); po jos faktas laikomas
+   nepasiekiamu ir Case sprendžia iš naujo — skambutis pasiekia sąžiningą galą, ne kilpą.
+2. **Meistras nėra sprendimas** — kortelė, kurios paskutinis žingsnis yra `escalate`, buvo
+   laikoma „išspręsta", tad kitas ėjimas planuodavo „paslauga grįžo". Matėsi tik todėl, kad
+   tiketo dialogas tą ėjimą perimdavo. Dabar tokia seka baigiasi `handed_over`.
+3. **Pažadas kartojamas** — kol tiketo dialogas rinko kontaktus, Case kas ėjimą planuodavo tą
+   patį `escalate`, ir agentas kiekviename atsakyme sakė „užregistruosiu meistrą". Perdavimas
+   dabar vyksta vieną kartą.
+
+**4a bangos eiga (2026-09-23):** vienetų testai **1216 passed, 1 skipped**; eval tekstas
+**178/178** (`--only` zondai: `X_dhcp_silent` 6/6, `R3_iptv_depends_on_internet` 6/6).
+
+**Kortelių apskaita po 4a:** 16 = 7 gedimai (`router_hung`, `healthy_to_router`, `foreign_mac`,
+`crc_errors`, `no_mac_observed`, `link_down_local`, **`dhcp_silent`**) + 8 žinios + 1 atsarginė.
+Aštuntoji žinia — `no_open_ticket`: ji viena buvo likusi be kortelės, o tikslas yra, kad
+`is_news` visada klaustų kortelės, ne sąrašo.
+
+**Pirmas „naujas gedimas tik failais":** `dhcp_silent` įvestas be nė vienos kodo eilutės —
+kortelė + du locale raktai. Tai ir yra formos patikra prieš naujo gedimo klausimyną: viskas,
+ko prireikė, buvo `when:`, `rules_out:`, `solution:` ir žmogiškas `conclusion` (be žargono —
+klientui nesakom nei „DHCP", nei „gamyklinis atstatymas", F-8).
+
+**Sąmoningai liko 4b/5 bangoms:** TV ir lėto interneto kortelės; lempučių SPALVOS (katalogas
+moka `means: {green/red/orange}`, skaitytuvas kol kas — tik „dega / nedega"); RAG atviriems
+klausimams (`search_knowledge` manifestas yra, niekas jo nekviečia); `port_flapped` niekur nėra
+kortelės sąlyga; `agent/resolution/*` + v1 `knowledge/faults/*.yaml` + `state.resolution.procedure`
++ `diagnosis.hypothesis` laukas (5 banga); testų/eval atskiros DB.
 
 ---
 
