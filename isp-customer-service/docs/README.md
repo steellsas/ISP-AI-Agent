@@ -23,6 +23,7 @@
 | [FAULT_PACKS.md](FAULT_PACKS.md) | Writing fault packs and the knowledge files (English schema, step roles, locale keys, intents, ticket types, services) |
 | [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | Customer onboarding questionnaire for a deployment — what goes into which knowledge file |
 | [DIALOGO_ETALONAS.md](DIALOGO_ETALONAS.md) | Reference dialogue quality rules |
+| [BALSO_TESTAVIMAS.md](BALSO_TESTAVIMAS.md) | Voice test scripts: what to say, what to check (replaces archive/TESTAVIMO_SCENARIJUS.md) |
 | [IDENT_TESTAI.md](IDENT_TESTAI.md) | Identification live test scripts |
 | [BARGE_IN_TESTAI.md](BARGE_IN_TESTAI.md) | Barge-in live test scripts |
 | [TESTU_ZEMELAPIS.md](TESTU_ZEMELAPIS.md) | Map of the test suite by layer |
