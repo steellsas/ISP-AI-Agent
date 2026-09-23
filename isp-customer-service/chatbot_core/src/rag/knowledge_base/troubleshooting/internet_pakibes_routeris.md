@@ -1,3 +1,9 @@
+---
+title: "Pakibęs routeris — perkrovimas iš maitinimo"
+kind: troubleshooting
+problem: [internet_down]
+tags: [pakibes, perkrovimas, maitinimas, rozete, srautas, router]
+---
 # Pakibęs routeris (matomas linijoje, bet srautas nevaikšto)
 
 ## Simptomai

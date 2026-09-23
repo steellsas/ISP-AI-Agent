@@ -44,12 +44,51 @@ BANGA 5  valymas
 | 2c | Įrankių manifestai: capability portai, saugikliai, timeout / limitai / on_failure, fake adapteris | P-7, V, W | 1 |
 | 3 | Case, keli kandidatai, vienas sprendėjas; kortelė v2 + konverteris; moduliai; įrangos katalogas modelis → šeima → bazinė; verdict medis → faktai | N, O, P, U, AG, AH, AI | 2a, 2c |
 | 4a | Informavimo kortelės (`news:`) + `verdict.py::decide` trynimas: kode nebėra medžio | AJ | 3 |
-| 4b | Lėtas internetas + TV tik failais; RAG atviriems klausimams; pavyzdžių bankas | AJ, AK | 4a, 2b |
+| 4b | **Žinios naudojamos**: pažymėti dokumentai (`kind`/`tags`/`equipment`) + įrangos instrukcijos ir algoritmai pokalbyje. Kortelės/TV/lėtas internetas — po to | AJ, AK | 4a |
 | 5 | Valymas: vėliavos, seni keliai, pavadinimai, LT/EN raktai, testų žemėlapis | E, F5 | 4 |
 
 Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
+
+## Banga 4b — žinios naudojamos (šaka `fix/wave-4a`, tęsinys)
+
+Andrius (2026-09-23): *„šiuo metu manau svarbiausia žinios kad jos būtų naudojamos… įrangos
+informacija ir algoritmai kaip galima konfigūruoti ar patarimai gali būti skirtingais tag kad
+agentas surastų tiksliai to ko reikia."*
+
+Tikslas ne naujos kortelės, o **universalus agentas**: jis moka atsakyti apie kliento įrangą,
+nesvarbu, ar tam yra gedimo kortelė. Radiniai: AJ (embedding RAG realiai nenaudojamas), AK
+(FAQ — tik 5 temos, viskas kita „ne mano sritis").
+
+| # | Kas | Rezultatas |
+|---|---|---|
+| 4b-1 | **Dokumento antraštė**: `kind`, `tags`, `equipment`, `problem` visiems 17 KB dokumentų | žinia pati pasako, kas ji ir kaip ją rasti |
+| 4b-2 | **`agent/knowledge_base.py`** — vienintelis kelias į žinias: filtras (deterministinis) → rikiavimas (šaknų sutapimas) | TP-Link instrukcija nepasiekia kliento su kita dėžute |
+| 4b-3 | **Dvi naudojimo vietos**: šoninė tema (už 5 FAQ temų) ir „kaip…" klausimas pokalbio viduryje | atsakymas su šaltiniu arba sąžiningas „negaliu patarti" |
+
+**Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
+lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
+vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).
+
+**Kodėl be embedding'ų (kol kas):** jiems reikia modelio (~1–2 s pirmam kvietimui) ir sukurtos
+vektorinės bazės, o balso ėjime tiek laiko nėra; CI iš viso dirba offline. Todėl rikiuojama
+pagal šaknis (lietuvių kalba linksniuoja viską: „sukonfigūruoti" ir raktas „konfigūravimas"
+turi bendrą šaknį ir nieko daugiau). Embedding'ai bus PAPILDOMAS rikiuotojas tarp jau
+atfiltruotų — su išmatuota latencija.
+
+**Ką pagavo gyvas bandymas (eval K1):** klausimas „kaip pakeisti wifi slaptažodį" buvo
+palaikytas klausimu apie DABARTINĮ žingsnį (`on_task_howto`), o tokiam ėjimui kortelė neduodavo
+**jokio** turinio — ir modelis išsigalvojo: „užregistruosiu jūsų klausimą", nors niekas nebuvo
+registruojama. Dabar tas ėjimas turi šaltinį arba sąžiningą „negaliu patarti".
+
+Po pakeitimo: „Naršyklėje įveskite 192.168.0.1, prisijunkite su admin/admin… Wireless →
+Wireless Security…" — tikri žingsniai iš TP-Link dokumento, ir grįžtama prie gedimo.
+
+**Liko 4b bangoje:** kortelė, kuri telefonu nieko nedaro, galėtų nusiųsti į ALGORITMĄ
+(`dhcp_silent` → `howto` dokumentas su WAN nustatymu) — tada gedimai tikrai „naudoja žinias";
+lempučių spalvos; embedding'ai kaip antras rikiuotojas; TV ir lėto interneto kortelės.
+
 
 ## Banga 4a — informavimo kortelės ir paskutinio medžio trynimas (šaka `fix/wave-4a`)
 

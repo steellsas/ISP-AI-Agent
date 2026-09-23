@@ -1,3 +1,9 @@
+---
+title: "Internetas trūkinėja — pažeistas laidas (CRC klaidos)"
+kind: troubleshooting
+problem: [internet_down, internet_slow]
+tags: [crc, laidas, kabelis, trukineja, klaidos, perkisti]
+---
 # Internetas trūkinėja — linijoje daug CRC klaidų (pažeistas laidas)
 
 Telemetrija: linija gyva, MAC teisingas, bet CRC klaidų lygis aukštas —

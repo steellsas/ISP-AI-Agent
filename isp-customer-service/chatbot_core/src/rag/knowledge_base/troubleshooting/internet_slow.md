@@ -1,3 +1,9 @@
+---
+title: "Internetas lėtas — nuo ko pradėti"
+kind: troubleshooting
+problem: [internet_slow]
+tags: [letas, lėtas, greitis, wifi, kanalas, matavimas, speedtest]
+---
 # Internetas lėtas - diagnostika ir sprendimas
 
 ## Simptomai

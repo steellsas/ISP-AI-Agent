@@ -1,3 +1,8 @@
+---
+title: "Techniko vizitas — kada siunčiam, per kiek laiko, kiek kainuoja"
+kind: procedure
+tags: [meistras, technikas, vizitas, sla, laikas, kaina, registracija]
+---
 # Techniko vizitas - procedūra ir informacija
 
 ## Kada siunčiame techniką
@@ -44,17 +49,17 @@
 ## Ką pasakyti klientui
 
 ### Prieš registruojant:
-> "Deja, nuotoliniu būdu problemos išspręsti nepavyko. 
+> "Deja, nuotoliniu būdu problemos išspręsti nepavyko.
 > Reikės techniko vizito. Ar galiu užregistruoti?"
 
 ### Patvirtinus:
-> "Užregistravau techniko vizitą. Technikas atvyks per [X] darbo dienas. 
-> Prieš atvykdamas technikas paskambins ir suderins tikslų laiką. 
+> "Užregistravau techniko vizitą. Technikas atvyks per [X] darbo dienas.
+> Prieš atvykdamas technikas paskambins ir suderins tikslų laiką.
 > Ar yra koks nors laikas, kada tikrai negalėtum būti namie?"
 
 ### Apie mokestį:
-> "Jei gedimas mūsų pusėje arba įrangos - vizitas nemokamas. 
-> Jei paaiškės, kad problema kliento įrangoje ar instaliacijoje - 
+> "Jei gedimas mūsų pusėje arba įrangos - vizitas nemokamas.
+> Jei paaiškės, kad problema kliento įrangoje ar instaliacijoje -
 > gali būti taikomas mokestis. Technikas informuos vietoje."
 
 ## Vizito procesas
@@ -88,7 +93,7 @@
 - Kliento prašymu perkelti įrangą kitoje vietoje
 - Papildomi darbai (kabelio pratęsimas ir pan.)
 
-**Kaina:** Informuoti klientą, kad technikas pasakys vietoje. 
+**Kaina:** Informuoti klientą, kad technikas pasakys vietoje.
 Standartinė kaina ~30-50€, priklauso nuo darbų.
 
 ## Ticket prioriteto nustatymas
@@ -111,20 +116,20 @@ Standartinė kaina ~30-50€, priklauso nuo darbų.
 ## Dažni klausimai
 
 ### "Ar technikas atvyks šiandien?"
-> "Standartinis vizitas per 2 darbo dienas. Technikas paskambins 
-> ir suderins tikslų laiką. Jei situacija kritinė - galiu pažymėti 
+> "Standartinis vizitas per 2 darbo dienas. Technikas paskambins
+> ir suderins tikslų laiką. Jei situacija kritinė - galiu pažymėti
 > kaip prioritetinį."
 
 ### "Ar reikės mokėti?"
-> "Jei gedimas mūsų tinkle arba įrangoje - nemokamas. 
+> "Jei gedimas mūsų tinkle arba įrangoje - nemokamas.
 > Jei problema jūsų pusėje - technikas informuos apie kainą vietoje."
 
 ### "Ar galiu nebūti namie?"
-> "Deja, vizito metu turite būti namie arba įgaliotas asmuo. 
+> "Deja, vizito metu turite būti namie arba įgaliotas asmuo.
 > Technikas negali patekti į butą be jūsų."
 
 ### "Kiek užtruks remontas?"
-> "Paprastai 30-60 minučių, bet priklauso nuo problemos. 
+> "Paprastai 30-60 minučių, bet priklauso nuo problemos.
 > Technikas pasakys tiksliau atvykęs."
 
 ## Naudingos frazės agentui

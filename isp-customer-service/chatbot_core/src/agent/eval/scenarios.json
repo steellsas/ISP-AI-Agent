@@ -810,6 +810,37 @@
       }
     },
     {
+      "id": "K1_open_question_answered_from_the_knowledge_base",
+      "phone": "+37060020105",
+      "desc": "4b (radinys AK): klausimas UŽ penkių FAQ temų — „kaip pakeisti wifi slaptažodį“ — atsakomas iš pažymėtos žinių bazės (ne „ne mano sritis“), tada grįžiama prie gedimo",
+      "known_bug": false,
+      "turns": [
+        "Labas, neveikia internetas",
+        "Prieš valandą dingo, po nieko ypatingo",
+        "Taip",
+        "Jonas, taip, aš sutartį sudaręs",
+        "O sakykite, kaip pakeisti wifi slaptažodį?",
+        "Taip, keičiau routerį, senasis sugedėjo",
+        "Gerai, laukiu",
+        "Taip, atsirado internetas",
+        "Ne, ačiū, viskas"
+      ],
+      "expect": {
+        "verdict_in": "foreign_mac",
+        "disposition": "resolved",
+        "reply_any": [
+          "nustatym",
+          "192.168",
+          "admin"
+        ],
+        "reply_none": [
+          "nepadėsiu",
+          "ne mano sritis",
+          "užregistruosiu jūsų klausimą"
+        ]
+      }
+    },
+    {
       "id": "R2_repeat_call_open_ticket",
       "phone": "+37060030307",
       "desc": "M6 (D-12): pakartotinis skambutis — CUST307 jau turi atvirą tiketą dėl interneto -> pastaba prie jo + būsena, JOKIO naujo tiketo ir diagnostikos",

@@ -70,6 +70,62 @@ def _faq_answer(state, rt, entry: dict) -> str:
     return phrase(entry["answer_key"])
 
 
+def _kb_answer(state, rt) -> str:
+    """Žinių bazės atsakymas atviram klausimui — kai FAQ jo neturi (radinys AK, 4b banga).
+
+    Iki šiol viskas už penkių FAQ temų buvo „ne mano sritis", nors žinių bazėje yra įrangos
+    instrukcijos, konfigūravimo algoritmai ir patarimai. Paieška filtruojama pagal ŠIO skambučio
+    įrangą ir problemą, tad TP-Link instrukcija nepakliūva klientui su kita dėžute.
+    """
+    from ..knowledge_base import find
+
+    # Which family of device this caller actually has: the catalogue already answers that
+    # from the line's own reading ("TP-Link Archer C80" -> tplink), and `level` names the file
+    # that won — exactly the tag the documents carry.
+    signals = (state.diagnosis.verdicts.get("network") or {}).get("signals") or {}
+    equipment = None
+    if signals.get("device_model") or signals.get("device_type"):
+        from ..equipment import for_signals
+
+        device = for_signals(signals)
+        equipment = device.level if device else None
+    found = find(
+        state.dialog.last_heard or "",
+        equipment=equipment,
+        limit=2,
+    )
+    if not found:
+        return ""
+    return " ".join(f"[{p.kind}: {p.title}] {p.text}" for p in found)
+
+
+def _asked_how(state, rt) -> list[str]:
+    """Klientas paklausė „kaip…", o ėjimas paleistas per narratorių (`question_passthrough`).
+
+    Iki 4b bangos šiam ėjimui kortelė nesakė NIEKO — ir modelis improvizavo: į „kaip pakeisti
+    wifi slaptažodį" atsakė „užregistruosiu jūsų klausimą" (gyvai 2026-09-23). Dabar atsakymas
+    turi šaltinį: pažymėta žinių bazė (įrangos instrukcija, konfigūravimo algoritmas, patarimas),
+    atfiltruota pagal ŠIO kliento įrangą. Nieko neradus — sąžiningai pasakoma, kad nežino.
+    """
+    plan = state.turn.plan or {}
+    if str(plan.get("rule") or "") != "dialog.question_passthrough":
+        return []
+    if state.turn.side_topic_active:
+        return []  # the side-topic section owns that turn, with its own FAQ/news answer
+    said = _kb_answer(state, rt)
+    if not said:
+        return [
+            "THE CALLER ASKED HOW: we have no written answer for it. Say honestly that you "
+            "cannot advise on that, promise nothing, invent nothing (no registration, no "
+            "prices, no deadlines), and return to what the engine is waiting for."
+        ]
+    return [
+        "THE CALLER ASKED HOW: answer in ONE or TWO sentences using ONLY this written "
+        f"knowledge — {said} Invent nothing beyond it (no prices, deadlines, promises, no "
+        "registration). Then return to what the engine is waiting for."
+    ]
+
+
 def _side_topic(state, rt) -> list[str]:
     """A deviation: the ONLY permitted content is the FAQ hit (or an honest "not my
     area"), then the return anchor — the engine's exact pending question."""
@@ -80,7 +136,11 @@ def _side_topic(state, rt) -> list[str]:
 
     hits = faq_match(state.dialog.last_heard)
     known = " ".join(f"[{e.get('topic')}] {_faq_answer(state, rt, e)}" for e in hits) or (
-        "(NO KNOWN ANSWER for this topic - say politely that it is not your area)"
+        # Beyond the five FAQ topics there is a tagged knowledge base — equipment
+        # instructions, configuration algorithms, tips (wave 4b, finding AK). It answers, or
+        # the agent says honestly that it is not its area.
+        _kb_answer(state, rt)
+        or "(NO KNOWN ANSWER for this topic - say politely that it is not your area)"
     )
     # The topic is DETERMINISTIC when the FAQ matched — the model once copied a prompt
     # example ("Klausiate apie kainą") for a topic the caller never raised.
@@ -576,6 +636,7 @@ def _plan_goal(state, rt) -> list[str]:
     out += _goal_caller_intro(state, rt)
     out += _goal_identification(state, rt)
     out += _goal_ticket(state, rt)
+    out += _asked_how(state, rt)
     out += _goal_recap_and_findings(state, rt)
     return out
 

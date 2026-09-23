@@ -21,6 +21,7 @@
 |---|---|
 | [DEMO_SCENARIJAI.md](DEMO_SCENARIJAI.md) | The demo calls: numbers, what to say, what to expect — also in the dashboard's **Scenarijai** tab (`chatbot_core/src/app/scenarios.yaml`) |
 | [FAULT_PACKS.md](FAULT_PACKS.md) | Writing fault packs and the knowledge files (English schema, step roles, locale keys, intents, ticket types, services) |
+| [ZINIU_BAZE.md](ZINIU_BAZE.md) | The knowledge base: how to write a document the agent will actually find (tags, kinds, equipment scoping) |
 | [AGENT_ONBOARDING.md](AGENT_ONBOARDING.md) | Customer onboarding questionnaire for a deployment — what goes into which knowledge file |
 | [DIALOGO_ETALONAS.md](DIALOGO_ETALONAS.md) | Reference dialogue quality rules |
 | [BALSO_TESTAVIMAS.md](BALSO_TESTAVIMAS.md) | Voice test scripts: what to say, what to check (replaces archive/TESTAVIMO_SCENARIJUS.md) |

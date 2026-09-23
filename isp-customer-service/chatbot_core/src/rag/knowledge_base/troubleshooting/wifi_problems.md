@@ -1,3 +1,9 @@
+---
+title: "WiFi problemos — tinklas nematomas, slaptažodis, silpnas signalas"
+kind: howto
+problem: [internet_slow, internet_down]
+tags: [wifi, slaptazodis, slaptažodį, prisijungti, tinklas, nematomas, signalas, telefonas, kompiuteris, windows, android, iphone]
+---
 # WiFi problemos - diagnostika ir sprendimas
 
 ## Pagalbos principas (svarbu agentui)

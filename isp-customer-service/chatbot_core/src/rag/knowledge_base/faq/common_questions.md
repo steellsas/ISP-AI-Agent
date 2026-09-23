@@ -1,3 +1,8 @@
+---
+title: "Dažniausi klientų klausimai"
+kind: faq
+tags: [wifi, slaptazodis, greitis, router, tv, kaina, paslauga, lemputes, vardas]
+---
 # Dažniausiai užduodami klausimai (FAQ)
 
 ## WiFi ir Slaptažodžiai
@@ -6,7 +11,7 @@
 WiFi slaptažodis yra ant routerio lipduko - paprastai apačioje arba šone.
 Ieškoti užrašo:
 - "WiFi Key"
-- "WPA Key"  
+- "WPA Key"
 - "Wireless Password"
 - "PIN" (kai kuriuose modeliuose)
 

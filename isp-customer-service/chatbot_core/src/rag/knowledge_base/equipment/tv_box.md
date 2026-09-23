@@ -1,3 +1,9 @@
+---
+title: "TV priedėlis — lemputės, jungtys, pultelis"
+kind: equipment
+equipment: [tv_box]
+tags: [tv, priedelis, priedėlis, lemputes, indikatoriai, hdmi, pultelis, jungtys, set-top]
+---
 # TV Priedėlis (Set-Top Box) - Specifikacijos ir valdymas
 
 ## Modelis: ISP TV Box Model X

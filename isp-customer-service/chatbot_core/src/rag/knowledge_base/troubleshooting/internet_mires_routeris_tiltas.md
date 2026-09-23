@@ -1,3 +1,9 @@
+---
+title: "Routeris be gyvybės ženklų — laikinas tiltas per kompiuterį"
+kind: troubleshooting
+problem: [internet_down]
+tags: [router, nedega, maitinimas, rozete, tiltas, kompiuteris, keitimas]
+---
 # Routeris neduoda gyvybės ženklų (linija veikia) - laikinas tiltas
 
 ## Simptomai
