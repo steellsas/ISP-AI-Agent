@@ -42,5 +42,8 @@ solution:
 escalate:
   need: "pack.link_down_local.ticket_need"
   note: "laidas perkištas, linija neatsistatė — tikėtinas kabelio pažeidimas trasoje"
+  # Meistras neturi atvykti perkišti laido, jei tai buvo galima padaryti telefonu
+  # (Andrius, 2026-09-23). Negalint prieiti — registruojam, o tikete tai pasakom.
+  only_after: [cable]
 
 knowledge: troubleshooting/internet_linija_nutrukusi

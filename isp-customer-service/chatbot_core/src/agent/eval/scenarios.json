@@ -758,9 +758,9 @@
       }
     },
     {
-      "id": "C_unanswered_scope_still_reboots",
+      "id": "C1_no_question_before_the_reboot",
       "phone": "+37060020112",
-      "desc": "4a (Andrius 2026-09-23): klientas neatsako, ar neveikia visuose įrenginiuose — antras klausimas kitais žodžiais, tada kortelės prielaida (`assume: all`) ir PERKROVIMAS, ne tiketas; „esu prie routerio“ reiškia, kad „ar galite prieiti?“ nebeklausiama",
+      "desc": "4a (Andrius 2026-09-23): srauto iki routerio nėra — perkrovimas yra pirmas žingsnis, todėl prieš jį NIEKO neklausiama; „esu prie routerio“ reiškia, kad „ar galite prieiti?“ irgi nebeklausiama",
       "known_bug": false,
       "turns": [
         "Labas, neveikia internetas",
@@ -780,6 +780,31 @@
         ],
         "reply_none": [
           "užregistravau",
+          "meistr",
+          "visuose ar tik viename"
+        ]
+      }
+    },
+    {
+      "id": "C2_scope_unanswered_on_a_healthy_line",
+      "phone": "+37060020109",
+      "desc": "4a: linija neša srautą, tad KUR neveikia — vienintelis dalykas, kurį žino tik klientas. Neatsakius, antras klausimas kitais žodžiais, tada kortelės prielaida (`assume: one`) ir kelias iki įrenginio — ne tiketas",
+      "known_bug": false,
+      "turns": [
+        "Laba diena, neveikia internetas",
+        "Taip",
+        "Aldona",
+        "Esu namuose",
+        "Nežinau, aš nesu technikė",
+        "Telefone neveikia",
+        "Taip, įjungtas",
+        "Taip, savo tinkle",
+        "Jau veikia!",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "healthy_to_router",
+        "reply_none": [
           "meistr"
         ]
       }

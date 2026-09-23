@@ -40,7 +40,7 @@ adresą („Taip") → pasakai vardą. Toliau — pagal scenarijų.
 | 15 | Neidentifikuotas — padeda ragelį | +37000000000 | — | — | tik kontaktinis įrašas peržiūrai (abandoned / hung_up) |
 | 16 | Routeris pametė nustatymus | +37060020106 | Greta, Vilniaus g. 31-2 | dhcp_silent | tiketas (telefonu nesutvarkoma) |
 | 17 | TV neveikia, o internetas tvarkoje | +37060020110 | Kęstutis, Bubių k., Aušros g. 8 | unclear_fault | tiketas be interneto žingsnių |
-| 18 | Klientas neatsako į klausimą | +37060020112 | Paulius, Vilniaus g. 33-2 | router_hung | resolved; antras klausimas kitais žodžiais, tada perkrovimas pagal prielaidą |
+| 18 | Klientas neatsako į klausimą | +37060020112 / +37060020109 | Paulius / Aldona | router_hung / healthy_to_router | resolved; kur atsakymas nieko nekeistų — klausimo nėra, kur būtinas — kiti žodžiai ir prielaida |
 
 Po kiekvieno skambučio **Archyvas** skirtuke matyti kontaktinis įrašas: baigtis
 (`resolved`, `ticket`, `ticket_appended`, `informed_debt`, `informed_outage`,
@@ -255,26 +255,29 @@ gedimas; jei ne (№14) — pirma internetas. 4a bangoje būtent šis kelias buv
 
 ## 18. Klientas neatsako į užduotą klausimą
 
-**Kodėl testuojam:** 4a trace'uose agentas tą patį klausimą uždavė **keturis ėjimus iš eilės**,
-nors klientas vis atsakinėjo apie kitus dalykus. Po taisymo (Andrius, 2026-09-23) elgsena tokia:
-antras klausimas — **kitais žodžiais**, o trečio nėra: kortelė pasako, su kuo tęsti
-(`assume: all`), ir agentas atlieka **pirminį gedimo sprendimą** — perkrovimą. Tiketas be
-perkrovimo būtų nesuteikta pagalba.
+**Kodėl testuojam:** 4a trace'uose agentas tą patį klausimą uždavė keturis ėjimus iš eilės.
+Po taisymų (Andrius, 2026-09-23) klausimo likimas priklauso nuo to, **ar jo atsakymas ką nors
+keičia**:
 
-**Numeris:** +37060020112 · **Klientas:** Paulius, Šiauliai, Vilniaus g. 33-2
+- **Pakibęs routeris (+37060020112).** Srauto iki routerio nėra → perkrovimas yra pirmas
+  žingsnis, tad prieš jį **neklausiama nieko**. „Esu prie routerio" reiškia, kad ir „ar galite
+  prieiti?" nebeklausiama. Jei perkrovimas nepadeda ir srautas atsiranda — tada atsidaro
+  kliento pusės kortelė ir klausimas apie įrenginius uždūzgia savaime.
+- **Kliento pusė (+37060020109).** Linija neša srautą → **kur** neveikia yra vienintelis
+  dalykas, kurį žino tik klientas. Neatsakius: antras klausimas kitais žodžiais, o po jo —
+  kortelės prielaida („trūksta galutiniame įrenginyje"), pasakyta garsiai, ir kelias toliau.
 
-**Sakyti:** „Neveikia internetas." → „Taip" → „Paulius" → tada **speciali neatsakyk** į
-„ar neveikia visuose įrenginiuose, ar tik viename?": „Esu prie routerio" → „Lemputės dega" →
-kai paprašo perkrauti, spausk **🔄 Routeris** ir sakyk „Perkroviau" → „Taip, veikia" →
-„Ne, ačiū, viso gero".
+**Sakyti (pakibęs routeris):** „Neveikia internetas" → „Taip" → „Paulius" → „Esu prie routerio"
+→ „Lemputės dega" → *🔄 Routeris* → „Perkroviau" → „Taip, veikia".
+
+**Sakyti (kliento pusė):** „Neveikia internetas" → „Taip" → „Aldona" → „Esu namuose" →
+„Nežinau, aš nesu technikė" → „Telefone neveikia" → „Taip, įjungtas" → „Jau veikia!".
 
 **Ką tikrinam:**
-1. **Tas pats klausimas — daugiausiai du kartus**, ir antras su kitais žodžiais bei paaiškinimu,
-   kodėl tai svarbu.
-2. **„Esu prie routerio" išnaudojama** — agentas nebeklausia „ar galite prieiti?".
-3. **Pirminis sprendimas atliekamas** — perkrovimas, ne tiketas.
-4. **Jei perkrovimas nepadėtų** — meistras, ir prieš registraciją pasakoma, ko nepavyko
-   patikrinti; tikete įrašoma prielaida ir kas neatsakyta.
+1. To paties klausimo — daugiausiai du kartus, ir antras kitais žodžiais.
+2. Ten, kur atsakymas nieko nekeičia, klausimo **iš viso nėra**.
+3. Meistras — tik po to, ką buvo galima padaryti telefonu (`escalate.only_after`).
+4. Tikete: gedimas įvardintas, įrašyta prielaida ir tai, ko klientas neatsakė.
 
 ## Po skambučio
 

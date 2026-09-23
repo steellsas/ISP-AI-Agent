@@ -152,6 +152,13 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
                     errors.append(f"{where}: needs.{fact}.answers.{value} is not one of its values")
         if card.escalate and card.escalate.need and not locale.has(card.escalate.need):
             errors.append(f"{where}: escalate.need phrase '{card.escalate.need}' is missing")
+        for name in card.escalate.only_after if card.escalate else []:
+            if name not in modules:
+                errors.append(f"{where}: escalate.only_after names unknown module '{name}'")
+            elif not any(call.module == name for s in card.solution for call in s.steps):
+                errors.append(
+                    f"{where}: escalate.only_after '{name}' is not a step of any solution"
+                )
         for i, solution in enumerate(card.solution):
             check_conditions(f"{where}: solution.{i}.when", solution.when)
             if solution.hands_to and solution.hands_to not in cards:
@@ -181,6 +188,14 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                 errors.append(f"{at}: {call.module}.{param}={given!r} is not one of {rules.values}")
         for extra in set(call.args) - set(spec.params):
             errors.append(f"{at}: {call.module} has no parameter '{extra}'")
+        for text in call.done_when:
+            try:
+                condition = Condition.parse(text)
+            except ValueError as e:
+                errors.append(f"{at}: done_when: {e}")
+                continue
+            if condition.fact not in values:
+                errors.append(f"{at}: done_when: unknown fact '{condition.fact}'")
         if spec.kind == "verify" and not (call.args.get("evidence") or call.args.get("ask")):
             errors.append(f"{at}: a verification needs `evidence`, `ask`, or both")
         for text in call.args.get("evidence") or []:

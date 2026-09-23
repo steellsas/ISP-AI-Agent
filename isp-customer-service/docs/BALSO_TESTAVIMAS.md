@@ -36,7 +36,7 @@ Naršyklėje http://localhost:8080 → skirtukas **„Testavimas"** (numeris →
 
 ## ⭐ Ką testuoti PIRMA (4a bangos pakeitimai)
 
-Trys dalykai, kurių iki 4a nebuvo arba kurie buvo sulūžę. Jei kas nors iš jų elgiasi kitaip
+Keturi dalykai, kurių iki 4a nebuvo arba kurie buvo sulūžę. Jei kas nors iš jų elgiasi kitaip
 nei čia parašyta — tai regresija, ne interpretacija.
 
 ### A. Routeris pametė nustatymus — `dhcp_silent`
@@ -76,36 +76,55 @@ nei čia parašyta — tai regresija, ne interpretacija.
   pakibusi — TEN agentas pirma taiso internetą. Jei abu skambučiai elgiasi vienodai, `line_ok`
   logika nebeveikia.
 
-### C. Klientas neatsako į užduotą klausimą
+### C1. Neatsako — kai atsakymas nieko nekeistų (pakibęs routeris)
 **Telefonas:** `+37060020112` · **Paulius, Šiauliai, Vilniaus g. 33-2**
+
+Technikas (2026-09-23): *„jei tai pakibęs routeris, tai jo perkrovimas — pirmas žingsnis."*
+Todėl šioje kortelėje prieš perkrovimą **neklausiama nieko**: linija jau pasakė, kad įrenginys
+matomas ir tyli.
 
 | Tu | Agentas turi |
 |---|---|
 | „Neveikia internetas" | pasiūlyti adresą |
-| „Taip" | patvirtinti, paklausti vardo |
-| „Paulius" | pasakyti, ką rodo linija, ir paklausti: „ar neveikia visuose įrenginiuose, ar tik viename?" |
-| **„Esu prie routerio"** (ne į temą) | paklausti **KITAIS žodžiais**, su pavyzdžiu, kaip pasitikrinti („pažiūrėkite telefonu ir, jei turite, kompiuteriu…") |
-| **„Lemputės dega"** (vėl ne į temą) | **nebekartoti klausimo, bet ir neregistruoti meistro:** kortelė sako, su kuo tęsti (`assume: all`), todėl duodama pirminė instrukcija — ištraukti maitinimo laidą |
-| *spausk 🔄 Routeris* → „Perkroviau" | pačiam perskaityti liniją ir paklausti, ar internetas atsirado |
+| „Taip" → „Paulius" | pasakyti, ką rodo linija, ir **iš karto prašyti perkrauti** (jokio „visuose ar tik viename?") |
+| **„Esu prie routerio"** | nebeklausti „ar galite prieiti?" — duoti instrukciją iš karto |
+| *spausk 🔄 Routeris* → „Perkroviau" | perskaityti liniją ir pasakyti rezultatą |
 | „Taip, veikia" | uždaryti be tiketo (`resolved`) |
 
 **Tikrinu:**
-- ✅ **tas pats klausimas — daugiausiai du kartus**, ir antras — kitais žodžiais (iki 4a buvo
-  keturi vienodi ėjimai iš eilės);
-- ✅ **„esu prie routerio" išnaudojama:** agentas nebeklausia „ar galite prieiti prie routerio?" —
-  klientas tai ką tik pasakė;
-- ✅ **pirminis sprendimas atliekamas** — perkrovimas pasiūlomas net be atsakymo apie įrenginius,
-  nes tiketas be jo būtų nesuteikta pagalba;
-- ✅ **jei perkrovimas nepadėtų** — tik tada meistras, ir prieš registraciją agentas pasako, ko
-  nepavyko patikrinti („nepatikslinome, ar neveikia visuose įrenginiuose");
-- ✅ **tikete** gedimas įvardintas (ne „nenustatyta"), įrašyta prielaida ir tai, kas neatsakyta.
+- ✅ **jokio klausimo prieš perkrovimą** — jei agentas klausia „visuose ar tik viename?", kortelė
+  nebeatitinka to, ko prašė technikas;
+- ✅ **„esu prie routerio" išnaudojama** (`done_when: reachable=yes`);
+- ✅ **jei perkrovimas nepadėtų** — agentas negrįžta iš karto į tiketą: faktai pasikeitė (srautas
+  atsirado), todėl atsidaro kliento pusės kortelė ir **tik tada** klausiama, kur neveikia;
+- ✅ **meistras — tik po perkrovimo** (`escalate.only_after: [reboot]`). Jei klientas negali
+  prieiti — meistras registruojamas, o tikete įrašoma, kad perkrovimas nebuvo atliktas.
+
+### C2. Neatsako — kai atsakymas BŪTINAS (kliento pusė)
+**Telefonas:** `+37060020109` · **Aldona, Šiaulių r., Ginkūnų k., Žeimių g. 12-6**
+
+Čia linija neša srautą, o klientas interneto neturi — tad **kur** neveikia yra vienintelis
+dalykas, kurį žino tik jis.
+
+| Tu | Agentas turi |
+|---|---|
+| „Neveikia internetas" → adresas → „Aldona" | pasakyti, kad linija tvarkoje, ir paklausti, kur neveikia |
+| **„Esu namuose"** (ne į temą) | paklausti **kitais žodžiais**: „pažiūrėkite telefonu ir, jei turite, kompiuteriu…" |
+| **„Nežinau, aš nesu technikė"** | **nebekartoti**: dirbti su prielaida („srautas iki routerio eina, vadinasi trūksta galutiniame įrenginyje") ir klausti, kuriame įrenginyje |
+| „Telefone neveikia" → „Taip, įjungtas" → „Jau veikia!" | Wi-Fi žingsniai → `resolved` |
+
+**Tikrinu:**
+- ✅ antras klausimas — **kitais žodžiais**, ne tas pats sakinys;
+- ✅ trečio nėra: einama toliau su **prielaida**, kuri pasakoma garsiai;
+- ✅ **jokio meistro** — kelias iki įrenginio dar neišnaudotas;
+- ✅ tikete (jei iki jo prieitume) įrašyta, ko klientas neatsakė ir su kokia prielaida dirbome.
 
 ---
 
 ## Pagrindinis regresijos rinkinys
 
-### D. Pakibęs routeris (perkrovimas iki galo)
-**Telefonas:** `+37060020112` · Paulius, Vilniaus g. 33-2
+### D. Pakibęs routeris — kai klientas perkrauna ne tai
+**Telefonas:** `+37060020112` · Paulius, Vilniaus g. 33-2 (C1 variantas: **nespausk** 🔄 Routeris)
 
 | Tu | Agentas turi |
 |---|---|

@@ -154,14 +154,23 @@ scenarios:
     actions: ["Kita „IPTV per sugedusį internetą“ pusė: linija sveika, tad televizija — savas gedimas.", "Agentas NEVEDA per routerį ar WiFi (tai interneto kelias) — sąžiningai registruoja, ko telefonu nenustatė."]
     expect: {verdict: unclear_fault, outcome: ticket}
 
-  - id: unanswered_question
-    title: Klientas neatsako į užduotą klausimą
+  - id: no_question_needed
+    title: Perkrovimas be klausimų (pakibęs routeris)
     phone: "+37060020112"
     client: Paulius
     address: Šiauliai, Vilniaus g. 33-2
     say: ["Neveikia internetas", "Taip", "Paulius", "Esu prie routerio", "Lemputės dega", "Perkroviau", "Taip, veikia", "Ne, ačiū, viso gero"]
-    actions: ["Į „visuose ar tik viename?“ NEATSAKYK — kalbėk apie ką kita.", "Antras klausimas turi būti KITAIS žodžiais; trečio nėra — agentas duoda pirminę instrukciją (perkrovimą), nes kortelė sako, su kuo tęsti.", "Kai paprašo perkrauti — spausk 🔄 Routeris, tada sakyk „Perkroviau“.", "„Esu prie routerio“ reiškia, kad „ar galite prieiti?“ nebeklausiama."]
+    actions: ["Srauto iki routerio nėra — perkrovimas yra pirmas žingsnis, tad „visuose ar tik viename?“ agentas NETURI klausti.", "„Esu prie routerio“ reiškia, kad ir „ar galite prieiti?“ nebeklausiama.", "Kai paprašo perkrauti — spausk 🔄 Routeris, tada sakyk „Perkroviau“."]
     expect: {verdict: router_hung, outcome: resolved}
+
+  - id: unanswered_question
+    title: Klientas neatsako, o atsakymas būtinas (kliento pusė)
+    phone: "+37060020109"
+    client: Aldona
+    address: Šiaulių r., Ginkūnų k., Žeimių g. 12-6
+    say: ["Neveikia internetas", "Taip", "Aldona", "Esu namuose", "Nežinau, aš nesu technikė", "Telefone neveikia", "Taip, įjungtas", "Jau veikia!", "Ne, ačiū, viso gero"]
+    actions: ["Į „visuose ar tik viename?“ NEATSAKYK — kalbėk apie ką kita.", "Antras klausimas turi būti KITAIS žodžiais; trečio nėra — agentas pasako prielaidą („trūksta galutiniame įrenginyje“) ir eina toliau.", "Jokio meistro: kelias iki įrenginio dar neišnaudotas."]
+    expect: {verdict: healthy_to_router, outcome: resolved}
 
   - id: unidentified_hangup
     title: Neidentifikuotas — padeda ragelį

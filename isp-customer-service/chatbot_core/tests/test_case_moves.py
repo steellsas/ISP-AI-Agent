@@ -28,11 +28,19 @@ class TestLookBeforeAsking:
         assert move.source.tool == "diagnose_connection"
 
     def test_a_fact_only_the_caller_knows_is_asked(self):
-        """Telemetry cannot see how many devices fail at home."""
-        move = next_move(_facts())
+        """Telemetry cannot see how many devices fail at home. It is asked where it decides
+        something: the line carries traffic and the caller still has nothing."""
+        move = next_move(_facts(traffic="flowing"))
         assert move.kind == "learn" and move.fact == "fail_scope"
         assert move.source.kind == "ask"
-        assert move.source.ask == "pack.router_hung.fail_scope.question"
+        assert move.source.ask == "pack.healthy_to_router.fail_scope.question"
+
+    def test_a_silent_line_asks_nothing_and_reboots(self):
+        """Wave 4a: with no traffic at all the reboot is the first move — a question before it
+        would change nothing (Andrius, 2026-09-23)."""
+        move = next_move(_facts())
+        assert move.kind == "solve" and move.fault == "router_hung"
+        assert [s.module for s in move.steps] == ["reach", "reboot", "verify"]
 
     def test_a_fact_a_module_can_get_beats_a_question(self):
         """`wan_link` comes from looking at the lights together, not from an opinion."""
@@ -46,16 +54,17 @@ class TestLookBeforeAsking:
 
 class TestTheFaultDecidesTheFix:
     def test_a_settled_fault_runs_its_own_steps(self):
-        move = next_move({**_facts(), "fail_scope": "all"})
+        move = next_move(_facts())
         assert move.kind == "solve" and move.fault == "router_hung"
         assert [s.module for s in move.steps] == ["reach", "reboot", "verify"]
 
-    def test_the_other_branch_hands_the_case_to_another_card(self):
-        """ "Only one device" is not a hung router — the client-side card takes over, and
-        its own first question follows."""
-        move = next_move({**_facts(), "fail_scope": "one"})
-        assert move.kind == "learn" and move.fault == "healthy_to_router"
-        assert move.fact in ("fail_device", "rebooted", "connection_type")
+    def test_one_device_is_not_a_hung_router(self):
+        """A caller who says it is only one device rules this card out — no question needed,
+        because the card says so itself (`rules_out: fail_scope=one`)."""
+        from agent.case import candidates
+
+        judged = {c.fault: c.status for c in candidates({**_facts(), "fail_scope": "one"})}
+        assert judged["router_hung"] == "ruled_out"
 
     def test_a_fault_with_nothing_left_to_ask_goes_straight_to_its_fix(self):
         move = next_move(_facts(crc_error_rate=12.0))
@@ -89,10 +98,10 @@ class TestWhenNothingFits:
 
     def test_a_fact_we_could_not_get_is_not_asked_again(self):
         """The caller could not answer; the engine moves on instead of looping."""
-        facts = _facts()
+        facts = _facts(traffic="flowing")
         first = next_move(facts)
         again = next_move(facts, unavailable=frozenset({first.fact}))
-        assert again.fact != first.fact
+        assert first.fact == "fail_scope" and again.fact != first.fact
 
     def test_a_fault_whose_branches_all_need_an_answer_we_cannot_get_ends_honestly(self):
         facts = {**_facts(), "fail_scope": "one"}

@@ -416,11 +416,24 @@ class Need(_Model):
     # failing at one device. The engine says the assumption out loud and writes it on the
     # ticket — it never pretends the caller answered (Andrius, 2026-09-23).
     assume: str | None = None
+    # Never asked — used only when the caller says it themselves. "Esu prie routerio, lemputės
+    # dega" confirms a hung router on the spot, but nobody would ask about the lights before
+    # the reboot: for this fault the reboot is the first move.
+    volunteered: bool = False
+    # There is no going on without it: instead of a third wording or a silent assumption, the
+    # caller is told WHY it is needed and what happens if we do not know.
+    critical: bool = False
 
     @model_validator(mode="after")
     def _reachable(self) -> Need:
-        if not self.probe and not self.ask:
-            raise ValueError("a need must be reachable: declare `probe`, `ask`, or both")
+        if not self.probe and not self.ask and not self.volunteered:
+            raise ValueError(
+                "a need must be reachable: declare `probe`, `ask`, or `volunteered: true`"
+            )
+        if self.critical and self.assume:
+            raise ValueError("critical and assume contradict: either we can go on, or we cannot")
+        if self.volunteered and (self.ask or self.again or self.assume):
+            raise ValueError("a volunteered need is never asked, so it has no wording to assume")
         for value, meaning in self.values.items():
             if meaning not in ("confirms", "rules_out") and not meaning.startswith("hands_to="):
                 raise ValueError(
@@ -438,6 +451,11 @@ class ModuleCall(_Model):
     module: str
     args: dict[str, Any] = {}
     on_fail: ModuleCall | None = None
+    # Facts that mean this step is ALREADY achieved, so it is skipped rather than asked for
+    # ("esu prie routerio" answers "ar galite prieiti?"). The order of a fix is not loosened by
+    # this — a procedure has an order (Andrius, 2026-09-23: "sprendimui reikia tikslaus
+    # algoritmo, analizei — ne") — only what is already true is passed over.
+    done_when: list[str] = []
 
 
 class Solution(_Model):
@@ -459,6 +477,11 @@ class Escalation(_Model):
     # reason, exactly as their v1 packs did.
     need: str | None = None
     note: str | None = None  # what the ticket must say
+    # Modules that must have been RUN (or proved impossible) before a technician is sent: a
+    # technician must not arrive to power-cycle a router the phone could have power-cycled
+    # (Andrius, 2026-09-23). When one is missing and still possible, the engine does it first;
+    # when it cannot be done, the ticket says so.
+    only_after: list[str] = []
 
 
 class ParamSpec(_Model):

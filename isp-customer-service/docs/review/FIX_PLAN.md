@@ -105,6 +105,44 @@ verdiktą, todėl po trynimo nieko nebedarė; jos darbą dabar dirba kortelė.
 Naujas eval scenarijus `C_unanswered_scope_still_reboots` (34 iš viso) sergsti visą šią grandinę:
 neatsakytas klausimas → kita formuluotė → prielaida → perkrovimas → `resolved`, be tiketo.
 
+**Trečias pjūvis — kada klausti, o kada daryti (Andrius, 2026-09-23):**
+
+> „Sprendimui reikia tikslaus algoritmo — padaryta tai, paskui tai. O analizuojant ir renkant
+> informaciją tikslios tvarkos nereikia: svarbu gauti informaciją ir iš jos priimti sprendimą."
+
+Tai atsakė į klausimą, kurį buvau uždavęs neteisingai. Siūliau **žingsnius paversti rinkiniu**
+— technikas pasakė, kad sprendimas turi tvarką (prieik → ištrauk → palauk → patikrink), o
+laisvė priklauso analizei. Todėl `steps` liko griežta eilė, o pakeista tai, kas iš tiesų trukdė:
+
+| Kas | Kaip veikia | Kodėl |
+|---|---|---|
+| `steps[].done_when` | žingsnis praleidžiamas, jei jo rezultatas jau faktas | „Esu prie routerio" → `reach` nebeklausiamas. Tvarka nesikeičia — tik tai, kas jau tiesa |
+| `needs.<f>.volunteered` | faktas **naudojamas, jei klientas pasakė, bet niekada neklausiamas** | „Lemputės dega" patvirtina pakibimą; klausti apie lemputes prieš perkrovimą nereikia |
+| `escalate.only_after` | tiketas blokuojamas, kol telefoninis darbas neatliktas arba neįmanomas: `router_hung` → perkrovimas, `crc_errors` ir `link_down_local` → laido perkišimas | „Kad meistrui atvykus nereikėtų tiesiog perkrauti routerio“ — arba perkišti laido |
+| nepavykęs sprendimas → **analizė iš naujo** | vietoj `failed → tiketas` Case perskaičiuoja kandidatus su naujais faktais | „Klausimai patikrina ar atmeta hipotezę" — po perkrovimo srautas gali atsirasti, ir tada tai jau kliento pusės kortelė |
+| `needs.<f>.critical` | vietoj trečio pakartojimo ar tylios prielaidos — paaiškinama, **kodėl to reikia ir kas bus, jei nežinosim** | „Jei informacija kritinė ir be jos negalima eiti toliau, galime klientą informuoti" |
+
+**`router_hung` kortelė perrašyta pagal tą patį principą:** scope klausimo (`fail_scope`) joje
+**nebėra**. Jei srauto iki routerio nėra, perkrovimas yra pirmas žingsnis — atsakymas „visuose
+ar tik viename" nieko nekeistų. Tas klausimas liko ten, kur jis sprendžia: `healthy_to_router`
+(linija neša srautą, vadinasi trūksta galutiniame taške). O jei klientas pats pasako „tik
+viename" — kortelė tai skaito kaip `rules_out`, be jokio klausimo.
+
+Grandinė dabar tokia, kokią aprašė technikas:
+
+```
+srauto nėra ──► perkrovimas (be klausimų) ──► patikra
+                                  │
+                                  ├─ srautas grįžo, klientui vis tiek neveikia
+                                  │        └─► faktai pasikeitė → kliento pusės kortelė
+                                  │              └─► DABAR klausiam: kur neveikia?
+                                  └─ nepavyko ──► meistras (perkrovimas jau atliktas)
+```
+
+Du nauji eval scenarijai: `C1_no_question_before_the_reboot` (klausimo nėra ten, kur jis nieko
+nekeistų) ir `C2_scope_unanswered_on_a_healthy_line` (kitos formuluotės + prielaida ten, kur
+klausimas būtinas).
+
 **4a bangos eiga (2026-09-23):** vienetų testai **1216 passed, 1 skipped**; eval tekstas
 **178/178** (`--only` zondai: `X_dhcp_silent` 6/6, `R3_iptv_depends_on_internet` 6/6).
 

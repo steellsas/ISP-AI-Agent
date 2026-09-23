@@ -471,6 +471,10 @@ class CaseState(BaseModel):
     # answers so the caller hears "we could not check this, we are assuming X" and the ticket
     # says the same — an assumption is never dressed up as an answer.
     assumed: dict[str, str] = Field(default_factory=dict)
+    # The modules that actually RAN in this call, in order. It answers two questions nothing
+    # else could: has the phone work been done before a technician is sent (`only_after`), and
+    # what does the technician need to know we already tried.
+    did: list[str] = Field(default_factory=list)
     # The step is being retried, so the card's `on_fail` call is what runs — a retry that
     # repeats the identical instruction teaches the caller nothing.
     retrying: bool = False
