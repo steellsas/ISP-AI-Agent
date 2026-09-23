@@ -143,6 +143,36 @@ Du nauji eval scenarijai: `C1_no_question_before_the_reboot` (klausimo nėra ten
 nekeistų) ir `C2_scope_unanswered_on_a_healthy_line` (kitos formuluotės + prielaida ten, kur
 klausimas būtinas).
 
+**Ketvirtas pjūvis — penki Andriaus balso skambučiai (2026-09-23):**
+
+Skambučiai suveikė taip, kaip sutarta (dhcp_silent → meistras be žargono; pakibęs routeris →
+perkrovimas be klausimų; kliento pusė → kitos formuluotės ir prielaida), bet KALBA rodė
+dalykų, kurių nė vienas testas nebūtų pagavęs:
+
+| Kas | Kaip yra dabar |
+|---|---|
+| **Agentas paneigė savo pačio žodžius:** „Skola 49 eurai 98 centai…" → klientas „o kiek tiksliai?" → „**tikslios sumos aš nematau**" | FAQ įrašas gali pasakyti, kad temą jau atsakė ŽINIA: `faq.yaml: answer_from_news` + `inform.yaml: asked_again_key` → atsakymas iš tų pačių faktų |
+| „per valandą po apmokėjimo" buvo įrašyta **prompto kortelėje (kode)** | perkelta į žinias — `inform.billing_suspended.paid_just_now`. Demo laikosi valandos, produkcijoje bus tikras terminas (Andrius: „realiai kai bus žinomas laikas, bus galima koreguoti") |
+| Išvados ėjimas **kvietė veiksmo**, kurio Case dar nesuplanavo: „ar galėtumėte perkrauti?" → „kaip tai padaryti?" → tik tada „ar galite prieiti?" | išvada TIK pasako; kortelėse, kurios pačios siūlo pasirinkimą, elgesys nepakito |
+| Išvada nuskambėdavo atsakymo **gale**, po instrukcijos | „OPEN THE REPLY WITH THIS, in ONE short sentence, before anything else" |
+| „Telefonu nenustatėme" **be nieko** — klientas nežino, kas patikrinta | kortelė gali įvardinti pasakomus faktus: `explain_facts`. `unclear_fault` sako MŪSŲ pusę („mazgas veikia, linija iki buto veikia"), be routerio — TV skambutyje apie routerį nekalbam (eval T1) |
+| Tiketo laukas `skambinti: Galit meistrą registruoti. Nuo 12 iki 1.` | paliekamas tik laikas (`_hours_only`) |
+| Tikete „Gedimas: **tv**", „Gedimas: **internet_down**" | žmonių kalba: „bėda su televizija", „dingo internetas" |
+| „…sukonfigūruoti — telefonu to nepadarysime" (ta pati mintis dukart) | „routerį reikia sukonfigūruoti iš naujo" |
+
+**Kalbėjimo forma (Andrius: „siektiek kliuna"):**
+
+| Buvo | Dabar |
+|---|---|
+| „Šiauliai, Tilžės g. 60-3" | „**Šiauliuose, Tilžės gatvėje 60, butas 3**" |
+| „Šiaulių r., Ginkūnų k., Žeimių g. 12-6" | „**Šiaulių rajone, Ginkūnų kaime, Žeimių gatvėje 12, butas 6**" |
+| „dėl Tilžės g. 60-7?" | „dėl Tilžės **gatvės** 60, **buto** 7?" (po „dėl" — kilmininkas) |
+| „Malonu, **Paulius**!" | „Malonu, **Pauliau**!" — šauksmininkas |
+
+Adreso formos yra `locales/lt/lang.py::speech_text` (veikia prieš TTS, rašytinis įrašas
+nesikeičia), šauksmininkas — `locales/lt/examples/language_instruction.md`. Abu lietuvių
+kalbos žinios, ne variklio kodas: kitai kalbai neišplaukia.
+
 **4a bangos eiga (2026-09-23):** vienetų testai **1216 passed, 1 skipped**; eval tekstas
 **178/178** (`--only` zondai: `X_dhcp_silent` 6/6, `R3_iptv_depends_on_internet` 6/6).
 

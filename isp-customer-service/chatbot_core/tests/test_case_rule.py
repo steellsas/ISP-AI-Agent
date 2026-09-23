@@ -353,3 +353,33 @@ class TestACardThatOnlyEscalates:
         state.dialog.turn_count += 1
 
         assert case_rule.plan(state, rt) is None  # the ticket dialogue owns the turn
+
+
+class TestWhatTheFindingSays:
+    """Live 2026-09-23: two complaints about the finding moment — it invited an action the
+    engine had not planned yet ("ar galėtumėte perkrauti?" and only THEN "ar galite
+    prieiti?"), and the honest ending said nothing about what had been checked."""
+
+    def test_the_honest_ending_still_says_what_was_checked(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "traffic": "flowing"})
+
+        case_rule.announce(state, rt, "unclear_fault")
+
+        told = state.case.finding
+        assert told, "the finding must be held until something says it"
+        # OUR side only: "srautas iki routerio" would drag the router into a TV call (eval T1).
+        assert "linija" in told["faktai"] and "mazgas" in told["faktai"]
+        assert "routerio" not in told["faktai"] and told["isvada"]
+
+    def test_a_finding_without_an_offer_does_not_instruct(self, call):
+        from agent.speak.context_card import _goal_recap_and_findings
+
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        case_rule.plan(state, rt)  # settles router_hung and announces its finding
+
+        lines = " ".join(_goal_recap_and_findings(state, rt))
+
+        assert "FINDINGS MOMENT" in lines or "OPEN THE REPLY" in lines
+        assert "Do NOT ask them to do anything yet" in lines or "before anything else" in lines

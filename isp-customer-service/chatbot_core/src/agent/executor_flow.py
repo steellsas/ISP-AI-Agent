@@ -47,7 +47,12 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     gloss = phrase_or(f"verdict.{cause}.gloss", cause or phrase("ticket.details.unknown_cause"))
     details = phrase(
         "ticket.details.fault",
-        problem=s.intake.problem_type or phrase("ticket.details.default_problem"),
+        # In words, not the engine's key: a technician read "Gedimas: internet_down" and
+        # "Gedimas: tv" (live 2026-09-23).
+        problem=phrase_or(
+            f"problem_label.{s.intake.problem_type}",
+            s.intake.problem_type or phrase("ticket.details.default_problem"),
+        ),
         gloss=gloss,
     )
     # The same wording the caller heard, and under the same honesty rule: a card's

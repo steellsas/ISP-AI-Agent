@@ -90,6 +90,9 @@ def ensure_diagnosed(state, rt) -> bool:
                 action="unclear_fault_ticket",
                 value=s.intake.problem_type,
             )
+            from ..decide.rules import case_rule
+
+            case_rule.announce(state, rt, "unclear_fault")
             begin_ticket_dialogue(state, rt, escalate)
             return True
     try:
@@ -116,6 +119,9 @@ def ensure_diagnosed(state, rt) -> bool:
                     action="unclear_fault_ticket",
                     value=s.intake.problem_type,
                 )
+                from ..decide.rules import case_rule
+
+                case_rule.announce(state, rt, "unclear_fault")
                 begin_ticket_dialogue(state, rt, escalate)
                 return True
     _seed_evidence_from_call(state, rt)

@@ -12,6 +12,9 @@ faq:
   - topic: debt_amount
     keywords_vocab: faq_keywords_debt_amount
     answer_key: "faq.debt_amount"
+    # Jei skolos žinia šiame skambutyje jau pasakyta, suma jau nuskambėjo — tada atsakom iš
+    # tų pačių faktų (`inform.yaml: asked_again_key`), o ne „nematau".
+    answer_from_news: billing_suspended
   - topic: duration
     keywords_vocab: faq_keywords_duration
     answer_key: "faq.duration"

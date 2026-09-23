@@ -365,6 +365,18 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
             return
 
 
+def announce(state: Any, rt: Any, fault: str) -> None:
+    """Work out and hold this fault's finding, for a path that does not run through the Case.
+
+    The TV-with-no-card road (`execute/diagnosis.py`) registers a ticket without ever asking
+    the Case anything, so the caller heard "priežastis telefonu nenustatyta" with no word of
+    what HAD been checked (live 2026-09-23).
+    """
+    card = catalog.card(fault)
+    if card is not None:
+        _announce_finding(state, rt, card, ledger.facts_of(state))
+
+
 def _announce_finding(state: Any, rt: Any, card: Any, facts: dict[str, str]) -> None:
     """Say what we found before asking for anything.
 
@@ -379,7 +391,9 @@ def _announce_finding(state: Any, rt: Any, card: Any, facts: dict[str, str]) -> 
     if card.fault in state.case.announced:
         return  # a finding is news once
     reasons = [str(c.fact) for c in (judge(card, facts).why and _reasons(card))]
-    seen = summary(facts, reasons)
+    # Plus whatever else the card says is worth telling (the honest ending matches on
+    # nothing, yet the caller must hear that the line up to their flat was checked).
+    seen = summary(facts, reasons + [f for f in card.explain_facts if f not in reasons])
     conclusion = maybe_phrase(card.explain.get("conclusion"))
     if not seen and not conclusion:
         return

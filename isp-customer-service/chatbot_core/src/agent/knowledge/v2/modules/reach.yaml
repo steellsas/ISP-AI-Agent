@@ -5,7 +5,8 @@ module: reach
 kind: ask
 params:
   device: {required: true}          # router | modem | ont | tv_box | computer
-goal: "clear whether the caller can get to the {device} right now"
+goal: "clear whether the caller can get to the {device} right now — ONLY that; what they
+  will be asked to DO with it is the next turn's, not this one's"
 text: "equipment:{device}.locate"   # kaip jį atpažinti, jei nežino kur jis
 ask: modules.reach.can_now
 detector: yes_no

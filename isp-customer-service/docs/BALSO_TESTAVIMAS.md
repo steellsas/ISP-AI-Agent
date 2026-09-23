@@ -189,6 +189,22 @@ LAN klausimas → meistras su prierašu), ne apsimeta, kad pavyko.
 
 ---
 
+## Kaip turi SKAMBĖTI adresas ir vardas
+
+Nuo 2026-09-23 adresas prieš TTS paverčiamas sakoma forma, o vardas kreipiantis — šauksmininku.
+Tai girdima tik balsu (rašytinis įrašas ir tiketas lieka su sutrumpinimais):
+
+| Rašoma | Sakoma |
+|---|---|
+| Šiauliai, Tilžės g. 60-3 | **Šiauliuose, Tilžės gatvėje 60, butas 3** |
+| Šiaulių r., Ginkūnų k., Žeimių g. 12-6 | **Šiaulių rajone, Ginkūnų kaime, Žeimių gatvėje 12, butas 6** |
+| dėl Tilžės g. 60-7? | dėl Tilžės **gatvės** 60, **buto** 7? (po „dėl" — kilmininkas) |
+| Paulius / Kęstutis | **Pauliau** / **Kęstuti** (moteriški vardai nesikeičia) |
+
+**Tikrinu:** ✅ nė vienas „g.", „k.", „r." nenuskamba raidėmis · ✅ „60-3" nesakoma kaip „minus"
+· ✅ kreipiamasi šauksmininku · ✅ nežinomos galūnės vietovė lieka nepakeista (geriau vardininkas
+negu sugalvota forma).
+
 ## Bendra — ką stebėti kiekviename skambutyje
 
 1. **Vienas klausimas viename atsakyme.** Du klausimai — regresija (sargas juos kerpa, bet

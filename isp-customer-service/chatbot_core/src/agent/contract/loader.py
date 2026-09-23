@@ -131,6 +131,9 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
         for key in card.explain.values():
             if not locale.has(key):
                 errors.append(f"{where}: explain phrase '{key}' is missing")
+        for fact in card.explain_facts:
+            if fact not in values:
+                errors.append(f"{where}: explain_facts: unknown fact '{fact}'")
         for fact, need in card.needs.items():
             if need.ask and not locale.has(need.ask):
                 errors.append(f"{where}: needs.{fact}.ask phrase '{need.ask}' is missing")

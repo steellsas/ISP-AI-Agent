@@ -221,7 +221,9 @@ def ticket_capture(state, rt, user_input: str) -> None:
                         state.ticket.stage = "hours"
                         return
                 else:
-                    s.ticket.contact_hours = re.sub(r"[?!]", " ", value).strip(" .,")[:80]
+                    s.ticket.contact_hours = _hours_only(re.sub(r"[?!]", " ", value).strip(" .,"))[
+                        :80
+                    ]
                     rt.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
                     state.ticket.stage = "done"
                     return
@@ -314,7 +316,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
         # Strip trailing STT punctuation — "Bet kada?" landed on the ticket
         # (and in the announce) with the question mark. Second unclear
         # answer defaults to "bet kada" (spoken back in the announce).
-        s.ticket.contact_hours = clean[:80] if plausible else "bet kada"
+        s.ticket.contact_hours = _hours_only(clean)[:80] if plausible else "bet kada"
         rt.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
         state.ticket.stage = "done"
     return
@@ -323,6 +325,22 @@ def ticket_capture(state, rt, user_input: str) -> None:
 # Escalate reasons after which nothing was done at the device: the ticket must
 # not claim the pack's post-action wording.
 NOTHING_DONE_REASONS = frozenset({"caller_refused", "cannot_now", "cannot_now_asks_ticket"})
+
+
+def _hours_only(text: str) -> str:
+    """Keep the part of the answer that says WHEN.
+
+    A caller answers a whole thought — "Galit meistrą registruoti. Nuo 12 iki 1" — and all of
+    it landed on the ticket and was read back to them ("Skambinsime ***0106, galit meistrą
+    registruoti. Nuo 12 iki 1", live 2026-09-23). Sentences with a time stay, the rest goes;
+    when nothing looks like a time, the answer is kept whole.
+    """
+    parts = [p.strip(" .,") for p in re.split(r"(?<=[.!?])\s+", text) if p.strip(" .,")]
+    if len(parts) < 2:
+        return text
+    marks = vocab("contact_hours_marks")
+    kept = [p for p in parts if re.search(r"\d", p) or any(m in p.lower() for m in marks)]
+    return " ".join(kept) if kept else text
 
 
 def ticket_need(state: Any, rt: Any) -> str:

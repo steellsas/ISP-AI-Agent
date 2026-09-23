@@ -54,6 +54,22 @@ def context_card(state, rt) -> str | None:
 # --- the turn is off the fault path ------------------------------------------------------
 
 
+def _faq_answer(state, rt, entry: dict) -> str:
+    """The answer to a side question — from the NEWS's own facts when that news has been
+    delivered in this call (live 2026-09-23: the agent read out a debt of 49,98 € and then
+    answered "tikslios sumos aš nematau")."""
+    news = entry.get("answer_from_news")
+    if news:
+        from ..inform import inform_text
+
+        reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
+        if reason == news:
+            said = inform_text(state, rt, reason, key="asked_again_key")
+            if said:
+                return said
+    return phrase(entry["answer_key"])
+
+
 def _side_topic(state, rt) -> list[str]:
     """A deviation: the ONLY permitted content is the FAQ hit (or an honest "not my
     area"), then the return anchor — the engine's exact pending question."""
@@ -63,7 +79,7 @@ def _side_topic(state, rt) -> list[str]:
     from ..faq import match as faq_match
 
     hits = faq_match(state.dialog.last_heard)
-    known = " ".join(f"[{e.get('topic')}] {phrase(e['answer_key'])}" for e in hits) or (
+    known = " ".join(f"[{e.get('topic')}] {_faq_answer(state, rt, e)}" for e in hits) or (
         "(NO KNOWN ANSWER for this topic - say politely that it is not your area)"
     )
     # The topic is DETERMINISTIC when the FAQ matched — the model once copied a prompt
@@ -257,10 +273,14 @@ def _identification_notes(state, rt) -> list[str]:
         )
     if state.closing.wrap_react_note:
         state.closing.wrap_react_note = False
+        # What "they paid" means for the service is a business fact, so it is knowledge:
+        # the demo says an hour, production says whatever is true — one locale line, no code
+        # change (Andrius, 2026-09-23).
+        paid = phrase_or("inform.billing_suspended.paid_just_now", "")
         out.append(
             "WRAP-UP PHASE: the business is done but the caller SAID something — react to "
             "THAT specifically: a name → welcome them warmly („Malonu!“); they PAID → "
-            "confirm the service comes back automatically within an hour after payment; a "
+            f"say exactly this and nothing more about timing: „{paid}“; a "
             "new problem → answer briefly. No long re-explanations. End with „Ar dar kuo "
             "galiu padėti?“."
         )
@@ -715,6 +735,29 @@ def _goal_ticket(state, rt) -> list[str]:
     ]
 
 
+def _instruction_turn(state) -> bool:
+    """Is this turn's own goal something the caller must DO?
+
+    Then the finding shares the reply with an instruction, and the instruction is the part
+    that must survive: with the full list of what we checked the reply ran to 291 characters
+    and the guard cut the instruction off (voice eval C2, 2026-09-23).
+    """
+    rule = str((state.turn.plan or {}).get("rule") or "")
+    return rule.startswith("case.") and rule not in ("case.escalate", "case.resolved")
+
+
+def _telling_facts(seen: str, short: bool) -> str:
+    """The facts as the finding names them — the two most telling when the reply is shared.
+
+    The last conditions a card names are the ones that decide it ("įrenginys matomas, bet
+    srautas nevaikšto"), so a shortened finding keeps the END of the list, not its start.
+    """
+    parts = [p for p in seen.split(", ") if p]
+    if not short or len(parts) <= 2:
+        return seen
+    return ", ".join(parts[-2:])
+
+
 def _goal_recap_and_findings(state, rt) -> list[str]:
     """The recap reads the gathered facts back in the speaker's own words; the findings
     moment states what was established, the conclusion and the choice."""
@@ -733,15 +776,18 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
         # 2026-09-23). One line, before this turn's own goal.
         pending = state.case.finding
         state.case.finding = None
+        instructing = _instruction_turn(state)
+        seen = _telling_facts(pending["faktai"], instructing)
+        head = f"{seen} — {pending['isvada']}" if seen else pending["isvada"]
         unchecked = (
-            f" We could not check this together: {pending['prielaida']}."
-            if pending.get("prielaida")
-            else ""
+            ""
+            if instructing or not pending.get("prielaida")
+            else f" We could not check this together: {pending['prielaida']}."
         )
         out.append(
-            f"PLAN GOAL — SAY WHAT WE FOUND FIRST: together we established — "
-            f"{pending['faktai']}. Conclusion: {pending['isvada']}.{unchecked} Then continue "
-            f"with this turn's goal in the same reply, briefly."
+            f"PLAN GOAL — OPEN THE REPLY WITH THIS, in ONE short clause, before anything "
+            f"else: {head}.{unchecked} Then this turn's own goal — that is the part the "
+            f"caller must act on, so it must survive: keep the whole reply to two sentences."
         )
     if fd:
         state.case.finding = None
@@ -766,10 +812,26 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             if fd.get("prielaida")
             else ""
         )
+        # A finding TELLS. The instruction is the next turn's, and the engine has not
+        # planned it yet — an agent that asks "ar galėtumėte perkrauti?" here, and only then
+        # asks whether they can reach the router, is talking backwards (live 2026-09-23).
+        wait = (
+            ""
+            if (fd.get("offer") or fd.get("solutions") or _instruction_turn(state))
+            else " Do NOT ask them to do anything yet and do NOT name the next step — say "
+            "what we found and stop."
+        )
+        instructing = _instruction_turn(state)
+        seen = _telling_facts(fd["faktai"], instructing)
+        room = (
+            " This reply also carries the thing the caller must DO — that part must survive, "
+            "so keep the finding to one clause and the whole reply to two sentences."
+            if instructing
+            else " Two or three sentences, no lists or colons."
+        )
         out.append(
-            f"PLAN GOAL — FINDINGS MOMENT:{tense} together we established — {fd['faktai']}. "
-            f"Conclusion: {fd['isvada']}.{unchecked}{solution} Two or three sentences, no "
-            f"lists or colons."
+            f"PLAN GOAL — FINDINGS MOMENT:{tense} together we established — {seen}. "
+            f"Conclusion: {fd['isvada']}.{unchecked}{solution}{wait}{room}"
         )
     return out
 

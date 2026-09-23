@@ -85,18 +85,91 @@ def date(value: str | None) -> str | None:
     return f"{month} {day} d." if month else None
 
 
-# "Tilžės g. 60-7" is written form — TTS reads it "g. šešiasdešimt minus septyni".
-# Speak addresses like a human: "Tilžės gatvė, namas 60, butas 7".
+# ADRESAS BALSU (Andrius, 2026-09-23). Rašoma forma "Šiaulių r., Ginkūnų k., Žeimių g. 12-6"
+# skaitoma kaip santrumpų sąrašas; žmogus pasakytų "Šiaulių rajone, Ginkūnų kaime, Žeimių
+# gatvėje 12, butas 6". Todėl prieš TTS: namas-butas išskiriamas, santrumpos ištariamos
+# pilnai, o vietovė prieš gatvę — vietininku.
+#
+# Linksnis priklauso nuo sakinio: pasakant adresą — vietininkas ("Šiauliuose, Tilžės gatvėje
+# 60, butas 3"), o po "dėl" — kilmininkas ("Ar skambinate dėl Tilžės gatvės 60, buto 3?").
 _ADDR_HOUSE_FLAT = re.compile(r"\bg\.\s*(\d+)\s*-\s*(\d+)\b")
-_ADDR_HOUSE = re.compile(r"\bg\.(?=\s*\d)")
-_ADDR_ABBR = re.compile(r"\bg\.(?=\s|$)")
+_ADDR_FLAT = re.compile(r"\bbutas\s+(\d+)\b")
+# santrumpa -> (vietininkas, kilmininkas)
+_ADDR_ABBREV = (
+    (re.compile(r"\bg\.(?=\s*\d|\s|,|$)"), ("gatvėje", "gatvės")),
+    (re.compile(r"\bk\.(?=\s|,|$)"), ("kaime", "kaimo")),
+    (re.compile(r"\br\.(?=\s|,|$)"), ("rajone", "rajono")),
+    (re.compile(r"\bpr\.(?=\s*\d|\s|,|$)"), ("prospekte", "prospekto")),
+    (re.compile(r"\bal\.(?=\s*\d|\s|,|$)"), ("alėjoje", "alėjos")),
+    (re.compile(r"\bsav\.(?=\s|,|$)"), ("savivaldybėje", "savivaldybės")),
+)
+# Vardininkas -> vietininkas pagal galūnę (ilgiausia pirma). Nežinomos galūnės vardas lieka
+# nepakeistas — geriau neįprastas vardininkas negu sugalvota forma.
+_PLACE_LOCATIVE = (
+    ("iai", "iuose"),  # Šiauliai -> Šiauliuose, Telšiai -> Telšiuose
+    ("ai", "uose"),  # Ginkūnai -> Ginkūnuose
+    ("ius", "iuje"),  # Vilnius -> Vilniuje
+    ("ys", "yje"),  # Panevėžys -> Panevėžyje
+    ("us", "uje"),  # Alytus -> Alytuje
+    ("as", "e"),  # Kaunas -> Kaune
+    ("ė", "ėje"),  # Plungė -> Plungėje
+    ("a", "oje"),  # Klaipėda -> Klaipėdoje
+)
+# Vietovė, po kurios (per kablelį) seka gatvė — būtent ji sakoma vietininku. "Šiaulių r."
+# lieka kilmininkas + "rajone", nes taip ir sako žmonės.
+_PLACE_BEFORE_STREET = re.compile(
+    r"\b([A-ZĄČĘĖĮŠŲŪŽ][a-ząčęėįšųūž]+),(?=[^,]*?(?:\bg\.|\bpr\.|\bal\.|gatvėje|prospekte))"
+)
+# "dėl" prieš adresą reikalauja kilmininko; ieškom jo tik toje pačioje sakinio dalyje.
+_DEL_BEFORE = re.compile(r"\bd[eė]l\b[^.!?]{0,40}$", re.IGNORECASE)
+
+
+def _genitive_here(text: str, pos: int) -> bool:
+    return bool(_DEL_BEFORE.search(text[:pos]))
+
+
+def _locative(word: str) -> str:
+    """The inessive ("kur?") of a place name, or the name unchanged."""
+    for end, loc in _PLACE_LOCATIVE:
+        if word.endswith(end):
+            return word[: -len(end)] + loc
+    return word
 
 
 def speech_text(text: str) -> str:
-    """The spoken form of a reply for TTS: 'X g. 60-7' -> 'X gatvė, namas 60,
-    butas 7', 'X g. 60' -> 'X gatvė 60', a dangling 'g.' -> 'gatvė'."""
-    if not text or "g." not in text:
+    """The spoken form of a reply for TTS.
+
+    "Šiauliai, Tilžės g. 60-3" -> "Šiauliuose, Tilžės gatvėje 60, butas 3"
+    "Šiaulių r., Ginkūnų k., Žeimių g. 12-6" -> "Šiaulių rajone, Ginkūnų kaime,
+    Žeimių gatvėje 12, butas 6"
+    "Ar skambinate dėl Tilžės g. 60, butas 3?" -> "... dėl Tilžės gatvės 60, buto 3?"
+    """
+    if not text:
         return text
-    out = _ADDR_HOUSE_FLAT.sub(r"gatvė, namas \1, butas \2", text)
-    out = _ADDR_HOUSE.sub("gatvė", out)
-    return _ADDR_ABBR.sub("gatvė", out)
+
+    def _place(m: re.Match[str]) -> str:
+        if _genitive_here(text, m.start()):
+            return m.group(0)  # po "dėl" vietovė jau kilmininke ("dėl Šiaulių, ...")
+        return _locative(m.group(1)) + ","
+
+    out = _PLACE_BEFORE_STREET.sub(_place, text)
+
+    def _house_flat(m: re.Match[str]) -> str:
+        if _genitive_here(out, m.start()):
+            return f"gatvės {m.group(1)}, buto {m.group(2)}"
+        return f"gatvėje {m.group(1)}, butas {m.group(2)}"
+
+    out = _ADDR_HOUSE_FLAT.sub(_house_flat, out)
+    for pattern, (locative, genitive) in _ADDR_ABBREV:
+
+        def _case(m: re.Match[str], loc=locative, gen=genitive, seen=out) -> str:
+            # `seen` is bound on purpose: the case depends on the text as it was BEFORE this
+            # substitution, which is what carries the "dėl" that decides it.
+            return gen if _genitive_here(seen, m.start()) else loc
+
+        out = pattern.sub(_case, out)
+
+    def _flat(m: re.Match[str], seen=out) -> str:
+        return f"buto {m.group(1)}" if _genitive_here(seen, m.start()) else m.group(0)
+
+    return _ADDR_FLAT.sub(_flat, out)

@@ -226,6 +226,9 @@ class FaqEntry(_Model):
     topic: str
     keywords_vocab: str
     answer_key: str
+    # The news whose own facts answer this question once it has been delivered. Without it
+    # the agent denied a debt figure it had just read out (live 2026-09-23).
+    answer_from_news: str | None = None
 
 
 class Faq(_Model):
@@ -235,6 +238,9 @@ class Faq(_Model):
 class InformEntry(_Model):
     template_key: str
     fallback_key: str | None = None
+    # What to say when the caller asks about this news AFTER hearing it — rendered from the
+    # same facts, so the answer can never contradict what was just delivered.
+    asked_again_key: str | None = None
     clarity_requirements: list[
         Literal[
             "what_is_wrong", "what_to_do", "what_is_being_done", "when_restored", "how_notified"
@@ -533,6 +539,11 @@ class FaultCard(_Model):
     service: str
     symptom: str | None = None
     explain: dict[str, str] = {}
+    # Facts to TELL when this card's finding is announced, beyond the conditions it matched
+    # on. The honest-ending card matches on nothing, so without this it said only "gedimo
+    # tipas neaiškus" — the caller never heard that the line up to their flat is fine (live
+    # 2026-09-23).
+    explain_facts: list[str] = []
     # A fallback card is taken ONLY when no other card fits, so an honest "we cannot tell
     # over the phone" can never compete with a real diagnosis.
     fallback: bool = False

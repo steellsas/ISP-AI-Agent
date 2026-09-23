@@ -69,3 +69,25 @@ def test_confirmed_refusal_cancels(make_state, make_runtime):
 def test_no_dialogue_is_not_the_ticket_rules(make_state, make_runtime):
     state = make_state("+37060012353", turn=TurnScratch(user_input="taip"))
     assert ticket.plan(state, make_runtime()) is None
+
+
+class TestTheHoursFieldKeepsOnlyTheTime:
+    """Live 2026-09-23: "Galit meistrą registruoti. Nuo 12 iki 1" landed on the ticket whole
+    and was read back to the caller."""
+
+    def test_the_other_sentence_is_dropped(self):
+        from agent.decide.rules.ticket import _hours_only
+
+        assert _hours_only("Galit meistrą registruoti. Nuo 12 iki 1") == "Nuo 12 iki 1"
+        assert _hours_only("Taip, tinka. Po 17 valandos.") == "Po 17 valandos"
+
+    def test_a_single_thought_is_kept_whole(self):
+        from agent.decide.rules.ticket import _hours_only
+
+        assert _hours_only("Bet kada") == "Bet kada"
+        assert _hours_only("Po pietų, nuo keturioliktos") == "Po pietų, nuo keturioliktos"
+
+    def test_an_answer_with_no_time_at_all_is_not_emptied(self):
+        from agent.decide.rules.ticket import _hours_only
+
+        assert _hours_only("Nežinau. Nesuprantu.") == "Nežinau. Nesuprantu."
