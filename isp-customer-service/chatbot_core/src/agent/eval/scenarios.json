@@ -667,23 +667,29 @@
     {
       "id": "X_dhcp_silent",
       "phone": "+37060020106",
-      "desc": "dhcp_silent (CUST106, atstatyti gamykliniai — įrenginys linijoje matomas, adreso neprašo): 4 banga — tai KORTELĖ (ne medžio šaka), jos sprendimas — meistras, klientui be telemetrijos žargono (F-8)",
+      "desc": "dhcp_silent (CUST106): 4b — kortelė nebesiūlo meistro iš karto, o veda per žinių bazės ALGORITMĄ (WAN → DHCP) po vieną žingsnį; nepavykus — meistras, o tiketas pasako, ką bandėme. Klientui be žargono (F-8)",
       "known_bug": false,
       "turns": [
         "Labas, neveikia internetas",
         "Taip",
         "Greta, taip, mano sutartis",
         "Taip, esu prie routerio",
-        "Lemputės dega",
-        "Ne, nieko nekeičiau",
+        "Prisijungiau prie routerio nustatymų",
+        "Padariau, išsaugojau",
+        "Taip, tinka šis numeris",
+        "Bet kada",
         "Ačiū, viso gero"
       ],
       "expect": {
         "verdict_in": "dhcp_silent",
         "disposition": "ticket",
+        "reply_any": [
+          "192.168",
+          "nustatym"
+        ],
         "reply_none": [
-          "DHCP",
-          "gamyklin"
+          "DHCP tyli",
+          "neprašo adreso"
         ],
         "tool_used": [
           "create_ticket"

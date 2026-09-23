@@ -1040,6 +1040,15 @@ fact_only_computer: "tik\\s+(su\\s+)?kompiuter"
 only_words: ["tik"]
 fact_lights_words: ["lemp", "sviesel"]
 fact_lights_blinking: ["mirksi", "mirkcioja"]
+
+# LEMPUTĖS SPALVA (4b banga). Katalogas sako, ką spalva REIŠKIA („oranžinė INTERNET" ->
+# wan_link=down), o čia — kaip klientas ją pavadina. STT dažnai nuvalo diakritikus, tad
+# rašoma ir be jų; skaitytuvas lygina be diakritikų.
+light_colour_green: ["zalia", "zaliai", "zalias", "zeliona"]
+light_colour_red: ["raudona", "raudonai", "raudonas", "raudon"]
+light_colour_orange: ["oranzine", "oranzinis", "oranzine spalva", "gelsva", "geltona", "gintarine", "amber"]
+light_colour_blue: ["melyna", "melynai", "melynas"]
+light_colour_white: ["balta", "baltai", "baltas"]
 # "razet" — the STT routinely hears "rozetė" as "razetė".
 fact_outlet_words: ["rozet", "razet"]
 fact_outlet_tried: ["kit", "band", "perjung"]

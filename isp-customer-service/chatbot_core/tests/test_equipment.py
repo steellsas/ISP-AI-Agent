@@ -82,14 +82,17 @@ class TestLightsBecomeFacts:
         assert for_device("tv_box").fact_from_light("internet", "yes") is None
 
     def test_the_question_and_the_reader_agree(self):
-        """Every light the catalogue asks about must be answerable by the reader whose
-        labels it maps — otherwise we ask something we cannot understand."""
+        """Every light the catalogue asks about must be answerable by the reader whose labels
+        it maps — otherwise we ask something we cannot understand. Wave 4b: a COLOUR is such an
+        answer too (the reader returns it, the catalogue gives it meaning)."""
         from agent.contract import equipment as catalog
+        from agent.contract.loader import _readable_light_answers
 
+        readable = _readable_light_answers()
         for name, spec in catalog.get().items():
             for light, described in spec.lights.items():
                 if described.means:
-                    assert set(described.means) <= {"yes", "no"}, f"{name}.{light}"
+                    assert set(described.means) <= readable, f"{name}.{light}"
 
 
 class TestTheCatalogueIsComplete:
@@ -102,3 +105,55 @@ class TestTheCatalogueIsComplete:
         specs = catalog.get()
         for name, spec in specs.items():
             assert spec.extends is None or spec.extends in specs, name
+
+
+class TestTheColourOfALight:
+    """Wave 4b: „oranžinė" and „žalia" mean different things on the same light, and only the
+    manufacturer knows which. The reader recognises the colour; the CATALOGUE gives it meaning."""
+
+    def test_the_reader_hears_a_colour(self):
+        from agent.perceive.detectors import detect_light_colour, detect_lights
+
+        assert detect_lights("dega žalia") == "green"
+        assert detect_lights("oranžinė mirksi") == "orange"
+        assert detect_lights("geltona lemputė") == "orange"  # callers say yellow for amber
+        assert detect_light_colour("raudona dega") == "red"
+
+    def test_a_denial_is_not_a_colour(self):
+        """„nedega žalia" is a light that is OFF, not a green one."""
+        from agent.perceive.detectors import detect_light_colour, detect_lights
+
+        assert detect_light_colour("nedega žalia") is None
+        assert detect_lights("nedega žalia") == "no"
+
+    def test_lit_and_unlit_still_read(self):
+        from agent.perceive.detectors import detect_lights
+
+        assert detect_lights("dega") == "yes"
+        assert detect_lights("nedega jokia") == "no"
+
+    def test_the_manufacturer_says_what_a_colour_means(self):
+        from agent.equipment import for_signals
+
+        tplink = for_signals({"device_model": "TP-Link Archer C80"})
+        assert tplink.fact_from_light("internet", "green") == ("wan_link", "up")
+        assert tplink.fact_from_light("internet", "orange") == ("wan_link", "down")
+        assert tplink.fact_from_light("internet", "red") == ("wan_link", "down")
+
+    def test_an_unknown_box_does_not_guess(self):
+        """Green means a link on every ISP box; amber means different things, so the basic
+        level says nothing rather than inventing."""
+        from agent.equipment import for_signals
+
+        other = for_signals({"device_model": "Huawei HG8245"})
+        assert other.level == "router"
+        assert other.fact_from_light("internet", "green") == ("wan_link", "up")
+        assert other.fact_from_light("internet", "orange") is None
+        # ...but any colour at all still proves it has power.
+        assert other.fact_from_light("power", "orange") == ("power", "yes")
+
+    def test_a_colour_the_reader_cannot_hear_stops_the_app(self):
+        from agent.contract.loader import _readable_light_answers
+
+        assert "grean" not in _readable_light_answers()
+        assert {"green", "orange", "red", "yes", "no"} <= _readable_light_answers()

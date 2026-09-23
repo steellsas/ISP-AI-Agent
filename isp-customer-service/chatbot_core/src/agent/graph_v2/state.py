@@ -471,6 +471,13 @@ class CaseState(BaseModel):
     # answers so the caller hears "we could not check this, we are assuming X" and the ticket
     # says the same — an assumption is never dressed up as an answer.
     assumed: dict[str, str] = Field(default_factory=dict)
+    # Which step of a written procedure (`guide`) the call is on. The card names the document;
+    # the engine walks it one step per turn, so this is the engine's own position (wave 4b).
+    guide_step: int = 0
+    # Which written step has actually been SAID. A caller's "taip, padariau" cannot finish a
+    # step they never heard: the first step of the WAN procedure was skipped exactly so
+    # (2026-09-23), because "taip, esu prie routerio" read as a done-report.
+    guide_said: int = -1
     # The modules that actually RAN in this call, in order. It answers two questions nothing
     # else could: has the phone work been done before a technician is sent (`only_after`), and
     # what does the technician need to know we already tried.

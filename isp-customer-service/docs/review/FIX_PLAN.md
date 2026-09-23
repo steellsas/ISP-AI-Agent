@@ -67,6 +67,44 @@ nesvarbu, ar tam yra gedimo kortelė. Radiniai: AJ (embedding RAG realiai nenaud
 | 4b-2 | **`agent/knowledge_base.py`** — vienintelis kelias į žinias: filtras (deterministinis) → rikiavimas (šaknų sutapimas) | TP-Link instrukcija nepasiekia kliento su kita dėžute |
 | 4b-3 | **Dvi naudojimo vietos**: šoninė tema (už 5 FAQ temų) ir „kaip…" klausimas pokalbio viduryje | atsakymas su šaltiniu arba sąžiningas „negaliu patarti" |
 
+**4b-4 · Kortelė veda per algoritmą (`guide`).** `dhcp_silent` iki tol siųsdavo meistrą, nors
+žinių bazėje surašyta, kaip klientas pats susigrąžina internetą. Dabar kortelėje viena eilutė:
+
+```yaml
+- module: guide
+  args: {knowledge: troubleshooting/internet_factory_reset_dhcp, count: 2}
+```
+
+Variklis duoda po VIENĄ dokumento žingsnį per ėjimą; `count` — kiek žingsnių yra kliento
+rankose (dokumento „patikrinti" yra mūsų `verify`, nes telemetrija — arbitras). Nepavykus:
+meistras, o tikete — ką bandėme. Startinis validatorius neleidžia rodyti į dokumentą, kurio
+nėra arba kuris neturi žingsnių.
+
+Pakeliui — dvi klaidos, kurių vienetų testai nebūtų pagavę:
+
+| Kas buvo | Kodėl | Kaip dabar |
+|---|---|---|
+| **Pirmas žingsnis praleistas** | žingsnis pasižymėdavo „pasakytu", kai planas SUDAROMAS; tą ėjimą planą perėmė identifikacija, ir kliento „taip, esu prie routerio" užbaigė žingsnį, kurio jis negirdėjo | žymė dedama ten, kur atsakymas formuojamas (`speak/context_card.py`) — kaip ir išvada 4a bangoje |
+| **Vienas žingsnis buvo dalijamas į tris ėjimus** | žingsnyje trys smulkūs punktai, narratorius juos dalijo | modulio tikslas sako: visas žingsnis vienu atsakymu, punktus suliejant, be „Žingsnis N" antraštės |
+
+**4b-5 · Lempučių spalvos.** Katalogas dabar pasako, ką reiškia spalva, o skaitytuvas ją
+atpažįsta (žalia / raudona / oranžinė / mėlyna / balta, be diakritikų irgi):
+
+```
+TP-Link Archer:  žalia → wan_link=up · oranžinė → wan_link=down · raudona → wan_link=down
+nežinoma dėžutė: žalia → wan_link=up · oranžinė → (nežinom) · bet kokia spalva → power=yes
+```
+
+Kortelės apie spalvas nežino — jos kalba tik `wan_link`. Nežinomam įrenginiui sąmoningai
+nespėjama: universalu tik „žalia = ryšys" ir „dega = maitinimas yra". Validatorius **klausia
+paties skaitytuvo**, kokias spalvas jis moka, tad į katalogą nebeįrašysi spalvos, kurios
+agentas neišgirstų.
+
+**Liko 4b bangoje:** embedding'ai kaip antras rikiuotojas (parafrazėms, su išmatuota
+latencija) ir TV / lėto interneto kortelės — abu atidėti Andriaus sprendimu, kol veikia
+esami demo scenarijai.
+
+
 **Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
 lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
 vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).

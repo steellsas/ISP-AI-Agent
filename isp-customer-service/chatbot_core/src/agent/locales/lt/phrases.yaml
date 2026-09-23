@@ -603,7 +603,7 @@ equipment:
     reboot:
       button: "Ant routerio galo yra maitinimo mygtukas — išjunkite, palaukite penkias sekundes ir vėl įjunkite."
     lights:
-      internet: "Pažiūrėkite į priekinę panelę — lemputė su užrašu INTERNET arba žemės ženkliuku: ar ji dega?"
+      internet: "Pažiūrėkite į priekinę panelę — lemputė su užrašu INTERNET arba žemės ženkliuku: ar ji dega, ir kokios spalvos?"
   phone:
     name: "telefonas"
     locate: "Telefonas, kuriuo dabar kalbate, arba kitas jūsų telefonas."

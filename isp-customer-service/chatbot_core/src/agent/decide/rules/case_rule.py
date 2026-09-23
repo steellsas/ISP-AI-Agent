@@ -354,6 +354,7 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
         if all(c.holds(facts) is True for c in conditions) and solution.steps:
             state.case.fault, state.case.solution, state.case.step = fault, index, 0
             state.case.awaiting = None
+            state.case.guide_step, state.case.guide_said = 0, -1
             # The fault the Case settled on IS the call's verdict — what the record, the
             # ticket and the eval all read (wave 4: the tree that used to name it is gone).
             network = state.diagnosis.verdicts.setdefault("network", {})
@@ -457,6 +458,19 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     call = _current(state)
     if call is None:
         return "solved" if state.case.fault and state.case.solution is not None else "waiting"
+    if (
+        call is not None
+        and call.module == "guide"
+        and state.case.guide_said != state.case.guide_step
+    ):
+        # This written step has not been SAID yet, so nothing the caller says can finish it.
+        # The mark is set when the reply is built (`speak/context_card.py`), never when the plan
+        # is made: on a turn the identification rule owned, the guide plan existed, was never
+        # spoken, and the caller's next words skipped the first step (2026-09-23).
+        rt.tracer.emit(
+            "case", move="guide_wait", at=state.case.guide_step, said=state.case.guide_said
+        )
+        return "waiting"
     if _is_escalate(call) and state.ticket.stage:
         # The technician has been asked for and the contact dialogue is collecting the
         # details: the Case has nothing left to add, and re-planning the same step made the
@@ -600,6 +614,13 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
         state.case.moved_on_turn = state.dialog.turn_count
     state.case.retrying = False
     done = _current(state)
+    if _more_guide_steps(state, done):
+        # A written procedure is walked one step per turn: the card step is not finished until
+        # its document is (wave 4b).
+        state.case.guide_step += 1
+        state.case.awaiting = None
+        rt.tracer.emit("case", move="guide", step=state.case.guide_step, module="guide")
+        return "moved"
     if done is not None and done.module not in state.case.did:
         state.case.did.append(done.module)
     _queue_reflection(state)
@@ -629,6 +650,20 @@ def _ended_in_escalate(state: Any) -> bool:
         return False
     steps = card.solution[state.case.solution].steps
     return bool(steps) and _is_escalate(steps[-1])
+
+
+def _at_guide_step(state: Any, call: Any):
+    """A `guide` call carries WHICH step of the document this turn is on (wave 4b)."""
+    if call is None or call.module != "guide":
+        return call
+    return call.model_copy(update={"args": {**call.args, "at": state.case.guide_step}})
+
+
+def _more_guide_steps(state: Any, call: Any) -> bool:
+    """Is there another written step after this one? Then the card step stays where it is."""
+    if call is None or call.module != "guide":
+        return False
+    return state.case.guide_step + 1 < modules.guide_length(call)
 
 
 def _already_done(call: Any, facts: dict[str, str]) -> bool:
@@ -735,6 +770,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     """What this module asks of the turn. `on_fail` retries are the card's business, and a
     step the equipment catalogue cannot word is skipped rather than improvised."""
     model = _device_model(state)
+    call = _at_guide_step(state, call)
     step = modules.plan_step(call, model=model)
     if step is None or (step.kind == "instruct" and not step.text):
         rt.tracer.emit("case", move="skip", module=call.module, why="no wording for this device")

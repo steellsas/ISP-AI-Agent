@@ -99,6 +99,18 @@ def _kb_answer(state, rt) -> str:
     return " ".join(f"[{p.kind}: {p.title}] {p.text}" for p in found)
 
 
+def _mark_written_step_said(state) -> None:
+    """A written step counts as SAID when a reply is actually being built for it.
+
+    Marking it when the plan was built was wrong: on a turn the identification rule owned, the
+    guide plan existed, was never spoken, and the caller's next words finished a step they had
+    never heard (2026-09-23).
+    """
+    if str((state.turn.plan or {}).get("rule") or "") != "case.guide":
+        return
+    state.case.guide_said = state.case.guide_step
+
+
 def _asked_how(state, rt) -> list[str]:
     """Klientas paklausė „kaip…", o ėjimas paleistas per narratorių (`question_passthrough`).
 
@@ -636,6 +648,7 @@ def _plan_goal(state, rt) -> list[str]:
     out += _goal_caller_intro(state, rt)
     out += _goal_identification(state, rt)
     out += _goal_ticket(state, rt)
+    _mark_written_step_said(state)
     out += _asked_how(state, rt)
     out += _goal_recap_and_findings(state, rt)
     return out

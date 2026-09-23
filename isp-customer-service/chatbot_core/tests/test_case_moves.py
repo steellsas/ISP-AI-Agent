@@ -89,12 +89,14 @@ class TestWhenNothingFits:
         move = next_move({"line_link": "unknown", "node_reachable": "no", "neighbours": "mixed"})
         assert move.kind in ("escalate", "inform")
 
-    def test_a_silent_router_is_solved_by_its_own_card(self):
-        """What the tree used to call `dhcp_silent` is a card, and its card says there is
-        nothing to do over the phone (wave 4a regression, eval X)."""
+    def test_a_silent_router_is_walked_through_its_written_procedure(self):
+        """What the tree called `dhcp_silent` is a card — and since wave 4b its fix is a
+        knowledge document: the caller is guided through it before any technician."""
         move = next_move(_facts(dhcp_status="no_requests"))
         assert move.kind == "solve" and move.fault == "dhcp_silent"
-        assert [call.module for call in move.steps] == ["escalate"]
+        assert [call.module for call in move.steps] == ["reach", "guide", "verify"]
+        guide = move.steps[1]
+        assert guide.args["knowledge"] == "troubleshooting/internet_factory_reset_dhcp"
 
     def test_a_fact_we_could_not_get_is_not_asked_again(self):
         """The caller could not answer; the engine moves on instead of looping."""

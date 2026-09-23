@@ -56,3 +56,62 @@ Ten yra lentelė **klausimas → dokumentas**: pridėjęs naują žinią, pridė
 klientas paklaustų. Jei dokumentas be tagų — testas neleis (niekas jo nesurastų).
 
 Greitis: dokumentai nuskaitomi kartą (~7 ms), viena paieška ~11 ms — balso ėjime nepastebima.
+
+## Algoritmas, per kurį agentas gali VESTI klientą
+
+`kind: howto` dokumentas gali būti ne tik atsakymas, bet ir **kortelės sprendimas**: agentas
+duoda po vieną žingsnį per ėjimą ir laukia, kol klientas pasakys, kad padarė.
+
+Kad taip veiktų, žingsniai turi būti **atskiros antraštės**:
+
+```markdown
+### Žingsnis 1: Prisijungti prie routerio valdymo skydelio
+1. Prijungti kompiuterį ar telefoną prie routerio…
+2. Naršyklėje atidaryti 192.168.0.1…
+
+### Žingsnis 2: Nustatyti WAN tipą į DHCP
+1. Rasti skiltį „Internet" arba „WAN"…
+```
+
+Kortelėje tai viena eilutė (`knowledge/v2/cards/*.yaml`):
+
+```yaml
+- module: guide
+  args: {knowledge: troubleshooting/internet_factory_reset_dhcp, count: 2}
+```
+
+`count` — kiek dokumento žingsnių yra **kliento rankose**. Dokumento „patikrinti" žingsnis
+paprastai yra mūsų `verify` (telemetrija — arbitras), tad jo į `count` neįtraukiam.
+
+**Ką tikrina startas:** dokumentas turi egzistuoti ir turėti žingsnių; kitaip programa
+nepasileidžia (geriau klaida paleidžiant negu vidury skambučio).
+
+**Vienas žingsnis = vienas atsakymas.** Modulio tikslas nurodo narratoriui sulieti žingsnio
+punktus į vieną ar du sakinius ir nedalyti jų per kelis ėjimus — telefonu sąrašo niekas
+neatsimena.
+
+## Įrangos lemputės ir spalvos
+
+Įrangos katalogas (`knowledge/v2/equipment/*.yaml`) pasako, ką lemputė REIŠKIA:
+
+```yaml
+lights:
+  internet:
+    ask_key: equipment.tplink.lights.internet
+    means:
+      green: wan_link=up        # žalia — ryšys yra
+      orange: wan_link=down     # oranžinė — įrenginys gyvas, interneto negauna
+      red: wan_link=down
+      "yes": wan_link=up        # „dega" — kai spalvos nepasakė
+      "no": wan_link=down
+```
+
+Kortelės apie spalvas nieko nežino — jos kalba tik `wan_link`. Naujam gamintojui reikia tik
+jo failo su `means`.
+
+**Nežinomam įrenginiui nespėjama:** bazinis `router.yaml` moka tik tai, kas universalu
+(žalia = ryšys, bet kokia deganti spalva = maitinimas yra). Oranžinė ant nežinomos dėžutės
+lieka neperskaityta — geriau nežinoti negu pasakyti klientui netiesą.
+
+Spalvą, kurios skaitytuvas nemoka, validatorius atmes paleidimo metu (jis klausia paties
+skaitytuvo, kokias spalvas tas moka: `perceive/detectors.LIGHT_COLOURS`).

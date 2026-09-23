@@ -218,3 +218,38 @@ def find(
             )
     scored.sort(key=lambda p: (-p.score, p.source))
     return scored[:limit]
+
+
+# --- algoritmas žingsniais --------------------------------------------------------------
+
+# „Žingsnis 2: Nustatyti WAN tipą į DHCP" — antraštė, kuri pažymi vieną kliento veiksmą.
+_STEP_HEADING = re.compile(r"^\s*\W*\s*(?:\d+\s*[.)]|Žingsnis\s*\d+|Step\s*\d+)\b", re.IGNORECASE)
+
+
+def steps(source: str) -> list[str]:
+    """Dokumento žingsniai — po vieną kliento veiksmą (4b banga).
+
+    Kortelė, kuri telefonu nieko nedarė, dabar gali nusiųsti klientą per ALGORITMĄ: variklis
+    paduoda po vieną žingsnį per ėjimą, o narratorius jį pasako savais žodžiais. Žingsniu
+    laikoma antraštė „Žingsnis N: …" su savo turiniu; dokumentas be tokių antraščių žingsnių
+    neturi (ir kortelė tada į jį nesiunčia — tai tikrina startinis validatorius).
+    """
+    doc = document(source)
+    if doc is None:
+        return []
+    out: list[str] = []
+    for title, text in _sections(doc):
+        if not _STEP_HEADING.match(title):
+            continue
+        body = " ".join(line.strip(" -•\t") for line in text.splitlines() if line.strip())
+        out.append(f"{title}. {body}".strip())
+    return out
+
+
+def document(source: str) -> dict[str, Any] | None:
+    """Dokumentas pagal kelią (`troubleshooting/x.md`) arba be galūnės (`troubleshooting/x`)."""
+    wanted = source.strip().removesuffix(".md")
+    for doc in documents():
+        if doc["source"].removesuffix(".md") == wanted:
+            return doc
+    return None

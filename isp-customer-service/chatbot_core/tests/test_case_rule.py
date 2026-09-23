@@ -170,10 +170,15 @@ class TestWhenTheFixDoesNotWork:
 
 class TestWhenNothingFits:
     def test_an_unreadable_case_ends_honestly(self, call):
-        """A fault nothing describes: the honest move is a technician, not the closest-
-        looking procedure."""
+        """The honest move is a technician, not the closest-looking procedure.
+
+        Since waves 3–4b every reading the line can produce belongs to SOME card, so this is
+        reached the other way: the card is settled but nothing it needs can be had (the caller
+        cannot tell us, and there is nothing to assume)."""
         state, rt = call
-        record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests"})
+        record_telemetry(state, rt, {**BASE, "traffic": "flowing"})
+        state.case.facts["fail_scope"] = "one"
+        state.case.unavailable.extend(["fail_device", "connection_type", "rebooted"])
 
         plan = case_rule.plan(state, rt)
 
@@ -319,9 +324,9 @@ class TestWhenTheCallerDoesNotAnswerTheQuestion:
         assert plan.rule != "case.escalate"  # the answer opened a road, it did not end one
 
 
-class TestACardThatOnlyEscalates:
-    """dhcp_silent (wave 4a): the line says everything and there is nothing to do over the
-    phone. Its solution is one escalate step — and finishing it must not sound like a fix."""
+class TestACardWhoseFixIsWritten:
+    """Wave 4b: the silent router is not a "nothing to do over the phone" card any more — its
+    fix is a knowledge document, and the caller is walked through it one step per turn."""
 
     @pytest.fixture
     def silent_router(self, make_state, make_runtime):
@@ -330,29 +335,62 @@ class TestACardThatOnlyEscalates:
         record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
         return state, rt
 
-    def test_it_goes_straight_to_a_technician(self, silent_router):
+    def test_the_finding_is_told_before_anything_is_asked(self, silent_router):
         state, rt = silent_router
+
+        case_rule.plan(state, rt)
+
+        told = state.case.finding
+        assert told and "adreso" in told["isvada"]
+        assert "DHCP" not in told["isvada"] and "gamyklin" not in told["isvada"]
+
+    def test_it_walks_the_document_before_a_technician(self, silent_router):
+        state, rt = silent_router
+        state.case.facts["reachable"] = "yes"  # they are at the router already
 
         plan = case_rule.plan(state, rt)
 
         assert state.case.fault == "dhcp_silent"
-        assert plan.rule == "case.escalate" and state.ticket.stage == "phone"
+        assert plan.rule == "case.guide" and state.ticket.stage != "phone"
+        assert "prisijungti" in plan.say.text.lower()  # the document's first step
 
-    def test_the_finding_is_told_before_the_ticket(self, silent_router):
+    def test_a_step_nobody_heard_cannot_be_finished(self, silent_router):
+        """The mark is set where the reply is built, so a plan that never spoke leaves the
+        step open — otherwise "taip, esu prie routerio" skipped the first step (2026-09-23)."""
         state, rt = silent_router
+        state.case.facts["reachable"] = "yes"
+        case_rule.plan(state, rt)  # plans step 1 — but nothing said it
+        said(state, rt, "irrelevant", "yes")
 
         case_rule.plan(state, rt)
 
-        told = state.turn.directives.findings
-        assert told and "adreso" in told["isvada"]
-        assert "DHCP" not in told["isvada"] and "gamyklin" not in told["isvada"]
+        assert state.case.guide_step == 0
 
-    def test_the_next_turn_does_not_claim_the_service_is_back(self, silent_router):
+    def test_once_said_the_next_answer_moves_one_step(self, silent_router):
         state, rt = silent_router
+        state.case.facts["reachable"] = "yes"
         case_rule.plan(state, rt)
+        state.case.guide_said = 0  # the reply carried step 1 (speak/context_card.py does this)
         state.dialog.turn_count += 1
+        state.dialog.last_heard = "padariau"
 
-        assert case_rule.plan(state, rt) is None  # the ticket dialogue owns the turn
+        plan = case_rule.plan(state, rt)
+
+        assert state.case.guide_step == 1
+        assert plan.rule == "case.guide" and "WAN" in plan.say.text
+
+    def test_the_document_ends_and_the_card_verifies(self, silent_router):
+        state, rt = silent_router
+        state.case.facts["reachable"] = "yes"
+        state.case.fault, state.case.solution, state.case.step = "dhcp_silent", 0, 1
+        state.case.guide_step, state.case.guide_said = 1, 1
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "padariau"
+
+        plan = case_rule.plan(state, rt)
+
+        assert state.case.step == 2  # past the guide
+        assert plan.rule == "case.verify"
 
 
 class TestWhatTheFindingSays:

@@ -199,6 +199,19 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                 continue
             if condition.fact not in values:
                 errors.append(f"{at}: done_when: unknown fact '{condition.fact}'")
+        if call.module == "guide":
+            # A card may send the caller through a WRITTEN procedure; if the document is not
+            # there, or has no steps, the app stops now and not mid-call (wave 4b).
+            from ..knowledge_base import document, steps
+
+            source = str(call.args.get("knowledge") or "")
+            if document(source) is None:
+                errors.append(f"{at}: guide: no knowledge document '{source}'")
+            elif not steps(source):
+                errors.append(
+                    f"{at}: guide: '{source}' has no steps "
+                    f"(headings like 'Žingsnis 1: …' are what the engine walks)"
+                )
         if spec.kind == "verify" and not (call.args.get("evidence") or call.args.get("ask")):
             errors.append(f"{at}: a verification needs `evidence`, `ask`, or both")
         for text in call.args.get("evidence") or []:
@@ -211,6 +224,17 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                 where, f"{path}.steps.{i}.on_fail", [call.on_fail], modules, values
             )
     return errors
+
+
+def _readable_light_answers() -> frozenset[str]:
+    """What `detect_lights` can actually return: lit, not lit, or a colour it has words for.
+
+    Asked from the reader itself, so a colour cannot be added to a catalogue while the reader
+    stays deaf to it (wave 4b).
+    """
+    from ..perceive.detectors import LIGHT_COLOURS
+
+    return frozenset({"yes", "no", "blinking"}) | frozenset(LIGHT_COLOURS)
 
 
 def _check_equipment() -> None:
@@ -248,6 +272,13 @@ def _check_equipment() -> None:
                 if fact not in known_facts:
                     errors.append(
                         f"{where}: lights.{light}.means.{seen} sets unknown fact '{fact}'"
+                    )
+                if str(seen) not in _readable_light_answers():
+                    # A colour nobody can recognise is a promise the reader cannot keep: the
+                    # caller would say it and the engine would hear nothing (wave 4b).
+                    errors.append(
+                        f"{where}: lights.{light}.means.{seen} — the reader never returns "
+                        f"'{seen}' (it returns {', '.join(sorted(_readable_light_answers()))})"
                     )
     for device_type in sorted({s.type for s in specs.values()}):
         if catalog.basic(device_type) is None:
