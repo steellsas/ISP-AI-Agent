@@ -32,8 +32,13 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
     if s.ticket.request_type:
         _register_request(state, rt)
         return
+    # Wave 4a: the fault the CASE settled on IS the cause. This read two fields the wave-3
+    # deletions emptied, so a Case-driven ticket said "Gedimas: internet_down — nenustatyta"
+    # while the engine knew exactly what the line showed (live 2026-09-23).
     cause = (
-        (s.diagnosis.hypothesis or {}).get("cause")
+        s.case.fault
+        or (s.diagnosis.verdicts.get("network") or {}).get("reason")
+        or (s.diagnosis.hypothesis or {}).get("cause")
         or (s.resolution.procedure or {}).get("verdict")
         or ""
     )
@@ -45,7 +50,14 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         problem=s.intake.problem_type or phrase("ticket.details.default_problem"),
         gloss=gloss,
     )
-    need = phrase_or(f"verdict.{cause}.ticket_need", None)
+    # The same wording the caller heard, and under the same honesty rule: a card's
+    # `escalate.need` describes the state after its fix ran, so a fix that never ran is
+    # written as a suspicion (live 2026-09-23: a ticket claimed the router was rebooted).
+    from .decide.rules.ticket import ticket_need as _need_wording
+
+    need = _need_wording(s, rt)
+    if need and _fold(need) in _fold(details):
+        need = None  # the cause sentence already says it — a ticket is not an echo chamber
     if need:
         # Sentence-cased as its own sentence — "Reikalinga: reikalingas…" doubled up.
         details += f" {need[0].upper()}{need[1:]}."
@@ -130,12 +142,18 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
             for x in s.intake.secondary_problems
         )
         details += phrase("ticket.details.extra", items=extra)
+    # What the caller could NOT tell us, and what the call ran on instead.
+    details += _unanswered_and_assumed(s)
+    # The card's own words for why a technician is needed, as the Case recorded them.
+    note = (s.case.facts or {}).get("_ticket_note")
+    if note:
+        details += f" {note[0].upper()}{note[1:]}."
     from .ticket_types import fault_type
 
     actions = tools_called_this_session(rt.tracer)
     args = {
         "customer_id": s.identity.customer_id,
-        "ticket_type": fault_type((s.resolution.procedure or {}).get("verdict")),
+        "ticket_type": fault_type(cause or (s.resolution.procedure or {}).get("verdict")),
         "problem_type": s.intake.problem_type,
         "problem_description": details,
         "notes": phrase("ticket.details.actions", tools=", ".join(actions)) if actions else "",
@@ -145,6 +163,34 @@ def register_ticket_from_state(state: Any, rt: Any, step_id: str | None) -> None
         rt.tools.run(state, rt, "create_ticket", args, reason="register_ticket")
     except Exception as e:  # pragma: no cover - defensive
         trace_note(rt.tracer, state, "register_ticket", str(e), level="error")
+
+
+def _fold(text: str) -> str:
+    """Lowercased, for the "is this the same sentence again" check."""
+    return " ".join((text or "").lower().split()).strip(" .")
+
+
+def _unanswered_and_assumed(s: Any) -> str:
+    """What stayed unknown, and what the call ran on instead (wave 4a).
+
+    A technician reading "neatsakė, ar neveikia visuose įrenginiuose; dirbome su prielaida,
+    kad visuose" knows what to check first — and knows the agent did not invent an answer.
+    """
+    from .contract.locale import phrase
+    from .evidence import gloss_label
+    from .facts import gloss
+
+    bits: list[str] = []
+    assumed = dict(getattr(s.case, "assumed", None) or {})
+    for fact in getattr(s.case, "unavailable", None) or []:
+        said = gloss(fact, assumed[fact]) if fact in assumed else None
+        if said:
+            bits.append(phrase("ticket.details.assumed_item", fact=gloss_label(fact), value=said))
+        else:
+            bits.append(gloss_label(fact))
+    if not bits:
+        return ""
+    return phrase("ticket.details.unanswered", items="; ".join(bits))
 
 
 def _register_request(state: Any, rt: Any) -> None:

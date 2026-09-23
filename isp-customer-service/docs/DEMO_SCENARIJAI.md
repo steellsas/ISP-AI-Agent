@@ -40,7 +40,7 @@ adresą („Taip") → pasakai vardą. Toliau — pagal scenarijų.
 | 15 | Neidentifikuotas — padeda ragelį | +37000000000 | — | — | tik kontaktinis įrašas peržiūrai (abandoned / hung_up) |
 | 16 | Routeris pametė nustatymus | +37060020106 | Greta, Vilniaus g. 31-2 | dhcp_silent | tiketas (telefonu nesutvarkoma) |
 | 17 | TV neveikia, o internetas tvarkoje | +37060020110 | Kęstutis, Bubių k., Aušros g. 8 | unclear_fault | tiketas be interneto žingsnių |
-| 18 | Klientas neatsako į klausimą | +37060020112 | Paulius, Vilniaus g. 33-2 | — | tiketas; klausimas nekartojamas trečią kartą |
+| 18 | Klientas neatsako į klausimą | +37060020112 | Paulius, Vilniaus g. 33-2 | router_hung | resolved; antras klausimas kitais žodžiais, tada perkrovimas pagal prielaidą |
 
 Po kiekvieno skambučio **Archyvas** skirtuke matyti kontaktinis įrašas: baigtis
 (`resolved`, `ticket`, `ticket_appended`, `informed_debt`, `informed_outage`,
@@ -256,23 +256,25 @@ gedimas; jei ne (№14) — pirma internetas. 4a bangoje būtent šis kelias buv
 ## 18. Klientas neatsako į užduotą klausimą
 
 **Kodėl testuojam:** 4a trace'uose agentas tą patį klausimą uždavė **keturis ėjimus iš eilės**,
-nors klientas vis atsakinėjo apie kitus dalykus. Dabar klausimų kiekis — riba žiniose
-(`case_fact_asks_max: 2`), o po jos faktas laikomas nepasiekiamu.
+nors klientas vis atsakinėjo apie kitus dalykus. Po taisymo (Andrius, 2026-09-23) elgsena tokia:
+antras klausimas — **kitais žodžiais**, o trečio nėra: kortelė pasako, su kuo tęsti
+(`assume: all`), ir agentas atlieka **pirminį gedimo sprendimą** — perkrovimą. Tiketas be
+perkrovimo būtų nesuteikta pagalba.
 
 **Numeris:** +37060020112 · **Klientas:** Paulius, Šiauliai, Vilniaus g. 33-2
 
-**Sakyti:** „Neveikia internetas." → „Taip" → „Paulius" → tada **specialiai neatsakyk** į
+**Sakyti:** „Neveikia internetas." → „Taip" → „Paulius" → tada **speciali neatsakyk** į
 „ar neveikia visuose įrenginiuose, ar tik viename?": „Esu prie routerio" → „Lemputės dega" →
-toliau kontaktai („Taip, tinka", „Bet kada") → „Ačiū, viso gero".
+kai paprašo perkrauti, spausk **🔄 Routeris** ir sakyk „Perkroviau" → „Taip, veikia" →
+„Ne, ačiū, viso gero".
 
 **Ką tikrinam:**
-1. **Tas pats klausimas — daugiausiai du kartus.** Trečio pakartojimo būti negali.
-2. **Po to — judama toliau**, ne kilpa: agentas arba pasitikslina kitu kampu, arba sąžiningai
-   siūlo meistrą ir surenka kontaktus.
-3. **Skambutis pasibaigia rezultatu** — Archyve `ticket`, ne `abandoned` dėl to, kad klientas
-   pavargo. (Iki taisymo šis skambutis baigdavosi be nieko.)
-4. **Ką pasakė klientas — nepamesta:** „lemputės dega" turi atsirasti tikete tarp to, kas
-   patikrinta.
+1. **Tas pats klausimas — daugiausiai du kartus**, ir antras su kitais žodžiais bei paaiškinimu,
+   kodėl tai svarbu.
+2. **„Esu prie routerio" išnaudojama** — agentas nebeklausia „ar galite prieiti?".
+3. **Pirminis sprendimas atliekamas** — perkrovimas, ne tiketas.
+4. **Jei perkrovimas nepadėtų** — meistras, ir prieš registraciją pasakoma, ko nepavyko
+   patikrinti; tikete įrašoma prielaida ir kas neatsakyta.
 
 ## Po skambučio
 

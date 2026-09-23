@@ -83,16 +83,22 @@ nei čia parašyta — tai regresija, ne interpretacija.
 |---|---|
 | „Neveikia internetas" | pasiūlyti adresą |
 | „Taip" | patvirtinti, paklausti vardo |
-| „Paulius" | paklausti: „ar neveikia visuose įrenginiuose, ar tik viename?" |
-| **„Esu prie routerio"** (ne į temą) | pasitikslinti tą patį — **antrą ir paskutinį kartą** |
-| **„Lemputės dega"** (vėl ne į temą) | **nebekartoti klausimo:** eiti toliau — sąžiningai pasiūlyti meistrą ir surinkti kontaktus |
-| „Taip, tinka" → „Bet kada" | „Užregistravau…" |
-| „Ačiū, viso gero" | atsisveikinti |
+| „Paulius" | pasakyti, ką rodo linija, ir paklausti: „ar neveikia visuose įrenginiuose, ar tik viename?" |
+| **„Esu prie routerio"** (ne į temą) | paklausti **KITAIS žodžiais**, su pavyzdžiu, kaip pasitikrinti („pažiūrėkite telefonu ir, jei turite, kompiuteriu…") |
+| **„Lemputės dega"** (vėl ne į temą) | **nebekartoti klausimo, bet ir neregistruoti meistro:** kortelė sako, su kuo tęsti (`assume: all`), todėl duodama pirminė instrukcija — ištraukti maitinimo laidą |
+| *spausk 🔄 Routeris* → „Perkroviau" | pačiam perskaityti liniją ir paklausti, ar internetas atsirado |
+| „Taip, veikia" | uždaryti be tiketo (`resolved`) |
 
 **Tikrinu:**
-- ✅ **tas pats klausimas — daugiausiai du kartus** (iki 4a buvo keturi ėjimai iš eilės);
-- ✅ **skambutis baigiasi rezultatu** — Archyve `ticket`, ne „klientas pavargo ir padėjo ragelį";
-- ✅ **kas pasakyta — nepamesta:** „lemputės dega" atsiranda tikete tarp to, kas patikrinta.
+- ✅ **tas pats klausimas — daugiausiai du kartus**, ir antras — kitais žodžiais (iki 4a buvo
+  keturi vienodi ėjimai iš eilės);
+- ✅ **„esu prie routerio" išnaudojama:** agentas nebeklausia „ar galite prieiti prie routerio?" —
+  klientas tai ką tik pasakė;
+- ✅ **pirminis sprendimas atliekamas** — perkrovimas pasiūlomas net be atsakymo apie įrenginius,
+  nes tiketas be jo būtų nesuteikta pagalba;
+- ✅ **jei perkrovimas nepadėtų** — tik tada meistras, ir prieš registraciją agentas pasako, ko
+  nepavyko patikrinti („nepatikslinome, ar neveikia visuose įrenginiuose");
+- ✅ **tikete** gedimas įvardintas (ne „nenustatyta"), įrašyta prielaida ir tai, kas neatsakyta.
 
 ---
 

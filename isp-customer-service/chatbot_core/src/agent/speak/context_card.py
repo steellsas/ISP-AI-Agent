@@ -726,7 +726,25 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             "confirming question („ar taip?“)."
         )
     fd = state.turn.directives.findings
+    if not fd and state.case.finding:
+        # The Case worked out a finding on a turn another rule owned (the name question, the
+        # ticket intro). It is said WITH this reply — a caller who hears "telefonu
+        # neišspręsime" without knowing what we found has been told nothing (Andrius,
+        # 2026-09-23). One line, before this turn's own goal.
+        pending = state.case.finding
+        state.case.finding = None
+        unchecked = (
+            f" We could not check this together: {pending['prielaida']}."
+            if pending.get("prielaida")
+            else ""
+        )
+        out.append(
+            f"PLAN GOAL — SAY WHAT WE FOUND FIRST: together we established — "
+            f"{pending['faktai']}. Conclusion: {pending['isvada']}.{unchecked} Then continue "
+            f"with this turn's goal in the same reply, briefly."
+        )
     if fd:
+        state.case.finding = None
         # Ticket-first faults script their own offer (`offer_goal` in the pack): the primary
         # outcome first, the convenience as the question.
         if fd.get("offer"):
@@ -742,9 +760,16 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             else " The registration has NOT happened — if you mention it, say "
             "„užregistruosiu“, never „užregistravau“."
         )
+        unchecked = (
+            f" We could NOT check this together — say so and ask them to correct us if it is "
+            f"not so: {fd['prielaida']}."
+            if fd.get("prielaida")
+            else ""
+        )
         out.append(
             f"PLAN GOAL — FINDINGS MOMENT:{tense} together we established — {fd['faktai']}. "
-            f"Conclusion: {fd['isvada']}.{solution} Two or three sentences, no lists or colons."
+            f"Conclusion: {fd['isvada']}.{unchecked}{solution} Two or three sentences, no "
+            f"lists or colons."
         )
     return out
 

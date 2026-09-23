@@ -222,17 +222,44 @@ class TestWhenTheCallerDoesNotAnswerTheQuestion:
         assert third.awaiting != "fail_scope"
         assert "fail_scope" in state.case.unavailable
 
-    def test_giving_up_on_the_question_still_ends_the_call_honestly(self, call):
-        """Nothing else can be learned either: the caller is offered a technician, not a
-        fourth question."""
+    def test_an_unanswered_question_does_not_stop_the_primary_fix(self, call):
+        """Andrius 2026-09-23: a ticket instead of the reboot is help we never gave. The card
+        says what to carry on with (`assume: all`), so the hung router is rebooted anyway —
+        and the assumption is recorded as an assumption, not as an answer."""
         state, rt = call
         record_telemetry(state, rt, BASE)
         state.case.asks["fail_scope"] = [1, 2]
-        state.case.unavailable.extend(["reachable", "rebooted"])
 
         plan = case_rule.plan(state, rt)
 
+        assert state.case.assumed == {"fail_scope": "all"}
+        assert state.case.fault == "router_hung"
+        assert plan.rule == "case.reach" and state.ticket.stage != "phone"
+
+    def test_a_question_with_nothing_to_assume_is_a_dead_end(self, call):
+        """`rebooted` has no assumption of its own: when the caller will not say, the call
+        ends honestly instead of guessing."""
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "traffic": "flowing"})
+        said(state, rt, "fail_scope", "all")
+        state.case.asks["rebooted"] = [1, 2]
+
+        plan = case_rule.plan(state, rt)
+
+        assert "rebooted" not in state.case.assumed
         assert plan.rule == "case.escalate" and state.ticket.stage == "phone"
+
+    def test_the_second_ask_is_worded_differently(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+
+        first = case_rule.plan(state, rt)
+        state.dialog.turn_count += 1
+        second = case_rule.plan(state, rt)
+
+        assert first.awaiting == second.awaiting == "fail_scope"
+        assert second.say.text != first.say.text  # the card's `again` wording
+        assert "Pažiūrėkite" in second.say.text
 
     def test_an_answered_question_is_never_given_up_on(self, call):
         state, rt = call

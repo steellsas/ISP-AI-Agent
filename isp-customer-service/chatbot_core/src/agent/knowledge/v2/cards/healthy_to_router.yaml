@@ -34,8 +34,12 @@ rules_out:
 needs:
   fail_scope:
     ask: "pack.healthy_to_router.fail_scope.question"
+    again: "pack.healthy_to_router.fail_scope.simpler"
     why: "pack.healthy_to_router.fail_scope.why"
     clarify: "pack.healthy_to_router.fail_scope.clarify"
+    # Srautas iki routerio VAIKŠTO, o klientas interneto neturi: vadinasi, jo nėra galutiniame
+    # taške — kažkuriame įrenginyje (Andrius, 2026-09-23). Tai prielaida, ne kliento atsakymas.
+    assume: one
     values:
       all: confirms
       one: confirms

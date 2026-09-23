@@ -563,6 +563,9 @@ fact:
   rebooted:
     "yes": "routerį jau perkrovėte"
     "no": "routeris dar neperkrautas"
+  reachable:
+    "yes": "esate prie routerio"
+    "no": "šiuo metu prie routerio prieiti negalite"
 
 # MODULIŲ (knowledge/v2/modules) savi klausimai — bendros politikos, ne konkretaus gedimo.
 modules:
@@ -671,6 +674,8 @@ evidence:
     power_cable: "maitinimo laidas"
     outlet_works: "rozetė"
     device_present: "routeris surastas"
+    reachable: "ar gali dabar prieiti prie įrenginio"
+    fail_scope: "kur neveikia"
     lan_active: "kompiuterio LAN ryšys"
     verdict: "telemetrijos diagnozė"
     side: "gedimo pusė"
@@ -739,6 +744,8 @@ ticket:
     anamnesis: " Klientas: {text}."
     bridge_router: " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
     checked: " Patikrinta su klientu: {facts}."
+    unanswered: " Klientas neatsakė: {items}."
+    assumed_item: "{fact} (dirbome su prielaida: {value})"
     tried: " Bandyta/atmesta: {causes}."
     extra: " Papildomai patikrinti: {items}."
     extra_item: "{type}: „{text}“"

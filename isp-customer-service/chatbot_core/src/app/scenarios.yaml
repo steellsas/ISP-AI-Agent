@@ -159,9 +159,9 @@ scenarios:
     phone: "+37060020112"
     client: Paulius
     address: Šiauliai, Vilniaus g. 33-2
-    say: ["Neveikia internetas", "Taip", "Paulius", "Esu prie routerio", "Lemputės dega", "Taip, tinka", "Bet kada", "Ačiū, viso gero"]
-    actions: ["Į „visuose ar tik viename?“ NEATSAKYK — kalbėk apie ką kita.", "Agentas to paties klausimo užduoda daugiausiai DU kartus, tada eina toliau ir siūlo meistrą. Trečio ir ketvirto pakartojimo būti negali."]
-    expect: {verdict: "", outcome: ticket}
+    say: ["Neveikia internetas", "Taip", "Paulius", "Esu prie routerio", "Lemputės dega", "Perkroviau", "Taip, veikia", "Ne, ačiū, viso gero"]
+    actions: ["Į „visuose ar tik viename?“ NEATSAKYK — kalbėk apie ką kita.", "Antras klausimas turi būti KITAIS žodžiais; trečio nėra — agentas duoda pirminę instrukciją (perkrovimą), nes kortelė sako, su kuo tęsti.", "Kai paprašo perkrauti — spausk 🔄 Routeris, tada sakyk „Perkroviau“.", "„Esu prie routerio“ reiškia, kad „ar galite prieiti?“ nebeklausiama."]
+    expect: {verdict: router_hung, outcome: resolved}
 
   - id: unidentified_hangup
     title: Neidentifikuotas — padeda ragelį

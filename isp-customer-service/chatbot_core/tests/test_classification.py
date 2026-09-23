@@ -305,15 +305,34 @@ class TestUnclearFaultTicket:
 
     def test_the_ticket_reason_is_the_cards(self, db_connection):
         """Wave 3: the reason comes from the fault the Case settled on, worded by its card —
-        a damaged cable used to announce itself as "gedimo tipas neaiškus"."""
+        a damaged cable used to announce itself as "gedimo tipas neaiškus".
+
+        Wave 4a: the card's wording describes the state AFTER its fix ran, so it is used once
+        something WAS tried (`spent`).
+        """
         from agent.decide.rules.ticket import ticket_need
 
         agent = _agent()
         agent.state.case.fault = "no_mac_observed"
+        agent.state.case.spent.append("no_mac_observed")
         assert "maršrutizatorius" in ticket_need(agent.state, agent.runtime)
 
         agent.state.case.fault = "crc_errors"
+        agent.state.case.spent.append("crc_errors")
         assert "laid" in ticket_need(agent.state, agent.runtime)
+
+    def test_a_fix_that_never_ran_is_not_described_as_done(self, db_connection):
+        """Live 2026-09-23: "routeris perkrautas, bet ryšys neatsistatė" went out on a call
+        where nobody was ever asked to reboot anything."""
+        from agent.decide.rules.ticket import ticket_need
+
+        agent = _agent()
+        agent.state.case.fault = "router_hung"
+
+        need = ticket_need(agent.state, agent.runtime)
+
+        assert "perkraut" not in need
+        assert "įtariama" in need and "nepavyko" in need
 
 
 class TestCompetenceSurface:

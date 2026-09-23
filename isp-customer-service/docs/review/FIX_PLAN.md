@@ -90,6 +90,21 @@ verdiktą, todėl po trynimo nieko nebedarė; jos darbą dabar dirba kortelė.
    patį `escalate`, ir agentas kiekviename atsakyme sakė „užregistruosiu meistrą". Perdavimas
    dabar vyksta vieną kartą.
 
+**Antras pjūvis po Andriaus balso testų (2026-09-23), radiniai iš dviejų gyvų skambučių:**
+
+| Kas buvo negerai | Kaip yra dabar |
+|---|---|
+| Po linijos patikros agentas iš karto sakė „telefonu neišspręsime" — **be išvados, ką rado** | Išvada **išgyvena ėjimą**: `case.finding` laukia, kol kuris nors atsakymas ją pasakys (anksčiau ji krisdavo, jei tą ėjimą valdė vardo klausimas ar tiketo įžanga) |
+| Du kartus neatsakius į klausimą **iš karto registruotas meistras** | Kortelė pasako, **su kuo tęsti**: `assume:` (`router_hung` → `all`, `healthy_to_router` → `one`). Pirminis sprendimas — perkrovimas — atliekamas net be atsakymo; tiketas be jo būtų nesuteikta pagalba |
+| Antras klausimas buvo **tas pats sakinys** | `needs.<faktas>.again` — kortelės antra formuluotė su pavyzdžiu, kaip pasitikrinti (ėmė iš v1 `simpler` raktų, kurie gulėjo nenaudojami) |
+| „Esu prie routerio" ir vis tiek „ar galite prieiti prie routerio?" | Modulis gali pasakyti, kad kitas skaitytuvo raktas yra **ta pati žinia** (`reach.also: device_present.found → yes`); o žingsnis, kurio faktas jau žinomas, praleidžiamas |
+| Tiketas: „Gedimas: internet_down — **nenustatyta**", nors variklis žinojo `router_hung` | Priežastis imama iš **Case** (`case.fault`); tiketo tipas irgi |
+| Tikete ir balsu: „**routeris perkrautas**, bet ryšys neatsistatė", nors niekas neperkrovė | Kortelės `escalate.need` naudojamas tik kai jos sprendimas **tikrai vyko** (arba kai kortelė telefonu nieko nedaro); kitu atveju — „įtariama, kad …; patikrinti kartu telefonu nepavyko" |
+| Neatsakyti klausimai niekur nefiksuoti | Tikete: „Klientas neatsakė: … (dirbome su prielaida: …)"; balsu prieš registraciją agentas pasako, ko nepavyko patikrinti |
+
+Naujas eval scenarijus `C_unanswered_scope_still_reboots` (34 iš viso) sergsti visą šią grandinę:
+neatsakytas klausimas → kita formuluotė → prielaida → perkrovimas → `resolved`, be tiketo.
+
 **4a bangos eiga (2026-09-23):** vienetų testai **1216 passed, 1 skipped**; eval tekstas
 **178/178** (`--only` zondai: `X_dhcp_silent` 6/6, `R3_iptv_depends_on_internet` 6/6).
 

@@ -406,6 +406,16 @@ class Need(_Model):
     # Half a sentence on why we are asking. A caller who knows why answers better — and
     # follows the instruction that comes next.
     why: str | None = None
+    # The SECOND wording, for a caller whose answer was about something else. Asking the
+    # identical question again is what made the agent sound like a machine (live 2026-09-23:
+    # the same question four turns running), so the card says it differently — usually with
+    # an example of how to check.
+    again: str | None = None
+    # What to carry on with when the caller cannot or will not tell us. A hung router is
+    # rebooted anyway (that is its primary fix); a line that carries traffic is assumed to be
+    # failing at one device. The engine says the assumption out loud and writes it on the
+    # ticket — it never pretends the caller answered (Andrius, 2026-09-23).
+    assume: str | None = None
 
     @model_validator(mode="after")
     def _reachable(self) -> Need:
@@ -416,6 +426,8 @@ class Need(_Model):
                 raise ValueError(
                     f"values.{value}: expected confirms / rules_out / hands_to=<fault>"
                 )
+        if self.assume is not None and self.assume not in self.values:
+            raise ValueError(f"assume: {self.assume!r} is not one of {sorted(self.values)}")
         return self
 
 
@@ -476,6 +488,11 @@ class ModuleSpec(_Model):
     announce: str | None = None  # phrase key for what the agent SAYS while the engine acts
     detector: str | None = None  # a reader in perceive/detectors.py
     answers: dict[str, str] = {}  # the detector's label -> "fact=value"
+    # The SAME news under another key. The reading layer has its own vocabulary from v1
+    # ("esu prie routerio" lands as `device_present=found`), and without this the engine asked
+    # "ar galite prieiti?" right after the caller said they were standing at it (live
+    # 2026-09-23). Shape: {other_key: {other_value: this_module's_fact_value}}.
+    also: dict[str, dict[str, str]] = {}
     # DEMO ONLY: the tool that makes the seeded database reflect what the caller just did
     # physically, and the environment flag that allows it. Off in production, where the
     # line changes by itself.

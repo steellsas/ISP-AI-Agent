@@ -13,3 +13,7 @@ answers:
   "yes": reachable=yes
   "no": reachable=no
 produces: [reachable]
+# Klientas tai dažnai pasako pats, be klausimo („esu prie routerio", „priėjau", „radau"):
+# senasis skaitytuvas tą pačią žinią užrašo kaip `device_present=found`. Tada nebeklausiam.
+also:
+  device_present: {found: "yes"}

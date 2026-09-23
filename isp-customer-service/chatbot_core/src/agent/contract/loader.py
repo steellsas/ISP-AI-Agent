@@ -134,6 +134,8 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
         for fact, need in card.needs.items():
             if need.ask and not locale.has(need.ask):
                 errors.append(f"{where}: needs.{fact}.ask phrase '{need.ask}' is missing")
+            if need.again and not locale.has(need.again):
+                errors.append(f"{where}: needs.{fact}.again phrase '{need.again}' is missing")
             if need.probe and manifests.manifest(need.probe) is None:
                 errors.append(f"{where}: needs.{fact}.probe '{need.probe}' has no tool manifest")
             for value, meaning in need.values.items():

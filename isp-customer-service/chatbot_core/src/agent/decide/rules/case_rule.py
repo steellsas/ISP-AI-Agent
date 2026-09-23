@@ -54,13 +54,21 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         # the turn, and escalating here hijacked it (full eval: four inform scenarios).
         return None
     move = next_move(facts, unavailable=ledger.unavailable(state))
-    # A question the caller has been asked twice and has not answered is a dead end, not a
-    # question to ask a third time (eval X: "visuose ar tik viename?" four turns running
-    # while the caller kept telling us other things). It is marked unavailable and the Case
-    # decides again without it — which is how the call reaches an honest ending.
+    # A question the caller has been asked twice (the second time in other words) and still
+    # not answered is not a question to ask a third time. What happens instead is the CARD's
+    # to say: `assume` carries the call forward with the value it names — a hung router is
+    # rebooted anyway, because that is its primary fix and a ticket without it would be help
+    # we never gave (Andrius, 2026-09-23). Only a fact with no assumption is a dead end.
     while move.kind == "learn" and _asked_enough(state, move):
+        assumed = _assume(state, rt, move)
         ledger.record_unavailable(state, rt, move.fact)
-        rt.tracer.emit("case", move="give_up", fact=move.fact, why="asked and not answered")
+        rt.tracer.emit(
+            "case",
+            move="assume" if assumed else "give_up",
+            fact=move.fact,
+            why="asked twice, no answer",
+        )
+        facts = ledger.facts_of(state)
         move = next_move(facts, unavailable=ledger.unavailable(state))
     rt.tracer.emit("case", move=move.kind, fact=move.fact, fault=move.fault, why=move.why)
     if move.kind == "inform":
@@ -210,7 +218,8 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     state.diagnosis.pending_evidence_key = move.fact
     from ...case import reason_for
 
-    why = reason_for(move.fact, catalog.card(state.case.fault or move.fault))
+    card = catalog.card(state.case.fault or move.fault)
+    why = reason_for(move.fact, card)
     goal = f"learn {move.fact} — only the caller can tell us"
     if why:
         # A caller who knows WHY answers better, and follows the instruction that comes next.
@@ -218,12 +227,53 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     asked = state.case.asks.setdefault(move.fact, [])
     if state.dialog.turn_count not in asked:
         asked.append(state.dialog.turn_count)
+    words = maybe_phrase(source.ask)
+    need = card.needs.get(move.fact) if card and move.fact else None
+    if len(asked) > 1 and need is not None and need.again:
+        # They answered about something else. The same sentence again is what makes an agent
+        # sound like a machine — the card's second wording says it differently, usually with
+        # an example of how to check (live 2026-09-23).
+        words = maybe_phrase(need.again) or words
+        goal = f"{goal}. They did not answer this yet, so ask it DIFFERENTLY and say why it matters"
     return TurnPlan(
         owner="diagnosis",
         rule="case.ask",
-        say=Say(kind="directive", text=maybe_phrase(source.ask), goal=goal, stage="diagnosis"),
+        say=Say(kind="directive", text=words, goal=goal, stage="diagnosis"),
         awaiting=move.fact,
     )
+
+
+def _unchecked_words(state: Any) -> str:
+    """What we could not check together, and what we are working with instead.
+
+    The caller hears it before anything is asked of them or registered in their name: an
+    assumption said out loud can be corrected, a silent one cannot (Andrius, 2026-09-23).
+    """
+    from ...facts import gloss
+
+    bits = []
+    for fact, value in (state.case.assumed or {}).items():
+        said = gloss(fact, value)
+        if said:
+            bits.append(said)
+    for fact in state.case.unavailable or []:
+        if fact in (state.case.assumed or {}):
+            continue
+        card = catalog.card(state.case.fault)
+        need = card.needs.get(fact) if card else None
+        label = maybe_phrase(need.ask) if need else None
+        if label:
+            bits.append(label)
+    return "; ".join(bits)
+
+
+def _assume(state: Any, rt: Any, move: Any) -> bool:
+    """Carry the call forward on the card's own assumption, and remember to say it."""
+    card = catalog.card(state.case.fault or move.fault)
+    need = card.needs.get(move.fact) if card and move.fact else None
+    if need is None or not need.assume:
+        return False
+    return ledger.record_assumed(state, rt, move.fact, need.assume)
 
 
 def _asked_enough(state: Any, move: Any) -> bool:
@@ -292,12 +342,19 @@ def _announce_finding(state: Any, rt: Any, card: Any, facts: dict[str, str]) -> 
     if not seen and not conclusion:
         return
     state.case.announced.append(card.fault)
-    state.turn.directives.findings = {
+    told = {
         "faktai": seen,
         "isvada": conclusion or "",
         "solutions": "",
         "offer": "",
+        # What the caller could not tell us and what we are assuming instead — said out loud,
+        # so they can correct it before anything is done in their name.
+        "prielaida": _unchecked_words(state),
     }
+    state.turn.directives.findings = told
+    # It is also kept OUTSIDE the turn: if another rule owns this turn (the name question, the
+    # ticket intro), the finding is said with that reply instead of being lost.
+    state.case.finding = told
     rt.tracer.emit("case", move="finding", fault=card.fault, facts=seen)
 
 
@@ -615,6 +672,15 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
         return _escalate(state, rt, state.case.fault)
 
+    if step.kind == "ask" and step.awaits and step.awaits in facts:
+        # They already told us — asking again is how an agent stops sounding like a person
+        # ("ar galite prieiti prie routerio?" right after "esu prie routerio").
+        rt.tracer.emit("case", move="known", module=call.module, fact=step.awaits)
+        _advance(state, rt)
+        following = _current(state)
+        if following is not None:
+            return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
+        return _escalate(state, rt, state.case.fault)
     state.case.awaiting = step.awaits
     if step.awaits:
         state.diagnosis.pending_evidence_key = step.awaits
@@ -683,10 +749,16 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
     if note:
         state.case.facts.setdefault("_ticket_note", note)
     rt.tracer.emit("case", move="escalate", fault=fault, note=note)
+    goal = "say WHY the phone cannot fix this and that a technician will be registered"
+    unchecked = _unchecked_words(state)
+    if unchecked:
+        # "Jūs nežinote, ar neveikia visuose įrenginiuose" — the caller must hear what stayed
+        # unclear BEFORE a technician is registered in their name (Andrius, 2026-09-23).
+        goal = f"{goal}. Say plainly what we could not check together: {unchecked}"
     return TurnPlan(
         owner="ticket",
         rule="case.escalate",
-        say=Say(kind="directive", goal="say a technician will be registered", stage="ticket"),
+        say=Say(kind="directive", goal=goal, stage="ticket"),
     )
 
 

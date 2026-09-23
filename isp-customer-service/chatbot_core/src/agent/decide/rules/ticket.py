@@ -343,10 +343,18 @@ def ticket_need(state: Any, rt: Any) -> str:
     from ...contract.locale import maybe_phrase as _maybe
 
     card = _cards.card(cause)
-    if card is not None and card.escalate and card.escalate.need:
+    if card is not None and card.escalate and card.escalate.need and _fix_was_tried(s, cause):
         card_need = _maybe(card.escalate.need)
         if card_need:
             return card_need
+    if card is not None and not _fix_was_tried(s, cause):
+        # P-E, again (live 2026-09-23): "routeris perkrautas, bet ryšys neatsistatė" went out
+        # on a call where nobody was ever asked to reboot anything. A card's `escalate.need`
+        # describes the state AFTER its fix ran; until it has, the honest wording is what we
+        # SUSPECT and that we could not check it together.
+        gloss = phrase_or(f"verdict.{cause}.gloss", None)
+        prefix = phrase("ticket.need_suspected", gloss=gloss) if gloss else ""
+        return prefix + phrase("ticket.need_not_checked")
     # P-E (live 2026-09-08): escalating WITHOUT the step's action done must
     # not claim it happened — "routeris perkrautas, bet ryšys neatsistatė"
     # went out when the caller never rebooted (not at home). A refusal /
@@ -371,6 +379,36 @@ def ticket_need(state: Any, rt: Any) -> str:
     if not cause:
         return phrase("ticket.need_unclear")
     return phrase_or(f"verdict.{cause}.gloss", cause)
+
+
+def _fix_was_tried(s: Any, cause: str) -> bool:
+    """May the card's own `escalate.need` wording be used?
+
+    Yes when its fix actually ran (`spent`, or a step was retried), and yes when the card has
+    no phone fix at all — then its wording describes the situation, not an action ("routerį
+    reikia sukonfigūruoti — telefonu to nepadarysime"). No when there IS something to try and
+    nobody tried it: that wording would claim a reboot that never happened (live 2026-09-23).
+    """
+    if cause and cause in (s.case.spent or []):
+        return True
+    if bool(s.case.attempts) or bool(s.resolution.bridge_bound):
+        return True
+    return not _has_phone_fix(cause)
+
+
+def _has_phone_fix(cause: str) -> bool:
+    """Does this card ask the caller to DO anything, or is a technician its only answer?"""
+    from ...contract import cards as _cards
+
+    card = _cards.card(cause) if cause else None
+    if card is None:
+        return False
+    for solution in card.solution:
+        for call in solution.steps:
+            spec = _cards.module(call.module)
+            if spec is not None and spec.kind != "escalate":
+                return True
+    return False
 
 
 def wants_to_keep_solving(state: Any, rt: Any, user_input: str | None) -> bool:

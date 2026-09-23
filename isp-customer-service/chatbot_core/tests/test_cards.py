@@ -136,6 +136,51 @@ class TestABrokenCardStopsTheApp:
         with pytest.raises(KnowledgeError, match="explain phrase"):
             self._check(self._card(explain={"conclusion": "pack.nope.gloss"}))
 
+    def test_a_second_wording_that_is_not_in_the_locale(self):
+        """Wave 4a: `again` is the wording for a caller who answered about something else."""
+        with pytest.raises(KnowledgeError, match="again phrase"):
+            self._check(
+                self._card(
+                    needs={
+                        "fail_scope": {
+                            "ask": "pack.router_hung.fail_scope.question",
+                            "again": "pack.nope.simpler",
+                            "values": {"all": "confirms"},
+                        }
+                    }
+                )
+            )
+
+
+class TestWhatToAssumeWhenNobodyAnswers:
+    """Wave 4a (Andrius 2026-09-23): a ticket instead of the fix is help we never gave, so a
+    card may say what to carry on with. It must name a value it actually knows."""
+
+    def test_an_assumption_outside_the_needs_values(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="assume"):
+            FaultCard(
+                fault="x",
+                service="internet",
+                needs={
+                    "fail_scope": {
+                        "ask": "pack.router_hung.fail_scope.question",
+                        "values": {"all": "confirms"},
+                        "assume": "both",
+                    }
+                },
+            )
+
+    def test_the_hung_router_is_rebooted_anyway(self):
+        """Its primary fix is a power cycle; the scope question only chooses between two
+        readings, and one of them is the one we act on."""
+        need = catalog.card("router_hung").needs["fail_scope"]
+        assert need.assume == "all" and need.again
+
+    def test_a_line_that_carries_traffic_points_at_one_device(self):
+        assert catalog.card("healthy_to_router").needs["fail_scope"].assume == "one"
+
 
 def test_every_module_a_card_can_call_declares_what_it_does():
     for name, spec in catalog.modules().items():

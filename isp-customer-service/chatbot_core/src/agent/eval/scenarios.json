@@ -758,6 +758,33 @@
       }
     },
     {
+      "id": "C_unanswered_scope_still_reboots",
+      "phone": "+37060020112",
+      "desc": "4a (Andrius 2026-09-23): klientas neatsako, ar neveikia visuose įrenginiuose — antras klausimas kitais žodžiais, tada kortelės prielaida (`assume: all`) ir PERKROVIMAS, ne tiketas; „esu prie routerio“ reiškia, kad „ar galite prieiti?“ nebeklausiama",
+      "known_bug": false,
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Paulius",
+        "Esu prie routerio",
+        "Lemputės dega",
+        "Perkroviau",
+        "Taip, veikia",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_any": [
+          "maitinimo"
+        ],
+        "reply_none": [
+          "užregistravau",
+          "meistr"
+        ]
+      }
+    },
+    {
       "id": "R2_repeat_call_open_ticket",
       "phone": "+37060030307",
       "desc": "M6 (D-12): pakartotinis skambutis — CUST307 jau turi atvirą tiketą dėl interneto -> pastaba prie jo + būsena, JOKIO naujo tiketo ir diagnostikos",
