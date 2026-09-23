@@ -8,6 +8,10 @@
 fault: healthy_to_router
 service: internet
 symptom: internet_down
+# Tinklas iki kliento įrangos tvarkingas. Tai skaito paslauga, kuri JOJA ant kitos (IPTV per
+# internetą): jei ši kortelė laikosi, televizija — savas gedimas; jei ne, pirma internetas
+# (4 banga: anksčiau tą pasakydavo `verdicts.yaml` žymė per ištrintą medį).
+line_ok: true
 explain:
   conclusion: "verdict.healthy_to_router.gloss"
   confirm: "pack.healthy_to_router.confirm"
@@ -23,6 +27,9 @@ rules_out:
   # Jei linijoje jokio įrenginio nematome, „tinklas iki routerio veikia" neturi prasmės —
   # tai miręs routeris (S4 eval'e ši kortelė konkuravo su no_mac_observed ir laimėdavo).
   - device_seen=no
+  # Įrenginys adreso net neprašo: srautas linijoje gali vaikščioti, bet kliento pusė čia
+  # nekalta — tai routerio nustatymų kortelė (dhcp_silent).
+  - dhcp=silent
 
 needs:
   fail_scope:

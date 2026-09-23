@@ -98,24 +98,16 @@ def clarity_declaration(reason: str | None) -> list[str] | None:
     return list(required) if isinstance(required, list) else None
 
 
-# Verdicts that are NEWS, not faults: the provider side decided them before any diagnosis,
-# and the inform path owns those turns. Everything else is the Case's (wave 3) — the engine
-# used to tell them apart by the walker's pointer, which no longer exists.
-INFORM_VERDICTS = frozenset(
-    {
-        "service_not_subscribed",
-        "open_ticket_exists",
-        "billing_suspended",
-        "active_outage",
-        "switch_unreachable",
-        "node_fault_unregistered",
-    }
-)
-
-
 def is_news(reason: str | None) -> bool:
-    """Is this verdict something to TELL rather than something to diagnose?"""
-    return reason in INFORM_VERDICTS
+    """Is this something to TELL rather than something to diagnose?
+
+    The CARD says so (wave 4: `news: true`). It used to be a list in code, and before that the
+    walker's pointer — both of which meant adding a situation meant editing Python.
+    """
+    from .contract import cards as catalog
+
+    card = catalog.card(reason) if reason else None
+    return bool(card and card.news)
 
 
 def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:

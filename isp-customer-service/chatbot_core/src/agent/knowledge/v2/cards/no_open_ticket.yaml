@@ -1,0 +1,7 @@
+# ATVIRO TIKETO NĖRA (naujiena): klientas klausia apie registraciją, kurios nėra. Įvardija
+# taisyklė (`decide/rules/requests.py`) — tai CRM žinia, ne linijos faktas, todėl kortelė
+# faktais nekonkuruoja. 4 banga: kad KIEKVIENA informavimo situacija būtų kortelė, ne sąrašas.
+fault: no_open_ticket
+service: any
+news: true
+set_by: rule

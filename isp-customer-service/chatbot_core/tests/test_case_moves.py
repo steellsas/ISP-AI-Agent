@@ -68,11 +68,24 @@ class TestTheFaultDecidesTheFix:
 
 
 class TestWhenNothingFits:
-    def test_no_card_means_an_honest_ending(self):
-        """A suspended service is nobody's fault card: every card rules itself out, and the
-        engine says so rather than walking the closest-looking procedure."""
+    def test_news_is_told_not_diagnosed(self):
+        """A suspended service is NEWS: the engine says it and the caller is asked to do
+        nothing (wave 4 — it used to be a branch in the tree)."""
         move = next_move(_facts(billing_suspended=True))
-        assert move.kind == "escalate" and move.fault == "unclear_fault"
+        assert move.kind == "inform" and move.fault == "billing_suspended"
+
+    def test_a_fault_no_card_describes_ends_honestly(self):
+        """No card claims a line whose port data is missing entirely — the honest ending,
+        not the closest-looking procedure."""
+        move = next_move({"line_link": "unknown", "node_reachable": "no", "neighbours": "mixed"})
+        assert move.kind in ("escalate", "inform")
+
+    def test_a_silent_router_is_solved_by_its_own_card(self):
+        """What the tree used to call `dhcp_silent` is a card, and its card says there is
+        nothing to do over the phone (wave 4a regression, eval X)."""
+        move = next_move(_facts(dhcp_status="no_requests"))
+        assert move.kind == "solve" and move.fault == "dhcp_silent"
+        assert [call.module for call in move.steps] == ["escalate"]
 
     def test_a_fact_we_could_not_get_is_not_asked_again(self):
         """The caller could not answer; the engine moves on instead of looping."""

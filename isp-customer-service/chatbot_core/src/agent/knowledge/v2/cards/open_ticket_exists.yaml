@@ -1,0 +1,6 @@
+# JAU ATVIRAS TIKETAS (naujiena): pakartotinis skambutis — pastaba prie esamo tiketo,
+# jokios naujos diagnostikos. Įvardija taisyklė (`decide/rules/open_ticket.py`).
+fault: open_ticket_exists
+service: any
+news: true
+set_by: rule

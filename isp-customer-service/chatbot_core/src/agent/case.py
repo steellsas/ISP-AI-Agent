@@ -84,7 +84,13 @@ def candidates(facts: dict[str, str]) -> list[Candidate]:
     then ruled out). The fallback card is never a candidate — it is what the engine falls
     back TO when this list has nothing open."""
     order = {"matched": 0, "possible": 1, "ruled_out": 2}
-    judged = [judge(card, facts) for card in catalog.cards().values() if not card.fallback]
+    judged = [
+        judge(card, facts)
+        for card in catalog.cards().values()
+        # A fallback is what we reach FOR; a rule-named card (a service never ordered, a
+        # ticket already open) is named by the engine, never by the line.
+        if not card.fallback and card.set_by == "facts"
+    ]
     return sorted(judged, key=lambda c: (order[c.status], c.fault))
 
 
@@ -162,12 +168,20 @@ def sources_for(fact: str, card: FaultCard | None = None) -> list[Source]:
 # --- what to do next ----------------------------------------------------------------
 
 
+class _NoCard:
+    news = False
+    fallback = False
+
+
+_NO_CARD = _NoCard()
+
+
 @dataclass(frozen=True)
 class Move:
     """The Case's answer to "what now". The engine turns it into a plan; the wording stays
     the narrator's."""
 
-    kind: str  # learn | solve | escalate
+    kind: str  # learn | solve | inform | escalate
     fact: str | None = None
     source: Source | None = None
     fault: str | None = None
@@ -187,6 +201,12 @@ def next_move(facts: dict[str, str], *, unavailable: frozenset[str] = frozenset(
 
     matched = [c for c in open_ if c.status == "matched"]
     possible = [c for c in open_ if c.status == "possible"]
+
+    # News outranks a fault: there is nothing to diagnose, only something to tell (a debt, an
+    # outage, a node down). It also means the caller is not asked to do anything at all.
+    news = next((c for c in matched if (catalog.card(c.fault) or _NO_CARD).news), None)
+    if news is not None:
+        return Move("inform", fault=news.fault, why=f"{news.fault} is news, not a fault")
 
     # One fault fits and nothing else is still open: do what its card says.
     if len(matched) == 1 and not possible:

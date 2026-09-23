@@ -168,12 +168,10 @@ def _run_scenario(scn: dict, voice: bool = False) -> dict:
 
     def _snapshot() -> None:
         st = session.state
-        if st.diagnosis.hypothesis and st.diagnosis.hypothesis.get("cause"):
-            verdicts_seen.add(st.diagnosis.hypothesis["cause"])
-        if st.resolution.procedure and st.resolution.procedure.get("verdict"):
-            verdicts_seen.add(st.resolution.procedure["verdict"])
-        # A verdict that needs no belief or procedure (e.g. a service the contract does
-        # not have) is still the verdict the call was decided on.
+        # Wave 3/4: the verdict of a call is the fault the CASE settled on, or the news the
+        # cards named. There is no belief and no walker pointer to read any more.
+        if st.case.fault:
+            verdicts_seen.add(st.case.fault)
         network = st.diagnosis.verdicts.get("network") or {}
         if network.get("reason"):
             verdicts_seen.add(network["reason"])

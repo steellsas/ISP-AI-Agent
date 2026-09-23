@@ -496,6 +496,17 @@ class FaultCard(_Model):
     # A fallback card is taken ONLY when no other card fits, so an honest "we cannot tell
     # over the phone" can never compete with a real diagnosis.
     fallback: bool = False
+    # NEWS, not a fault: there is nothing to diagnose, only something to tell (a debt, an
+    # outage, a node fault). The inform path speaks it from inform.yaml.
+    news: bool = False
+    # The engine names this one instead of the facts (a service never ordered, a ticket
+    # already open — both come from the CRM profile, not from the line), so it is never a
+    # candidate from facts.
+    set_by: Literal["facts", "rule"] = "facts"
+    # This card means the network up to the caller's own equipment is fine. A service that
+    # RIDES on another one (IPTV over the internet) reads it to tell "fix the internet
+    # first" from "the TV is its own fault" — wave 4: it used to read the verdict tree.
+    line_ok: bool = False
     when: Candidacy = Candidacy()
     rules_out: list[str] = []
     needs: dict[str, Need] = {}

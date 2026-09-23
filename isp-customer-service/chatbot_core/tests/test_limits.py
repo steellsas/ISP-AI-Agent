@@ -21,7 +21,12 @@ def test_every_code_limit_is_declared():
 
 
 def test_every_declared_limit_is_used():
-    assert limits.names() - _code_names() == set()
+    # A limit may be named by KNOWLEDGE instead of code: signals.yaml reads a numeric signal
+    # against one (`above: {limit: …}`), which is how a threshold becomes editable data.
+    from agent.contract import signals
+
+    from_knowledge = {spec.above.limit for spec in signals.get().values() if spec.above is not None}
+    assert limits.names() - _code_names() - from_knowledge == set()
 
 
 def test_env_override_wins(monkeypatch):

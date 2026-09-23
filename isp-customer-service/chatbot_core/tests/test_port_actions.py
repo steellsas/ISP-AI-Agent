@@ -44,10 +44,12 @@ def restore_s5a_state(db_connection):
 class TestUpdateMac:
     def test_s5a_bind_resolves_foreign_mac(self, db_connection):
         """CUST105 (new router, foreign MAC): bind -> diagnosis turns healthy."""
+        from agent.facts import facts_from_signals
         from agent.tools import diagnose_connection, update_mac
 
         before = diagnose_connection("CUST105")
-        assert before["verdict"]["reason"] == "foreign_mac"
+        # the line shows a device that is not the registered one
+        assert facts_from_signals(before["signals"])["device_registered"] == "foreign"
         foreign = before["signals"]["observed_mac"]
 
         result = update_mac("CUST105")
@@ -56,7 +58,7 @@ class TestUpdateMac:
         assert result["old_mac"] != foreign
 
         after = diagnose_connection("CUST105")
-        assert after["verdict"]["reason"] != "foreign_mac"
+        assert facts_from_signals(after["signals"])["device_registered"] == "match"
         assert after["signals"]["registered_mac"].lower() == foreign.lower()
 
     def test_updates_crm_equipment_registry(self, db_connection):

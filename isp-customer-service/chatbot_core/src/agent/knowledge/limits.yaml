@@ -41,6 +41,7 @@ understand_history_messages: 4      # history messages sent to the understanding
 understand_facts_min_confidence: 0.6  # understanding facts below this are dropped
 classifier_max_tokens: 150
 short_utterance_max_words: 3        # a farewell / bare negation / bare "done" is at most this long
+case_fact_asks_max: 2               # asks of the same fact before it counts as unavailable
 greeting_max_words: 4               # a longer opener is not small talk
 
 # --- Closing -----------------------------------------------------------------------

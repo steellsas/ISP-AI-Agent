@@ -86,13 +86,24 @@ class TestServiceRules:
 
         assert services.route(state) == "depends"
 
+    # What the LINE says, as the reading leaves it (wave 4: the dependency asks the cards,
+    # not a verdict — the tree that named one is gone).
+    BROKEN = {
+        "node_reachable": "yes",
+        "line_link": "up",
+        "device_seen": "yes",
+        "dhcp": "ok",
+        "traffic": "none",  # a hung router: nothing reaches the caller's equipment
+    }
+    LINE_OK = {**BROKEN, "traffic": "flowing"}
+
     def test_a_broken_internet_puts_the_tv_recheck_on_the_closing_list(
         self, make_state, make_runtime
     ):
         from agent.decide.rules import services
 
         state = self._identified(make_state, [{"type": "tv", "technology": "iptv"}])
-        state.diagnosis.verdicts["network"] = {"reason": "router_hung"}
+        state.case.facts.update(self.BROKEN)
 
         assert services.depends_on_broken(state)
         services.recheck_after_fix(state, make_runtime())
@@ -103,7 +114,16 @@ class TestServiceRules:
         from agent.decide.rules import services
 
         state = self._identified(make_state, [{"type": "tv", "technology": "iptv"}])
-        state.diagnosis.verdicts["network"] = {"reason": "healthy_to_router"}
+        state.case.facts.update(self.LINE_OK)
+
+        assert not services.depends_on_broken(state)
+
+    def test_nothing_read_yet_claims_nothing(self, make_state):
+        """Before the line has been read there is no dependency verdict to give — the
+        caller is not sent down an internet fix on an empty ledger."""
+        from agent.decide.rules import services
+
+        state = self._identified(make_state, [{"type": "tv", "technology": "iptv"}])
 
         assert not services.depends_on_broken(state)
 

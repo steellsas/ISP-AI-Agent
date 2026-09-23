@@ -71,7 +71,14 @@ class TestSeeds:
         from agent.tools import execute_tool
 
         d = json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST305"}))
-        assert d["success"] and d["verdict"]["reason"] == "crc_errors"
+        assert d["success"]
+        from agent.case import candidates
+        from agent.facts import facts_from_signals
+
+        matched = {
+            c.fault for c in candidates(facts_from_signals(d["signals"])) if c.status == "matched"
+        }
+        assert matched == {"crc_errors"}
 
     def test_unregistered_node_fault(self, db_connection):
         import json
@@ -79,8 +86,15 @@ class TestSeeds:
         from agent.tools import execute_tool
 
         d = json.loads(execute_tool("diagnose_connection", {"customer_id": "CUST306"}))
-        assert d["success"] and d["verdict"]["reason"] == "node_fault_unregistered"
-        assert d["verdict"]["side"] == "provider"
+        assert d["success"]
+        from agent.case import candidates
+        from agent.facts import facts_from_signals
+
+        matched = {
+            c.fault for c in candidates(facts_from_signals(d["signals"])) if c.status == "matched"
+        }
+        assert matched == {"node_fault_unregistered"}  # wave 4: a news card
+        # "the provider side" is now what the news card says, not a field in the payload
 
 
 @pytest.mark.usefixtures("db_connection")

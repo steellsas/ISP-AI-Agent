@@ -174,20 +174,10 @@ def update_state_from_observation(state, rt, action: str, observation: str):
             from ..ledger import record_telemetry
 
             record_telemetry(state, rt, obs_data.get("signals"))
-
-        if action == "diagnose_connection" and isinstance(obs_data.get("verdict"), dict):
-            # The verdict still carries the PROVIDER-side news (a suspended service, a
-            # registered outage, an unreachable node) that the inform path speaks. What it
-            # used to do besides that — activate one hypothesis, doubt it, point a walker at
-            # a pack's first step — belongs to the Case now, over facts (wave 3).
-            v = obs_data["verdict"]
-            state.diagnosis.verdicts["network"] = {
-                "group": v.get("group"),
-                "side": v.get("side"),
-                "action": v.get("action"),
-                "reason": v.get("reason"),
-                "signals": obs_data.get("signals") or v.get("signals"),
-            }
+            # The raw reading stays available for the inform templates (a debt's amount, an
+            # outage's ETA) and for the equipment catalogue (the caller's model).
+            network = state.diagnosis.verdicts.setdefault("network", {})
+            network["signals"] = obs_data.get("signals") or network.get("signals")
 
         # An active outage for the caller's street -> restricted mode (NOT a
         # close): the caller still asks "when fixed? / compensation?", so the

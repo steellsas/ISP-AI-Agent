@@ -324,11 +324,10 @@ class TestTelemetry:
 
         telemetry(agent.state, agent.runtime, mode="snapshot", reason="test")
 
-        # Wave 3: the reading commits the provider-side verdict (what the inform path
-        # speaks) and the FACTS the cards reason over. It no longer activates a hypothesis
-        # or points a walker at a pack's first step — there is neither.
-        assert agent.state.diagnosis.verdicts["network"]["reason"] == "router_hung"
+        # Wave 4: the reading commits FACTS. Which fault (or which news) they mean is the
+        # Case's decision, not the tool's — there is no verdict in the payload any more.
         assert agent.state.case.facts["traffic"] == "none"
+        assert agent.state.case.facts["line_link"] == "up"
         call = next(e for e in tracer.events if e["type"] == "tool_call")
         assert call["name"] == "diagnose_connection" and call["reason"] == "snapshot:test"
 
@@ -337,14 +336,15 @@ class TestTelemetry:
 
         agent, _ = _agent(_Provider(self._VERDICT))
         agent.state.identity.customer_id = "CUST112"
-        agent.state.diagnosis.hypothesis = {"cause": "foreign_mac", "status": "testing"}
+        agent.state.case.facts["traffic"] = "none"
 
         result = telemetry(agent.state, agent.runtime, mode="recheck", reason="test")
 
-        assert result.data["verdict"]["reason"] == "router_hung"
+        # A recheck READS and changes nothing: the caller's case keeps the facts it had, and
+        # the observation is the caller's to inspect.
+        assert result.data["signals"]["traffic"] == "none"
+        assert agent.state.case.facts["traffic"] == "none"
         assert agent.state.diagnosis.verdicts == {}
-        assert agent.state.diagnosis.hypothesis == {"cause": "foreign_mac", "status": "testing"}
-        assert agent.state.resolution.procedure is None
 
 
 class TestNoToolCallsOutsideTooling:

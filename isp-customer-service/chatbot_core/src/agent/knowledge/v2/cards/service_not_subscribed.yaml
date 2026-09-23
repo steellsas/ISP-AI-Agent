@@ -1,0 +1,6 @@
+# PASLAUGA NEUŽSAKYTA (naujiena). Tai mato CRM profilis, ne linija, todėl kortelė
+# nekonkuruoja faktais — ją įvardija taisyklė (`decide/rules/services.py`).
+fault: service_not_subscribed
+service: any
+news: true
+set_by: rule

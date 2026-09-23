@@ -1,0 +1,9 @@
+# MŪSŲ MAZGAS NEPASIEKIAMAS (naujiena): klientui nieko daryti nereikia; tiketas
+# registruojamas automatiškai (verdicts.yaml `auto_ticket`).
+fault: switch_unreachable
+service: any
+news: true
+when:
+  all: [node_reachable=no]
+explain:
+  conclusion: "verdict.switch_unreachable.gloss"

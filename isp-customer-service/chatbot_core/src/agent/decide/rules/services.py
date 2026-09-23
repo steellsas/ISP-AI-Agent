@@ -38,12 +38,36 @@ def not_subscribed(state: Any, rt: Any) -> None:
 
 
 def depends_on_broken(state: Any) -> bool:
-    """The service the complaint depends on is itself broken (the telemetry verdict is not
-    "healthy up to the router") — fixing it is the first move."""
-    from ...faults import verdict_flag
+    """Is the service this complaint rides on itself broken?
 
-    reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
-    return bool(reason) and not verdict_flag(reason, "healthy_up_to_router")
+    The CARDS answer it (wave 4): if the facts the line just gave us leave a `line_ok` card
+    standing, the network up to the caller's equipment is fine and the TV complaint is a
+    fault of its own; anything else — a hung router, a dead one, a down link — is fixed
+    first and the TV re-checked at the end.
+
+    Until wave 4 this read `verdicts["network"]["reason"]`, which the deleted verdict tree
+    used to set right after the reading. The Case names the fault LATER in the turn, so the
+    read was empty and every IPTV call fell to an "unclear fault" ticket (eval R3).
+    """
+    from ...case import candidates
+    from ...ledger import facts_of
+
+    facts = facts_of(state)
+    if not facts:
+        return False  # nothing read yet — nothing to claim either way
+    judged = candidates(facts)
+    # The strongest reading decides: a card that fits beats one that merely might.
+    standing = [c.fault for c in judged if c.status == "matched"] or [
+        c.fault for c in judged if c.status == "possible"
+    ]
+    return not any(_line_ok(fault) for fault in standing)
+
+
+def _line_ok(fault: str) -> bool:
+    from ...contract import cards as catalog
+
+    card = catalog.card(fault)
+    return bool(card and card.line_ok)
 
 
 def recheck_after_fix(state: Any, rt: Any) -> None:

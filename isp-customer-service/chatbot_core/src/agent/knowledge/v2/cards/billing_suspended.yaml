@@ -1,0 +1,11 @@
+# SKOLA — paslauga sustabdyta (NAUJIENA, ne gedimas).
+#
+# Ką klientas išgirsta, sako inform.yaml šablonas (suma, mėnesiai, paskutinis mokėjimas);
+# ši kortelė tik pasako, KADA tai yra ta naujiena. Iki 4 bangos tai buvo medžio šaka kode.
+fault: billing_suspended
+service: any
+news: true
+when:
+  all: [service_suspended=yes]
+explain:
+  conclusion: "verdict.billing_suspended.gloss"
