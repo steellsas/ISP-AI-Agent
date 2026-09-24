@@ -152,3 +152,37 @@ lieka neperskaityta — geriau nežinoti negu pasakyti klientui netiesą.
 
 Spalvą, kurios skaitytuvas nemoka, validatorius atmes paleidimo metu (jis klausia paties
 skaitytuvo, kokias spalvas tas moka: `perceive/detectors.LIGHT_COLOURS`).
+
+---
+
+## Kai žinios gyvena indekse (Qdrant)
+
+Nuo E2 (2026-09-24) žinios gali būti pasiekiamos ne tik iš failų, bet ir iš Qdrant indekso. **Failai
+lieka tiesos šaltinis** — indeksas yra išvestinis, ir jei jo nėra, agentas dirba iš failų.
+
+Technikui iš to seka vienas naujas žingsnis: **pakeitęs dokumentą, perindeksuok.**
+
+```bash
+docker compose up -d qdrant                                        # paleisti (kartą)
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --status   # ar indeksas atitinka failus
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --document troubleshooting/wifi_problems.md
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --rebuild  # viską iš naujo
+```
+
+| Komanda | Ką daro | Kiek užtrunka |
+|---|---|---|
+| `--status` | versija, kuo indeksas skiriasi nuo failų, atgaminimo balas | ~1 s |
+| `--document <kelias>` | perindeksuoja **vieną** dokumentą | ~40 ms |
+| `--rebuild` | stato naują kolekciją, praleidžia kanarėlę, tada perjungia aliasą | ~4 s |
+| `--remove <kelias>` | išima ištrintą dokumentą | ~40 ms |
+
+**Kanarėlė.** `--rebuild` nepersijungia, jei naujas indeksas neatsako į klausimus iš
+`_questions.yaml` pakankamai gerai (ribos — tame pačiame faile). Tada aliasas nejudinamas, o
+skambučius aptarnauja senas, veikiantis indeksas. Todėl blogas indeksas nepasiekia nė vieno
+skambučio.
+
+**Perindeksavimas nereikalauja prastovos.** Versija yra kolekcija (`kb_v3`), o `kb` yra tik aliasas.
+Išmatuota: 225 užklausos, vykdytos perkuriant visą indeksą — 225 teisingi atsakymai, 0 klaidų.
+
+**Kuri saugykla atsako** — `KB_BACKEND` aplinkos kintamasis: `files` (numatyta) arba `qdrant`.
+Nustatymai — `.env.qdrant.example`.

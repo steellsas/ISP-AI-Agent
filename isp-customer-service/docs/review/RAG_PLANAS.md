@@ -342,6 +342,8 @@ Kiekvienas etapas atskirai paleidžiamas, atskirai atšaukiamas, ir kiekvienas b
 | **Kodėl taip** | DB kelias — transakcijos, filtrai, aliasai, perindeksavimas dirbant — **įrodomas be modelio**. Jei kas ne taip su ingestija, išaiškėja anksčiau, nei atsiranda embedding'ai |
 | **Baigta, kai** | tas pats atgaminimo testas per Qdrant duoda tuos pačius skaičius kaip E1; dokumento atnaujinimas serveriui dirbant nepertraukia paieškos; alias perjungimas be prastovos; saugumo sąrašas (8.1) uždarytas |
 | **Rizika** | naujas servisas. Mažinam: `LexicalRetriever` lieka atsarginiu keliu, perjungiamu konfigūracija |
+| **PADARYTA 2026-09-24** | `docker-compose.yml` (savas konteineris, savas volume, portai 6343/6344 tik ant 127.0.0.1) · `adapters/retrieval/sparse.py` — lietuviškas *sparse* vektorius · `qdrant_store.py` — `KnowledgeIndex` (ingestija, aliasai, `drift`) ir `QdrantRetriever` · `questions.py` — kanarėlė · `src/rag/scripts/index_qdrant.py` — ingestijos įrankis · `KB_BACKEND` perjungimas su nusileidimu į failus · 23 testai per vietinį Qdrant režimą (CI be serverio) |
+| **Rezultatas** | per Qdrant `hit@1` **53 %**, `hit@2` **56 %** — tie patys skaičiai kaip per failus; 67/68 klausimų grąžina identiškus dokumentus |
 
 ### E3 — embedding'ai ir hibridas
 
@@ -420,3 +422,76 @@ src/rag/vector_store_data/production_index.faiss  (2026-06-12, dokumentai — 20
 priklausomybė faiss-cpu
 src/agent/tools.py: search_knowledge kelias per get_hybrid_retriever()
 ```
+
+---
+
+## 10. E2 rezultatai ir radiniai (2026-09-24)
+
+E2 buvo daroma be embedding'ų sąmoningai — kad DB kelias išaiškėtų anksčiau, nei atsiranda modelis.
+Pasiteisino: **trys iš keturių radinių nebūtų pasimatę vietiniame režime ar su modeliu maskuojant.**
+
+### 10.1 Kodėl Qdrant negali atsakyti kitaip nei failai
+
+Leksinė logika lieka mūsų kode (lietuviškos šaknys, galūnės, IDF), o Qdrant tik suskaičiuoja
+sandaugą. Dokumento dalies vektoriaus reikšmė vienai šakniai — `3·idf` paviršiuje (`keywords`,
+`tags`, įranga, pavadinimas) arba `idf` tekste; užklausos vektoriaus visos reikšmės vienodos,
+`1/(3·Σ idf)`. Tada sandauga **lygi** `_keyword_score`:
+
+```
+didžiausias neatitikimas ant visų 261 dalies:  1,1e-16
+```
+
+Todėl E2 tikrinimas yra paprastas: ar per Qdrant grąžinami tie patys dokumentai. Grąžinami —
+**67 iš 68**. Vienintelis skirtumas yra tikslus balų **lygumas** (0,230325665 dviem dokumentams),
+kurį Qdrant suskaido kitaip, nes *sparse* svorius laiko `float32`.
+
+### 10.2 Keturi radiniai iš tikro serverio
+
+| # | Radinys | Kaip pasimatė | Kaip sutvarkyta |
+|---|---|---|---|
+| 1 | **`localhost` kainuoja 2 sekundes** | viena užklausa 2056 ms; tuščias `count()` — irgi 2057 ms, tad kaltas ne indeksas, o ryšys. `localhost` Windows'e pirma bando IPv6 `::1`, kur portas neatidarytas | numatytas adresas kode ir `.env` — `127.0.0.1`. Po to: **mediana 13,6 ms, p95 16,5 ms** (SLO < 50 ms) |
+| 2 | **gRPC nemoka aliasų** | `prefer_grpc=True` → „Collection `kb` doesn't exist", nors aliasas yra | transportas REST. Aliasas yra versijavimo pagrindas, o REST latencija pakankama |
+| 3 | **payload indeksai su `wait=True` — 17,5 s** | šeši laukai, kiekvieno optimizatoriaus laukimas | `wait=False`: indeksai statomi fone, o paieška prie tos kolekcijos prieina tik po aliaso perjungimo |
+| 4 | **klientas ir serveris turi eiti kartu** | klientas 1.19.1 prieš serverį 1.17.1 → įspėjimas apie nesuderinamumą | abu prikabinti prie 1.19.1; komentaras `docker-compose.yml` ir `pyproject.toml` |
+
+Po šių pataisymų:
+
+```
+visas perindeksavimas su kanarėle:  168,2 s  ->  3,6 s
+vieno dokumento atnaujinimas:       6 168 ms ->  40 ms
+```
+
+### 10.3 Ar perindeksavimas nutraukia skambučius — išmatuota
+
+Paieška ėjo be pertraukos, o po ja buvo perkurtas visas indeksas ir atnaujintas vienas dokumentas:
+
+```
+užklausų per tą laiką:        225
+teisingas atsakymas:          225
+ne tas / tuščias:               0
+KLAIDOS:                        0
+aliasas:                kb_v2 -> kb_v3   (atomiškai)
+senoji kolekcija kb_v2:  tebėra          (atstatymui)
+```
+
+### 10.4 Saugumas — patikrinta, ne aprašyta
+
+Qdrant savarankiškai talpinamas **nėra saugus pagal nutylėjimą**. Patikrinta tikrame serveryje:
+
+| Veiksmas | Rezultatas |
+|---|---|
+| `GET /collections` be rakto | **401** |
+| `GET /collections` su skaitymo raktu | 200 |
+| `PUT /collections/...` su skaitymo raktu | **403** „Global manage access is required" |
+| payload indeksai serveryje | yra visi šeši: `equipment`, `kind`, `problem`, `problem_family`, `source`, `tags` |
+| indeksas po konteinerio perkrovimo | išliko (volume), aliasas `kb` → `kb_v1`, 261 taškas |
+
+Agentas gauna **tik** `QDRANT_READ_KEY`. Net jei per LLM kelią kas nors bandytų rašyti į žinių bazę,
+techniškai neturi kuo.
+
+### 10.5 Kas dar liko E4 (ne E2)
+
+TLS (be jo `api-key` keliauja atviru tekstu), bind į privatų interfeisą gamyboje, portas 6334
+neprieinamas iš išorės, metrikos ir aliarmai (`drift`, kanarėlės rezultatas, nusileidimų dalis),
+snapshot'ai kaip kopijų dalis. `drift()` jau yra ir rodo, kuo indeksas skiriasi nuo failų — tai
+atsakymas į klausimą „ar indeksas šviežias", kurio v1 FAISS indeksas niekada neturėjo.

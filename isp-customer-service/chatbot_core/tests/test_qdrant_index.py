@@ -1,0 +1,283 @@
+"""Žinių indeksas Qdrant'e (RAG planas, E2).
+
+Testai eina per Qdrant kliento VIETINĮ režimą (`:memory:`), tad CI tikrina tą patį kelią be serverio
+ir be konteinerio. Ko vietinis režimas neparodo — payload indeksai iš tikrųjų sukuriami, aliaso
+perjungimas gyvame serveryje, skaitymo raktas negali rašyti — tikrinta rankomis prieš tikrą serverį
+ir surašyta `docs/review/RAG_PLANAS.md` 9 skyriuje.
+
+Svarbiausias šio failo testas yra pirmasis: *sparse* sandauga LYGI leksiniam balui. Iš to seka, kad
+Qdrant negali atsakyti kitaip nei failai — o jei atsako, klaida yra indekse, ne „modelyje" (jo dar
+nėra).
+"""
+
+from __future__ import annotations
+
+import pytest
+from adapters.retrieval import KnowledgeIndex, LexicalRetriever, QdrantRetriever, sparse
+from adapters.retrieval import questions as recall
+from adapters.retrieval.qdrant_store import chunks, content_hash, families
+from agent import knowledge_base as kb
+from ports.retrieval import RetrieverPort
+
+QUESTION = "kaip sukonfigūruoti routerį po gamyklinio atstatymo"
+
+
+@pytest.fixture(scope="module")
+def index():
+    """Indeksas vietiniame Qdrant: pastatomas kartą visam moduliui."""
+    from qdrant_client import QdrantClient
+
+    client = QdrantClient(":memory:")
+    built = KnowledgeIndex(client)
+    built.rebuild()
+    return built
+
+
+@pytest.fixture(scope="module")
+def search(index):
+    return QdrantRetriever(index.qdrant, index.alias)
+
+
+# --- ar Qdrant gali atsakyti kitaip nei failai --------------------------------------------
+
+
+def test_the_sparse_dot_product_is_the_lexical_score():
+    """Dokumento vektorius × užklausos vektorius = `_keyword_score`, iki slankiojo kablelio.
+
+    Tai ir yra E2 pagrindas: leksinė logika lieka mūsų kode (lietuviškos šaknys, galūnės, IDF), o
+    Qdrant tik suskaičiuoja sandaugą. Todėl saugyklos pakeitimas negali pakeisti atsakymų.
+    """
+    query = sparse.for_query(QUESTION)
+    worst = 0.0
+    for doc in kb.documents():
+        for section in kb._sections(doc):
+            through_vector = sparse.for_chunk(doc, section).dot(query)
+            through_files = kb._keyword_score(QUESTION, doc, section)
+            worst = max(worst, abs(through_vector - through_files))
+    assert worst < 1e-9, f"didžiausias neatitikimas {worst:.2e}"
+
+
+def test_the_same_recall_through_qdrant_as_through_files(search):
+    """Tos pačios ribos, tas pats rinkinys — indeksas privalo būti ne blogesnis už failus."""
+    ok, seen = recall.passes(search)
+    assert ok, str(seen)
+    _, files = recall.passes(LexicalRetriever())
+    # Abi realizacijos atsako vienodai; leidžiam vieno klausimo skirtumą, nes Qdrant *sparse*
+    # svorius laiko float32, tad tikslią balų lygybę (pasitaiko) suskaido kitaip.
+    assert abs(seen.hit2 - files.hit2) <= 1.5 / seen.total
+    assert abs(seen.hit1 - files.hit1) <= 1.5 / seen.total
+
+
+def test_almost_every_question_gets_the_same_documents(search):
+    files = LexicalRetriever()
+
+    def sources(retriever, question):
+        seen: list[str] = []
+        for chunk in retriever.retrieve(question, top_k=2):
+            if chunk["metadata"]["source"] not in seen:
+                seen.append(chunk["metadata"]["source"])
+        return seen
+
+    asked = recall.questions()
+    same = sum(sources(search, q) == sources(files, q) for q, _ in asked)
+    assert same >= 0.9 * len(asked), f"vienodai tik {same}/{len(asked)}"
+
+
+def test_the_port_is_satisfied(search):
+    assert isinstance(search, RetrieverPort)
+
+
+# --- trys atsakymo lygiai ----------------------------------------------------------------
+
+
+def test_three_levels_behave_as_in_the_files(search):
+    strong = search.retrieve(QUESTION, top_k=2)
+    assert strong and all(chunk["metadata"]["sure"] for chunk in strong)
+
+    weak = search.retrieve("ar galite man padėti su automobilio remontu", top_k=2)
+    assert len(weak) <= 1
+    assert all(not chunk["metadata"]["sure"] for chunk in weak)
+
+    assert search.retrieve("kokia bus rytoj oro temperatūra Šiauliuose", top_k=2) == []
+
+
+def test_the_text_in_the_index_is_already_speakable(search):
+    """Nuvalymas atliekamas INDEKSUOJANT, tad į atsakymą markdown nepatenka niekada."""
+    for chunk in search.retrieve("ką reiškia oranžinė lemputė ant routerio", top_k=2):
+        for marker in ("**", "|", "`", "---"):
+            assert marker not in chunk["document"]
+
+
+# --- filtras ------------------------------------------------------------------------------
+
+
+def test_the_filter_pushes_down_to_the_index(search):
+    only_equipment = search.retrieve(
+        "ką reiškia lemputė", top_k=3, filter_metadata={"kind": "equipment"}
+    )
+    assert only_equipment and {c["metadata"]["kind"] for c in only_equipment} == {"equipment"}
+
+
+@pytest.mark.parametrize("asked", ["tv", "internet", "internet_down"])
+def test_the_problem_filter_keeps_neutral_knowledge(search, asked):
+    """Ta pati semantika, kaip `_matches`: šeima arba tiksli problema, o neutralūs praeina visada."""
+    for chunk in search.retrieve("neveikia", top_k=10, filter_metadata={"problem": asked}):
+        document = next(d for d in kb.documents() if d["source"] == chunk["metadata"]["source"])
+        assert not document["problem"] or kb._same_problem(asked, document["problem"])
+    # Meistro kaina turi būti pasiekiama interneto gedimo viduryje.
+    found = search.retrieve(
+        "kiek kainuoja techniko vizitas", top_k=3, filter_metadata={"problem": "internet"}
+    )
+    assert "procedures/technician_visit.md" in {c["metadata"]["source"] for c in found}
+
+
+def test_the_problem_family_is_computed_at_ingestion():
+    assert families(("internet_down", "internet_slow")) == ["internet"]
+    assert families(("tv",)) == ["tv"]
+    assert families(()) == []
+
+
+# --- versijos, atnaujinimas, skirtumai ---------------------------------------------------
+
+
+def test_the_version_is_the_collection_behind_the_alias(index):
+    assert index.current() == f"{index.alias}_v{index.version()}"
+    assert index.version() >= 1
+
+
+def test_the_index_matches_the_files(index):
+    assert index.drift() == {}
+    assert index.indexed() == {doc["source"]: content_hash(doc) for doc in kb.documents()}
+    expected = sum(len(kb._sections(doc)) for doc in kb.documents())
+    assert index.qdrant.count(index.current()).count == expected
+
+
+def test_one_document_is_reindexed_alone(index):
+    """Kaina proporcinga PAKEITIMUI, ne bazei — ir be liekanų."""
+    source = "troubleshooting/wifi_problems.md"
+    before = index.qdrant.count(index.current()).count
+    parts = index.upsert_document(source)
+    assert parts == len(kb._sections(kb.document(source)))
+    assert index.qdrant.count(index.current()).count == before
+    assert index.drift() == {}
+
+
+def test_a_shorter_document_leaves_no_stale_chunks(index, monkeypatch):
+    """Dokumentas sutrumpėjo — pasenusios dalys turi išnykti, ne likti indekse."""
+    source = "troubleshooting/wifi_problems.md"
+    document = kb.document(source)
+    full = len(kb._sections(document))
+    shortened = dict(document, body="## Vienintelis skyrius\nTekstas.")
+    monkeypatch.setattr(kb, "document", lambda s: shortened if s == source else document)
+    index.upsert_document(source)
+    assert len(index.indexed()) == len(kb.documents())
+    left = index.qdrant.count(
+        index.current(),
+        count_filter=_source_filter(source),
+    ).count
+    assert left < full
+    monkeypatch.undo()
+    index.upsert_document(source)  # atstatom
+    assert index.drift() == {}
+
+
+def test_a_removed_document_leaves_nothing_behind(index):
+    source = "faq/common_questions.md"
+    index.remove_document(source)
+    assert source not in index.indexed()
+    assert index.drift()[source] == "added"  # failas yra, indekse nebėra
+    index.upsert_document(source)
+    assert index.drift() == {}
+
+
+def test_drift_sees_a_changed_document(index, monkeypatch):
+    doc = kb.document("troubleshooting/internet_slow.md")
+    changed = tuple(
+        dict(d, body=d["body"] + "\n## Naujas skyrius\nNauja žinia.") if d is doc else d
+        for d in kb.documents()
+    )
+    monkeypatch.setattr(kb, "documents", lambda: changed)
+    assert index.drift() == {"troubleshooting/internet_slow.md": "changed"}
+
+
+def test_a_refusing_canary_leaves_the_alias_alone(index):
+    """Blogas indeksas sustabdomas PRIEŠ aliaso perjungimą — gamyboje lieka veikiantis senas."""
+    before = index.current()
+    with pytest.raises(RuntimeError, match="canary refused"):
+        index.rebuild(canary=lambda collection: False)
+    assert index.current() == before
+    assert not index.qdrant.collection_exists(f"{index.alias}_v{index.version() + 1}")
+
+
+def test_a_rebuild_switches_the_alias_and_keeps_the_previous(index):
+    before = index.current()
+    ok, _ = recall.passes(QdrantRetriever(index.qdrant, before))
+    assert ok
+    index.rebuild(canary=lambda c: recall.passes(QdrantRetriever(index.qdrant, c))[0])
+    assert index.current() != before
+    assert index.qdrant.collection_exists(before), "senoji kolekcija reikalinga atstatymui"
+
+
+def test_chunk_ids_are_stable_across_runs():
+    """Tas pats dokumentas, indeksuotas du kartus, perrašo tuos pačius taškus."""
+    document = kb.document("troubleshooting/wifi_problems.md")
+    assert [c["id"] for c in chunks(document)] == [c["id"] for c in chunks(document)]
+
+
+def _source_filter(source: str):
+    from qdrant_client import models
+
+    return models.Filter(
+        must=[models.FieldCondition(key="source", match=models.MatchValue(value=source))]
+    )
+
+
+# --- atsarginis kelias: skambutis nesibaigia dėl indekso ----------------------------------
+
+
+def test_a_broken_backend_falls_back_to_the_files():
+    """Svarbiausia E2 savybė. Failai yra tiesos šaltinis, tad indekso netekimas yra nepatogumas,
+    ne skambučio pabaiga."""
+
+    class Dead:
+        name = "dead"
+
+        def retrieve(self, *a, **k):
+            raise ConnectionError("qdrant is down")
+
+    try:
+        kb.use(Dead())
+        found = kb.find(QUESTION, limit=2)
+        assert found, "turėjo nusileisti į failus"
+        assert found[0].source == "troubleshooting/internet_factory_reset_dhcp.md"
+    finally:
+        kb.use(None)
+
+
+def test_the_backend_choice_comes_from_the_environment(monkeypatch):
+    from adapters.retrieval import configure_from_env
+
+    monkeypatch.delenv("KB_BACKEND", raising=False)
+    assert configure_from_env() == "files"
+    assert kb.backend() is None
+
+    # Prašyta Qdrant, bet serverio nėra: agentas VIS TIEK turi žinias — tik per failus.
+    monkeypatch.setenv("KB_BACKEND", "qdrant")
+    monkeypatch.setenv("QDRANT_URL", "http://127.0.0.1:6399")
+    monkeypatch.setenv("QDRANT_TIMEOUT", "0.3")
+    assert configure_from_env() == "files"
+    assert kb.backend() is None
+    assert kb.find(QUESTION, limit=1)
+
+
+def test_the_agent_sees_the_same_passages_through_either_backend(index):
+    """`find()` yra vienintelės durys: kortelės ir `context_card` apie saugyklą nežino."""
+    through_files = kb.find(QUESTION, limit=2)
+    try:
+        kb.use(QdrantRetriever(index.qdrant, index.alias))
+        through_qdrant = kb.find(QUESTION, limit=2)
+    finally:
+        kb.use(None)
+    assert [p.source for p in through_qdrant] == [p.source for p in through_files]
+    assert all(p.sure for p in through_qdrant)
+    assert all(p.text and p.kind and p.source for p in through_qdrant)

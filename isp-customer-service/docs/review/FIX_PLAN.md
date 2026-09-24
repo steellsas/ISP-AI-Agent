@@ -127,6 +127,49 @@ dokumentu. Leksinė paieška to principiškai negali surasti: tai ir yra išmatu
 (embedding'ai), o ne nuojauta.
 
 
+## RAG E2 — Qdrant be embedding'ų (šaka `fix/wave-4a`, 2026-09-24)
+
+Vektorinė DB atsiranda PRIEŠ modelį sąmoningai: jei kas nors ne taip su ingestija, aliasais ar
+filtrais, tai turi išaiškėti be embedding'ų sluoksnio, o ne per skambutį. Pasiteisino — trys iš
+keturių radinių nebūtų pasimatę kitaip.
+
+| Kas atsirado | Kam |
+|---|---|
+| `docker-compose.yml` | savas Qdrant konteineris (savas volume, portai 6343/6344 tik ant 127.0.0.1), nes mašinoje jau veikia kito projekto Qdrant, o bendra saugykla = bendra rizika |
+| `adapters/retrieval/sparse.py` | lietuviškas *sparse* vektorius: šaknys, galūnės, IDF lieka MŪSŲ kode, Qdrant tik skaičiuoja sandaugą |
+| `adapters/retrieval/qdrant_store.py` | `KnowledgeIndex` (ingestija, versijos per aliasą, `drift`) ir `QdrantRetriever` (tie patys trys atsakymo lygiai ir filtrai) |
+| `adapters/retrieval/questions.py` | kanarėlė: atgaminimo patikra prieš naują indeksą, **prieš** aliaso perjungimą |
+| `src/rag/scripts/index_qdrant.py` | ingestijos įrankis: `--rebuild`, `--document`, `--remove`, `--status` |
+| `KB_BACKEND=files\|qdrant` | perjungimas be kodo; neatsakius Qdrant — nusileidžiam į failus, o ne krentam |
+| `tests/test_qdrant_index.py` | 23 testai per Qdrant kliento vietinį režimą, tad CI tikrina tą patį kelią be serverio |
+
+**Kodėl Qdrant negali atsakyti kitaip nei failai:** *sparse* sandauga LYGI `_keyword_score` —
+didžiausias neatitikimas ant 261 dalies yra `1,1e-16`. Todėl per Qdrant `hit@1` **53 %**,
+`hit@2` **56 %**, o 67 iš 68 klausimų grąžina identiškus dokumentus (vienintelis skirtumas — tikslus
+balų lygumas, kurį `float32` suskaido kitaip).
+
+**Keturi radiniai iš tikro serverio:**
+
+| # | Radinys | Kaip sutvarkyta |
+|---|---|---|
+| 1 | **`localhost` kainavo 2056 ms** vienai užklausai (Windows pirma bando IPv6 `::1`) — ir tuščias `count()` irgi, tad kaltas buvo ryšys, ne indeksas | `127.0.0.1` kode ir `.env`: **mediana 13,6 ms, p95 16,5 ms** |
+| 2 | **gRPC nemoka aliasų** („Collection `kb` doesn't exist", nors aliasas yra) | transportas REST; aliasas yra versijavimo pagrindas |
+| 3 | **payload indeksai su `wait=True` — 17,5 s** | `wait=False`, indeksai statomi fone |
+| 4 | klientas 1.19.1 prieš serverį 1.17.1 | abu prikabinti prie 1.19.1 |
+
+Po to: perindeksavimas su kanarėle **168 s → 3,6 s**, vieno dokumento atnaujinimas
+**6 168 ms → 40 ms**.
+
+**Ar perindeksavimas nutraukia skambučius:** 225 užklausos, vykdytos perkuriant visą indeksą ir
+atnaujinant dokumentą — **225 teisingi atsakymai, 0 klaidų**, aliasas persijungė atomiškai, senoji
+kolekcija liko atstatymui.
+
+**Saugumas patikrintas, ne aprašytas:** be rakto **401**, su skaitymo raktu `GET` 200 ir
+`PUT` **403**. Agentas gauna tik `QDRANT_READ_KEY`.
+
+**Liko E4:** TLS, bind gamyboje, metrikos ir aliarmai, snapshot'ai.
+
+
 **Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
 lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
 vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).

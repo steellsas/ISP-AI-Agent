@@ -11,6 +11,10 @@ dependencies = [
     "langsmith>=0.0.87",
     "openai>=1.0.0",
     # RAG dependencies
+    # Qdrant: žinių indekso saugykla (RAG planas, E2). Apache 2.0, savame serveryje.
+    # Klientas moka ir VIETINĮ režimą (`:memory:`), tad CI testuoja tą patį kelią be serverio.
+    # Klientas ir serveris (docker-compose.yml) turi eiti kartu — žr. komentarą ten.
+    "qdrant-client>=1.19,<1.20",
     "sentence-transformers>=2.2.0",
     "faiss-cpu>=1.7.4",
     "rank-bm25>=0.2.2",

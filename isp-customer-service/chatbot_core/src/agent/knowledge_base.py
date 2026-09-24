@@ -43,6 +43,11 @@ KB_DIR = Path(__file__).resolve().parent.parent / "rag" / "knowledge_base"
 # Kokios rūšies žinia. Tai ir yra tie „skirtingi tagai": agentas prašo TO, ko jam reikia.
 KINDS = ("equipment", "howto", "procedure", "tip", "faq", "troubleshooting")
 
+# Trys atsakymo lygiai (E1). Konstantos, o ne skaičiai `find()` viduje, nes tas pačias ribas
+# taiko ir Qdrant realizacija (E2) — kitaip dvi saugyklos atsakytų nevienodai į tą patį klausimą.
+FLOOR = 0.15  # nuo čia — tvirtas atsakymas
+HINT = 0.08  # nuo čia — pažymėtas spėjimas; žemiau nieko nesakoma
+
 
 @dataclass(frozen=True)
 class Passage:
@@ -342,6 +347,24 @@ def _keyword_score(query: str, doc: dict[str, Any], section: tuple[str, str]) ->
     return hits / (sum(asked.values()) * 3)
 
 
+# --- kuri saugykla atsako ----------------------------------------------------------------
+
+# Aktyvi saugykla. `None` reiškia leksinę paiešką ŠIAME procese — tokia numatytoji, nes failai yra
+# tiesos šaltinis ir jiems nereikia nieko paleisti. `use()` perjungia į Qdrant (RAG planas, E2).
+_backend: Any | None = None
+
+
+def use(backend: Any | None) -> None:
+    """Perjungia saugyklą. Kortelės, moduliai ir `context_card` apie tai nežino nieko."""
+    global _backend
+    _backend = backend
+    logger.info(f"[KB] backend: {getattr(backend, 'name', 'files')}")
+
+
+def backend() -> Any | None:
+    return _backend
+
+
 def find(
     query: str,
     *,
@@ -350,8 +373,66 @@ def find(
     equipment: str | None = None,
     problem: str | None = None,
     limit: int = 2,
-    floor: float = 0.15,
-    hint: float = 0.08,
+    floor: float = FLOOR,
+    hint: float = HINT,
+) -> list[Passage]:
+    """Žinios ŠIAM klausimui. Vienintelės durys agentui — nesvarbu, kur indeksas.
+
+    Jei saugykla neatsako, NUSILEIDŽIAM į failus, o ne krentam: Qdrant yra išvestinis indeksas, o
+    dokumentai keliauja su atvaizdu. Skambutis neturi baigtis dėl to, kad neatsakė indeksas.
+    """
+    if _backend is not None:
+        try:
+            chunks = _backend.retrieve(
+                query,
+                top_k=limit,
+                threshold=floor,
+                filter_metadata={
+                    "kind": kind,
+                    "tags": tags,
+                    "equipment": equipment,
+                    "problem": problem,
+                },
+            )
+            return [_as_passage(chunk) for chunk in chunks]
+        except Exception as exc:
+            logger.warning(f"[KB] backend failed ({exc}) — falling back to the files")
+    return _lexical(
+        query,
+        kind=kind,
+        tags=tags,
+        equipment=equipment,
+        problem=problem,
+        limit=limit,
+        floor=floor,
+        hint=hint,
+    )
+
+
+def _as_passage(chunk: dict[str, Any]) -> Passage:
+    meta = chunk.get("metadata") or {}
+    return Passage(
+        title=str(meta.get("section") or meta.get("source") or ""),
+        kind=str(meta.get("kind") or ""),
+        text=str(chunk.get("document") or ""),
+        source=str(meta.get("source") or ""),
+        tags=tuple(meta.get("tags") or ()),
+        equipment=tuple(meta.get("equipment") or ()),
+        score=float(chunk.get("score") or 0.0),
+        sure=bool(meta.get("sure", True)),
+    )
+
+
+def _lexical(
+    query: str,
+    *,
+    kind: str | None = None,
+    tags: Any = None,
+    equipment: str | None = None,
+    problem: str | None = None,
+    limit: int = 2,
+    floor: float = FLOOR,
+    hint: float = HINT,
 ) -> list[Passage]:
     """Žinios, kurių agentui reikia ŠIAM klausimui — filtras, tada rikiavimas.
 

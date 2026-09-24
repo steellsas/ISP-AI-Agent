@@ -18,28 +18,27 @@ import pytest
 import yaml
 from agent import knowledge_base as kb
 
-QUESTIONS_FILE = Path(__file__).with_name("knowledge_questions.yaml")
+# Klausimai gyvena PRIE ŽINIŲ, ne testuose: jie yra dokumento dalis („nauja žinia atkeliauja su
+# savo klausimais"), ir tą patį failą skaito ingestijos kanarėlė prieš perjungdama indeksą (E2).
+QUESTIONS_FILE = kb.KB_DIR / "_questions.yaml"
 
 # Kiek dokumentas privalo turėti klausimų. Vienas klausimas nieko nepasako: parafrazė gali
 # atsitiktinai sutapti su tagu.
 MIN_QUESTIONS_PER_DOCUMENT = 2
 
-# Prieš E1: 46 % hit@1, 54 % hit@2, TYLA 6. Po E1 (IDF svoriai, lietuviškos galūnės, trys lygiai):
-# 53 % / 56 %, tyla 1. Ribos su atsarga triukšmui — vienas klausimas iš 68 yra 1,5 p.p.
-MIN_HIT1 = 0.50
-MIN_HIT2 = 0.54
-
-# Kiek klausimų gali likti visai be atsakymo. Vienas: „moku už šimtą, o gaunu dešimt" neturi nė
-# vienos bendros šaknies su jokiu dokumentu — leksinė paieška to principiškai negali surasti.
-# Būtent tokie klausimai ir yra išmatuotas argumentas už E3 (embedding'ai), o ne nuojauta.
-MAX_SILENT = 1
+# Ribos gyvena PRIE KLAUSIMŲ, ne čia: tuos pačius skaičius taiko ir ingestijos kanarėlė, kuri
+# sustabdo blogą indeksą prieš aliaso perjungimą (E2). Du šaltiniai reikštų, kad CI ir gamyba
+# kada nors nesutartų, kas yra „pakankamai gerai".
+_SPEC = yaml.safe_load(QUESTIONS_FILE.read_text(encoding="utf-8")) or {}
+MIN_HIT1 = float(_SPEC["min_hit1"])
+MIN_HIT2 = float(_SPEC["min_hit2"])
+MAX_SILENT = int(_SPEC["max_silent"])
 
 
 def _load() -> list[tuple[str, tuple[str, ...]]]:
     """[(klausimas, priimtini dokumentai)] — `or:` išvardina sąžiningai tinkančius kitus."""
-    raw = yaml.safe_load(QUESTIONS_FILE.read_text(encoding="utf-8")) or {}
     out: list[tuple[str, tuple[str, ...]]] = []
-    for source, asks in raw.items():
+    for source, asks in (_SPEC.get("documents") or {}).items():
         for ask in asks:
             if isinstance(ask, dict):
                 out.append((str(ask["ask"]), (source, *(ask.get("or") or ()))))
@@ -67,7 +66,7 @@ def test_the_question_set_is_big_enough():
 
 def test_every_document_has_questions():
     """Nauja žinia be klausimų yra žinia, kurios niekas neras."""
-    raw = yaml.safe_load(QUESTIONS_FILE.read_text(encoding="utf-8")) or {}
+    raw = _SPEC.get("documents") or {}
     documented = {doc["source"] for doc in kb.documents()}
     missing = sorted(documented - set(raw))
     assert missing == [], f"dokumentai be klausimų: {missing}"

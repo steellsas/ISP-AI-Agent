@@ -344,6 +344,11 @@ def startup() -> Knowledge:
     logger.info(
         f"knowledge loaded: {len(knowledge.packs)} fault packs, {len(knowledge.modules)} modules"
     )
+    # Kuri saugykla atsakys į žinių paiešką (RAG planas, E2): failai arba Qdrant indeksas. Čia, nes
+    # tai ta pati vieta, kur žinios patikrinamos — ir todėl bloga konfigūracija pasimato starte.
+    from adapters.retrieval import configure_from_env
+
+    logger.info(f"knowledge search: {configure_from_env()}")
     return knowledge
 
 
