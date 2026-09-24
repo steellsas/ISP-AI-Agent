@@ -1,8 +1,9 @@
 ---
-title: "Ryšys iki routerio veikia, interneto nėra — kliento pusė"
+title: Ryšys iki routerio veikia, interneto nėra — kliento pusė
 kind: troubleshooting
 problem: [internet_down]
-tags: [kliento, irenginys, telefonas, kompiuteris, wifi, kabelis]
+tags: [client_device, wifi, cable]
+keywords: [kliento, irenginys, telefonas, kompiuteris, wifi, kabelis]
 ---
 # Kliento pusės gedimas (ryšys iki routerio veikia, bet interneto nėra)
 

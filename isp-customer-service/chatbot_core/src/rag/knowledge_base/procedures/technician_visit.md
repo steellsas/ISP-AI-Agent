@@ -1,7 +1,8 @@
 ---
-title: "Techniko vizitas — kada siunčiam, per kiek laiko, kiek kainuoja"
+title: Techniko vizitas — kada siunčiam, per kiek laiko, kiek kainuoja
 kind: procedure
-tags: [meistras, technikas, vizitas, sla, laikas, kaina, registracija]
+tags: [technician, sla, ticket, price]
+keywords: [meistras, technikas, vizitas, sla, laikas, kaina, registracija]
 ---
 # Techniko vizitas - procedūra ir informacija
 

@@ -1,7 +1,8 @@
 ---
-title: "Dažniausi klientų klausimai"
+title: Dažniausi klientų klausimai
 kind: faq
-tags: [wifi, slaptazodis, greitis, router, tv, kaina, paslauga, lemputes, vardas]
+tags: [password, wifi, speed, price, subscription, tv_channels, lights]
+keywords: [wifi, slaptazodis, greitis, router, tv, kaina, paslauga, lemputes, vardas]
 ---
 # Dažniausiai užduodami klausimai (FAQ)
 

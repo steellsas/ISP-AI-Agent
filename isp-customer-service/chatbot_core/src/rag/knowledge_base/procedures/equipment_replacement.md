@@ -1,7 +1,8 @@
 ---
-title: "Įrangos keitimas — kada, kaip, kiek kainuoja"
+title: Įrangos keitimas — kada, kaip, kiek kainuoja
 kind: procedure
-tags: [keitimas, iranga, garantija, mokestis, grąžinimas, router]
+tags: [replacement, warranty, price, ticket]
+keywords: [keitimas, iranga, garantija, mokestis, grąžinimas, router]
 ---
 # Įrangos keitimas - procedūra
 

@@ -49,11 +49,50 @@ def validate() -> Knowledge:
     _check_adapters(knowledge)
     _check_cards()
     _check_equipment()
+    _check_knowledge_base()
     try:
         check_prompts()
     except PromptError as e:
         raise KnowledgeError([f"prompts: {e}"]) from e
     return knowledge
+
+
+def _check_knowledge_base() -> None:
+    """Kiekvienas žinių dokumentas prieš kontroliuojamą žodyną (RAG planas, E1).
+
+    Iki E1 `tags` buvo laisvai rašomi, ir žinių bazėje gyveno 91 tagas — tarp jų „lemputes" ir
+    „lemputė", „letas" ir „lėtas". Prie 17 dokumentų tai dar veikė, prie 40+ laisvi tagai kertasi,
+    o filtras yra vienintelis dalykas, kuris išlaiko tikslumą bazei augant. Todėl technikas
+    negali įrašyti tago, kurio nėra `_vocabulary.yaml`: programa sustoja dabar, o ne per skambutį.
+    """
+    import yaml
+
+    from ..knowledge_base import KB_DIR, documents
+
+    path = KB_DIR / "_vocabulary.yaml"
+    if not path.exists():  # pragma: no cover - žodynas keliauja su repozitorija
+        raise KnowledgeError([f"knowledge base: no controlled vocabulary at {path}"])
+    vocabulary = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    allowed = {
+        field: set(vocabulary.get(field) or ())
+        for field in ("kinds", "problems", "equipment", "tags")
+    }
+
+    errors: list[str] = []
+    for doc in documents():
+        at = f"knowledge base: {doc['source']}"
+        if doc["kind"] not in allowed["kinds"]:
+            errors.append(f"{at}: unknown kind '{doc['kind']}' (see _vocabulary.yaml)")
+        for field, key in (("tags", "tags"), ("problems", "problem"), ("equipment", "equipment")):
+            unknown = sorted(set(doc[key]) - allowed[field])
+            if unknown:
+                errors.append(f"{at}: {key} {unknown} not in _vocabulary.yaml")
+        if not doc["tags"]:
+            errors.append(f"{at}: no tags — no filter can reach it")
+        if not doc["keywords"]:
+            errors.append(f"{at}: no keywords — the caller's own words cannot reach it")
+    if errors:
+        raise KnowledgeError(errors)
 
 
 def _check_adapters(knowledge: Knowledge) -> None:

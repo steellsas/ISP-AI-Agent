@@ -92,11 +92,36 @@ def _kb_answer(state, rt) -> str:
     found = find(
         state.dialog.last_heard or "",
         equipment=equipment,
+        # ŠIO skambučio paslauga: `problem` buvo dokumentų antraštėse, bet filtras jo nenaudojo
+        # (E1). TV dokumentas neturi būti kandidatas interneto gedime — o neutralios žinios
+        # (įrangos instrukcija, procedūra, FAQ) praleidžiamos per bet kurį gedimą.
+        problem=_service_of(state),
         limit=2,
     )
     if not found:
         return ""
-    return " ".join(f"[{p.kind}: {p.title}] {p.text}" for p in found)
+    said = " ".join(f"[{p.kind}: {p.title}] {p.text}" for p in found)
+    if all(not p.sure for p in found):
+        # Spėjimas, ne atsakymas: agentas privalo pasakyti, kad nėra tikras, ir patikslinti.
+        # Iki E1 tokiu atveju būdavo grąžinama NIEKO, o modelis improvizuodavo.
+        return f"(NOT SURE this answers the question, say so and ask to rephrase) {said}"
+    return said
+
+
+def _service_of(state) -> str | None:
+    """Kurios paslaugos gedimą sprendžia šio skambučio kortelė (`internet`), arba None.
+
+    `case.fault` yra KORTELĖS vardas (`dhcp_silent`), ne problemos šeima — paduoti jį filtrui
+    reikštų išmesti visus gedimų dokumentus. Šeimą pasako kortelės `service`, o `any` reiškia
+    „netaikoma": tiketo būsena ar skolos žinia neturi savo problemų šeimos.
+    """
+    if not state.case.fault:
+        return None
+    from ..contract import cards as catalog
+
+    card = catalog.cards().get(state.case.fault)
+    service = getattr(card, "service", None)
+    return service if service and service != "any" else None
 
 
 def _mark_written_step_said(state) -> None:
@@ -130,6 +155,14 @@ def _asked_how(state, rt) -> list[str]:
             "THE CALLER ASKED HOW: we have no written answer for it. Say honestly that you "
             "cannot advise on that, promise nothing, invent nothing (no registration, no "
             "prices, no deadlines), and return to what the engine is waiting for."
+        ]
+    if said.startswith("(NOT SURE"):
+        # Spėjimas nėra atsakymas į „kaip…": žingsnių sakyti negalima, nes gali būti ne tos
+        # įrangos ar ne to dalyko. Todėl patikslinam, o ne skaitom (E1, trys lygiai).
+        return [
+            "THE CALLER ASKED HOW: the written knowledge we found may not be about their "
+            "question, so do NOT read steps from it. Say in one sentence that you are not sure "
+            f"you understood, ask them to say it in other words, and invent nothing. {said}"
         ]
     return [
         "THE CALLER ASKED HOW: answer in ONE or TWO sentences using ONLY this written "

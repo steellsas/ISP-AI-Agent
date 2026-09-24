@@ -1,9 +1,11 @@
 ---
-title: "Routeris po gamyklinio atstatymo — WAN nustatymas į DHCP"
+title: Routeris po gamyklinio atstatymo — WAN nustatymas į DHCP
 kind: howto
 equipment: [tplink]
 problem: [internet_down]
-tags: [reset, gamyklinis, factory, konfiguravimas, konfigūruoti, wan, dhcp, nustatymai, admin, 192.168.0.1, slaptazodis]
+tags: [factory_reset, config, wan, dhcp, admin_panel, password, wifi]
+keywords: [reset, gamyklinis, factory, konfiguravimas, konfigūruoti, wan, dhcp, nustatymai, admin, 192.168.0.1,
+  slaptazodis]
 ---
 # Po Factory Reset neveikia internetas - DHCP nustatymas
 

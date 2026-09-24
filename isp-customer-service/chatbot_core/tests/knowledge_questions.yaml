@@ -1,0 +1,119 @@
+# Atgaminimo rinkinys: kliento žodžiai -> dokumentas, kuris privalo atsakyti.
+#
+# Kam tai: paieškos kokybė yra vienintelis dalykas, kurio negalima patikrinti „pažiūrėjus".
+# Gyvas skambutis 2026-09-23 parodė, kad į „kaip pakeisti wifi slaptažodį" agentas atsakė
+# „užregistruosiu jūsų klausimą", nors instrukcija buvo faile. Šis rinkinys yra arbitras:
+# kiekvienas paieškos pakeitimas matuojamas prieš jį, o ne prieš nuojautą.
+#
+# TAISYKLĖ: kiekvienas NAUJAS dokumentas atkeliauja su bent 2 klausimais. Testas to reikalauja,
+# tad rinkinys auga kartu su žinių baze (RAG_PLANAS.md, E1).
+#
+# Klausimai rašomi KLIENTO žodžiais, ne dokumento žodžiais — būtent parafrazės yra sunkioji dalis.
+# Kur klausimas sąžiningai tinka dviem dokumentams, `or:` išvardina kitus priimtinus.
+
+equipment/router_tplink.md:
+  - ką reiškia oranžinė lemputė ant routerio
+  - kokios spalvos turi degti ant TP-Link
+  - kiek lempučių turi būti užsidegusių, kad viskas gerai
+  - ask: kur ant routerio yra tas mažas mygtukas skylutėje
+    or: [troubleshooting/internet_factory_reset_dhcp.md]
+
+equipment/tv_box.md:
+  - kaip prijungti priedėlį prie televizoriaus
+  - kuriuo kabeliu priedėlis jungiamas prie televizoriaus
+  - pultelis neveikia, ką daryti
+  - ask: priedėlis neįsijungia, ką patikrinti
+    or: [troubleshooting/tv_no_signal.md]
+
+faq/common_questions.md:
+  - koks mano mokestis per mėnesį
+  - kiek kainuoja mėnesinis planas
+  - ask: kaip pakeisti wifi slaptažodį
+    or: [troubleshooting/wifi_problems.md]
+  - kokį greitį turėčiau turėti pagal savo planą
+
+procedures/equipment_replacement.md:
+  - ar galiu gauti kitą dėžutę, sena sugedo
+  - ar keičiate sugedusią įrangą nemokamai
+  - kiek kainuos naujas routeris, jei senas neveikia
+  - ką daryti su sena įranga, kai gaunu naują
+
+procedures/technician_visit.md:
+  - kiek kainuoja, jei atvažiuoja darbuotojas
+  - per kiek laiko atvyksta specialistas
+  - ar meistras gali atvykti vakare po darbo
+  - ar reikia būti namie, kai atvyks technikas
+
+troubleshooting/internet_crc_kabelis.md:
+  - internetas dingsta ir vėl atsiranda kas kelias minutes
+  - ryšys vis nutrūksta po kelių minučių
+  - vakarais internetas nuolat kapoja
+  - žaidžiant internetas trumpam iškrenta
+
+troubleshooting/internet_factory_reset_dhcp.md:
+  - paspaudžiau tą skylutę su adata ir nebėra interneto
+  - atstačiau viską į pradinę būklę ir dabar nieko nėra
+  - kaip iš naujo sukonfigūruoti routerį
+  - kokį prisijungimo tipą reikia nustatyti routeryje
+
+troubleshooting/internet_linija_nutrukusi.md:
+  - kaimynai irgi sako, kad pas juos neveikia
+  - visame name neveikia, ne tik man
+  - laiptinėje kažkas kasė ir dabar nėra interneto
+  - ar pas jus yra avarija mūsų rajone
+
+troubleshooting/internet_mires_routeris_tiltas.md:
+  - dėžutė visai tamsi, nė viena lemputė nešviečia
+  - routeris nekaukia, nė vienos šviesos nesimato
+  - įjungiu į rozetę, o dėžutė visiškai nereaguoja
+  - ask: ar galiu kompiuterį jungti tiesiai į kabelį, kol routeris neveikia
+    or: [troubleshooting/internet_sugedes_routeris_tiltas.md]
+
+troubleshooting/internet_no_connection.md:
+  - visiškai neveikia internetas nuo ryto
+  - nuo vakar dienos visiškai nėra interneto
+  - nuo ko pradėti, jei visai nėra interneto
+  - internetas neveikia nei telefone, nei kompiuteryje
+
+troubleshooting/internet_pakeistas_routeris_mac.md:
+  - nusipirkau naują dėžutę parduotuvėje, ar ji veiks
+  - pasiėmiau routerį iš draugo, ar toks veiks
+  - pakeičiau routerį ir internetas nebeveikia
+  - į kurį lizdą jungti jūsų kabelį naujame routeryje
+
+troubleshooting/internet_pakibes_routeris.md:
+  - routeris užstrigo, ką daryti
+  - įranga nereaguoja, gal reikia perkrauti
+  - ar padės, jei išjungsiu routerį iš elektros
+  - ask: lemputės dega, bet interneto nėra
+    or: [troubleshooting/internet_no_connection.md, troubleshooting/kliento_puse_internetas.md]
+
+troubleshooting/internet_slow.md:
+  - filmas kraunasi labai ilgai, viskas vėluoja
+  - puslapiai atsidaro labai iš lėto
+  - moku už šimtą, o gaunu dešimt
+  - kaip pamatuoti savo greitį
+
+troubleshooting/internet_sugedes_routeris_tiltas.md:
+  - ar galiu pats įsistatyti savo routerį, kol taisysit
+  - kol atvyks meistras, ar galiu naudoti savo įrangą
+  - turiu savo routerį, ar galiu jį naudoti
+  - ar galima laikinai jungti kompiuterį be routerio
+
+troubleshooting/kliento_puse_internetas.md:
+  - kompiuteriu veikia, o per wifi ne
+  - planšetė neturi interneto, o kiti įrenginiai turi
+  - tik viename telefone neveikia internetas
+  - per kabelį veikia, o belaidžiu ne
+
+troubleshooting/tv_no_signal.md:
+  - vaizdas stringa ir kapoja per televizorių
+  - televizorius rodo juodą ekraną
+  - nėra kanalų, rašo nėra signalo
+  - vaizdas užšąla per televiziją
+
+troubleshooting/wifi_problems.md:
+  - kaip man pakeisti belaidžio tinklo kodą
+  - telefonas nemato namų tinklo
+  - negaliu prisijungti prie interneto telefone, prašo raktažodžio
+  - kur rasti savo tinklo pavadinimą

@@ -1,9 +1,10 @@
 ---
-title: "TV neveikia — nėra signalo, nėra kanalų, prasta kokybė"
+title: TV neveikia — nėra signalo, nėra kanalų, prasta kokybė
 kind: troubleshooting
 equipment: [tv_box]
 problem: [tv]
-tags: [tv, signalas, kanalai, priedelis, hdmi, vaizdas, uzsala]
+tags: [no_signal, tv_channels, frozen_picture, hdmi, remote]
+keywords: [tv, signalas, kanalai, priedelis, hdmi, vaizdas, uzsala]
 ---
 # TV neveikia / nėra signalo - diagnostika ir sprendimas
 

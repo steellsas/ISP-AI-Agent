@@ -1,8 +1,9 @@
 ---
-title: "Internetas neveikia — bendra diagnostika"
+title: Internetas neveikia — bendra diagnostika
 kind: troubleshooting
 problem: [internet_down]
-tags: [internetas, neveikia, diagnostika, perkrovimas, laidas]
+tags: [reboot, cable, lights, client_device]
+keywords: [internetas, neveikia, diagnostika, perkrovimas, laidas]
 ---
 # Internetas neveikia - diagnostika ir sprendimas
 

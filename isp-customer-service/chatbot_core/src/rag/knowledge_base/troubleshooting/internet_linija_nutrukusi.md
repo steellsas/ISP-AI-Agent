@@ -1,8 +1,9 @@
 ---
-title: "Nėra interneto — nutrūkęs ryšys iki buto"
+title: Nėra interneto — nutrūkęs ryšys iki buto
 kind: troubleshooting
 problem: [internet_down]
-tags: [linija, portas, down, kabelis, laiptine, kaimynai]
+tags: [line, outage, neighbours, cable, ticket]
+keywords: [linija, portas, down, kabelis, laiptine, kaimynai]
 ---
 # Nėra interneto — porto ryšys nutrūkęs, kaimynai veikia (kabelis iki buto)
 

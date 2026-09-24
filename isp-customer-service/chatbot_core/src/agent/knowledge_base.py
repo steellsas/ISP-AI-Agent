@@ -27,7 +27,9 @@ atsakymas būtų patikrinamas, o ne „modelis taip pasakė".
 from __future__ import annotations
 
 import logging
+import math
 import re
+import unicodedata
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -53,6 +55,9 @@ class Passage:
     tags: tuple[str, ...] = ()
     equipment: tuple[str, ...] = ()
     score: float = 0.0
+    # Ar radinys pakankamai tvirtas, kad būtų sakomas kaip atsakymas. `False` reiškia „geriausia,
+    # ką turiu, bet nesu tikras" — agentas tada patikslina, o ne tyli (E1, radinys AK).
+    sure: bool = True
 
     @property
     def cite(self) -> str:
@@ -100,7 +105,10 @@ def documents() -> tuple[dict[str, Any], ...]:
                 "title": title,
                 # Be antraštės rūšis spėjama iš katalogo — senieji dokumentai neiškrenta.
                 "kind": str(head.get("kind") or _kind_from_path(rel)),
+                # RAKTAS: kontroliuojamas angliškas sąrašas — pagal jį filtruojama (E1).
                 "tags": _as_tuple(head.get("tags")),
+                # PAVIRŠIUS: lietuviški žodžiai, kuriais klientas šneka — pagal juos rikiuojama.
+                "keywords": _as_tuple(head.get("keywords")),
                 "equipment": _as_tuple(head.get("equipment")),
                 "problem": _as_tuple(head.get("problem")),
                 "body": body,
@@ -111,6 +119,7 @@ def documents() -> tuple[dict[str, Any], ...]:
 
 def reload() -> None:
     documents.cache_clear()
+    _idf.cache_clear()
 
 
 def _first_heading(body: str) -> str | None:
@@ -142,15 +151,42 @@ def _sections(doc: dict[str, Any]) -> list[tuple[str, str]]:
     return parts or [(doc["title"], doc["body"].strip())]
 
 
-def _matches(doc: dict[str, Any], kind: str | None, tags, equipment: str | None) -> bool:
+def _matches(
+    doc: dict[str, Any],
+    kind: str | None,
+    tags,
+    equipment: str | None,
+    problem: str | None = None,
+) -> bool:
     """Deterministinis filtras. Įrangos neatitikimas — griežtas: TP-Link instrukcija klientui
-    su ONT dėžute neturi būti net kandidatė."""
+    su ONT dėžute neturi būti net kandidatė.
+
+    `problem` yra šio skambučio gedimas (`internet_down`, `tv`, …). Iki E1 šis laukas buvo
+    antraštėse, bet filtras jo nenaudojo — o būtent jis yra pigiausias tikslumo šaltinis, ir jo
+    vertė auga su žinių bazės ĮVAIROVE. Neutralūs dokumentai (`problem` tuščias — įrangos
+    instrukcija, procedūra, FAQ) praleidžiami VISADA: klientas gali klausti apie lemputę ar
+    meistro kainą interneto gedimo viduryje.
+    """
     if kind and doc["kind"] != kind:
         return False
     if equipment and doc["equipment"] and equipment.lower() not in doc["equipment"]:
         return False
+    if problem and doc["problem"] and not _same_problem(problem, doc["problem"]):
+        return False
     wanted = _as_tuple(tags)
     return not wanted or bool(set(wanted) & set(doc["tags"]))
+
+
+def _same_problem(asked: str, declared: tuple[str, ...]) -> bool:
+    """Ar dokumentas apie TĄ patį, apie ką skambutis.
+
+    `asked` gali būti tiksli problema (`internet_down`) arba ŠEIMA (`internet`) — kortelės pasako
+    paslaugą (`service: internet`), o dokumentai — tikslią problemą (`internet_down`,
+    `internet_slow`). Šeima atitinka abi, nes klientas, kurio internetas neveikia, gali paklausti ir
+    apie greitį; bet TV dokumentas į interneto gedimą nepakliūva.
+    """
+    asked = asked.lower()
+    return any(p == asked or p.startswith(f"{asked}_") for p in declared)
 
 
 def _fold(text: str) -> str:
@@ -159,25 +195,151 @@ def _fold(text: str) -> str:
     return lang().fold(text)
 
 
+# Markdown ženklai, kurių TTS negali perskaityti natūraliai: pabrauktas tekstas, sąrašo brūkšniai,
+# antraščių grotelės, citatos, kodo kabutės, lentelių stulpeliai.
+_EMPHASIS = re.compile(r"\*\*|__|`|\*")
+_BULLET = re.compile(r"^\s*(?:[-*+•]|>+|#+)\s*")
+_TABLE_RULE = re.compile(r"^\s*\|?[\s:|-]+\|[\s:|-]*$")
+_HORIZONTAL_RULE = re.compile(r"^\s*([-*_]){2,}\s*$")  # „---" yra skirtukas, ne tekstas
+
+
+def _plain(text: str) -> str:
+    """Viena eilutė be markdown ir be simbolių, kurių TTS neperskaito (✅, ⚠️, ❌, →)."""
+    line = _EMPHASIS.sub("", _BULLET.sub("", text))
+    line = "".join(ch for ch in line if unicodedata.category(ch) != "So")
+    return re.sub(r"\s{2,}", " ", line).strip()
+
+
+def _table_sentences(rows: list[list[str]]) -> list[str]:
+    """Lentelė sakiniais, kur stulpelio antraštė lieka prie savo reikšmės.
+
+    Pakeisti `|` tarpu būtų pigiausia ir blogiausia: „Lemputė Žalia Raudona Nedega. POWER
+    Įjungtas veikia Išjungtas" nebeturi jokio ryšio tarp lemputės ir spalvos. Todėl kiekviena
+    eilutė tampa „POWER — Žalia: įjungtas, veikia; Nedega: išjungtas".
+    """
+    if len(rows) < 2:
+        return [_plain(" ".join(rows[0]))] if rows else []
+    head, *body = rows
+    out: list[str] = []
+    for row in body:
+        label = _plain(row[0])
+        pairs = [
+            f"{_plain(column)}: {_plain(value)}"
+            for column, value in zip(head[1:], row[1:], strict=False)
+            if _plain(value) not in ("", "-", "–", "—")
+        ]
+        if label and pairs:
+            out.append(f"{label} — " + "; ".join(pairs) + ".")
+        elif label:
+            out.append(f"{label}.")
+    return out
+
+
+def _speakable(text: str) -> str:
+    """Dalies tekstas, kurį galima PASAKYTI.
+
+    Iki E1 į modelio kontekstą keliaudavo žalias markdown: `- **POWER žalia** - routeris veikia`.
+    Geroji balso agentų praktika to neleidžia — žvaigždutės, sąrašo brūkšniai ir emoji yra rizika,
+    kad narratorius juos perskaitys arba suskaidys atsakymą į sąrašą. Prasmė nekeičiama: skaičiai,
+    adresai ir modelių pavadinimai lieka kaip buvo.
+    """
+    out: list[str] = []
+    rows: list[list[str]] = []
+    for raw in [*text.splitlines(), ""]:
+        if raw.lstrip().startswith("|"):
+            if not _TABLE_RULE.match(raw):
+                rows.append([cell for cell in raw.strip().strip("|").split("|")])
+            continue
+        if rows:
+            out.extend(_table_sentences(rows))
+            rows = []
+        if _HORIZONTAL_RULE.match(raw):
+            continue
+        line = _plain(raw)
+        if line:
+            out.append(line if line[-1] in ".!?;:," else f"{line}.")
+    return re.sub(r"\s{2,}", " ", " ".join(out)).strip()
+
+
 # Lietuvių kalba linksniuoja viską: „sukonfigūruoti" ir raktas „konfigūravimas" turi bendrą
-# šaknį ir nieko daugiau. Todėl lyginamos ŠAKNYS — pirmieji šeši ženklai be diakritikų.
-_STEM = 6
+# šaknį ir nieko daugiau. Todėl lyginamos ŠAKNYS — be diakritikų, be galūnės, pirmieji penki ženklai.
+#
+# Kodėl penki ir kodėl kerpame galūnę: išmatuota ant 68 klausimų rinkinio. Šešių ženklų šaknis be
+# galūnės kirpimo nesujungdavo „savo" su tagu „savas", „lėto" su „lėtas", „greitį" su „greitis" —
+# ir būtent tokios klaidos sudarė didžiąją dalį nerastų dokumentų. Penki ženklai su galūnės kirpimu
+# davė hit@2 57 % (buvo 54 %) ir, svarbiausia, TYLĄ NULIS: nebėra klausimo, į kurį paieška
+# negrąžintų nieko. Tai gramatika, ne žodžių sąrašas — todėl ji veikia ir tiems žodžiams, kurių
+# rinkinyje nėra (skirtingai nuo rašyto sinonimų žodyno, kuris ant nematytų klausimų davė nulį).
+_STEM = 5
+
+# Dažniausios lietuviškos galūnės, ilgesnės pirma. Formos jau be diakritikų, nes kerpama PO `fold`.
+_ENDINGS = (
+    "iausias", "iausia", "imuose", "iuose", "uose", "ose", "ese", "yje", "oje", "uje", "eje",
+    "iais", "omis", "emis", "imis", "umis", "ams", "oms", "ems", "ims", "ais", "eis",
+    "ius", "aus", "ios", "ies", "imas", "ymas", "umas", "ai", "ei", "ui",
+    "as", "is", "ys", "us", "os", "es", "iu", "a", "e", "i", "o", "u", "s", "y",
+)  # fmt: skip
+
+
+def _stem(word: str) -> str:
+    """Vieno žodžio šaknis: nukertama galūnė, jei po jos lieka bent keturi ženklai."""
+    for ending in _ENDINGS:
+        if word.endswith(ending) and len(word) - len(ending) >= 4:
+            return word[: len(word) - len(ending)][:_STEM]
+    return word[:_STEM]
 
 
 def _stems(text: str) -> set[str]:
-    return {w[:_STEM] for w in re.split(r"\W+", _fold(text)) if len(w) > 3}
+    return {_stem(w) for w in re.split(r"\W+", _fold(text)) if len(w) > 3}
+
+
+def _surface(doc: dict[str, Any]) -> tuple[str, ...]:
+    """Žodžiai, kuriais dokumentą galima pašaukti: lietuviški `keywords`, angliški `tags`, įranga,
+    pavadinimas. Technikas juos parašė sąmoningai, todėl rikiuojant jie sveria tris kartus daugiau
+    už tekstą."""
+    return doc["keywords"] + doc["tags"] + doc["equipment"] + (doc["title"],)
+
+
+@lru_cache(maxsize=1)
+def _idf() -> dict[str, float]:
+    """Kiek šaknis sveria: reta sveria daugiau už dažną.
+
+    Iki E1 visos šaknys buvo lygios, tad „internetas" (yra dešimtyje dokumentų) svėrė tiek pat,
+    kiek „crc" (viename). Todėl klausimas „internetas dingsta kas kelias minutes" atsidurdavo
+    prie bendrųjų interneto dokumentų, o ne prie laido klaidų. Ir kuo bazė didesnė, tuo ši bėda
+    stipresnė — išmatuota: kas padvigubinimas leksinei paieškai kainuoja ~10 p.p. hit@2.
+    """
+    docs = documents()
+    total = len(docs) or 1
+    seen_in: dict[str, int] = {}
+    for doc in docs:
+        stems = _stems(" ".join(_surface(doc) + doc["problem"]))
+        stems |= _stems(doc["body"])
+        for stem in stems:
+            seen_in[stem] = seen_in.get(stem, 0) + 1
+    return {stem: math.log(1 + total / count) for stem, count in seen_in.items()}
 
 
 def _keyword_score(query: str, doc: dict[str, Any], section: tuple[str, str]) -> float:
     """Rikiavimas pagal šaknų sutapimą: raktai sveria tris kartus daugiau už tekstą, nes juos
-    technikas parašė sąmoningai („kad agentas surastų tiksliai to ko reikia")."""
-    asked = _stems(query)
+    technikas parašė sąmoningai („kad agentas surastų tiksliai to ko reikia"), o kiekviena šaknis
+    dar sveriama savo IDF — retas žodis pasako daugiau nei dažnas.
+
+    Šaknys, kurių nėra nė viename dokumente, sveriamos DIDŽIAUSIU svoriu — tai tyčia. „Kokia bus
+    rytoj oro temperatūra Šiauliuose" yra klausimas ne mums: vienintelis pažįstamas žodis jame yra
+    „kokia", ir jei nežinomų nebūtų vardintojo dalyje, tas vienas sutapimas duotų 0,33 balo ir
+    agentas atsakinėtų apie įrangos keitimą. Su jomis balas subyra iki nulio, ir agentas sąžiningai
+    nieko neranda.
+    """
+    weight = _idf()
+    unknown = math.log(1 + (len(documents()) or 1))  # tokio svorio būtų vieno dokumento žodis
+    asked = {stem: weight.get(stem, unknown) for stem in _stems(query)}
     if not asked:
         return 0.0
-    tagged = _stems(" ".join(doc["tags"] + doc["equipment"] + (doc["title"],)))
+    tagged = _stems(" ".join(_surface(doc)))
     body = _stems(f"{section[0]} {section[1]}")
-    hits = len(asked & tagged) * 3 + len(asked & body)
-    return hits / (len(asked) * 3)
+    hits = sum(w * 3 if stem in tagged else w if stem in body else 0.0 for stem, w in asked.items())
+    return hits / (sum(asked.values()) * 3)
 
 
 def find(
@@ -186,38 +348,56 @@ def find(
     kind: str | None = None,
     tags: Any = None,
     equipment: str | None = None,
+    problem: str | None = None,
     limit: int = 2,
     floor: float = 0.15,
+    hint: float = 0.08,
 ) -> list[Passage]:
     """Žinios, kurių agentui reikia ŠIAM klausimui — filtras, tada rikiavimas.
 
     `kind` yra tas „tagas", kuris pasako, KOKIOS rūšies žinios prašoma: `equipment` (ką reiškia
     lemputė, kur mygtukas), `howto` (kaip sukonfigūruoti), `procedure`, `faq`. Tuščias `kind`
-    reiškia „bet kuri rūšis" — tada rikiuoja tik šaknų sutapimas.
+    reiškia „bet kuri rūšis" — tada rikiuoja tik šaknų sutapimas. `problem` yra šio skambučio
+    gedimas; neutralūs dokumentai per jį praeina visada.
+
+    TYLOS NEBĖRA. Iki E1 žemiau `floor` likęs radinys buvo išmetamas, ir agentas gaudavo NIEKO —
+    o tada modelis improvizuodavo („užregistruosiu jūsų klausimą", gyvai 2026-09-23). Iš 68 testo
+    klausimų taip nutildyti buvo 6, nors dokumentas kiekvienam jų yra. Dabar trys lygiai:
+
+        balas >= floor   tvirtas atsakymas (`sure=True`)
+        balas >= hint    VIENAS geriausias spėjimas (`sure=False`) — agentas pasako ir tai, kad
+                         nėra tikras, užuot tylėjęs arba improvizavęs
+        balas <  hint    nieko: sąžiningas „nežinau"
+
+    Ko šis rikiuotojas NEGALI: atskirti, ar klausimas apskritai mūsų srities. „Kiek kainuoja
+    skrydis į Londoną" gauna 0,39, nes „kiek kainuoja" tikrai sutampa su kainų žinia. Temos vartai
+    yra intencijų sluoksnis, ne balas — ir taip turi būti, nes balas tam neturi informacijos.
     """
     if not query or not query.strip():
         return []
     scored: list[Passage] = []
     for doc in documents():
-        if not _matches(doc, kind, tags, equipment):
+        if not _matches(doc, kind, tags, equipment, problem):
             continue
         for section in _sections(doc):
             score = _keyword_score(query, doc, section)
-            if score < floor:
+            if score < hint:
                 continue
             scored.append(
                 Passage(
                     title=section[0] or doc["title"],
                     kind=doc["kind"],
-                    text=section[1][:700],
+                    text=_speakable(section[1])[:700],
                     source=doc["source"],
                     tags=doc["tags"],
                     equipment=doc["equipment"],
                     score=round(score, 3),
+                    sure=score >= floor,
                 )
             )
     scored.sort(key=lambda p: (-p.score, p.source))
-    return scored[:limit]
+    sure = [p for p in scored if p.sure]
+    return sure[:limit] if sure else scored[:1]
 
 
 # --- algoritmas žingsniais --------------------------------------------------------------
@@ -241,8 +421,7 @@ def steps(source: str) -> list[str]:
     for title, text in _sections(doc):
         if not _STEP_HEADING.match(title):
             continue
-        body = " ".join(line.strip(" -•\t") for line in text.splitlines() if line.strip())
-        out.append(f"{title}. {body}".strip())
+        out.append(f"{title}. {_speakable(text)}".strip())
     return out
 
 

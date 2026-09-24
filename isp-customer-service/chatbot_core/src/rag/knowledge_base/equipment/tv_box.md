@@ -1,8 +1,9 @@
 ---
-title: "TV priedėlis — lemputės, jungtys, pultelis"
+title: TV priedėlis — lemputės, jungtys, pultelis
 kind: equipment
 equipment: [tv_box]
-tags: [tv, priedelis, priedėlis, lemputes, indikatoriai, hdmi, pultelis, jungtys, set-top]
+tags: [lights, ports, remote, hdmi, tv_channels, model]
+keywords: [tv, priedelis, lemputes, indikatoriai, hdmi, pultelis, jungtys, set-top]
 ---
 # TV Priedėlis (Set-Top Box) - Specifikacijos ir valdymas
 

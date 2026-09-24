@@ -100,9 +100,31 @@ nespėjama: universalu tik „žalia = ryšys" ir „dega = maitinimas yra". Val
 paties skaitytuvo**, kokias spalvas jis moka, tad į katalogą nebeįrašysi spalvos, kurios
 agentas neišgirstų.
 
-**Liko 4b bangoje:** embedding'ai kaip antras rikiuotojas (parafrazėms, su išmatuota
-latencija) ir TV / lėto interneto kortelės — abu atidėti Andriaus sprendimu, kol veikia
-esami demo scenarijai.
+**Liko 4b bangoje:** TV / lėto interneto kortelės — atidėtos Andriaus sprendimu, kol veikia
+esami demo scenarijai. Embedding'ai peraugo į atskirą planą (žr. žemiau).
+
+
+## RAG E1 — paieškos pagrindas be DB ir be modelio (šaka `fix/wave-4a`, 2026-09-24)
+
+Sprendimas ir matavimai: [RAG_SPRENDIMAI.md](RAG_SPRENDIMAI.md) · planas: [RAG_PLANAS.md](RAG_PLANAS.md).
+E1 tikslas — viskas, ką galima gauti **be vektorinės DB ir be embedding'ų**, plius arbitras, kuriuo
+matuojami visi tolesni etapai.
+
+| Kas buvo | Kodėl blogai | Kaip dabar |
+|---|---|---|
+| paieškos kokybės niekas nematavo | „pagerinom paiešką" buvo nuomonė | `tests/knowledge_questions.yaml` — **68 klausimai kliento žodžiais**, po 2–4 kiekvienam dokumentui; `test_knowledge_recall.py` matuoja `hit@1`/`hit@2` ir neleidžia regresuoti |
+| visos šaknys svėrė vienodai | „internetas" (10 dokumentų) svėrė tiek pat, kiek „crc" (viename) | **IDF svoriai**: retas žodis pasako daugiau. Nežinomi žodžiai sveriami DIDŽIAUSIU svoriu, todėl „kokia bus rytoj oro temperatūra" nebegauna atsakymo apie įrangos keitimą |
+| šaknis = 6 ženklai be galūnės kirpimo | „savo" nesutapdavo su „savas", „lėto" su „lėtas" | **5 ženklai + lietuviškų galūnių kirpimas** — gramatika, ne žodžių sąrašas, tad veikia ir nematytiems žodžiams |
+| `problem` buvo antraštėse, bet filtras jo NENAUDOJO | TV dokumentas galėjo atsirasti interneto gedime | filtras pagal kortelės `service` (`internet` → `internet_*`); neutralūs dokumentai praleidžiami per bet kurį gedimą |
+| žemas balas = TYLA | 6 klausimai iš 68 gaudavo NIEKO, nors dokumentas yra — ir modelis improvizavo | **trys lygiai**: tvirtas atsakymas · pažymėtas spėjimas („nesu tikras" + patikslinimas) · sąžiningas nieko |
+| į kontekstą keliavo žalias markdown | `- **POWER žalia** - routeris veikia`, emoji, lentelės | nuvaloma prieš padavimą; lentelė tampa sakiniais, kur stulpelio antraštė lieka prie reikšmės |
+| 91 laisvai rašomas lietuviškas tagas | `lemputes` ir `lemputė`, `letas` ir `lėtas` — tas pats dviem rašybomis; prie 40+ dokumentų tagai kertasi | `tags` = **kontroliuojamas angliškas raktas** (`_vocabulary.yaml`, tikrinamas starte), `keywords` = lietuviškas paviršius rikiavimui |
+| `RetrieverPort` buvo deklaruotas, bet nenaudojamas | E2 (Qdrant) būtų buvęs agento perrašymas | `adapters/retrieval/LexicalRetriever` — portas su testu, kad per jį grąžinami TIE PATYS dokumentai; jis ir liks atsarginiu keliu, kai Qdrant neatsakys |
+
+**Išmatuota (68 klausimai):** `hit@1` 46 % → **53 %**, `hit@2` 54 % → **56 %**, tyla **6 → 1**.
+Likęs vienas — „moku už šimtą, o gaunu dešimt" — neturi nė vienos bendros šaknies su jokiu
+dokumentu. Leksinė paieška to principiškai negali surasti: tai ir yra išmatuotas argumentas už E3
+(embedding'ai), o ne nuojauta.
 
 
 **Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
