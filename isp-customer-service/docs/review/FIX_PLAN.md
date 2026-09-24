@@ -170,6 +170,44 @@ kolekcija liko atstatymui.
 **Liko E4:** TLS, bind gamyboje, metrikos ir aliarmai, snapshot'ai.
 
 
+## RAG E3 — embedding'ai ir hibridas (šaka `fix/wave-4a`, 2026-09-24)
+
+| Kas atsirado | Kam |
+|---|---|
+| `adapters/retrieval/embed.py` | `e5-small` vietiniu singleton'u arba per TEI servisą (`EMBED_URL`); pakaitinimas starte fone; **ribotas laukimas** (150 ms) ir ribotas vienalaikiškumas |
+| `dense` vektoriai kolekcijoje | ta pati kolekcija, du vektoriai; `model` payload'e — nesutampa, neaptarnaujam |
+| RRF sujungimas Qdrant pusėje | plati atranka iš abiejų pusių, rangų sujungimas serveryje |
+| TEI servisas `docker-compose.yml` | `--profile embed`; gamybinė forma: viena modelio kopija visiems worker'iams |
+
+**Rezultatas:** hit@1 53 % → **54 %**, hit@2 56 % → **60 %**, paieškos p95 **44,9 ms** (SLO < 50 ms).
+
+**Plano tikslas buvo hit@2 ≥ 70 % — nepasiektas, ir priežastis išmatuota:** semantinė pusė mūsų
+tekstuose beveik neatskiria. Teisingų radinių kosinusas 0,780–0,929, klaidingų 0,000–0,916, o ne
+mūsų srities klausimai („automobilio remontas" 0,847) guli aukščiau nei tikri („puslapiai atsidaro
+labai iš lėto" 0,842). Todėl:
+
+- **patikimumą sprendžia tik leksinė skalė** — su semantine riba 0,84, 0,90 ar visai be jos
+  rezultatas tas pats, o „tvirtų" atsakymų tikslumas 60 % prieš 59 %;
+- **semantinė pusė naudinga tik rikiavimui** — ir ten nauda tikra: +4 p.p. hit@2 per RRF (patikrintos
+  keturios tvarkos; rikiuojant leksiniu balu nauda išnyksta);
+- **`dense` vektorių atsakyme nebeprašom** — atsakymas ~90 % lengvesnis, p95 51 ms → 44,9 ms.
+
+**Kiti modeliai:** `e5-base` duotų +5 p.p. (65 %), bet 47 ms vien modeliui — už biudžeto. `bge-m3`
+156 ms, t. y. daugiau nei visas laukimo limitas, ir hit@2 56 %.
+
+**Rasta tikra klaida:** pirmoji versija praleisdavo modelio išimtį į skambutį — svarbiausia E3
+savybė neveikė, kol testas jos nepareikalavo. Ir be pakaitinimo starte pirmosios užklausos
+nesulaukdavo modelio (~12 s uždėjimas prieš 150 ms ribą), tad agentas tyliai dirbdavo be semantinės
+pusės.
+
+**TEI patikrintas tikrai:** jo ir vietinio modelio vektorių kosinusas **1,000000**, abu normalizuoti,
+mediana 17,2 ms prieš 23,0 ms vietinio.
+
+**Ką siūlau toliau (ne E4):** užklausos raktas iš LLM (`kind`/`problem`/`equipment` iš uždaro sąrašo)
+— nulis naujų priklausomybių ir vienintelis komponentas, kuris tikrai supranta parafrazes; ir daugiau
+klausimų dokumentui, nes riba yra pačiuose dokumentuose, ne rikiuotojuje.
+
+
 **Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
 lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
 vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).

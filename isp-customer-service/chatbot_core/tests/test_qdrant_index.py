@@ -12,6 +12,8 @@ nėra).
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import pytest
 from adapters.retrieval import KnowledgeIndex, LexicalRetriever, QdrantRetriever, sparse
 from adapters.retrieval import questions as recall
@@ -22,14 +24,34 @@ from ports.retrieval import RetrieverPort
 QUESTION = "kaip sukonfigūruoti routerį po gamyklinio atstatymo"
 
 
+@contextmanager
+def no_embeddings():
+    """Blokas be semantinės pusės — taip tikrinama E2 sutartis (tik leksinė paieška)."""
+    import os
+
+    from adapters.retrieval import embed
+
+    previous = os.environ.get("EMBED")
+    os.environ["EMBED"] = "off"
+    embed.use(None)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("EMBED", None)
+        else:
+            os.environ["EMBED"] = previous
+        embed.use(None)
+
+
 @pytest.fixture(scope="module")
 def index():
-    """Indeksas vietiniame Qdrant: pastatomas kartą visam moduliui."""
+    """Indeksas BE `dense` vektorių: E2 būklė, kurią turi atkartoti ir failai."""
     from qdrant_client import QdrantClient
 
-    client = QdrantClient(":memory:")
-    built = KnowledgeIndex(client)
-    built.rebuild()
+    with no_embeddings():
+        built = KnowledgeIndex(QdrantClient(":memory:"))
+        built.rebuild()
     return built
 
 
@@ -59,9 +81,10 @@ def test_the_sparse_dot_product_is_the_lexical_score():
 
 def test_the_same_recall_through_qdrant_as_through_files(search):
     """Tos pačios ribos, tas pats rinkinys — indeksas privalo būti ne blogesnis už failus."""
-    ok, seen = recall.passes(search)
+    with no_embeddings():
+        ok, seen = recall.passes(search)
+        _, files = recall.passes(LexicalRetriever())
     assert ok, str(seen)
-    _, files = recall.passes(LexicalRetriever())
     # Abi realizacijos atsako vienodai; leidžiam vieno klausimo skirtumą, nes Qdrant *sparse*
     # svorius laiko float32, tad tikslią balų lygybę (pasitaiko) suskaido kitaip.
     assert abs(seen.hit2 - files.hit2) <= 1.5 / seen.total
@@ -79,7 +102,8 @@ def test_almost_every_question_gets_the_same_documents(search):
         return seen
 
     asked = recall.questions()
-    same = sum(sources(search, q) == sources(files, q) for q, _ in asked)
+    with no_embeddings():
+        same = sum(sources(search, q) == sources(files, q) for q, _ in asked)
     assert same >= 0.9 * len(asked), f"vienodai tik {same}/{len(asked)}"
 
 
@@ -211,9 +235,10 @@ def test_a_refusing_canary_leaves_the_alias_alone(index):
 
 def test_a_rebuild_switches_the_alias_and_keeps_the_previous(index):
     before = index.current()
-    ok, _ = recall.passes(QdrantRetriever(index.qdrant, before))
-    assert ok
-    index.rebuild(canary=lambda c: recall.passes(QdrantRetriever(index.qdrant, c))[0])
+    with no_embeddings():  # E2 sutartis: aliasai ir kanarėlė nepriklauso nuo modelio
+        ok, _ = recall.passes(QdrantRetriever(index.qdrant, before))
+        assert ok
+        index.rebuild(canary=lambda c: recall.passes(QdrantRetriever(index.qdrant, c))[0])
     assert index.current() != before
     assert index.qdrant.collection_exists(before), "senoji kolekcija reikalinga atstatymui"
 
@@ -281,3 +306,114 @@ def test_the_agent_sees_the_same_passages_through_either_backend(index):
     assert [p.source for p in through_qdrant] == [p.source for p in through_files]
     assert all(p.sure for p in through_qdrant)
     assert all(p.text and p.kind and p.source for p in through_qdrant)
+
+
+# --- E3: hibridas ir jo nusileidimai ------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def hybrid():
+    """Indeksas SU `dense` vektoriais. Modelis kraunamas kartą visam moduliui."""
+    from adapters.retrieval import embed
+    from qdrant_client import QdrantClient
+
+    model = embed.embedder()
+    if model is None:
+        pytest.skip("embedding'ai išjungti (EMBED=off)")
+    # Pakaitinam SINCHRONIŠKAI: kitaip pirmosios užklausos nesulauktų modelio ir testai matuotų
+    # nusileidimą, o ne hibridą (gamyboje tai daroma fone, žr. `_warm_embeddings`).
+    model.warm()
+    built = KnowledgeIndex(QdrantClient(":memory:"))
+    built.rebuild()
+    return built
+
+
+def test_the_index_holds_both_sides(hybrid):
+    """Viena kolekcija, du vektoriai: leksinis ir semantinis."""
+    from adapters.retrieval.qdrant_store import DENSE_VECTOR, SPARSE_VECTOR
+
+    records, _ = hybrid.qdrant.scroll(hybrid.current(), limit=5, with_vectors=True)
+    assert records
+    for record in records:
+        assert SPARSE_VECTOR in record.vector
+        assert len(record.vector[DENSE_VECTOR]) == 384
+        assert record.payload["model"]
+
+
+def test_the_hybrid_is_not_worse_than_sparse_alone(hybrid):
+    """Hibridas turi pridėti, ne atimti — kitaip modelio nereikia."""
+    from adapters.retrieval import embed
+
+    search = QdrantRetriever(hybrid.qdrant, hybrid.alias)
+    with_model = recall.measure(search)
+    try:
+        embed.use(None)  # ta pati kolekcija, tik be semantinės pusės
+        import os
+
+        os.environ["EMBED"] = "off"
+        sparse_only = recall.measure(search)
+    finally:
+        os.environ.pop("EMBED", None)
+        embed.use(None)
+    assert with_model.hit2 >= sparse_only.hit2
+    assert with_model.silent <= sparse_only.silent
+
+
+def test_both_scores_are_reported(hybrid):
+    """Atsakymas pasako ir kalibruotą leksinį balą, ir saugyklos rangavimo balą (metrikoms)."""
+    for chunk in QdrantRetriever(hybrid.qdrant, hybrid.alias).retrieve(QUESTION, top_k=2):
+        assert 0.0 <= chunk["metadata"]["lexical"] <= 1.0
+        assert chunk["metadata"]["fused"] > 0
+
+
+def test_only_the_lexical_side_decides_confidence(hybrid):
+    """Išmatuota: kosinusas teisingų ir klaidingų radinių beveik nesiskiria (0,78–0,93 prieš
+    0,00–0,92), o ne mūsų srities klausimai guli toje pačioje zonoje — „automobilio remontas" 0,847.
+    Todėl semantinė pusė rikiuoja, bet patikimumo nesprendžia. Patikrinta, kad nieko neprarandam:
+    su semantine riba ir be jos rezultatas tas pats."""
+    from adapters.retrieval import qdrant_store as store
+
+    assert store._level(0.10, kb.FLOOR) == 1
+    assert store._level(0.90, kb.FLOOR) == 2
+    assert store._level(0.01, kb.FLOOR) == 0
+
+
+def test_a_dead_embedding_service_does_not_break_the_search(hybrid, monkeypatch):
+    """Svarbiausia E3 savybė: balsas negali laukti modelio.
+
+    Modelis nutyla — paieška vyksta leksine puse, kaip E2. Skambutis nenutrūksta ir atsakymas
+    nesugenda; tik parafrazių pagalba laikinai išnyksta.
+    """
+    from adapters.retrieval import embed
+
+    class Dead:
+        name = "dead"
+
+        def encode_query(self, text):
+            raise ConnectionError("embedding service is down")
+
+        def encode_passages(self, texts):
+            raise ConnectionError("embedding service is down")
+
+    search = QdrantRetriever(hybrid.qdrant, hybrid.alias)
+    monkeypatch.setattr(embed, "_shared", Dead())
+    found = search.retrieve(QUESTION, top_k=2)
+    assert found, "turėjo atsakyti vien leksine puse"
+    assert found[0]["metadata"]["source"] == "troubleshooting/internet_factory_reset_dhcp.md"
+    assert found[0]["metadata"]["lexical"] > 0
+
+
+def test_a_slow_model_is_not_waited_for(monkeypatch):
+    """`EMBED_TIMEOUT` yra riba LAUKIMUI: nesulaukę grąžinam None ir einam sparse puse."""
+    import time as clock
+
+    from adapters.retrieval import embed
+
+    slow = embed.Local()
+    monkeypatch.setattr(embed, "TIMEOUT", 0.05)
+    monkeypatch.setattr(
+        slow, "_loaded", lambda: type("M", (), {"encode": lambda *a, **k: clock.sleep(5)})()
+    )
+    started = clock.perf_counter()
+    assert slow.encode_query("kodėl neveikia internetas") is None
+    assert clock.perf_counter() - started < 1.0, "laukė ilgiau, nei leista"

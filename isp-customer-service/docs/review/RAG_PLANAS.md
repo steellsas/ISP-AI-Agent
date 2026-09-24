@@ -352,6 +352,8 @@ Kiekvienas etapas atskirai paleidžiamas, atskirai atšaukiamas, ir kiekvienas b
 | **Kas** | embeddings servisas (`e5-small`), `dense` vektoriai kolekcijoje, RRF sujungimas, timeout → sparse |
 | **Baigta, kai** | hit@2 ≥ **70 %** ant nematytų klausimų; p95 < 50 ms; embeddings serviso nužudymas **nenutraukia** skambučio (nusileidžia į sparse); kanarėlės testas įtrauktas į ingestiją |
 | **Rizika** | latencija ir atmintis. Mažinam: mažas modelis, vienas egzempliorius, ribota eilė, kietas timeout |
+| **PADARYTA 2026-09-24** | `adapters/retrieval/embed.py` (vietinis singleton + TEI servisas, pakaitinimas fone, ribotas laukimas ir vienalaikiškumas) · `dense` vektoriai kolekcijoje · RRF sujungimas Qdrant pusėje · TEI `docker compose --profile embed` · 6 nauji testai hibridui ir nusileidimams |
+| **Rezultatas** | hit@1 **54 %**, hit@2 **60 %** (E2: 53 % / 56 %) · p95 **44,9 ms**, mediana 29,3 ms · modelio netektis skambučio nenutraukia. **hit@2 ≥ 70 % NEPASIEKTA** — priežastis išmatuota, žr. 11 skyrių |
 
 ### E4 — mastas ir eksploatacija
 
@@ -495,3 +497,76 @@ TLS (be jo `api-key` keliauja atviru tekstu), bind į privatų interfeisą gamyb
 neprieinamas iš išorės, metrikos ir aliarmai (`drift`, kanarėlės rezultatas, nusileidimų dalis),
 snapshot'ai kaip kopijų dalis. `drift()` jau yra ir rodo, kuo indeksas skiriasi nuo failų — tai
 atsakymas į klausimą „ar indeksas šviežias", kurio v1 FAISS indeksas niekada neturėjo.
+
+---
+
+## 11. E3 rezultatai: kas pasiteisino ir kas ne (2026-09-24)
+
+### 11.1 Skaičiai
+
+| | E2 (tik leksinė) | **E3 (hibridas)** |
+|---|---|---|
+| hit@1 | 53 % | **54 %** |
+| hit@2 | 56 % | **60 %** |
+| tyla | 1 | 1 |
+| paieškos mediana | 11,7 ms | **29,3 ms** |
+| paieškos p95 | 26,2 ms | **44,9 ms** (SLO < 50 ms) |
+
+**Plano tikslas buvo hit@2 ≥ 70 %. Jis nepasiektas.** Priežastis ne įgyvendinime, o modelyje, ir ją
+galima parodyti skaičiais.
+
+### 11.2 Kodėl semantinė pusė pas mus silpna
+
+Kosinusai teisingiems ir klaidingiems radiniams beveik nesiskiria:
+
+```
+teisingi radiniai:      0,780 – 0,929   (mediana 0,872)
+klaidingi radiniai:     0,000 – 0,916   (mediana 0,861)
+NE MŪSŲ srities klausimai:
+  „automobilio remontas"        0,847
+  „ar turite laisvų darbo vietų" 0,841
+  tikras „puslapiai atsidaro labai iš lėto"  0,842   ← žemiau nei ne mūsų srities klausimai
+```
+
+Dense pusė beveik visur pirmu numeriu iškelia `faq/common_questions.md`. Tai reiškia, kad
+`e5-small` lietuvišką interneto paslaugų tekstą sumeta į labai ankštą kūgį, kur dalių skirtumai yra
+triukšmas. Iš to seka dvi išvados:
+
+1. **Kosinusas negali būti patikimumo vartai.** Todėl trys atsakymo lygiai sprendžiami VIENA
+   kalibruota skale — leksine. Patikrinta, kad nieko neprarandam: su semantine riba 0,84, 0,90 ar
+   visai be jos rezultatas tas pats (hit@1 54 %, hit@2 60 %, tyla 1). O kai kosinusui buvo leista
+   duoti „tvirtą atsakymą" (riba 0,88), „tvirtų" tikslumas buvo 60 % prieš 59 % be jo — skirtumo nėra.
+2. **Nauda yra tik rikiavime.** Ir ji tikra: hit@2 56 % → 60 % per RRF. Patikrintos keturios tvarkos —
+   RRF rangas geriausias; rikiuojant leksiniu balu nauda išnyksta (56 %, t. y. grįžtam į E2).
+
+### 11.3 Ką bandėm ir kas nepadėjo
+
+| Bandymas | Rezultatas |
+|---|---|
+| **e5-base** vietoj e5-small | hit@2 **65 %** (+5 p.p.), bet viena užklausa **47 ms** vien modeliui → su Qdrant p95 virš 60 ms, t. y. už biudžeto |
+| **bge-m3** | hit@2 **56 %**, viena užklausa **156 ms** — daugiau nei visas laukimo limitas (150 ms), tad 78 užklausos iš 68 klausimų nesulaukė ir nusileido į sparse. Modelis, kuris netelpa į balso ėjimą, kokybės neturi |
+| **ką koduoti**: tik tekstas / antraštė+tekstas / pavadinimas+problema / visas dokumentas | dabartinis variantas (pavadinimas + antraštė + raktai + nuvalytas tekstas) geriausias: 62 % prieš 59 %, 62 %, 60 %, 54 % |
+| **semantinis balas atsakyme** | nieko neduoda (11.2), todėl `dense` vektorių iš Qdrant nebeprašom: atsakymas ~90 % lengvesnis, p95 51 ms → **44,9 ms** |
+
+### 11.4 Kas vis tiek pasiteisino
+
+- **RRF sujungimas serverio pusėje**: +4 p.p. hit@2 už 17 ms.
+- **Nusileidimas**: modelio netektis nenutraukia skambučio. Patikrinta testu (servisas meta išimtį) ir
+  matavimu (lėtas modelis: laukiam 50 ms, ne 5 s). Radau tikrą klaidą — pirmoji versija išimtį
+  praleisdavo į skambutį; dabar to nebegali būti.
+- **Pakaitinimas starte**: be jo pirmosios užklausos nesulaukdavo modelio (uždėjimas ~12 s prieš
+  150 ms ribą), ir agentas tyliai dirbdavo be semantinės pusės. Dabar kaitinama fone.
+- **TEI servisas patikrintas tikrai**: jo ir vietinio modelio vektorių kosinusas **1,000000**, abu
+  normalizuoti, mediana 17,2 ms (vietinis 23,0 ms). Vadinasi, indeksą galima statyti vienu būdu, o
+  aptarnauti kitu — ir tai gamybinė forma, nes modelis vienas visiems worker'iams.
+
+### 11.5 Ką siūlyčiau toliau (ne E4)
+
+Didžiausias nepanaudotas svertas nėra didesnis modelis. Tai **užklausos raktas iš LLM** (analizės O4):
+LLM ėjime jau yra, ir jis vienintelis tikrai supranta, kad „planšetė neturi interneto, o kiti
+įrenginiai turi" yra `problem=client_side`. Tai vienas laukas jo atsakyme ir nulis naujų
+priklausomybių — prieš tai, kad e5-base duotų +5 p.p. už 47 ms.
+
+Antra vertė — **daugiau klausimų dokumentui**: E1 matavimas parodė, kad riba yra pačiuose
+dokumentuose, ne rikiuotojuje. 68 klausimai yra mažai; iš tikrų skambučių stenogramų jų turi būti
+šimtai, ir tada bet kuris modelio pasirinkimas bus sprendžiamas, o ne spėjamas.

@@ -40,9 +40,36 @@ def configure_from_env() -> str:
         if not store.is_loaded():
             raise RuntimeError(f"no points behind alias '{store.collection}'")
         kb.use(store)
+        _warm_embeddings()
         return "qdrant"
     except Exception as exc:
         # Indekso nėra arba serveris neatsako: agentas vis tiek turi žinias, tik per failus.
         logger.warning(f"[KB] KB_BACKEND=qdrant, but the index is unusable ({exc}) — using files")
         kb.use(None)
         return "files"
+
+
+def _warm_embeddings() -> None:
+    """Modelis pakaitinamas STARTE, fone.
+
+    Be to pirmosios užklausos nesulaukia atsakymo: modelio uždėjimas kainuoja ~12 s, o balso ėjimo
+    riba yra 150 ms — tad pirmieji skambučiai gautų tik leksinę pusę. Fone, o ne sinchroniškai, kad
+    startas nelauktų; iki pakaitinimo pabaigos paieška veikia kaip E2.
+    """
+    import logging
+    import threading
+
+    from . import embed
+
+    model = embed.embedder()
+    if model is None:
+        return
+
+    def warm() -> None:
+        try:
+            model.warm()
+            logging.getLogger(__name__).info(f"[EMB] warm: {embed.MODEL}")
+        except Exception as exc:  # pragma: no cover - pakaitinimas niekada nelaužia starto
+            logging.getLogger(__name__).warning(f"[EMB] warm-up failed: {exc}")
+
+    threading.Thread(target=warm, name="embed-warm", daemon=True).start()

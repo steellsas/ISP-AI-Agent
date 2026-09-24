@@ -30,12 +30,18 @@ from typing import Any
 
 from agent import knowledge_base as kb
 
-from .sparse import for_chunk, for_query
+from . import embed
+from .sparse import Sparse, for_chunk, for_query
 
 logger = logging.getLogger(__name__)
 
 ALIAS = os.getenv("KB_COLLECTION", "kb")
 SPARSE_VECTOR = "lt_sparse"
+DENSE_VECTOR = "dense"
+
+# Kiek kandidatų atrenka kiekviena hibrido pusė prieš sujungimą. Plati atranka + tikslus rikiavimas:
+# išmatuota, kad būtent tokia grandinė laikosi bazei augant (RAG_SPRENDIMAI.md 7.2).
+PREFETCH = int(os.getenv("KB_PREFETCH", "20"))
 
 # Payload laukai, pagal kuriuos FILTRUOJAMA. Jiems kuriami indeksai: filtras turi veikti paieškos
 # metu, ne po jos — kitaip atrenkam dvidešimt, o filtras palieka du (klasikinė post-filtravimo bėda).
@@ -73,8 +79,15 @@ def families(problems: tuple[str, ...]) -> list[str]:
     return sorted({problem.split("_")[0] for problem in problems})
 
 
-def chunks(doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """Dokumentas taškais: viena markdown dalis = vienas taškas su savo payload."""
+def chunks(
+    doc: dict[str, Any], vectors: dict[str, list[float]] | None = None
+) -> list[dict[str, Any]]:
+    """Dokumentas taškais: viena markdown dalis = vienas taškas su savo payload.
+
+    `vectors` — jau suskaičiuoti `dense` vektoriai pagal dalies tekstą (indeksuojant jie
+    skaičiuojami paketu, ne po vieną). Be jų taškas turi tik *sparse* pusę, ir tai teisėta būklė:
+    E2 indeksas be modelio veikia toliau.
+    """
     digest = content_hash(doc)
     out: list[dict[str, Any]] = []
     for ord_, section in enumerate(kb._sections(doc)):
@@ -83,6 +96,7 @@ def chunks(doc: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "id": point_id(doc["source"], ord_),
                 "sparse": for_chunk(doc, section),
+                "dense": (vectors or {}).get(f"{doc['source']}#{ord_}"),
                 "payload": {
                     "source": doc["source"],
                     "title": doc["title"],
@@ -98,6 +112,9 @@ def chunks(doc: dict[str, Any]) -> list[dict[str, Any]]:
                     "text": kb._speakable(text)[:700],
                     "is_step": bool(kb._STEP_HEADING.match(heading)),
                     "content_hash": digest,
+                    # Kuris modelis suskaičiavo `dense`. Nesutampa — neaptarnaujam, o ne tyliai
+                    # klystam: kito modelio vektoriai kitoje erdvėje reiškia atsitiktinį rikiavimą.
+                    "model": embed.MODEL if (vectors or {}).get(f"{doc['source']}#{ord_}") else "",
                 },
             }
         )
@@ -162,7 +179,11 @@ class KnowledgeIndex:
 
         self.qdrant.create_collection(
             collection,
-            vectors_config={},
+            # `dense` vieta paruošiama VISADA, net kai modelio nėra: taip E2 indeksą galima
+            # praturtinti embedding'ais nekeičiant kolekcijos formos (E3).
+            vectors_config={
+                DENSE_VECTOR: models.VectorParams(size=embed.DIM, distance=models.Distance.COSINE)
+            },
             sparse_vectors_config={SPARSE_VECTOR: models.SparseVectorParams()},
         )
         for field in INDEXED_FIELDS:
@@ -176,22 +197,50 @@ class KnowledgeIndex:
                 wait=False,
             )
 
+    def _dense(self, docs) -> dict[str, list[float]]:
+        """`dense` vektoriai visoms dalims — vienu paketu, ne po vieną.
+
+        Modelio nėra arba jis neatsako: grąžinam tuščia, ir indeksas statomas tik su *sparse*. Tai
+        teisėta būklė — paieška veiks kaip E2, tik be parafrazių.
+        """
+        model = embed.embedder()
+        if model is None:
+            return {}
+        keys: list[str] = []
+        texts: list[str] = []
+        for doc in docs:
+            for ord_, section in enumerate(kb._sections(doc)):
+                keys.append(f"{doc['source']}#{ord_}")
+                # Indeksuojam TĄ PATĮ tekstą, kurį agentas pasakys: pavadinimas, antraštė, raktai
+                # ir nuvalytas turinys. Kitaip vektorius rodytų į ne tą, ką klientas išgirs.
+                texts.append(
+                    f"{doc['title']}. {section[0]}. {' '.join(doc['keywords'])}. "
+                    f"{kb._speakable(section[1])[:700]}"
+                )
+        try:
+            return dict(zip(keys, model.encode_passages(texts), strict=True))
+        except Exception as exc:
+            logger.warning(f"[KB] dense vectors skipped ({exc}) — index stays sparse-only")
+            return {}
+
     def _points(self, docs) -> list[Any]:
         from qdrant_client import models
 
-        return [
-            models.PointStruct(
-                id=chunk["id"],
-                payload=chunk["payload"],
-                vector={
+        vectors = self._dense(docs)
+        points = []
+        for doc in docs:
+            for chunk in chunks(doc, vectors):
+                vector: dict[str, Any] = {
                     SPARSE_VECTOR: models.SparseVector(
                         indices=list(chunk["sparse"].indices), values=list(chunk["sparse"].values)
                     )
-                },
-            )
-            for doc in docs
-            for chunk in chunks(doc)
-        ]
+                }
+                if chunk["dense"] is not None:
+                    vector[DENSE_VECTOR] = chunk["dense"]
+                points.append(
+                    models.PointStruct(id=chunk["id"], payload=chunk["payload"], vector=vector)
+                )
+        return points
 
     def rebuild(self, canary=None) -> str:
         """Visas indeksas iš naujo — į NAUJĄ kolekciją, ir tik tada aliasas.
@@ -314,6 +363,25 @@ class KnowledgeIndex:
 # --- paieška -----------------------------------------------------------------------------
 
 
+def _level(lexical: float, floor: float) -> int:
+    """2 = tvirtas atsakymas, 1 = pažymėtas spėjimas, 0 = nieko.
+
+    Patikimumą sprendžia VIENA kalibruota skalė — leksinė, ta pati kaip failuose. Semantinė pusė
+    rikiuoja, bet patikimumo neliečia, ir tai išmatuota, ne atsargumas:
+    teisingų radinių kosinusas 0,780–0,929, klaidingų — 0,000–0,916; ne mūsų srities klausimai
+    („automobilio remontas" 0,847) guli toje pačioje zonoje. Persidengia beveik visiškai, tad
+    kosinusas negali būti kokybės vartai. Ir patikrinta, kad nieko neprarandam: su semantine riba
+    0,84, 0,90 ar visai be jos rezultatas tas pats — hit@1 54 %, hit@2 62 %, tyla 1.
+
+    Iš to seka ir pigesnė užklausa: `dense` vektorių iš Qdrant grąžinti nebereikia (žr. `retrieve`).
+    """
+    if lexical >= floor:
+        return 2
+    if lexical >= kb.HINT:
+        return 1
+    return 0
+
+
 def _filter(where: dict[str, Any]):
     """Filtras, kurio semantika TOKIA PAT, kaip `knowledge_base._matches`.
 
@@ -366,35 +434,68 @@ class QdrantRetriever:
     ) -> list[dict[str, Any]]:
         from qdrant_client import models
 
-        vector = for_query(query)
-        if not vector.indices:
+        lexical = for_query(query)
+        if not lexical.indices:
             return []
+        where = _filter(filter_metadata or {})
         floor = kb.FLOOR if threshold is None else threshold
-        found = self.qdrant.query_points(
-            self.collection,
-            query=models.SparseVector(indices=list(vector.indices), values=list(vector.values)),
-            using=SPARSE_VECTOR,
-            query_filter=_filter(filter_metadata or {}),
-            # Žemiau `HINT` nieko nesakom: tai sąžiningas „nežinau", ne tyla dėl per aukštos ribos.
-            score_threshold=kb.HINT,
-            # Kandidatų imam daugiau, nei grąžinsim: failų realizacija skirsto į lygius peržiūrėjusi
-            # VISUS radinius, ir jei pirmas yra spėjimas, o antras tvirtas — grąžina tvirtą. Be šios
-            # atsargos dvi saugyklos atsakytų nevienodai į tą patį klausimą.
-            limit=max(top_k or 2, 2) * 5,
-            with_payload=True,
-        ).points
-        # Lygių balų tvarka: ta pati, kaip `find()` — pagal šaltinį, tada dalies numerį. Qdrant
-        # sparse svorius laiko float32, tad artimi balai kitaip apvalinami; be aiškios tvarkos
-        # rezultatai skirtųsi be jokios priežasties.
-        found = sorted(found, key=lambda p: (-p.score, p.payload["source"], p.payload["ord"]))
-        sure = [point for point in found if point.score >= floor]
-        # Trys lygiai, tie patys kaip failų realizacijoje: tvirtas atsakymas, VIENAS pažymėtas
-        # spėjimas, arba nieko.
-        chosen = sure[: top_k or 2] if sure else found[:1]
+        sparse_query = models.SparseVector(
+            indices=list(lexical.indices), values=list(lexical.values)
+        )
+        # Modelio gali nebūti, jis gali nesulaukti arba indeksas gali būti be `dense` — visais
+        # atvejais paieška vyksta tik leksine puse. Tai E2 elgesys, ne avarija.
+        dense_query = self._dense_query(query)
+        wanted = max(top_k or 2, 2)
+
+        if dense_query is None:
+            found = self.qdrant.query_points(
+                self.collection,
+                query=sparse_query,
+                using=SPARSE_VECTOR,
+                query_filter=where,
+                score_threshold=kb.HINT,
+                limit=wanted * 5,
+                with_payload=True,
+            ).points
+            scored = [(point, point.score, point.score) for point in found]
+        else:
+            # Hibridas: plati atranka iš abiejų pusių, sujungimas rangais (RRF) serverio pusėje.
+            # Rangais, ne balais: leksinis balas yra 0..1 skalėje, kosinusas — savo, ir juos sudėti
+            # reikštų sudėti skirtingus dalykus (išmatuota: balų suma nepasitvirtino, RAG_SPRENDIMAI 2.2).
+            found = self.qdrant.query_points(
+                self.collection,
+                prefetch=[
+                    models.Prefetch(
+                        query=sparse_query, using=SPARSE_VECTOR, filter=where, limit=PREFETCH
+                    ),
+                    models.Prefetch(
+                        query=dense_query, using=DENSE_VECTOR, filter=where, limit=PREFETCH
+                    ),
+                ],
+                query=models.FusionQuery(fusion=models.Fusion.RRF),
+                query_filter=where,
+                limit=wanted * 5,
+                with_payload=True,
+                # Grąžinam TIK *sparse* vektorių: iš jo suskaičiuojam tikslų leksinį balą (RRF balas
+                # yra rangų suma ir nieko nesako apie tai, ar atsakymas tvirtas). `dense` vektorių
+                # neprašom — jie atsakyme sudarytų ~90 % svorio, o patikimumui nedaro nieko.
+                with_vectors=[SPARSE_VECTOR],
+            ).points
+            scored = [(point, self._lexical_score(point, lexical), point.score) for point in found]
+
+        # Trys lygiai. Tvirta, jei bent viena pusė tvirta: leksinė gaudo modelius ir klaidų kodus,
+        # semantinė — parafrazes. Ribos abiem pusėms — išmatuotos, ne parinktos.
+        # Tvarka: pirma lygis, tada saugyklos rangas (RRF arba leksinis balas), tada šaltinis —
+        # kad lygūs balai abiejose realizacijose išsidėstytų vienodai.
+        levels = [(point, lex, fused, _level(lex, floor)) for point, lex, fused in scored]
+        levels = [row for row in levels if row[3] > 0]
+        levels.sort(key=lambda row: (-row[3], -row[2], row[0].payload["source"]))
+        sure = [row for row in levels if row[3] == 2]
+        chosen = sure[: top_k or 2] if sure else levels[:1]
         return [
             {
                 "document": point.payload["text"],
-                "score": round(point.score, 3),
+                "score": round(lex, 3),
                 "id": str(point.id),
                 "metadata": {
                     "source": point.payload["source"],
@@ -402,11 +503,38 @@ class QdrantRetriever:
                     "kind": point.payload["kind"],
                     "tags": point.payload["tags"],
                     "equipment": point.payload["equipment"],
-                    "sure": point.score >= floor,
+                    "sure": level == 2,
+                    "lexical": round(lex, 3),
+                    # Saugyklos rangavimo balas: hibride tai RRF, leksiniame kelyje — tas pats
+                    # leksinis balas. Metrikoms ir derinimui (E4), ne sprendimams.
+                    "fused": round(fused, 4),
                 },
             }
-            for point in chosen
+            for point, lex, fused, level in chosen
         ]
+
+    def _dense_query(self, query: str) -> list[float] | None:
+        """Semantinis užklausos vektorius arba None.
+
+        None — teisėta būklė: modelio nėra, jis nesulaukė arba servisas nukrito. Bet kuriuo atveju
+        paieška vyksta leksine puse (E2 elgesys). Išimtis čia NEGALI prasiveržti: skambutis nesibaigia
+        dėl to, kad neatsakė modelis.
+        """
+        model = embed.embedder()
+        if model is None:
+            return None
+        try:
+            return model.encode_query(query)
+        except Exception as exc:
+            logger.warning(f"[KB] query embedding unavailable ({exc}) — searching lexically")
+            return None
+
+    def _lexical_score(self, point: Any, lexical) -> float:
+        """Tikslus leksinis balas iš grąžinto *sparse* vektoriaus — ta pati 0..1 skalė kaip failuose."""
+        stored = (point.vector or {}).get(SPARSE_VECTOR) if isinstance(point.vector, dict) else None
+        if stored is None:
+            return 0.0
+        return Sparse(tuple(stored.indices), tuple(stored.values)).dot(lexical)
 
     def is_loaded(self) -> bool:
         try:
