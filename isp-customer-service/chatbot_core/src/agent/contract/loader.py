@@ -251,6 +251,14 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                     f"{at}: guide: '{source}' has no steps "
                     f"(headings like 'Žingsnis 1: …' are what the engine walks)"
                 )
+        if call.knowledge_need:
+            # Poreikis, kurio niekas neatsako, yra pažadas be turinio: sustojam starte.
+            from ..knowledge_base import find
+
+            if not find(call.knowledge_need, limit=1):
+                errors.append(
+                    f"{at}: knowledge_need '{call.knowledge_need}' finds nothing in the knowledge base"
+                )
         if spec.kind == "verify" and not (call.args.get("evidence") or call.args.get("ask")):
             errors.append(f"{at}: a verification needs `evidence`, `ask`, or both")
         for text in call.args.get("evidence") or []:

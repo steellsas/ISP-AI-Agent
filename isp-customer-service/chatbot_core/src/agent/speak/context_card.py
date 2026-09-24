@@ -73,11 +73,17 @@ def _faq_answer(state, rt, entry: dict) -> str:
 def _kb_answer(state, rt) -> str:
     """Žinių bazės atsakymas atviram klausimui — kai FAQ jo neturi (radinys AK, 4b banga).
 
-    Iki šiol viskas už penkių FAQ temų buvo „ne mano sritis", nors žinių bazėje yra įrangos
-    instrukcijos, konfigūravimo algoritmai ir patarimai. Paieška filtruojama pagal ŠIO skambučio
-    įrangą ir problemą, tad TP-Link instrukcija nepakliūva klientui su kita dėžute.
+    Nuo E3b ieškoma ne viso kliento sakinio, o POREIKIO (`knowledge_need`). Du dalykai iš to:
+
+      * paieška gauna MŪSŲ žodžius, o ne visą frazę. Išmatuota, kad tai svarbiausia: kliento sakiniu
+        hit@1 54 % / hit@2 57 %, o agento poreikiu (kai jį formuluoja kortelė) 90 % / 95 %;
+      * jei apie tai ieškoti neleidžiama — NEIEŠKOM. Ne mūsų sritis („koks oras", „autoremontas"),
+        ne mūsų paskirtis („kurį routerį pirkti") ir paties prietaiso bėdos („Windows nepasileidžia")
+        žinių bazės net nepasiekia. Atsisakymas įrašomas į žurnalą, kad ribą vėliau būtų galima
+        peržiūrėti faktais, o ne nuomone.
     """
     from ..knowledge_base import find
+    from ..knowledge_need import Refusal, from_caller
 
     # Which family of device this caller actually has: the catalogue already answers that
     # from the line's own reading ("TP-Link Archer C80" -> tplink), and `level` names the file
@@ -89,15 +95,32 @@ def _kb_answer(state, rt) -> str:
 
         device = for_signals(signals)
         equipment = device.level if device else None
-    found = find(
+
+    need = from_caller(
         state.dialog.last_heard or "",
         equipment=equipment,
-        # ŠIO skambučio paslauga: `problem` buvo dokumentų antraštėse, bet filtras jo nenaudojo
-        # (E1). TV dokumentas neturi būti kandidatas interneto gedime — o neutralios žinios
-        # (įrangos instrukcija, procedūra, FAQ) praleidžiamos per bet kurį gedimą.
+        # ŠIO skambučio paslauga: TV dokumentas neturi būti kandidatas interneto gedime, o neutralios
+        # žinios (įrangos instrukcija, procedūra, FAQ) praleidžiamos per bet kurį gedimą.
         problem=_service_of(state),
+    )
+    if isinstance(need, Refusal):
+        if rt is not None and getattr(rt, "tracer", None) is not None:
+            rt.tracer.emit("knowledge", refused=need.why, said=need.said[:60])
+        return ""
+    found = find(
+        need.words,
+        equipment=need.equipment,
+        problem=need.problem,
         limit=2,
     )
+    if rt is not None and getattr(rt, "tracer", None) is not None:
+        rt.tracer.emit(
+            "knowledge",
+            asked_by=need.asked_by,
+            words=need.words[:60],
+            found=",".join(p.source for p in found)[:80] or "-",
+            sure=any(p.sure for p in found),
+        )
     if not found:
         return ""
     said = " ".join(f"[{p.kind}: {p.title}] {p.text}" for p in found)
@@ -167,7 +190,13 @@ def _asked_how(state, rt) -> list[str]:
     return [
         "THE CALLER ASKED HOW: answer in ONE or TWO sentences using ONLY this written "
         f"knowledge — {said} Invent nothing beyond it (no prices, deadlines, promises, no "
-        "registration). Then return to what the engine is waiting for."
+        # Paskutinė sąžiningumo linija. Balas negali atskirti „apie tą temą" nuo „atsako į tą
+        # klausimą": „ar wifi kenkia sveikatai" gauna 0,26 ir laikomas tvirtu, nes WiFi tikrai mūsų
+        # tema. Ar tekstas ATSAKO į klausimą, sprendžia modelis — tai kaip tik tas darbas, kurį jis
+        # moka, o rikiuotojas ne.
+        "registration). If this knowledge does not actually answer what they asked, say honestly "
+        "that you cannot advise on that instead of stretching it. Then return to what the engine "
+        "is waiting for."
     ]
 
 
@@ -260,7 +289,61 @@ def _case_step(state, rt) -> list[str]:
             "but KEEP the concrete action and the part of the device it names. Do not add "
             "steps of your own and do not replace it with a question."
         )
+    out += _step_knowledge(state, rt)
     return out
+
+
+def _step_knowledge(state, rt) -> list[str]:
+    """Gilesnės žinios ŠIAM žingsniui, jei kortelė jų paprašė (`knowledge_need`, E3b).
+
+    Kortelė sprendžia gedimą; žinių bazė ją papildo. Agentas klausia „kokios spalvos lemputė", ir
+    jei klientas paklaus „kuri iš jų", atsakymas turi būti po ranka — ne improvizuotas.
+
+    Paieška čia vyksta AGENTO poreikiu, ne kliento sakiniu, ir būtent todėl ji tiksli: išmatuota
+    hit@1 90 % prieš 54 %. Žinia paduodama kaip ATSARGA, o ne kaip tai, ką reikia pasakyti — kitaip
+    agentas skaitytų instrukciją tada, kai jos niekas neprašė.
+    """
+    need_text = _current_need(state)
+    if not need_text:
+        return []
+    from ..knowledge_base import find
+    from ..knowledge_need import from_card
+
+    need = from_card(need_text, equipment=_equipment_of(state), problem=_service_of(state))
+    found = find(need.words, equipment=need.equipment, problem=need.problem, limit=1)
+    if rt is not None and getattr(rt, "tracer", None) is not None:
+        rt.tracer.emit(
+            "knowledge",
+            asked_by="card",
+            words=need.words[:60],
+            found=found[0].source if found else "-",
+        )
+    if not found:
+        return []
+    return [
+        "DEEPER KNOWLEDGE for this step (use ONLY if the caller asks about it; do not read it "
+        f"out on your own): [{found[0].kind}: {found[0].title}] {found[0].text}"
+    ]
+
+
+def _current_need(state) -> str | None:
+    """Ką šio ėjimo žingsnis deklaravo kaip savo žinių poreikį."""
+    plan = state.turn.plan or {}
+    need = (plan.get("action") or {}).get("knowledge_need") or (plan.get("say") or {}).get(
+        "knowledge_need"
+    )
+    return str(need) if need else None
+
+
+def _equipment_of(state) -> str | None:
+    """Kliento įrangos lygis iš linijos rodmenų — tas pats tagas, kurį nešasi dokumentai."""
+    signals = (state.diagnosis.verdicts.get("network") or {}).get("signals") or {}
+    if not (signals.get("device_model") or signals.get("device_type")):
+        return None
+    from ..equipment import for_signals
+
+    device = for_signals(signals)
+    return device.level if device else None
 
 
 def _tool_trouble(state, rt) -> list[str]:

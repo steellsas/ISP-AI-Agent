@@ -325,6 +325,21 @@ def _idf() -> dict[str, float]:
     return {stem: math.log(1 + total / count) for stem, count in seen_in.items()}
 
 
+def _body_score(query: str, section: tuple[str, str]) -> float:
+    """Kiek sutampa PATS skyrius, be dokumento paviršiaus.
+
+    Dokumento raktai vienodi visiems jo skyriams, tad pagal bendrą balą visi jo skyriai lygūs, ir
+    „routerio lemputės" gaudavo modelių lentelę vien todėl, kad ji pirma faile. Šis balas yra lygių
+    balų skirtukas: laimi tas skyrius, kuris tikrai apie tai.
+    """
+    weight = _idf()
+    asked = {stem: weight[stem] for stem in _stems(query) if stem in weight}
+    if not asked:
+        return 0.0
+    body = _stems(f"{section[0]} {section[1]}")
+    return sum(w for stem, w in asked.items() if stem in body)
+
+
 def _keyword_score(query: str, doc: dict[str, Any], section: tuple[str, str]) -> float:
     """Rikiavimas pagal šaknų sutapimą: raktai sveria tris kartus daugiau už tekstą, nes juos
     technikas parašė sąmoningai („kad agentas surastų tiksliai to ko reikia"), o kiekviena šaknis
@@ -476,7 +491,10 @@ def _lexical(
                     sure=score >= floor,
                 )
             )
-    scored.sort(key=lambda p: (-p.score, p.source))
+    # Lygius balus skiria skyriaus paties atitikimas, tada šaltinis — kad tvarka būtų vienoda
+    # kiekvieną kartą ir kiekvienoje saugykloje.
+    body = {(p.source, p.title): _body_score(query, (p.title, p.text)) for p in scored}
+    scored.sort(key=lambda p: (-p.score, -body[(p.source, p.title)], p.source))
     sure = [p for p in scored if p.sure]
     return sure[:limit] if sure else scored[:1]
 

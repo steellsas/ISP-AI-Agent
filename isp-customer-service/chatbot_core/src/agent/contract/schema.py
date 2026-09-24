@@ -462,6 +462,12 @@ class ModuleCall(_Model):
     # this — a procedure has an order (Andrius, 2026-09-23: "sprendimui reikia tikslaus
     # algoritmo, analizei — ne") — only what is already true is passed over.
     done_when: list[str] = []
+    # Gilesnės žinios, kurių šiam žingsniui gali prireikti: „tplink lemputės", „wan dhcp".
+    # Kortelė sprendžia gedimą, o žinių bazė ją PAPILDO — Andrius (2026-09-24): „jei jam reikia
+    # gilesnių žinių apie routerio lemputes ar jungtis, jas gauna". Paieška čia vyksta AGENTO
+    # poreikiu, ne kliento sakiniu, ir tai išmatuota: poreikiu hit@1 90 %, sakiniu 54 %.
+    # Startinis validatorius tikrina, kad poreikis ką nors randa — pažadas be atsakymo neleidžiamas.
+    knowledge_need: str | None = None
 
 
 class Solution(_Model):

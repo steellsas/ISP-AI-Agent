@@ -3,7 +3,7 @@ title: Pakeistas routeris — MAC pririšimas
 kind: troubleshooting
 problem: [internet_down]
 tags: [mac, replacement, wan, lan_port, config]
-keywords: [mac, pririsimas, keitimas, naujas, router, wan, lan, lizdas]
+keywords: [mac, pririsimas, keitimas, naujas, router, wan, lan, lizdas, parduotuve, pirkau]
 ---
 # Pakeistas įrenginys - MAC pririšimas (internetas neveikia po įrangos keitimo)
 

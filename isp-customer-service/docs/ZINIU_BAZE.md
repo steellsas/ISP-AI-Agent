@@ -186,3 +186,46 @@ Išmatuota: 225 užklausos, vykdytos perkuriant visą indeksą — 225 teisingi 
 
 **Kuri saugykla atsako** — `KB_BACKEND` aplinkos kintamasis: `files` (numatyta) arba `qdrant`.
 Nustatymai — `.env.qdrant.example`.
+
+---
+
+## Agento ribos: apie ką jis ieško, o apie ką ne
+
+Nuo E3b (2026-09-24) agentas ieško **ne kliento sakinio**, o to, ko jam reikia — ir žino, kada
+neieškoti. Technikui iš to seka du praktiniai dalykai.
+
+### 1. Kortelė gali pasakyti, kokių gilesnių žinių reikia žingsniui
+
+```yaml
+- module: check_lights
+  args: {device: router}
+  knowledge_need: priekine panele lemputes reiskia
+```
+
+Tada, agentui klausiant apie lemputes, žinia jau po ranka: klientas paklaus „kuri iš jų?" ir atsakymas
+bus iš dokumento, ne išgalvotas. Žinia paduodama kaip **atsarga** — agentas jos savo iniciatyva
+neskaito.
+
+**Poreikis rašomas DOKUMENTO žodžiais.** „Indikatoriai" neveiks, jei dokumente to žodžio nėra;
+„priekinė panelė lemputės reiškia" veiks. Jei poreikis nieko neranda — **programa nepakyla**.
+
+### 2. Kliento žodžiai turi būti raktuose, kitaip agentas pasakys „ne mano sritis"
+
+Temos riba yra tai, apie ką kalba pačios žinios. Jei klientas sako „televizorius rodo juodą ekraną", o
+žodžio „televizorius" nėra nė vieno dokumento `keywords` — agentas laikys tai ne savo sritimi, nors
+dokumentas ir yra. Būtent taip ir buvo, kol nepridėjom.
+
+**Todėl į `keywords` rašom tai, kaip klientas kalba**, o ne tai, kaip parašyta dokumente.
+
+### Ko agentas neieško niekada
+
+| Klausimas | Kodėl atmetama |
+|---|---|
+| „koks šiandien oras", „autoremontas" | ne mūsų **tema** |
+| „kurį routerį rekomenduotumėt pirkti", „ką siūlote" | tema mūsų, bet **paskirtis** — pasirinkimas, ne veikimas |
+| „Windows nepasileidžia", „telefonas kaista" | apie **patį prietaisą**, ne apie mūsų paslaugą jame |
+| „telefone neveikia internetas" | **ieškoma** — tai mūsų paslauga tame prietaise |
+
+Sąrašai gyvena žodyne (`knowledge_out_of_purpose`, `knowledge_choice_form`,
+`knowledge_device_trouble`, `knowledge_service_words`), tad ribą galima derinti be kodo. Kiekvienas
+atsisakymas įrašomas į skambučio žurnalą — po šimto skambučių ribą galima peržiūrėti faktais.

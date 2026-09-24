@@ -4,7 +4,7 @@ kind: troubleshooting
 equipment: [tv_box]
 problem: [tv]
 tags: [no_signal, tv_channels, frozen_picture, hdmi, remote]
-keywords: [tv, signalas, kanalai, priedelis, hdmi, vaizdas, uzsala]
+keywords: [tv, signalas, kanalai, priedelis, hdmi, vaizdas, uzsala, televizorius, ekranas, juodas]
 ---
 # TV neveikia / nėra signalo - diagnostika ir sprendimas
 

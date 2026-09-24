@@ -31,12 +31,15 @@ from typing import Any
 from agent import knowledge_base as kb
 
 from . import embed
-from .sparse import Sparse, for_chunk, for_query
+from .sparse import Sparse, for_body, for_chunk, for_query
 
 logger = logging.getLogger(__name__)
 
 ALIAS = os.getenv("KB_COLLECTION", "kb")
 SPARSE_VECTOR = "lt_sparse"
+# Ta pati dalis be dokumento paviršiaus — lygių balų skirtukas, kad Qdrant ir failai rikiuotų
+# vienodai (žr. `sparse.for_body`).
+BODY_VECTOR = "lt_body"
 DENSE_VECTOR = "dense"
 
 # Kiek kandidatų atrenka kiekviena hibrido pusė prieš sujungimą. Plati atranka + tikslus rikiavimas:
@@ -96,6 +99,7 @@ def chunks(
             {
                 "id": point_id(doc["source"], ord_),
                 "sparse": for_chunk(doc, section),
+                "body": for_body(doc, section),
                 "dense": (vectors or {}).get(f"{doc['source']}#{ord_}"),
                 "payload": {
                     "source": doc["source"],
@@ -184,7 +188,10 @@ class KnowledgeIndex:
             vectors_config={
                 DENSE_VECTOR: models.VectorParams(size=embed.DIM, distance=models.Distance.COSINE)
             },
-            sparse_vectors_config={SPARSE_VECTOR: models.SparseVectorParams()},
+            sparse_vectors_config={
+                SPARSE_VECTOR: models.SparseVectorParams(),
+                BODY_VECTOR: models.SparseVectorParams(),
+            },
         )
         for field in INDEXED_FIELDS:
             # `wait=False`: indeksas sukuriamas fone. Su numatytu `wait=True` šeši laukai kainavo
@@ -233,7 +240,10 @@ class KnowledgeIndex:
                 vector: dict[str, Any] = {
                     SPARSE_VECTOR: models.SparseVector(
                         indices=list(chunk["sparse"].indices), values=list(chunk["sparse"].values)
-                    )
+                    ),
+                    BODY_VECTOR: models.SparseVector(
+                        indices=list(chunk["body"].indices), values=list(chunk["body"].values)
+                    ),
                 }
                 if chunk["dense"] is not None:
                     vector[DENSE_VECTOR] = chunk["dense"]
@@ -456,6 +466,7 @@ class QdrantRetriever:
                 score_threshold=kb.HINT,
                 limit=wanted * 5,
                 with_payload=True,
+                with_vectors=[BODY_VECTOR],
             ).points
             scored = [(point, point.score, point.score) for point in found]
         else:
@@ -479,7 +490,7 @@ class QdrantRetriever:
                 # Grąžinam TIK *sparse* vektorių: iš jo suskaičiuojam tikslų leksinį balą (RRF balas
                 # yra rangų suma ir nieko nesako apie tai, ar atsakymas tvirtas). `dense` vektorių
                 # neprašom — jie atsakyme sudarytų ~90 % svorio, o patikimumui nedaro nieko.
-                with_vectors=[SPARSE_VECTOR],
+                with_vectors=[SPARSE_VECTOR, BODY_VECTOR],
             ).points
             scored = [(point, self._lexical_score(point, lexical), point.score) for point in found]
 
@@ -487,9 +498,13 @@ class QdrantRetriever:
         # semantinė — parafrazes. Ribos abiem pusėms — išmatuotos, ne parinktos.
         # Tvarka: pirma lygis, tada saugyklos rangas (RRF arba leksinis balas), tada šaltinis —
         # kad lygūs balai abiejose realizacijose išsidėstytų vienodai.
-        levels = [(point, lex, fused, _level(lex, floor)) for point, lex, fused in scored]
+        levels = [
+            (point, lex, fused, _level(lex, floor), self._body_score(point, lexical))
+            for point, lex, fused in scored
+        ]
         levels = [row for row in levels if row[3] > 0]
-        levels.sort(key=lambda row: (-row[3], -row[2], row[0].payload["source"]))
+        # Lygius balus skiria SKYRIAUS atitikimas — tas pats skirtukas, kaip failų realizacijoje.
+        levels.sort(key=lambda row: (-row[3], -row[2], -row[4], row[0].payload["source"]))
         sure = [row for row in levels if row[3] == 2]
         chosen = sure[: top_k or 2] if sure else levels[:1]
         return [
@@ -510,7 +525,7 @@ class QdrantRetriever:
                     "fused": round(fused, 4),
                 },
             }
-            for point, lex, fused, level in chosen
+            for point, lex, fused, level, _body in chosen
         ]
 
     def _dense_query(self, query: str) -> list[float] | None:
@@ -529,9 +544,17 @@ class QdrantRetriever:
             logger.warning(f"[KB] query embedding unavailable ({exc}) — searching lexically")
             return None
 
+    def _body_score(self, point: Any, lexical) -> float:
+        """Kiek sutampa pati dalis, be dokumento paviršiaus — lygių balų skirtukas."""
+        return self._dot(point, BODY_VECTOR, lexical)
+
     def _lexical_score(self, point: Any, lexical) -> float:
         """Tikslus leksinis balas iš grąžinto *sparse* vektoriaus — ta pati 0..1 skalė kaip failuose."""
-        stored = (point.vector or {}).get(SPARSE_VECTOR) if isinstance(point.vector, dict) else None
+        return self._dot(point, SPARSE_VECTOR, lexical)
+
+    @staticmethod
+    def _dot(point: Any, name: str, lexical) -> float:
+        stored = (point.vector or {}).get(name) if isinstance(point.vector, dict) else None
         if stored is None:
             return 0.0
         return Sparse(tuple(stored.indices), tuple(stored.values)).dot(lexical)

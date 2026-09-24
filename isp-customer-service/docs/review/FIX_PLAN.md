@@ -208,6 +208,43 @@ mediana 17,2 ms prieš 23,0 ms vietinio.
 klausimų dokumentui, nes riba yra pačiuose dokumentuose, ne rikiuotojuje.
 
 
+## RAG E3b — poreikio paieška ir agento ribos (šaka `fix/wave-4a`, 2026-09-24)
+
+Andrius performulavo, kam paieška yra: kortelės pirma, o indeksas duoda **gilesnes žinias, kurių
+agentui trūksta** — ir agentas privalo žinoti savo ribas.
+
+**Matavimas, kuris viską pakeitė:** kliento sakiniu hit@1 54 % / hit@2 60 %, **agento poreikiu
+90 % / 95 %**. Daugiau nei bet kuris modelio pasirinkimas.
+
+| Kas atsirado | Kam |
+|---|---|
+| `agent/knowledge_need.py` | poreikis + **dvi ribos ašys**: tema (apie ką kalba žinios) ir paskirtis (kad paslauga veiktų) |
+| `ModuleCall.knowledge_need` | kortelė deklaruoja, kokių gilesnių žinių reikia ŽINGSNIUI; validatorius tikrina, kad poreikis ką nors randa |
+| `context_card._step_knowledge` | žinia paduodama kaip ATSARGA („use ONLY if the caller asks"), ne kaip scenarijus |
+| atsisakymų žurnalas | kiekvienas „ne mano sritis" įrašomas — ribą vėliau peržiūrim faktais |
+| `tests/test_knowledge_need.py` | **atsisakymų rinkinys**: tikrina ne ką agentas randa, o ko NEIEŠKO |
+
+**Rezultatas:** 10 iš 11 nukrypimų nebepasiekia žinių bazės, 68 iš 68 tikrų klausimų praeina. Ir
+šalutinis radinys — skyriaus lygių balų skirtukas — pakėlė bendrą atgaminimą: **hit@1 54 % → 57 %,
+hit@2 57 % → 60 %** (Qdrant tam gavo antrą *sparse* vektorių, kad rikiuotų vienodai).
+
+**Keturios klaidos, kurias pagavo matavimas:**
+
+1. **vartai atmetė 5 tikrus klientus** („televizorius rodo juodą ekraną") — kliento žodžių nebuvo
+   dokumentų raktuose; tai turinio, ne kodo spraga, ir raktai pridėti;
+2. **„nusipirkau naują dėžutę, ar ji veiks" palaikytas rekomendacijos prašymu** — dabar atmetama tik
+   kai yra ir pasirinkimo forma, ir pirkimo žodis;
+3. **atfiltruotas poreikis sugriovė patikimumą**: „ar wifi kenkia sveikatai" → vien „wifi" → balas
+   1,000 ir tvirtas atsakymas. Vartai dabar sprendžia TIK *ar* ieškoti; ieškoma visu sakiniu;
+4. **„ios" yra „kokios" viduje** — kiekvienas „kokios lemputės" buvo laikomas iPhone klausimu.
+
+**Ko balas negali:** atskirti „apie tą temą" nuo „atsako į tą klausimą". Tai uždaro narratoriaus
+sąžiningumas — jei rasta žinia neatsako, agentas pasako, kad patarti negali, o ne ištempia.
+
+**Turinio spraga (ne mechanizmo):** DOCSIS, RJ45/kabelio schemos, PPPoE, macOS, FTTH/GPON, TV modelių
+nustatymai — dokumentų nėra. Mechanizmas ras tai, kas parašyta.
+
+
 **Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
 lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
 vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).

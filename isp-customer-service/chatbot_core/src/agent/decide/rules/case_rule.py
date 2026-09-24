@@ -835,7 +835,12 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             owner="procedure",
             rule=rule,
             action=Action(type="tool", name=step.tool, args={"customer_id": _cid(state)}),
-            say=Say(kind="directive", goal=step.goal, stage="diagnosis"),
+            say=Say(
+                kind="directive",
+                goal=step.goal,
+                stage="diagnosis",
+                knowledge_need=call.knowledge_need,
+            ),
             awaiting=step.awaits,
             redecide_after_action=True,
         )
@@ -844,7 +849,15 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
         rule=rule,
         # A module that asks speaks its own question; an instruction speaks the catalogue's
         # words for this device, and both are a FALLBACK — the narrator words them.
-        say=Say(kind="directive", text=asked or step.text, goal=step.goal, stage="diagnosis"),
+        say=Say(
+            kind="directive",
+            text=asked or step.text,
+            goal=step.goal,
+            stage="diagnosis",
+            # Kortelės paprašytos gilesnės žinios keliauja su ŠIO žingsnio planu: jei žingsnį perėmė
+            # kitas modulis (praleistas, jau padarytas), poreikis eina su juo, ne su šiuo.
+            knowledge_need=call.knowledge_need,
+        ),
         awaiting=step.awaits,
     )
 

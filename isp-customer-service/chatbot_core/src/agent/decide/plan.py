@@ -35,6 +35,9 @@ class Say(BaseModel):
     stage: str | None = None
     # A spoken question becomes the anchor the next turn is read against.
     remember_question: bool = True
+    # Gilesnės žinios, kurių šis žingsnis paprašė (`ModuleCall.knowledge_need`, E3b). Kortelės
+    # sprendimo tai nekeičia — tik paduoda atsargą, jei klientas paklaus („kuri iš tų lempučių?").
+    knowledge_need: str | None = None
     # The words were already committed to the history by the engine (the solver drive):
     # narrate only streams them.
     committed: bool = False

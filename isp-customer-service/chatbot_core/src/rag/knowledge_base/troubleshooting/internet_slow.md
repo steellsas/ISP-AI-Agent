@@ -3,7 +3,8 @@ title: Internetas lėtas — nuo ko pradėti
 kind: troubleshooting
 problem: [internet_slow]
 tags: [slow, speed, speedtest, wifi]
-keywords: [letas, greitis, wifi, kanalas, matavimas, speedtest]
+keywords: [letas, greitis, wifi, kanalas, matavimas, speedtest, filmas, kraunasi, veluoja, vėluoja, stringa,
+  puslapiai, moku, gaunu, megabitai, mbps]
 ---
 # Internetas lėtas - diagnostika ir sprendimas
 

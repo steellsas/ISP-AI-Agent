@@ -32,8 +32,10 @@ solution:
     args: {device: router}
   - module: check_lights
     args: {device: router}
+    knowledge_need: priekine panele lemputes reiskia
   - module: cable
     args: {device: router, action: reseat, port: WAN}
+    knowledge_need: galine puse wan lan portai
   - module: verify
     args:
       evidence: [line_link=up]

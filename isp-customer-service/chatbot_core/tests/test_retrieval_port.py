@@ -80,12 +80,18 @@ def test_a_confident_answer_goes_in_with_its_source():
     assert "NOT SURE" not in said
 
 
-def test_a_guess_is_marked_so_the_agent_can_say_it_is_unsure():
-    """Iki E1 čia būdavo TYLA — ir modelis improvizuodavo."""
+def test_an_off_topic_question_never_reaches_the_knowledge_base():
+    """Nuo E3b vartai stoja PRIEŠ paiešką: ne mūsų sritis žinių bazės nepasiekia (radinys E3b).
+
+    Iki tol tas pats klausimas grąžindavo pažymėtą spėjimą — geriau už tylą, bet vis tiek klaidinga:
+    apie autoremontą mes neturim ir negalim turėti nieko.
+    """
     from agent.speak.context_card import _kb_answer
 
-    said = _kb_answer(_fake_state("ar galite man padėti su automobilio remontu"), None)
-    assert said.startswith("(NOT SURE")
+    assert _kb_answer(_fake_state("ar galite man padėti su automobilio remontu"), None) == ""
+    assert _kb_answer(_fake_state("koks šiandien oras Šiauliuose"), None) == ""
+    assert _kb_answer(_fake_state("kurį routerį rekomenduotumėt pirkti"), None) == ""
+    assert _kb_answer(_fake_state("windows nepasileidžia"), None) == ""
 
 
 def test_the_call_s_service_narrows_the_search_not_the_card_name():

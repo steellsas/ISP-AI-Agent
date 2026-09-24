@@ -71,6 +71,7 @@ solution:
   # čia tik pridėdavo ėjimą ir buvo klaidingai perskaitoma iš „neturiu kito routerio".
   - module: check_lights
     args: {device: router}
+    knowledge_need: priekine panele lemputes reiskia
   - module: connect_direct
     args: {to: computer}
   - module: bind

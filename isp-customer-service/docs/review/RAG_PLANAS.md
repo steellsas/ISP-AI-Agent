@@ -570,3 +570,103 @@ priklausomybių — prieš tai, kad e5-base duotų +5 p.p. už 47 ms.
 Antra vertė — **daugiau klausimų dokumentui**: E1 matavimas parodė, kad riba yra pačiuose
 dokumentuose, ne rikiuotojuje. 68 klausimai yra mažai; iš tikrų skambučių stenogramų jų turi būti
 šimtai, ir tada bet kuris modelio pasirinkimas bus sprendžiamas, o ne spėjamas.
+
+---
+
+## 12. E3b — agentas ieško TO, KO JAM REIKIA, ir žino savo ribas (2026-09-24)
+
+Andrius performulavo, kam paieška apskritai yra: *„agentas turi korteles, kuriose yra gedimai, ir jei
+jam reikia gilesnių žinių apie routerio lemputes ar jungtis — jas gauna... bet neturi nukrypti į koks
+šiandien oras, autoremontas ar kurį routerį rekomenduotume. Agentas turi žinoti savo ribas."*
+
+### 12.1 Matavimas, kuris viską pakeitė
+
+| Kuo ieškoma | hit@1 | hit@2 |
+|---|---|---|
+| kliento sakiniu (E1–E3) | 54 % | 60 % |
+| **agento poreikiu** („priekinė panelė lemputės reiškia") | **90 %** | **95 %** |
+
+Mechanizmas buvo geras — varėm jį netinkamu įvadu. Tai didesnis skirtumas nei bet kuris modelio
+pasirinkimas (e5-base davė +5 p.p., bge-m3 neigiamai).
+
+### 12.2 Riba turi dvi ašis
+
+```
+TEMA       ar apie mūsų paslaugą / įrangą, kuri ją teikia?
+PASKIRTIS  ar apie tai, kad mūsų paslauga VEIKTŲ (diagnozė, prijungimas, nustatymas)?
+           → ieškoma tik kai ABI „taip"
+```
+
+Antra ašis būtina būtent dėl „kurį routerį rekomenduotumėt pirkti": tema tinka puikiai, o atsakyti
+negalima. Ir dar viena — **paties prietaiso bėdos**: „Windows nepasileidžia", „telefonas kaista" yra
+apie prietaisą, ne apie mūsų paslaugą, o „telefone neveikia internetas" yra mūsų.
+
+Rezultatas ant atsisakymų rinkinio: **10 iš 11 nukrypimų nebepasiekia žinių bazės**, ir **68 iš 68**
+tikrų klausimų praeina.
+
+### 12.3 Riba yra duomenys, ne kodas
+
+| Ašis | Kur gyvena |
+|---|---|
+| TEMA | tai, apie ką kalba pačios žinios (dokumentų `keywords`, `tags`, pavadinimai) |
+| PASKIRTIS | `knowledge_out_of_purpose` + `knowledge_choice_form` žodyne |
+| prietaiso bėdos | `knowledge_device_trouble` + `knowledge_service_words` žodyne |
+| konkretus įrenginys | `device_android`, `device_iphone`, `device_windows`, `device_macos` |
+
+Srities išplėtimas yra naujas dokumentas arba naujas žodis žodyne — ne naujas `if`. Ir atvirkščiai:
+**kliento žodis, kurio nėra nė vieno dokumento raktuose, yra TURINIO spraga.** Taip ir buvo atmesta
+„televizorius rodo juodą ekraną" — dokumentas yra, o žodžio „televizorius" raktuose nebuvo. Pridėti
+raktus buvo teisingas pataisymas, ne vartų atlaisvinimas.
+
+### 12.4 Keturios klaidos, kurias pagavo matavimas (ne peržiūra)
+
+| # | Klaida | Kaip pasimatė | Kaip sutvarkyta |
+|---|---|---|---|
+| 1 | **Vartai atmetė 5 tikrus klientus** | „televizorius rodo juodą ekraną", „filmas kraunasi ilgai", „ar pas jus avarija" | pridėti kliento žodžiai į dokumentų `keywords` (turinio, ne kodo spraga) |
+| 2 | **„nusipirkau naują dėžutę" palaikytas rekomendacijos prašymu** | tai gedimo klausimas, ne pirkimo patarimas | atmetama tik kai yra IR pasirinkimo forma („kurį", „ką siūlot"), IR pirkimo žodis |
+| 3 | **Atfiltruotas poreikis sugriovė patikimumą** | „ar wifi kenkia sveikatai" → paliekam vien „wifi" → balas **1,000** ir tvirtas atsakymas | vartai sprendžia TIK *ar* ieškoti; ieškoma visu sakiniu |
+| 4 | **„ios" yra „kokios" viduje** | kiekvienas „kokios lemputės dega" buvo laikomas iPhone klausimu | įrenginys atpažįstamas pažodžiu, ne poteksčiu |
+
+### 12.5 Ko balas negali, ir kas tai uždaro
+
+Balas negali atskirti „apie tą temą" nuo „atsako į tą klausimą": „ar wifi kenkia sveikatai" gauna
+0,26 ir laikomas tvirtu, nes WiFi tikrai mūsų tema. Lygiai taip „kiek kainuoja skrydis į Londoną"
+praeina vartus, nes kaina yra mūsų tema, o „skrydis" mums nežinomas žodis.
+
+Tai uždaro **narratoriaus sąžiningumas**: kortelė dabar sako, kad jei rasta žinia neatsako į tai, ko
+klausta, reikia pasakyti, jog patarti negali, o ne ištempti. Spręsti, ar tekstas atsako į klausimą,
+yra kaip tik tas darbas, kurį modelis moka, o rikiuotojas ne.
+
+### 12.6 Kortelė deklaruoja, ko jai reikia
+
+```yaml
+- module: check_lights
+  args: {device: router}
+  knowledge_need: priekine panele lemputes reiskia     # kortelė papildo save žiniomis
+- module: cable
+  args: {device: router, action: reseat, port: WAN}
+  knowledge_need: galine puse wan lan portai
+```
+
+Žinia paduodama kaip **atsarga**, ne kaip scenarijus: „use ONLY if the caller asks". Agentas klausia
+„kokios spalvos lemputė", ir jei klientas paklaus „kuri iš jų?", atsakymas jau po ranka.
+
+Startinis validatorius tikrina, kad **poreikis ką nors randa** — pažadas be turinio neleidžiamas. Ir
+poreikis rašomas DOKUMENTO žodžiais: pirmoji versija sakė „indikatoriai", to žodžio dokumentuose
+nėra, ir rastas buvo ne tas skyrius.
+
+### 12.7 Šalutinis radinys: skyriaus lygių balų skirtukas
+
+Dokumento raktai vienodi visiems jo skyriams, tad pagal bendrą balą visi jie lygūs — ir „routerio
+lemputės" gaudavo modelių lentelę vien todėl, kad ji pirma faile. Įvestas skirtukas: laimi skyrius,
+kuris pats atitinka klausimą. Nauda ir bendram rinkiniui: **hit@1 54 % → 57 %, hit@2 57 % → 60 %**.
+
+Kad Qdrant rikiuotų VIENODAI, jam įvestas antras *sparse* vektorius (`lt_body`) — tas pats balas
+suskaičiuojamas indekse, ne failuose.
+
+### 12.8 Ko dar nėra (turinio spraga, ne mechanizmo)
+
+Patikrinta: **DOCSIS, RJ45 / kabelio jungimo schemos, PPPoE, macOS, FTTH/GPON, konkrečių TV modelių
+nustatymai — dokumentų nėra.** Android ir iPhone minimi tik kaip raktai viename dokumente. Mechanizmas
+ras tai, kas parašyta; likusį rašo technikas, ir kiekvienas naujas dokumentas atkeliauja su savo
+klausimais (`_questions.yaml`), kad testas jį matuotų.

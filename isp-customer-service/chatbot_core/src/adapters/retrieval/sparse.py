@@ -65,6 +65,23 @@ def for_chunk(doc: dict[str, Any], section: tuple[str, str]) -> Sparse:
     return Sparse(tuple(values), tuple(values.values()))
 
 
+def for_body(doc: dict[str, Any], section: tuple[str, str]) -> Sparse:
+    """Tos pačios dalies vektorius BE dokumento paviršiaus.
+
+    Jis reikalingas lygiems balams: dokumento raktai vienodi visiems jo skyriams, tad pagal bendrą
+    balą visi jie lygūs, ir „routerio lemputės" gaudavo pirmą skyrių faile (modelių lentelę), o ne tą,
+    kuris apie lemputes. Failų realizacija tam turi `_body_score`; kad Qdrant atsakytų VIENODAI, tas
+    pats balas turi būti suskaičiuojamas ir čia — todėl antras vektorius.
+    """
+    weight = kb._idf()
+    values: dict[int, float] = {}
+    for stem in kb._stems(f"{section[0]} {section[1]}"):
+        idf = weight.get(stem)
+        if idf is not None:
+            values[index_of(stem)] = idf
+    return Sparse(tuple(values), tuple(values.values()))
+
+
 def for_query(query: str) -> Sparse:
     """Užklausos vektorius. Visos reikšmės vienodos — normavimas įdėtas į vektorių.
 
