@@ -1049,6 +1049,14 @@ fact_lights_blinking: ["mirksi", "mirkcioja"]
 # Mes ne pardavimai ir ne palyginimų tarnyba, tad tokiu atveju žinių bazėje neieškom.
 # Sąmoningai TRUMPAS sąrašas: „geriau" čia nėra, nes „ar geriau perkrauti, ar palaukti" yra teisėtas
 # klausimas apie gedimą.
+# Klausiamieji ir mandagumo žodžiai. Jie NURODO, kad klausiama, bet nieko nesako apie TEMĄ, todėl
+# paieškoje nesveria. Išmatuota, kodėl tai svarbu: klausime „kaip pakeisti wifi slaptažodį" žodis
+# „kaip" antraštėje pakėlė skyrių „Kaip prisijungti prie WiFi telefone" virš „slaptažodis pakeistas"
+# 0,003 balo skirtumu — ir agentas atsakė ne į tą klausimą.
+knowledge_filler: ["kaip", "kodel", "kada", "kiek", "koks", "kokia", "kokie", "kokios", "sakyk",
+  "sakykite", "prasau", "atsiprasau", "klausiu", "norejau", "pasakyk", "pasakykite", "idomu",
+  "galima", "galiu", "reikia", "turi", "buti"]
+
 knowledge_out_of_purpose: ["rekomend", "pirkti", "nusipirk", "isigyti", "pasirinkt", "palygin",
   "siulot", "siulote", "imti"]
 

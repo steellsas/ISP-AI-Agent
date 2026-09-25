@@ -129,6 +129,7 @@ def documents() -> tuple[dict[str, Any], ...]:
 def reload() -> None:
     documents.cache_clear()
     _idf.cache_clear()
+    _filler.cache_clear()
 
 
 def _first_heading(body: str) -> str | None:
@@ -166,6 +167,7 @@ def _matches(
     tags,
     equipment: str | None,
     problem: str | None = None,
+    source: str | None = None,
 ) -> bool:
     """Deterministinis filtras. Įrangos neatitikimas — griežtas: TP-Link instrukcija klientui
     su ONT dėžute neturi būti net kandidatė.
@@ -176,6 +178,10 @@ def _matches(
     instrukcija, procedūra, FAQ) praleidžiami VISADA: klientas gali klausti apie lemputę ar
     meistro kainą interneto gedimo viduryje.
     """
+    # Vienas dokumentas: taip ieškoma, kai DOKUMENTĄ pasirinko pats agentas iš savo žinių žemėlapio
+    # (E4). Skyrių ir patikimumą toliau nustato kliento žodžiai.
+    if source and doc["source"].removesuffix(".md") != source.removesuffix(".md"):
+        return False
     if kind and doc["kind"] != kind:
         return False
     if equipment and doc["equipment"] and equipment.lower() not in doc["equipment"]:
@@ -350,11 +356,33 @@ def _body_score(query: str, section: tuple[str, str]) -> float:
     balų skirtukas: laimi tas skyrius, kuris tikrai apie tai.
     """
     weight = _idf()
-    asked = {stem: weight[stem] for stem in _stems(query) if stem in weight}
+    asked = {stem: weight[stem] for stem in _asked(query) if stem in weight}
     if not asked:
         return 0.0
     body = _stems(f"{section[0]} {section[1]}")
     return sum(w for stem, w in asked.items() if stem in body)
+
+
+@lru_cache(maxsize=1)
+def _filler() -> frozenset[str]:
+    """Klausiamųjų ir mandagumo žodžių šaknys: jie nurodo, KAD klausiama, bet nieko nesako apie temą.
+
+    Kodėl tai atskira taisyklė, o ne bendras dažnų žodžių atmetimas: „internetas" irgi dažnas, bet jis
+    yra TEMA. O „kaip" nėra niekada. Išmatuotas atvejis: klausime „kaip pakeisti wifi slaptažodį"
+    žodis „kaip" antraštėje pakėlė skyrių „Kaip prisijungti prie WiFi telefone" virš „slaptažodis
+    pakeistas" 0,003 balo skirtumu, ir agentas atsakė ne į tą klausimą.
+    """
+    from .contract.locale import vocab_set
+
+    try:
+        return frozenset(_stem(_fold(word)) for word in vocab_set("knowledge_filler"))
+    except Exception:  # pragma: no cover - sąrašas tikrinamas testu
+        return frozenset()
+
+
+def _asked(query: str) -> set[str]:
+    """Klausimo šaknys BE klausiamųjų žodžių — tai, apie ką klausta."""
+    return _stems(query) - _filler()
 
 
 def _keyword_score(query: str, doc: dict[str, Any], section: tuple[str, str]) -> float:
@@ -370,7 +398,7 @@ def _keyword_score(query: str, doc: dict[str, Any], section: tuple[str, str]) ->
     """
     weight = _idf()
     unknown = math.log(1 + (len(documents()) or 1))  # tokio svorio būtų vieno dokumento žodis
-    asked = {stem: weight.get(stem, unknown) for stem in _stems(query)}
+    asked = {stem: weight.get(stem, unknown) for stem in _asked(query)}
     if not asked:
         return 0.0
     tagged = _stems(" ".join(_surface(doc)))
@@ -404,6 +432,7 @@ def find(
     tags: Any = None,
     equipment: str | None = None,
     problem: str | None = None,
+    source: str | None = None,
     prefer: tuple[str, ...] = (),
     limit: int = 2,
     floor: float = FLOOR,
@@ -425,6 +454,7 @@ def find(
                     "tags": tags,
                     "equipment": equipment,
                     "problem": problem,
+                    "source": source,
                     # Ne filtras, o RIKIAVIMO nuostata: pirmumas daliai, kuri mini prašytą įrenginį.
                     # Filtruoti negalima — bendra tvarka yra geresnė už tylą.
                     "prefer": list(prefer),
@@ -439,6 +469,7 @@ def find(
         tags=tags,
         equipment=equipment,
         problem=problem,
+        source=source,
         prefer=prefer,
         limit=limit,
         floor=floor,
@@ -468,6 +499,7 @@ def _lexical(
     tags: Any = None,
     equipment: str | None = None,
     problem: str | None = None,
+    source: str | None = None,
     prefer: tuple[str, ...] = (),
     limit: int = 2,
     floor: float = FLOOR,
@@ -498,7 +530,7 @@ def _lexical(
     wanted = tuple(_fold(word) for word in prefer if word)
     scored: list[Passage] = []
     for doc in documents():
-        if not _matches(doc, kind, tags, equipment, problem):
+        if not _matches(doc, kind, tags, equipment, problem, source):
             continue
         for section in _sections(doc):
             score = _keyword_score(query, doc, section)

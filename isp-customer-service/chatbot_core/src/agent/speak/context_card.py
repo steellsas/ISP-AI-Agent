@@ -103,11 +103,15 @@ def _kb_answer(state, rt) -> str:
         # žinios (įrangos instrukcija, procedūra, FAQ) praleidžiamos per bet kurį gedimą.
         problem=_service_of(state),
     )
+    # AGENTO sprendimas, ko jam reikia: dokumentą jis pasirinko iš savo žinių žemėlapio dar
+    # suprasdamas ėjimą (`understand`). Kliento žodžiai toliau reikalingi, bet tik SKYRIUI tame
+    # dokumente ir patikimumui. Išmatuota: taip randama 66 %, ieškant vien kliento sakiniu — 57 %.
+    routed = str((getattr(state.turn, "understanding", None) or {}).get("knowledge") or "") or None
     if isinstance(need, Refusal):
         if rt is not None and getattr(rt, "tracer", None) is not None:
             rt.tracer.emit("knowledge", refused=need.why, said=need.said[:60])
         return ""
-    found = find(
+    found = _in_routed_document(need, routed) or find(
         need.words,
         equipment=need.equipment,
         problem=need.problem,
@@ -138,6 +142,27 @@ def _kb_answer(state, rt) -> str:
         # Iki E1 tokiu atveju būdavo grąžinama NIEKO, o modelis improvizuodavo.
         return f"(NOT SURE this answers the question, say so and ask to rephrase) {said}"
     return said
+
+
+def _in_routed_document(need, routed: str | None):
+    """Skyrius TAME dokumente, kurį agentas pasirinko — arba nieko, ir tada ieškom įprastai.
+
+    Kodėl dokumentas iš agento, o skyrius iš kliento žodžių: ieškant vien poreikiu balas normuojamas
+    pagal poreikį ir tampa 1,000 — viskas atrodytų „tvirta". Kliento žodžiai išlaiko patikimumą
+    sąžiningą, o agento pasirinkimas pataiso vietą. Jei jo dokumente nieko nėra, GELBSTI įprasta
+    paieška: be to septyni klausimai iš 68 būtų likę be atsakymo (išmatuota).
+    """
+    if not routed:
+        return []
+    from ..knowledge_base import find
+    from ..knowledge_need import device_markers
+
+    return find(
+        need.words,
+        source=routed,
+        prefer=device_markers(need.device),
+        limit=2,
+    )
 
 
 def _service_of(state) -> str | None:
@@ -203,9 +228,11 @@ def _asked_how(state, rt) -> list[str]:
         # klausimą": „ar wifi kenkia sveikatai" gauna 0,26 ir laikomas tvirtu, nes WiFi tikrai mūsų
         # tema. Ar tekstas ATSAKO į klausimą, sprendžia modelis — tai kaip tik tas darbas, kurį jis
         # moka, o rikiuotojas ne.
-        "registration). If this knowledge does not actually answer what they asked, say honestly "
-        "that you cannot advise on that instead of stretching it. Then return to what the engine "
-        "is waiting for."
+        "registration). KEEP the concrete detail the knowledge names — an address like 192.168.0.1, "
+        "a setting's name, where to look — because that is what the caller acts on; a summary "
+        "without it is not an answer. If this knowledge does not actually answer what they asked, "
+        "say honestly that you cannot advise on that instead of stretching it. Then return to what "
+        "the engine is waiting for."
     ]
 
 
@@ -329,9 +356,12 @@ def _step_knowledge(state, rt) -> list[str]:
         )
     if not found:
         return []
+    # Atsargai pakanka kelių sakinių. Visa dalis (iki 700 simbolių) kiekviename tų žingsnių ėjime
+    # tik ilgina kortelę ir atsakymą, o balse ilgesnis atsakymas kainuoja laiko: D5 pilname balso
+    # rinkime dėl to prarado ėjimą ir tiketas nebeįvyko (2026-09-25).
     return [
         "DEEPER KNOWLEDGE for this step (use ONLY if the caller asks about it; do not read it "
-        f"out on your own): [{found[0].kind}: {found[0].title}] {found[0].text}"
+        f"out on your own): [{found[0].title}] {found[0].text[:240]}"
     ]
 
 

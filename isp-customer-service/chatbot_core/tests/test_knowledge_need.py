@@ -237,9 +237,100 @@ def test_the_honest_line_is_in_the_reply_context():
         dialog=SimpleNamespace(last_heard="kaip android telefone prisijungti prie wifi"),
         case=SimpleNamespace(fault=None),
         diagnosis=SimpleNamespace(verdicts={}),
+        turn=SimpleNamespace(understanding={}),
     )
     said = _kb_answer(state, None)
     assert said.startswith("(NO instructions for THIS device")
     assert "android" in said
     # Bendra tvarka vis tiek paduodama — tyla būtų blogesnė už bendrą atsakymą.
     assert "Nustatymai" in said or "Wi-Fi" in said
+
+
+# --- agentas pats pasirenka dokumentą iš savo žinių žemėlapio (E4) ------------------------
+
+
+def test_the_knowledge_map_is_built_from_the_documents_themselves():
+    """Žemėlapis auga su baze be kodo: nauja žinia — nauja eilutė prompte."""
+    from agent.perceive.understand import _knowledge_map
+
+    listing, sources = _knowledge_map()
+    assert len(sources) == len(kb.documents())
+    assert len(listing.splitlines()) == len(sources)
+    for document in kb.documents():
+        assert document["title"] in listing
+
+
+def test_an_invented_document_number_is_dropped():
+    """Modelio sugalvotas numeris negali tapti keliu į niekur."""
+    from agent.perceive import understand as und
+
+    _listing, sources = und._knowledge_map()
+    assert sources, "žinių bazė ne tuščia"
+    # Tikras numeris verčiamas į kelią; už sąrašo ribų arba ne skaičius — atmetama.
+    assert sources[0].endswith(".md")
+    for bad in (0, -1, len(sources) + 1, None, "keturi"):
+        try:
+            index = int(bad)
+            picked = sources[index - 1] if 1 <= index <= len(sources) else None
+        except (TypeError, ValueError):
+            picked = None
+        assert picked is None, bad
+
+
+def test_a_search_can_be_limited_to_one_document():
+    """Taip ieškoma, kai dokumentą pasirinko pats agentas."""
+    routed = "equipment/router_tplink.md"
+    found = kb.find("kiek lempučių turi degti", source=routed, limit=3)
+    assert found and {p.source for p in found} == {routed}
+    # Be galūnės — tas pats dokumentas (kortelės ir maršrutai rašo abiem būdais).
+    assert kb.find("lemputės", source="equipment/router_tplink", limit=1)
+
+
+def test_the_routed_document_changes_the_answer():
+    from types import SimpleNamespace
+
+    from agent.speak.context_card import _kb_answer
+
+    def state(heard, routed=None):
+        return SimpleNamespace(
+            dialog=SimpleNamespace(last_heard=heard),
+            case=SimpleNamespace(fault=None),
+            diagnosis=SimpleNamespace(verdicts={}),
+            turn=SimpleNamespace(understanding={"knowledge": routed} if routed else {}),
+        )
+
+    asked = "kiek lempučių turi būti užsidegusių"
+    with_route = _kb_answer(state(asked, "equipment/router_tplink.md"), None)
+    without = _kb_answer(state(asked), None)
+    assert "router_tplink" not in without  # be maršruto nueina ne ten
+    assert "equipment:" in with_route
+
+
+def test_the_boundary_still_wins_over_the_route():
+    """Maršrutas nėra leidimas: ne mūsų sritis lieka be paieškos, net jei modelis dokumentą parinko."""
+    from types import SimpleNamespace
+
+    from agent.speak.context_card import _kb_answer
+
+    state = SimpleNamespace(
+        dialog=SimpleNamespace(last_heard="koks šiandien oras Šiauliuose"),
+        case=SimpleNamespace(fault=None),
+        diagnosis=SimpleNamespace(verdicts={}),
+        turn=SimpleNamespace(understanding={"knowledge": "equipment/router_tplink.md"}),
+    )
+    assert _kb_answer(state, None) == ""
+
+
+def test_the_rescue_path_still_answers_when_the_route_is_empty():
+    """LLM atmetė be reikalo (7 iš 68 išmatuota) — leksinė paieška vis tiek atsako."""
+    from types import SimpleNamespace
+
+    from agent.speak.context_card import _kb_answer
+
+    state = SimpleNamespace(
+        dialog=SimpleNamespace(last_heard="kaip sukonfigūruoti routerį po gamyklinio atstatymo"),
+        case=SimpleNamespace(fault=None),
+        diagnosis=SimpleNamespace(verdicts={}),
+        turn=SimpleNamespace(understanding={"knowledge": None}),
+    )
+    assert "howto:" in _kb_answer(state, None)

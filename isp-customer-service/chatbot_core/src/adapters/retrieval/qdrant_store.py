@@ -410,6 +410,14 @@ def _filter(where: dict[str, Any]):
     from qdrant_client import models
 
     must: list[Any] = []
+    # Vienas dokumentas — kai jį pasirinko pats agentas (E4). `source` payload'e jau indeksuotas.
+    source = where.get("source")
+    if source:
+        must.append(
+            models.FieldCondition(
+                key="source", match=models.MatchValue(value=f"{str(source).removesuffix('.md')}.md")
+            )
+        )
     kind = where.get("kind")
     if kind:
         must.append(models.FieldCondition(key="kind", match=models.MatchValue(value=str(kind))))

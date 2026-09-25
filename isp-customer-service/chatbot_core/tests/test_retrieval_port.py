@@ -69,6 +69,8 @@ def _fake_state(heard: str, fault: str | None = None):
         dialog=SimpleNamespace(last_heard=heard),
         case=SimpleNamespace(fault=fault),
         diagnosis=SimpleNamespace(verdicts={}),
+        # Ėjimo supratimas: čia gyvena AGENTO pasirinktas dokumentas (E4).
+        turn=SimpleNamespace(understanding={}),
     )
 
 

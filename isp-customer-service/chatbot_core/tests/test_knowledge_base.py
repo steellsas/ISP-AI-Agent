@@ -79,12 +79,20 @@ class TestTheCallersOwnEquipment:
 
 class TestWhatIsReturned:
     def test_a_passage_carries_its_source(self):
+        """Atsakymas visada turi adresą: dokumentą IR skyrių, kad būtų patikrinamas."""
         found = kb.find("kaip pakeisti wifi slaptažodį", limit=1)
-        assert found and found[0].cite.endswith("(faq/common_questions.md)")
+        assert found and found[0].cite.endswith(f"({found[0].source})")
+        assert found[0].source.endswith(".md") and found[0].title
         assert found[0].text and len(found[0].text) <= 700
 
     def test_a_section_not_the_whole_file(self):
-        """The caller hears the answer, not a manual."""
+        """Klientas išgirsta ATSAKYMĄ, ne instrukciją.
+
+        Anksčiau čia buvo tikrinamas FAQ atsakymas. Nuo E4a (klausiamieji žodžiai nebesveria) tas
+        pats klausimas grąžina TP-Link žingsnius — `192.168.0.1 → Wireless Security` — t. y. tai, ką
+        klientas gali padaryti. Todėl tikrinam tikslą: viena dalis, ir ji VEIKSMINGA.
+        """
         found = kb.find("kaip pakeisti wifi slaptažodį", limit=1)
-        assert "slaptaž" in found[0].text.lower()
-        assert len(found[0].text) < 700
+        assert len(found) == 1 and len(found[0].text) < 700
+        actionable = f"{found[0].title} {found[0].text}".lower()
+        assert "slaptaž" in actionable or "192.168" in actionable

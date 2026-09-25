@@ -91,7 +91,9 @@ def for_query(query: str) -> Sparse:
     """
     weight = kb._idf()
     unknown = math.log(1 + (len(kb.documents()) or 1))
-    asked = {stem: weight.get(stem, unknown) for stem in kb._stems(query)}
+    # `_asked`, ne `_stems`: klausiamieji žodžiai („kaip", „sakykite") temos nesako ir nesveria nei
+    # failuose, nei Qdrant'e — kitaip sandauga nebelygtų leksinio balo.
+    asked = {stem: weight.get(stem, unknown) for stem in kb._asked(query)}
     if not asked:
         return Sparse((), ())
     scale = 1.0 / (3 * sum(asked.values()))

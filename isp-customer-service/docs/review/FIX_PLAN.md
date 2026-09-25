@@ -266,6 +266,47 @@ svarbiausio. Dabar konkretumą rodo tik sąmoninga deklaracija: **tagas arba sky
 Testas tikrina ir ateitį: kai konkreti instrukcija bus parašyta, ji nugalės bendrą be jokio kodo.
 
 
+## RAG E4a — paieškos įvadas iš agento, ne iš kliento sakinio (šaka `fix/wave-4a`, 2026-09-25)
+
+Andrius: *„paieška vis tiek turi ateiti iš agento, nes RAG žinios tai agento žinios — agentas turi
+susirasti sau informaciją."* Išmatuota tikrais LLM kvietimais (68 klausimai):
+
+| Kuo ieškoma | rezultatas |
+|---|---|
+| kliento sakiniu (buvo) | hit@1 57 % · hit@2 60 % |
+| LLM laisvai sugalvotu poreikiu | hit@1 **53 %** — blogiau |
+| LLM pasirinkimu iš žinių žemėlapio | **69 %** teisingas dokumentas |
+| **maršrutas + leksinis skyrius + gelbėjimas** | **hit@1 69 % · hit@2 69 % · tyla 0** |
+
+**Kodėl laisvas poreikis blogiau:** tie 90 %, kuriais grindžiau idėją, priklausė ne „poreikio formai",
+o tam, kad kortelių poreikius rašiau **skaitydamas dokumentus**. LLM to atspėti negali. Bet duotas
+žemėlapis (17 pavadinimų) jį išsprendžia: modelis renkasi iš to, kas tikrai yra.
+
+| Kas atsirado | Kam |
+|---|---|
+| `prompts/sensors/knowledge_route.md` + `_knowledge_map()` | agento žinių žemėlapis prompte; auga su baze be kodo |
+| `understand(): "knowledge"` | dokumento numeris → kelias, patikrintas prieš tą patį sąrašą; sugalvotas numeris tyliai atmetamas |
+| `Perception.knowledge` | maršrutas keliauja iki atsakymo per ėjimo supratimą |
+| `find(source=…)` | paieška VIENAME dokumente — abiejose saugyklose (Qdrant `source` payload'e jau indeksuotas) |
+| `_in_routed_document()` | skyrius ir patikimumas iš kliento žodžių; nieko neradus — gelbsti įprasta paieška |
+
+**Trys ribos, kurias įrašiau sąmoningai:** maršrutas **nėra leidimas** (vartai stoja pirmi — patikrinta
+testu); maršrutas **nepakelia patikimumo** (69 % tikslumas per mažas, kad „agentas pasirinko" reikštų
+„tvirta"); ir **gelbėjimas būtinas** — be jo 7 klausimai iš 68 liktų be atsakymo.
+
+**Kaina:** vienas laukas tame pačiame `understand` kvietime, nulis papildomų LLM ėjimų; prompte +17
+eilučių. Prie kelių šimtų dokumentų žemėlapį reikės sutraukti — įrašyta kode.
+
+**Ką pagavo eval'as, kai atgaminimo testas rodė žalią:** pirmas paleidimas davė 194/195 (K1).
+(1) Skyrių sprendė žodis **„kaip"** — 0,003 balo skirtumu; klausiamieji ir mandagumo žodžiai nuo šiol
+nesveria (`knowledge_filler` žodyne). (2) **Arbitras matavo dokumento tapatumą, ne atsakymo
+naudingumą**: tam klausimui buvo priimtas `wifi_problems`, kurio skyrius apie PAMIRŠTĄ slaptažodį —
+dabar priimtinas tik dokumentas su žingsniais. (3) Maršruto promptas gavo eilutę: rinkis dokumentą su
+ŽINGSNIAIS tam, ką klientas nori PADARYTI. (4) Ir tik pilnas BALSO rinkimas parodė, kad kortelės
+gilesnė žinia įterpdavo iki 700 simbolių kiekviename ėjime — D5 dėl to prarado ėjimą ir tiketas
+nebeįvyko; atsargai pakanka 240 simbolių.
+
+
 **Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
 lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
 vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).

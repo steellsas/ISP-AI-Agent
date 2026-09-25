@@ -716,3 +716,98 @@ kliento paviršiumi — jie randa dokumentą, bet nedaro jo konkrečiu.
 Į kontroliuojamą žodyną įtraukti tagai `android`, `ios`, `windows`, `macos`. Kai bus parašyta
 konkretaus įrenginio instrukcija, ji nugalės bendrą be jokio kodo — tai patikrinta testu
 (`test_a_device_specific_section_wins_when_it_exists`).
+
+---
+
+## 14. E4a — paieškos įvadas yra AGENTO sprendimas (2026-09-25)
+
+Andrius (2026-09-25): *„kai klientas kažką sako, paieška vis tiek turi ateiti iš agento, nes RAG žinios
+tai agento žinios supratimui ir informacijos papildymui — agentas turi susirasti sau informaciją."*
+
+### 14.1 Trys variantai, visi išmatuoti tikrais LLM kvietimais (68 klausimai)
+
+| Kuo ieškoma | hit@1 | hit@2 |
+|---|---|---|
+| kliento sakiniu (buvo) | 57 % | 60 % |
+| LLM laisvai sugalvotu poreikiu | **53 %** | 56 % |
+| **LLM pasirinkimu iš agento žinių žemėlapio** | **69 %** (teisingas dokumentas) | — |
+| **maršrutas + leksinis skyrius + gelbėjimas** | **69 %** | **69 %** |
+
+Du dalykai, kurių nebūčiau atspėjęs:
+
+**Laisvai sugalvotas poreikis yra BLOGIAU už kliento sakinį.** Tie 90 %, kuriais grindžiau LLM
+poreikio idėją, priklausė ne „poreikio formai", o tam, kad kortelių poreikius rašiau **skaitydamas
+dokumentus** — jie sutampa su dokumentų žodžiais pagal konstrukciją. LLM to atspėti negali.
+
+**Bet pasirinkimas iš žemėlapio veikia.** Duodam modeliui 17 dokumentų pavadinimų, ir jis nebeturi
+spėti mūsų žodžių — renkasi iš to, kas tikrai yra. Tai ir yra „agentas susiranda sau informaciją"
+techniškai: sprendimas jo, o ne kliento frazės.
+
+### 14.2 Kaip sujungta
+
+```
+klientas kažką pasakė
+   │
+   ├─ vartai (E3b): ne mūsų sritis -> NEIEŠKOM (maršrutas leidimo neduoda)
+   ├─ AGENTAS pasirinko dokumentą (tame pačiame `understand` kvietime, vienas laukas)
+   │     └─ ieškom TIK jo dokumente: skyrių ir PATIKIMUMĄ nustato kliento žodžiai
+   └─ maršruto nėra arba jo dokumente nieko — leksinė paieška GELBSTI
+```
+
+Kodėl skyrius ir patikimumas lieka kliento žodžiams: ieškant vien poreikiu balas normuojamas pagal
+poreikį ir tampa 1,000 — viskas atrodytų „tvirta". Tai jau buvo išmatuota E3b („ar wifi kenkia
+sveikatai" → 1,000).
+
+Kodėl gelbėjimas būtinas: be jo **7 klausimai iš 68** būtų likę be atsakymo, nes modelis atmetė
+dokumentą, kurį turim (62 % / 62 % ir tyla 7 prieš 66 % / 66 % ir tyla 0).
+
+### 14.3 Ko maršrutas NEDARO
+
+**Maršrutas nėra leidimas.** Vartai (tema, paskirtis, prietaiso bėdos) stoja pirmi: jei klausimas ne
+mūsų srities, paieškos nėra, net jei modelis dokumentą parinko. Tai patikrinta testu.
+
+**Maršrutas nepakelia patikimumo.** Modelis parenka teisingai 69 % atvejų, tad „agentas pasirinko,
+vadinasi tvirta" būtų per drąsu. Balas lieka kalibruotas pagal kliento žodžius.
+
+### 14.4 Kaina
+
+Maršrutas keliauja **tame pačiame** ėjimo LLM kvietime (`understand`) — vienas laukas, nulis
+papildomų kvietimų. Prompte prisideda 17 eilučių (dokumentų pavadinimai). Prie kelių šimtų dokumentų
+žemėlapį reikės sutraukti (pvz. iki rūšių ar temų šeimų) — tai numatyta ir įrašyta kode.
+
+### 14.5 Metodinė pastaba
+
+Matuojant reikėjo 68 tikrų LLM kvietimų kiekvienam variantui, o riba yra **100 vienam procesui**.
+Pirmas bandymas ją išnaudojo dukart viename procese, nes matavimo skriptas kvietimus vykdė
+importuojant — todėl skriptai sutvarkyti, o maršrutai kešuojami (`routes.json`), kad pakartotinis
+matavimas nebemokėtų už tą patį.
+
+### 14.6 Ką pagavo eval'as, kai atgaminimo testas rodė žalią (2026-09-25)
+
+Pirmas paleidimas su maršrutu davė **194/195**: nukrito K1 („kaip pakeisti wifi slaptažodį"). Du
+radiniai, ir abu vertingesni už patį pataisymą.
+
+**1. Klausiamasis žodis sprendė atsakymą.** Maršrutas nuvedė į `wifi_problems.md` teisingai, bet
+skyrių laimėjo „Kaip prisijungti prie WiFi telefone" — **0,003 balo** skirtumu, nes jo antraštėje yra
+žodis „kaip". Todėl klausiamieji ir mandagumo žodžiai („kaip", „sakykite", „koks", „kiek") paieškoje
+nebesveria: jie nurodo, KAD klausiama, bet nieko nesako apie TEMĄ. Sąrašas — žodyne
+(`knowledge_filler`), ne kode. Po to tas pats klausimas grąžina „WiFi slaptažodžio keitimas:
+192.168.0.1 → Wireless Security".
+
+**2. Mano arbitras matavo ne tai, ką reikia.** Rinkinyje tam klausimui buvau priėmęs `wifi_problems`
+kaip teisingą — o jo skyrius apie PAMIRŠTĄ slaptažodį, ir agentas atsakė „įmonė slaptažodžių
+nesaugo", t. y. ne į tai, ko klausta. Testas matavo **dokumento tapatumą**, ne **atsakymo
+naudingumą**. Dabar tam klausimui priimtinas tik dokumentas su žingsniais, o `wifi_problems`
+sąmoningai ne — su komentaru, kad kitas žmogus to neatstatytų.
+
+**3. Maršruto promptas gavo eilutę:** rinkis dokumentą su ŽINGSNIAIS tam, ką klientas nori PADARYTI,
+ne tos pačios temos. Po to K1 praeina (`192.168` atsakyme).
+
+**4. Ir vienas dalykas, kurio nepastebėjau be balso rinkimo:** kortelės „gilesnė žinia" į kortelę
+įterpdavo iki 700 simbolių kiekviename tų žingsnių ėjime. Pilname balso rinkime D5 dėl to prarado
+ėjimą (ilgesni atsakymai → asinchroninis analitikas vėluoja → tiketo dialogas nebesutilpo). Atsargai
+pakanka 240 simbolių; po to balso rinkimas vėl 195/195.
+
+Metodinė išvada: **atgaminimo testas ir eval'as matuoja skirtingus dalykus, ir abu reikalingi.**
+Testas mato, ar randamas dokumentas; eval'as — ar atsakymas naudingas. Šiandien eval'as pagavo tris
+dalykus, kurių testas negalėjo.
