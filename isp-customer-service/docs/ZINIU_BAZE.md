@@ -229,3 +229,20 @@ dokumentas ir yra. Būtent taip ir buvo, kol nepridėjom.
 Sąrašai gyvena žodyne (`knowledge_out_of_purpose`, `knowledge_choice_form`,
 `knowledge_device_trouble`, `knowledge_service_words`), tad ribą galima derinti be kodo. Kiekvienas
 atsisakymas įrašomas į skambučio žurnalą — po šimto skambučių ribą galima peržiūrėti faktais.
+
+### Konkretaus įrenginio instrukcija
+
+Jei klientas pasako, kokį telefoną ar kompiuterį turi, agentas pirmiausia ieško **to įrenginio**
+instrukcijos. Kad dokumentas būtų laikomas konkrečiu, jis turi tai **deklaruoti**:
+
+```yaml
+tags: [wifi, android]        # arba skyriaus antraštė: „### Android telefone"
+```
+
+**Raktuose paminėto žodžio NEPAKANKA** — ir tai sąmoninga: `wifi_problems` raktuose yra ir `android`,
+ir `windows`, ir `iphone`, nes taip kalba klientai, bet pats dokumentas bendras. Jei konkretumas eitų
+iš raktų, agentas bendrą tvarką pateiktų kaip to įrenginio instrukciją.
+
+Konkrečios instrukcijos nesant agentas pasako tiesą ir vis tiek padeda:
+
+> „Tiksliai apie jūsų Android neturiu, bet bendrai telefonuose tai daroma taip: Nustatymai → Wi-Fi…"

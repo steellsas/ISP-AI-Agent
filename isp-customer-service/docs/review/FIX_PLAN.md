@@ -245,6 +245,27 @@ sąžiningumas — jei rasta žinia neatsako, agentas pasako, kad patarti negali
 nustatymai — dokumentų nėra. Mechanizmas ras tai, kas parašyta.
 
 
+## RAG — įrenginio ašis (šaka `fix/wave-4a`, 2026-09-25)
+
+E3b atpažindavo įvardintą įrenginį, bet jo nenaudojo. Dabar: klientas pasako „android telefone", ir
+agentas pirmiausia ieško **to įrenginio** instrukcijos, o jos nesant duoda bendrą tvarką **ir tai
+pasako**.
+
+| Kas atsirado | Kam |
+|---|---|
+| `find(prefer=…)` | pirmumas, ne filtras — bendra tvarka geriau už tylą |
+| `Passage.specific` | `True`/`False`/`None` (nebuvo klausta); `False` yra nurodymas pasakyti tiesą |
+| tagai `android`, `ios`, `windows`, `macos` | be jų konkretaus įrenginio dokumento nė parašyti nebūtų galima |
+| `device_markers()` | įrenginio vardai iš žodyno (samsung, xiaomi, aifonas…) |
+
+**Išmatuota klaida:** pirmoji versija konkretumą skaičiavo iš raktų ir teksto — o `wifi_problems`
+raktuose yra ir `android`, ir `windows`, ir `iphone` (nes taip kalba klientai), pats dokumentas
+bendras. Tad bendras dokumentas atrodė „konkretus" kiekvienam įrenginiui, ir agentas nebūtų pasakęs
+svarbiausio. Dabar konkretumą rodo tik sąmoninga deklaracija: **tagas arba skyriaus antraštė**.
+
+Testas tikrina ir ateitį: kai konkreti instrukcija bus parašyta, ji nugalės bendrą be jokio kodo.
+
+
 **Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
 lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
 vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).

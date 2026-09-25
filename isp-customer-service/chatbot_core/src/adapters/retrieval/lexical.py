@@ -34,6 +34,7 @@ class LexicalRetriever:
             tags=where.get("tags"),
             equipment=where.get("equipment"),
             problem=where.get("problem"),
+            prefer=tuple(where.get("prefer") or ()),
             limit=top_k or 2,
             **({"floor": threshold} if threshold is not None else {}),
         )
@@ -51,6 +52,8 @@ class LexicalRetriever:
                     # `sure=False` reiškia „geriausia, ką turiu, bet nesu tikras" — agentas tada
                     # patikslina, o ne improvizuoja. Tai sutarties dalis, ne priedas.
                     "sure": passage.sure,
+                    # Ar dalis apie TĄ įrenginį, kurio klausta (`None` — nebuvo klausta).
+                    "specific": passage.specific,
                 },
             }
             for passage in passages

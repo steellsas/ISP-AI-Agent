@@ -60,6 +60,10 @@ class Passage:
     tags: tuple[str, ...] = ()
     equipment: tuple[str, ...] = ()
     score: float = 0.0
+    # Ar ši dalis mini TAI, ko buvo prašyta (`prefer`) — pvz. kliento įvardintą telefoną. `None`
+    # reiškia, kad nieko konkretaus neprašyta. `False` yra svarbiausia reikšmė: turim bendrą tvarką,
+    # bet ne to įrenginio, ir agentas privalo tai pasakyti, o ne apsimesti (E3b).
+    specific: bool | None = None
     # Ar radinys pakankamai tvirtas, kad būtų sakomas kaip atsakymas. `False` reiškia „geriausia,
     # ką turiu, bet nesu tikras" — agentas tada patikslina, o ne tyli (E1, radinys AK).
     sure: bool = True
@@ -325,6 +329,19 @@ def _idf() -> dict[str, float]:
     return {stem: math.log(1 + total / count) for stem, count in seen_in.items()}
 
 
+def _mentions(doc: dict[str, Any], section: tuple[str, str], wanted: tuple[str, ...]) -> bool:
+    """Ar ši dalis tikrai apie TĄ įrenginį, kurio klausta.
+
+    Konkretumą rodo tik SĄMONINGA deklaracija: kontroliuojamas tagas (`tags: [android]`) arba skyriaus
+    antraštė („Android telefone…"). NE raktai ir NE tekstas — ir tai išmatuota klaida: WiFi dokumento
+    raktuose yra ir „android", ir „windows", ir „iphone", nes taip kalba klientai, o pats dokumentas
+    yra BENDRAS. Skaičiuojant raktus jis būtų atrodęs konkretus kiekvienam įrenginiui, ir agentas
+    nebūtų pasakęs svarbiausio: „būtent apie tą įrenginį instrukcijos neturiu".
+    """
+    declared = _fold(" ".join((*doc["tags"], section[0])))
+    return any(word in declared for word in wanted)
+
+
 def _body_score(query: str, section: tuple[str, str]) -> float:
     """Kiek sutampa PATS skyrius, be dokumento paviršiaus.
 
@@ -387,6 +404,7 @@ def find(
     tags: Any = None,
     equipment: str | None = None,
     problem: str | None = None,
+    prefer: tuple[str, ...] = (),
     limit: int = 2,
     floor: float = FLOOR,
     hint: float = HINT,
@@ -407,6 +425,9 @@ def find(
                     "tags": tags,
                     "equipment": equipment,
                     "problem": problem,
+                    # Ne filtras, o RIKIAVIMO nuostata: pirmumas daliai, kuri mini prašytą įrenginį.
+                    # Filtruoti negalima — bendra tvarka yra geresnė už tylą.
+                    "prefer": list(prefer),
                 },
             )
             return [_as_passage(chunk) for chunk in chunks]
@@ -418,6 +439,7 @@ def find(
         tags=tags,
         equipment=equipment,
         problem=problem,
+        prefer=prefer,
         limit=limit,
         floor=floor,
         hint=hint,
@@ -434,6 +456,7 @@ def _as_passage(chunk: dict[str, Any]) -> Passage:
         tags=tuple(meta.get("tags") or ()),
         equipment=tuple(meta.get("equipment") or ()),
         score=float(chunk.get("score") or 0.0),
+        specific=meta.get("specific"),
         sure=bool(meta.get("sure", True)),
     )
 
@@ -445,6 +468,7 @@ def _lexical(
     tags: Any = None,
     equipment: str | None = None,
     problem: str | None = None,
+    prefer: tuple[str, ...] = (),
     limit: int = 2,
     floor: float = FLOOR,
     hint: float = HINT,
@@ -471,6 +495,7 @@ def _lexical(
     """
     if not query or not query.strip():
         return []
+    wanted = tuple(_fold(word) for word in prefer if word)
     scored: list[Passage] = []
     for doc in documents():
         if not _matches(doc, kind, tags, equipment, problem):
@@ -488,13 +513,15 @@ def _lexical(
                     tags=doc["tags"],
                     equipment=doc["equipment"],
                     score=round(score, 3),
+                    specific=_mentions(doc, section, wanted) if wanted else None,
                     sure=score >= floor,
                 )
             )
     # Lygius balus skiria skyriaus paties atitikimas, tada šaltinis — kad tvarka būtų vienoda
     # kiekvieną kartą ir kiekvienoje saugykloje.
     body = {(p.source, p.title): _body_score(query, (p.title, p.text)) for p in scored}
-    scored.sort(key=lambda p: (-p.score, -body[(p.source, p.title)], p.source))
+    # Pirmumas: lygiu balu — ta dalis, kuri mini prašytą įrenginį; tada pati dalis; tada šaltinis.
+    scored.sort(key=lambda p: (-p.score, not p.specific, -body[(p.source, p.title)], p.source))
     sure = [p for p in scored if p.sure]
     return sure[:limit] if sure else scored[:1]
 

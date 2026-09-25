@@ -670,3 +670,49 @@ Patikrinta: **DOCSIS, RJ45 / kabelio jungimo schemos, PPPoE, macOS, FTTH/GPON, k
 nustatymai — dokumentų nėra.** Android ir iPhone minimi tik kaip raktai viename dokumente. Mechanizmas
 ras tai, kas parašyta; likusį rašo technikas, ir kiekvienas naujas dokumentas atkeliauja su savo
 klausimais (`_questions.yaml`), kad testas jį matuotų.
+
+---
+
+## 13. Įrenginio ašis: konkretus prieš bendrą, ir sąžininga eilutė (2026-09-25)
+
+Andrius (2026-09-24): *„gali tikslinti, kokiu telefonu Android ar iPhone... ir surasti pagal konkretų
+įrenginį nustatymo instrukciją. O jei to nėra, sako — neturiu informacijos, kaip toks įrenginys
+nustatomas, bet galiu bendra tvarka pasakyti, kaip tai daroma telefonuose."*
+
+E3b atpažindavo įvardintą įrenginį, bet niekur jo nenaudojo. Dabar naudoja:
+
+```
+klientas: „kaip android telefone prisijungti prie wifi"
+   │
+   ├─ įrenginys atpažintas: android  (pažodžiu, ne poteksčiu)
+   ├─ paieška su PIRMUMU Android instrukcijai — ne filtru, nes bendra tvarka geriau už tylą
+   └─ konkrečios nėra -> „(NO instructions for THIS device — say first that you do not have the
+      exact steps for their android, then give this GENERAL procedure) …"
+```
+
+### 13.1 Kodėl pirmumas, o ne filtras
+
+Filtras reikštų tylą, kai konkrečios instrukcijos nėra — o bendra telefono tvarka yra tikra pagalba.
+Todėl `prefer` yra rikiavimo nuostata: konkretus dokumentas nugali bendrą tarp lygaus balo radinių, o
+jo nesant grąžinamas bendras su `specific=False`, ir tai agentui yra nurodymas pasakyti tiesą.
+
+### 13.2 Išmatuota klaida: konkretumas negali eiti iš raktų
+
+WiFi dokumento `keywords` yra `android`, `windows`, `iphone` — **nes taip kalba klientai**, o pats
+dokumentas bendras. Pirmoji versija skaičiavo raktus ir tekstą, tad tas pats bendras dokumentas
+atrodė „konkretus" ir Android, ir Windows, ir iPhone klausimui:
+
+```
+prefer=android   -> specific=True   ✗ (o Android instrukcijos neturim)
+prefer=windows   -> specific=True   ✗
+```
+
+Agentas tada nebūtų pasakęs svarbiausio. Dabar konkretumą rodo tik **sąmoninga deklaracija**:
+kontroliuojamas tagas (`tags: [android]`) arba skyriaus antraštė („Android telefone…"). Raktai lieka
+kliento paviršiumi — jie randa dokumentą, bet nedaro jo konkrečiu.
+
+### 13.3 Kas paruošta turiniui
+
+Į kontroliuojamą žodyną įtraukti tagai `android`, `ios`, `windows`, `macos`. Kai bus parašyta
+konkretaus įrenginio instrukcija, ji nugalės bendrą be jokio kodo — tai patikrinta testu
+(`test_a_device_specific_section_wins_when_it_exists`).

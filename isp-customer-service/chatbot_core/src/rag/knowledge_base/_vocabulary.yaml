@@ -58,11 +58,17 @@ tags:
   - wan
   - dhcp
   - admin_panel
-  # kliento pusė
+  # kliento pusė ir jo įrenginys
   - wifi
   - password
   - network_name
   - client_device
+  # Konkretus kliento įrenginys. Dokumentas su šiuo tagu yra KONKRETUS; be jo — bendras, ir tada
+  # agentas pasako, kad būtent apie tą įrenginį informacijos neturi (E3b).
+  - android
+  - ios
+  - windows
+  - macos
   # fizika ir prijungimas
   - cable
   - crc

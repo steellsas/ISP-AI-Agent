@@ -83,7 +83,7 @@ def _kb_answer(state, rt) -> str:
         peržiūrėti faktais, o ne nuomone.
     """
     from ..knowledge_base import find
-    from ..knowledge_need import Refusal, from_caller
+    from ..knowledge_need import Refusal, device_markers, from_caller
 
     # Which family of device this caller actually has: the catalogue already answers that
     # from the line's own reading ("TP-Link Archer C80" -> tplink), and `level` names the file
@@ -111,6 +111,8 @@ def _kb_answer(state, rt) -> str:
         need.words,
         equipment=need.equipment,
         problem=need.problem,
+        # Klientas įvardino telefoną ar kompiuterį: pirmumas TO įrenginio instrukcijai.
+        prefer=device_markers(need.device),
         limit=2,
     )
     if rt is not None and getattr(rt, "tracer", None) is not None:
@@ -124,6 +126,13 @@ def _kb_answer(state, rt) -> str:
     if not found:
         return ""
     said = " ".join(f"[{p.kind}: {p.title}] {p.text}" for p in found)
+    if need.device and all(p.specific is False for p in found):
+        # Turim bendrą tvarką, bet ne to įrenginio. Andrius (2026-09-24): „jei to nėra, sako —
+        # neturiu informacijos, kaip toks įrenginys nustatomas, bet galiu bendra tvarka pasakyti."
+        said = (
+            f"(NO instructions for THIS device — say first that you do not have the exact steps "
+            f"for their {need.device}, then give this GENERAL procedure) {said}"
+        )
     if all(not p.sure for p in found):
         # Spėjimas, ne atsakymas: agentas privalo pasakyti, kad nėra tikras, ir patikslinti.
         # Iki E1 tokiu atveju būdavo grąžinama NIEKO, o modelis improvizuodavo.

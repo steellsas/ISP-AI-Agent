@@ -392,6 +392,14 @@ def _level(lexical: float, floor: float) -> int:
     return 0
 
 
+def _mentions(point: Any, wanted: tuple[str, ...]) -> bool:
+    """Ar ši dalis apie prašytą įrenginį — tas pats sprendimas, kaip `knowledge_base._mentions`:
+    tik kontroliuojamas tagas arba skyriaus antraštė, ne raktai ir ne tekstas."""
+    payload = point.payload or {}
+    declared = kb._fold(" ".join((*(payload.get("tags") or ()), str(payload.get("section") or ""))))
+    return any(word in declared for word in wanted)
+
+
 def _filter(where: dict[str, Any]):
     """Filtras, kurio semantika TOKIA PAT, kaip `knowledge_base._matches`.
 
@@ -448,6 +456,7 @@ class QdrantRetriever:
         if not lexical.indices:
             return []
         where = _filter(filter_metadata or {})
+        prefer = tuple(kb._fold(word) for word in (filter_metadata or {}).get("prefer") or ())
         floor = kb.FLOOR if threshold is None else threshold
         sparse_query = models.SparseVector(
             indices=list(lexical.indices), values=list(lexical.values)
@@ -499,12 +508,22 @@ class QdrantRetriever:
         # Tvarka: pirma lygis, tada saugyklos rangas (RRF arba leksinis balas), tada šaltinis —
         # kad lygūs balai abiejose realizacijose išsidėstytų vienodai.
         levels = [
-            (point, lex, fused, _level(lex, floor), self._body_score(point, lexical))
+            (
+                point,
+                lex,
+                fused,
+                _level(lex, floor),
+                self._body_score(point, lexical),
+                _mentions(point, prefer) if prefer else None,
+            )
             for point, lex, fused in scored
         ]
         levels = [row for row in levels if row[3] > 0]
-        # Lygius balus skiria SKYRIAUS atitikimas — tas pats skirtukas, kaip failų realizacijoje.
-        levels.sort(key=lambda row: (-row[3], -row[2], -row[4], row[0].payload["source"]))
+        # Lygius balus skiria: prašytas įrenginys, tada skyriaus atitikimas, tada šaltinis — ta pati
+        # tvarka, kaip failų realizacijoje, kad dvi saugyklos atsakytų vienodai.
+        levels.sort(
+            key=lambda row: (-row[3], not row[5], -row[2], -row[4], row[0].payload["source"])
+        )
         sure = [row for row in levels if row[3] == 2]
         chosen = sure[: top_k or 2] if sure else levels[:1]
         return [
@@ -519,13 +538,14 @@ class QdrantRetriever:
                     "tags": point.payload["tags"],
                     "equipment": point.payload["equipment"],
                     "sure": level == 2,
+                    "specific": specific,
                     "lexical": round(lex, 3),
                     # Saugyklos rangavimo balas: hibride tai RRF, leksiniame kelyje — tas pats
                     # leksinis balas. Metrikoms ir derinimui (E4), ne sprendimams.
                     "fused": round(fused, 4),
                 },
             }
-            for point, lex, fused, level, _body in chosen
+            for point, lex, fused, level, _body, specific in chosen
         ]
 
     def _dense_query(self, query: str) -> list[float] | None:

@@ -155,6 +155,17 @@ def named_device(text: str) -> str | None:
     return None
 
 
+def device_markers(device: str | None) -> tuple[str, ...]:
+    """Žodžiai, kuriais tas įrenginys pavadintas — pagal juos randama KONKRETI instrukcija.
+
+    Tai ne filtras: bendra tvarka yra geresnė už tylą. Tai pirmumas, o jei konkrečios instrukcijos
+    nėra, agentas pasako, kad būtent apie tą įrenginį jos neturi, ir duoda bendrą.
+    """
+    if not device:
+        return ()
+    return tuple(sorted({device, *_vocab(f"device_{device}")}))
+
+
 def device_trouble_only(text: str) -> bool:
     """Ar klausiama apie PATĮ prietaisą, o ne apie mūsų paslaugą jame.
 

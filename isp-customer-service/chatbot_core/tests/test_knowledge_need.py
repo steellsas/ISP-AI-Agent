@@ -166,3 +166,80 @@ def test_every_declared_need_finds_something():
     assert declared, "bent viena kortelė turi deklaruoti gilesnių žinių poreikį"
     for name, need_text in declared:
         assert kb.find(need_text, limit=1), f"{name}: '{need_text}' nieko neranda"
+
+
+# --- konkretus įrenginys prieš bendrą tvarką -----------------------------------------------
+
+
+def test_the_general_procedure_is_not_passed_off_as_the_device_s_own():
+    """Turim bendrą telefono tvarką, bet ne Android instrukcijos — ir tai turi būti PASAKYTA.
+
+    Andrius (2026-09-24): „jei to nėra, sako — neturiu informacijos, kaip toks įrenginys nustatomas,
+    bet galiu bendra tvarka pasakyti, kaip tai daroma telefonuose."
+    """
+    general = kb.find("kaip prisijungti prie wifi telefone", limit=1)[0]
+    assert general.specific is None, "neprašius įrenginio, konkretumo klausimo nėra"
+
+    for_android = kb.find(
+        "kaip prisijungti prie wifi telefone",
+        prefer=need.device_markers("android"),
+        limit=1,
+    )[0]
+    assert for_android.specific is False, "bendras dokumentas negali atrodyti kaip Android'o"
+    assert for_android.source == general.source, "bendra tvarka vis tiek grąžinama"
+
+
+def test_specificity_comes_from_the_declared_tag_not_from_the_keywords():
+    """WiFi dokumento raktuose yra ir „android", ir „windows", ir „iphone" — nes taip kalba klientai.
+
+    Pats dokumentas bendras, tad raktų skaičiavimas būtų padaręs jį „konkretų" kiekvienam įrenginiui,
+    ir agentas nebūtų pasakęs svarbiausio. Konkretumą rodo tik tagas arba skyriaus antraštė.
+    """
+    document = kb.document("troubleshooting/wifi_problems")
+    assert "android" in document["keywords"], "kliento žodis raktuose lieka"
+    assert "android" not in document["tags"], "bet tagas jo nedeklaruoja"
+    for device in ("android", "iphone", "windows"):
+        found = kb.find("wifi telefone", prefer=need.device_markers(device), limit=1)
+        assert found and found[0].specific is False
+
+
+def test_a_device_specific_section_wins_when_it_exists(monkeypatch):
+    """Kai konkreti instrukcija bus parašyta, ji turi nugalėti bendrą — mechanizmas tam paruoštas."""
+    documents = list(kb.documents())
+    specific = dict(
+        documents[0],
+        source="troubleshooting/_android_wifi.md",
+        title="Android WiFi nustatymai",
+        kind="howto",
+        tags=("wifi", "android"),
+        keywords=("wifi", "telefonas", "android"),
+        equipment=(),
+        problem=(),
+        body="## Android WiFi\nNustatymai, Tinklas ir internetas, WiFi, pasirinkti tinklą.",
+    )
+    monkeypatch.setattr(kb, "documents", lambda: (*documents, specific))
+    kb._idf.cache_clear()
+    try:
+        found = kb.find("wifi telefone android", prefer=need.device_markers("android"), limit=1)
+        assert found[0].source == "troubleshooting/_android_wifi.md"
+        assert found[0].specific is True
+    finally:
+        monkeypatch.undo()
+        kb._idf.cache_clear()
+
+
+def test_the_honest_line_is_in_the_reply_context():
+    from types import SimpleNamespace
+
+    from agent.speak.context_card import _kb_answer
+
+    state = SimpleNamespace(
+        dialog=SimpleNamespace(last_heard="kaip android telefone prisijungti prie wifi"),
+        case=SimpleNamespace(fault=None),
+        diagnosis=SimpleNamespace(verdicts={}),
+    )
+    said = _kb_answer(state, None)
+    assert said.startswith("(NO instructions for THIS device")
+    assert "android" in said
+    # Bendra tvarka vis tiek paduodama — tyla būtų blogesnė už bendrą atsakymą.
+    assert "Nustatymai" in said or "Wi-Fi" in said
