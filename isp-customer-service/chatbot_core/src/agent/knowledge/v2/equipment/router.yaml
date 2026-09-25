@@ -24,7 +24,21 @@ actions:
 lights:
   power:
     ask_key: equipment.router.lights.power
-    means: {"yes": power=yes, "no": power=no}
+    # Bet kokia spalva reiškia, kad įrenginys turi maitinimą — tai tiesa bet kokiai dėžutei.
+    means:
+      "yes": power=yes
+      "no": power=no
+      green: power=yes
+      orange: power=yes
+      red: power=yes
+      blue: power=yes
+      white: power=yes
   internet:
     ask_key: equipment.router.lights.internet
-    means: {"yes": wan_link=up, "no": wan_link=down}
+    # Nežinomam įrenginiui ŽALIA universaliai reiškia ryšį; kitos spalvos reiškia skirtingus
+    # dalykus skirtingiems gamintojams, tad jų neverčiam faktu — gamintojo failas tai pasako
+    # pats (žr. tplink.yaml), o čia geriau nežinoti negu spėti.
+    means:
+      "yes": wan_link=up
+      "no": wan_link=down
+      green: wan_link=up

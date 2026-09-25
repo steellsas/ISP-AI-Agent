@@ -73,8 +73,24 @@ class TestTheRouterHungCard:
         assert steps[1].on_fail.args["reason"] == "no_flap"
 
     def test_one_device_is_another_cards_case(self):
+        """Wave 4a (Andrius 2026-09-23): the card no longer ASKS whether it is one device or
+        all — for a router the line sees and hears nothing from, the reboot is the first move
+        either way. A caller who says it anyway routes the call away from this card."""
         card = catalog.card("router_hung")
-        assert card.needs["fail_scope"].values["one"] == "hands_to=healthy_to_router"
+        assert "fail_scope" not in card.needs
+        assert "fail_scope=one" in card.rules_out
+
+    def test_it_asks_nothing_before_the_reboot(self):
+        card = catalog.card("router_hung")
+        assert [fact for fact, need in card.needs.items() if need.ask] == []
+        assert card.needs["lights"].volunteered is True  # used if said, never asked
+
+    def test_a_technician_is_not_sent_before_the_reboot(self):
+        assert catalog.card("router_hung").escalate.only_after == ["reboot"]
+
+    def test_a_caller_already_at_the_router_is_not_asked_to_go_there(self):
+        reach = catalog.card("router_hung").solution[0].steps[0]
+        assert reach.module == "reach" and reach.done_when == ["reachable=yes"]
 
 
 class TestABrokenCardStopsTheApp:
@@ -135,6 +151,52 @@ class TestABrokenCardStopsTheApp:
     def test_a_phrase_key_that_is_not_in_the_locale(self):
         with pytest.raises(KnowledgeError, match="explain phrase"):
             self._check(self._card(explain={"conclusion": "pack.nope.gloss"}))
+
+    def test_a_second_wording_that_is_not_in_the_locale(self):
+        """Wave 4a: `again` is the wording for a caller who answered about something else."""
+        with pytest.raises(KnowledgeError, match="again phrase"):
+            self._check(
+                self._card(
+                    needs={
+                        "fail_scope": {
+                            "ask": "pack.router_hung.fail_scope.question",
+                            "again": "pack.nope.simpler",
+                            "values": {"all": "confirms"},
+                        }
+                    }
+                )
+            )
+
+
+class TestWhatToAssumeWhenNobodyAnswers:
+    """Wave 4a (Andrius 2026-09-23): a ticket instead of the fix is help we never gave, so a
+    card may say what to carry on with. It must name a value it actually knows."""
+
+    def test_an_assumption_outside_the_needs_values(self):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="assume"):
+            FaultCard(
+                fault="x",
+                service="internet",
+                needs={
+                    "fail_scope": {
+                        "ask": "pack.router_hung.fail_scope.question",
+                        "values": {"all": "confirms"},
+                        "assume": "both",
+                    }
+                },
+            )
+
+    def test_the_client_side_card_carries_the_scope_question(self):
+        """It is the card the question actually serves: the line carries traffic, so which
+        devices fail is what tells us where to look. It may be asked twice, in two wordings,
+        and then the call goes on with the assumption."""
+        need = catalog.card("healthy_to_router").needs["fail_scope"]
+        assert need.ask and need.again and need.assume == "one"
+
+    def test_a_line_that_carries_traffic_points_at_one_device(self):
+        assert catalog.card("healthy_to_router").needs["fail_scope"].assume == "one"
 
 
 def test_every_module_a_card_can_call_declares_what_it_does():

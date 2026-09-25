@@ -94,6 +94,56 @@ class TestInformTemplates:
         assert lang().money(10.01) == "10 eurų 1 centas"
 
 
+class TestTheAnswerDoesNotContradictTheNews:
+    """Live 2026-09-23: the agent read out a debt of 49,98 € and, when the caller asked how
+    much exactly, answered "tikslios sumos aš nematau". The FAQ sentence was written for a
+    call where we have no figures; once the news has been delivered, the answer comes from
+    the same facts."""
+
+    def _with_debt(self):
+        agent = _agent()
+        agent.state.diagnosis.verdicts["network"] = {
+            "reason": "billing_suspended",
+            "signals": {
+                "billing_debt": {
+                    "amount": 49.98,
+                    "months": ["2026-07", "2026-08"],
+                    "last_payment": "2026-06-05",
+                }
+            },
+        }
+        return agent
+
+    def test_the_amount_is_repeated_not_denied(self, db_connection):
+        from agent.faq import match
+        from agent.speak.context_card import _faq_answer
+
+        agent = self._with_debt()
+        entry = next(e for e in match("o kiek tiksliai skolingas?") if e["topic"] == "debt_amount")
+
+        said = _faq_answer(agent.state, agent.runtime, entry)
+
+        assert "49 eurai 98 centai" in said
+        assert "nematau" not in said
+
+    def test_without_the_news_the_honest_answer_stands(self, db_connection):
+        """No debt was read out in this call: we really do not see the sum."""
+        from agent.faq import match
+        from agent.speak.context_card import _faq_answer
+
+        agent = _agent()
+        entry = next(e for e in match("kiek skolingas?") if e["topic"] == "debt_amount")
+
+        assert "nematau" in _faq_answer(agent.state, agent.runtime, entry)
+
+    def test_the_restore_time_is_knowledge(self, db_connection):
+        """DEMO says an hour; production says whatever is true — one locale line, no code
+        change (Andrius, 2026-09-23)."""
+        from agent.contract.locale import phrase_or
+
+        assert "valand" in phrase_or("inform.billing_suspended.paid_just_now", "")
+
+
 class TestWrapUpHearing:
     """Blokas 2: po „Ar dar kuo padėti?" turinys ATSAKOMAS, ne nuryjamas su
     goodbye; darkyti atsisveikinimai nebekilpuoja (riba 2 turn'ai)."""

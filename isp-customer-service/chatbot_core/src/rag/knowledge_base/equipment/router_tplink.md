@@ -1,3 +1,11 @@
+---
+title: TP-Link Archer routeris — lemputės, mygtukai, nustatymai
+kind: equipment
+equipment: [tplink]
+tags: [lights, buttons, ports, reset, wifi, model]
+keywords: [router, tplink, archer, lemputes, lemputė, indikatoriai, mygtukai, reset, wps, nustatymai,
+  admin, wifi, slaptazodis, 192.168.0.1]
+---
 # TP-Link Archer Router - Specifikacijos ir valdymas
 
 ## Modeliai naudojami mūsų tinkle

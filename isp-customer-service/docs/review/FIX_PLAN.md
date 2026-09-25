@@ -44,12 +44,291 @@ BANGA 5  valymas
 | 2c | Įrankių manifestai: capability portai, saugikliai, timeout / limitai / on_failure, fake adapteris | P-7, V, W | 1 |
 | 3 | Case, keli kandidatai, vienas sprendėjas; kortelė v2 + konverteris; moduliai; įrangos katalogas modelis → šeima → bazinė; verdict medis → faktai | N, O, P, U, AG, AH, AI | 2a, 2c |
 | 4a | Informavimo kortelės (`news:`) + `verdict.py::decide` trynimas: kode nebėra medžio | AJ | 3 |
-| 4b | Lėtas internetas + TV tik failais; RAG atviriems klausimams; pavyzdžių bankas | AJ, AK | 4a, 2b |
+| 4b | **Žinios naudojamos**: pažymėti dokumentai (`kind`/`tags`/`equipment`) + įrangos instrukcijos ir algoritmai pokalbyje. Kortelės/TV/lėtas internetas — po to | AJ, AK | 4a |
 | 5 | Valymas: vėliavos, seni keliai, pavadinimai, LT/EN raktai, testų žemėlapis | E, F5 | 4 |
 
 Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
+
+## Banga 4b — žinios naudojamos (šaka `fix/wave-4a`, tęsinys)
+
+Andrius (2026-09-23): *„šiuo metu manau svarbiausia žinios kad jos būtų naudojamos… įrangos
+informacija ir algoritmai kaip galima konfigūruoti ar patarimai gali būti skirtingais tag kad
+agentas surastų tiksliai to ko reikia."*
+
+Tikslas ne naujos kortelės, o **universalus agentas**: jis moka atsakyti apie kliento įrangą,
+nesvarbu, ar tam yra gedimo kortelė. Radiniai: AJ (embedding RAG realiai nenaudojamas), AK
+(FAQ — tik 5 temos, viskas kita „ne mano sritis").
+
+| # | Kas | Rezultatas |
+|---|---|---|
+| 4b-1 | **Dokumento antraštė**: `kind`, `tags`, `equipment`, `problem` visiems 17 KB dokumentų | žinia pati pasako, kas ji ir kaip ją rasti |
+| 4b-2 | **`agent/knowledge_base.py`** — vienintelis kelias į žinias: filtras (deterministinis) → rikiavimas (šaknų sutapimas) | TP-Link instrukcija nepasiekia kliento su kita dėžute |
+| 4b-3 | **Dvi naudojimo vietos**: šoninė tema (už 5 FAQ temų) ir „kaip…" klausimas pokalbio viduryje | atsakymas su šaltiniu arba sąžiningas „negaliu patarti" |
+
+**4b-4 · Kortelė veda per algoritmą (`guide`).** `dhcp_silent` iki tol siųsdavo meistrą, nors
+žinių bazėje surašyta, kaip klientas pats susigrąžina internetą. Dabar kortelėje viena eilutė:
+
+```yaml
+- module: guide
+  args: {knowledge: troubleshooting/internet_factory_reset_dhcp, count: 2}
+```
+
+Variklis duoda po VIENĄ dokumento žingsnį per ėjimą; `count` — kiek žingsnių yra kliento
+rankose (dokumento „patikrinti" yra mūsų `verify`, nes telemetrija — arbitras). Nepavykus:
+meistras, o tikete — ką bandėme. Startinis validatorius neleidžia rodyti į dokumentą, kurio
+nėra arba kuris neturi žingsnių.
+
+Pakeliui — dvi klaidos, kurių vienetų testai nebūtų pagavę:
+
+| Kas buvo | Kodėl | Kaip dabar |
+|---|---|---|
+| **Pirmas žingsnis praleistas** | žingsnis pasižymėdavo „pasakytu", kai planas SUDAROMAS; tą ėjimą planą perėmė identifikacija, ir kliento „taip, esu prie routerio" užbaigė žingsnį, kurio jis negirdėjo | žymė dedama ten, kur atsakymas formuojamas (`speak/context_card.py`) — kaip ir išvada 4a bangoje |
+| **Vienas žingsnis buvo dalijamas į tris ėjimus** | žingsnyje trys smulkūs punktai, narratorius juos dalijo | modulio tikslas sako: visas žingsnis vienu atsakymu, punktus suliejant, be „Žingsnis N" antraštės |
+
+**4b-5 · Lempučių spalvos.** Katalogas dabar pasako, ką reiškia spalva, o skaitytuvas ją
+atpažįsta (žalia / raudona / oranžinė / mėlyna / balta, be diakritikų irgi):
+
+```
+TP-Link Archer:  žalia → wan_link=up · oranžinė → wan_link=down · raudona → wan_link=down
+nežinoma dėžutė: žalia → wan_link=up · oranžinė → (nežinom) · bet kokia spalva → power=yes
+```
+
+Kortelės apie spalvas nežino — jos kalba tik `wan_link`. Nežinomam įrenginiui sąmoningai
+nespėjama: universalu tik „žalia = ryšys" ir „dega = maitinimas yra". Validatorius **klausia
+paties skaitytuvo**, kokias spalvas jis moka, tad į katalogą nebeįrašysi spalvos, kurios
+agentas neišgirstų.
+
+**Liko 4b bangoje:** TV / lėto interneto kortelės — atidėtos Andriaus sprendimu, kol veikia
+esami demo scenarijai. Embedding'ai peraugo į atskirą planą (žr. žemiau).
+
+
+## RAG E1 — paieškos pagrindas be DB ir be modelio (šaka `fix/wave-4a`, 2026-09-24)
+
+Sprendimas ir matavimai: [RAG_SPRENDIMAI.md](RAG_SPRENDIMAI.md) · planas: [RAG_PLANAS.md](RAG_PLANAS.md).
+E1 tikslas — viskas, ką galima gauti **be vektorinės DB ir be embedding'ų**, plius arbitras, kuriuo
+matuojami visi tolesni etapai.
+
+| Kas buvo | Kodėl blogai | Kaip dabar |
+|---|---|---|
+| paieškos kokybės niekas nematavo | „pagerinom paiešką" buvo nuomonė | `tests/knowledge_questions.yaml` — **68 klausimai kliento žodžiais**, po 2–4 kiekvienam dokumentui; `test_knowledge_recall.py` matuoja `hit@1`/`hit@2` ir neleidžia regresuoti |
+| visos šaknys svėrė vienodai | „internetas" (10 dokumentų) svėrė tiek pat, kiek „crc" (viename) | **IDF svoriai**: retas žodis pasako daugiau. Nežinomi žodžiai sveriami DIDŽIAUSIU svoriu, todėl „kokia bus rytoj oro temperatūra" nebegauna atsakymo apie įrangos keitimą |
+| šaknis = 6 ženklai be galūnės kirpimo | „savo" nesutapdavo su „savas", „lėto" su „lėtas" | **5 ženklai + lietuviškų galūnių kirpimas** — gramatika, ne žodžių sąrašas, tad veikia ir nematytiems žodžiams |
+| `problem` buvo antraštėse, bet filtras jo NENAUDOJO | TV dokumentas galėjo atsirasti interneto gedime | filtras pagal kortelės `service` (`internet` → `internet_*`); neutralūs dokumentai praleidžiami per bet kurį gedimą |
+| žemas balas = TYLA | 6 klausimai iš 68 gaudavo NIEKO, nors dokumentas yra — ir modelis improvizavo | **trys lygiai**: tvirtas atsakymas · pažymėtas spėjimas („nesu tikras" + patikslinimas) · sąžiningas nieko |
+| į kontekstą keliavo žalias markdown | `- **POWER žalia** - routeris veikia`, emoji, lentelės | nuvaloma prieš padavimą; lentelė tampa sakiniais, kur stulpelio antraštė lieka prie reikšmės |
+| 91 laisvai rašomas lietuviškas tagas | `lemputes` ir `lemputė`, `letas` ir `lėtas` — tas pats dviem rašybomis; prie 40+ dokumentų tagai kertasi | `tags` = **kontroliuojamas angliškas raktas** (`_vocabulary.yaml`, tikrinamas starte), `keywords` = lietuviškas paviršius rikiavimui |
+| `RetrieverPort` buvo deklaruotas, bet nenaudojamas | E2 (Qdrant) būtų buvęs agento perrašymas | `adapters/retrieval/LexicalRetriever` — portas su testu, kad per jį grąžinami TIE PATYS dokumentai; jis ir liks atsarginiu keliu, kai Qdrant neatsakys |
+
+**Išmatuota (68 klausimai):** `hit@1` 46 % → **53 %**, `hit@2` 54 % → **56 %**, tyla **6 → 1**.
+Likęs vienas — „moku už šimtą, o gaunu dešimt" — neturi nė vienos bendros šaknies su jokiu
+dokumentu. Leksinė paieška to principiškai negali surasti: tai ir yra išmatuotas argumentas už E3
+(embedding'ai), o ne nuojauta.
+
+
+## RAG E2 — Qdrant be embedding'ų (šaka `fix/wave-4a`, 2026-09-24)
+
+Vektorinė DB atsiranda PRIEŠ modelį sąmoningai: jei kas nors ne taip su ingestija, aliasais ar
+filtrais, tai turi išaiškėti be embedding'ų sluoksnio, o ne per skambutį. Pasiteisino — trys iš
+keturių radinių nebūtų pasimatę kitaip.
+
+| Kas atsirado | Kam |
+|---|---|
+| `docker-compose.yml` | savas Qdrant konteineris (savas volume, portai 6343/6344 tik ant 127.0.0.1), nes mašinoje jau veikia kito projekto Qdrant, o bendra saugykla = bendra rizika |
+| `adapters/retrieval/sparse.py` | lietuviškas *sparse* vektorius: šaknys, galūnės, IDF lieka MŪSŲ kode, Qdrant tik skaičiuoja sandaugą |
+| `adapters/retrieval/qdrant_store.py` | `KnowledgeIndex` (ingestija, versijos per aliasą, `drift`) ir `QdrantRetriever` (tie patys trys atsakymo lygiai ir filtrai) |
+| `adapters/retrieval/questions.py` | kanarėlė: atgaminimo patikra prieš naują indeksą, **prieš** aliaso perjungimą |
+| `src/rag/scripts/index_qdrant.py` | ingestijos įrankis: `--rebuild`, `--document`, `--remove`, `--status` |
+| `KB_BACKEND=files\|qdrant` | perjungimas be kodo; neatsakius Qdrant — nusileidžiam į failus, o ne krentam |
+| `tests/test_qdrant_index.py` | 23 testai per Qdrant kliento vietinį režimą, tad CI tikrina tą patį kelią be serverio |
+
+**Kodėl Qdrant negali atsakyti kitaip nei failai:** *sparse* sandauga LYGI `_keyword_score` —
+didžiausias neatitikimas ant 261 dalies yra `1,1e-16`. Todėl per Qdrant `hit@1` **53 %**,
+`hit@2` **56 %**, o 67 iš 68 klausimų grąžina identiškus dokumentus (vienintelis skirtumas — tikslus
+balų lygumas, kurį `float32` suskaido kitaip).
+
+**Keturi radiniai iš tikro serverio:**
+
+| # | Radinys | Kaip sutvarkyta |
+|---|---|---|
+| 1 | **`localhost` kainavo 2056 ms** vienai užklausai (Windows pirma bando IPv6 `::1`) — ir tuščias `count()` irgi, tad kaltas buvo ryšys, ne indeksas | `127.0.0.1` kode ir `.env`: **mediana 13,6 ms, p95 16,5 ms** |
+| 2 | **gRPC nemoka aliasų** („Collection `kb` doesn't exist", nors aliasas yra) | transportas REST; aliasas yra versijavimo pagrindas |
+| 3 | **payload indeksai su `wait=True` — 17,5 s** | `wait=False`, indeksai statomi fone |
+| 4 | klientas 1.19.1 prieš serverį 1.17.1 | abu prikabinti prie 1.19.1 |
+
+Po to: perindeksavimas su kanarėle **168 s → 3,6 s**, vieno dokumento atnaujinimas
+**6 168 ms → 40 ms**.
+
+**Ar perindeksavimas nutraukia skambučius:** 225 užklausos, vykdytos perkuriant visą indeksą ir
+atnaujinant dokumentą — **225 teisingi atsakymai, 0 klaidų**, aliasas persijungė atomiškai, senoji
+kolekcija liko atstatymui.
+
+**Saugumas patikrintas, ne aprašytas:** be rakto **401**, su skaitymo raktu `GET` 200 ir
+`PUT` **403**. Agentas gauna tik `QDRANT_READ_KEY`.
+
+**Liko E4:** TLS, bind gamyboje, metrikos ir aliarmai, snapshot'ai.
+
+
+## RAG E3 — embedding'ai ir hibridas (šaka `fix/wave-4a`, 2026-09-24)
+
+| Kas atsirado | Kam |
+|---|---|
+| `adapters/retrieval/embed.py` | `e5-small` vietiniu singleton'u arba per TEI servisą (`EMBED_URL`); pakaitinimas starte fone; **ribotas laukimas** (150 ms) ir ribotas vienalaikiškumas |
+| `dense` vektoriai kolekcijoje | ta pati kolekcija, du vektoriai; `model` payload'e — nesutampa, neaptarnaujam |
+| RRF sujungimas Qdrant pusėje | plati atranka iš abiejų pusių, rangų sujungimas serveryje |
+| TEI servisas `docker-compose.yml` | `--profile embed`; gamybinė forma: viena modelio kopija visiems worker'iams |
+
+**Rezultatas:** hit@1 53 % → **54 %**, hit@2 56 % → **60 %**, paieškos p95 **44,9 ms** (SLO < 50 ms).
+
+**Plano tikslas buvo hit@2 ≥ 70 % — nepasiektas, ir priežastis išmatuota:** semantinė pusė mūsų
+tekstuose beveik neatskiria. Teisingų radinių kosinusas 0,780–0,929, klaidingų 0,000–0,916, o ne
+mūsų srities klausimai („automobilio remontas" 0,847) guli aukščiau nei tikri („puslapiai atsidaro
+labai iš lėto" 0,842). Todėl:
+
+- **patikimumą sprendžia tik leksinė skalė** — su semantine riba 0,84, 0,90 ar visai be jos
+  rezultatas tas pats, o „tvirtų" atsakymų tikslumas 60 % prieš 59 %;
+- **semantinė pusė naudinga tik rikiavimui** — ir ten nauda tikra: +4 p.p. hit@2 per RRF (patikrintos
+  keturios tvarkos; rikiuojant leksiniu balu nauda išnyksta);
+- **`dense` vektorių atsakyme nebeprašom** — atsakymas ~90 % lengvesnis, p95 51 ms → 44,9 ms.
+
+**Kiti modeliai:** `e5-base` duotų +5 p.p. (65 %), bet 47 ms vien modeliui — už biudžeto. `bge-m3`
+156 ms, t. y. daugiau nei visas laukimo limitas, ir hit@2 56 %.
+
+**Rasta tikra klaida:** pirmoji versija praleisdavo modelio išimtį į skambutį — svarbiausia E3
+savybė neveikė, kol testas jos nepareikalavo. Ir be pakaitinimo starte pirmosios užklausos
+nesulaukdavo modelio (~12 s uždėjimas prieš 150 ms ribą), tad agentas tyliai dirbdavo be semantinės
+pusės.
+
+**TEI patikrintas tikrai:** jo ir vietinio modelio vektorių kosinusas **1,000000**, abu normalizuoti,
+mediana 17,2 ms prieš 23,0 ms vietinio.
+
+**Ką siūlau toliau (ne E4):** užklausos raktas iš LLM (`kind`/`problem`/`equipment` iš uždaro sąrašo)
+— nulis naujų priklausomybių ir vienintelis komponentas, kuris tikrai supranta parafrazes; ir daugiau
+klausimų dokumentui, nes riba yra pačiuose dokumentuose, ne rikiuotojuje.
+
+
+## RAG E3b — poreikio paieška ir agento ribos (šaka `fix/wave-4a`, 2026-09-24)
+
+Andrius performulavo, kam paieška yra: kortelės pirma, o indeksas duoda **gilesnes žinias, kurių
+agentui trūksta** — ir agentas privalo žinoti savo ribas.
+
+**Matavimas, kuris viską pakeitė:** kliento sakiniu hit@1 54 % / hit@2 60 %, **agento poreikiu
+90 % / 95 %**. Daugiau nei bet kuris modelio pasirinkimas.
+
+| Kas atsirado | Kam |
+|---|---|
+| `agent/knowledge_need.py` | poreikis + **dvi ribos ašys**: tema (apie ką kalba žinios) ir paskirtis (kad paslauga veiktų) |
+| `ModuleCall.knowledge_need` | kortelė deklaruoja, kokių gilesnių žinių reikia ŽINGSNIUI; validatorius tikrina, kad poreikis ką nors randa |
+| `context_card._step_knowledge` | žinia paduodama kaip ATSARGA („use ONLY if the caller asks"), ne kaip scenarijus |
+| atsisakymų žurnalas | kiekvienas „ne mano sritis" įrašomas — ribą vėliau peržiūrim faktais |
+| `tests/test_knowledge_need.py` | **atsisakymų rinkinys**: tikrina ne ką agentas randa, o ko NEIEŠKO |
+
+**Rezultatas:** 10 iš 11 nukrypimų nebepasiekia žinių bazės, 68 iš 68 tikrų klausimų praeina. Ir
+šalutinis radinys — skyriaus lygių balų skirtukas — pakėlė bendrą atgaminimą: **hit@1 54 % → 57 %,
+hit@2 57 % → 60 %** (Qdrant tam gavo antrą *sparse* vektorių, kad rikiuotų vienodai).
+
+**Keturios klaidos, kurias pagavo matavimas:**
+
+1. **vartai atmetė 5 tikrus klientus** („televizorius rodo juodą ekraną") — kliento žodžių nebuvo
+   dokumentų raktuose; tai turinio, ne kodo spraga, ir raktai pridėti;
+2. **„nusipirkau naują dėžutę, ar ji veiks" palaikytas rekomendacijos prašymu** — dabar atmetama tik
+   kai yra ir pasirinkimo forma, ir pirkimo žodis;
+3. **atfiltruotas poreikis sugriovė patikimumą**: „ar wifi kenkia sveikatai" → vien „wifi" → balas
+   1,000 ir tvirtas atsakymas. Vartai dabar sprendžia TIK *ar* ieškoti; ieškoma visu sakiniu;
+4. **„ios" yra „kokios" viduje** — kiekvienas „kokios lemputės" buvo laikomas iPhone klausimu.
+
+**Ko balas negali:** atskirti „apie tą temą" nuo „atsako į tą klausimą". Tai uždaro narratoriaus
+sąžiningumas — jei rasta žinia neatsako, agentas pasako, kad patarti negali, o ne ištempia.
+
+**Turinio spraga (ne mechanizmo):** DOCSIS, RJ45/kabelio schemos, PPPoE, macOS, FTTH/GPON, TV modelių
+nustatymai — dokumentų nėra. Mechanizmas ras tai, kas parašyta.
+
+
+## RAG — įrenginio ašis (šaka `fix/wave-4a`, 2026-09-25)
+
+E3b atpažindavo įvardintą įrenginį, bet jo nenaudojo. Dabar: klientas pasako „android telefone", ir
+agentas pirmiausia ieško **to įrenginio** instrukcijos, o jos nesant duoda bendrą tvarką **ir tai
+pasako**.
+
+| Kas atsirado | Kam |
+|---|---|
+| `find(prefer=…)` | pirmumas, ne filtras — bendra tvarka geriau už tylą |
+| `Passage.specific` | `True`/`False`/`None` (nebuvo klausta); `False` yra nurodymas pasakyti tiesą |
+| tagai `android`, `ios`, `windows`, `macos` | be jų konkretaus įrenginio dokumento nė parašyti nebūtų galima |
+| `device_markers()` | įrenginio vardai iš žodyno (samsung, xiaomi, aifonas…) |
+
+**Išmatuota klaida:** pirmoji versija konkretumą skaičiavo iš raktų ir teksto — o `wifi_problems`
+raktuose yra ir `android`, ir `windows`, ir `iphone` (nes taip kalba klientai), pats dokumentas
+bendras. Tad bendras dokumentas atrodė „konkretus" kiekvienam įrenginiui, ir agentas nebūtų pasakęs
+svarbiausio. Dabar konkretumą rodo tik sąmoninga deklaracija: **tagas arba skyriaus antraštė**.
+
+Testas tikrina ir ateitį: kai konkreti instrukcija bus parašyta, ji nugalės bendrą be jokio kodo.
+
+
+## RAG E4a — paieškos įvadas iš agento, ne iš kliento sakinio (šaka `fix/wave-4a`, 2026-09-25)
+
+Andrius: *„paieška vis tiek turi ateiti iš agento, nes RAG žinios tai agento žinios — agentas turi
+susirasti sau informaciją."* Išmatuota tikrais LLM kvietimais (68 klausimai):
+
+| Kuo ieškoma | rezultatas |
+|---|---|
+| kliento sakiniu (buvo) | hit@1 57 % · hit@2 60 % |
+| LLM laisvai sugalvotu poreikiu | hit@1 **53 %** — blogiau |
+| LLM pasirinkimu iš žinių žemėlapio | **69 %** teisingas dokumentas |
+| **maršrutas + leksinis skyrius + gelbėjimas** | **hit@1 69 % · hit@2 69 % · tyla 0** |
+
+**Kodėl laisvas poreikis blogiau:** tie 90 %, kuriais grindžiau idėją, priklausė ne „poreikio formai",
+o tam, kad kortelių poreikius rašiau **skaitydamas dokumentus**. LLM to atspėti negali. Bet duotas
+žemėlapis (17 pavadinimų) jį išsprendžia: modelis renkasi iš to, kas tikrai yra.
+
+| Kas atsirado | Kam |
+|---|---|
+| `prompts/sensors/knowledge_route.md` + `_knowledge_map()` | agento žinių žemėlapis prompte; auga su baze be kodo |
+| `understand(): "knowledge"` | dokumento numeris → kelias, patikrintas prieš tą patį sąrašą; sugalvotas numeris tyliai atmetamas |
+| `Perception.knowledge` | maršrutas keliauja iki atsakymo per ėjimo supratimą |
+| `find(source=…)` | paieška VIENAME dokumente — abiejose saugyklose (Qdrant `source` payload'e jau indeksuotas) |
+| `_in_routed_document()` | skyrius ir patikimumas iš kliento žodžių; nieko neradus — gelbsti įprasta paieška |
+
+**Trys ribos, kurias įrašiau sąmoningai:** maršrutas **nėra leidimas** (vartai stoja pirmi — patikrinta
+testu); maršrutas **nepakelia patikimumo** (69 % tikslumas per mažas, kad „agentas pasirinko" reikštų
+„tvirta"); ir **gelbėjimas būtinas** — be jo 7 klausimai iš 68 liktų be atsakymo.
+
+**Kaina:** vienas laukas tame pačiame `understand` kvietime, nulis papildomų LLM ėjimų; prompte +17
+eilučių. Prie kelių šimtų dokumentų žemėlapį reikės sutraukti — įrašyta kode.
+
+**Ką pagavo eval'as, kai atgaminimo testas rodė žalią:** pirmas paleidimas davė 194/195 (K1).
+(1) Skyrių sprendė žodis **„kaip"** — 0,003 balo skirtumu; klausiamieji ir mandagumo žodžiai nuo šiol
+nesveria (`knowledge_filler` žodyne). (2) **Arbitras matavo dokumento tapatumą, ne atsakymo
+naudingumą**: tam klausimui buvo priimtas `wifi_problems`, kurio skyrius apie PAMIRŠTĄ slaptažodį —
+dabar priimtinas tik dokumentas su žingsniais. (3) Maršruto promptas gavo eilutę: rinkis dokumentą su
+ŽINGSNIAIS tam, ką klientas nori PADARYTI. (4) Ir tik pilnas BALSO rinkimas parodė, kad kortelės
+gilesnė žinia įterpdavo iki 700 simbolių kiekviename ėjime — D5 dėl to prarado ėjimą ir tiketas
+nebeįvyko; atsargai pakanka 240 simbolių.
+
+
+**Rūšis (`kind`) — tai ir yra tie „skirtingi tagai":** `equipment` (kas yra įrenginys, ką reiškia
+lemputė, kur mygtukas) · `howto` (kaip sukonfigūruoti) · `procedure` (mūsų tvarka: meistro
+vizitas, įrangos keitimas) · `troubleshooting` (gedimo kelias) · `faq` (trumpi atsakymai).
+
+**Kodėl be embedding'ų (kol kas):** jiems reikia modelio (~1–2 s pirmam kvietimui) ir sukurtos
+vektorinės bazės, o balso ėjime tiek laiko nėra; CI iš viso dirba offline. Todėl rikiuojama
+pagal šaknis (lietuvių kalba linksniuoja viską: „sukonfigūruoti" ir raktas „konfigūravimas"
+turi bendrą šaknį ir nieko daugiau). Embedding'ai bus PAPILDOMAS rikiuotojas tarp jau
+atfiltruotų — su išmatuota latencija.
+
+**Ką pagavo gyvas bandymas (eval K1):** klausimas „kaip pakeisti wifi slaptažodį" buvo
+palaikytas klausimu apie DABARTINĮ žingsnį (`on_task_howto`), o tokiam ėjimui kortelė neduodavo
+**jokio** turinio — ir modelis išsigalvojo: „užregistruosiu jūsų klausimą", nors niekas nebuvo
+registruojama. Dabar tas ėjimas turi šaltinį arba sąžiningą „negaliu patarti".
+
+Po pakeitimo: „Naršyklėje įveskite 192.168.0.1, prisijunkite su admin/admin… Wireless →
+Wireless Security…" — tikri žingsniai iš TP-Link dokumento, ir grįžtama prie gedimo.
+
+**Liko 4b bangoje:** kortelė, kuri telefonu nieko nedaro, galėtų nusiųsti į ALGORITMĄ
+(`dhcp_silent` → `howto` dokumentas su WAN nustatymu) — tada gedimai tikrai „naudoja žinias";
+lempučių spalvos; embedding'ai kaip antras rikiuotojas; TV ir lėto interneto kortelės.
+
 
 ## Banga 4a — informavimo kortelės ir paskutinio medžio trynimas (šaka `fix/wave-4a`)
 
@@ -89,6 +368,98 @@ verdiktą, todėl po trynimo nieko nebedarė; jos darbą dabar dirba kortelė.
 3. **Pažadas kartojamas** — kol tiketo dialogas rinko kontaktus, Case kas ėjimą planuodavo tą
    patį `escalate`, ir agentas kiekviename atsakyme sakė „užregistruosiu meistrą". Perdavimas
    dabar vyksta vieną kartą.
+
+**Antras pjūvis po Andriaus balso testų (2026-09-23), radiniai iš dviejų gyvų skambučių:**
+
+| Kas buvo negerai | Kaip yra dabar |
+|---|---|
+| Po linijos patikros agentas iš karto sakė „telefonu neišspręsime" — **be išvados, ką rado** | Išvada **išgyvena ėjimą**: `case.finding` laukia, kol kuris nors atsakymas ją pasakys (anksčiau ji krisdavo, jei tą ėjimą valdė vardo klausimas ar tiketo įžanga) |
+| Du kartus neatsakius į klausimą **iš karto registruotas meistras** | Kortelė pasako, **su kuo tęsti**: `assume:` (`router_hung` → `all`, `healthy_to_router` → `one`). Pirminis sprendimas — perkrovimas — atliekamas net be atsakymo; tiketas be jo būtų nesuteikta pagalba |
+| Antras klausimas buvo **tas pats sakinys** | `needs.<faktas>.again` — kortelės antra formuluotė su pavyzdžiu, kaip pasitikrinti (ėmė iš v1 `simpler` raktų, kurie gulėjo nenaudojami) |
+| „Esu prie routerio" ir vis tiek „ar galite prieiti prie routerio?" | Modulis gali pasakyti, kad kitas skaitytuvo raktas yra **ta pati žinia** (`reach.also: device_present.found → yes`); o žingsnis, kurio faktas jau žinomas, praleidžiamas |
+| Tiketas: „Gedimas: internet_down — **nenustatyta**", nors variklis žinojo `router_hung` | Priežastis imama iš **Case** (`case.fault`); tiketo tipas irgi |
+| Tikete ir balsu: „**routeris perkrautas**, bet ryšys neatsistatė", nors niekas neperkrovė | Kortelės `escalate.need` naudojamas tik kai jos sprendimas **tikrai vyko** (arba kai kortelė telefonu nieko nedaro); kitu atveju — „įtariama, kad …; patikrinti kartu telefonu nepavyko" |
+| Neatsakyti klausimai niekur nefiksuoti | Tikete: „Klientas neatsakė: … (dirbome su prielaida: …)"; balsu prieš registraciją agentas pasako, ko nepavyko patikrinti |
+
+Naujas eval scenarijus `C_unanswered_scope_still_reboots` (34 iš viso) sergsti visą šią grandinę:
+neatsakytas klausimas → kita formuluotė → prielaida → perkrovimas → `resolved`, be tiketo.
+
+**Trečias pjūvis — kada klausti, o kada daryti (Andrius, 2026-09-23):**
+
+> „Sprendimui reikia tikslaus algoritmo — padaryta tai, paskui tai. O analizuojant ir renkant
+> informaciją tikslios tvarkos nereikia: svarbu gauti informaciją ir iš jos priimti sprendimą."
+
+Tai atsakė į klausimą, kurį buvau uždavęs neteisingai. Siūliau **žingsnius paversti rinkiniu**
+— technikas pasakė, kad sprendimas turi tvarką (prieik → ištrauk → palauk → patikrink), o
+laisvė priklauso analizei. Todėl `steps` liko griežta eilė, o pakeista tai, kas iš tiesų trukdė:
+
+| Kas | Kaip veikia | Kodėl |
+|---|---|---|
+| `steps[].done_when` | žingsnis praleidžiamas, jei jo rezultatas jau faktas | „Esu prie routerio" → `reach` nebeklausiamas. Tvarka nesikeičia — tik tai, kas jau tiesa |
+| `needs.<f>.volunteered` | faktas **naudojamas, jei klientas pasakė, bet niekada neklausiamas** | „Lemputės dega" patvirtina pakibimą; klausti apie lemputes prieš perkrovimą nereikia |
+| `escalate.only_after` | tiketas blokuojamas, kol telefoninis darbas neatliktas arba neįmanomas: `router_hung` → perkrovimas, `crc_errors` ir `link_down_local` → laido perkišimas | „Kad meistrui atvykus nereikėtų tiesiog perkrauti routerio“ — arba perkišti laido |
+| nepavykęs sprendimas → **analizė iš naujo** | vietoj `failed → tiketas` Case perskaičiuoja kandidatus su naujais faktais | „Klausimai patikrina ar atmeta hipotezę" — po perkrovimo srautas gali atsirasti, ir tada tai jau kliento pusės kortelė |
+| `needs.<f>.critical` | vietoj trečio pakartojimo ar tylios prielaidos — paaiškinama, **kodėl to reikia ir kas bus, jei nežinosim** | „Jei informacija kritinė ir be jos negalima eiti toliau, galime klientą informuoti" |
+
+**`router_hung` kortelė perrašyta pagal tą patį principą:** scope klausimo (`fail_scope`) joje
+**nebėra**. Jei srauto iki routerio nėra, perkrovimas yra pirmas žingsnis — atsakymas „visuose
+ar tik viename" nieko nekeistų. Tas klausimas liko ten, kur jis sprendžia: `healthy_to_router`
+(linija neša srautą, vadinasi trūksta galutiniame taške). O jei klientas pats pasako „tik
+viename" — kortelė tai skaito kaip `rules_out`, be jokio klausimo.
+
+Grandinė dabar tokia, kokią aprašė technikas:
+
+```
+srauto nėra ──► perkrovimas (be klausimų) ──► patikra
+                                  │
+                                  ├─ srautas grįžo, klientui vis tiek neveikia
+                                  │        └─► faktai pasikeitė → kliento pusės kortelė
+                                  │              └─► DABAR klausiam: kur neveikia?
+                                  └─ nepavyko ──► meistras (perkrovimas jau atliktas)
+```
+
+Du nauji eval scenarijai: `C1_no_question_before_the_reboot` (klausimo nėra ten, kur jis nieko
+nekeistų) ir `C2_scope_unanswered_on_a_healthy_line` (kitos formuluotės + prielaida ten, kur
+klausimas būtinas).
+
+**Ketvirtas pjūvis — penki Andriaus balso skambučiai (2026-09-23):**
+
+Skambučiai suveikė taip, kaip sutarta (dhcp_silent → meistras be žargono; pakibęs routeris →
+perkrovimas be klausimų; kliento pusė → kitos formuluotės ir prielaida), bet KALBA rodė
+dalykų, kurių nė vienas testas nebūtų pagavęs:
+
+| Kas | Kaip yra dabar |
+|---|---|
+| **Agentas paneigė savo pačio žodžius:** „Skola 49 eurai 98 centai…" → klientas „o kiek tiksliai?" → „**tikslios sumos aš nematau**" | FAQ įrašas gali pasakyti, kad temą jau atsakė ŽINIA: `faq.yaml: answer_from_news` + `inform.yaml: asked_again_key` → atsakymas iš tų pačių faktų |
+| „per valandą po apmokėjimo" buvo įrašyta **prompto kortelėje (kode)** | perkelta į žinias — `inform.billing_suspended.paid_just_now`. Demo laikosi valandos, produkcijoje bus tikras terminas (Andrius: „realiai kai bus žinomas laikas, bus galima koreguoti") |
+| Išvados ėjimas **kvietė veiksmo**, kurio Case dar nesuplanavo: „ar galėtumėte perkrauti?" → „kaip tai padaryti?" → tik tada „ar galite prieiti?" | išvada TIK pasako; kortelėse, kurios pačios siūlo pasirinkimą, elgesys nepakito |
+| Išvada nuskambėdavo atsakymo **gale**, po instrukcijos | „OPEN THE REPLY WITH THIS, in ONE short sentence, before anything else" |
+| „Telefonu nenustatėme" **be nieko** — klientas nežino, kas patikrinta | kortelė gali įvardinti pasakomus faktus: `explain_facts`. `unclear_fault` sako MŪSŲ pusę („mazgas veikia, linija iki buto veikia"), be routerio — TV skambutyje apie routerį nekalbam (eval T1) |
+| Tiketo laukas `skambinti: Galit meistrą registruoti. Nuo 12 iki 1.` | paliekamas tik laikas (`_hours_only`) |
+| Tikete „Gedimas: **tv**", „Gedimas: **internet_down**" | žmonių kalba: „bėda su televizija", „dingo internetas" |
+| „…sukonfigūruoti — telefonu to nepadarysime" (ta pati mintis dukart) | „routerį reikia sukonfigūruoti iš naujo" |
+
+**Ką parodė tik BALSO eval'as (ne tekstinis):** vienas atsakymas išėjo 291 simbolio, sargas jį
+apkirpo — ir nukirto **instrukciją**, palikdamas tik išvadą. Klientas būtų išgirdęs, kas
+patikrinta, bet ne tai, ką daryti. Todėl išvada, kuri dalijasi atsakymu su instrukcija,
+trumpinama iki **dviejų svarbiausių faktų** (imami PASKUTINIAI kortelės `when` — būtent jie
+sprendžia: „įrenginys matomas, bet srautas nevaikšto"), o kortelėje pasakyta, kad instrukcija
+privalo išlikti. Po to: C1 184 simb., C2 152 simb. (buvo 291). Ir „ar galite prieiti?" ėjimo
+tikslas dabar sako, kad klausiama TIK apie priėjimą.
+
+
+**Kalbėjimo forma (Andrius: „siektiek kliuna"):**
+
+| Buvo | Dabar |
+|---|---|
+| „Šiauliai, Tilžės g. 60-3" | „**Šiauliuose, Tilžės gatvėje 60, butas 3**" |
+| „Šiaulių r., Ginkūnų k., Žeimių g. 12-6" | „**Šiaulių rajone, Ginkūnų kaime, Žeimių gatvėje 12, butas 6**" |
+| „dėl Tilžės g. 60-7?" | „dėl Tilžės **gatvės** 60, **buto** 7?" (po „dėl" — kilmininkas) |
+| „Malonu, **Paulius**!" | „Malonu, **Pauliau**!" — šauksmininkas |
+
+Adreso formos yra `locales/lt/lang.py::speech_text` (veikia prieš TTS, rašytinis įrašas
+nesikeičia), šauksmininkas — `locales/lt/examples/language_instruction.md`. Abu lietuvių
+kalbos žinios, ne variklio kodas: kitai kalbai neišplaukia.
 
 **4a bangos eiga (2026-09-23):** vienetų testai **1216 passed, 1 skipped**; eval tekstas
 **178/178** (`--only` zondai: `X_dhcp_silent` 6/6, `R3_iptv_depends_on_internet` 6/6).
@@ -465,3 +836,26 @@ trace'e matomi visi LLM kvietimai ir `turn_timing`.
 - Testai ir eval dalijasi ta pačia demo DB (`database/isp_database.db`) ir vienu metu
   neveikia (WinError 32) — kiekvienam paleidimui reikia savo DB failo (kandidatas 5 bangai).
 - Nestabilus testas: `test_api::test_interrupt_stops_remaining_chunks` (laiko priklausomybė, `sleep 0.15`) — kartą krito, 8/8 pakartojimų praėjo; su pakeitimais nesusijęs.
+
+
+## RAG E4 — eksploatacija: saugiklis, versijos, sveikata (šaka `fix/wave-4a`, 2026-09-25)
+
+| Kas atsirado | Kam |
+|---|---|
+| **modelio nesutapimo saugiklis** | `model` laukas buvo nuo E3, bet niekas jo netikrino: pakeitus modelį neperindeksavus rikiavimas būtų tapęs atsitiktinis — ir TYLIAI |
+| `adapters/retrieval/health.py` | keturi klausimai vienu kvietimu (šviežumas, atgaminimas, modelis, latencija) + skaitliukai su `reset()` |
+| `--check` | cron'ui: 0 = gerai, 1 = aliarmas (drift, atgaminimas, modelis, nusileidimai > 25 %, p95 > 150 ms) |
+| `--rollback`, `--prune N`, `--snapshot(s)` | versijų tvarka: per dieną susikaupė **septynios** kolekcijos |
+
+**Blue/green įrodytas su gyvu krūviu:** modelis pakeistas (384 → 768 matmenys, nauja kolekcija per
+26 s su kanarėle), aliasas perjungtas, atstatyta atgal — **680 užklausų, 680 teisingų, 0 klaidų**.
+Perjungimo metu procesas jau koduodavo nauju modeliu, o aliasas dar rodė į senąją kolekciją; būtent
+tada saugiklis ir išlaikė paiešką leksine puse.
+
+**Ir antra klaida, jau mano:** pirmoji saugiklio versija modelį skaitė per ALIASĄ, o gavusi kolekcijos
+vardą nieko nerado ir tyliai grąžino „nežinau" — tad saugiklis neveikė, ir 768 matmenų užklausa nuėjo
+į 384 kolekciją (400). Saugiklis, kuris tyliai neveikia, yra blogiau už jokį saugiklį.
+
+**HNSW nėra darbas:** patikrinta gyvame serveryje — `full_scan_threshold=10000`, tad prie 261 taško
+Qdrant sąmoningai naudoja pilną perėjimą, o HNSW įsijungia savaime. **TLS lieka paleidimo darbas**:
+vietoje su savo pasirašytu sertifikatu jis įrodytų mažai, o portai jau uždaryti ant `127.0.0.1`.

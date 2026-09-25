@@ -175,7 +175,7 @@ class TestRegistry:
         from agent.perceive.detectors import detect_lights
 
         assert detect_lights("nedega") == "no"
-        assert detect_lights("dega žalia") == "yes"
+        assert detect_lights("dega žalia") == "green"  # wave 4b: the colour is the answer
         assert detect_lights("užsidegė lemputės") == "yes"
         assert detect_lights("nežinau") is None
 

@@ -1040,6 +1040,55 @@ fact_only_computer: "tik\\s+(su\\s+)?kompiuter"
 only_words: ["tik"]
 fact_lights_words: ["lemp", "sviesel"]
 fact_lights_blinking: ["mirksi", "mirkcioja"]
+
+# LEMPUTĖS SPALVA (4b banga). Katalogas sako, ką spalva REIŠKIA („oranžinė INTERNET" ->
+# wan_link=down), o čia — kaip klientas ją pavadina. STT dažnai nuvalo diakritikus, tad
+# rašoma ir be jų; skaitytuvas lygina be diakritikų.
+# --- žinių paieškos ribos (E3b) -----------------------------------------------------------
+# PASKIRTIES ašis: tema gali tikti („routeris"), bet klausiama ne apie veikimą, o apie pasirinkimą.
+# Mes ne pardavimai ir ne palyginimų tarnyba, tad tokiu atveju žinių bazėje neieškom.
+# Sąmoningai TRUMPAS sąrašas: „geriau" čia nėra, nes „ar geriau perkrauti, ar palaukti" yra teisėtas
+# klausimas apie gedimą.
+# Klausiamieji ir mandagumo žodžiai. Jie NURODO, kad klausiama, bet nieko nesako apie TEMĄ, todėl
+# paieškoje nesveria. Išmatuota, kodėl tai svarbu: klausime „kaip pakeisti wifi slaptažodį" žodis
+# „kaip" antraštėje pakėlė skyrių „Kaip prisijungti prie WiFi telefone" virš „slaptažodis pakeistas"
+# 0,003 balo skirtumu — ir agentas atsakė ne į tą klausimą.
+knowledge_filler: ["kaip", "kodel", "kada", "kiek", "koks", "kokia", "kokie", "kokios", "sakyk",
+  "sakykite", "prasau", "atsiprasau", "klausiu", "norejau", "pasakyk", "pasakykite", "idomu",
+  "galima", "galiu", "reikia", "turi", "buti"]
+
+knowledge_out_of_purpose: ["rekomend", "pirkti", "nusipirk", "isigyti", "pasirinkt", "palygin",
+  "siulot", "siulote", "imti"]
+
+# PASIRINKIMO forma. Be jos pirkimo žodis nieko nesako: „nusipirkau naują dėžutę, ar ji veiks" yra
+# gedimo klausimas, o „kurį nusipirkti" — rekomendacijos prašymas. Atmetama tik kai yra abu.
+knowledge_choice_form: ["kuri ", "kurio", "kuris", "koki", "kokia geriau", "ka siul", "ka rekomend",
+  "ar verta", "kas geriau", "rekomenduo", "patarkit ka", "ka imti"]
+
+# Kokį konkretų įrenginį klientas įvardino. Pagal tai imamas konkretaus įrenginio dokumentas, o jo
+# nesant — bendras, ir tada agentas PASAKO, kad konkrečiai apie tą įrenginį informacijos neturi.
+# Paties PRIETAISO bėdos: jas sprendžia ne mes. „neveikia" čia nėra ir negali būti — tai
+# dažniausias teisėtas žodis visame skambutyje („neveikia internetas").
+knowledge_device_trouble: ["nepasileidz", "neisijungia pats", "kaista", "virus", "atnaujinim",
+  "ekranas suduz", "baterij", "atmintis pilna", "luzta programa", "stringa telefonas",
+  "perkrauna pats", "pamirsau slaptazodi nuo telefono"]
+
+# Paslaugos žodžiai: jei frazėje yra bent vienas, tai apie MŪSŲ paslaugą tame prietaise, ir prietaiso
+# simptomas jau nebeatmeta („telefone neveikia internetas").
+knowledge_service_words: ["internet", "wifi", "tinkl", "ryss", "rysys", "ryšy", "televiz", "tv",
+  "kanal", "greit", "router", "modem", "priedel", "laid", "kabel", "paslaug", "dhcp", "wan", "lan"]
+
+device_android: ["android", "androidas", "samsung", "xiaomi", "huawei", "redmi", "oppo", "realme"]
+device_iphone: ["iphone", "aifon", "aifonas", "ajfon"]
+device_ios: ["ios", "ipad", "ipados"]
+device_windows: ["windows", "vindows", "vindovs", "kompiuteryje windows"]
+device_macos: ["macos", "mac os", "makbuk", "macbook", "imac"]
+
+light_colour_green: ["zalia", "zaliai", "zalias", "zeliona"]
+light_colour_red: ["raudona", "raudonai", "raudonas", "raudon"]
+light_colour_orange: ["oranzine", "oranzinis", "oranzine spalva", "gelsva", "geltona", "gintarine", "amber"]
+light_colour_blue: ["melyna", "melynai", "melynas"]
+light_colour_white: ["balta", "baltai", "baltas"]
 # "razet" — the STT routinely hears "rozetė" as "razetė".
 fact_outlet_words: ["rozet", "razet"]
 fact_outlet_tried: ["kit", "band", "perjung"]

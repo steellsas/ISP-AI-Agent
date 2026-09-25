@@ -226,6 +226,9 @@ class FaqEntry(_Model):
     topic: str
     keywords_vocab: str
     answer_key: str
+    # The news whose own facts answer this question once it has been delivered. Without it
+    # the agent denied a debt figure it had just read out (live 2026-09-23).
+    answer_from_news: str | None = None
 
 
 class Faq(_Model):
@@ -235,6 +238,9 @@ class Faq(_Model):
 class InformEntry(_Model):
     template_key: str
     fallback_key: str | None = None
+    # What to say when the caller asks about this news AFTER hearing it — rendered from the
+    # same facts, so the answer can never contradict what was just delivered.
+    asked_again_key: str | None = None
     clarity_requirements: list[
         Literal[
             "what_is_wrong", "what_to_do", "what_is_being_done", "when_restored", "how_notified"
@@ -406,16 +412,41 @@ class Need(_Model):
     # Half a sentence on why we are asking. A caller who knows why answers better — and
     # follows the instruction that comes next.
     why: str | None = None
+    # The SECOND wording, for a caller whose answer was about something else. Asking the
+    # identical question again is what made the agent sound like a machine (live 2026-09-23:
+    # the same question four turns running), so the card says it differently — usually with
+    # an example of how to check.
+    again: str | None = None
+    # What to carry on with when the caller cannot or will not tell us. A hung router is
+    # rebooted anyway (that is its primary fix); a line that carries traffic is assumed to be
+    # failing at one device. The engine says the assumption out loud and writes it on the
+    # ticket — it never pretends the caller answered (Andrius, 2026-09-23).
+    assume: str | None = None
+    # Never asked — used only when the caller says it themselves. "Esu prie routerio, lemputės
+    # dega" confirms a hung router on the spot, but nobody would ask about the lights before
+    # the reboot: for this fault the reboot is the first move.
+    volunteered: bool = False
+    # There is no going on without it: instead of a third wording or a silent assumption, the
+    # caller is told WHY it is needed and what happens if we do not know.
+    critical: bool = False
 
     @model_validator(mode="after")
     def _reachable(self) -> Need:
-        if not self.probe and not self.ask:
-            raise ValueError("a need must be reachable: declare `probe`, `ask`, or both")
+        if not self.probe and not self.ask and not self.volunteered:
+            raise ValueError(
+                "a need must be reachable: declare `probe`, `ask`, or `volunteered: true`"
+            )
+        if self.critical and self.assume:
+            raise ValueError("critical and assume contradict: either we can go on, or we cannot")
+        if self.volunteered and (self.ask or self.again or self.assume):
+            raise ValueError("a volunteered need is never asked, so it has no wording to assume")
         for value, meaning in self.values.items():
             if meaning not in ("confirms", "rules_out") and not meaning.startswith("hands_to="):
                 raise ValueError(
                     f"values.{value}: expected confirms / rules_out / hands_to=<fault>"
                 )
+        if self.assume is not None and self.assume not in self.values:
+            raise ValueError(f"assume: {self.assume!r} is not one of {sorted(self.values)}")
         return self
 
 
@@ -426,6 +457,17 @@ class ModuleCall(_Model):
     module: str
     args: dict[str, Any] = {}
     on_fail: ModuleCall | None = None
+    # Facts that mean this step is ALREADY achieved, so it is skipped rather than asked for
+    # ("esu prie routerio" answers "ar galite prieiti?"). The order of a fix is not loosened by
+    # this — a procedure has an order (Andrius, 2026-09-23: "sprendimui reikia tikslaus
+    # algoritmo, analizei — ne") — only what is already true is passed over.
+    done_when: list[str] = []
+    # Gilesnės žinios, kurių šiam žingsniui gali prireikti: „tplink lemputės", „wan dhcp".
+    # Kortelė sprendžia gedimą, o žinių bazė ją PAPILDO — Andrius (2026-09-24): „jei jam reikia
+    # gilesnių žinių apie routerio lemputes ar jungtis, jas gauna". Paieška čia vyksta AGENTO
+    # poreikiu, ne kliento sakiniu, ir tai išmatuota: poreikiu hit@1 90 %, sakiniu 54 %.
+    # Startinis validatorius tikrina, kad poreikis ką nors randa — pažadas be atsakymo neleidžiamas.
+    knowledge_need: str | None = None
 
 
 class Solution(_Model):
@@ -447,6 +489,11 @@ class Escalation(_Model):
     # reason, exactly as their v1 packs did.
     need: str | None = None
     note: str | None = None  # what the ticket must say
+    # Modules that must have been RUN (or proved impossible) before a technician is sent: a
+    # technician must not arrive to power-cycle a router the phone could have power-cycled
+    # (Andrius, 2026-09-23). When one is missing and still possible, the engine does it first;
+    # when it cannot be done, the ticket says so.
+    only_after: list[str] = []
 
 
 class ParamSpec(_Model):
@@ -476,6 +523,11 @@ class ModuleSpec(_Model):
     announce: str | None = None  # phrase key for what the agent SAYS while the engine acts
     detector: str | None = None  # a reader in perceive/detectors.py
     answers: dict[str, str] = {}  # the detector's label -> "fact=value"
+    # The SAME news under another key. The reading layer has its own vocabulary from v1
+    # ("esu prie routerio" lands as `device_present=found`), and without this the engine asked
+    # "ar galite prieiti?" right after the caller said they were standing at it (live
+    # 2026-09-23). Shape: {other_key: {other_value: this_module's_fact_value}}.
+    also: dict[str, dict[str, str]] = {}
     # DEMO ONLY: the tool that makes the seeded database reflect what the caller just did
     # physically, and the environment flag that allows it. Off in production, where the
     # line changes by itself.
@@ -493,6 +545,11 @@ class FaultCard(_Model):
     service: str
     symptom: str | None = None
     explain: dict[str, str] = {}
+    # Facts to TELL when this card's finding is announced, beyond the conditions it matched
+    # on. The honest-ending card matches on nothing, so without this it said only "gedimo
+    # tipas neaiškus" — the caller never heard that the line up to their flat is fine (live
+    # 2026-09-23).
+    explain_facts: list[str] = []
     # A fallback card is taken ONLY when no other card fits, so an honest "we cannot tell
     # over the phone" can never compete with a real diagnosis.
     fallback: bool = False

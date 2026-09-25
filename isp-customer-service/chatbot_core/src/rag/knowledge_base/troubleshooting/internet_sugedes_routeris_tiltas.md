@@ -1,3 +1,10 @@
+---
+title: Sugedęs routeris — laikinas internetas iki techniko
+kind: troubleshooting
+problem: [internet_down]
+tags: [bridge, replacement, client_device, cable]
+keywords: [sugedes, tiltas, laikinas, kompiuteris, savas, router]
+---
 # Sugedęs routeris - laikinas internetas iki techniko (tiltas)
 
 ## Simptomai

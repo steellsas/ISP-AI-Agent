@@ -10,11 +10,46 @@ tie patys duomenys dashboard'o skirtuke „Scenarijai" (`chatbot_core/src/app/sc
 
 ## Paruošimas
 
+### Aplinka — VIENA komanda, ir tik ji
+
+```powershell
+uv sync --all-packages --extra voice
+```
+
+Balsas (`edge-tts`, `faster-whisper`, `gTTS`) yra **neprivalomas** `voice` papildymas, todėl įprastas
+`uv sync` jį **nušluoja**: `uv sync` daro aplinką tiksliai tokią, kokia deklaruota pasirinktoje
+srityje — ne „prideda, ko paprašei“. 2026-09-25 būtent todėl serveris nepasileido:
+
+```
+ModuleNotFoundError: No module named 'edge_tts'
+```
+
+Išmatuota tame pačiame projekte:
+
+| Komanda | Kas lieka |
+|---|---|
+| `uv sync` | ❌ be balso |
+| `uv sync --package chatbot-core --extra voice` | balsas yra, bet ❌ be `pytest`, `ruff`, `pre-commit` |
+| **`uv sync --all-packages --extra voice`** | ✅ balsas + `qdrant-client` + įrankiai |
+
+Patikrinimas prieš testą (turi išvesti visus, be `MISSING`):
+
+```powershell
+uv run python -c "import importlib.util as u; [print(m, 'ok' if u.find_spec(m) else 'MISSING') for m in ('edge_tts','faster_whisper','gtts','qdrant_client','sentence_transformers','pytest')]"
+```
+
+### Serveris
+
 ```powershell
 cd "C:\Users\steel\turing_projects\AI engenearing\ISP-AI-Agent\isp-customer-service"
 $env:PYTHONIOENCODING="utf-8"; chcp 65001
 uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080
 ```
+
+> **Testai ir serveris vienu metu — ne.** Kol serveris paleistas, jis laiko
+> `database/isp_database.db`, ir `pytest` negali jos perkurti: `PermissionError [WinError 32]`.
+> Tai ne kodo klaida, o tai, kad demo bazė yra viena — ją dalinasi serveris ir testai. Testus leisk **sustabdęs serverį**
+> (5 bangoje planuota atskirti testų ir demo bazes — tai ir išspręstų).
 
 Naršyklėje http://localhost:8080 → skirtukas **„Testavimas"** (numeris → „Skambinti").
 
@@ -31,12 +66,130 @@ Naršyklėje http://localhost:8080 → skirtukas **„Testavimas"** (numeris →
 | `LOG_LEVEL=DEBUG` | konsolėje realiu laiku: taisyklės, įrankiai, fallback'ai (be PII) | `INFO` |
 | `SIMULATE_REBOOT=on` / `SIMULATE_BRIDGE=on` | leidžia mygtukų imitacijas (prod = off) | eval'e įjungta; demo — per mygtukus |
 | `DEBUG_LLM=1` | į trace'ą prideda, ką LLM gauna (kortelė, faktai) | išjungta |
+| `KB_BACKEND=qdrant` | žinios imamos iš Qdrant indekso (gamybinė forma) | `files` |
+| `EMBED_URL=http://127.0.0.1:6380` | embedding'ai per TEI servisą, ne procese | modelis procese |
+
+### Žinių sluoksnis — prieš testuojant
+
+```powershell
+docker compose --profile embed up -d              # Qdrant + embeddings
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --check     # 0 = gerai
+```
+
+Paleidžiant serverį su žiniomis iš indekso:
+
+```powershell
+$env:KB_BACKEND="qdrant"; $env:EMBED_URL="http://127.0.0.1:6380"
+uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080
+```
+
+**Testuok ABIEM būdais** (`files` ir `qdrant`). Tai ne perteklius: 2026-09-25 du defektai pasimatė
+TIK per Qdrant — semantinė pusė rado dokumentą ten, kur leksinė nerado, ir agentas perklausė tai,
+kas jau atsakyta. Per failus tie patys scenarijai praėjo.
 
 ---
 
-## ⭐ Ką testuoti PIRMA (4a bangos pakeitimai)
+## ⭐ Ką testuoti PIRMA (žinių sluoksnis, E1–E4)
 
-Trys dalykai, kurių iki 4a nebuvo arba kurie buvo sulūžę. Jei kas nors iš jų elgiasi kitaip
+Žinios yra naujausia ir plačiausia dalis: agentas dabar gali atsakyti iš dokumentų, žino savo ribas
+ir pats renkasi, kurio dokumento jam reikia. Septyni dalykai, kuriuos verta prakalbėti gyvai.
+
+Bendra taisyklė visiems: **jei agentas pasako konkretybę (adresą, nustatymo pavadinimą, žingsnį),
+ji privalo būti dokumente.** Išgalvota konkretybė yra blogiausias įmanomas rezultatas — blogesnis
+už „nežinau".
+
+### K1. Atviras klausimas gedimo viduryje
+**Telefonas:** `+37060020112` · **router_hung**
+
+| Tu | Agentas turi |
+|---|---|
+| „Labas, neveikia internetas" | pasiūlyti adresą |
+| „Taip" | patvirtinti, paklausti vardo |
+| (vardas) | pasakyti, ką mato linijoje, ir duoti pirmą žingsnį |
+| **„O sakykite, kaip pakeisti wifi slaptažodį?"** | atsakyti **iš dokumento**: prisijungti prie `192.168.0.1`, Wireless → Wireless Security, išsaugoti. Tada **grįžti prie gedimo** |
+| „Gerai, perkroviau" | tęsti, tarsi nukrypimo nebuvo |
+
+**Tikrinu:** ar pasakė konkretų adresą (ne „routerio nustatymuose kažkur"); ar nepažadėjo
+„užregistruosiu jūsų klausimą"; ar grįžo prie žingsnio.
+
+### K2. Gilesnė žinia TO ŽINGSNIO metu
+**Telefonas:** `+37060020104` · **link_down_local** (kortelė deklaruoja `knowledge_need`)
+
+| Tu | Agentas turi |
+|---|---|
+| (iki lempučių / laido žingsnio) | paklausti apie lemputes arba paprašyti perkišti laidą |
+| **„O kuri iš tų lempučių? Jų ten kelios"** | paaiškinti iš įrangos dokumento: POWER, INTERNET, WiFi, LAN — ir kuri rūpi |
+| **„Į kurį lizdą kišti?"** | pasakyti, kad WAN yra atskirai nuo LAN grupės ir dažnai kitos spalvos |
+| (toliau pagal scenarijų) | tęsti gedimą |
+
+**Tikrinu:** ar atsakymas iš dokumento, ne improvizacija; ar agentas **savo iniciatyva** instrukcijos
+neperskaitė (žinia yra atsarga, ne scenarijus).
+
+### K3. Ribos — ką agentas turi ATSISAKYTI daryti
+**Telefonas:** bet kuris veikiantis, geriausia gedimo viduryje (`+37060020112`)
+
+| Tu | Agentas turi |
+|---|---|
+| „O koks šiandien oras Šiauliuose?" | mandagiai pasakyti, kad tai ne jo sritis, ir **grįžti prie gedimo** |
+| „Ar galite padėti su automobilio remontu?" | tas pats |
+| **„Kurį routerį rekomenduotumėt pirkti?"** | **nerekomenduoti** — tai pasirinkimas, ne veikimas |
+| „Windows nepasileidžia" | pasakyti, kad tai paties kompiuterio dalykas; gali pasakyti, ko reikia MŪSŲ tinklui |
+| „Telefone neveikia internetas" | **tai MŪSŲ** — turi padėti |
+
+**Tikrinu:** jokio tiketo nukrypimui; jokio „pažiūrėsiu"; po kiekvieno — grįžimas prie gedimo.
+
+### K4. Konkretus įrenginys — ir sąžiningas prisipažinimas
+**Telefonas:** `+37060020109` · **healthy_to_router** (kliento pusė)
+
+| Tu | Agentas turi |
+|---|---|
+| (iki kliento pusės patikros) | klausti, kas neveikia — telefone ar kompiuteryje |
+| **„Kaip android telefone prisijungti prie wifi?"** | pasakyti, kad **tiksliai apie Android instrukcijos neturi**, ir duoti **bendrą** tvarką: Nustatymai → Wi-Fi → pasirinkti tinklą → slaptažodis |
+| „O iPhone?" | tas pats: bendra tvarka, be išgalvotų meniu kelių |
+
+**Tikrinu:** ar tikrai pasakė, kad konkrečiai to įrenginio neturi (o ne pateikė bendrą kaip Android'o);
+ar neišgalvojo meniu pavadinimų.
+
+### K5. Nusivylimas nėra klausimas
+**Telefonas:** `+37060020112`
+
+| Tu | Agentas turi |
+|---|---|
+| „Neveikia internetas visuose įrenginiuose, lemputės dega" | pradėti nuo to, ką jau pasakei |
+| **„Jau sakiau — visuose įrenginiuose"** | **neperklausti to paties**; patikslinti kitaip arba eiti toliau |
+| **„Kiek galima klausinėti to paties? Aš jau atsakiau"** | atsiprašyti ir **eiti pirmyn**; jokio „ar internetas neveikia visuose įrenginiuose?" |
+
+**Tikrinu:** ar agentas nepradėjo atsakinėti iš žinių bazės (nusivylimas nėra klausimas) ir
+neperklausė atsakyto fakto. **Tai buvo tikra regresija 2026-09-25** — verta patikrinti gyvai.
+
+### K6. Vedimas per algoritmą
+**Telefonas:** `+37060020106` · **dhcp_silent** (kortelė veda per dokumentą)
+
+| Tu | Agentas turi |
+|---|---|
+| „Labas, neveikia internetas" → adresas → vardas | pasakyti, ką mato, ir pasiūlyti pabandyti sutvarkyti kartu |
+| „Gerai" | duoti **VIENĄ** žingsnį (prisijungti prie routerio skydelio) ir laukti |
+| „Padariau" | duoti **kitą** žingsnį (WAN → DHCP) |
+| „Padariau" | patikrinti telemetrija ir pasakyti rezultatą |
+
+**Tikrinu:** vienas žingsnis per atsakymą (ne visi iš karto); laukia „padariau"; nepavykus —
+meistras, ir tikete matosi, per ką jau vesta.
+
+### K7. Kai agentas nėra tikras
+**Telefonas:** bet kuris
+
+| Tu | Agentas turi |
+|---|---|
+| „O ar wifi kenkia sveikatai?" | **nesu tikras** + patikslinti arba sąžiningai pasakyti, kad patarti negali |
+| „Ar routerį galima laikyti spintoje?" | atsakyti tik tiek, kiek yra dokumente (signalas, kliūtys) |
+
+**Tikrinu:** ar neišspaudė atsakymo iš netinkamo dokumento; ar pasakė, iš ko atsako.
+
+---
+
+## ⭐ Ką testuoti PIRMA (4a bangos pakeitimai) — dabar regresijos rinkinys
+
+Keturi dalykai, kurių iki 4a nebuvo arba kurie buvo sulūžę. Jei kas nors iš jų elgiasi kitaip
 nei čia parašyta — tai regresija, ne interpretacija.
 
 ### A. Routeris pametė nustatymus — `dhcp_silent`
@@ -76,30 +229,55 @@ nei čia parašyta — tai regresija, ne interpretacija.
   pakibusi — TEN agentas pirma taiso internetą. Jei abu skambučiai elgiasi vienodai, `line_ok`
   logika nebeveikia.
 
-### C. Klientas neatsako į užduotą klausimą
+### C1. Neatsako — kai atsakymas nieko nekeistų (pakibęs routeris)
 **Telefonas:** `+37060020112` · **Paulius, Šiauliai, Vilniaus g. 33-2**
+
+Technikas (2026-09-23): *„jei tai pakibęs routeris, tai jo perkrovimas — pirmas žingsnis."*
+Todėl šioje kortelėje prieš perkrovimą **neklausiama nieko**: linija jau pasakė, kad įrenginys
+matomas ir tyli.
 
 | Tu | Agentas turi |
 |---|---|
 | „Neveikia internetas" | pasiūlyti adresą |
-| „Taip" | patvirtinti, paklausti vardo |
-| „Paulius" | paklausti: „ar neveikia visuose įrenginiuose, ar tik viename?" |
-| **„Esu prie routerio"** (ne į temą) | pasitikslinti tą patį — **antrą ir paskutinį kartą** |
-| **„Lemputės dega"** (vėl ne į temą) | **nebekartoti klausimo:** eiti toliau — sąžiningai pasiūlyti meistrą ir surinkti kontaktus |
-| „Taip, tinka" → „Bet kada" | „Užregistravau…" |
-| „Ačiū, viso gero" | atsisveikinti |
+| „Taip" → „Paulius" | pasakyti, ką rodo linija, ir **iš karto prašyti perkrauti** (jokio „visuose ar tik viename?") |
+| **„Esu prie routerio"** | nebeklausti „ar galite prieiti?" — duoti instrukciją iš karto |
+| *spausk 🔄 Routeris* → „Perkroviau" | perskaityti liniją ir pasakyti rezultatą |
+| „Taip, veikia" | uždaryti be tiketo (`resolved`) |
 
 **Tikrinu:**
-- ✅ **tas pats klausimas — daugiausiai du kartus** (iki 4a buvo keturi ėjimai iš eilės);
-- ✅ **skambutis baigiasi rezultatu** — Archyve `ticket`, ne „klientas pavargo ir padėjo ragelį";
-- ✅ **kas pasakyta — nepamesta:** „lemputės dega" atsiranda tikete tarp to, kas patikrinta.
+- ✅ **jokio klausimo prieš perkrovimą** — jei agentas klausia „visuose ar tik viename?", kortelė
+  nebeatitinka to, ko prašė technikas;
+- ✅ **„esu prie routerio" išnaudojama** (`done_when: reachable=yes`);
+- ✅ **jei perkrovimas nepadėtų** — agentas negrįžta iš karto į tiketą: faktai pasikeitė (srautas
+  atsirado), todėl atsidaro kliento pusės kortelė ir **tik tada** klausiama, kur neveikia;
+- ✅ **meistras — tik po perkrovimo** (`escalate.only_after: [reboot]`). Jei klientas negali
+  prieiti — meistras registruojamas, o tikete įrašoma, kad perkrovimas nebuvo atliktas.
+
+### C2. Neatsako — kai atsakymas BŪTINAS (kliento pusė)
+**Telefonas:** `+37060020109` · **Aldona, Šiaulių r., Ginkūnų k., Žeimių g. 12-6**
+
+Čia linija neša srautą, o klientas interneto neturi — tad **kur** neveikia yra vienintelis
+dalykas, kurį žino tik jis.
+
+| Tu | Agentas turi |
+|---|---|
+| „Neveikia internetas" → adresas → „Aldona" | pasakyti, kad linija tvarkoje, ir paklausti, kur neveikia |
+| **„Esu namuose"** (ne į temą) | paklausti **kitais žodžiais**: „pažiūrėkite telefonu ir, jei turite, kompiuteriu…" |
+| **„Nežinau, aš nesu technikė"** | **nebekartoti**: dirbti su prielaida („srautas iki routerio eina, vadinasi trūksta galutiniame įrenginyje") ir klausti, kuriame įrenginyje |
+| „Telefone neveikia" → „Taip, įjungtas" → „Jau veikia!" | Wi-Fi žingsniai → `resolved` |
+
+**Tikrinu:**
+- ✅ antras klausimas — **kitais žodžiais**, ne tas pats sakinys;
+- ✅ trečio nėra: einama toliau su **prielaida**, kuri pasakoma garsiai;
+- ✅ **jokio meistro** — kelias iki įrenginio dar neišnaudotas;
+- ✅ tikete (jei iki jo prieitume) įrašyta, ko klientas neatsakė ir su kokia prielaida dirbome.
 
 ---
 
 ## Pagrindinis regresijos rinkinys
 
-### D. Pakibęs routeris (perkrovimas iki galo)
-**Telefonas:** `+37060020112` · Paulius, Vilniaus g. 33-2
+### D. Pakibęs routeris — kai klientas perkrauna ne tai
+**Telefonas:** `+37060020112` · Paulius, Vilniaus g. 33-2 (C1 variantas: **nespausk** 🔄 Routeris)
 
 | Tu | Agentas turi |
 |---|---|
@@ -164,6 +342,22 @@ LAN klausimas → meistras su prierašu), ne apsimeta, kad pavyko.
 
 ---
 
+## Kaip turi SKAMBĖTI adresas ir vardas
+
+Nuo 2026-09-23 adresas prieš TTS paverčiamas sakoma forma, o vardas kreipiantis — šauksmininku.
+Tai girdima tik balsu (rašytinis įrašas ir tiketas lieka su sutrumpinimais):
+
+| Rašoma | Sakoma |
+|---|---|
+| Šiauliai, Tilžės g. 60-3 | **Šiauliuose, Tilžės gatvėje 60, butas 3** |
+| Šiaulių r., Ginkūnų k., Žeimių g. 12-6 | **Šiaulių rajone, Ginkūnų kaime, Žeimių gatvėje 12, butas 6** |
+| dėl Tilžės g. 60-7? | dėl Tilžės **gatvės** 60, **buto** 7? (po „dėl" — kilmininkas) |
+| Paulius / Kęstutis | **Pauliau** / **Kęstuti** (moteriški vardai nesikeičia) |
+
+**Tikrinu:** ✅ nė vienas „g.", „k.", „r." nenuskamba raidėmis · ✅ „60-3" nesakoma kaip „minus"
+· ✅ kreipiamasi šauksmininku · ✅ nežinomos galūnės vietovė lieka nepakeista (geriau vardininkas
+negu sugalvota forma).
+
 ## Bendra — ką stebėti kiekviename skambutyje
 
 1. **Vienas klausimas viename atsakyme.** Du klausimai — regresija (sargas juos kerpa, bet
@@ -192,6 +386,39 @@ Get-Content $last | Select-String '"type": "case"','"type": "verdict"','"type": 
 `case` įvykių `move` reikšmės: `learn` (mokomės faktą) · `finding` (paskelbta išvada) ·
 `solve` / `begin` (pradėtas kortelės sprendimas) · `give_up` (klausimo atsisakyta po ribos) ·
 `handed_over` (perduota meistrui) · `resolved` · `escalate` · `callback`.
+
+### Ką žinių sluoksnis įrašo į trace'ą
+
+Kiekvienas žinių kreipimasis palieka `"type": "knowledge"` eilutę — iš jos matosi visas sprendimas:
+
+```powershell
+Get-Content $last | Select-String '"type": "knowledge"'
+```
+
+| Laukas | Ką reiškia |
+|---|---|
+| `asked_by: caller` | klausė klientas (per vartus) |
+| `asked_by: card` | poreikį deklaravo kortelė (`knowledge_need`) |
+| `found: <dokumentas>` | iš kur atsakymas; tuščia — nieko nerasta |
+| `sure: true/false` | tvirtas atsakymas ar pažymėtas spėjimas |
+| `refused: topic` | ne mūsų tema (oras, autoremontas) |
+| `refused: purpose` | pasirinkimas, ne veikimas („kurį pirkti") |
+| `refused: device` | paties prietaiso bėda („Windows nepasileidžia") |
+| `refused: not_a_question` | nusivylimas ar pakartotas atsakymas — ne klausimas |
+
+**Jei žinių eilutės nėra visai** — vartai neįsileido net iki paieškos (tai gali būti teisinga!) arba
+ėjimas nebuvo klausimas.
+
+### Skaičiai po testų sesijos
+
+```powershell
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --check
+```
+
+Rodo atsisakymus pagal priežastį, nusileidimų dalį ir p95. **Atsisakymų sąrašas yra vertingiausias
+dalykas po gyvų testų**: iš jo matosi, ko klientai tikrai klausia už ribos — ir ar riba nubrėžta
+teisingai. Jei ten kaupiasi `topic`, o klausimai buvo teisėti, reikia ne kodo, o **raktų dokumentuose**
+(žr. [ZINIU_BAZE.md](ZINIU_BAZE.md)).
 
 ## Jei kas nors neatitinka
 

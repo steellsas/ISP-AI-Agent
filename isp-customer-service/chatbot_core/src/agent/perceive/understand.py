@@ -71,6 +71,26 @@ def _merged_allowed(extra: dict[str, set[str]] | None) -> dict[str, set[str]]:
     return merged
 
 
+def _knowledge_map() -> tuple[str, list[str]]:
+    """Agento ŽINIŲ ŽEMĖLAPIS promptui: ką jis apie save žino turįs.
+
+    Andrius (2026-09-25): *„rag žinios tai agento žinios supratimui ir informacijos papildymui —
+    agentas turi susirasti sau informaciją"*. Todėl paieškos įvadas yra ne kliento sakinys, o AGENTO
+    sprendimas, ko jam reikia. Išmatuota (68 klausimai): kliento sakiniu randama 57 %, LLM laisvai
+    sugalvotu poreikiu 53 % (blogiau!), o LLM pasirinkimu IŠ ŠIO ŽEMĖLAPIO — 69 %. Skirtumas
+    paprastas: čia modeliui nebereikia atspėti mūsų žodžių, jis renkasi iš to, kas tikrai yra.
+
+    Žemėlapis yra dokumentų pavadinimai, tad naujas dokumentas jį išplečia savaime. Prie kelių šimtų
+    dokumentų jį reikės sutraukti (pvz. iki rūšių ar temų), bet prie septyniolikos tai septyniolika
+    eilučių.
+    """
+    from ..knowledge_base import documents
+
+    sources = [doc["source"] for doc in documents()]
+    listing = "\n".join(f"    {i + 1}. {doc['title']}" for i, doc in enumerate(documents()))
+    return listing, sources
+
+
 def _system(
     anchor: str,
     needs: str,
@@ -96,6 +116,16 @@ def _system(
         )
         step_rules = load_node_prompt("sensors/perception_step").replace("<<options>>", opts)
     extra_json, extra_rules = "", ""
+    # Žinių žemėlapis dedamas TIK tada, kai jis gali būti reikalingas. Kontakto dialogo metu
+    # (`ticket_stage`) klausimas yra uždaras — vardas, laikas, telefonas — ir 17 papildomų eilučių
+    # promptą tik praskiedžia. Išmatuota: su jomis D5 paskutinis „Ačiū, viso gero" nustojo būti
+    # skaitomas kaip atsakymas („bet kada"), ir tiketas nebeįvyko (2026-09-25).
+    listing, _sources = ("", []) if ticket_stage else _knowledge_map()
+    if listing:
+        extra_json += ', "knowledge": int|null'
+        extra_rules += "\n" + load_node_prompt("sensors/knowledge_route").replace(
+            "<<documents>>", listing
+        )
     if ticket_stage:
         # The contact dialogue's answer, read in the SAME call (wave 2a).
         extra_json += ', "ticket": {"value": str|null, "type": "answer|question|refusal|other"}'
@@ -227,9 +257,21 @@ def understand(
                 "label": str(label) if label not in (None, "", "null") else None,
                 "confidence": max(0.0, min(1.0, float(problem.get("confidence") or 0.0))),
             }
+        # Kurio dokumento agentui reikia. Numeris verčiamas į kelią ir tikrinamas prieš TĄ PATĮ
+        # sąrašą, kuris buvo prompte: modelio sugalvotas numeris tyliai atmetamas.
+        _listing, sources = _knowledge_map()
+        picked = data.get("knowledge")
+        knowledge = None
+        try:
+            index = int(picked)
+            if 1 <= index <= len(sources):
+                knowledge = sources[index - 1]
+        except (TypeError, ValueError):
+            knowledge = None
         return {
             "facts": facts,
             "quotes": quotes,
+            "knowledge": knowledge,
             "ticket": ticket,
             "problem": problem,
             "type": turn_type,

@@ -128,6 +128,24 @@ class TestConflictScope:
         return agent
 
     def test_undeclared_key_conflict_settles_silently(self, db_connection):
+        """`outlet_works` belongs to the dead-router card, not to this one: chatter about it
+        must not hijack the flow with a clarify loop. (Until wave 4a this test used the
+        lights — they are declared on the hung-router card now, so a lights contradiction is
+        worth a question.)"""
+        from agent.evidence import CLIENT, set_fact
+        from agent.perceive.evidence import _conflict_to_clarify
+
+        agent = self._agent()
+        set_fact(agent.state.diagnosis.evidence, "outlet_works", "tried", CLIENT, 1)
+        entry = set_fact(agent.state.diagnosis.evidence, "outlet_works", "not_working", CLIENT, 2)
+        assert entry["conflict"]
+        assert (
+            _conflict_to_clarify(agent.state, agent.runtime, "outlet_works", entry) is True
+        )  # consumed silently
+        assert agent.state.diagnosis.contradiction is None  # no clarify loop
+        assert entry["value"] == "not_working" and not entry["conflict"]  # newest stands
+
+    def test_declared_key_conflict_still_clarifies(self, db_connection):
         from agent.evidence import CLIENT, set_fact
         from agent.perceive.evidence import _conflict_to_clarify
 
@@ -135,23 +153,9 @@ class TestConflictScope:
         set_fact(agent.state.diagnosis.evidence, "lights", "off", CLIENT, 1)
         entry = set_fact(agent.state.diagnosis.evidence, "lights", "on", CLIENT, 2)
         assert entry["conflict"]
-        assert (
-            _conflict_to_clarify(agent.state, agent.runtime, "lights", entry) is True
-        )  # consumed silently
-        assert agent.state.diagnosis.contradiction is None  # no clarify loop
-        assert entry["value"] == "on" and not entry["conflict"]  # newest stands
-
-    def test_declared_key_conflict_still_clarifies(self, db_connection):
-        from agent.evidence import CLIENT, set_fact
-        from agent.perceive.evidence import _conflict_to_clarify
-
-        agent = self._agent()
-        set_fact(agent.state.diagnosis.evidence, "fail_scope", "all", CLIENT, 1)
-        entry = set_fact(agent.state.diagnosis.evidence, "fail_scope", "one", CLIENT, 2)
-        assert entry["conflict"]
-        assert _conflict_to_clarify(agent.state, agent.runtime, "fail_scope", entry) is True
+        assert _conflict_to_clarify(agent.state, agent.runtime, "lights", entry) is True
         c = agent.state.diagnosis.contradiction
-        assert (c.fact_key, c.before_value, c.now_value) == ("fail_scope", "all", "one")
+        assert (c.fact_key, c.before_value, c.now_value) == ("lights", "off", "on")
 
 
 class TestSimRebootSeed:

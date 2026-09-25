@@ -110,20 +110,28 @@ def is_news(reason: str | None) -> bool:
     return bool(card and card.news)
 
 
-def inform_text(state: Any, rt: Any, reason: str | None) -> str | None:
+def inform_text(
+    state: Any, rt: Any, reason: str | None, *, key: str = "template_key"
+) -> str | None:
     """The rendered inform speech for this verdict, or None when no template
     applies (the caller then falls back to the glossary gloss). The
     drop-a-sentence rule: a template sentence whose placeholder has no value
-    is omitted; if NO data sentence survives, the entry's `fallback` speaks."""
+    is omitted; if NO data sentence survives, the entry's `fallback` speaks.
+
+    `key` picks WHICH sentence of the entry to render. The default is the news itself;
+    `asked_again_key` is what to say when the caller asks about it afterwards — from the
+    same facts, because an answer that contradicts the news we just delivered is worse than
+    no answer at all (live 2026-09-23: "Skola 49,98 €" and then "tikslios sumos nematau").
+    """
     if not reason:
         return None
     entry = _catalog().get(reason)
-    if not isinstance(entry, dict) or not entry.get("template_key"):
+    if not isinstance(entry, dict) or not entry.get(key):
         return None
     from .contract.locale import template
 
     vals = _values(state, rt, reason)
-    sentences = re.split(r"(?<=[.!?])\s+", template(entry["template_key"]).strip())
+    sentences = re.split(r"(?<=[.!?])\s+", template(entry[key]).strip())
     kept: list[str] = []
     data_sentences = 0
     placeholder_sentences = 0

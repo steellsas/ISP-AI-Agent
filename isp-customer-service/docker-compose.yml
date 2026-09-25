@@ -1,0 +1,77 @@
+# Žinių indekso saugykla (RAG planas, E2).
+#
+# Kodėl SAVAS konteineris, nors mašinoje jau veikia kito projekto Qdrant: bendra saugykla reiškia
+# bendrą riziką — kito projekto konteinerio ar volume ištrynimas nuneštų ir mūsų indeksą, o klaidingas
+# `delete_collection` nuneštų jų duomenis. Todėl savas volume ir savas portas.
+#
+#   docker compose up -d qdrant       paleisti
+#   docker compose logs -f qdrant     žurnalas
+#   docker compose down               sustabdyti (volume lieka)
+#
+# Portai 6343/6344, nes 6333/6334 mašinoje jau užimti.
+#
+# SAUGUMAS. Qdrant savarankiškai talpinamas NĖRA saugus pagal nutylėjimą: be `api_key` bet kas
+# tinkle turi pilną prieigą. Čia raktai paduodami per `.env`, o ne įrašyti į failą:
+#
+#   QDRANT_API_KEY        rašymo raktas — TIK ingestijai
+#   QDRANT_READ_KEY       skaitymo raktas — agentui; net jei per LLM kelią kas nors bandytų rašyti
+#                         į žinių bazę, techniškai neturi kuo
+#
+# Gamyboje dar reikia: TLS (be jo api-key keliauja atviru tekstu), bind į privatų interfeisą ir
+# portas 6334 (vidinis gRPC) neprieinamas iš išorės. Žr. docs/review/RAG_PLANAS.md 8.1.
+
+services:
+  qdrant:
+    # Versija PRIKABINTA ir turi eiti kartu su `qdrant-client` versija pyproject.toml: klientas
+    # pats brėžia ribą ("major versions should match, minor difference must not exceed 1"), o tylus
+    # nesutapimas reiškia, kad kažkas nustos veikti ne tada, kai keitėm, o tada, kai atsinaujino.
+    image: qdrant/qdrant:v1.19.1
+    container_name: isp-qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6343:6333"   # HTTP — tik iš šios mašinos
+      - "127.0.0.1:6344:6334"   # gRPC — tik iš šios mašinos
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
+      QDRANT__SERVICE__READ_ONLY_API_KEY: ${QDRANT_READ_KEY:-}
+      QDRANT__LOG_LEVEL: INFO
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      # `/readyz` atsako tik tada, kai kolekcijos užkrautos ir serveris tikrai aptarnauja.
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Embeddings servisas (RAG planas, E3). Gamybinė forma: VIENA modelio kopija visiems uvicorn
+  # worker'iams plius dinaminis paketavimas — vietoj N × 0,5 GB kiekvieno worker'io atmintyje.
+  #
+  #   docker compose --profile embed up -d        paleisti kartu su Qdrant
+  #   EMBED_URL=http://127.0.0.1:6380             agentas kreipiasi į servisą, ne krauna modelį
+  #
+  # Be šio serviso agentas modelį krauna procese (vienas egzempliorius, pakaitinamas starte) — tai
+  # tinka vienam worker'iui ir CI, bet ne keliems worker'iams gamyboje.
+  embeddings:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    container_name: isp-embeddings
+    profiles: ["embed"]
+    restart: unless-stopped
+    # Modelis rinktas MATUOJANT (RAG_PLANAS.md 11): e5-small duoda tą pačią kokybę kaip e5-base,
+    # bet telpa į balso ėjimo laiko biudžetą.
+    command: ["--model-id", "intfloat/multilingual-e5-small", "--auto-truncate"]
+    ports:
+      - "127.0.0.1:6380:80"
+    volumes:
+      - tei_cache:/data
+    environment:
+      HF_HOME: /data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/80' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  qdrant_data:
+  tei_cache:

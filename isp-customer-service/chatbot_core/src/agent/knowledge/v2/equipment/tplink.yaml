@@ -14,5 +14,14 @@ actions:
 
 lights:
   internet:
-    # TP-Link lemputė turi savo vietą ir užrašą — klausimas tikslesnis, skaitymas tas pats.
+    # TP-Link lemputė turi savo vietą ir užrašą — klausimas tikslesnis.
     ask_key: equipment.tplink.lights.internet
+    # 4b banga: SPALVA yra tikslesnis atsakymas už „dega / nedega", ir tik gamintojas žino,
+    # ką ji reiškia. TP-Link Archer: žalia — ryšys yra; oranžinė — įrenginys gyvas, bet
+    # interneto negauna; raudona — nėra signalo. Bazinis routeris spalvų nežino sąmoningai.
+    means:
+      green: wan_link=up
+      orange: wan_link=down
+      red: wan_link=down
+      "yes": wan_link=up
+      "no": wan_link=down

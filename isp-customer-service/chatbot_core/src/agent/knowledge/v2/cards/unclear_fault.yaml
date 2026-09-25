@@ -12,6 +12,13 @@ service: any
 explain:
   conclusion: "verdict.unclear_fault.gloss"
 
+# Ši kortelė nieko neatitinka pagal sąlygas, tad pati neturi ką pasakyti apie liniją. Bet
+# klientas TURI išgirsti, kas buvo patikrinta — kitaip „telefonu nenustatėme" skamba kaip
+# „nieko nedariau" (Andrius, 2026-09-23).
+# Tik MŪSŲ pusės faktai: „srautas iki routerio" televizijos skambutyje kalba apie routerį,
+# o TV skambutyje apie jį kalbėti nereikia (eval T1).
+explain_facts: [node_reachable, line_link]
+
 fallback: true
 when: {}
 

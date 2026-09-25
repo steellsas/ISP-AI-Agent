@@ -1,3 +1,10 @@
+---
+title: Internetas neveikia — bendra diagnostika
+kind: troubleshooting
+problem: [internet_down]
+tags: [reboot, cable, lights, client_device]
+keywords: [internetas, neveikia, diagnostika, perkrovimas, laidas]
+---
 # Internetas neveikia - diagnostika ir sprendimas
 
 ## Simptomai

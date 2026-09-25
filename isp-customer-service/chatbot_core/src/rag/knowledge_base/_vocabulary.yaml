@@ -1,0 +1,103 @@
+# Kontroliuojamas žinių bazės žodynas (RAG planas, E1).
+#
+# KAM: iki E1 `tags` buvo laisvai rašomi ir lietuviški — 91 tagas, tarp jų „lemputes" ir „lemputė",
+# „letas" ir „lėtas", t. y. tas pats dalykas dviem rašybomis. Prie 17 dokumentų tai dar veikė; prie
+# 40+ laisvi tagai pradeda kirstis, o deterministinis filtras yra vienintelis dalykas, kuris išlaiko
+# tikslumą bazei augant. Todėl dabar:
+#
+#   tags:      RAKTAS — kontroliuojamas ANGLIŠKAS sąrašas (šis failas). Pagal jį filtruojama, ir
+#              būtent jis keliaus į Qdrant payload indeksus (E2).
+#   keywords:  PAVIRŠIUS — lietuviški žodžiai, kuriais klientas šneka. Pagal juos rikiuojama.
+#
+# Skirtumas svarbus: raktas turi būti stabilus ir baigtinis, o paviršius — gyvas ir lietuviškas.
+# Vertimo skambučio metu nėra nė karto: tekstas ir `keywords` lietuviški, raktas angliškas — kaip ir
+# mūsų kortelių faktai (`wan_link`, `dhcp`, `client_side`).
+#
+# Startinis validatorius tikrina KIEKVIENĄ dokumentą ir kiekvieną kortelę prieš šį failą: technikas
+# negali įrašyti tago, kurio čia nėra. Naujas tagas pridedamas ČIA — sąmoningai, ne per klaidą.
+
+# Kokios rūšies žinia. Agentas prašo TO, ko jam reikia.
+kinds:
+  - equipment        # kas yra prietaisas: lemputės, mygtukai, jungtys
+  - howto            # kaip sukonfigūruoti, kaip atstatyti
+  - procedure        # mūsų tvarka: kada siunčiam techniką, kada keičiam įrangą
+  - faq              # trumpas atsakymas į dažną klausimą
+  - troubleshooting  # gedimo kelias
+  - tip              # patarimas, kuris nėra nei gedimas, nei tvarka
+
+# Problemos šeima. Tuščias = NEUTRALUS dokumentas: praleidžiamas per bet kurį gedimą, nes klientas
+# gali klausti apie lemputę ar meistro kainą interneto gedimo viduryje.
+problems:
+  - internet_down
+  - internet_slow
+  - tv
+
+# Įranga. Tie patys vardai, kuriuos grąžina įrangos katalogas (`equipment/*.yaml` lygiai), kad
+# filtras sutaptų su tuo, ką agentas atpažino linijoje.
+equipment:
+  - tplink
+  - router
+  - tv_box
+  - computer
+  - phone
+
+# Raktai. Vienas tagas = vienas dalykas, apie kurį klientas gali paklausti arba kurį kortelė gali
+# prašyti. Angliški, nes tai raktas, ne kalba.
+tags:
+  # įrangos paviršius
+  - lights
+  - buttons
+  - ports
+  - remote
+  - hdmi
+  - model
+  # konfigūravimas
+  - reset
+  - factory_reset
+  - config
+  - wan
+  - dhcp
+  - admin_panel
+  # kliento pusė ir jo įrenginys
+  - wifi
+  - password
+  - network_name
+  - client_device
+  # Konkretus kliento įrenginys. Dokumentas su šiuo tagu yra KONKRETUS; be jo — bendras, ir tada
+  # agentas pasako, kad būtent apie tą įrenginį informacijos neturi (E3b).
+  - android
+  - ios
+  - windows
+  - macos
+  # fizika ir prijungimas
+  - cable
+  - crc
+  - power
+  - socket
+  - bridge
+  - mac
+  - lan_port
+  # greitis
+  - speed
+  - speedtest
+  - slow
+  - intermittent
+  # tinklo pusė
+  - line
+  - outage
+  - neighbours
+  # routerio būsena
+  - reboot
+  - hung
+  # televizija
+  - tv_channels
+  - no_signal
+  - frozen_picture
+  # mūsų tvarkos
+  - technician
+  - sla
+  - ticket
+  - replacement
+  - warranty
+  - price
+  - subscription

@@ -49,11 +49,50 @@ def validate() -> Knowledge:
     _check_adapters(knowledge)
     _check_cards()
     _check_equipment()
+    _check_knowledge_base()
     try:
         check_prompts()
     except PromptError as e:
         raise KnowledgeError([f"prompts: {e}"]) from e
     return knowledge
+
+
+def _check_knowledge_base() -> None:
+    """Kiekvienas žinių dokumentas prieš kontroliuojamą žodyną (RAG planas, E1).
+
+    Iki E1 `tags` buvo laisvai rašomi, ir žinių bazėje gyveno 91 tagas — tarp jų „lemputes" ir
+    „lemputė", „letas" ir „lėtas". Prie 17 dokumentų tai dar veikė, prie 40+ laisvi tagai kertasi,
+    o filtras yra vienintelis dalykas, kuris išlaiko tikslumą bazei augant. Todėl technikas
+    negali įrašyti tago, kurio nėra `_vocabulary.yaml`: programa sustoja dabar, o ne per skambutį.
+    """
+    import yaml
+
+    from ..knowledge_base import KB_DIR, documents
+
+    path = KB_DIR / "_vocabulary.yaml"
+    if not path.exists():  # pragma: no cover - žodynas keliauja su repozitorija
+        raise KnowledgeError([f"knowledge base: no controlled vocabulary at {path}"])
+    vocabulary = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    allowed = {
+        field: set(vocabulary.get(field) or ())
+        for field in ("kinds", "problems", "equipment", "tags")
+    }
+
+    errors: list[str] = []
+    for doc in documents():
+        at = f"knowledge base: {doc['source']}"
+        if doc["kind"] not in allowed["kinds"]:
+            errors.append(f"{at}: unknown kind '{doc['kind']}' (see _vocabulary.yaml)")
+        for field, key in (("tags", "tags"), ("problems", "problem"), ("equipment", "equipment")):
+            unknown = sorted(set(doc[key]) - allowed[field])
+            if unknown:
+                errors.append(f"{at}: {key} {unknown} not in _vocabulary.yaml")
+        if not doc["tags"]:
+            errors.append(f"{at}: no tags — no filter can reach it")
+        if not doc["keywords"]:
+            errors.append(f"{at}: no keywords — the caller's own words cannot reach it")
+    if errors:
+        raise KnowledgeError(errors)
 
 
 def _check_adapters(knowledge: Knowledge) -> None:
@@ -131,9 +170,14 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
         for key in card.explain.values():
             if not locale.has(key):
                 errors.append(f"{where}: explain phrase '{key}' is missing")
+        for fact in card.explain_facts:
+            if fact not in values:
+                errors.append(f"{where}: explain_facts: unknown fact '{fact}'")
         for fact, need in card.needs.items():
             if need.ask and not locale.has(need.ask):
                 errors.append(f"{where}: needs.{fact}.ask phrase '{need.ask}' is missing")
+            if need.again and not locale.has(need.again):
+                errors.append(f"{where}: needs.{fact}.again phrase '{need.again}' is missing")
             if need.probe and manifests.manifest(need.probe) is None:
                 errors.append(f"{where}: needs.{fact}.probe '{need.probe}' has no tool manifest")
             for value, meaning in need.values.items():
@@ -150,6 +194,13 @@ def _check_cards(cards: dict | None = None, modules: dict | None = None) -> None
                     errors.append(f"{where}: needs.{fact}.answers.{value} is not one of its values")
         if card.escalate and card.escalate.need and not locale.has(card.escalate.need):
             errors.append(f"{where}: escalate.need phrase '{card.escalate.need}' is missing")
+        for name in card.escalate.only_after if card.escalate else []:
+            if name not in modules:
+                errors.append(f"{where}: escalate.only_after names unknown module '{name}'")
+            elif not any(call.module == name for s in card.solution for call in s.steps):
+                errors.append(
+                    f"{where}: escalate.only_after '{name}' is not a step of any solution"
+                )
         for i, solution in enumerate(card.solution):
             check_conditions(f"{where}: solution.{i}.when", solution.when)
             if solution.hands_to and solution.hands_to not in cards:
@@ -179,6 +230,35 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                 errors.append(f"{at}: {call.module}.{param}={given!r} is not one of {rules.values}")
         for extra in set(call.args) - set(spec.params):
             errors.append(f"{at}: {call.module} has no parameter '{extra}'")
+        for text in call.done_when:
+            try:
+                condition = Condition.parse(text)
+            except ValueError as e:
+                errors.append(f"{at}: done_when: {e}")
+                continue
+            if condition.fact not in values:
+                errors.append(f"{at}: done_when: unknown fact '{condition.fact}'")
+        if call.module == "guide":
+            # A card may send the caller through a WRITTEN procedure; if the document is not
+            # there, or has no steps, the app stops now and not mid-call (wave 4b).
+            from ..knowledge_base import document, steps
+
+            source = str(call.args.get("knowledge") or "")
+            if document(source) is None:
+                errors.append(f"{at}: guide: no knowledge document '{source}'")
+            elif not steps(source):
+                errors.append(
+                    f"{at}: guide: '{source}' has no steps "
+                    f"(headings like 'Žingsnis 1: …' are what the engine walks)"
+                )
+        if call.knowledge_need:
+            # Poreikis, kurio niekas neatsako, yra pažadas be turinio: sustojam starte.
+            from ..knowledge_base import find
+
+            if not find(call.knowledge_need, limit=1):
+                errors.append(
+                    f"{at}: knowledge_need '{call.knowledge_need}' finds nothing in the knowledge base"
+                )
         if spec.kind == "verify" and not (call.args.get("evidence") or call.args.get("ask")):
             errors.append(f"{at}: a verification needs `evidence`, `ask`, or both")
         for text in call.args.get("evidence") or []:
@@ -191,6 +271,17 @@ def _check_steps(where: str, path: str, steps, modules, values) -> list[str]:
                 where, f"{path}.steps.{i}.on_fail", [call.on_fail], modules, values
             )
     return errors
+
+
+def _readable_light_answers() -> frozenset[str]:
+    """What `detect_lights` can actually return: lit, not lit, or a colour it has words for.
+
+    Asked from the reader itself, so a colour cannot be added to a catalogue while the reader
+    stays deaf to it (wave 4b).
+    """
+    from ..perceive.detectors import LIGHT_COLOURS
+
+    return frozenset({"yes", "no", "blinking"}) | frozenset(LIGHT_COLOURS)
 
 
 def _check_equipment() -> None:
@@ -229,6 +320,13 @@ def _check_equipment() -> None:
                     errors.append(
                         f"{where}: lights.{light}.means.{seen} sets unknown fact '{fact}'"
                     )
+                if str(seen) not in _readable_light_answers():
+                    # A colour nobody can recognise is a promise the reader cannot keep: the
+                    # caller would say it and the engine would hear nothing (wave 4b).
+                    errors.append(
+                        f"{where}: lights.{light}.means.{seen} — the reader never returns "
+                        f"'{seen}' (it returns {', '.join(sorted(_readable_light_answers()))})"
+                    )
     for device_type in sorted({s.type for s in specs.values()}):
         if catalog.basic(device_type) is None:
             errors.append(f"equipment: type '{device_type}' has no basic level")
@@ -254,6 +352,11 @@ def startup() -> Knowledge:
     logger.info(
         f"knowledge loaded: {len(knowledge.packs)} fault packs, {len(knowledge.modules)} modules"
     )
+    # Kuri saugykla atsakys į žinių paiešką (RAG planas, E2): failai arba Qdrant indeksas. Čia, nes
+    # tai ta pati vieta, kur žinios patikrinamos — ir todėl bloga konfigūracija pasimato starte.
+    from adapters.retrieval import configure_from_env
+
+    logger.info(f"knowledge search: {configure_from_env()}")
     return knowledge
 
 

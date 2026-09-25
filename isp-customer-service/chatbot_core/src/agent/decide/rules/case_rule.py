@@ -42,6 +42,8 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             return reflect
         if status == "failed":
             return _escalate(state, rt, state.case.fault)
+        if status == "reopen":
+            facts = ledger.facts_of(state)  # the verification's own reading is part of them now
         if status == "handed_over":
             return None  # the ticket dialogue owns the rest of the call
         if status == "solved":
@@ -54,13 +56,24 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
         # the turn, and escalating here hijacked it (full eval: four inform scenarios).
         return None
     move = next_move(facts, unavailable=ledger.unavailable(state))
-    # A question the caller has been asked twice and has not answered is a dead end, not a
-    # question to ask a third time (eval X: "visuose ar tik viename?" four turns running
-    # while the caller kept telling us other things). It is marked unavailable and the Case
-    # decides again without it — which is how the call reaches an honest ending.
+    # A question the caller has been asked twice (the second time in other words) and still
+    # not answered is not a question to ask a third time. What happens instead is the CARD's
+    # to say: `assume` carries the call forward with the value it names — a hung router is
+    # rebooted anyway, because that is its primary fix and a ticket without it would be help
+    # we never gave (Andrius, 2026-09-23). Only a fact with no assumption is a dead end.
     while move.kind == "learn" and _asked_enough(state, move):
+        explain = _explain_need(state, rt, move)
+        if explain is not None:
+            return explain  # a critical fact is not dropped silently — they hear why we need it
+        assumed = _assume(state, rt, move)
         ledger.record_unavailable(state, rt, move.fact)
-        rt.tracer.emit("case", move="give_up", fact=move.fact, why="asked and not answered")
+        rt.tracer.emit(
+            "case",
+            move="assume" if assumed else "give_up",
+            fact=move.fact,
+            why="asked twice, no answer",
+        )
+        facts = ledger.facts_of(state)
         move = next_move(facts, unavailable=ledger.unavailable(state))
     rt.tracer.emit("case", move=move.kind, fact=move.fact, fault=move.fault, why=move.why)
     if move.kind == "inform":
@@ -210,7 +223,8 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     state.diagnosis.pending_evidence_key = move.fact
     from ...case import reason_for
 
-    why = reason_for(move.fact, catalog.card(state.case.fault or move.fault))
+    card = catalog.card(state.case.fault or move.fault)
+    why = reason_for(move.fact, card)
     goal = f"learn {move.fact} — only the caller can tell us"
     if why:
         # A caller who knows WHY answers better, and follows the instruction that comes next.
@@ -218,12 +232,92 @@ def _learn(state: Any, rt: Any, move: Any, facts: dict[str, str]) -> TurnPlan:
     asked = state.case.asks.setdefault(move.fact, [])
     if state.dialog.turn_count not in asked:
         asked.append(state.dialog.turn_count)
+    words = maybe_phrase(source.ask)
+    need = card.needs.get(move.fact) if card and move.fact else None
+    if len(asked) > 1 and need is not None and need.again:
+        # They answered about something else. The same sentence again is what makes an agent
+        # sound like a machine — the card's second wording says it differently, usually with
+        # an example of how to check (live 2026-09-23).
+        words = maybe_phrase(need.again) or words
+        goal = f"{goal}. They did not answer this yet, so ask it DIFFERENTLY and say why it matters"
     return TurnPlan(
         owner="diagnosis",
         rule="case.ask",
-        say=Say(kind="directive", text=maybe_phrase(source.ask), goal=goal, stage="diagnosis"),
+        say=Say(kind="directive", text=words, goal=goal, stage="diagnosis"),
         awaiting=move.fact,
     )
+
+
+def _unchecked_words(state: Any) -> str:
+    """What we could not check together, and what we are working with instead.
+
+    The caller hears it before anything is asked of them or registered in their name: an
+    assumption said out loud can be corrected, a silent one cannot (Andrius, 2026-09-23).
+    """
+    from ...facts import gloss
+
+    bits = []
+    for fact, value in (state.case.assumed or {}).items():
+        said = gloss(fact, value)
+        if said:
+            bits.append(said)
+    for fact in state.case.unavailable or []:
+        if fact in (state.case.assumed or {}):
+            continue
+        card = catalog.card(state.case.fault)
+        need = card.needs.get(fact) if card else None
+        label = maybe_phrase(need.ask) if need else None
+        if label:
+            bits.append(label)
+    return "; ".join(bits)
+
+
+def _explain_need(state: Any, rt: Any, move: Any) -> TurnPlan | None:
+    """A fact the card calls CRITICAL, asked twice and still not answered.
+
+    Neither a third repeat nor a silent assumption: the caller is told what we need and what
+    it changes ("kad galėčiau suprasti, kur problema — kitaip tektų siųsti meistrą"). Once.
+    """
+    card = catalog.card(state.case.fault or move.fault)
+    need = card.needs.get(move.fact) if card and move.fact else None
+    if need is None or not need.critical:
+        return None
+    asked = state.case.asks.setdefault(move.fact, [])
+    if len(asked) > _asks_max():
+        return None  # already explained; the call moves on without it
+    if state.dialog.turn_count not in asked:
+        asked.append(state.dialog.turn_count)
+    why = maybe_phrase(need.why) or ""
+    rt.tracer.emit("case", move="need", fact=move.fact, why="critical")
+    return TurnPlan(
+        owner="diagnosis",
+        rule="case.need",
+        say=Say(
+            kind="directive",
+            goal=(
+                "say plainly that without this one thing we cannot tell what is wrong, and "
+                "that the only other way is a technician — then ask it once more, warmly"
+                + (f". Why it matters: {why}" if why else "")
+            ),
+            stage="diagnosis",
+        ),
+        awaiting=move.fact,
+    )
+
+
+def _asks_max() -> int:
+    from ...contract import limits
+
+    return int(limits.get("case_fact_asks_max"))
+
+
+def _assume(state: Any, rt: Any, move: Any) -> bool:
+    """Carry the call forward on the card's own assumption, and remember to say it."""
+    card = catalog.card(state.case.fault or move.fault)
+    need = card.needs.get(move.fact) if card and move.fact else None
+    if need is None or not need.assume:
+        return False
+    return ledger.record_assumed(state, rt, move.fact, need.assume)
 
 
 def _asked_enough(state: Any, move: Any) -> bool:
@@ -232,11 +326,9 @@ def _asked_enough(state: Any, move: Any) -> bool:
     Only a QUESTION counts: a probe costs the caller nothing and a module is something we do
     together, so neither wears out. The limit is knowledge (`case_fact_asks_max`).
     """
-    from ...contract import limits
-
     if move.source is None or move.source.kind != "ask" or not move.fact:
         return False
-    return len(state.case.asks.get(move.fact, [])) >= int(limits.get("case_fact_asks_max"))
+    return len(state.case.asks.get(move.fact, [])) >= _asks_max()
 
 
 def _call_for(module: str, state: Any):
@@ -262,6 +354,7 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
         if all(c.holds(facts) is True for c in conditions) and solution.steps:
             state.case.fault, state.case.solution, state.case.step = fault, index, 0
             state.case.awaiting = None
+            state.case.guide_step, state.case.guide_said = 0, -1
             # The fault the Case settled on IS the call's verdict — what the record, the
             # ticket and the eval all read (wave 4: the tree that used to name it is gone).
             network = state.diagnosis.verdicts.setdefault("network", {})
@@ -271,6 +364,18 @@ def _begin(state: Any, rt: Any, fault: str | None, facts: dict[str, str]) -> Non
             _announce_finding(state, rt, card, facts)
             rt.tracer.emit("case", move="begin", fault=fault, solution=index)
             return
+
+
+def announce(state: Any, rt: Any, fault: str) -> None:
+    """Work out and hold this fault's finding, for a path that does not run through the Case.
+
+    The TV-with-no-card road (`execute/diagnosis.py`) registers a ticket without ever asking
+    the Case anything, so the caller heard "priežastis telefonu nenustatyta" with no word of
+    what HAD been checked (live 2026-09-23).
+    """
+    card = catalog.card(fault)
+    if card is not None:
+        _announce_finding(state, rt, card, ledger.facts_of(state))
 
 
 def _announce_finding(state: Any, rt: Any, card: Any, facts: dict[str, str]) -> None:
@@ -287,17 +392,26 @@ def _announce_finding(state: Any, rt: Any, card: Any, facts: dict[str, str]) -> 
     if card.fault in state.case.announced:
         return  # a finding is news once
     reasons = [str(c.fact) for c in (judge(card, facts).why and _reasons(card))]
-    seen = summary(facts, reasons)
+    # Plus whatever else the card says is worth telling (the honest ending matches on
+    # nothing, yet the caller must hear that the line up to their flat was checked).
+    seen = summary(facts, reasons + [f for f in card.explain_facts if f not in reasons])
     conclusion = maybe_phrase(card.explain.get("conclusion"))
     if not seen and not conclusion:
         return
     state.case.announced.append(card.fault)
-    state.turn.directives.findings = {
+    told = {
         "faktai": seen,
         "isvada": conclusion or "",
         "solutions": "",
         "offer": "",
+        # What the caller could not tell us and what we are assuming instead — said out loud,
+        # so they can correct it before anything is done in their name.
+        "prielaida": _unchecked_words(state),
     }
+    state.turn.directives.findings = told
+    # It is also kept OUTSIDE the turn: if another rule owns this turn (the name question, the
+    # ticket intro), the finding is said with that reply instead of being lost.
+    state.case.finding = told
     rt.tracer.emit("case", move="finding", fault=card.fault, facts=seen)
 
 
@@ -344,6 +458,19 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     call = _current(state)
     if call is None:
         return "solved" if state.case.fault and state.case.solution is not None else "waiting"
+    if (
+        call is not None
+        and call.module == "guide"
+        and state.case.guide_said != state.case.guide_step
+    ):
+        # This written step has not been SAID yet, so nothing the caller says can finish it.
+        # The mark is set when the reply is built (`speak/context_card.py`), never when the plan
+        # is made: on a turn the identification rule owned, the guide plan existed, was never
+        # spoken, and the caller's next words skipped the first step (2026-09-23).
+        rt.tracer.emit(
+            "case", move="guide_wait", at=state.case.guide_step, said=state.case.guide_said
+        )
+        return "waiting"
     if _is_escalate(call) and state.ticket.stage:
         # The technician has been asked for and the contact dialogue is collecting the
         # details: the Case has nothing left to add, and re-planning the same step made the
@@ -486,6 +613,16 @@ def _advance(state: Any, rt: Any, *, by_words: bool = False) -> str:
     if by_words:
         state.case.moved_on_turn = state.dialog.turn_count
     state.case.retrying = False
+    done = _current(state)
+    if _more_guide_steps(state, done):
+        # A written procedure is walked one step per turn: the card step is not finished until
+        # its document is (wave 4b).
+        state.case.guide_step += 1
+        state.case.awaiting = None
+        rt.tracer.emit("case", move="guide", step=state.case.guide_step, module="guide")
+        return "moved"
+    if done is not None and done.module not in state.case.did:
+        state.case.did.append(done.module)
     _queue_reflection(state)
     state.case.step += 1
     state.case.awaiting = None
@@ -513,6 +650,28 @@ def _ended_in_escalate(state: Any) -> bool:
         return False
     steps = card.solution[state.case.solution].steps
     return bool(steps) and _is_escalate(steps[-1])
+
+
+def _at_guide_step(state: Any, call: Any):
+    """A `guide` call carries WHICH step of the document this turn is on (wave 4b)."""
+    if call is None or call.module != "guide":
+        return call
+    return call.model_copy(update={"args": {**call.args, "at": state.case.guide_step}})
+
+
+def _more_guide_steps(state: Any, call: Any) -> bool:
+    """Is there another written step after this one? Then the card step stays where it is."""
+    if call is None or call.module != "guide":
+        return False
+    return state.case.guide_step + 1 < modules.guide_length(call)
+
+
+def _already_done(call: Any, facts: dict[str, str]) -> bool:
+    """Does the card itself say this step is achieved (`done_when`)?"""
+    from ...contract.schema import Condition
+
+    conditions = [Condition.parse(text) for text in (getattr(call, "done_when", None) or [])]
+    return bool(conditions) and all(c.holds(facts) is True for c in conditions)
 
 
 def _is_escalate(call: Any) -> bool:
@@ -543,7 +702,12 @@ def _retry_or_give_up(state: Any, rt: Any) -> str:
         state.case.spent.append(state.case.fault)
     state.case.awaiting = None
     rt.tracer.emit("case", move="fix_failed", fault=state.case.fault)
-    return "failed"
+    # The fix did not work, and the reading has changed since it started. Before a technician,
+    # the CASE looks again: another card may still be open and one cheap question may settle it
+    # ("klausimai patikrina ar atmeta hipotezę" — Andrius, 2026-09-23). It is the same facts,
+    # so nothing is guessed; if nothing is left, the next pass escalates honestly.
+    state.case.solution, state.case.step = None, 0
+    return "reopen"
 
 
 def _explain_retry(state: Any, rt: Any) -> None:
@@ -606,6 +770,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
     """What this module asks of the turn. `on_fail` retries are the card's business, and a
     step the equipment catalogue cannot word is skipped rather than improvised."""
     model = _device_model(state)
+    call = _at_guide_step(state, call)
     step = modules.plan_step(call, model=model)
     if step is None or (step.kind == "instruct" and not step.text):
         rt.tracer.emit("case", move="skip", module=call.module, why="no wording for this device")
@@ -615,6 +780,20 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
         return _escalate(state, rt, state.case.fault)
 
+    already = _already_done(call, facts) or (
+        step.kind == "ask" and step.awaits and step.awaits in facts
+    )
+    if already:
+        # They already told us, or the card says this step is achieved — asking again is how an
+        # agent stops sounding like a person ("ar galite prieiti prie routerio?" right after
+        # "esu prie routerio"). The ORDER of the fix is untouched: only what is already true is
+        # passed over.
+        rt.tracer.emit("case", move="known", module=call.module, fact=step.awaits)
+        _advance(state, rt)
+        following = _current(state)
+        if following is not None:
+            return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
+        return _escalate(state, rt, state.case.fault)
     state.case.awaiting = step.awaits
     if step.awaits:
         state.diagnosis.pending_evidence_key = step.awaits
@@ -656,7 +835,12 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             owner="procedure",
             rule=rule,
             action=Action(type="tool", name=step.tool, args={"customer_id": _cid(state)}),
-            say=Say(kind="directive", goal=step.goal, stage="diagnosis"),
+            say=Say(
+                kind="directive",
+                goal=step.goal,
+                stage="diagnosis",
+                knowledge_need=call.knowledge_need,
+            ),
             awaiting=step.awaits,
             redecide_after_action=True,
         )
@@ -665,16 +849,35 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
         rule=rule,
         # A module that asks speaks its own question; an instruction speaks the catalogue's
         # words for this device, and both are a FALLBACK — the narrator words them.
-        say=Say(kind="directive", text=asked or step.text, goal=step.goal, stage="diagnosis"),
+        say=Say(
+            kind="directive",
+            text=asked or step.text,
+            goal=step.goal,
+            stage="diagnosis",
+            # Kortelės paprašytos gilesnės žinios keliauja su ŠIO žingsnio planu: jei žingsnį perėmė
+            # kitas modulis (praleistas, jau padarytas), poreikis eina su juo, ne su šiuo.
+            knowledge_need=call.knowledge_need,
+        ),
         awaiting=step.awaits,
     )
 
 
 def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -> TurnPlan:
     """Telephone help is over: the contact dialogue collects the details and the engine
-    registers (the ticket path is unchanged — wave 1b)."""
+    registers (the ticket path is unchanged — wave 1b).
+
+    Before it is over, the card gets a say: `escalate.only_after` names the phone work that
+    must have been done, because a technician arriving to power-cycle a router is a visit we
+    wasted (Andrius, 2026-09-23). When that work is still possible, it happens instead.
+    """
     from ...execute.ticket import begin_ticket_dialogue
 
+    pending = _phone_work_left(state, fault)
+    if pending is not None:
+        rt.tracer.emit("case", move="phone_work_first", fault=fault, module=pending)
+        started = _start_branch_with(state, rt, fault, pending)
+        if started is not None:
+            return started
     card = catalog.card(fault) if fault else None
     if card is not None and card.escalate:
         note = note or card.escalate.note
@@ -683,11 +886,57 @@ def _escalate(state: Any, rt: Any, fault: str | None, note: str | None = None) -
     if note:
         state.case.facts.setdefault("_ticket_note", note)
     rt.tracer.emit("case", move="escalate", fault=fault, note=note)
+    goal = "say WHY the phone cannot fix this and that a technician will be registered"
+    unchecked = _unchecked_words(state)
+    if unchecked:
+        # "Jūs nežinote, ar neveikia visuose įrenginiuose" — the caller must hear what stayed
+        # unclear BEFORE a technician is registered in their name (Andrius, 2026-09-23).
+        goal = f"{goal}. Say plainly what we could not check together: {unchecked}"
     return TurnPlan(
         owner="ticket",
         rule="case.escalate",
-        say=Say(kind="directive", goal="say a technician will be registered", stage="ticket"),
+        say=Say(kind="directive", goal=goal, stage="ticket"),
     )
+
+
+def _phone_work_left(state: Any, fault: str | None) -> str | None:
+    """The module the card insists on before a technician — if it has not run and still can.
+
+    "Still can" is the honest part: a caller who cannot get to the device (or refused) is not
+    made to, and the ticket records that the work was not possible.
+    """
+    card = catalog.card(fault) if fault else None
+    if card is None or not card.escalate or not card.escalate.only_after:
+        return None
+    facts = ledger.facts_of(state)
+    if facts.get("reachable") == "no" or facts.get("later_agreed") == "no":
+        return None  # not at the device / they asked for a technician: nothing to insist on
+    for name in card.escalate.only_after:
+        if name not in state.case.did:
+            return name
+    return None
+
+
+def _start_branch_with(state: Any, rt: Any, fault: str | None, module: str) -> TurnPlan | None:
+    """Enter the solution branch that contains this module, at its first unfinished step."""
+    card = catalog.card(fault) if fault else None
+    if card is None:
+        return None
+    from ...contract.schema import Condition
+
+    facts = ledger.facts_of(state)
+    for index, solution in enumerate(card.solution):
+        if not any(call.module == module for call in solution.steps):
+            continue
+        # A branch whose conditions are CONTRADICTED is not the road; unknowns are fine here —
+        # we are past asking, and the card named this work as necessary anyway.
+        if any(Condition.parse(text).holds(facts) is False for text in solution.when):
+            continue
+        state.case.fault, state.case.solution, state.case.step = card.fault, index, 0
+        state.case.awaiting = None
+        step = _current(state)
+        return _step_plan(state, rt, step, facts) if step is not None else None
+    return None
 
 
 # --- what the line says the caller has ------------------------------------------------

@@ -177,6 +177,11 @@ class TestWhatTheCardsDeclare:
         locale = load_locale("lt")
         for name, card in catalog.cards().items():
             for fact, need in card.needs.items():
+                if need.volunteered:
+                    # Never asked: used only when the caller says it themselves (wave 4a —
+                    # "esu prie routerio, lemputės dega" confirms a hung router on the spot).
+                    assert not need.ask and not need.probe, f"{name}.{fact}: asked after all"
+                    continue
                 assert need.ask or need.probe, f"{name}.{fact}: no way to get it"
                 if need.ask:
                     assert locale.has(need.ask), f"{name}.{fact}: the question is missing"

@@ -1,3 +1,9 @@
+---
+title: Įrangos keitimas — kada, kaip, kiek kainuoja
+kind: procedure
+tags: [replacement, warranty, price, ticket]
+keywords: [keitimas, iranga, garantija, mokestis, grąžinimas, router]
+---
 # Įrangos keitimas - procedūra
 
 ## Kada keičiame įrangą
@@ -94,18 +100,18 @@
 ## Ką pasakyti klientui
 
 ### Patvirtinant keitimą:
-> "Užregistravau įrangos keitimą. [Technikas atvyks / Gali atsiimti centre / 
-> Atsiųsime kurjeriu] per [X] darbo dienas. 
+> "Užregistravau įrangos keitimą. [Technikas atvyks / Gali atsiimti centre /
+> Atsiųsime kurjeriu] per [X] darbo dienas.
 > Nepamirškite paruošti senos įrangos grąžinimui."
 
 ### Apie seną įrangą:
-> "Seną [routerį/priedėlį] reikės grąžinti. 
-> [Technikas paims / Atiduosite centre / Atiduosite kurjeriui]. 
+> "Seną [routerį/priedėlį] reikės grąžinti.
+> [Technikas paims / Atiduosite centre / Atiduosite kurjeriui].
 > Jei negrąžinsite, bus taikomas mokestis."
 
 ### Apie konfigūraciją:
-> "Nauja įranga bus sukonfigūruota. WiFi pavadinimas ir slaptažodis 
-> bus ant lipduko. Jei turėjote pasikeistą slaptažodį - 
+> "Nauja įranga bus sukonfigūruota. WiFi pavadinimas ir slaptažodis
+> bus ant lipduko. Jei turėjote pasikeistą slaptažodį -
 > reikės nustatyti iš naujo."
 
 ## Garantija ir mokestis
@@ -128,15 +134,15 @@
 ## Dažni klausimai
 
 ### "Ar galiu pasilikti seną routerį?"
-> "Deja, routeris yra mūsų nuosavybė ir jį reikia grąžinti. 
+> "Deja, routeris yra mūsų nuosavybė ir jį reikia grąžinti.
 > Jei negrąžinsite - bus priskaičiuotas mokestis."
 
 ### "Ar naujame routeryje bus tas pats slaptažodis?"
-> "Ne, naujas routeris turės savo slaptažodį ant lipduko. 
+> "Ne, naujas routeris turės savo slaptažodį ant lipduko.
 > Jei norite tokį patį - galėsite pakeisti per nustatymus."
 
 ### "Kiek kainuoja keitimas?"
-> "Jei įranga sugedo ne dėl jūsų kaltės - keitimas nemokamas. 
+> "Jei įranga sugedo ne dėl jūsų kaltės - keitimas nemokamas.
 > Jei sugadinote - bus taikomas mokestis pagal kainoraštį."
 
 ### "Ar galiu naudoti savo routerį?"

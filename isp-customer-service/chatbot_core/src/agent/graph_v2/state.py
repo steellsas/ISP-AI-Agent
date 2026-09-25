@@ -445,8 +445,13 @@ class CaseState(BaseModel):
     # when its tool has actually RUN — not when it was planned: a plan can be overridden by
     # a scripted reply, and the engine then walked past a bind that never happened.
     act_count: int = 0
-    # Faults whose finding has been told: news is news once.
+    # Faults whose finding has been COMPUTED: it is worked out once.
     announced: list[str] = Field(default_factory=list)
+    # The finding waiting to be said. A turn that the identification or the ticket dialogue
+    # owns does not carry the Case's directive, and the finding used to die there: the caller
+    # heard "telefonu neišspręsime" with no word of WHAT we found (live 2026-09-23). It waits
+    # here until a reply actually carries it.
+    finding: dict[str, str] | None = None
     # The step whose instruction has already gone out. Repeating it at a caller who just
     # said "gerai" is how an agent stops sounding like a person.
     delivered: int | None = None
@@ -462,6 +467,21 @@ class CaseState(BaseModel):
     # the honest move is to carry on without it (eval X — the same question four times). Turns,
     # not a counter: the redecide loop plans the same turn more than once.
     asks: dict[str, list[int]] = Field(default_factory=dict)
+    # Facts nobody could tell us, carried forward by the card's `assume`. Kept apart from the
+    # answers so the caller hears "we could not check this, we are assuming X" and the ticket
+    # says the same — an assumption is never dressed up as an answer.
+    assumed: dict[str, str] = Field(default_factory=dict)
+    # Which step of a written procedure (`guide`) the call is on. The card names the document;
+    # the engine walks it one step per turn, so this is the engine's own position (wave 4b).
+    guide_step: int = 0
+    # Which written step has actually been SAID. A caller's "taip, padariau" cannot finish a
+    # step they never heard: the first step of the WAN procedure was skipped exactly so
+    # (2026-09-23), because "taip, esu prie routerio" read as a done-report.
+    guide_said: int = -1
+    # The modules that actually RAN in this call, in order. It answers two questions nothing
+    # else could: has the phone work been done before a technician is sent (`only_after`), and
+    # what does the technician need to know we already tried.
+    did: list[str] = Field(default_factory=list)
     # The step is being retried, so the card's `on_fail` call is what runs — a retry that
     # repeats the identical instruction teaches the caller nothing.
     retrying: bool = False

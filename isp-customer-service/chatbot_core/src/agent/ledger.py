@@ -23,6 +23,9 @@ from .facts import facts_from_signals
 
 TELEMETRY = "telemetry"
 CLIENT = "client"
+# Nobody could tell us and the card said what to carry on with (`assume`): a fact like any
+# other for the cards, but its source is named so the caller and the ticket hear the truth.
+ASSUMED = "assumed"
 
 
 def facts_of(state: Any) -> dict[str, str]:
@@ -65,6 +68,24 @@ def record_client(state: Any, rt: Any, fact: str, value: str | None) -> bool:
     return True
 
 
+def record_assumed(state: Any, rt: Any, fact: str, value: str) -> bool:
+    """What we carry on with when the caller could not tell us (the card's `assume`).
+
+    It is written like any other fact so the cards can reason over it, but its SOURCE is the
+    assumption — the call record and the ticket say so, and the caller hears it out loud. The
+    line still wins: a fact telemetry owns is never assumed.
+    """
+    if not fact or not value or fact in state.case.facts:
+        return False
+    if fact in facts_from_signals(_last_signals(state)):
+        return False
+    state.case.facts[fact] = value
+    state.case.assumed[fact] = value
+    if rt is not None:
+        rt.tracer.emit("facts", source=ASSUMED, changed={fact: value})
+    return True
+
+
 def record_unavailable(state: Any, rt: Any, fact: str) -> None:
     """We tried and could not get it. The engine will not choose this dead end again."""
     if fact and fact not in state.case.unavailable:
@@ -98,4 +119,19 @@ def mirror_evidence(state: Any, rt: Any) -> dict[str, str]:
             continue  # a value in doubt is not a fact yet: the clarify question settles it
         if record_client(state, rt, fact, str(value)):
             changed[fact] = str(value)
+        for name, same in _same_news(fact, str(value)):
+            if record_client(state, rt, name, same):
+                changed[name] = same
     return changed
+
+
+def _same_news(fact: str, value: str) -> list[tuple[str, str]]:
+    """The v2 facts that carry the same news as this reader key (a module's `also`)."""
+    from .contract import cards as catalog
+
+    out: list[tuple[str, str]] = []
+    for spec in catalog.modules().values():
+        mapped = (spec.also.get(fact) or {}).get(value)
+        if mapped and spec.produces:
+            out.append((spec.produces[0], mapped))
+    return out

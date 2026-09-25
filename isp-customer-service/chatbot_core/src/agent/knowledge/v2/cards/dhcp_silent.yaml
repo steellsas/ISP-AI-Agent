@@ -28,20 +28,30 @@ rules_out:
   # nepririštas), ne atskiras gedimas — S1 eval'e abu faktai sutampa.
   - device_registered=foreign
   - line_errors=high          # kabelio klaidos
-
-# Nieko klausti nereikia: viskas, ko reikia sprendimui, jau matoma linijoje.
-#
-# Žinių bazėje (`knowledge:` apačioje) yra ir žingsnis po žingsnio, kaip klientas pats
-# susitvarkytų per routerio valdymo skydelį. Tokio modulio („vesk per naršyklės nustatymus")
-# variklis kol kas neturi, todėl sąžiningas kelias — meistras, o instrukcija lieka tiketo
-# pastaboje. Kai toks modulis bus (4b banga), pakis TIK ši kortelė, ne kodas.
+# 4b banga: telefonu ČIA yra ką daryti — žinių bazėje surašytas algoritmas, kaip klientas pats
+# susigrąžina internetą per routerio valdymo skydelį (`knowledge:` apačioje). `guide` modulis
+# veda per jį po VIENĄ žingsnį; meistras registruojamas tik tada, jei nepavyko arba klientas
+# negali, ir tiketas pasako, ką bandėme. Pakito TIK ši kortelė — variklis apie WAN nustatymus
+# nieko nežino.
 solution:
 - steps:
-  - module: escalate
-    args: {note: "įrenginys linijoje matomas, bet adreso neprašo — reikia perkonfigūruoti routerį"}
+  - module: reach
+    args: {device: router}
+    # Jei klientas jau prie routerio — neklausiam.
+    done_when: [reachable=yes]
+  - module: guide
+    # Du dokumento žingsniai yra kliento rankose (prisijungti prie skydelio, nustatyti WAN);
+    # trečiasis dokumento žingsnis („patikrinti") yra MŪSŲ patikra žemiau.
+    args: {knowledge: troubleshooting/internet_factory_reset_dhcp, count: 2}
+  - module: verify
+    args:
+      evidence: [dhcp=ok]
+      ask: restored
 
 escalate:
   need: "verdict.dhcp_silent.ticket_need"
-  note: "routeris linijoje tyli — nustatymai pasimetę, telefonu nesutvarkoma"
+  note: "routeris linijoje tyli — nustatymai pasimetę; su klientu eita per konfigūravimo žingsnius"
+  # Meistras neturi atvykti to, ką klientas gali padaryti su instrukcija telefone.
+  only_after: [guide]
 
 knowledge: troubleshooting/internet_factory_reset_dhcp

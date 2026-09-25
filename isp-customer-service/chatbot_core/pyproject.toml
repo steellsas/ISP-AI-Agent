@@ -11,6 +11,10 @@ dependencies = [
     "langsmith>=0.0.87",
     "openai>=1.0.0",
     # RAG dependencies
+    # Qdrant: žinių indekso saugykla (RAG planas, E2). Apache 2.0, savame serveryje.
+    # Klientas moka ir VIETINĮ režimą (`:memory:`), tad CI testuoja tą patį kelią be serverio.
+    # Klientas ir serveris (docker-compose.yml) turi eiti kartu — žr. komentarą ten.
+    "qdrant-client>=1.19,<1.20",
     "sentence-transformers>=2.2.0",
     "faiss-cpu>=1.7.4",
     "rank-bm25>=0.2.2",
@@ -28,8 +32,17 @@ dependencies = [
 ]
 
 # Voice slice (Phase 3) — heavy/optional, kept out of the core install so the
-# text agent stays light. Install (uv workspace) with:
-#   uv sync --package chatbot-core --extra voice
+# text agent stays light. In this uv WORKSPACE, install it with:
+#
+#   uv sync --all-packages --extra voice
+#
+# That is the only command that keeps both the voice and the dev tools. Measured
+# 2026-09-25, after a plain `uv sync` broke the server with
+# `ModuleNotFoundError: No module named 'edge_tts'`:
+#   uv sync                                       -> drops the voice extra
+#   uv sync --package chatbot-core --extra voice  -> voice back, but pytest/ruff/pre-commit gone
+# `uv sync` makes the environment match exactly what is declared, so anything
+# undeclared in the selected scope is REMOVED, not left alone.
 [project.optional-dependencies]
 voice = [
     "faster-whisper>=1.0.0",

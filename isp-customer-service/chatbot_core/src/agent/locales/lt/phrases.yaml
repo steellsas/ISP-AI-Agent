@@ -487,6 +487,12 @@ inform:
   billing_suspended:
     template: "Patikrinau — paslauga sustabdyta dėl neapmokėtų sąskaitų. Skola {amount} už {months}. Paskutinis mokėjimas gautas {last_payment}. Apmokėjus, paslauga įsijungs automatiškai — nieko papildomai daryti nereikia."
     fallback: "Patikrinau — paslauga sustabdyta dėl neapmokėtos sąskaitos. Apmokėjus sąskaitą, paslauga bus įjungta automatiškai."
+    # Klientas klausia sumos po to, kai ji jau nuskambėjo — kartojam tą patį skaičių, o
+    # išklotinę paliekam tiems, kas ją mato.
+    amount_again: "Matau tą pačią sumą — {amount} už {months}. Detalesnę išklotinę rasite savitarnoje arba pasakys kolegos iš buhalterijos."
+    # Ką sakyti, kai klientas pokalbio gale pasako, kad susimokėjo. DEMO: „per valandą".
+    # Produkcijoje — tikras terminas; keičiama čia, be kodo (Andrius, 2026-09-23).
+    paid_just_now: "paslauga atsistato automatiškai per valandą po apmokėjimo"
   active_outage:
     template: "Patikrinau — jūsų rajone įvykusi tinklo avarija ({location}). Meistrai jau dirba, numatomas atstatymas iki {eta}. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
     fallback: "Patikrinau — jūsų rajone įvykusi tinklo avarija, meistrai jau dirba. Jums nieko daryti nereikia — kai gedimas bus pašalintas, gausite pranešimą."
@@ -563,6 +569,9 @@ fact:
   rebooted:
     "yes": "routerį jau perkrovėte"
     "no": "routeris dar neperkrautas"
+  reachable:
+    "yes": "esate prie routerio"
+    "no": "šiuo metu prie routerio prieiti negalite"
 
 # MODULIŲ (knowledge/v2/modules) savi klausimai — bendros politikos, ne konkretaus gedimo.
 modules:
@@ -594,7 +603,7 @@ equipment:
     reboot:
       button: "Ant routerio galo yra maitinimo mygtukas — išjunkite, palaukite penkias sekundes ir vėl įjunkite."
     lights:
-      internet: "Pažiūrėkite į priekinę panelę — lemputė su užrašu INTERNET arba žemės ženkliuku: ar ji dega?"
+      internet: "Pažiūrėkite į priekinę panelę — lemputė su užrašu INTERNET arba žemės ženkliuku: ar ji dega, ir kokios spalvos?"
   phone:
     name: "telefonas"
     locate: "Telefonas, kuriuo dabar kalbate, arba kitas jūsų telefonas."
@@ -642,7 +651,7 @@ verdict:
   dhcp_silent:
     # Be žargono (F-8): klientui nesakom nei „DHCP", nei „gamyklinis atstatymas".
     gloss: "routeris linijoje matomas, bet adreso iš mūsų neprašo — panašu, kad pasimetę jo nustatymai"
-    ticket_need: "routerį reikia iš naujo sukonfigūruoti — telefonu to nepadarysime"
+    ticket_need: "routerį reikia sukonfigūruoti iš naujo"
   no_mac_observed:
     gloss: "linijoje nematoma jokio įrenginio"
     ticket_need: "reikalingas naujas maršrutizatorius"
@@ -671,6 +680,8 @@ evidence:
     power_cable: "maitinimo laidas"
     outlet_works: "rozetė"
     device_present: "routeris surastas"
+    reachable: "ar gali dabar prieiti prie įrenginio"
+    fail_scope: "kur neveikia"
     lan_active: "kompiuterio LAN ryšys"
     verdict: "telemetrijos diagnozė"
     side: "gedimo pusė"
@@ -739,6 +750,8 @@ ticket:
     anamnesis: " Klientas: {text}."
     bridge_router: " Laikinas tiltas per kompiuterį veikia; routeris sugedęs, reikia keisti."
     checked: " Patikrinta su klientu: {facts}."
+    unanswered: " Klientas neatsakė: {items}."
+    assumed_item: "{fact} (dirbome su prielaida: {value})"
     tried: " Bandyta/atmesta: {causes}."
     extra: " Papildomai patikrinti: {items}."
     extra_item: "{type}: „{text}“"

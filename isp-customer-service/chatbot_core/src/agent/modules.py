@@ -77,7 +77,13 @@ def _with_defaults(spec: ModuleSpec, call: ModuleCall) -> dict[str, Any]:
 
 def _words(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
     """The catalogue's sentence for this device, or None when it does not describe it —
-    and then the agent does not offer it (no inventing where a button is)."""
+    and then the agent does not offer it (no inventing where a button is).
+
+    A `guide` step is the exception: its words are a knowledge document's own step, so the
+    equipment catalogue has nothing to say about it (wave 4b).
+    """
+    if spec.module == "guide":
+        return _guide_step(args)
     if device is None:
         return None
     if spec.module == "check_lights":
@@ -90,6 +96,27 @@ def _words(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
     if spec.module == "reach":
         return maybe_phrase(device.locate_key)
     return None
+
+
+def _guide_written(args: dict[str, Any]) -> list[str]:
+    """The steps this call walks: the document's, cut to what the card says is the caller's."""
+    from .knowledge_base import steps
+
+    written = steps(str(args.get("knowledge") or ""))
+    count = args.get("count")
+    return written[: int(count)] if count else written
+
+
+def _guide_step(args: dict[str, Any]) -> str | None:
+    """The written procedure's step this turn is on — or None when it has none left."""
+    written = _guide_written(args)
+    at = int(args.get("at") or 0)
+    return written[at] if 0 <= at < len(written) else None
+
+
+def guide_length(call: ModuleCall) -> int:
+    """How many steps this guide call walks."""
+    return len(_guide_written(_with_defaults(catalog.module("guide"), call)))
 
 
 def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:

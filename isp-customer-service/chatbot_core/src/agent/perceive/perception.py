@@ -51,6 +51,10 @@ class Perception(BaseModel):
     ticket: dict[str, Any] | None = None
     # What the caller's problem sounds like, when the call has none yet: {label, confidence}.
     problem: dict[str, Any] | None = None
+    # Kurio žinių dokumento agentui reikia ŠIAM klausimui, jei jis ko nors klausė. Sprendimas yra
+    # AGENTO: jis renkasi iš savo žinių žemėlapio, o ne ieško kliento sakiniu (išmatuota: 69 %
+    # prieš 57 %). `None` reiškia „nieko nereikia" arba „ne mūsų sritis".
+    knowledge: str | None = None
 
     def values(self) -> dict[str, str]:
         """The facts as the ledger takes them (key -> canonical value)."""
@@ -65,6 +69,7 @@ class Perception(BaseModel):
             "confusion": self.confusion,
             "confidence": self.confidence,
             "step": self.step,
+            "knowledge": self.knowledge,
         }
 
 
@@ -209,6 +214,7 @@ def read_turn(state: Any, rt: Any, utterance: str | None) -> Perception | None:
             confidence=data["confidence"],
             ticket=data.get("ticket"),
             problem=data.get("problem"),
+            knowledge=data.get("knowledge"),
         ),
         utterance,
     )

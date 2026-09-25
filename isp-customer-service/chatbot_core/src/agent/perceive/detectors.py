@@ -123,10 +123,50 @@ def detect_port(text: str | None) -> str | None:
     return None
 
 
-def detect_lights(text: str | None) -> str | None:
-    """Route "is any light on the router lit?". 'yes' / 'no' / None if unclear."""
+# Spalvos, kurias klientas gali pavadinti. Ką kiekviena REIŠKIA, sako įrangos katalogas
+# (`lights.<name>.means`) — čia tik atpažįstame, kuri pasakyta (4b banga).
+LIGHT_COLOURS = ("green", "red", "orange", "blue", "white")
+
+
+def _colour_words() -> dict[str, tuple[str, ...]]:
+    """Colour -> the words a caller uses for it. Named literally, so the knowledge schema test
+    can check both directions: no missing list, and no list nobody reads."""
+    return {
+        "green": vocab("light_colour_green"),
+        "red": vocab("light_colour_red"),
+        "orange": vocab("light_colour_orange"),
+        "blue": vocab("light_colour_blue"),
+        "white": vocab("light_colour_white"),
+    }
+
+
+def detect_light_colour(text: str | None) -> str | None:
+    """Which colour the caller named, or None. Negation wins: „nedega žalia" is not green."""
     if not text:
         return None
+    from ..contract.locale import lang
+
+    low = lang().fold(text)
+    if any(m in low for m in vocab("lights_no")) or vocab_re("bare_no").search(low):
+        return None
+    for colour, words in _colour_words().items():
+        if any(lang().fold(m) in low for m in words):
+            return colour
+    return None
+
+
+def detect_lights(text: str | None) -> str | None:
+    """Route "is any light on the router lit?".
+
+    A COLOUR is the more precise answer and comes first: „oranžinė" and „žalia" mean different
+    things on the same light, and the catalogue knows which (wave 4b). Otherwise 'yes' / 'no' /
+    None if unclear.
+    """
+    if not text:
+        return None
+    colour = detect_light_colour(text)
+    if colour:
+        return colour
     low = text.lower()
     if any(m in low for m in vocab("lights_no")) or vocab_re("bare_no").search(low):
         return "no"

@@ -26,25 +26,37 @@ rules_out:
   - service_suspended=yes    # B1 — skola
   - device_registered=foreign # klientas pasikeitė routerį
   - line_errors=high         # kabelio klaidos
+  # Jei klientas pats pasako, kad neveikia tik viename įrenginyje — tai ne pakibęs routeris
+  # (nebeklausiam to atskirai; anksčiau tai buvo `needs.fail_scope` su `hands_to`).
+  - fail_scope=one
+  # Nedega nė viena lemputė — įrenginys negyvas, o ne pakibęs (tai `no_mac_observed` kelias).
+  - lights=off
 
-# Ko dar reikia — ir kaip tą faktą gauti (P-2). Zondo nėra: tik klientas mato savo namus.
+# Ko dar reikia — ir kaip tą faktą gauti (P-2).
+#
+# Andrius (2026-09-23): „jei tai pakibęs routeris, tai jo perkrovimas — pirmas žingsnis."
+# Todėl čia NIEKO neklausiama prieš perkrovimą: telemetrija jau pasakė, kad įrenginys
+# linijoje matomas ir tylus, o klausimas „visuose ar tik viename?" nieko nepakeistų — vis
+# tiek perkrautume. Tas klausimas priklauso `healthy_to_router` kortelei ir uždūzgia pats,
+# jei po perkrovimo srautas atsiranda, o klientui interneto vis tiek nėra (tada faktai
+# pasikeičia ir ta kortelė atsiveria).
 needs:
-  fail_scope:
-    ask: "pack.router_hung.fail_scope.question"
-    why: "pack.router_hung.fail_scope.why"
-    clarify: "pack.router_hung.fail_scope.clarify"
+  # Klientas dažnai pasako pats: „esu prie routerio, lemputės dega". Neklausiam (`volunteered`),
+  # bet jei pasakė — tai patvirtina, kad įrenginys gyvas, o nedegančios lemputės šią kortelę
+  # atmeta: tada tai miręs routeris, ne pakibęs.
+  lights:
+    volunteered: true
     values:
-      all: confirms                 # visuose įrenginiuose — routeris pakibęs
-      one: hands_to=healthy_to_router # viename — routeris gyvas, problema iki įrenginio
+      "on": confirms
+      blinking: confirms
+      "off": rules_out
 
-    answers:
-      "all": answers_router_hung_fail_scope_all
-      "one": answers_router_hung_fail_scope_one
 solution:
-- when: [fail_scope=all]
-  steps:
+- steps:
   - module: reach
     args: {device: router}
+    # Klientas jau pasakė, kad yra prie routerio — nebeklausiam (gyvai 2026-09-23).
+    done_when: [reachable=yes]
   - module: reboot
     args: {device: router, method: power}
     # Telemetrija NEMATĖ, kad įrenginys dingtų iš linijos: perkrauta ne tai (prailgintuvas,
@@ -56,11 +68,12 @@ solution:
     args:
       evidence: [traffic=flowing, port_flapped=yes]
       ask: restored
-- when: [fail_scope=one]
-  hands_to: healthy_to_router
 
 escalate:
   need: "pack.router_hung.ticket_need"
   note: "perkrauta, neatsistatė"
+  # Meistras neturi atvykti perkrauti routerio: kol perkrovimas įmanomas, jis atliekamas
+  # telefonu (Andrius, 2026-09-23). Jei klientas negali prieiti — tiketas tai pasako.
+  only_after: [reboot]
 
 knowledge: troubleshooting/internet_pakibes_routeris

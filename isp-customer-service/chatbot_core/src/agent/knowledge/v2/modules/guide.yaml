@@ -1,0 +1,22 @@
+# VEDIMAS PER ALGORITMĄ (4b banga, Andrius 2026-09-23: „susitvarkom interneto gedimus kad jie
+# naudotų žinias").
+#
+# Kortelė, kurios telefonu išspręsti nebuvo kaip, gali nusiųsti klientą per ŽINIŲ BAZĖS
+# algoritmą: variklis duoda po VIENĄ žingsnį per ėjimą (`at` — kelintą; jį pildo variklis, ne
+# kortelė), o narratorius pasako savais žodžiais. Žingsnių tekstas — dokumento, ne kodo.
+#
+# Kur baigiasi: kai žingsnių nebelieka, eina kortelės patikra; jei klientas negali ar
+# nepavyko — kortelės `escalate` su prierašu, ką bandėme.
+module: guide
+kind: instruct
+params:
+  knowledge: {required: true}       # dokumentas: `troubleshooting/internet_factory_reset_dhcp`
+  at: {default: 0}                  # kelintas žingsnis (variklio pildomas)
+  # Kiek dokumento žingsnių yra KLIENTO rankose. Dokumento „Patikrinti" žingsnis yra mūsų
+  # patikra (kortelės `verify`), tad kortelė pasako, kur baigiasi vedimas.
+  count: {}
+goal: >-
+  this ONE written step, WHOLE, in one or two spoken sentences: merge its sub-points into a
+  single instruction (a caller cannot hold a list), leave out the step heading, never split
+  it across turns, then ask them to say when it is done
+produces: []

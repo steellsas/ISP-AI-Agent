@@ -378,8 +378,8 @@ programą, ne skambutį); reload be perkrovimo; playbook tiekiamas po VIENĄ
 | **AG** | **Tos pačios žinios 4 vietose**: pack hint (EN), playbook žingsnis (LT), frazės, pavyzdžiai; komentarai „hint'as turi SUTAPTI su evidence klausimu". Perkrovimo instrukcija aprašyta kiekviename playbook'e atskirai. |
 | **AH** | **Tik 2 moduliai** (`bind_mac`, `verify_restored`); procedūros neparametrizuotos pagal įrangą. |
 | **AI** | **Įrangos žinios nepasiekiamos**: `equipment/router_tplink.md`, `tv_box.md`, `procedures/*`, `faq/common_questions.md` runtime niekur nenaudojami; CRM turi kliento įrangą su modeliu (`customer_equipment`), bet agentas jos neskaito. |
-| **AJ** | **Embedding RAG realiai nenaudojamas**: pasiekiamas tik per `search_knowledge` LLM įrankį, kurio niekas nekviečia (S). Playbook „RAG" = deterministinis sekcijos numeris (trapu: 57 `rag_section` nuorodos). |
-| **AK** | FAQ — 5 temos raktažodžiais; atviras klausimas už jų → „ne mano sritis". |
+| **AJ** | **Embedding RAG realiai nenaudojamas**: pasiekiamas tik per `search_knowledge` LLM įrankį, kurio niekas nekviečia (S). Playbook „RAG" = deterministinis sekcijos numeris (trapu: 57 `rag_section` nuorodos). **Dalinai uždaryta 4b (2026-09-23):** žinios pažymėtos (`kind`/`tags`/`equipment`) ir naudojamos pokalbyje per `agent/knowledge_base.py`; embedding'ai lieka kaip būsimas antras rikiuotojas. |
+| **AK** | FAQ — 5 temos raktažodžiais; atviras klausimas už jų → „ne mano sritis". **Uždaryta 4b (2026-09-23):** už 5 FAQ temų atsako pažymėta žinių bazė, o neradus — sąžiningas „negaliu patarti". |
 
 **Principas P-8: „Struktūra sprendžia, paieška randa."**
 

@@ -85,7 +85,7 @@ Run from the repository root `isp-customer-service/` unless stated.
 
 | Purpose | Command |
 |---|---|
-| Install | `uv sync` (voice extras: `uv sync --package chatbot-core --extra voice`) |
+| Install | `uv sync --all-packages --extra voice` (workspace: voice + dev tools kartu) |
 | Full test suite (CI) | `uv run pytest` |
 | One file / one test | `uv run pytest chatbot_core/tests/test_x.py` · `uv run pytest "chatbot_core/tests/test_x.py::TestY::test_z"` |
 | Eval (real LLM, needs `.env` keys, rebuilds DB per scenario) | `cd chatbot_core && uv run python src/agent/eval/run_eval.py` (`--only ID`, `--json out.json`) |

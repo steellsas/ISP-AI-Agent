@@ -221,7 +221,9 @@ def ticket_capture(state, rt, user_input: str) -> None:
                         state.ticket.stage = "hours"
                         return
                 else:
-                    s.ticket.contact_hours = re.sub(r"[?!]", " ", value).strip(" .,")[:80]
+                    s.ticket.contact_hours = _hours_only(re.sub(r"[?!]", " ", value).strip(" .,"))[
+                        :80
+                    ]
                     rt.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
                     state.ticket.stage = "done"
                     return
@@ -314,7 +316,7 @@ def ticket_capture(state, rt, user_input: str) -> None:
         # Strip trailing STT punctuation — "Bet kada?" landed on the ticket
         # (and in the announce) with the question mark. Second unclear
         # answer defaults to "bet kada" (spoken back in the announce).
-        s.ticket.contact_hours = clean[:80] if plausible else "bet kada"
+        s.ticket.contact_hours = _hours_only(clean)[:80] if plausible else "bet kada"
         rt.tracer.emit("decision", intent="ticket_dialogue", action="hours_captured")
         state.ticket.stage = "done"
     return
@@ -323,6 +325,22 @@ def ticket_capture(state, rt, user_input: str) -> None:
 # Escalate reasons after which nothing was done at the device: the ticket must
 # not claim the pack's post-action wording.
 NOTHING_DONE_REASONS = frozenset({"caller_refused", "cannot_now", "cannot_now_asks_ticket"})
+
+
+def _hours_only(text: str) -> str:
+    """Keep the part of the answer that says WHEN.
+
+    A caller answers a whole thought — "Galit meistrą registruoti. Nuo 12 iki 1" — and all of
+    it landed on the ticket and was read back to them ("Skambinsime ***0106, galit meistrą
+    registruoti. Nuo 12 iki 1", live 2026-09-23). Sentences with a time stay, the rest goes;
+    when nothing looks like a time, the answer is kept whole.
+    """
+    parts = [p.strip(" .,") for p in re.split(r"(?<=[.!?])\s+", text) if p.strip(" .,")]
+    if len(parts) < 2:
+        return text
+    marks = vocab("contact_hours_marks")
+    kept = [p for p in parts if re.search(r"\d", p) or any(m in p.lower() for m in marks)]
+    return " ".join(kept) if kept else text
 
 
 def ticket_need(state: Any, rt: Any) -> str:
@@ -343,10 +361,18 @@ def ticket_need(state: Any, rt: Any) -> str:
     from ...contract.locale import maybe_phrase as _maybe
 
     card = _cards.card(cause)
-    if card is not None and card.escalate and card.escalate.need:
+    if card is not None and card.escalate and card.escalate.need and _fix_was_tried(s, cause):
         card_need = _maybe(card.escalate.need)
         if card_need:
             return card_need
+    if card is not None and not _fix_was_tried(s, cause):
+        # P-E, again (live 2026-09-23): "routeris perkrautas, bet ryšys neatsistatė" went out
+        # on a call where nobody was ever asked to reboot anything. A card's `escalate.need`
+        # describes the state AFTER its fix ran; until it has, the honest wording is what we
+        # SUSPECT and that we could not check it together.
+        gloss = phrase_or(f"verdict.{cause}.gloss", None)
+        prefix = phrase("ticket.need_suspected", gloss=gloss) if gloss else ""
+        return prefix + phrase("ticket.need_not_checked")
     # P-E (live 2026-09-08): escalating WITHOUT the step's action done must
     # not claim it happened — "routeris perkrautas, bet ryšys neatsistatė"
     # went out when the caller never rebooted (not at home). A refusal /
@@ -371,6 +397,36 @@ def ticket_need(state: Any, rt: Any) -> str:
     if not cause:
         return phrase("ticket.need_unclear")
     return phrase_or(f"verdict.{cause}.gloss", cause)
+
+
+def _fix_was_tried(s: Any, cause: str) -> bool:
+    """May the card's own `escalate.need` wording be used?
+
+    Yes when its fix actually ran (`spent`, or a step was retried), and yes when the card has
+    no phone fix at all — then its wording describes the situation, not an action ("routerį
+    reikia sukonfigūruoti — telefonu to nepadarysime"). No when there IS something to try and
+    nobody tried it: that wording would claim a reboot that never happened (live 2026-09-23).
+    """
+    if cause and cause in (s.case.spent or []):
+        return True
+    if bool(s.case.attempts) or bool(s.resolution.bridge_bound):
+        return True
+    return not _has_phone_fix(cause)
+
+
+def _has_phone_fix(cause: str) -> bool:
+    """Does this card ask the caller to DO anything, or is a technician its only answer?"""
+    from ...contract import cards as _cards
+
+    card = _cards.card(cause) if cause else None
+    if card is None:
+        return False
+    for solution in card.solution:
+        for call in solution.steps:
+            spec = _cards.module(call.module)
+            if spec is not None and spec.kind != "escalate":
+                return True
+    return False
 
 
 def wants_to_keep_solving(state: Any, rt: Any, user_input: str | None) -> bool:

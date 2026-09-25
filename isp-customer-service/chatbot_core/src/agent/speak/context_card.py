@@ -54,6 +54,197 @@ def context_card(state, rt) -> str | None:
 # --- the turn is off the fault path ------------------------------------------------------
 
 
+def _faq_answer(state, rt, entry: dict) -> str:
+    """The answer to a side question — from the NEWS's own facts when that news has been
+    delivered in this call (live 2026-09-23: the agent read out a debt of 49,98 € and then
+    answered "tikslios sumos aš nematau")."""
+    news = entry.get("answer_from_news")
+    if news:
+        from ..inform import inform_text
+
+        reason = (state.diagnosis.verdicts.get("network") or {}).get("reason")
+        if reason == news:
+            said = inform_text(state, rt, reason, key="asked_again_key")
+            if said:
+                return said
+    return phrase(entry["answer_key"])
+
+
+def _kb_answer(state, rt) -> str:
+    """Žinių bazės atsakymas atviram klausimui — kai FAQ jo neturi (radinys AK, 4b banga).
+
+    Nuo E3b ieškoma ne viso kliento sakinio, o POREIKIO (`knowledge_need`). Du dalykai iš to:
+
+      * paieška gauna MŪSŲ žodžius, o ne visą frazę. Išmatuota, kad tai svarbiausia: kliento sakiniu
+        hit@1 54 % / hit@2 57 %, o agento poreikiu (kai jį formuluoja kortelė) 90 % / 95 %;
+      * jei apie tai ieškoti neleidžiama — NEIEŠKOM. Ne mūsų sritis („koks oras", „autoremontas"),
+        ne mūsų paskirtis („kurį routerį pirkti") ir paties prietaiso bėdos („Windows nepasileidžia")
+        žinių bazės net nepasiekia. Atsisakymas įrašomas į žurnalą, kad ribą vėliau būtų galima
+        peržiūrėti faktais, o ne nuomone.
+    """
+    from ..knowledge_base import find
+    from ..knowledge_need import Refusal, device_markers, from_caller
+
+    # Which family of device this caller actually has: the catalogue already answers that
+    # from the line's own reading ("TP-Link Archer C80" -> tplink), and `level` names the file
+    # that won — exactly the tag the documents carry.
+    signals = (state.diagnosis.verdicts.get("network") or {}).get("signals") or {}
+    equipment = None
+    if signals.get("device_model") or signals.get("device_type"):
+        from ..equipment import for_signals
+
+        device = for_signals(signals)
+        equipment = device.level if device else None
+
+    need = from_caller(
+        state.dialog.last_heard or "",
+        equipment=equipment,
+        # ŠIO skambučio paslauga: TV dokumentas neturi būti kandidatas interneto gedime, o neutralios
+        # žinios (įrangos instrukcija, procedūra, FAQ) praleidžiamos per bet kurį gedimą.
+        problem=_service_of(state),
+        # Ar klientas apskritai KLAUSĖ. Tipą pasako supratimo sluoksnis; nusivylimui ar pakartotam
+        # atsakymui žinių nereikia, ir jos kenkia (A1).
+        turn_type=str((getattr(state.turn, "understanding", None) or {}).get("type") or "") or None,
+    )
+    # AGENTO sprendimas, ko jam reikia: dokumentą jis pasirinko iš savo žinių žemėlapio dar
+    # suprasdamas ėjimą (`understand`). Kliento žodžiai toliau reikalingi, bet tik SKYRIUI tame
+    # dokumente ir patikimumui. Išmatuota: taip randama 66 %, ieškant vien kliento sakiniu — 57 %.
+    routed = str((getattr(state.turn, "understanding", None) or {}).get("knowledge") or "") or None
+    if isinstance(need, Refusal):
+        if rt is not None and getattr(rt, "tracer", None) is not None:
+            rt.tracer.emit("knowledge", refused=need.why, said=need.said[:60])
+        try:
+            from adapters.retrieval.health import counters
+
+            counters.refused(need.why)
+        except Exception:  # pragma: no cover - skaitliukai niekada nelaužia atsakymo
+            pass
+        return ""
+    found = _in_routed_document(need, routed) or find(
+        need.words,
+        equipment=need.equipment,
+        problem=need.problem,
+        # Klientas įvardino telefoną ar kompiuterį: pirmumas TO įrenginio instrukcijai.
+        prefer=device_markers(need.device),
+        limit=2,
+    )
+    if rt is not None and getattr(rt, "tracer", None) is not None:
+        rt.tracer.emit(
+            "knowledge",
+            asked_by=need.asked_by,
+            words=need.words[:60],
+            found=",".join(p.source for p in found)[:80] or "-",
+            sure=any(p.sure for p in found),
+        )
+    if not found:
+        return ""
+    said = " ".join(f"[{p.kind}: {p.title}] {p.text}" for p in found)
+    if need.device and all(p.specific is False for p in found):
+        # Turim bendrą tvarką, bet ne to įrenginio. Andrius (2026-09-24): „jei to nėra, sako —
+        # neturiu informacijos, kaip toks įrenginys nustatomas, bet galiu bendra tvarka pasakyti."
+        said = (
+            f"(NO instructions for THIS device — say first that you do not have the exact steps "
+            f"for their {need.device}, then give this GENERAL procedure) {said}"
+        )
+    if all(not p.sure for p in found):
+        # Spėjimas, ne atsakymas: agentas privalo pasakyti, kad nėra tikras, ir patikslinti.
+        # Iki E1 tokiu atveju būdavo grąžinama NIEKO, o modelis improvizuodavo.
+        return f"(NOT SURE this answers the question, say so and ask to rephrase) {said}"
+    return said
+
+
+def _in_routed_document(need, routed: str | None):
+    """Skyrius TAME dokumente, kurį agentas pasirinko — arba nieko, ir tada ieškom įprastai.
+
+    Kodėl dokumentas iš agento, o skyrius iš kliento žodžių: ieškant vien poreikiu balas normuojamas
+    pagal poreikį ir tampa 1,000 — viskas atrodytų „tvirta". Kliento žodžiai išlaiko patikimumą
+    sąžiningą, o agento pasirinkimas pataiso vietą. Jei jo dokumente nieko nėra, GELBSTI įprasta
+    paieška: be to septyni klausimai iš 68 būtų likę be atsakymo (išmatuota).
+    """
+    if not routed:
+        return []
+    from ..knowledge_base import find
+    from ..knowledge_need import device_markers
+
+    return find(
+        need.words,
+        source=routed,
+        prefer=device_markers(need.device),
+        limit=2,
+    )
+
+
+def _service_of(state) -> str | None:
+    """Kurios paslaugos gedimą sprendžia šio skambučio kortelė (`internet`), arba None.
+
+    `case.fault` yra KORTELĖS vardas (`dhcp_silent`), ne problemos šeima — paduoti jį filtrui
+    reikštų išmesti visus gedimų dokumentus. Šeimą pasako kortelės `service`, o `any` reiškia
+    „netaikoma": tiketo būsena ar skolos žinia neturi savo problemų šeimos.
+    """
+    if not state.case.fault:
+        return None
+    from ..contract import cards as catalog
+
+    card = catalog.cards().get(state.case.fault)
+    service = getattr(card, "service", None)
+    return service if service and service != "any" else None
+
+
+def _mark_written_step_said(state) -> None:
+    """A written step counts as SAID when a reply is actually being built for it.
+
+    Marking it when the plan was built was wrong: on a turn the identification rule owned, the
+    guide plan existed, was never spoken, and the caller's next words finished a step they had
+    never heard (2026-09-23).
+    """
+    if str((state.turn.plan or {}).get("rule") or "") != "case.guide":
+        return
+    state.case.guide_said = state.case.guide_step
+
+
+def _asked_how(state, rt) -> list[str]:
+    """Klientas paklausė „kaip…", o ėjimas paleistas per narratorių (`question_passthrough`).
+
+    Iki 4b bangos šiam ėjimui kortelė nesakė NIEKO — ir modelis improvizavo: į „kaip pakeisti
+    wifi slaptažodį" atsakė „užregistruosiu jūsų klausimą" (gyvai 2026-09-23). Dabar atsakymas
+    turi šaltinį: pažymėta žinių bazė (įrangos instrukcija, konfigūravimo algoritmas, patarimas),
+    atfiltruota pagal ŠIO kliento įrangą. Nieko neradus — sąžiningai pasakoma, kad nežino.
+    """
+    plan = state.turn.plan or {}
+    if str(plan.get("rule") or "") != "dialog.question_passthrough":
+        return []
+    if state.turn.side_topic_active:
+        return []  # the side-topic section owns that turn, with its own FAQ/news answer
+    said = _kb_answer(state, rt)
+    if not said:
+        return [
+            "THE CALLER ASKED HOW: we have no written answer for it. Say honestly that you "
+            "cannot advise on that, promise nothing, invent nothing (no registration, no "
+            "prices, no deadlines), and return to what the engine is waiting for."
+        ]
+    if said.startswith("(NOT SURE"):
+        # Spėjimas nėra atsakymas į „kaip…": žingsnių sakyti negalima, nes gali būti ne tos
+        # įrangos ar ne to dalyko. Todėl patikslinam, o ne skaitom (E1, trys lygiai).
+        return [
+            "THE CALLER ASKED HOW: the written knowledge we found may not be about their "
+            "question, so do NOT read steps from it. Say in one sentence that you are not sure "
+            f"you understood, ask them to say it in other words, and invent nothing. {said}"
+        ]
+    return [
+        "THE CALLER ASKED HOW: answer in ONE or TWO sentences using ONLY this written "
+        f"knowledge — {said} Invent nothing beyond it (no prices, deadlines, promises, no "
+        # Paskutinė sąžiningumo linija. Balas negali atskirti „apie tą temą" nuo „atsako į tą
+        # klausimą": „ar wifi kenkia sveikatai" gauna 0,26 ir laikomas tvirtu, nes WiFi tikrai mūsų
+        # tema. Ar tekstas ATSAKO į klausimą, sprendžia modelis — tai kaip tik tas darbas, kurį jis
+        # moka, o rikiuotojas ne.
+        "registration). KEEP the concrete detail the knowledge names — an address like 192.168.0.1, "
+        "a setting's name, where to look — because that is what the caller acts on; a summary "
+        "without it is not an answer. If this knowledge does not actually answer what they asked, "
+        "say honestly that you cannot advise on that instead of stretching it. Then return to what "
+        "the engine is waiting for."
+    ]
+
+
 def _side_topic(state, rt) -> list[str]:
     """A deviation: the ONLY permitted content is the FAQ hit (or an honest "not my
     area"), then the return anchor — the engine's exact pending question."""
@@ -63,8 +254,12 @@ def _side_topic(state, rt) -> list[str]:
     from ..faq import match as faq_match
 
     hits = faq_match(state.dialog.last_heard)
-    known = " ".join(f"[{e.get('topic')}] {phrase(e['answer_key'])}" for e in hits) or (
-        "(NO KNOWN ANSWER for this topic - say politely that it is not your area)"
+    known = " ".join(f"[{e.get('topic')}] {_faq_answer(state, rt, e)}" for e in hits) or (
+        # Beyond the five FAQ topics there is a tagged knowledge base — equipment
+        # instructions, configuration algorithms, tips (wave 4b, finding AK). It answers, or
+        # the agent says honestly that it is not its area.
+        _kb_answer(state, rt)
+        or "(NO KNOWN ANSWER for this topic - say politely that it is not your area)"
     )
     # The topic is DETERMINISTIC when the FAQ matched — the model once copied a prompt
     # example ("Klausiate apie kainą") for a topic the caller never raised.
@@ -139,7 +334,64 @@ def _case_step(state, rt) -> list[str]:
             "but KEEP the concrete action and the part of the device it names. Do not add "
             "steps of your own and do not replace it with a question."
         )
+    out += _step_knowledge(state, rt)
     return out
+
+
+def _step_knowledge(state, rt) -> list[str]:
+    """Gilesnės žinios ŠIAM žingsniui, jei kortelė jų paprašė (`knowledge_need`, E3b).
+
+    Kortelė sprendžia gedimą; žinių bazė ją papildo. Agentas klausia „kokios spalvos lemputė", ir
+    jei klientas paklaus „kuri iš jų", atsakymas turi būti po ranka — ne improvizuotas.
+
+    Paieška čia vyksta AGENTO poreikiu, ne kliento sakiniu, ir būtent todėl ji tiksli: išmatuota
+    hit@1 90 % prieš 54 %. Žinia paduodama kaip ATSARGA, o ne kaip tai, ką reikia pasakyti — kitaip
+    agentas skaitytų instrukciją tada, kai jos niekas neprašė.
+    """
+    need_text = _current_need(state)
+    if not need_text:
+        return []
+    from ..knowledge_base import find
+    from ..knowledge_need import from_card
+
+    need = from_card(need_text, equipment=_equipment_of(state), problem=_service_of(state))
+    found = find(need.words, equipment=need.equipment, problem=need.problem, limit=1)
+    if rt is not None and getattr(rt, "tracer", None) is not None:
+        rt.tracer.emit(
+            "knowledge",
+            asked_by="card",
+            words=need.words[:60],
+            found=found[0].source if found else "-",
+        )
+    if not found:
+        return []
+    # Atsargai pakanka kelių sakinių. Visa dalis (iki 700 simbolių) kiekviename tų žingsnių ėjime
+    # tik ilgina kortelę ir atsakymą, o balse ilgesnis atsakymas kainuoja laiko: D5 pilname balso
+    # rinkime dėl to prarado ėjimą ir tiketas nebeįvyko (2026-09-25).
+    return [
+        "DEEPER KNOWLEDGE for this step (use ONLY if the caller asks about it; do not read it "
+        f"out on your own): [{found[0].title}] {found[0].text[:240]}"
+    ]
+
+
+def _current_need(state) -> str | None:
+    """Ką šio ėjimo žingsnis deklaravo kaip savo žinių poreikį."""
+    plan = state.turn.plan or {}
+    need = (plan.get("action") or {}).get("knowledge_need") or (plan.get("say") or {}).get(
+        "knowledge_need"
+    )
+    return str(need) if need else None
+
+
+def _equipment_of(state) -> str | None:
+    """Kliento įrangos lygis iš linijos rodmenų — tas pats tagas, kurį nešasi dokumentai."""
+    signals = (state.diagnosis.verdicts.get("network") or {}).get("signals") or {}
+    if not (signals.get("device_model") or signals.get("device_type")):
+        return None
+    from ..equipment import for_signals
+
+    device = for_signals(signals)
+    return device.level if device else None
 
 
 def _tool_trouble(state, rt) -> list[str]:
@@ -257,10 +509,14 @@ def _identification_notes(state, rt) -> list[str]:
         )
     if state.closing.wrap_react_note:
         state.closing.wrap_react_note = False
+        # What "they paid" means for the service is a business fact, so it is knowledge:
+        # the demo says an hour, production says whatever is true — one locale line, no code
+        # change (Andrius, 2026-09-23).
+        paid = phrase_or("inform.billing_suspended.paid_just_now", "")
         out.append(
             "WRAP-UP PHASE: the business is done but the caller SAID something — react to "
             "THAT specifically: a name → welcome them warmly („Malonu!“); they PAID → "
-            "confirm the service comes back automatically within an hour after payment; a "
+            f"say exactly this and nothing more about timing: „{paid}“; a "
             "new problem → answer briefly. No long re-explanations. End with „Ar dar kuo "
             "galiu padėti?“."
         )
@@ -556,6 +812,8 @@ def _plan_goal(state, rt) -> list[str]:
     out += _goal_caller_intro(state, rt)
     out += _goal_identification(state, rt)
     out += _goal_ticket(state, rt)
+    _mark_written_step_said(state)
+    out += _asked_how(state, rt)
     out += _goal_recap_and_findings(state, rt)
     return out
 
@@ -715,6 +973,29 @@ def _goal_ticket(state, rt) -> list[str]:
     ]
 
 
+def _instruction_turn(state) -> bool:
+    """Is this turn's own goal something the caller must DO?
+
+    Then the finding shares the reply with an instruction, and the instruction is the part
+    that must survive: with the full list of what we checked the reply ran to 291 characters
+    and the guard cut the instruction off (voice eval C2, 2026-09-23).
+    """
+    rule = str((state.turn.plan or {}).get("rule") or "")
+    return rule.startswith("case.") and rule not in ("case.escalate", "case.resolved")
+
+
+def _telling_facts(seen: str, short: bool) -> str:
+    """The facts as the finding names them — the two most telling when the reply is shared.
+
+    The last conditions a card names are the ones that decide it ("įrenginys matomas, bet
+    srautas nevaikšto"), so a shortened finding keeps the END of the list, not its start.
+    """
+    parts = [p for p in seen.split(", ") if p]
+    if not short or len(parts) <= 2:
+        return seen
+    return ", ".join(parts[-2:])
+
+
 def _goal_recap_and_findings(state, rt) -> list[str]:
     """The recap reads the gathered facts back in the speaker's own words; the findings
     moment states what was established, the conclusion and the choice."""
@@ -726,7 +1007,28 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             "confirming question („ar taip?“)."
         )
     fd = state.turn.directives.findings
+    if not fd and state.case.finding:
+        # The Case worked out a finding on a turn another rule owned (the name question, the
+        # ticket intro). It is said WITH this reply — a caller who hears "telefonu
+        # neišspręsime" without knowing what we found has been told nothing (Andrius,
+        # 2026-09-23). One line, before this turn's own goal.
+        pending = state.case.finding
+        state.case.finding = None
+        instructing = _instruction_turn(state)
+        seen = _telling_facts(pending["faktai"], instructing)
+        head = f"{seen} — {pending['isvada']}" if seen else pending["isvada"]
+        unchecked = (
+            ""
+            if instructing or not pending.get("prielaida")
+            else f" We could not check this together: {pending['prielaida']}."
+        )
+        out.append(
+            f"PLAN GOAL — OPEN THE REPLY WITH THIS, in ONE short clause, before anything "
+            f"else: {head}.{unchecked} Then this turn's own goal — that is the part the "
+            f"caller must act on, so it must survive: keep the whole reply to two sentences."
+        )
     if fd:
+        state.case.finding = None
         # Ticket-first faults script their own offer (`offer_goal` in the pack): the primary
         # outcome first, the convenience as the question.
         if fd.get("offer"):
@@ -742,9 +1044,32 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             else " The registration has NOT happened — if you mention it, say "
             "„užregistruosiu“, never „užregistravau“."
         )
+        unchecked = (
+            f" We could NOT check this together — say so and ask them to correct us if it is "
+            f"not so: {fd['prielaida']}."
+            if fd.get("prielaida")
+            else ""
+        )
+        # A finding TELLS. The instruction is the next turn's, and the engine has not
+        # planned it yet — an agent that asks "ar galėtumėte perkrauti?" here, and only then
+        # asks whether they can reach the router, is talking backwards (live 2026-09-23).
+        wait = (
+            ""
+            if (fd.get("offer") or fd.get("solutions") or _instruction_turn(state))
+            else " Do NOT ask them to do anything yet and do NOT name the next step — say "
+            "what we found and stop."
+        )
+        instructing = _instruction_turn(state)
+        seen = _telling_facts(fd["faktai"], instructing)
+        room = (
+            " This reply also carries the thing the caller must DO — that part must survive, "
+            "so keep the finding to one clause and the whole reply to two sentences."
+            if instructing
+            else " Two or three sentences, no lists or colons."
+        )
         out.append(
-            f"PLAN GOAL — FINDINGS MOMENT:{tense} together we established — {fd['faktai']}. "
-            f"Conclusion: {fd['isvada']}.{solution} Two or three sentences, no lists or colons."
+            f"PLAN GOAL — FINDINGS MOMENT:{tense} together we established — {seen}. "
+            f"Conclusion: {fd['isvada']}.{unchecked}{solution}{wait}{room}"
         )
     return out
 

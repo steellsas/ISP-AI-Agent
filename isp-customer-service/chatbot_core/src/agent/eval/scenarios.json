@@ -667,23 +667,29 @@
     {
       "id": "X_dhcp_silent",
       "phone": "+37060020106",
-      "desc": "dhcp_silent (CUST106, atstatyti gamykliniai — įrenginys linijoje matomas, adreso neprašo): 4 banga — tai KORTELĖ (ne medžio šaka), jos sprendimas — meistras, klientui be telemetrijos žargono (F-8)",
+      "desc": "dhcp_silent (CUST106): 4b — kortelė nebesiūlo meistro iš karto, o veda per žinių bazės ALGORITMĄ (WAN → DHCP) po vieną žingsnį; nepavykus — meistras, o tiketas pasako, ką bandėme. Klientui be žargono (F-8)",
       "known_bug": false,
       "turns": [
         "Labas, neveikia internetas",
         "Taip",
         "Greta, taip, mano sutartis",
         "Taip, esu prie routerio",
-        "Lemputės dega",
-        "Ne, nieko nekeičiau",
+        "Prisijungiau prie routerio nustatymų",
+        "Padariau, išsaugojau",
+        "Taip, tinka šis numeris",
+        "Bet kada",
         "Ačiū, viso gero"
       ],
       "expect": {
         "verdict_in": "dhcp_silent",
         "disposition": "ticket",
+        "reply_any": [
+          "192.168",
+          "nustatym"
+        ],
         "reply_none": [
-          "DHCP",
-          "gamyklin"
+          "DHCP tyli",
+          "neprašo adreso"
         ],
         "tool_used": [
           "create_ticket"
@@ -754,6 +760,89 @@
         ],
         "reply_none": [
           "užregistravau"
+        ]
+      }
+    },
+    {
+      "id": "C1_no_question_before_the_reboot",
+      "phone": "+37060020112",
+      "desc": "4a (Andrius 2026-09-23): srauto iki routerio nėra — perkrovimas yra pirmas žingsnis, todėl prieš jį NIEKO neklausiama; „esu prie routerio“ reiškia, kad „ar galite prieiti?“ irgi nebeklausiama",
+      "known_bug": false,
+      "turns": [
+        "Labas, neveikia internetas",
+        "Taip",
+        "Paulius",
+        "Esu prie routerio",
+        "Lemputės dega",
+        "Perkroviau",
+        "Taip, veikia",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "router_hung",
+        "disposition": "resolved",
+        "reply_any": [
+          "maitinimo"
+        ],
+        "reply_none": [
+          "užregistravau",
+          "meistr",
+          "visuose ar tik viename"
+        ]
+      }
+    },
+    {
+      "id": "C2_scope_unanswered_on_a_healthy_line",
+      "phone": "+37060020109",
+      "desc": "4a: linija neša srautą, tad KUR neveikia — vienintelis dalykas, kurį žino tik klientas. Neatsakius, antras klausimas kitais žodžiais, tada kortelės prielaida (`assume: one`) ir kelias iki įrenginio — ne tiketas",
+      "known_bug": false,
+      "turns": [
+        "Laba diena, neveikia internetas",
+        "Taip",
+        "Aldona",
+        "Esu namuose",
+        "Nežinau, aš nesu technikė",
+        "Telefone neveikia",
+        "Taip, įjungtas",
+        "Taip, savo tinkle",
+        "Jau veikia!",
+        "Ne, ačiū, viso gero"
+      ],
+      "expect": {
+        "verdict_in": "healthy_to_router",
+        "reply_none": [
+          "meistr"
+        ]
+      }
+    },
+    {
+      "id": "K1_open_question_answered_from_the_knowledge_base",
+      "phone": "+37060020105",
+      "desc": "4b (radinys AK): klausimas UŽ penkių FAQ temų — „kaip pakeisti wifi slaptažodį“ — atsakomas iš pažymėtos žinių bazės (ne „ne mano sritis“), tada grįžiama prie gedimo",
+      "known_bug": false,
+      "turns": [
+        "Labas, neveikia internetas",
+        "Prieš valandą dingo, po nieko ypatingo",
+        "Taip",
+        "Jonas, taip, aš sutartį sudaręs",
+        "O sakykite, kaip pakeisti wifi slaptažodį?",
+        "Taip, keičiau routerį, senasis sugedėjo",
+        "Gerai, laukiu",
+        "Taip, atsirado internetas",
+        "Ne, ačiū, viskas"
+      ],
+      "expect": {
+        "verdict_in": "foreign_mac",
+        "disposition": "resolved",
+        "reply_any": [
+          "nustatym",
+          "192.168",
+          "admin"
+        ],
+        "reply_none": [
+          "nepadėsiu",
+          "ne mano sritis",
+          "užregistruosiu jūsų klausimą"
         ]
       }
     },
