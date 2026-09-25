@@ -246,3 +246,25 @@ iš raktų, agentas bendrą tvarką pateiktų kaip to įrenginio instrukciją.
 Konkrečios instrukcijos nesant agentas pasako tiesą ir vis tiek padeda:
 
 > „Tiksliai apie jūsų Android neturiu, bet bendrai telefonuose tai daroma taip: Nustatymai → Wi-Fi…"
+
+---
+
+## Eksploatacijos komandos (E4)
+
+```bash
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --check       # sveikata: 0 = gerai, 1 = aliarmas
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --rollback    # aliasą atgal (viena operacija)
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --prune 2     # palikti 2 naujausias versijas
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --snapshot    # kopija
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --snapshots   # kokios kopijos yra
+```
+
+**`--check` tinka cron'ui**: grąžina 1, jei indeksas skiriasi nuo failų, atgaminimas nukrito žemiau
+ribų, **modelis nesutampa**, saugykla neatsakė, nusileidimų dalis > 25 % arba p95 > 150 ms.
+
+**Modelio keitimas nereikalauja prastovos.** Naujas modelis statomas į naują kolekciją, kanarėlė
+patikrina, aliasas perjungiamas atomiškai, o senoji lieka atstatymui. Išmatuota: 680 užklausų
+perjungimo ir atstatymo metu — 680 teisingų, 0 klaidų.
+
+**Jei modelis pakeistas, o indeksas — ne**, agentas to nenutyli ir neatsakinėja atsitiktinai:
+semantinė pusė išsijungia, paieška veikia leksine puse, o žurnale ir `--check` matosi aliarmas.

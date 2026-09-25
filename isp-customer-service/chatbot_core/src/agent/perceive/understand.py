@@ -116,7 +116,11 @@ def _system(
         )
         step_rules = load_node_prompt("sensors/perception_step").replace("<<options>>", opts)
     extra_json, extra_rules = "", ""
-    listing, _sources = _knowledge_map()
+    # Žinių žemėlapis dedamas TIK tada, kai jis gali būti reikalingas. Kontakto dialogo metu
+    # (`ticket_stage`) klausimas yra uždaras — vardas, laikas, telefonas — ir 17 papildomų eilučių
+    # promptą tik praskiedžia. Išmatuota: su jomis D5 paskutinis „Ačiū, viso gero" nustojo būti
+    # skaitomas kaip atsakymas („bet kada"), ir tiketas nebeįvyko (2026-09-25).
+    listing, _sources = ("", []) if ticket_stage else _knowledge_map()
     if listing:
         extra_json += ', "knowledge": int|null'
         extra_rules += "\n" + load_node_prompt("sensors/knowledge_route").replace(

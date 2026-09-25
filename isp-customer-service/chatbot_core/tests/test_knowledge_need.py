@@ -334,3 +334,38 @@ def test_the_rescue_path_still_answers_when_the_route_is_empty():
         turn=SimpleNamespace(understanding={"knowledge": None}),
     )
     assert "howto:" in _kb_answer(state, None)
+
+
+# --- žinios atsako TIK į klausimus ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "turn_type, searched",
+    [
+        ("question", True),
+        ("confusion", False),
+        ("answer", False),
+        ("deviation", False),
+        ("contradiction", False),
+        (None, True),
+    ],
+)
+def test_only_a_question_opens_the_knowledge_base(turn_type, searched):
+    """Nusivylimas nėra klausimas, ir žinia tokiam ėjimui KENKIA.
+
+    Gyvai (A1, 2026-09-25): į „kiek galima klausinėti to paties? aš jau atsakiau" paieška rado kliento
+    įrenginių dokumentą, ir agentas perklausė būtent tai, kas jau buvo atsakyta — tiesiai į tai, ko
+    scenarijus neleidžia. `confusion` irgi neatveria žinių: sumišusiam klientui reikia paaiškinti
+    KITAIP, o ne naujos žinios.
+    """
+    got = need.from_caller("kiek galima klausinėti to paties, aš jau atsakiau", turn_type=turn_type)
+    if searched:
+        assert isinstance(got, need.Need)
+    else:
+        assert isinstance(got, need.Refusal) and got.why == "not_a_question"
+
+
+def test_a_real_question_still_gets_its_answer():
+    got = need.from_caller("kaip pakeisti wifi slaptažodį", turn_type="question")
+    assert isinstance(got, need.Need)
+    assert kb.find(got.words, limit=1)

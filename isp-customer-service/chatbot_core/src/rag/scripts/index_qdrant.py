@@ -59,6 +59,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--remove", help="išimti dokumentą iš indekso")
     parser.add_argument("--status", action="store_true", help="versija, skirtumai, atgaminimas")
     parser.add_argument(
+        "--check", action="store_true", help="viena patikra cron'ui: 0 = gerai, 1 = aliarmas"
+    )
+    parser.add_argument(
+        "--rollback", action="store_true", help="aliasą atgal į ankstesnę kolekciją"
+    )
+    parser.add_argument(
+        "--prune", type=int, default=None, metavar="N", help="palikti N naujausias versijas"
+    )
+    parser.add_argument("--snapshot", action="store_true", help="Qdrant snapshot (kopija)")
+    parser.add_argument("--snapshots", action="store_true", help="kokios kopijos yra")
+    parser.add_argument(
         "--no-canary", action="store_true", help="perjungti be patikros (nerekomenduojama)"
     )
     parser.add_argument(
@@ -71,6 +82,50 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.status:
         return _status(index)
+
+    if args.check:
+        # Aliarmai skirti CRON'ui: rašom tik tai, kas svarbu, ir grąžinam kodą.
+        # Konfigūruojam TAIP, kaip konfigūruotųsi programa — kitaip tikrintume ne tą kelią, kuris
+        # aptarnauja skambučius.
+        from adapters.retrieval import configure_from_env
+        from adapters.retrieval.health import check
+
+        configure_from_env()
+
+        health = check()
+        print(
+            f"saugykla {health.backend} · {health.collection or '-'} · taškų {health.points} · "
+            f"modelis {health.index_model or '-'}"
+        )
+        print(f"paieška: {health.stats}")
+        if health.recall is not None:
+            print(f"atgaminimas: {health.recall}")
+        for alarm in health.alarms:
+            print(f"ALIARMAS: {alarm}")
+        return 0 if health.ok else 1
+
+    if args.rollback:
+        was = index.current()
+        back = index.rollback()
+        print(f"aliasas {index.alias}: {was} -> {back}")
+        return 0
+
+    if args.prune is not None:
+        removed = index.prune(keep=args.prune)
+        print(f"ištrinta: {', '.join(removed) or '(nieko)'} · liko {index.collections()}")
+        return 0
+
+    if args.snapshots:
+        for snapshot in index.qdrant.list_snapshots(index._require()):
+            print(f"  {snapshot.name}  {snapshot.size} B  {snapshot.creation_time}")
+        return 0
+
+    if args.snapshot:
+        # Kopija yra DB kopijos dalis, bet indeksą galima atkurti ir iš failų per ~4 s — tad tai
+        # patogumas, ne vienintelis kelias atgal.
+        made = index.qdrant.create_snapshot(index._require())
+        print(f"kopija: {made.name} ({made.size} B)")
+        return 0
 
     if args.document:
         count = index.upsert_document(args.document)

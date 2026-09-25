@@ -361,6 +361,8 @@ Kiekvienas etapas atskirai paleidžiamas, atskirai atšaukiamas, ir kiekvienas b
 |---|---|
 | **Kas** | HNSW indeksas, blue/green modelio keitimas, metrikos ir aliarmai, snapshot'ai, kvantavimas jei prispaus |
 | **Baigta, kai** | perindeksavimas be prastovos išbandytas; modelio pakeitimas per alias išbandytas ir atšauktas atgal; metrikos matomos |
+| **PADARYTA 2026-09-25** | modelio nesutapimo SAUGIKLIS · `health.py` (keturi klausimai, skaitliukai, aliarmai) · `--check` cron'ui · `--rollback`, `--prune`, `--snapshot` · blue/green įrodytas su gyvu krūviu |
+| **Rezultatas** | modelio pakeitimas ir atstatymas: **680 užklausų, 680 teisingų, 0 klaidų** · HNSW įsijungia savaime virš 10 000 taškų · TLS lieka gamybos paleidimo darbas |
 
 ### Nuolat (ne etapas)
 
@@ -811,3 +813,111 @@ pakanka 240 simbolių; po to balso rinkimas vėl 195/195.
 Metodinė išvada: **atgaminimo testas ir eval'as matuoja skirtingus dalykus, ir abu reikalingi.**
 Testas mato, ar randamas dokumentas; eval'as — ar atsakymas naudingas. Šiandien eval'as pagavo tris
 dalykus, kurių testas negalėjo.
+
+---
+
+## 15. E4 — eksploatacija: saugiklis, versijos, sveikata (2026-09-25)
+
+### 15.1 Svarbiausias radinys: saugiklio nebuvo
+
+`model` laukas payload'e buvo nuo E3, bet **niekas jo netikrino**. Vadinasi, pakeitus `EMBED_MODEL`
+neperindeksavus, užklausos vektorius būtų lygintas su kito modelio vektoriais — kitoje erdvėje.
+Rikiavimas taptų atsitiktinis, ir **tyliai**: jokios klaidos, tik blogesni atsakymai.
+
+Dabar prieš kiekvieną semantinę užklausą tikrinama, kuo pastatytas indeksas:
+
+```
+indeksas 'e5-small', aptarnaujam 'e5-base'
+   -> semantinė pusė IŠJUNGIAMA, paieška veikia leksine puse (E2 elgesys)
+   -> įrašas žurnale ir skaitliukuose
+   -> atsakymas VIS TIEK yra
+```
+
+Ir čia pat radau antrą klaidą, jau savo: pirmoji saugiklio versija modelį skaitė **per aliasą**, o
+gavusi kolekcijos vardą (`kb_v6`) nieko nerado ir tyliai grąžino „nežinau" — tad saugiklis neveikė, ir
+768 matmenų užklausa nuėjo į 384 kolekciją (400 Bad Request). **Saugiklis, kuris tyliai neveikia, yra
+blogiau už jokį saugiklį**, todėl modelis dabar skaitomas tiesiai iš kolekcijos.
+
+### 15.2 Blue/green — įrodyta su gyvu krūviu
+
+Paieška ėjo be pertraukos, o po ja buvo pakeistas MODELIS (kitas matmuo, 384 → 768), perjungtas
+aliasas ir atstatyta atgal:
+
+```
+prieš:              kb_v6 · e5-small
+naujas modelis:     kb_v7 · e5-base   (26 s, su kanarėle)
+atstatyta:          kb_v6 · e5-small  (viena operacija)
+
+užklausų per tą laiką:  680
+teisingų:               680
+KLAIDŲ:                   0
+```
+
+Perjungimo metu procesas jau koduodavo `e5-base`, o aliasas dar rodė į `e5-small` kolekciją —
+būtent tada saugiklis ir išlaikė paiešką leksine puse. Be jo tos 668 užklausos būtų grąžinusios
+atsitiktinį rikiavimą.
+
+### 15.3 Sveikata: keturi klausimai vienu kvietimu
+
+```
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --check     # 0 = gerai, 1 = aliarmas
+```
+
+| Klausimas | Iš kur atsakymas |
+|---|---|
+| ar indeksas ŠVIEŽUS | `drift` — dokumentų maišos prieš failus |
+| ar jis PAKANKAMAS | atgaminimo patikra prieš tą patį klausimų rinkinį |
+| ar modelis TAS PATS | indekse įrašytas modelis prieš tą, kuriuo koduojam |
+| ar paieška NEDŪSTA | skaitliukai: užklausos, nusileidimai, p95 |
+
+Paskutinis yra tas, kurio nesužinotum iš failų: **nusileidimai yra tylūs pagal sumanymą** (skambutis
+nenutrūksta), tad juos privalo kas nors skaičiuoti. Ribos: nusileidimų dalis > 25 %, p95 > 150 ms,
+bet koks saugyklos neatsakymas, bet koks modelio nesutapimas, `drift` netuščias, atgaminimas žemiau
+`_questions.yaml` ribų.
+
+Skaitliukus galima nunulinti (`counters.reset()`) — tada rodikliai rodo INTERVALĄ, o senas incidentas
+nebeslepia šviežio.
+
+### 15.4 Versijų tvarka
+
+| Komanda | Kam |
+|---|---|
+| `--rollback` | aliasas atgal į ankstesnę kolekciją — viena operacija |
+| `--prune N` | palieka N naujausių; per vieną dieną jų susikaupė **septynios**, kiekviena su savo vektoriais |
+| `--snapshot`, `--snapshots` | Qdrant kopijos (patikrinta: 3,3 MB) |
+
+Minimumas yra dvi kolekcijos: dabartinė ir ta, į kurią atstatoma.
+
+### 15.5 HNSW — ne darbas, o numatytoji būklė
+
+Patikrinta gyvame serveryje: `m=16, ef_construct=100, full_scan_threshold=10000`, indeksavimo riba
+**10 000 taškų**. Prie 261 taško Qdrant sąmoningai naudoja pilną perėjimą (jis greitesnis), o HNSW
+įsijungia **savaime**, kai taškų padaugės. Tad plane buvęs punktas „įjungti HNSW" yra jau įvykęs
+faktas, ne darbas.
+
+### 15.6 Kas iš E4 sąmoningai NEpadaryta
+
+**TLS.** Be jo `api-key` keliauja atviru tekstu, ir gamyboje jis būtinas. Bet vietoje su
+savo pasirašytu sertifikatu tai įrodytų mažai: portai jau uždaryti ant `127.0.0.1`, o tikras
+sertifikatas priklauso nuo gamybos aplinkos. Todėl tai lieka **paleidimo** darbas su aiškiu sąrašu
+(9 skyrius, 8.1), o ne šios bangos kodas.
+
+**Kvantavimas.** Prie 261 taško vektoriai užima 0,4 MB — kvantuoti nėra ko.
+
+### 15.7 Dvi regresijos, kurias pagavo eval'as (abi mano)
+
+**1. Žinių žemėlapis sugadino kontakto dialogą.** Maršruto sąrašą (17 eilučių + nurodymai) įdėjau į
+TĄ PATĮ prompt'ą, kurį naudoja ir kontakto dialogas. Skaitant „kada patogu skambinti", modelis gavo
+dar ir dokumentų sąrašą — ir D5 paskutinis „Ačiū, viso gero" nustojo būti skaitomas kaip „bet kada",
+tad **tiketas nebeįvyko**. Praėjusio ir nepraėjusio paleidimo eilutės buvo identiškos iki paskutinio
+ėjimo — be pėdsakų lyginimo to nebūčiau radęs. Žemėlapis dabar dedamas tik tada, kai gali būti
+reikalingas.
+
+**2. Nusivylimas atverdavo žinių bazę.** Į „kiek galima klausinėti to paties? aš jau atsakiau"
+paieška rado kliento įrenginių dokumentą, ir agentas **perklausė būtent tai, kas jau buvo atsakyta**.
+Dabar žinios atsako TIK į klausimus; `confusion` irgi ne, nes sumišusiam klientui reikia paaiškinti
+KITAIP, o ne naujos žinios. Ėjimo tipą pasako supratimo sluoksnis, tad tai duomenys, ne spėjimas.
+
+Ir detalė, kuri svarbi metodiškai: **tai pasimatė tik hibridiniame kelyje.** Semantinė pusė rado
+dokumentą ten, kur leksinė nerado, tad tekstinis eval'as praėjo, o hibridinis ir balso — ne. Vadinasi,
+eval'us reikia leisti per VISAS saugyklas, ne tik per numatytąją.

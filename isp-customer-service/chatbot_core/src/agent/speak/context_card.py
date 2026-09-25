@@ -102,6 +102,9 @@ def _kb_answer(state, rt) -> str:
         # ŠIO skambučio paslauga: TV dokumentas neturi būti kandidatas interneto gedime, o neutralios
         # žinios (įrangos instrukcija, procedūra, FAQ) praleidžiamos per bet kurį gedimą.
         problem=_service_of(state),
+        # Ar klientas apskritai KLAUSĖ. Tipą pasako supratimo sluoksnis; nusivylimui ar pakartotam
+        # atsakymui žinių nereikia, ir jos kenkia (A1).
+        turn_type=str((getattr(state.turn, "understanding", None) or {}).get("type") or "") or None,
     )
     # AGENTO sprendimas, ko jam reikia: dokumentą jis pasirinko iš savo žinių žemėlapio dar
     # suprasdamas ėjimą (`understand`). Kliento žodžiai toliau reikalingi, bet tik SKYRIUI tame
@@ -110,6 +113,12 @@ def _kb_answer(state, rt) -> str:
     if isinstance(need, Refusal):
         if rt is not None and getattr(rt, "tracer", None) is not None:
             rt.tracer.emit("knowledge", refused=need.why, said=need.said[:60])
+        try:
+            from adapters.retrieval.health import counters
+
+            counters.refused(need.why)
+        except Exception:  # pragma: no cover - skaitliukai niekada nelaužia atsakymo
+            pass
         return ""
     found = _in_routed_document(need, routed) or find(
         need.words,

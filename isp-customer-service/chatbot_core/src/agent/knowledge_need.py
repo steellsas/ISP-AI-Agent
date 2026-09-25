@@ -59,7 +59,7 @@ class Need:
 class Refusal:
     """Kodėl neieškoma. Įrašoma į žurnalą: po šimto skambučių riba peržiūrima FAKTAIS."""
 
-    why: str  # "purpose" | "device" | "topic" | "empty"
+    why: str  # "not_a_question" | "purpose" | "device" | "topic" | "empty"
     said: str
 
 
@@ -180,7 +180,13 @@ def device_trouble_only(text: str) -> bool:
     return symptom and not service
 
 
-def from_caller(heard: str, *, equipment: str | None = None, problem: str | None = None):
+def from_caller(
+    heard: str,
+    *,
+    equipment: str | None = None,
+    problem: str | None = None,
+    turn_type: str | None = None,
+):
     """Poreikis iš kliento klausimo — arba `Refusal`, jei apie tai ieškoti neleidžiama.
 
     Vartai sprendžia TIK tai, AR ieškoti. Ieškoma visu kliento sakiniu, ne atfiltruotais žodžiais —
@@ -193,6 +199,16 @@ def from_caller(heard: str, *, equipment: str | None = None, problem: str | None
     """
     if not (heard or "").strip():
         return Refusal("empty", "")
+    # Žinios atsako TIK į klausimus. Nusivylimas, prieštara ar pakartotas atsakymas nėra klausimas, ir
+    # žinia tokiam ėjimui ne padeda, o kenkia: gyvai (A1, 2026-09-25) į „kiek galima klausinėti to
+    # paties, aš jau atsakiau" paieška rado kliento įrenginių dokumentą, ir agentas perklausė būtent
+    # tai, kas jau buvo atsakyta.
+    #
+    # `confusion` irgi NE: sumišusiam klientui reikia paaiškinti KITAIP (tam yra savas kelias), o ne
+    # naujos žinios. Būtent taip ir buvo A1 — nusivylimas atpažintas kaip `confusion`.
+    # Ėjimo tipą pasako supratimo sluoksnis, tad tai duomenys, ne spėjimas.
+    if turn_type and turn_type != "question":
+        return Refusal("not_a_question", heard)
     if out_of_purpose(heard):
         return Refusal("purpose", heard)
     if device_trouble_only(heard):

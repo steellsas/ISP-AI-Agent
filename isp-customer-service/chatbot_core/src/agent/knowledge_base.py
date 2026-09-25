@@ -463,6 +463,14 @@ def find(
             return [_as_passage(chunk) for chunk in chunks]
         except Exception as exc:
             logger.warning(f"[KB] backend failed ({exc}) — falling back to the files")
+            # Nusileidimas yra tylus PAGAL SUMANYMĄ (skambutis nenutrūksta), tad jį privalo
+            # skaičiuoti kas nors kitas — kitaip apie jį sužinotume tik iš kokybės (E4).
+            try:
+                from adapters.retrieval.health import counters
+
+                counters.store_failed()
+            except Exception:  # pragma: no cover - skaitliukai niekada nelaužia paieškos
+                pass
     return _lexical(
         query,
         kind=kind,

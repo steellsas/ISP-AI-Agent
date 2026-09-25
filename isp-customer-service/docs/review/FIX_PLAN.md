@@ -836,3 +836,26 @@ trace'e matomi visi LLM kvietimai ir `turn_timing`.
 - Testai ir eval dalijasi ta pačia demo DB (`database/isp_database.db`) ir vienu metu
   neveikia (WinError 32) — kiekvienam paleidimui reikia savo DB failo (kandidatas 5 bangai).
 - Nestabilus testas: `test_api::test_interrupt_stops_remaining_chunks` (laiko priklausomybė, `sleep 0.15`) — kartą krito, 8/8 pakartojimų praėjo; su pakeitimais nesusijęs.
+
+
+## RAG E4 — eksploatacija: saugiklis, versijos, sveikata (šaka `fix/wave-4a`, 2026-09-25)
+
+| Kas atsirado | Kam |
+|---|---|
+| **modelio nesutapimo saugiklis** | `model` laukas buvo nuo E3, bet niekas jo netikrino: pakeitus modelį neperindeksavus rikiavimas būtų tapęs atsitiktinis — ir TYLIAI |
+| `adapters/retrieval/health.py` | keturi klausimai vienu kvietimu (šviežumas, atgaminimas, modelis, latencija) + skaitliukai su `reset()` |
+| `--check` | cron'ui: 0 = gerai, 1 = aliarmas (drift, atgaminimas, modelis, nusileidimai > 25 %, p95 > 150 ms) |
+| `--rollback`, `--prune N`, `--snapshot(s)` | versijų tvarka: per dieną susikaupė **septynios** kolekcijos |
+
+**Blue/green įrodytas su gyvu krūviu:** modelis pakeistas (384 → 768 matmenys, nauja kolekcija per
+26 s su kanarėle), aliasas perjungtas, atstatyta atgal — **680 užklausų, 680 teisingų, 0 klaidų**.
+Perjungimo metu procesas jau koduodavo nauju modeliu, o aliasas dar rodė į senąją kolekciją; būtent
+tada saugiklis ir išlaikė paiešką leksine puse.
+
+**Ir antra klaida, jau mano:** pirmoji saugiklio versija modelį skaitė per ALIASĄ, o gavusi kolekcijos
+vardą nieko nerado ir tyliai grąžino „nežinau" — tad saugiklis neveikė, ir 768 matmenų užklausa nuėjo
+į 384 kolekciją (400). Saugiklis, kuris tyliai neveikia, yra blogiau už jokį saugiklį.
+
+**HNSW nėra darbas:** patikrinta gyvame serveryje — `full_scan_threshold=10000`, tad prie 261 taško
+Qdrant sąmoningai naudoja pilną perėjimą, o HNSW įsijungia savaime. **TLS lieka paleidimo darbas**:
+vietoje su savo pasirašytu sertifikatu jis įrodytų mažai, o portai jau uždaryti ant `127.0.0.1`.

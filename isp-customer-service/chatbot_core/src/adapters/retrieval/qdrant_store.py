@@ -31,6 +31,7 @@ from typing import Any
 from agent import knowledge_base as kb
 
 from . import embed
+from .health import counters, timed
 from .sparse import Sparse, for_body, for_chunk, for_query
 
 logger = logging.getLogger(__name__)
@@ -281,6 +282,64 @@ class KnowledgeIndex:
         logger.info(f"[KB] alias {self.alias} -> {target} ({len(points)} chunks)")
         return previous or target
 
+    def collections(self) -> list[str]:
+        """Šio aliaso kolekcijos naujausios pirma (`kb_v7`, `kb_v6`, …)."""
+        names = [
+            c.name
+            for c in self.qdrant.get_collections().collections
+            if re.fullmatch(rf"{re.escape(self.alias)}_v\d+", c.name)
+        ]
+        return sorted(names, key=lambda n: int(n.rsplit("_v", 1)[1]), reverse=True)
+
+    def point_alias(self, collection: str) -> None:
+        """Aliasas rodo į kitą kolekciją — atomiškai. Tai visas blue/green mechanizmas."""
+        from qdrant_client import models
+
+        if not self.qdrant.collection_exists(collection):
+            raise KeyError(f"no collection '{collection}'")
+        self.qdrant.update_collection_aliases(
+            change_aliases_operations=[
+                models.CreateAliasOperation(
+                    create_alias=models.CreateAlias(
+                        collection_name=collection, alias_name=self.alias
+                    )
+                )
+            ]
+        )
+        logger.info(f"[KB] alias {self.alias} -> {collection}")
+
+    def rollback(self) -> str:
+        """Atgal į ankstesnę kolekciją — viena operacija.
+
+        Būtent todėl perkūrimas senosios kolekcijos netrina: modelio ar žinių pakeitimas, kuris
+        pasirodė blogas, atšaukiamas per sekundę, o ne perindeksuojant.
+        """
+        versions = self.collections()
+        current = self.current()
+        previous = next((name for name in versions if name != current), None)
+        if previous is None:
+            raise RuntimeError("nėra į ką atstatyti: kita kolekcija tik viena")
+        self.point_alias(previous)
+        return previous
+
+    def prune(self, keep: int = 2) -> list[str]:
+        """Ištrina senas versijas, paliekant `keep` naujausias.
+
+        Dvi yra minimumas: dabartinė ir ta, į kurią atstatoma. Be valymo kolekcijos kaupiasi
+        (per vieną dieną jų buvo septynios) ir kiekviena laiko savo vektorius diske.
+        """
+        current = self.current()
+        versions = self.collections()
+        keeping = set(versions[: max(1, keep)]) | ({current} if current else set())
+        removed = []
+        for name in versions:
+            if name not in keeping:
+                self.qdrant.delete_collection(name)
+                removed.append(name)
+        if removed:
+            logger.info(f"[KB] pruned {', '.join(removed)}")
+        return removed
+
     # --- vieno dokumento atnaujinimas ---
 
     def upsert_document(self, source: str) -> int:
@@ -330,6 +389,16 @@ class KnowledgeIndex:
         )
 
     # --- būklė ---
+
+    def model(self) -> str:
+        """Kokiu modeliu pastatyti šio indekso `dense` vektoriai („" — jų nėra).
+
+        Be šio atsakymo blue/green modelio keitimas yra tikėjimo klausimas: kito modelio vektoriai
+        gyvena kitoje erdvėje, ir juos lyginant rikiavimas tampa atsitiktinis. Tyliai. Todėl saugykla
+        privalo pasakyti, kuo ji pastatyta.
+        """
+        records, _ = self.qdrant.scroll(self._require(), limit=1, with_payload=True)
+        return str((records[0].payload or {}).get("model") or "") if records else ""
 
     def indexed(self) -> dict[str, str]:
         """{dokumentas: turinio maiša}, kaip jį mato INDEKSAS."""
@@ -445,11 +514,33 @@ def _filter(where: dict[str, Any]):
 
 @dataclass
 class QdrantRetriever:
-    """`RetrieverPort` per Qdrant: *sparse* (leksinė) pusė, E3 pridės `dense`."""
+    """`RetrieverPort` per Qdrant: leksinė (*sparse*) ir semantinė (`dense`) pusės."""
 
     qdrant: Any
     collection: str = ALIAS
     name: str = "qdrant"
+    # Kokiu modeliu pastatytas indeksas. Nustatoma vieną kartą (pirmos užklausos metu) ir
+    # naudojama kaip SAUGIKLIS: nesutampa — semantinės pusės nebenaudojam.
+    _index_model: str | None = None
+
+    def index_model(self) -> str:
+        """Kuo pastatytas TAS indeksas, kurį aptarnaujam.
+
+        Skaitom tiesiai iš kolekcijos, ne per aliasą: `self.collection` gali būti ir aliasas (`kb`),
+        ir konkreti kolekcija (`kb_v6`), o `KnowledgeIndex` moka tik aliasus. Pirmoji versija dėl to
+        modelio nenuskaitė — ir saugiklis neįsijungė, tad užklausa su 768 matmenimis nuėjo į 384
+        kolekciją ir grįžo 400. Saugiklis, kuris tyliai neveikia, yra blogiau už jokio saugiklio.
+        """
+        if self._index_model is None:
+            try:
+                records, _ = self.qdrant.scroll(self.collection, limit=1, with_payload=True)
+                self._index_model = (
+                    str((records[0].payload or {}).get("model") or "") if records else ""
+                )
+            except Exception as exc:  # pragma: no cover - serveris gali neatsakyti
+                logger.warning(f"[KB] cannot read the index model: {exc}")
+                self._index_model = ""
+        return self._index_model
 
     def retrieve(
         self,
@@ -457,6 +548,20 @@ class QdrantRetriever:
         top_k: int | None = None,
         threshold: float | None = None,
         filter_metadata: dict | None = None,
+    ) -> list[dict[str, Any]]:
+        """Paieška su matavimu. Laikas ir nusileidimai skaičiuojami ČIA, vienoje vietoje — kad
+        eksploatacija matytų, kaip paieška laikosi, dar prieš tai, kai tai pasimatys kokybėje."""
+        measured = timed()
+        with measured:
+            return self._search(query, top_k, threshold, filter_metadata, measured)
+
+    def _search(
+        self,
+        query: str,
+        top_k: int | None,
+        threshold: float | None,
+        filter_metadata: dict | None,
+        measured: Any,
     ) -> list[dict[str, Any]]:
         from qdrant_client import models
 
@@ -472,6 +577,7 @@ class QdrantRetriever:
         # Modelio gali nebūti, jis gali nesulaukti arba indeksas gali būti be `dense` — visais
         # atvejais paieška vyksta tik leksine puse. Tai E2 elgesys, ne avarija.
         dense_query = self._dense_query(query)
+        measured.lexical_only = dense_query is None
         wanted = max(top_k or 2, 2)
 
         if dense_query is None:
@@ -559,12 +665,26 @@ class QdrantRetriever:
     def _dense_query(self, query: str) -> list[float] | None:
         """Semantinis užklausos vektorius arba None.
 
+        Pirmiausia MODELIO patikra. Indeksas pastatytas vienu modeliu, o užklausa koduojama tuo, kuris
+        įjungtas dabar; nesutapus vektoriai gyventų skirtingose erdvėse, ir rikiavimas taptų
+        atsitiktinis — TYLIAI. Tad nesutapus semantinės pusės nebenaudojam: paieška veikia leksine
+        puse (E2 elgesys), o žurnale lieka įrašas. Tai ir yra blue/green keitimo saugiklis: naujas
+        indeksas statomas atskiroje kolekcijoje, ir tik aliasas nusprendžia, kuris aptarnauja.
+
         None — teisėta būklė: modelio nėra, jis nesulaukė arba servisas nukrito. Bet kuriuo atveju
         paieška vyksta leksine puse (E2 elgesys). Išimtis čia NEGALI prasiveržti: skambutis nesibaigia
         dėl to, kad neatsakė modelis.
         """
         model = embed.embedder()
         if model is None:
+            return None
+        built_with = self.index_model()
+        if built_with and built_with != embed.MODEL:
+            logger.warning(
+                f"[KB] index was built with '{built_with}', now serving '{embed.MODEL}' — "
+                "searching lexically until the index is rebuilt"
+            )
+            counters.mismatched()
             return None
         try:
             return model.encode_query(query)

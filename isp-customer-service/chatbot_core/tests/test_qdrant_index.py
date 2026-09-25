@@ -417,3 +417,124 @@ def test_a_slow_model_is_not_waited_for(monkeypatch):
     started = clock.perf_counter()
     assert slow.encode_query("kodėl neveikia internetas") is None
     assert clock.perf_counter() - started < 1.0, "laukė ilgiau, nei leista"
+
+
+# --- E4: eksploatacija — saugiklis, versijos, sveikata ------------------------------------
+
+
+def test_a_model_mismatch_turns_the_semantic_half_off(own_index, monkeypatch):
+    """Kito modelio vektoriai gyvena kitoje erdvėje — juos lyginant rikiavimas taptų atsitiktinis.
+
+    TYLIAI. Todėl nesutapus semantinės pusės nebenaudojam: paieška veikia leksine puse, žurnale lieka
+    įrašas, o atsakymas vis tiek yra. Tai ir yra blue/green keitimo saugiklis.
+    """
+    from adapters.retrieval import embed
+    from adapters.retrieval.health import counters
+
+    hybrid = own_index
+    search = QdrantRetriever(hybrid.qdrant, hybrid.alias)
+    assert search.index_model() == embed.MODEL, "indeksas pastatytas tuo pačiu modeliu"
+    assert search._dense_query("lemputės") is not None
+
+    before = counters.snapshot()["model_mismatch"]
+    monkeypatch.setattr(embed, "MODEL", "kitas/modelis")
+    fresh = QdrantRetriever(hybrid.qdrant, hybrid.alias)  # naujas worker'is gamyboje
+    assert fresh._dense_query("lemputės") is None
+    assert counters.snapshot()["model_mismatch"] > before
+    # Ir svarbiausia: atsakymas vis tiek yra.
+    assert fresh.retrieve(QUESTION, top_k=1)
+
+
+def test_the_index_says_which_model_built_it(own_index):
+    from adapters.retrieval import embed
+
+    assert own_index.model() == embed.MODEL
+
+
+@pytest.fixture
+def own_index():
+    """Savas indeksas testams, kurie KEIČIA versijas: bendro `hybrid` jie sugadintų kitiems."""
+    from adapters.retrieval import embed
+    from qdrant_client import QdrantClient
+
+    if embed.embedder() is None:
+        pytest.skip("embedding'ai išjungti (EMBED=off)")
+    embed.embedder().warm()
+    built = KnowledgeIndex(QdrantClient(":memory:"))
+    built.rebuild()
+    return built
+
+
+def test_the_alias_can_be_pointed_and_rolled_back(own_index):
+    """Blue/green: perkūrimas palieka senąją kolekciją, tad atstatymas yra viena operacija."""
+    before = own_index.current()
+    own_index.rebuild(canary=lambda c: recall.passes(QdrantRetriever(own_index.qdrant, c))[0])
+    after = own_index.current()
+    assert after != before
+    assert len(own_index.collections()) >= 2
+
+    back = own_index.rollback()
+    assert back == before and own_index.current() == before
+    own_index.point_alias(after)
+    assert own_index.current() == after
+
+
+def test_old_versions_are_pruned_but_the_rollback_target_stays(own_index):
+    """Be valymo kolekcijos kaupiasi — per dieną jų buvo septynios, kiekviena su savo vektoriais."""
+    while len(own_index.collections()) < 3:
+        own_index.rebuild()
+    current = own_index.current()
+    removed = own_index.prune(keep=2)
+    left = own_index.collections()
+    assert current in left and len(left) == 2
+    assert removed and current not in removed
+
+
+def test_health_reports_the_four_questions(own_index):
+    """Eksploatacijai reikia atsakymų į keturis klausimus vienu kvietimu."""
+    from adapters.retrieval import health
+    from agent import knowledge_base as kb
+
+    hybrid = own_index
+    # Skaitliukai vieni visam procesui: ankstesnių testų nusileidimai čia teisėtai keltų aliarmą.
+    health.counters.reset()
+    try:
+        kb.use(QdrantRetriever(hybrid.qdrant, hybrid.alias))
+        seen = health.check(qdrant=hybrid.qdrant)
+    finally:
+        kb.use(None)
+    assert seen.backend == "qdrant"
+    assert seen.collection == hybrid.current() and seen.points > 0
+    assert seen.index_model and seen.drift == {}
+    assert seen.recall is not None
+    assert seen.ok, seen.alarms
+
+
+def test_health_raises_an_alarm_when_the_index_drifts(own_index, monkeypatch):
+    from adapters.retrieval import health
+    from agent import knowledge_base as kb
+
+    hybrid = own_index
+    health.counters.reset()
+    changed = tuple(
+        dict(d, body=d["body"] + "\n## Naujas skyrius\nNauja žinia.") if i == 0 else d
+        for i, d in enumerate(kb.documents())
+    )
+    monkeypatch.setattr(kb, "documents", lambda: changed)
+    try:
+        kb.use(QdrantRetriever(hybrid.qdrant, hybrid.alias))
+        seen = health.check(qdrant=hybrid.qdrant)
+    finally:
+        kb.use(None)
+    assert not seen.ok
+    assert any("skiriasi nuo failų" in alarm for alarm in seen.alarms)
+
+
+def test_the_counters_see_what_the_search_did(hybrid):
+    from adapters.retrieval.health import counters
+
+    before = counters.snapshot()
+    QdrantRetriever(hybrid.qdrant, hybrid.alias).retrieve(QUESTION, top_k=2)
+    after = counters.snapshot()
+    assert after["searches"] == before["searches"] + 1
+    assert after["p95_ms"] >= 0.0
