@@ -85,3 +85,17 @@ palieka kontakto įrašą (`agent/call_record/`).
   (procedūros vykdytojas) + `decide/procedure_guards.py`.
 - `test_voice_adapters.py` / `test_voice_v1.py` — dalis dengia legacy PART
   kelią; peržiūrėti, kai duplex taps vieninteliu keliu.
+
+## Žinių sluoksnis (RAG, E1–E4)
+
+| Failas | Ką įrodo |
+|---|---|
+| `test_knowledge_base.py` | dokumento sutartis: rūšis, raktai, filtras, skyriai, žingsniai |
+| `test_knowledge_recall.py` | **arbitras**: 68 klausimai kliento žodžiais, `hit@1`/`hit@2` ribos, kiekvienas dokumentas turi klausimų |
+| `test_knowledge_need.py` | agento **ribos**: ką atsisako ieškoti (tema, paskirtis, prietaisas, ne klausimas), konkretus įrenginys prieš bendrą, kortelės `knowledge_need` |
+| `test_retrieval_port.py` | saugyklos keitimo siūlė: per portą grąžinami TIE PATYS dokumentai |
+| `test_qdrant_index.py` | indeksas: *sparse* sandauga = leksinis balas, hibridas, filtrai, versijos, aliasai, modelio saugiklis, sveikata |
+
+Klausimų rinkinys gyvena **prie žinių** (`src/rag/knowledge_base/_questions.yaml`), ne testuose —
+tą patį failą skaito ir ingestijos kanarėlė, tad CI ir gamyba negali nesutarti, kas yra
+„pakankamai gerai".

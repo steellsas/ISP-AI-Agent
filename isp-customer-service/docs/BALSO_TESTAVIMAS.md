@@ -31,10 +31,128 @@ Naršyklėje http://localhost:8080 → skirtukas **„Testavimas"** (numeris →
 | `LOG_LEVEL=DEBUG` | konsolėje realiu laiku: taisyklės, įrankiai, fallback'ai (be PII) | `INFO` |
 | `SIMULATE_REBOOT=on` / `SIMULATE_BRIDGE=on` | leidžia mygtukų imitacijas (prod = off) | eval'e įjungta; demo — per mygtukus |
 | `DEBUG_LLM=1` | į trace'ą prideda, ką LLM gauna (kortelė, faktai) | išjungta |
+| `KB_BACKEND=qdrant` | žinios imamos iš Qdrant indekso (gamybinė forma) | `files` |
+| `EMBED_URL=http://127.0.0.1:6380` | embedding'ai per TEI servisą, ne procese | modelis procese |
+
+### Žinių sluoksnis — prieš testuojant
+
+```powershell
+docker compose --profile embed up -d              # Qdrant + embeddings
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --check     # 0 = gerai
+```
+
+Paleidžiant serverį su žiniomis iš indekso:
+
+```powershell
+$env:KB_BACKEND="qdrant"; $env:EMBED_URL="http://127.0.0.1:6380"
+uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080
+```
+
+**Testuok ABIEM būdais** (`files` ir `qdrant`). Tai ne perteklius: 2026-09-25 du defektai pasimatė
+TIK per Qdrant — semantinė pusė rado dokumentą ten, kur leksinė nerado, ir agentas perklausė tai,
+kas jau atsakyta. Per failus tie patys scenarijai praėjo.
 
 ---
 
-## ⭐ Ką testuoti PIRMA (4a bangos pakeitimai)
+## ⭐ Ką testuoti PIRMA (žinių sluoksnis, E1–E4)
+
+Žinios yra naujausia ir plačiausia dalis: agentas dabar gali atsakyti iš dokumentų, žino savo ribas
+ir pats renkasi, kurio dokumento jam reikia. Septyni dalykai, kuriuos verta prakalbėti gyvai.
+
+Bendra taisyklė visiems: **jei agentas pasako konkretybę (adresą, nustatymo pavadinimą, žingsnį),
+ji privalo būti dokumente.** Išgalvota konkretybė yra blogiausias įmanomas rezultatas — blogesnis
+už „nežinau".
+
+### K1. Atviras klausimas gedimo viduryje
+**Telefonas:** `+37060020112` · **router_hung**
+
+| Tu | Agentas turi |
+|---|---|
+| „Labas, neveikia internetas" | pasiūlyti adresą |
+| „Taip" | patvirtinti, paklausti vardo |
+| (vardas) | pasakyti, ką mato linijoje, ir duoti pirmą žingsnį |
+| **„O sakykite, kaip pakeisti wifi slaptažodį?"** | atsakyti **iš dokumento**: prisijungti prie `192.168.0.1`, Wireless → Wireless Security, išsaugoti. Tada **grįžti prie gedimo** |
+| „Gerai, perkroviau" | tęsti, tarsi nukrypimo nebuvo |
+
+**Tikrinu:** ar pasakė konkretų adresą (ne „routerio nustatymuose kažkur"); ar nepažadėjo
+„užregistruosiu jūsų klausimą"; ar grįžo prie žingsnio.
+
+### K2. Gilesnė žinia TO ŽINGSNIO metu
+**Telefonas:** `+37060020104` · **link_down_local** (kortelė deklaruoja `knowledge_need`)
+
+| Tu | Agentas turi |
+|---|---|
+| (iki lempučių / laido žingsnio) | paklausti apie lemputes arba paprašyti perkišti laidą |
+| **„O kuri iš tų lempučių? Jų ten kelios"** | paaiškinti iš įrangos dokumento: POWER, INTERNET, WiFi, LAN — ir kuri rūpi |
+| **„Į kurį lizdą kišti?"** | pasakyti, kad WAN yra atskirai nuo LAN grupės ir dažnai kitos spalvos |
+| (toliau pagal scenarijų) | tęsti gedimą |
+
+**Tikrinu:** ar atsakymas iš dokumento, ne improvizacija; ar agentas **savo iniciatyva** instrukcijos
+neperskaitė (žinia yra atsarga, ne scenarijus).
+
+### K3. Ribos — ką agentas turi ATSISAKYTI daryti
+**Telefonas:** bet kuris veikiantis, geriausia gedimo viduryje (`+37060020112`)
+
+| Tu | Agentas turi |
+|---|---|
+| „O koks šiandien oras Šiauliuose?" | mandagiai pasakyti, kad tai ne jo sritis, ir **grįžti prie gedimo** |
+| „Ar galite padėti su automobilio remontu?" | tas pats |
+| **„Kurį routerį rekomenduotumėt pirkti?"** | **nerekomenduoti** — tai pasirinkimas, ne veikimas |
+| „Windows nepasileidžia" | pasakyti, kad tai paties kompiuterio dalykas; gali pasakyti, ko reikia MŪSŲ tinklui |
+| „Telefone neveikia internetas" | **tai MŪSŲ** — turi padėti |
+
+**Tikrinu:** jokio tiketo nukrypimui; jokio „pažiūrėsiu"; po kiekvieno — grįžimas prie gedimo.
+
+### K4. Konkretus įrenginys — ir sąžiningas prisipažinimas
+**Telefonas:** `+37060020109` · **healthy_to_router** (kliento pusė)
+
+| Tu | Agentas turi |
+|---|---|
+| (iki kliento pusės patikros) | klausti, kas neveikia — telefone ar kompiuteryje |
+| **„Kaip android telefone prisijungti prie wifi?"** | pasakyti, kad **tiksliai apie Android instrukcijos neturi**, ir duoti **bendrą** tvarką: Nustatymai → Wi-Fi → pasirinkti tinklą → slaptažodis |
+| „O iPhone?" | tas pats: bendra tvarka, be išgalvotų meniu kelių |
+
+**Tikrinu:** ar tikrai pasakė, kad konkrečiai to įrenginio neturi (o ne pateikė bendrą kaip Android'o);
+ar neišgalvojo meniu pavadinimų.
+
+### K5. Nusivylimas nėra klausimas
+**Telefonas:** `+37060020112`
+
+| Tu | Agentas turi |
+|---|---|
+| „Neveikia internetas visuose įrenginiuose, lemputės dega" | pradėti nuo to, ką jau pasakei |
+| **„Jau sakiau — visuose įrenginiuose"** | **neperklausti to paties**; patikslinti kitaip arba eiti toliau |
+| **„Kiek galima klausinėti to paties? Aš jau atsakiau"** | atsiprašyti ir **eiti pirmyn**; jokio „ar internetas neveikia visuose įrenginiuose?" |
+
+**Tikrinu:** ar agentas nepradėjo atsakinėti iš žinių bazės (nusivylimas nėra klausimas) ir
+neperklausė atsakyto fakto. **Tai buvo tikra regresija 2026-09-25** — verta patikrinti gyvai.
+
+### K6. Vedimas per algoritmą
+**Telefonas:** `+37060020106` · **dhcp_silent** (kortelė veda per dokumentą)
+
+| Tu | Agentas turi |
+|---|---|
+| „Labas, neveikia internetas" → adresas → vardas | pasakyti, ką mato, ir pasiūlyti pabandyti sutvarkyti kartu |
+| „Gerai" | duoti **VIENĄ** žingsnį (prisijungti prie routerio skydelio) ir laukti |
+| „Padariau" | duoti **kitą** žingsnį (WAN → DHCP) |
+| „Padariau" | patikrinti telemetrija ir pasakyti rezultatą |
+
+**Tikrinu:** vienas žingsnis per atsakymą (ne visi iš karto); laukia „padariau"; nepavykus —
+meistras, ir tikete matosi, per ką jau vesta.
+
+### K7. Kai agentas nėra tikras
+**Telefonas:** bet kuris
+
+| Tu | Agentas turi |
+|---|---|
+| „O ar wifi kenkia sveikatai?" | **nesu tikras** + patikslinti arba sąžiningai pasakyti, kad patarti negali |
+| „Ar routerį galima laikyti spintoje?" | atsakyti tik tiek, kiek yra dokumente (signalas, kliūtys) |
+
+**Tikrinu:** ar neišspaudė atsakymo iš netinkamo dokumento; ar pasakė, iš ko atsako.
+
+---
+
+## ⭐ Ką testuoti PIRMA (4a bangos pakeitimai) — dabar regresijos rinkinys
 
 Keturi dalykai, kurių iki 4a nebuvo arba kurie buvo sulūžę. Jei kas nors iš jų elgiasi kitaip
 nei čia parašyta — tai regresija, ne interpretacija.
@@ -233,6 +351,39 @@ Get-Content $last | Select-String '"type": "case"','"type": "verdict"','"type": 
 `case` įvykių `move` reikšmės: `learn` (mokomės faktą) · `finding` (paskelbta išvada) ·
 `solve` / `begin` (pradėtas kortelės sprendimas) · `give_up` (klausimo atsisakyta po ribos) ·
 `handed_over` (perduota meistrui) · `resolved` · `escalate` · `callback`.
+
+### Ką žinių sluoksnis įrašo į trace'ą
+
+Kiekvienas žinių kreipimasis palieka `"type": "knowledge"` eilutę — iš jos matosi visas sprendimas:
+
+```powershell
+Get-Content $last | Select-String '"type": "knowledge"'
+```
+
+| Laukas | Ką reiškia |
+|---|---|
+| `asked_by: caller` | klausė klientas (per vartus) |
+| `asked_by: card` | poreikį deklaravo kortelė (`knowledge_need`) |
+| `found: <dokumentas>` | iš kur atsakymas; tuščia — nieko nerasta |
+| `sure: true/false` | tvirtas atsakymas ar pažymėtas spėjimas |
+| `refused: topic` | ne mūsų tema (oras, autoremontas) |
+| `refused: purpose` | pasirinkimas, ne veikimas („kurį pirkti") |
+| `refused: device` | paties prietaiso bėda („Windows nepasileidžia") |
+| `refused: not_a_question` | nusivylimas ar pakartotas atsakymas — ne klausimas |
+
+**Jei žinių eilutės nėra visai** — vartai neįsileido net iki paieškos (tai gali būti teisinga!) arba
+ėjimas nebuvo klausimas.
+
+### Skaičiai po testų sesijos
+
+```powershell
+uv run python chatbot_core/src/rag/scripts/index_qdrant.py --check
+```
+
+Rodo atsisakymus pagal priežastį, nusileidimų dalį ir p95. **Atsisakymų sąrašas yra vertingiausias
+dalykas po gyvų testų**: iš jo matosi, ko klientai tikrai klausia už ribos — ir ar riba nubrėžta
+teisingai. Jei ten kaupiasi `topic`, o klausimai buvo teisėti, reikia ne kodo, o **raktų dokumentuose**
+(žr. [ZINIU_BAZE.md](ZINIU_BAZE.md)).
 
 ## Jei kas nors neatitinka
 
