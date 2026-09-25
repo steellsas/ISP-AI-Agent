@@ -10,11 +10,46 @@ tie patys duomenys dashboard'o skirtuke „Scenarijai" (`chatbot_core/src/app/sc
 
 ## Paruošimas
 
+### Aplinka — VIENA komanda, ir tik ji
+
+```powershell
+uv sync --all-packages --extra voice
+```
+
+Balsas (`edge-tts`, `faster-whisper`, `gTTS`) yra **neprivalomas** `voice` papildymas, todėl įprastas
+`uv sync` jį **nušluoja**: `uv sync` daro aplinką tiksliai tokią, kokia deklaruota pasirinktoje
+srityje — ne „prideda, ko paprašei“. 2026-09-25 būtent todėl serveris nepasileido:
+
+```
+ModuleNotFoundError: No module named 'edge_tts'
+```
+
+Išmatuota tame pačiame projekte:
+
+| Komanda | Kas lieka |
+|---|---|
+| `uv sync` | ❌ be balso |
+| `uv sync --package chatbot-core --extra voice` | balsas yra, bet ❌ be `pytest`, `ruff`, `pre-commit` |
+| **`uv sync --all-packages --extra voice`** | ✅ balsas + `qdrant-client` + įrankiai |
+
+Patikrinimas prieš testą (turi išvesti visus, be `MISSING`):
+
+```powershell
+uv run python -c "import importlib.util as u; [print(m, 'ok' if u.find_spec(m) else 'MISSING') for m in ('edge_tts','faster_whisper','gtts','qdrant_client','sentence_transformers','pytest')]"
+```
+
+### Serveris
+
 ```powershell
 cd "C:\Users\steel\turing_projects\AI engenearing\ISP-AI-Agent\isp-customer-service"
 $env:PYTHONIOENCODING="utf-8"; chcp 65001
 uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080
 ```
+
+> **Testai ir serveris vienu metu — ne.** Kol serveris paleistas, jis laiko
+> `database/isp_database.db`, ir `pytest` negali jos perkurti: `PermissionError [WinError 32]`.
+> Tai ne kodo klaida, o tai, kad demo bazė yra viena — ją dalinasi serveris ir testai. Testus leisk **sustabdęs serverį**
+> (5 bangoje planuota atskirti testų ir demo bazes — tai ir išspręstų).
 
 Naršyklėje http://localhost:8080 → skirtukas **„Testavimas"** (numeris → „Skambinti").
 

@@ -32,8 +32,17 @@ dependencies = [
 ]
 
 # Voice slice (Phase 3) — heavy/optional, kept out of the core install so the
-# text agent stays light. Install (uv workspace) with:
-#   uv sync --package chatbot-core --extra voice
+# text agent stays light. In this uv WORKSPACE, install it with:
+#
+#   uv sync --all-packages --extra voice
+#
+# That is the only command that keeps both the voice and the dev tools. Measured
+# 2026-09-25, after a plain `uv sync` broke the server with
+# `ModuleNotFoundError: No module named 'edge_tts'`:
+#   uv sync                                       -> drops the voice extra
+#   uv sync --package chatbot-core --extra voice  -> voice back, but pytest/ruff/pre-commit gone
+# `uv sync` makes the environment match exactly what is declared, so anything
+# undeclared in the selected scope is REMOVED, not left alone.
 [project.optional-dependencies]
 voice = [
     "faster-whisper>=1.0.0",
