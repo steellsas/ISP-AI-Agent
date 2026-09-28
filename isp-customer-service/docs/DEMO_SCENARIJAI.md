@@ -10,6 +10,8 @@ kortele „ką sakyti“, o po skambučio pažymi, ar verdiktas ir baigtis sutap
 Naują scenarijų pridėti ar pakeisti — to failo redagavimas, kodo keisti nereikia.
 
 Dialogai eilutė po eilutės ir „ką tikrinu“ sąrašai — [BALSO_TESTAVIMAS.md](BALSO_TESTAVIMAS.md).
+Pati **pristatymo eiga** (kuriuos septynis iš šių skambučių rodyti, kokia tvarka ir ką sakyti
+žiūrovui) — [DEMO_PRISTATYMAS.md](DEMO_PRISTATYMAS.md).
 
 ## Prieš demo
 

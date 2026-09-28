@@ -4,6 +4,8 @@ Gyvas variantas (pakeitė `archive/TESTAVIMO_SCENARIJUS.md`, kuris aprašė sen�
 `voice_demo.py`, ReactAgent, walker). Formatas tas pats ir sąmoningai: **„Tu"** = ką sakai
 balsu, **„Agentas turi"** = ko tikimės (ne pažodžiui), **„Tikrinu"** = ką pažymi po skambučio.
 
+Pristatymo eiga (ką rodyti klientui ar vadovui ir kokia tvarka) —
+[DEMO_PRISTATYMAS.md](DEMO_PRISTATYMAS.md).
 Scenarijų katalogas (numeriai, adresai, laukiamos baigtys) — [DEMO_SCENARIJAI.md](DEMO_SCENARIJAI.md);
 tie patys duomenys dashboard'o skirtuke „Scenarijai" (`chatbot_core/src/app/scenarios.yaml`).
 Šis failas — **kaip** juos prakalbėti ir ką tuo įrodom.
