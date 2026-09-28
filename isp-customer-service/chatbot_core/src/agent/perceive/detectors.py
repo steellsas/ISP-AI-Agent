@@ -283,6 +283,23 @@ def detect_turn_intent(text: str | None) -> str:
     return INTENT_ANSWER
 
 
+def says_done_action(text: str | None) -> bool:
+    """Ar šiame ėjime pasakyta, kad veiksmas ATLIKTAS — net jei ėjimas yra klausimas.
+
+    `detect_turn_intent` tikrina klausimą PIRMIAU už atlikimą, ir tai teisinga: „nesuprantu, ką
+    padariau" nėra atliktas veiksmas. Bet gyvai 2026-09-28 (C1 skambutis) klientas pasakė
+    „Tai padariau. Ką tik padariau? Kas toliau?" — klaustukas nugalėjo, žingsnis nepajudėjo, ir
+    ta pati instrukcija nuskambėjo šešis kartus.
+
+    Todėl šis tikrinimas yra atskiras ir siauresnis: tik būtojo laiko veiksmo žodžiai
+    (`done_actions`), be „jau" ar „viskas", kurie klausime reikštų visai ką kita.
+    """
+    if not text:
+        return False
+    low = text.lower()
+    return any(marker in low for marker in vocab("done_actions"))
+
+
 def detect_confusion(text: str | None) -> bool:
     """True when the caller signals they do not follow the technical wording ("kas tas
     WAN?", "nesuprantu", "neišmanau"). Raises the clarity level for the rest of the

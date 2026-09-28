@@ -462,8 +462,10 @@ def _just_heard(state, rt) -> list[str]:
     if understood and third_person:
         out.append(
             "ACKNOWLEDGE in half a sentence IN YOUR OWN WORDS, addressing the caller in the "
-            "SECOND person („Gerai, kad padarėte…“, „Aišku, darote…“) — never quote an "
-            "internal summary and never speak about the caller in the third person."
+            "SECOND person („Supratau…“, „Gerai…“) — never quote an internal summary and "
+            "never speak about the caller in the third person. Reflect only what they SAID; "
+            "do not credit them with an action nobody reported (live 2026-09-28: the caller "
+            "said „Galiu?“ and heard „Gerai, kad perkrovėte“)."
         )
     elif understood:
         out.append(

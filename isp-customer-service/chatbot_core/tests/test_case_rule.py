@@ -113,6 +113,41 @@ class TestTheCaseWalksTheCall:
         assert plan.rule == "case.resolved"
         assert plan.action.type == "close" and plan.action.name == "resolved"
 
+    def test_a_done_report_inside_a_question_still_moves_the_step(self, call):
+        """Live 2026-09-28 (C1): „Tai padariau. Ką tik padariau? Kas toliau?" was read as a
+        QUESTION (the mark wins in `detect_turn_intent`), so the step never moved and the same
+        reboot instruction came back six times. A past-tense report of doing it counts even
+        when a question rides along."""
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)  # reach
+        said(state, rt, "reachable", "yes")
+        case_rule.plan(state, rt)  # reboot instruction given
+        state.dialog.turn_count += 1
+        state.dialog.last_intent = "question"
+        state.dialog.last_heard = "Tai padariau. Ką tik padariau? Kas toliau?"
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.verify", "the line is read instead of repeating the step"
+
+    def test_a_question_without_a_done_word_does_not_move_the_step(self, call):
+        """The other side of the same coin: asking about the step is not doing it."""
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)
+        said(state, rt, "reachable", "yes")
+        case_rule.plan(state, rt)
+        state.dialog.turn_count += 1
+        state.dialog.last_intent = "question"
+        state.dialog.last_heard = "O ar reikia ištraukti ir maitinimo laidą?"
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.reboot"
+
 
 class TestWhenTheFixDoesNotWork:
     def test_a_reboot_nobody_saw_is_retried_once_with_the_card_s_wording(self, call):

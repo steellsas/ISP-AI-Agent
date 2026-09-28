@@ -32,6 +32,8 @@ BANGA 3  Case + kortelė v2 + moduliai + įrangos katalogas (P-6, P-8)
 BANGA 4  lėtas internetas + TV tik failais + RAG atviriems klausimams
    │
 BANGA 5  valymas
+   │
+BANGA 6  gyvų testų radiniai: ką klientas pasakė ir ką agentas suprato
             … vėliau: 11 lokalūs modeliai (Piper, LLM, embeddings) · 12 integracija
 ```
 
@@ -46,10 +48,80 @@ BANGA 5  valymas
 | 4a | Informavimo kortelės (`news:`) + `verdict.py::decide` trynimas: kode nebėra medžio | AJ | 3 |
 | 4b | **Žinios naudojamos**: pažymėti dokumentai (`kind`/`tags`/`equipment`) + įrangos instrukcijos ir algoritmai pokalbyje. Kortelės/TV/lėtas internetas — po to | AJ, AK | 4a |
 | 5 | Valymas: vėliavos, seni keliai, pavadinimai, LT/EN raktai, testų žemėlapis | E, F5 | 4 |
+| 6 | Gyvų testų radiniai: žingsnio pabaiga, kartojimo riba, sąžiningas patvirtinimas, faktas kuris atmeta kortelę | G1–G4 | 5 |
 
 Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
+
+---
+
+## Banga 6 — gyvų testų radiniai (šaka `fix/wave-6-live`, 2026-09-28)
+
+Šaltinis: **C1 skambutis balsu** (`+37060020112`, pakibęs routeris), trace
+`logs/sessions/20260928-135148-398635-0001.jsonl`. Andrius: *„paspaudus mygtuką kabelis
+nesuveikė, bet kai perkroviau routerį suveikė. toliau primygtinai kartojo prieikite prie
+routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
+
+| # | Radinys | Būsena |
+|---|---|---|
+| **G1** | „Padariau… kas toliau?" neužskaitoma — nugali klaustukas | ✓ pataisyta |
+| **G2** | Ta pati instrukcija nuskambėjo **6 kartus** — nėra kartojimo ribos | atidėta — kortelių darbas |
+| **G3** | Melagingi patvirtinimai: „Gerai, kad perkrovėte" po „Galiu?" | ✓ pataisyta (promptas) |
+| **G4** | 🔌 Kabelis registravo `device_registered=foreign`, bet kortelės `rules_out` vidury sprendimo neperskaitytas | atidėta — kortelių darbas |
+
+### G1 · Klaustukas nugalėjo atliktą veiksmą
+
+`detect_turn_intent` tikrina eilės tvarka: sumišimas → **klausimas** → vyksta → atlikta.
+Sakinyje buvo abu, ir laimėjo klaustukas:
+
+| Kas pasakyta | Kaip suprasta | Kodėl |
+|---|---|---|
+| „Tai padariau. Ką tik padariau? Kas toliau?" | `question` | klaustukas prieš `padariau` |
+| „Ką tik padariu du kartus." | `answer` | ASR nukirto galūnę: `padariu` ≠ `padariau` |
+| „Mhm." / „Dar." | `answer` | nėra žymens |
+
+Kadangi `_reported_done()` grąžino `False`, žingsnis nepajudėjo, ir instrukcija nuskambėjo iš naujo.
+
+**Taisymas:** naujas `says_done_action()` ir naujas žodyno sąrašas `done_actions` — **siauresnis**
+už `done`: tik būtojo laiko veiksmai, be „jau", „viskas", „gatava" (tie klausime reiškia visai ką
+kita). Įjimo tipas nesikeičia — klausimas lieka klausimu ir gali būti atsakytas — bet žingsnis
+pajuda. Sumišimas savo kelio nepraranda: „nesuprantu, ką padariau" nėra atliktas veiksmas.
+
+**Ko tai pasiekia iš karto:** po žingsnio eina `verify`, kuris perskaito liniją ir — jei
+perkrovimo nesimato — paleidžia kortelės `on_fail` su `reason: no_flap`, t.y. žodinamą
+*„nematome, kad įrenginys būtų buvęs išjungtas"*. Tai **du iš Andriaus prašytos elgsenos
+punktai** (patikslinti iš linijos; perkrauta ir niekas nepasikeitė → gedimas), kurie kortelėje
+jau buvo aprašyti, tik iki jų niekada neprieita.
+
+### G3 · Patvirtinimas, kurio niekas nesakė
+
+Klientas pasakė „Galiu?" (ASR iš „Galiu"), supratimas — `confusion`, o atsakymas prasidėjo
+„**Gerai, kad perkrovėte.**" Toliau: „Gerai, kad radote routerį", „Aišku, kad darote", ir
+„**Gerai, kad padarėte.** Dabar ištraukite maitinimo laidą…" — vienu metu pagiria ir prieštarauja.
+
+**Taisymas:** `prompts/speak/system.md` ir `prompts/skills/instruct_step.md` — trumpa reakcija
+gali atspindėti tik tai, ką klientas **iš tikrųjų pasakė** arba ką turi kortelė; veiksmo,
+kurio niekas nepranešė, priskirti negalima. Abejojant — „Gerai" arba „Supratau" yra visa reakcija.
+
+### G2 ir G4 — kodėl atidėta
+
+Abu yra kortelės vykdytojo darbas, ir juos verta daryti kartu su tuo, ko Andrius paprašė
+2026-09-28 — tai ta pati vieta:
+
+> 1. „Jau perkroviau vakar" → **išgirsti**: „taip, jūs perkrovėte — pabandykim dar kartą dabar,
+>    ištraukus maitinimo laidą iš rozėtės."
+> 2. „Padariau, kas toliau?" → **pasitikslinti iš linijos**: ar routeris buvo dingęs ir grįžo.
+> 3. Buvo perkrautas, bet niekas nepasikeitė → **konstatuoti routerio gedimą** (meistras su
+>    prirašu „perkrauta, neatsistatė").
+> 4. Atsirado kas kita (kitas MAC) → **nauja diagnozė**, ne ta pati kortelė.
+> 5. Visa tai — **žmogiškai**: girdi klientą ir paaiškina, ką matė ir ką tai reiškia.
+
+Punktai 2 ir 3 po G1 jau veikia (žr. aukščiau). Lieka: **1** (laikas — „vakar" nėra „ką tik"),
+**4** (= G4) ir **kartojimo riba** (= G2).
+
+**Tikrinta:** 1354 passed, 1 skipped (3 nauji testai; vienas iš jų be taisymo krinta —
+`case.reboot` vietoj `case.verify`, t.y. tiksliai tai, kas nutiko gyvai).
 
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 

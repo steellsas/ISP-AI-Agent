@@ -573,11 +573,18 @@ def _reported_done(state: Any) -> bool:
     """
     if state.turn.done_report_key or state.dialog.last_intent == "done":
         return True
-    from ...perceive.detectors import detect_turn_intent, detect_yes_no
+    from ...perceive.detectors import detect_turn_intent, detect_yes_no, says_done_action
     from ...resolution import Outcome
 
     heard = state.dialog.last_heard
-    if detect_turn_intent(heard) == "done":
+    intent = detect_turn_intent(heard)
+    if intent == "done":
+        return True
+    # A done-report WITH a question in it is still a done-report (live 2026-09-28, C1):
+    # "Tai padariau. Kas toliau?" was read as a question, the step never moved, and the same
+    # instruction came back six times. Only a question — confusion keeps its own path, because
+    # "nesuprantu, ką padariau" is not a completed action.
+    if intent == "question" and says_done_action(heard):
         return True
     return detect_yes_no(heard) is Outcome.YES
 

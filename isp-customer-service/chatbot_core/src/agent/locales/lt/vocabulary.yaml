@@ -303,6 +303,33 @@ done:
   - "gatava"
   - "viskas"
 
+# Veiksmo pranešimas BŪTUOJU laiku — „aš tai padariau". Siauresnis už `done` sąrašą:
+# be „jau", „viskas", „gatava", nes tie žodžiai kaip tik dažniausi klausime („ar jau
+# galima?", „ar viskas?"), o šis sąrašas naudojamas būtent KLAUSIMO ėjime.
+#
+# Gyvai 2026-09-28 (C1): „Tai padariau. Ką tik padariau? Kas toliau?" — ėjimo tipas tapo
+# `question` (nugalėjo klaustukas), tad variklis nelaikė to atliktu ir kartojo tą pačią
+# instrukciją šešis kartus. Klausimas lieka klausimu, bet žingsnis pajuda.
+done_actions:
+  - "padariau"
+  - "padarėme"
+  - "padareme"
+  - "atlikau"
+  - "įkišau"
+  - "ikisau"
+  - "įjungiau"
+  - "ijungiau"
+  - "išjungiau"
+  - "isjungiau"
+  - "perkroviau"
+  - "perkrovėme"
+  - "perkroveme"
+  - "perjungiau"
+  - "ištraukiau"
+  - "istraukiau"
+  - "prijungiau"
+  - "pajungiau"
+
 question_marks:
   - "kiek"
   - "kodėl"
