@@ -200,7 +200,8 @@ nepasitikrinęs kelio. Tikrovėje 4a bangoje (2026-09-23, po gyvo skambučio) at
 atsakoma **iš tų pačių faktų** (`inform.asked_again_key`), ne iš frazės. Ta frazė lieka tik
 tam atvejui, kai skolos faktų dar nėra — tada ji teisinga.
 
-**Tikrinta:** 1351 passed, 1 skipped (8 naujų testų); eval — žemiau eigos žurnale.
+**Tikrinta:** 1351 passed, 1 skipped (8 naujų testų); eval **195/195** per visus 36 scenarijus,
+0 nesėkmių — LLM kelias ir finalizatorius po R-16 elgiasi taip pat.
 
 ### 5-6 · Žymės, kurios meluodavo
 
@@ -999,6 +1000,8 @@ trace'e matomi visi LLM kvietimai ir `turn_timing`.
 |---|---|---|---|---|
 | 2026-09-18 | — | Peržiūra 0–10 baigta, planas sudarytas; šaka `fix/wave-0` | vienetų testai: 1242 passed | Banga 0 |
 | 2026-09-18 | 0 | W0-1…W0-10 padaryti (W0-9 kartu su W0-2). Papildomai **W0-11**: eval'as du kartus užstrigo — faulthandler dump'as parodė deadlock'ą httpcore pool'e: W0-6 sargas nutraukdavo tik išorinį generatorių, provider srautą uždarydavo GC kito kvietimo viduje. Pataisyta: `stream_tool_completion` uždaro srautą `finally` bloke + visi LLM kvietimai su timeout (30 s, `LLM_TIMEOUT_S`). | vienetų: **1259 passed**; eval tekstas **178/178**; eval `--voice` **178/178**; T1 `--runs 3` **STABLE 3/3** (vienas ankstesnis T1 kritimas — LLM paminėjo „routerio" TV skambutyje, nepasikartojo) | Banga 1 |
+
+| 2026-09-28 | 5 | 5-1 tris bazes vietoj vienos · 5-2 žurnalų sargas (+R-12 įrašų terminas) · 5-3 v1 RAG ištrintas visas · 5-4 penkios nežinomos roadmap'o eilutės patikrintos kodu · 5-5 R-19 (perkrovimas tikrino seną turinį) ir R-16 (LLM biudžetas per pokalbį) · 5-6 žymės suvestos su tikrove | vienetų: **1351 passed**, 1 skipped; eval **195/195**, 0 nesėkmių (36 scenarijai) | gyvi balso testai (Andrius) · R-2 antras tiketas · R-3 LT literalai · R-4 delsa · 5–7 fazės |
 
 **Bangos 0 pastebėjimai kitoms bangoms (iš eval trace'ų, 69 skambučiai):**
 - Atsakymo sargas nukirpo 235 iš 266 LLM atsakymų dėl antro klausimo (+4 dėl ilgio) — modelis beveik visada klausia daugiau nei vieno dalyko. Tai 2b bangos (promptai pagal įgūdį) tikslas: sargas lieka saugikliu, bet promptas turi to išvengti pats.
