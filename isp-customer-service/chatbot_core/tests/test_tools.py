@@ -146,37 +146,6 @@ class TestRunPingTest:
             assert has_latency or result.get("summary")
 
 
-class TestSearchKnowledge:
-    """Tests for search_knowledge tool."""
-
-    def test_search_knowledge_returns_results(self, require_kb):
-        """Should return results for valid query."""
-        from agent.tools import search_knowledge
-
-        result = search_knowledge(query="lėtas internetas")
-
-        assert result["success"] == True
-        assert "results" in result
-
-    def test_search_knowledge_internet_query(self, require_kb):
-        """Should find internet-related content."""
-        from agent.tools import search_knowledge
-
-        result = search_knowledge(query="neveikia internetas")
-
-        assert result["success"] == True
-        assert len(result["results"]) > 0
-
-    def test_search_knowledge_empty_query(self):
-        """Should handle empty query gracefully."""
-        from agent.tools import search_knowledge
-
-        result = search_knowledge(query="")
-
-        # Should not crash
-        assert "success" in result
-
-
 class TestCreateTicket:
     """Tests for create_ticket tool (M6: knowledge-declared ticket types)."""
 
@@ -272,7 +241,6 @@ class TestToolsRegistry:
         assert "check_network_status" in tool_names
         assert "check_outages" in tool_names
         assert "run_ping_test" in tool_names
-        assert "search_knowledge" in tool_names
         assert "create_ticket" in tool_names
 
     def test_tools_have_descriptions(self):
@@ -287,7 +255,7 @@ class TestToolsRegistry:
         """execute_tool should work correctly."""
         from agent.tools import execute_tool
 
-        result = execute_tool("search_knowledge", {"query": "test"})
+        result = execute_tool("find_customer", {"phone": "+37060020112"})
 
         # Should return JSON string
         assert isinstance(result, str)
@@ -306,8 +274,10 @@ class TestToolsRegistry:
         from agent.tools import REAL_TOOLS
 
         assert (
-            len(REAL_TOOLS) == 10
-        )  # resolve_address, find_customer, diagnose_connection, check_network_status, update_mac, reset_port, check_outages, run_ping_test, search_knowledge, create_ticket
+            len(REAL_TOOLS) == 9
+        )  # resolve_address, find_customer, diagnose_connection, check_network_status,
+        # check_outages, run_ping_test, update_mac, reset_port, create_ticket. Nine since
+        # wave 5: `search_knowledge` left with the v1 RAG store it was the only caller of.
 
 
 class TestSeedNetworkStatus:
@@ -387,15 +357,15 @@ class TestToolValidation:
 
     def test_validate_missing_required(self):
         """Missing a required parameter returns a structured error, no cleaned args."""
-        search_knowledge = self._tools_by_name()["search_knowledge"]
+        check_network_status = self._tools_by_name()["check_network_status"]
 
-        cleaned, error = search_knowledge.validate_arguments({})
+        cleaned, error = check_network_status.validate_arguments({})
 
         assert cleaned == {}
         assert error is not None
         assert error["error"] == "invalid_arguments"
-        assert error["tool"] == "search_knowledge"
-        assert error["missing_required"] == ["query"]
+        assert error["tool"] == "check_network_status"
+        assert error["missing_required"] == ["customer_id"]
 
     def test_validate_coerces_scalar_to_string(self):
         """A scalar passed where a string is declared is coerced to str."""
@@ -421,13 +391,13 @@ class TestToolValidation:
         """execute_tool short-circuits on missing required args (no function call)."""
         from agent.tools import execute_tool
 
-        # search_knowledge requires 'query'; with none, validation must stop it
-        # BEFORE touching the knowledge base.
-        observation = execute_tool("search_knowledge", {})
+        # check_network_status requires 'customer_id'; with none, validation must stop it
+        # BEFORE touching the network service.
+        observation = execute_tool("check_network_status", {})
         data = json.loads(observation)
 
         assert data["error"] == "invalid_arguments"
-        assert data["missing_required"] == ["query"]
+        assert data["missing_required"] == ["customer_id"]
 
     def test_execute_tool_unknown_tool(self):
         """execute_tool returns an error for an unknown tool name."""

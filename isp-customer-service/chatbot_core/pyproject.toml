@@ -15,10 +15,11 @@ dependencies = [
     # Klientas moka ir VIETINĮ režimą (`:memory:`), tad CI testuoja tą patį kelią be serverio.
     # Klientas ir serveris (docker-compose.yml) turi eiti kartu — žr. komentarą ten.
     "qdrant-client>=1.19,<1.20",
+    # Embeddings run through `adapters/retrieval/embed.py` (e5-small, 384 dims) either in
+    # process or via the TEI service; the vector store is Qdrant. FAISS and rank-bm25 left
+    # with the v1 store in wave 5 — the sparse side is our own Lithuanian stemming now.
     "sentence-transformers>=2.2.0",
-    "faiss-cpu>=1.7.4",
-    "rank-bm25>=0.2.2",
-    "numpy>=1.24.0",
+    "numpy>=1.24.0",  # the ASR adapter
     "pyyaml>=6.0",
     "mcp>=1.21.0",
     "colorama>=0.4.6",

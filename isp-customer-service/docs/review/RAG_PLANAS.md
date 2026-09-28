@@ -416,9 +416,13 @@ validacija starte              bloga žinia stabdo programą, ne skambutį
 
 ---
 
-## 13. Kas ištrinama (5 banga)
+## 13. Kas ištrinama (5 banga) — **įvykdyta 2026-09-28**
 
-Dabar žinom, ko nenaudosim, tad mirusio v1 RAG palikti nebėra pagrindo:
+Ištrinta (žr. FIX_PLAN 5-3). Kartu išėjo ir tai, ko čia nebuvo suskaičiuota:
+`document_processor.py`, `rag/eval/` (antras eval'as), `scripts/build_kb.py`,
+`scripts/test_rag_loading.py`, `scripts/load_scenarios.py`, `tests/test_rag.py`,
+`rag_stop_words` žodynas, priklausomybė `rank-bm25` ir pats `search_knowledge` įrankis su
+manifestu — ne tik jo kelias:
 
 ```
 src/rag/embeddings.py · vector_store.py · hybrid_retriever.py · retriever.py

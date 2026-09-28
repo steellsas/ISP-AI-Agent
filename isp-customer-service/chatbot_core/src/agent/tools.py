@@ -1040,124 +1040,11 @@ def _check_outages_fallback(area: str) -> dict:
     }
 
 
-def search_knowledge(query: str) -> dict:
-    """
-    Search troubleshooting knowledge base using RAG.
-
-    Uses the FAISS vector store via the HYBRID retriever (semantic cosine +
-    keyword blend) — the eval harness measured hybrid ranking strictly better
-    than semantic-only (MRR 0.972 vs 0.917), so production uses it. Retrieval
-    knobs come from config (rag_top_k / rag_threshold), not hardcoded here.
-
-    Args:
-        query: Search query describing the problem
-
-    Returns:
-        Knowledge base results with relevance scores
-    """
-    logger.info(f"[TOOL] search_knowledge(query={query})")
-
-    try:
-        # Import RAG retriever (hybrid = semantic + keyword)
-        from src.rag import get_hybrid_retriever
-
-        retriever = get_hybrid_retriever()
-
-        # Load production KB if not already loaded
-        if not retriever.is_loaded():
-            logger.info("Loading production knowledge base...")
-            if not retriever.load("production"):
-                logger.warning("Failed to load production KB, trying default...")
-                retriever.load("default")
-
-        # Retrieval knobs from config (single source of truth). The threshold
-        # gates the semantic cosine pre-filter inside the hybrid retriever, so
-        # it stays a real relevance floor even though results are re-ranked by
-        # the keyword blend.
-        try:
-            from utils import get_config
-
-            cfg = get_config()
-            top_k = cfg.rag_top_k
-            threshold = cfg.rag_threshold
-        except Exception:
-            top_k, threshold = 3, 0.4
-
-        # Retrieve relevant documents
-        results = retriever.retrieve(query, top_k=top_k, threshold=threshold)
-
-        if not results:
-            return {
-                "success": True,
-                "results": [],
-                "message": "No specific knowledge found for this query.",
-            }
-
-        # Format results for agent
-        formatted_results = []
-        for result in results:
-            metadata = result.get("metadata", {})
-            formatted_results.append(
-                {
-                    "title": metadata.get(
-                        "section_title", metadata.get("filename", "Knowledge Base")
-                    ),
-                    "content": result["document"],
-                    "score": round(result["score"], 2),
-                    "category": metadata.get("category", "general"),
-                    "source": metadata.get("filename", "unknown"),
-                }
-            )
-
-        logger.info(f"RAG returned {len(formatted_results)} results")
-
-        return {
-            "success": True,
-            "results": formatted_results,
-        }
-
-    except ImportError as e:
-        logger.warning(f"RAG module not available: {e}, using fallback")
-        return _search_knowledge_fallback(query)
-    except Exception as e:
-        logger.error(f"Error in search_knowledge: {e}", exc_info=True)
-        return {
-            "success": False,
-            "error": str(e),
-            "message": "Knowledge base search failed.",
-        }
-
-
-def _search_knowledge_fallback(query: str) -> dict:
-    """Fallback keyword-based search when RAG is not available."""
-    query_lower = query.lower()
-
-    if "router" in query_lower or "restart" in query_lower or "perkrauti" in query_lower:
-        return {
-            "success": True,
-            "results": [
-                {
-                    "title": "Router Troubleshooting",
-                    "content": "Reboot the router: switch it off for 30 s, switch it back on.",
-                }
-            ],
-        }
-    elif "wifi" in query_lower or "slaptažod" in query_lower:
-        return {
-            "success": True,
-            "results": [
-                {
-                    "title": "WiFi",
-                    "content": "The WiFi password is on the sticker under the router.",
-                }
-            ],
-        }
-
-    return {
-        "success": True,
-        "results": [],
-        "message": "No specific knowledge found (fallback mode).",
-    }
+# `search_knowledge` — ištrintas 5 bangoje. Jis buvo vienintelis v1 RAG (FAISS + BM25)
+# kvietiklis, ir jo nekvietė niekas: kalbėtojas įrankiu neturi (M5), o žinias variklis gauna
+# per `agent/knowledge_base.py::find` (E1–E4). Kartu išėjo ir jo atsarginis kelias su įrašytais
+# atsakymais apie routerį bei WiFi — įrašytas atsakymas yra tai, ko žinių bazė kaip tik
+# nebeleidžia.
 
 
 def append_ticket_note(ticket_id: str, note: str, kind: str = "correction") -> dict:
@@ -1552,18 +1439,6 @@ REAL_TOOLS = [
         function=reset_port,
     ),
     Tool(
-        name="search_knowledge",
-        description="Search troubleshooting knowledge base for solutions. Use for router issues, WiFi problems, TV issues etc.",
-        parameters={
-            "query": {
-                "type": "string",
-                "description": "Search query describing the problem",
-                "required": True,
-            },
-        },
-        function=search_knowledge,
-    ),
-    Tool(
         name="create_ticket",
         description="Create support ticket for technician visit or escalation. Only use when problem cannot be resolved remotely.",
         parameters={
@@ -1636,8 +1511,3 @@ if __name__ == "__main__":
         customer_id = result.get("customer_id")
         net_result = check_network_status(customer_id)
         print(json.dumps(net_result, indent=2, ensure_ascii=False))
-
-    print("\n" + "=" * 50)
-    print("Test 3: search_knowledge")
-    kb_result = search_knowledge("router neveikia perkrauti")
-    print(json.dumps(kb_result, indent=2, ensure_ascii=False))

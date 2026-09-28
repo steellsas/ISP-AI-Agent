@@ -38,11 +38,11 @@ class RetrievedChunk(TypedDict):
 class RetrieverPort(Protocol):
     """A swappable knowledge-retrieval backend.
 
-    Both ``Retriever`` (semantic) and ``HybridRetriever`` (semantic + keyword)
-    already satisfy this structurally — only ``is_loaded()`` is new. The agent
-    core depends on this interface, never on FAISS, so swapping the vector store
-    (FAISS -> Qdrant/Chroma) or the embedding model is an adapter swap with zero
-    changes to the agent.
+    The port earned its keep: it was written against the v1 FAISS retrievers, and when
+    wave 5 deleted them the agent core needed no change at all. Today
+    ``adapters/retrieval/lexical.py`` (files, the default and the fallback) and
+    ``adapters/retrieval/qdrant_store.py::QdrantRetriever`` (sparse + dense, fused in
+    Qdrant) satisfy it, and `KB_BACKEND` chooses between them at startup.
     """
 
     def retrieve(

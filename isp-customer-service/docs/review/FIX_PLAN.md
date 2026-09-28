@@ -61,7 +61,7 @@ radinius (testu DB, žurnalai, R-21/R-16).
 |---|---|---|
 | 5-1 | Testų / eval'o / demo DB atskyrimas (`DATABASE_PATH`) | ✓ |
 | 5-2 | Žurnalų rotacija: eval'o trace'ai atskirai, `prune_logs.py` (senos liekanos + įrašų saugojimo terminas) | ✓ |
-| 5-3 | Miręs v1 RAG: `embeddings.py`, `vector_store.py`, `retriever.py`, `hybrid_retriever.py`, `faiss-cpu`, `tools.py` kelias, vienas eval | |
+| 5-3 | Miręs v1 RAG: 6 moduliai, FAISS indeksas, `faiss-cpu`, `rank-bm25`, `search_knowledge` įrankis, antras eval | ✓ |
 | 5-4 | Penkios nežinomos roadmap'o eilutės (R-2 antras tiketas, R-6, R-8, R-19, `request_cancel`) — patikrinti, ne spėti | |
 | 5-5 | R-21 skolos formuluočių konfliktas · R-16 LLM limiteris 100 per procesą | |
 | 5-6 | Roadmap'ų žymės: `archive/ROADMAP*.md` ir `refactoring/ROADMAP.md` suvedami su tikrove | |
@@ -128,6 +128,34 @@ nesilaikomas (D-14 privatumas). Dabar pasibaigęs terminas reiškia, kad įraša
 **Tikrinta:** `run_eval.py --only R1_billing_request` 7/7, trace'as nukeliavo į `logs/eval/`,
 demo bazė nepaliesta; sausas paleidimas rodo 132 865 failus / 208 MB kandidatų su `--keep 200`.
 
+
+### 5-3 · v1 RAG išėjo visas
+
+Miręs kodas čia buvo ne šiukšliadėžė — jis **klaidino**: `tools.py` vis dar turėjo įrankį, kuris
+žinias skaito per 2026-06-12 FAISS indeksą (dokumentai keisti rugsėjį), o `src/rag/__init__.py`
+skelbė šešias klases, kurių nei viena nebedalyvavo skambutyje.
+
+| Ištrinta | Kodėl galėjo |
+|---|---|
+| `embeddings.py`, `vector_store.py`, `retriever.py`, `hybrid_retriever.py`, `document_processor.py` | vienintelis kvietiklis buvo `search_knowledge` |
+| `vector_store_data/production_index.faiss` (+ `.pkl`) | 2026-06-12 indeksas prie rugsėjo dokumentų |
+| įrankis `search_knowledge` + jo manifestas + 3 testai | kalbėtojas įrankių neturi (M5) — niekas jo nekvietė |
+| `rag/eval/` (`run_eval.py`, `queries.json`) | antras eval'as; gyvas yra `agent/eval/` |
+| `scripts/build_kb.py`, `test_rag_loading.py`, `load_scenarios.py` | statydavo tą patį FAISS indeksą |
+| `tests/test_rag.py` (177 eil.) + `kb_available` / `require_kb` / `retriever` fixture'ai | tikrino v1 |
+| `rag_stop_words` (žodynas) | BM25 tokenizatoriaus liekana |
+| priklausomybės `faiss-cpu`, `rank-bm25` | nebeimportuojamos |
+
+`src/rag/` dabar yra **duomenys**: `knowledge_base/` dokumentai, žodynas, klausimų rinkinys ir
+viena eksploatacijos priemonė `scripts/index_qdrant.py`. Paieškos kodas — `agent/knowledge_base.py`,
+`agent/knowledge_need.py` ir `adapters/retrieval/`.
+
+Portas pasiteisino: `ports/retrieval.py` buvo rašytas PRIEŠ v1 retriever'ius, ir juos ištrynus
+agento branduolyje nereikėjo pakeisti nė vienos eilutės.
+
+**Tikrinta:** 1343 passed, 1 skipped (buvo 1363 — išėjo 20 v1 testų); `app.main` importuojasi,
+įrankių 9 (buvo 10), `kb.find("kaip pakeisti wifi slaptazodi")` randa
+`equipment/router_tplink.md` (0.784); keturi v1 moduliai neberandami.
 
 ## Banga 4b — žinios naudojamos (šaka `fix/wave-4a`, tęsinys)
 
