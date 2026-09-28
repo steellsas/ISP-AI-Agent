@@ -99,3 +99,31 @@ palieka kontakto įrašą (`agent/call_record/`).
 Klausimų rinkinys gyvena **prie žinių** (`src/rag/knowledge_base/_questions.yaml`), ne testuose —
 tą patį failą skaito ir ingestijos kanarėlė, tad CI ir gamyba negali nesutarti, kas yra
 „pakankamai gerai".
+
+### Ko CI nepaleidžia — ir kodėl tai nėra skylė
+
+GitHub paleidėjas neturi embedding'ų modelio ir į HuggingFace neina (`HF_HUB_OFFLINE=1`,
+kad nekiltų 419/429 audra). Todėl **dvylika** `test_qdrant_index.py` testų — tie, kuriems
+reikia `dense` vektorių — ten **praleidžiami**, ir tai matosi santraukoje (`pytest -rs`):
+
+```
+SKIPPED tests/test_qdrant_index.py:331: embedding modelis nepasiekiamas: OSError: ...
+```
+
+Iki 2026-09-28 jie krisdavo kaip **12 klaidų**, nors niekas nebuvo sugedę — `embeddings_or_skip()`
+dabar tikrina tikru kėlimu ir praleidžia švariai. Praleistis sako tiesą (nepaleista), klaida sakė
+netieSĄ (sugedo).
+
+Kas CI vis tiek lieka apsaugota:
+
+| Vis dar tikrinama be modelio | Kodėl to užtenka |
+|---|---|
+| *sparse* sandauga **lygi** leksiniam balui (24 iš 36 to failo testų) | jei Qdrant atsako kitaip nei failai, kalta ne semantika, o indeksas |
+| `test_knowledge_recall.py` — 68 klausimai, `hit@1`/`hit@2` ribos | rikiavimo kokybė |
+| `test_knowledge_need.py` — ribos ir atsisakymai | agentas neina ne į savo sritis |
+| `test_retrieval_port.py` | portas grąžina tuos pačius dokumentus |
+
+**Jei norėsim hibridą tikrinti ir CI:** įdėti `actions/cache` į `~/.cache/huggingface`, prieš
+testus vieną kartą parsisiųsti modelį ir nuimti `HF_HUB_OFFLINE`. Kaina — ~0,5 GB kešo ir kelių
+minučių pirmas paleidimas; nauda — hibrido regresijos pagaunamos PR metu, o ne ranka. Sprendimas
+Andriaus; kol kas hibridas tikrinamas lokaliai ir per eval'ą.
