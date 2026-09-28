@@ -62,9 +62,9 @@ radinius (testu DB, žurnalai, R-21/R-16).
 | 5-1 | Testų / eval'o / demo DB atskyrimas (`DATABASE_PATH`) | ✓ |
 | 5-2 | Žurnalų rotacija: eval'o trace'ai atskirai, `prune_logs.py` (senos liekanos + įrašų saugojimo terminas) | ✓ |
 | 5-3 | Miręs v1 RAG: 6 moduliai, FAISS indeksas, `faiss-cpu`, `rank-bm25`, `search_knowledge` įrankis, antras eval | ✓ |
-| 5-4 | Penkios nežinomos roadmap'o eilutės (R-2 antras tiketas, R-6, R-8, R-19, `request_cancel`) — patikrinti, ne spėti | |
-| 5-5 | R-21 skolos formuluočių konfliktas · R-16 LLM limiteris 100 per procesą | |
-| 5-6 | Roadmap'ų žymės: `archive/ROADMAP*.md` ir `refactoring/ROADMAP.md` suvedami su tikrove | |
+| 5-4 | Penkios nežinomos roadmap'o eilutės — patikrinta kodu, ne spėta | ✓ |
+| 5-5 | R-16 LLM limiteris 100 per procesą · R-19 perkrovimas tikrino seną turinį · R-21 (jau buvo uždaryta) | ✓ |
+| 5-6 | Roadmap'ų žymės suvestos su tikrove (59 eilutės + R-1…R-21) | ✓ |
 
 ### 5-1 · Trys bazes vietoj vienos
 
@@ -156,6 +156,70 @@ agento branduolyje nereikėjo pakeisti nė vienos eilutės.
 **Tikrinta:** 1343 passed, 1 skipped (buvo 1363 — išėjo 20 v1 testų); `app.main` importuojasi,
 įrankių 9 (buvo 10), `kb.find("kaip pakeisti wifi slaptazodi")` randa
 `equipment/router_tplink.md` (0.784); keturi v1 moduliai neberandami.
+
+### 5-4 · Penkios eilutės, kurių būsenos nežinojau
+
+Roadmap'e jos stovėjo be žymės, ir vietoj spėjimo kiekviena patikrinta kode:
+
+| # | Kas | Radinys |
+|---|---|---|
+| R-2 | antra problema pokalbio viduryje → antras tiketas | **atvira.** `intake.py::_is_secondary` įrašo tik `solve` tipo gedimą, o `register` (sąskaita, atjungimas) numetamas: pats kodas tai ir sako komentare — *„a request … gets its own ticket later (F-28)"*, o to „later" dar nėra. Closing'as apie antrą gedimą paklausia (`closing.secondary_problems_asked`), bet tiketo nekuria |
+| R-6 | analitiko tikslinimo ciklas | **padaryta.** Prieštaros ciklas yra `decide/hypothesis.py` (`doubt` → `due` → `ask` → `answered`, vienu metu tik VIENA prieštara) + `analyst/node.py` signalai `contradiction` / `already_answered` / `secondary_problem`. Antra pusė („tikslinti tik kai žingsnio rezultato nėra") — 4a bangos trečias kąsnis (`17cbeab`) |
+| R-8 | F-13 patvirtinti eval scenarijumi | **padaryta.** `R1b_billing_request_farewell_midway` — scenarijaus apraše įrašytas tas pats 2026-09-17 gyvas skambutis |
+| R-19 | `/admin/knowledge/reload` atmeta ką tik pridėtą frazę | **atvira ir blogiau, nei buvo rašyta** — žr. 5-5 |
+| — | `request_cancel` (barge-in) gyvu balso skambučiu | **tavo rankose.** Kodu to nepatikrinsiu; scenarijai — [BARGE_IN_TESTAI.md](../BARGE_IN_TESTAI.md) |
+
+### 5-5 · Trys smulkūs, iš kurių vienas buvo rimtas
+
+**R-19 — perkrovimas tikrino ne tai, ką įkeldavo.** `/admin/knowledge/reload` pirma
+validuodavo, paskui išmesdavo kešus. Vadinasi validacija skaitė failus tokius, kokie jie buvo
+STARTE. Išmatuota 2026-09-28: kortelė su nurodyta neegzistuojančia fraze **praėjo** validaciją,
+o endpoint'as atsakė `reloaded` ir įkeldavo niekada nepatikrintą turinį. Pažadas
+(*„a broken edit is refused and the running knowledge stays"*) buvo apverstas.
+
+Dabar `loader.revalidate()`: **pirma kešai, paskui validacija**. Ko tai NEGALI — atšaukti
+blogo redagavimo: kešai tik įsimena failus, tad juos išmetus sekantis skaitytojas mato tai, kas
+diske. Todėl sąžiningas pažadas yra kitas: **bloga redakcija pranešama su klaidomis, ir failą
+reikia pataisyti bei perkrauti dar kartą.**
+
+**R-16 — LLM limiteris.** Dvi skirtingos baimės dalinosi vienu skaitliuku: provaiderio
+(kiek kvietimų per minutę šis PROCESAS gali) ir pabėgusio skambučio (kiek vienas pokalbis gali
+išleisti). Antra buvo skaičiuojama irgi per procesą, tad serveris po ~100 kvietimų atsakydavo
+VISIEMS iki perkrovimo, o eval'as turėdavo kilnoti lubą. Mes patys į tai atsitrenkėme du kartus.
+
+Dabar biudžetas skaičiuojamas **per pokalbį** (ContextVar, kurį `AgentSession._observing`
+nustato apie kiekvieną ėjimą), o pasibaigus skambučiui finalizatorius skaitliuką pamiršta.
+Minutės langas lieka proceso lygio — provaideriui nesvarbu, iš kurio skambučio srautas.
+Šeši nauji testai: vieno pokalbio biudžetas neuždaro kito, per ėjimus skaitliukas nesinulina,
+minutės langas bendras, `forget` atlaisvina, skaitliukų kiekis ribotas.
+
+**R-21 — skolos formuluočių konfliktas: jau uždaryta, ir mano ankstesnis pranešimas buvo
+klaidingas.** Radau `phrases.yaml` frazę *„Tikslios sumos aš nematau"* ir pranešiau konfliktą,
+nepasitikrinęs kelio. Tikrovėje 4a bangoje (2026-09-23, po gyvo skambučio) atsirado
+`faq.yaml: answer_from_news: billing_suspended` — jei skolos verdiktas šiame skambutyje yra,
+atsakoma **iš tų pačių faktų** (`inform.asked_again_key`), ne iš frazės. Ta frazė lieka tik
+tam atvejui, kai skolos faktų dar nėra — tada ji teisinga.
+
+**Tikrinta:** 1351 passed, 1 skipped (8 naujų testų); eval — žemiau eigos žurnale.
+
+### 5-6 · Žymės, kurios meluodavo
+
+Trys roadmap'ai rodė daug daugiau neatlikto, nei buvo tikrovėje, nes bangos vedė savo `F-`
+numeraciją ir su senomis eilutėmis niekada nesusijungė:
+
+| Dokumentas | Buvo | Po patikros |
+|---|---|---|
+| `archive/ROADMAP.md` | 49 nepažymėtos | 21 padaryta · 5 kitaip · 5 dalinai · 7 neaktualu · 10 atvira |
+| `archive/ROADMAP_REFACTORING.md` | 10 nepažymėtų | 5 padaryta · 2 kitaip · 3 atviros |
+| `refactoring/ROADMAP.md` (R-1…R-21) | **nė vienos žymės** | 10 padaryta · 2 kitaip · 3 dalinai · 6 atviros |
+
+Kiekviena eilutė patikrinta kode, ne atmintyje, ir gavo prierašą su įrodymu (kur padaryta arba
+kas dabar tą darbą daro). Archyviniai dokumentai gavo **būsenos antraštę** su lentele, o
+R-lentelė — **Būsenos stulpelį**.
+
+Kodėl tai ne kosmetika: iš 49 eilučių tikrai atvirų liko 10, ir beveik visos yra 5–7 fazės
+(realtime, lokalūs modeliai, produkcija) — t.y. tai, kas ir suplanuota PO demo. Toks sąrašas
+telpa į galvą; penkiasdešimt tariamų darbų — ne.
 
 ## Banga 4b — žinios naudojamos (šaka `fix/wave-4a`, tęsinys)
 

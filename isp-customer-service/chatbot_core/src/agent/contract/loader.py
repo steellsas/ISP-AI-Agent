@@ -361,7 +361,10 @@ def startup() -> Knowledge:
 
 
 def reload() -> None:
-    """Drop every knowledge cache (files, locale, derived readers)."""
+    """Drop every knowledge cache (files, locale, derived readers).
+
+    Call this BEFORE validating an edit, not after — see `revalidate()`.
+    """
     from .. import detectors, faq, faults, identification, inform, intents, services, ticket_types
     from . import cards, equipment, limits, locale, policies, signals, tools
 
@@ -384,6 +387,24 @@ def reload() -> None:
         tools,
     ):
         module.reload()
+
+
+def revalidate() -> Knowledge:
+    """Drop the caches, then validate what is really on disk.
+
+    The order matters, and it was wrong until wave 5. `/admin/knowledge/reload` used to
+    validate FIRST and clear the caches after, so validation read the files as they were at
+    startup: a freshly edited card was not seen at all, and a phrase key just added to
+    `phrases.yaml` looked missing. Measured 2026-09-28 — a card edited to reference a
+    non-existent phrase passed validation, and the endpoint answered `reloaded` while putting
+    the never-validated file live. The promise ("a broken edit is refused") was inverted.
+
+    What this cannot do is undo a bad edit: the caches only memoise files, so once they are
+    dropped the next reader sees whatever is on disk. Hence the honest contract — a broken
+    edit is REPORTED with its errors, and the file has to be fixed and reloaded again.
+    """
+    reload()
+    return validate()
 
 
 def _rel(path: Path) -> str:

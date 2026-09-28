@@ -10,6 +10,7 @@ kept apart from the outcome (F-4).
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from ..contract.locale import phrase
@@ -31,6 +32,12 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
     if rt.ended.is_set():
         return
     rt.ended.set()
+    # The call is over: its LLM budget is nobody's business any more (R-16). Kept out of the
+    # try/except below on purpose — forgetting a counter cannot fail a call record.
+    with contextlib.suppress(Exception):
+        from ...services.llm.rate_limiter import forget_conversation
+
+        forget_conversation(rt.session_id)
     # Hang-up safety net (2026-08-05): the call ended MID-STRATEGY with no
     # ticket — the problem is not solved and nobody would follow up (observed
     # live: registration promised, caller hung up via the UI button, ticket

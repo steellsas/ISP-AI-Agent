@@ -20,6 +20,7 @@ Usage:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 from typing import Any
@@ -158,11 +159,19 @@ class AgentSession:
             success=stats.get("success", True),
         )
 
+    @contextlib.contextmanager
     def _observing(self):
-        """The block whose LLM calls are reported to this conversation."""
-        from src.services.llm.client import observe_llm_calls
+        """The block whose LLM calls belong to THIS conversation.
 
-        return observe_llm_calls(self._observe_llm)
+        Two things follow from that: the calls are reported to this session's stats, and they
+        are counted against this conversation's own LLM budget. The budget used to be a
+        process counter, so a server refused every caller after ~100 calls (R-16).
+        """
+        from src.services.llm.client import observe_llm_calls
+        from src.services.llm.rate_limiter import conversation_scope
+
+        with observe_llm_calls(self._observe_llm), conversation_scope(self.session_id):
+            yield
 
     @staticmethod
     def _graph_reply(out: dict) -> str | None:

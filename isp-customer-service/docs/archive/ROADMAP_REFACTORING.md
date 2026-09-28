@@ -12,6 +12,18 @@
 
 ---
 
+## Būsena 2026-09-28 (5 banga, žymių suvedimas)
+
+Šis dokumentas — **archyvas**: M0–M7 sujungti į `develop` 2026-09-17 (PR #85), o tolesnis
+darbas vyksta [refactoring/ROADMAP.md](../refactoring/ROADMAP.md) (R-1…R-21) ir
+[review/FIX_PLAN.md](../review/FIX_PLAN.md) bangomis.
+
+Nepažymėtų liko dešimt eilučių; jos patikrintos kodu 2026-09-28: **penkios padarytos** (tik
+nepažymėtos), **dvi išspręstos kitaip** (subgrafo atsisakyta), **trys atviros** (balso delsa,
+filler WS kelyje, barge-in gyvas testas). Kiekvienoje eilutėje — prierašas su įrodymu.
+
+---
+
 ## 1. Dabartinė padėtis (2026-08-12 auditas)
 
 - LangGraph sluoksnis **plonas ir dekoratyvinis**: 4 mazgai (`address_validation`,
@@ -114,8 +126,9 @@ Taisyklės (kad nereikėtų perdaryti):
       switch_unreachable, outage, billing, side-topic. 2026-08-12 palyginimas:
       **7/7 PASS, 0 pariteto skirtumų**. Komanda:
       `uv run python src/agent/eval/run_eval.py --compare graph,v2`
-- [ ] Scenarijų papildymas (nekritinis): dhcp_silent (CUST106),
+- [x] Scenarijų papildymas (nekritinis): dhcp_silent (CUST106),
       stuck→eskalacija (nežinomas skambintojas), ticket demand mid-flow
+      **✓ padaryta** — `app/scenarios.yaml` + kortelė `v2/cards/dhcp_silent.yaml`
 - [x] `AGENT_ENGINE=v2` reikšmė `session.py` (šalia esamų `graph`/`legacy`)
 - **DoD:** auksiniai testai žali su senuoju varikliu; jungiklis veikia.
 
@@ -139,11 +152,14 @@ Taisyklės (kad nereikėtų perdaryti):
       greeting, reply, lookup-only tool gate); `route_entry` — gryna funkcija virš
       GraphState (`ticket_stage` promotintas į state, sinchronizuojamas kas turn'ą)
 - [ ] `side_topic` — tikras mazgas (dabar sub-kvietimas `diagnosis` viduje)
+      **🔁 kitaip** — subgrafo atsisakyta: `side_topic` yra `decide/rules/` taisyklė
 - [ ] Diagnozės subgrafo griaučiai: 9 žingsnių seka iš `nodes/diagnosis/__init__.py`
       tampa mazgais su paprastomis briaunomis (dar be guard'ų perkėlimo)
+      **🔁 kitaip** — 9 žingsnių seką pakeitė kortelės v2 + Case (3 banga)
 - [x] Token streaming per `get_stream_writer()` patikrintas gyvu balso skambučiu
       (2026-08-12: sesija 160617 — 18 checkpointų, pilna būsena + audio įrašai)
 - [ ] `request_cancel` (barge-in) kelias patikrintas gyvu balso skambučiu
+      **⏳ Andriaus rankose** — scenarijai `docs/BARGE_IN_TESTAI.md`
 - [x] Checkpoint serde: custom tipai registruoti per
       `JsonPlusSerializer(allowed_msgpack_modules=…)` (`checkpoint.py`, abu
       import root'ai) — 0 įspėjimų, skaitymas grąžina tikrus modelius
@@ -190,8 +206,9 @@ Taisyklės (kad nereikėtų perdaryti):
       guard'as grąžina True = suvartojo turn'ą. Advancement dispatch'as
       (escalate/restored/see_device/instruct/confirm keyword) liko walker'yje —
       tai mechanika, ne guard'ai. Ateity guard'ai taps v2 subgrafo edges.
-- [ ] Efemeriniai `_flag'ai` (§6) → `TurnScratch` arba lieka mazgo lokalūs
+- [x] Efemeriniai `_flag'ai` (§6) → `TurnScratch` arba lieka mazgo lokalūs
       (atidėta — flag'ai dabar aiškiai matomi flow moduliuose)
+      **✓ padaryta** — `graph_v2/state.py::TurnScratch`
 - [x] `react_agent.py` susitraukė iki **1533 eil.** (nuo ~5500): liko LLM
       ciklas (step/stream/run_until_response), repeat guard, reply
       finalizacija, call record ir delegatai
@@ -215,6 +232,7 @@ sprendimas — suvienodinti import root'ą visame projekte.
       klaida nebe tyla — error trace + skriptinė frazė
       (`phrases.turn_error`); stream kelias gavo rate-limit + connect-retry.
 - [ ] Filler WS keliui (reikia async laikmačio — kartu su srautiniu STT)
+      **⏳ atvira** — kartu su srautiniu STT (ROADMAP R-4)
 - [x] **Solveris — centrinis** (2026-08-13, `5e86ba9`+`da0d48b`): visi trys
       paketai `vairuotojas: solveris`; analizė iš evidence žinių, sprendimai
       `tada:walker` (žingsnių medis vykdo, sync-once), LLM solveris — spragų
@@ -230,13 +248,16 @@ Principas (Andrius, 2026-08-12): **kodas = mechanika, failai = elgsena.**
 Viskas, ką agentas SAKO ar KO KLAUSIA, turi būti redaguojama failuose be
 programavimo; kode lieka tik varikliukas (walker, gate, ledger, verdiktas).
 
-- [ ] Sensorių promptai → failai: solver.py `_SYSTEM`, understand.py ir
+- [x] Sensorių promptai → failai: solver.py `_SYSTEM`, understand.py ir
       classifier.py sisteminiai promptai dabar Python string'uose — perkelti į
       `prompts/sensors/*.md` (tas pats include mechanizmas kaip naratoriaus)
-- [ ] Guard'ų slenksčiai (re-ask bandymai, restored_denials riba, drive cap,
+      **✓ padaryta** — `agent/prompts/sensors/` (11 failų)
+- [x] Guard'ų slenksčiai (re-ask bandymai, restored_denials riba, drive cap,
       gate DEFAULT_POLICY) → konfigūracijos failas
-- [ ] Raktažodžių sąrašai (glossary, goodbye, continue-solving marks) → YAML
+      **✓ padaryta** — `knowledge/limits.yaml` (su `env` perrašymu)
+- [x] Raktažodžių sąrašai (glossary, goodbye, continue-solving marks) → YAML
       šalia faults.yaml
+      **✓ padaryta** — `locales/lt/vocabulary.yaml`
 
 - [x] **Gedimų paketai** (2026-08-13, `483eb8c`+`40ab897`): `knowledge/faults/`
       (1 failas = 1 gedimas, meta/tags/domenas/priklauso_nuo), `knowledge/modules/`
@@ -255,6 +276,7 @@ programavimo; kode lieka tik varikliukas (walker, gate, ledger, verdiktas).
       prompte. Eval su gyvomis formuluotėmis: 7/7, 29/29.
 - [ ] Balso delsa: srautinis STT (daliniai transkriptai), filler įjungimas,
       retry/rate-limit streaming kelyje
+      **⏳ atvira** — ROADMAP R-4 (delsa nuo 2026-09-17 nematuota)
 - **DoD:** naujas gedimas = YAML + MD, nulis Python; klausytojo testas
   „skamba kaip technikas, ne skriptas".
 

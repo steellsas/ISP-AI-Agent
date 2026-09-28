@@ -158,7 +158,7 @@ def _bump_rate_limits() -> None:
         except ImportError:
             continue
         mod.reset_rate_limiter()
-        mod.get_rate_limiter().update_limits(max_per_minute=300, max_per_session=1000)
+        mod.get_rate_limiter().update_limits(max_per_minute=300, max_per_conversation=1000)
 
 
 # --- Run one scenario -------------------------------------------------------------
