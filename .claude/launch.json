@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "isp-demo",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "--app-dir", "chatbot_core", "src.app.main:app", "--port", "8080"],
+      "port": 8080,
+      "cwd": "isp-customer-service"
+    }
+  ]
+}

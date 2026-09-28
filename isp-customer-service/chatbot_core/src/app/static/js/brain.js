@@ -180,7 +180,20 @@ function makeBrain(root, opts = {}) {
       case "analyst_signals": return (e.signals || []).length ? ["decide", "analitikas", (e.signals || []).map(s => s.type || s.kind).join(", ")] : null;
       case "scripted": return ["decide", "variklis", "atsakymą sudarė variklis"];
       case "held_outage": return ["decide", "avarija", `${e.action} ${e.street || ""}`];
-      case "rag": return ["decide", "žinios", `${e.doc} §${e.section}`];
+      case "rag": return ["decide", "žingsnis iš žinių", `${e.doc} §${e.section}`];
+      // Žinių paieška (RAG E1–E4): arba atsisakymas su priežastimi, arba kas rasta ir ar tvirtai.
+      // Be šios eilutės įvykis nukrisdavo į `default` ir rodydavo žalius laukus — o būtent čia
+      // matosi, KAIP agentas mąsto: ar klausė kortelė, ar klientas, ir kuo jis nepasitiki.
+      case "knowledge": {
+        if (e.refused) return ["decide", "žinios", `neieškojo (${e.refused}) — „${e.said || ""}“`];
+        // `found` yra dalių sąrašas, o dvi dalys dažnai yra iš TO PAČIO dokumento — rodom failą
+        // vieną kartą su dalių skaičiumi, kad eilutė sakytų „iš kur", o ne kartotų save.
+        const docs = String(e.found || "-").split(",").filter(Boolean);
+        const uniq = [...new Set(docs)].map(d => d + (docs.filter(x => x === d).length > 1 ? ` ×${docs.filter(x => x === d).length}` : ""));
+        const who = e.asked_by === "card" ? "kortelė" : "klientas";
+        const how = docs.length === 0 || e.found === "-" ? "nerado" : (e.sure ? "tvirtai" : "spėjimas");
+        return ["decide", "žinios", `${uniq.join(" · ")} · ${how} · klausė ${who}: „${e.words || ""}“`];
+      }
       case "nlu": return ["decide", "NLU", kv({ problema: e.problem, miestas: e.city, gatvė: e.street, namas: e.house, butas: e.apartment })];
       case "session_start": return ["decide", "pradžia", `skambina ${e.caller_phone}`];
       case "session_end": return ["decide", "pabaiga", `${e.outcome} · ${e.transport_end || ""}`];

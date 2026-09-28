@@ -19,6 +19,7 @@
 
 | Document | Purpose |
 |---|---|
+| [DEMO_PRISTATYMAS.md](DEMO_PRISTATYMAS.md) | **The demo run**: the order of the seven calls, what to say, what to point at on the dashboard, and what not to show |
 | [DEMO_SCENARIJAI.md](DEMO_SCENARIJAI.md) | The demo calls: numbers, what to say, what to expect — also in the dashboard's **Scenarijai** tab (`chatbot_core/src/app/scenarios.yaml`) |
 | [FAULT_PACKS.md](FAULT_PACKS.md) | Writing fault packs and the knowledge files (English schema, step roles, locale keys, intents, ticket types, services) |
 | [ZINIU_BAZE.md](ZINIU_BAZE.md) | The knowledge base: how to write a document the agent will actually find (tags, kinds, equipment scoping) |
@@ -37,7 +38,7 @@
 | `uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080` | The service and the dashboard |
 | `uv run pytest` | Unit and integration tests |
 | `uv run python chatbot_core/src/agent/eval/run_eval.py [--only ID] [--json out.json]` | Scripted calls, scored |
-| `uv run python scripts/refactor_acceptance.py` | Architecture acceptance checks from every milestone's Definition of Done |
+| `uv run python scripts/prune_logs.py [--days N] [--keep N] [--apply]` | Logs janitor: old call traces and audio past its retention date (dry run without `--apply`) |
 
 ## Planned
 
