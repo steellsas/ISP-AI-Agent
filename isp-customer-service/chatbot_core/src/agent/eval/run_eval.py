@@ -53,6 +53,16 @@ _PROJECT_ROOT = _SRC_DIR.parents[1]  # isp-customer-service
 if str(_SRC_DIR) not in sys.path:
     sys.path.insert(0, str(_SRC_DIR))
 
+# The eval REBUILDS the database between scenarios, so it must not touch the demo file the
+# server and the dashboard hold open: on Windows that rebuild fails with WinError 32, and on
+# any platform it would wipe the state a live test call is standing on. Set before the first
+# `agent` import, because `agent.tools` resolves the path at import time.
+os.environ.setdefault("DATABASE_PATH", "database/isp_database.eval.db")
+# Same reasoning for the traces: an eval run writes one per scenario, and those used to
+# land in `logs/sessions` among the REAL calls (the dashboard archive reads that folder).
+# 2026-09-28: 133k trace files there, almost none of them from a human.
+os.environ.setdefault("TRACE_DIR", str(_PROJECT_ROOT / "logs" / "eval"))
+
 SCENARIOS_PATH = _EVAL_DIR / "scenarios.json"
 
 # Voice-length caps (Phase 3.11 A): the single longest reply and the per-scenario
@@ -148,7 +158,7 @@ def _bump_rate_limits() -> None:
         except ImportError:
             continue
         mod.reset_rate_limiter()
-        mod.get_rate_limiter().update_limits(max_per_minute=300, max_per_session=1000)
+        mod.get_rate_limiter().update_limits(max_per_minute=300, max_per_conversation=1000)
 
 
 # --- Run one scenario -------------------------------------------------------------

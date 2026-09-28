@@ -9,6 +9,28 @@
 
 ---
 
+## Būsena 2026-09-28 (5 banga — žymių suvedimas)
+
+Šis dokumentas yra **archyvas**: gyvas darbas vyksta
+[review/FIX_PLAN.md](../review/FIX_PLAN.md) bangomis ir
+[refactoring/ROADMAP.md](../refactoring/ROADMAP.md) R-eilutėmis. Nepažymėtų čia buvo **49**,
+ir jos klaidino (49-oji — tik antraštė poskyriui): dauguma jau padaryta, tik niekas nepažymėjo. Kiekviena patikrinta kodu
+2026-09-28 ir gavo prierašą:
+
+| Žymė | Reikšmė | Kiek |
+|---|---|---|
+| `[x]` + **✓** | padaryta, tik nebuvo pažymėta | 21 |
+| **🔁** | išspręsta kitaip — punkto planas nebeaktualus | 5 |
+| **◐** | dalinai; kas liko — įvardinta | 5 |
+| **❌** | neaktualu (mirė su v1) arba istorinė „Next" žymė | 7 |
+| **⏳** | tikrai atvira | 10 |
+
+Atviros beveik visos yra **5 fazė (realtime), 6 (lokalūs modeliai) ir 7 (produkcija)** — t.
+y. tai, kas ir suplanuota po demo. Vienas punktas iš 1 fazės (LLM atsakymų talpykla) lieka
+sąmoningai atidėtas.
+
+---
+
 ## 1. Design tenets
 
 - **Ports & Adapters (hexagonal).** Anything that can change (LLM, ASR, TTS, Transport, DB)
@@ -93,6 +115,7 @@ chatbot_core/src/
         hit-rate ≈ 0. The actual cost/quality lever is history management (see
         Phase 2). Decide cache's fate there — likely delete, or replace with a
         semantic cache — rather than wiring low-ROI infra now.
+    **⏳ vis dar sąmoningai atidėta**
   - [x] Empty `respond` message handling: model could pick `action: respond`
         with an empty `message`; the falsy check in `run_until_response` treated
         `""` as "no response" and silently fell through to `timeout_message`
@@ -206,6 +229,7 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       `rag/document_processor.py` and `build_kb.py` imports it. Behaviour-preserving
       (recall@3 = 18/18). — *`refactor/rag-single-document-processor`*
 - [ ] Token-based chunking (current `_chunk_text` splits on whitespace words) — `rag/document_processor.py`
+  **❌ neaktualu — `document_processor.py` ištrintas (5 banga); dalijam pagal markdown sekcijas**
 - [x] **Real hybrid retrieval: BM25 + RRF** — replaced the weighted keyword-overlap
       re-ranker with `rank_bm25.BM25Okapi` over the FULL corpus (catches exact
       technical matches semantic misses) fused with Reciprocal Rank Fusion (k=60,
@@ -220,13 +244,17 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       deletes — so adding S4/S5 content (Phase 2.5 step 6) does **not** trigger the
       stale-index bug. Stays deferred / low-priority; fix only if incremental
       delete is ever needed.
+  **❌ neaktualu — `vector_store.py` ištrintas; perstatymas yra `index_qdrant.py --rebuild`**
 - [ ] Embedding dim from the model; include `normalize` flag in cache key — `rag/embeddings.py`
+  **🔁 kitaip — E3: modelio vardas ir 384 dims deklaruoti kolekcijoje + `model_mismatch` saugiklis**
 - [ ] LT↔EN cross-lingual retrieval tests (small eval set with expected docs) — `lang` metadata foundation already in place
-- [ ] _(later stage)_ RAG content governance: structure the knowledge base to the
+  **◐ dalinai — yra 68 klausimų rinkinys su slenksčiais (`_questions.yaml`); LT↔EN neprireikė, dokumentai lietuviški**
+- [x] _(later stage)_ RAG content governance: structure the knowledge base to the
       company's processes, de-duplicate / strip noise, and a workflow for
       updating & extending docs — eventually automate the add/fix pipeline. Deferred
       until there is more real content and settled internal conventions; re-run the
       eval harness after each content change to catch retrieval regressions.
+  **✓ padaryta — `docs/ZINIU_BAZE.md` + `_vocabulary.yaml` (kontroliuojami raktai, tikrinami starte)**
 
 **Done:** eval set returns correct docs in top-k; thresholds are principled, not arbitrary.
 
@@ -279,6 +307,7 @@ retrieval changes, so every change below is verified against numbers, not eyebal
       identity.
     - Contract under a **spouse's / family member's name**; caller may not know whose
       name it's registered under.
+  **◐ dalinai — `knowledge/identification.yaml` + `limits.yaml`; atskiro `policy.yaml` kaip vartų nėra**
     - **Partial name match** (surname matches, given name differs, e.g. "Romutė" vs the
       registered "Roma") → ask a clarifying question rather than accept/reject outright.
     - Possible **extra verification tools**: is this phone number seen in the outage /
@@ -446,7 +475,7 @@ is MANDATORY agent behaviour (into the system prompt).
       Also needed by the B-Plan bridge content in step 6 (MAC binding is its core
       action). Observed in CLI: without the tool the model SAID "Dabar atnaujinsiu
       MAC adresą" and faked it via check_network_status — the stub closes this hole.
-- [ ] **6. RAG knowledge-base entries for S4/S5 instruction steps.** Step-by-step
+- [x] **6. RAG knowledge-base entries for S4/S5 instruction steps.** Step-by-step
       customer-side guidance (power/cable check; Factory Reset → DHCP; Wi-Fi module),
       delivered one step at a time. Re-run the eval harness after content changes.
       **EXPANDED (approved 2026-06-12): "bridge until the technician" content —
@@ -459,13 +488,15 @@ is MANDATORY agent behaviour (into the system prompt).
       replacement. KB must teach the agent WHEN to offer it (router dead, line OK)
       and the exact steps + that MAC binding is required. Depends on step 5's
       `update_mac` stub.
-- [ ] **6b. Proactive outage awareness (designed 2026-06-12, details TBD).**
+  **✓ padaryta — 4b banga: `knowledge_base/procedures/` ir kortelės, kurios per juos veda**
+- [x] **6b. Proactive outage awareness (designed 2026-06-12, details TBD).**
       Motivated by a CLI bug: the model called check_outages city-only and
       attributed ANOTHER street's outage to the caller (sent away with the wrong
       answer while his real fault — foreign MAC — stayed unsolved). Patched at
       prompt+tool level (shortcut only pre-identification; street required;
       street-match mandatory; city-only tool warning), but the better design
       moves the decision out of the LLM entirely:
+  **✓ padaryta — 4a banga: informavimo kortelė `v2/cards/active_outage.yaml`**
       - **`get_active_outages()` tool** — list of streets with active mass
         outages `{city, street, description, ETA}`; no customer needed.
       - **Pre-flight injection** — at session start (caller phone known),
@@ -475,10 +506,11 @@ is MANDATORY agent behaviour (into the system prompt).
         "Ar skambinate dėl Dainų g.? Ten avarija, visame kvartale nėra
         interneto, atstatymas ~17 val." — two-phrase handling during call
         storms. PII note: reveals only the street tied to the caller's number.
-- [ ] **7. CLI text-to-text test.** Validates LOGIC/dialog flow (identification,
+- [x] **7. CLI text-to-text test.** Validates LOGIC/dialog flow (identification,
       verdict → A/B/C routing, instruction steps, ticket creation, filtering zone).
       Voice runtime (barge-in, real latency, state-aware timeouts) is documented in
       `pokalbio_valdymas.md` but deferred to the voice phase — non-blocking here.
+  **✓ padaryta — `src/agent/eval/run_eval.py` (tekstas ir `--voice`)**
 
 - [x] **8. Observability — conversation trace (BEFORE the voice phase).** — *done.*
       Design: `stebejimo_dizainas.md`. One unified trace, hooked at the single `AgentSession`
@@ -621,6 +653,7 @@ losing/overwriting facts, deciding wrongly, and is ready for many fault types an
       pre-render the fixed/static phrases (greeting, fillers, common instructions)
       as WAV/MP3 → 0 ms for those (the filler is a cache client). Caching adapter
       behind the TTS port; only FIXED phrases cache — LLM-varied replies still synth.
+  **◐ dalinai — srautinis TTS yra (`edge_tts.stream()`); filler WS kelyje — ne (R-4)**
 - **3. LangGraph migration** — done BEFORE step 2 (decision 2026-06-19: get the
   structure right, then mask latency on top of the working graph). Split:
   - [x] **3.1 graph plumbing** — one-node `StateGraph` + `MemorySaver` behind the
@@ -860,6 +893,7 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
         the DB" holds — the policy only reorders the CONVERSATION, never relaxes a guard.
         Enables: problem-first flow, per-problem identity depth (billing vs a technical
         fault), extra verification questions (name) declared alongside 5d.
+    **🔁 kitaip — 1 banga: vienas efektų gate + `OWNER_PRIORITY` atskyrė eilę nuo veiksmų**
 
   **Target artefacts (the "no code for a new fault" contract):**
   - `agent/faults/faults.yaml` — per fault: `id`, `purpose_triggers`, `playbook` (the RAG
@@ -871,10 +905,11 @@ space (allowed actions + guardrails); it no longer dictates HOW the agent thinks
     executing bind/ticket/close. Knowledge says WHAT to do; code guarantees what CANNOT be
     done. A new fault = a manifest entry + a playbook + seed + an eval scenario; a new
     physical capability (e.g. a speed test) still adds a tool once.
-- [ ] **6. Widen** — cut over the remaining directions one fault at a time; retire the
+- [x] **6. Widen** — cut over the remaining directions one fault at a time; retire the
   walker steps for each as it goes. **North star: a UNIVERSAL solver that resolves any
   fault exactly as the RAG domain knowledge instructs — the algorithm and the checks live
   in the playbook, the engine only enforces safety + executes.**
+  **✓ padaryta — 16 kortelių `knowledge/v2/cards/`**
 
 ---
 
@@ -915,10 +950,12 @@ resolve *flawlessly and entirely from the engine* first, so a new fault is genui
 - [ ] **C. Solver-drive to reliable** — reach `propose_fix` reliably, stop lingering on
       `disambiguate`; extend the pilot to the other no-internet directions once each passes
       the fuzzing eval in shadow. Decide walker-retirement per direction on the numbers.
-- [ ] **D. (Enables widening) interpretation + signals → knowledge** — move
+  **🔁 kitaip — kortelės v2: `steps` + `done_when` + telemetrija (3–4a bangos)**
+- [x] **D. (Enables widening) interpretation + signals → knowledge** — move
       `verdict.gather_signals` (which signals) and `verdict.decide` (telemetry→cause) behind
       the manifest, so the LAST code-bound pieces of a fault definition become files. Only
       needed to make step 6 "files only"; do it once no-internet is solid.
+  **✓ padaryta — `knowledge/signals.yaml` + `analyst/signals.py`**
 
 **Done:** the no-internet fault is reliable end-to-end from files on the engine; adding the
 next fault touches only `faults.yaml` + a playbook + seed + an eval scenario.
@@ -956,6 +993,7 @@ below are built DETERMINISTICALLY from state, not from LLM free text.
             teardown. Tested (row written end-to-end + FK-drop; test_tracing).
 - [ ] **(Later) reporting / history surface** — per-customer call history and aggregate
       reports off the call records; feeds agent improvement and faster repeat-fault diagnosis.
+  **⏳ atvira — archyvas yra, agreguotų skaičių nėra (R-14)**
 
 **Ticketing is a CALL-ENDING outcome, in ONE node (design decision 2026-07).** A ticket is
 never created mid-troubleshooting — it is always part of wrapping up: either "couldn't
@@ -1023,6 +1061,7 @@ before Phase 5 (async + telephony).
 - [ ] **D. 3.8 leftovers on the universal-agent track** *(parallel, not blocking)* —
       solver cut-over on dead-router (5/6), signals→knowledge (D). Phase 5 does not
       depend on these, but they continue the "universal thinking agent" line.
+  **🔁 kitaip — 3.8 likutis suvalgytas kortelių v2 (3 banga)**
 
 ### Operating philosophy (2026-08-03, Andrius): after-hours helper, humans take over via tickets
 
@@ -1079,44 +1118,55 @@ the session registry isolates sessions — but scale, hosting and shared-resourc
 limits are deliberately re-thought later; see notes below).
 
 **PR1 — foundation (text vertical):**
-- [ ] `chatbot_core/src/app/` skeleton (per Target structure §4): FastAPI app
+- [x] `chatbot_core/src/app/` skeleton (per Target structure §4): FastAPI app
       factory, pydantic-settings config
       (model keys, DB paths, feature flags like SOLVER_DRIVE — today scattered
       through env), `/health`, uvicorn entry, launch.json config.
-- [ ] Session manager: `session_id → AgentSession` (graph engine) registry —
+  **✓ padaryta — `src/app/` (main, sessions, events, voice, archive, admin, static)**
+- [x] Session manager: `session_id → AgentSession` (graph engine) registry —
       create / get / end, TTL cleanup for forgotten sessions, a per-session lock
       so concurrent turns on one session cannot interleave. API async from day
       one; the engine stays sync inside (Phase 5 swaps the inside only).
-- [ ] Tracer event-bus: every event the engine already emits (`node`,
+  **✓ padaryta — `app/sessions.py`**
+- [x] Tracer event-bus: every event the engine already emits (`node`,
       `tool_call/result` + ms, `rag`, `decision`, `scripted`, `llm`
       tokens/latency, `voice_latency`) is ALSO broadcast live to WS subscribers,
       plus a per-turn `turn_summary` JSON (node, tools, tokens, cost, latency).
       The jsonl trace file stays the archive format — one source of truth.
-- [ ] Text dialogue API: `POST /sessions` → `{session_id, greeting}`;
+  **✓ padaryta — `app/events.py` + `adapters/tracing/jsonl_tracer.py`**
+- [x] Text dialogue API: `POST /sessions` → `{session_id, greeting}`;
       `POST /sessions/{id}/turns {text}` → `{reply, state}` (+ SSE token
       stream); `DELETE /sessions/{id}` → end + call record.
-- [ ] `/ws/call/{session_id}`: typed messages — JSON = events, binary = audio
+  **✓ padaryta**
+- [x] `/ws/call/{session_id}`: typed messages — JSON = events, binary = audio
       (audio lands in PR2); events channel live from PR1.
-- [ ] Tests: httpx lifecycle, turns, event stream, N concurrent sessions
+  **✓ padaryta — `app/voice.py`**
+- [x] Tests: httpx lifecycle, turns, event stream, N concurrent sessions
       (structural check only).
+  **✓ padaryta — `tests/test_api.py`**
 
 **PR2 — voice + demo dashboard v1:**
-- [ ] Audio over the same WS: browser mic → VAD/STT → turn → TTS → audio back,
+- [x] Audio over the same WS: browser mic → VAD/STT → turn → TTS → audio back,
       reusing `voice_pipeline` adapters; the local voice demo becomes an API
       client instead of in-process.
-- [ ] Call audio recording (WAV per call next to the trace jsonl) — needed for
+  **✓ padaryta**
+- [x] Call audio recording (WAV per call next to the trace jsonl) — needed for
       the archive zone.
-- [ ] `index.html` dashboard (single page, Tailwind + Web Audio API, served by
+  **✓ padaryta — `logs/sessions/<id>/turn_NN_*.wav|mp3`**
+- [x] `index.html` dashboard (single page, Tailwind + Web Audio API, served by
       FastAPI — no build step): left = live transcript (STT/TTS), right = agent
       "brain" (active LangGraph node, tool calls with ms, active RAG section,
       tokens + call cost USD, latency incl. TTFT, ENGINE-vs-LLM indicator per
       turn from `scripted`/`decision` events).
-- [ ] Honest latency: half-duplex until Phase 5 (no barge-in/AEC yet); the
+  **✓ padaryta — dashboard su Testavimo / Archyvo / Scenarijų skirtukais**
+- [x] Honest latency: half-duplex until Phase 5 (no barge-in/AEC yet); the
       dashboard SHOWS the real STT→LLM→TTS numbers — that is the Phase 5 pitch.
+  **✓ padaryta**
 
 **PR3 — archive & analytics:**
-- [ ] Past-call list (conversations table), full trace viewer, audio playback,
+- [x] Past-call list (conversations table), full trace viewer, audio playback,
       cost summary per call, JSON export (PDF later, cosmetics).
+  **✓ padaryta — archyvas su trace peržiūra ir garso atkūrimu**
 
 **Vision (target demo, build incrementally — not all at once):** three-zone
 screen — live conversation | agent internals | history/analytics; single
@@ -1193,12 +1243,16 @@ exists, else ticket). Questions are generated from MISSING evidence, so
       one from state ("Pokalbis nutrūko" on the record, caller-ID contact)
 
 **Steps:**
-- [ ] Ledger v1 on no_mac_observed: state.evidence + extraction call +
+- [x] Ledger v1 on no_mac_observed: state.evidence + extraction call +
       conflict clarify + questions from missing evidence (rewind class dies)
-- [ ] findings node + guards
+  **✓ padaryta — `agent/evidence.py` + `state.diagnosis.evidence`**
+- [x] findings node + guards
+  **✓ padaryta — išvada skelbiama per Case ir `explain_finding` įgūdį**
 - [ ] Generalize: evidence blocks for all faults.yaml faults; retire
       per-detector classifiers where extraction covers them
+  **🔁 kitaip — v1 `faults.yaml` nebeplėsiamas; jį keitė kortelės v2**
 - [ ] Clarity levels per evidence item (adaptation ladder in the file)
+  **⏳ atvira — pritaikymo kopėtėlės nėra; yra `reexplain_confused` įgūdis**
 
 ---
 
@@ -1211,23 +1265,27 @@ gyvos avarijos (haliucinuoti tiketai, per ankstyvas bind), tad determinizmas
 buvo sąmoninga kaina. Grąžinam LLM'ui vairo palaipsniui, kiekvieną pakopą
 tikrinant balsu + eval'u:
 
-- [ ] **A. Naratoriaus formuluojami klausimai** — variklis sprendžia KĄ
+- [x] **A. Naratoriaus formuluojami klausimai** — variklis sprendžia KĄ
       klausti (ledger'io raktas — šventa), LLM formuluoja KAIP pagal kontekstą
       ir kliento kalbėseną; yaml tekstas lieka atsarga (LLM klaidos atveju) ir
       prasmės inkaras. Taikoma ir suvestinei („Pasitikslinu…") bei išvados
       paskelbimui. Tikslas: dingsta „to paties teksto kas skambutį" pojūtis.
-- [ ] **B. Garsus mąstymas (išvados, ne tik faktai)** — po kiekvieno ledger'io
+  **✓ padaryta — `NARRATOR_QUESTIONS` + `prompts/skills/ask_fact.md`**
+- [x] **B. Garsus mąstymas (išvados, ne tik faktai)** — po kiekvieno ledger'io
       įrašo naratorius įpareigojamas vienu sakiniu pasakyti IŠVADĄ: „kadangi
       kiti įrenginiai veikia, rozetė gera — lieka pats routeris". Apibendrina
       esamą kodel/isvada mechaniką iš faults.yaml.
+  **✓ padaryta — 2b banga: `explain_finding` įgūdis**
 - [ ] **C. Solver'io išlaisvinimas** *(diskusijai po A+B)* — platesnė veiksmų
       erdvė (gate'ai lieka: vienpusės durys, įrankiai, tiketai tik per variklį),
       „patikrinkime dar kartą" ramentas apribojamas biudžetu.
+  **⏳ atvira — diskusijai (ROADMAP 4.6 C)**
 - [ ] **D. Mąstymo ciklas** *(diskusijai; už vėliavos, lyginamas eval'u)* —
       supratimo pass'as + solver'is sulydomi į vieną apmąstymo žingsnį kas
       ėjimą: „ką pasakė → kas iš to seka → ko trūksta → ką sakau" su
       struktūruotu išėjimu; deterministinis sluoksnis lieka grynai saugos
       tinklas. Kaina: +latencija, +tokenai — derinti su latencijos paketu.
+  **⏳ atvira — diskusijai, už vėliavos**
 
 Eiga: A+B po `feat/hearing-agent` merge → balso patikra, ar „skripto jausmas"
 keičiasi → Andriaus klausimai apie agento struktūrą → sprendimas dėl C/D.
@@ -1238,9 +1296,11 @@ keičiasi → Andriaus klausimai apie agento struktūrą → sprendimas dėl C/D
 
 - [ ] **Async conversation engine** — `run_until_response` → async generator;
       token streaming into the streaming TTS port (deferred here from Phase 3.5).
+  **⏳ atvira — 5 fazė**
 - [ ] **Fast-path / slow-path split** — real-time media loop (WebSocket STT/TTS)
       decoupled from the async LangGraph "brain" (event-driven). Needed for
       telephony; enables true overlap.
+  **⏳ atvira — 5 fazė**
 - [ ] **AEC + asymmetric barge-in filter** — acoustic echo cancellation so
       `can_interrupt` can be re-enabled without the agent cutting itself off
       (browser AEC alone proved insufficient — trace `20260618-092029`). On top of
@@ -1249,8 +1309,11 @@ keičiasi → Andriaus klausimai apie agento struktūrą → sprendimas dėl C/D
       + LT affirmation list → keep talking) vs real new speech ("ne, ne tas
       adresas" → stop + full LangGraph switch). Start heuristic (duration +
       wordlist), not an ML classifier. Prereq: AEC.
+  **◐ dalinai — barge-in yra (`request_cancel`, `BARGE_IN_TESTAI.md`); AEC — ne**
 - [ ] Barge-in / streaming polish
+  **◐ dalinai — tą pačią eilutę žr. aukščiau**
 - [ ] `fastphone()` real-call test → later Twilio / PBX `transport` adapter
+  **⏳ atvira — telefonijos transportas dar nepradetas**
 
 **Done:** call the agent from a real phone; core untouched.
 
@@ -1259,6 +1322,7 @@ keičiasi → Andriaus klausimai apie agento struktūrą → sprendimas dėl C/D
 ## Phase 6 — Local models
 
 - [ ] Ollama llama3 + HF models = adapter swap; (later) finetuning prep
+  **⏳ atvira — 11 etapas (lokalūs modeliai)**
 
 **Done:** local mode works via config; hybrid if LT quality requires it.
 
@@ -1267,6 +1331,7 @@ keičiasi → Andriaus klausimai apie agento struktūrą → sprendimas dėl C/D
 ## Phase 7 — Production hardening
 
 - [ ] Observability (structured logs, traces, cost guards), deploy, secrets, `security-review`
+  **⏳ atvira — 12 etapas (produkcija)**
 
 ---
 
@@ -1348,7 +1413,7 @@ never degrades consultation quality — the core "pro" safety net.
       the ASR/TTS ports, plus framework-free `VoicePipeline` (ASR → `AgentSession`
       → TTS). Engine imports deferred; `voice` optional extra; offline tests green
       (PR #28).
-- [ ] **Next:** Phase 2.5 · "Neveikia internetas" demo slice (text-to-text) —
+- [x] **Next:** Phase 2.5 · "Neveikia internetas" demo slice (text-to-text) —
       build order: (1) seed S1–S5 + mock telemetry, (2) `diagnose_connection`
       verdict (A variant), (3) system-prompt rewrite (hierarchical ID + two-speed
       latency + mandatory fill-wait + A/B/C routing), (4) identification lookup
@@ -1357,22 +1422,27 @@ never degrades consultation quality — the core "pro" safety net.
       (6) RAG KB for S4/S5, (7) CLI text-to-text test. Design docs in
       `chatbot_core/docs/` (`scenarijus_`, `demo_plan_`, `kliento_identifikacijos_`,
       `pokalbio_valdymas`).
-- [ ] Phase 3 · FastRTC transport adapter — `Stream` + `ReplyOnPause` →
+  **❌ istorinė žymė — Phase 2.5 seniai pravestas**
+- [x] Phase 3 · FastRTC transport adapter — `Stream` + `ReplyOnPause` →
       `VoicePipeline`, `.ui.launch()` for live Lithuanian voice testing; add
       `fastrtc` to the `voice` extra. Identity-gate / `policy.yaml` follows, tuned
       against real call transcripts.
+  **❌ istorinė žymė**
 - [ ] _(deferred)_ Phase 1 · token-based chunking (replace whitespace-word `_chunk_text`)
       and the LT↔EN cross-lingual eval (lang metadata already in place). The
       cross-lingual / harder eval set is also what would finally show BM25's upside
       numerically. Each measured against the eval harness.
-- [ ] **Next:** Phase 3.5 · Conversation engine (`feat/conversation-engine`) —
+  **❌ neaktualu — v1 `_chunk_text` ištrintas (5 banga)**
+- [x] **Next:** Phase 3.5 · Conversation engine (`feat/conversation-engine`) —
       build order: (0) design doc `pokalbio_variklis.md`, (1.1) prompt-cache fix,
       (1.2) typed slots, (1.3) tool-access gate, (1.4) NLU extraction, (2) latency
       masking (filler + streaming TTS port), (3) LangGraph migration (nodes +
       MemorySaver). Async / fast-slow split / AEC deferred to Phase 5.
-- [ ] **Next:** Phase 3.8 · Thinking agent on rails (`feat/thinking-agent`) —
+  **❌ istorinė žymė — variklis padarytas ir jau perstatytas (M0–M7)**
+- [x] **Next:** Phase 3.8 · Thinking agent on rails (`feat/thinking-agent`) —
       START with step 0, the **eval harness** (Golden Dataset from the 9 voice
       scenarios + found bugs, driven text-to-text through `AgentSession`, hard-scored),
       the prerequisite before any reasoning change. Design: `docs/MASTANTIS_AGENTAS_SPEC.md`
       (+ `ARCHITEKTUROS_LINIJA.md`, `ARCHITEKTUROS_SCHEMA.md`). Then classifier →
       solver → gate → narrator bridging → shadow mode on the dead-router direction.
+  **❌ istorinė žymė — 3.8 padarytas**

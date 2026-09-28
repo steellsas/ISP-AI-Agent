@@ -324,16 +324,20 @@ async def config_get():
 
 @app.post("/admin/knowledge/reload")
 async def knowledge_reload():
-    """Re-read the knowledge files after an edit. The files are validated first; a
-    broken edit is refused with its errors and the running knowledge stays."""
+    """Re-read the knowledge files after an edit, and report a broken edit with its errors.
+
+    `revalidate()` drops the caches first and then validates what is on disk — the reverse
+    of the old order, which validated the files as they were at startup and so never saw the
+    edit it claimed to check (wave 5). A refusal means the edit is broken and still on disk:
+    fix the file and reload again.
+    """
     from agent.contract import loader
     from agent.contract.schema import KnowledgeError
 
     try:
-        knowledge = await asyncio.to_thread(loader.validate)
+        knowledge = await asyncio.to_thread(loader.revalidate)
     except KnowledgeError as e:
         raise HTTPException(status_code=422, detail=e.errors) from None
-    loader.reload()
     return {"status": "reloaded", "packs": len(knowledge.packs), "modules": len(knowledge.modules)}
 
 

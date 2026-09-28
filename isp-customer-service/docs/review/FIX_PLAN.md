@@ -51,6 +51,177 @@ Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
 
+## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
+
+Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo
+keliuose sarašuose: valymą (šis planas), nepažymėtus roadmap'ų punktus ir tris atskirus
+radinius (testu DB, žurnalai, R-21/R-16).
+
+| # | Kas | Būsena |
+|---|---|---|
+| 5-1 | Testų / eval'o / demo DB atskyrimas (`DATABASE_PATH`) | ✓ |
+| 5-2 | Žurnalų rotacija: eval'o trace'ai atskirai, `prune_logs.py` (senos liekanos + įrašų saugojimo terminas) | ✓ |
+| 5-3 | Miręs v1 RAG: 6 moduliai, FAISS indeksas, `faiss-cpu`, `rank-bm25`, `search_knowledge` įrankis, antras eval | ✓ |
+| 5-4 | Penkios nežinomos roadmap'o eilutės — patikrinta kodu, ne spėta | ✓ |
+| 5-5 | R-16 LLM limiteris 100 per procesą · R-19 perkrovimas tikrino seną turinį · R-21 (jau buvo uždaryta) | ✓ |
+| 5-6 | Roadmap'ų žymės suvestos su tikrove (59 eilutės + R-1…R-21) | ✓ |
+
+### 5-1 · Trys bazes vietoj vienos
+
+Testai kiekvieną sesiją **trina ir atkuria** bazės failą (sėklose yra `datetime('now')`
+eilučių, tad senas failas kitos dienos testus padarytų neapibrėžtus). Eval'as tą patį daro
+tarp scenarijų. O demo failas tą pačią minutę laikomas serverio ir dashboard'o — Windows
+ištrinti laikomo failo neleidžia:
+
+```
+PermissionError [WinError 32] database/isp_database.db
+```
+
+Todėl kelio nebeklausiama penkiose vietose atskirai — jį sako viena
+([`agent/db_path.py`](../../chatbot_core/src/agent/db_path.py)), o perrašoma aplinkos
+kintamuoju, kurį `shared/src/utils/config.py` skaitė nuo pat pradių, tik agento pusė to
+nepaisydavo:
+
+| Kas | Failas |
+|---|---|
+| serveris, dashboard, gyvi balso testai | `database/isp_database.db` (nepakito) |
+| `pytest` | `database/isp_database.test.db` |
+| `run_eval.py` | `database/isp_database.eval.db` |
+
+Svarbi detalė: `DATABASE_PATH` turi būti nustatytas **prieš** pirmą `agent` importą —
+`agent/__init__` įsiveža `agent.tools`, o tas kelią išsprendžia importo metu. Todėl
+`conftest.py` jį nustato pirmoje eilutėje, o `run_eval.py` — prieš `sys.path` paruošimą.
+
+**Tikrinta:** 1363 passed, 1 skipped (2:42) su savo baze; `database/isp_database.db` laiko
+žymė nepakito — demo pasaulis testo metu nepaliestas.
+
+### 5-2 · Žurnalai nebeauga be galo
+
+`logs/sessions/` 2026-09-28 turėjo **133 265** trace failus (jsonl + txt), iš kurių beveik nei
+vienas ne nuo žmogaus: ten rašė ir testai (jau iškelta — radinys L), ir eval'as. Kaina ne
+vieta (208 MB), o tai, kad kataloge nebeįmanoma nieko rasti: `ls` kabo minutėmis, o tikri
+skambučiai pasimetę tarp mašinos generuotų.
+
+| Kas | Kur rašo dabar |
+|---|---|
+| gyvi skambučiai (dashboard archyvas juos skaito) | `logs/sessions/` |
+| `run_eval.py` | `logs/eval/` (naujas `TRACE_DIR` numatytasis) |
+| `pytest` | laikinas katalogas (buvo prieš tai) |
+
+Valymui — [`scripts/prune_logs.py`](../../scripts/prune_logs.py), **sausas paleidimas pagal
+nutylėjimą** (be `--apply` nieko netrina):
+
+```powershell
+uv run python scripts/prune_logs.py                    # ką išmestų
+uv run python scripts/prune_logs.py --keep 200 --apply  # palikti 200 naujausių skambučių
+```
+
+Dvi taisyklės: **amžius** (`--days`, nutylėjimas 90) ir **kiekis** (`--keep N`). Amžius yra
+ilgalaikė taisyklė, o kiekis — tai, kas išverčia seną kalną: visi 133 tūkst. failų buvo
+jaunesni nei 90 dienų, tad vien pagal amžių nebūtų ištrintas nei vienas. Trinama **po
+skambutį**: `.jsonl` ir skaitomas `.txt` visada kartu.
+
+Tas pats skriptas uždaro ir **R-12**: neatpažintam skambučiui įrašas gauna
+`audio_retention_until` datą, bet iki šiol NIEKAS jos nevykdė — pažadas buvo užrašytas ir
+nesilaikomas (D-14 privatumas). Dabar pasibaigęs terminas reiškia, kad įrašas ištrinamas.
+
+**Tikrinta:** `run_eval.py --only R1_billing_request` 7/7, trace'as nukeliavo į `logs/eval/`,
+demo bazė nepaliesta; sausas paleidimas rodo 132 865 failus / 208 MB kandidatų su `--keep 200`.
+
+
+### 5-3 · v1 RAG išėjo visas
+
+Miręs kodas čia buvo ne šiukšliadėžė — jis **klaidino**: `tools.py` vis dar turėjo įrankį, kuris
+žinias skaito per 2026-06-12 FAISS indeksą (dokumentai keisti rugsėjį), o `src/rag/__init__.py`
+skelbė šešias klases, kurių nei viena nebedalyvavo skambutyje.
+
+| Ištrinta | Kodėl galėjo |
+|---|---|
+| `embeddings.py`, `vector_store.py`, `retriever.py`, `hybrid_retriever.py`, `document_processor.py` | vienintelis kvietiklis buvo `search_knowledge` |
+| `vector_store_data/production_index.faiss` (+ `.pkl`) | 2026-06-12 indeksas prie rugsėjo dokumentų |
+| įrankis `search_knowledge` + jo manifestas + 3 testai | kalbėtojas įrankių neturi (M5) — niekas jo nekvietė |
+| `rag/eval/` (`run_eval.py`, `queries.json`) | antras eval'as; gyvas yra `agent/eval/` |
+| `scripts/build_kb.py`, `test_rag_loading.py`, `load_scenarios.py` | statydavo tą patį FAISS indeksą |
+| `tests/test_rag.py` (177 eil.) + `kb_available` / `require_kb` / `retriever` fixture'ai | tikrino v1 |
+| `rag_stop_words` (žodynas) | BM25 tokenizatoriaus liekana |
+| priklausomybės `faiss-cpu`, `rank-bm25` | nebeimportuojamos |
+
+`src/rag/` dabar yra **duomenys**: `knowledge_base/` dokumentai, žodynas, klausimų rinkinys ir
+viena eksploatacijos priemonė `scripts/index_qdrant.py`. Paieškos kodas — `agent/knowledge_base.py`,
+`agent/knowledge_need.py` ir `adapters/retrieval/`.
+
+Portas pasiteisino: `ports/retrieval.py` buvo rašytas PRIEŠ v1 retriever'ius, ir juos ištrynus
+agento branduolyje nereikėjo pakeisti nė vienos eilutės.
+
+**Tikrinta:** 1343 passed, 1 skipped (buvo 1363 — išėjo 20 v1 testų); `app.main` importuojasi,
+įrankių 9 (buvo 10), `kb.find("kaip pakeisti wifi slaptazodi")` randa
+`equipment/router_tplink.md` (0.784); keturi v1 moduliai neberandami.
+
+### 5-4 · Penkios eilutės, kurių būsenos nežinojau
+
+Roadmap'e jos stovėjo be žymės, ir vietoj spėjimo kiekviena patikrinta kode:
+
+| # | Kas | Radinys |
+|---|---|---|
+| R-2 | antra problema pokalbio viduryje → antras tiketas | **atvira.** `intake.py::_is_secondary` įrašo tik `solve` tipo gedimą, o `register` (sąskaita, atjungimas) numetamas: pats kodas tai ir sako komentare — *„a request … gets its own ticket later (F-28)"*, o to „later" dar nėra. Closing'as apie antrą gedimą paklausia (`closing.secondary_problems_asked`), bet tiketo nekuria |
+| R-6 | analitiko tikslinimo ciklas | **padaryta.** Prieštaros ciklas yra `decide/hypothesis.py` (`doubt` → `due` → `ask` → `answered`, vienu metu tik VIENA prieštara) + `analyst/node.py` signalai `contradiction` / `already_answered` / `secondary_problem`. Antra pusė („tikslinti tik kai žingsnio rezultato nėra") — 4a bangos trečias kąsnis (`17cbeab`) |
+| R-8 | F-13 patvirtinti eval scenarijumi | **padaryta.** `R1b_billing_request_farewell_midway` — scenarijaus apraše įrašytas tas pats 2026-09-17 gyvas skambutis |
+| R-19 | `/admin/knowledge/reload` atmeta ką tik pridėtą frazę | **atvira ir blogiau, nei buvo rašyta** — žr. 5-5 |
+| — | `request_cancel` (barge-in) gyvu balso skambučiu | **tavo rankose.** Kodu to nepatikrinsiu; scenarijai — [BARGE_IN_TESTAI.md](../BARGE_IN_TESTAI.md) |
+
+### 5-5 · Trys smulkūs, iš kurių vienas buvo rimtas
+
+**R-19 — perkrovimas tikrino ne tai, ką įkeldavo.** `/admin/knowledge/reload` pirma
+validuodavo, paskui išmesdavo kešus. Vadinasi validacija skaitė failus tokius, kokie jie buvo
+STARTE. Išmatuota 2026-09-28: kortelė su nurodyta neegzistuojančia fraze **praėjo** validaciją,
+o endpoint'as atsakė `reloaded` ir įkeldavo niekada nepatikrintą turinį. Pažadas
+(*„a broken edit is refused and the running knowledge stays"*) buvo apverstas.
+
+Dabar `loader.revalidate()`: **pirma kešai, paskui validacija**. Ko tai NEGALI — atšaukti
+blogo redagavimo: kešai tik įsimena failus, tad juos išmetus sekantis skaitytojas mato tai, kas
+diske. Todėl sąžiningas pažadas yra kitas: **bloga redakcija pranešama su klaidomis, ir failą
+reikia pataisyti bei perkrauti dar kartą.**
+
+**R-16 — LLM limiteris.** Dvi skirtingos baimės dalinosi vienu skaitliuku: provaiderio
+(kiek kvietimų per minutę šis PROCESAS gali) ir pabėgusio skambučio (kiek vienas pokalbis gali
+išleisti). Antra buvo skaičiuojama irgi per procesą, tad serveris po ~100 kvietimų atsakydavo
+VISIEMS iki perkrovimo, o eval'as turėdavo kilnoti lubą. Mes patys į tai atsitrenkėme du kartus.
+
+Dabar biudžetas skaičiuojamas **per pokalbį** (ContextVar, kurį `AgentSession._observing`
+nustato apie kiekvieną ėjimą), o pasibaigus skambučiui finalizatorius skaitliuką pamiršta.
+Minutės langas lieka proceso lygio — provaideriui nesvarbu, iš kurio skambučio srautas.
+Šeši nauji testai: vieno pokalbio biudžetas neuždaro kito, per ėjimus skaitliukas nesinulina,
+minutės langas bendras, `forget` atlaisvina, skaitliukų kiekis ribotas.
+
+**R-21 — skolos formuluočių konfliktas: jau uždaryta, ir mano ankstesnis pranešimas buvo
+klaidingas.** Radau `phrases.yaml` frazę *„Tikslios sumos aš nematau"* ir pranešiau konfliktą,
+nepasitikrinęs kelio. Tikrovėje 4a bangoje (2026-09-23, po gyvo skambučio) atsirado
+`faq.yaml: answer_from_news: billing_suspended` — jei skolos verdiktas šiame skambutyje yra,
+atsakoma **iš tų pačių faktų** (`inform.asked_again_key`), ne iš frazės. Ta frazė lieka tik
+tam atvejui, kai skolos faktų dar nėra — tada ji teisinga.
+
+**Tikrinta:** 1351 passed, 1 skipped (8 naujų testų); eval **195/195** per visus 36 scenarijus,
+0 nesėkmių — LLM kelias ir finalizatorius po R-16 elgiasi taip pat.
+
+### 5-6 · Žymės, kurios meluodavo
+
+Trys roadmap'ai rodė daug daugiau neatlikto, nei buvo tikrovėje, nes bangos vedė savo `F-`
+numeraciją ir su senomis eilutėmis niekada nesusijungė:
+
+| Dokumentas | Buvo | Po patikros |
+|---|---|---|
+| `archive/ROADMAP.md` | 49 nepažymėtos | 21 padaryta · 5 kitaip · 5 dalinai · 7 neaktualu · 10 atvira |
+| `archive/ROADMAP_REFACTORING.md` | 10 nepažymėtų | 5 padaryta · 2 kitaip · 3 atviros |
+| `refactoring/ROADMAP.md` (R-1…R-21) | **nė vienos žymės** | 10 padaryta · 2 kitaip · 3 dalinai · 6 atviros |
+
+Kiekviena eilutė patikrinta kode, ne atmintyje, ir gavo prierašą su įrodymu (kur padaryta arba
+kas dabar tą darbą daro). Archyviniai dokumentai gavo **būsenos antraštę** su lentele, o
+R-lentelė — **Būsenos stulpelį**.
+
+Kodėl tai ne kosmetika: iš 49 eilučių tikrai atvirų liko 10, ir beveik visos yra 5–7 fazės
+(realtime, lokalūs modeliai, produkcija) — t.y. tai, kas ir suplanuota PO demo. Toks sąrašas
+telpa į galvą; penkiasdešimt tariamų darbų — ne.
+
 ## Banga 4b — žinios naudojamos (šaka `fix/wave-4a`, tęsinys)
 
 Andrius (2026-09-23): *„šiuo metu manau svarbiausia žinios kad jos būtų naudojamos… įrangos
@@ -830,11 +1001,13 @@ trace'e matomi visi LLM kvietimai ir `turn_timing`.
 | 2026-09-18 | — | Peržiūra 0–10 baigta, planas sudarytas; šaka `fix/wave-0` | vienetų testai: 1242 passed | Banga 0 |
 | 2026-09-18 | 0 | W0-1…W0-10 padaryti (W0-9 kartu su W0-2). Papildomai **W0-11**: eval'as du kartus užstrigo — faulthandler dump'as parodė deadlock'ą httpcore pool'e: W0-6 sargas nutraukdavo tik išorinį generatorių, provider srautą uždarydavo GC kito kvietimo viduje. Pataisyta: `stream_tool_completion` uždaro srautą `finally` bloke + visi LLM kvietimai su timeout (30 s, `LLM_TIMEOUT_S`). | vienetų: **1259 passed**; eval tekstas **178/178**; eval `--voice` **178/178**; T1 `--runs 3` **STABLE 3/3** (vienas ankstesnis T1 kritimas — LLM paminėjo „routerio" TV skambutyje, nepasikartojo) | Banga 1 |
 
+| 2026-09-28 | 5 | 5-1 tris bazes vietoj vienos · 5-2 žurnalų sargas (+R-12 įrašų terminas) · 5-3 v1 RAG ištrintas visas · 5-4 penkios nežinomos roadmap'o eilutės patikrintos kodu · 5-5 R-19 (perkrovimas tikrino seną turinį) ir R-16 (LLM biudžetas per pokalbį) · 5-6 žymės suvestos su tikrove | vienetų: **1351 passed**, 1 skipped; eval **195/195**, 0 nesėkmių (36 scenarijai) | gyvi balso testai (Andrius) · R-2 antras tiketas · R-3 LT literalai · R-4 delsa · 5–7 fazės |
+
 **Bangos 0 pastebėjimai kitoms bangoms (iš eval trace'ų, 69 skambučiai):**
 - Atsakymo sargas nukirpo 235 iš 266 LLM atsakymų dėl antro klausimo (+4 dėl ilgio) — modelis beveik visada klausia daugiau nei vieno dalyko. Tai 2b bangos (promptai pagal įgūdį) tikslas: sargas lieka saugikliu, bet promptas turi to išvengti pats.
 - LLM kvietimai pagal rolę: analyst 320, speak 266, perception 182, ticket_reader 38, problem_classifier 10, solver 5 — analyst brangiausias ir dažniausias (AE, 2a banga).
-- Testai ir eval dalijasi ta pačia demo DB (`database/isp_database.db`) ir vienu metu
-  neveikia (WinError 32) — kiekvienam paleidimui reikia savo DB failo (kandidatas 5 bangai).
+- ~~Testai ir eval dalijasi ta pačia demo DB (`database/isp_database.db`) ir vienu metu
+  neveikia (WinError 32)~~ — **išspręsta 5 bangoje (5-1):** `DATABASE_PATH` ir trys atskiri failai.
 - Nestabilus testas: `test_api::test_interrupt_stops_remaining_chunks` (laiko priklausomybė, `sleep 0.15`) — kartą krito, 8/8 pakartojimų praėjo; su pakeitimais nesusijęs.
 
 

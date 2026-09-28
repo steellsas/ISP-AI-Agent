@@ -15,8 +15,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+from agent.db_path import database_path
+
 _ROOT = Path(__file__).resolve().parents[3]
-_DB = _ROOT / "database" / "isp_database.db"
 _SCHEMAS = ("crm_schema", "network_schema")
 _SEEDS = (
     "customers",
@@ -34,7 +35,7 @@ _SEEDS = (
 def reset_db() -> dict:
     """Drop every table and re-run the schema + seed scripts. Sync — callers
     run it in a worker thread. Raises on failure (the route maps it to 500)."""
-    conn = sqlite3.connect(_DB)
+    conn = sqlite3.connect(database_path())
     try:
         conn.execute("PRAGMA foreign_keys=off")
         tables = [

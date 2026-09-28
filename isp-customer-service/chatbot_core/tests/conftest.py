@@ -16,6 +16,16 @@ from pathlib import Path
 
 import pytest
 
+# The suite rebuilds its database from the seeds on every session, so it needs its OWN file:
+# the demo one is held open by the server/dashboard, and deleting a held file on Windows is
+# `PermissionError [WinError 32]`. Until wave 5 that meant tests and a live voice test could
+# not run at the same time.
+#
+# This MUST stay above the `agent` import below: `agent/__init__` imports `agent.tools`, which
+# resolves `DB_PATH` once, at import time. Set it later and the tests would rebuild the demo
+# file while the agent under test reads the test one.
+os.environ.setdefault("DATABASE_PATH", "database/isp_database.test.db")
+
 # Add src to path
 src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
@@ -51,21 +61,24 @@ os.environ.setdefault("TRACE_DIR", str(TEST_TRACE_DIR))
 os.environ.setdefault("TTS_PREWARM", "off")
 os.environ.setdefault("TTS_CACHE_DIR", "off")
 
+# Imported only NOW, after every env default above: this is the first line that pulls in
+# `agent`, and `agent/__init__` reads some of those switches at import time.
+from agent.db_path import database_path  # noqa: E402, I001
+
 
 # =============================================================================
 # TEST DATA ARTIFACTS (built, not versioned)
 # =============================================================================
-# The SQLite DB and FAISS index are build artifacts (gitignored), so a fresh
-# checkout or CI runner has neither. We rebuild the DB deterministically from
-# the versioned schema + seed SQL so the regression suite needs zero manual
-# setup. The RAG index is heavier (pulls a ~1GB embedding model), so RAG tests
-# skip cleanly when it is absent instead of forcing every run to build it.
+# The SQLite DB is a build artifact (gitignored), so a fresh checkout or CI runner has
+# none. We rebuild it deterministically from the versioned schema + seed SQL, so the
+# regression suite needs zero manual setup. (The FAISS index used to live here too, with
+# fixtures that skipped RAG tests when it was missing; wave 5 removed the v1 store, and
+# the knowledge tests now read the markdown documents straight from disk.)
 
 _TESTS_DIR = Path(__file__).parent
 _CHATBOT_CORE = _TESTS_DIR.parent
 _PROJECT_ROOT = _CHATBOT_CORE.parent  # isp-customer-service
-_DB_PATH = _PROJECT_ROOT / "database" / "isp_database.db"
-_PROD_INDEX = _CHATBOT_CORE / "src" / "rag" / "vector_store_data" / "production_index.faiss"
+_DB_PATH = database_path()  # DATABASE_PATH above -> database/isp_database.test.db
 
 # Order matters: schemas first (DDL), then seeds (DML). demo_internet last —
 # it references rows from the base seeds (SW001, OUT001).
@@ -133,23 +146,6 @@ def ensure_test_database():
 
 
 @pytest.fixture(scope="session")
-def kb_available() -> bool:
-    """True when the production RAG/FAISS index has been built."""
-    return _PROD_INDEX.exists()
-
-
-@pytest.fixture
-def require_kb(kb_available):
-    """Skip a test cleanly when the RAG knowledge base has not been built.
-
-    RAG correctness is covered in Phase 1; the regression net only needs the
-    DB-backed tool behaviour to be deterministic.
-    """
-    if not kb_available:
-        pytest.skip("RAG knowledge base not built (run build_kb.py) — covered in Phase 1")
-
-
-@pytest.fixture(scope="session")
 def project_root():
     """Get project root directory."""
     return Path(__file__).parent.parent
@@ -183,30 +179,6 @@ def forget_test_tickets(request):
         created = [row[0] for row in cursor.fetchall() if row[0] not in before]
         for ticket_id in created:
             cursor.execute("DELETE FROM tickets WHERE ticket_id = ?", (ticket_id,))
-
-
-@pytest.fixture(scope="session")
-def retriever():
-    """Get RAG retriever with production KB loaded."""
-    try:
-        from rag import get_retriever
-
-        # Create retriever with lower threshold for testing
-        r = get_retriever(top_k=5, similarity_threshold=0.3)
-
-        # Load production KB
-        success = r.load("production")
-        if not success:
-            pytest.skip("Production KB not found - run build_kb.py first")
-
-        # Verify it loaded
-        stats = r.get_statistics()
-        if stats["total_documents"] == 0:
-            pytest.skip("Production KB is empty")
-
-        return r
-    except Exception as e:
-        pytest.skip(f"RAG not available: {e}")
 
 
 @pytest.fixture
