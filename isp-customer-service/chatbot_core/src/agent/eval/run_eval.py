@@ -58,6 +58,10 @@ if str(_SRC_DIR) not in sys.path:
 # any platform it would wipe the state a live test call is standing on. Set before the first
 # `agent` import, because `agent.tools` resolves the path at import time.
 os.environ.setdefault("DATABASE_PATH", "database/isp_database.eval.db")
+# Same reasoning for the traces: an eval run writes one per scenario, and those used to
+# land in `logs/sessions` among the REAL calls (the dashboard archive reads that folder).
+# 2026-09-28: 133k trace files there, almost none of them from a human.
+os.environ.setdefault("TRACE_DIR", str(_PROJECT_ROOT / "logs" / "eval"))
 
 SCENARIOS_PATH = _EVAL_DIR / "scenarios.json"
 

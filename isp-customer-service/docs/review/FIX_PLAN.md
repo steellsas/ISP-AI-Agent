@@ -60,7 +60,7 @@ radinius (testu DB, žurnalai, R-21/R-16).
 | # | Kas | Būsena |
 |---|---|---|
 | 5-1 | Testų / eval'o / demo DB atskyrimas (`DATABASE_PATH`) | ✓ |
-| 5-2 | Žurnalų rotacija: eval'o trace'ai — šalia demo skambučių, senos liekanos išvalomos | |
+| 5-2 | Žurnalų rotacija: eval'o trace'ai atskirai, `prune_logs.py` (senos liekanos + įrašų saugojimo terminas) | ✓ |
 | 5-3 | Miręs v1 RAG: `embeddings.py`, `vector_store.py`, `retriever.py`, `hybrid_retriever.py`, `faiss-cpu`, `tools.py` kelias, vienas eval | |
 | 5-4 | Penkios nežinomos roadmap'o eilutės (R-2 antras tiketas, R-6, R-8, R-19, `request_cancel`) — patikrinti, ne spėti | |
 | 5-5 | R-21 skolos formuluočių konfliktas · R-16 LLM limiteris 100 per procesą | |
@@ -94,6 +94,40 @@ Svarbi detalė: `DATABASE_PATH` turi būti nustatytas **prieš** pirmą `agent` 
 
 **Tikrinta:** 1363 passed, 1 skipped (2:42) su savo baze; `database/isp_database.db` laiko
 žymė nepakito — demo pasaulis testo metu nepaliestas.
+
+### 5-2 · Žurnalai nebeauga be galo
+
+`logs/sessions/` 2026-09-28 turėjo **133 265** trace failus (jsonl + txt), iš kurių beveik nei
+vienas ne nuo žmogaus: ten rašė ir testai (jau iškelta — radinys L), ir eval'as. Kaina ne
+vieta (208 MB), o tai, kad kataloge nebeįmanoma nieko rasti: `ls` kabo minutėmis, o tikri
+skambučiai pasimetę tarp mašinos generuotų.
+
+| Kas | Kur rašo dabar |
+|---|---|
+| gyvi skambučiai (dashboard archyvas juos skaito) | `logs/sessions/` |
+| `run_eval.py` | `logs/eval/` (naujas `TRACE_DIR` numatytasis) |
+| `pytest` | laikinas katalogas (buvo prieš tai) |
+
+Valymui — [`scripts/prune_logs.py`](../../scripts/prune_logs.py), **sausas paleidimas pagal
+nutylėjimą** (be `--apply` nieko netrina):
+
+```powershell
+uv run python scripts/prune_logs.py                    # ką išmestų
+uv run python scripts/prune_logs.py --keep 200 --apply  # palikti 200 naujausių skambučių
+```
+
+Dvi taisyklės: **amžius** (`--days`, nutylėjimas 90) ir **kiekis** (`--keep N`). Amžius yra
+ilgalaikė taisyklė, o kiekis — tai, kas išverčia seną kalną: visi 133 tūkst. failų buvo
+jaunesni nei 90 dienų, tad vien pagal amžių nebūtų ištrintas nei vienas. Trinama **po
+skambutį**: `.jsonl` ir skaitomas `.txt` visada kartu.
+
+Tas pats skriptas uždaro ir **R-12**: neatpažintam skambučiui įrašas gauna
+`audio_retention_until` datą, bet iki šiol NIEKAS jos nevykdė — pažadas buvo užrašytas ir
+nesilaikomas (D-14 privatumas). Dabar pasibaigęs terminas reiškia, kad įrašas ištrinamas.
+
+**Tikrinta:** `run_eval.py --only R1_billing_request` 7/7, trace'as nukeliavo į `logs/eval/`,
+demo bazė nepaliesta; sausas paleidimas rodo 132 865 failus / 208 MB kandidatų su `--keep 200`.
+
 
 ## Banga 4b — žinios naudojamos (šaka `fix/wave-4a`, tęsinys)
 
