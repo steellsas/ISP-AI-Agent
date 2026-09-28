@@ -16,6 +16,16 @@ from pathlib import Path
 
 import pytest
 
+# The suite rebuilds its database from the seeds on every session, so it needs its OWN file:
+# the demo one is held open by the server/dashboard, and deleting a held file on Windows is
+# `PermissionError [WinError 32]`. Until wave 5 that meant tests and a live voice test could
+# not run at the same time.
+#
+# This MUST stay above the `agent` import below: `agent/__init__` imports `agent.tools`, which
+# resolves `DB_PATH` once, at import time. Set it later and the tests would rebuild the demo
+# file while the agent under test reads the test one.
+os.environ.setdefault("DATABASE_PATH", "database/isp_database.test.db")
+
 # Add src to path
 src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
@@ -51,6 +61,10 @@ os.environ.setdefault("TRACE_DIR", str(TEST_TRACE_DIR))
 os.environ.setdefault("TTS_PREWARM", "off")
 os.environ.setdefault("TTS_CACHE_DIR", "off")
 
+# Imported only NOW, after every env default above: this is the first line that pulls in
+# `agent`, and `agent/__init__` reads some of those switches at import time.
+from agent.db_path import database_path  # noqa: E402, I001
+
 
 # =============================================================================
 # TEST DATA ARTIFACTS (built, not versioned)
@@ -64,7 +78,7 @@ os.environ.setdefault("TTS_CACHE_DIR", "off")
 _TESTS_DIR = Path(__file__).parent
 _CHATBOT_CORE = _TESTS_DIR.parent
 _PROJECT_ROOT = _CHATBOT_CORE.parent  # isp-customer-service
-_DB_PATH = _PROJECT_ROOT / "database" / "isp_database.db"
+_DB_PATH = database_path()  # DATABASE_PATH above -> database/isp_database.test.db
 _PROD_INDEX = _CHATBOT_CORE / "src" / "rag" / "vector_store_data" / "production_index.faiss"
 
 # Order matters: schemas first (DDL), then seeds (DML). demo_internet last —

@@ -92,8 +92,10 @@ Run from the repository root `isp-customer-service/` unless stated.
 | Reset demo DB | `uv run python scripts/setup_db.py && uv run python scripts/seed_data.py` |
 | Run app (owner runs live voice tests) | `uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080` |
 
-Test DB note: the pytest session rebuilds `database/isp_database.db` — do not run tests
-while the app is serving a live call.
+Test DB note (fixed in wave 5): the pytest session rebuilds its OWN
+`database/isp_database.test.db` and the eval `database/isp_database.eval.db`
+(`DATABASE_PATH`, resolved by `agent/db_path.py`), so tests and a live call can run at the
+same time. The demo file the app serves is `database/isp_database.db`.
 
 ## 5. Status log
 

@@ -9,6 +9,7 @@ Usage:
     uv run python scripts/seed_data.py
 """
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -19,7 +20,15 @@ def get_project_root() -> Path:
 
 
 def get_db_path() -> Path:
-    """Get the database file path."""
+    """Get the database file path.
+
+    DATABASE_PATH wins when set (relative paths are read from the project root), so the
+    eval and the tests can seed their OWN file instead of the demo one the server holds.
+    """
+    env = (os.getenv("DATABASE_PATH") or "").strip()
+    if env:
+        path = Path(env)
+        return path if path.is_absolute() else get_project_root() / path
     return get_project_root() / "database" / "isp_database.db"
 
 

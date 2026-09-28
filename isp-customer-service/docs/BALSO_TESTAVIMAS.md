@@ -46,10 +46,11 @@ $env:PYTHONIOENCODING="utf-8"; chcp 65001
 uv run uvicorn --app-dir chatbot_core src.app.main:app --port 8080
 ```
 
-> **Testai ir serveris vienu metu — ne.** Kol serveris paleistas, jis laiko
-> `database/isp_database.db`, ir `pytest` negali jos perkurti: `PermissionError [WinError 32]`.
-> Tai ne kodo klaida, o tai, kad demo bazė yra viena — ją dalinasi serveris ir testai. Testus leisk **sustabdęs serverį**
-> (5 bangoje planuota atskirti testų ir demo bazes — tai ir išspręstų).
+> **Testai ir serveris vienu metu — galima** (nuo 5 bangos). Serveris dirba su
+> `database/isp_database.db`, `pytest` — su `database/isp_database.test.db`, o eval'as — su
+> `database/isp_database.eval.db`. Anksčiau visi trys kirtosi dėl vieno failo
+> (`PermissionError [WinError 32]`); dabar testus leisti gyvo skambučio metu saugu, ir jie demo
+> pasaulio nepaliestų. Kelią perrašo `DATABASE_PATH`.
 
 Naršyklėje http://localhost:8080 → skirtukas **„Testavimas"** (numeris → „Skambinti").
 

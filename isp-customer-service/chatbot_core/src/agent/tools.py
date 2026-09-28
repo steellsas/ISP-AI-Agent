@@ -15,6 +15,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from .db_path import database_path
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -47,7 +49,8 @@ def setup_paths():
 
 
 PROJECT_ROOT = setup_paths()
-DB_PATH = PROJECT_ROOT / "database" / "isp_database.db"
+# Kelias — iš `db_path`, kad testai ir eval'as galėtų turėti savo failą (DATABASE_PATH).
+DB_PATH = database_path()
 
 
 # =============================================================================

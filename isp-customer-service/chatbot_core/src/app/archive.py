@@ -22,8 +22,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+from agent.db_path import database_path
+
 _ROOT = Path(__file__).resolve().parents[3]
-_DB = _ROOT / "database" / "isp_database.db"
 
 
 def _trace_dir() -> Path:
@@ -45,7 +46,7 @@ def _safe_session_id(session_id: str) -> bool:
 def list_calls(limit: int = 50, needs_review: bool = False) -> list[dict[str, Any]]:
     """Newest-first call records for the archive table; `needs_review` keeps only the
     contact records a person should look at (D-14)."""
-    conn = sqlite3.connect(_DB)
+    conn = sqlite3.connect(database_path())
     conn.row_factory = sqlite3.Row
     try:
         rows = conn.execute(
@@ -139,7 +140,7 @@ def call_detail(session_id: str) -> dict[str, Any] | None:
     """Everything the archive detail view needs for ONE call. None = unknown id."""
     if not _safe_session_id(session_id):
         return None
-    conn = sqlite3.connect(_DB)
+    conn = sqlite3.connect(database_path())
     conn.row_factory = sqlite3.Row
     try:
         row = conn.execute(

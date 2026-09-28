@@ -51,6 +51,50 @@ Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 
 ---
 
+## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
+
+Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo
+keliuose sarašuose: valymą (šis planas), nepažymėtus roadmap'ų punktus ir tris atskirus
+radinius (testu DB, žurnalai, R-21/R-16).
+
+| # | Kas | Būsena |
+|---|---|---|
+| 5-1 | Testų / eval'o / demo DB atskyrimas (`DATABASE_PATH`) | ✓ |
+| 5-2 | Žurnalų rotacija: eval'o trace'ai — šalia demo skambučių, senos liekanos išvalomos | |
+| 5-3 | Miręs v1 RAG: `embeddings.py`, `vector_store.py`, `retriever.py`, `hybrid_retriever.py`, `faiss-cpu`, `tools.py` kelias, vienas eval | |
+| 5-4 | Penkios nežinomos roadmap'o eilutės (R-2 antras tiketas, R-6, R-8, R-19, `request_cancel`) — patikrinti, ne spėti | |
+| 5-5 | R-21 skolos formuluočių konfliktas · R-16 LLM limiteris 100 per procesą | |
+| 5-6 | Roadmap'ų žymės: `archive/ROADMAP*.md` ir `refactoring/ROADMAP.md` suvedami su tikrove | |
+
+### 5-1 · Trys bazes vietoj vienos
+
+Testai kiekvieną sesiją **trina ir atkuria** bazės failą (sėklose yra `datetime('now')`
+eilučių, tad senas failas kitos dienos testus padarytų neapibrėžtus). Eval'as tą patį daro
+tarp scenarijų. O demo failas tą pačią minutę laikomas serverio ir dashboard'o — Windows
+ištrinti laikomo failo neleidžia:
+
+```
+PermissionError [WinError 32] database/isp_database.db
+```
+
+Todėl kelio nebeklausiama penkiose vietose atskirai — jį sako viena
+([`agent/db_path.py`](../../chatbot_core/src/agent/db_path.py)), o perrašoma aplinkos
+kintamuoju, kurį `shared/src/utils/config.py` skaitė nuo pat pradių, tik agento pusė to
+nepaisydavo:
+
+| Kas | Failas |
+|---|---|
+| serveris, dashboard, gyvi balso testai | `database/isp_database.db` (nepakito) |
+| `pytest` | `database/isp_database.test.db` |
+| `run_eval.py` | `database/isp_database.eval.db` |
+
+Svarbi detalė: `DATABASE_PATH` turi būti nustatytas **prieš** pirmą `agent` importą —
+`agent/__init__` įsiveža `agent.tools`, o tas kelią išsprendžia importo metu. Todėl
+`conftest.py` jį nustato pirmoje eilutėje, o `run_eval.py` — prieš `sys.path` paruošimą.
+
+**Tikrinta:** 1363 passed, 1 skipped (2:42) su savo baze; `database/isp_database.db` laiko
+žymė nepakito — demo pasaulis testo metu nepaliestas.
+
 ## Banga 4b — žinios naudojamos (šaka `fix/wave-4a`, tęsinys)
 
 Andrius (2026-09-23): *„šiuo metu manau svarbiausia žinios kad jos būtų naudojamos… įrangos
@@ -833,8 +877,8 @@ trace'e matomi visi LLM kvietimai ir `turn_timing`.
 **Bangos 0 pastebėjimai kitoms bangoms (iš eval trace'ų, 69 skambučiai):**
 - Atsakymo sargas nukirpo 235 iš 266 LLM atsakymų dėl antro klausimo (+4 dėl ilgio) — modelis beveik visada klausia daugiau nei vieno dalyko. Tai 2b bangos (promptai pagal įgūdį) tikslas: sargas lieka saugikliu, bet promptas turi to išvengti pats.
 - LLM kvietimai pagal rolę: analyst 320, speak 266, perception 182, ticket_reader 38, problem_classifier 10, solver 5 — analyst brangiausias ir dažniausias (AE, 2a banga).
-- Testai ir eval dalijasi ta pačia demo DB (`database/isp_database.db`) ir vienu metu
-  neveikia (WinError 32) — kiekvienam paleidimui reikia savo DB failo (kandidatas 5 bangai).
+- ~~Testai ir eval dalijasi ta pačia demo DB (`database/isp_database.db`) ir vienu metu
+  neveikia (WinError 32)~~ — **išspręsta 5 bangoje (5-1):** `DATABASE_PATH` ir trys atskiri failai.
 - Nestabilus testas: `test_api::test_interrupt_stops_remaining_chunks` (laiko priklausomybė, `sleep 0.15`) — kartą krito, 8/8 pakartojimų praėjo; su pakeitimais nesusijęs.
 
 
