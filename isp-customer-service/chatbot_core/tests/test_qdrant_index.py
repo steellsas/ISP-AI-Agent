@@ -44,6 +44,31 @@ def no_embeddings():
         embed.use(None)
 
 
+def embeddings_or_skip():
+    """Modelis arba švari praleistis — niekada klaida.
+
+    CI paleidėjas modelio neturi ir į HuggingFace neina (`HF_HUB_OFFLINE=1`), tad `Local` įkrovimas
+    ten baigiasi `OSError`. Iki 2026-09-28 tai krisdavo kaip **12 klaidų** šiame faile, nors nieko
+    sugedusio nėra: semantinė pusė tiesiog nepasiekiama. Praleistis sako TIESĄ (šie testai
+    nebuvo paleisti), o klaida sakė netiesa (kad kodas sugedo).
+
+    Tikrinama tikru kėlimu, ne `warm()`: `Remote.warm()` klaidą nuryja, ir nepasiekiamas servisas
+    išlendė tik indeksuojant, vidury fixture'o.
+    """
+    from adapters.retrieval import embed
+
+    model = embed.embedder()
+    if model is None:
+        pytest.skip("embedding'ai išjungti (EMBED=off)")
+    try:
+        vectors = model.encode_passages(["pasildymas"])
+    except Exception as exc:  # modelio nėra diske, nepasiekiamas servisas, nebeužtenka vietos…
+        pytest.skip(f"embedding modelis nepasiekiamas: {type(exc).__name__}: {exc}")
+    if not vectors:
+        pytest.skip("embedding servisas neatsakė")
+    return model
+
+
 @pytest.fixture(scope="module")
 def index():
     """Indeksas BE `dense` vektorių: E2 būklė, kurią turi atkartoti ir failai."""
@@ -313,16 +338,15 @@ def test_the_agent_sees_the_same_passages_through_either_backend(index):
 
 @pytest.fixture(scope="module")
 def hybrid():
-    """Indeksas SU `dense` vektoriais. Modelis kraunamas kartą visam moduliui."""
-    from adapters.retrieval import embed
+    """Indeksas SU `dense` vektoriais. Modelis kraunamas kartą visam moduliui.
+
+    Kartą įkrautas modelis yra ir SINCHRONINIS pakaitinimas: kitaip pirmosios užklausos jo
+    nesulauktų ir testai matuotų nusileidimą, o ne hibridą (gamyboje tai daroma fone, žr.
+    `_warm_embeddings`).
+    """
     from qdrant_client import QdrantClient
 
-    model = embed.embedder()
-    if model is None:
-        pytest.skip("embedding'ai išjungti (EMBED=off)")
-    # Pakaitinam SINCHRONIŠKAI: kitaip pirmosios užklausos nesulauktų modelio ir testai matuotų
-    # nusileidimą, o ne hibridą (gamyboje tai daroma fone, žr. `_warm_embeddings`).
-    model.warm()
+    embeddings_or_skip()
     built = KnowledgeIndex(QdrantClient(":memory:"))
     built.rebuild()
     return built
@@ -454,12 +478,9 @@ def test_the_index_says_which_model_built_it(own_index):
 @pytest.fixture
 def own_index():
     """Savas indeksas testams, kurie KEIČIA versijas: bendro `hybrid` jie sugadintų kitiems."""
-    from adapters.retrieval import embed
     from qdrant_client import QdrantClient
 
-    if embed.embedder() is None:
-        pytest.skip("embedding'ai išjungti (EMBED=off)")
-    embed.embedder().warm()
+    embeddings_or_skip()
     built = KnowledgeIndex(QdrantClient(":memory:"))
     built.rebuild()
     return built

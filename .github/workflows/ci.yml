@@ -35,11 +35,15 @@ jobs:
         continue-on-error: true
 
       - name: Tests
-        # RAG embedding model is not cached on the runner; force offline so the
-        # RAG-dependent tests fail fast (and skip via require_kb) instead of
-        # hammering the HF Hub and hitting 429 rate limits. RAG correctness is
-        # covered in Phase 1, not here.
+        # The embedding model is not on the runner and the Hub is not reachable from here, so
+        # the twelve HYBRID tests skip themselves (`embeddings_or_skip`) and say so in the
+        # summary. Everything they protect on the lexical side still runs: the sparse vector
+        # still has to equal the lexical score, and the recall set still has to pass. Offline
+        # is forced so the skip is instant instead of a retry storm against the Hub (429).
+        #
+        # If the hybrid should be covered here too, the model has to be cached on the runner
+        # (actions/cache on ~/.cache/huggingface) and this env removed — see docs/TESTU_ZEMELAPIS.md.
         env:
           HF_HUB_OFFLINE: "1"
           TRANSFORMERS_OFFLINE: "1"
-        run: uv run pytest
+        run: uv run pytest -rs
