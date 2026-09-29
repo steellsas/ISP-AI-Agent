@@ -69,6 +69,11 @@ routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
 | **G2** | Ta pati instrukcija nuskambėjo **6 kartus** — nėra kartojimo ribos | atidėta — kortelių darbas |
 | **G3** | Melagingi patvirtinimai: „Gerai, kad perkrovėte" po „Galiu?" | ✓ pataisyta (promptas) |
 | **G4** | 🔌 Kabelis registravo `device_registered=foreign`, bet kortelės `rules_out` vidury sprendimo neperskaitytas | atidėta — kortelių darbas |
+| **G5** | Pakartojimas nepasakė KODĖL — „nematome, kad įrenginys būtų buvęs išjungtas“ liko būsenoje | atidėta |
+| **G6** | Eskalacijos formuluotė pasenusi: po pririšimo `device_registered=match`, o sakoma „matomas kitas įrenginys“ | atidėta |
+| **G7** | Klientas JAU daro veiksmą, o agentas liepia jį daryti | atidėta |
+| **G8** | Linija jau rodė `traffic=flowing, port_flapped=yes`, o instrukcija vis tiek nuskambėjo | atidėta |
+| **G9** | Uždaro nepaklausęs kliento: „Internetas vėl veikia“ ir sudie | atidėta |
 
 ### G1 · Klaustukas nugalėjo atliktą veiksmą
 
@@ -104,7 +109,54 @@ Klientas pasakė „Galiu?" (ASR iš „Galiu"), supratimas — `confusion`, o a
 gali atspindėti tik tai, ką klientas **iš tikrųjų pasakė** arba ką turi kortelė; veiksmo,
 kurio niekas nepranešė, priskirti negalima. Abejojant — „Gerai" arba „Supratau" yra visa reakcija.
 
-### G2 ir G4 — kodėl atidėta
+### G5–G9 · antras ir trečias C1 skambučiai (2026-09-28 ir 09-29)
+
+Po G1/G3 taisymų C1 pakartotas du kartus. **Kas pagerėjo, matosi iš karto:** ta pati instrukcija
+nebekartojama šešis kartus (dabar — vienas `on_fail` pakartojimas), o melagingų pagyrimų
+(„Gerai, kad perkrovėte“ po „Galiu?“) nebeliko — vietoj to nuskambėjo
+„Supratau, Pauliau. Perkrauti routerį reiškia jį išjungti ir vėl įjungti.“
+
+Nauji radiniai — visi iš to paties: **variklis skaito žodžius, bet neskaito BŪSENOS.**
+
+**G5 · pakartojimas be priežasties.** `_explain_retry` priežastį paruošė (patikrinta:
+`gloss("port_flapped", "no")` grąžina pažodžiui „nematome, kad įrenginys būtų buvęs
+išjungtas“), bet iki kliento ji nenuėjo — nuskambėjo ta pati instrukcija kitais žodžiais.
+Faktas būsenoje yra, kelias nuo jo iki sakinio — ne.
+
+**G7 · „jau perkrauju“ → „ištraukite maitinimo laidą“.** Trace 2026-09-29
+(`20260929-160327-687017-0001`):
+
+```
+klientas: „Tai aš jau perkrauju routerį.“
+agentas : „Supratau, kad perkraunate. Ištraukite maitinimo laidą iš paties routerio…“
+```
+
+Sakinys uždarė `reach` žingsnį (teisingai), bet kitas žingsnis duotas taip, tarsi veiksmas dar
+neprasidėjęs. Žodyne `in_progress` yra „einu“, „tuoj“, „palauk“ — bet nėra
+„perkrauju“, „perkraunu“, „traukiu“, „darau“.
+
+**G8 · linija jau sakė gerai, o instrukcija vis tiek nuskambėjo.** Tame pačiame skambutyje faktai
+`traffic=flowing, port_flapped=yes` atėjo PRIEŠ perkrovimo instrukciją (testuotojas paspaudė 🔄
+sakydamas, kad perkrauna). Kortelės `verify` įrodymai jau galiojo, bet `reboot` žingsnis neturi
+`done_when`, tad niekas jo nepraleido.
+
+**G9 · uždaro nepaklausęs.** Andrius (2026-09-29): *„kai jis jau patikrina, kad internetas
+atsirado, turėtų pasakyti, kad po perkrovimo matau, kad srautas atsirado, internetas turėtų būti,
+ir pasiklausti kliento — o ne iš karto baigti pokalbį. Įsitikinti, ar problema išspręsta.“*
+
+Mechanizmas: `modules.step_done()` grąžina `True`, kai tik `evidence` sąlygos galioja, tad `verify`
+modulio `ask: restored` niekada nepanaudojamas, jei zondas jau sutinka. Rezultatas —
+„Puiku, Pauliau! Internetas vėl veikia“ ir sudie, be vieno klausimo.
+
+Tai **neprieštarauja D-07** (telemetrija — arbitras): linija ir toliau sprendžia, ar uždaryti;
+pridėti reikia to, ką agentas MATO, ir patikslinimo. Jei klientas sako, kad vis tiek neveikia —
+faktai pasikeitė ir atsiveria kliento pusės kortelė.
+
+**Šalutinis stebėjimas — ASR.** Tuose skambučiuose atpažinimas žargo žodžius: „Taip dėl
+šadaruso“ (= „taip, dėl šio adreso“), „nuėsiu prie routere“, „Sveikaro!“.
+Atskiras svertas (ASR nustatymai, `initial_prompt`, endpointing), ne kortelių darbas.
+
+### G2, G4–G9 — kodėl atidėta
 
 Abu yra kortelės vykdytojo darbas, ir juos verta daryti kartu su tuo, ko Andrius paprašė
 2026-09-28 — tai ta pati vieta:
