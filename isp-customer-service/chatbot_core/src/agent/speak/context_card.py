@@ -221,15 +221,19 @@ def _service_of(state) -> str | None:
 
 
 def _mark_written_step_said(state) -> None:
-    """A written step counts as SAID when a reply is actually being built for it.
+    """A step counts as SAID when a reply is actually being built for it.
 
     Marking it when the plan was built was wrong: on a turn the identification rule owned, the
     guide plan existed, was never spoken, and the caller's next words finished a step they had
-    never heard (2026-09-23).
+    never heard (2026-09-23). The same holds for every card step — a step whose question was
+    never asked must not have its readers applied to somebody else's answer (2026-09-30).
     """
-    if str((state.turn.plan or {}).get("rule") or "") != "case.guide":
+    rule = str((state.turn.plan or {}).get("rule") or "")
+    if not rule.startswith("case."):
         return
-    state.case.guide_said = state.case.guide_step
+    state.case.step_said = state.case.step
+    if rule == "case.guide":
+        state.case.guide_said = state.case.guide_step
 
 
 def _asked_how(state, rt) -> list[str]:

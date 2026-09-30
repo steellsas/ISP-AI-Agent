@@ -164,3 +164,28 @@ class TestFinalizer:
         finalize(agent.state, agent.runtime, transport_end="client_closed")
 
         assert self._rows(db_connection)[0]["outcome"] == "abandoned"
+
+
+class TestTheHangUpNetKnowsTheV2Case:
+    """Wave 6, live 2026-09-30: the caller said goodbye right after the agent concluded
+    „routeris sugedęs", and the call ended with NO ticket at all. Both the farewell guard and
+    the hang-up net still asked `resolution.procedure`, which the v2 Case never fills."""
+
+    def test_a_case_in_progress_counts_as_mid_call(self, make_state):
+        state = make_state("+37060012353")
+        assert state.case.in_progress is False
+
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+
+        assert state.case.in_progress is True
+
+    def test_a_farewell_mid_case_asks_instead_of_closing(self, make_state, make_runtime):
+        from agent.decide.rules import head
+
+        state, rt = make_state("+37060012353"), make_runtime()
+        state.identity.customer_id = "CUST009"
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+
+        owned = head.farewell_mid_process(state, rt, "Nenoriu, viso gero")
+
+        assert owned is True and state.dialog.end_confirm_pending is True

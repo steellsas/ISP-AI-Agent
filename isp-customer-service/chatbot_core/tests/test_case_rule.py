@@ -747,3 +747,46 @@ def test_a_step_given_up_on_does_not_send_the_call_back_into_itself(make_state, 
 
     assert rules.count("case.guide") <= 4, f"the same step over and over: {rules}"
     assert any(r and (r.startswith("ticket.") or r == "case.escalate") for r in rules), rules
+
+
+class TestIdentificationFinishesBeforeTheCaseAsks:
+    """Wave 6 (B), Andrius 2026-09-30: *„kol neįvyko identifikavimas, neturi painiotis su
+    analize… vardo pasiklausimas ir tikslinimas tai dar identifikavimo dalis."*
+
+    The Case may THINK while that happens — the line is read, the card settles, the finding
+    is held — but it may not ASK. Live that day the lights question was planned on the turn
+    the holder clarification owned, was never spoken, and the caller's answer about the
+    CONTRACT was then read as the answer about the LIGHTS.
+    """
+
+    def test_no_question_while_the_holder_clarification_is_open(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje
+        state.identity.holder_clarify_open = True
+        state.identity.holder_clarify_asked = False
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan is None, "the Case stays silent while identification is mid-question"
+
+    def test_but_the_card_is_settled_quietly(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje
+        record_client(state, rt, "has_computer", "yes")  # kuri šaka — jau aišku
+        state.identity.holder_clarify_open = True
+        state.identity.holder_clarify_asked = False
+
+        case_rule.plan(state, rt)
+
+        assert state.case.fault == "no_mac_observed", "the thinking happened"
+        assert state.case.step_said == -1, "and nothing was marked as asked"
+
+    def test_once_identification_is_done_the_question_goes_out(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "observed_mac": None})  # nieko linijoje
+        record_client(state, rt, "has_computer", "yes")
+        state.identity.holder_clarify_open = False
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan is not None and plan.rule == "case.check_lights"

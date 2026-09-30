@@ -63,6 +63,29 @@ Detalus 2b–5 bangų planas rašomas kiekvienos bangos pradžioje.
 nesuveikė, bet kai perkroviau routerį suveikė. toliau primygtinai kartojo prieikite prie
 routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
 
+### Struktūrinis taisymas (A ir B, 2026-09-30) — kodėl žingsniai „pjovėsi"
+
+Andrius, pažiūrėjęs paskutinį skambutį: *„supratau, kad žingsniai čia pjaunasi… kol neįvyko
+identifikavimas, neturi painiotis su analize. Vardo pasiklausimas ir tikslinimas tai dar
+identifikavimo dalis. Analizės agentas gali veikti tyliai, gauti telemetriją ir daryti
+hipotezes… kad tie stepai vėl nenusimuštų ir agentas visuomet jaustų, kur yra."*
+
+Radinys buvo ne trūkstamas mazgas, o **bendra būsena**: `decide/rules/stage.py` pirma leidžia
+Case suplanuoti žingsnį, paskui identifikacijos scenarijų — ir jei laimi identifikacija,
+Case planas išmetamas, **bet jo žymės lieka** (`awaiting`, `pending_evidence_key`,
+`delivered`). Gyvai 2026-09-30: lempučių klausimas suplanuotas ėjime, kurį pasiėmė savininko
+patikslinimas, nenuskambėjo — ir kito ėjimo atsakymas *„Ne, tai mano vardu, Giedriaus
+vardu"* buvo užrašytas kaip **`lights=no`**. Lempučių žingsnis tapo „atsakytas", ir agentas
+nušoko prie maitinimo, nieko neklausęs.
+
+| | Kas pakeista |
+|---|---|
+| **A** | Žingsnis įskaitomas tik tada, kai jo klausimas **tikrai nuskambėjo** (`case.step_said`, žymima ten, kur statomas atsakymas). Laukiamas faktas negalioja, jei klausimo nebuvo — svetimo klausimo atsakymas nebeužrašomas |
+| **B** | Kol vyksta identifikacija (vardas, savininko patikslinimas), Case **mąsto, bet neklausia**: skaito liniją, susiaurina kandidates, pasideda išvadą. Išvada nedingsta — ji nuskamba tame pačiame atsakyme, kurį stato identifikacija |
+| — | `done_when` dabar mato **šio ėjimo** faktus (po „nenoriu" nebenuskamba nurodymas kišti laidą) |
+| — | Atsisveikinimas viduryje sprendimo nebenustelbia registracijos: sargas ir telefono padėjimo tinklas dabar žino apie v2 Case (`case.in_progress`) — anksčiau klausė tik seno `resolution.procedure`, todėl mirusio routerio skambutis baigėsi **be tiketo** |
+| — | `has_computer` nebeklausiamas atskirai: tas klausimas rinko sprendimo šaką ir todėl ėjo **prieš** lemputes bei maitinimą. Tilto klausia `offer_bridge` savo vietoje, po diagnostikos |
+
 | # | Radinys | Būsena |
 |---|---|---|
 | **G1** | „Padariau… kas toliau?" neužskaitoma — nugali klaustukas | ✓ pataisyta |

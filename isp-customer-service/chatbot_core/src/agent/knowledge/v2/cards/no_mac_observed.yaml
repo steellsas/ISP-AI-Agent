@@ -47,13 +47,14 @@ needs:
     # „Rozetė neveikia" apverčia istoriją (gedimas ne routeryje, o maitinime): pasakius tai
     # ne į klausimą, pirma pasitikslinam ir tik tada priimam.
     confirm_values: [not_working]
-  # Tiltas: ar klientas turi kompiuterį, kurį galima jungti tiesiai į liniją.
+  # Tiltas: ar klientas turi kompiuterį. NEBEKLAUSIAMA atskirai (6 banga): šis klausimas rinkdavo
+  # sprendimo šaką ir todėl nuskambėdavo PRIEŠ lemputes bei maitinimą — t.y. prieš tai, kas
+  # patvirtina hipotezę. Gyvai (eval S4, 2026-09-30) po dviejų tokių klausimų klientas atsakė
+  # „Ne, nešviečia jokia lemputė", ir tas „Ne" tapo „kompiuterio neturi".
+  # Dabar tilto klausia `offer_bridge` savo vietoje — po diagnostikos. Čia lieka tik tam, kad
+  # klientui pačiam pasakius („turiu tik kompiuterį") faktas būtų užrašytas.
   has_computer:
-    ask: "pack.no_mac_observed.has_computer.question"
-    clarify: "pack.no_mac_observed.has_computer.clarify"
-    # Be šito kelio nėra: laikinas internetas per kompiuterį arba jo nėra. Todėl vietoj trečio
-    # pakartojimo klientui pasakoma, KODĖL to reikia ir kas bus, jei nežinosim (4a, 2026-09-23).
-    critical: true
+    volunteered: true
     values: {"yes": confirms, "no": confirms}
   lan_active:
     ask: "pack.no_mac_observed.lan_active.question"
@@ -67,8 +68,7 @@ solution:
 # Kelias tas pats abiem atvejais, tik pabaiga skiriasi. Eilė seka diagnostiką, ne patogumą
 # (Andrius, 2026-09-30): lemputės -> maitinimas -> IŠVADA -> keitimas, o laikinas internetas
 # yra PASIŪLYMAS pakeliui, ne žingsnis, kurį klientas gauna nepaklaustas.
-- when: [has_computer=yes]
-  steps:
+- steps:
   # 1. Ar dėžutė gyva. Šito linija nemato, tad `confirms: true` — neperšokama.
   - module: check_lights
     args: {device: router}
@@ -102,19 +102,6 @@ solution:
     args:
       note: "lemputes nedega, maitinimas patikrintas - routeris nebeatsiranda linijoje,
         reikia keisti irengini; laikinas internetas pasiulytas"
-# Kompiuterio nėra — tilto nėra, bet diagnostika ta pati.
-- when: [has_computer=no]
-  steps:
-  - module: check_lights
-    args: {device: router}
-    knowledge_need: priekine panele lemputes reiskia
-  - module: check_power
-    args: {device: router}
-  - module: escalate
-    args:
-      note: "lemputes nedega, maitinimas patikrintas - routeris tiketinai suges,
-        reikia keisti irengini; kompiuterio tiltui nera"
-
 escalate:
   need: "pack.no_mac_observed.ticket_need"
   note: "linijoje nematomas kliento įrenginys"

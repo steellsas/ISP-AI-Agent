@@ -487,6 +487,23 @@ class CaseState(BaseModel):
     # step they never heard: the first step of the WAN procedure was skipped exactly so
     # (2026-09-23), because "taip, esu prie routerio" read as a done-report.
     guide_said: int = -1
+    step_said: int = -1
+
+    @property
+    def in_progress(self) -> bool:
+        """Ar ŠIUO METU vyksta gedimo sprendimas.
+
+        v1 to klausdavo per `resolution.procedure`, o v2 Case jo nebepildo — todėl atsisveikinimo
+        sargas ir telefono padėjimo tinklas 2026-09-30 nematė, kad skambutis dar viduryje:
+        klientas atsisveikino, kai kortelė jau buvo pasakiusi „routeris sugedęs", ir skambutis
+        baigėsi BE TIKETO (wave 6).
+        """
+        return bool(self.fault) and self.solution is not None
+
+    # Kuris kortelės žingsnis iš tikrųjų NUSKAMBĖJO. Planas gali būti sudarytas ir neatsakytas —
+    # tą ėjimą paėmus identifikacijai ar tiketui — o jo skaitytuvai tada perskaito visai kito
+    # klausimo atsakymą: gyvai 2026-09-30 „Ne, tai mano vardu…" tapo `lights=off`, lempučių
+    # klausimas praleistas kaip " jau atsakytas" ir agentas nušoko prie maitinimo (wave 6).
     # The modules that actually RAN in this call, in order. It answers two questions nothing
     # else could: has the phone work been done before a technician is sent (`only_after`), and
     # what does the technician need to know we already tried.

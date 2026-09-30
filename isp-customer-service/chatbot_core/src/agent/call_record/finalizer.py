@@ -64,7 +64,7 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         s.identity.customer_id
         and not s.ticket.ticket_id
         and not s.closing.case_closed
-        and s.resolution.procedure is not None
+        and (s.resolution.procedure is not None or s.case.in_progress)
     ):
         from ..resolution import get_strategy
 
@@ -73,7 +73,9 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
         # live: TKT00D19E54 for a healthy line). A recorded fix or one fresh
         # diagnose read showing healthy skips the net; telemetry unreachable
         # -> register anyway (a spare ticket beats an abandoned caller).
-        solved = bool(s.resolution.procedure.get("telemetry_fixed"))
+        # v2: there is no `resolution.procedure` — the Case holds the fix, so every read here
+        # is None-safe and the v1 strategy simply has nothing to say.
+        solved = bool((s.resolution.procedure or {}).get("telemetry_fixed"))
         if not solved:
             try:
                 from ..tooling import telemetry
@@ -87,12 +89,13 @@ def finalize(state: GraphState, rt: AgentRuntime, transport_end: str | None = No
             close_call(state, rt, "resolved")
             rt.tracer.emit("decision", intent="hangup_net", action="skip_solved")
         else:
-            s.resolution.procedure.setdefault("escalate_reason", "caller_hung_up")
+            if s.resolution.procedure is not None:
+                s.resolution.procedure.setdefault("escalate_reason", "caller_hung_up")
             if not s.ticket.contact_phone:
                 s.ticket.contact_phone = s.identity.caller_phone
             if not s.ticket.contact_hours:
                 s.ticket.contact_hours = phrase("ticket.default_hours")
-            strat = get_strategy(s.resolution.procedure.get("verdict"))
+            strat = get_strategy((s.resolution.procedure or {}).get("verdict"))
             esc = strat.by_role("escalate") if strat else None
             register_ticket_from_state(state, rt, esc.id if esc is not None else None)
             if s.ticket.ticket_id:

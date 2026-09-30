@@ -174,6 +174,8 @@ def farewell_mid_process(state: Any, rt: Any, user_input: str) -> bool:
     mid_process = not s.closing.case_closed and (
         not s.identity.customer_id
         or s.resolution.procedure is not None
+        or s.case.in_progress  # wave 6: the v2 Case is the one that is mid-fix now
+        or bool(s.ticket.stage)  # a registration has been started and is not finished
         or state.identity.result_pending
         or (
             bool(s.diagnosis.verdicts)

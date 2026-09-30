@@ -11,6 +11,24 @@ from ..contract.locale import vocab
 from ..dialog_utils import asked_recently
 
 
+def unasked_pending_cleared(state: Any) -> str | None:
+    """The evidence key whose question is really OUT.
+
+    A card step can be PLANNED and never spoken — the identification or ticket rule owned the
+    turn — and its `pending_evidence_key` then waits for an answer the caller was never asked
+    for. Live 2026-09-30: the caller answered „whose contract is it" and the pass mapped that
+    onto the lights question nobody had asked, so the lights step counted as done and the
+    agent went straight to the power lead.
+    """
+    key = state.diagnosis.pending_evidence_key
+    if not key:
+        return None
+    case = getattr(state, "case", None)
+    if case is not None and case.fault and case.awaiting == key and case.step_said != case.step:
+        return None
+    return key
+
+
 def step_perception_options(state: Any, rt: Any):
     """(options, step) for the merged perception call — the SAME routing-key
     meanings procedure.classify_confirm_and_route / classify_instruct_and_advance
@@ -107,7 +125,7 @@ def ingest_client_evidence(state, rt, user_input: str | None) -> None:
     # "Radau." to "Radote?" (no noun -> the general extractor is blind)
     # became a give-up live 2026-08-10. Context read fills ONLY the pending
     # key, and only when the general pass found nothing for it.
-    pending = state.diagnosis.pending_evidence_key
+    pending = unasked_pending_cleared(state)
     # 2026-09-03 (eval S6 flake): the pack's FIRST question can go out from
     # the STEP HINT (the narrator, before the drive's own ask bookkeeping) —
     # then diagnosis.pending_evidence_key is still None and the deterministic answer

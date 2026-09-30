@@ -26,6 +26,18 @@ from ..plan import Action, Say, TurnPlan
 
 def plan(state: Any, rt: Any) -> TurnPlan | None:
     """This turn on the fault path."""
+    if _identification_owns_the_turn(state):
+        # The Case may THINK while the caller is still being identified — the line is read,
+        # the candidates narrow, the finding is worked out — but it may not ASK. Andrius
+        # (2026-09-30): *„kol neįvyko identifikavimas, neturi painiotis su analize… vardo
+        # pasiklausimas ir tikslinimas tai dar identifikavimo dalis."*
+        #
+        # Live that day: the lights question was planned on the turn the holder clarification
+        # owned, was never spoken — and the caller's answer about the CONTRACT was then read
+        # as the answer about the LIGHTS.
+        facts = ledger.facts_of(state)
+        _diagnose_quietly(state, rt, facts)
+        return None
     reflect = _reflect_plan(state, rt)
     if reflect is not None:
         return reflect
@@ -60,7 +72,11 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
             return _resolved(state, rt)
         step = _current(state)
         if step is not None:
-            return _step_plan(state, rt, step, facts)
+            # The facts this turn's words established belong to THIS turn's decision. Live
+            # 2026-09-30: the caller said „Nenoriu" to the temporary line, `bridge_agreed=no`
+            # was written by `_absorb` — and the step was still chosen against the snapshot
+            # taken before they spoke, so the cable instruction went out anyway.
+            return _step_plan(state, rt, step, ledger.facts_of(state))
     if _not_a_fault(facts, state) and state.case.fault is None and _told(state):
         # An outage or a suspended service is NOT a fault we diagnose: the inform path owns
         # the turn, and escalating here hijacked it (full eval: four inform scenarios).
@@ -456,6 +472,30 @@ def _current(state: Any):
     return step
 
 
+def _identification_owns_the_turn(state: Any) -> bool:
+    """Is the caller still being identified (the name and the holder clarification count)?"""
+    s = state
+    if not s.identity.customer_id:
+        return True
+    if s.identity.holder_clarify_open and not s.identity.holder_clarify_asked:
+        return True
+    return bool(s.identity.result_pending and not s.identity.caller_name)
+
+
+def _diagnose_quietly(state: Any, rt: Any, facts: dict[str, str]) -> None:
+    """The silent half of the Case: settle the card and hold its finding, say nothing.
+
+    The finding is NOT lost — `state.case.finding` carries it into the reply the
+    identification rule is building, which is how the caller hears what the line showed in
+    the same breath as the answer to their own question.
+    """
+    if state.case.fault is not None:
+        return
+    move = next_move(facts, unavailable=ledger.unavailable(state))
+    if move.kind == "solve" and move.fault and move.fault not in state.case.spent:
+        _begin(state, rt, move.fault, facts)
+
+
 def _ruled_out_now(state: Any, facts: dict[str, str]) -> bool:
     """Does the card we are working on now rule ITSELF out?
 
@@ -518,18 +558,24 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         return walked
     if state.case.moved_on_turn == state.dialog.turn_count:
         return "waiting"  # their words already moved us once this turn
-    # A module that asks reads its OWN answer (the generic policies own their questions).
-    read = modules.read_answer(call, state.dialog.last_heard, device=_device(state))
-    if read is not None:
-        fact, value = read
-        ledger.record_client(state, rt, fact, value)
-        facts = ledger.facts_of(state)
-    # What the CALLER owns, beside what their answer MEANS: the lights they see are theirs,
-    # `wan_link` is the line's, and only the first can settle a question we asked them.
-    own = modules.client_fact(call, state.dialog.last_heard)
-    if own is not None:
-        ledger.record_client(state, rt, own[0], own[1])
-        facts = ledger.facts_of(state)
+    # A module that asks reads its OWN answer (the generic policies own their questions) — but
+    # ONLY when that question was actually asked. A plan can be built and never spoken (the
+    # identification or ticket rule owns the turn), and then its readers meet an answer to a
+    # different question: live 2026-09-30 „Ne, tai mano vardu, Giedriaus vardu" was read as
+    # `lights=no`, the lights question counted as answered, and the agent jumped to the power
+    # lead without ever asking what the caller saw.
+    if _step_was_asked(state):
+        read = modules.read_answer(call, state.dialog.last_heard, device=_device(state))
+        if read is not None:
+            fact, value = read
+            ledger.record_client(state, rt, fact, value)
+            facts = ledger.facts_of(state)
+        # What the CALLER owns, beside what their answer MEANS: the lights they see are
+        # theirs, `wan_link` is the line's, and only the first settles a question we asked.
+        own = modules.client_fact(call, state.dialog.last_heard)
+        if own is not None:
+            ledger.record_client(state, rt, own[0], own[1])
+            facts = ledger.facts_of(state)
     awaited = state.case.awaiting
     if awaited and awaited in facts:
         if awaited == "restored" and facts[awaited] == "no":
@@ -648,6 +694,16 @@ def _jumped_ahead(state: Any, rt: Any) -> str | None:
     state.case.step = said
     rt.tracer.emit("case", move="jumped", fault=state.case.fault, to=steps[said].module)
     return _advance(state, rt, by_words=True)
+
+
+def _step_was_asked(state: Any) -> bool:
+    """Did THIS step's own question actually go out to the caller?
+
+    The mark is set where the reply is built (`speak/context_card.py`), never where the plan
+    is made — a plan another rule overrode was never heard, and nothing the caller says next
+    is an answer to it.
+    """
+    return state.case.step_said == state.case.step
 
 
 def _answered_the_written_step(state: Any) -> bool:
