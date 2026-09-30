@@ -330,6 +330,38 @@ done_actions:
   - "prijungiau"
   - "pajungiau"
 
+# Veiksmo PRANEŠIMAS moduliui (`reported:` modulio lauke): žodžiai, kuriais klientas pasako, kad
+# ŠĬ žingsnį jau atliko — net jei variklis dar jo neprašė. Gyvai 2026-09-29/30 klientas sakė
+# „išjungiau iš elektros ir persikrauna", kai dar buvo klausiama, ar jis gali prieiti prie routerio,
+# ir gaudavo nurodymą padaryti tą, ką jau padarė.
+#
+# Čia ĮEINA ir esamasis laikas („perkraunu"), nes tai irgi reiškia, kad žingsnis prasidėjo — variklis
+# tada laukia rezultato, o ne kartoja instrukciją.
+reported_reboot:
+  - "perkroviau"
+  - "perkrovėme"
+  - "perkroveme"
+  - "perkrauju"
+  - "perkraunu"
+  - "perkraunam"
+  - "išjungiau iš elektros"
+  - "isjungiau is elektros"
+  - "išjungiau iš rozetės"
+  - "isjungiau is rozetes"
+  - "ištraukiau maitinimo"
+  - "istraukiau maitinimo"
+  - "ištraukiau laidą iš rozetės"
+  - "istraukiau laida is rozetes"
+
+reported_connect_direct:
+  - "įkišau į kompiuter"
+  - "ikisau i kompiuter"
+  - "prijungiau prie kompiuter"
+  - "įjungiau į kompiuter"
+  - "ijungiau i kompiuter"
+  - "laidą į kompiuter"
+  - "laida i kompiuter"
+
 question_marks:
   - "kiek"
   - "kodėl"

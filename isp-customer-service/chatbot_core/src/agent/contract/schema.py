@@ -528,6 +528,18 @@ class ModuleSpec(_Model):
     # "ar galite prieiti?" right after the caller said they were standing at it (live
     # 2026-09-23). Shape: {other_key: {other_value: this_module's_fact_value}}.
     also: dict[str, dict[str, str]] = {}
+    # Does this question CONFIRM OR RULE OUT the hypothesis? Andrius (2026-09-30):
+    # *"žingsniai, kurių negalima praleisti — tie, kurie patvirtina hipotezę. Routerio gedimui
+    # nustatyti reikia lempučių ir ar elektra pasiekia įrenginį."* Such a question is never
+    # passed over, not even when the caller has walked ahead; "can you reach it" is not one
+    # of them — somebody who just unplugged the router can obviously reach it.
+    confirms: bool = False
+    # Words that mean THE CALLER SAYS THEY DID THIS step, even if the engine has not asked
+    # for it yet. A caller who walks ahead ("išjungiau iš elektros ir persikrauna" while we
+    # are still asking whether they can reach the router) must not be told to do what they
+    # have already done (live 2026-09-29/30). Names a vocabulary list, so the words are a
+    # technician's business, not the engine's.
+    reported: str | None = None
     # DEMO ONLY: the tool that makes the seeded database reflect what the caller just did
     # physically, and the environment flag that allows it. Off in production, where the
     # line changes by itself.

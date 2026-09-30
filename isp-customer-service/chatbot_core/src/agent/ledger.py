@@ -63,6 +63,10 @@ def record_client(state: Any, rt: Any, fact: str, value: str | None) -> bool:
         return False
     state.case.facts[fact] = value
     state.case.unavailable = [f for f in state.case.unavailable if f != fact]
+    if fact not in state.case.said:
+        # WHO said it matters later: a question whose answer only the caller has is never
+        # passed over because a probe happened to fill the same fact name (wave 6).
+        state.case.said.append(fact)
     if rt is not None:
         rt.tracer.emit("facts", source=CLIENT, changed={fact: value})
     return True

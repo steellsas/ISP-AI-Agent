@@ -488,6 +488,9 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         return _advance(state, rt)
     if settled is False:
         return _retry_or_give_up(state, rt)
+    walked = _jumped_ahead(state, rt)
+    if walked is not None:
+        return walked
     if state.case.moved_on_turn == state.dialog.turn_count:
         return "waiting"  # their words already moved us once this turn
     # A module that asks reads its OWN answer (the generic policies own their questions).
@@ -510,6 +513,104 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             ledger.record_client(state, rt, awaited, _done_value(awaited))
         return _advance(state, rt, by_words=True)
     return "waiting"
+
+
+# --- what the caller has actually told us, and where they have walked to -------------------
+
+
+def _client_said(state: Any, fact: str | None) -> bool:
+    """Did the CALLER tell us this — or did a probe merely fill the same fact name?
+
+    A question exists to hear what only the caller can see. `check_lights` waits for
+    `wan_link`, which the line also produces, so on 2026-09-30 the whole lights / power /
+    socket conversation was skipped as "already known" and the agent went straight to the
+    bridge: it had never established that the router was even alive. Telemetry cannot see
+    whether a box is unplugged; that is the caller's to say.
+
+    Andrius (2026-09-30): *„žingsniai, kurių negalima praleisti — tie, kurie patvirtina hipotezę.
+    Routerio gedimui nustatyti reikia lempučių ir ar elektra pasiekia įrenginį."*
+    """
+    if not fact:
+        return False
+    return fact in (state.case.said or []) and bool(state.case.facts.get(fact))
+
+
+def _solution_steps(state: Any) -> list:
+    card = catalog.card(state.case.fault)
+    if card is None or state.case.solution is None:
+        return []
+    return list(card.solution[state.case.solution].steps)
+
+
+def _reported_index(state: Any, steps: list) -> int | None:
+    """The LAST step whose own words the caller just used — how far ahead they have walked.
+
+    The words belong to the module (`reported:`), not to the engine, so a technician can
+    widen them without touching this file.
+    """
+    heard = (state.dialog.last_heard or "").lower()
+    if not heard:
+        return None
+    from ...contract.locale import vocab
+
+    found = None
+    for index, call in enumerate(steps):
+        spec = catalog.module(call.module)
+        key = getattr(spec, "reported", None) if spec else None
+        if key and any(marker.lower() in heard for marker in vocab(key)):
+            found = index
+    return found
+
+
+def _jumped_ahead(state: Any, rt: Any) -> str | None:
+    """The caller did more than they were asked — accept it, but never skip a question.
+
+    Two rules, and they come from the same place (Andrius, 2026-09-30): an instruction the
+    LINE can verify may be taken on the caller's word (" įrenginys dingo iš linijos" is a fact
+    we can read), but a question whose answer only THEY have — the lights, the socket, a
+    computer in the house — confirms the hypothesis and cannot be passed over. So a jump
+    forward is accepted over `instruct` steps and stops at the first unanswered `ask`.
+    """
+    steps = _solution_steps(state)
+    here = state.case.step
+    said = _reported_index(state, steps)
+    if said is None or said <= here or said >= len(steps):
+        return None
+    blocking = None
+    for index in range(here, said):
+        plan = modules.plan_step(steps[index])
+        spec = catalog.module(steps[index].module)
+        if plan is None or plan.kind != "ask" or not getattr(spec, "confirms", False):
+            # An instruction the line can verify, or a question that only arranges the work
+            # ("can you reach it"): somebody who just unplugged the router can reach it.
+            continue
+        if not _client_said(state, plan.awaits):
+            # The same words may answer this question too ("galiu prieiti, jau išjungiau iš
+            # elektros" answers BOTH), so the module's own reader gets first refusal.
+            read = modules.read_answer(steps[index], state.dialog.last_heard, device=_device(state))
+            if read is not None:
+                ledger.record_client(state, rt, read[0], read[1])
+        if not _client_said(state, plan.awaits):
+            blocking = index
+            break
+    if blocking is not None:
+        # Back to the question the hypothesis stands on — and the reply says what we already
+        # know, so the caller hears WHY they are asked to step back.
+        state.case.step = blocking
+        state.case.awaiting = None
+        state.case.retrying = False
+        rt.tracer.emit(
+            "case",
+            move="back",
+            fault=state.case.fault,
+            to=steps[blocking].module,
+            because=steps[said].module,
+        )
+        _explain_retry(state, rt)
+        return "moved"
+    state.case.step = said
+    rt.tracer.emit("case", move="jumped", fault=state.case.fault, to=steps[said].module)
+    return _advance(state, rt, by_words=True)
 
 
 def _queue_reflection(state: Any) -> None:
@@ -788,7 +889,7 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
         return _escalate(state, rt, state.case.fault)
 
     already = _already_done(call, facts) or (
-        step.kind == "ask" and step.awaits and step.awaits in facts
+        step.kind == "ask" and step.awaits and _client_said(state, step.awaits)
     )
     if already:
         # They already told us, or the card says this step is achieved — asking again is how an

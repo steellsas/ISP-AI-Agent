@@ -456,3 +456,57 @@ class TestWhatTheFindingSays:
 
         assert "FINDINGS MOMENT" in lines or "OPEN THE REPLY" in lines
         assert "Do NOT ask them to do anything yet" in lines or "before anything else" in lines
+
+
+class TestWhenTheCallerWalksAhead:
+    """Wave 6, from the live calls of 2026-09-29/30.
+
+    Andrius: *„kartais padaryti veiksmai iš karto peršoka būseną… jei peršoko svarbius
+    žingsnius, turėtų grįžti ir paprašyti padaryti tai pažingsniui, bet būtinai paaiškinti
+    klientui, kodėl prašo kartoti."*
+    """
+
+    def test_a_reboot_reported_while_we_ask_about_reaching_is_not_asked_for_again(self, call):
+        """Live: „Galiu perkrauti routerį. Tuoj perkrausiu… Perkraunu dabar routerį" — the
+        engine closed only `reach` and then told them to pull the power lead."""
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)  # reach: can you get to the router
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Galiu prieiti, jau išjungiau iš elektros ir perkraunu."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule != "case.reboot", "they said they are doing it"
+        assert state.case.step >= 2, "the reboot step is behind us, not ahead"
+
+    def test_the_lights_question_is_not_skipped_on_the_way(self, call):
+        """The hypothesis stands on the lights: a jump may pass an instruction, never a
+        question only the caller can answer (dead-router card, live 2026-09-30)."""
+        state, rt = call
+        dead = {**BASE, "device_seen": False}
+        record_telemetry(state, rt, dead)
+        record_client(state, rt, "has_computer", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Jau įkišau laidą į kompiuterį."
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_lights", "the lights question comes first"
+        assert state.case.step == 0
+
+    def test_a_lights_answer_from_the_line_does_not_count_as_the_callers(self, call):
+        """`check_lights` waits for `wan_link`, which telemetry also produces — and that is
+        how the whole lights / power conversation was skipped on 2026-09-30."""
+        from agent.decide.rules.case_rule import _client_said
+
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False, "wan_link": "down"})
+
+        assert _client_said(state, "wan_link") is False, "the line said it, not the caller"
+
+        # A fact the line cannot produce: once THEY say it, the question is answered.
+        record_client(state, rt, "lights", "off")
+        assert _client_said(state, "lights") is True

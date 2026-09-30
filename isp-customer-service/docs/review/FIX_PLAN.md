@@ -74,6 +74,17 @@ routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
 | **G7** | Klientas JAU daro veiksmą, o agentas liepia jį daryti | atidėta |
 | **G8** | Linija jau rodė `traffic=flowing, port_flapped=yes`, o instrukcija vis tiek nuskambėjo | atidėta |
 | **G9** | Uždaro nepaklausęs kliento: „Internetas vėl veikia“ ir sudie | atidėta |
+| **G10** | `guide` duoda dokumento žingsnį su trimis punktais — nuskamba tik pirmas, o adresas ir prisijungimas dingsta | atidėta |
+| **G11** | Klausimas vedimo viduryje („kokį slaptažodį vesti?“) lieka neatsakytas, o konkretybė improvizuojama LLM (`192.168.1.1`) | atidėta |
+| **G12** | Vedama be sutikimo — kortelė net reikalauja vesti prieš meistrą (`only_after: [guide]`) | atidėta |
+| **G13** | `ask` žingsnis praleidžiamas, jei fakto vardą jau užpildė TELEMETRIJA (`check_lights` → `wan_link`) | ✓ pataisyta (0a) |
+| **G14** | Klientas peršoka į priekį („išjungiau iš elektros“), variklis pajudina tik dabartinį žingsnį | ✓ pataisyta (0b) |
+| **G15** | `has_computer=yes` įrašytas be klausimo ir be citatos — tiltas pasirinktas nepaklausus | atidėta |
+| **G16** | Išvada prieštarauja klausimui: „routeris sugedęs — telefonu neprikelsime. Ar galėtumėte perkrauti routerį?“ | atidėta |
+| **G17** | Prieštara („bet aš sumokėjau“) atsakoma identifikacijos klausimu apie sutarties savininką | atidėta |
+| **G18** | LLM pasakė faktą, kurio niekas nenustatė: „internetas neveikia visuose įrenginiuose“ | atidėta |
+| **G19** | Vardas: klientas pataiso („mano vardu Giedrius“) — agentas toliau „Gedriau“; avarijos skambutyje kreipėsi sutarties savininkės vardu | atidėta |
+| **G20** | Vienas trace failo įrašas sulūžęs (pusė JSON eilutės) — du rašytojai susikerta | atidėta |
 
 ### G1 · Klaustukas nugalėjo atliktą veiksmą
 
@@ -155,6 +166,45 @@ faktai pasikeitė ir atsiveria kliento pusės kortelė.
 **Šalutinis stebėjimas — ASR.** Tuose skambučiuose atpažinimas žargo žodžius: „Taip dėl
 šadaruso“ (= „taip, dėl šio adreso“), „nuėsiu prie routere“, „Sveikaro!“.
 Atskiras svertas (ASR nustatymai, `initial_prompt`, endpointing), ne kortelių darbas.
+
+### 0a ir 0b · kas pataisyta (2026-09-30)
+
+**0a — klausimas praleidžiamas tik tada, kai atsakė KLIENTAS.** `check_lights` laukia fakto
+`wan_link`, o tą patį fakto vardą užpildo ir telemetrija — todėl gyvai visa lempučių, maitinimo
+ir rozetės šneka buvo praleista kaip „jau žinoma“, ir agentas nuėjo prie tilto niekada
+nenustatęs, ar dėžutė gyva. Dabar kas pasakė faktą yra įrašoma (`case.said`), ir zondo užpildytas
+faktas klausimo nebeuždaro.
+
+**0b — peršokimą priimam, praleidimo — ne.** Modulis dabar gali pasakyti, kokiais žodžiais
+klientas praneša, kad ŠĪ žingsnį jau atliko (`reported:` → žodyno sąrašas). Kliento sakinys
+lyginamas su VISAIS sprendimo žingsniais; jei jis praneša vėlesnį žingsnį, variklis ten ir
+nušoka — bet sustoja prie klausimo, kuris **patvirtina hipotezę** (`confirms: true`; kol kas
+`check_lights`). Logistikos klausimas („ar galite prieiti“) nestabdo: kas ką tik išjungė
+routerį iš rozetės, tas prie jo akivaizdžiai prieina.
+
+Grįžtant atgal į privalomą klausimą, į atsakymą įdėmi tai, ką jau žinom (`_explain_retry`), kad
+klientas išgirstų, KODĖL prašoma žingsnio atgal.
+
+**Tikrinta:** 1357 passed, 1 skipped (3 nauji testai). Vienas iš jų be taisymo krinta taip, kaip
+nutiko gyvai: „Galiu prieiti, jau išjungiau iš elektros ir perkraunu“ → `case.reboot`
+(instrukcija tam, kas padaryta) vietoj `case.verify` (linijos patikros).
+
+### Diagnostikos principas (Andrius, 2026-09-30)
+
+> „Žingsniai, kurių negalima praleisti — tie, kurie PATVIRTINA hipotezę. Routerio gedimui
+> nustatyti reikia lempučių ir ar elektra pasiekia įreńginį: jei srovė ateina, o lemputės nedega —
+> įrenginys neveikia. Jei perkrovus telemetrijoje niekas nepasikeičia, agentas priežasties tiksliai
+> nenustatė ir turi tai pasakyti. Tai svarbu VISIEMS gedimams: gedimas arba išsprendžiamas, arba
+> perduodamas meistrams — o jiems reikia aprašyti, KOKS tai gedimas.“
+
+Iš to seka trys taisyklės, kurios galioja visoms kortelėms:
+
+1. **Faktas, kurį žino tik klientas, negali būti praleistas** dėl to, kad telemetrija užpildė tą patį
+   fakto vardą. Linija nemato, ar dėžutė išjungta iš rozetės (→ **0a**).
+2. **Peršokimą galima priimti, praleidimą — ne.** Kliento žodis gali uždaryti vėlesnį `instruct`
+   žingsnį (tą linija patikrins pati), bet ne `ask` žingsnį, kurio atsakymo linija neturi (→ **0b**).
+3. **Nenustatė — pasako.** Jei po veiksmo telemetrijoje niekas nepasikeitė, tai ne „išspręsta“
+   ir ne „neaišku“, o įvardijama būsena, kuri keliauja į tiketą.
 
 ### G2, G4–G9 — kodėl atidėta
 

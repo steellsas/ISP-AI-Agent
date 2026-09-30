@@ -424,6 +424,11 @@ class CaseState(BaseModel):
     # Facts we tried to get and could not (an unanswered question, a probe that is down):
     # never asked twice, so a call cannot loop on a dead end.
     unavailable: list[str] = Field(default_factory=list)
+    # Facts the CALLER told us, as opposed to the ones a probe filled in. The distinction
+    # decides whether a question may be passed over: `check_lights` waits for `wan_link`,
+    # which the line also produces, and on 2026-09-30 that skipped the whole lights / power
+    # conversation — the agent never established that the router was alive (wave 6).
+    said: list[str] = Field(default_factory=list)
     # The fault whose solution is running, and where in it.
     fault: str | None = None
     solution: int | None = None
