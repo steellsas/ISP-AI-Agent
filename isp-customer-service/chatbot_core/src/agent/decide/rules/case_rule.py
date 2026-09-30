@@ -33,6 +33,16 @@ def plan(state: Any, rt: Any) -> TurnPlan | None:
     later = _not_now_plan(state, rt, facts)
     if later is not None:
         return later
+    if state.case.fault is not None and _ruled_out_now(state, facts):
+        # A fact arrived mid-fix that this card itself calls disqualifying. Live 2026-09-28:
+        # the caller plugged a computer into the line, `device_registered=foreign` landed —
+        # which `router_hung` lists in `rules_out` — and the engine carried on rebooting a
+        # router that was no longer the one on the line. `rules_out` was read when the card
+        # was CHOSEN and never again.
+        rt.tracer.emit("case", move="ruled_out", fault=state.case.fault)
+        state.case.fault, state.case.solution, state.case.step = None, None, 0
+        state.case.awaiting, state.case.awaiting_probe = None, False
+        state.case.guide_step, state.case.guide_said = 0, -1
     if state.case.fault is not None:
         status = _absorb(state, rt, facts)
         # The caller's physical action must reach the line BEFORE anything reads it again,
@@ -446,6 +456,21 @@ def _current(state: Any):
     return step
 
 
+def _ruled_out_now(state: Any, facts: dict[str, str]) -> bool:
+    """Does the card we are working on now rule ITSELF out?
+
+    `rules_out` is read when a card is chosen; a fact that arrives later (the caller plugs a
+    different device into the line, the neighbours' outage is confirmed) makes the same card
+    wrong, and nothing was re-reading it.
+    """
+    from ...contract.schema import Condition
+
+    card = catalog.card(state.case.fault)
+    if card is None or not card.rules_out:
+        return False
+    return any(Condition.parse(text).holds(facts) is True for text in card.rules_out)
+
+
 def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
     """Did the step we are on finish?
 
@@ -815,6 +840,46 @@ def _is_escalate(call: Any) -> bool:
     return bool(spec and spec.kind == "escalate")
 
 
+def _repeat_guard(state: Any, rt: Any, call: Any) -> TurnPlan | None:
+    """A step that keeps being re-said is a step that is not working.
+
+    Live 2026-09-28: the same reboot instruction went out six times because nothing counted.
+    After `step_repeat_max` the card decides — its `on_fail` runs once (different words, and
+    the REASON with them) — and when there is none, the honest answer is a technician.
+    """
+    from ...contract import limits
+
+    key = f"{state.case.fault}.{state.case.step}"
+    seen = state.case.repeats.get(key, 0)
+    if seen < limits.get("step_repeat_max"):
+        state.case.repeats[key] = seen + 1
+        return None
+    card = catalog.card(state.case.fault)
+    steps = (
+        card.solution[state.case.solution].steps if card and state.case.solution is not None else []
+    )
+    on_fail = steps[state.case.step].on_fail if 0 <= state.case.step < len(steps) else None
+    if on_fail is not None and not state.case.retrying:
+        state.case.retrying = True
+        state.case.repeats[key] = 0
+        rt.tracer.emit("case", move="repeat_limit", fault=state.case.fault, module=call.module)
+        _explain_retry(state, rt)
+        following = _current(state)
+        return (
+            _module_plan_inner(state, rt, following, ledger.facts_of(state), rule="case.retry")
+            if following is not None
+            else None
+        )
+    # The step WAS attempted — three times. Without recording that, `escalate.only_after`
+    # sends us straight back into the same branch and the call spins (eval X_dhcp_silent,
+    # 2026-09-30: repeat_gave_up -> phone_work_first -> the same step, for the rest of the
+    # call).
+    if call.module not in state.case.did:
+        state.case.did.append(call.module)
+    rt.tracer.emit("case", move="repeat_gave_up", fault=state.case.fault, module=call.module)
+    return _escalate(state, rt, state.case.fault)
+
+
 def _retry_or_give_up(state: Any, rt: Any) -> str:
     """The verification says it did not work. The CARD decides what that means: its
     `on_fail` runs once, and when there is none — or it has already run — the fix is spent
@@ -948,6 +1013,10 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             ),
             awaiting=step.awaits,
         )
+    if step.kind in ("ask", "instruct"):
+        exhausted = _repeat_guard(state, rt, call)
+        if exhausted is not None:
+            return exhausted
     state.case.delivered = state.case.step
     if step.kind == "escalate":
         return _escalate(state, rt, state.case.fault, note=step.note)

@@ -127,7 +127,11 @@ def guide_length(call: ModuleCall) -> int:
 def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
     """`reboot(method=power)` -> "reboot.power", the key the catalogue describes."""
     if spec.module == "reboot":
-        return f"reboot.{args.get('method', 'power')}"
+        # `reason` — kodėl kartojam. Katalogas tam turi savo sakinį, ir klientas išgirsta
+        # PRIEŽASTĪ, o ne tą pačią instrukciją dar kartą (G5, gyvai 2026-09-28).
+        reason = args.get("reason")
+        method = args.get("method", "power")
+        return f"reboot.{method}.{reason}" if reason else f"reboot.{method}"
     if spec.module == "cable":
         return f"cable.{args.get('action', 'reseat')}"
     if spec.module == "device_check":

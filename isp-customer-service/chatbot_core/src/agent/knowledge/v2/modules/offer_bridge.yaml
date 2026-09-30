@@ -9,7 +9,9 @@ kind: ask
 params:
   to: {values: [computer], default: computer}
 ask: modules.offer_bridge.question
-detector: yes_no
+# Pasiūlymas priimamas ir žodžiu „gerai“ — `yes_no` to atsakymu nelaiko, ir gyvai
+# (eval S4, 2026-09-30) klientas pasakė „Gerai“, o agentas pakartojo tą patį pasiūlymą.
+detector: ticket_consent
 answers:
   "yes": bridge_agreed=yes
   "no": bridge_agreed=no

@@ -620,7 +620,13 @@ def _case_facts(state, rt) -> list[str]:
     if s.identity.customer_id:
         out.append(f"Customer ID: {s.identity.customer_id}")
     if s.identity.customer_name:
-        out.append(f"Customer name: {s.identity.customer_name}")
+        # Live 2026-09-30: the caller said the contract was in his wife's name, and the agent
+        # greeted him „Malonu, Rasa!" — the holder's name from the CRM. Whoever is calling is
+        # `caller_name`; this one is the contract's.
+        out.append(
+            f"Contract holder (the CUSTOMER on the contract — NOT necessarily who is calling, "
+            f"never address the caller by this name): {s.identity.customer_name}"
+        )
     if s.identity.customer_address:
         out.append(f"Address: {s.identity.customer_address}")
     if s.intake.problem_type:

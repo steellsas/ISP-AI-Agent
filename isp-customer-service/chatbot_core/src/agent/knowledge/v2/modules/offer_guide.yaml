@@ -10,7 +10,9 @@ kind: ask
 params:
   what: {}                          # trumpas darbo pavadinimas, jei kortelė nori savo
 ask: modules.offer_guide.question
-detector: yes_no
+# Pasiūlymas priimamas ir žodžiu „gerai“ — `yes_no` to atsakymu nelaiko, ir gyvai
+# (eval S4, 2026-09-30) klientas pasakė „Gerai“, o agentas pakartojo tą patį pasiūlymą.
+detector: ticket_consent
 answers:
   "yes": guide_agreed=yes
   "no": guide_agreed=no

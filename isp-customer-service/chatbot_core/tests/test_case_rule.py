@@ -638,3 +638,112 @@ class TestTheWrittenFixIsOfferedNotImposed:
 
         assert first.rule == "case.guide" and "prijungti kompiuter" in first.say.text.lower()
         assert second.rule == "case.guide" and "192.168.0.1" in second.say.text
+
+
+class TestWhenTheFactsTurnTheCardWrong:
+    """Wave 6 (G4), live 2026-09-28: the caller plugged a computer into the line mid-fix,
+    `device_registered=foreign` landed — which `router_hung` lists in `rules_out` — and the
+    engine kept rebooting a router that was no longer the device on the line."""
+
+    def test_a_disqualifying_fact_reopens_the_case(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)  # router_hung is being worked on
+        assert state.case.fault == "router_hung"
+
+        # A different MAC on the line is what „the caller plugged their computer in" looks
+        # like to telemetry (`device_registered` is derived, not reported).
+        record_telemetry(state, rt, {**BASE, "observed_mac": "11:22:33:44:55:66"})
+        case_rule.plan(state, rt)
+
+        assert state.case.fault != "router_hung", "the card ruled itself out"
+
+    def test_a_card_whose_conditions_still_hold_is_not_disturbed(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)
+
+        case_rule.plan(state, rt)
+
+        assert state.case.fault == "router_hung"
+
+
+class TestThePowerQuestionIsAlwaysAsked:
+    """Wave 6: „ar ateina elektra" is part of the diagnosis, not an optional extra.
+
+    (The re-read of the line after a lead was found unplugged — G26 — was tried as a
+    `verify` step and taken out again: a failed verification spends the whole card, so the
+    caller lost the offer of a temporary line just because the router had not come back yet.
+    It needs a read that does not close the card; it stays in FIX_PLAN §6.)
+    """
+
+    def _dead(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)  # lights
+        said(state, rt, "lights", "off")
+        return state, rt
+
+    def test_lights_off_is_followed_by_the_power_question(self, call):
+        state, rt = self._dead(call)
+
+        assert case_rule.plan(state, rt).rule == "case.check_power"
+
+    def test_and_then_the_offer_whatever_the_power_answer_was(self, call):
+        state, rt = self._dead(call)
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "unplugged")
+
+        assert case_rule.plan(state, rt).rule == "case.offer_bridge"
+
+
+class TestAStepThatKeepsBeingRepeated:
+    """Wave 6 (G2): live 2026-09-28 the same reboot instruction went out six times, because
+    nothing counted how often a step had been said."""
+
+    def test_after_the_limit_the_card_gets_its_one_retry(self, call):
+        state, rt = call
+        record_telemetry(state, rt, BASE)
+        said(state, rt, "fail_scope", "all")
+        case_rule.plan(state, rt)
+        said(state, rt, "reachable", "yes")
+
+        rules = [case_rule.plan(state, rt).rule for _ in range(4)]
+
+        assert rules[0] == "case.reboot"
+        assert "case.retry" in rules, f"the card's own second attempt never came: {rules}"
+
+    def test_with_nothing_left_to_try_it_ends_honestly(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "no")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+
+        rules = [case_rule.plan(state, rt).rule for _ in range(5)]
+
+        assert rules[0] == "case.check_lights"
+        assert any(r.startswith("ticket.") or r == "case.escalate" for r in rules), rules
+
+
+def test_a_step_given_up_on_does_not_send_the_call_back_into_itself(make_state, make_runtime):
+    """Wave 6 (eval X_dhcp_silent, 2026-09-30): the repeat guard gave up on the guide, the
+    escalation saw `only_after: [guide]` unfulfilled, re-entered the same branch — and the
+    call spun there until the caller hung up. Giving up on a step is also a record that it
+    was attempted."""
+    state, rt = make_state("+37060020106"), make_runtime()
+    state.identity.customer_id = "CUST106"
+    record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+    state.case.facts.update({"reachable": "yes", "guide_agreed": "yes"})
+
+    rules = []
+    for _ in range(8):
+        plan = case_rule.plan(state, rt)
+        rules.append(plan.rule if plan else None)
+        state.dialog.turn_count += 1
+
+    assert rules.count("case.guide") <= 4, f"the same step over and over: {rules}"
+    assert any(r and (r.startswith("ticket.") or r == "case.escalate") for r in rules), rules

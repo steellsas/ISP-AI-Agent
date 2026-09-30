@@ -411,7 +411,24 @@ def _fix_was_tried(s: Any, cause: str) -> bool:
         return True
     if bool(s.case.attempts) or bool(s.resolution.bridge_bound):
         return True
+    if _work_done(s):
+        # The Case walked real work this call — a reboot, a bridge, a bind, a written
+        # procedure. Live 2026-09-30: the computer was plugged in and BOUND, the caller said
+        # the internet was back, and the ticket still said „įtariama, kad linijoje nematoma
+        # jokio įrenginio" — the wording for a call where nothing had been tried.
+        return True
     return not _has_phone_fix(cause)
+
+
+def _work_done(s: Any) -> bool:
+    """Did the Case actually DO something this call (not just ask)?"""
+    from ...contract import cards as _cards
+
+    for name in s.case.did or []:
+        spec = _cards.module(name)
+        if spec is not None and spec.kind in ("instruct", "action"):
+            return True
+    return False
 
 
 def _has_phone_fix(cause: str) -> bool:

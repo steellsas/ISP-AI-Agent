@@ -433,6 +433,10 @@ class CaseState(BaseModel):
     fault: str | None = None
     solution: int | None = None
     step: int = 0
+    # How many times each step's own words went out. A step that keeps being re-said is a
+    # step that is not working: after the limit the card's `on_fail` runs, and failing that,
+    # a technician — live 2026-09-28 the same reboot instruction went out six times (wave 6).
+    repeats: dict[str, int] = Field(default_factory=dict)
     # How many times each step has been attempted (a retry is declared by the card).
     attempts: dict[str, int] = Field(default_factory=dict)
     # The step is waiting for this fact before the solution may move on.

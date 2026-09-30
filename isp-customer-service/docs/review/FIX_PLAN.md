@@ -66,11 +66,11 @@ routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
 | # | Radinys | Būsena |
 |---|---|---|
 | **G1** | „Padariau… kas toliau?" neužskaitoma — nugali klaustukas | ✓ pataisyta |
-| **G2** | Ta pati instrukcija nuskambėjo **6 kartus** — nėra kartojimo ribos | atidėta — kortelių darbas |
+| **G2** | Ta pati instrukcija nuskambėjo **6 kartus** — nėra kartojimo ribos | ✓ pataisyta |
 | **G3** | Melagingi patvirtinimai: „Gerai, kad perkrovėte" po „Galiu?" | ✓ pataisyta (promptas) |
-| **G4** | 🔌 Kabelis registravo `device_registered=foreign`, bet kortelės `rules_out` vidury sprendimo neperskaitytas | atidėta — kortelių darbas |
-| **G5** | Pakartojimas nepasakė KODĖL — „nematome, kad įrenginys būtų buvęs išjungtas“ liko būsenoje | atidėta |
-| **G6** | Eskalacijos formuluotė pasenusi: po pririšimo `device_registered=match`, o sakoma „matomas kitas įrenginys“ | atidėta |
+| **G4** | 🔌 Kabelis registravo `device_registered=foreign`, bet kortelės `rules_out` vidury sprendimo neperskaitytas | ✓ pataisyta |
+| **G5** | Pakartojimas nepasakė KODĖL — „nematome, kad įrenginys būtų buvęs išjungtas“ liko būsenoje | ✓ pataisyta |
+| **G6** | Eskalacijos formuluotė pasenusi: po pririšimo `device_registered=match`, o sakoma „matomas kitas įrenginys“ | ✓ pataisyta |
 | **G7** | Klientas JAU daro veiksmą, o agentas liepia jį daryti | atidėta |
 | **G8** | Linija jau rodė `traffic=flowing, port_flapped=yes`, o instrukcija vis tiek nuskambėjo | atidėta |
 | **G9** | Uždaro nepaklausęs kliento: „Internetas vėl veikia“ ir sudie | atidėta |
@@ -81,16 +81,16 @@ routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
 | **G14** | Klientas peršoka į priekį („išjungiau iš elektros“), variklis pajudina tik dabartinį žingsnį | ✓ pataisyta (0b) |
 | **G15** | `has_computer=yes` įrašytas be klausimo ir be citatos — tiltas pasirinktas nepaklausus | atidėta |
 | **G16** | Išvada prieštarauja klausimui: „routeris sugedęs — telefonu neprikelsime. Ar galėtumėte perkrauti routerį?“ | ✓ pataisyta |
-| **G17** | Prieštara („bet aš sumokėjau“) atsakoma identifikacijos klausimu apie sutarties savininką | atidėta |
-| **G18** | LLM pasakė faktą, kurio niekas nenustatė: „internetas neveikia visuose įrenginiuose“ | atidėta |
-| **G19** | Vardas: klientas pataiso („mano vardu Giedrius“) — agentas toliau „Gedriau“; avarijos skambutyje kreipėsi sutarties savininkės vardu | atidėta |
-| **G20** | Vienas trace failo įrašas sulūžęs (pusė JSON eilutės) — du rašytojai susikerta | atidėta |
+| **G17** | Prieštara („bet aš sumokėjau“) atsakoma identifikacijos klausimu apie sutarties savininką | ✓ pataisyta |
+| **G18** | LLM pasakė faktą, kurio niekas nenustatė: „internetas neveikia visuose įrenginiuose“ | ✓ pataisyta |
+| **G19** | Vardas: klientas pataiso („mano vardu Giedrius“) — agentas toliau „Gedriau“; avarijos skambutyje kreipėsi sutarties savininkės vardu | ✓ pataisyta |
+| **G20** | Vienas trace failo įrašas sulūžęs (pusė JSON eilutės) — du rašytojai susikerta | ✓ pataisyta |
 | **G21** | „Lemputės nedega“ → iš karto laidas į kompiuterį: maitinimo niekas netikrino | ✓ pataisyta |
 | **G22** | `bind.announce` pririšamą kompiuterį vadino „jūsų routeriu“ — klientas taisė agentą | ✓ pataisyta |
 | **G23** | „Nesupratau gatvės“ tris kartus — prompto PAVYZDYS tapo klausimu pokalbyje | ✓ pataisyta |
 | **G24** | Miręs routeris registruojamas kaip įprastas `fault_technician`, nors reikia KEITIMO | ✓ pataisyta |
 | **G25** | Tiltas vykdomas automatiškai, nepaklausus, ar klientas to nori | ✓ pataisyta |
-| **G26** | Jei maitinimo laidas buvo ištrauktas, po įkišimo linija neperskaitoma prieš išvadą | atidėta |
+| **G26** | Jei maitinimo laidas buvo ištrauktas, po įkišimo linija neperskaitoma prieš išvadą | atidėta — bandėme, žr. žemiau |
 
 ### G1 · Klaustukas nugalėjo atliktą veiksmą
 
@@ -263,6 +263,33 @@ lemputė REIŠKIA, lieka linijos reikalas.
 
 **G26 (atidėta):** jei paaiškėja, kad maitinimo laidas buvo ištrauktas, po įkišimo reikia
 perskaityti liniją prieš darant išvadą — dabar einama tolyn tarsi niekas nepasikeitę.
+
+### G2, G4–G6, G17–G20 · likusieji (2026-09-30)
+
+| # | Kas padaryta |
+|---|---|
+| **G5** | Pakartojimas turi savo sakinį kataloge (`reboot.power.no_flap`): *„Linijoje nematome, kad routeris būtų buvęs išjungtas — galbūt perkrautas ne tas įrenginys arba tik mygtuku…“* Priežastis eina kartu su prašymu, ne atskirai |
+| **G6** | `_fix_was_tried` dabar mato, ką Case iš tikrųjų **padarė** (`case.did`) — po pririšimo eskalacija sako *„reikalingas naujas maršrutizatorius“*, o ne *„įtariama, kad linijoje nematoma jokio įrenginio“* |
+| **G17** | Savininko patikslinimas neklausiamas ėjime, kuris yra **prieštara ar klausimas** — ginčas atsakomas pirmas |
+| **G18** | Promptas: negalima teigti fakto apie kliento situaciją, kurio kortelėje nėra |
+| **G19** | Kliento pataisytas vardas perimamas (`extract_caller_name` atsakyme į savininko klausimą); kortelėje savininko vardas pažymėtas kaip **sutarties**, ne skambinančiojo |
+| **G4** | `rules_out` perskaitomas **kiekvieną ėjimą**: faktas, atmetantis dabartinę kortelę, ją uždaro ir Case atsiveria iš naujo |
+| **G2** | `step_repeat_max: 3` → kortelės `on_fail` (su priežastimi), o jo nėra — sąžiningas meistras |
+| **G20** | Trace rašymas per užraktą (analitikas ir fono telemetrija rašo iš savo gijų) |
+
+**Trys defektai, kuriuos įvešiau pats ir kuriuos pagavo eval'as** — verta užrašyti, nes visi trys
+yra ta pati klaida (sargas be išėjimo):
+
+1. **G26 kaip `verify` žingsnis** išnaudodavo visą kortelę (`fix_failed`), ir klientas netekdavo
+   laikino interneto pasiūlymo vien dėl to, kad linija dar tyli. Išimta; reikia perskaitymo,
+   kuris kortelės neuždaro.
+2. **Pasiūlymai skaitė `yes_no`**, o „Gerai“ tam skaitytuvui nėra atsakymas — agentas kartojo
+   pasiūlymą, kol pasidavė. Dabar skaito sutikimą (`ticket_consent`), kaip ir tiketo klausimas.
+3. **Kartojimo riba sukūrė ciklą**: sargas pasakydavo „gana“ → eskalacija matydavo
+   `only_after: [guide]` neįvykdytą → grąžindavo į tą patį žingsnį. Dabar pasidavimas įrašomas kaip
+   bandymas (`case.did`).
+
+**Tikrinta:** 1371 passed, 1 skipped; eval **195/195**.
 
 ### Diagnostikos principas (Andrius, 2026-09-30)
 

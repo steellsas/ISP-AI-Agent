@@ -602,6 +602,9 @@ equipment:
     locate: "Tai nedidelė dėžutė su lemputėmis — dažniausiai koridoriuje arba prie lango; į ją įeina laidas iš laiptinės."
     reboot:
       power: "Ištraukite maitinimo laidą iš paties routerio, palaukite penkias sekundes ir įkiškite atgal."
+      # Pakartojimas su PRIEŽASTIMI (G5, gyvai 2026-09-28): variklis matė, kad įrenginys iš linijos
+      # nedingo, bet klientui nuskambėdavo ta pati instrukcija kitais žodžiais — be jokio paaiškinimo.
+      power.no_flap: "Linijoje nematome, kad routeris būtų buvęs išjungtas — galbūt perkrautas buvo ne tas įrenginys arba tik mygtuku. Pabandykime dar kartą: ištraukite maitinimo laidą iš pačios rozetės, palaukite penkias sekundes ir įkiškite atgal."
     cable:
       reseat: "Ištraukite iš sienos ateinantį laidą iš routerio ir tvirtai įkiškite atgal."
     reach: "Ar galite dabar prieiti prie routerio?"
