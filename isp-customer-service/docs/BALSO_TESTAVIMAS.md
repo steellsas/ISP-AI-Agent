@@ -195,24 +195,31 @@ meistras, ir tikete matosi, per ką jau vesta.
 Keturi dalykai, kurių iki 4a nebuvo arba kurie buvo sulūžę. Jei kas nors iš jų elgiasi kitaip
 nei čia parašyta — tai regresija, ne interpretacija.
 
-### A. Routeris pametė nustatymus — `dhcp_silent`
+### A. Routeris pametė nustatymus — `dhcp_silent` (**perdaryta 6 bangoje**)
 **Telefonas:** `+37060020106` · **Greta, Šiauliai, Vilniaus g. 31-2** (TP-Link Archer C80)
+
+Iki 6 bangos agentas arba iš karto žadėjo meistrą, arba vesdavo nepaklausęs, o visą dokumento
+žingsnį pasakydavo vienu sakiniu — adresas ir prisijungimo duomenys dingdavo. Dabar: **siūlo,
+veda po VIENĄ veiksmą ir klausia, ką matai.**
 
 | Tu | Agentas turi |
 |---|---|
-| „Labas, neveikia internetas" | pasiūlyti adresą: „Ar skambinate dėl Vilniaus g. 31, butas 2?" |
-| „Taip" | patvirtinti adresą, paklausti vardo (liniją skaito tuo pačiu metu) |
-| „Greta" | **pasakyti, ką mato, žmogaus kalba:** „routeris linijoje matomas, bet adreso iš mūsų neprašo — panašu, kad pasimetę jo nustatymai" + „telefonu to nesutvarkysime, užregistruosiu meistrą" → klausti numerio |
-| „Taip, tinka šis numeris" | klausti, kada patogu skambinti |
-| „Bet kada" | „Užregistravau. Skambinsime…" → „Ar dar kuo padėti?" |
-| „Ne, ačiū, viso gero" | šiltai atsisveikinti |
+| „Labas, neveikia internetas" | pasiūlyti adresą |
+| „Taip" → „Greta" | pasakyti, ką mato žmogaus kalba: routeris linijoje matomas, bet adreso iš mūsų neprašo |
+| (agentas klausia) | **pasiūlyti pabandyti kartu** — „aš pasakysiu po vieną žingsnį; ar norite pabandyti, ar geriau iš karto specialistą?" |
+| „Pabandykim kartu" | **vienas veiksmas:** prijungti kompiuterį ar telefoną prie routerio |
+| „Prijungiau" | **kitas veiksmas:** naršyklėje atidaryti **192.168.0.1** |
+| „Atsidarė, prašo prisijungimo" | prisijungimo duomenys — **ant lipduko, dažnai admin/admin** |
+| „Suvedžiau, esu viduje" | rasti „Internet"/„WAN" → „Connection Type" → DHCP → išsaugoti |
+| „Ne, vis tiek neveikia" | meistras, o tikete — per ką buvo eita |
 
 **Tikrinu:**
-- ✅ **be žargono:** nuskamba nei „DHCP", nei „gamyklinis atstatymas" (F-8);
-- ✅ **be klaidingo kelio:** neprašo tikrinti kompiuterio, WiFi, perkišti laidų — linijoje
-  viskas matoma, klausti nėra ko (iki 4a taisymo agentas vedė būtent per kliento įrenginius);
-- ✅ **pažadas vieną kartą:** „užregistruosiu meistrą" nuskamba VIENAME atsakyme, ne kiekviename;
-- ✅ **meistras ≠ išspręsta:** niekur nepasakoma, kad paslauga grįžo. Archyve: `ticket`.
+- ✅ **klausia sutikimo** prieš vesdamas; atsisakius („ne, geriau meistrą") registruoja iš karto;
+- ✅ **vienas veiksmas per atsakymą**, ne visas žingsnis su trimis punktais;
+- ✅ **konkretybės iš dokumento:** `192.168.0.1` ir admin/admin, o ne išgalvotas adresas;
+- ✅ tavo „radau" / „pasirinkau" **pajudina** į priekį — nebereikia sakyti „padariau";
+- ✅ klausimas vedimo viduryje („kokį slaptažodį vesti?") atsakomas iš to paties dokumento;
+- ✅ be žargono: nei „DHCP tyli", nei „gamyklinis atstatymas" (F-8).
 
 ### B. TV neveikia, o internetas tvarkoje
 **Telefonas:** `+37060020110` · **Kęstutis, Šiaulių r., Bubių k., Aušros g. 8** (internetas + IPTV, linija sveika)
@@ -301,21 +308,26 @@ kartoja instrukciją **vieną** kartą kitais žodžiais, ne tais pačiais.
 **Tikrinu:** ✅ pirma taisomas internetas (televizija per jį eina) · ✅ pabaigoje agentas
 **pats paklausia, ar televizija jau rodo** · ✅ `resolved`, be tiketo.
 
-### F. Miręs routeris → laikinas tiltas
+### F. Miręs routeris → keitimas, o tiltas — pasiūlymas (**perdaryta 6 bangoje**)
 **Telefonas:** `+37060012353` · Giedrius, Vilniaus g. 29 (⚠️ prieš tai ♻ DB)
 
 | Tu | Agentas turi |
 |---|---|
 | „Neveikia internetas" | adresas → vardas |
-| „Giedrius" | paklausti, ar buvo kas neįprasto (elektros dingimas, audra) arba ką rodo lemputės |
-| „Jokia lemputė nedega" | maitinimo patikra: laidas, kita rozetė |
-| „Kitoje rozetėje irgi nedega" | pasakyti, kad routeris tikėtinai sugedęs, **pažadėti meistrą** ir pasiūlyti laikiną internetą per kompiuterį |
-| *spausk 🔌 Kabelis* → „Įkišau laidą į kompiuterį" | pamatyti įrenginį linijoje, pririšti, perkrauti prievadą, patikrinti |
-| „Taip, atsirado" | patvirtinti, kad tai **laikinai**, ir užregistruoti routerio keitimą |
+| „Giedrius" | pasakyti, kad linijoje jokio įrenginio nematyti, ir **paklausti lempučių** |
+| „Nedega nė viena" | **maitinimo patikra:** ar laidas tvirtai įkištas į routerį ir į rozetę; jei taip — kita rozetė |
+| „Įkištas, bandžiau kitą rozetę" | **išvada:** routeris tikėtinai sugedęs, jį reikia **pakeisti** |
+| (agentas siūlo) | **pasiūlyti** laikiną internetą per kompiuterį — klausimu, ne nurodymu |
+| „Taip, turiu" · *spausk 🔌 Kabelis* → „Įkišau" | pamatyti įrenginį, pririšti, perkrauti prievadą, patikrinti |
+| „Taip, atsirado" | pasakyti, kad tai **laikinai**, ir registruoti **routerio keitimą** |
 
-**Tikrinu:** ✅ meistras — pažadas, ne pasirinkimas · ✅ tiltas tik PAPILDOMAI · ✅ ant tiketo —
-kas patikrinta su klientu · ✅ **nepaspaudus 🔌** agentas eina nesėkmės keliu (laido patikra →
-LAN klausimas → meistras su prierašu), ne apsimeta, kad pavyko.
+**Tikrinu:**
+- ✅ **lemputės IR maitinimas** klausiami prieš išvadą — be jų „sugedęs" yra spėjimas;
+- ✅ išvada nuskamba garsiai: **reikia keisti įrenginį**;
+- ✅ tiltas — **pasiūlymas**: atsisakius nurodymų kišti laidą nėra;
+- ✅ agentas nevadina kompiuterio „jūsų routeriu";
+- ✅ tiketas — **routerio keitimas** (`equipment_replacement`), ne bendras meistras;
+- ✅ **nepaspaudus 🔌** agentas neapsimeta, kad pavyko.
 
 ### G. „Negaliu dabar prieiti" → namų darbas ir perskambinimas
 **Telefonas:** bet kuris gedimo scenarijus (D, F arba `+37060020104`).

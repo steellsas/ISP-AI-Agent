@@ -368,7 +368,17 @@ class TestACardWhoseFixIsWritten:
         state, rt = make_state("+37060020106"), make_runtime()
         state.identity.customer_id = "CUST106"
         record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+        # Wave 6: the walk is offered first and has its own tests below; these ones are about
+        # what happens once the caller has agreed to it.
+        record_client(state, rt, "guide_agreed", "yes")
         return state, rt
+
+    @staticmethod
+    def _guide_index(fault: str = "dhcp_silent") -> int:
+        from agent.contract import cards
+
+        steps = cards.card(fault).solution[0].steps
+        return next(i for i, call in enumerate(steps) if call.module == "guide")
 
     def test_the_finding_is_told_before_anything_is_asked(self, silent_router):
         state, rt = silent_router
@@ -387,7 +397,7 @@ class TestACardWhoseFixIsWritten:
 
         assert state.case.fault == "dhcp_silent"
         assert plan.rule == "case.guide" and state.ticket.stage != "phone"
-        assert "prisijungti" in plan.say.text.lower()  # the document's first step
+        assert "prijungti kompiuter" in plan.say.text.lower()  # the document's first ACTION
 
     def test_a_step_nobody_heard_cannot_be_finished(self, silent_router):
         """The mark is set where the reply is built, so a plan that never spoke leaves the
@@ -401,30 +411,41 @@ class TestACardWhoseFixIsWritten:
 
         assert state.case.guide_step == 0
 
-    def test_once_said_the_next_answer_moves_one_step(self, silent_router):
+    def test_once_said_the_next_answer_moves_one_action(self, silent_router):
+        """One ACTION per turn, not one document step (wave 6).
+
+        A written step holds several numbered points; live 2026-09-30 only the first of the
+        three was ever spoken, so the caller never heard the address or the password.
+        """
         state, rt = silent_router
         state.case.facts["reachable"] = "yes"
         case_rule.plan(state, rt)
-        state.case.guide_said = 0  # the reply carried step 1 (speak/context_card.py does this)
+        state.case.guide_said = 0  # the reply carried the first action
         state.dialog.turn_count += 1
         state.dialog.last_heard = "padariau"
 
         plan = case_rule.plan(state, rt)
 
         assert state.case.guide_step == 1
-        assert plan.rule == "case.guide" and "WAN" in plan.say.text
+        assert plan.rule == "case.guide"
+        assert "192.168.0.1" in plan.say.text, "the document's own address, not the model's"
 
     def test_the_document_ends_and_the_card_verifies(self, silent_router):
         state, rt = silent_router
         state.case.facts["reachable"] = "yes"
-        state.case.fault, state.case.solution, state.case.step = "dhcp_silent", 0, 1
-        state.case.guide_step, state.case.guide_said = 1, 1
+        from agent.contract import cards
+        from agent.modules import guide_length
+
+        at = self._guide_index()
+        state.case.fault, state.case.solution, state.case.step = "dhcp_silent", 0, at
+        last = guide_length(cards.card("dhcp_silent").solution[0].steps[at]) - 1
+        state.case.guide_step, state.case.guide_said = last, last
         state.dialog.turn_count += 1
         state.dialog.last_heard = "padariau"
 
         plan = case_rule.plan(state, rt)
 
-        assert state.case.step == 2  # past the guide
+        assert state.case.step == at + 1  # past the guide
         assert plan.rule == "case.verify"
 
 
@@ -568,3 +589,52 @@ class TestTheDeadRouterAsksBeforeItConcludes:
 
         assert ticket_types.fault_type("no_mac_observed") == "equipment_replacement"
         assert ticket_types.fault_type("router_hung") == "fault_technician"
+
+
+class TestTheWrittenFixIsOfferedNotImposed:
+    """Wave 6, from the dhcp_silent call of 2026-09-30.
+
+    Andrius: *„jei klientas sutinka, galime vesti — nes ne visi klientai supranta ir nori tai
+    daryti, nereikia prievartauti"*, and *„dabar galite naršyklėje suvesti adresą… klientas
+    suveda ir sako suvedžiau, agentas pasiklausia ką matote"*.
+    """
+
+    @pytest.fixture
+    def silent(self, make_state, make_runtime):
+        state, rt = make_state("+37060020106"), make_runtime()
+        state.identity.customer_id = "CUST106"
+        record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
+        state.case.facts["reachable"] = "yes"
+        return state, rt
+
+    def test_the_walk_is_offered_before_it_starts(self, silent):
+        state, rt = silent
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.offer_guide"
+
+    def test_a_refusal_goes_to_the_technician_instead_of_walking(self, silent):
+        state, rt = silent
+        case_rule.plan(state, rt)
+        said(state, rt, "guide_agreed", "no")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule != "case.guide", "not walked against their will"
+        assert state.ticket.stage or plan.action is not None
+
+    def test_one_action_per_turn_carries_the_documents_own_details(self, silent):
+        """The address and the password are separate actions — live they were merged away and
+        the model invented an address the document does not give."""
+        state, rt = silent
+        case_rule.plan(state, rt)
+        said(state, rt, "guide_agreed", "yes")
+        first = case_rule.plan(state, rt)
+        state.case.guide_said = 0
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "padariau"
+        second = case_rule.plan(state, rt)
+
+        assert first.rule == "case.guide" and "prijungti kompiuter" in first.say.text.lower()
+        assert second.rule == "case.guide" and "192.168.0.1" in second.say.text

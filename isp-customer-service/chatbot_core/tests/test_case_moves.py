@@ -91,11 +91,20 @@ class TestWhenNothingFits:
 
     def test_a_silent_router_is_walked_through_its_written_procedure(self):
         """What the tree called `dhcp_silent` is a card — and since wave 4b its fix is a
-        knowledge document: the caller is guided through it before any technician."""
+        knowledge document: the caller is guided through it before any technician.
+
+        Wave 6 put the OFFER first: climbing into a router's settings is not for everybody,
+        and walking somebody through it against their will is not help.
+        """
         move = next_move(_facts(dhcp_status="no_requests"))
         assert move.kind == "solve" and move.fault == "dhcp_silent"
-        assert [call.module for call in move.steps] == ["reach", "guide", "verify"]
-        guide = move.steps[1]
+        assert [call.module for call in move.steps] == [
+            "reach",
+            "offer_guide",
+            "guide",
+            "verify",
+        ]
+        guide = next(call for call in move.steps if call.module == "guide")
         assert guide.args["knowledge"] == "troubleshooting/internet_factory_reset_dhcp"
 
     def test_a_fact_we_could_not_get_is_not_asked_again(self):

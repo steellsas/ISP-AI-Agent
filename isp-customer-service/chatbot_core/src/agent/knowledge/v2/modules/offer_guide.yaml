@@ -1,0 +1,18 @@
+# AR GALIME TAI DARYTI KARTU — sutikimas prieš vedimą per algoritmą.
+#
+# Andrius (2026-09-30): „jei klientas sutinka, galime vesti — nes ne visi klientai supranta ir
+# nori tai daryti, nereikia prievartauti." Iki 6 bangos kortelė vesdavo iš karto, o
+# `escalate.only_after: [guide]` net reikalaudavo pirma nuvesti — tad atsisakyti nebuvo kaip.
+#
+# Klausiama TIK po to, kai išvada jau pasakyta: klientas turi žinoti, dėl ko sutinka.
+module: offer_guide
+kind: ask
+params:
+  what: {}                          # trumpas darbo pavadinimas, jei kortelė nori savo
+ask: modules.offer_guide.question
+detector: yes_no
+answers:
+  "yes": guide_agreed=yes
+  "no": guide_agreed=no
+produces: [guide_agreed]
+goal: "agreed (or not) to go through the settings together — offered, never imposed"

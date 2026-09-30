@@ -39,14 +39,20 @@ solution:
     args: {device: router}
     # Jei klientas jau prie routerio — neklausiam.
     done_when: [reachable=yes]
+  # Sutikimas PIRMA: ne visi nori ar drąsta lipti į routerio nustatymus, ir vesti per prievartą
+  # nėra pagalba (Andrius, 2026-09-30). Atsisakius — iš karto specialistas.
+  - module: offer_guide
   - module: guide
     # Du dokumento žingsniai yra kliento rankose (prisijungti prie skydelio, nustatyti WAN);
-    # trečiasis dokumento žingsnis („patikrinti") yra MŪSŲ patikra žemiau.
+    # trečiasis dokumento žingsnis („patikrinti") yra MŪSŲ patikra žemiau. Vienas dokumento PUNKTAS
+    # per ėjimą — adresas ir slaptažodis yra atskiri veiksmai, ne priedas prie pirmo.
     args: {knowledge: troubleshooting/internet_factory_reset_dhcp, count: 2}
+    done_when: [guide_agreed=no]
   - module: verify
     args:
       evidence: [dhcp=ok]
       ask: restored
+    done_when: [guide_agreed=no]
 
 escalate:
   need: "verdict.dhcp_silent.ticket_need"

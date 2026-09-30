@@ -591,6 +591,36 @@ def steps(source: str) -> list[str]:
     return out
 
 
+# Vieno žingsnio VIDINIAI punktai: „1. … 2. … 3. …". Skiriasi nuo žingsnių antraščių tuo, kad
+# guli vienoje sekcijoje ir balsu turi eiti po vieną — žmogus sąrašo neatsimena.
+_STEP_PART = re.compile(r"(?<=[.)])\s+(?=\d{1,2}[.)]\s)")
+_PART_NUMBER = re.compile(r"^\d{1,2}[.)]\s*")
+
+
+def parts(source: str, *, limit: int | None = None) -> list[str]:
+    """Dokumento žingsniai, suskaidyti į PO VIENĄ VEIKSMĄ (6 banga).
+
+    Gyvai 2026-09-30 (dhcp_silent): žingsnis 1 turi tris punktus — prijungti įrenginį, atidaryti
+    `192.168.0.1`, prisijungti su lipduko duomenimis. Nuskambėjo tik pirmas, o adreso ir
+    slaptažodžio klientas taip ir nebėra išgirdęs: modėjo jį pats iš LLM (`192.168.1.1`), kai
+    dokumente rašo `192.168.0.1`. Vienas punktas — vienas ėjimas.
+
+    Žingsnis be numeruotų punktų lieka toks, koks yra.
+    """
+    out: list[str] = []
+    for step in steps(source)[:limit] if limit else steps(source):
+        head, _, body = step.partition(". ")
+        pieces = [piece.strip() for piece in _STEP_PART.split(body) if piece.strip()]
+        pieces = [_PART_NUMBER.sub("", piece) for piece in pieces]
+        if len(pieces) <= 1:
+            out.append(step)
+            continue
+        # Be antraštės ir be numeracijos: gyvai 2026-09-30 modelis pakartodavo tai, ką gaudavo
+        # („Dabar žingsnis 1: …", „(1/4): …"), ir klientas girdėdavo kanceliariją vietoj veiksmo.
+        out.extend(pieces)
+    return out
+
+
 def document(source: str) -> dict[str, Any] | None:
     """Dokumentas pagal kelią (`troubleshooting/x.md`) arba be galūnės (`troubleshooting/x`)."""
     wanted = source.strip().removesuffix(".md")

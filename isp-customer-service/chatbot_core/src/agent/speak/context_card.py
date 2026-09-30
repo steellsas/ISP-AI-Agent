@@ -120,13 +120,22 @@ def _kb_answer(state, rt) -> str:
         except Exception:  # pragma: no cover - skaitliukai niekada nelaužia atsakymo
             pass
         return ""
-    found = _in_routed_document(need, routed) or find(
-        need.words,
-        equipment=need.equipment,
-        problem=need.problem,
-        # Klientas įvardino telefoną ar kompiuterį: pirmumas TO įrenginio instrukcijai.
-        prefer=device_markers(need.device),
-        limit=2,
+    # Klausimas VEDIMO viduryje atsakomas iš TO PATIES dokumento, per kurį klientas vedamas.
+    # Gyvai 2026-09-30 (dhcp_silent): „prisijungiu prie naršyklės, išmetė langą — kokį slaptažodį
+    # vesti?" liko neatsakytas, nors dokumente parašyta: prisijungimo vardas ir slaptažodis ant
+    # lipduko, dažnai admin/admin.
+    guided = _guide_document(state)
+    found = (
+        (find(need.words, source=guided, limit=2) if guided else [])
+        or _in_routed_document(need, routed)
+        or find(
+            need.words,
+            equipment=need.equipment,
+            problem=need.problem,
+            # Klientas įvardino telefoną ar kompiuterį: pirmumas TO įrenginio instrukcijai.
+            prefer=device_markers(need.device),
+            limit=2,
+        )
     )
     if rt is not None and getattr(rt, "tracer", None) is not None:
         rt.tracer.emit(
@@ -151,6 +160,27 @@ def _kb_answer(state, rt) -> str:
         # Iki E1 tokiu atveju būdavo grąžinama NIEKO, o modelis improvizuodavo.
         return f"(NOT SURE this answers the question, say so and ask to rephrase) {said}"
     return said
+
+
+def _guide_document(state) -> str | None:
+    """The document the caller is being walked through right now, if any.
+
+    A question asked in the middle of a written procedure belongs to THAT procedure: the
+    password the panel is asking for is written two lines below the address they were just
+    given (live 2026-09-30).
+    """
+    from ..contract import cards as catalog
+
+    card = catalog.card(getattr(state.case, "fault", None))
+    solution = getattr(state.case, "solution", None)
+    if card is None or solution is None:
+        return None
+    steps = card.solution[solution].steps
+    index = getattr(state.case, "step", 0)
+    if not 0 <= index < len(steps):
+        return None
+    call = steps[index]
+    return str(call.args.get("knowledge") or "") or None if call.module == "guide" else None
 
 
 def _in_routed_document(need, routed: str | None):
@@ -982,6 +1012,24 @@ def _goal_ticket(state, rt) -> list[str]:
     ]
 
 
+def _next_step_words(state) -> str:
+    """The card's OWN next step, worded for this caller — or "" when there is none."""
+    from .. import modules
+    from ..contract import cards as catalog
+
+    card = catalog.card(getattr(state.case, "fault", None))
+    solution = getattr(state.case, "solution", None)
+    if card is None or solution is None:
+        return ""
+    steps = card.solution[solution].steps
+    index = getattr(state.case, "step", 0)
+    if not 0 <= index < len(steps):
+        return ""
+    call = steps[index]
+    plan = modules.plan_step(call)
+    return (modules.question_of(call) or (plan.text if plan else "") or "").strip()
+
+
 def _instruction_turn(state) -> bool:
     """Is this turn's own goal something the caller must DO?
 
@@ -1031,10 +1079,35 @@ def _goal_recap_and_findings(state, rt) -> list[str]:
             if instructing or not pending.get("prielaida")
             else f" We could not check this together: {pending['prielaida']}."
         )
+        # When this turn has no instruction of its own, the reply must STOP after the
+        # finding. Live 2026-09-30 (dhcp_silent): the finding landed on the name turn, the
+        # turn had no goal, and the model filled the silence with „perkraukite routerį" —
+        # a step this card does not have at all (its fix is the written procedure).
+        # Live 2026-09-30 (dhcp_silent): the finding landed on the name turn, the turn had no
+        # step of its own, and the model filled the silence with „perkraukite routerį" — a step
+        # this card does not have at all (its fix is a written procedure). So either the
+        # card's OWN next step is named here, or nothing is.
+        nxt = _next_step_words(state)
+        nothing_yet = (
+            ""
+            if instructing
+            else (
+                f" If you end with something for the caller to do, it must be THIS and nothing "
+                f"else: „{nxt}“."
+                if nxt
+                else " This turn has NO step of its own: say what we found and STOP — do not "
+                "ask them to do anything, and do not invent a next step."
+            )
+        )
+        tail = (
+            " Then this turn's own goal — that is the part the caller must act on, so it must "
+            "survive: keep the whole reply to two sentences."
+            if instructing
+            else ""
+        )
         out.append(
             f"PLAN GOAL — OPEN THE REPLY WITH THIS, in ONE short clause, before anything "
-            f"else: {head}.{unchecked} Then this turn's own goal — that is the part the "
-            f"caller must act on, so it must survive: keep the whole reply to two sentences."
+            f"else: {head}.{unchecked}{nothing_yet}{tail}"
         )
     if fd:
         state.case.finding = None

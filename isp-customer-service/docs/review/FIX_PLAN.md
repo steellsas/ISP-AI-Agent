@@ -74,13 +74,13 @@ routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
 | **G7** | Klientas JAU daro veiksmą, o agentas liepia jį daryti | atidėta |
 | **G8** | Linija jau rodė `traffic=flowing, port_flapped=yes`, o instrukcija vis tiek nuskambėjo | atidėta |
 | **G9** | Uždaro nepaklausęs kliento: „Internetas vėl veikia“ ir sudie | atidėta |
-| **G10** | `guide` duoda dokumento žingsnį su trimis punktais — nuskamba tik pirmas, o adresas ir prisijungimas dingsta | atidėta |
-| **G11** | Klausimas vedimo viduryje („kokį slaptažodį vesti?“) lieka neatsakytas, o konkretybė improvizuojama LLM (`192.168.1.1`) | atidėta |
-| **G12** | Vedama be sutikimo — kortelė net reikalauja vesti prieš meistrą (`only_after: [guide]`) | atidėta |
+| **G10** | `guide` duoda dokumento žingsnį su trimis punktais — nuskamba tik pirmas, o adresas ir prisijungimas dingsta | ✓ pataisyta |
+| **G11** | Klausimas vedimo viduryje („kokį slaptažodį vesti?“) lieka neatsakytas, o konkretybė improvizuojama LLM (`192.168.1.1`) | ✓ pataisyta |
+| **G12** | Vedama be sutikimo — kortelė net reikalauja vesti prieš meistrą (`only_after: [guide]`) | ✓ pataisyta |
 | **G13** | `ask` žingsnis praleidžiamas, jei fakto vardą jau užpildė TELEMETRIJA (`check_lights` → `wan_link`) | ✓ pataisyta (0a) |
 | **G14** | Klientas peršoka į priekį („išjungiau iš elektros“), variklis pajudina tik dabartinį žingsnį | ✓ pataisyta (0b) |
 | **G15** | `has_computer=yes` įrašytas be klausimo ir be citatos — tiltas pasirinktas nepaklausus | atidėta |
-| **G16** | Išvada prieštarauja klausimui: „routeris sugedęs — telefonu neprikelsime. Ar galėtumėte perkrauti routerį?“ | atidėta |
+| **G16** | Išvada prieštarauja klausimui: „routeris sugedęs — telefonu neprikelsime. Ar galėtumėte perkrauti routerį?“ | ✓ pataisyta |
 | **G17** | Prieštara („bet aš sumokėjau“) atsakoma identifikacijos klausimu apie sutarties savininką | atidėta |
 | **G18** | LLM pasakė faktą, kurio niekas nenustatė: „internetas neveikia visuose įrenginiuose“ | atidėta |
 | **G19** | Vardas: klientas pataiso („mano vardu Giedrius“) — agentas toliau „Gedriau“; avarijos skambutyje kreipėsi sutarties savininkės vardu | atidėta |
@@ -194,6 +194,46 @@ klientas išgirstų, KODĖL prašoma žingsnio atgal.
 **Tikrinta:** 1357 passed, 1 skipped (3 nauji testai). Vienas iš jų be taisymo krinta taip, kaip
 nutiko gyvai: „Galiu prieiti, jau išjungiau iš elektros ir perkraunu“ → `case.reboot`
 (instrukcija tam, kas padaryta) vietoj `case.verify` (linijos patikros).
+
+### G10–G12 · vedimas mažais žingsniais (2026-09-30)
+
+Andrius: *„esmė, kad agentas, kai jau veda klientą kokiais nors žingsniais, turi girdėti, ką sako
+klientas ir kokioje būsenoje jis yra, ir vesti po mažą žingsnelį… klientas suveda ir sako suvedžiau,
+agentas pasiklausia, ką matote naršyklėje“*
+
+**G10 · vienas PUNKTAS per ėjimą.** Dokumento žingsnis 1 turi tris punktus — prijungti įrenginį,
+atidaryti `192.168.0.1`, prisijungti su lipduko duomenimis. `guide` duodavo visą žingsnį, o
+nuskambėdavo tik pirmas punktas: adreso ir slaptažodžio klientas taip ir neišgirsdavo. Dabar
+`knowledge_base.parts()` skaido žingsnį į atskirus veiksmus, ir kiekvienas gauna savo ėjimą su
+klausimu, ką klientas mato.
+
+**G11 · klausimas vedimo viduryje — iš TO PATIES dokumento.** „Kokį slaptažodį čia reikėtų
+vesti?“ liko neatsakytas, nors dokumente rašo: prisijungimo vardas ir slaptažodis ant lipduko,
+dažnai admin/admin. Dabar, kol klientas vedamas, žinių paieška pirmiausia eina į tą patį dokumentą.
+Kartu dingsta ir improvizacija: adresas dabar ateina iš dokumento teksto, o ne iš modelio
+(gyvai nuskambėjo `192.168.1.1`, kai dokumente — `192.168.0.1`).
+
+**Ir vienas dalykas, kurio be gyvo paleidimo nebuvome matę:** žingsnis pajudėdavo tik išgirdus
+„padariau“. Klientas sako „radau tą skiltį“, „pasirinkau“, „atsidarė langas“ — ir agentas tą patį veiksmą perpasakodavo kitais žodžiais, o
+kartais nuklysdavo į išgalvotą („ieškokite Internet Connection ir pasirinkite Reconnect“ — dokumente tokio nieko nėra). Dabar rašytinį veiksmą uždaro BET KOKS turiningas atsakymas;
+klausimas ar sumišimas — ne, tie atsakomi iš to paties dokumento.
+
+**G12 · sutikimas prieš vedimą.** Naujas `offer_guide` klausimas: *„galime pabandyti susigrąžinti
+kartu — aš pasakysiu po vieną žingsnį. Ar norite pabandyti, ar geriau iš karto užregistruoti
+specialistą?“* Atsisakius praleidžiami visi vedimo žingsniai, o `escalate.only_after` nebereikalauja
+to, ko klientas nenorėjo.
+
+### G16 · išvada, kuri pati sugalvoja kitą žingsnį
+
+Išvada dažnai ateina ant kitos taisyklės ėjimo (vardo klausimo, tiketo įvado), ir tada tas ėjimas savo
+žingsnio neturi. Modelis tylą užpildydavo tuo, kas dažniausia —  *„Ar galėtumėte perkrauti
+routerį?“* — net `dhcp_silent` kortelei, kuri perkrovimo žingsnio iš viso neturi (jos sprendimas
+yra rašytinis algoritmas), ir mirusiam routeriui, apie kurį tame pačiame sakinyje ką tik pasakė,
+kad telefonu jo neprikels.
+
+Dabar nurodyme įrašomas KORTELĖS savas kitas žingsnis: jei atsakymas baigiasi kuo nors, ką
+klientas turi daryti, tai turi būti **būtent tas** žingsnis — o jei kortelė šiam ėjimui žingsnio
+neturi, išvada pasakoma ir sustojama.
 
 ### G21–G25 · mirusio routerio kelias (2026-09-30, antras skambutis)
 

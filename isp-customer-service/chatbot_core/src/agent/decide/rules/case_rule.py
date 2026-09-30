@@ -511,6 +511,12 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
             # Their own answer says it did not work: the card decides what that means.
             return _retry_or_give_up(state, rt)
         return _advance(state, rt, by_words=True)
+    if call.module == "guide" and _answered_the_written_step(state):
+        # A written step is walked by TELLING them one action and hearing what happened. Any
+        # substantive answer — "radau", "pasirinkau", "atsidarė langas" — finishes that action;
+        # waiting for the word "padariau" left the agent re-wording the same line while the
+        # caller was already two actions ahead (live 2026-09-30).
+        return _advance(state, rt, by_words=True)
     if _reported_done(state) or _reported_outcome(state, call):
         # They DID it. That answers any question about being able to (live S6: "ištraukiau
         # iš routerio ir įkišau atgal" against "can you get to it now" — the engine waited
@@ -617,6 +623,22 @@ def _jumped_ahead(state: Any, rt: Any) -> str | None:
     state.case.step = said
     rt.tracer.emit("case", move="jumped", fault=state.case.fault, to=steps[said].module)
     return _advance(state, rt, by_words=True)
+
+
+def _answered_the_written_step(state: Any) -> bool:
+    """Did they answer the action we just read out?
+
+    An ANSWER moves the written procedure; a question or a confusion does not — those are
+    replied to (from the same document, `speak/context_card.py`) and the action stands. A bare
+    "gerai" is not an answer either: they are about to do it, not reporting.
+    """
+    if state.case.guide_said != state.case.guide_step:
+        return False  # this action has not been spoken yet
+    heard = (state.dialog.last_heard or "").strip()
+    if not heard or _just_acknowledged(state):
+        return False
+    turn_type = str((getattr(state.turn, "understanding", None) or {}).get("type") or "answer")
+    return turn_type == "answer"
 
 
 def _queue_reflection(state: Any) -> None:
@@ -1023,8 +1045,14 @@ def _phone_work_left(state: Any, fault: str | None) -> str | None:
     if card is None or not card.escalate or not card.escalate.only_after:
         return None
     facts = ledger.facts_of(state)
-    if facts.get("reachable") == "no" or facts.get("later_agreed") == "no":
-        return None  # not at the device / they asked for a technician: nothing to insist on
+    if (
+        facts.get("reachable") == "no"
+        or facts.get("later_agreed") == "no"
+        or facts.get("guide_agreed") == "no"
+    ):
+        # Not at the device, asked for a technician, or declined to be walked through the
+        # settings: there is nothing left to insist on, and insisting is not help.
+        return None
     for name in card.escalate.only_after:
         if name not in state.case.did:
             return name

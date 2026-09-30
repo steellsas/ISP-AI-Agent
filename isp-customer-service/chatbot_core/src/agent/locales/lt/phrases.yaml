@@ -586,6 +586,8 @@ modules:
     announce: "Matau linijoje naują įrenginį — pririšiu jį prie jūsų linijos, sekundėlę."
   check_power:
     question: "Patikrinkime maitinimą: ar routerio laidas tvirtai įkištas į patį routerį ir į rozetę? Jei taip — pabandykite kitą rozetę."
+  offer_guide:
+    question: "Panašu, kad routeryje pasimetę interneto nustatymai. Galime pabandyti juos susigrąžinti kartu — aš pasakysiu po vieną žingsnį. Ar norite pabandyti, ar geriau iš karto užregistruoti specialistą?"
   offer_bridge:
     question: "Kol routerį pakeisime, galiu laikinai paleisti internetą į vieną įrenginį — jei turite kompiuterį, įkišim linijos laidą tiesiai į jį. Ar norite pabandyti?"
   port_reset:
