@@ -1,0 +1,17 @@
+# LAIKINAS INTERNETAS — PASIŪLYMAS, ne žingsnis.
+#
+# Andrius (2026-09-30): „tuomet eitų pasiūlymas laikinai pajungti internetą ant vieno
+# įrenginio, jei yra galimybė pajungti PC prie tinklo kabelio." Iki 6 bangos tiltas buvo
+# vykdomas automatiškai — gyvai klientas gavo nurodymą perkišti laidą į kompiuterį, nors
+# niekas neklausė nei ar jis to nori, nei ar kompiuterį turi.
+module: offer_bridge
+kind: ask
+params:
+  to: {values: [computer], default: computer}
+ask: modules.offer_bridge.question
+detector: yes_no
+answers:
+  "yes": bridge_agreed=yes
+  "no": bridge_agreed=no
+produces: [bridge_agreed]
+goal: "offered, not imposed: a temporary line into one device while the router is replaced"

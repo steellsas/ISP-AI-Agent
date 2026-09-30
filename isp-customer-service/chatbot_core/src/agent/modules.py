@@ -132,14 +132,28 @@ def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
     return None
 
 
+# The fact a module gets from the CALLER, where that differs from what the module produces.
+# `check_lights` produces `wan_link` (what the light MEANS, from the equipment catalogue), but
+# telemetry owns that name and refuses the caller's word for it — so the step could never be
+# settled by an answer, only by a reading. What the caller actually gives is `lights`, and
+# that is what the step waits for (wave 6, live 2026-09-30).
+CLIENT_FACT = {"check_lights": "lights"}
+
+
+def client_fact(call: ModuleCall, text: str | None) -> tuple[str, str] | None:
+    """The CALLER-owned fact their answer establishes for this module, if it has one."""
+    name = CLIENT_FACT.get(call.module)
+    if not name or not text:
+        return None
+    label = _detect(name, text)
+    return (name, label) if label else None
+
+
 def _awaits(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:
     """The fact this step is waiting for: what the caller must tell us, or the first fact
     the module produces."""
-    if spec.module == "check_lights":
-        light = str(args.get("light") or "internet")
-        means = (device.lights.get(light) or {}).get("means") if device else None
-        first = next(iter(means.values()), None) if means else None
-        return first.split("=", 1)[0] if first else None
+    if spec.module in CLIENT_FACT:
+        return CLIENT_FACT[spec.module]
     if spec.kind == "ask":
         return spec.produces[0] if spec.produces else None
     if spec.kind == "verify" and args.get("ask") and not args.get("evidence"):

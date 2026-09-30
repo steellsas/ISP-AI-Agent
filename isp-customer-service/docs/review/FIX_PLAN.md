@@ -85,6 +85,12 @@ routerio ir ištraukite kabelį nors tuos veiksmus jau dariau ir jam sakiau."*
 | **G18** | LLM pasakė faktą, kurio niekas nenustatė: „internetas neveikia visuose įrenginiuose“ | atidėta |
 | **G19** | Vardas: klientas pataiso („mano vardu Giedrius“) — agentas toliau „Gedriau“; avarijos skambutyje kreipėsi sutarties savininkės vardu | atidėta |
 | **G20** | Vienas trace failo įrašas sulūžęs (pusė JSON eilutės) — du rašytojai susikerta | atidėta |
+| **G21** | „Lemputės nedega“ → iš karto laidas į kompiuterį: maitinimo niekas netikrino | ✓ pataisyta |
+| **G22** | `bind.announce` pririšamą kompiuterį vadino „jūsų routeriu“ — klientas taisė agentą | ✓ pataisyta |
+| **G23** | „Nesupratau gatvės“ tris kartus — prompto PAVYZDYS tapo klausimu pokalbyje | ✓ pataisyta |
+| **G24** | Miręs routeris registruojamas kaip įprastas `fault_technician`, nors reikia KEITIMO | ✓ pataisyta |
+| **G25** | Tiltas vykdomas automatiškai, nepaklausus, ar klientas to nori | ✓ pataisyta |
+| **G26** | Jei maitinimo laidas buvo ištrauktas, po įkišimo linija neperskaitoma prieš išvadą | atidėta |
 
 ### G1 · Klaustukas nugalėjo atliktą veiksmą
 
@@ -188,6 +194,35 @@ klientas išgirstų, KODĖL prašoma žingsnio atgal.
 **Tikrinta:** 1357 passed, 1 skipped (3 nauji testai). Vienas iš jų be taisymo krinta taip, kaip
 nutiko gyvai: „Galiu prieiti, jau išjungiau iš elektros ir perkraunu“ → `case.reboot`
 (instrukcija tam, kas padaryta) vietoj `case.verify` (linijos patikros).
+
+### G21–G25 · mirusio routerio kelias (2026-09-30, antras skambutis)
+
+Lemputės jau buvo klausiamos (0a suveikė), bet toliau viskas subyrėjo. Andrius: *„kai
+lemputės visos nedega, iš karto pasakė perkišti kabelį į kompiuterį… turėjo pasitikrinti maitinimas
+ar ateina į routerį… kai jau nusprendė, kad routerio gedimas, turėjo eiti išvada, kad routeris
+manomai sugedęs, reikia jį pasikeisti.“*
+
+Kortelės kelias dabar seka diagnostiką, ne patogumą:
+
+```
+lemputės  →  maitinimas  →  [pasiūlymas: laikinas internetas]  →  meistras DĖL KEITIMO
+```
+
+| Kas pasikeitė | Kur |
+|---|---|
+| Naujas `check_power` žingsnis (`confirms: true`) | `modules/check_power.yaml` |
+| Tiltas tapo PASIŪLYMU (`offer_bridge`), o atsisakius — visi jo žingsniai praleidžiami | `modules/offer_bridge.yaml`, kortelė |
+| Miręs routeris → tiketo tipas **`equipment_replacement`** | `ticket_types.yaml` (`by_verdict`), `ticket_types.py`, DB schema |
+| `bind.announce` nebevardija įrenginio | `phrases.yaml` |
+| Prompto pavyzdys „nesupratau gatvės“ → bevardis | `speak/context_card.py` |
+
+Pakeliui išlindo dar vienas dalykas, kurį 0a būtų pavertęs amžinu klausimu: `check_lights` laukė
+fakto `wan_link`, kurį **valdo telemetrija** — ji kliento žodžio tam vardui nepriima. Tad klausimo
+nebebūtų buvę kaip uždaryti. Dabar žingsnis laukia to, ką klientas iš tiesų turi — `lights` — o ką
+lemputė REIŠKIA, lieka linijos reikalas.
+
+**G26 (atidėta):** jei paaiškėja, kad maitinimo laidas buvo ištrauktas, po įkišimo reikia
+perskaityti liniją prieš darant išvadą — dabar einama tolyn tarsi niekas nepasikeitę.
 
 ### Diagnostikos principas (Andrius, 2026-09-30)
 

@@ -6,6 +6,12 @@ ticket_types:
   fault_technician:
     department: technical
     priority: high
+  # Meistras važiuoja ne remontuoti, o KEISTI įrenginio — jam reikia tai žinoti iš anksto
+  # (Andrius, 2026-09-30: „registruoti gedimą routerio pakeitimui"). Gyvai tiketas būdavo
+  # įprastas `fault_technician`, ir apie keitimą nebuvo pasakyta niekur.
+  equipment_replacement:
+    department: technical
+    priority: high
   fault_unclear:
     department: technical
     priority: medium
@@ -25,3 +31,7 @@ ticket_types:
     department: technical
     priority: medium
     append_only: true
+
+# Kuris verdiktas kokiu tiketu tampa, kai to nepakanka bendram `fault_technician`.
+by_verdict:
+  no_mac_observed: equipment_replacement

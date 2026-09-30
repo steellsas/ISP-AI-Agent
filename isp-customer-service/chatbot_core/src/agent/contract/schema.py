@@ -201,6 +201,10 @@ class TicketType(_Model):
 
 class TicketTypes(_Model):
     ticket_types: dict[str, TicketType]
+    # Which verdict becomes which ticket, where the generic `fault_technician` is not enough:
+    # a dead router is an EQUIPMENT REPLACEMENT, and the technician has to know before
+    # loading the van (Andrius, 2026-09-30).
+    by_verdict: dict[str, str] = {}
 
 
 class ServiceSpec(_Model):

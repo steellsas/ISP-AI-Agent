@@ -730,13 +730,20 @@ def _stuck(state, rt) -> list[str]:
     )
     if s.dialog.last_heard:
         # We DID hear them — we just could not use it. Never say „neišgirdau“ here.
+        #
+        # The example used to end in „nesupratau GATVĖS“, and on 2026-09-30 the model said
+        # exactly that three times — while the caller was unplugging a router and later
+        # dictating a phone number, with the address long since confirmed. An example in a
+        # directive becomes a sentence in the call, so it names nothing concrete now: what
+        # was unclear is THIS turn's own question.
         return [
             f"DID NOT UNDERSTAND (but heard!): the caller just said „{s.dialog.last_heard}“ "
             "and it did not give what is needed. Do NOT say „neišgirdau“ — say what you heard "
-            "and what was unclear, and ask them to repeat ONLY that part: „Girdžiu „…“, bet "
-            "nesupratau gatvės — pakartokite ją, prašau.“ If the caller is actually talking "
-            "ABOUT SOMETHING ELSE (asking, clarifying) — answer THAT instead of repeating "
-            "your question." + extra
+            "and name, IN YOUR OWN WORDS, the part of YOUR OWN LAST QUESTION that is still "
+            "missing, then ask only for that. Never ask for something you did not ask for "
+            "this turn (an address that is already confirmed, a name you already have). If "
+            "the caller is actually talking ABOUT SOMETHING ELSE (asking, clarifying) — "
+            "answer THAT instead of repeating your question." + extra
         ]
     # Silence. They may be listening or thinking, so do not apologise at them —
     # „neišgirdau“ after they said nothing reads as if THEY failed.

@@ -499,6 +499,12 @@ def _absorb(state: Any, rt: Any, facts: dict[str, str]) -> str:
         fact, value = read
         ledger.record_client(state, rt, fact, value)
         facts = ledger.facts_of(state)
+    # What the CALLER owns, beside what their answer MEANS: the lights they see are theirs,
+    # `wan_link` is the line's, and only the first can settle a question we asked them.
+    own = modules.client_fact(call, state.dialog.last_heard)
+    if own is not None:
+        ledger.record_client(state, rt, own[0], own[1])
+        facts = ledger.facts_of(state)
     awaited = state.case.awaiting
     if awaited and awaited in facts:
         if awaited == "restored" and facts[awaited] == "no":

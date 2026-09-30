@@ -510,3 +510,61 @@ class TestWhenTheCallerWalksAhead:
         # A fact the line cannot produce: once THEY say it, the question is answered.
         record_client(state, rt, "lights", "off")
         assert _client_said(state, "lights") is True
+
+
+class TestTheDeadRouterAsksBeforeItConcludes:
+    """Wave 6, from the live call of 2026-09-30.
+
+    Andrius: *„jei nėra įrenginio, turėjo išsiaiškinti ar jis tikrai pajungtas, kaip lemputės
+    dega, ir tuomet diagnozuoti routerio sugedimą… routerio gedimui nustatyti reikia lempučių
+    ir ar elektra pasiekia įrenginį."*
+    """
+
+    def test_lights_off_leads_to_the_power_check_not_to_the_cable(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)  # the lights question
+        said(state, rt, "lights", "off")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.check_power", "power before concluding the box is dead"
+
+    def test_the_bridge_is_offered_before_anything_is_unplugged(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)
+        said(state, rt, "lights", "off")
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "plugged")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.offer_bridge", "asked, not imposed"
+
+    def test_a_refused_offer_goes_to_the_technician_without_the_cable(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "has_computer", "yes")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 0
+        case_rule.plan(state, rt)
+        said(state, rt, "lights", "off")
+        case_rule.plan(state, rt)
+        said(state, rt, "power_cable", "plugged")
+        case_rule.plan(state, rt)
+        said(state, rt, "bridge_agreed", "no")
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan.rule == "case.escalate", "no cable, no bind — straight to the ticket"
+
+    def test_a_dead_router_is_a_replacement_ticket(self):
+        """The technician has to know they are bringing a device, not a screwdriver."""
+        from agent import ticket_types
+
+        assert ticket_types.fault_type("no_mac_observed") == "equipment_replacement"
+        assert ticket_types.fault_type("router_hung") == "fault_technician"

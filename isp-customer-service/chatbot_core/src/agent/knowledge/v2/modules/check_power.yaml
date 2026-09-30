@@ -1,0 +1,24 @@
+# AR ELEKTRA PASIEKIA ĮRENGINĮ — antras hipotezės patvirtinimas po lempučių.
+#
+# Andrius (2026-09-30): „routerio gedimui nustatyti reikia lempučių IR ar el. srovė pasiekia
+# įrenginį. Jei srovė ateina, o lemputės nedega — įrenginys neveikia." Be šito žingsnio
+# „routeris sugedęs" yra spėjimas: nedegančios lemputės vienodai reiškia ir ištrauktą laidą,
+# ir mirusią rozetę, ir mirusią dėžutę.
+#
+# Gyvai 2026-09-30 (miręs routeris): klientas pasakė, kad nedega nė viena lemputė, ir agentas
+# iš karto liepė kišti linijos laidą į kompiuterį — maitinimo neklausęs.
+module: check_power
+kind: ask
+# Patvirtina arba paneigia hipotezę, ir linija to nemato — todėl neperšokamas (wave 6).
+confirms: true
+params:
+  device: {required: true}
+ask: modules.check_power.question
+detector: yes_no
+answers:
+  "yes": power_cable=plugged
+  "no": power_cable=unplugged
+produces: [power_cable]
+goal: >-
+  clear whether power actually reaches the {device}: the lead firmly in the device and in a
+  socket that works — say what it tells us either way
