@@ -206,7 +206,8 @@ veda po VIENĄ veiksmą ir klausia, ką matai.**
 |---|---|
 | „Labas, neveikia internetas" | pasiūlyti adresą |
 | „Taip" → „Greta" | pasakyti, ką mato žmogaus kalba: routeris linijoje matomas, bet adreso iš mūsų neprašo |
-| (agentas klausia) | **pasiūlyti pabandyti kartu** — „aš pasakysiu po vieną žingsnį; ar norite pabandyti, ar geriau iš karto specialistą?" |
+| (agentas klausia) | **ne** „ar galite prieiti prie routerio", o **ar turi kuo atidaryti nustatymus**: „ar turite kompiuterį ar telefoną, prijungtą prie to paties routerio?" |
+| „Turiu telefoną" | **pasiūlyti pabandyti kartu** — „aš pasakysiu po vieną žingsnį; ar norite pabandyti, ar geriau iš karto specialistą?" |
 | „Pabandykim kartu" | **vienas veiksmas:** prijungti kompiuterį ar telefoną prie routerio |
 | „Prijungiau" | **kitas veiksmas:** naršyklėje atidaryti **192.168.0.1** |
 | „Atsidarė, prašo prisijungimo" | prisijungimo duomenys — **ant lipduko, dažnai admin/admin** |
@@ -223,7 +224,10 @@ veda po VIENĄ veiksmą ir klausia, ką matai.**
 - ✅ **vedimas nenutrūksta per vidurį**: kiekvienas atsakytas punktas nebelaikomas to paties
   žingsnio kartojimu, tad agentas nebepasako „telefonu neišspręsime, registruoju meistrą" kaip
   tik tada, kai jau esi routerio skydelyje (G30, gyvai 2026-10-01);
-- ✅ **sutikimo žodžiai**: „pabandom", „pasiruošęs", „einam", „galima" — taip pat sutikimas.
+- ✅ **sutikimo žodžiai**: „pabandom", „pasiruošęs", „einam", „galima" — taip pat sutikimas;
+- ✅ **pirmas klausimas apie naršyklę**, ne apie priėjimą prie dėžutės (G38) — telefonas tinka;
+- ✅ atsakius **„neturiu nei kompiuterio, nei telefono"** vedimas **nesiūlomas**: sąžiningai
+  pasakoma, kad be naršyklės nustatymų neatidarysim, ir registruojamas meistras.
 
 ### B. TV neveikia, o internetas tvarkoje
 **Telefonas:** `+37060020110` · **Kęstutis, Šiaulių r., Bubių k., Aušros g. 8** (internetas + IPTV, linija sveika)
@@ -323,7 +327,9 @@ kartoja instrukciją **vieną** kartą kitais žodžiais, ne tais pačiais.
 | **„Taip, padariau"** (atsakymas ne į tą klausimą) | **neužskaityti**: perklausti paprastai — *„tai lemputė dega ar nedega?"* |
 | „Nedega nė viena" | **maitinimo patikra:** ar laidas tvirtai įkištas į routerį ir į rozetę; jei taip — kita rozetė |
 | „Įkištas, bandžiau kitą rozetę" | **išvada:** routeris tikėtinai sugedęs, jį reikia **pakeisti** |
-| (agentas siūlo) | **pasiūlyti** laikiną internetą per kompiuterį — klausimu, ne nurodymu |
+| (agentas siūlo) | **pasiūlyti** laikiną internetą per kompiuterį — klausimu, ne nurodymu, ir klausimas turi **nuskambėti iki galo** |
+| *arba* **„Neturiu kompiuterio"** | tilto **nebevykdyti**: iš karto registruoti routerio keitimą — be nurodymų kišti laidą |
+| *arba* **„Registruokit gedimą"** | tai **ne sutikimas** su tiltu: eiti į registraciją |
 | „Taip, turiu" · *spausk 🔌 Kabelis* → „Įkišau" | pamatyti įrenginį, pririšti, perkrauti prievadą, patikrinti |
 | „Taip, atsirado" | pasakyti, kad tai **laikinai**, ir registruoti **routerio keitimą** |
 
@@ -339,6 +345,9 @@ kartoja instrukciją **vieną** kartą kitais žodžiais, ne tais pačiais.
 - ✅ jei vardas **nesutampa** su sutarties vardu — vienas mandagus patikslinimas (*„sutartis
   registruota kitu vardu — gal ji sudaryta šeimos nario?"*), net jei klientas nieko nesakė apie
   sutartį; pasakius „sutartis žmonos vardu" — **neklausiama**;
+- ✅ **neturint kompiuterio tiltas nebevykdomas** (G35–G37, gyvai 2026-10-01: trys nurodymai
+  kišti laidą klientui, kuris tris kartus pasakė, kad kompiuterio neturi);
+- ✅ tas pats atsakymas **nebegali** nuskambėti žodis į žodį du kartus;
 - ⏸ **palaukimas** (*„ar jau priėjote?"*) dar nepadarytas — Andrius: *„dėl palaukimo dar
   pagalvosime"*; kol kas agentas po nurodymo tiesiog klausia toliau.
 

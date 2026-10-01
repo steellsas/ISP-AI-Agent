@@ -35,10 +35,12 @@ rules_out:
 # nieko nežino.
 solution:
 - steps:
-  - module: reach
+  # 0. Ne „ar galite prieiti prie routerio" (Andrius, 2026-10-01: tam klausimui čia nėra
+  #    tikslo), o ar yra KUO atidaryti nustatymus — įrenginio su naršykle tame pačiame
+  #    routeryje. Neturint jo vedimas neįmanomas, ir `offer_guide` tai pasako pats.
+  - module: panel_device
     args: {device: router}
-    # Jei klientas jau prie routerio — neklausiam.
-    done_when: [reachable=yes]
+    done_when: [panel_device=yes]
   # Sutikimas PIRMA: ne visi nori ar drąsta lipti į routerio nustatymus, ir vesti per prievartą
   # nėra pagalba (Andrius, 2026-09-30). Atsisakius — iš karto specialistas.
   - module: offer_guide
@@ -56,7 +58,8 @@ solution:
 
 escalate:
   need: "verdict.dhcp_silent.ticket_need"
-  note: "routeris linijoje tyli — nustatymai pasimetę; su klientu eita per konfigūravimo žingsnius"
+  note: "routeris linijoje tyli — nustatymai pasimetę; su klientu eita per konfigūravimo žingsnius
+    (jei kliento tinkle nėra įrenginio su naršykle, nustatymų atidaryti nebuvo kuo)"
   # Meistras neturi atvykti to, ką klientas gali padaryti su instrukcija telefone.
   only_after: [guide]
 

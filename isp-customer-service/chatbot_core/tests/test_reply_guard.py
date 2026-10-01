@@ -90,3 +90,25 @@ class TestStreamedReply:
 
         assert seen["max_tokens"] == min(rt.config.max_tokens, limits.get("speak_max_tokens"))
         assert seen["max_tokens"] <= 150
+
+
+class TestEveryScriptedQuestionSurvivesTheGuard:
+    """Banga 7, gyvai 2026-10-01: tilto pasiūlymas buvo 233 simbolių, o sargas baigia atsakymą
+    tuo sakiniu, kuris perlipa `reply_stop_chars` — nukrito paskutinis sakinys „Ar norite
+    pabandyti?", klientas išgirdo pranešimą be klausimo ir atsakė „Neturiu." į nieką.
+
+    Tad kiekviena kortelės klausimo frazė turi praeiti sargą su savo klaustuku.
+    """
+
+    def test_a_module_question_still_ends_in_a_question(self):
+        from agent.contract import limits
+        from agent.contract.locale import load_locale
+        from agent.speak.guard import ReplyGuard
+
+        locale = load_locale("lt")
+        keys = [k for k in locale.phrases if k.startswith("modules.") and k.endswith(".question")]
+        assert keys, "modules.*.question frazių turi būti"
+        for key in keys:
+            guard = ReplyGuard(stop_chars=limits.get("reply_stop_chars"))
+            guard.feed(locale.template(key))
+            assert guard.text.rstrip().endswith("?"), f"{key}: klausimas nukerpamas"

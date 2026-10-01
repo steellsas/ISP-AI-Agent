@@ -69,8 +69,12 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
 
     progressed = progress_key(state) != state.turn.progress_key_at_start
     is_q = is_question(reply)
+    # Pakartojimas yra ir tas pats PAREIŠKIMAS, ne tik tas pats klausimas: 2026-10-01 tilto
+    # pasiūlymas nuskambėjo tris kartus vienodai, o klaustuko jame nebuvo (jį nukirpo srauto
+    # sargas), tad šis skaitliukas tylėjo ir perfrazuoti niekas nepaprašė.
     repeat = bool(
-        is_q and state.dialog.last_question and similar(reply, state.dialog.last_question)
+        (is_q and state.dialog.last_question and similar(reply, state.dialog.last_question))
+        or (state.dialog.last_reply and similar(reply, state.dialog.last_reply))
     )
     state.dialog.last_reply_repeated = repeat
     if progressed:
@@ -81,6 +85,7 @@ def track_stuck(state: Any, rt: Any, reply: str) -> None:
     # real re-ask escalates, and only real progress clears it.
     if is_q:
         state.dialog.last_question = reply
+    state.dialog.last_reply = reply
     rt.tracer.emit("stuck", count=state.dialog.stuck_count, repeated=repeat)
 
 

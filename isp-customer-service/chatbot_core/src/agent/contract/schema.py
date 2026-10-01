@@ -508,6 +508,20 @@ class ParamSpec(_Model):
     default: Any = None
 
 
+class AnsweredWhen(_Model):
+    """Kada šio modulio klausimo nebereikia — faktas, kuris JAU atsako, ir ką tai reiškia.
+
+    Kortelės `done_when` sąlygos jungiamos IR, tad „praleisk, jei atsisakė ARBA jei nėra ko
+    jungti" joje neišreiškiama. Čia pasakoma kitaip: nėra kompiuterio -> pasiūlymas atsakytas
+    „ne", ir visi tilto žingsniai praleidžiami savo esamu `done_when: [bridge_agreed=no]`.
+    Gyvai 2026-10-01: klientas tris kartus pasakė, kad kompiuterio neturi, o tiltas vis tiek
+    buvo vykdomas.
+    """
+
+    when: str  # fact=value, kuris jau atsako į šį klausimą
+    set: str  # fact=value, kurį tai nustato
+
+
 class ModuleSpec(_Model):
     """A reusable instruction (P-8 §3): what it does, what it needs to know, and which
     facts it can establish. The words come from the equipment catalogue, so the same
@@ -549,6 +563,8 @@ class ModuleSpec(_Model):
     # line changes by itself.
     simulate: str | None = None
     simulate_env: str | None = None
+    # Klausimas, į kurį atsakymas jau žinomas iš kito fakto (žr. `AnsweredWhen`).
+    answered_when: list[AnsweredWhen] = []
 
 
 class FaultCard(_Model):

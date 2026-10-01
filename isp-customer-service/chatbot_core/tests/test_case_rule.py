@@ -369,7 +369,9 @@ class TestACardWhoseFixIsWritten:
         state.identity.customer_id = "CUST106"
         record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
         # Wave 6: the walk is offered first and has its own tests below; these ones are about
-        # what happens once the caller has agreed to it.
+        # what happens once the caller has agreed to it. Wave 7: and the card's first question
+        # is whether there is anything with a browser on that router.
+        record_client(state, rt, "panel_device", "yes")
         record_client(state, rt, "guide_agreed", "yes")
         return state, rt
 
@@ -608,7 +610,8 @@ class TestTheWrittenFixIsOfferedNotImposed:
         state, rt = make_state("+37060020106"), make_runtime()
         state.identity.customer_id = "CUST106"
         record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
-        state.case.facts["reachable"] = "yes"
+        # Wave 7: the card's own first question is whether there is a browser on that router.
+        record_client(state, rt, "panel_device", "yes")
         return state, rt
 
     def test_the_walk_is_offered_before_it_starts(self, silent):
@@ -748,6 +751,98 @@ class TestAnUnclearAnswerIsNotAnAnswer:
         assert state.case.unclear == -1, "the mark is lifted once we were told"
 
 
+class TestTheBridgeIsNotPushedOnSomebodyWithoutAComputer:
+    """Banga 7, gyvai 2026-10-01 (miręs routeris).
+
+    Andrius: *„užsiciklino dėl kompiuterio, kurio neturi klientas — jis suprato, bet vis tiek
+    prašė ištraukti kabelį."* Trys atskiros priežastys: „Neturiu" pasiūlymui nieko nereiškė,
+    „noriu registruoti gedimą" buvo perskaityta kaip SUTIKIMAS, o jau žinomas `has_computer=no`
+    tilto žingsnių nepraleido.
+    """
+
+    def _at_the_offer(self, call):
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "reachable", "yes")
+        record_client(state, rt, "lights", "off")
+        record_client(state, rt, "power_cable", "plugged")
+        state.case.fault, state.case.solution = "no_mac_observed", 0
+        state.case.step = 3  # reach, check_lights, check_power -> offer_bridge
+        plan = case_rule.plan(state, rt)
+        assert plan.rule == "case.offer_bridge"
+        state.case.step_said = state.case.step
+        return state, rt
+
+    def test_nothing_to_plug_in_is_a_decline(self, call):
+        state, rt = self._at_the_offer(call)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Neturiu."
+
+        plan = case_rule.plan(state, rt)
+
+        assert state.case.facts.get("bridge_agreed") == "no"
+        assert plan.rule != "case.connect_direct", "nėra į ką kišti laido"
+
+    def test_asking_for_a_technician_is_not_consent_to_the_bridge(self, call):
+        state, rt = self._at_the_offer(call)
+        state.dialog.turn_count += 1
+        state.dialog.last_heard = "Aš noriu tada registruoti gedimą ir lauksiu meistro."
+
+        case_rule.plan(state, rt)
+
+        assert state.case.facts.get("bridge_agreed") == "no"
+
+    def test_a_computer_we_already_know_about_is_not_asked_for_again(self, call):
+        """`has_computer=no` buvo užrašytas anksčiau: pasiūlymo nebeklausiam, o visi tilto
+        žingsniai praleidžiami per savo `done_when` (modulio `answered_when`)."""
+        state, rt = call
+        record_telemetry(state, rt, {**BASE, "device_seen": False})
+        record_client(state, rt, "reachable", "yes")
+        record_client(state, rt, "lights", "off")
+        record_client(state, rt, "power_cable", "plugged")
+        record_client(state, rt, "has_computer", "no")
+        state.case.fault, state.case.solution, state.case.step = "no_mac_observed", 0, 3
+
+        plan = case_rule.plan(state, rt)
+
+        assert state.case.facts.get("bridge_agreed") == "no"
+        assert plan.rule == "case.escalate", "telefonu nebėra ko daryti — tiketas dėl keitimo"
+
+
+class TestTheSettingsFixNeedsSomethingWithABrowser:
+    """Banga 7 (Andrius 2026-10-01): *„klausimas ‚ar galite prieiti prie routerio' be tikslo —
+    kai pasimetę nustatymai, klientas per savo naršyklę turi suvesti routerio adresą."*"""
+
+    SILENT = {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"}
+
+    def test_the_first_question_is_about_a_browser_not_about_walking_over(self, call):
+        state, rt = call
+        record_telemetry(state, rt, self.SILENT)
+
+        plan = case_rule.plan(state, rt)
+
+        assert plan is not None and plan.rule == "case.panel_device"
+
+    def test_a_phone_on_that_router_is_enough(self, call):
+        state, rt = call
+        record_telemetry(state, rt, self.SILENT)
+        case_rule.plan(state, rt)
+        said(state, rt, "panel_device", "yes")
+
+        assert case_rule.plan(state, rt).rule == "case.offer_guide"
+
+    def test_without_one_the_guide_is_not_offered_at_all(self, call):
+        state, rt = call
+        record_telemetry(state, rt, self.SILENT)
+        case_rule.plan(state, rt)
+        said(state, rt, "panel_device", "no")
+
+        plan = case_rule.plan(state, rt)
+
+        assert state.case.facts.get("guide_agreed") == "no"
+        assert plan.rule == "case.escalate", "be naršyklės nustatymų neatidarysim — meistras"
+
+
 class TestAStepThatKeepsBeingRepeated:
     """Wave 6 (G2): live 2026-09-28 the same reboot instruction went out six times, because
     nothing counted how often a step had been said."""
@@ -785,7 +880,8 @@ def test_a_step_given_up_on_does_not_send_the_call_back_into_itself(make_state, 
     state, rt = make_state("+37060020106"), make_runtime()
     state.identity.customer_id = "CUST106"
     record_telemetry(state, rt, {**BASE, "dhcp_status": "no_requests", "traffic": "flowing"})
-    state.case.facts.update({"reachable": "yes", "guide_agreed": "yes"})
+    state.case.facts.update({"panel_device": "yes", "guide_agreed": "yes"})
+    state.case.said += ["panel_device", "guide_agreed"]
 
     rules = []
     for _ in range(8):

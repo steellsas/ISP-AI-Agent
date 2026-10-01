@@ -380,6 +380,51 @@ nepadarysime, registruoju meistrą. Taip pat pasimetė vardo patikslinimas."*
 
 **Tikrinta:** 1382 passed, 1 skipped; eval 195/195 (G32 pataisą — patikslinimą, atėmusį visą atsakymą — pagavo pats eval'as).
 
+## Banga 7 — tiltas, kurio nebuvo kam priimti (šaka `fix/wave-7-bridge`, 2026-10-01)
+
+Šaltinis: du balso skambučiai — `logs/sessions/20261001-104139-631051-0001.jsonl` (miręs
+routeris) ir `…-104812-733601-0002.jsonl` (DHCP, nutrūko dėl kreditų). Andrius: *„prasidėjo
+viskas puikiai, tik užsiciklino dėl kompiuterio, kurio neturi klientas — jis suprato, bet vis
+tiek prašė ištraukti kabelį. O dėl DHCP: klausimas ‚ar galite prieiti prie routerio' be tikslo —
+kai pasimetę maršrutizatoriaus nustatymai, klientas per savo naršyklę turi suvesti routerio
+adresą ir tai perkonfigūruoti."*
+
+Iki pasiūlymo kortelė suveikė tiksliai taip, kaip 6 bangoje sutarta: hipotezė → ar galite
+prieiti → lemputės → maitinimas → išvada. Užsiciklinimas turėjo **keturias atskiras priežastis**,
+ir pirmoji paaiškina visas kitas.
+
+| # | Radinys | Būsena |
+|---|---|---|
+| **G34** | Pasiūlymo frazė 233 simbolių, o `reply_stop_chars: 200` — srauto sargas nukirpo paskutinį sakinį, t. y. patį klausimą („Ar norite pabandyti?"). Klientas išgirdo pranešimą be klausimo | ✓ pataisyta |
+| **G35** | „Neturiu." / „Neturiu kompiuterą." pasiūlymui nereiškė nieko (`ticket_consent` tų žodžių nemato) — žingsnis stovėjo | ✓ pataisyta |
+| **G36** | „Aš noriu tada **registruoti gedimą**" buvo perskaityta kaip **sutikimas** su tiltu (sutikimo žodyne yra „noriu") | ✓ pataisyta |
+| **G37** | Jau žinomas `has_computer=no` tilto žingsnių nepraleido — kortelės `done_when` sąlygos jungiamos IR, tad „praleisk, jei atsisakė ARBA jei nėra ko jungti" joje neišreiškiama | ✓ pataisyta |
+| **G38** | DHCP kortelė klausė „ar galite prieiti prie routerio", nors reikia įrenginio su **naršykle** tame pačiame routeryje | ✓ pataisyta |
+| **G39** | Tas pats atsakymas nuskambėjo **žodis į žodį 3×**, o sargas to nepamatė: `track_stuck` pakartojimu laiko tik **klausimą**, o šis atsakymas klausimu nebuvo (žr. G34) | ✓ pataisyta |
+| **G40** | Kliento atsakymas apie lemputes užrašė `lights=no`, nors kortelė kalba reikšmėmis `off/on/blinking` — `values: {off: confirms, on: rules_out}` nebeturėjo ką pasakyti | ✓ pataisyta |
+
+| # | Kas pakeista | Kur |
+|---|---|---|
+| **G34** | Pasiūlymas trumpas, o klausimas **paskutinis**: *„Routeris tikėtinai sugedęs — jį reikės pakeisti. Kol kas galiu laikinai paleisti internetą į vieną įrenginį: ar turite kompiuterį, kurį galėtume pajungti?"* (154 simboliai). Laido kišimas priklauso `connect_direct`, ne pasiūlymui. Naujas testas praleidžia **visas** `modules.*.question` frazes per sargą ir tikrina, kad klaustukas išliko | `locales/lt/phrases.yaml`, `tests/test_reply_guard.py` |
+| **G35 / G36** | Pasiūlymas turi savo skaitytuvą `bridge_consent`: nėra ko jungti („neturiu", „tik telefonas") — „ne"; prašo registruoti gedimą — irgi „ne" (tiketo dialogas pasileidžia savo keliu) | `perceive/detectors.py`, `modules/offer_bridge.yaml` |
+| **G37** | Modulis gali pasakyti, kada jo klausimas **jau atsakytas** kitu faktu: `answered_when: [{when: has_computer=no, set: bridge_agreed=no}]`. Tada visi tilto žingsniai praleidžiami savo esamu `done_when: [bridge_agreed=no]`, o kortelės nereikia mokyti sakyti „ARBA" | `contract/schema.py`, `contract/loader.py`, `decide/rules/case_rule.py` |
+| **G38** | Naujas `panel_device` žingsnis vietoj `reach`: *„Nustatymus atidarysime per naršyklę: ar turite kompiuterį ar telefoną, prijungtą prie to paties routerio?"* Telefonas čia **tinka** (tiltui — ne, nėra kur kišti laido), tad įrenginių žodynai du. Neturint — `offer_guide` per `answered_when` pats pasako „ne", vedimas nesiūlomas, o tiketas pasako, kad nustatymų atidaryti nebuvo kuo | `modules/panel_device.yaml`, `cards/dhcp_silent.yaml`, `modules/offer_guide.yaml` |
+| **G39** | Pakartojimu laikomas ir **tas pats pareiškimas**, ne tik tas pats klausimas | `speak/postprocess.py` |
+| **G40** | Skaitytuvo etiketė nėra fakto reikšmė: `no → off`, spalva → `on` (ką spalva reiškia linijai, pasako įrangos katalogas per `wan_link`) | `modules.py` |
+
+**Tikrinta:** 1391 passed, 1 skipped; eval 195/195.
+
+**Kas NEBUVO blogai** (tikrinta trace'e, kad nepataisytume to, kas veikia): `wan_link=down` iš
+kliento atsakymo apie lemputes yra **įrangos katalogo** skaitymas, ne klaida; tiketas buvo
+teisingo tipo (`equipment_replacement`) ir aprašė, kas patikrinta.
+
+**Kreditai** (Andrius: *„reikės pasižiūrėti, kur aš išnaudoju"*): OpenAI čia mokama tik už
+`gpt-4o-mini`; TTS yra `edge-tts`, ASR — Groq/vietinis whisper, embedding'ai vietiniai, unit
+testai LLM nekviečia. Vienas balso skambutis ≈ **0,004 USD** (visi 22 žurnaluose — 0,09), o
+vienas pilnas eval paleidimas ≈ **0,10 USD**; 09-28…10-01 eval'ai sudarė **1,58 USD**, t. y.
+~95 % visos sumos. Tad pilnas eval'as leidžiamas kartą po pakeitimų paketo, o tarpiniam
+tikrinimui — `--only <scenarijus>` ir unit testai.
+
 ## Banga 5 — valymas (šaka `fix/wave-5`, 2026-09-28)
 
 Andrius: *„manau galime apjungti tuos tris“* — penktoji banga sujungia tai, kas iki šiol gulo

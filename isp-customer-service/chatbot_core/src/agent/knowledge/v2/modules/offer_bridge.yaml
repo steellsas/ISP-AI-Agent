@@ -11,9 +11,18 @@ params:
 ask: modules.offer_bridge.question
 # Pasiūlymas priimamas ir žodžiu „gerai“ — `yes_no` to atsakymu nelaiko, ir gyvai
 # (eval S4, 2026-09-30) klientas pasakė „Gerai“, o agentas pakartojo tą patį pasiūlymą.
-detector: ticket_consent
+#
+# Nuo 7 bangos skaitytuvas yra `bridge_consent`: „neturiu", „tik telefonas" ir prašymas
+# registruoti gedimą yra ATSISAKYMAS. Gyvai 2026-10-01 „Neturiu." šiam klausimui nereiškė
+# nieko, o „noriu registruoti gedimą" buvo perskaityta kaip sutikimas.
+detector: bridge_consent
 answers:
   "yes": bridge_agreed=yes
   "no": bridge_agreed=no
 produces: [bridge_agreed]
 goal: "offered, not imposed: a temporary line into one device while the router is replaced"
+# Nėra ko jungti — atsakymas jau žinomas, ir klausti nebereikia. Taip visi tilto žingsniai
+# praleidžiami per savo `done_when: [bridge_agreed=no]`, nes kortelė nemoka sakyti „ARBA".
+answered_when:
+  - when: has_computer=no
+    set: bridge_agreed=no

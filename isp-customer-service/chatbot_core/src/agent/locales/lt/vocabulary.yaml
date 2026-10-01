@@ -206,6 +206,9 @@ device_yes:
   - "prijung"
 
 usable_device: ["kompiuter", "nešiojam", "nesiojam", "laptop", "router", "kompas"]
+# Įrenginiai, kuriais galima atidaryti routerio nustatymus naršyklėje — čia telefonas TINKA
+# (tiltui jis netinka, nes nėra kur kišti laido).
+browser_device: ["kompiuter", "nešiojam", "nesiojam", "laptop", "kompas", "telefon", "planšet", "planset"]
 
 farewell:
   - "viso gero"

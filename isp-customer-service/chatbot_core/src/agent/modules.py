@@ -149,13 +149,28 @@ def _action_key(spec: ModuleSpec, args: dict[str, Any]) -> str | None:
 CLIENT_FACT = {"check_lights": "lights"}
 
 
+# Skaitytuvo etiketė nėra fakto reikšmė. `detect_lights` sako „no" / „yes" / spalvą, o
+# kortelės `needs.lights` kalba reikšmėmis off / on / blinking — gyvai 2026-10-01 tas pats
+# atsakymas užrašė iš pradžių `lights=off` (per `evidence.py`), o paskui `lights=no`, ir
+# kortelės `values: {off: confirms, on: rules_out}` nebeturėjo ką pasakyti. Spalva reiškia, kad
+# lemputė DEGA — ką ta spalva reiškia linijai, pasako įrangos katalogas (`wan_link`).
+# {faktas: ({etiketė: reikšmė}, reikšmė visoms kitoms etiketėms)}
+CLIENT_FACT_VALUES = {"lights": ({"no": "off", "blinking": "blinking"}, "on")}
+
+
 def client_fact(call: ModuleCall, text: str | None) -> tuple[str, str] | None:
     """The CALLER-owned fact their answer establishes for this module, if it has one."""
     name = CLIENT_FACT.get(call.module)
     if not name or not text:
         return None
     label = _detect(name, text)
-    return (name, label) if label else None
+    if not label:
+        return None
+    stated = CLIENT_FACT_VALUES.get(name)
+    if stated is None:
+        return name, label
+    mapping, otherwise = stated
+    return name, mapping.get(label, otherwise)
 
 
 def _awaits(spec: ModuleSpec, args: dict[str, Any], device) -> str | None:

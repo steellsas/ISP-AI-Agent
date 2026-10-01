@@ -590,9 +590,17 @@ modules:
     question: "Patikrinkime maitinimą: ar routerio laidas tvirtai įkištas į patį routerį ir į rozetę? Jei taip — pabandykite kitą rozetę."
   offer_guide:
     question: "Panašu, kad routeryje pasimetę interneto nustatymai. Galime pabandyti juos susigrąžinti kartu — aš pasakysiu po vieną žingsnį. Ar norite pabandyti, ar geriau iš karto užregistruoti specialistą?"
+  panel_device:
+    # TRUMPAI, klausimas paskutinis (srauto sargas baigia atsakymą ties 200 simbolių).
+    question: "Nustatymus atidarysime per naršyklę: ar turite kompiuterį ar telefoną, prijungtą prie to paties routerio?"
   offer_bridge:
-    # Po lempučių ir maitinimo patikros išvada jau PAGRĪSTA — ir ji pasakoma garsiai, prieš pasiūlymą.
-    question: "Lemputės nedega, o maitinimas tvarkoje — routeris tikėtinai sugedęs, jį reikės pakeisti. Kol kas galiu laikinai paleisti internetą į vieną įrenginį: jei turite kompiuterį, įkišim linijos laidą tiesiai į jį. Ar norite pabandyti?"
+    # Po lempučių ir maitinimo patikros išvada jau PAGRĮSTA — ir ji pasakoma garsiai, prieš pasiūlymą.
+    #
+    # TRUMPAI, ir klausimas PASKUTINIS. Gyvai 2026-10-01 ši frazė buvo 233 simbolių, o srauto
+    # sargas (`reply_stop_chars: 200`) baigia atsakymą tuo sakiniu, kuris perlipa ribą — nukrito
+    # būtent „Ar norite pabandyti?", klientas išgirdo pranešimą be klausimo, ir pasiūlymas
+    # nuskambėjo tris kartus. Laido kišimas priklauso `connect_direct` žingsniui, ne pasiūlymui.
+    question: "Routeris tikėtinai sugedęs — jį reikės pakeisti. Kol kas galiu laikinai paleisti internetą į vieną įrenginį: ar turite kompiuterį, kurį galėtume pajungti?"
   port_reset:
     announce: "Perkrauju jūsų prievadą, kad naujas įrenginys gautų adresą — užtruks kelias sekundes."
 

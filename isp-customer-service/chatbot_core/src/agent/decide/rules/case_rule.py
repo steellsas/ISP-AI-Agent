@@ -922,6 +922,31 @@ def _more_guide_steps(state: Any, call: Any) -> bool:
     return state.case.guide_step + 1 < modules.guide_length(call)
 
 
+def _answered_elsewhere(state: Any, rt: Any, call: Any, facts: dict[str, str]) -> bool:
+    """Ar į šio modulio klausimą jau atsako kitas faktas (modulio `answered_when`)?
+
+    Gyvai 2026-10-01: klientas pasakė, kad kompiuterio neturi, o tiltas vis tiek buvo
+    siūlomas ir paskui vykdomas — kortelės `done_when` sąlygos jungiamos IR, tad „praleisk,
+    jei atsisakė ARBA jei nėra ko jungti" joje neišreiškiama. Modulis tai pasako pats, ir
+    atsakymas įrašomas kaip kliento (jis juk tai ir pasakė), kad tolesni žingsniai praleistų
+    save savo esamu `done_when`.
+    """
+    from ...contract.schema import Condition
+
+    spec = catalog.module(call.module)
+    for rule in getattr(spec, "answered_when", None) or []:
+        if Condition.parse(rule.when).holds(facts) is not True:
+            continue
+        fact, value = rule.set.split("=", 1)
+        if facts.get(fact) != value:
+            ledger.record_client(state, rt, fact, value)
+            rt.tracer.emit(
+                "case", move="answered_elsewhere", module=call.module, by=rule.when, sets=rule.set
+            )
+        return True
+    return False
+
+
 def _already_done(call: Any, facts: dict[str, str]) -> bool:
     """Does the card itself say this step is achieved (`done_when`)?"""
     from ...contract.schema import Condition
@@ -1082,8 +1107,13 @@ def _module_plan_inner(state: Any, rt: Any, call, facts: dict[str, str], *, rule
             return _module_plan_inner(state, rt, following, facts, rule=f"case.{following.module}")
         return _escalate(state, rt, state.case.fault)
 
-    already = _already_done(call, facts) or (
-        step.kind == "ask" and step.awaits and _client_said(state, step.awaits)
+    settled = _answered_elsewhere(state, rt, call, facts)
+    if settled:
+        facts = ledger.facts_of(state)
+    already = (
+        settled
+        or _already_done(call, facts)
+        or (step.kind == "ask" and step.awaits and _client_said(state, step.awaits))
     )
     if already:
         # They already told us, or the card says this step is achieved — asking again is how an

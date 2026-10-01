@@ -182,13 +182,26 @@ def detect_have_device(text: str | None) -> str | None:
     a computer is exactly what the bridge needs. Scanning the whole sentence for
     "neturiu" answered NO and told the caller nothing could be done, with a usable
     machine sitting right there."""
+    return _device_answer(text, vocab("usable_device"))
+
+
+def detect_panel_device(text: str | None) -> str | None:
+    """Tas pats skaitymas, bet TINKAMI įrenginiai kiti: routerio nustatymus atidaro bet kas su
+    naršykle — ir telefonas. Tiltui telefonas netinka (nėra kur kišti laido), o
+    perkonfigūravimui tinka, tad žodynai du (7 banga, Andrius 2026-10-01: *„klientas turi per
+    savo naršyklę suvesti routerio adresą ir tai perkonfigūruoti"*)."""
+    return _device_answer(text, vocab("browser_device"))
+
+
+def _device_answer(text: str | None, words: list[str]) -> str | None:
+    """„Ar turite <įrenginį>?" — perskaityta sakinio dalimis, su savo įrenginių žodynu."""
     if not text:
         return None
     low = text.lower()
     clauses = [c for c in vocab_re("clause_split").split(low) if c.strip()]
     saw_device_clause = False
     for c in clauses:
-        if not any(d in c for d in vocab("usable_device")):
+        if not any(d in c for d in words):
             continue
         saw_device_clause = True
         if not any(m in c for m in vocab("device_denial")) and not vocab_re("bare_no").search(c):
@@ -390,6 +403,26 @@ def is_greeting(text: str | None) -> bool:
     if len(low.split()) > limits.get("greeting_max_words"):
         return False
     return any(m in low for m in vocab("greeting"))
+
+
+def detect_bridge_consent(text: str | None) -> str | None:
+    """Atsakymas į PASIŪLYMĄ laikinai paleisti internetą į vieną įrenginį.
+
+    Gyvai 2026-10-01: „Neturiu." ir „Neturiu kompiuterą." šiam klausimui nieko nereiškė
+    (`ticket_consent` jų nemato), tad pasiūlymas nuskambėjo tris kartus; o „Aš noriu tada
+    registruoti gedimą ir lauksime meistro" buvo perskaityta kaip SUTIKIMAS, nes sutikimo
+    žodyne yra „noriu" — ir klientas, neturintis kompiuterio, gavo nurodymą kišti laidą.
+
+    Tad čia dvi taisyklės eina pirmiau įprasto sutikimo: nėra ką jungti — „ne"; prašo
+    registruoti gedimą — irgi „ne" (tiketo dialogas pasileidžia savo keliu).
+    """
+    if not text:
+        return None
+    if detect_no_device(text):
+        return "no"
+    if detect_refuse_or_ticket(text) == "demand":
+        return "no"
+    return detect_ticket_consent(text)
 
 
 def detect_no_device(text: str | None) -> bool:

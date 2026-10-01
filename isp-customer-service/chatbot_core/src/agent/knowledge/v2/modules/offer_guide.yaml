@@ -18,3 +18,9 @@ answers:
   "no": guide_agreed=no
 produces: [guide_agreed]
 goal: "agreed (or not) to go through the settings together — offered, never imposed"
+# Nėra įrenginio su naršykle — vesti nėra per ką, tad pasiūlymo neklausiam ir visi vedimo
+# žingsniai praleidžiami savo `done_when: [guide_agreed=no]`. Klientas išgirsta, kad to telefonu
+# nepadarysime be naršyklės, ir meistras registruojamas (7 banga).
+answered_when:
+  - when: panel_device=no
+    set: guide_agreed=no

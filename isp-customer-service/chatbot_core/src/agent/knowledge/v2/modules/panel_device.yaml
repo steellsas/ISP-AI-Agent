@@ -1,0 +1,26 @@
+# AR YRA KUO ATIDARYTI ROUTERIO NUSTATYMUS — pasimetusių nustatymų kortelės pirmas klausimas.
+#
+# Andrius (2026-10-01): „klausimas ‚ar galite prieiti prie routerio' be tikslo — kai pasimetę
+# maršrutizatoriaus nustatymai, klientas turi per savo naršyklę suvesti routerio adresą ir tai
+# perkonfigūruoti." Tad čia klausiama ne apie priėjimą prie dėžutės, o apie tai, ko tikrai
+# reikia: įrenginio su naršykle, prijungto prie to paties routerio. Telefonas tinka.
+#
+# Atsakius „ne" — vedimas neįmanomas, ir tai pasakoma sąžiningai (žr. `offer_guide`
+# `answered_when`): meistras registruojamas be bergždžių nurodymų.
+module: panel_device
+kind: ask
+params:
+  device: {values: [router], default: router}
+ask: modules.panel_device.question
+detector: panel_device
+answers:
+  "yes": panel_device=yes
+  "no": panel_device=no
+produces: [panel_device]
+goal: "clear whether the caller has anything with a browser on this router's network — the
+  settings page cannot be opened without one"
+# Pasakęs, kad turi kompiuterį, jau atsakė. Atvirkščiai neveikia: kompiuterio nebuvimas
+# nereiškia, kad nėra telefono.
+answered_when:
+  - when: has_computer=yes
+    set: panel_device=yes

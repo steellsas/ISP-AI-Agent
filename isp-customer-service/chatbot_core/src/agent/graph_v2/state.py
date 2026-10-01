@@ -301,6 +301,10 @@ class DialogState(BaseModel):
     cannot_now_done: bool = False
     # The last reply re-asked the previous question verbatim.
     last_reply_repeated: bool = False
+    # Praeito ėjimo atsakymas — visas, ne tik klausimas. Gyvai 2026-10-01 tas pats tilto
+    # pasiūlymas nuskambėjo žodis į žodį tris kartus, o sargas to nepamatė: pakartojimu buvo
+    # laikomas tik KLAUSIMAS, o tam atsakymui klaustuką buvo nukirpęs srauto sargas (7 banga).
+    last_reply: str | None = None
     # (doc, section, step) of the last injected playbook section (trace dedup).
     last_rag_injection_key: list[Any] | None = None
 
